@@ -1,10 +1,11 @@
 {
   "name": "@editflow/desktop-host",
-  "version": "0.1.0-dev.3",
+  "version": "0.1.0-dev.4",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./v1_1": "./src/v1_1.ts"
+    "./v1_1": "./src/v1_1.ts",
+    "./loopback-cep": "./src/loopback-cep.ts"
   }
 }
