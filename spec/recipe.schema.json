@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/recipe.schema.json",
+  "title": "EditFlow 2.0 Executable Recipe",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "recipe_id", "version", "purpose", "semantic_prerequisites", "required_capabilities",
+    "roles", "construction", "timing_model", "spatial_model", "validation", "failure_modes"
+  ],
+  "properties": {
+    "recipe_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "provenance": {"type": "array", "items": {"type": "string"}},
+    "purpose": {"type": "string", "minLength": 1},
+    "semantic_prerequisites": {"type": "array", "items": {"type": "string"}},
+    "required_capabilities": {"type": "array", "items": {"type": "string"}},
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "allowed_entity_classes", "required"],
+        "properties": {
+          "role": {"type": "string"},
+          "allowed_entity_classes": {"type": "array", "items": {"type": "string"}},
+          "required": {"type": "boolean"},
+          "binding_constraints": {"type": "object"}
+        }
+      }
+    },
+    "construction": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step_id", "semantic_operation", "depends_on"],
+        "properties": {
+          "step_id": {"type": "string"},
+          "semantic_operation": {"type": "string"},
+          "depends_on": {"type": "array", "items": {"type": "string"}},
+          "capability_ids": {"type": "array", "items": {"type": "string"}},
+          "role_inputs": {"type": "array", "items": {"type": "string"}},
+          "parameters": {"type": "object"},
+          "adaptation_bounds": {"type": "object"}
+        }
+      }
+    },
+    "timing_model": {"type": "object"},
+    "spatial_model": {"type": "object"},
+    "curve_templates": {"type": "array", "items": {"type": "object"}},
+    "checkpoints": {"type": "array", "items": {"type": "object"}},
+    "validation": {
+      "type": "object",
+      "required": ["structural_invariants", "visual_invariants"],
+      "properties": {
+        "structural_invariants": {"type": "array", "items": {"type": "string"}},
+        "visual_invariants": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "failure_modes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "detection", "repair"],
+        "properties": {
+          "id": {"type": "string"},
+          "detection": {"type": "string"},
+          "repair": {"type": "string"}
+        }
+      }
+    },
+    "maturity": {"enum": ["OBSERVED", "RECONSTRUCTED", "VISUAL_MATCH_VERIFIED", "TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"]}
+  }
+}

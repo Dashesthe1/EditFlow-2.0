@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/execution-plan.schema.json",
+  "title": "EditFlow 2.0 Execution Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_id", "plan_revision", "project_revision", "project_fingerprint", "environment_fingerprint",
+    "required_capabilities", "bindings", "operations", "checkpoints", "invariants", "rollback_boundaries"
+  ],
+  "properties": {
+    "plan_id": {"type": "string", "minLength": 1},
+    "plan_revision": {"type": "integer", "minimum": 1},
+    "project_revision": {"type": "string", "minLength": 1},
+    "project_fingerprint": {"type": "string", "minLength": 1},
+    "environment_fingerprint": {"type": "string", "minLength": 1},
+    "creative_objective": {"type": "string"},
+    "recipe_refs": {"type": "array", "items": {"type": "string"}},
+    "required_capabilities": {"type": "array", "items": {"type": "string"}},
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "entity_id", "confidence"],
+        "properties": {
+          "role": {"type": "string"},
+          "entity_id": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence_refs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_id", "capability_id", "route_id", "depends_on", "idempotency", "risk_class", "input"],
+        "properties": {
+          "operation_id": {"type": "string"},
+          "capability_id": {"type": "string"},
+          "route_id": {"type": "string"},
+          "depends_on": {"type": "array", "items": {"type": "string"}},
+          "idempotency": {"enum": ["IDEMPOTENT", "CHECK_THEN_APPLY", "NON_IDEMPOTENT"]},
+          "risk_class": {"enum": ["R0_READ_ONLY", "R1_REVERSIBLE", "R2_STRUCTURAL", "R3_DESTRUCTIVE", "R4_EXTERNAL_UI"]},
+          "input": {"type": "object"},
+          "expected_readback": {"type": "object"},
+          "rollback_boundary_id": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["checkpoint_id", "after_operation_ids", "kind"],
+        "properties": {
+          "checkpoint_id": {"type": "string"},
+          "after_operation_ids": {"type": "array", "items": {"type": "string"}},
+          "kind": {"enum": ["STRUCTURAL", "VISUAL", "STRUCTURAL_AND_VISUAL"]},
+          "profile": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "required": ["structural", "visual"],
+      "properties": {
+        "structural": {"type": "array", "items": {"type": "object"}},
+        "visual": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "rollback_boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "strategy"],
+        "properties": {
+          "id": {"type": "string"},
+          "strategy": {"enum": ["RESTORE_SNAPSHOT", "REMOVE_TRANSACTION_OWNED", "COMPENSATE", "RECOVERY_CHECKPOINT"]},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "plan_hash": {"type": ["string", "null"]}
+  }
+}
