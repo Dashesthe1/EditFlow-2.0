@@ -1,0 +1,21 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "REQ_M2_001",
+  "transactionId": "TX_M2_001",
+  "operationId": "OP_COMP_CREATE_001",
+  "capabilityId": "ae.comp.create",
+  "command": "comp.create",
+  "expectedProjectRevision": "ae-revision:12",
+  "expectedProjectFingerprint": "project:sha256:abc",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "stableId": "COMP_EDITFLOW_001",
+    "name": "EditFlow M2 Proof",
+    "width": 1080,
+    "height": 1080,
+    "pixelAspect": 1,
+    "duration": 4,
+    "frameRate": 24
+  },
+  "readbackProfile": "COMPOSITION"
+}

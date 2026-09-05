@@ -1,0 +1,42 @@
+{
+  "proof_id": "M2_AE_HOST_BASELINE",
+  "status": "PENDING_REAL_AE",
+  "required_environment": {
+    "os": "Windows",
+    "host": "Adobe After Effects",
+    "adapter_protocol": "1.0.0"
+  },
+  "scenarios": [
+    {
+      "id": "read_only_handshake",
+      "capabilities": ["ae.host.probe", "ae.project.inspect"],
+      "proof_levels": ["P1", "P2"]
+    },
+    {
+      "id": "composition_create_readback_cleanup",
+      "capabilities": ["ae.comp.create", "ae.comp.remove"],
+      "proof_levels": ["P1", "P2", "P3", "P4"]
+    },
+    {
+      "id": "media_layer_transform_timing",
+      "capabilities": ["ae.media.import", "ae.layer.create", "ae.layer.transform.set", "ae.layer.timing.set"],
+      "proof_levels": ["P1", "P2", "P3", "P4", "P5"]
+    },
+    {
+      "id": "effect_keyframe_expression",
+      "capabilities": ["ae.effect.add", "ae.effect.property.set", "ae.keyframe.set", "ae.expression.set"],
+      "proof_levels": ["P1", "P2", "P3", "P4", "P5"]
+    },
+    {
+      "id": "precompose_stable_identity",
+      "capabilities": ["ae.precompose.layers"],
+      "proof_levels": ["P1", "P2", "P3", "P4", "P5"],
+      "identity_cases": ["rename", "reorder", "duplicate", "precompose", "save_reopen", "reconnect"]
+    },
+    {
+      "id": "render_capture",
+      "capabilities": ["ae.render.capture"],
+      "proof_levels": ["P1", "P2", "P3"]
+    }
+  ]
+}

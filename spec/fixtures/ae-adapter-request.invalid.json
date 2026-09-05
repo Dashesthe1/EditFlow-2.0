@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "REQ_BAD",
+  "transactionId": "TX_BAD",
+  "operationId": "OP_BAD",
+  "capabilityId": "ae.comp.create",
+  "command": "execute.arbitrary_jsx",
+  "expectedProjectRevision": null,
+  "expectedProjectFingerprint": null,
+  "expectedHostProjectRevision": null,
+  "payload": {
+    "script": "app.project.items.addComp('unsafe',1,1,1,1,1)"
+  },
+  "readbackProfile": null
+}
