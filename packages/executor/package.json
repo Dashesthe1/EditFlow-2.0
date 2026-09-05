@@ -1,5 +1,5 @@
 {
-  "name": "@editflow/capability-registry",
+  "name": "@editflow/executor",
   "version": "0.1.0-dev.1",
   "private": true,
   "type": "module",
