@@ -3,7 +3,7 @@
   var startedAt = (new Date()).toISOString();
   var proofFile = new File($.fileName);
   var repoRoot = proofFile.parent.parent.parent;
-  var hostScript = new File(repoRoot.fsName + "/packages/adapters/ae-cep/host/editflow_host.jsx");
+  var hostScript = new File(repoRoot.fsName + "/packages/adapters/ae-cep/host/editflow_host_current.jsx");
   var artifactDir = new Folder(repoRoot.fsName + "/proofs/artifacts/m2-real-host");
   if (!artifactDir.exists) artifactDir.create();
   var resultFile = new File(artifactDir.fsName + "/result.json");
@@ -15,6 +15,7 @@
   var targetStable = prefix + "_TARGET_COMP";
   var layerStable = prefix + "_LAYER";
   var precompStable = prefix + "_PRECOMP";
+  var replacementStable = prefix + "_PRECOMP_REPLACEMENT";
   var checks = {};
   var responses = [];
   var errorText = null;
@@ -80,7 +81,7 @@
     requestCounter += 1;
     var revision = app.project.revision;
     var request = {
-      protocolVersion: "1.0.0",
+      protocolVersion: "1.1.0",
       requestId: prefix + "_REQ_" + requestCounter,
       transactionId: prefix + "_TX",
       operationId: prefix + "_OP_" + requestCounter,
@@ -105,12 +106,14 @@
   function layerRef(stableId) { return { stableId: stableId }; }
 
   try {
-    if (!hostScript.exists) throw new Error("EditFlow host script not found: " + hostScript.fsName);
+    if (!hostScript.exists) throw new Error("EditFlow current host script not found: " + hostScript.fsName);
     $.evalFile(hostScript);
     if (typeof $.global.EditFlow2_dispatch !== "function") throw new Error("EditFlow2_dispatch was not registered.");
 
     var probe = call("host.probe", {});
-    checks.host_probe = probe.environmentProbe && probe.environmentProbe.hostName === "Adobe After Effects";
+    checks.host_probe = probe.environmentProbe
+      && probe.environmentProbe.hostName === "Adobe After Effects"
+      && probe.environmentProbe.adapterProtocolVersion === "1.1.0";
     var baseline = call("project.inspect", {});
     checks.project_inspect = baseline.projectSnapshot && baseline.projectSnapshot.itemCount === baselineCount;
 
@@ -212,18 +215,31 @@
       layers: [layerRef(layerStable)],
       name: prefix + " Precomp",
       stableId: precompStable,
+      replacementStableId: replacementStable,
       moveAllAttributes: true
     });
-    checks.precompose = precompose.readback && precompose.readback.composition && precompose.readback.composition.stableId === precompStable;
+    checks.precompose = precompose.readback
+      && precompose.readback.composition
+      && precompose.readback.composition.stableId === precompStable;
+    checks.precompose_replacement_identity = precompose.readback
+      && precompose.readback.replacementLayer
+      && precompose.readback.replacementLayer.stableId === replacementStable;
 
     var inspectAfter = call("project.inspect", {});
     var stableSeen = {};
-    var i;
+    var replacementSeen = false;
+    var i, j;
     for (i = 0; i < inspectAfter.projectSnapshot.items.length; i += 1) {
-      var s = inspectAfter.projectSnapshot.items[i].stableId;
+      var itemSnapshot = inspectAfter.projectSnapshot.items[i];
+      var s = itemSnapshot.stableId;
       if (s) stableSeen[s] = true;
+      if (itemSnapshot.composition && itemSnapshot.composition.layers) {
+        for (j = 0; j < itemSnapshot.composition.layers.length; j += 1) {
+          if (itemSnapshot.composition.layers[j].stableId === replacementStable) replacementSeen = true;
+        }
+      }
     }
-    checks.stable_id_readback = stableSeen[sourceStable] && stableSeen[targetStable] && stableSeen[precompStable];
+    checks.stable_id_readback = stableSeen[sourceStable] && stableSeen[targetStable] && stableSeen[precompStable] && replacementSeen;
   } catch (error) {
     errorText = String(error);
   } finally {
@@ -243,7 +259,7 @@
     ok: !errorText && allCore,
     startedAt: startedAt,
     completedAt: (new Date()).toISOString(),
-    adapterProtocolVersion: "1.0.0",
+    adapterProtocolVersion: "1.1.0",
     hostVersion: app.version,
     hostBuild: app.buildNumber !== undefined ? String(app.buildNumber) : null,
     checks: checks,
