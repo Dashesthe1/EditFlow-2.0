@@ -1,0 +1,36 @@
+name: M2 CEP Runtime Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout_seconds:
+        description: Seconds to wait for the installed EditFlow CEP panel
+        required: false
+        default: "90"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cep-smoke:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run read-only CEP transport smoke
+        shell: powershell
+        run: |
+          $timeout = [int]'${{ inputs.timeout_seconds }}'
+          .\scripts\windows\run-m2-cep-smoke.ps1 -TimeoutSeconds $timeout
+
+      - name: Upload CEP smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-cep-smoke-${{ github.run_id }}
+          path: proofs/artifacts/m2-cep-smoke/
+          if-no-files-found: warn
+          retention-days: 14

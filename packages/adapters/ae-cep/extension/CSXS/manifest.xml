@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ExtensionManifest
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  ExtensionBundleId="com.editflow2.bridge"
+  ExtensionBundleVersion="0.1.0-dev.4"
+  Version="12.0">
+  <ExtensionList>
+    <Extension Id="com.editflow2.bridge.panel" Version="0.1.0-dev.4" />
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="AEFT" Version="[23.0,99.9]" />
+    </HostList>
+    <LocaleList>
+      <Locale Code="All" />
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="12.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.editflow2.bridge.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./html/index.html</MainPath>
+          <ScriptPath>./host/bootstrap.jsx</ScriptPath>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>EditFlow 2.0 Bridge</Menu>
+          <Geometry>
+            <Size>
+              <Height>220</Height>
+              <Width>360</Width>
+            </Size>
+            <MinSize>
+              <Height>160</Height>
+              <Width>300</Width>
+            </MinSize>
+            <MaxSize>
+              <Height>600</Height>
+              <Width>900</Width>
+            </MaxSize>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>

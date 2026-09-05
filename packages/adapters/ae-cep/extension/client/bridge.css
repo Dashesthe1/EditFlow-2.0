@@ -1,0 +1,10 @@
+html, body { margin: 0; padding: 0; background: #202124; color: #f1f3f4; font: 13px/1.45 Arial, sans-serif; }
+main { padding: 16px; }
+h1 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+#status { border: 1px solid #5f6368; border-radius: 4px; padding: 9px 10px; margin-bottom: 14px; }
+#status[data-state="connected"] { border-color: #81c995; }
+#status[data-state="error"] { border-color: #f28b82; }
+dl { display: grid; grid-template-columns: 72px 1fr; gap: 5px 8px; margin: 0; }
+dt { color: #9aa0a6; }
+dd { margin: 0; overflow-wrap: anywhere; }
+.note { margin: 16px 0 0; color: #bdc1c6; font-size: 11px; }

@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:*; connect-src http://127.0.0.1:*; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
+  <title>EditFlow 2.0 Bridge</title>
+  <link rel="stylesheet" href="../client/bridge.css" />
+</head>
+<body>
+  <main>
+    <h1>EditFlow 2.0 Bridge</h1>
+    <div id="status" data-state="starting">Starting bridge…</div>
+    <dl>
+      <dt>Protocol</dt><dd id="protocol">1.1.0</dd>
+      <dt>Broker</dt><dd id="broker">Not connected</dd>
+      <dt>Host</dt><dd id="host">After Effects</dd>
+    </dl>
+    <p class="note">This panel accepts only authenticated local EditFlow requests and invokes the fixed EditFlow2 dispatcher.</p>
+  </main>
+  <script src="../client/runtime-config.js"></script>
+  <script src="../client/bridge.js"></script>
+</body>
+</html>

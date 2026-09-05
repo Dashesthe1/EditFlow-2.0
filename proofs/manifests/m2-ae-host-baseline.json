@@ -5,9 +5,20 @@
     "os": "Windows",
     "host": "Adobe After Effects",
     "adapter_protocol": "1.1.0",
-    "editflow_build": "0.1.0-dev.3"
+    "editflow_build": "0.1.0-dev.4"
   },
   "scenarios": [
+    {
+      "id": "cep_transport_smoke",
+      "capabilities": ["ae.host.probe", "ae.project.inspect"],
+      "proof_levels": ["P1", "P2"],
+      "requirements": [
+        "installed CEP 12 panel authenticates to the 127.0.0.1 desktop broker",
+        "typed protocol 1.1 request crosses the production panel evalScript path",
+        "fixed EditFlow2 dispatcher returns a correlated response",
+        "smoke remains read-only"
+      ]
+    },
     {
       "id": "read_only_handshake",
       "capabilities": ["ae.host.probe", "ae.project.inspect"],
@@ -60,6 +71,7 @@
     }
   ],
   "artifacts": {
+    "cep_smoke": "proofs/artifacts/m2-cep-smoke/",
     "bounded": "proofs/artifacts/m2-real-host/",
     "disposable_p4_p5": "proofs/artifacts/m2-disposable-p4-p5/"
   }
