@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-adapter-request.schema.json",
+  "title": "EditFlow 2.0 AE Adapter Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command",
+    "expectedProjectRevision", "expectedProjectFingerprint", "expectedHostProjectRevision", "payload", "readbackProfile"
+  ],
+  "properties": {
+    "protocolVersion": {"const": "1.0.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {
+      "enum": [
+        "host.probe", "project.inspect", "project.save", "comp.create", "comp.update_settings", "comp.remove",
+        "media.import", "layer.add_media", "layer.duplicate", "layer.remove", "layer.reorder", "layer.set_transform",
+        "layer.set_timing", "effect.add", "effect.remove", "effect.set_property", "property.set_keyframes",
+        "property.set_expression", "layers.precompose", "render.capture", "readback.object"
+      ]
+    },
+    "expectedProjectRevision": {"type": ["string", "null"]},
+    "expectedProjectFingerprint": {"type": ["string", "null"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  }
+}

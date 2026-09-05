@@ -8,5 +8,5 @@ const output = execFileSync(process.execPath, ["scripts/validate-schemas.mjs"], 
 });
 
 test("all contract fixtures match their expected validity", () => {
-  assert.match(output, /Validated 8 contract fixtures successfully\./);
+  assert.match(output, /Validated 10 contract fixtures successfully\./);
 });

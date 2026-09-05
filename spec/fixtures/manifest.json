@@ -6,5 +6,7 @@
   {"schema":"spec/recipe.schema.json","fixture":"spec/fixtures/recipe.valid.json","valid":true},
   {"schema":"spec/recipe.schema.json","fixture":"spec/fixtures/recipe.invalid.json","valid":false},
   {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.valid.json","valid":true},
-  {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.invalid.json","valid":false}
+  {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.invalid.json","valid":false},
+  {"schema":"spec/ae-adapter-request.schema.json","fixture":"spec/fixtures/ae-adapter-request.valid.json","valid":true},
+  {"schema":"spec/ae-adapter-request.schema.json","fixture":"spec/fixtures/ae-adapter-request.invalid.json","valid":false}
 ]
