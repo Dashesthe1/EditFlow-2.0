@@ -1,0 +1,12 @@
+{
+  "recipe_id": "transition.invalid",
+  "version": "0.1.0",
+  "purpose": "This fixture must fail because required construction fields are missing.",
+  "semantic_prerequisites": [],
+  "required_capabilities": [],
+  "roles": [],
+  "construction": [],
+  "timing_model": {},
+  "validation": {"structural_invariants": [], "visual_invariants": []},
+  "failure_modes": []
+}

@@ -1,0 +1,13 @@
+{
+  "id": "ae.mask.path.animate",
+  "domain": "masks",
+  "description": "Animate an AE mask path with explicit vertices and tangents.",
+  "status": "PARTIAL",
+  "proof_maturity": "DECLARED",
+  "routes": [],
+  "readback_strategy": "Read mask path geometry and keyframe metadata from the host adapter.",
+  "rollback_strategy": "Restore captured mask path/keyframe snapshot.",
+  "risk_class": "R2_STRUCTURAL",
+  "fallback_policy": "FORBID",
+  "limitations": ["Host adapter not implemented in M0."]
+}

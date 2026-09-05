@@ -1,0 +1,13 @@
+{
+  "plan_id": "plan:test:invalid",
+  "plan_revision": 0,
+  "project_revision": "",
+  "project_fingerprint": "",
+  "environment_fingerprint": "",
+  "required_capabilities": [],
+  "bindings": [],
+  "operations": [],
+  "checkpoints": [],
+  "invariants": {"structural": [], "visual": []},
+  "rollback_boundaries": []
+}

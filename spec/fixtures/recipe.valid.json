@@ -1,0 +1,26 @@
+{
+  "recipe_id": "transition.foreground_occlusion",
+  "version": "0.1.0",
+  "provenance": ["fixture"],
+  "purpose": "Reveal an incoming shot behind a tracked foreground occluder.",
+  "semantic_prerequisites": ["foreground object crosses meaningful screen area"],
+  "required_capabilities": ["ae.mask.path.animate", "ae.track_matte.alpha.set"],
+  "roles": [
+    {"role": "foreground_occluder", "allowed_entity_classes": ["HAND", "OBJECT", "EDGE"], "required": true, "binding_constraints": {}}
+  ],
+  "construction": [
+    {"step_id": "isolate", "semantic_operation": "create_tracked_foreground_matte", "depends_on": [], "capability_ids": ["ae.mask.path.animate"], "role_inputs": ["foreground_occluder"], "parameters": {}, "adaptation_bounds": {}}
+  ],
+  "timing_model": {"phases": ["setup", "peak", "reveal", "settle"]},
+  "spatial_model": {"boundary": "occluder_silhouette"},
+  "curve_templates": [],
+  "checkpoints": [],
+  "validation": {
+    "structural_invariants": ["incoming shot is revealed by matte relationship"],
+    "visual_invariants": ["transition boundary follows foreground occluder"]
+  },
+  "failure_modes": [
+    {"id": "matte_drift", "detection": "edge separates from occluder", "repair": "refine track or segmentation and regenerate mask"}
+  ],
+  "maturity": "OBSERVED"
+}

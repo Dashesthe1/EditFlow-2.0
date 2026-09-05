@@ -1,0 +1,10 @@
+[
+  {"schema":"spec/capability.schema.json","fixture":"spec/fixtures/capability.valid.json","valid":true},
+  {"schema":"spec/capability.schema.json","fixture":"spec/fixtures/capability.invalid.json","valid":false},
+  {"schema":"spec/scene-graph.schema.json","fixture":"spec/fixtures/scene-graph.valid.json","valid":true},
+  {"schema":"spec/scene-graph.schema.json","fixture":"spec/fixtures/scene-graph.invalid.json","valid":false},
+  {"schema":"spec/recipe.schema.json","fixture":"spec/fixtures/recipe.valid.json","valid":true},
+  {"schema":"spec/recipe.schema.json","fixture":"spec/fixtures/recipe.invalid.json","valid":false},
+  {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.valid.json","valid":true},
+  {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.invalid.json","valid":false}
+]

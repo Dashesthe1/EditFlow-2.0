@@ -1,0 +1,6 @@
+{
+  "scene_id": "scene:test:invalid",
+  "source_id": "media:test:001",
+  "timebase": {"fps": 0, "start": 0, "end": 2},
+  "entities": []
+}

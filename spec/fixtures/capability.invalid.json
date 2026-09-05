@@ -1,0 +1,12 @@
+{
+  "id": "ae.mask.path.animate",
+  "domain": "masks",
+  "description": "This fixture must fail because status is not in the registry enum.",
+  "status": "MAGIC",
+  "proof_maturity": "DECLARED",
+  "routes": [],
+  "readback_strategy": "none",
+  "rollback_strategy": "none",
+  "risk_class": "R2_STRUCTURAL",
+  "fallback_policy": "FORBID"
+}

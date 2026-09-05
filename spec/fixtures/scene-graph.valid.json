@@ -1,0 +1,21 @@
+{
+  "scene_id": "scene:test:001",
+  "source_id": "media:test:001",
+  "timebase": {"fps": 24, "start": 0, "end": 2},
+  "entities": [
+    {
+      "id": "subject:test:01",
+      "class": "SUBJECT",
+      "semantic_tags": ["foreground_subject"],
+      "parent_entity_id": null,
+      "observations": [
+        {"time": 0, "visible": true, "bbox": [100, 100, 300, 500], "centroid": [200, 300], "polygon_ref": null, "mask_ref": null, "track_ref": null, "velocity": [0, 0], "depth_rank": 0}
+      ],
+      "occludes": [],
+      "occluded_by": [],
+      "confidence": 0.99,
+      "provenance": [{"kind": "VISION", "source": "fixture", "confidence": 0.99}]
+    }
+  ],
+  "camera_motion": {}
+}
