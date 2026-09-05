@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/capability.schema.json",
+  "title": "EditFlow 2.0 Capability Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "domain", "description", "status", "proof_maturity", "routes",
+    "risk_class", "readback_strategy", "rollback_strategy", "fallback_policy"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "domain": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "status": {"enum": ["FULL", "PARTIAL", "ADAPTER_REQUIRED", "UI_FALLBACK", "UNAVAILABLE"]},
+    "proof_maturity": {"enum": ["DECLARED", "STRUCTURAL", "VISUAL", "ROLLBACK", "TRANSFER", "ROBUST"]},
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["route_id", "kind", "available"],
+        "properties": {
+          "route_id": {"type": "string"},
+          "kind": {"enum": ["NATIVE_TYPED", "HOST_ADAPTER", "SUBSYSTEM_ADAPTER", "PLUGIN_ADAPTER", "GUARDED_UI"]},
+          "available": {"type": "boolean"},
+          "adapter_version": {"type": ["string", "null"]},
+          "limitations": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "required_environment": {"type": "object"},
+    "input_schema_ref": {"type": ["string", "null"]},
+    "output_schema_ref": {"type": ["string", "null"]},
+    "readback_strategy": {"type": "string"},
+    "visual_proof_profile": {"type": ["string", "null"]},
+    "rollback_strategy": {"type": "string"},
+    "risk_class": {"enum": ["R0_READ_ONLY", "R1_REVERSIBLE", "R2_STRUCTURAL", "R3_DESTRUCTIVE", "R4_EXTERNAL_UI"]},
+    "last_verified_environment_fingerprint": {"type": ["string", "null"]},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "fallback_policy": {"enum": ["FORBID", "EXPLICIT_ONLY", "ALLOW_VERIFIED_EQUIVALENT"]}
+  }
+}

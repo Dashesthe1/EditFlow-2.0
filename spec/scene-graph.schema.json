@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/scene-graph.schema.json",
+  "title": "EditFlow 2.0 Scene Graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scene_id", "source_id", "timebase", "entities"],
+  "properties": {
+    "scene_id": {"type": "string", "minLength": 1},
+    "source_id": {"type": "string", "minLength": 1},
+    "timebase": {
+      "type": "object",
+      "required": ["fps", "start", "end"],
+      "properties": {
+        "fps": {"type": "number", "exclusiveMinimum": 0},
+        "start": {"type": "number"},
+        "end": {"type": "number"}
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "class", "observations", "confidence", "provenance"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "class": {"type": "string", "minLength": 1},
+          "semantic_tags": {"type": "array", "items": {"type": "string"}},
+          "parent_entity_id": {"type": ["string", "null"]},
+          "observations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["time", "visible"],
+              "properties": {
+                "time": {"type": "number"},
+                "visible": {"type": "boolean"},
+                "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+                "centroid": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                "polygon_ref": {"type": ["string", "null"]},
+                "mask_ref": {"type": ["string", "null"]},
+                "track_ref": {"type": ["string", "null"]},
+                "velocity": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+                "depth_rank": {"type": ["number", "null"]}
+              }
+            }
+          },
+          "occludes": {"type": "array", "items": {"type": "string"}},
+          "occluded_by": {"type": "array", "items": {"type": "string"}},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "source"],
+              "properties": {
+                "kind": {"enum": ["VISION", "TRACKER", "SEGMENTATION", "USER", "HOST", "DERIVED"]},
+                "source": {"type": "string"},
+                "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "camera_motion": {"type": "object"}
+  }
+}
