@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "1.1.0",
+  "requestId": "REQ_M2_V11_BAD",
+  "transactionId": "TX_M2_V11_BAD",
+  "operationId": "OP_M2_V11_BAD",
+  "capabilityId": "ae.transaction.undo_last",
+  "command": "execute.arbitrary_jsx",
+  "expectedProjectRevision": null,
+  "expectedProjectFingerprint": null,
+  "expectedHostProjectRevision": null,
+  "payload": {"script": "app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES)"},
+  "readbackProfile": null
+}

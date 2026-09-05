@@ -1,9 +1,10 @@
 {
   "name": "@editflow/executor",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.3",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./async": "./src/async.ts"
   }
 }

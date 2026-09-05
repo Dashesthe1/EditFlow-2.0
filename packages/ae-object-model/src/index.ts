@@ -90,8 +90,12 @@ export interface AeAffectedObjectRef {
   readonly kind: AeObjectKind;
 }
 
+/**
+ * Structural project fingerprint input intentionally excludes hostRevision and
+ * active selection. Revision is a monotonic race guard, not project content;
+ * Undo may restore structure while producing a newer revision.
+ */
 export const toAeStructuralFingerprintInput = (project: AeProjectSnapshot): unknown => ({
-  hostRevision: project.hostRevision,
   filePath: project.filePath,
   itemCount: project.itemCount,
   items: project.items.map((item) => ({

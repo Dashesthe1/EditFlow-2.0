@@ -1,10 +1,12 @@
 {
   "name": "@editflow/adapter-ae-cep",
-  "version": "0.1.0-dev.2",
+  "version": "0.1.0-dev.3",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./protocol": "./src/protocol.ts"
+    "./protocol": "./src/protocol.ts",
+    "./v1_1": "./src/v1_1.ts",
+    "./protocol-v1_1": "./src/protocol-v1_1.ts"
   }
 }

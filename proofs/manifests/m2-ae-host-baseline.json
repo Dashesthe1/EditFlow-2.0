@@ -4,7 +4,8 @@
   "required_environment": {
     "os": "Windows",
     "host": "Adobe After Effects",
-    "adapter_protocol": "1.0.0"
+    "adapter_protocol": "1.1.0",
+    "editflow_build": "0.1.0-dev.3"
   },
   "scenarios": [
     {
@@ -28,15 +29,38 @@
       "proof_levels": ["P1", "P2", "P3", "P4", "P5"]
     },
     {
+      "id": "transaction_failure_injection_rollback",
+      "capabilities": ["ae.comp.create", "ae.comp.settings.set", "ae.transaction.undo_last"],
+      "proof_levels": ["P1", "P2", "P4"],
+      "requirements": [
+        "failed host mutation self-rolls back if it changed AE revision",
+        "transaction rollback undoes earlier APPLIED operations in the atomic group",
+        "restored structural fingerprint equals the pre-group fingerprint even if project revision advanced"
+      ]
+    },
+    {
       "id": "precompose_stable_identity",
-      "capabilities": ["ae.precompose.layers"],
+      "capabilities": ["ae.layer.duplicate", "ae.layer.order.set", "ae.precompose.layers"],
       "proof_levels": ["P1", "P2", "P3", "P4", "P5"],
-      "identity_cases": ["rename", "reorder", "duplicate", "precompose", "save_reopen", "reconnect"]
+      "identity_cases": [
+        "rename",
+        "reorder",
+        "duplicate",
+        "precompose_child",
+        "precompose_replacement",
+        "save_reopen",
+        "dispatcher_reconnect",
+        "post_reconnect_transfer"
+      ]
     },
     {
       "id": "render_capture",
       "capabilities": ["ae.render.capture"],
       "proof_levels": ["P1", "P2", "P3"]
     }
-  ]
+  ],
+  "artifacts": {
+    "bounded": "proofs/artifacts/m2-real-host/",
+    "disposable_p4_p5": "proofs/artifacts/m2-disposable-p4-p5/"
+  }
 }

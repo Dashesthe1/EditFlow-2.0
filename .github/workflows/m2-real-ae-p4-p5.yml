@@ -1,0 +1,39 @@
+name: M2 Real AE P4 P5 Disposable Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      afterfx_path:
+        description: Optional explicit path to AfterFX.exe
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-p4-p5:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run disposable P4/P5 proof
+        shell: powershell
+        run: |
+          $path = '${{ inputs.afterfx_path }}'
+          if ($path) {
+            .\scripts\windows\run-m2-ae-p4-p5.ps1 -AfterFxPath $path
+          } else {
+            .\scripts\windows\run-m2-ae-p4-p5.ps1
+          }
+
+      - name: Upload P4/P5 proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-real-ae-p4-p5-${{ github.run_id }}
+          path: proofs/artifacts/m2-disposable-p4-p5/
+          if-no-files-found: warn
+          retention-days: 14

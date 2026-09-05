@@ -1,0 +1,20 @@
+{
+  "protocolVersion": "1.1.0",
+  "requestId": "REQ_M2_V11_001",
+  "transactionId": "TX_M2_V11_001",
+  "operationId": "OP_PRECOMPOSE_001",
+  "capabilityId": "ae.precompose.layers",
+  "command": "layers.precompose",
+  "expectedProjectRevision": "ae-revision:40",
+  "expectedProjectFingerprint": "project:sha256:abc",
+  "expectedHostProjectRevision": 40,
+  "payload": {
+    "comp": {"stableId": "COMP_PARENT"},
+    "layers": [{"stableId": "LAYER_SOURCE"}],
+    "name": "Child",
+    "stableId": "COMP_CHILD",
+    "replacementStableId": "LAYER_REPLACEMENT",
+    "moveAllAttributes": true
+  },
+  "readbackProfile": "PRECOMPOSE"
+}
