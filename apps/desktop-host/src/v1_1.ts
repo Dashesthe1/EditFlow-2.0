@@ -1,10 +1,10 @@
 import { createM1CapabilityRegistry, type CapabilityRegistry } from "../../../packages/capability-registry/src/index.js";
 import {
-  AE_ADAPTER_BUILD_V11,
   AE_CEP_PUBLIC_CAPABILITIES_V11,
   AeCepAdapterClientV11,
   type AeCepAdapterStateV11,
 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
+import { AE_ADAPTER_BUILD_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
 
 export interface DesktopAeSessionV11 {
   readonly adapterBuild: typeof AE_ADAPTER_BUILD_V11;
