@@ -4,10 +4,8 @@ import {
   type ExecutionPlan,
   type ExecutionPlanOperation,
   type ObservedProjectState,
-  type OperationOutcome,
   type PlanHash,
   type TransactionId,
-  type TransactionState,
 } from "../../core-contracts/src/index.js";
 import type { CapabilityRegistry } from "../../capability-registry/src/index.js";
 import { computePlanHash } from "../../fingerprints/src/index.js";
@@ -47,6 +45,11 @@ const hashPlan = (plan: ExecutionPlan): PlanHash => computePlanHash(stripPlanHas
 const sameObservedState = (left: ObservedProjectState, right: ObservedProjectState): boolean =>
   left.projectRevision === right.projectRevision
   && left.projectFingerprint === right.projectFingerprint
+  && left.environmentFingerprint === right.environmentFingerprint
+  && left.projectId === right.projectId;
+
+const sameRecoveryState = (left: ObservedProjectState, right: ObservedProjectState): boolean =>
+  left.projectFingerprint === right.projectFingerprint
   && left.environmentFingerprint === right.environmentFingerprint
   && left.projectId === right.projectId;
 
@@ -210,8 +213,8 @@ export class AsyncTransactionExecutor {
         try {
           await host.restoreRecoverySnapshot(beforeRecoverySnapshot, appliedInGroup);
           const restored = await host.readState();
-          if (!sameObservedState(restored, beforeState)) {
-            throw new Error("Async recovery did not restore the exact pre-group observed state.");
+          if (!sameRecoveryState(restored, beforeState)) {
+            throw new Error("Async recovery did not restore the pre-group project structure/environment.");
           }
           groupRecord.state = "ROLLED_BACK";
           groupRecord.error = message;
