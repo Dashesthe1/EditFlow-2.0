@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  AE_ADAPTER_BUILD,
   AE_CEP_CAPABILITIES,
   AeCepAdapterClient,
   CepEvalScriptTransport,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/index.js";
 import {
+  AE_ADAPTER_BUILD,
   AE_ADAPTER_COMMANDS,
   AE_ADAPTER_PROTOCOL_VERSION,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol.js";
