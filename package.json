@@ -1,0 +1,23 @@
+{
+  "name": "editflow-2.0",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "validate:schemas": "node scripts/validate-schemas.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run validate:schemas && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "typescript": "^5.9.2"
+  }
+}

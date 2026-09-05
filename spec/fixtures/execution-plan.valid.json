@@ -1,0 +1,34 @@
+{
+  "plan_id": "plan:test:001",
+  "plan_revision": 1,
+  "project_revision": "project-rev-1",
+  "project_fingerprint": "project-fingerprint-1",
+  "environment_fingerprint": "environment-fingerprint-1",
+  "creative_objective": "Fixture plan",
+  "recipe_refs": ["transition.foreground_occlusion@0.1.0"],
+  "required_capabilities": ["ae.mask.path.animate"],
+  "bindings": [
+    {"role": "foreground_occluder", "entity_id": "subject:test:01", "confidence": 0.99, "evidence_refs": ["scene:test:001"]}
+  ],
+  "operations": [
+    {
+      "operation_id": "op:mask:001",
+      "capability_id": "ae.mask.path.animate",
+      "route_id": "fixture.route",
+      "depends_on": [],
+      "idempotency": "CHECK_THEN_APPLY",
+      "risk_class": "R2_STRUCTURAL",
+      "input": {},
+      "expected_readback": {},
+      "rollback_boundary_id": "rb:001"
+    }
+  ],
+  "checkpoints": [
+    {"checkpoint_id": "cp:001", "after_operation_ids": ["op:mask:001"], "kind": "STRUCTURAL", "profile": null}
+  ],
+  "invariants": {"structural": [], "visual": []},
+  "rollback_boundaries": [
+    {"id": "rb:001", "strategy": "RESTORE_SNAPSHOT", "notes": "fixture"}
+  ],
+  "plan_hash": null
+}
