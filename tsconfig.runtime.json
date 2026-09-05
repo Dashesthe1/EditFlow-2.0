@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": ".tmp/runtime",
+    "declaration": false,
+    "sourceMap": false,
+    "noEmit": false
+  },
+  "include": [
+    "packages/**/*.ts",
+    "apps/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".tmp"
+  ]
+}
