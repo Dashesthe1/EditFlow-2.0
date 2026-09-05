@@ -1,0 +1,39 @@
+name: M2 Real After Effects Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      afterfx_path:
+        description: Optional explicit path to AfterFX.exe
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-ae-proof:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run bounded M2 real-AE proof
+        shell: powershell
+        run: |
+          $path = '${{ inputs.afterfx_path }}'
+          if ($path) {
+            .\scripts\windows\run-m2-ae-acceptance.ps1 -AfterFxPath $path
+          } else {
+            .\scripts\windows\run-m2-ae-acceptance.ps1
+          }
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-real-ae-proof-${{ github.run_id }}
+          path: proofs/artifacts/m2-real-host/
+          if-no-files-found: warn
+          retention-days: 14
