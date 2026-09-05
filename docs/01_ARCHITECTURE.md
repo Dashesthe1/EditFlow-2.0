@@ -7,7 +7,7 @@
 3. **Every mutation is typed, validated, revision-aware, and verifiable.**
 4. **Capability discovery is dynamic.** The installed AE environment and plugins define what is actually available.
 5. **Interactive subsystems are modeled as workflows, not mistaken for ordinary effect parameters.**
-6. **Visual verification is part of execution, not an optional final review.
+6. **Visual verification is part of execution, not an optional final review.**
 7. **No silent degradation.** Missing capabilities are surfaced before production.
 8. **The architecture must scale to human parity without exposing thousands of low-level ChatGPT tools.**
 
