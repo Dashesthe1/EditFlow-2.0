@@ -44,7 +44,7 @@ test("Windows acceptance prints render lifecycle evidence on bounded proof failu
   assert.match(source, /if \(-not \$Result\.ok\)[\s\S]*Write-RenderLifecycleEvidence[\s\S]*M2 bounded real-AE proof did not pass/);
 });
 
-test("self-hosted AE launcher runs only in an interactive clean session, publishes bootstrap evidence, and owns the AE process it stops", async () => {
+test("self-hosted AE launcher uses a clean two-phase cold launch then sends -r only to a responsive running AE", async () => {
   const source = await readFile(selfHostedRunnerPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /Get-Process -Name "AfterFX"/);
@@ -54,12 +54,23 @@ test("self-hosted AE launcher runs only in an interactive clean session, publish
   assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
   assert.match(source, /function Publish-PanelBootstrapEvidence/);
   assert.match(source, /panel-bootstrap\.log/);
-  assert.match(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList @\("-r", \$QuotedBootstrap\)/);
+  assert.match(source, /\$Candidate\.MainWindowHandle -ne 0 -and \$Candidate\.Responding/);
+  assert.match(source, /BootstrapEvidenceTimeoutSeconds/);
   assert.match(source, /run-m2-ae-acceptance\.ps1/);
   assert.match(source, /finally\s*\{[\s\S]*Publish-PanelBootstrapEvidence/);
   assert.match(source, /if \(\$StartedAfterFx\)/);
   assert.match(source, /Stop-Process -Force/);
-  assert.doesNotMatch(source, /Stop-Process -Force[\s\S]*before.*Start-Process/i);
+
+  const coldLaunch = source.indexOf('Start-Process -FilePath $AfterFxPath | Out-Null');
+  const responsiveWindow = source.indexOf('$Candidate.MainWindowHandle -ne 0');
+  const bootstrapSend = source.indexOf('Start-Process -FilePath $AfterFxPath -ArgumentList @("-r", $QuotedBootstrap)');
+  const bootstrapEvidenceWait = source.indexOf('$BootstrapDeadline =');
+  const acceptance = source.indexOf('& $Acceptance');
+  assert.ok(coldLaunch >= 0 && responsiveWindow > coldLaunch && bootstrapSend > responsiveWindow,
+    "cold AE launch must become responsive before the -r bootstrap is sent");
+  assert.ok(bootstrapEvidenceWait > bootstrapSend && acceptance > bootstrapEvidenceWait,
+    "the runner must prove the -r bootstrap executed before starting M2 acceptance");
+  assert.doesNotMatch(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList @\("-r", \$QuotedBootstrap\)[\s\S]*\$StartedAfterFx = \$true/);
 });
 
 test("self-hosted AE bootstrap opens only the fixed EditFlow CEP menu command, records stages, and retries boundedly", async () => {
