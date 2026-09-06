@@ -1,0 +1,57 @@
+name: M2 Workstation Live Loop
+
+on:
+  push:
+    branches:
+      - workstation/m2-live
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-m2-shadow-workstation
+  cancel-in-progress: false
+
+jobs:
+  m2-live:
+    runs-on: [self-hosted, Windows, X64, editflow-ae-shadow-m2]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout live test commit
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 1
+
+      - name: Run autonomous M2 workstation proof
+        id: workstation
+        continue-on-error: true
+        shell: powershell
+        run: |
+          .\scripts\windows\run-m2-workstation-live.ps1
+
+      - name: Collect bounded diagnostics
+        if: always()
+        shell: powershell
+        run: |
+          .\scripts\windows\collect-m2-workstation-diagnostics.ps1
+
+      - name: Upload workstation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-workstation-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            proofs/artifacts/m2-cep-smoke/
+            proofs/artifacts/m2-real-host/
+            proofs/artifacts/m2-workstation-live/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Preserve proof failure status
+        if: steps.workstation.outcome != 'success'
+        shell: powershell
+        run: |
+          throw "Autonomous M2 workstation proof failed. Diagnostics and proof artifacts were uploaded."
