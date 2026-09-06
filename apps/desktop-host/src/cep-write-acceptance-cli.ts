@@ -30,6 +30,17 @@ interface RecordedResponse {
   readonly hostProjectRevision: number | null;
 }
 
+interface RenderCompletionFile {
+  readonly schemaVersion: 1;
+  readonly jobId: string;
+  readonly status: "DONE" | "FAILED";
+  readonly ok: boolean;
+  readonly outputPath: string;
+  readonly error: string | null;
+  readonly completedAtMs: number;
+  readonly queueItemRemoved: boolean;
+}
+
 const argument = (name: string): string | null => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] ?? null : null;
@@ -58,6 +69,20 @@ const parseConfig = (value: unknown): BridgeConfigFile => {
   return candidate as unknown as BridgeConfigFile;
 };
 
+const parseRenderCompletion = (value: unknown): RenderCompletionFile => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Render completion marker must be an object.");
+  const candidate = value as Record<string, unknown>;
+  if (candidate["schemaVersion"] !== 1) throw new Error("Unsupported render completion schemaVersion.");
+  if (typeof candidate["jobId"] !== "string" || candidate["jobId"].length === 0) throw new Error("Render completion marker is missing jobId.");
+  if (candidate["status"] !== "DONE" && candidate["status"] !== "FAILED") throw new Error("Render completion marker has invalid status.");
+  if (typeof candidate["ok"] !== "boolean") throw new Error("Render completion marker is missing ok.");
+  if (typeof candidate["outputPath"] !== "string" || candidate["outputPath"].length === 0) throw new Error("Render completion marker is missing outputPath.");
+  if (candidate["error"] !== null && typeof candidate["error"] !== "string") throw new Error("Render completion marker has invalid error.");
+  if (typeof candidate["completedAtMs"] !== "number") throw new Error("Render completion marker is missing completedAtMs.");
+  if (typeof candidate["queueItemRemoved"] !== "boolean") throw new Error("Render completion marker is missing queueItemRemoved.");
+  return candidate as unknown as RenderCompletionFile;
+};
+
 const writeJson = async (filePath: string, value: unknown): Promise<void> => {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
@@ -73,6 +98,34 @@ const nestedRecord = (value: unknown, key: string): Record<string, unknown> | nu
 
 const fileExistsNonEmpty = async (filePath: string): Promise<boolean> => {
   try { return (await stat(filePath)).size > 0; } catch { return false; }
+};
+
+const sleep = async (milliseconds: number): Promise<void> => {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+};
+
+const waitForRenderCompletion = async (
+  completionPath: string,
+  expectedJobId: string,
+  timeoutMs: number,
+): Promise<RenderCompletionFile> => {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: string | null = null;
+  while (Date.now() < deadline) {
+    try {
+      const text = stripUtf8Bom(await readFile(completionPath, "utf8"));
+      const completion = parseRenderCompletion(JSON.parse(text) as unknown);
+      if (completion.jobId !== expectedJobId) {
+        lastError = `stale completion marker jobId '${completion.jobId}'`;
+      } else {
+        return completion;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await sleep(200);
+  }
+  throw new Error(`RENDER_JOB_COMPLETION_TIMEOUT: ${expectedJobId}${lastError ? ` (${lastError})` : ""}`);
 };
 
 const main = async (): Promise<void> => {
@@ -112,7 +165,11 @@ const main = async (): Promise<void> => {
     return state;
   };
 
-  const execute = async (command: AeAdapterPublicCommandV11, payload: Readonly<Record<string, unknown>>): Promise<AeAdapterResponseV11> => {
+  const execute = async (
+    command: AeAdapterPublicCommandV11,
+    payload: Readonly<Record<string, unknown>>,
+    options: { readonly refreshAfter?: boolean } = {},
+  ): Promise<AeAdapterResponseV11> => {
     if (client === null || state === null) throw new Error("CEP acceptance state is not initialized.");
     operationCounter += 1;
     const response = await client.executePublic(command, {
@@ -131,7 +188,7 @@ const main = async (): Promise<void> => {
     if (response.outcome === "FAILED" || response.outcome === "REJECTED") {
       throw new Error(`${command} failed: ${response.error?.code ?? response.outcome} ${response.error?.message ?? ""}`.trim());
     }
-    await refreshState();
+    if (options.refreshAfter !== false) await refreshState();
     return response;
   };
 
@@ -265,13 +322,38 @@ const main = async (): Promise<void> => {
     });
     checks.expression = asRecord(expression.readback)?.["enabled"] === true;
 
-    await execute("render.capture", {
+    const renderSchedule = await execute("render.capture", {
       comp: { stableId: targetStable },
       outputPath: renderPath,
       timeSpanStart: 0,
       timeSpanDuration: 1,
-    });
+    }, { refreshAfter: false });
+    const renderReadback = asRecord(renderSchedule.readback);
+    const renderJobId = renderReadback?.["jobId"];
+    const renderCompletionPath = renderReadback?.["completionPath"];
+    checks.render_scheduled = renderReadback?.["state"] === "SCHEDULED"
+      && renderReadback?.["mode"] === "SCHEDULED_HOST_JOB_V1"
+      && typeof renderJobId === "string"
+      && typeof renderCompletionPath === "string";
+    if (!checks.render_scheduled || typeof renderJobId !== "string" || typeof renderCompletionPath !== "string") {
+      throw new Error("render.capture did not return a valid scheduled render job descriptor.");
+    }
+
+    const renderCompletion = await waitForRenderCompletion(renderCompletionPath, renderJobId, timeoutMs);
+    checks.render_job_done = renderCompletion.ok === true
+      && renderCompletion.status === "DONE"
+      && renderCompletion.queueItemRemoved === true
+      && renderCompletion.outputPath === renderPath;
+    if (!checks.render_job_done) {
+      throw new Error(`render.capture scheduled job failed: ${renderCompletion.error ?? renderCompletion.status}`);
+    }
     checks.render_capture = await fileExistsNonEmpty(renderPath);
+    if (!checks.render_capture) throw new Error("render.capture completion marker reported success but the render artifact is missing or empty.");
+
+    // The scheduled render deliberately occupies AE outside the CEP evalScript call.
+    // Resume host observation only after its completion marker proves the render task
+    // returned and removed its temporary Render Queue item.
+    await refreshState();
 
     const precompose = await execute("layers.precompose", {
       comp: { stableId: targetStable },
