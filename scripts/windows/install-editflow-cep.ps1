@@ -14,6 +14,7 @@ $ExtensionVersion = "0.1.0-dev.4"
 $TargetRoot = Join-Path $env:APPDATA "Adobe\CEP\extensions\com.editflow2.bridge"
 $ConfigDir = Join-Path $env:LOCALAPPDATA "EditFlow2"
 $ConfigPath = Join-Path $ConfigDir "bridge-config.json"
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 if (-not (Test-Path $TemplateRoot -PathType Container)) { throw "CEP extension template not found: $TemplateRoot" }
 
@@ -51,12 +52,12 @@ $Config = [ordered]@{
 }
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 $ConfigJson = $Config | ConvertTo-Json -Depth 4
-Set-Content -Path $ConfigPath -Value $ConfigJson -Encoding UTF8
+[System.IO.File]::WriteAllText($ConfigPath, $ConfigJson + [Environment]::NewLine, $Utf8NoBom)
 
 $RuntimeConfigPath = Join-Path $TargetRoot "client\runtime-config.js"
 $CompactConfig = $Config | ConvertTo-Json -Depth 4 -Compress
 $RuntimeConfig = "window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze($CompactConfig);`r`n"
-Set-Content -Path $RuntimeConfigPath -Value $RuntimeConfig -Encoding UTF8
+[System.IO.File]::WriteAllText($RuntimeConfigPath, $RuntimeConfig, $Utf8NoBom)
 
 if (-not $SkipDebugMode) {
   $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
