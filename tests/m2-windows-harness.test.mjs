@@ -92,7 +92,7 @@ test("self-hosted AE panel bootstrap is fixed, bounded, and records menu activat
   const source = await readFile(panelBootstrapPath, "utf8");
   assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
   assert.match(source, /SCRIPT_STARTED/);
-  assert.match(source, /INITIAL_TASK_SCHEDULED/);
+  assert.match(source, /INITIAL_ATTEMPT_DIRECT/);
   assert.match(source, /MENU_PROBE/);
   assert.match(source, /MENU_FOUND/);
   assert.match(source, /EXECUTE_COMMAND_SENT/);
@@ -102,6 +102,7 @@ test("self-hosted AE panel bootstrap is fixed, bounded, and records menu activat
   assert.match(source, /app\.executeCommand\(commandId\)/);
   assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_selfHostedOpenBridge\(\)"/);
   assert.match(source, /var maxAttempts = 120/);
+  assert.doesNotMatch(source, /INITIAL_TASK_SCHEDULED/);
   assert.doesNotMatch(source, /eval\s*\(/);
   assert.doesNotMatch(source, /requestJson|payload|process\.argv/);
 });
