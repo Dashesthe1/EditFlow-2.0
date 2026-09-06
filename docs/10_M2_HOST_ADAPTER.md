@@ -1,41 +1,84 @@
-# M2 After Effects Host Adapter Candidate
+# M2 After Effects Host Baseline — Accepted
 
-EditFlow 2.0 `0.1.0-dev.2` introduces the first clean-room After Effects host-adapter implementation candidate.
+EditFlow 2.0 `0.3.0-dev` closes M2 with the clean-room After Effects host baseline accepted on the target Windows / After Effects 2025 environment.
 
-## Implemented in repository CI
+## Accepted baseline
 
-- versioned AE adapter protocol `1.0.0`;
-- fixed 21-command allowlist; arbitrary JSX/JavaScript is not a protocol operation;
-- CEP `evalScript` transport that can invoke only `EditFlow2_dispatch(serializedRequest)`;
-- audited ExtendScript dispatcher with a fixed command-handler table and no dynamic code evaluator;
-- control-plane project/environment fingerprint preflight;
-- immediate AE host-revision check before host mutations;
-- structural project/composition/layer readback;
-- stable-ID metadata for project items/layers created by EditFlow;
-- baseline commands for project save, comp CRUD/settings, import, layer add/duplicate/remove/reorder, transforms/timing, effects, keyframes, expressions, precompose, render capture, and object readback;
-- filesystem allowlist policy for explicit save/import/render paths;
-- desktop-host session bootstrap that merges live AE adapter declarations into the M1 capability registry;
-- JSON Schema request-envelope validation and security fixtures;
-- fake-host protocol, stale-state, readback, and injection-safety tests.
+The production protocol is AE adapter protocol `1.1.0` through the authenticated local CEP bridge. The fixed typed command surface covers:
 
-## Still gated
+- host probe and project inspection;
+- project save;
+- composition create/settings/remove;
+- media import;
+- layer create/duplicate/remove/reorder;
+- exact 2D transform readback including anchor point;
+- layer timing;
+- effect add/remove/property writes;
+- keyframe create/update/delete;
+- expressions;
+- precompose with stable child/replacement identity;
+- render capture;
+- object readback;
+- transaction undo.
 
-**Real After Effects acceptance is not yet claimed.** The MCP status remains `adobeWritesEnabled: false` and reports `realAeAcceptance: PENDING` until the Windows AE workstation proves the adapter end-to-end.
+Arbitrary JSX/JavaScript is not a protocol operation. CEP dispatch remains a fixed `EditFlow2_dispatch(serializedRequest)` call, and the host selects only from its checked-in command table.
 
-M2 issue #4 remains open until the real-host proof ladder passes:
+## Real-AE evidence
 
-1. P1 typed request validation;
-2. P2 structural readback in actual AE;
-3. P3 visual proof for pixel-changing operations;
-4. P4 rollback/recovery/failure injection;
-5. P5 transfer/restart/save-reopen validation.
+### Authenticated bounded + final baseline
 
-Stable identity must specifically survive rename, layer reorder, duplicate, precompose, save/reopen, and reconnect before M2 can be closed.
+GitHub Actions run `34022332767` executed on the self-hosted Windows AE workstation against After Effects `25.6.6` from accepted source commit `8d5f8ddf0143ce0e1ec33cff14269ecab8769d60`.
 
-## Security invariant
+The run proved:
 
-The adapter accepts **data parameters only**. The only CEP script constructed by the TypeScript transport is the fixed dispatcher invocation. The AE-side host script selects a handler from its own command table. Payload strings are never treated as ExtendScript source.
+- authenticated CEP panel bootstrap and loopback broker registration;
+- typed protocol 1.1 host dispatch;
+- bounded P1/P2/P3 structural and visual proof;
+- real render capture to `m2-proof.mp4`;
+- final baseline composition/layer/effect/keyframe/media CRUD and exact readback;
+- transform vector readback including anchor point/position/scale;
+- cleanup back to the original project-item count.
 
-## Fingerprint policy
+The bounded result reports `PARTIAL_PASS` by design because that script intentionally delegates P4 failure injection and P5 save/reopen/reconnect to the dedicated disposable proof. The same workflow's final-baseline result reports `PASS`.
 
-The M2 project fingerprint includes structural editing state but excludes incidental active-item selection, avoiding stale-plan rejection merely because the user clicks a different viewer/comp. Environment fingerprints exclude project-open state and describe the adapter/AE/OS environment instead.
+### Dedicated P4/P5
+
+GitHub Actions run `34013038916` reports `PASS` for the disposable proof. It verifies:
+
+- induced failure plus transaction rollback;
+- stable identity through external rename;
+- duplicate and reorder identity;
+- precompose child and replacement identity;
+- project save and reopen;
+- dispatcher reconnect;
+- stable-ID readback after reopen;
+- a post-reconnect transfer operation and cleanup.
+
+## Capability maturity policy
+
+M2 acceptance enables real Adobe writes, but it does **not** promote every baseline primitive to `FULL`.
+
+Per `docs/05_PROOF_AND_ACCEPTANCE.md`, `FULL` requires P5/`TRANSFER` evidence. The runtime capability registry therefore applies the accepted M2 evidence map:
+
+- P5 stable-identity/transfer primitives are `FULL` + `TRANSFER`;
+- visual-but-not-P5 primitives remain `PARTIAL` + `VISUAL`;
+- rollback-proven primitives remain `PARTIAL` + `ROLLBACK` unless they also have P5;
+- structural-only primitives remain `PARTIAL` + `STRUCTURAL`.
+
+This prevents M2 closure from overstating human-parity maturity.
+
+## Runtime state
+
+The MCP status contract now reports:
+
+- product version `0.3.0-dev`;
+- phase `M2_ADOBE_HOST_BASELINE_ACCEPTED`;
+- `adobeWritesEnabled: true`;
+- authenticated CEP bridge `REAL_AE_PROVEN`;
+- real-AE acceptance `P1_P5_ACCEPTED`.
+
+The transaction/recovery guarantees remain active: committed-boundary resume, failed-mutation self-rollback, stable IDs, host revision checks, structural fingerprints, and guarded filesystem paths.
+
+## Next milestone
+
+M3 (`0.4.0-dev`) begins the Human-Parity Core: masks and animated Bezier geometry, track mattes, blend modes, parenting/null rigs, exact interpolation/Graph Editor controls, markers, motion blur, frame blending, and shutter controls. Each new primitive must climb the proof ladder independently; M2 acceptance is not inherited as proof for M3 capabilities.
