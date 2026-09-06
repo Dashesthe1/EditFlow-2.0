@@ -73,14 +73,14 @@ function Find-ReadyTargetAfterFx {
   foreach ($Candidate in $Candidates) {
     $CandidatePath = $null
     $Ready = $false
-    $WindowTitle = $null
     try {
       $CandidatePath = $Candidate.Path
-      $WindowTitle = $Candidate.MainWindowTitle
-      $Ready = $Candidate.Responding `
-        -and $Candidate.MainWindowHandle -ne 0 `
-        -and $WindowTitle `
-        -and $WindowTitle -like "Adobe After Effects*"
+      # Match the accepted M2 two-phase readiness contract: the owned target
+      # executable must be responding and have a real main window handle. Do not
+      # require MainWindowTitle; real AE 25.6.6 evidence shows the title can remain
+      # empty while the responding window handle is already stable. The stronger
+      # command-readiness proof is the later fixed-script EXECUTE_COMMAND_SENT gate.
+      $Ready = $Candidate.Responding -and $Candidate.MainWindowHandle -ne 0
     } catch {
       $CandidatePath = $null
       $Ready = $false
@@ -151,19 +151,19 @@ try {
   Write-AeProcessSnapshot "COLD_START_READY_CHECK"
 
   if ($null -eq $RunningAfterFx) {
-    throw "After Effects did not expose its responsive project window within $StartupTimeoutSeconds seconds. Startup diagnostics were preserved for evidence."
+    throw "After Effects did not expose a responsive target window within $StartupTimeoutSeconds seconds. Startup diagnostics were preserved for evidence."
   }
 
   $ReadyPid = $RunningAfterFx.Id
   $ReadyTitle = $RunningAfterFx.MainWindowTitle
   Write-StartupDiagnostic "COMMAND_TARGET_READY" ("pid=$ReadyPid;mainWindowHandle=$($RunningAfterFx.MainWindowHandle);title=$ReadyTitle")
-  Write-Host ("Phase 1 project window ready: PID " + $ReadyPid + "; title='" + $ReadyTitle + "'. Holding it stable for " + $CommandDeliveryStabilizationSeconds + " seconds before -r delivery.")
+  Write-Host ("Phase 1 responsive target window ready: PID " + $ReadyPid + "; title='" + $ReadyTitle + "'. Holding it stable for " + $CommandDeliveryStabilizationSeconds + " seconds before -r delivery.")
   Start-Sleep -Seconds $CommandDeliveryStabilizationSeconds
 
   $StableAfterFx = Find-ReadyTargetAfterFx $AfterFxPath
   if ($null -eq $StableAfterFx -or $StableAfterFx.Id -ne $ReadyPid) {
     Write-AeProcessSnapshot "COMMAND_TARGET_STABILITY_FAILURE"
-    throw "The target After Effects project window did not remain stable through the command-delivery hold."
+    throw "The target After Effects window did not remain stable through the command-delivery hold."
   }
 
   $Arguments = @("-r", $PanelBootstrap)
