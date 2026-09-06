@@ -103,6 +103,30 @@ test("M3 self-hosted runner waits for a proven project window, bounds cold-start
     "M3 cleanup must try a normal close, then force-stop, then allow bounded Windows process settlement before zero confirmation");
 });
 
+test("M3 startup diagnostics inspect only metadata for top-level windows owned by AfterFX processes", async () => {
+  const source = await readFile(selfHostedPath, "utf8");
+  assert.match(source, /NativeWindowProbe/);
+  assert.match(source, /EnumWindows/);
+  assert.match(source, /GetWindowThreadProcessId/);
+  assert.match(source, /GetWindowText/);
+  assert.match(source, /GetClassName/);
+  assert.match(source, /IsWindowVisible/);
+  assert.match(source, /IsWindowEnabled/);
+  assert.match(source, /EnumerateForProcessIds/);
+  assert.match(source, /function Write-AeTopLevelWindowSnapshot/);
+  assert.match(source, /COLD_START_WAIT_ATTEMPT_/);
+  assert.match(source, /COLD_START_READY_CHECK_ATTEMPT_/);
+  assert.match(source, /COLD_START_FINAL_FAILURE/);
+  assert.match(source, /PANEL_BOOTSTRAP_EVIDENCE_TIMEOUT/);
+
+  const readyCheck = source.indexOf('$ReadyCheckStage = "COLD_START_READY_CHECK_ATTEMPT_" + $Attempt');
+  const retry = source.indexOf('Write-StartupDiagnostic "COLD_START_RETRY"');
+  assert.ok(readyCheck >= 0 && retry > readyCheck,
+    "read-only window metadata must be captured before a failed cold start is recycled");
+
+  assert.doesNotMatch(source, /SendKeys|PostMessage|SendMessage|SetForegroundWindow|mouse_event|keybd_event|UIAutomation/);
+});
+
 test("M3 real-AE workflow is self-hosted, bounded, branch-scoped, artifact-producing, and execution-policy tolerant", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /ae-test\/m3-mask-p1-p2-control/);
