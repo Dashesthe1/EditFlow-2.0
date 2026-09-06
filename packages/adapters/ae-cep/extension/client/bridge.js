@@ -14,7 +14,6 @@
   var connectInFlight = false;
   var reconnectTimer = null;
   var livenessStarted = false;
-  var hostReady = false;
   var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
@@ -96,7 +95,6 @@
 
       var hostPathLiteral = JSON.stringify(hostPath);
       var script = "(function(){try{" +
-        "if(typeof $.global.EditFlow2_dispatch===\"function\")return \"" + HOST_BOOTSTRAP_OK + "\";" +
         "var hostFile=new File(" + hostPathLiteral + ");" +
         "if(!hostFile.exists)return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "host file missing: \"+hostFile.fsName;" +
         "$.evalFile(hostFile);" +
@@ -136,8 +134,7 @@
       var generation = connectionGeneration;
       brokerEl.textContent = "127.0.0.1:" + config.port;
       protocolEl.textContent = result.value.protocolVersion;
-      setStatus("connected", "Connected to local EditFlow runtime");
-      schedulePoll(generation);
+      setStatus("connecting", "Registered with local runtime; loading current AE host adapter");
       return generation;
     });
   }
@@ -296,12 +293,14 @@
     if (stopped || connectInFlight) return;
     connectInFlight = true;
 
-    var ready = hostReady
-      ? Promise.resolve()
-      : ensureHostDispatcher().then(function () { hostReady = true; });
-
-    ready
-      .then(register)
+    register()
+      .then(function (generation) {
+        return ensureHostDispatcher().then(function () {
+          if (stopped || generation !== connectionGeneration || !sessionId) return;
+          setStatus("connected", "Connected to local EditFlow runtime");
+          schedulePoll(generation);
+        });
+      })
       .then(function () {
         connectInFlight = false;
       })
