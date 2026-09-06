@@ -14,6 +14,10 @@
     return text;
   }
 
+  function isArray(value) {
+    return value instanceof Array || Object.prototype.toString.call(value) === "[object Array]";
+  }
+
   function quoteString(value) {
     var text = String(value);
     var out = '"';
@@ -55,7 +59,7 @@
 
       stack.push(candidate);
       var out, i, item, key, encoded;
-      if (candidate instanceof Array) {
+      if (isArray(candidate)) {
         out = "[";
         for (i = 0; i < candidate.length; i += 1) {
           if (i > 0) out += ",";
