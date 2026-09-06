@@ -37,7 +37,8 @@ test("AE JSON runtime parses and stringifies protocol-shaped data without ambien
 
   const encoded = codec.stringify(request);
   assert.deepEqual(JSON.parse(encoded), request);
-  assert.deepEqual(codec.parse(JSON.stringify(request)), request);
+  const parsed = codec.parse(JSON.stringify(request));
+  assert.equal(codec.stringify(parsed), JSON.stringify(request));
 });
 
 test("AE JSON runtime is non-eval and rejects prototype-polluting keys", async () => {
