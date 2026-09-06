@@ -1,4 +1,4 @@
-/* EditFlow 2.0 current AE host loader: self-contained JSON runtime + green v1.0 base + protocol 1.1 hardening + operation atomicity. */
+/* EditFlow 2.0 current AE host loader: self-contained JSON runtime + green v1.0 base + protocol 1.1 hardening + operation atomicity + scheduled render jobs. */
 (function () {
   var currentFile = new File($.fileName);
   var hostDir = currentFile.parent;
@@ -6,10 +6,12 @@
   var base = new File(hostDir.fsName + "/editflow_host.jsx");
   var hardening = new File(hostDir.fsName + "/editflow_host_hardening.jsx");
   var atomicity = new File(hostDir.fsName + "/editflow_host_atomicity.jsx");
+  var renderJobs = new File(hostDir.fsName + "/editflow_host_render_jobs.jsx");
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
   if (!hardening.exists) throw new Error("EditFlow AE host hardening script is missing: " + hardening.fsName);
   if (!atomicity.exists) throw new Error("EditFlow AE host atomicity script is missing: " + atomicity.fsName);
+  if (!renderJobs.exists) throw new Error("EditFlow AE render-job script is missing: " + renderJobs.fsName);
 
   $.evalFile(jsonRuntime);
   if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.parse !== "function" || typeof $.global.EditFlow2_JSON.stringify !== "function") {
@@ -26,6 +28,7 @@
   $.evalFile(base);
   $.evalFile(hardening);
   $.evalFile(atomicity);
+  $.evalFile(renderJobs);
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
   }
