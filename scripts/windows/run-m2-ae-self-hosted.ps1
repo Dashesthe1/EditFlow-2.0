@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Installer = Join-Path $RepoRoot "scripts\windows\install-editflow-cep.ps1"
 $Acceptance = Join-Path $RepoRoot "scripts\windows\run-m2-ae-acceptance.ps1"
+$MediaImportAcceptance = Join-Path $RepoRoot "scripts\windows\run-m2-media-import-acceptance.ps1"
 $PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-bridge.jsx"
 $PanelBootstrapLog = Join-Path $env:TEMP "EditFlow2-self-hosted-panel-bootstrap.log"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
@@ -38,6 +39,9 @@ if (-not (Test-Path $AfterFxPath -PathType Leaf)) {
 }
 if (-not (Test-Path $PanelBootstrap -PathType Leaf)) {
   throw "The fixed EditFlow CEP panel bootstrap is missing: $PanelBootstrap"
+}
+if (-not (Test-Path $MediaImportAcceptance -PathType Leaf)) {
+  throw "The M2 real media import acceptance runner is missing: $MediaImportAcceptance"
 }
 if ($AfterFxVersionInfo.FileMajorPart -lt 1) {
   throw "Unable to resolve the After Effects major/minor version for the user Startup script path."
@@ -105,6 +109,10 @@ try {
 
   Write-Host "After Effects executed the temporary Startup bootstrap. The acceptance harness will wait for authenticated EditFlow bridge registration."
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+
+  Write-Host "Running the separate bounded real-AE media import + Undo acceptance on the same authenticated host session..."
+  $MediaTimeout = [Math]::Min($TimeoutSeconds, 90)
+  & $MediaImportAcceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $MediaTimeout
 } finally {
   if (Test-Path $InstalledPanelBootstrap -PathType Leaf) {
     Remove-Item $InstalledPanelBootstrap -Force -ErrorAction SilentlyContinue
