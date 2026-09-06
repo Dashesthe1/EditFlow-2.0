@@ -149,6 +149,10 @@ export interface AeMaskResponseV12 {
   };
 }
 
+export interface AeMaskTransportV12 {
+  dispatch(request: AeMaskRequestV12): Promise<AeMaskResponseV12>;
+}
+
 const commandSetV12 = new Set<string>(AE_MASK_COMMANDS_V12);
 
 export const isAeMaskCommandV12 = (command: string): command is AeMaskCommandV12 => commandSetV12.has(command);
