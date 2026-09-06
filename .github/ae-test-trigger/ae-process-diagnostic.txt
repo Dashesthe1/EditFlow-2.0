@@ -1,0 +1,2 @@
+trigger=2026-09-06T04:26:00Z
+purpose=read-only ownership and session diagnostic for pre-existing AfterFX process before any cleanup decision
