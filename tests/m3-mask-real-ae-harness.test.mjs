@@ -55,19 +55,31 @@ test("shared self-hosted panel bootstrap attempts the menu open synchronously be
   assert.doesNotMatch(source, /INITIAL_TASK_SCHEDULED/);
 });
 
-test("M3 self-hosted runner owns an isolated AE process and requires explicit panel-open evidence", async () => {
+test("M3 self-hosted runner records AE startup diagnostics, requires panel-open evidence, and gracefully closes owned AE first", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
   assert.match(source, /install-editflow-cep\.ps1/);
   assert.match(source, /open-editflow-bridge\.jsx/);
+  assert.match(source, /startup-diagnostics\.log/);
+  assert.match(source, /function Write-AeProcessSnapshot/);
+  assert.match(source, /COLD_START_WAIT/);
+  assert.match(source, /COLD_START_READY_CHECK/);
+  assert.match(source, /Get-CimInstance Win32_Process/);
   assert.match(source, /@\("-r", \$PanelBootstrap\)/);
   assert.match(source, /EXECUTE_COMMAND_SENT/);
   assert.match(source, /RETRY_EXHAUSTED/);
   assert.match(source, /run-m3-mask-p1-p2\.ps1/);
-  assert.match(source, /Stopping only the isolated After Effects test process set/);
-  assert.match(source, /Get-Process -Name "AfterFX".*Stop-Process -Force/);
+  assert.match(source, /CloseMainWindow\(\)/);
+  assert.match(source, /Graceful AE close did not finish/);
+  assert.match(source, /Stop-Process -Force/);
+  assert.match(source, /CLEANUP_FORCE_STOP/);
   assert.doesNotMatch(source, /Invoke-Expression/);
+
+  const gracefulClose = source.indexOf("CloseMainWindow()");
+  const forceStop = source.indexOf("Stop-Process -Force");
+  assert.ok(gracefulClose >= 0 && forceStop > gracefulClose,
+    "M3 cleanup must try a normal AE window close before force-stopping the owned process set");
 });
 
 test("M3 real-AE workflow is self-hosted, bounded, branch-scoped, artifact-producing, and execution-policy tolerant", async () => {
