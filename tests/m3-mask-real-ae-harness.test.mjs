@@ -55,7 +55,7 @@ test("shared self-hosted panel bootstrap attempts the menu open synchronously be
   assert.doesNotMatch(source, /INITIAL_TASK_SCHEDULED/);
 });
 
-test("M3 self-hosted runner matches proven M2 AE readiness, records diagnostics, requires panel evidence, and gracefully closes owned AE first", async () => {
+test("M3 self-hosted runner waits for a proven project window, bounds cold-start retry, requires panel evidence, and safely cleans owned AE", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
@@ -63,21 +63,34 @@ test("M3 self-hosted runner matches proven M2 AE readiness, records diagnostics,
   assert.match(source, /open-editflow-bridge\.jsx/);
   assert.match(source, /startup-diagnostics\.log/);
   assert.match(source, /function Write-AeProcessSnapshot/);
-  assert.match(source, /COLD_START_WAIT/);
-  assert.match(source, /COLD_START_READY_CHECK/);
-  assert.match(source, /Get-CimInstance Win32_Process/);
-  assert.match(source, /\$Candidate\.Responding -and \$Candidate\.MainWindowHandle -ne 0/);
-  assert.doesNotMatch(source, /\$WindowTitle -like "Adobe After Effects\*"/);
-  assert.match(source, /EXECUTE_COMMAND_SENT gate/);
+  assert.match(source, /function Find-ProjectReadyTargetAfterFx/);
+  assert.match(source, /\$Candidate\.Responding/);
+  assert.match(source, /\$Candidate\.MainWindowHandle -ne 0/);
+  assert.match(source, /\$WindowTitle -like "Adobe After Effects\*"/);
+  assert.match(source, /StartupTimeoutSeconds = 45/);
+  assert.match(source, /MaxColdStartAttempts = 2/);
+  assert.match(source, /MaxColdStartAttempts must be 1 or 2/);
+  assert.match(source, /COLD_START_ATTEMPT_BEGIN/);
+  assert.match(source, /COLD_START_ATTEMPT_FAILED/);
+  assert.match(source, /COLD_START_RETRY/);
+  assert.match(source, /COLD_START_PROJECT_READY/);
+  assert.match(source, /function Stop-OwnedAfterFxSet/);
+  assert.match(source, /RETRY_CLEANUP_ATTEMPT_/);
+  assert.match(source, /CloseMainWindow\(\)/);
+  assert.match(source, /Graceful AE close did not finish/);
+  assert.match(source, /_FORCE_STOP/);
+  assert.match(source, /_ZERO_CONFIRMED/);
   assert.match(source, /@\("-r", \$PanelBootstrap\)/);
   assert.match(source, /EXECUTE_COMMAND_SENT/);
   assert.match(source, /RETRY_EXHAUSTED/);
   assert.match(source, /run-m3-mask-p1-p2\.ps1/);
-  assert.match(source, /CloseMainWindow\(\)/);
-  assert.match(source, /Graceful AE close did not finish/);
-  assert.match(source, /Stop-Process -Force/);
-  assert.match(source, /CLEANUP_FORCE_STOP/);
   assert.doesNotMatch(source, /Invoke-Expression/);
+
+  const titleGate = source.indexOf('$WindowTitle -like "Adobe After Effects*"');
+  const retry = source.indexOf('Write-StartupDiagnostic "COLD_START_RETRY"');
+  const dispatch = source.indexOf('$Arguments = @("-r", $PanelBootstrap)');
+  assert.ok(titleGate >= 0 && retry > titleGate && dispatch > retry,
+    "M3 must wait for titled project readiness and exhaust the bounded cold-start path before -r delivery");
 
   const gracefulClose = source.indexOf("CloseMainWindow()");
   const forceStop = source.indexOf("Stop-Process -Force");
