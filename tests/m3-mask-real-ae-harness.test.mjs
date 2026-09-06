@@ -55,7 +55,7 @@ test("shared self-hosted panel bootstrap attempts the menu open synchronously be
   assert.doesNotMatch(source, /INITIAL_TASK_SCHEDULED/);
 });
 
-test("M3 self-hosted runner waits for a proven project window, bounds cold-start retry, requires panel evidence, and safely cleans owned AE", async () => {
+test("M3 self-hosted runner waits for a proven project window, bounds cold-start retry, settles force-stop cleanup, requires panel evidence, and safely cleans owned AE", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
@@ -79,6 +79,9 @@ test("M3 self-hosted runner waits for a proven project window, bounds cold-start
   assert.match(source, /CloseMainWindow\(\)/);
   assert.match(source, /Graceful AE close did not finish/);
   assert.match(source, /_FORCE_STOP/);
+  assert.match(source, /_POST_FORCE_SETTLEMENT_BEGIN/);
+  assert.match(source, /\$PostForceDeadline = \(Get-Date\)\.AddSeconds\(5\)/);
+  assert.match(source, /_POST_FORCE_SETTLEMENT_END/);
   assert.match(source, /_ZERO_CONFIRMED/);
   assert.match(source, /@\("-r", \$PanelBootstrap\)/);
   assert.match(source, /EXECUTE_COMMAND_SENT/);
@@ -94,8 +97,10 @@ test("M3 self-hosted runner waits for a proven project window, bounds cold-start
 
   const gracefulClose = source.indexOf("CloseMainWindow()");
   const forceStop = source.indexOf("Stop-Process -Force");
-  assert.ok(gracefulClose >= 0 && forceStop > gracefulClose,
-    "M3 cleanup must try a normal AE window close before force-stopping the owned process set");
+  const settle = source.indexOf("_POST_FORCE_SETTLEMENT_BEGIN");
+  const zero = source.indexOf("_ZERO_CONFIRMED");
+  assert.ok(gracefulClose >= 0 && forceStop > gracefulClose && settle > forceStop && zero > settle,
+    "M3 cleanup must try a normal close, then force-stop, then allow bounded Windows process settlement before zero confirmation");
 });
 
 test("M3 real-AE workflow is self-hosted, bounded, branch-scoped, artifact-producing, and execution-policy tolerant", async () => {

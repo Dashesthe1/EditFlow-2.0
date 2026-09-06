@@ -141,6 +141,19 @@ function Stop-OwnedAfterFxSet {
     foreach ($Owned in $Remaining) {
       Wait-Process -Id $Owned.Id -Timeout 15 -ErrorAction SilentlyContinue
     }
+
+    # Windows may report the force-stopped AE process for a short interval after
+    # Wait-Process returns. Run #6 observed the process disappear roughly half a
+    # second later. Poll for a bounded five-second settlement window so a genuine
+    # successful stop is not mistaken for a failed zero-baseline cleanup.
+    Write-StartupDiagnostic ($StagePrefix + "_POST_FORCE_SETTLEMENT_BEGIN") "timeoutSeconds=5"
+    $PostForceDeadline = (Get-Date).AddSeconds(5)
+    do {
+      $PostForceRemaining = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+      if ($PostForceRemaining.Count -eq 0) { break }
+      Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $PostForceDeadline)
+    Write-StartupDiagnostic ($StagePrefix + "_POST_FORCE_SETTLEMENT_END") ("aeCount=" + @($PostForceRemaining).Count)
   }
 
   $StillRunning = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
