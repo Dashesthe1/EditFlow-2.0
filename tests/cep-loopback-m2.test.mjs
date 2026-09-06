@@ -149,12 +149,18 @@ test("CEP extension uses the fixed dispatcher and a CEP 12 AE manifest", async (
   assert.doesNotMatch(bootstrap, /editflow_host_current\.jsx/);
 });
 
-test("Windows CEP installer uses per-user Adobe CEP path and a non-printed random token", async () => {
+test("Windows CEP installer preserves authentication across ordinary reinstalls and rotates only explicitly", async () => {
   const installer = await readFile("scripts/windows/install-editflow-cep.ps1", "utf8");
   assert.match(installer, /APPDATA.*Adobe\\CEP\\extensions\\com\.editflow2\.bridge/);
-  assert.match(installer, /RandomNumberGenerator/);
   assert.match(installer, /LOCALAPPDATA.*EditFlow2/);
+  assert.match(installer, /\[switch\]\$RotateToken/);
+  assert.match(installer, /Test-Path \$ConfigPath -PathType Leaf/);
+  assert.match(installer, /ConvertFrom-Json/);
+  assert.match(installer, /\$Token = \$ExistingConfig\.token/);
+  assert.match(installer, /if \(-not \$Token\) \{/);
+  assert.match(installer, /RandomNumberGenerator/);
   assert.match(installer, /CSXS\.12/);
   assert.match(installer, /PlayerDebugMode/);
+  assert.match(installer, /Authentication token preserved/);
   assert.doesNotMatch(installer, /Write-Host\s+.*\$Token/);
 });
