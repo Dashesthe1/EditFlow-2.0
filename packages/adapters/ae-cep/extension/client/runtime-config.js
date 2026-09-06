@@ -1,6 +1,6 @@
 /* Replaced by scripts/windows/install-editflow-cep.ps1 during local installation. */
 window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze({
-  schemaVersion: 2,
+  schemaVersion: 1,
   host: "127.0.0.1",
   port: 0,
   token: "",
