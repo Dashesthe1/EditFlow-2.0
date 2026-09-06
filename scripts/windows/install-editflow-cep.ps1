@@ -88,7 +88,7 @@ $ConfigJson = $Config | ConvertTo-Json -Depth 4
 $RuntimeConfigPath = Join-Path $TargetRoot "client\runtime-config.js"
 $CompactConfig = $Config | ConvertTo-Json -Depth 4 -Compress
 $RuntimeConfig = "window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze($CompactConfig);`r`n"
-[System.IO.File]::WriteAllText($RuntimeConfigPath, $RuntimeConfig + [Environment]::NewLine, $Utf8NoBom)
+[System.IO.File]::WriteAllText($RuntimeConfigPath, $RuntimeConfig, $Utf8NoBom)
 
 if (-not $SkipDebugMode) {
   $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
