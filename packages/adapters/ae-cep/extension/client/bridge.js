@@ -79,9 +79,8 @@
       var requestJson = JSON.stringify(request);
       var requestLiteral = JSON.stringify(requestJson);
       var script = "(function(){try{" +
-        "var fn=$.global.EditFlow2_dispatch;" +
-        "if(typeof fn!==\"function\")return \"" + HOST_ERROR_PREFIX + "dispatcher unavailable\";" +
-        "var result=fn(" + requestLiteral + ");" +
+        "if(typeof $.global.EditFlow2_dispatch!==\"function\")return \"" + HOST_ERROR_PREFIX + "dispatcher unavailable\";" +
+        "var result=$.global.EditFlow2_dispatch(" + requestLiteral + ");" +
         "if(result===undefined||result===null)return \"" + HOST_ERROR_PREFIX + "dispatcher returned no result\";" +
         "return String(result);" +
         "}catch(error){return \"" + HOST_ERROR_PREFIX + "\"+String(error);}}())";
