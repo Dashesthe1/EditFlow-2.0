@@ -1,19 +1,21 @@
 /* EditFlow 2.0 asynchronous render.capture override for protocol 1.1.
  *
- * Windows After Effects can freeze the scripting/UI boundary while
- * RenderQueue.render() is executing. This layer supersedes the earlier blocking
- * scheduled-render implementation for render.capture only. It feature-detects
- * RenderQueue.renderAsync(), starts the render without monopolizing the CEP
- * scripting call, and uses a fixed global polling task to produce terminal proof.
+ * Windows After Effects can hold the scripting boundary while a scripted render
+ * starts. render.capture therefore performs only bounded queue preparation inside
+ * the CEP evalScript request. The actual RenderQueue.renderAsync() call is launched
+ * later from one fixed app.scheduleTask global driver after CEP has received the
+ * command response.
  *
- * If renderAsync() is unavailable, the command fails closed. It never silently
- * falls back to the known-blocking RenderQueue.render() path.
+ * The global driver writes RUNNING before invoking renderAsync(), then drives the
+ * same job to DONE/FAILED with fixed polling after renderAsync() returns. If the
+ * target AE build does not expose renderAsync(), the command fails closed. There is
+ * never a silent fallback to blocking RenderQueue.render().
  */
 (function () {
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderasync1";
+  var BUILD = "0.1.0-dev.4-renderasync2";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -138,12 +140,13 @@
     }
   }
 
-  /* Runs only after renderAsync() has returned control to AE. The poller is fully
-   * self-contained because app.scheduleTask executes in the global workspace.
+  /* app.scheduleTask executes this function in AE's global workspace. It must be
+   * self-contained: do not add references to wrapper-local helpers or variables.
    */
-  $.global.EditFlow2_pollAsyncRender = function () {
+  $.global.EditFlow2_driveAsyncRender = function () {
     var job = $.global.EditFlow2_activeRenderJob;
-    if (!job || job.mode !== "ASYNC_HOST_RENDER_V2" || job.state !== "RUNNING") return;
+    if (!job || job.mode !== "ASYNC_HOST_RENDER_V3") return;
+    if (job.state !== "SCHEDULED" && job.state !== "RUNNING") return;
 
     function taskNowMs() { return (new Date()).getTime(); }
     function taskString(value) { return value === null || value === undefined ? "" : String(value); }
@@ -199,13 +202,32 @@
       $.global.EditFlow2_lastRenderJob = job;
       $.global.EditFlow2_activeRenderJob = null;
     }
-    function taskScheduleNextPoll() {
-      var taskId = app.scheduleTask("$.global.EditFlow2_pollAsyncRender()", 250, false);
-      if (typeof taskId !== "number") throw new Error("After Effects did not return an async render poll task identifier.");
-      job.pollTaskId = taskId;
+    function taskScheduleDrive(delayMs) {
+      var taskId = app.scheduleTask("$.global.EditFlow2_driveAsyncRender()", delayMs, false);
+      if (typeof taskId !== "number") throw new Error("After Effects did not return an async render driver task identifier.");
+      job.driveTaskId = taskId;
     }
 
     try {
+      if (job.state === "SCHEDULED") {
+        job.state = "RUNNING";
+        job.startedAtMs = taskNowMs();
+        taskWriteMarker("RUNNING", false, null);
+
+        if (!app.project || !app.project.renderQueue || typeof app.project.renderQueue.renderAsync !== "function") {
+          taskFinish(false, "RenderQueue.renderAsync became unavailable before scheduled render start.");
+          return;
+        }
+
+        /* This call is deliberately outside the CEP evalScript request. Some AE
+         * Windows builds hold the scripting call while renderAsync starts/runs; CEP
+         * must already have received the SCHEDULED response before we cross here. */
+        app.project.renderQueue.renderAsync();
+        job.renderAsyncReturnedAtMs = taskNowMs();
+        taskScheduleDrive(250);
+        return;
+      }
+
       var rendering = false;
       try { rendering = app.project.renderQueue.rendering === true; } catch (_) { rendering = false; }
 
@@ -219,15 +241,13 @@
       } catch (_) {}
 
       if (rendering) {
-        taskScheduleNextPoll();
+        taskScheduleDrive(250);
         return;
       }
 
-      /* renderAsync() can return before AE flips RenderQueue.rendering. Give the
-       * host a short startup grace period before treating a non-DONE status as a
-       * terminal failure. */
-      if (!statusDone && taskNowMs() - job.startedAtMs < 2000) {
-        taskScheduleNextPoll();
+      if (!statusDone && job.renderAsyncReturnedAtMs !== null
+          && taskNowMs() - job.renderAsyncReturnedAtMs < 2000) {
+        taskScheduleDrive(250);
         return;
       }
 
@@ -243,8 +263,8 @@
       }
 
       taskFinish(true, null);
-    } catch (pollError) {
-      taskFinish(false, "Async render polling failed: " + taskString(pollError));
+    } catch (driverError) {
+      taskFinish(false, "Async render driver failed: " + taskString(driverError));
     }
   };
 
@@ -343,23 +363,21 @@
           completionPath: completionPath,
           rqItem: rqItem,
           state: "SCHEDULED",
-          mode: "ASYNC_HOST_RENDER_V2",
+          mode: "ASYNC_HOST_RENDER_V3",
           queueItemRemoved: false,
           scheduledAtMs: nowMs(),
           startedAtMs: null,
-          pollTaskId: null
+          renderAsyncReturnedAtMs: null,
+          driveTaskId: null
         };
         $.global.EditFlow2_activeRenderJob = job;
         writeImmediateMarker(job, "SCHEDULED", false, null);
 
-        app.project.renderQueue.renderAsync();
-        job.state = "RUNNING";
-        job.startedAtMs = nowMs();
-        writeImmediateMarker(job, "RUNNING", false, null);
-
-        var pollTaskId = app.scheduleTask("$.global.EditFlow2_pollAsyncRender()", 250, false);
-        if (typeof pollTaskId !== "number") throw new Error("After Effects did not return an async render poll task identifier.");
-        job.pollTaskId = pollTaskId;
+        /* Critical transport boundary: only schedule the global driver here. Never
+         * invoke renderAsync() directly from the CEP dispatch path. */
+        var driveTaskId = app.scheduleTask("$.global.EditFlow2_driveAsyncRender()", 25, false);
+        if (typeof driveTaskId !== "number") throw new Error("After Effects did not return an async render driver task identifier.");
+        job.driveTaskId = driveTaskId;
 
         var response = responseBase(request, started, beforeRevision);
         response.outcome = "APPLIED";
@@ -368,14 +386,14 @@
           state: "SCHEDULED",
           outputPath: job.outputPath,
           completionPath: job.completionPath,
-          taskId: job.pollTaskId,
+          taskId: job.driveTaskId,
           mode: "SCHEDULED_HOST_JOB_V1",
-          renderMethod: "RenderQueue.renderAsync"
+          renderMethod: "RenderQueue.renderAsync.scheduled"
         };
         response.hostProjectRevision = app.project.revision;
         response.diagnostics.durationMs = nowMs() - started;
         response.diagnostics.hostRevisionAfter = app.project.revision;
-        response.diagnostics.notes.push("Render execution uses feature-detected RenderQueue.renderAsync() plus fixed global polling; blocking RenderQueue.render() is not used.");
+        response.diagnostics.notes.push("CEP dispatch only prepares and schedules the fixed async render driver; RenderQueue.renderAsync() executes after evalScript returns.");
         response.proofArtifactRefs = [job.completionPath];
         return JSON.stringify(response);
       } catch (setupError) {
@@ -388,7 +406,7 @@
           try { rqItem.remove(); } catch (_) {}
         }
         return JSON.stringify(failureResponse(
-          request, started, beforeRevision, "FAILED", "ADAPTER_FAILURE", "ASYNC_RENDER_START_FAILED",
+          request, started, beforeRevision, "FAILED", "ADAPTER_FAILURE", "ASYNC_RENDER_SCHEDULE_FAILED",
           asString(setupError)
         ));
       }
