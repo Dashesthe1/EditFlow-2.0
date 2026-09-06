@@ -119,14 +119,31 @@ try {
   Write-Host ("Phase 2 panel-bootstrap dispatch PID " + $CommandProcess.Id + ".")
 
   $BootstrapDeadline = (Get-Date).AddSeconds($BootstrapEvidenceTimeoutSeconds)
-  while ((Get-Date) -lt $BootstrapDeadline -and -not (Test-Path $PanelBootstrapLog -PathType Leaf)) {
+  $BootstrapSucceeded = $false
+  $BootstrapFailed = $false
+  while ((Get-Date) -lt $BootstrapDeadline) {
+    if (Test-Path $PanelBootstrapLog -PathType Leaf) {
+      $BootstrapText = Get-Content $PanelBootstrapLog -Raw
+      if ($BootstrapText -match "EXECUTE_COMMAND_SENT") {
+        $BootstrapSucceeded = $true
+        break
+      }
+      if ($BootstrapText -match "RETRY_EXHAUSTED") {
+        $BootstrapFailed = $true
+        break
+      }
+    }
     Start-Sleep -Milliseconds 250
   }
-  if (-not (Test-Path $PanelBootstrapLog -PathType Leaf)) {
-    throw "The stable After Effects project window received the fixed -r panel bootstrap but produced no execution evidence within $BootstrapEvidenceTimeoutSeconds seconds."
+
+  if ($BootstrapFailed) {
+    throw "The fixed After Effects panel bootstrap exhausted its menu-open retries before executeCommand was reached."
+  }
+  if (-not $BootstrapSucceeded) {
+    throw "After Effects executed the fixed panel bootstrap, but no EXECUTE_COMMAND_SENT evidence appeared within $BootstrapEvidenceTimeoutSeconds seconds."
   }
 
-  Write-Host "After Effects executed the fixed panel bootstrap. The M3 harness will wait for authenticated protocol 1.2 registration."
+  Write-Host "After Effects executed the fixed panel bootstrap and proved the EditFlow panel open command was sent. The M3 harness will wait for authenticated protocol 1.2 registration."
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
 } finally {
   Publish-PanelBootstrapEvidence
