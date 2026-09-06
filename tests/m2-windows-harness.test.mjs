@@ -44,39 +44,50 @@ test("Windows acceptance prints render lifecycle evidence on bounded proof failu
   assert.match(source, /if \(-not \$Result\.ok\)[\s\S]*Write-RenderLifecycleEvidence[\s\S]*M2 bounded real-AE proof did not pass/);
 });
 
-test("self-hosted AE launcher uses a clean two-phase cold launch then sends -r only to a responsive running AE", async () => {
+test("self-hosted AE launcher uses a temporary user Startup script and removes only its owned bootstrap", async () => {
   const source = await readFile(selfHostedRunnerPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
   assert.match(source, /install-editflow-cep\.ps1/);
   assert.match(source, /open-editflow-bridge\.jsx/);
-  assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
-  assert.match(source, /function Publish-PanelBootstrapEvidence/);
-  assert.match(source, /panel-bootstrap\.log/);
+  assert.match(source, /FileMajorPart/);
+  assert.match(source, /FileMinorPart/);
+  assert.match(source, /Adobe\\After Effects\\/);
+  assert.match(source, /\\Scripts/);
+  assert.match(source, /"Startup"/);
+  assert.match(source, /EditFlow2-self-hosted-bootstrap\.jsx/);
+  assert.match(source, /Copy-Item \$PanelBootstrap \$InstalledPanelBootstrap -Force/);
+  assert.match(source, /Start-Process -FilePath \$AfterFxPath \| Out-Null/);
   assert.match(source, /\$Candidate\.MainWindowHandle -ne 0 -and \$Candidate\.Responding/);
   assert.match(source, /BootstrapEvidenceTimeoutSeconds/);
+  assert.match(source, /function Publish-PanelBootstrapEvidence/);
+  assert.match(source, /panel-bootstrap\.log/);
   assert.match(source, /run-m2-ae-acceptance\.ps1/);
+  assert.match(source, /finally\s*\{[\s\S]*Test-Path \$InstalledPanelBootstrap[\s\S]*Remove-Item \$InstalledPanelBootstrap/);
   assert.match(source, /finally\s*\{[\s\S]*Publish-PanelBootstrapEvidence/);
   assert.match(source, /if \(\$StartedAfterFx\)/);
   assert.match(source, /Stop-Process -Force/);
+  assert.doesNotMatch(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList @\("-r"/);
 
-  const coldLaunch = source.indexOf('Start-Process -FilePath $AfterFxPath | Out-Null');
-  const responsiveWindow = source.indexOf('$Candidate.MainWindowHandle -ne 0');
-  const bootstrapSend = source.indexOf('Start-Process -FilePath $AfterFxPath -ArgumentList @("-r", $QuotedBootstrap)');
-  const bootstrapEvidenceWait = source.indexOf('$BootstrapDeadline =');
-  const acceptance = source.indexOf('& $Acceptance');
-  assert.ok(coldLaunch >= 0 && responsiveWindow > coldLaunch && bootstrapSend > responsiveWindow,
-    "cold AE launch must become responsive before the -r bootstrap is sent");
-  assert.ok(bootstrapEvidenceWait > bootstrapSend && acceptance > bootstrapEvidenceWait,
-    "the runner must prove the -r bootstrap executed before starting M2 acceptance");
-  assert.doesNotMatch(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList @\("-r", \$QuotedBootstrap\)[\s\S]*\$StartedAfterFx = \$true/);
+  const installStartup = source.indexOf("Copy-Item $PanelBootstrap $InstalledPanelBootstrap -Force");
+  const coldLaunch = source.indexOf("Start-Process -FilePath $AfterFxPath | Out-Null");
+  const evidenceWait = source.indexOf("$BootstrapDeadline =");
+  const acceptance = source.indexOf("& $Acceptance");
+  assert.ok(installStartup >= 0 && coldLaunch > installStartup,
+    "temporary Startup bootstrap must be installed before cold AE launch");
+  assert.ok(evidenceWait > coldLaunch && acceptance > evidenceWait,
+    "M2 acceptance must wait until the Startup bootstrap proves it executed");
 });
 
-test("self-hosted AE bootstrap opens only the fixed EditFlow CEP menu command, records stages, and retries boundedly", async () => {
+test("self-hosted AE startup bootstrap self-deletes only the exact owned filename and records menu activation stages", async () => {
   const source = await readFile(panelBootstrapPath, "utf8");
   assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
   assert.match(source, /SCRIPT_STARTED/);
+  assert.match(source, /selfFile\.name === "EditFlow2-self-hosted-bootstrap\.jsx"/);
+  assert.match(source, /selfFile\.remove\(\)/);
+  assert.match(source, /STARTUP_FILE_SELF_DELETE/);
+  assert.match(source, /STARTUP_FILE_SELF_DELETE_ERROR/);
   assert.match(source, /INITIAL_TASK_SCHEDULED/);
   assert.match(source, /MENU_PROBE/);
   assert.match(source, /MENU_FOUND/);
