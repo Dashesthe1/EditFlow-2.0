@@ -7,13 +7,13 @@ const currentHostPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const acceptancePath = "apps/desktop-host/src/cep-write-acceptance-cli.ts";
 
-test("render.capture returns from CEP before blocking AE render and schedules only a fixed global task", async () => {
+test("render.capture returns from CEP before blocking AE render and schedules only a fixed qualified global task", async () => {
   const source = await readFile(renderHostPath, "utf8");
 
   assert.match(source, /request\.command !== "render\.capture"/);
   assert.match(source, /\$\.global\.EditFlow2_runScheduledRender = function/);
   assert.match(source, /app\.project\.renderQueue\.render\(\)/);
-  assert.match(source, /app\.scheduleTask\("EditFlow2_runScheduledRender\(\)", 25, false\)/);
+  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_runScheduledRender\(\)", 25, false\)/);
   assert.match(source, /state: "SCHEDULED"/);
   assert.match(source, /mode: "SCHEDULED_HOST_JOB_V1"/);
   assert.match(source, /completionPath: job\.completionPath/);
