@@ -21,10 +21,118 @@ $LaunchProcess = $null
 $CommandProcess = $null
 $StartedAfterFx = $false
 
+# Read-only Win32 top-level-window metadata probe. This deliberately exposes no
+# input, focus, click, message-send, or keyboard APIs. It is used only to identify
+# which AE-owned window/dialog is blocking project readiness on the isolated
+# runner workstation.
+if (-not ("EditFlow.NativeWindowProbe" -as [type])) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace EditFlow {
+  public sealed class NativeWindowInfo {
+    public int ProcessId;
+    public long Handle;
+    public bool Visible;
+    public bool Enabled;
+    public string ClassName = "";
+    public string Title = "";
+  }
+
+  public static class NativeWindowProbe {
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder text, int count);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(IntPtr hWnd);
+
+    public static NativeWindowInfo[] EnumerateForProcessIds(int[] processIds) {
+      var allowed = new HashSet<uint>();
+      foreach (var processId in processIds) {
+        if (processId > 0) allowed.Add((uint)processId);
+      }
+
+      var results = new List<NativeWindowInfo>();
+      EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
+        uint processId;
+        GetWindowThreadProcessId(hWnd, out processId);
+        if (!allowed.Contains(processId)) return true;
+
+        var title = new StringBuilder(1024);
+        GetWindowText(hWnd, title, title.Capacity);
+        var className = new StringBuilder(512);
+        GetClassName(hWnd, className, className.Capacity);
+
+        results.Add(new NativeWindowInfo {
+          ProcessId = (int)processId,
+          Handle = hWnd.ToInt64(),
+          Visible = IsWindowVisible(hWnd),
+          Enabled = IsWindowEnabled(hWnd),
+          ClassName = className.ToString(),
+          Title = title.ToString()
+        });
+        return true;
+      }, IntPtr.Zero);
+
+      return results.ToArray();
+    }
+  }
+}
+"@
+}
+
 function Write-StartupDiagnostic {
   param([string]$Stage, [string]$Detail)
   $Timestamp = (Get-Date).ToUniversalTime().ToString("o")
   Add-Content -Path $StartupDiagnosticsPath -Value ($Timestamp + "`t" + $Stage + "`t" + $Detail) -Encoding UTF8
+}
+
+function ConvertTo-SingleLineDiagnostic {
+  param([AllowNull()][string]$Value)
+  if ($null -eq $Value) { return "" }
+  return (($Value -replace "[\r\n\t;]+", " ").Trim())
+}
+
+function Write-AeTopLevelWindowSnapshot {
+  param([string]$Stage)
+
+  $Processes = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  $ProcessIds = @($Processes | ForEach-Object { [int]$_.Id })
+  if ($ProcessIds.Count -eq 0) {
+    Write-StartupDiagnostic ($Stage + "_WINDOWS") "windowCount=0;aeCount=0"
+    return
+  }
+
+  try {
+    $Windows = @([EditFlow.NativeWindowProbe]::EnumerateForProcessIds([int[]]$ProcessIds))
+    Write-StartupDiagnostic ($Stage + "_WINDOWS") ("windowCount=" + $Windows.Count + ";aeCount=" + $ProcessIds.Count)
+    foreach ($Window in $Windows) {
+      $Title = ConvertTo-SingleLineDiagnostic $Window.Title
+      $ClassName = ConvertTo-SingleLineDiagnostic $Window.ClassName
+      Write-StartupDiagnostic ($Stage + "_WINDOW") ("pid=$($Window.ProcessId);hwnd=$($Window.Handle);visible=$($Window.Visible);enabled=$($Window.Enabled);class=$ClassName;title=$Title")
+    }
+  } catch {
+    Write-StartupDiagnostic ($Stage + "_WINDOW_PROBE_ERROR") (ConvertTo-SingleLineDiagnostic $_.Exception.Message)
+  }
 }
 
 function Write-AeProcessSnapshot {
@@ -42,12 +150,12 @@ function Write-AeProcessSnapshot {
     try { $Responding = $Process.Responding } catch {}
     try { $WindowHandle = $Process.MainWindowHandle } catch {}
     try { $WindowTitle = $Process.MainWindowTitle } catch {}
-    $Detail = "pid=$($Process.Id);sessionId=$($Process.SessionId);startUtc=$Started;responding=$Responding;mainWindowHandle=$WindowHandle;title=$WindowTitle;path=$Path"
+    $Detail = "pid=$($Process.Id);sessionId=$($Process.SessionId);startUtc=$Started;responding=$Responding;mainWindowHandle=$WindowHandle;title=$(ConvertTo-SingleLineDiagnostic $WindowTitle);path=$(ConvertTo-SingleLineDiagnostic $Path)"
     try {
       $Cim = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $Process.Id)
-      if ($Cim) { $Detail += ";parentPid=$($Cim.ParentProcessId);commandLine=$($Cim.CommandLine)" }
+      if ($Cim) { $Detail += ";parentPid=$($Cim.ParentProcessId);commandLine=$(ConvertTo-SingleLineDiagnostic $Cim.CommandLine)" }
     } catch {
-      $Detail += ";cimError=$($_.Exception.Message)"
+      $Detail += ";cimError=$(ConvertTo-SingleLineDiagnostic $_.Exception.Message)"
     }
     Write-StartupDiagnostic $Stage $Detail
   }
@@ -63,7 +171,7 @@ function Publish-Evidence {
     Write-Warning "No EditFlow panel bootstrap evidence was produced by the fixed command bootstrap."
   }
   if (Test-Path $StartupDiagnosticsPath -PathType Leaf) {
-    Write-Host "EditFlow M3 AE startup/process diagnostics:"
+    Write-Host "EditFlow M3 AE startup/process/window diagnostics:"
     Get-Content $StartupDiagnosticsPath -Raw | Write-Host
   }
 }
@@ -121,7 +229,7 @@ function Stop-OwnedAfterFxSet {
       $Closed = $Owned.CloseMainWindow()
       Write-StartupDiagnostic ($StagePrefix + "_CLOSE_MAIN_WINDOW") ("pid=$($Owned.Id);sent=$Closed")
     } catch {
-      Write-StartupDiagnostic ($StagePrefix + "_CLOSE_MAIN_WINDOW_ERROR") ("pid=$($Owned.Id);error=$($_.Exception.Message)")
+      Write-StartupDiagnostic ($StagePrefix + "_CLOSE_MAIN_WINDOW_ERROR") ("pid=$($Owned.Id);error=$(ConvertTo-SingleLineDiagnostic $_.Exception.Message)")
     }
   }
 
@@ -214,6 +322,7 @@ try {
     $StartedAfterFx = $true
     Write-Host ("Cold-launch request PID " + $LaunchProcess.Id + ".")
     Write-AeProcessSnapshot ("COLD_LAUNCH_ATTEMPT_" + $Attempt)
+    Write-AeTopLevelWindowSnapshot ("COLD_LAUNCH_ATTEMPT_" + $Attempt)
 
     $Deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
     $NextStartupDiagnosticAt = Get-Date
@@ -221,15 +330,20 @@ try {
       $RunningAfterFx = Find-ProjectReadyTargetAfterFx $AfterFxPath
       if ($null -ne $RunningAfterFx) { break }
       if ((Get-Date) -ge $NextStartupDiagnosticAt) {
-        Write-AeProcessSnapshot ("COLD_START_WAIT_ATTEMPT_" + $Attempt)
+        $Stage = "COLD_START_WAIT_ATTEMPT_" + $Attempt
+        Write-AeProcessSnapshot $Stage
+        Write-AeTopLevelWindowSnapshot $Stage
         $NextStartupDiagnosticAt = (Get-Date).AddSeconds(5)
       }
       Start-Sleep -Milliseconds 500
     }
-    Write-AeProcessSnapshot ("COLD_START_READY_CHECK_ATTEMPT_" + $Attempt)
+    $ReadyCheckStage = "COLD_START_READY_CHECK_ATTEMPT_" + $Attempt
+    Write-AeProcessSnapshot $ReadyCheckStage
+    Write-AeTopLevelWindowSnapshot $ReadyCheckStage
 
     if ($null -ne $RunningAfterFx) {
-      Write-StartupDiagnostic "COLD_START_PROJECT_READY" ("attempt=$Attempt;pid=$($RunningAfterFx.Id);title=$($RunningAfterFx.MainWindowTitle)")
+      Write-StartupDiagnostic "COLD_START_PROJECT_READY" ("attempt=$Attempt;pid=$($RunningAfterFx.Id);title=$(ConvertTo-SingleLineDiagnostic $RunningAfterFx.MainWindowTitle)")
+      Write-AeTopLevelWindowSnapshot "COLD_START_PROJECT_READY"
       break
     }
 
@@ -244,18 +358,21 @@ try {
   }
 
   if ($null -eq $RunningAfterFx) {
+    Write-AeTopLevelWindowSnapshot "COLD_START_FINAL_FAILURE"
     throw "After Effects did not expose the proven titled project-ready window after $MaxColdStartAttempts bounded cold-start attempt(s). Startup diagnostics were preserved for evidence; command delivery was not attempted."
   }
 
   $ReadyPid = $RunningAfterFx.Id
   $ReadyTitle = $RunningAfterFx.MainWindowTitle
-  Write-StartupDiagnostic "COMMAND_TARGET_READY" ("pid=$ReadyPid;mainWindowHandle=$($RunningAfterFx.MainWindowHandle);title=$ReadyTitle")
+  Write-StartupDiagnostic "COMMAND_TARGET_READY" ("pid=$ReadyPid;mainWindowHandle=$($RunningAfterFx.MainWindowHandle);title=$(ConvertTo-SingleLineDiagnostic $ReadyTitle)")
+  Write-AeTopLevelWindowSnapshot "COMMAND_TARGET_READY"
   Write-Host ("Phase 1 project-ready window confirmed: PID " + $ReadyPid + "; title='" + $ReadyTitle + "'. Holding it stable for " + $CommandDeliveryStabilizationSeconds + " seconds before -r delivery.")
   Start-Sleep -Seconds $CommandDeliveryStabilizationSeconds
 
   $StableAfterFx = Find-ProjectReadyTargetAfterFx $AfterFxPath
   if ($null -eq $StableAfterFx -or $StableAfterFx.Id -ne $ReadyPid) {
     Write-AeProcessSnapshot "COMMAND_TARGET_STABILITY_FAILURE"
+    Write-AeTopLevelWindowSnapshot "COMMAND_TARGET_STABILITY_FAILURE"
     throw "The target After Effects titled project window did not remain stable through the command-delivery hold."
   }
 
@@ -263,6 +380,7 @@ try {
   $CommandProcess = Start-Process -FilePath $AfterFxPath -ArgumentList $Arguments -PassThru
   Write-Host ("Phase 2 panel-bootstrap dispatch PID " + $CommandProcess.Id + ".")
   Write-AeProcessSnapshot "PANEL_BOOTSTRAP_DISPATCH"
+  Write-AeTopLevelWindowSnapshot "PANEL_BOOTSTRAP_DISPATCH"
 
   $BootstrapDeadline = (Get-Date).AddSeconds($BootstrapEvidenceTimeoutSeconds)
   $BootstrapSucceeded = $false
@@ -283,10 +401,12 @@ try {
   }
 
   if ($BootstrapFailed) {
+    Write-AeTopLevelWindowSnapshot "PANEL_BOOTSTRAP_RETRY_EXHAUSTED"
     throw "The fixed After Effects panel bootstrap exhausted its menu-open retries before executeCommand was reached."
   }
   if (-not $BootstrapSucceeded) {
     Write-AeProcessSnapshot "PANEL_BOOTSTRAP_EVIDENCE_TIMEOUT"
+    Write-AeTopLevelWindowSnapshot "PANEL_BOOTSTRAP_EVIDENCE_TIMEOUT"
     throw "After Effects did not produce fixed-bootstrap EXECUTE_COMMAND_SENT evidence within $BootstrapEvidenceTimeoutSeconds seconds."
   }
 
@@ -294,6 +414,7 @@ try {
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
 } finally {
   Write-AeProcessSnapshot "CLEANUP_BEGIN"
+  Write-AeTopLevelWindowSnapshot "CLEANUP_BEGIN"
   try {
     if ($StartedAfterFx) {
       Stop-OwnedAfterFxSet -StagePrefix "FINAL_CLEANUP"
