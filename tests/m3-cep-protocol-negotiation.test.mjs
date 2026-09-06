@@ -8,6 +8,7 @@ import { buildMaskRequestV12 } from "../.tmp/runtime/packages/adapters/ae-cep/sr
 
 const token = "m3protocolnegotiationtoken0123456789abcdef0123456789";
 const headers = { "Content-Type": "application/json", "X-EditFlow-Token": token };
+const m3Protocols = [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11];
 
 const register = async (port, body) => {
   const response = await fetch(`http://127.0.0.1:${port}/v1/register`, {
@@ -92,17 +93,23 @@ const leaseAndRespond = async (port, sessionId, responseFactory) => {
   return { request, responseValue };
 };
 
-test("dual-capability panel negotiates 1.2 and carries both M2 1.1 and M3 1.2 requests", async () => {
-  const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000, commandLeaseMs: 50 });
+test("explicit M3 broker negotiates 1.2 and carries both M2 1.1 and M3 1.2 requests", async () => {
+  const broker = new LoopbackCepBroker({
+    port: 0,
+    token,
+    commandTimeoutMs: 2000,
+    commandLeaseMs: 50,
+    supportedProtocolVersions: m3Protocols,
+  });
   const port = await broker.start();
   try {
     const registration = await register(port, {
       protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
-      supportedProtocolVersions: [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11],
+      supportedProtocolVersions: m3Protocols,
     });
     assert.equal(registration.response.status, 200);
     assert.equal(registration.value.protocolVersion, AE_MASK_PROTOCOL_VERSION_V12);
-    assert.deepEqual(registration.value.supportedProtocolVersions, [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11]);
+    assert.deepEqual(registration.value.supportedProtocolVersions, m3Protocols);
 
     const request11 = v11Request();
     const dispatch11 = broker.dispatch(request11);
@@ -131,13 +138,17 @@ test("dual-capability panel negotiates 1.2 and carries both M2 1.1 and M3 1.2 re
   }
 });
 
-test("legacy 1.1 panel remains valid and M3 1.2 dispatch fails before leasing", async () => {
+test("default broker preserves the accepted 1.1-only M2 runtime and rejects M3 before leasing", async () => {
   const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000, commandLeaseMs: 50 });
   const port = await broker.start();
   try {
-    const registration = await register(port, { protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11 });
+    const registration = await register(port, {
+      protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
+      supportedProtocolVersions: m3Protocols,
+    });
     assert.equal(registration.response.status, 200);
     assert.equal(registration.value.protocolVersion, AE_ADAPTER_PROTOCOL_VERSION_V11);
+    assert.deepEqual(registration.value.supportedProtocolVersions, [AE_ADAPTER_PROTOCOL_VERSION_V11]);
 
     const request12 = buildMaskRequestV12({
       requestId: "REQ_V12_LEGACY_PANEL",
@@ -164,7 +175,7 @@ test("legacy 1.1 panel remains valid and M3 1.2 dispatch fails before leasing", 
 });
 
 test("registration rejects sessions with no mutually supported protocol", async () => {
-  const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000 });
+  const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000, supportedProtocolVersions: m3Protocols });
   const port = await broker.start();
   try {
     const registration = await register(port, {
@@ -173,7 +184,7 @@ test("registration rejects sessions with no mutually supported protocol", async 
     });
     assert.equal(registration.response.status, 409);
     assert.equal(registration.value.error, "PROTOCOL_VERSION_MISMATCH");
-    assert.deepEqual(registration.value.supportedProtocolVersions, [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11]);
+    assert.deepEqual(registration.value.supportedProtocolVersions, m3Protocols);
   } finally {
     await broker.stop();
   }

@@ -21,6 +21,7 @@ export interface LoopbackCepBrokerOptions {
   readonly commandTimeoutMs?: number;
   readonly commandLeaseMs?: number;
   readonly expectedExtensionId?: string;
+  readonly supportedProtocolVersions?: readonly string[];
 }
 
 export interface LoopbackCepPanelSession {
@@ -45,8 +46,8 @@ interface PendingCommand {
   leasedSessionId: string | null;
 }
 
-const BROKER_SUPPORTED_PROTOCOLS = [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
-const brokerProtocolSet = new Set<string>(BROKER_SUPPORTED_PROTOCOLS);
+const COMPILED_PROTOCOLS = [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
+const compiledProtocolSet = new Set<string>(COMPILED_PROTOCOLS);
 
 const jsonResponse = (res: ServerResponse, status: number, value: unknown): void => {
   const body = JSON.stringify(value);
@@ -96,8 +97,17 @@ const offeredProtocolVersions = (body: Record<string, unknown>): string[] => {
   return [...new Set(values)];
 };
 
-const negotiateProtocol = (offered: readonly string[]): string | null =>
-  BROKER_SUPPORTED_PROTOCOLS.find((protocol) => offered.includes(protocol)) ?? null;
+const normalizeBrokerProtocols = (input: readonly string[] | undefined): string[] => {
+  const requested = input ?? [AE_ADAPTER_PROTOCOL_VERSION_V11];
+  const unique = [...new Set(requested)];
+  if (unique.length === 0 || unique.some((protocol) => !compiledProtocolSet.has(protocol))) {
+    throw new TypeError("Loopback CEP broker supportedProtocolVersions contains an unsupported protocol.");
+  }
+  return COMPILED_PROTOCOLS.filter((protocol) => unique.includes(protocol));
+};
+
+const negotiateProtocol = (offered: readonly string[], supported: readonly string[]): string | null =>
+  supported.find((protocol) => offered.includes(protocol)) ?? null;
 
 export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12 {
   readonly options: Required<LoopbackCepBrokerOptions>;
@@ -120,6 +130,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
       commandTimeoutMs: options.commandTimeoutMs ?? 30_000,
       commandLeaseMs: options.commandLeaseMs ?? 3_000,
       expectedExtensionId: options.expectedExtensionId ?? "com.editflow2.bridge.panel",
+      supportedProtocolVersions: normalizeBrokerProtocols(options.supportedProtocolVersions),
     };
   }
 
@@ -178,8 +189,11 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
   async dispatch(request: AeMaskRequestV12): Promise<AeMaskResponseV12>;
   async dispatch(request: BrokerRequest): Promise<BrokerResponse> {
     if (this.#server === null) throw new Error("CEP_BROKER_NOT_STARTED");
-    if (!brokerProtocolSet.has(request.protocolVersion)) {
+    if (!compiledProtocolSet.has(request.protocolVersion)) {
       throw new Error(`CEP_BROKER_PROTOCOL_MISMATCH: ${request.protocolVersion}`);
+    }
+    if (!this.options.supportedProtocolVersions.includes(request.protocolVersion)) {
+      throw new Error(`CEP_BROKER_PROTOCOL_UNAVAILABLE: ${request.protocolVersion}`);
     }
     if (this.#session !== null && !this.#session.supportedProtocolVersions.includes(request.protocolVersion)) {
       throw new Error(`CEP_BROKER_PROTOCOL_UNAVAILABLE: ${request.protocolVersion}`);
@@ -259,11 +273,11 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
       if (req.method === "POST" && url.pathname === "/v1/register") {
         const body = await readJson(req) as Record<string, unknown>;
         const offered = offeredProtocolVersions(body);
-        const negotiated = negotiateProtocol(offered);
+        const negotiated = negotiateProtocol(offered, this.options.supportedProtocolVersions);
         if (negotiated === null) {
           jsonResponse(res, 409, {
             error: "PROTOCOL_VERSION_MISMATCH",
-            supportedProtocolVersions: BROKER_SUPPORTED_PROTOCOLS,
+            supportedProtocolVersions: this.options.supportedProtocolVersions,
           });
           return;
         }
@@ -275,7 +289,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
           jsonResponse(res, 400, { error: "EXTENSION_VERSION_REQUIRED" });
           return;
         }
-        const supportedProtocolVersions = offered.filter((protocol) => brokerProtocolSet.has(protocol));
+        const supportedProtocolVersions = offered.filter((protocol) => this.options.supportedProtocolVersions.includes(protocol));
         const timestamp = nowIso();
         this.#session = {
           sessionId: randomUUID(),
@@ -293,7 +307,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
         jsonResponse(res, 200, {
           sessionId: this.#session.sessionId,
           protocolVersion: negotiated,
-          supportedProtocolVersions: BROKER_SUPPORTED_PROTOCOLS,
+          supportedProtocolVersions: this.options.supportedProtocolVersions,
         });
         return;
       }
@@ -360,7 +374,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
       if (req.method === "GET" && url.pathname === "/v1/status") {
         jsonResponse(res, 200, {
           protocolVersion: this.#session?.protocolVersion ?? null,
-          supportedProtocolVersions: BROKER_SUPPORTED_PROTOCOLS,
+          supportedProtocolVersions: this.options.supportedProtocolVersions,
           panelConnected: this.#session !== null,
           pendingCommands: this.#pending.size,
           session: this.#session,

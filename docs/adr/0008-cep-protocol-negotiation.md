@@ -12,16 +12,19 @@ The transport therefore needs to carry commands from more than one typed protoco
 
 ## Decision
 
-The CEP panel advertises an ordered `supportedProtocolVersions` set during authenticated registration. The broker owns the supported set and returns the highest mutually supported version as the session's negotiated `protocolVersion`.
+The CEP panel advertises an ordered `supportedProtocolVersions` set during authenticated registration. Each broker instance also declares the protocol tranches that its current runtime or proof harness is authorized to serve. The broker returns the highest mutually supported version as the session's negotiated `protocolVersion`.
 
 The negotiated version describes the highest common session capability; it does not rewrite individual messages. Every request retains its own protocol version (`1.1.0` for accepted M2 commands, `1.2.0` for M3 mask commands), and every host response must exactly match the leased request protocol and correlation fields.
 
 The broker:
 
-- supports only explicitly compiled protocol versions;
-- rejects registration when there is no mutual protocol;
-- records the panel's mutually supported set in the session;
-- refuses immediate dispatch when a connected panel did not advertise the request protocol;
+- compiles only explicitly known protocol versions;
+- defaults to the accepted `1.1.0` tranche so existing M2 runtimes do not widen automatically;
+- requires an M3 runtime/proof harness to opt into `1.2.0` explicitly;
+- rejects registration when there is no mutual protocol within that broker instance's authorized set;
+- records the panel's mutually supported subset in the session;
+- refuses dispatch for a protocol outside the broker instance's authorized set;
+- refuses dispatch when a connected panel did not advertise the request protocol;
 - never leases a queued request to a session that did not advertise that protocol;
 - rejects responses whose protocol was not negotiated for that session;
 - continues to accept the legacy single `protocolVersion: "1.1.0"` registration shape for the accepted M2 panel path.
@@ -31,7 +34,8 @@ The panel:
 - advertises `1.2.0` and `1.1.0` in priority order;
 - validates that the broker's selected version was advertised;
 - validates host responses against the individual request protocol rather than a hard-coded session version;
-- keeps the legacy single-version configuration field at `1.1.0` as a safe fallback signal.
+- keeps the legacy single-version configuration field at `1.1.0` as a safe fallback signal;
+- carries `supportedProtocolVersions` as an additive schema-1 configuration field so existing M2 config readers remain valid.
 
 ## Alternatives considered
 
@@ -39,9 +43,13 @@ The panel:
 
 Rejected. It would blur proof lineage and needlessly invalidate the accepted M2 message contract.
 
+### Make every broker automatically serve every compiled protocol
+
+Rejected. Compiled support is not the same as authorization for a particular runtime or proof harness. Defaulting every broker to 1.2 would silently widen the accepted M2 harness and make its session-level assumptions stale.
+
 ### Run separate broker ports or separate CEP panels per protocol
 
-Rejected for now. It duplicates authentication, liveness, install, and session recovery complexity without adding a stronger safety boundary than per-request protocol correlation.
+Rejected for now. It duplicates authentication, liveness, install, and session recovery complexity without adding a stronger safety boundary than explicit per-broker protocol scoping plus per-request correlation.
 
 ### Allow any host response version once a 1.2 session is negotiated
 
@@ -49,7 +57,7 @@ Rejected. Negotiation is not permission to change a request's schema in flight. 
 
 ## Consequences
 
-M2 `1.1.0` and M3 `1.2.0` commands can share one authenticated panel session. A legacy 1.1-only panel remains able to execute M2 but receives a deterministic protocol-unavailable failure for M3. Future protocol tranches can join the supported set explicitly without silently widening host execution.
+Existing M2 harnesses continue to negotiate only `1.1.0` even when the installed panel advertises both versions. An M3 harness explicitly opts into `[1.2.0, 1.1.0]`, allowing M2 setup/cleanup commands and M3 mask commands to share one authenticated panel session. A legacy 1.1-only panel remains able to execute M2 but receives a deterministic protocol-unavailable failure for M3. Future protocol tranches can join a runtime's supported set explicitly without silently widening unrelated tooling.
 
 The session status must not be interpreted as proof maturity. Capability registry maturity remains evidence-scoped.
 
@@ -59,8 +67,8 @@ This removes the transport blocker for typed mask/Bezier operations, enabling th
 
 ## Safety / rollback impact
 
-Authentication, loopback-only binding, fixed dispatcher execution, request correlation, project-revision checks, and AE undo behavior are unchanged. Protocol negotiation adds a narrowing gate: unsupported protocol traffic is rejected before host mutation.
+Authentication, loopback-only binding, fixed dispatcher execution, request correlation, project-revision checks, and AE undo behavior are unchanged. Protocol negotiation adds two narrowing gates: the broker runtime must authorize a protocol tranche and the connected panel must advertise it. Unsupported protocol traffic is rejected before host mutation.
 
 ## Proof impact
 
-Transport availability may change the M3 route from unavailable to available, but mask capabilities remain `PARTIAL` + `DECLARED` until real-AE P1/P2/P3/P4/P5 evidence is produced. M2 accepted evidence remains scoped to protocol 1.1 capabilities.
+Transport availability may change the M3 route from unavailable to available, but mask capabilities remain `PARTIAL` + `DECLARED` until real-AE P1/P2/P3/P4/P5 evidence is produced. M2 accepted evidence remains scoped to protocol 1.1 capabilities. The first M3 real-AE harness explicitly authorizes 1.2 only for bounded P1 validation and P2 structural-readback evidence.

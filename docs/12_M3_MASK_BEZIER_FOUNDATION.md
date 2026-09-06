@@ -16,9 +16,9 @@ Initial typed commands:
 - `mask.set_properties` -> `ae.mask.properties.set`
 - `mask.readback` -> `ae.mask.readback`
 
-The authenticated CEP broker and panel now support explicit multi-protocol negotiation. A dual-capability panel advertises `1.2.0` and `1.1.0`; the broker selects the highest mutual protocol for the session while preserving the protocol version of each individual request and response. M2 commands therefore remain `1.1.0`, M3 mask commands remain `1.2.0`, and a legacy 1.1-only panel cannot lease M3 traffic.
+The authenticated CEP panel advertises `1.2.0` and `1.1.0`, while every broker instance explicitly narrows the protocol tranches its current runtime is authorized to serve. Existing M2 harnesses default to `1.1.0` only. The bounded M3 mask harness explicitly opts into `[1.2.0, 1.1.0]`, so M2 setup/cleanup commands remain `1.1.0`, M3 mask commands remain `1.2.0`, and exact per-request protocol correlation is preserved.
 
-This makes the M3 host-adapter route available at the transport layer. It does **not** promote mask capability proof maturity: all seven M3 capabilities remain `PARTIAL` + `DECLARED` until their independent real-AE proof ladder begins.
+This makes the M3 host-adapter route available at the transport layer. It does **not** promote mask capability proof maturity: all seven M3 capabilities remain `PARTIAL` + `DECLARED` until their independent real-AE proof evidence is accepted.
 
 ## Geometry contract
 
@@ -60,7 +60,7 @@ This first host tranche assigns an EditFlow mask stable ID using a reserved mark
 - no arbitrary JSX protocol operation;
 - fixed command allowlist only;
 - authenticated loopback-only broker transport;
-- explicit protocol negotiation with per-request protocol correlation;
+- explicit per-runtime protocol authorization plus session negotiation and per-request correlation;
 - unsupported protocols rejected before host mutation;
 - host project revision required for mutations;
 - full payload validation before writes;
@@ -78,4 +78,6 @@ The mask tranche must independently climb:
 4. P4 induced-failure rollback;
 5. P5 transfer in a materially different construction after save/reopen/reconnect.
 
-The next bounded step after transport regression is real-AE P1/P2 evidence on the self-hosted Windows runner. M2 evidence remains valid for the baseline primitives it proved, but is not inherited by these M3 capabilities.
+A dedicated bounded self-hosted Windows harness now exists for P1/P2. It cold-launches an isolated After Effects instance from a zero-AE baseline, uses the fixed repository CEP bootstrap, proves invalid tangent geometry is rejected without revision/fingerprint change, then exercises real mask create/readback, animated paths, properties, duplicate/reorder/remove and exact structural readback. Its result schema explicitly leaves P3, P4 and P5 false. This harness is implementation infrastructure only; no new real-AE proof maturity is claimed until an accepted runner artifact passes.
+
+M2 evidence remains valid for the baseline primitives it proved, but is not inherited by these M3 capabilities.
