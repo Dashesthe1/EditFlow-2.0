@@ -7,26 +7,35 @@ on:
         description: Optional explicit path to AfterFX.exe
         required: false
         type: string
+  push:
+    branches:
+      - ae-test/m2-control
+    paths:
+      - .github/ae-test-trigger/m2.txt
 
 permissions:
   contents: read
 
+concurrency:
+  group: editflow-m2-real-ae-workstation
+  cancel-in-progress: false
+
 jobs:
   real-ae-proof:
     runs-on: [self-hosted, Windows, editflow-ae]
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run bounded M2 real-AE proof
+      - name: Run isolated M2 real-AE proof
         shell: powershell
         run: |
-          $path = '${{ inputs.afterfx_path }}'
+          $path = '${{ github.event.inputs.afterfx_path }}'
           if ($path) {
-            .\scripts\windows\run-m2-ae-acceptance.ps1 -AfterFxPath $path
+            .\scripts\windows\run-m2-ae-self-hosted.ps1 -AfterFxPath $path
           } else {
-            .\scripts\windows\run-m2-ae-acceptance.ps1
+            .\scripts\windows\run-m2-ae-self-hosted.ps1
           }
 
       - name: Upload proof artifacts
