@@ -34,6 +34,14 @@ test("Windows acceptance runner binds to running AE but executes proof through a
   assert.doesNotMatch(source, /Sort-Object Name -Descending/);
 });
 
+test("Windows acceptance prints render lifecycle evidence on bounded proof failure", async () => {
+  const source = await readFile(runnerPath, "utf8");
+  assert.match(source, /\$RenderLifecyclePath = \$RenderPath \+ "\.editflow-render\.json"/);
+  assert.match(source, /function Write-RenderLifecycleEvidence/);
+  assert.match(source, /Render lifecycle marker:/);
+  assert.match(source, /if \(-not \$Result\.ok\)[\s\S]*Write-RenderLifecycleEvidence[\s\S]*M2 bounded real-AE proof did not pass/);
+});
+
 test("CEP real-AE acceptance performs bounded typed writes, render proof, stable-id readback, and cleanup without project save/open", async () => {
   const source = await readFile(cepAcceptancePath, "utf8");
   for (const command of [

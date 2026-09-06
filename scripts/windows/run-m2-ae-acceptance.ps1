@@ -9,6 +9,7 @@ $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
 $ResultPath = Join-Path $ArtifactDir "result.json"
 $RenderPath = Join-Path $ArtifactDir "m2-proof.avi"
+$RenderLifecyclePath = $RenderPath + ".editflow-render.json"
 $CleanupGraceSeconds = 180
 
 function Resolve-RunningAfterFx {
@@ -50,6 +51,20 @@ function Resolve-RunningAfterFx {
   return $RunningPaths[0]
 }
 
+function Write-RenderLifecycleEvidence {
+  if (-not (Test-Path $RenderLifecyclePath -PathType Leaf)) {
+    Write-Warning "Render lifecycle marker was not found: $RenderLifecyclePath"
+    return
+  }
+
+  Write-Host "Render lifecycle marker:"
+  try {
+    Get-Content $RenderLifecyclePath -Raw | Write-Host
+  } catch {
+    Write-Warning ("Unable to read render lifecycle marker: " + $_.Exception.Message)
+  }
+}
+
 if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
 if (-not (Test-Path $ConfigPath -PathType Leaf)) {
   throw "EditFlow CEP runtime config is missing. Run .\scripts\windows\install-editflow-cep.ps1 first."
@@ -60,6 +75,7 @@ $VersionInfo = (Get-Item $AfterFx).VersionInfo
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 if (Test-Path $ResultPath) { Remove-Item $ResultPath -Force }
 if (Test-Path $RenderPath) { Remove-Item $RenderPath -Force }
+if (Test-Path $RenderLifecyclePath) { Remove-Item $RenderLifecyclePath -Force }
 
 Push-Location $RepoRoot
 try {
@@ -116,6 +132,7 @@ try {
     if ((Get-Date) -ge $HardDeadline) {
       Stop-Process -Id $NodeProcess.Id -Force -ErrorAction SilentlyContinue
       $NodeProcess.WaitForExit()
+      Write-RenderLifecycleEvidence
       throw "M2 CEP real-AE acceptance exceeded its hard runtime before cleanup completion. Close/reopen the blank test project before another proof attempt."
     }
 
@@ -125,16 +142,19 @@ try {
 
   if (-not (Test-Path $ResultPath -PathType Leaf)) {
     $ExitCode = $NodeProcess.ExitCode
+    Write-RenderLifecycleEvidence
     throw "M2 CEP real-AE acceptance exited without a proof artifact (exit code $ExitCode)."
   }
 
   $ResultJson = Get-Content $ResultPath -Raw
   $Result = $ResultJson | ConvertFrom-Json
   if ($Result.cleanupComplete -ne $true) {
+    Write-RenderLifecycleEvidence
     throw "M2 acceptance produced a result before cleanup completion; refusing to treat it as final proof evidence."
   }
   if (-not $Result.ok) {
     $ResultJson | Write-Host
+    Write-RenderLifecycleEvidence
     throw "M2 bounded real-AE proof did not pass all implemented checks."
   }
 
