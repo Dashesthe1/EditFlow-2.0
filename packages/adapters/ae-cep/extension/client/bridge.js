@@ -8,6 +8,7 @@
   var stopped = false;
   var sessionId = null;
   var pollDelayMs = 125;
+  var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
@@ -76,10 +77,20 @@
         return;
       }
       var requestJson = JSON.stringify(request);
-      var script = "EditFlow2_dispatch(" + JSON.stringify(requestJson) + ")";
+      var requestLiteral = JSON.stringify(requestJson);
+      var script = "(function(){try{" +
+        "var fn=$.global.EditFlow2_dispatch;" +
+        "if(typeof fn!==\"function\")return \"" + HOST_ERROR_PREFIX + "dispatcher unavailable\";" +
+        "var result=fn(" + requestLiteral + ");" +
+        "if(result===undefined||result===null)return \"" + HOST_ERROR_PREFIX + "dispatcher returned no result\";" +
+        "return String(result);" +
+        "}catch(error){return \"" + HOST_ERROR_PREFIX + "\"+String(error);}}())";
       cep.evalScript(script, function (raw) {
         try {
-          if (typeof raw !== "string" || raw === "EvalScript error.") throw new Error("After Effects returned an evalScript error.");
+          if (typeof raw !== "string") throw new Error("After Effects returned a non-string evalScript result.");
+          if (raw === "EvalScript error.") throw new Error("After Effects returned an evalScript error.");
+          if (raw.indexOf(HOST_ERROR_PREFIX) === 0) throw new Error(raw.substring(HOST_ERROR_PREFIX.length));
+          if (raw.length === 0) throw new Error("After Effects dispatcher returned an empty evalScript result.");
           var response = JSON.parse(raw);
           if (response.protocolVersion !== "1.1.0") throw new Error("After Effects dispatcher protocol mismatch.");
           if (response.requestId !== request.requestId || response.operationId !== request.operationId || response.command !== request.command) {
