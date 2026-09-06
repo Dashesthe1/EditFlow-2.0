@@ -50,12 +50,16 @@ A recipe may never silently replace a missing capability with a weaker blur, tra
 
 ## Fresh versioning
 
-EditFlow 2.0 starts a new development line. The first repository release will be `0.1.0`; previous EditFlow version numbers have no compatibility or lineage meaning here.
+EditFlow 2.0 starts a new development line. Previous EditFlow version numbers have no compatibility or lineage meaning here.
+
+Current product milestone version: **`0.3.0-dev`**.
 
 ## Current phase
 
-**Phase 0 — Clean-room architecture, contracts, schemas, and proof gates.**
+**M2 — Adobe Host Baseline: accepted.**
 
-Implementation begins only after these contracts are committed and internally consistent.
+The clean-room AE protocol 1.1 host surface has completed its real-After-Effects P1–P5 milestone gate on the declared Windows / AE 2025 environment. Authenticated CEP transport, bounded render/readback, failure recovery, stable identity through save/reopen/reconnect, and the final baseline CRUD/readback coverage are proven. Real Adobe writes are enabled, while individual capability maturity remains evidence-scoped rather than blanket `FULL`.
 
-Authoritative documents live in `docs/` and machine-readable contracts live in `spec/`.
+Development now advances to **M3 — Human-Parity Core (`0.4.0-dev`)**: masks and Bezier geometry, mattes, blend modes, parenting/null rigs, exact interpolation/Graph Editor controls, markers, motion blur, frame blending, and shutter controls.
+
+Authoritative documents live in `docs/`, machine-readable contracts live in `spec/`, and accepted proof manifests live in `proofs/manifests/`.
