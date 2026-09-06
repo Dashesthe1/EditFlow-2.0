@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const proofPath = "proofs/ae/m2-real-host-proof.jsx";
 const runnerPath = "scripts/windows/run-m2-ae-acceptance.ps1";
+const selfHostedRunnerPath = "scripts/windows/run-m2-ae-self-hosted.ps1";
 const cepAcceptancePath = "apps/desktop-host/src/cep-write-acceptance-cli.ts";
 const workflowPath = ".github/workflows/m2-real-ae.yml";
 
@@ -40,6 +41,20 @@ test("Windows acceptance prints render lifecycle evidence on bounded proof failu
   assert.match(source, /function Write-RenderLifecycleEvidence/);
   assert.match(source, /Render lifecycle marker:/);
   assert.match(source, /if \(-not \$Result\.ok\)[\s\S]*Write-RenderLifecycleEvidence[\s\S]*M2 bounded real-AE proof did not pass/);
+});
+
+test("self-hosted AE launcher runs only in an interactive clean session and owns the AE process it stops", async () => {
+  const source = await readFile(selfHostedRunnerPath, "utf8");
+  assert.match(source, /\[Environment\]::UserInteractive/);
+  assert.match(source, /Get-Process -Name "AfterFX"/);
+  assert.match(source, /refuses to touch an already-running After Effects session/);
+  assert.match(source, /install-editflow-cep\.ps1/);
+  assert.match(source, /Start-Process -FilePath \$AfterFxPath/);
+  assert.match(source, /run-m2-ae-acceptance\.ps1/);
+  assert.match(source, /finally\s*\{/);
+  assert.match(source, /if \(\$StartedAfterFx\)/);
+  assert.match(source, /Stop-Process -Force/);
+  assert.doesNotMatch(source, /Stop-Process -Force[\s\S]*before.*Start-Process/i);
 });
 
 test("CEP real-AE acceptance performs bounded typed writes, render proof, stable-id readback, and cleanup without project save/open", async () => {
@@ -88,9 +103,13 @@ test("acceptance result is final only after cleanup attempts and final readback 
   assert.match(runner, /\$Result\.cleanupComplete -ne \$true/);
 });
 
-test("real-AE GitHub workflow is manual and self-hosted rather than PR-triggered", async () => {
+test("real-AE workflow is self-hosted and remotely triggerable only through the dedicated maintainer test branch", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /workflow_dispatch:/);
+  assert.match(source, /push:[\s\S]*branches:[\s\S]*ae-test\/m2-control/);
+  assert.match(source, /paths:[\s\S]*\.github\/ae-test-trigger\/m2\.txt/);
   assert.match(source, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
+  assert.match(source, /run-m2-ae-self-hosted\.ps1/);
+  assert.match(source, /concurrency:[\s\S]*editflow-m2-real-ae-workstation/);
   assert.doesNotMatch(source, /pull_request:/);
 });
