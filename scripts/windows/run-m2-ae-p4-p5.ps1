@@ -9,6 +9,7 @@ $ProofScript = Join-Path $RepoRoot "proofs\ae\m2-disposable-p4-p5-proof.jsx"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-disposable-p4-p5"
 $ResultPath = Join-Path $ArtifactDir "result.json"
 $OwnedAfterFx = $null
+$UsingPreexistingAfterFx = $false
 
 function Resolve-AfterFx {
   param([string]$ExplicitPath)
@@ -33,31 +34,44 @@ New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 if (Test-Path $ResultPath) { Remove-Item $ResultPath -Force }
 
 $ExistingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
-if ($ExistingAfterFx.Count -gt 0) {
+if ($ExistingAfterFx.Count -gt 1) {
   $Ids = ($ExistingAfterFx | ForEach-Object { $_.Id }) -join ","
-  throw "Refusing disposable P4/P5 proof because a pre-existing After Effects session is running (PID(s): $Ids). The self-hosted proof never attaches to or closes an unowned AE session."
+  throw "Refusing disposable P4/P5 proof because multiple pre-existing After Effects sessions make the target ambiguous (PID(s): $Ids). No AE writes were attempted."
+}
+if ($ExistingAfterFx.Count -eq 1) {
+  $UsingPreexistingAfterFx = $true
+  Write-Warning ("Pre-existing After Effects PID " + $ExistingAfterFx[0].Id + " detected. The JSX blank/unsaved/zero-item gate is authoritative; the runner will not close this process.")
+} else {
+  Write-Host "No pre-existing After Effects session detected; the runner will own and later close the AE process it launches."
 }
 
-Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: this runner launches its own fresh AE process, and the AE script still REFUSES unless that project has zero items and has never been saved."
-Write-Host "The proof saves only its disposable project under proofs/artifacts, closes/reopens it, leaves a blank project, then this runner closes only the AE process it launched."
+Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: the AE proof REFUSES before mutations unless the target project has zero items and has never been saved."
+Write-Host "The proof saves only its disposable project under proofs/artifacts, closes/reopens it, and leaves AE on a new blank project."
 Write-Host "After Effects: $AfterFx"
 Write-Host "Proof script:  $ProofScript"
 
 try {
   $Arguments = @("-r", ('"' + $ProofScript + '"'))
-  $OwnedAfterFx = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
-  Write-Host ("Started isolated After Effects proof process PID " + $OwnedAfterFx.Id + ".")
+  $LaunchedAfterFx = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
+  if ($UsingPreexistingAfterFx) {
+    Write-Host ("Delivered the proof request while preserving pre-existing AE PID " + $ExistingAfterFx[0].Id + ".")
+  } else {
+    $OwnedAfterFx = $LaunchedAfterFx
+    Write-Host ("Started runner-owned After Effects proof process PID " + $OwnedAfterFx.Id + ".")
+  }
 
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while (-not (Test-Path $ResultPath -PathType Leaf)) {
-    if ($OwnedAfterFx.HasExited) {
-      throw "The isolated After Effects proof process exited before producing P4/P5 result.json."
+    if ($null -ne $OwnedAfterFx) {
+      $OwnedAfterFx.Refresh()
+      if ($OwnedAfterFx.HasExited) {
+        throw "The runner-owned After Effects proof process exited before producing P4/P5 result.json."
+      }
     }
     if ((Get-Date) -ge $Deadline) {
-      throw "Timed out waiting for P4/P5 result.json from the isolated After Effects proof process."
+      throw "Timed out waiting for P4/P5 result.json. The proof either did not reach AE or AE did not complete the disposable acceptance script."
     }
     Start-Sleep -Milliseconds 500
-    $OwnedAfterFx.Refresh()
   }
 
   $Result = Get-Content $ResultPath -Raw | ConvertFrom-Json
@@ -66,7 +80,7 @@ try {
   if ($Result.projectArtifact) { Write-Host ("Disposable project artifact: " + $Result.projectArtifact) }
 
   if ($Result.status -eq "REFUSED") {
-    throw "P4/P5 proof refused safely because the runner-owned AE project was not blank and unsaved."
+    throw "P4/P5 proof refused safely because the target AE project was not blank, unsaved, and zero-item. No proof mutations were performed."
   }
   if (-not $Result.ok) {
     if ($Result.error) { Write-Error $Result.error }
@@ -84,6 +98,8 @@ try {
     } catch {
       Write-Warning ("Unable to stop runner-owned After Effects proof process cleanly: " + $_.Exception.Message)
     }
+  } elseif ($UsingPreexistingAfterFx) {
+    Write-Host ("Leaving pre-existing After Effects PID " + $ExistingAfterFx[0].Id + " running; the runner does not own it.")
   }
 }
 
