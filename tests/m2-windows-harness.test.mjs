@@ -4,9 +4,10 @@ import { readFile } from "node:fs/promises";
 
 const proofPath = "proofs/ae/m2-real-host-proof.jsx";
 const runnerPath = "scripts/windows/run-m2-ae-acceptance.ps1";
+const cepAcceptancePath = "apps/desktop-host/src/cep-write-acceptance-cli.ts";
 const workflowPath = ".github/workflows/m2-real-ae.yml";
 
-test("real-AE proof is bounded and does not replace or save the user's project", async () => {
+test("legacy direct real-AE proof remains bounded and does not replace or save the user's project", async () => {
   const source = await readFile(proofPath, "utf8");
   assert.match(source, /finally\s*\{/);
   assert.match(source, /cleanup_restored_item_count/);
@@ -18,17 +19,44 @@ test("real-AE proof is bounded and does not replace or save the user's project",
   assert.match(source, /P5_save_reopen_reconnect_transfer:\s*false/);
 });
 
-test("Windows runner binds the proof to an already running AE executable and never guesses newest installed", async () => {
+test("Windows acceptance runner binds to running AE but executes proof through authenticated CEP instead of command-line JSX", async () => {
   const source = await readFile(runnerPath, "utf8");
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /\$Process\.Path/);
   assert.match(source, /Multiple After Effects installations are running/);
   assert.match(source, /explicit AfterFxPath is not an already running After Effects executable/);
-  assert.match(source, /proofs\\ae\\m2-real-host-proof\.jsx/);
-  assert.match(source, /Start-Process -FilePath \$AfterFx -ArgumentList \$Arguments/);
-  assert.match(source, /-r/);
+  assert.match(source, /cep-write-acceptance-cli\.js/);
+  assert.match(source, /Start-Process -FilePath "node"/);
+  assert.match(source, /EditFlow 2\.0 Bridge open/);
+  assert.doesNotMatch(source, /Start-Process -FilePath \$AfterFx/);
+  assert.doesNotMatch(source, /\$Arguments = @\("-r"/);
   assert.doesNotMatch(source, /Get-ChildItem \$AdobeRoot/);
   assert.doesNotMatch(source, /Sort-Object Name -Descending/);
+});
+
+test("CEP real-AE acceptance performs bounded typed writes, render proof, stable-id readback, and cleanup without project save/open", async () => {
+  const source = await readFile(cepAcceptancePath, "utf8");
+  for (const command of [
+    "comp.create",
+    "layer.add_media",
+    "layer.set_transform",
+    "layer.set_timing",
+    "effect.add",
+    "effect.set_property",
+    "property.set_keyframes",
+    "property.set_expression",
+    "render.capture",
+    "layers.precompose",
+    "comp.remove",
+  ]) assert.match(source, new RegExp(`\\"${command.replaceAll(".", "\\.")}\\"`));
+  assert.match(source, /new AeFilesystemPolicyV11\(\[artifactDir\]\)/);
+  assert.match(source, /cleanup_restored_item_count/);
+  assert.match(source, /projectSavePerformed:\s*false/);
+  assert.match(source, /projectOpenReplacePerformed:\s*false/);
+  assert.match(source, /P4_failure_injection_rollback:\s*false/);
+  assert.match(source, /P5_save_reopen_reconnect_transfer:\s*false/);
+  assert.doesNotMatch(source, /execute\("project\.save"/);
+  assert.doesNotMatch(source, /execute\("media\.import"/);
 });
 
 test("real-AE GitHub workflow is manual and self-hosted rather than PR-triggered", async () => {

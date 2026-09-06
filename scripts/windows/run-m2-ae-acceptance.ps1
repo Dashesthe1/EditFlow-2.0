@@ -5,9 +5,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$ProofScript = Join-Path $RepoRoot "proofs\ae\m2-real-host-proof.jsx"
+$ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
 $ResultPath = Join-Path $ArtifactDir "result.json"
+$RenderPath = Join-Path $ArtifactDir "m2-proof.avi"
 
 function Resolve-RunningAfterFx {
   param([string]$ExplicitPath)
@@ -49,41 +50,90 @@ function Resolve-RunningAfterFx {
 }
 
 if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
-if (-not (Test-Path $ProofScript -PathType Leaf)) { throw "M2 proof script not found: $ProofScript" }
+if (-not (Test-Path $ConfigPath -PathType Leaf)) {
+  throw "EditFlow CEP runtime config is missing. Run .\scripts\windows\install-editflow-cep.ps1 first."
+}
 
 $AfterFx = Resolve-RunningAfterFx $AfterFxPath
+$VersionInfo = (Get-Item $AfterFx).VersionInfo
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 if (Test-Path $ResultPath) { Remove-Item $ResultPath -Force }
+if (Test-Path $RenderPath) { Remove-Item $RenderPath -Force }
 
-$VersionInfo = (Get-Item $AfterFx).VersionInfo
-Write-Host "EditFlow 2.0 M2 real-AE proof"
-Write-Host "Running After Effects: $AfterFx"
-if ($VersionInfo.ProductVersion) { Write-Host ("Running AE version: " + $VersionInfo.ProductVersion) }
-Write-Host "Proof script:          $ProofScript"
-
-$Arguments = @("-r", ('"' + $ProofScript + '"'))
-Start-Process -FilePath $AfterFx -ArgumentList $Arguments | Out-Null
-
-$Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-while (-not (Test-Path $ResultPath -PathType Leaf)) {
-  if ((Get-Date) -ge $Deadline) {
-    throw "Timed out waiting for M2 result.json from the already running After Effects host. In that exact AE version, enable Edit > Preferences > Scripting & Expressions > Allow Scripts To Write Files And Access Network, then rerun."
+Push-Location $RepoRoot
+try {
+  if (-not (Test-Path (Join-Path $RepoRoot "node_modules") -PathType Container)) {
+    npm install
+    if ($LASTEXITCODE -ne 0) { throw "npm install failed." }
   }
-  Start-Sleep -Milliseconds 500
+  npm run build:test-runtime
+  if ($LASTEXITCODE -ne 0) { throw "TypeScript runtime build failed." }
+
+  $Cli = Join-Path $RepoRoot ".tmp\runtime\apps\desktop-host\src\cep-write-acceptance-cli.js"
+  if (-not (Test-Path $Cli -PathType Leaf)) { throw "Compiled CEP write acceptance CLI not found: $Cli" }
+
+  Write-Host "EditFlow 2.0 M2 real-AE proof through authenticated CEP transport"
+  Write-Host "Running After Effects: $AfterFx"
+  if ($VersionInfo.ProductVersion) { Write-Host ("Running AE version: " + $VersionInfo.ProductVersion) }
+  Write-Host "Keep Window > Extensions > EditFlow 2.0 Bridge open during this proof."
+  Write-Host "The proof performs bounded temporary writes, renders one 1-second artifact, then removes its temporary project items."
+
+  $NodeArgs = @(
+    $Cli,
+    "--config", $ConfigPath,
+    "--result", $ResultPath,
+    "--timeout-ms", ($TimeoutSeconds * 1000)
+  )
+  $NodeProcess = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru
+  $HardDeadline = (Get-Date).AddSeconds($TimeoutSeconds + 45)
+  $ResultSeenAt = $null
+  $ForcedAfterResult = $false
+
+  while (-not $NodeProcess.HasExited) {
+    if (Test-Path $ResultPath -PathType Leaf) {
+      if ($null -eq $ResultSeenAt) {
+        $ResultSeenAt = Get-Date
+      } elseif (((Get-Date) - $ResultSeenAt).TotalSeconds -ge 2) {
+        Write-Warning "M2 proof artifact is complete but the Node process did not exit; terminating the completed acceptance runtime."
+        Stop-Process -Id $NodeProcess.Id -Force -ErrorAction SilentlyContinue
+        $NodeProcess.WaitForExit()
+        $ForcedAfterResult = $true
+        break
+      }
+    }
+
+    if ((Get-Date) -ge $HardDeadline) {
+      Stop-Process -Id $NodeProcess.Id -Force -ErrorAction SilentlyContinue
+      $NodeProcess.WaitForExit()
+      throw "M2 CEP real-AE acceptance exceeded its hard runtime without producing a proof artifact."
+    }
+
+    Start-Sleep -Milliseconds 200
+    $NodeProcess.Refresh()
+  }
+
+  if (-not (Test-Path $ResultPath -PathType Leaf)) {
+    $ExitCode = $NodeProcess.ExitCode
+    throw "M2 CEP real-AE acceptance exited without a proof artifact (exit code $ExitCode)."
+  }
+
+  $ResultJson = Get-Content $ResultPath -Raw
+  $Result = $ResultJson | ConvertFrom-Json
+  if (-not $Result.ok) {
+    $ResultJson | Write-Host
+    throw "M2 bounded real-AE proof did not pass all implemented checks."
+  }
+
+  Write-Host ("M2 proof status: " + $Result.status)
+  Write-Host ("Result artifact: " + $ResultPath)
+  if ($Result.renderArtifact) { Write-Host ("Render artifact: " + $Result.renderArtifact) }
+  if ($ForcedAfterResult) {
+    Write-Host "Proof completed successfully; the wrapper terminated a stuck post-proof Node shutdown."
+  }
+
+  if (-not $Result.proofLevels.P4_failure_injection_rollback -or -not $Result.proofLevels.P5_save_reopen_reconnect_transfer) {
+    Write-Warning "Bounded CEP host proof passed, but M2 remains open: P4 failure-injection rollback and P5 save/reopen/reconnect are intentionally not claimed by this script."
+  }
+} finally {
+  Pop-Location
 }
-
-$Result = Get-Content $ResultPath -Raw | ConvertFrom-Json
-Write-Host ("M2 proof status: " + $Result.status)
-Write-Host ("Result artifact: " + $ResultPath)
-if ($Result.renderArtifact) { Write-Host ("Render artifact: " + $Result.renderArtifact) }
-
-if (-not $Result.ok) {
-  if ($Result.error) { Write-Error $Result.error }
-  throw "M2 bounded real-AE proof did not pass all implemented checks."
-}
-
-if (-not $Result.proofLevels.P4_failure_injection_rollback -or -not $Result.proofLevels.P5_save_reopen_reconnect_transfer) {
-  Write-Warning "Bounded host proof passed, but M2 remains open: P4 failure-injection rollback and P5 save/reopen/reconnect are intentionally not claimed by this script."
-}
-
-exit 0
