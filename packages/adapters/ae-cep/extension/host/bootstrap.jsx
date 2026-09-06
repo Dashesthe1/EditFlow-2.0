@@ -1,13 +1,9 @@
-/* EditFlow 2.0 CEP host bootstrap. The installer copies current host scripts beside this file. */
+/* EditFlow 2.0 CEP first-loaded host marker.
+ * Adobe CEP documents that the first manifest ScriptPath file cannot safely derive
+ * sibling paths from its current-script filename. Keep this file path-agnostic.
+ * The CEP client obtains the extension root and loads the second-stage host by
+ * absolute path through the host scripting bridge.
+ */
 (function () {
-  var bootstrap = new File($.fileName);
-  var hostDir = bootstrap.parent;
-  var current = new File(hostDir.fsName + "/editflow_host_current.jsx");
-  if (!current.exists) {
-    throw new Error("EditFlow 2.0 current AE host script is missing from the installed CEP extension: " + current.fsName);
-  }
-  $.evalFile(current);
-  if (typeof $.global.EditFlow2_dispatch !== "function") {
-    throw new Error("EditFlow 2.0 dispatcher failed to register from CEP bootstrap.");
-  }
+  $.global.EditFlow2_CEP_SCRIPT_PATH_LOADED = true;
 }());
