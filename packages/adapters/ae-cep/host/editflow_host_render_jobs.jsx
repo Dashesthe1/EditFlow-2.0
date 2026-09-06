@@ -8,14 +8,19 @@
  * blocking render runs after the CEP evalScript has returned, and completion is
  * reported through a sidecar JSON marker in the same allowed artifact directory.
  *
+ * app.scheduleTask executes its JavaScript later in AE's global workspace. The
+ * scheduled entrypoint is therefore deliberately self-contained: it has no free
+ * references to helper functions or variables from this wrapper IIFE. This avoids
+ * relying on closure state surviving the delayed global execution boundary.
+ *
  * No caller-supplied script text is executed. app.scheduleTask receives one fixed
- * literal function call only.
+ * literal global function call only.
  */
 (function () {
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderjob1";
+  var BUILD = "0.1.0-dev.4-renderjob2";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -108,15 +113,15 @@
     return response;
   }
 
-  function writeCompletionMarker(job, ok, errorMessage) {
+  function writeImmediateMarker(job, status, ok, errorMessage) {
     var marker = new File(job.completionPath);
     marker.encoding = "UTF-8";
-    if (!marker.open("w")) throw new Error("Unable to open render completion marker: " + marker.fsName);
+    if (!marker.open("w")) throw new Error("Unable to open render lifecycle marker: " + marker.fsName);
     try {
       marker.write($.global.EditFlow2_JSON.stringify({
         schemaVersion: 1,
         jobId: job.jobId,
-        status: ok ? "DONE" : "FAILED",
+        status: status,
         ok: ok,
         outputPath: job.outputPath,
         error: errorMessage || null,
@@ -128,23 +133,55 @@
     }
   }
 
-  function cleanupQueueItem(job) {
-    if (!job || !job.rqItem) return null;
-    try {
-      job.rqItem.remove();
-      job.queueItemRemoved = true;
-      return null;
-    } catch (error) {
-      job.queueItemRemoved = false;
-      return asString(error);
-    }
-  }
-
+  /* This function is invoked later by app.scheduleTask in AE's global workspace.
+   * Do not add references to wrapper-local helpers here. Everything it needs must
+   * either be a built-in/global or be defined inside this function invocation.
+   */
   $.global.EditFlow2_runScheduledRender = function () {
     var job = $.global.EditFlow2_activeRenderJob;
     if (!job || job.state !== "SCHEDULED") return;
 
+    function taskNowMs() { return (new Date()).getTime(); }
+    function taskString(value) { return value === null || value === undefined ? "" : String(value); }
+    function taskWriteMarker(status, ok, errorMessage) {
+      var marker = new File(job.completionPath);
+      marker.encoding = "UTF-8";
+      if (!marker.open("w")) throw new Error("Unable to open render lifecycle marker: " + marker.fsName);
+      try {
+        marker.write($.global.EditFlow2_JSON.stringify({
+          schemaVersion: 1,
+          jobId: job.jobId,
+          status: status,
+          ok: ok,
+          outputPath: job.outputPath,
+          error: errorMessage || null,
+          completedAtMs: taskNowMs(),
+          queueItemRemoved: job.queueItemRemoved === true
+        }));
+      } finally {
+        marker.close();
+      }
+    }
+    function taskCleanupQueueItem() {
+      if (!job.rqItem) return null;
+      try {
+        job.rqItem.remove();
+        job.queueItemRemoved = true;
+        return null;
+      } catch (cleanupError) {
+        job.queueItemRemoved = false;
+        return taskString(cleanupError);
+      }
+    }
+
     job.state = "RENDERING";
+    job.startedAtMs = taskNowMs();
+    try {
+      taskWriteMarker("RUNNING", false, null);
+    } catch (runningMarkerError) {
+      job.runningMarkerError = taskString(runningMarkerError);
+    }
+
     var ok = false;
     var errorMessage = null;
     try {
@@ -155,21 +192,22 @@
       if (!statusDone) throw new Error("After Effects render queue did not finish the EditFlow capture with DONE status.");
       if (!output.exists || output.length <= 0) throw new Error("After Effects render completed without a non-empty capture artifact.");
       ok = true;
-    } catch (error) {
-      errorMessage = asString(error);
+    } catch (renderError) {
+      errorMessage = taskString(renderError);
     }
 
-    var cleanupError = cleanupQueueItem(job);
+    var cleanupError = taskCleanupQueueItem();
     if (cleanupError) {
       ok = false;
       errorMessage = (errorMessage ? errorMessage + " | " : "") + "Render queue cleanup failed: " + cleanupError;
     }
 
     job.state = ok ? "DONE" : "FAILED";
+    job.completedAtMs = taskNowMs();
     try {
-      writeCompletionMarker(job, ok, errorMessage);
-    } catch (markerError) {
-      job.markerError = asString(markerError);
+      taskWriteMarker(job.state, ok, errorMessage);
+    } catch (terminalMarkerError) {
+      job.markerError = taskString(terminalMarkerError);
     }
     $.global.EditFlow2_lastRenderJob = job;
     $.global.EditFlow2_activeRenderJob = null;
@@ -242,6 +280,10 @@
       if (completionFile.exists) {
         try { completionFile.remove(); } catch (_) {}
       }
+      var priorOutput = new File(payload.outputPath);
+      if (priorOutput.exists) {
+        try { priorOutput.remove(); } catch (_) {}
+      }
 
       var rqItem = null;
       try {
@@ -265,7 +307,12 @@
         };
         $.global.EditFlow2_activeRenderJob = job;
 
-        var taskId = app.scheduleTask("$.global.EditFlow2_runScheduledRender()", 25, false);
+        /* Prove the host can write the sidecar before reporting SCHEDULED. If the
+         * delayed task never runs, this marker remains SCHEDULED and gives the
+         * desktop runtime deterministic evidence of where execution stopped. */
+        writeImmediateMarker(job, "SCHEDULED", false, null);
+
+        var taskId = app.scheduleTask("EditFlow2_runScheduledRender()", 25, false);
         if (typeof taskId !== "number") throw new Error("After Effects did not return a render task identifier.");
         job.taskId = taskId;
 
@@ -277,12 +324,12 @@
           outputPath: job.outputPath,
           completionPath: job.completionPath,
           taskId: job.taskId,
-          mode: "SCHEDULED_HOST_JOB_V1"
+          mode: "SCHEDULED_HOST_JOB_V2_GLOBAL"
         };
         response.hostProjectRevision = app.project.revision;
         response.diagnostics.durationMs = nowMs() - started;
         response.diagnostics.hostRevisionAfter = app.project.revision;
-        response.diagnostics.notes.push("Render execution was scheduled after CEP evalScript return; completion is reported by a fixed sidecar marker.");
+        response.diagnostics.notes.push("Render execution uses a self-contained global scheduled task; lifecycle is reported by the fixed sidecar marker.");
         response.proofArtifactRefs = [job.completionPath];
         return JSON.stringify(response);
       } catch (setupError) {
