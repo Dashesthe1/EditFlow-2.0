@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const cliPath = "apps/desktop-host/src/m3-mask-p1-p2-cli.ts";
 const acceptancePath = "scripts/windows/run-m3-mask-p1-p2.ps1";
 const selfHostedPath = "scripts/windows/run-m3-mask-self-hosted.ps1";
+const bootstrapPath = "scripts/windows/open-editflow-bridge.jsx";
 const workflowPath = ".github/workflows/m3-real-ae-p1-p2.yml";
 
 test("M3 mask P1/P2 CLI explicitly opts into protocol 1.2 while retaining typed M2 setup", async () => {
@@ -42,13 +43,27 @@ test("M3 PowerShell wrapper requires cleanup and refuses proof overclaim", async
   assert.match(source, /m3-mask-p1-p2-cli\.js/);
 });
 
-test("M3 self-hosted runner owns an isolated AE process and uses only the fixed repository bootstrap", async () => {
+test("shared self-hosted panel bootstrap attempts the menu open synchronously before bounded retries", async () => {
+  const source = await readFile(bootstrapPath, "utf8");
+  assert.match(source, /INITIAL_ATTEMPT_DIRECT/);
+  assert.match(source, /\$\.global\.EditFlow2_selfHostedOpenBridge\(\);/);
+  assert.match(source, /app\.findMenuCommandId\(menuName\)/);
+  assert.match(source, /app\.executeCommand\(commandId\)/);
+  assert.match(source, /EXECUTE_COMMAND_SENT/);
+  assert.match(source, /RETRY_SCHEDULED/);
+  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_selfHostedOpenBridge\(\)"/);
+  assert.doesNotMatch(source, /INITIAL_TASK_SCHEDULED/);
+});
+
+test("M3 self-hosted runner owns an isolated AE process and requires explicit panel-open evidence", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
   assert.match(source, /install-editflow-cep\.ps1/);
   assert.match(source, /open-editflow-bridge\.jsx/);
   assert.match(source, /@\("-r", \$PanelBootstrap\)/);
+  assert.match(source, /EXECUTE_COMMAND_SENT/);
+  assert.match(source, /RETRY_EXHAUSTED/);
   assert.match(source, /run-m3-mask-p1-p2\.ps1/);
   assert.match(source, /Stopping only the isolated After Effects test process set/);
   assert.match(source, /Get-Process -Name "AfterFX".*Stop-Process -Force/);
