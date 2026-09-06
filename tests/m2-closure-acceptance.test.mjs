@@ -9,6 +9,7 @@ import {
   M2_P4_P5_ACCEPTANCE_RUN,
   M2_REAL_AE_ACCEPTANCE_RUN,
   applyM2AcceptedProofEvidence,
+  m2ProofMaturityForCapability,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m2-proof-maturity.js";
 
 test("M2 MCP status exposes the accepted real-AE baseline and enables Adobe writes", () => {
@@ -45,7 +46,7 @@ test("M2 maturity map keeps visual, rollback, structural and transfer evidence d
   assert.equal(promoted.get("ae.layer.transform.set")?.proofMaturity, "VISUAL");
   assert.equal(promoted.get("ae.render.capture")?.proofMaturity, "VISUAL");
   assert.equal(promoted.get("ae.media.import")?.proofMaturity, "ROLLBACK");
-  assert.equal(promoted.get("ae.transaction.undo_last")?.proofMaturity, "ROLLBACK");
+  assert.equal(m2ProofMaturityForCapability("ae.transaction.undo_last"), "ROLLBACK");
   assert.equal(promoted.get("ae.comp.settings.set")?.proofMaturity, "STRUCTURAL");
   assert.equal(promoted.get("ae.expression.set")?.proofMaturity, "STRUCTURAL");
   assert.equal(promoted.get("ae.project.save")?.proofMaturity, "TRANSFER");
