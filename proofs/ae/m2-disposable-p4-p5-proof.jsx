@@ -1,6 +1,10 @@
 /* EditFlow 2.0 M2 P4/P5 proof. RUN ONLY FROM A BLANK UNSAVED PROJECT. */
 (function () {
-  var startedAt = (new Date()).toISOString();
+  function utcTimestamp() {
+    return (new Date()).toUTCString();
+  }
+
+  var startedAt = utcTimestamp();
   var proofFile = new File($.fileName);
   var repoRoot = proofFile.parent.parent.parent;
   var hostScript = new File(repoRoot.fsName + "/packages/adapters/ae-cep/host/editflow_host_current.jsx");
@@ -315,7 +319,7 @@
     status: refused ? "REFUSED" : (errorText ? "FAILED" : (p4 && p5 ? "PASS" : "FAILURE")),
     ok: !refused && !errorText && p4 && p5,
     startedAt: startedAt,
-    completedAt: (new Date()).toISOString(),
+    completedAt: utcTimestamp(),
     adapterProtocolVersion: "1.1.0",
     hostVersion: app.version,
     hostBuild: app.buildNumber !== undefined ? String(app.buildNumber) : null,
