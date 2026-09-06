@@ -2,7 +2,8 @@ param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [int]$TimeoutSeconds = 180,
   [int]$StartupTimeoutSeconds = 90,
-  [int]$BootstrapEvidenceTimeoutSeconds = 30
+  [int]$BootstrapEvidenceTimeoutSeconds = 30,
+  [int]$CommandDeliveryStabilizationSeconds = 6
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,9 +37,14 @@ function Find-ReadyTargetAfterFx {
   foreach ($Candidate in $Candidates) {
     $CandidatePath = $null
     $Ready = $false
+    $WindowTitle = $null
     try {
       $CandidatePath = $Candidate.Path
-      $Ready = $Candidate.Responding -and $Candidate.MainWindowHandle -ne 0
+      $WindowTitle = $Candidate.MainWindowTitle
+      $Ready = $Candidate.Responding `
+        -and $Candidate.MainWindowHandle -ne 0 `
+        -and $WindowTitle `
+        -and $WindowTitle -like "Adobe After Effects*"
     } catch {
       $CandidatePath = $null
       $Ready = $false
@@ -71,6 +77,7 @@ if ($PanelBootstrap -match "\s") {
 if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
 if ($StartupTimeoutSeconds -lt 10) { throw "StartupTimeoutSeconds must be at least 10." }
 if ($BootstrapEvidenceTimeoutSeconds -lt 5) { throw "BootstrapEvidenceTimeoutSeconds must be at least 5." }
+if ($CommandDeliveryStabilizationSeconds -lt 1) { throw "CommandDeliveryStabilizationSeconds must be at least 1." }
 
 $ExistingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
 if ($ExistingAfterFx.Count -gt 0) {
@@ -98,15 +105,24 @@ try {
   }
 
   if ($null -eq $RunningAfterFx) {
-    throw "After Effects did not expose a responsive interactive window within $StartupTimeoutSeconds seconds."
+    throw "After Effects did not expose its responsive project window within $StartupTimeoutSeconds seconds."
   }
 
-  Write-Host ("Phase 1 complete: target AE PID " + $RunningAfterFx.Id + " is responsive. Phase 2 will send only the fixed repository panel bootstrap through -r.")
-  Start-Sleep -Milliseconds 500
+  $ReadyPid = $RunningAfterFx.Id
+  $ReadyTitle = $RunningAfterFx.MainWindowTitle
+  Write-Host ("Phase 1 project window ready: PID " + $ReadyPid + "; title='" + $ReadyTitle + "'. Holding it stable for " + $CommandDeliveryStabilizationSeconds + " seconds before -r delivery.")
+  Start-Sleep -Seconds $CommandDeliveryStabilizationSeconds
+
+  $StableAfterFx = Find-ReadyTargetAfterFx $AfterFxPath
+  if ($null -eq $StableAfterFx -or $StableAfterFx.Id -ne $ReadyPid) {
+    throw "The target After Effects project window did not remain stable through the command-delivery hold."
+  }
+  Write-Host ("Phase 1 complete: target AE PID " + $StableAfterFx.Id + " remains responsive with title='" + $StableAfterFx.MainWindowTitle + "'. Phase 2 will send only the fixed repository panel bootstrap through -r.")
 
   # This is the same two-phase command-delivery shape proven by the M2 P4/P5 PASS:
-  # first cold-launch the owned AE instance, then send one fixed repository script to
-  # that already responsive instance. Do not embed quotes around the raw -r path.
+  # first cold-launch the owned AE instance, wait for a stable project window, then send
+  # one fixed repository script to that already responsive instance. Do not embed quotes
+  # around the raw -r path.
   $Arguments = @("-r", $PanelBootstrap)
   $CommandProcess = Start-Process -FilePath $AfterFxPath -ArgumentList $Arguments -PassThru
   Write-Host ("Phase 2 panel-bootstrap dispatch PID " + $CommandProcess.Id + ".")
@@ -116,7 +132,7 @@ try {
     Start-Sleep -Milliseconds 250
   }
   if (-not (Test-Path $PanelBootstrapLog -PathType Leaf)) {
-    throw "The responsive After Effects instance received the fixed -r panel bootstrap but produced no execution evidence within $BootstrapEvidenceTimeoutSeconds seconds."
+    throw "The stable After Effects project window received the fixed -r panel bootstrap but produced no execution evidence within $BootstrapEvidenceTimeoutSeconds seconds."
   }
 
   Write-Host "After Effects executed the fixed panel bootstrap. The acceptance harness will wait for authenticated EditFlow bridge registration."
