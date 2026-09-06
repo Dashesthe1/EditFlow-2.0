@@ -19,6 +19,7 @@ const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_masks.jsx";
 const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const bridgePath = "packages/adapters/ae-cep/extension/client/bridge.js";
+const runtimeConfigPath = "packages/adapters/ae-cep/extension/client/runtime-config.js";
 
 test("M3 mask protocol 1.2 exposes the first human-parity dependency tranche", () => {
   assert.equal(AE_MASK_PROTOCOL_VERSION_V12, "1.2.0");
@@ -39,14 +40,14 @@ test("M3 mask protocol 1.2 exposes the first human-parity dependency tranche", (
   assert.equal(capabilityForMaskCommandV12("mask.readback"), "ae.mask.readback");
 });
 
-test("declared M3 mask capabilities stay unroutable until authenticated protocol 1.2 negotiation is implemented", () => {
+test("negotiated M3 mask capabilities expose transport but do not inherit real-AE proof maturity", () => {
   assert.equal(M3_MASK_CAPABILITIES_V12.length, AE_MASK_COMMANDS_V12.length);
   for (const capability of M3_MASK_CAPABILITIES_V12) {
     assert.equal(capability.status, "PARTIAL");
     assert.equal(capability.proofMaturity, "DECLARED");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_MASK_ROUTE_ID_V12);
-    assert.equal(capability.routes[0].available, false);
+    assert.equal(capability.routes[0].available, true);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
 });
@@ -159,17 +160,23 @@ test("M3 AE host layer implements mask CRUD, exact Shape geometry, animation, pr
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("current host loader and installer deploy M3 mask code without changing the accepted 1.1 broker session", async () => {
-  const [loader, installer, bridge] = await Promise.all([
+test("current installer and CEP panel negotiate 1.2 while preserving the accepted 1.1 fallback", async () => {
+  const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
     readFile(bridgePath, "utf8"),
+    readFile(runtimeConfigPath, "utf8"),
   ]);
   assert.match(loader, /editflow_host_m3_masks\.jsx/);
   assert.match(loader, /\$\.evalFile\(m3Masks\)/);
   assert.match(installer, /"editflow_host_m3_masks\.jsx"/);
   assert.match(installer, /protocolVersion = "1\.1\.0"/);
-  assert.match(installer, /M3 mask host protocol 1\.2\.0 is deployed but remains broker-gated/);
-  assert.match(bridge, /config\.protocolVersion !== "1\.1\.0"/);
-  assert.match(bridge, /response\.protocolVersion !== "1\.1\.0"/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.2\.0", "1\.1\.0"\)/);
+  assert.match(installer, /highest mutually supported version is negotiated per session/);
+  assert.match(bridge, /supportedProtocolVersions/);
+  assert.match(bridge, /response\.protocolVersion !== request\.protocolVersion/);
+  assert.match(bridge, /Broker negotiated an unsupported CEP protocol/);
+  assert.doesNotMatch(bridge, /response\.protocolVersion !== "1\.1\.0"/);
+  assert.match(runtimeConfig, /schemaVersion: 2/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.2\.0", "1\.1\.0"\]/);
 });
