@@ -138,10 +138,15 @@ test("CEP extension uses the fixed dispatcher and a CEP 12 AE manifest", async (
   assert.match(manifest, /ScriptPath>\.\/host\/bootstrap\.jsx/);
   assert.match(client, /EditFlow2_dispatch\(/);
   assert.match(client, /window\.__adobe_cep__/);
+  assert.match(client, /getSystemPath\("extension"\)/);
+  assert.match(client, /editflow_host_current\.jsx/);
+  assert.match(client, /\$\.evalFile\(hostFile\)/);
   assert.match(client, /X-EditFlow-Token/);
   assert.doesNotMatch(client, /new\s+Function\s*\(/);
   assert.doesNotMatch(client, /\beval\s*\(/);
-  assert.match(bootstrap, /editflow_host_current\.jsx/);
+  assert.match(bootstrap, /EditFlow2_CEP_SCRIPT_PATH_LOADED/);
+  assert.doesNotMatch(bootstrap, /\$\.fileName/);
+  assert.doesNotMatch(bootstrap, /editflow_host_current\.jsx/);
 });
 
 test("Windows CEP installer uses per-user Adobe CEP path and a non-printed random token", async () => {
