@@ -136,7 +136,7 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $BootstrapInfo = Get-Item $CommandBootstrap
 $RunnerProcess = Get-Process -Id $PID
 $RunnerIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);bootstrapPath=$($BootstrapInfo.FullName);bootstrapLength=$($BootstrapInfo.Length);bootstrapWriteUtc=$($BootstrapInfo.LastWriteTimeUtc.ToString('o'));afterFx=$AfterFx;delivery=normal-launch-then-r")
+Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);bootstrapPath=$($BootstrapInfo.FullName);bootstrapLength=$($BootstrapInfo.Length);bootstrapWriteUtc=$($BootstrapInfo.LastWriteTimeUtc.ToString('o'));afterFx=$AfterFx;delivery=normal-launch-then-r-unquoted-path")
 
 Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: the runner will first cold-launch its owned AE 2025 session, then send only the fixed -r wrapper to that existing instance. The proof still REFUSES before mutations unless the project is unsaved and has zero items."
 Write-Host "The proof saves only its disposable project under proofs/artifacts, closes/reopens it, then leaves a new blank project before runner cleanup."
@@ -171,7 +171,10 @@ try {
   Write-StartupDiagnostic "COMMAND_TARGET_READY" ("pid=$($ReadyAfterFx.Id);mainWindowHandle=$($ReadyAfterFx.MainWindowHandle);title=$($ReadyAfterFx.MainWindowTitle)")
   Start-Sleep -Milliseconds 500
 
-  $Arguments = @("-r", ('"' + $CommandBootstrap + '"'))
+  # The generated proof path is inside the runner workspace and contains no spaces.
+  # Pass it as a raw ArgumentList element. Adobe documents that embedded literal
+  # quotes can cause After Effects to close the command process without running the script.
+  $Arguments = @("-r", $CommandBootstrap)
   $CommandProcess = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
   Write-Host ("Phase 2 command-dispatch request PID " + $CommandProcess.Id + ".")
   Write-AeProcessSnapshot "COMMAND_DISPATCH"
@@ -188,7 +191,7 @@ try {
   Write-AeProcessSnapshot "COMMAND_WAIT_END"
 
   if (-not (Test-Path $BootstrapLog -PathType Leaf) -and -not (Test-Path $ResultPath -PathType Leaf)) {
-    throw "The existing responsive After Effects instance received the -r dispatch request but produced neither command-bootstrap evidence nor result.json within $CommandEvidenceTimeoutSeconds seconds."
+    throw "The existing responsive After Effects instance received the unquoted-path -r dispatch request but produced neither command-bootstrap evidence nor result.json within $CommandEvidenceTimeoutSeconds seconds."
   }
 
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
