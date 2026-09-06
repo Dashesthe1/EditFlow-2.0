@@ -31,15 +31,27 @@ test("P4/P5 proof explicitly covers rollback and required stable-identity cases"
   assert.match(source, /transfer_after_reconnect/);
 });
 
-test("P4/P5 Windows runner owns an isolated AE process and refuses pre-existing sessions", async () => {
+test("P4/P5 Windows runner preserves a single pre-existing AE session behind the JSX safety gate", async () => {
   const runner = await readFile(runnerPath, "utf8");
 
   assert.match(runner, /Get-Process -Name "AfterFX"/);
-  assert.match(runner, /Refusing disposable P4\/P5 proof because a pre-existing After Effects session is running/);
+  assert.match(runner, /Count -gt 1/);
+  assert.match(runner, /multiple pre-existing After Effects sessions make the target ambiguous/);
+  assert.match(runner, /Count -eq 1/);
+  assert.match(runner, /blank\/unsaved\/zero-item gate is authoritative/);
+  assert.match(runner, /runner will not close this process/);
   assert.match(runner, /Start-Process -FilePath \$AfterFx -ArgumentList \$Arguments -PassThru/);
+  assert.match(runner, /Leaving pre-existing After Effects PID/);
+  assert.match(runner, /status -eq "REFUSED"/);
+});
+
+test("P4/P5 Windows runner owns and closes AE only when no process existed before launch", async () => {
+  const runner = await readFile(runnerPath, "utf8");
+
+  assert.match(runner, /\$OwnedAfterFx = \$LaunchedAfterFx/);
   assert.match(runner, /\$OwnedAfterFx\.Id/);
   assert.match(runner, /Stop-Process -Id \$OwnedAfterFx\.Id -Force/);
-  assert.match(runner, /status -eq "REFUSED"/);
+  assert.match(runner, /runner does not own it/);
   assert.doesNotMatch(runner, /Start AE first/);
 });
 
