@@ -58,6 +58,7 @@ $HostFiles = @(
   "editflow_json.jsx",
   "editflow_host.jsx",
   "editflow_host_hardening.jsx",
+  "editflow_host_transform_readback.jsx",
   "editflow_host_keyframe_crud.jsx",
   "editflow_host_atomicity.jsx",
   "editflow_host_render_jobs.jsx",
@@ -87,7 +88,7 @@ $ConfigJson = $Config | ConvertTo-Json -Depth 4
 $RuntimeConfigPath = Join-Path $TargetRoot "client\runtime-config.js"
 $CompactConfig = $Config | ConvertTo-Json -Depth 4 -Compress
 $RuntimeConfig = "window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze($CompactConfig);`r`n"
-[System.IO.File]::WriteAllText($RuntimeConfigPath, $RuntimeConfig, $Utf8NoBom)
+[System.IO.File]::WriteAllText($RuntimeConfigPath, $RuntimeConfig + [Environment]::NewLine, $Utf8NoBom)
 
 if (-not $SkipDebugMode) {
   $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
