@@ -1,7 +1,9 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [int]$TimeoutSeconds = 120,
-  [int]$StartupTimeoutSeconds = 90,
+  [int]$StartupTimeoutSeconds = 45,
+  [int]$MaxColdStartAttempts = 2,
+  [int]$RetryCooldownSeconds = 3,
   [int]$BootstrapEvidenceTimeoutSeconds = 30,
   [int]$CommandDeliveryStabilizationSeconds = 6
 )
@@ -66,21 +68,27 @@ function Publish-Evidence {
   }
 }
 
-function Find-ReadyTargetAfterFx {
+function Find-ProjectReadyTargetAfterFx {
   param([string]$ExpectedPath)
   $ResolvedExpected = (Resolve-Path $ExpectedPath).Path
   $Candidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
   foreach ($Candidate in $Candidates) {
     $CandidatePath = $null
     $Ready = $false
+    $WindowTitle = $null
     try {
       $CandidatePath = $Candidate.Path
-      # Match the accepted M2 two-phase readiness contract: the owned target
-      # executable must be responding and have a real main window handle. Do not
-      # require MainWindowTitle; real AE 25.6.6 evidence shows the title can remain
-      # empty while the responding window handle is already stable. The stronger
-      # command-readiness proof is the later fixed-script EXECUTE_COMMAND_SENT gate.
-      $Ready = $Candidate.Responding -and $Candidate.MainWindowHandle -ne 0
+      $WindowTitle = $Candidate.MainWindowTitle
+      # The successful accepted M2 run did not dispatch -r until AE exposed a real
+      # titled project window. Run #5 proved that a responding blank-title splash
+      # window can have a nonzero handle yet still spawn a second AfterFX process
+      # instead of routing -r to the existing instance. Require the proven project
+      # window signal before command delivery; EXECUTE_COMMAND_SENT remains the
+      # stronger downstream proof that the fixed bootstrap actually ran.
+      $Ready = $Candidate.Responding `
+        -and $Candidate.MainWindowHandle -ne 0 `
+        -and $WindowTitle `
+        -and $WindowTitle -like "Adobe After Effects*"
     } catch {
       $CandidatePath = $null
       $Ready = $false
@@ -90,6 +98,58 @@ function Find-ReadyTargetAfterFx {
     }
   }
   return $null
+}
+
+function Stop-OwnedAfterFxSet {
+  param(
+    [string]$StagePrefix,
+    [int]$GraceSeconds = 10
+  )
+
+  $OwnedProcesses = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  if ($OwnedProcesses.Count -eq 0) {
+    Write-StartupDiagnostic ($StagePrefix + "_ALREADY_ZERO") "aeCount=0"
+    return
+  }
+
+  $OwnedIds = ($OwnedProcesses | ForEach-Object { $_.Id }) -join ","
+  Write-Host ("Closing only the runner-owned After Effects process set gracefully: " + $OwnedIds)
+  Write-StartupDiagnostic ($StagePrefix + "_BEGIN") ("pids=" + $OwnedIds)
+
+  foreach ($Owned in $OwnedProcesses) {
+    try {
+      $Closed = $Owned.CloseMainWindow()
+      Write-StartupDiagnostic ($StagePrefix + "_CLOSE_MAIN_WINDOW") ("pid=$($Owned.Id);sent=$Closed")
+    } catch {
+      Write-StartupDiagnostic ($StagePrefix + "_CLOSE_MAIN_WINDOW_ERROR") ("pid=$($Owned.Id);error=$($_.Exception.Message)")
+    }
+  }
+
+  $GraceDeadline = (Get-Date).AddSeconds($GraceSeconds)
+  do {
+    $Remaining = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+    if ($Remaining.Count -eq 0) { break }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $GraceDeadline)
+
+  $Remaining = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  if ($Remaining.Count -gt 0) {
+    $RemainingIds = ($Remaining | ForEach-Object { $_.Id }) -join ","
+    Write-Warning ("Graceful AE close did not finish; force-stopping only runner-owned process set: " + $RemainingIds)
+    Write-StartupDiagnostic ($StagePrefix + "_FORCE_STOP") ("pids=" + $RemainingIds)
+    $Remaining | Stop-Process -Force -ErrorAction SilentlyContinue
+    foreach ($Owned in $Remaining) {
+      Wait-Process -Id $Owned.Id -Timeout 15 -ErrorAction SilentlyContinue
+    }
+  }
+
+  $StillRunning = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  if ($StillRunning.Count -gt 0) {
+    $StillRunningIds = ($StillRunning | ForEach-Object { $_.Id }) -join ","
+    Write-StartupDiagnostic ($StagePrefix + "_FAILED_TO_ZERO") ("pids=" + $StillRunningIds)
+    throw "Runner-owned After Effects process set did not return to zero after bounded cleanup: $StillRunningIds"
+  }
+  Write-StartupDiagnostic ($StagePrefix + "_ZERO_CONFIRMED") "aeCount=0"
 }
 
 if (-not [Environment]::UserInteractive) {
@@ -108,7 +168,9 @@ if ($PanelBootstrap -match "\s") {
   throw "The fixed AE -r bootstrap path contains whitespace. The proven two-phase target route requires an unquoted workspace path: $PanelBootstrap"
 }
 if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
-if ($StartupTimeoutSeconds -lt 10) { throw "StartupTimeoutSeconds must be at least 10." }
+if ($StartupTimeoutSeconds -lt 20) { throw "StartupTimeoutSeconds must be at least 20 seconds per cold-start attempt." }
+if ($MaxColdStartAttempts -lt 1 -or $MaxColdStartAttempts -gt 2) { throw "MaxColdStartAttempts must be 1 or 2." }
+if ($RetryCooldownSeconds -lt 1 -or $RetryCooldownSeconds -gt 10) { throw "RetryCooldownSeconds must be between 1 and 10." }
 if ($BootstrapEvidenceTimeoutSeconds -lt 5) { throw "BootstrapEvidenceTimeoutSeconds must be at least 5." }
 if ($CommandDeliveryStabilizationSeconds -lt 1) { throw "CommandDeliveryStabilizationSeconds must be at least 1." }
 
@@ -124,46 +186,64 @@ if (Test-Path $StartupDiagnosticsPath -PathType Leaf) { Remove-Item $StartupDiag
 
 $RunnerProcess = Get-Process -Id $PID
 $RunnerIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);afterFx=$AfterFxPath")
+Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);afterFx=$AfterFxPath;startupAttempts=$MaxColdStartAttempts;startupTimeoutSeconds=$StartupTimeoutSeconds")
 
 Write-Host "Installing the checked-out EditFlow CEP bridge before launching the isolated M3 AE proof..."
 & $Installer
 
 try {
-  Write-Host "Phase 1: cold-launching a fresh declared-target After Effects instance without a script argument..."
-  $LaunchProcess = Start-Process -FilePath $AfterFxPath -PassThru
-  $StartedAfterFx = $true
-  Write-Host ("Cold-launch request PID " + $LaunchProcess.Id + ".")
-  Write-AeProcessSnapshot "COLD_LAUNCH"
-
-  $Deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
-  $NextStartupDiagnosticAt = Get-Date
   $RunningAfterFx = $null
-  while ((Get-Date) -lt $Deadline) {
-    $RunningAfterFx = Find-ReadyTargetAfterFx $AfterFxPath
-    if ($null -ne $RunningAfterFx) { break }
-    if ((Get-Date) -ge $NextStartupDiagnosticAt) {
-      Write-AeProcessSnapshot "COLD_START_WAIT"
-      $NextStartupDiagnosticAt = (Get-Date).AddSeconds(5)
+
+  for ($Attempt = 1; $Attempt -le $MaxColdStartAttempts; $Attempt++) {
+    Write-Host ("Phase 1 attempt " + $Attempt + "/" + $MaxColdStartAttempts + ": cold-launching the declared-target After Effects instance without a script argument...")
+    Write-StartupDiagnostic "COLD_START_ATTEMPT_BEGIN" ("attempt=$Attempt;maxAttempts=$MaxColdStartAttempts")
+    $LaunchProcess = Start-Process -FilePath $AfterFxPath -PassThru
+    $StartedAfterFx = $true
+    Write-Host ("Cold-launch request PID " + $LaunchProcess.Id + ".")
+    Write-AeProcessSnapshot ("COLD_LAUNCH_ATTEMPT_" + $Attempt)
+
+    $Deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
+    $NextStartupDiagnosticAt = Get-Date
+    while ((Get-Date) -lt $Deadline) {
+      $RunningAfterFx = Find-ProjectReadyTargetAfterFx $AfterFxPath
+      if ($null -ne $RunningAfterFx) { break }
+      if ((Get-Date) -ge $NextStartupDiagnosticAt) {
+        Write-AeProcessSnapshot ("COLD_START_WAIT_ATTEMPT_" + $Attempt)
+        $NextStartupDiagnosticAt = (Get-Date).AddSeconds(5)
+      }
+      Start-Sleep -Milliseconds 500
     }
-    Start-Sleep -Milliseconds 500
+    Write-AeProcessSnapshot ("COLD_START_READY_CHECK_ATTEMPT_" + $Attempt)
+
+    if ($null -ne $RunningAfterFx) {
+      Write-StartupDiagnostic "COLD_START_PROJECT_READY" ("attempt=$Attempt;pid=$($RunningAfterFx.Id);title=$($RunningAfterFx.MainWindowTitle)")
+      break
+    }
+
+    Write-StartupDiagnostic "COLD_START_ATTEMPT_FAILED" ("attempt=$Attempt;timeoutSeconds=$StartupTimeoutSeconds")
+    if ($Attempt -lt $MaxColdStartAttempts) {
+      Write-Warning ("After Effects did not reach a titled project-ready window on cold-start attempt " + $Attempt + ". Recycling only the zero-baseline runner-owned AE process set, then retrying once.")
+      Write-StartupDiagnostic "COLD_START_RETRY" ("failedAttempt=$Attempt;nextAttempt=" + ($Attempt + 1))
+      Stop-OwnedAfterFxSet -StagePrefix ("RETRY_CLEANUP_ATTEMPT_" + $Attempt)
+      Start-Sleep -Seconds $RetryCooldownSeconds
+      $RunningAfterFx = $null
+    }
   }
-  Write-AeProcessSnapshot "COLD_START_READY_CHECK"
 
   if ($null -eq $RunningAfterFx) {
-    throw "After Effects did not expose a responsive target window within $StartupTimeoutSeconds seconds. Startup diagnostics were preserved for evidence."
+    throw "After Effects did not expose the proven titled project-ready window after $MaxColdStartAttempts bounded cold-start attempt(s). Startup diagnostics were preserved for evidence; command delivery was not attempted."
   }
 
   $ReadyPid = $RunningAfterFx.Id
   $ReadyTitle = $RunningAfterFx.MainWindowTitle
   Write-StartupDiagnostic "COMMAND_TARGET_READY" ("pid=$ReadyPid;mainWindowHandle=$($RunningAfterFx.MainWindowHandle);title=$ReadyTitle")
-  Write-Host ("Phase 1 responsive target window ready: PID " + $ReadyPid + "; title='" + $ReadyTitle + "'. Holding it stable for " + $CommandDeliveryStabilizationSeconds + " seconds before -r delivery.")
+  Write-Host ("Phase 1 project-ready window confirmed: PID " + $ReadyPid + "; title='" + $ReadyTitle + "'. Holding it stable for " + $CommandDeliveryStabilizationSeconds + " seconds before -r delivery.")
   Start-Sleep -Seconds $CommandDeliveryStabilizationSeconds
 
-  $StableAfterFx = Find-ReadyTargetAfterFx $AfterFxPath
+  $StableAfterFx = Find-ProjectReadyTargetAfterFx $AfterFxPath
   if ($null -eq $StableAfterFx -or $StableAfterFx.Id -ne $ReadyPid) {
     Write-AeProcessSnapshot "COMMAND_TARGET_STABILITY_FAILURE"
-    throw "The target After Effects window did not remain stable through the command-delivery hold."
+    throw "The target After Effects titled project window did not remain stable through the command-delivery hold."
   }
 
   $Arguments = @("-r", $PanelBootstrap)
@@ -194,45 +274,18 @@ try {
   }
   if (-not $BootstrapSucceeded) {
     Write-AeProcessSnapshot "PANEL_BOOTSTRAP_EVIDENCE_TIMEOUT"
-    throw "After Effects executed the fixed panel bootstrap, but no EXECUTE_COMMAND_SENT evidence appeared within $BootstrapEvidenceTimeoutSeconds seconds."
+    throw "After Effects did not produce fixed-bootstrap EXECUTE_COMMAND_SENT evidence within $BootstrapEvidenceTimeoutSeconds seconds."
   }
 
   Write-Host "After Effects executed the fixed panel bootstrap and proved the EditFlow panel open command was sent. The M3 harness will wait for authenticated protocol 1.2 registration."
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
 } finally {
   Write-AeProcessSnapshot "CLEANUP_BEGIN"
-  Publish-Evidence
-  if ($StartedAfterFx) {
-    $OwnedProcesses = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
-    if ($OwnedProcesses.Count -gt 0) {
-      $OwnedIds = ($OwnedProcesses | ForEach-Object { $_.Id }) -join ","
-      Write-Host ("Closing only the isolated After Effects test process set gracefully: " + $OwnedIds)
-      foreach ($Owned in $OwnedProcesses) {
-        try {
-          $Closed = $Owned.CloseMainWindow()
-          Write-StartupDiagnostic "CLEANUP_CLOSE_MAIN_WINDOW" ("pid=$($Owned.Id);sent=$Closed")
-        } catch {
-          Write-StartupDiagnostic "CLEANUP_CLOSE_MAIN_WINDOW_ERROR" ("pid=$($Owned.Id);error=$($_.Exception.Message)")
-        }
-      }
-
-      $GraceDeadline = (Get-Date).AddSeconds(10)
-      do {
-        $Remaining = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
-        if ($Remaining.Count -eq 0) { break }
-        Start-Sleep -Milliseconds 250
-      } while ((Get-Date) -lt $GraceDeadline)
-
-      $Remaining = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
-      if ($Remaining.Count -gt 0) {
-        $RemainingIds = ($Remaining | ForEach-Object { $_.Id }) -join ","
-        Write-Warning ("Graceful AE close did not finish; force-stopping only runner-owned process set: " + $RemainingIds)
-        Write-StartupDiagnostic "CLEANUP_FORCE_STOP" ("pids=$RemainingIds")
-        $Remaining | Stop-Process -Force -ErrorAction SilentlyContinue
-        foreach ($Owned in $Remaining) {
-          Wait-Process -Id $Owned.Id -Timeout 15 -ErrorAction SilentlyContinue
-        }
-      }
+  try {
+    if ($StartedAfterFx) {
+      Stop-OwnedAfterFxSet -StagePrefix "FINAL_CLEANUP"
     }
+  } finally {
+    Publish-Evidence
   }
 }
