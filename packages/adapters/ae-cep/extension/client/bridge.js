@@ -7,7 +7,14 @@
   var protocolEl = document.getElementById("protocol");
   var stopped = false;
   var sessionId = null;
+  var connectionGeneration = 0;
   var pollDelayMs = 125;
+  var reconnectDelayMs = 750;
+  var livenessDelayMs = 500;
+  var connectInFlight = false;
+  var reconnectTimer = null;
+  var livenessStarted = false;
+  var hostReady = false;
   var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
@@ -125,9 +132,13 @@
       })
     }).then(function (result) {
       sessionId = result.value.sessionId;
+      connectionGeneration += 1;
+      var generation = connectionGeneration;
       brokerEl.textContent = "127.0.0.1:" + config.port;
       protocolEl.textContent = result.value.protocolVersion;
       setStatus("connected", "Connected to local EditFlow runtime");
+      schedulePoll(generation);
+      return generation;
     });
   }
 
@@ -165,14 +176,14 @@
     });
   }
 
-  function postResponse(response) {
+  function postResponse(response, responseSessionId) {
     return requestJson("/v1/response", {
       method: "POST",
-      body: JSON.stringify({ sessionId: sessionId, response: response })
+      body: JSON.stringify({ sessionId: responseSessionId, response: response })
     });
   }
 
-  function postTransportFailure(request, error) {
+  function postTransportFailure(request, error, responseSessionId) {
     var message = error && error.message ? error.message : String(error);
     return postResponse({
       protocolVersion: "1.1.0",
@@ -199,31 +210,109 @@
         notes: ["Failure occurred in the CEP client transport before a valid host response was returned."]
       },
       proofArtifactRefs: []
-    });
+    }, responseSessionId);
   }
 
-  function pollOnce() {
-    if (stopped || !sessionId) return Promise.resolve();
-    return requestJson("/v1/next?sessionId=" + encodeURIComponent(sessionId), { method: "GET" })
+  function pollOnce(generation) {
+    if (stopped || !sessionId || generation !== connectionGeneration) return Promise.resolve();
+    var leasedSessionId = sessionId;
+    return requestJson("/v1/next?sessionId=" + encodeURIComponent(leasedSessionId), { method: "GET" })
       .then(function (result) {
+        if (generation !== connectionGeneration) return null;
         if (result.status === 204) return null;
         return evalHostDispatcher(result.value)
-          .then(postResponse)
-          .catch(function (error) { return postTransportFailure(result.value, error); });
+          .then(function (response) {
+            if (generation !== connectionGeneration) return null;
+            return postResponse(response, leasedSessionId);
+          })
+          .catch(function (error) {
+            if (generation !== connectionGeneration) return null;
+            return postTransportFailure(result.value, error, leasedSessionId);
+          });
       });
   }
 
-  function schedulePoll() {
-    if (stopped) return;
+  function scheduleReconnect(delayMs) {
+    if (stopped || reconnectTimer !== null) return;
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connect();
+    }, delayMs === undefined ? reconnectDelayMs : delayMs);
+  }
+
+  function schedulePoll(generation) {
+    if (stopped || generation !== connectionGeneration) return;
     setTimeout(function () {
-      pollOnce()
-        .then(schedulePoll)
+      if (stopped || generation !== connectionGeneration) return;
+      pollOnce(generation)
+        .then(function () { schedulePoll(generation); })
         .catch(function (error) {
+          if (generation !== connectionGeneration) return;
           sessionId = null;
           setStatus("error", "Bridge disconnected: " + error.message);
-          setTimeout(start, 750);
+          scheduleReconnect(reconnectDelayMs);
         });
     }, pollDelayMs);
+  }
+
+  function livenessOnce() {
+    if (stopped) return Promise.resolve();
+    if (!sessionId) {
+      scheduleReconnect(0);
+      return Promise.resolve();
+    }
+
+    var generation = connectionGeneration;
+    var observedSessionId = sessionId;
+    return requestJson("/v1/status", { method: "GET" })
+      .then(function (result) {
+        if (generation !== connectionGeneration) return;
+        var value = result.value || {};
+        var remoteSession = value.session || null;
+        if (value.panelConnected !== true || !remoteSession || remoteSession.sessionId !== observedSessionId) {
+          sessionId = null;
+          setStatus("error", "Bridge session changed; reconnecting to local EditFlow runtime.");
+          scheduleReconnect(0);
+        }
+      })
+      .catch(function (error) {
+        if (generation !== connectionGeneration) return;
+        sessionId = null;
+        setStatus("error", "Bridge disconnected: " + error.message);
+        scheduleReconnect(0);
+      });
+  }
+
+  function scheduleLiveness() {
+    if (stopped) return;
+    setTimeout(function () {
+      livenessOnce()
+        .then(scheduleLiveness)
+        .catch(function () { scheduleLiveness(); });
+    }, livenessDelayMs);
+  }
+
+  function connect() {
+    if (stopped || connectInFlight) return;
+    connectInFlight = true;
+
+    var ready = hostReady
+      ? Promise.resolve()
+      : ensureHostDispatcher().then(function () { hostReady = true; });
+
+    ready
+      .then(register)
+      .then(function () {
+        connectInFlight = false;
+      })
+      .catch(function (error) {
+        connectInFlight = false;
+        sessionId = null;
+        var message = error && error.message ? error.message : String(error);
+        if (message.indexOf("Host bootstrap:") === 0) setStatus("error", message);
+        else setStatus("error", "Local runtime unavailable: " + message);
+        scheduleReconnect(reconnectDelayMs);
+      });
   }
 
   function start() {
@@ -235,16 +324,11 @@
       return;
     }
 
-    ensureHostDispatcher()
-      .then(register)
-      .then(schedulePoll)
-      .catch(function (error) {
-        sessionId = null;
-        var message = error && error.message ? error.message : String(error);
-        if (message.indexOf("Host bootstrap:") === 0) setStatus("error", message);
-        else setStatus("error", "Local runtime unavailable: " + message);
-        setTimeout(start, 750);
-      });
+    if (!livenessStarted) {
+      livenessStarted = true;
+      scheduleLiveness();
+    }
+    connect();
   }
 
   window.addEventListener("beforeunload", function () { stopped = true; });
