@@ -16,6 +16,13 @@
     throw new Error("EditFlow JSON runtime failed to register.");
   }
 
+  /* After Effects ExtendScript does not guarantee a native JSON object. Install our
+   * standards-shaped codec only when JSON is absent so checked-in proof scripts and
+   * other EditFlow host code do not depend on another Adobe panel having polyfilled it.
+   * Never overwrite a JSON implementation that already exists in the shared host.
+   */
+  if (typeof $.global.JSON === "undefined") $.global.JSON = $.global.EditFlow2_JSON;
+
   $.evalFile(base);
   $.evalFile(hardening);
   $.evalFile(atomicity);
@@ -23,9 +30,9 @@
     throw new Error("EditFlow current AE dispatcher failed to register.");
   }
 
-  /* The legacy host layers use JSON.parse/stringify internally. ExtendScript does not
-   * guarantee a native JSON object, and other Adobe panels can add/remove one. Keep the
-   * codec scoped to one EditFlow call so we do not permanently alter the shared host global.
+  /* The legacy host layers use JSON.parse/stringify internally. Other Adobe panels can
+   * replace/remove the shared JSON object after EditFlow loads, so bind our codec for the
+   * duration of every EditFlow dispatch and restore the prior global afterward.
    */
   var dispatchWithAmbientJson = $.global.EditFlow2_dispatch;
   $.global.EditFlow2_dispatch = function (requestJson) {
