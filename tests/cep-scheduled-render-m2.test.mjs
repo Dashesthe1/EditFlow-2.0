@@ -30,11 +30,13 @@ test("scheduled entrypoint is self-contained for AE global-workspace execution",
 
   assert.match(scheduled, /function taskNowMs\(\)/);
   assert.match(scheduled, /function taskString\(value\)/);
+  assert.match(scheduled, /function taskQuote\(value\)/);
   assert.match(scheduled, /function taskWriteMarker\(status, ok, errorMessage\)/);
   assert.match(scheduled, /function taskCleanupQueueItem\(\)/);
   assert.doesNotMatch(scheduled, /\bnowMs\(\)/);
   assert.doesNotMatch(scheduled, /\basString\(/);
   assert.doesNotMatch(scheduled, /\bwriteImmediateMarker\(/);
+  assert.doesNotMatch(scheduled, /EditFlow2_JSON/);
 });
 
 test("scheduled render writes deterministic lifecycle evidence before, during, and after render", async () => {
@@ -43,8 +45,8 @@ test("scheduled render writes deterministic lifecycle evidence before, during, a
   assert.match(source, /writeImmediateMarker\(job, "SCHEDULED", false, null\)/);
   assert.match(source, /taskWriteMarker\("RUNNING", false, null\)/);
   assert.match(source, /taskWriteMarker\(job\.state, ok, errorMessage\)/);
-  assert.match(source, /completedAtMs:/);
-  assert.match(source, /queueItemRemoved: job\.queueItemRemoved === true/);
+  assert.match(source, /"\\\"completedAtMs\\\":" \+ taskNowMs\(\)/);
+  assert.match(source, /"\\\"queueItemRemoved\\\":" \+ \(job\.queueItemRemoved === true \? "true" : "false"\)/);
 });
 
 test("bounded scheduled render isolates existing Render Queue, removes stale output, and reports cleanup", async () => {
@@ -55,7 +57,7 @@ test("bounded scheduled render isolates existing Render Queue, removes stale out
   assert.match(source, /priorOutput\.exists/);
   assert.match(source, /priorOutput\.remove\(\)/);
   assert.match(source, /job\.rqItem\.remove\(\)/);
-  assert.match(source, /queueItemRemoved: job\.queueItemRemoved === true/);
+  assert.match(source, /queueItemRemoved/);
   assert.match(source, /RQItemStatus\.DONE/);
   assert.match(source, /output\.exists/);
 });
