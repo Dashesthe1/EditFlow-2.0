@@ -8,6 +8,12 @@ import {
   type AeAdapterResponseV11,
   type AeAdapterTransportV11,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
+import {
+  AE_MASK_PROTOCOL_VERSION_V12,
+  type AeMaskRequestV12,
+  type AeMaskResponseV12,
+  type AeMaskTransportV12,
+} from "../../../packages/adapters/ae-cep/src/protocol-v1_2.js";
 
 export interface LoopbackCepBrokerOptions {
   readonly port: number;
@@ -20,20 +26,27 @@ export interface LoopbackCepBrokerOptions {
 export interface LoopbackCepPanelSession {
   readonly sessionId: string;
   readonly protocolVersion: string;
+  readonly supportedProtocolVersions: readonly string[];
   readonly extensionId: string;
   readonly extensionVersion: string;
   readonly registeredAt: string;
   readonly lastSeenAt: string;
 }
 
+type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12;
+type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12;
+
 interface PendingCommand {
-  readonly request: AeAdapterRequestV11;
-  readonly resolve: (response: AeAdapterResponseV11) => void;
+  readonly request: BrokerRequest;
+  readonly resolve: (response: BrokerResponse) => void;
   readonly reject: (error: Error) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
   leasedAt: number | null;
   leasedSessionId: string | null;
 }
+
+const BROKER_SUPPORTED_PROTOCOLS = [AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
+const brokerProtocolSet = new Set<string>(BROKER_SUPPORTED_PROTOCOLS);
 
 const jsonResponse = (res: ServerResponse, status: number, value: unknown): void => {
   const body = JSON.stringify(value);
@@ -73,7 +86,20 @@ const asSingleHeader = (value: string | string[] | undefined): string =>
 const nowIso = (): string => new Date().toISOString();
 const RENDER_CAPTURE_TIMEOUT_FLOOR_MS = 180_000;
 
-export class LoopbackCepBroker implements AeAdapterTransportV11 {
+const offeredProtocolVersions = (body: Record<string, unknown>): string[] => {
+  const advertised = body["supportedProtocolVersions"];
+  const values = Array.isArray(advertised)
+    ? advertised.filter((value): value is string => typeof value === "string")
+    : typeof body["protocolVersion"] === "string"
+      ? [body["protocolVersion"]]
+      : [];
+  return [...new Set(values)];
+};
+
+const negotiateProtocol = (offered: readonly string[]): string | null =>
+  BROKER_SUPPORTED_PROTOCOLS.find((protocol) => offered.includes(protocol)) ?? null;
+
+export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12 {
   readonly options: Required<LoopbackCepBrokerOptions>;
   #server: Server | null = null;
   #port = 0;
@@ -148,10 +174,15 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
     throw new Error("CEP_PANEL_REGISTRATION_TIMEOUT");
   }
 
-  async dispatch(request: AeAdapterRequestV11): Promise<AeAdapterResponseV11> {
+  async dispatch(request: AeAdapterRequestV11): Promise<AeAdapterResponseV11>;
+  async dispatch(request: AeMaskRequestV12): Promise<AeMaskResponseV12>;
+  async dispatch(request: BrokerRequest): Promise<BrokerResponse> {
     if (this.#server === null) throw new Error("CEP_BROKER_NOT_STARTED");
-    if (request.protocolVersion !== AE_ADAPTER_PROTOCOL_VERSION_V11) {
-      throw new Error("CEP_BROKER_PROTOCOL_MISMATCH");
+    if (!brokerProtocolSet.has(request.protocolVersion)) {
+      throw new Error(`CEP_BROKER_PROTOCOL_MISMATCH: ${request.protocolVersion}`);
+    }
+    if (this.#session !== null && !this.#session.supportedProtocolVersions.includes(request.protocolVersion)) {
+      throw new Error(`CEP_BROKER_PROTOCOL_UNAVAILABLE: ${request.protocolVersion}`);
     }
     if (this.#pending.has(request.requestId)) {
       throw new Error(`CEP_DUPLICATE_REQUEST_ID: ${request.requestId}`);
@@ -161,7 +192,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
       ? Math.max(this.options.commandTimeoutMs, RENDER_CAPTURE_TIMEOUT_FLOOR_MS)
       : this.options.commandTimeoutMs;
 
-    return await new Promise<AeAdapterResponseV11>((resolve, reject) => {
+    return await new Promise<BrokerResponse>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.#pending.delete(request.requestId);
         this.#queue = this.#queue.filter((id) => id !== request.requestId);
@@ -201,11 +232,12 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
     this.#session = { ...this.#session, lastSeenAt: nowIso() };
   }
 
-  #nextLeasable(): PendingCommand | null {
+  #nextLeasable(session: LoopbackCepPanelSession): PendingCommand | null {
     const now = Date.now();
     for (const requestId of this.#queue) {
       const pending = this.#pending.get(requestId);
       if (pending === undefined) continue;
+      if (!session.supportedProtocolVersions.includes(pending.request.protocolVersion)) continue;
       if (pending.leasedAt === null || now - pending.leasedAt >= this.options.commandLeaseMs) return pending;
     }
     return null;
@@ -226,8 +258,13 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
     try {
       if (req.method === "POST" && url.pathname === "/v1/register") {
         const body = await readJson(req) as Record<string, unknown>;
-        if (body["protocolVersion"] !== AE_ADAPTER_PROTOCOL_VERSION_V11) {
-          jsonResponse(res, 409, { error: "PROTOCOL_VERSION_MISMATCH" });
+        const offered = offeredProtocolVersions(body);
+        const negotiated = negotiateProtocol(offered);
+        if (negotiated === null) {
+          jsonResponse(res, 409, {
+            error: "PROTOCOL_VERSION_MISMATCH",
+            supportedProtocolVersions: BROKER_SUPPORTED_PROTOCOLS,
+          });
           return;
         }
         if (body["extensionId"] !== this.options.expectedExtensionId) {
@@ -238,10 +275,12 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
           jsonResponse(res, 400, { error: "EXTENSION_VERSION_REQUIRED" });
           return;
         }
+        const supportedProtocolVersions = offered.filter((protocol) => brokerProtocolSet.has(protocol));
         const timestamp = nowIso();
         this.#session = {
           sessionId: randomUUID(),
-          protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
+          protocolVersion: negotiated,
+          supportedProtocolVersions,
           extensionId: body["extensionId"],
           extensionVersion: body["extensionVersion"],
           registeredAt: timestamp,
@@ -253,7 +292,8 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
         }
         jsonResponse(res, 200, {
           sessionId: this.#session.sessionId,
-          protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
+          protocolVersion: negotiated,
+          supportedProtocolVersions: BROKER_SUPPORTED_PROTOCOLS,
         });
         return;
       }
@@ -265,7 +305,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
           return;
         }
         this.#touchSession();
-        const pending = this.#nextLeasable();
+        const pending = this.#nextLeasable(session);
         if (pending === null) {
           emptyResponse(res, 204);
           return;
@@ -279,12 +319,13 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
       if (req.method === "POST" && url.pathname === "/v1/response") {
         const body = await readJson(req) as Record<string, unknown>;
         const sessionId = typeof body["sessionId"] === "string" ? body["sessionId"] : null;
-        if (this.#validateSession(sessionId) === null) {
+        const session = this.#validateSession(sessionId);
+        if (session === null) {
           jsonResponse(res, 409, { error: "CEP_SESSION_INVALID" });
           return;
         }
         this.#touchSession();
-        const response = body["response"] as AeAdapterResponseV11 | undefined;
+        const response = body["response"] as BrokerResponse | undefined;
         if (response === undefined || response === null || typeof response !== "object") {
           jsonResponse(res, 400, { error: "CEP_RESPONSE_REQUIRED" });
           return;
@@ -294,8 +335,12 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
           jsonResponse(res, 404, { error: "CEP_REQUEST_NOT_PENDING" });
           return;
         }
+        if (!session.supportedProtocolVersions.includes(response.protocolVersion)) {
+          jsonResponse(res, 409, { error: "CEP_RESPONSE_PROTOCOL_NOT_NEGOTIATED" });
+          return;
+        }
         if (
-          response.protocolVersion !== AE_ADAPTER_PROTOCOL_VERSION_V11
+          response.protocolVersion !== pending.request.protocolVersion
           || response.operationId !== pending.request.operationId
           || response.transactionId !== pending.request.transactionId
           || response.capabilityId !== pending.request.capabilityId
@@ -314,7 +359,8 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
 
       if (req.method === "GET" && url.pathname === "/v1/status") {
         jsonResponse(res, 200, {
-          protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
+          protocolVersion: this.#session?.protocolVersion ?? null,
+          supportedProtocolVersions: BROKER_SUPPORTED_PROTOCOLS,
           panelConnected: this.#session !== null,
           pendingCommands: this.#pending.size,
           session: this.#session,

@@ -74,11 +74,14 @@ foreach ($FileName in $HostFiles) {
 }
 
 $Config = [ordered]@{
-  schemaVersion = 1
+  schemaVersion = 2
   host = "127.0.0.1"
   port = $Port
   token = $Token
+  # Keep the legacy single-version field at the accepted M2 value so an older local
+  # broker can still reject safely rather than being told that M2 itself changed.
   protocolVersion = "1.1.0"
+  supportedProtocolVersions = @("1.2.0", "1.1.0")
   extensionId = $ExtensionId
   extensionVersion = $ExtensionVersion
 }
@@ -100,8 +103,8 @@ if (-not $SkipDebugMode) {
 Write-Host "EditFlow 2.0 CEP bridge installed."
 Write-Host "Extension: $TargetRoot"
 Write-Host "Runtime config: $ConfigPath"
-Write-Host "Broker protocol: 1.1.0"
-Write-Host "M3 mask host protocol 1.2.0 is deployed but remains broker-gated until negotiated transport support is enabled."
+Write-Host "Broker protocols: 1.2.0, 1.1.0 (highest mutually supported version is negotiated per session)"
+Write-Host "M3 mask host protocol 1.2.0 is enabled only when the authenticated broker session advertises it."
 Write-Host "Broker: 127.0.0.1:$Port"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }
 if ($TokenWasPreserved) {

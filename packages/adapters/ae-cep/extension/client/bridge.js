@@ -7,6 +7,7 @@
   var protocolEl = document.getElementById("protocol");
   var stopped = false;
   var sessionId = null;
+  var negotiatedProtocolVersion = null;
   var connectionGeneration = 0;
   var pollDelayMs = 125;
   var reconnectDelayMs = 750;
@@ -18,14 +19,28 @@
   var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
+  var KNOWN_PROTOCOLS = ["1.2.0", "1.1.0"];
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
     statusEl.textContent = text;
   }
 
+  function supportedProtocolVersions() {
+    var configured = Array.isArray(config.supportedProtocolVersions)
+      ? config.supportedProtocolVersions.slice()
+      : typeof config.protocolVersion === "string"
+        ? [config.protocolVersion]
+        : [];
+    var result = [];
+    configured.forEach(function (protocol) {
+      if (KNOWN_PROTOCOLS.indexOf(protocol) >= 0 && result.indexOf(protocol) < 0) result.push(protocol);
+    });
+    return result;
+  }
+
   function assertConfig() {
-    if (config.protocolVersion !== "1.1.0") throw new Error("Unsupported EditFlow CEP protocol configuration.");
+    if (supportedProtocolVersions().length === 0) throw new Error("Unsupported EditFlow CEP protocol configuration.");
     if (config.host !== "127.0.0.1") throw new Error("EditFlow CEP broker host must be 127.0.0.1.");
     if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("EditFlow CEP broker port is not configured.");
     if (typeof config.token !== "string" || config.token.length < 32) throw new Error("EditFlow CEP broker token is not configured.");
@@ -123,19 +138,25 @@
   }
 
   function register() {
+    var supported = supportedProtocolVersions();
     return requestJson("/v1/register", {
       method: "POST",
       body: JSON.stringify({
-        protocolVersion: "1.1.0",
+        protocolVersion: config.protocolVersion || supported[supported.length - 1],
+        supportedProtocolVersions: supported,
         extensionId: config.extensionId,
         extensionVersion: config.extensionVersion
       })
     }).then(function (result) {
+      if (!result.value || supported.indexOf(result.value.protocolVersion) < 0) {
+        throw new Error("Broker negotiated an unsupported CEP protocol.");
+      }
       sessionId = result.value.sessionId;
+      negotiatedProtocolVersion = result.value.protocolVersion;
       connectionGeneration += 1;
       var generation = connectionGeneration;
       brokerEl.textContent = "127.0.0.1:" + config.port;
-      protocolEl.textContent = result.value.protocolVersion;
+      protocolEl.textContent = negotiatedProtocolVersion;
       setStatus("connected", "Connected to local EditFlow runtime");
       schedulePoll(generation);
       return generation;
@@ -147,6 +168,10 @@
       var cep = window.__adobe_cep__;
       if (!cep || typeof cep.evalScript !== "function") {
         reject(new Error("CEP evalScript is unavailable in this panel context."));
+        return;
+      }
+      if (!request || supportedProtocolVersions().indexOf(request.protocolVersion) < 0) {
+        reject(new Error("Broker leased an unsupported EditFlow protocol request."));
         return;
       }
       var requestJson = JSON.stringify(request);
@@ -164,7 +189,7 @@
           if (raw.indexOf(HOST_ERROR_PREFIX) === 0) throw new Error(raw.substring(HOST_ERROR_PREFIX.length));
           if (raw.length === 0) throw new Error("After Effects dispatcher returned an empty evalScript result.");
           var response = JSON.parse(raw);
-          if (response.protocolVersion !== "1.1.0") throw new Error("After Effects dispatcher protocol mismatch.");
+          if (response.protocolVersion !== request.protocolVersion) throw new Error("After Effects dispatcher protocol mismatch.");
           if (response.requestId !== request.requestId || response.operationId !== request.operationId || response.command !== request.command) {
             throw new Error("After Effects dispatcher correlation mismatch.");
           }
@@ -186,7 +211,7 @@
   function postTransportFailure(request, error, responseSessionId) {
     var message = error && error.message ? error.message : String(error);
     return postResponse({
-      protocolVersion: "1.1.0",
+      protocolVersion: request.protocolVersion,
       requestId: request.requestId,
       transactionId: request.transactionId,
       operationId: request.operationId,
@@ -204,7 +229,7 @@
       environmentProbe: null,
       hostProjectRevision: null,
       diagnostics: {
-        adapterProtocolVersion: "1.1.0",
+        adapterProtocolVersion: request.protocolVersion,
         adapterBuild: config.extensionVersion,
         command: request.command,
         notes: ["Failure occurred in the CEP client transport before a valid host response was returned."]
@@ -249,6 +274,7 @@
         .catch(function (error) {
           if (generation !== connectionGeneration) return;
           sessionId = null;
+          negotiatedProtocolVersion = null;
           setStatus("error", "Bridge disconnected: " + error.message);
           scheduleReconnect(reconnectDelayMs);
         });
@@ -271,6 +297,7 @@
         var remoteSession = value.session || null;
         if (value.panelConnected !== true || !remoteSession || remoteSession.sessionId !== observedSessionId) {
           sessionId = null;
+          negotiatedProtocolVersion = null;
           setStatus("error", "Bridge session changed; reconnecting to local EditFlow runtime.");
           scheduleReconnect(0);
         }
@@ -278,6 +305,7 @@
       .catch(function (error) {
         if (generation !== connectionGeneration) return;
         sessionId = null;
+        negotiatedProtocolVersion = null;
         setStatus("error", "Bridge disconnected: " + error.message);
         scheduleReconnect(0);
       });
@@ -308,6 +336,7 @@
       .catch(function (error) {
         connectInFlight = false;
         sessionId = null;
+        negotiatedProtocolVersion = null;
         var message = error && error.message ? error.message : String(error);
         if (message.indexOf("Host bootstrap:") === 0) setStatus("error", message);
         else setStatus("error", "Local runtime unavailable: " + message);
