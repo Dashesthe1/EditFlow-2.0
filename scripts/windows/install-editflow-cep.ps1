@@ -58,6 +58,7 @@ $HostFiles = @(
   "editflow_json.jsx",
   "editflow_host.jsx",
   "editflow_host_hardening.jsx",
+  "editflow_host_transform_readback.jsx",
   "editflow_host_keyframe_crud.jsx",
   "editflow_host_atomicity.jsx",
   "editflow_host_render_jobs.jsx",
