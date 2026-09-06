@@ -64,6 +64,7 @@ $HostFiles = @(
   "editflow_host_render_jobs.jsx",
   "editflow_host_render_async.jsx",
   "editflow_host_render_output_path.jsx",
+  "editflow_host_m3_masks.jsx",
   "editflow_host_current.jsx"
 )
 foreach ($FileName in $HostFiles) {
@@ -99,7 +100,8 @@ if (-not $SkipDebugMode) {
 Write-Host "EditFlow 2.0 CEP bridge installed."
 Write-Host "Extension: $TargetRoot"
 Write-Host "Runtime config: $ConfigPath"
-Write-Host "Protocol: 1.1.0"
+Write-Host "Broker protocol: 1.1.0"
+Write-Host "M3 mask host protocol 1.2.0 is deployed but remains broker-gated until negotiated transport support is enabled."
 Write-Host "Broker: 127.0.0.1:$Port"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }
 if ($TokenWasPreserved) {
