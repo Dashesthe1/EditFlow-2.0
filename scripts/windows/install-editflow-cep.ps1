@@ -73,13 +73,13 @@ foreach ($FileName in $HostFiles) {
   Copy-Item $Source (Join-Path $InstalledHostDir $FileName) -Force
 }
 
+# supportedProtocolVersions is an additive schema-1 field. Existing M2 readers ignore it,
+# while newer brokers use it to negotiate explicitly scoped protocol tranches.
 $Config = [ordered]@{
-  schemaVersion = 2
+  schemaVersion = 1
   host = "127.0.0.1"
   port = $Port
   token = $Token
-  # Keep the legacy single-version field at the accepted M2 value so an older local
-  # broker can still reject safely rather than being told that M2 itself changed.
   protocolVersion = "1.1.0"
   supportedProtocolVersions = @("1.2.0", "1.1.0")
   extensionId = $ExtensionId
@@ -103,8 +103,8 @@ if (-not $SkipDebugMode) {
 Write-Host "EditFlow 2.0 CEP bridge installed."
 Write-Host "Extension: $TargetRoot"
 Write-Host "Runtime config: $ConfigPath"
-Write-Host "Broker protocols: 1.2.0, 1.1.0 (highest mutually supported version is negotiated per session)"
-Write-Host "M3 mask host protocol 1.2.0 is enabled only when the authenticated broker session advertises it."
+Write-Host "Panel protocols advertised: 1.2.0, 1.1.0"
+Write-Host "Each local broker narrows that set to the protocol tranches its current proof/runtime supports."
 Write-Host "Broker: 127.0.0.1:$Port"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }
 if ($TokenWasPreserved) {
