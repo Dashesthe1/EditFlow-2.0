@@ -1,0 +1,54 @@
+name: AE Process Diagnostic
+
+on:
+  push:
+    branches:
+      - ae-test/ae-process-diagnostic
+    paths:
+      - .github/ae-test-trigger/ae-process-diagnostic.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-m2-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  inspect-ae-process:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inspect After Effects processes read-only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          $runnerProcess = Get-Process -Id $PID
+          Write-Host ("RUNNER identity=" + $identity + "; pid=" + $PID + "; sessionId=" + $runnerProcess.SessionId)
+          $ae = @(Get-Process -Name 'AfterFX' -ErrorAction SilentlyContinue)
+          Write-Host ("AE_COUNT=" + $ae.Count)
+          foreach ($p in $ae) {
+            $path = $null
+            $started = $null
+            $title = $null
+            $responding = $null
+            $window = $null
+            try { $path = $p.Path } catch {}
+            try { $started = $p.StartTime.ToUniversalTime().ToString('o') } catch {}
+            try { $title = $p.MainWindowTitle } catch {}
+            try { $responding = $p.Responding } catch {}
+            try { $window = $p.MainWindowHandle } catch {}
+            Write-Host ("AE pid=" + $p.Id + "; sessionId=" + $p.SessionId + "; startUtc=" + $started + "; responding=" + $responding + "; mainWindowHandle=" + $window + "; title=" + $title + "; path=" + $path)
+            try {
+              $cim = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $p.Id)
+              if ($cim) {
+                Write-Host ("AE_CIM pid=" + $p.Id + "; parentPid=" + $cim.ParentProcessId + "; commandLine=" + $cim.CommandLine)
+              }
+            } catch {
+              Write-Host ("AE_CIM pid=" + $p.Id + "; unavailable=" + $_.Exception.Message)
+            }
+          }
