@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const proofPath = "proofs/ae/m2-real-host-proof.jsx";
 const runnerPath = "scripts/windows/run-m2-ae-acceptance.ps1";
 const selfHostedRunnerPath = "scripts/windows/run-m2-ae-self-hosted.ps1";
+const panelBootstrapPath = "scripts/windows/open-editflow-bridge.jsx";
 const cepAcceptancePath = "apps/desktop-host/src/cep-write-acceptance-cli.ts";
 const workflowPath = ".github/workflows/m2-real-ae.yml";
 
@@ -49,12 +50,24 @@ test("self-hosted AE launcher runs only in an interactive clean session and owns
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
   assert.match(source, /install-editflow-cep\.ps1/);
-  assert.match(source, /Start-Process -FilePath \$AfterFxPath/);
+  assert.match(source, /open-editflow-bridge\.jsx/);
+  assert.match(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList @\("-r", \$QuotedBootstrap\)/);
   assert.match(source, /run-m2-ae-acceptance\.ps1/);
   assert.match(source, /finally\s*\{/);
   assert.match(source, /if \(\$StartedAfterFx\)/);
   assert.match(source, /Stop-Process -Force/);
   assert.doesNotMatch(source, /Stop-Process -Force[\s\S]*before.*Start-Process/i);
+});
+
+test("self-hosted AE bootstrap opens only the fixed EditFlow CEP menu command and retries boundedly", async () => {
+  const source = await readFile(panelBootstrapPath, "utf8");
+  assert.match(source, /var menuName = "EditFlow 2\.0 Bridge"/);
+  assert.match(source, /app\.findMenuCommandId\(menuName\)/);
+  assert.match(source, /app\.executeCommand\(commandId\)/);
+  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_selfHostedOpenBridge\(\)"/);
+  assert.match(source, /var maxAttempts = 120/);
+  assert.doesNotMatch(source, /eval\s*\(/);
+  assert.doesNotMatch(source, /requestJson|payload|process\.argv/);
 });
 
 test("CEP real-AE acceptance performs bounded typed writes, render proof, stable-id readback, and cleanup without project save/open", async () => {
