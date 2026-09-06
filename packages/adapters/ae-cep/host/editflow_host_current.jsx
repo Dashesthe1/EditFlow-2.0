@@ -1,10 +1,11 @@
-/* EditFlow 2.0 current AE host loader: self-contained JSON runtime + green v1.0 base + protocol 1.1 hardening + operation atomicity + render jobs + async render override + truthful output-path readback. */
+/* EditFlow 2.0 current AE host loader: self-contained JSON runtime + green v1.0 base + protocol 1.1 hardening + typed keyframe CRUD + operation atomicity + render jobs + async render override + truthful output-path readback. */
 (function () {
   var currentFile = new File($.fileName);
   var hostDir = currentFile.parent;
   var jsonRuntime = new File(hostDir.fsName + "/editflow_json.jsx");
   var base = new File(hostDir.fsName + "/editflow_host.jsx");
   var hardening = new File(hostDir.fsName + "/editflow_host_hardening.jsx");
+  var keyframeCrud = new File(hostDir.fsName + "/editflow_host_keyframe_crud.jsx");
   var atomicity = new File(hostDir.fsName + "/editflow_host_atomicity.jsx");
   var renderJobs = new File(hostDir.fsName + "/editflow_host_render_jobs.jsx");
   var renderAsync = new File(hostDir.fsName + "/editflow_host_render_async.jsx");
@@ -12,6 +13,7 @@
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
   if (!hardening.exists) throw new Error("EditFlow AE host hardening script is missing: " + hardening.fsName);
+  if (!keyframeCrud.exists) throw new Error("EditFlow AE keyframe CRUD script is missing: " + keyframeCrud.fsName);
   if (!atomicity.exists) throw new Error("EditFlow AE host atomicity script is missing: " + atomicity.fsName);
   if (!renderJobs.exists) throw new Error("EditFlow AE render-job script is missing: " + renderJobs.fsName);
   if (!renderAsync.exists) throw new Error("EditFlow AE async-render script is missing: " + renderAsync.fsName);
@@ -31,6 +33,7 @@
 
   $.evalFile(base);
   $.evalFile(hardening);
+  $.evalFile(keyframeCrud);
   $.evalFile(atomicity);
   $.evalFile(renderJobs);
   $.evalFile(renderAsync);

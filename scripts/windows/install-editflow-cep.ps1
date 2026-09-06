@@ -37,7 +37,6 @@ if (-not $RotateToken -and (Test-Path $ConfigPath -PathType Leaf)) {
       $TokenWasPreserved = $true
     }
   } catch {
-    # A missing, malformed, or legacy config is recovered by generating a fresh token.
     $Token = $null
   }
 }
@@ -59,6 +58,7 @@ $HostFiles = @(
   "editflow_json.jsx",
   "editflow_host.jsx",
   "editflow_host_hardening.jsx",
+  "editflow_host_keyframe_crud.jsx",
   "editflow_host_atomicity.jsx",
   "editflow_host_render_jobs.jsx",
   "editflow_host_render_async.jsx",
