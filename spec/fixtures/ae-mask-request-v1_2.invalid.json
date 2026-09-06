@@ -1,0 +1,19 @@
+{
+  "protocolVersion": "1.2.0",
+  "requestId": "req-mask-invalid-1",
+  "transactionId": "tx-mask-invalid-1",
+  "operationId": "op-mask-invalid-1",
+  "capabilityId": "ae.mask.properties.set",
+  "command": "mask.set_properties",
+  "expectedHostProjectRevision": 21,
+  "payload": {
+    "comp": {"stableId": "COMP_M3_MASK"},
+    "layer": {"stableId": "LAYER_FOREGROUND"},
+    "mask": {"stableId": "MASK_FOREGROUND_REVEAL"},
+    "properties": {
+      "opacity": 150,
+      "mode": "NOT_A_REAL_MASK_MODE"
+    }
+  },
+  "readbackProfile": "M3_MASK_STRUCTURAL"
+}

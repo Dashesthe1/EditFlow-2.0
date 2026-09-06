@@ -1,0 +1,35 @@
+{
+  "protocolVersion": "1.2.0",
+  "requestId": "req-mask-path-animated-1",
+  "transactionId": "tx-mask-animated-1",
+  "operationId": "op-mask-path-animated-1",
+  "capabilityId": "ae.mask.path.set",
+  "command": "mask.set_path",
+  "expectedHostProjectRevision": 18,
+  "payload": {
+    "comp": {"stableId": "COMP_M3_MASK"},
+    "layer": {"stableId": "LAYER_FOREGROUND"},
+    "mask": {"stableId": "MASK_FOREGROUND_REVEAL"},
+    "keyframes": [
+      {
+        "time": 0,
+        "shape": {
+          "closed": true,
+          "vertices": [[80, 90], [310, 70], [340, 330], [70, 310]],
+          "inTangents": [[-18, 0], [0, -14], [20, 0], [0, 18]],
+          "outTangents": [[18, 0], [0, 14], [-20, 0], [0, -18]]
+        }
+      },
+      {
+        "time": 0.75,
+        "shape": {
+          "closed": true,
+          "vertices": [[180, 60], [510, 110], [470, 390], [150, 350]],
+          "inTangents": [[-30, -4], [-8, -20], [34, 8], [4, 26]],
+          "outTangents": [[30, 4], [8, 20], [-34, -8], [-4, -26]]
+        }
+      }
+    ]
+  },
+  "readbackProfile": "M3_MASK_STRUCTURAL"
+}

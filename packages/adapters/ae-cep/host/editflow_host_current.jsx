@@ -1,4 +1,4 @@
-/* EditFlow 2.0 current AE host loader: self-contained JSON runtime + green v1.0 base + protocol 1.1 hardening + truthful transform vector readback + typed keyframe CRUD + operation atomicity + render jobs + async render override + truthful output-path readback. */
+/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + declared M3 protocol 1.2 mask/Bezier foundation. */
 (function () {
   var currentFile = new File($.fileName);
   var hostDir = currentFile.parent;
@@ -11,6 +11,7 @@
   var renderJobs = new File(hostDir.fsName + "/editflow_host_render_jobs.jsx");
   var renderAsync = new File(hostDir.fsName + "/editflow_host_render_async.jsx");
   var renderOutputPath = new File(hostDir.fsName + "/editflow_host_render_output_path.jsx");
+  var m3Masks = new File(hostDir.fsName + "/editflow_host_m3_masks.jsx");
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
   if (!hardening.exists) throw new Error("EditFlow AE host hardening script is missing: " + hardening.fsName);
@@ -20,6 +21,7 @@
   if (!renderJobs.exists) throw new Error("EditFlow AE render-job script is missing: " + renderJobs.fsName);
   if (!renderAsync.exists) throw new Error("EditFlow AE async-render script is missing: " + renderAsync.fsName);
   if (!renderOutputPath.exists) throw new Error("EditFlow AE render output-path script is missing: " + renderOutputPath.fsName);
+  if (!m3Masks.exists) throw new Error("EditFlow M3 mask/Bezier host script is missing: " + m3Masks.fsName);
 
   $.evalFile(jsonRuntime);
   if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.parse !== "function" || typeof $.global.EditFlow2_JSON.stringify !== "function") {
@@ -41,11 +43,12 @@
   $.evalFile(renderJobs);
   $.evalFile(renderAsync);
   $.evalFile(renderOutputPath);
+  $.evalFile(m3Masks);
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
   }
 
-  /* The legacy host layers use JSON.parse/stringify internally. Other Adobe panels can
+  /* The host layers use JSON.parse/stringify internally. Other Adobe panels can
    * replace/remove the shared JSON object after EditFlow loads, so bind our codec for the
    * duration of every EditFlow dispatch and restore the prior global afterward.
    */

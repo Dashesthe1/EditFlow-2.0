@@ -1,5 +1,5 @@
-export const EDITFLOW_VERSION = "0.3.0-dev" as const;
-export const EDITFLOW_PHASE = "M2_ADOBE_HOST_BASELINE_ACCEPTED" as const;
+export const EDITFLOW_VERSION = "0.4.0-dev" as const;
+export const EDITFLOW_PHASE = "M3_HUMAN_PARITY_CORE_IN_PROGRESS" as const;
 
 export interface McpServerStatus {
   readonly version: typeof EDITFLOW_VERSION;
@@ -16,6 +16,8 @@ export interface McpServerStatus {
   readonly cepRuntimeBridge: "REAL_AE_PROVEN";
   readonly cepBrokerBinding: "127.0.0.1_AUTHENTICATED";
   readonly realAeAcceptance: "P1_P5_ACCEPTED";
+  readonly humanParityCore: "MASK_BEZIER_FOUNDATION_DECLARED";
+  readonly m3MaskHostProtocol: "1.2.0_BROKER_GATED";
 }
 
 export const getMcpServerStatus = (): McpServerStatus => ({
@@ -33,4 +35,6 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   cepRuntimeBridge: "REAL_AE_PROVEN",
   cepBrokerBinding: "127.0.0.1_AUTHENTICATED",
   realAeAcceptance: "P1_P5_ACCEPTED",
+  humanParityCore: "MASK_BEZIER_FOUNDATION_DECLARED",
+  m3MaskHostProtocol: "1.2.0_BROKER_GATED",
 });
