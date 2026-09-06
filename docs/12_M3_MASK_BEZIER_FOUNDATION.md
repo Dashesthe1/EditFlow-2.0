@@ -16,7 +16,9 @@ Initial typed commands:
 - `mask.set_properties` -> `ae.mask.properties.set`
 - `mask.readback` -> `ae.mask.readback`
 
-All seven capabilities start `PARTIAL` + `DECLARED` and their protocol 1.2 route is unavailable. The current authenticated CEP broker session is still protocol 1.1 and deliberately rejects a 1.2 host response. A later integration tranche must add explicit negotiated 1.2 transport before these routes can become available.
+The authenticated CEP broker and panel now support explicit multi-protocol negotiation. A dual-capability panel advertises `1.2.0` and `1.1.0`; the broker selects the highest mutual protocol for the session while preserving the protocol version of each individual request and response. M2 commands therefore remain `1.1.0`, M3 mask commands remain `1.2.0`, and a legacy 1.1-only panel cannot lease M3 traffic.
+
+This makes the M3 host-adapter route available at the transport layer. It does **not** promote mask capability proof maturity: all seven M3 capabilities remain `PARTIAL` + `DECLARED` until their independent real-AE proof ladder begins.
 
 ## Geometry contract
 
@@ -57,12 +59,14 @@ This first host tranche assigns an EditFlow mask stable ID using a reserved mark
 
 - no arbitrary JSX protocol operation;
 - fixed command allowlist only;
+- authenticated loopback-only broker transport;
+- explicit protocol negotiation with per-request protocol correlation;
+- unsupported protocols rejected before host mutation;
 - host project revision required for mutations;
 - full payload validation before writes;
 - AE undo group around each mutation;
 - failed mutations self-rollback with AE Undo when revision changed;
-- `fallbackPolicy: FORBID` for the tranche;
-- protocol 1.2 routes remain unavailable until broker negotiation is implemented and proven.
+- `fallbackPolicy: FORBID` for the tranche.
 
 ## Proof path
 
@@ -74,4 +78,4 @@ The mask tranche must independently climb:
 4. P4 induced-failure rollback;
 5. P5 transfer in a materially different construction after save/reopen/reconnect.
 
-M2 evidence remains valid for the baseline primitives it proved, but is not inherited by these M3 capabilities.
+The next bounded step after transport regression is real-AE P1/P2 evidence on the self-hosted Windows runner. M2 evidence remains valid for the baseline primitives it proved, but is not inherited by these M3 capabilities.
