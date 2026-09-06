@@ -69,15 +69,17 @@ test("P4/P5 two-phase runner cold-launches AE first and dispatches -r only after
   assert.match(runner, /Candidate\.Responding -and \$Candidate\.MainWindowHandle -ne 0/);
   assert.match(runner, /Phase 1 complete/);
   assert.match(runner, /Phase 2 will send the fixed -r wrapper to that existing instance/);
-  assert.match(runner, /delivery=normal-launch-then-r/);
+  assert.match(runner, /delivery=normal-launch-then-r-unquoted-path/);
 });
 
-test("P4/P5 runner writes only a fixed bounded command wrapper for phase 2", async () => {
+test("P4/P5 phase 2 passes the no-space wrapper path without embedded literal quotes", async () => {
   const runner = await readFile(runnerPath, "utf8");
   assert.match(runner, /m2-p45-command-bootstrap-template\.jsx/);
   assert.match(runner, /m2-p45-command-bootstrap\.jsx/);
   assert.match(runner, /System\.IO\.File\]::WriteAllText\(\$CommandBootstrap, \$BootstrapSource, \$Utf8NoBom\)/);
-  assert.match(runner, /\$Arguments = @\("-r", \('\"' \+ \$CommandBootstrap \+ '\"'\)\)/);
+  assert.match(runner, /\$Arguments = @\("-r", \$CommandBootstrap\)/);
+  assert.doesNotMatch(runner, /\$Arguments = @\("-r", \('\"' \+ \$CommandBootstrap \+ '\"'\)\)/);
+  assert.match(runner, /path is inside the runner workspace and contains no spaces/);
   assert.doesNotMatch(runner, /Scripts\\Startup/);
 });
 
