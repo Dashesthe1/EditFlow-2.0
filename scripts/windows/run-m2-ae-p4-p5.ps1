@@ -1,18 +1,18 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [int]$TimeoutSeconds = 240,
-  [int]$StartupTimeoutSeconds = 90
+  [int]$CommandEvidenceTimeoutSeconds = 45
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ProofScript = Join-Path $RepoRoot "proofs\ae\m2-disposable-p4-p5-proof.jsx"
-$BootstrapTemplate = Join-Path $RepoRoot "scripts\windows\m2-p45-startup-bootstrap-template.jsx"
+$BootstrapTemplate = Join-Path $RepoRoot "scripts\windows\m2-p45-command-bootstrap-template.jsx"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-disposable-p4-p5"
 $ResultPath = Join-Path $ArtifactDir "result.json"
 $BootstrapLog = Join-Path $ArtifactDir "bootstrap.log"
 $StartupDiagnosticsPath = Join-Path $ArtifactDir "startup-diagnostics.log"
-$InstalledBootstrap = $null
+$CommandBootstrap = Join-Path $ArtifactDir "m2-p45-command-bootstrap.jsx"
 $LaunchProcess = $null
 
 function Resolve-AfterFx {
@@ -69,15 +69,15 @@ function Write-AeProcessSnapshot {
   }
 }
 
-function Publish-BootstrapEvidence {
+function Publish-Evidence {
   if (Test-Path $BootstrapLog -PathType Leaf) {
-    Write-Host "EditFlow M2 P4/P5 Startup bootstrap evidence:"
+    Write-Host "EditFlow M2 P4/P5 command bootstrap evidence:"
     Get-Content $BootstrapLog -Raw | Write-Host
   } else {
-    Write-Warning "No M2 P4/P5 Startup bootstrap evidence was produced."
+    Write-Warning "No M2 P4/P5 command bootstrap evidence was produced."
   }
   if (Test-Path $StartupDiagnosticsPath -PathType Leaf) {
-    Write-Host "EditFlow M2 P4/P5 AE startup diagnostics:"
+    Write-Host "EditFlow M2 P4/P5 AE process diagnostics:"
     Get-Content $StartupDiagnosticsPath -Raw | Write-Host
   }
 }
@@ -86,72 +86,67 @@ if (-not [Environment]::UserInteractive) {
   throw "The EditFlow AE runner must run in an interactive Windows user session. Start the GitHub Actions runner with run.cmd while logged into the desktop; do not run it as a Windows service."
 }
 if ($TimeoutSeconds -lt 30) { throw "TimeoutSeconds must be at least 30." }
-if ($StartupTimeoutSeconds -lt 10) { throw "StartupTimeoutSeconds must be at least 10." }
+if ($CommandEvidenceTimeoutSeconds -lt 10) { throw "CommandEvidenceTimeoutSeconds must be at least 10." }
 if (-not (Test-Path $ProofScript -PathType Leaf)) { throw "M2 P4/P5 proof script not found: $ProofScript" }
-if (-not (Test-Path $BootstrapTemplate -PathType Leaf)) { throw "M2 P4/P5 Startup bootstrap template not found: $BootstrapTemplate" }
+if (-not (Test-Path $BootstrapTemplate -PathType Leaf)) { throw "M2 P4/P5 command bootstrap template not found: $BootstrapTemplate" }
 
 $AfterFx = Resolve-AfterFx $AfterFxPath
-$AfterFxVersionInfo = (Get-Item $AfterFx).VersionInfo
-if ($AfterFxVersionInfo.FileMajorPart -lt 1) { throw "Unable to resolve the After Effects major/minor version for the user Startup script path." }
-$AfterFxVersionFolder = ("{0}.{1}" -f $AfterFxVersionInfo.FileMajorPart, $AfterFxVersionInfo.FileMinorPart)
-$UserStartupDir = Join-Path $env:APPDATA ("Adobe\After Effects\" + $AfterFxVersionFolder + "\Scripts\Startup")
-$InstalledBootstrap = Join-Path $UserStartupDir "EditFlow2-m2-p45-bootstrap.jsx"
-
 $ExistingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
 if ($ExistingAfterFx.Count -gt 0) {
   $Ids = ($ExistingAfterFx | ForEach-Object { $_.Id }) -join ","
-  throw "Refusing disposable P4/P5 cold-start proof because After Effects is already running (PID(s): $Ids). Close AE first; no writes were attempted."
+  throw "Refusing disposable P4/P5 command proof because After Effects is already running (PID(s): $Ids). Close AE first; no writes were attempted."
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
-New-Item -ItemType Directory -Force -Path $UserStartupDir | Out-Null
 if (Test-Path $ResultPath -PathType Leaf) { Remove-Item $ResultPath -Force }
 if (Test-Path $BootstrapLog -PathType Leaf) { Remove-Item $BootstrapLog -Force }
 if (Test-Path $StartupDiagnosticsPath -PathType Leaf) { Remove-Item $StartupDiagnosticsPath -Force }
-if (Test-Path $InstalledBootstrap -PathType Leaf) { Remove-Item $InstalledBootstrap -Force }
+if (Test-Path $CommandBootstrap -PathType Leaf) { Remove-Item $CommandBootstrap -Force }
 
 $BootstrapSource = Get-Content $BootstrapTemplate -Raw
 $BootstrapSource = $BootstrapSource.Replace("__EDITFLOW_PROOF_PATH__", (Escape-JsxString $ProofScript))
 $BootstrapSource = $BootstrapSource.Replace("__EDITFLOW_RESULT_PATH__", (Escape-JsxString $ResultPath))
 $BootstrapSource = $BootstrapSource.Replace("__EDITFLOW_LOG_PATH__", (Escape-JsxString $BootstrapLog))
-$BootstrapSource = $BootstrapSource.Replace("__EDITFLOW_BOOTSTRAP_PATH__", (Escape-JsxString $InstalledBootstrap))
+$BootstrapSource = $BootstrapSource.Replace("__EDITFLOW_BOOTSTRAP_PATH__", (Escape-JsxString $CommandBootstrap))
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($InstalledBootstrap, $BootstrapSource, $Utf8NoBom)
-$BootstrapInfo = Get-Item $InstalledBootstrap
+[System.IO.File]::WriteAllText($CommandBootstrap, $BootstrapSource, $Utf8NoBom)
+$BootstrapInfo = Get-Item $CommandBootstrap
 $RunnerProcess = Get-Process -Id $PID
 $RunnerIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);bootstrapPath=$($BootstrapInfo.FullName);bootstrapLength=$($BootstrapInfo.Length);bootstrapWriteUtc=$($BootstrapInfo.LastWriteTimeUtc.ToString('o'));afterFx=$AfterFx")
+Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);bootstrapPath=$($BootstrapInfo.FullName);bootstrapLength=$($BootstrapInfo.Length);bootstrapWriteUtc=$($BootstrapInfo.LastWriteTimeUtc.ToString('o'));afterFx=$AfterFx;delivery=-r")
 
-Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: AE will cold-start under runner ownership and the proof REFUSES before mutations unless the new project is unsaved and has zero items."
+Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: the fixed -r command wrapper will invoke only the repository-owned P4/P5 proof, which still REFUSES before mutations unless the project is unsaved and has zero items."
 Write-Host "The proof saves only its disposable project under proofs/artifacts, closes/reopens it, then leaves a new blank project before runner cleanup."
 Write-Host ("After Effects: " + $AfterFx)
-Write-Host ("Startup bootstrap: " + $InstalledBootstrap)
+Write-Host ("Command bootstrap: " + $CommandBootstrap)
 Write-Host ("Proof script: " + $ProofScript)
 
 try {
-  $LaunchProcess = Start-Process -FilePath $AfterFx -PassThru
-  Write-Host ("Launched declared M2 target After Effects through cold-start bootstrap; launcher PID " + $LaunchProcess.Id + ".")
-  Write-AeProcessSnapshot "LAUNCH"
+  $Arguments = @("-r", ('"' + $CommandBootstrap + '"'))
+  $LaunchProcess = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
+  Write-Host ("Launched declared M2 target After Effects with fixed -r command bootstrap; launcher PID " + $LaunchProcess.Id + ".")
+  Write-AeProcessSnapshot "COMMAND_LAUNCH"
 
-  $StartupDeadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
+  $EvidenceDeadline = (Get-Date).AddSeconds($CommandEvidenceTimeoutSeconds)
   $NextDiagnosticAt = Get-Date
-  while ((Get-Date) -lt $StartupDeadline -and -not (Test-Path $BootstrapLog -PathType Leaf)) {
+  while ((Get-Date) -lt $EvidenceDeadline -and -not (Test-Path $BootstrapLog -PathType Leaf) -and -not (Test-Path $ResultPath -PathType Leaf)) {
     if ((Get-Date) -ge $NextDiagnosticAt) {
-      Write-AeProcessSnapshot "STARTUP_WAIT"
+      Write-AeProcessSnapshot "COMMAND_WAIT"
       $NextDiagnosticAt = (Get-Date).AddSeconds(5)
     }
     Start-Sleep -Milliseconds 250
   }
-  Write-AeProcessSnapshot "STARTUP_WAIT_END"
-  if (-not (Test-Path $BootstrapLog -PathType Leaf)) {
-    throw "After Effects launched but the temporary M2 P4/P5 Startup bootstrap produced no evidence within $StartupTimeoutSeconds seconds. Inspect startup-diagnostics.log before retrying."
+  Write-AeProcessSnapshot "COMMAND_WAIT_END"
+
+  if (-not (Test-Path $BootstrapLog -PathType Leaf) -and -not (Test-Path $ResultPath -PathType Leaf)) {
+    throw "After Effects accepted the -r launch request but produced neither command-bootstrap evidence nor result.json within $CommandEvidenceTimeoutSeconds seconds."
   }
 
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while (-not (Test-Path $ResultPath -PathType Leaf)) {
     if ((Get-Date) -ge $Deadline) {
       Write-AeProcessSnapshot "PROOF_RESULT_TIMEOUT"
-      throw "Timed out waiting for P4/P5 result.json after the Startup bootstrap executed."
+      throw "Timed out waiting for P4/P5 result.json after command-bootstrap delivery evidence was produced."
     }
     Start-Sleep -Milliseconds 500
   }
@@ -162,23 +157,22 @@ try {
   if ($Result.projectArtifact) { Write-Host ("Disposable project artifact: " + $Result.projectArtifact) }
 
   if ($Result.status -eq "REFUSED") {
-    throw "P4/P5 proof refused safely because the cold-start AE project was not blank, unsaved, and zero-item. No proof mutations were performed."
+    throw "P4/P5 proof refused safely because the command target project was not blank, unsaved, and zero-item. No proof mutations were performed."
   }
   if (-not $Result.ok) {
     if ($Result.error) { Write-Error $Result.error }
-    throw "M2 P4/P5 real-AE proof failed. Inspect the uploaded result and bootstrap evidence before retrying."
+    throw "M2 P4/P5 real-AE proof failed. Inspect the uploaded result and command-bootstrap evidence before retrying."
   }
 } finally {
-  if ($InstalledBootstrap -and (Test-Path $InstalledBootstrap -PathType Leaf)) {
-    Remove-Item $InstalledBootstrap -Force -ErrorAction SilentlyContinue
+  if (Test-Path $CommandBootstrap -PathType Leaf) {
+    Remove-Item $CommandBootstrap -Force -ErrorAction SilentlyContinue
   }
   Write-AeProcessSnapshot "CLEANUP_BEGIN"
-  Publish-BootstrapEvidence
+  Publish-Evidence
 
   # The preflight above proved there were zero AE processes before this run. Every
-  # AfterFX process present now belongs to this bounded proof, including any child
-  # process that replaced the PID returned by Start-Process. Prefer a normal window
-  # close first so test failures do not create an Adobe crash-recovery loop.
+  # AfterFX process present now belongs to this bounded proof. Prefer a normal window
+  # close first so a failed acceptance does not create an Adobe recovery loop.
   $OwnedProcesses = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
   if ($OwnedProcesses.Count -gt 0) {
     $OwnedIds = ($OwnedProcesses | ForEach-Object { $_.Id }) -join ","
