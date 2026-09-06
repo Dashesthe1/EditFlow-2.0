@@ -160,6 +160,39 @@ test("M3 AE host layer implements mask CRUD, exact Shape geometry, animation, pr
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
+test("mask duplication snapshots the source before mutating AE's indexed Mask Parade", async () => {
+  const source = await readFile(hostPath, "utf8");
+  const cloneStart = source.indexOf("function cloneMask(");
+  const cloneEnd = source.indexOf("\n  function affected(", cloneStart);
+  assert.ok(cloneStart >= 0 && cloneEnd > cloneStart, "cloneMask implementation must be present");
+
+  const clone = source.slice(cloneStart, cloneEnd);
+  const snapshotIndex = clone.indexOf("var sourceSnapshot = snapshotMask(source)");
+  const addPropertyIndex = clone.indexOf('parade.addProperty("ADBE Mask Atom")');
+  assert.ok(snapshotIndex >= 0 && addPropertyIndex > snapshotIndex,
+    "source mask must be fully snapshotted before addProperty mutates the indexed mask group");
+
+  assert.match(clone, /sourceSnapshot\.name/);
+  assert.match(clone, /sourceSnapshot\.feather/);
+  assert.match(clone, /sourceSnapshot\.expansion/);
+  assert.match(clone, /sourceSnapshot\.opacity/);
+  assert.match(clone, /sourceSnapshot\.mode/);
+  assert.match(clone, /sourceSnapshot\.inverted/);
+  assert.match(clone, /sourceSnapshot\.pathKeyframes/);
+  assert.match(clone, /buildShape\(sourceSnapshot\.pathKeyframes\[i\]\.shape\)/);
+  assert.match(clone, /buildShape\(sourceSnapshot\.path\)/);
+  assert.match(clone, /applyProperties\(target, properties\)/);
+  assert.doesNotMatch(clone.slice(addPropertyIndex), /cleanMaskName\(source\)|source\.maskMode|source\.inverted|source\.property\(/,
+    "duplicate reconstruction must not dereference the invalidated source mask after addProperty");
+
+  const duplicateBlockStart = source.indexOf('if (request.command === "mask.duplicate") {', source.indexOf("function executePrepared"));
+  const duplicateBlockEnd = source.indexOf('if (request.command === "mask.reorder") {', duplicateBlockStart);
+  const duplicateBlock = source.slice(duplicateBlockStart, duplicateBlockEnd);
+  assert.match(duplicateBlock, /MASK_STABLE_ID_EXISTS/);
+  assert.ok(duplicateBlock.indexOf("MASK_STABLE_ID_EXISTS") < duplicateBlock.indexOf("cloneMask(mask, parade"),
+    "destination stableId conflict must be rejected before duplicate mutation");
+});
+
 test("current installer advertises M3 support additively while runtime brokers scope protocol access explicitly", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
