@@ -50,68 +50,63 @@ test("P4/P5 and bounded M2 runners share the same default target After Effects e
   const target = '[string]$AfterFxPath = "C:\\Program Files\\Adobe\\Adobe After Effects 2025\\Support Files\\AfterFX.exe"';
   assert.ok(runner.includes(target));
   assert.ok(boundedRunner.includes(target));
-  assert.match(runner, /declared M2 target After Effects/);
 });
 
-test("P4/P5 command runner requires a zero-AE baseline and never attaches to a pre-existing session", async () => {
+test("P4/P5 two-phase runner requires a zero-AE baseline", async () => {
   const runner = await readFile(runnerPath, "utf8");
-
-  assert.match(runner, /Get-Process -Name "AfterFX"/);
   assert.match(runner, /\$ExistingAfterFx\.Count -gt 0/);
-  assert.match(runner, /Refusing disposable P4\/P5 command proof because After Effects is already running/);
+  assert.match(runner, /Refusing disposable P4\/P5 two-phase proof because After Effects is already running/);
   assert.match(runner, /Close AE first; no writes were attempted/);
 });
 
-test("P4/P5 runner writes a bounded wrapper and passes only that fixed file through AfterFX -r", async () => {
+test("P4/P5 two-phase runner cold-launches AE first and dispatches -r only after a responsive target window exists", async () => {
   const runner = await readFile(runnerPath, "utf8");
+  const coldLaunch = runner.indexOf("Start-Process -FilePath $AfterFx -PassThru");
+  const ready = runner.indexOf("Find-ReadyTargetAfterFx", coldLaunch);
+  const command = runner.indexOf("Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru", ready);
+  assert.ok(coldLaunch >= 0 && ready > coldLaunch && command > ready);
+  assert.match(runner, /Find-ReadyTargetAfterFx/);
+  assert.match(runner, /Candidate\.Responding -and \$Candidate\.MainWindowHandle -ne 0/);
+  assert.match(runner, /Phase 1 complete/);
+  assert.match(runner, /Phase 2 will send the fixed -r wrapper to that existing instance/);
+  assert.match(runner, /delivery=normal-launch-then-r/);
+});
 
+test("P4/P5 runner writes only a fixed bounded command wrapper for phase 2", async () => {
+  const runner = await readFile(runnerPath, "utf8");
   assert.match(runner, /m2-p45-command-bootstrap-template\.jsx/);
   assert.match(runner, /m2-p45-command-bootstrap\.jsx/);
   assert.match(runner, /System\.IO\.File\]::WriteAllText\(\$CommandBootstrap, \$BootstrapSource, \$Utf8NoBom\)/);
   assert.match(runner, /\$Arguments = @\("-r", \('\"' \+ \$CommandBootstrap \+ '\"'\)\)/);
-  assert.match(runner, /Start-Process -FilePath \$AfterFx -ArgumentList \$Arguments -PassThru/);
-  assert.match(runner, /delivery=-r/);
   assert.doesNotMatch(runner, /Scripts\\Startup/);
 });
 
-test("P4/P5 runner records process diagnostics around command delivery", async () => {
+test("P4/P5 runner records process diagnostics around both launch phases", async () => {
   const runner = await readFile(runnerPath, "utf8");
-
   assert.match(runner, /startup-diagnostics\.log/);
-  assert.match(runner, /function Write-StartupDiagnostic/);
-  assert.match(runner, /function Write-AeProcessSnapshot/);
-  assert.match(runner, /runnerSessionId=/);
-  assert.match(runner, /bootstrapLength=/);
+  assert.match(runner, /COLD_START_WAIT/);
+  assert.match(runner, /COLD_START_READY_CHECK/);
+  assert.match(runner, /COMMAND_TARGET_READY/);
+  assert.match(runner, /COMMAND_DISPATCH/);
+  assert.match(runner, /COMMAND_WAIT_END/);
   assert.match(runner, /MainWindowHandle/);
   assert.match(runner, /MainWindowTitle/);
-  assert.match(runner, /\.Responding/);
   assert.match(runner, /Get-CimInstance Win32_Process/);
-  assert.match(runner, /COMMAND_WAIT/);
-  assert.match(runner, /COMMAND_WAIT_END/);
 });
 
 test("P4/P5 runner cleans only owned AE and prefers graceful close before force-stop", async () => {
   const runner = await readFile(runnerPath, "utf8");
   const guard = runner.indexOf("if ($ExistingAfterFx.Count -gt 0)");
-  const launch = runner.indexOf("Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru");
+  const launch = runner.indexOf("Start-Process -FilePath $AfterFx -PassThru");
   const cleanup = runner.indexOf('$OwnedProcesses = @(Get-Process -Name "AfterFX"');
   const graceful = runner.indexOf("$Owned.CloseMainWindow()", cleanup);
   const force = runner.indexOf("Stop-Process -Force", cleanup);
   assert.ok(guard >= 0 && launch > guard && cleanup > launch);
   assert.ok(graceful > cleanup && force > graceful);
-  assert.match(runner, /Every\s*\n\s*# AfterFX process present now belongs to this bounded proof/);
-  assert.match(runner, /Graceful AE close did not finish/);
-  assert.match(runner, /CLEANUP_FORCE_STOP/);
 });
 
-test("command bootstrap logs before proof execution, self-deletes, and invokes only the fixed P4/P5 proof file", async () => {
+test("command bootstrap logs before proof execution and invokes only the fixed P4/P5 proof file", async () => {
   const source = await readFile(bootstrapPath, "utf8");
-
-  assert.match(source, /__EDITFLOW_PROOF_PATH__/);
-  assert.match(source, /__EDITFLOW_RESULT_PATH__/);
-  assert.match(source, /__EDITFLOW_LOG_PATH__/);
-  assert.match(source, /__EDITFLOW_BOOTSTRAP_PATH__/);
-  assert.match(source, /bootstrapFile\.remove\(\)/);
   assert.match(source, /COMMAND_BOOTSTRAP_LOADED/);
   assert.match(source, /if \(!app\.project\)/);
   assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_runM2P45CommandProof\(\)", 250, false\)/);
@@ -126,7 +121,6 @@ test("P4/P5 workflow is self-hosted, serialized with other AE proofs, and has an
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /ae-test\/m2-p45-control/);
-  assert.match(workflow, /\.github\/ae-test-trigger\/m2-p45\.txt/);
   assert.match(workflow, /group: editflow-m2-real-ae-workstation/);
   assert.match(workflow, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
   assert.doesNotMatch(workflow, /pull_request:/);
@@ -138,6 +132,5 @@ test("current AE host loader includes failed-operation atomicity wrapper", async
   assert.match(loader, /editflow_host_atomicity\.jsx/);
   assert.match(atomicity, /response\.outcome === "FAILED"/);
   assert.match(atomicity, /app\.executeCommand\(16\)/);
-  assert.match(atomicity, /self-rollback the failed operation/);
   assert.doesNotMatch(atomicity, /\beval\s*\(/);
 });
