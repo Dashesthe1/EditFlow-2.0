@@ -1,5 +1,5 @@
 param(
-  [string]$AfterFxPath = "",
+  [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [int]$TimeoutSeconds = 240
 )
 
@@ -57,7 +57,7 @@ if ($ExistingAfterFx.Count -eq 1) {
   Write-Warning ("Pre-existing After Effects PID " + $ExistingAfterFx[0].Id + " detected at '" + $AfterFx + "'. The JSX blank/unsaved/zero-item gate is authoritative; the runner will not close this process.")
 } else {
   $AfterFx = Resolve-AfterFx $AfterFxPath
-  Write-Host "No pre-existing After Effects session detected; the runner will own and later close the AE process it launches."
+  Write-Host "No pre-existing After Effects session detected; the runner will own and later close the declared M2 target AE process it launches."
 }
 
 Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: the AE proof REFUSES before mutations unless the target project has zero items and has never been saved."
