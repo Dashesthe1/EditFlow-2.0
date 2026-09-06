@@ -1,6 +1,7 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [int]$TimeoutSeconds = 240,
+  [int]$StartupTimeoutSeconds = 90,
   [int]$CommandEvidenceTimeoutSeconds = 45
 )
 
@@ -14,6 +15,7 @@ $BootstrapLog = Join-Path $ArtifactDir "bootstrap.log"
 $StartupDiagnosticsPath = Join-Path $ArtifactDir "startup-diagnostics.log"
 $CommandBootstrap = Join-Path $ArtifactDir "m2-p45-command-bootstrap.jsx"
 $LaunchProcess = $null
+$CommandProcess = $null
 
 function Resolve-AfterFx {
   param([string]$ExplicitPath)
@@ -69,6 +71,26 @@ function Write-AeProcessSnapshot {
   }
 }
 
+function Find-ReadyTargetAfterFx {
+  param([string]$ExpectedPath)
+  $Candidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  foreach ($Candidate in $Candidates) {
+    $CandidatePath = $null
+    $Ready = $false
+    try {
+      $CandidatePath = $Candidate.Path
+      $Ready = $Candidate.Responding -and $Candidate.MainWindowHandle -ne 0
+    } catch {
+      $CandidatePath = $null
+      $Ready = $false
+    }
+    if ($CandidatePath -and $Ready -and [StringComparer]::OrdinalIgnoreCase.Equals((Resolve-Path $CandidatePath).Path, $ExpectedPath)) {
+      return $Candidate
+    }
+  }
+  return $null
+}
+
 function Publish-Evidence {
   if (Test-Path $BootstrapLog -PathType Leaf) {
     Write-Host "EditFlow M2 P4/P5 command bootstrap evidence:"
@@ -86,6 +108,7 @@ if (-not [Environment]::UserInteractive) {
   throw "The EditFlow AE runner must run in an interactive Windows user session. Start the GitHub Actions runner with run.cmd while logged into the desktop; do not run it as a Windows service."
 }
 if ($TimeoutSeconds -lt 30) { throw "TimeoutSeconds must be at least 30." }
+if ($StartupTimeoutSeconds -lt 10) { throw "StartupTimeoutSeconds must be at least 10." }
 if ($CommandEvidenceTimeoutSeconds -lt 10) { throw "CommandEvidenceTimeoutSeconds must be at least 10." }
 if (-not (Test-Path $ProofScript -PathType Leaf)) { throw "M2 P4/P5 proof script not found: $ProofScript" }
 if (-not (Test-Path $BootstrapTemplate -PathType Leaf)) { throw "M2 P4/P5 command bootstrap template not found: $BootstrapTemplate" }
@@ -94,7 +117,7 @@ $AfterFx = Resolve-AfterFx $AfterFxPath
 $ExistingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
 if ($ExistingAfterFx.Count -gt 0) {
   $Ids = ($ExistingAfterFx | ForEach-Object { $_.Id }) -join ","
-  throw "Refusing disposable P4/P5 command proof because After Effects is already running (PID(s): $Ids). Close AE first; no writes were attempted."
+  throw "Refusing disposable P4/P5 two-phase proof because After Effects is already running (PID(s): $Ids). Close AE first; no writes were attempted."
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
@@ -113,33 +136,59 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $BootstrapInfo = Get-Item $CommandBootstrap
 $RunnerProcess = Get-Process -Id $PID
 $RunnerIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);bootstrapPath=$($BootstrapInfo.FullName);bootstrapLength=$($BootstrapInfo.Length);bootstrapWriteUtc=$($BootstrapInfo.LastWriteTimeUtc.ToString('o'));afterFx=$AfterFx;delivery=-r")
+Write-StartupDiagnostic "PRELAUNCH" ("runnerIdentity=$RunnerIdentity;runnerPid=$PID;runnerSessionId=$($RunnerProcess.SessionId);bootstrapPath=$($BootstrapInfo.FullName);bootstrapLength=$($BootstrapInfo.Length);bootstrapWriteUtc=$($BootstrapInfo.LastWriteTimeUtc.ToString('o'));afterFx=$AfterFx;delivery=normal-launch-then-r")
 
-Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: the fixed -r command wrapper will invoke only the repository-owned P4/P5 proof, which still REFUSES before mutations unless the project is unsaved and has zero items."
+Write-Warning "DESTRUCTIVE DISPOSABLE-PROJECT GATE: the runner will first cold-launch its owned AE 2025 session, then send only the fixed -r wrapper to that existing instance. The proof still REFUSES before mutations unless the project is unsaved and has zero items."
 Write-Host "The proof saves only its disposable project under proofs/artifacts, closes/reopens it, then leaves a new blank project before runner cleanup."
 Write-Host ("After Effects: " + $AfterFx)
 Write-Host ("Command bootstrap: " + $CommandBootstrap)
 Write-Host ("Proof script: " + $ProofScript)
 
 try {
+  Write-Host "Phase 1: cold-launching the declared M2 target After Effects without a script argument..."
+  $LaunchProcess = Start-Process -FilePath $AfterFx -PassThru
+  Write-Host ("Cold-launch request PID " + $LaunchProcess.Id + ".")
+  Write-AeProcessSnapshot "COLD_LAUNCH"
+
+  $StartupDeadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
+  $NextStartupDiagnosticAt = Get-Date
+  $ReadyAfterFx = $null
+  while ((Get-Date) -lt $StartupDeadline) {
+    $ReadyAfterFx = Find-ReadyTargetAfterFx $AfterFx
+    if ($null -ne $ReadyAfterFx) { break }
+    if ((Get-Date) -ge $NextStartupDiagnosticAt) {
+      Write-AeProcessSnapshot "COLD_START_WAIT"
+      $NextStartupDiagnosticAt = (Get-Date).AddSeconds(5)
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  Write-AeProcessSnapshot "COLD_START_READY_CHECK"
+  if ($null -eq $ReadyAfterFx) {
+    throw "After Effects did not expose a responsive target window within $StartupTimeoutSeconds seconds, so command delivery was not attempted."
+  }
+
+  Write-Host ("Phase 1 complete: target AE PID " + $ReadyAfterFx.Id + " is responsive with a main window. Phase 2 will send the fixed -r wrapper to that existing instance.")
+  Write-StartupDiagnostic "COMMAND_TARGET_READY" ("pid=$($ReadyAfterFx.Id);mainWindowHandle=$($ReadyAfterFx.MainWindowHandle);title=$($ReadyAfterFx.MainWindowTitle)")
+  Start-Sleep -Milliseconds 500
+
   $Arguments = @("-r", ('"' + $CommandBootstrap + '"'))
-  $LaunchProcess = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
-  Write-Host ("Launched declared M2 target After Effects with fixed -r command bootstrap; launcher PID " + $LaunchProcess.Id + ".")
-  Write-AeProcessSnapshot "COMMAND_LAUNCH"
+  $CommandProcess = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
+  Write-Host ("Phase 2 command-dispatch request PID " + $CommandProcess.Id + ".")
+  Write-AeProcessSnapshot "COMMAND_DISPATCH"
 
   $EvidenceDeadline = (Get-Date).AddSeconds($CommandEvidenceTimeoutSeconds)
-  $NextDiagnosticAt = Get-Date
+  $NextCommandDiagnosticAt = Get-Date
   while ((Get-Date) -lt $EvidenceDeadline -and -not (Test-Path $BootstrapLog -PathType Leaf) -and -not (Test-Path $ResultPath -PathType Leaf)) {
-    if ((Get-Date) -ge $NextDiagnosticAt) {
+    if ((Get-Date) -ge $NextCommandDiagnosticAt) {
       Write-AeProcessSnapshot "COMMAND_WAIT"
-      $NextDiagnosticAt = (Get-Date).AddSeconds(5)
+      $NextCommandDiagnosticAt = (Get-Date).AddSeconds(5)
     }
     Start-Sleep -Milliseconds 250
   }
   Write-AeProcessSnapshot "COMMAND_WAIT_END"
 
   if (-not (Test-Path $BootstrapLog -PathType Leaf) -and -not (Test-Path $ResultPath -PathType Leaf)) {
-    throw "After Effects accepted the -r launch request but produced neither command-bootstrap evidence nor result.json within $CommandEvidenceTimeoutSeconds seconds."
+    throw "The existing responsive After Effects instance received the -r dispatch request but produced neither command-bootstrap evidence nor result.json within $CommandEvidenceTimeoutSeconds seconds."
   }
 
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
