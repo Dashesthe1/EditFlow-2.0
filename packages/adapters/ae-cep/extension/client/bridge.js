@@ -9,6 +9,8 @@
   var sessionId = null;
   var pollDelayMs = 125;
   var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
+  var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
+  var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
@@ -49,6 +51,66 @@
           throw new Error(message);
         }
         return { status: response.status, value: value };
+      });
+    });
+  }
+
+  function extensionRootPath() {
+    var cep = window.__adobe_cep__;
+    if (!cep || typeof cep.getSystemPath !== "function") {
+      throw new Error("CEP extension path API is unavailable.");
+    }
+    var path = decodeURI(cep.getSystemPath("extension"));
+    if (path.indexOf("file:///") === 0 && /^[A-Za-z]:\//.test(path.substring(8))) {
+      path = path.substring(8);
+    } else if (path.indexOf("file://") === 0) {
+      path = path.substring(7);
+    }
+    path = path.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (!path) throw new Error("CEP extension root path is empty.");
+    return path;
+  }
+
+  function ensureHostDispatcher() {
+    return new Promise(function (resolve, reject) {
+      var cep = window.__adobe_cep__;
+      if (!cep || typeof cep.evalScript !== "function") {
+        reject(new Error("Host bootstrap: CEP evalScript is unavailable in this panel context."));
+        return;
+      }
+
+      var hostPath;
+      try {
+        hostPath = extensionRootPath() + "/host/editflow_host_current.jsx";
+      } catch (error) {
+        reject(new Error("Host bootstrap: " + (error && error.message ? error.message : String(error))));
+        return;
+      }
+
+      var hostPathLiteral = JSON.stringify(hostPath);
+      var script = "(function(){try{" +
+        "if(typeof $.global.EditFlow2_dispatch===\"function\")return \"" + HOST_BOOTSTRAP_OK + "\";" +
+        "var hostFile=new File(" + hostPathLiteral + ");" +
+        "if(!hostFile.exists)return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "host file missing: \"+hostFile.fsName;" +
+        "$.evalFile(hostFile);" +
+        "if(typeof $.global.EditFlow2_dispatch!==\"function\")return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "dispatcher did not register\";" +
+        "return \"" + HOST_BOOTSTRAP_OK + "\";" +
+        "}catch(error){return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "\"+String(error);}}())";
+
+      cep.evalScript(script, function (raw) {
+        if (raw === HOST_BOOTSTRAP_OK) {
+          resolve();
+          return;
+        }
+        if (typeof raw === "string" && raw.indexOf(HOST_BOOTSTRAP_ERROR_PREFIX) === 0) {
+          reject(new Error("Host bootstrap: " + raw.substring(HOST_BOOTSTRAP_ERROR_PREFIX.length)));
+          return;
+        }
+        if (raw === "EvalScript error.") {
+          reject(new Error("Host bootstrap: After Effects returned an evalScript error."));
+          return;
+        }
+        reject(new Error("Host bootstrap: unexpected result " + String(raw)));
       });
     });
   }
@@ -172,11 +234,17 @@
       setStatus("error", error.message);
       return;
     }
-    register().then(schedulePoll).catch(function (error) {
-      sessionId = null;
-      setStatus("error", "Local runtime unavailable: " + error.message);
-      setTimeout(start, 750);
-    });
+
+    ensureHostDispatcher()
+      .then(register)
+      .then(schedulePoll)
+      .catch(function (error) {
+        sessionId = null;
+        var message = error && error.message ? error.message : String(error);
+        if (message.indexOf("Host bootstrap:") === 0) setStatus("error", message);
+        else setStatus("error", "Local runtime unavailable: " + message);
+        setTimeout(start, 750);
+      });
   }
 
   window.addEventListener("beforeunload", function () { stopped = true; });
