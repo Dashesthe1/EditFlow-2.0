@@ -7,26 +7,54 @@ const currentHostPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const acceptancePath = "apps/desktop-host/src/cep-write-acceptance-cli.ts";
 
-test("render.capture returns from CEP before the blocking AE render and uses only a fixed scheduled task", async () => {
+test("render.capture returns from CEP before blocking AE render and schedules only a fixed global task", async () => {
   const source = await readFile(renderHostPath, "utf8");
 
   assert.match(source, /request\.command !== "render\.capture"/);
   assert.match(source, /\$\.global\.EditFlow2_runScheduledRender = function/);
   assert.match(source, /app\.project\.renderQueue\.render\(\)/);
-  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_runScheduledRender\(\)", 25, false\)/);
+  assert.match(source, /app\.scheduleTask\("EditFlow2_runScheduledRender\(\)", 25, false\)/);
   assert.match(source, /state: "SCHEDULED"/);
-  assert.match(source, /mode: "SCHEDULED_HOST_JOB_V1"/);
+  assert.match(source, /mode: "SCHEDULED_HOST_JOB_V2_GLOBAL"/);
   assert.match(source, /completionPath: job\.completionPath/);
   assert.match(source, /payload\.outputPath \+ "\.editflow-render\.json"/);
   assert.doesNotMatch(source, /app\.scheduleTask\([^\n]*payload/);
 });
 
-test("bounded scheduled render isolates the existing Render Queue and reports cleanup in its completion marker", async () => {
+test("scheduled entrypoint is self-contained for AE global-workspace execution", async () => {
+  const source = await readFile(renderHostPath, "utf8");
+  const start = source.indexOf("$.global.EditFlow2_runScheduledRender = function () {");
+  const end = source.indexOf("$.global.EditFlow2_dispatch = function", start);
+  assert.ok(start >= 0 && end > start);
+  const scheduled = source.slice(start, end);
+
+  assert.match(scheduled, /function taskNowMs\(\)/);
+  assert.match(scheduled, /function taskString\(value\)/);
+  assert.match(scheduled, /function taskWriteMarker\(status, ok, errorMessage\)/);
+  assert.match(scheduled, /function taskCleanupQueueItem\(\)/);
+  assert.doesNotMatch(scheduled, /\bnowMs\(\)/);
+  assert.doesNotMatch(scheduled, /\basString\(/);
+  assert.doesNotMatch(scheduled, /\bwriteImmediateMarker\(/);
+});
+
+test("scheduled render writes deterministic lifecycle evidence before, during, and after render", async () => {
+  const source = await readFile(renderHostPath, "utf8");
+
+  assert.match(source, /writeImmediateMarker\(job, "SCHEDULED", false, null\)/);
+  assert.match(source, /taskWriteMarker\("RUNNING", false, null\)/);
+  assert.match(source, /taskWriteMarker\(job\.state, ok, errorMessage\)/);
+  assert.match(source, /completedAtMs:/);
+  assert.match(source, /queueItemRemoved: job\.queueItemRemoved === true/);
+});
+
+test("bounded scheduled render isolates existing Render Queue, removes stale output, and reports cleanup", async () => {
   const source = await readFile(renderHostPath, "utf8");
 
   assert.match(source, /app\.project\.renderQueue\.numItems !== 0/);
   assert.match(source, /RENDER_QUEUE_NOT_EMPTY/);
-  assert.match(source, /rqItem\.remove\(\)/);
+  assert.match(source, /priorOutput\.exists/);
+  assert.match(source, /priorOutput\.remove\(\)/);
+  assert.match(source, /job\.rqItem\.remove\(\)/);
   assert.match(source, /queueItemRemoved: job\.queueItemRemoved === true/);
   assert.match(source, /RQItemStatus\.DONE/);
   assert.match(source, /output\.exists/);
@@ -45,7 +73,7 @@ test("current host and Windows installer require the scheduled render layer", as
   assert.match(installer, /"editflow_host_render_jobs\.jsx"/);
 });
 
-test("M2 acceptance waits on the filesystem completion marker instead of issuing host reads during render", async () => {
+test("M2 acceptance waits on filesystem completion marker instead of issuing host reads during render", async () => {
   const source = await readFile(acceptancePath, "utf8");
 
   assert.match(source, /waitForRenderCompletion/);
