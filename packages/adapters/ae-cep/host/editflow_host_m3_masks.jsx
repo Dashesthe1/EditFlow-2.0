@@ -423,20 +423,34 @@
   }
 
   function cloneMask(source, parade, stableId, name) {
+    /* ADBE Mask Parade is an indexed property group. Adding a property can
+     * invalidate previously held child objects, including `source`. Capture the
+     * complete structural source state before mutating the group, then rebuild
+     * the duplicate exclusively from plain snapshot data. */
+    var sourceSnapshot = snapshotMask(source);
     var target = parade.addProperty("ADBE Mask Atom");
-    setMaskIdentity(target, stableId, name || (cleanMaskName(source) + " Copy"));
-    target.maskMode = source.maskMode;
-    target.inverted = source.inverted;
-    target.property("ADBE Mask Feather").setValue(source.property("ADBE Mask Feather").value);
-    target.property("ADBE Mask Offset").setValue(source.property("ADBE Mask Offset").value);
-    target.property("ADBE Mask Opacity").setValue(source.property("ADBE Mask Opacity").value);
-    var sourcePath = source.property("ADBE Mask Shape");
+    setMaskIdentity(target, stableId, name || (sourceSnapshot.name + " Copy"));
+
+    var properties = {
+      expansion: sourceSnapshot.expansion,
+      opacity: sourceSnapshot.opacity,
+      mode: sourceSnapshot.mode,
+      inverted: sourceSnapshot.inverted
+    };
+    if (sourceSnapshot.feather) properties.feather = sourceSnapshot.feather;
+    applyProperties(target, properties);
+
     var targetPath = target.property("ADBE Mask Shape");
     var i;
-    if (sourcePath.numKeys > 0) {
-      for (i = 1; i <= sourcePath.numKeys; i += 1) targetPath.setValueAtTime(sourcePath.keyTime(i), sourcePath.keyValue(i));
-    } else {
-      targetPath.setValue(sourcePath.value);
+    if (sourceSnapshot.pathKeyframes.length > 0) {
+      for (i = 0; i < sourceSnapshot.pathKeyframes.length; i += 1) {
+        targetPath.setValueAtTime(
+          sourceSnapshot.pathKeyframes[i].time,
+          buildShape(sourceSnapshot.pathKeyframes[i].shape)
+        );
+      }
+    } else if (sourceSnapshot.path) {
+      targetPath.setValue(buildShape(sourceSnapshot.path));
     }
     return target;
   }
@@ -543,6 +557,12 @@
     }
     if (request.command === "mask.duplicate") {
       parade = maskParade(layer);
+      var duplicateIndex;
+      for (duplicateIndex = 1; duplicateIndex <= parade.numProperties; duplicateIndex += 1) {
+        if (maskStableId(parade.property(duplicateIndex)) === payload.stableId) {
+          reject("MASK_STABLE_ID_EXISTS", "Mask stableId already exists on the target layer.");
+        }
+      }
       var copy = cloneMask(mask, parade, payload.stableId, payload.name);
       return { mask: copy, readback: snapshotMask(copy), stableId: payload.stableId };
     }
