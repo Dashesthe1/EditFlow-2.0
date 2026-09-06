@@ -14,13 +14,13 @@
  * relying on closure state surviving the delayed global execution boundary.
  *
  * No caller-supplied script text is executed. app.scheduleTask receives one fixed
- * literal global function call only.
+ * fully-qualified $.global function call only.
  */
 (function () {
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderjob2";
+  var BUILD = "0.1.0-dev.4-renderjob3";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -312,7 +312,7 @@
          * desktop runtime deterministic evidence of where execution stopped. */
         writeImmediateMarker(job, "SCHEDULED", false, null);
 
-        var taskId = app.scheduleTask("EditFlow2_runScheduledRender()", 25, false);
+        var taskId = app.scheduleTask("$.global.EditFlow2_runScheduledRender()", 25, false);
         if (typeof taskId !== "number") throw new Error("After Effects did not return a render task identifier.");
         job.taskId = taskId;
 
@@ -329,7 +329,7 @@
         response.hostProjectRevision = app.project.revision;
         response.diagnostics.durationMs = nowMs() - started;
         response.diagnostics.hostRevisionAfter = app.project.revision;
-        response.diagnostics.notes.push("Render execution uses a self-contained global scheduled task; lifecycle is reported by the fixed sidecar marker.");
+        response.diagnostics.notes.push("Render execution uses a self-contained, explicitly qualified global scheduled task; lifecycle is reported by the fixed sidecar marker.");
         response.proofArtifactRefs = [job.completionPath];
         return JSON.stringify(response);
       } catch (setupError) {
