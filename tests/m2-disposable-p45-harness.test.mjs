@@ -31,12 +31,24 @@ test("P4/P5 proof explicitly covers rollback and required stable-identity cases"
   assert.match(source, /transfer_after_reconnect/);
 });
 
-test("P4/P5 Windows runner and workflow are opt-in and self-hosted", async () => {
+test("P4/P5 Windows runner owns an isolated AE process and refuses pre-existing sessions", async () => {
   const runner = await readFile(runnerPath, "utf8");
-  const workflow = await readFile(workflowPath, "utf8");
-  assert.match(runner, /blank UNSAVED project/);
+
+  assert.match(runner, /Get-Process -Name "AfterFX"/);
+  assert.match(runner, /Refusing disposable P4\/P5 proof because a pre-existing After Effects session is running/);
+  assert.match(runner, /Start-Process -FilePath \$AfterFx -ArgumentList \$Arguments -PassThru/);
+  assert.match(runner, /\$OwnedAfterFx\.Id/);
+  assert.match(runner, /Stop-Process -Id \$OwnedAfterFx\.Id -Force/);
   assert.match(runner, /status -eq "REFUSED"/);
+  assert.doesNotMatch(runner, /Start AE first/);
+});
+
+test("P4/P5 workflow is self-hosted, serialized with other AE proofs, and has an explicit control-branch trigger", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /ae-test\/m2-p45-control/);
+  assert.match(workflow, /\.github\/ae-test-trigger\/m2-p45\.txt/);
+  assert.match(workflow, /group: editflow-m2-real-ae-workstation/);
   assert.match(workflow, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
   assert.doesNotMatch(workflow, /pull_request:/);
 });
