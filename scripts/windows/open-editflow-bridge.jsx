@@ -22,7 +22,22 @@
     }
   }
 
-  appendBootstrapEvidence("SCRIPT_STARTED", $.fileName);
+  var loadedPath = $.fileName;
+  appendBootstrapEvidence("SCRIPT_STARTED", loadedPath);
+
+  /* The self-hosted runner copies this source to a uniquely owned Startup filename.
+   * Delete only that temporary copy after AE has loaded it so an interrupted runner
+   * cannot leave a bootstrap that runs during a later user-initiated AE session. */
+  try {
+    var selfFile = new File(loadedPath);
+    if (selfFile.name === "EditFlow2-self-hosted-bootstrap.jsx") {
+      var removed = selfFile.remove();
+      appendBootstrapEvidence("STARTUP_FILE_SELF_DELETE", "removed=" + removed + ";path=" + selfFile.fsName);
+    }
+  } catch (selfDeleteError) {
+    appendBootstrapEvidence("STARTUP_FILE_SELF_DELETE_ERROR", String(selfDeleteError));
+  }
+
   $.global.EditFlow2_selfHostedBridgeOpenAttempts = 0;
 
   $.global.EditFlow2_selfHostedOpenBridge = function () {
