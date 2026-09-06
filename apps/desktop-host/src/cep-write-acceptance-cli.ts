@@ -93,6 +93,7 @@ const main = async (): Promise<void> => {
   let baselineItemCount: number | null = null;
   let environment: Awaited<ReturnType<AeCepAdapterClientV11["probe"]>> | null = null;
   let panel: Awaited<ReturnType<LoopbackCepBroker["waitForPanel"]>> | null = null;
+  let failureError: string | null = null;
 
   const projectId = "m2-cep-write-acceptance";
   const transactionId = `M2_CEP_WRITE_TX_${Date.now()}`;
@@ -291,26 +292,7 @@ const main = async (): Promise<void> => {
       && stableSeen.has(precompStable)
       && replacementSeen;
   } catch (error) {
-    await writeJson(resultPath, {
-      proofId: "M2_CEP_REAL_AE_BOUNDED",
-      status: "FAILED",
-      ok: false,
-      startedAt,
-      completedAt: new Date().toISOString(),
-      protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
-      panel,
-      environment,
-      checks,
-      responses,
-      error: error instanceof Error ? error.message : String(error),
-      safety: {
-        boundedTemporaryWrites: true,
-        projectSavePerformed: false,
-        projectOpenReplacePerformed: false,
-        brokerHost: "127.0.0.1",
-      },
-    });
-    process.exitCode = 1;
+    failureError = error instanceof Error ? error.message : String(error);
   } finally {
     await cleanupComp(targetStable);
     await cleanupComp(precompStable);
@@ -326,14 +308,37 @@ const main = async (): Promise<void> => {
       }
     }
 
-    const alreadyFailed = process.exitCode === 1;
-    if (!alreadyFailed) {
+    if (failureError !== null) {
+      await writeJson(resultPath, {
+        proofId: "M2_CEP_REAL_AE_BOUNDED",
+        status: "FAILED",
+        ok: false,
+        cleanupComplete: true,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
+        panel,
+        environment,
+        checks,
+        responses,
+        error: failureError,
+        cleanupErrors,
+        safety: {
+          boundedTemporaryWrites: true,
+          projectSavePerformed: false,
+          projectOpenReplacePerformed: false,
+          brokerHost: "127.0.0.1",
+        },
+      });
+      process.exitCode = 1;
+    } else {
       const allCore = Object.values(checks).every((value) => value === true);
       const ok = allCore && cleanupErrors.length === 0;
       await writeJson(resultPath, {
         proofId: "M2_CEP_REAL_AE_BOUNDED",
         status: ok ? "PARTIAL_PASS" : "PARTIAL_FAILURE",
         ok,
+        cleanupComplete: true,
         startedAt,
         completedAt: new Date().toISOString(),
         protocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
@@ -359,11 +364,6 @@ const main = async (): Promise<void> => {
         },
       });
       if (!ok) process.exitCode = 1;
-    } else if (cleanupErrors.length > 0) {
-      const failed = JSON.parse(stripUtf8Bom(await readFile(resultPath, "utf8"))) as Record<string, unknown>;
-      failed["cleanupErrors"] = cleanupErrors;
-      failed["checks"] = checks;
-      await writeJson(resultPath, failed);
     }
 
     if (broker !== null) await broker.stop();
