@@ -1,0 +1,4 @@
+M3 mask P1/P2 real-AE proof trigger
+source_commit=8a1c499ac26344e2199fa2fa816d4565769c312c
+proof_scope=P1_validation_rejection,P2_structural_readback
+nonce=attempt-9-8a1c499-mask-duplicate-fix
