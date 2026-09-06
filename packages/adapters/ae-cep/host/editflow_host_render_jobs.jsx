@@ -20,7 +20,7 @@
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderjob3";
+  var BUILD = "0.1.0-dev.4-renderjob4";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -143,21 +143,31 @@
 
     function taskNowMs() { return (new Date()).getTime(); }
     function taskString(value) { return value === null || value === undefined ? "" : String(value); }
+    function taskQuote(value) {
+      var text = taskString(value);
+      text = text.replace(/\\/g, "\\\\");
+      text = text.replace(/"/g, "\\\"");
+      text = text.replace(/\r/g, "\\r");
+      text = text.replace(/\n/g, "\\n");
+      text = text.replace(/\t/g, "\\t");
+      return "\"" + text + "\"";
+    }
     function taskWriteMarker(status, ok, errorMessage) {
       var marker = new File(job.completionPath);
       marker.encoding = "UTF-8";
       if (!marker.open("w")) throw new Error("Unable to open render lifecycle marker: " + marker.fsName);
       try {
-        marker.write($.global.EditFlow2_JSON.stringify({
-          schemaVersion: 1,
-          jobId: job.jobId,
-          status: status,
-          ok: ok,
-          outputPath: job.outputPath,
-          error: errorMessage || null,
-          completedAtMs: taskNowMs(),
-          queueItemRemoved: job.queueItemRemoved === true
-        }));
+        var payload = "{" +
+          "\"schemaVersion\":1," +
+          "\"jobId\":" + taskQuote(job.jobId) + "," +
+          "\"status\":" + taskQuote(status) + "," +
+          "\"ok\":" + (ok ? "true" : "false") + "," +
+          "\"outputPath\":" + taskQuote(job.outputPath) + "," +
+          "\"error\":" + (errorMessage ? taskQuote(errorMessage) : "null") + "," +
+          "\"completedAtMs\":" + taskNowMs() + "," +
+          "\"queueItemRemoved\":" + (job.queueItemRemoved === true ? "true" : "false") +
+          "}";
+        marker.write(payload);
       } finally {
         marker.close();
       }
@@ -329,7 +339,7 @@
         response.hostProjectRevision = app.project.revision;
         response.diagnostics.durationMs = nowMs() - started;
         response.diagnostics.hostRevisionAfter = app.project.revision;
-        response.diagnostics.notes.push("Render execution uses a self-contained, explicitly qualified global scheduled task; lifecycle is reported by the fixed sidecar marker.");
+        response.diagnostics.notes.push("Render execution uses a self-contained global task and self-contained lifecycle serialization; lifecycle is reported by the fixed sidecar marker.");
         response.proofArtifactRefs = [job.completionPath];
         return JSON.stringify(response);
       } catch (setupError) {
