@@ -18,12 +18,17 @@ test("real-AE proof is bounded and does not replace or save the user's project",
   assert.match(source, /P5_save_reopen_reconnect_transfer:\s*false/);
 });
 
-test("Windows runner requires an already running AE process and invokes only the checked-in proof script", async () => {
+test("Windows runner binds the proof to an already running AE executable and never guesses newest installed", async () => {
   const source = await readFile(runnerPath, "utf8");
   assert.match(source, /Get-Process -Name "AfterFX"/);
+  assert.match(source, /\$Process\.Path/);
+  assert.match(source, /Multiple After Effects installations are running/);
+  assert.match(source, /explicit AfterFxPath is not an already running After Effects executable/);
   assert.match(source, /proofs\\ae\\m2-real-host-proof\.jsx/);
   assert.match(source, /Start-Process -FilePath \$AfterFx -ArgumentList \$Arguments/);
   assert.match(source, /-r/);
+  assert.doesNotMatch(source, /Get-ChildItem \$AdobeRoot/);
+  assert.doesNotMatch(source, /Sort-Object Name -Descending/);
 });
 
 test("real-AE GitHub workflow is manual and self-hosted rather than PR-triggered", async () => {

@@ -9,37 +9,57 @@ $ProofScript = Join-Path $RepoRoot "proofs\ae\m2-real-host-proof.jsx"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
 $ResultPath = Join-Path $ArtifactDir "result.json"
 
-function Resolve-AfterFx {
+function Resolve-RunningAfterFx {
   param([string]$ExplicitPath)
-  if ($ExplicitPath) {
-    if (-not (Test-Path $ExplicitPath -PathType Leaf)) { throw "AfterFX.exe not found at explicit path: $ExplicitPath" }
-    return (Resolve-Path $ExplicitPath).Path
+
+  $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  if ($Running.Count -eq 0) {
+    throw "Adobe After Effects is not running. Open the exact After Effects version/project you are willing to use for the bounded temporary proof, then rerun. The proof does not save or replace the project."
   }
 
-  $AdobeRoot = Join-Path $env:ProgramFiles "Adobe"
-  if (-not (Test-Path $AdobeRoot -PathType Container)) { throw "Adobe Program Files directory not found: $AdobeRoot" }
-  $Candidates = Get-ChildItem $AdobeRoot -Directory -Filter "Adobe After Effects *" |
-    Sort-Object Name -Descending |
-    ForEach-Object { Join-Path $_.FullName "Support Files\AfterFX.exe" } |
-    Where-Object { Test-Path $_ -PathType Leaf }
-  $Resolved = $Candidates | Select-Object -First 1
-  if (-not $Resolved) { throw "Unable to locate AfterFX.exe. Pass -AfterFxPath explicitly." }
-  return $Resolved
+  $RunningPaths = @()
+  foreach ($Process in $Running) {
+    $ProcessPath = $null
+    try { $ProcessPath = $Process.Path } catch { $ProcessPath = $null }
+    if ($ProcessPath -and (Test-Path $ProcessPath -PathType Leaf)) {
+      $ResolvedPath = (Resolve-Path $ProcessPath).Path
+      if ($RunningPaths -notcontains $ResolvedPath) { $RunningPaths += $ResolvedPath }
+    }
+  }
+
+  if ($ExplicitPath) {
+    if (-not (Test-Path $ExplicitPath -PathType Leaf)) { throw "AfterFX.exe not found at explicit path: $ExplicitPath" }
+    $ResolvedExplicit = (Resolve-Path $ExplicitPath).Path
+    if ($RunningPaths -notcontains $ResolvedExplicit) {
+      throw "The explicit AfterFxPath is not an already running After Effects executable: $ResolvedExplicit. Open that exact AE version first, or omit -AfterFxPath when only one AE version is running."
+    }
+    return $ResolvedExplicit
+  }
+
+  if ($RunningPaths.Count -eq 0) {
+    throw "After Effects is running, but its executable path could not be resolved. Rerun with -AfterFxPath pointing to the already running AfterFX.exe."
+  }
+
+  if ($RunningPaths.Count -gt 1) {
+    $List = $RunningPaths -join "`n - "
+    throw "Multiple After Effects installations are running. Close all but the intended target, or rerun with -AfterFxPath matching one of these already running executables:`n - $List"
+  }
+
+  return $RunningPaths[0]
 }
 
-$AfterFx = Resolve-AfterFx $AfterFxPath
+if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
 if (-not (Test-Path $ProofScript -PathType Leaf)) { throw "M2 proof script not found: $ProofScript" }
+
+$AfterFx = Resolve-RunningAfterFx $AfterFxPath
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 if (Test-Path $ResultPath) { Remove-Item $ResultPath -Force }
 
-$Running = Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue
-if (-not $Running) {
-  throw "Adobe After Effects is not running. Open After Effects with a project you are willing to use for a bounded temporary proof, then rerun this command. The proof does not save or replace the project."
-}
-
+$VersionInfo = (Get-Item $AfterFx).VersionInfo
 Write-Host "EditFlow 2.0 M2 real-AE proof"
-Write-Host "After Effects: $AfterFx"
-Write-Host "Proof script:  $ProofScript"
+Write-Host "Running After Effects: $AfterFx"
+if ($VersionInfo.ProductVersion) { Write-Host ("Running AE version: " + $VersionInfo.ProductVersion) }
+Write-Host "Proof script:          $ProofScript"
 
 $Arguments = @("-r", ('"' + $ProofScript + '"'))
 Start-Process -FilePath $AfterFx -ArgumentList $Arguments | Out-Null
@@ -47,7 +67,7 @@ Start-Process -FilePath $AfterFx -ArgumentList $Arguments | Out-Null
 $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while (-not (Test-Path $ResultPath -PathType Leaf)) {
   if ((Get-Date) -ge $Deadline) {
-    throw "Timed out waiting for M2 result.json. In After Effects, enable Edit > Preferences > Scripting & Expressions > Allow Scripts To Write Files And Access Network, then rerun."
+    throw "Timed out waiting for M2 result.json from the already running After Effects host. In that exact AE version, enable Edit > Preferences > Scripting & Expressions > Allow Scripts To Write Files And Access Network, then rerun."
   }
   Start-Sleep -Milliseconds 500
 }
