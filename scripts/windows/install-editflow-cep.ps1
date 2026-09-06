@@ -1,6 +1,7 @@
 param(
   [int]$Port = 32145,
-  [switch]$SkipDebugMode
+  [switch]$SkipDebugMode,
+  [switch]$RotateToken
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,10 +19,35 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 if (-not (Test-Path $TemplateRoot -PathType Container)) { throw "CEP extension template not found: $TemplateRoot" }
 
-$TokenBytes = New-Object byte[] 32
-$Rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-try { $Rng.GetBytes($TokenBytes) } finally { $Rng.Dispose() }
-$Token = [Convert]::ToBase64String($TokenBytes)
+# Preserve the local authentication token across ordinary reinstalls. During active
+# development After Effects can still have the previously installed panel in memory;
+# rotating the token on every file refresh causes that panel to be rejected by the new
+# broker as UNAUTHORIZED. Rotation is explicit via -RotateToken.
+$Token = $null
+$TokenWasPreserved = $false
+if (-not $RotateToken -and (Test-Path $ConfigPath -PathType Leaf)) {
+  try {
+    $ExistingConfigText = [System.IO.File]::ReadAllText($ConfigPath)
+    if ($ExistingConfigText.Length -gt 0 -and [int]$ExistingConfigText[0] -eq 0xFEFF) {
+      $ExistingConfigText = $ExistingConfigText.Substring(1)
+    }
+    $ExistingConfig = $ExistingConfigText | ConvertFrom-Json
+    if ($ExistingConfig.token -is [string] -and $ExistingConfig.token.Length -ge 32) {
+      $Token = $ExistingConfig.token
+      $TokenWasPreserved = $true
+    }
+  } catch {
+    # A missing, malformed, or legacy config is recovered by generating a fresh token.
+    $Token = $null
+  }
+}
+
+if (-not $Token) {
+  $TokenBytes = New-Object byte[] 32
+  $Rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $Rng.GetBytes($TokenBytes) } finally { $Rng.Dispose() }
+  $Token = [Convert]::ToBase64String($TokenBytes)
+}
 
 if (Test-Path $TargetRoot) { Remove-Item $TargetRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $TargetRoot | Out-Null
@@ -72,5 +98,12 @@ Write-Host "Runtime config: $ConfigPath"
 Write-Host "Protocol: 1.1.0"
 Write-Host "Broker: 127.0.0.1:$Port"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }
-Write-Host "Restart After Effects, then open Window > Extensions (Legacy) > EditFlow 2.0 Bridge."
-Write-Host "The authentication token was generated locally and is not printed here."
+if ($TokenWasPreserved) {
+  Write-Host "Authentication token preserved from the existing local EditFlow config."
+} elseif ($RotateToken) {
+  Write-Host "Authentication token rotated locally by explicit request."
+} else {
+  Write-Host "Authentication token generated locally for this Windows user."
+}
+Write-Host "Restart After Effects after updating installed extension files."
+Write-Host "The authentication token is not printed here."
