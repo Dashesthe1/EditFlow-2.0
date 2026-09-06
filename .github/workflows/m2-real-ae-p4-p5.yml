@@ -7,9 +7,18 @@ on:
         description: Optional explicit path to AfterFX.exe
         required: false
         type: string
+  push:
+    branches:
+      - ae-test/m2-p45-control
+    paths:
+      - .github/ae-test-trigger/m2-p45.txt
 
 permissions:
   contents: read
+
+concurrency:
+  group: editflow-m2-real-ae-workstation
+  cancel-in-progress: false
 
 jobs:
   disposable-p4-p5:
