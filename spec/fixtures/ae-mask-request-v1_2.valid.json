@@ -1,0 +1,38 @@
+{
+  "protocolVersion": "1.2.0",
+  "requestId": "req-mask-create-1",
+  "transactionId": "tx-mask-1",
+  "operationId": "op-mask-create-1",
+  "capabilityId": "ae.mask.create",
+  "command": "mask.create",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": {"stableId": "COMP_M3_MASK"},
+    "layer": {"stableId": "LAYER_FOREGROUND"},
+    "stableId": "MASK_FOREGROUND_REVEAL",
+    "name": "Foreground Reveal",
+    "shape": {
+      "closed": true,
+      "vertices": [[120, 80], [420, 60], [460, 360], [100, 340]],
+      "inTangents": [[-24, 0], [0, -18], [28, 0], [0, 22]],
+      "outTangents": [[24, 0], [0, 18], [-28, 0], [0, -22]],
+      "variableFeather": {
+        "segLocs": [0, 2],
+        "relSegLocs": [0.25, 0.7],
+        "radii": [18, 34],
+        "interps": [0, 0],
+        "tensions": [0, 0],
+        "types": [0, 0],
+        "relCornerAngles": [0, 0]
+      }
+    },
+    "properties": {
+      "feather": [6, 6],
+      "expansion": 4,
+      "opacity": 92,
+      "mode": "ADD",
+      "inverted": false
+    }
+  },
+  "readbackProfile": "M3_MASK_STRUCTURAL"
+}
