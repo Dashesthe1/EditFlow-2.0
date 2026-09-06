@@ -9,6 +9,7 @@ $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
 $ResultPath = Join-Path $ArtifactDir "result.json"
 $RenderPath = Join-Path $ArtifactDir "m2-proof.avi"
+$CleanupGraceSeconds = 180
 
 function Resolve-RunningAfterFx {
   param([string]$ExplicitPath)
@@ -85,16 +86,26 @@ try {
     "--timeout-ms", ($TimeoutSeconds * 1000)
   )
   $NodeProcess = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru
-  $HardDeadline = (Get-Date).AddSeconds($TimeoutSeconds + 45)
+  $HardDeadline = (Get-Date).AddSeconds($TimeoutSeconds + $CleanupGraceSeconds)
   $ResultSeenAt = $null
   $ForcedAfterResult = $false
 
   while (-not $NodeProcess.HasExited) {
+    $CleanupComplete = $false
     if (Test-Path $ResultPath -PathType Leaf) {
+      try {
+        $CandidateResult = Get-Content $ResultPath -Raw | ConvertFrom-Json
+        $CleanupComplete = $CandidateResult.cleanupComplete -eq $true
+      } catch {
+        $CleanupComplete = $false
+      }
+    }
+
+    if ($CleanupComplete) {
       if ($null -eq $ResultSeenAt) {
         $ResultSeenAt = Get-Date
       } elseif (((Get-Date) - $ResultSeenAt).TotalSeconds -ge 2) {
-        Write-Warning "M2 proof artifact is complete but the Node process did not exit; terminating the completed acceptance runtime."
+        Write-Warning "M2 proof and cleanup are complete but the Node process did not exit; terminating the completed acceptance runtime."
         Stop-Process -Id $NodeProcess.Id -Force -ErrorAction SilentlyContinue
         $NodeProcess.WaitForExit()
         $ForcedAfterResult = $true
@@ -105,7 +116,7 @@ try {
     if ((Get-Date) -ge $HardDeadline) {
       Stop-Process -Id $NodeProcess.Id -Force -ErrorAction SilentlyContinue
       $NodeProcess.WaitForExit()
-      throw "M2 CEP real-AE acceptance exceeded its hard runtime without producing a proof artifact."
+      throw "M2 CEP real-AE acceptance exceeded its hard runtime before cleanup completion. Close/reopen the blank test project before another proof attempt."
     }
 
     Start-Sleep -Milliseconds 200
@@ -119,6 +130,9 @@ try {
 
   $ResultJson = Get-Content $ResultPath -Raw
   $Result = $ResultJson | ConvertFrom-Json
+  if ($Result.cleanupComplete -ne $true) {
+    throw "M2 acceptance produced a result before cleanup completion; refusing to treat it as final proof evidence."
+  }
   if (-not $Result.ok) {
     $ResultJson | Write-Host
     throw "M2 bounded real-AE proof did not pass all implemented checks."
@@ -128,7 +142,7 @@ try {
   Write-Host ("Result artifact: " + $ResultPath)
   if ($Result.renderArtifact) { Write-Host ("Render artifact: " + $Result.renderArtifact) }
   if ($ForcedAfterResult) {
-    Write-Host "Proof completed successfully; the wrapper terminated a stuck post-proof Node shutdown."
+    Write-Host "Proof and cleanup completed successfully; the wrapper terminated only the stuck post-proof Node shutdown."
   }
 
   if (-not $Result.proofLevels.P4_failure_injection_rollback -or -not $Result.proofLevels.P5_save_reopen_reconnect_transfer) {
