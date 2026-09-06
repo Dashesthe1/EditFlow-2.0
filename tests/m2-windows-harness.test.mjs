@@ -59,6 +59,27 @@ test("CEP real-AE acceptance performs bounded typed writes, render proof, stable
   assert.doesNotMatch(source, /execute\("media\.import"/);
 });
 
+test("acceptance result is final only after cleanup attempts and final readback complete", async () => {
+  const cli = await readFile(cepAcceptancePath, "utf8");
+  const runner = await readFile(runnerPath, "utf8");
+
+  const catchIndex = cli.indexOf("} catch (error) {");
+  const finallyIndex = cli.indexOf("} finally {", catchIndex);
+  const firstResultWriteAfterCatch = cli.indexOf("writeJson(resultPath", catchIndex);
+  assert.ok(catchIndex >= 0 && finallyIndex > catchIndex);
+  assert.ok(firstResultWriteAfterCatch > finallyIndex, "result.json must not be finalized before cleanup begins");
+  assert.match(cli, /failureError = error instanceof Error/);
+  assert.match(cli, /cleanupComplete:\s*true/);
+  assert.match(cli, /await cleanupComp\(targetStable\)/);
+  assert.match(cli, /await cleanupComp\(precompStable\)/);
+  assert.match(cli, /await cleanupComp\(sourceStable\)/);
+
+  assert.match(runner, /\$CleanupComplete = \$CandidateResult\.cleanupComplete -eq \$true/);
+  assert.match(runner, /M2 proof and cleanup are complete/);
+  assert.match(runner, /before cleanup completion/);
+  assert.match(runner, /\$Result\.cleanupComplete -ne \$true/);
+});
+
 test("real-AE GitHub workflow is manual and self-hosted rather than PR-triggered", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /workflow_dispatch:/);
