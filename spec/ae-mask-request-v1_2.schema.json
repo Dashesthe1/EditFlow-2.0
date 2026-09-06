@@ -77,6 +77,7 @@
     },
     "target": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["comp", "layer", "mask"],
       "properties": {
         "comp": {"$ref": "#/$defs/objectRef"},
@@ -108,12 +109,7 @@
       {
         "properties": {
           "command": {"enum": ["mask.remove", "mask.readback"]},
-          "payload": {
-            "allOf": [
-              {"$ref": "#/$defs/target"},
-              {"additionalProperties": false}
-            ]
-          }
+          "payload": {"$ref": "#/$defs/target"}
         }
       },
       {
