@@ -14,11 +14,9 @@ $PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-bridge.jsx"
 $PanelBootstrapLog = Join-Path $env:TEMP "EditFlow2-self-hosted-panel-bootstrap.log"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
 $PublishedPanelBootstrapLog = Join-Path $ArtifactDir "panel-bootstrap.log"
-$AfterFxVersionInfo = (Get-Item $AfterFxPath).VersionInfo
-$AfterFxVersionFolder = ("{0}.{1}" -f $AfterFxVersionInfo.FileMajorPart, $AfterFxVersionInfo.FileMinorPart)
-$UserScriptsRoot = Join-Path $env:APPDATA ("Adobe\After Effects\" + $AfterFxVersionFolder + "\Scripts")
-$UserStartupDir = Join-Path $UserScriptsRoot "Startup"
-$InstalledPanelBootstrap = Join-Path $UserStartupDir "EditFlow2-self-hosted-bootstrap.jsx"
+$LaunchProcess = $null
+$CommandProcess = $null
+$StartedAfterFx = $false
 
 function Publish-PanelBootstrapEvidence {
   New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
@@ -27,8 +25,29 @@ function Publish-PanelBootstrapEvidence {
     Write-Host "EditFlow self-hosted panel bootstrap evidence:"
     Get-Content $PanelBootstrapLog -Raw | Write-Host
   } else {
-    Write-Warning "No EditFlow panel bootstrap evidence was produced. The temporary AE Startup script did not execute."
+    Write-Warning "No EditFlow panel bootstrap evidence was produced by the fixed command bootstrap."
   }
+}
+
+function Find-ReadyTargetAfterFx {
+  param([string]$ExpectedPath)
+  $ResolvedExpected = (Resolve-Path $ExpectedPath).Path
+  $Candidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  foreach ($Candidate in $Candidates) {
+    $CandidatePath = $null
+    $Ready = $false
+    try {
+      $CandidatePath = $Candidate.Path
+      $Ready = $Candidate.Responding -and $Candidate.MainWindowHandle -ne 0
+    } catch {
+      $CandidatePath = $null
+      $Ready = $false
+    }
+    if ($CandidatePath -and $Ready -and [StringComparer]::OrdinalIgnoreCase.Equals((Resolve-Path $CandidatePath).Path, $ResolvedExpected)) {
+      return $Candidate
+    }
+  }
+  return $null
 }
 
 if (-not [Environment]::UserInteractive) {
@@ -40,11 +59,14 @@ if (-not (Test-Path $AfterFxPath -PathType Leaf)) {
 if (-not (Test-Path $PanelBootstrap -PathType Leaf)) {
   throw "The fixed EditFlow CEP panel bootstrap is missing: $PanelBootstrap"
 }
+if (-not (Test-Path $Acceptance -PathType Leaf)) {
+  throw "The M2 bounded acceptance runner is missing: $Acceptance"
+}
 if (-not (Test-Path $FinalBaselineAcceptance -PathType Leaf)) {
   throw "The M2 final baseline coverage runner is missing: $FinalBaselineAcceptance"
 }
-if ($AfterFxVersionInfo.FileMajorPart -lt 1) {
-  throw "Unable to resolve the After Effects major/minor version for the user Startup script path."
+if ($PanelBootstrap -match "\s") {
+  throw "The fixed AE -r bootstrap path contains whitespace. The proven two-phase target route requires an unquoted workspace path: $PanelBootstrap"
 }
 if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
 if ($StartupTimeoutSeconds -lt 10) { throw "StartupTimeoutSeconds must be at least 10." }
@@ -57,40 +79,20 @@ if ($ExistingAfterFx.Count -gt 0) {
 
 if (Test-Path $PanelBootstrapLog -PathType Leaf) { Remove-Item $PanelBootstrapLog -Force }
 if (Test-Path $PublishedPanelBootstrapLog -PathType Leaf) { Remove-Item $PublishedPanelBootstrapLog -Force }
-if (Test-Path $InstalledPanelBootstrap -PathType Leaf) { Remove-Item $InstalledPanelBootstrap -Force }
 
 Write-Host "Installing the checked-out EditFlow CEP bridge before launching the isolated AE proof..."
 & $Installer
 
-New-Item -ItemType Directory -Force -Path $UserStartupDir | Out-Null
-Copy-Item $PanelBootstrap $InstalledPanelBootstrap -Force
-Write-Host ("Installed temporary AE Startup bootstrap: " + $InstalledPanelBootstrap)
-
-$StartedAfterFx = $false
 try {
-  Write-Host "Launching a fresh After Effects instance; AE will load the temporary user Startup script during initialization..."
-  Start-Process -FilePath $AfterFxPath | Out-Null
+  Write-Host "Phase 1: cold-launching a fresh declared-target After Effects instance without a script argument..."
+  $LaunchProcess = Start-Process -FilePath $AfterFxPath -PassThru
   $StartedAfterFx = $true
+  Write-Host ("Cold-launch request PID " + $LaunchProcess.Id + ".")
 
   $Deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
   $RunningAfterFx = $null
   while ((Get-Date) -lt $Deadline) {
-    $Candidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
-    foreach ($Candidate in $Candidates) {
-      $CandidatePath = $null
-      $WindowReady = $false
-      try {
-        $CandidatePath = $Candidate.Path
-        $WindowReady = $Candidate.MainWindowHandle -ne 0 -and $Candidate.Responding
-      } catch {
-        $CandidatePath = $null
-        $WindowReady = $false
-      }
-      if ($CandidatePath -and $WindowReady -and ((Resolve-Path $CandidatePath).Path -eq (Resolve-Path $AfterFxPath).Path)) {
-        $RunningAfterFx = $Candidate
-        break
-      }
-    }
+    $RunningAfterFx = Find-ReadyTargetAfterFx $AfterFxPath
     if ($null -ne $RunningAfterFx) { break }
     Start-Sleep -Milliseconds 500
   }
@@ -99,27 +101,34 @@ try {
     throw "After Effects did not expose a responsive interactive window within $StartupTimeoutSeconds seconds."
   }
 
+  Write-Host ("Phase 1 complete: target AE PID " + $RunningAfterFx.Id + " is responsive. Phase 2 will send only the fixed repository panel bootstrap through -r.")
+  Start-Sleep -Milliseconds 500
+
+  # This is the same two-phase command-delivery shape proven by the M2 P4/P5 PASS:
+  # first cold-launch the owned AE instance, then send one fixed repository script to
+  # that already responsive instance. Do not embed quotes around the raw -r path.
+  $Arguments = @("-r", $PanelBootstrap)
+  $CommandProcess = Start-Process -FilePath $AfterFxPath -ArgumentList $Arguments -PassThru
+  Write-Host ("Phase 2 panel-bootstrap dispatch PID " + $CommandProcess.Id + ".")
+
   $BootstrapDeadline = (Get-Date).AddSeconds($BootstrapEvidenceTimeoutSeconds)
   while ((Get-Date) -lt $BootstrapDeadline -and -not (Test-Path $PanelBootstrapLog -PathType Leaf)) {
     Start-Sleep -Milliseconds 250
   }
   if (-not (Test-Path $PanelBootstrapLog -PathType Leaf)) {
-    throw "After Effects was running, but the temporary user Startup script did not produce evidence within $BootstrapEvidenceTimeoutSeconds seconds."
+    throw "The responsive After Effects instance received the fixed -r panel bootstrap but produced no execution evidence within $BootstrapEvidenceTimeoutSeconds seconds."
   }
 
-  Write-Host "After Effects executed the temporary Startup bootstrap. The acceptance harness will wait for authenticated EditFlow bridge registration."
+  Write-Host "After Effects executed the fixed panel bootstrap. The acceptance harness will wait for authenticated EditFlow bridge registration."
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
 
   Write-Host "Running final M2 baseline coverage on the same authenticated AE session..."
   $FinalCoverageTimeout = [Math]::Min($TimeoutSeconds, 90)
   & $FinalBaselineAcceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $FinalCoverageTimeout
 } finally {
-  if (Test-Path $InstalledPanelBootstrap -PathType Leaf) {
-    Remove-Item $InstalledPanelBootstrap -Force -ErrorAction SilentlyContinue
-  }
   Publish-PanelBootstrapEvidence
   if ($StartedAfterFx) {
-    Write-Host "Stopping only the isolated After Effects test session started by this runner..."
+    Write-Host "Stopping only the isolated After Effects test process set started from a zero-AE baseline..."
     Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
   }
 }
