@@ -250,7 +250,7 @@
       && !!stableBeforeSave[replacementStable];
 
     var save = call("project.save", { path: projectFile.fsName });
-    checks.saved_disposable_project = projectFile.exists && save.readback && save.readback.filePath;
+    checks.saved_disposable_project = projectFile.exists && !!(save.readback && save.readback.filePath);
 
     app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
     app.open(projectFile);
