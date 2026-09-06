@@ -76,14 +76,36 @@ test("P4/P5 runner installs an owned Startup bootstrap, launches AE without -r, 
   assert.match(runner, /Publish-BootstrapEvidence/);
 });
 
-test("P4/P5 runner cleans every AfterFX process only after proving the baseline had zero AE processes", async () => {
+test("P4/P5 runner records bounded AE startup diagnostics before any force cleanup", async () => {
+  const runner = await readFile(runnerPath, "utf8");
+
+  assert.match(runner, /startup-diagnostics\.log/);
+  assert.match(runner, /function Write-StartupDiagnostic/);
+  assert.match(runner, /function Write-AeProcessSnapshot/);
+  assert.match(runner, /runnerSessionId=/);
+  assert.match(runner, /bootstrapLength=/);
+  assert.match(runner, /MainWindowHandle/);
+  assert.match(runner, /MainWindowTitle/);
+  assert.match(runner, /\.Responding/);
+  assert.match(runner, /\.SessionId/);
+  assert.match(runner, /Get-CimInstance Win32_Process/);
+  assert.match(runner, /STARTUP_WAIT/);
+  assert.match(runner, /STARTUP_WAIT_END/);
+  assert.match(runner, /Inspect startup-diagnostics\.log before retrying/);
+});
+
+test("P4/P5 runner cleans only owned AE and prefers graceful close before force-stop", async () => {
   const runner = await readFile(runnerPath, "utf8");
   const guard = runner.indexOf("if ($ExistingAfterFx.Count -gt 0)");
   const launch = runner.indexOf("Start-Process -FilePath $AfterFx -PassThru");
   const cleanup = runner.indexOf('$OwnedProcesses = @(Get-Process -Name "AfterFX"');
+  const graceful = runner.indexOf("$Owned.CloseMainWindow()", cleanup);
+  const force = runner.indexOf("Stop-Process -Force", cleanup);
   assert.ok(guard >= 0 && launch > guard && cleanup > launch);
+  assert.ok(graceful > cleanup && force > graceful);
   assert.match(runner, /Every\s*\n\s*# AfterFX process present now belongs to this bounded proof/);
-  assert.match(runner, /\$OwnedProcesses \| Stop-Process -Force/);
+  assert.match(runner, /Graceful AE close did not finish/);
+  assert.match(runner, /CLEANUP_FORCE_STOP/);
 });
 
 test("cold-start bootstrap self-deletes, waits for a project, and invokes only the fixed P4/P5 proof file", async () => {
