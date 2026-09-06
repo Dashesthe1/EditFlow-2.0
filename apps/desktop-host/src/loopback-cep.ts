@@ -71,6 +71,7 @@ const asSingleHeader = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? value[0] ?? "" : value ?? "";
 
 const nowIso = (): string => new Date().toISOString();
+const RENDER_CAPTURE_TIMEOUT_FLOOR_MS = 180_000;
 
 export class LoopbackCepBroker implements AeAdapterTransportV11 {
   readonly options: Required<LoopbackCepBrokerOptions>;
@@ -156,12 +157,16 @@ export class LoopbackCepBroker implements AeAdapterTransportV11 {
       throw new Error(`CEP_DUPLICATE_REQUEST_ID: ${request.requestId}`);
     }
 
+    const commandTimeoutMs = request.command === "render.capture"
+      ? Math.max(this.options.commandTimeoutMs, RENDER_CAPTURE_TIMEOUT_FLOOR_MS)
+      : this.options.commandTimeoutMs;
+
     return await new Promise<AeAdapterResponseV11>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.#pending.delete(request.requestId);
         this.#queue = this.#queue.filter((id) => id !== request.requestId);
         reject(new Error(`CEP_COMMAND_TIMEOUT: ${request.command} ${request.requestId}`));
-      }, this.options.commandTimeoutMs);
+      }, commandTimeoutMs);
       this.#pending.set(request.requestId, {
         request: structuredClone(request),
         resolve,
