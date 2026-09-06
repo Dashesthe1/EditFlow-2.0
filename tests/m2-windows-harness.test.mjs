@@ -44,23 +44,33 @@ test("Windows acceptance prints render lifecycle evidence on bounded proof failu
   assert.match(source, /if \(-not \$Result\.ok\)[\s\S]*Write-RenderLifecycleEvidence[\s\S]*M2 bounded real-AE proof did not pass/);
 });
 
-test("self-hosted AE launcher runs only in an interactive clean session and owns the AE process it stops", async () => {
+test("self-hosted AE launcher runs only in an interactive clean session, publishes bootstrap evidence, and owns the AE process it stops", async () => {
   const source = await readFile(selfHostedRunnerPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
   assert.match(source, /install-editflow-cep\.ps1/);
   assert.match(source, /open-editflow-bridge\.jsx/);
+  assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
+  assert.match(source, /function Publish-PanelBootstrapEvidence/);
+  assert.match(source, /panel-bootstrap\.log/);
   assert.match(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList @\("-r", \$QuotedBootstrap\)/);
   assert.match(source, /run-m2-ae-acceptance\.ps1/);
-  assert.match(source, /finally\s*\{/);
+  assert.match(source, /finally\s*\{[\s\S]*Publish-PanelBootstrapEvidence/);
   assert.match(source, /if \(\$StartedAfterFx\)/);
   assert.match(source, /Stop-Process -Force/);
   assert.doesNotMatch(source, /Stop-Process -Force[\s\S]*before.*Start-Process/i);
 });
 
-test("self-hosted AE bootstrap opens only the fixed EditFlow CEP menu command and retries boundedly", async () => {
+test("self-hosted AE bootstrap opens only the fixed EditFlow CEP menu command, records stages, and retries boundedly", async () => {
   const source = await readFile(panelBootstrapPath, "utf8");
+  assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
+  assert.match(source, /SCRIPT_STARTED/);
+  assert.match(source, /INITIAL_TASK_SCHEDULED/);
+  assert.match(source, /MENU_PROBE/);
+  assert.match(source, /MENU_FOUND/);
+  assert.match(source, /EXECUTE_COMMAND_SENT/);
+  assert.match(source, /RETRY_EXHAUSTED/);
   assert.match(source, /var menuName = "EditFlow 2\.0 Bridge"/);
   assert.match(source, /app\.findMenuCommandId\(menuName\)/);
   assert.match(source, /app\.executeCommand\(commandId\)/);

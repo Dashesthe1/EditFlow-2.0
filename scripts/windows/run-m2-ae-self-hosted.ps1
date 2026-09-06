@@ -9,6 +9,20 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Installer = Join-Path $RepoRoot "scripts\windows\install-editflow-cep.ps1"
 $Acceptance = Join-Path $RepoRoot "scripts\windows\run-m2-ae-acceptance.ps1"
 $PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-bridge.jsx"
+$PanelBootstrapLog = Join-Path $env:TEMP "EditFlow2-self-hosted-panel-bootstrap.log"
+$ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m2-real-host"
+$PublishedPanelBootstrapLog = Join-Path $ArtifactDir "panel-bootstrap.log"
+
+function Publish-PanelBootstrapEvidence {
+  New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
+  if (Test-Path $PanelBootstrapLog -PathType Leaf) {
+    Copy-Item $PanelBootstrapLog $PublishedPanelBootstrapLog -Force
+    Write-Host "EditFlow self-hosted panel bootstrap evidence:"
+    Get-Content $PanelBootstrapLog -Raw | Write-Host
+  } else {
+    Write-Warning "No EditFlow panel bootstrap evidence was produced. The AE -r bootstrap script may not have executed."
+  }
+}
 
 if (-not [Environment]::UserInteractive) {
   throw "The EditFlow AE runner must run in an interactive Windows user session. Start the GitHub Actions runner with run.cmd while logged into the desktop; do not run it as a Windows service."
@@ -26,6 +40,9 @@ $ExistingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
 if ($ExistingAfterFx.Count -gt 0) {
   throw "Automated self-hosted proof refuses to touch an already-running After Effects session. Save/close any AE work and exit After Effects before the runner starts a proof."
 }
+
+if (Test-Path $PanelBootstrapLog -PathType Leaf) { Remove-Item $PanelBootstrapLog -Force }
+if (Test-Path $PublishedPanelBootstrapLog -PathType Leaf) { Remove-Item $PublishedPanelBootstrapLog -Force }
 
 Write-Host "Installing the checked-out EditFlow CEP bridge before launching the isolated AE proof..."
 & $Installer
@@ -60,6 +77,7 @@ try {
   Write-Host "After Effects is running. The fixed bootstrap will activate EditFlow 2.0 Bridge through AE's menu command API; the acceptance harness will wait for authenticated bridge registration."
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
 } finally {
+  Publish-PanelBootstrapEvidence
   if ($StartedAfterFx) {
     Write-Host "Stopping only the isolated After Effects test session started by this runner..."
     Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
