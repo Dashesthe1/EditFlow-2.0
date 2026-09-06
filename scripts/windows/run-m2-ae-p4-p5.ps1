@@ -28,7 +28,6 @@ function Resolve-AfterFx {
   return $Resolved
 }
 
-$AfterFx = Resolve-AfterFx $AfterFxPath
 if (-not (Test-Path $ProofScript -PathType Leaf)) { throw "M2 P4/P5 proof script not found: $ProofScript" }
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 if (Test-Path $ResultPath) { Remove-Item $ResultPath -Force }
@@ -38,10 +37,26 @@ if ($ExistingAfterFx.Count -gt 1) {
   $Ids = ($ExistingAfterFx | ForEach-Object { $_.Id }) -join ","
   throw "Refusing disposable P4/P5 proof because multiple pre-existing After Effects sessions make the target ambiguous (PID(s): $Ids). No AE writes were attempted."
 }
+
 if ($ExistingAfterFx.Count -eq 1) {
   $UsingPreexistingAfterFx = $true
-  Write-Warning ("Pre-existing After Effects PID " + $ExistingAfterFx[0].Id + " detected. The JSX blank/unsaved/zero-item gate is authoritative; the runner will not close this process.")
+  $ExistingPath = $null
+  try { $ExistingPath = $ExistingAfterFx[0].Path } catch { $ExistingPath = $null }
+  if (-not $ExistingPath -or -not (Test-Path $ExistingPath -PathType Leaf)) {
+    throw "Refusing disposable P4/P5 proof because the executable path of pre-existing AE PID $($ExistingAfterFx[0].Id) could not be resolved safely."
+  }
+  $AfterFx = (Resolve-Path $ExistingPath).Path
+
+  if ($AfterFxPath) {
+    $ExplicitResolved = Resolve-AfterFx $AfterFxPath
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($ExplicitResolved, $AfterFx)) {
+      throw "Refusing disposable P4/P5 proof because explicit AfterFX path '$ExplicitResolved' does not match pre-existing AE PID $($ExistingAfterFx[0].Id) executable '$AfterFx'."
+    }
+  }
+
+  Write-Warning ("Pre-existing After Effects PID " + $ExistingAfterFx[0].Id + " detected at '" + $AfterFx + "'. The JSX blank/unsaved/zero-item gate is authoritative; the runner will not close this process.")
 } else {
+  $AfterFx = Resolve-AfterFx $AfterFxPath
   Write-Host "No pre-existing After Effects session detected; the runner will own and later close the AE process it launches."
 }
 
@@ -54,7 +69,7 @@ try {
   $Arguments = @("-r", ('"' + $ProofScript + '"'))
   $LaunchedAfterFx = Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru
   if ($UsingPreexistingAfterFx) {
-    Write-Host ("Delivered the proof request while preserving pre-existing AE PID " + $ExistingAfterFx[0].Id + ".")
+    Write-Host ("Delivered the proof request through the exact executable of pre-existing AE PID " + $ExistingAfterFx[0].Id + ".")
   } else {
     $OwnedAfterFx = $LaunchedAfterFx
     Write-Host ("Started runner-owned After Effects proof process PID " + $OwnedAfterFx.Id + ".")
