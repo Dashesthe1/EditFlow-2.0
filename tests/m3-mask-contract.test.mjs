@@ -40,11 +40,12 @@ test("M3 mask protocol 1.2 exposes the first human-parity dependency tranche", (
   assert.equal(capabilityForMaskCommandV12("mask.readback"), "ae.mask.readback");
 });
 
-test("negotiated M3 mask capabilities expose transport but do not inherit real-AE proof maturity", () => {
+test("accepted M3 real-AE P1/P2 evidence promotes only structural maturity", () => {
   assert.equal(M3_MASK_CAPABILITIES_V12.length, AE_MASK_COMMANDS_V12.length);
   for (const capability of M3_MASK_CAPABILITIES_V12) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.notEqual(capability.status, "FULL");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_MASK_ROUTE_ID_V12);
     assert.equal(capability.routes[0].available, true);

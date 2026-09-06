@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3MaskAcceptedP1P2Evidence } from "./m3-mask-proof-maturity.js";
 import {
   AE_MASK_ADAPTER_BUILD_V12,
   AE_MASK_COMMANDS_V12,
@@ -73,11 +74,11 @@ const riskForMaskCommand = (command: AeMaskCommandV12): CapabilityRecord["riskCl
   return "R2_STRUCTURAL";
 };
 
-export const M3_MASK_CAPABILITIES_V12: readonly CapabilityRecord[] = AE_MASK_COMMANDS_V12.map(
+const M3_MASK_DECLARED_CAPABILITIES_V12: readonly CapabilityRecord[] = AE_MASK_COMMANDS_V12.map(
   (command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForMaskCommandV12(command)),
     domain: "mask",
-    description: `M3 typed AE mask/Bezier command '${command}'. Authenticated CEP protocol 1.2 routing is negotiation-gated; real-AE proof maturity remains evidence-scoped.`,
+    description: `M3 typed AE mask/Bezier command '${command}'. Authenticated CEP protocol 1.2 routing is negotiation-gated; proof maturity is evidence-scoped.`,
     status: "PARTIAL",
     proofMaturity: "DECLARED",
     routes: [{
@@ -93,6 +94,9 @@ export const M3_MASK_CAPABILITIES_V12: readonly CapabilityRecord[] = AE_MASK_COM
     fallbackPolicy: "FORBID",
   }),
 );
+
+export const M3_MASK_CAPABILITIES_V12: readonly CapabilityRecord[] =
+  applyM3MaskAcceptedP1P2Evidence(M3_MASK_DECLARED_CAPABILITIES_V12);
 
 export const buildMaskRequestV12 = (input: {
   readonly requestId: string;

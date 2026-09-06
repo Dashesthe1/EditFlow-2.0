@@ -1,0 +1,74 @@
+{
+  "proof_id": "M3_MASK_P1_P2_REAL_AE",
+  "status": "ACCEPTED",
+  "milestone_version": "0.4.0-dev.1",
+  "accepted_source_commit": "8a1c499ac26344e2199fa2fa816d4565769c312c",
+  "accepted_at": "2026-09-06",
+  "required_environment": {
+    "os": "Windows/64 10.0",
+    "host": "Adobe After Effects",
+    "host_version": "25.6.6x4",
+    "host_build": "4",
+    "mask_protocol": "1.2.0",
+    "mask_adapter_component_build": "0.4.0-dev.1",
+    "baseline_protocol": "1.1.0",
+    "baseline_adapter_build": "0.1.0-dev.3",
+    "cep_extension_version": "0.1.0-dev.4"
+  },
+  "evidence": {
+    "real_ae_p1_p2": {
+      "run_id": 34045287361,
+      "artifact_id": 9992921389,
+      "verdict": "PASS",
+      "cleanup_complete": true,
+      "selected_protocol": "1.2.0",
+      "supported_protocols": ["1.2.0", "1.1.0"],
+      "proof_levels": {
+        "P1_validation_rejection": true,
+        "P2_structural_readback": true,
+        "P3_visual_proof": false,
+        "P4_failure_injection_rollback": false,
+        "P5_save_reopen_reconnect_transfer": false
+      },
+      "passed_checks": [
+        "panel_negotiated_v12",
+        "panel_supports_v11_v12",
+        "host_probe",
+        "setup_layer",
+        "p1_rejected_before_mutation",
+        "p1_revision_unchanged",
+        "p1_fingerprint_unchanged",
+        "p2_create",
+        "p2_static_readback",
+        "p2_animated_path",
+        "p2_properties",
+        "p2_duplicate",
+        "p2_reorder",
+        "p2_final_readback",
+        "p2_remove_duplicate",
+        "p2_remove_primary",
+        "p1",
+        "p2"
+      ],
+      "notes": [
+        "P1 proved malformed tangent-array geometry is rejected before AE mutation, with host revision and structural project fingerprint unchanged.",
+        "P2 exercised all seven protocol-1.2 mask commands in real After Effects: create, readback, animated path, properties, duplicate, reorder, and remove.",
+        "Exact readback covered the exercised static and animated Bezier geometry/tangents plus feather, expansion, opacity, mode, inversion, identity, order, and path key times/shapes.",
+        "The accepted run did not produce a visual mask construction, induce a host-operation failure for rollback proof, or perform save/reopen/reconnect transfer; P3, P4, and P5 remain explicitly false.",
+        "Variable-feather arrays are present in the typed/host contract but were not independently exercised by this acceptance run.",
+        "Command-repeat/idempotency semantics were not independently exercised for every mask command in this bounded run; broader recipe closure must retain that limitation until separately proven."
+      ]
+    }
+  },
+  "capability_evidence": [
+    { "capability": "ae.mask.create", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.mask.remove", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.mask.duplicate", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.mask.order.set", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.mask.path.set", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.mask.properties.set", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.mask.readback", "proof_maturity": "STRUCTURAL" }
+  ],
+  "artifact_path": "proofs/artifacts/m3-mask-p1-p2/",
+  "closure_rule": "All seven M3 mask capabilities remain PARTIAL at STRUCTURAL. FULL is reserved for P5-or-higher evidence. This acceptance does not claim P3 visual correctness, P4 failure-recovery proof, P5 transfer, independent variable-feather exercise, or P6 robustness."
+}
