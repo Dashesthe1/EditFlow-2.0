@@ -324,7 +324,7 @@
           outputPath: job.outputPath,
           completionPath: job.completionPath,
           taskId: job.taskId,
-          mode: "SCHEDULED_HOST_JOB_V2_GLOBAL"
+          mode: "SCHEDULED_HOST_JOB_V1"
         };
         response.hostProjectRevision = app.project.revision;
         response.diagnostics.durationMs = nowMs() - started;
