@@ -55,12 +55,15 @@ test("M3 self-hosted runner owns an isolated AE process and uses only the fixed 
   assert.doesNotMatch(source, /Invoke-Expression/);
 });
 
-test("M3 real-AE workflow is self-hosted, bounded, branch-scoped, and artifact-producing", async () => {
+test("M3 real-AE workflow is self-hosted, bounded, branch-scoped, artifact-producing, and execution-policy tolerant", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /ae-test\/m3-mask-p1-p2-control/);
   assert.match(source, /\.github\/ae-test-trigger\/m3-mask-p1-p2\.txt/);
   assert.match(source, /runs-on:\s*\[self-hosted, Windows, editflow-ae\]/);
   assert.match(source, /timeout-minutes:\s*10/);
+  assert.match(source, /shell:\s*cmd/);
+  assert.match(source, /powershell\.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File/);
+  assert.match(source, /EDITFLOW_AFTERFX_PATH/);
   assert.match(source, /run-m3-mask-self-hosted\.ps1/);
   assert.match(source, /proofs\/artifacts\/m3-mask-p1-p2\//);
   assert.match(source, /if:\s*always\(\)/);
