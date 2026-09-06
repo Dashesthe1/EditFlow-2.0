@@ -1,78 +1,64 @@
 {
   "proof_id": "M2_AE_HOST_BASELINE",
-  "status": "PENDING_REAL_AE",
+  "status": "ACCEPTED",
+  "milestone_version": "0.3.0-dev",
+  "accepted_source_commit": "8d5f8ddf0143ce0e1ec33cff14269ecab8769d60",
   "required_environment": {
     "os": "Windows",
     "host": "Adobe After Effects",
+    "host_version": "25.6.6",
     "adapter_protocol": "1.1.0",
-    "editflow_build": "0.1.0-dev.4"
+    "adapter_component_build": "0.1.0-dev.4"
   },
-  "scenarios": [
-    {
-      "id": "cep_transport_smoke",
-      "capabilities": ["ae.host.probe", "ae.project.inspect"],
-      "proof_levels": ["P1", "P2"],
-      "requirements": [
-        "installed CEP 12 panel authenticates to the 127.0.0.1 desktop broker",
-        "typed protocol 1.1 request crosses the production panel evalScript path",
-        "fixed EditFlow2 dispatcher returns a correlated response",
-        "smoke remains read-only"
+  "evidence": {
+    "authenticated_real_ae": {
+      "run_id": 34022332767,
+      "artifact_id": 9985929435,
+      "verdict": "PASS",
+      "bounded_status": "PARTIAL_PASS_BY_DESIGN",
+      "final_baseline_status": "PASS",
+      "notes": [
+        "The bounded proof intentionally does not claim dedicated P4 failure-injection or P5 save/reopen/reconnect coverage.",
+        "The same run proved authenticated CEP transport, real-AE render capture, final baseline CRUD/readback, and cleanup on AE 25.6.6."
       ]
     },
-    {
-      "id": "read_only_handshake",
-      "capabilities": ["ae.host.probe", "ae.project.inspect"],
-      "proof_levels": ["P1", "P2"]
-    },
-    {
-      "id": "composition_create_readback_cleanup",
-      "capabilities": ["ae.comp.create", "ae.comp.remove"],
-      "proof_levels": ["P1", "P2", "P3", "P4"]
-    },
-    {
-      "id": "media_layer_transform_timing",
-      "capabilities": ["ae.media.import", "ae.layer.create", "ae.layer.transform.set", "ae.layer.timing.set"],
-      "proof_levels": ["P1", "P2", "P3", "P4", "P5"]
-    },
-    {
-      "id": "effect_keyframe_expression",
-      "capabilities": ["ae.effect.add", "ae.effect.property.set", "ae.keyframe.set", "ae.expression.set"],
-      "proof_levels": ["P1", "P2", "P3", "P4", "P5"]
-    },
-    {
-      "id": "transaction_failure_injection_rollback",
-      "capabilities": ["ae.comp.create", "ae.comp.settings.set", "ae.transaction.undo_last"],
-      "proof_levels": ["P1", "P2", "P4"],
-      "requirements": [
-        "failed host mutation self-rolls back if it changed AE revision",
-        "transaction rollback undoes earlier APPLIED operations in the atomic group",
-        "restored structural fingerprint equals the pre-group fingerprint even if project revision advanced"
+    "dedicated_p4_p5": {
+      "run_id": 34013038916,
+      "artifact_id": 9983054244,
+      "verdict": "PASS",
+      "notes": [
+        "Proved induced-failure rollback and transaction undo.",
+        "Proved stable identity through rename, duplicate, reorder, precompose, save/reopen, dispatcher reconnect, and post-reconnect transfer."
       ]
-    },
-    {
-      "id": "precompose_stable_identity",
-      "capabilities": ["ae.layer.duplicate", "ae.layer.order.set", "ae.precompose.layers"],
-      "proof_levels": ["P1", "P2", "P3", "P4", "P5"],
-      "identity_cases": [
-        "rename",
-        "reorder",
-        "duplicate",
-        "precompose_child",
-        "precompose_replacement",
-        "save_reopen",
-        "dispatcher_reconnect",
-        "post_reconnect_transfer"
-      ]
-    },
-    {
-      "id": "render_capture",
-      "capabilities": ["ae.render.capture"],
-      "proof_levels": ["P1", "P2", "P3"]
     }
+  },
+  "capability_evidence": [
+    { "capability": "ae.host.probe", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.project.inspect", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.project.save", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.comp.create", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.comp.settings.set", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.comp.remove", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.media.import", "proof_maturity": "ROLLBACK" },
+    { "capability": "ae.layer.create", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.layer.duplicate", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.layer.remove", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.layer.order.set", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.layer.transform.set", "proof_maturity": "VISUAL" },
+    { "capability": "ae.layer.timing.set", "proof_maturity": "VISUAL" },
+    { "capability": "ae.effect.add", "proof_maturity": "VISUAL" },
+    { "capability": "ae.effect.remove", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.effect.property.set", "proof_maturity": "VISUAL" },
+    { "capability": "ae.keyframe.set", "proof_maturity": "VISUAL" },
+    { "capability": "ae.expression.set", "proof_maturity": "STRUCTURAL" },
+    { "capability": "ae.precompose.layers", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.render.capture", "proof_maturity": "VISUAL" },
+    { "capability": "ae.object.readback", "proof_maturity": "TRANSFER" },
+    { "capability": "ae.transaction.undo_last", "proof_maturity": "ROLLBACK" }
   ],
   "artifacts": {
-    "cep_smoke": "proofs/artifacts/m2-cep-smoke/",
     "bounded": "proofs/artifacts/m2-real-host/",
     "disposable_p4_p5": "proofs/artifacts/m2-disposable-p4-p5/"
-  }
+  },
+  "closure_rule": "Capabilities below TRANSFER remain PARTIAL even when real-AE writes are enabled; FULL is reserved for P5-or-higher evidence."
 }

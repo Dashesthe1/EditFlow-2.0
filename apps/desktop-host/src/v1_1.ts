@@ -4,6 +4,7 @@ import {
   AeCepAdapterClientV11,
   type AeCepAdapterStateV11,
 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
+import { applyM2AcceptedProofEvidence } from "../../../packages/adapters/ae-cep/src/m2-proof-maturity.js";
 import { AE_ADAPTER_BUILD_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
 
 export interface DesktopAeSessionV11 {
@@ -22,7 +23,7 @@ export const createDesktopAeSessionV11 = async (
     adapterId: "ae-cep-v1.1",
     adapterVersion: AE_ADAPTER_BUILD_V11,
     priority: 110,
-    capabilities: AE_CEP_PUBLIC_CAPABILITIES_V11,
+    capabilities: applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
   });
   return { adapterBuild: AE_ADAPTER_BUILD_V11, state, registry };
 };

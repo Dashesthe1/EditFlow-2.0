@@ -1,56 +1,72 @@
-# M2 Windows / Real After Effects Acceptance
+# M2 Windows / Real After Effects Acceptance — Complete
 
-M2 cannot be completed from Linux GitHub-hosted CI alone. The final host proof must execute the clean-room dispatcher inside the installed Windows After Effects environment.
+M2 required the clean-room dispatcher and authenticated CEP transport to execute inside the installed Windows After Effects environment. That gate is now complete for the declared target class: Windows + After Effects 2025 (`25.6.6`) + adapter protocol `1.1.0`.
 
-## Bounded proof
+## Accepted proof set
 
-Run from the repository root on the AE workstation:
+### Authenticated bounded and final-baseline proof
 
-```powershell
-.\scripts\windows\run-m2-ae-acceptance.ps1
-```
+Run `34022332767` on the self-hosted `editflow-ae` workstation proved the checked-in CEP extension and host bundle end-to-end.
 
-Prerequisites:
+The runner:
 
-- Adobe After Effects is already running;
-- the currently open project can tolerate temporary EditFlow proof objects being created and removed;
-- `Edit > Preferences > Scripting & Expressions > Allow Scripts To Write Files And Access Network` is enabled;
-- the repository is available locally.
+1. refused any pre-existing AE session;
+2. installed the checked-out CEP bundle;
+3. cold-launched the declared AE 2025 executable;
+4. waited for a stable real AE project window;
+5. delivered only the fixed repository panel bootstrap;
+6. required bootstrap execution evidence;
+7. required authenticated CEP registration;
+8. ran the bounded real-AE proof;
+9. ran the final baseline coverage proof in the same authenticated session;
+10. removed temporary proof state and stopped only the isolated AE process set.
 
-The proof intentionally **does not save, replace, close, or create a project**. It records the baseline item count, creates uniquely prefixed temporary comps/layers/effects/keyframes, renders a one-second proof artifact, precomposes the test layer, inspects stable IDs, removes the temporary project items, and verifies the item count is restored.
+The bounded proof reports `PARTIAL_PASS` intentionally because its scope ends at P3 plus bounded cleanup. It produced a valid `m2-proof.mp4` render artifact and structural result. The final baseline result reports `PASS` and includes the remaining M2 comp/layer/effect/keyframe/media CRUD/readback coverage.
 
-Artifacts are written under the ignored directory:
+Artifact: GitHub Actions artifact `9985929435` from run `34022332767`.
 
-`proofs/artifacts/m2-real-host/`
+### Dedicated P4/P5 disposable proof
 
-The JSON result explicitly reports P1-P5 status. A bounded pass is not equivalent to M2 completion: P4 failure-injection rollback and P5 save/reopen/reconnect remain false until their dedicated disposable-project proof is implemented and run.
+Run `34013038916` reports `PASS` and covers the destructive/restart cases that the bounded proof intentionally excludes:
 
-## Self-hosted GitHub Actions route
+- induced failure and rollback;
+- transaction undo of an earlier applied operation;
+- rename-stable identity;
+- layer duplicate/reorder identity;
+- precompose child and replacement identity;
+- save/reopen;
+- dispatcher reconnect;
+- stable IDs after reopen;
+- post-reconnect transfer and cleanup.
 
-A workstation registered as a GitHub Actions runner with labels:
+Artifact: GitHub Actions artifact `9983054244`.
 
-- `self-hosted`
-- `Windows`
-- `editflow-ae`
+## Closure checklist
 
-can run **M2 Real After Effects Acceptance** manually through `workflow_dispatch`. The workflow uploads the proof directory as an artifact.
+- [x] Bounded proof succeeds on the target AE workstation.
+- [x] Render and structural result artifacts are produced and inspected.
+- [x] P4 failure-injection rollback passes.
+- [x] P5 rename/reorder/duplicate/precompose/save/reopen/reconnect stable identity passes.
+- [x] Installed CEP transport calls the fixed host dispatcher through the authenticated local bridge.
+- [x] Final M2 baseline CRUD/readback coverage passes, including transform anchor/vector readback and keyframe CRUD.
+- [x] Capability registry promotion is evidence-scoped rather than blanket `FULL`.
+- [x] Real Adobe writes are enabled in the MCP status contract only after the proof set is complete.
 
-The workflow is intentionally not triggered by pull requests. Real AE writes must never be caused merely by opening or updating a PR.
+## Safety invariants retained after acceptance
 
-## Safety model
+M2 acceptance does not weaken the safety model:
 
-The real-AE proof script loads only the repository-owned `editflow_host.jsx` and calls the same fixed `EditFlow2_dispatch` command table exercised by code CI. It does not introduce a generic scripting console or a new arbitrary-code route.
+- no generic arbitrary-code protocol route;
+- typed command allowlist only;
+- explicit host revision and project fingerprint checks;
+- stable-ID based targeting;
+- guarded filesystem paths for save/import/render;
+- failed host mutations self-roll back when required;
+- transaction rollback is available for grouped recovery;
+- proof harnesses never attach destructive acceptance to an unowned user AE session.
 
-If the proof fails, its `finally` block performs best-effort direct cleanup of the uniquely identified proof project items. This cleanup is harness-only defensive code; production EditFlow writes still go through the typed adapter.
+## Evidence interpretation
 
-## Remaining M2 closure requirements
+`P1_P5_ACCEPTED` is a milestone verdict, not a claim that every individual command has P5 maturity. Individual capability records retain their own highest demonstrated maturity. `FULL` is reserved for capabilities with P5/`TRANSFER` evidence; lower-maturity baseline operations remain usable but explicitly `PARTIAL`.
 
-Before issue #4 can close:
-
-1. run the bounded proof successfully on the target AE workstation;
-2. inspect the generated render and structural result artifact;
-3. add and pass a disposable-project P4 failure-injection rollback proof;
-4. add and pass P5 rename/reorder/duplicate/precompose/save/reopen/reconnect stable-identity proof;
-5. prove the CEP transport itself can call the installed host dispatcher in the target AE/CEP environment;
-6. promote only the capabilities actually proven from `DECLARED` to the corresponding proof maturity;
-7. only then enable real Adobe writes from the MCP surface.
+With this checklist complete, issue #4 can close and development advances to M3 Human-Parity Core (`0.4.0-dev`).
