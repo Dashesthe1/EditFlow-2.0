@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const proofPath = "proofs/ae/m2-disposable-p4-p5-proof.jsx";
 const runnerPath = "scripts/windows/run-m2-ae-p4-p5.ps1";
-const bootstrapPath = "scripts/windows/m2-p45-startup-bootstrap-template.jsx";
+const bootstrapPath = "scripts/windows/m2-p45-command-bootstrap-template.jsx";
 const boundedRunnerPath = "scripts/windows/run-m2-ae-self-hosted.ps1";
 const workflowPath = ".github/workflows/m2-real-ae-p4-p5.yml";
 
@@ -53,30 +53,28 @@ test("P4/P5 and bounded M2 runners share the same default target After Effects e
   assert.match(runner, /declared M2 target After Effects/);
 });
 
-test("P4/P5 Windows runner requires a cold AE start and never attaches to a pre-existing session", async () => {
+test("P4/P5 command runner requires a zero-AE baseline and never attaches to a pre-existing session", async () => {
   const runner = await readFile(runnerPath, "utf8");
 
   assert.match(runner, /Get-Process -Name "AfterFX"/);
   assert.match(runner, /\$ExistingAfterFx\.Count -gt 0/);
-  assert.match(runner, /Refusing disposable P4\/P5 cold-start proof because After Effects is already running/);
+  assert.match(runner, /Refusing disposable P4\/P5 command proof because After Effects is already running/);
   assert.match(runner, /Close AE first; no writes were attempted/);
-  assert.doesNotMatch(runner, /exact executable of pre-existing AE PID/);
 });
 
-test("P4/P5 runner installs an owned Startup bootstrap, launches AE without -r, and removes the bootstrap", async () => {
+test("P4/P5 runner writes a bounded wrapper and passes only that fixed file through AfterFX -r", async () => {
   const runner = await readFile(runnerPath, "utf8");
 
-  assert.match(runner, /m2-p45-startup-bootstrap-template\.jsx/);
-  assert.match(runner, /Scripts\\Startup/);
-  assert.match(runner, /EditFlow2-m2-p45-bootstrap\.jsx/);
-  assert.match(runner, /System\.IO\.File\]::WriteAllText\(\$InstalledBootstrap, \$BootstrapSource, \$Utf8NoBom\)/);
-  assert.match(runner, /Start-Process -FilePath \$AfterFx -PassThru/);
-  assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFx -ArgumentList/);
-  assert.match(runner, /Remove-Item \$InstalledBootstrap -Force/);
-  assert.match(runner, /Publish-BootstrapEvidence/);
+  assert.match(runner, /m2-p45-command-bootstrap-template\.jsx/);
+  assert.match(runner, /m2-p45-command-bootstrap\.jsx/);
+  assert.match(runner, /System\.IO\.File\]::WriteAllText\(\$CommandBootstrap, \$BootstrapSource, \$Utf8NoBom\)/);
+  assert.match(runner, /\$Arguments = @\("-r", \('\"' \+ \$CommandBootstrap \+ '\"'\)\)/);
+  assert.match(runner, /Start-Process -FilePath \$AfterFx -ArgumentList \$Arguments -PassThru/);
+  assert.match(runner, /delivery=-r/);
+  assert.doesNotMatch(runner, /Scripts\\Startup/);
 });
 
-test("P4/P5 runner records bounded AE startup diagnostics before any force cleanup", async () => {
+test("P4/P5 runner records process diagnostics around command delivery", async () => {
   const runner = await readFile(runnerPath, "utf8");
 
   assert.match(runner, /startup-diagnostics\.log/);
@@ -87,17 +85,15 @@ test("P4/P5 runner records bounded AE startup diagnostics before any force clean
   assert.match(runner, /MainWindowHandle/);
   assert.match(runner, /MainWindowTitle/);
   assert.match(runner, /\.Responding/);
-  assert.match(runner, /\.SessionId/);
   assert.match(runner, /Get-CimInstance Win32_Process/);
-  assert.match(runner, /STARTUP_WAIT/);
-  assert.match(runner, /STARTUP_WAIT_END/);
-  assert.match(runner, /Inspect startup-diagnostics\.log before retrying/);
+  assert.match(runner, /COMMAND_WAIT/);
+  assert.match(runner, /COMMAND_WAIT_END/);
 });
 
 test("P4/P5 runner cleans only owned AE and prefers graceful close before force-stop", async () => {
   const runner = await readFile(runnerPath, "utf8");
   const guard = runner.indexOf("if ($ExistingAfterFx.Count -gt 0)");
-  const launch = runner.indexOf("Start-Process -FilePath $AfterFx -PassThru");
+  const launch = runner.indexOf("Start-Process -FilePath $AfterFx -ArgumentList $Arguments -PassThru");
   const cleanup = runner.indexOf('$OwnedProcesses = @(Get-Process -Name "AfterFX"');
   const graceful = runner.indexOf("$Owned.CloseMainWindow()", cleanup);
   const force = runner.indexOf("Stop-Process -Force", cleanup);
@@ -108,7 +104,7 @@ test("P4/P5 runner cleans only owned AE and prefers graceful close before force-
   assert.match(runner, /CLEANUP_FORCE_STOP/);
 });
 
-test("cold-start bootstrap self-deletes, waits for a project, and invokes only the fixed P4/P5 proof file", async () => {
+test("command bootstrap logs before proof execution, self-deletes, and invokes only the fixed P4/P5 proof file", async () => {
   const source = await readFile(bootstrapPath, "utf8");
 
   assert.match(source, /__EDITFLOW_PROOF_PATH__/);
@@ -116,8 +112,9 @@ test("cold-start bootstrap self-deletes, waits for a project, and invokes only t
   assert.match(source, /__EDITFLOW_LOG_PATH__/);
   assert.match(source, /__EDITFLOW_BOOTSTRAP_PATH__/);
   assert.match(source, /bootstrapFile\.remove\(\)/);
+  assert.match(source, /COMMAND_BOOTSTRAP_LOADED/);
   assert.match(source, /if \(!app\.project\)/);
-  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_runM2P45Startup\(\)", 250, false\)/);
+  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_runM2P45CommandProof\(\)", 250, false\)/);
   assert.match(source, /\$\.evalFile\(proof\)/);
   assert.match(source, /PROOF_STARTED/);
   assert.match(source, /PROOF_RETURNED/);
