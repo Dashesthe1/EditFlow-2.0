@@ -77,13 +77,13 @@ export const M3_MASK_CAPABILITIES_V12: readonly CapabilityRecord[] = AE_MASK_COM
   (command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForMaskCommandV12(command)),
     domain: "mask",
-    description: `M3 typed AE mask/Bezier command '${command}'.`,
+    description: `M3 typed AE mask/Bezier command '${command}'. Host contract is implemented; authenticated CEP protocol 1.2 routing remains gated until negotiation support is proven.`,
     status: "PARTIAL",
     proofMaturity: "DECLARED",
     routes: [{
       routeId: asRouteId(AE_MASK_ROUTE_ID_V12),
       kind: "HOST_ADAPTER",
-      available: true,
+      available: false,
       adapterVersion: AE_MASK_ADAPTER_BUILD_V12,
     }],
     readbackStrategy: "HOST_STRUCTURAL_READBACK",
