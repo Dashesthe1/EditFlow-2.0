@@ -55,7 +55,7 @@ test("shared self-hosted panel bootstrap attempts the menu open synchronously be
   assert.doesNotMatch(source, /INITIAL_TASK_SCHEDULED/);
 });
 
-test("M3 self-hosted runner records AE startup diagnostics, requires panel-open evidence, and gracefully closes owned AE first", async () => {
+test("M3 self-hosted runner matches proven M2 AE readiness, records diagnostics, requires panel evidence, and gracefully closes owned AE first", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /\[Environment\]::UserInteractive/);
   assert.match(source, /refuses to touch an already-running After Effects session/);
@@ -66,6 +66,9 @@ test("M3 self-hosted runner records AE startup diagnostics, requires panel-open 
   assert.match(source, /COLD_START_WAIT/);
   assert.match(source, /COLD_START_READY_CHECK/);
   assert.match(source, /Get-CimInstance Win32_Process/);
+  assert.match(source, /\$Candidate\.Responding -and \$Candidate\.MainWindowHandle -ne 0/);
+  assert.doesNotMatch(source, /\$WindowTitle -like "Adobe After Effects\*"/);
+  assert.match(source, /EXECUTE_COMMAND_SENT gate/);
   assert.match(source, /@\("-r", \$PanelBootstrap\)/);
   assert.match(source, /EXECUTE_COMMAND_SENT/);
   assert.match(source, /RETRY_EXHAUSTED/);
