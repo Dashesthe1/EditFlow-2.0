@@ -6,6 +6,7 @@ import vm from "node:vm";
 const codecPath = "packages/adapters/ae-cep/host/editflow_json.jsx";
 const currentHostPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
+const bridgePath = "packages/adapters/ae-cep/extension/client/bridge.js";
 
 const loadCodec = async () => {
   const source = await readFile(codecPath, "utf8");
@@ -50,7 +51,7 @@ test("AE JSON runtime is non-eval and rejects prototype-polluting keys", async (
   assert.throws(() => codec.stringify(cyclic), /cyclic structures/);
 });
 
-test("current AE host scopes EditFlow JSON to dispatcher calls and installer deploys codec", async () => {
+test("current AE host installs fallback JSON, scopes dispatcher JSON, and installer deploys codec", async () => {
   const [currentHost, installer] = await Promise.all([
     readFile(currentHostPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -58,8 +59,17 @@ test("current AE host scopes EditFlow JSON to dispatcher calls and installer dep
 
   assert.match(currentHost, /editflow_json\.jsx/);
   assert.match(currentHost, /\$\.global\.EditFlow2_JSON/);
+  assert.match(currentHost, /if \(typeof \$\.global\.JSON === "undefined"\) \$\.global\.JSON = \$\.global\.EditFlow2_JSON/);
   assert.match(currentHost, /var hadJson = typeof \$\.global\.JSON !== "undefined"/);
   assert.match(currentHost, /\$\.global\.JSON = \$\.global\.EditFlow2_JSON/);
   assert.match(currentHost, /if \(hadJson\) \$\.global\.JSON = previousJson/);
   assert.match(installer, /"editflow_json\.jsx"/);
+});
+
+test("CEP panel wrapper is syntactically valid and returns explicit host errors instead of parsing empty responses", async () => {
+  const source = await readFile(bridgePath, "utf8");
+  new vm.Script(source, { filename: bridgePath });
+  assert.match(source, /\$\.global\.EditFlow2_dispatch/);
+  assert.match(source, /__EDITFLOW2_HOST_ERROR__:/);
+  assert.match(source, /dispatcher returned an empty evalScript result/);
 });
