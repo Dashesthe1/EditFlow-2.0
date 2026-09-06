@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const proofPath = "proofs/ae/m2-disposable-p4-p5-proof.jsx";
 const runnerPath = "scripts/windows/run-m2-ae-p4-p5.ps1";
+const boundedRunnerPath = "scripts/windows/run-m2-ae-self-hosted.ps1";
 const workflowPath = ".github/workflows/m2-real-ae-p4-p5.yml";
 
 test("P4/P5 proof refuses before AE mutations unless the project is blank and unsaved", async () => {
@@ -29,6 +30,17 @@ test("P4/P5 proof explicitly covers rollback and required stable-identity cases"
   assert.match(source, /app\.open\(projectFile\)/);
   assert.match(source, /reconnected_dispatcher/);
   assert.match(source, /transfer_after_reconnect/);
+});
+
+test("P4/P5 and bounded M2 runners share the same default target After Effects executable", async () => {
+  const [runner, boundedRunner] = await Promise.all([
+    readFile(runnerPath, "utf8"),
+    readFile(boundedRunnerPath, "utf8"),
+  ]);
+  const target = /\[string\]\$AfterFxPath = "C:\\\\Program Files\\\\Adobe\\\\Adobe After Effects 2025\\\\Support Files\\\\AfterFX\.exe"/;
+  assert.match(runner, target);
+  assert.match(boundedRunner, target);
+  assert.match(runner, /declared M2 target AE process/);
 });
 
 test("P4/P5 Windows runner binds a pre-existing session to its exact AfterFX executable", async () => {
