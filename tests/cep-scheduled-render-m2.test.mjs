@@ -15,7 +15,7 @@ test("render.capture returns from CEP before blocking AE render and schedules on
   assert.match(source, /app\.project\.renderQueue\.render\(\)/);
   assert.match(source, /app\.scheduleTask\("EditFlow2_runScheduledRender\(\)", 25, false\)/);
   assert.match(source, /state: "SCHEDULED"/);
-  assert.match(source, /mode: "SCHEDULED_HOST_JOB_V2_GLOBAL"/);
+  assert.match(source, /mode: "SCHEDULED_HOST_JOB_V1"/);
   assert.match(source, /completionPath: job\.completionPath/);
   assert.match(source, /payload\.outputPath \+ "\.editflow-render\.json"/);
   assert.doesNotMatch(source, /app\.scheduleTask\([^\n]*payload/);
