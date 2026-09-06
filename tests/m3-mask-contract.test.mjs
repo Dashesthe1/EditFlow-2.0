@@ -160,7 +160,7 @@ test("M3 AE host layer implements mask CRUD, exact Shape geometry, animation, pr
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("current installer and CEP panel negotiate 1.2 while preserving the accepted 1.1 fallback", async () => {
+test("current installer advertises M3 support additively while runtime brokers scope protocol access explicitly", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -170,13 +170,14 @@ test("current installer and CEP panel negotiate 1.2 while preserving the accepte
   assert.match(loader, /editflow_host_m3_masks\.jsx/);
   assert.match(loader, /\$\.evalFile\(m3Masks\)/);
   assert.match(installer, /"editflow_host_m3_masks\.jsx"/);
+  assert.match(installer, /schemaVersion = 1/);
   assert.match(installer, /protocolVersion = "1\.1\.0"/);
   assert.match(installer, /supportedProtocolVersions = @\("1\.2\.0", "1\.1\.0"\)/);
-  assert.match(installer, /highest mutually supported version is negotiated per session/);
+  assert.match(installer, /Each local broker narrows that set/);
   assert.match(bridge, /supportedProtocolVersions/);
   assert.match(bridge, /response\.protocolVersion !== request\.protocolVersion/);
   assert.match(bridge, /Broker negotiated an unsupported CEP protocol/);
   assert.doesNotMatch(bridge, /response\.protocolVersion !== "1\.1\.0"/);
-  assert.match(runtimeConfig, /schemaVersion: 2/);
+  assert.match(runtimeConfig, /schemaVersion: 1/);
   assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.2\.0", "1\.1\.0"\]/);
 });
