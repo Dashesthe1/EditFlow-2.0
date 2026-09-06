@@ -26,6 +26,8 @@ const requireArgument = (name: string): string => {
   return value;
 };
 
+const stripUtf8Bom = (value: string): string => value.charCodeAt(0) === 0xfeff ? value.slice(1) : value;
+
 const parseConfig = (value: unknown): BridgeConfigFile => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Bridge config must be an object.");
   const candidate = value as Record<string, unknown>;
@@ -55,7 +57,8 @@ const main = async (): Promise<void> => {
   const startedAt = new Date().toISOString();
   let broker: LoopbackCepBroker | null = null;
   try {
-    const config = parseConfig(JSON.parse(await readFile(configPath, "utf8")) as unknown);
+    const configText = stripUtf8Bom(await readFile(configPath, "utf8"));
+    const config = parseConfig(JSON.parse(configText) as unknown);
     broker = new LoopbackCepBroker({
       port: config.port,
       token: config.token,
