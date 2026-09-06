@@ -1,0 +1,48 @@
+name: M3 Mask P1 P2 Real After Effects
+
+on:
+  workflow_dispatch:
+    inputs:
+      afterfx_path:
+        description: Optional explicit path to AfterFX.exe
+        required: false
+        type: string
+  push:
+    branches:
+      - ae-test/m3-mask-p1-p2-control
+    paths:
+      - .github/ae-test-trigger/m3-mask-p1-p2.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-m3-mask-p1-p2-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  real-ae-mask-p1-p2:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run isolated M3 mask P1/P2 proof
+        shell: powershell
+        run: |
+          $path = '${{ github.event.inputs.afterfx_path }}'
+          if ($path) {
+            .\scripts\windows\run-m3-mask-self-hosted.ps1 -AfterFxPath $path
+          } else {
+            .\scripts\windows\run-m3-mask-self-hosted.ps1
+          }
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-mask-p1-p2-proof-${{ github.run_id }}
+          path: proofs/artifacts/m3-mask-p1-p2/
+          if-no-files-found: warn
+          retention-days: 14
