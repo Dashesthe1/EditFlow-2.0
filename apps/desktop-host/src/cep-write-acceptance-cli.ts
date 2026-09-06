@@ -147,6 +147,7 @@ const main = async (): Promise<void> => {
   let environment: Awaited<ReturnType<AeCepAdapterClientV11["probe"]>> | null = null;
   let panel: Awaited<ReturnType<LoopbackCepBroker["waitForPanel"]>> | null = null;
   let failureError: string | null = null;
+  let renderArtifactPath: string | null = null;
 
   const projectId = "m2-cep-write-acceptance";
   const transactionId = `M2_CEP_WRITE_TX_${Date.now()}`;
@@ -331,24 +332,36 @@ const main = async (): Promise<void> => {
     const renderReadback = asRecord(renderSchedule.readback);
     const renderJobId = renderReadback?.["jobId"];
     const renderCompletionPath = renderReadback?.["completionPath"];
+    const renderOutputPath = renderReadback?.["outputPath"];
     checks.render_scheduled = renderReadback?.["state"] === "SCHEDULED"
       && renderReadback?.["mode"] === "SCHEDULED_HOST_JOB_V1"
+      && renderReadback?.["requestedOutputPath"] === renderPath
       && typeof renderJobId === "string"
-      && typeof renderCompletionPath === "string";
-    if (!checks.render_scheduled || typeof renderJobId !== "string" || typeof renderCompletionPath !== "string") {
-      throw new Error("render.capture did not return a valid scheduled render job descriptor.");
+      && typeof renderCompletionPath === "string"
+      && typeof renderOutputPath === "string";
+    if (!checks.render_scheduled || typeof renderJobId !== "string"
+        || typeof renderCompletionPath !== "string" || typeof renderOutputPath !== "string") {
+      throw new Error("render.capture did not return a valid scheduled render job descriptor with canonical output-path readback.");
     }
+
+    const renderRelativePath = path.relative(artifactDir, renderOutputPath);
+    if (renderRelativePath.length === 0 || renderRelativePath === ".."
+        || renderRelativePath.startsWith(`..${path.sep}`) || path.isAbsolute(renderRelativePath)) {
+      throw new Error(`render.capture canonical output path escaped the bounded artifact directory: ${renderOutputPath}`);
+    }
+    renderArtifactPath = renderOutputPath;
+    checks.render_output_path_readback = true;
 
     const renderCompletion = await waitForRenderCompletion(renderCompletionPath, renderJobId, timeoutMs);
     checks.render_job_done = renderCompletion.ok === true
       && renderCompletion.status === "DONE"
       && renderCompletion.queueItemRemoved === true
-      && renderCompletion.outputPath === renderPath;
+      && renderCompletion.outputPath === renderOutputPath;
     if (!checks.render_job_done) {
       throw new Error(`render.capture scheduled job failed: ${renderCompletion.error ?? renderCompletion.status}`);
     }
-    checks.render_capture = await fileExistsNonEmpty(renderPath);
-    if (!checks.render_capture) throw new Error("render.capture completion marker reported success but the render artifact is missing or empty.");
+    checks.render_capture = await fileExistsNonEmpty(renderOutputPath);
+    if (!checks.render_capture) throw new Error("render.capture completion marker reported success but the canonical render artifact is missing or empty.");
 
     // The scheduled render deliberately occupies AE outside the CEP evalScript call.
     // Resume host observation only after its completion marker proves the render task
@@ -435,7 +448,7 @@ const main = async (): Promise<void> => {
           P4_failure_injection_rollback: false,
           P5_save_reopen_reconnect_transfer: false,
         },
-        renderArtifact: checks.render_capture === true ? renderPath : null,
+        renderArtifact: checks.render_capture === true ? renderArtifactPath : null,
         responses,
         cleanupErrors,
         safety: {
