@@ -19,6 +19,15 @@ test("P4/P5 proof refuses before AE mutations unless the project is blank and un
   assert.match(source, /app\.newProject\(\)/);
 });
 
+test("P4/P5 proof uses timestamps supported by the target ExtendScript runtime", async () => {
+  const source = await readFile(proofPath, "utf8");
+  assert.match(source, /function utcTimestamp\(\)/);
+  assert.match(source, /\(new Date\(\)\)\.toUTCString\(\)/);
+  assert.match(source, /startedAt = utcTimestamp\(\)/);
+  assert.match(source, /completedAt: utcTimestamp\(\)/);
+  assert.doesNotMatch(source, /toISOString/);
+});
+
 test("P4/P5 proof explicitly covers rollback and required stable-identity cases", async () => {
   const source = await readFile(proofPath, "utf8");
   assert.match(source, /failure_injected/);
