@@ -37,9 +37,9 @@ test("P4/P5 and bounded M2 runners share the same default target After Effects e
     readFile(runnerPath, "utf8"),
     readFile(boundedRunnerPath, "utf8"),
   ]);
-  const target = /\[string\]\$AfterFxPath = "C:\\\\Program Files\\\\Adobe\\\\Adobe After Effects 2025\\\\Support Files\\\\AfterFX\.exe"/;
-  assert.match(runner, target);
-  assert.match(boundedRunner, target);
+  const target = '[string]$AfterFxPath = "C:\\Program Files\\Adobe\\Adobe After Effects 2025\\Support Files\\AfterFX.exe"';
+  assert.ok(runner.includes(target));
+  assert.ok(boundedRunner.includes(target));
   assert.match(runner, /declared M2 target AE process/);
 });
 
