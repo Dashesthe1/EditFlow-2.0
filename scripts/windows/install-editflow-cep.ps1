@@ -30,6 +30,7 @@ Copy-Item (Join-Path $TemplateRoot "*") $TargetRoot -Recurse -Force
 $InstalledHostDir = Join-Path $TargetRoot "host"
 New-Item -ItemType Directory -Force -Path $InstalledHostDir | Out-Null
 $HostFiles = @(
+  "editflow_json.jsx",
   "editflow_host.jsx",
   "editflow_host_hardening.jsx",
   "editflow_host_atomicity.jsx",
