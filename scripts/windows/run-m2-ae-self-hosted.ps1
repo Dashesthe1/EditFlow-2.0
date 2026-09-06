@@ -8,12 +8,16 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Installer = Join-Path $RepoRoot "scripts\windows\install-editflow-cep.ps1"
 $Acceptance = Join-Path $RepoRoot "scripts\windows\run-m2-ae-acceptance.ps1"
+$PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-bridge.jsx"
 
 if (-not [Environment]::UserInteractive) {
   throw "The EditFlow AE runner must run in an interactive Windows user session. Start the GitHub Actions runner with run.cmd while logged into the desktop; do not run it as a Windows service."
 }
 if (-not (Test-Path $AfterFxPath -PathType Leaf)) {
   throw "AfterFX.exe was not found at: $AfterFxPath"
+}
+if (-not (Test-Path $PanelBootstrap -PathType Leaf)) {
+  throw "The fixed EditFlow CEP panel bootstrap is missing: $PanelBootstrap"
 }
 if ($TimeoutSeconds -lt 10) { throw "TimeoutSeconds must be at least 10." }
 if ($StartupTimeoutSeconds -lt 10) { throw "StartupTimeoutSeconds must be at least 10." }
@@ -28,8 +32,9 @@ Write-Host "Installing the checked-out EditFlow CEP bridge before launching the 
 
 $StartedAfterFx = $false
 try {
-  Write-Host "Launching a fresh After Effects instance for the self-hosted M2 proof..."
-  Start-Process -FilePath $AfterFxPath | Out-Null
+  Write-Host "Launching a fresh After Effects instance with the fixed EditFlow panel bootstrap..."
+  $QuotedBootstrap = '"' + $PanelBootstrap + '"'
+  Start-Process -FilePath $AfterFxPath -ArgumentList @("-r", $QuotedBootstrap) | Out-Null
   $StartedAfterFx = $true
 
   $Deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
@@ -52,7 +57,7 @@ try {
     throw "After Effects did not start within $StartupTimeoutSeconds seconds."
   }
 
-  Write-Host "After Effects is running. The CEP manifest is AutoVisible; the acceptance harness will wait for bridge registration."
+  Write-Host "After Effects is running. The fixed bootstrap will activate EditFlow 2.0 Bridge through AE's menu command API; the acceptance harness will wait for authenticated bridge registration."
   & $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
 } finally {
   if ($StartedAfterFx) {
