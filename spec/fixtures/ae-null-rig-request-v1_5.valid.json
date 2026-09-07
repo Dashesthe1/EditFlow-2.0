@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.5.0",
+  "requestId": "REQ_NULL_RIG_CREATE",
+  "transactionId": "TX_NULL_RIG_CREATE",
+  "operationId": "OP_NULL_RIG_CREATE",
+  "capabilityId": "ae.rig.null.create",
+  "command": "rig.null.create",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": {"stableId": "COMP_NULL_RIG"},
+    "rig": {"stableId": "RIG_NULL_MAIN", "name": "Main Control"},
+    "threeDLayer": false
+  },
+  "readbackProfile": "M3_NULL_RIG_STRUCTURAL"
+}
