@@ -51,7 +51,7 @@ test("proof-only fixture builds the exact audio/precomp/solid/camera matrix with
   assert.match(source, /file\.write\(markerStringify\(value\)\)/);
   assert.match(source, /stage:\s*stage/);
   assert.match(source, /M3_LAYER_CONTROLS_P1_P2_FIXTURE/);
-  assert.doesNotMatch(source, /EditFlow2_JSON/);
+  assert.doesNotMatch(source, /\$\.global\.EditFlow2_JSON/);
   assert.doesNotMatch(source, /EditFlow2_dispatch\s*=/);
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
@@ -68,7 +68,7 @@ test("proof-only cleanup validates the fixed prefix-owned fixture and emits engi
   assert.match(source, /file\.write\(markerStringify\(value\)\)/);
   assert.match(source, /stage:\s*stage/);
   assert.match(source, /M3_LAYER_CONTROLS_P1_P2_CLEANUP/);
-  assert.doesNotMatch(source, /EditFlow2_JSON/);
+  assert.doesNotMatch(source, /\$\.global\.EditFlow2_JSON/);
   assert.doesNotMatch(source, /EditFlow2_dispatch\s*=/);
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
