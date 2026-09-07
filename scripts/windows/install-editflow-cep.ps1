@@ -71,6 +71,7 @@ $HostFiles = @(
   "editflow_host_m3_proof_cleanup.jsx",
   "editflow_host_m3_composite_proof_cleanup.jsx",
   "editflow_host_m3_parenting_proof_cleanup.jsx",
+  "editflow_host_m3_null_rig_proof_cleanup.jsx",
   "editflow_host_current.jsx",
   "editflow_host_current_v15.jsx"
 )
