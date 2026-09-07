@@ -14,7 +14,7 @@
   "use strict";
 
   var PROOF_ENV = "EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF";
-  var RECOVERY_REQUEST_NAME = "p4-post-rollback.avi";
+  var RECOVERY_REQUEST_NAME = "p4-post-rollback-visible.avi";
   var ITEM_PREFIX = "[[EDITFLOW2_STABLE:";
   var MARKER_SUFFIX = "]]";
   var innerReconcile = $.global.EditFlow2_reconcileAsyncRender;
