@@ -1,0 +1,3 @@
+EditFlow M3 parenting P3/P4 real-AE proof trigger marker.
+
+Only updates to this file on ae-test/m3-parenting-p3-p4-control should trigger the isolated self-hosted parenting P3/P4 acceptance workflow.
