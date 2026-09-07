@@ -187,9 +187,9 @@ try {
     $Result.status = "VISUAL_REVIEW_REQUIRED"
     $Result.cleanupComplete = $true
     $Result.cleanupErrors = @()
-    $Result.checks.cleanup_temp_items_absent = $true
-    $Result.checks.cleanup_item_count_restored = $true
-    $Result.checks.cleanup_fingerprint_restored = $true
+    $Result.checks | Add-Member -NotePropertyName cleanup_temp_items_absent -NotePropertyValue $true -Force
+    $Result.checks | Add-Member -NotePropertyName cleanup_item_count_restored -NotePropertyValue $true -Force
+    $Result.checks | Add-Member -NotePropertyName cleanup_fingerprint_restored -NotePropertyValue $true -Force
     $Result | Add-Member -NotePropertyName cleanupStrategy -NotePropertyValue "PROOF_OWNED_CLOSE_WITHOUT_SAVE_NEW_PROJECT_EXACT_BASELINE_VERIFY" -Force
     $Result | Add-Member -NotePropertyName cleanupUndoBarrierObserved -NotePropertyValue $true -Force
     $Result | Add-Member -NotePropertyName cleanupMarker -NotePropertyValue $CleanupMarker -Force
