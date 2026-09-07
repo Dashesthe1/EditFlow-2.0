@@ -14,6 +14,7 @@ test("M3 layer-controls P1/P2 CLI is bounded to protocol 1.6 structural rejectio
   assert.match(source, /HOST_REVISION_CONFLICT/);
   assert.match(source, /LAYER_SWITCHES_EMPTY/);
   assert.match(source, /LAYER_RELATIVE_SELF/);
+  assert.match(source, /for \(const stableId of \[layerC, layerB, layerA\]\)/);
   for (const key of [
     "enabled",
     "audioEnabled",
@@ -64,6 +65,10 @@ test("self-hosted wrapper reuses the accepted M3 startup template with guarded p
   assert.match(source, /proofs\\artifacts\\m3-layer-controls-p1-p2/);
   assert.match(source, /authenticated protocol 1\.6 registration/);
   assert.match(source, /isolated M3 layer-controls AE proof/);
+  assert.match(source, /Copy-CepFailureDiagnostics/);
+  assert.match(source, /CEP12-AEFT\*\.log/);
+  assert.match(source, /CEPHtmlEngine12-AEFT-\*\.log/);
+  assert.match(source, /LogLevel/);
   assert.match(source, /Remove-Item \$TempPath/);
 });
 
