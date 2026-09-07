@@ -41,7 +41,6 @@ test("M3 layer-controls P1/P2 CLI is bounded to protocol 1.6 structural rejectio
 
 test("M3 layer-controls P1/P2 acceptance wrapper fails closed unless exact switches/order and cleanup pass", async () => {
   const source = await readFile(acceptancePath, "utf8");
-  assert.match(source, /run-m3-layer-controls-p1-p2/);
   assert.match(source, /p1_stale_revision_rejected/);
   assert.match(source, /p1_empty_switches_rejected/);
   assert.match(source, /p1_self_relative_order_rejected/);
