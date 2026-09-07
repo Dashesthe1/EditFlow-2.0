@@ -76,10 +76,50 @@ The contract was cross-checked against the current After Effects scripting docum
 - `Property.setTemporalContinuousAtKey()` and `setTemporalAutoBezierAtKey()` expose the corresponding per-key temporal flags: https://ae-scripting.docsforadobe.dev/property/property/
 - `KeyframeEase` and `setTemporalEaseAtKey()` expose speed/influence and are intentionally deferred to the next Graph Editor tranche: https://ae-scripting.docsforadobe.dev/other/keyframeease/
 
-## Evidence posture
+The self-hosted panel path was also checked against Adobe CEP guidance: later JSX files may be loaded through CEP `evalScript` / `$.evalFile`, while the special `$.fileName` caveat applies to the first manifest-loaded JSX. The accepted P1/P2 run therefore uses the normal production-style CEP host bootstrap rather than a proof-only direct loader preload.
 
-The new capabilities begin at `PARTIAL / DECLARED`.
+## Accepted real-AE P1/P2 evidence
 
-Contract/schema tests may validate the typed control plane, fail-closed loader, additive protocol negotiation, scope boundaries, and transaction structure, but they **must not** promote either capability to `FULL` or to structural/visual/rollback/transfer proof maturity.
+Protocol 1.7 is now `PARTIAL / STRUCTURAL` on the strength of accepted real-After-Effects P1/P2 evidence. It is **not FULL**.
 
-The next acceptance step is a real-After-Effects P1/P2 proof that exercises validation rejection and exact structural readback on a deterministic animated property fixture. Later P3/P4/P5 evidence will be added separately rather than being inferred from unit tests.
+Accepted provenance:
+
+- source commit: `9b660195c265f35fff79616b1ae345c01aeaec78`;
+- control-branch commit: `bfa22a7f6f7254325899e6b3d3b07d14b2fdadd7`;
+- GitHub Actions run: `34163522485`;
+- self-hosted job: `101869972996`;
+- proof artifact: `10033403065`;
+- uploaded artifact ZIP SHA-256: `a029092ae5a0b0a3f492abd3c71276816081d36b2b7e00e3ccc08a5537406977`;
+- host: Adobe After Effects `25.6.6` on the isolated Windows `editflow-ae` runner.
+
+The accepted run used the normal production-equivalent panel startup path with **no direct host-loader preflight**. It proved:
+
+- authenticated additive negotiation of protocol `1.7.0` while retaining baseline protocol `1.1.0` fixture support;
+- deterministic, non-mutating rejection of an out-of-range key index;
+- deterministic, non-mutating rejection of an unresolved property path;
+- deterministic, non-mutating rejection of temporal continuous/auto-Bezier flags on a non-Bezier state;
+- deterministic, non-mutating rejection of a stale host revision;
+- target Opacity support for `LINEAR`, `BEZIER`, and `HOLD`;
+- exact independent incoming/outgoing readback with `BEZIER` incoming and `LINEAR` outgoing;
+- exact `BEZIER/BEZIER` temporal-continuous readback;
+- exact `BEZIER/BEZIER` temporal-continuous plus auto-Bezier readback;
+- exact `HOLD/HOLD` and `LINEAR/LINEAR` mutation/readback;
+- exact no-op detection with unchanged host revision;
+- exact key identity at key index `2`, time `0.5` seconds;
+- restoration of the exact pre-proof project fingerprint and item count after disposable-fixture cleanup.
+
+A prior diagnostic run demonstrated that the v1.7 host loader can also be preloaded directly, but that changed the startup path and was intentionally **not** used as acceptance evidence. The accepted run above is the production-style proof source.
+
+## Evidence posture and remaining gates
+
+The two protocol-1.7 capabilities are `PARTIAL / STRUCTURAL`.
+
+P1/P2 are accepted. **P3/P4/P5 remain unproven**, so neither capability may be promoted to `FULL`, `VISUAL`, `ROLLBACK`, or `TRANSFER` on the basis of the current evidence.
+
+The next acceptance gates are intentionally separate:
+
+1. **P3 visual proof:** demonstrate viewer-observable temporal interpolation behavior on a deterministic fixture without substituting structural readback for visual evidence.
+2. **P4 failure-injection rollback:** induce a failure only after a real temporal-interpolation mutation inside the normal AE Undo boundary and prove exact restoration.
+3. **P5 save/reopen/reconnect transfer:** save the proven interpolation state, reopen the project, establish a fresh authenticated CEP session, and prove exact state survives transfer.
+
+Only accepted P1-P5 evidence can justify promotion of protocol 1.7 to `FULL / TRANSFER`. Numeric Graph Editor ease/influence, spatial paths/tangents/roving, and marker/motion-blur/frame-blending controls remain later roadmap tranches and must not be inferred from item-9 success.
