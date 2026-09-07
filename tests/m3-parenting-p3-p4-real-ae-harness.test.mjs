@@ -25,6 +25,25 @@ test("parenting P3/P4 CLI retains three visual states, five-point geometry, and 
   assert.match(source, /VISUAL_REVIEW_REQUIRED/);
 });
 
+test("parenting P3/P4 refreshes checked v1.1 state after each v1.4 mutation", async () => {
+  const source = await readFile(cliPath, "utf8");
+  assert.match(source, /const setParent = await dispatchV14[\s\S]*?await refreshState\(\);[\s\S]*?renderComp\(parentedRenderPath\)/);
+  assert.match(source, /const clearParent = await dispatchV14[\s\S]*?await refreshState\(\);[\s\S]*?renderComp\(clearedRenderPath\)/);
+  assert.match(source, /p3_parented_v11_state_refreshed/);
+  assert.match(source, /p3_cleared_v11_state_refreshed/);
+  assert.match(source, /cross-protocol revision\/fingerprint safety is preserved rather than bypassed/);
+});
+
+test("parenting P3/P4 harness verifies proof-owned cleanup and never loops broad fallback Undo", async () => {
+  const source = await readFile(cliPath, "utf8");
+  assert.match(source, /const verifyBaselineOnly = async/);
+  assert.match(source, /Proof-owned cleanup did not restore the blank baseline/);
+  assert.match(source, /await verifyBaselineOnly\(\)/);
+  assert.doesNotMatch(source, /undoUntilBaseline/);
+  assert.doesNotMatch(source, /client\.undoLast\(/);
+  assert.doesNotMatch(source, /CLEANUP_UNDO_/);
+});
+
 test("parenting P4 CLI demands a proof-gated post-mutation failure and exact fresh recovery", async () => {
   const source = await readFile(cliPath, "utf8");
   assert.match(source, /M3_PARENTING_P4_FAILURE_INJECTION/);
