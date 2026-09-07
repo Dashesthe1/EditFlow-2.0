@@ -25,7 +25,8 @@ import {
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-parenting.js";
 
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_parenting.jsx";
-const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
+const acceptedLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
+const additiveLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v15.jsx";
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const bridgePath = "packages/adapters/ae-cep/extension/client/bridge.js";
 const runtimeConfigPath = "packages/adapters/ae-cep/extension/client/runtime-config.js";
@@ -167,19 +168,21 @@ test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("current CEP installation advertises 1.4 additively and loads parenting fail-closed", async () => {
-  const [loader, installer, bridge, runtimeConfig] = await Promise.all([
-    readFile(loaderPath, "utf8"),
+test("protocol 1.5 installation preserves the accepted 1.4 parenting loader and advertises both tranches", async () => {
+  const [acceptedLoader, additiveLoader, installer, bridge, runtimeConfig] = await Promise.all([
+    readFile(acceptedLoaderPath, "utf8"),
+    readFile(additiveLoaderPath, "utf8"),
     readFile(installerPath, "utf8"),
     readFile(bridgePath, "utf8"),
     readFile(runtimeConfigPath, "utf8"),
   ]);
-  assert.match(loader, /editflow_host_m3_parenting\.jsx/);
-  assert.match(loader, /\$\.evalFile\(m3Parenting\)/);
-  assert.match(loader, /M3_PARENTING_MODULE_LOAD_FAILED/);
-  assert.match(loader, /request\.protocolVersion === "1\.4\.0"/);
+  assert.match(acceptedLoader, /editflow_host_m3_parenting\.jsx/);
+  assert.match(acceptedLoader, /\$\.evalFile\(m3Parenting\)/);
+  assert.match(acceptedLoader, /M3_PARENTING_MODULE_LOAD_FAILED/);
+  assert.match(acceptedLoader, /request\.protocolVersion === "1\.4\.0"/);
+  assert.match(additiveLoader, /editflow_host_current\.jsx/);
   assert.match(installer, /"editflow_host_m3_parenting\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });

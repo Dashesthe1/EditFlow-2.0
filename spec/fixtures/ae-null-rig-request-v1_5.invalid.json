@@ -1,0 +1,14 @@
+{
+  "protocolVersion": "1.5.0",
+  "requestId": "REQ_NULL_RIG_INVALID",
+  "transactionId": "TX_NULL_RIG_INVALID",
+  "operationId": "OP_NULL_RIG_INVALID",
+  "capabilityId": "ae.rig.null.create",
+  "command": "rig.null.create",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": {"stableId": "COMP_NULL_RIG"},
+    "rig": {"name": "Missing Stable Identity"}
+  },
+  "readbackProfile": "M3_NULL_RIG_STRUCTURAL"
+}

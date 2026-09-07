@@ -1,0 +1,7 @@
+M3 null-rig P5 real-AE trigger
+source=4736f4ceee6e578cda0a199137295644eeb92607
+ci_run=34141633905
+attempt=2
+prior_run=34141686583
+prior_outcome=initial CEP registration timeout before any AE mutation
+scope=P5 save/reopen/reconnect true-null transfer + transferred and fresh managed-source lifecycle
