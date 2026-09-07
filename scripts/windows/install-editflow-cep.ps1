@@ -69,6 +69,7 @@ $HostFiles = @(
   "editflow_host_m3_parenting.jsx",
   "editflow_host_m3_proof_cleanup.jsx",
   "editflow_host_m3_composite_proof_cleanup.jsx",
+  "editflow_host_m3_parenting_proof_cleanup.jsx",
   "editflow_host_current.jsx"
 )
 foreach ($FileName in $HostFiles) {

@@ -1,9 +1,13 @@
 /* EditFlow 2.0 M3 parenting host layer.
  * Fixed typed protocol 1.4 commands only. No arbitrary code execution.
  *
- * IMPORTANT SEMANTICS: preserve-transform parenting uses direct Layer.parent
- * assignment. After Effects compensates the child transforms so its apparent
- * result does not jump. setParentWithJump() is intentionally forbidden here.
+ * Preserve-transform parenting uses direct Layer.parent assignment; setParentWithJump()
+ * is intentionally forbidden. After Effects can compensate ordinary 2D transform
+ * cases, but a rotated non-uniformly-scaled parent can require shear that a normal
+ * AVLayer local Transform cannot represent. This host therefore verifies five-point
+ * comp-space geometry after every set/clear mutation. If AE cannot preserve that
+ * geometry, the mutation fails closed and the existing AE Undo recovery restores the
+ * original relationship instead of returning a false APPLIED result.
  */
 (function () {
   "use strict";
@@ -17,6 +21,7 @@
   var BUILD = "0.4.0-dev.4";
   var LAYER_STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var MARKER_SUFFIX = "]]";
+  var GEOMETRY_TOLERANCE = 0.05;
 
   var CAPABILITIES = {
     "layer.set_parent_preserve_transform": "ae.layer.parent.set_preserve_transform",
@@ -125,19 +130,38 @@
     try { return property.value; } catch (_) { return null; }
   }
 
+  function plainPoint(value) {
+    if (!value || typeof value.length !== "number" || value.length < 2) return null;
+    var result = [];
+    var i, coordinate;
+    for (i = 0; i < value.length; i += 1) {
+      coordinate = Number(value[i]);
+      if (typeof coordinate !== "number" || !isFinite(coordinate)) return null;
+      result.push(coordinate);
+    }
+    return result;
+  }
+
   function transformSnapshot(layer, compTime) {
     var transform = null;
     try { transform = layer.property("ADBE Transform Group"); } catch (_) { transform = null; }
     if (!transform) return null;
     return {
-      anchorPoint: propertyValueAtCompTime(transform, "ADBE Anchor Point", compTime),
-      position: propertyValueAtCompTime(transform, "ADBE Position", compTime),
-      scale: propertyValueAtCompTime(transform, "ADBE Scale", compTime),
-      orientation: propertyValueAtCompTime(transform, "ADBE Orientation", compTime),
+      anchorPoint: plainPoint(propertyValueAtCompTime(transform, "ADBE Anchor Point", compTime)),
+      position: plainPoint(propertyValueAtCompTime(transform, "ADBE Position", compTime)),
+      scale: plainPoint(propertyValueAtCompTime(transform, "ADBE Scale", compTime)),
+      orientation: plainPoint(propertyValueAtCompTime(transform, "ADBE Orientation", compTime)),
       xRotation: propertyValueAtCompTime(transform, "ADBE Rotate X", compTime),
       yRotation: propertyValueAtCompTime(transform, "ADBE Rotate Y", compTime),
-      zRotation: propertyValueAtCompTime(transform, "ADBE Rotate Z", compTime)
+      zRotation: propertyValueAtCompTime(transform, "ADBE Rotate Z", compTime),
+      skew: propertyValueAtCompTime(transform, "ADBE Skew", compTime),
+      skewAxis: propertyValueAtCompTime(transform, "ADBE Skew Axis", compTime)
     };
+  }
+
+  function sourcePointToCompSnapshot(layer, sourcePoint) {
+    if (typeof layer.sourcePointToComp !== "function") return null;
+    try { return plainPoint(layer.sourcePointToComp(sourcePoint)); } catch (_) { return null; }
   }
 
   function compSpaceAnchorSnapshot(layer, compTime) {
@@ -145,15 +169,103 @@
     var anchor = null;
     try { transform = layer.property("ADBE Transform Group"); } catch (_) { transform = null; }
     if (!transform) return { supported: false, point: null, reason: "TRANSFORM_GROUP_UNAVAILABLE" };
-    anchor = propertyValueAtCompTime(transform, "ADBE Anchor Point", compTime);
+    anchor = plainPoint(propertyValueAtCompTime(transform, "ADBE Anchor Point", compTime));
     if (!anchor || anchor.length < 2 || typeof layer.sourcePointToComp !== "function") {
       return { supported: false, point: null, reason: "SOURCE_POINT_TO_COMP_UNAVAILABLE" };
     }
-    try {
-      return { supported: true, point: layer.sourcePointToComp([anchor[0], anchor[1]]), reason: null };
-    } catch (error) {
-      return { supported: false, point: null, reason: "SOURCE_POINT_TO_COMP_FAILED: " + String(error) };
+    var mapped = sourcePointToCompSnapshot(layer, [anchor[0], anchor[1]]);
+    if (!mapped) return { supported: false, point: null, reason: "SOURCE_POINT_TO_COMP_FAILED" };
+    return { supported: true, point: mapped, reason: null };
+  }
+
+  function sourceGeometrySnapshot(layer, compTime) {
+    if (typeof layer.sourcePointToComp !== "function") {
+      return { supported: false, reason: "SOURCE_POINT_TO_COMP_UNAVAILABLE", sourceRect: null, points: null };
     }
+
+    var left = 0;
+    var top = 0;
+    var width = null;
+    var height = null;
+    var rect = null;
+    try {
+      if (typeof layer.sourceRectAtTime === "function") rect = layer.sourceRectAtTime(compTime, false);
+    } catch (_) { rect = null; }
+    if (rect && typeof rect.left === "number" && typeof rect.top === "number"
+        && typeof rect.width === "number" && typeof rect.height === "number"
+        && isFinite(rect.left) && isFinite(rect.top) && isFinite(rect.width) && isFinite(rect.height)
+        && rect.width > 0 && rect.height > 0) {
+      left = rect.left;
+      top = rect.top;
+      width = rect.width;
+      height = rect.height;
+    }
+
+    if (width === null || height === null) {
+      try {
+        if (layer.source && typeof layer.source.width === "number" && typeof layer.source.height === "number"
+            && isFinite(layer.source.width) && isFinite(layer.source.height)
+            && layer.source.width > 0 && layer.source.height > 0) {
+          width = layer.source.width;
+          height = layer.source.height;
+        }
+      } catch (_) {}
+    }
+
+    if (width === null || height === null) {
+      return { supported: false, reason: "SOURCE_BOUNDS_UNAVAILABLE", sourceRect: null, points: null };
+    }
+
+    var sourcePoints = {
+      topLeft: [left, top],
+      topRight: [left + width, top],
+      bottomRight: [left + width, top + height],
+      bottomLeft: [left, top + height],
+      center: [left + width / 2, top + height / 2]
+    };
+    var mapped = {
+      topLeft: sourcePointToCompSnapshot(layer, sourcePoints.topLeft),
+      topRight: sourcePointToCompSnapshot(layer, sourcePoints.topRight),
+      bottomRight: sourcePointToCompSnapshot(layer, sourcePoints.bottomRight),
+      bottomLeft: sourcePointToCompSnapshot(layer, sourcePoints.bottomLeft),
+      center: sourcePointToCompSnapshot(layer, sourcePoints.center)
+    };
+    if (!mapped.topLeft || !mapped.topRight || !mapped.bottomRight || !mapped.bottomLeft || !mapped.center) {
+      return {
+        supported: false,
+        reason: "SOURCE_POINT_TO_COMP_FAILED",
+        sourceRect: { left: left, top: top, width: width, height: height },
+        points: mapped
+      };
+    }
+
+    return {
+      supported: true,
+      reason: null,
+      sourceRect: { left: left, top: top, width: width, height: height },
+      points: mapped
+    };
+  }
+
+  function pointNearlyEqual(left, right, tolerance) {
+    if (!left || !right || typeof left.length !== "number" || typeof right.length !== "number" || left.length !== right.length) return false;
+    var i;
+    for (i = 0; i < left.length; i += 1) {
+      if (Math.abs(Number(left[i]) - Number(right[i])) > tolerance) return false;
+    }
+    return true;
+  }
+
+  function geometryEquivalent(beforeGeometry, afterGeometry, tolerance) {
+    if (!beforeGeometry || !afterGeometry || beforeGeometry.supported !== true || afterGeometry.supported !== true) return false;
+    if (!beforeGeometry.points || !afterGeometry.points) return false;
+    var keys = ["topLeft", "topRight", "bottomRight", "bottomLeft", "center"];
+    var i, key;
+    for (i = 0; i < keys.length; i += 1) {
+      key = keys[i];
+      if (!pointNearlyEqual(beforeGeometry.points[key], afterGeometry.points[key], tolerance)) return false;
+    }
+    return true;
   }
 
   function parentingReadback(comp, layer) {
@@ -168,7 +280,8 @@
         parentLayer: layerRefSnapshot(parent),
         compTime: compTime,
         localTransform: transformSnapshot(layer, compTime),
-        compSpaceAnchor: compSpaceAnchorSnapshot(layer, compTime)
+        compSpaceAnchor: compSpaceAnchorSnapshot(layer, compTime),
+        compSpaceGeometry: sourceGeometrySnapshot(layer, compTime)
       }
     };
   }
@@ -249,13 +362,11 @@
     var comp = findComp(request.payload.comp);
     var layer = findLayer(comp, request.payload.layer);
     var parentLayer = null;
-
     if (request.command === "layer.set_parent_preserve_transform") {
       if (!request.payload.parentLayer) reject("PARENT_LAYER_REQUIRED", "set_parent_preserve_transform requires parentLayer.");
       parentLayer = findLayer(comp, request.payload.parentLayer);
       assertNoCycle(layer, parentLayer);
     }
-
     return { comp: comp, layer: layer, parentLayer: parentLayer };
   }
 
@@ -270,7 +381,7 @@
 
     if (request.command === "layer.parenting_readback") {
       try {
-        return responseFor(request, "NO_OP", null, [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Read-only parenting structural readback."]);
+        return responseFor(request, "NO_OP", null, [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Read-only parenting structural/geometry readback."]);
       } catch (readbackError) {
         return responseFor(request, "FAILED", errorPayload(readbackError), [], null, startedAt, ["Parenting readback failed without mutation."]);
       }
@@ -291,15 +402,32 @@
       return responseFor(request, "NO_OP", null, [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Layer is already unparented."]);
     }
 
+    var beforeReadback = parentingReadback(prepared.comp, prepared.layer);
+    var beforeGeometry = beforeReadback.parenting.compSpaceGeometry;
+    if (!beforeGeometry || beforeGeometry.supported !== true) {
+      return responseFor(request, "REJECTED", {
+        category: "HOST_LIMITATION",
+        code: "PARENT_PRESERVE_GEOMETRY_UNVERIFIABLE",
+        message: "Preserve-transform parenting requires verifiable five-point comp-space source geometry for this direct-parent route.",
+        details: { geometry: beforeGeometry || null }
+      }, [], beforeReadback, startedAt, ["Parenting mutation refused because visual no-jump geometry cannot be verified for this layer type."]);
+    }
+
     var beforeRevision = app.project ? app.project.revision : null;
     var mutationStarted = false;
     app.beginUndoGroup("EditFlow M3 preserve-transform parenting");
     try {
       mutationStarted = true;
-      if (request.command === "layer.set_parent_preserve_transform") {
-        prepared.layer.parent = prepared.parentLayer;
-      } else if (request.command === "layer.clear_parent_preserve_transform") {
-        prepared.layer.parent = null;
+      if (request.command === "layer.set_parent_preserve_transform") prepared.layer.parent = prepared.parentLayer;
+      else prepared.layer.parent = null;
+
+      if (request.command === "layer.set_parent_preserve_transform"
+          && request.readbackProfile === "M3_PARENTING_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_PARENTING_P4_PROOF") === "1") {
+        var proofFailure = new Error("Induced M3 parenting P4 host failure after parent mutation.");
+        proofFailure.editflowCategory = "PROOF_INJECTION";
+        proofFailure.editflowCode = "M3_PARENTING_P4_INDUCED_FAILURE";
+        throw proofFailure;
       }
 
       var readback = parentingReadback(prepared.comp, prepared.layer);
@@ -309,6 +437,20 @@
         }
       } else if (readback.parenting.hasParent) {
         fail("ADAPTER_FAILURE", "PARENT_CLEAR_READBACK_MISMATCH", "Parent clear did not survive exact host readback.");
+      }
+
+      if (!geometryEquivalent(beforeGeometry, readback.parenting.compSpaceGeometry, GEOMETRY_TOLERANCE)) {
+        fail(
+          "HOST_LIMITATION",
+          "PARENT_PRESERVE_VISUAL_UNREPRESENTABLE",
+          "After Effects could not represent the requested direct parent relationship while preserving the layer's five-point comp-space geometry.",
+          {
+            tolerance: GEOMETRY_TOLERANCE,
+            beforeGeometry: beforeGeometry,
+            afterGeometry: readback.parenting.compSpaceGeometry,
+            guidance: "Use a representable direct-parent transform or a future managed rig/shim route for affine cases that require shear."
+          }
+        );
       }
 
       app.endUndoGroup();
@@ -321,15 +463,21 @@
         affectedObjects,
         readback,
         startedAt,
-        ["Applied direct Layer.parent assignment; setParentWithJump() was not used."]
+        ["Applied direct Layer.parent assignment; setParentWithJump() was not used.", "Verified five-point comp-space geometry remained within the preserve-transform tolerance."]
       );
     } catch (mutationError) {
       try { app.endUndoGroup(); } catch (_) {}
+      var notes = ["Parenting mutation failed."];
       var afterFailureRevision = app.project ? app.project.revision : null;
       if (mutationStarted && beforeRevision !== null && afterFailureRevision !== beforeRevision) {
-        try { app.executeCommand(16); } catch (_) {}
+        try {
+          app.executeCommand(16);
+          notes.push("Failed parenting mutation self-rolled back with AE Undo.");
+        } catch (rollbackError) {
+          notes.push("Parenting self-rollback attempt failed: " + asString(rollbackError));
+        }
       }
-      return responseFor(request, "FAILED", errorPayload(mutationError), [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Parenting mutation failed; transaction attempted immediate AE Undo rollback."]);
+      return responseFor(request, "FAILED", errorPayload(mutationError), [], parentingReadback(prepared.comp, prepared.layer), startedAt, notes);
     }
   }
 

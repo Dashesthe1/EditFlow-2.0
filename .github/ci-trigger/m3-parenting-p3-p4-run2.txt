@@ -1,0 +1,3 @@
+Parenting P3/P4 Run 2 source validation trigger.
+
+Validates the fail-closed five-point geometry guard, representable direct-parent visual fixture, and proof-only disposable cleanup before the next isolated real-AE run.

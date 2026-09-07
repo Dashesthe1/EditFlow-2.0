@@ -130,7 +130,7 @@ test("direct protocol 1.4 CEP transport serializes hostile-looking layer refs as
   assert.ok(!captured.includes("); app.quit(); //\")"));
 });
 
-test("M3 parenting host encodes no-jump semantics, exact readback, cycle rejection and rollback", async () => {
+test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and proof-gated rollback", async () => {
   const source = await readFile(hostPath, "utf8");
   for (const command of AE_PARENTING_COMMANDS_V14) {
     assert.match(source, new RegExp(`\\"${command.replaceAll(".", "\\.")}\\"`));
@@ -145,7 +145,22 @@ test("M3 parenting host encodes no-jump semantics, exact readback, cycle rejecti
   assert.match(source, /HOST_REVISION_CONFLICT/);
   assert.match(source, /parentingReadback/);
   assert.match(source, /localTransform/);
-  assert.match(source, /sourcePointToComp/);
+  assert.match(source, /ADBE Skew/);
+  assert.match(source, /ADBE Skew Axis/);
+  assert.match(source, /compSpaceGeometry/);
+  assert.match(source, /sourceRectAtTime/);
+  assert.match(source, /sourcePointToCompSnapshot/);
+  for (const point of ["topLeft", "topRight", "bottomRight", "bottomLeft", "center"]) {
+    assert.match(source, new RegExp(`${point}: sourcePointToCompSnapshot`));
+  }
+  assert.match(source, /M3_PARENTING_P4_FAILURE_INJECTION/);
+  assert.match(source, /EDITFLOW_M3_PARENTING_P4_PROOF/);
+  assert.match(source, /M3_PARENTING_P4_INDUCED_FAILURE/);
+  assert.match(source, /Failed parenting mutation self-rolled back with AE Undo\./);
+  const mutationIndex = source.indexOf("prepared.layer.parent = prepared.parentLayer");
+  const injectionIndex = source.indexOf('request.readbackProfile === "M3_PARENTING_P4_FAILURE_INJECTION"');
+  assert.ok(mutationIndex >= 0 && injectionIndex > mutationIndex,
+    "P4 injection must occur only after a real parent mutation inside the normal undo group");
   assert.match(source, /app\.beginUndoGroup/);
   assert.match(source, /app\.endUndoGroup/);
   assert.match(source, /app\.executeCommand\(16\)/);

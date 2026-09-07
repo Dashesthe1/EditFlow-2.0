@@ -1,0 +1,9 @@
+EditFlow M3 parenting P3/P4 real-AE proof trigger marker.
+
+Only updates to this file on ae-test/m3-parenting-p3-p4-control should trigger the isolated self-hosted parenting P3/P4 acceptance workflow.
+
+Run 1: real AE exposed the rotated non-uniform-parent shear limitation.
+Runs 2-4: full repository preflight correctly prevented AE launch while the new static no-jump guard was itself too broad.
+Run 5: all repository checks passed and real AE proved exact five-point preservation for the representable direct-parent envelope, then exposed a stale v1.1 cached-state handoff before the parented render.
+Run 6: all 169 checks passed, AE cold-launched and the fixed panel-open command was sent, but CEP never registered; no protocol request reached parenting code and the owned AE process closed cleanly.
+Run 7: controlled no-source-change retry of the Run 6 control state. If registration succeeds, execute the cross-protocol state-refresh P3 renders, P4 induced rollback, and proof-owned cleanup. A second registration failure will be treated as a launcher reliability defect rather than retried again unchanged.
