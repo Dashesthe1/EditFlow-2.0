@@ -150,30 +150,63 @@ function Write-RecoveryLine {
   Add-Content -Path $OutputPath -Value ($Timestamp + "`t" + $Stage + "`t" + $Detail) -Encoding UTF8
 }
 
+$script:MatchFailure = "not_evaluated"
+function Refuse-CrashRepairMatch {
+  param([string]$Reason)
+  $script:MatchFailure = $Reason
+  return $null
+}
+
 function Get-ExactCrashRepairDialog {
   param($Process)
 
+  $script:MatchFailure = "not_ready"
   try {
     $Process.Refresh()
-    if ($Process.HasExited) { return $null }
-    if ($Process.StartTime.ToUniversalTime() -lt $StartedAfterUtc.ToUniversalTime()) { return $null }
-    if ([string]::IsNullOrWhiteSpace($Process.Path)) { return $null }
-    if (-not [string]::Equals((Resolve-Path $Process.Path).Path, $ExpectedAfterFxPath, [System.StringComparison]::OrdinalIgnoreCase)) { return $null }
-  } catch { return $null }
+    if ($Process.HasExited) { return (Refuse-CrashRepairMatch "process_exited") }
+    $ProcessStartUtc = $Process.StartTime.ToUniversalTime()
+    if ($ProcessStartUtc -lt $StartedAfterUtc.ToUniversalTime()) {
+      return (Refuse-CrashRepairMatch ("process_too_old:startUtc=" + $ProcessStartUtc.ToString("o")))
+    }
+    $ObservedProcessPath = [string]$Process.Path
+    if ([string]::IsNullOrWhiteSpace($ObservedProcessPath)) {
+      return (Refuse-CrashRepairMatch "process_path_missing")
+    }
+    $ResolvedProcessPath = (Resolve-Path $ObservedProcessPath).Path
+    if (-not [string]::Equals($ResolvedProcessPath, $ExpectedAfterFxPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return (Refuse-CrashRepairMatch ("process_path_mismatch:actual=" + $ResolvedProcessPath))
+    }
+  } catch {
+    return (Refuse-CrashRepairMatch ("process_metadata_error:" + (Clean-DiagnosticText $_.Exception.Message)))
+  }
 
   $TopLevels = @([EditFlow.CrashRepairWindowReader]::EnumerateTopLevelForProcessId([int]$Process.Id))
   $VisibleTopLevels = @($TopLevels | Where-Object { $_.Visible })
-  if ($VisibleTopLevels.Count -ne 1) { return $null }
+  if ($VisibleTopLevels.Count -ne 1) {
+    return (Refuse-CrashRepairMatch ("visible_top_level_count=" + $VisibleTopLevels.Count + ";total_top_level_count=" + $TopLevels.Count))
+  }
 
   $Dialog = $VisibleTopLevels[0]
-  if ($Dialog.ClassName -ne "#32770" -or $Dialog.Title -ne "" -or -not $Dialog.Enabled) { return $null }
-  if ([long]$Process.MainWindowHandle -ne [long]$Dialog.Handle) { return $null }
+  if ($Dialog.ClassName -ne "#32770") {
+    return (Refuse-CrashRepairMatch ("visible_class=" + (Clean-DiagnosticText $Dialog.ClassName)))
+  }
+  if ($Dialog.Title -ne "") {
+    return (Refuse-CrashRepairMatch ("visible_title=" + (Clean-DiagnosticText $Dialog.Title)))
+  }
+  if (-not $Dialog.Enabled) {
+    return (Refuse-CrashRepairMatch "dialog_disabled")
+  }
+  if ([long]$Process.MainWindowHandle -ne [long]$Dialog.Handle) {
+    return (Refuse-CrashRepairMatch ("main_window_handle_mismatch:process=" + [long]$Process.MainWindowHandle + ";dialog=" + [long]$Dialog.Handle))
+  }
 
   $Width = [int]$Dialog.Right - [int]$Dialog.Left
   $Height = [int]$Dialog.Bottom - [int]$Dialog.Top
   # Run-7 retained evidence established the stable 150%-DPI Crash Repair Options
   # surface at 781x492. Keep a narrow tolerance for window-border rounding only.
-  if ($Width -lt 760 -or $Width -gt 800 -or $Height -lt 470 -or $Height -gt 510) { return $null }
+  if ($Width -lt 760 -or $Width -gt 800 -or $Height -lt 470 -or $Height -gt 510) {
+    return (Refuse-CrashRepairMatch ("geometry=" + $Width + "x" + $Height))
+  }
 
   $Children = @([EditFlow.CrashRepairWindowReader]::EnumerateChildren([long]$Dialog.Handle))
   $VisibleViewContainers = @($Children | Where-Object {
@@ -187,14 +220,17 @@ function Get-ExactCrashRepairDialog {
   })
   $HiddenEdits = @($Children | Where-Object { -not $_.Visible -and $_.ClassName -eq "Edit" })
   if ($VisibleViewContainers.Count -ne 1 -or $HiddenViewContainers.Count -lt 1 -or $HiddenEditContainers.Count -lt 1 -or $HiddenEdits.Count -lt 1) {
-    return $null
+    return (Refuse-CrashRepairMatch ("child_signature:visibleView=" + $VisibleViewContainers.Count + ";hiddenView=" + $HiddenViewContainers.Count + ";hiddenEditContainer=" + $HiddenEditContainers.Count + ";hiddenEdit=" + $HiddenEdits.Count + ";totalChildren=" + $Children.Count))
   }
 
   $HiddenAeApplications = @($TopLevels | Where-Object {
     -not $_.Visible -and $_.ClassName -like "AE_CApplication_*" -and $_.Title -eq "Adobe After Effects"
   })
-  if ($HiddenAeApplications.Count -ne 1) { return $null }
+  if ($HiddenAeApplications.Count -ne 1) {
+    return (Refuse-CrashRepairMatch ("hidden_ae_application_count=" + $HiddenAeApplications.Count))
+  }
 
+  $script:MatchFailure = "matched"
   return $Dialog
 }
 
@@ -202,12 +238,21 @@ Write-RecoveryLine "RECOVERY_WATCH_START" ("startedAfterUtc=$($StartedAfterUtc.T
 $Deadline = (Get-Date).AddSeconds($DurationSeconds)
 $Handled = @{}
 $HandledCount = 0
+$LastRefusalByPid = @{}
 while ((Get-Date) -lt $Deadline) {
   $Processes = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
   foreach ($Process in $Processes) {
     if ($Handled.ContainsKey([int]$Process.Id)) { continue }
     $Dialog = Get-ExactCrashRepairDialog -Process $Process
-    if ($null -eq $Dialog) { continue }
+    if ($null -eq $Dialog) {
+      $Refusal = [string]$script:MatchFailure
+      $PidKey = [string][int]$Process.Id
+      if (-not $LastRefusalByPid.ContainsKey($PidKey) -or $LastRefusalByPid[$PidKey] -ne $Refusal) {
+        $LastRefusalByPid[$PidKey] = $Refusal
+        Write-RecoveryLine "MATCH_REFUSED" ("pid=$($Process.Id);reason=" + $Refusal)
+      }
+      continue
+    }
 
     $Handled[[int]$Process.Id] = $true
     $Width = [int]$Dialog.Right - [int]$Dialog.Left
