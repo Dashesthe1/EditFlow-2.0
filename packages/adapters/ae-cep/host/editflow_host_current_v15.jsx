@@ -6,6 +6,7 @@
   var hostDir = currentFile.parent;
   var acceptedLoader = new File(hostDir.fsName + "/editflow_host_current.jsx");
   var m3NullRigs = new File(hostDir.fsName + "/editflow_host_m3_null_rigs.jsx");
+  var m3NullRigProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_null_rig_proof_cleanup.jsx");
 
   if (!acceptedLoader.exists) throw new Error("EditFlow accepted host loader is missing: " + acceptedLoader.fsName);
   $.evalFile(acceptedLoader);
@@ -56,6 +57,13 @@
       }
       return dispatchBeforeNullRigFailure(requestJson);
     };
+  }
+
+  if ($.getenv("EDITFLOW_M3_NULL_RIG_P4_PROOF") === "1") {
+    if (!m3NullRigProofCleanup.exists) {
+      throw new Error("EditFlow M3 null-rig proof cleanup is missing: " + m3NullRigProofCleanup.fsName);
+    }
+    $.evalFile(m3NullRigProofCleanup);
   }
 
   if (typeof $.global.EditFlow2_dispatch !== "function") throw new Error("EditFlow protocol 1.5 host dispatcher failed to register.");
