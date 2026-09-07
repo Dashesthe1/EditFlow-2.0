@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-null-rig-request-v1_5.schema.json",
+  "title": "EditFlow 2.0 AE M3 Managed Null-Rig Request Protocol 1.5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.5.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["rig.null.create", "rig.null.remove", "rig.null.readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "rigCreateSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableId"],
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "rig"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "rig": {"$ref": "#/$defs/objectRef"}
+      }
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "rig.null.create"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "rig"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "rig": {"$ref": "#/$defs/rigCreateSpec"},
+              "duration": {"type": ["number", "null"], "exclusiveMinimum": 0},
+              "threeDLayer": {"type": "boolean"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"enum": ["rig.null.remove", "rig.null.readback"]},
+          "payload": {"$ref": "#/$defs/target"}
+        }
+      }
+    ]
+  }]
+}
