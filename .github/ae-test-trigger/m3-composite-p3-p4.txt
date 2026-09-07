@@ -1,4 +1,5 @@
 proof=M3_COMPOSITE_P3_P4_REAL_AE
 control_branch=ae-test/m3-composite-p3-p4-control
 accepted_p1_p2_main=6bc1033f043ec10f064026ef91337c3358d06478
-status=foundation-awaiting-real-ae
+validated_head=4021dd607e0a130f3dcf2e6bcab27966afcd6aca
+status=armed-run-3-diagnostic-bootstrap
