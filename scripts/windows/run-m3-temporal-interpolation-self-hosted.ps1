@@ -68,6 +68,7 @@ if (-not (Test-Path $TemplatePath -PathType Leaf)) {
 $Template = [System.IO.File]::ReadAllText($TemplatePath)
 $RequiredTokens = @(
   'scripts\windows\run-m3-mask-p1-p2.ps1',
+  'scripts\windows\open-editflow-bridge.jsx',
   'proofs\artifacts\m3-mask-p1-p2',
   'The M3 mask P1/P2 acceptance runner is missing',
   'authenticated protocol 1.2 registration'
@@ -80,6 +81,7 @@ foreach ($Token in $RequiredTokens) {
 
 $Temporal = $Template
 $Temporal = $Temporal.Replace('scripts\windows\run-m3-mask-p1-p2.ps1', 'scripts\windows\run-m3-temporal-interpolation-p1-p2.ps1')
+$Temporal = $Temporal.Replace('scripts\windows\open-editflow-bridge.jsx', 'scripts\windows\open-editflow-temporal-bridge.jsx')
 $Temporal = $Temporal.Replace('proofs\artifacts\m3-mask-p1-p2', 'proofs\artifacts\m3-temporal-interpolation-p1-p2')
 $Temporal = $Temporal.Replace('The M3 mask P1/P2 acceptance runner is missing', 'The M3 temporal-interpolation P1/P2 acceptance runner is missing')
 $Temporal = $Temporal.Replace('authenticated protocol 1.2 registration', 'authenticated protocol 1.7 registration')
@@ -96,6 +98,11 @@ try {
     $OriginalLogLevelPresent = $false
   }
   New-ItemProperty -Path $CsxsKey -Name "LogLevel" -PropertyType String -Value "6" -Force | Out-Null
+  $EffectiveLogLevel = [string](Get-ItemProperty -Path $CsxsKey -Name "LogLevel" -ErrorAction Stop).LogLevel
+  if ($EffectiveLogLevel -ne "6") {
+    throw "Unable to arm CEP 12 verbose logging for the isolated temporal-interpolation proof. Registry readback was '$EffectiveLogLevel'."
+  }
+  Write-Host "CEP 12 LogLevel registry readback before AE launch: $EffectiveLogLevel"
 
   & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
   if ($LASTEXITCODE -ne 0) {
