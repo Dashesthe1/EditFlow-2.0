@@ -27,14 +27,33 @@ Motion blur and frame blending are intentionally **not** folded into this tranch
 
 ## Evidence posture
 
-All protocol 1.6 capabilities enter the registry as `PARTIAL / DECLARED`. Contract and schema tests may prove the control-plane contract, but capability maturity must not advance to `TRANSFER` until the real-After-Effects P1–P5 evidence gate is accepted.
+The initial protocol-1.6 registry posture was deliberately `PARTIAL / DECLARED`: contract/schema tests could establish only the control-plane contract, and no capability was allowed to advance to transfer maturity until real After Effects completed the P1–P5 gate.
+
+That gate is now complete for the three capabilities in this tranche.
+
+Accepted evidence ladder:
+
+- P1/P2 structural acceptance: run `34156910741`, artifact `10031293005`, record `proofs/diagnostics/m3-layer-controls-p1-p2-run7-acceptance.md`.
+- P3/P4 visual + rollback acceptance: run `34159635705`, job `101858554842`, artifact `10032176111`, record `proofs/diagnostics/m3-layer-controls-p3-p4-run9-acceptance.md`.
+- P5 save/reopen/reconnect transfer acceptance: run `34160617926`, job `101861547189`, artifact `10032484694`, record `proofs/diagnostics/m3-layer-controls-p5-run1-acceptance.md`.
+
+P5 retained a distinctive multi-switch and stacking-order state through project save, After Effects reopen, dispatcher reload, broker restart, and a distinct authenticated protocol-1.6 CEP session. The post-reconnect readback matched every declared switch support/value plus exact order and neighbor identities. Native After Effects `Layer.id` values also remained stable (`38` for the front layer, `37` for its back-layer neighbor), and the new session then completed fresh switch and order writes with exact readback before proof-owned cleanup restored the blank baseline.
+
+Accordingly, the current registry projects these three evidence-bounded capabilities to `FULL / TRANSFER`:
+
+- `ae.layer.switches.set`
+- `ae.layer.order.set`
+- `ae.layer.controls.readback`
+
+This promotion does not expand the protocol surface. Motion blur, frame blending, composition-level rendering switches, and shutter dependencies remain outside the accepted layer-controls envelope and require their own later proof tranche.
 
 ## External implementation references
 
-The implementation was cross-checked against current Adobe documentation rather than inferred from UI behavior alone:
+The implementation and acceptance invariants were cross-checked against current documentation rather than inferred from UI behavior alone:
 
-- Adobe, **Scripts in After Effects**: scripts use ExtendScript and can reorder composition layers. https://helpx.adobe.com/after-effects/desktop/automate-in-after-effects/automate-animation/scripts.html
+- Adobe, **Scripts in After Effects**: scripts use ExtendScript; Adobe documents `afterfx.exe -r <script>` as executing a script in the existing After Effects application instance. https://helpx.adobe.com/after-effects/desktop/automate-in-after-effects/automate-animation/scripts.html
 - Adobe, **Managing layers in After Effects**: documents Video, Audio, Solo, Lock, Shy, Collapse Transformations/Continuously Rasterize, Quality, Effect, Adjustment Layer, and 3D Layer switches, and separately explains the composition dependencies of Frame Blend and Motion Blur. https://helpx.adobe.com/after-effects/desktop/work-with-layers/manage-layers/layers.html
 - Adobe, **Selecting and arranging layers**: current layer ordering behavior and terminology. https://helpx.adobe.com/after-effects/desktop/work-with-layers/select-and-arrange-layers/selecting-arranging-layers.html
+- After Effects Scripting Guide, **Layer.id**: documents the native layer ID as persistent between sessions and unchanged when a project is saved and later reloaded. https://ae-scripting.docsforadobe.dev/layer/layer/
 
-The host adapter remains the source of truth for runtime capability checks because individual layer types do not expose every switch.
+The host adapter remains the source of truth for runtime capability checks because individual layer types do not expose every switch. Accepted proof maturity remains limited to the exact capabilities and behaviors exercised by the retained evidence.
