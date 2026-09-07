@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-layer-controls-request-v1_6.schema.json",
+  "title": "EditFlow 2.0 AE M3 Layer Controls Request Protocol 1.6",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.6.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["layer.switches.set", "layer.order.set", "layer.controls.readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "switches": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "audioEnabled": {"type": "boolean"},
+        "solo": {"type": "boolean"},
+        "locked": {"type": "boolean"},
+        "shy": {"type": "boolean"},
+        "collapseTransformation": {"type": "boolean"},
+        "quality": {"enum": ["BEST", "DRAFT", "WIREFRAME"]},
+        "effectsActive": {"type": "boolean"},
+        "adjustmentLayer": {"type": "boolean"},
+        "threeDLayer": {"type": "boolean"},
+        "preserveTransparency": {"type": "boolean"},
+        "samplingQuality": {"enum": ["BILINEAR", "BICUBIC"]}
+      }
+    },
+    "placement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {"kind": {"const": "BEGINNING"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {"kind": {"const": "END"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "relativeTo"],
+          "properties": {"kind": {"const": "BEFORE"}, "relativeTo": {"$ref": "#/$defs/objectRef"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "relativeTo"],
+          "properties": {"kind": {"const": "AFTER"}, "relativeTo": {"$ref": "#/$defs/objectRef"}}
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"}
+      }
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "layer.switches.set"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "layer", "switches"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "layer": {"$ref": "#/$defs/objectRef"},
+              "switches": {"$ref": "#/$defs/switches"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "layer.order.set"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "layer", "placement"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "layer": {"$ref": "#/$defs/objectRef"},
+              "placement": {"$ref": "#/$defs/placement"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "layer.controls.readback"},
+          "payload": {"$ref": "#/$defs/target"}
+        }
+      }
+    ]
+  }]
+}

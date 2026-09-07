@@ -21,7 +21,7 @@
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
   var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
-  var KNOWN_PROTOCOLS = ["1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
+  var KNOWN_PROTOCOLS = ["1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
@@ -97,18 +97,18 @@
       }
       var hostPath;
       try {
-        hostPath = extensionRootPath() + "/host/editflow_host_current_v15.jsx";
+        hostPath = extensionRootPath() + "/host/editflow_host_current_v16.jsx";
       } catch (error) {
         reject(new Error("Host bootstrap: " + (error && error.message ? error.message : String(error))));
         return;
       }
       var hostPathLiteral = JSON.stringify(hostPath);
       var script = "(function(){try{" +
-        "if(typeof $.global.EditFlow2_dispatch===\"function\")return \"" + HOST_BOOTSTRAP_OK + "\";" +
+        "if(typeof $.global.EditFlow2_dispatch===\"function\"&&$.global.EditFlow2_HOST_PROTOCOL_16===true)return \"" + HOST_BOOTSTRAP_OK + "\";" +
         "var hostFile=new File(" + hostPathLiteral + ");" +
         "if(!hostFile.exists)return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "host file missing: \"+hostFile.fsName;" +
         "$.evalFile(hostFile);" +
-        "if(typeof $.global.EditFlow2_dispatch!==\"function\")return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "dispatcher did not register\";" +
+        "if(typeof $.global.EditFlow2_dispatch!==\"function\"||$.global.EditFlow2_HOST_PROTOCOL_16!==true)return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "protocol 1.6 dispatcher did not register\";" +
         "return \"" + HOST_BOOTSTRAP_OK + "\";" +
         "}catch(error){return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "\"+String(error);}}())";
       cep.evalScript(script, function (raw) {
