@@ -3,3 +3,4 @@ EditFlow M3 parenting P1/P2 real-AE proof trigger marker.
 Only updates to this file on ae-test/m3-parenting-p1-p2-control should trigger the isolated self-hosted parenting acceptance workflow.
 
 Run 1 trigger: 2026-09-07T04:05Z
+Run 2 trigger: corrected normalized-transform fixture proof
