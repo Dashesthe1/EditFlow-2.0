@@ -11,6 +11,14 @@ import {
   isAeNullRigCommandV15,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_5.js";
 import {
+  M3_NULL_RIG_P1_P2_ACCEPTED_SOURCE_COMMIT,
+  M3_NULL_RIG_P1_P2_ACCEPTANCE_CONTROL_COMMIT,
+  M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN,
+  M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN_ATTEMPT,
+  M3_NULL_RIG_P1_P2_ACCEPTANCE_JOB,
+  M3_NULL_RIG_P1_P2_ACCEPTANCE_ARTIFACT,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-null-rig-proof-maturity.js";
+import {
   CepEvalScriptNullRigTransportV15,
   M3_NULL_RIG_CAPABILITIES_V15,
   buildNullRigRequestV15,
@@ -36,10 +44,22 @@ test("M3 null-rig protocol 1.5 is a fixed managed-null tranche", () => {
   assert.equal(capabilityForNullRigCommandV15("rig.null.create"), "ae.rig.null.create");
   assert.equal(capabilityForNullRigCommandV15("rig.null.remove"), "ae.rig.null.remove");
   assert.equal(capabilityForNullRigCommandV15("rig.null.readback"), "ae.rig.null.readback");
+});
+
+test("accepted real-AE null-rig P1/P2 evidence promotes only structural maturity", () => {
+  assert.equal(M3_NULL_RIG_P1_P2_ACCEPTED_SOURCE_COMMIT, "955e24401ee37febf998d8ec4c544e345aebab6d");
+  assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "9db379f53812abacc3771e3206e279dd5bca5b5f");
+  assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN, 34139625065);
+  assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN_ATTEMPT, 1);
+  assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_JOB, 101798432327);
+  assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_ARTIFACT, 10025391737);
+  assert.equal(M3_NULL_RIG_CAPABILITIES_V15.length, AE_NULL_RIG_COMMANDS_V15.length);
   for (const capability of M3_NULL_RIG_CAPABILITIES_V15) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_NULL_RIG_ROUTE_ID_V15);
+    assert.equal(capability.routes[0].available, true);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
 });
@@ -110,6 +130,9 @@ test("null-rig host encodes identity, topology readback, child-protected deletio
   assert.match(source, /NULL_RIG_STABLE_ID_COLLISION/);
   assert.match(source, /NULL_RIG_CREATE_READBACK_MISMATCH/);
   assert.match(source, /NULL_RIG_REMOVE_READBACK_MISMATCH/);
+  assert.match(source, /NULL_RIG_SOURCE_OWNERSHIP_MISMATCH/);
+  assert.match(source, /NULL_RIG_SOURCE_IN_USE/);
+  assert.match(source, /NULL_RIG_SOURCE_REMOVE_READBACK_MISMATCH/);
   assert.match(source, /app\.beginUndoGroup/);
   assert.match(source, /app\.executeCommand\(16\)/);
   assert.doesNotMatch(source, /\beval\s*\(/);
