@@ -6,8 +6,14 @@ import {
   M3_MASK_P1_P2_ACCEPTED_SOURCE_COMMIT,
   M3_MASK_P1_P2_ACCEPTANCE_ARTIFACT,
   M3_MASK_P1_P2_ACCEPTANCE_RUN,
+  M3_MASK_P5_ACCEPTED_SOURCE_COMMIT,
+  M3_MASK_P5_ACCEPTANCE_CONTROL_COMMIT,
+  M3_MASK_P5_ACCEPTANCE_RUN,
+  M3_MASK_P5_ACCEPTANCE_JOB,
+  M3_MASK_P5_ACCEPTANCE_ARTIFACT,
   applyM3MaskAcceptedP1P2Evidence,
   m3MaskP1P2MaturityForCapability,
+  m3MaskAcceptedProofMaturityForCapability,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-mask-proof-maturity.js";
 import { M3_MASK_CAPABILITIES_V12 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-mask.js";
 
@@ -24,7 +30,7 @@ const expectedCapabilities = [
   "ae.mask.readback",
 ];
 
-test("M3 mask structural maturity is pinned to the accepted real-AE source, run and artifact", () => {
+test("M3 mask structural maturity is pinned to the accepted real-AE P1/P2 source, run and artifact", () => {
   assert.equal(M3_MASK_P1_P2_ACCEPTED_SOURCE_COMMIT, "8a1c499ac26344e2199fa2fa816d4565769c312c");
   assert.equal(M3_MASK_P1_P2_ACCEPTANCE_RUN, 34045287361);
   assert.equal(M3_MASK_P1_P2_ACCEPTANCE_ARTIFACT, 9992921389);
@@ -34,7 +40,7 @@ test("M3 mask structural maturity is pinned to the accepted real-AE source, run 
   assert.equal(m3MaskP1P2MaturityForCapability("ae.mask.future.unproven"), "DECLARED");
 });
 
-test("accepted P1/P2 evidence cannot promote a mask capability to FULL", () => {
+test("historical P1/P2 projection cannot promote a mask capability to FULL", () => {
   const promoted = applyM3MaskAcceptedP1P2Evidence([
     {
       id: "ae.mask.future.unproven",
@@ -52,10 +58,21 @@ test("accepted P1/P2 evidence cannot promote a mask capability to FULL", () => {
   ]);
   assert.equal(promoted[0].status, "PARTIAL");
   assert.equal(promoted[0].proofMaturity, "DECLARED");
+});
 
+test("current M3 mask registry reflects accepted P1-P5 transfer evidence", () => {
+  assert.equal(M3_MASK_P5_ACCEPTED_SOURCE_COMMIT, "2ff3e6f6278dfdabe748c2c861c7e5cc5f94d31d");
+  assert.equal(M3_MASK_P5_ACCEPTANCE_CONTROL_COMMIT, "41dbab80cfbd81ac65294c1569f334ab7c31d168");
+  assert.equal(M3_MASK_P5_ACCEPTANCE_RUN, 34075693434);
+  assert.equal(M3_MASK_P5_ACCEPTANCE_JOB, 101601208548);
+  assert.equal(M3_MASK_P5_ACCEPTANCE_ARTIFACT, 10001978740);
+  for (const capabilityId of expectedCapabilities) {
+    assert.equal(m3MaskAcceptedProofMaturityForCapability(capabilityId), "TRANSFER");
+  }
+  assert.equal(m3MaskAcceptedProofMaturityForCapability("ae.mask.future.unproven"), "DECLARED");
   for (const capability of M3_MASK_CAPABILITIES_V12) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(capability.status, "FULL");
+    assert.equal(capability.proofMaturity, "TRANSFER");
   }
 });
 
@@ -85,7 +102,7 @@ test("M3 P1/P2 acceptance manifest records exact bounded proof scope and limitat
   assert.ok(manifest.evidence.real_ae_p1_p2.notes.some((note) => /idempotency semantics/.test(note)));
 });
 
-test("M3 foundation documentation links accepted evidence without overclaiming higher proof levels", async () => {
+test("M3 P1/P2 foundation documentation remains a historical lower-bound record", async () => {
   const source = await readFile(foundationPath, "utf8");
   assert.match(source, /34045287361/);
   assert.match(source, /9992921389/);
