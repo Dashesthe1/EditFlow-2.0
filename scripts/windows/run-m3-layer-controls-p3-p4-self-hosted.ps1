@@ -10,15 +10,12 @@ $TempPath = Join-Path $PSScriptRoot ("run-m3-layer-controls-p3-p4-self-hosted-ge
 $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-layer-controls-p3-p4"
 $DialogWatcher = Join-Path $RepoRoot "scripts\windows\watch-ae-startup-dialogs.ps1"
 $DialogDetailsPath = Join-Path $ProofArtifactDir "startup-dialog-details.log"
-$CrashRepairHelper = Join-Path $RepoRoot "scripts\windows\continue-known-ae-crash-repair.ps1"
-$CrashRepairLog = Join-Path $ProofArtifactDir "crash-repair-recovery.log"
 $ProofQuitScript = Join-Path $RepoRoot "scripts\windows\quit-editflow-proof-ae.jsx"
 $ProofQuitLog = Join-Path $env:TEMP "EditFlow2-layer-controls-proof-quit.log"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
 $WatcherProcess = $null
-$CrashRepairProcess = $null
 
 function Copy-CepFailureDiagnostics {
   param([string]$Destination)
@@ -59,9 +56,6 @@ if (-not (Test-Path $TemplatePath -PathType Leaf)) {
 }
 if (-not (Test-Path $DialogWatcher -PathType Leaf)) {
   throw "Read-only AE startup-dialog watcher is missing: $DialogWatcher"
-}
-if (-not (Test-Path $CrashRepairHelper -PathType Leaf)) {
-  throw "Exact-state AE Crash Repair Continue helper is missing: $CrashRepairHelper"
 }
 if (-not (Test-Path $ProofQuitScript -PathType Leaf)) {
   throw "Guarded proof-only AE quit script is missing: $ProofQuitScript"
@@ -154,15 +148,13 @@ $LayerControls = $LayerControls.Replace($AcceptanceInvocation, $CleanQuitBlock.T
 
 # Proof flags are process-global to the isolated AE child. Preserve shell values,
 # clear unrelated M3 proof modes, and let the generated accepted template arm only
-# protocol-1.6 layer-controls P4. Crash-repair Continue is a runner-only environment
-# normalization gate and is never interpreted by the AE host adapter.
+# protocol-1.6 layer-controls P4.
 $ProofEnvNames = @(
   "EDITFLOW_M3_MASK_P4_PROOF",
   "EDITFLOW_M3_COMPOSITE_P4_PROOF",
   "EDITFLOW_M3_PARENTING_P4_PROOF",
   "EDITFLOW_M3_NULL_RIG_P4_PROOF",
-  "EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF",
-  "EDITFLOW_M3_LAYER_CONTROLS_CRASH_REPAIR_CONTINUE"
+  "EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF"
 )
 $OriginalProofEnv = @{}
 foreach ($Name in $ProofEnvNames) {
@@ -183,28 +175,6 @@ try {
 
   New-Item -ItemType Directory -Force -Path $ProofArtifactDir | Out-Null
   if (Test-Path $DialogDetailsPath -PathType Leaf) { Remove-Item $DialogDetailsPath -Force }
-  if (Test-Path $CrashRepairLog -PathType Leaf) { Remove-Item $CrashRepairLog -Force }
-
-  # Run 7 proved that the recurring blocker is AE 25.6 Crash Repair Options and
-  # retained pixels show Continue as the already-focused default action. Start a
-  # separate, exact-signature sidecar before cold launch. It may send one Enter only
-  # when a newly launched runner-owned AfterFX process matches that retained window
-  # signature; every other dialog remains untouched and the base runner fails closed.
-  $RecoveryStartedAfterUtc = (Get-Date).ToUniversalTime()
-  $env:EDITFLOW_M3_LAYER_CONTROLS_CRASH_REPAIR_CONTINUE = "1"
-  $RecoveryArgs = @(
-    "-NoLogo",
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", ('"' + $CrashRepairHelper + '"'),
-    "-AfterFxPath", ('"' + $AfterFxPath + '"'),
-    "-OutputPath", ('"' + $CrashRepairLog + '"'),
-    "-StartedAfterUtc", $RecoveryStartedAfterUtc.ToString("o"),
-    "-DurationSeconds", [Math]::Min(300, [Math]::Max(140, $TimeoutSeconds + 60)),
-    "-PollMilliseconds", 250
-  )
-  $CrashRepairProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $RecoveryArgs -PassThru -WindowStyle Hidden
-
   $WatcherArgs = @(
     "-NoLogo",
     "-NoProfile",
@@ -225,15 +195,6 @@ try {
   Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
   throw
 } finally {
-  if ($null -ne $CrashRepairProcess) {
-    try {
-      $CrashRepairProcess.Refresh()
-      if (-not $CrashRepairProcess.HasExited) {
-        Stop-Process -Id $CrashRepairProcess.Id -Force -ErrorAction SilentlyContinue
-        Wait-Process -Id $CrashRepairProcess.Id -Timeout 5 -ErrorAction SilentlyContinue
-      }
-    } catch {}
-  }
   if ($null -ne $WatcherProcess) {
     try {
       $WatcherProcess.Refresh()
