@@ -17,7 +17,7 @@
   var m3CompositeProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_composite_proof_cleanup.jsx");
   var m3ProofMode = $.getenv("EDITFLOW_M3_MASK_P4_PROOF") === "1";
   var m3CompositeProofMode = $.getenv("EDITFLOW_M3_COMPOSITE_P4_PROOF") === "1";
-  if (m3ProofMode && m3CompositeProofMode) throw new Error("EditFlow M3 proof cleanup modes are mutually exclusive.");
+
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
   if (!hardening.exists) throw new Error("EditFlow AE host hardening script is missing: " + hardening.fsName);
@@ -28,8 +28,6 @@
   if (!renderAsync.exists) throw new Error("EditFlow AE async-render script is missing: " + renderAsync.fsName);
   if (!renderOutputPath.exists) throw new Error("EditFlow AE render output-path script is missing: " + renderOutputPath.fsName);
   if (!m3Masks.exists) throw new Error("EditFlow M3 mask/Bezier host script is missing: " + m3Masks.fsName);
-  if (m3ProofMode && !m3ProofCleanup.exists) throw new Error("EditFlow M3 proof cleanup script is missing: " + m3ProofCleanup.fsName);
-  if (m3CompositeProofMode && !m3CompositeProofCleanup.exists) throw new Error("EditFlow M3 composite proof cleanup script is missing: " + m3CompositeProofCleanup.fsName);
 
   $.evalFile(jsonRuntime);
   if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.parse !== "function" || typeof $.global.EditFlow2_JSON.stringify !== "function") {
@@ -106,8 +104,70 @@
     };
   }
 
-  if (m3ProofMode) $.evalFile(m3ProofCleanup);
-  if (m3CompositeProofMode) $.evalFile(m3CompositeProofCleanup);
+  /* Proof-only cleanup is deliberately stricter than normal production dispatch.
+   * A proof cleanup module must never fail before the panel can authenticate,
+   * otherwise a deterministic host-load defect collapses into an opaque broker
+   * registration timeout. Load the requested cleanup layer after all accepted host
+   * dispatchers exist, catch any proof-only load defect, and replace dispatch with a
+   * fail-closed diagnostic response for every protocol request. That allows the panel
+   * to register while guaranteeing no proof mutation can proceed without its cleanup
+   * guard. Ordinary product sessions never enter this branch because neither proof
+   * environment flag is set.
+   */
+  var proofCleanupLoadError = null;
+  if (m3ProofMode && m3CompositeProofMode) {
+    proofCleanupLoadError = "EditFlow M3 proof cleanup modes are mutually exclusive.";
+  } else if (m3ProofMode) {
+    if (!m3ProofCleanup.exists) {
+      proofCleanupLoadError = "EditFlow M3 proof cleanup script is missing: " + m3ProofCleanup.fsName;
+    } else {
+      try { $.evalFile(m3ProofCleanup); } catch (maskProofCleanupError) { proofCleanupLoadError = String(maskProofCleanupError); }
+    }
+  } else if (m3CompositeProofMode) {
+    if (!m3CompositeProofCleanup.exists) {
+      proofCleanupLoadError = "EditFlow M3 composite proof cleanup script is missing: " + m3CompositeProofCleanup.fsName;
+    } else {
+      try { $.evalFile(m3CompositeProofCleanup); } catch (compositeProofCleanupError) { proofCleanupLoadError = String(compositeProofCleanupError); }
+    }
+  }
+
+  if (proofCleanupLoadError !== null) {
+    var dispatchBeforeProofCleanupFailure = $.global.EditFlow2_dispatch;
+    $.global.EditFlow2_M3_PROOF_CLEANUP_LOAD_ERROR = proofCleanupLoadError;
+    $.global.EditFlow2_dispatch = function (requestJson) {
+      var request = null;
+      try { request = $.global.EditFlow2_JSON.parse(requestJson); } catch (_) {}
+      if (!request || !request.protocolVersion) return dispatchBeforeProofCleanupFailure(requestJson);
+      return $.global.EditFlow2_JSON.stringify({
+        protocolVersion: request.protocolVersion,
+        requestId: request.requestId,
+        transactionId: request.transactionId,
+        operationId: request.operationId,
+        capabilityId: request.capabilityId,
+        command: request.command,
+        outcome: "FAILED",
+        error: {
+          category: "ADAPTER_FAILURE",
+          code: "M3_PROOF_CLEANUP_MODULE_LOAD_FAILED",
+          message: proofCleanupLoadError,
+          details: null
+        },
+        affectedObjects: [],
+        readback: null,
+        projectSnapshot: null,
+        environmentProbe: null,
+        hostProjectRevision: app.project ? app.project.revision : null,
+        diagnostics: {
+          adapterProtocolVersion: request.protocolVersion,
+          adapterBuild: "0.4.0-dev.3-proof-cleanup-diagnostic",
+          command: request.command,
+          notes: ["Proof cleanup host module failed to load. All proof protocol traffic is blocked before mutation until the load defect is repaired."]
+        },
+        proofArtifactRefs: []
+      });
+    };
+  }
+
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
   }
