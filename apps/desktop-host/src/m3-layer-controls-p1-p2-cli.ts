@@ -166,10 +166,13 @@ const main = async (): Promise<void> => {
   let baselineFingerprint: string | null = null;
   let baselineItemCount: number | null = null;
   let initialReadback: Record<string, unknown> | null = null;
+  let invalidCombinationReadback: Record<string, unknown> | null = null;
   let fullPatchEvidence: AeLayerSwitchPatchV16 | null = null;
   let fullPatchReadback: Record<string, unknown> | null = null;
   let lockedRejectionReadback: Record<string, unknown> | null = null;
   let restoredReadback: Record<string, unknown> | null = null;
+  let enabledOffReadback: Record<string, unknown> | null = null;
+  let enabledRestoredReadback: Record<string, unknown> | null = null;
 
   const projectId = "m3-layer-controls-p1-p2-real-ae";
   const prefix = `M3_LAYER_CONTROLS_P12_${Date.now()}`;
@@ -339,6 +342,8 @@ const main = async (): Promise<void> => {
       && layerRefRecord(initial)?.["stableId"] === layerStable
       && allApplicabilityTrue(applicabilityRecord(initial));
     checks.p2_fixture_initially_unlocked = requireBoolean(initialSwitches, "locked") === false;
+    checks.p2_fixture_initially_enabled = requireBoolean(initialSwitches, "enabled") === true;
+    checks.p2_fixture_initially_not_solo = requireBoolean(initialSwitches, "solo") === false;
     await refreshState();
     checks.p2_project_snapshot_contains_layer = projectSnapshot !== null && findLayer(projectSnapshot, targetStable, layerStable);
 
@@ -391,9 +396,31 @@ const main = async (): Promise<void> => {
       collapseTransformation: requireBoolean(initialSwitches, "collapseTransformation"),
       preserveTransparency: requireBoolean(initialSwitches, "preserveTransparency"),
     };
+
+    const beforeInvariant = await client.observe(projectId);
+    state = beforeInvariant.observed;
+    hostRevision = beforeInvariant.hostRevision;
+    projectSnapshot = beforeInvariant.project;
+    const invalidCombination = await dispatchV16("layer.switches.set", {
+      comp: { stableId: targetStable },
+      layer: { stableId: layerStable },
+      switches: { enabled: false, solo: true },
+    }, beforeInvariant.hostRevision);
+    invalidCombinationReadback = layerSwitchesRecord(invalidCombination);
+    const afterInvariant = await client.observe(projectId);
+    state = afterInvariant.observed;
+    hostRevision = afterInvariant.hostRevision;
+    projectSnapshot = afterInvariant.project;
+    checks.p1_enabled_solo_invariant_rejected = invalidCombination.outcome === "REJECTED"
+      && invalidCombination.error?.code === "LAYER_SOLO_REQUIRES_ENABLED";
+    checks.p1_enabled_solo_invariant_readback_intact = patchMatches(switchesRecord(invalidCombination), baselinePatch);
+    checks.p1_enabled_solo_invariant_revision_unchanged = invalidCombination.hostProjectRevision === beforeInvariant.hostRevision
+      && afterInvariant.hostRevision === beforeInvariant.hostRevision;
+    checks.p1_enabled_solo_invariant_fingerprint_unchanged = afterInvariant.observed.projectFingerprint === beforeInvariant.observed.projectFingerprint;
+
     const fullPatch: AeLayerSwitchPatchV16 = {
-      enabled: !baselinePatch.enabled,
-      solo: !baselinePatch.solo,
+      enabled: true,
+      solo: true,
       shy: !baselinePatch.shy,
       locked: true,
       quality: baselinePatch.quality === "DRAFT" ? "BEST" : "DRAFT",
@@ -433,7 +460,7 @@ const main = async (): Promise<void> => {
     const lockedReject = await dispatchV16("layer.switches.set", {
       comp: { stableId: targetStable },
       layer: { stableId: layerStable },
-      switches: { solo: !fullPatch.solo },
+      switches: { solo: false },
     }, beforeLocked.hostRevision);
     lockedRejectionReadback = layerSwitchesRecord(lockedReject);
     const afterLocked = await client.observe(projectId);
@@ -458,6 +485,39 @@ const main = async (): Promise<void> => {
     checks.p2_atomic_unlock_restore_exact = patchMatches(switchesRecord(restored), restorePatch);
     await refreshState();
 
+    const enabledOffPatch: AeLayerSwitchPatchV16 = { enabled: false };
+    const enabledOff = await dispatchV16("layer.switches.set", {
+      comp: { stableId: targetStable },
+      layer: { stableId: layerStable },
+      switches: enabledOffPatch,
+    }, hostRevision);
+    enabledOffReadback = layerSwitchesRecord(enabledOff);
+    const enabledOffSwitches = switchesRecord(enabledOff);
+    checks.p2_enabled_off_applied = enabledOff.outcome === "APPLIED";
+    checks.p2_enabled_off_exact = patchMatches(enabledOffSwitches, enabledOffPatch)
+      && enabledOffSwitches !== null
+      && requireBoolean(enabledOffSwitches, "solo") === false;
+    await refreshState();
+
+    const enabledOffRepeat = await dispatchV16("layer.switches.set", {
+      comp: { stableId: targetStable },
+      layer: { stableId: layerStable },
+      switches: enabledOffPatch,
+    }, hostRevision);
+    checks.p2_enabled_off_repeat_no_op = enabledOffRepeat.outcome === "NO_OP"
+      && patchMatches(switchesRecord(enabledOffRepeat), enabledOffPatch);
+
+    const enabledRestorePatch: AeLayerSwitchPatchV16 = { enabled: true };
+    const enabledRestored = await dispatchV16("layer.switches.set", {
+      comp: { stableId: targetStable },
+      layer: { stableId: layerStable },
+      switches: enabledRestorePatch,
+    }, hostRevision);
+    enabledRestoredReadback = layerSwitchesRecord(enabledRestored);
+    checks.p2_enabled_restore_applied = enabledRestored.outcome === "APPLIED";
+    checks.p2_enabled_restore_exact = patchMatches(switchesRecord(enabledRestored), enabledRestorePatch);
+    await refreshState();
+
     const finalRead = await dispatchV16("layer.switches_readback", {
       comp: { stableId: targetStable },
       layer: { stableId: layerStable },
@@ -470,18 +530,29 @@ const main = async (): Promise<void> => {
       && checks.p1_stale_revision_rejected
       && checks.p1_stale_revision_unchanged
       && checks.p1_stale_fingerprint_unchanged
+      && checks.p1_enabled_solo_invariant_rejected
+      && checks.p1_enabled_solo_invariant_readback_intact
+      && checks.p1_enabled_solo_invariant_revision_unchanged
+      && checks.p1_enabled_solo_invariant_fingerprint_unchanged
       && checks.p1_locked_change_rejected
       && checks.p1_locked_readback_intact
       && checks.p1_locked_revision_unchanged
       && checks.p1_locked_fingerprint_unchanged;
     checks.p2 = checks.p2_initial_readback
       && checks.p2_fixture_initially_unlocked
+      && checks.p2_fixture_initially_enabled
+      && checks.p2_fixture_initially_not_solo
       && checks.p2_project_snapshot_contains_layer
       && checks.p2_full_patch_applied
       && checks.p2_full_patch_exact
       && checks.p2_repeat_patch_no_op
       && checks.p2_atomic_unlock_restore_applied
       && checks.p2_atomic_unlock_restore_exact
+      && checks.p2_enabled_off_applied
+      && checks.p2_enabled_off_exact
+      && checks.p2_enabled_off_repeat_no_op
+      && checks.p2_enabled_restore_applied
+      && checks.p2_enabled_restore_exact
       && checks.p2_final_readback_matches_baseline;
     checks.baseline_captured = baselineFingerprint.length > 0 && baselineItemCount >= 0;
   } catch (error) {
@@ -531,10 +602,13 @@ const main = async (): Promise<void> => {
       },
       switchEvidence: {
         initial: initialReadback,
+        invalidCombination: invalidCombinationReadback,
         fullPatch: fullPatchEvidence,
         fullPatchReadback,
         lockedRejection: lockedRejectionReadback,
         restored: restoredReadback,
+        enabledOff: enabledOffReadback,
+        enabledRestored: enabledRestoredReadback,
       },
       checks,
       responses,
