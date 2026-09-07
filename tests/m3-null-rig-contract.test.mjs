@@ -27,6 +27,7 @@ import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopbac
 
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_null_rigs.jsx";
 const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v15.jsx";
+const currentLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v16.jsx";
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const bridgePath = "packages/adapters/ae-cep/extension/client/bridge.js";
 const runtimeConfigPath = "packages/adapters/ae-cep/extension/client/runtime-config.js";
@@ -138,9 +139,10 @@ test("null-rig host encodes identity, topology readback, child-protected deletio
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("CEP installation advertises 1.5 additively and boots the fail-closed v15 loader", async () => {
-  const [loader, installer, bridge, runtimeConfig] = await Promise.all([
+test("CEP installation keeps accepted 1.5 available beneath the additive 1.6 loader", async () => {
+  const [loader, currentLoader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
+    readFile(currentLoaderPath, "utf8"),
     readFile(installerPath, "utf8"),
     readFile(bridgePath, "utf8"),
     readFile(runtimeConfigPath, "utf8"),
@@ -149,12 +151,16 @@ test("CEP installation advertises 1.5 additively and boots the fail-closed v15 l
   assert.match(loader, /editflow_host_m3_null_rigs\.jsx/);
   assert.match(loader, /M3_NULL_RIG_MODULE_LOAD_FAILED/);
   assert.match(loader, /request\.protocolVersion === "1\.5\.0"/);
+  assert.match(currentLoader, /editflow_host_current_v15\.jsx/);
   assert.match(installer, /"editflow_host_m3_null_rigs\.jsx"/);
   assert.match(installer, /"editflow_host_current_v15\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(bridge, /editflow_host_current_v15\.jsx/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /"editflow_host_current_v16\.jsx"/);
+  for (const protocol of ["1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"]) {
+    assert.match(installer, new RegExp(`\\"${protocol.replaceAll(".", "\\.")}\\"`));
+    assert.match(bridge, new RegExp(`\\"${protocol.replaceAll(".", "\\.")}\\"`));
+    assert.match(runtimeConfig, new RegExp(`\\"${protocol.replaceAll(".", "\\.")}\\"`));
+  }
+  assert.match(bridge, /editflow_host_current_v16\.jsx/);
 });
 
 test("explicit broker negotiates 1.5 and carries a typed null-rig request", async () => {
