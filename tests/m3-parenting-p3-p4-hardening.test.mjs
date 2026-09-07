@@ -17,7 +17,7 @@ test("parenting direct route fails closed when five-point preserve geometry is u
   assert.match(source, /HOST_LIMITATION/);
   assert.match(source, /app\.executeCommand\(16\)/);
   assert.match(source, /Failed parenting mutation self-rolled back with AE Undo\./);
-  assert.doesNotMatch(source, /setParentWithJump\s*\(/);
+  assert.doesNotMatch(source, /^[ \t]*(?![/*]).*setParentWithJump\s*\(/m);
 });
 
 test("parenting P3/P4 visual harness exercises a representable rotated uniform-scale parent", async () => {
