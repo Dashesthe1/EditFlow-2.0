@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.6.0",
+  "requestId": "req-layer-control-1",
+  "transactionId": "tx-layer-control-1",
+  "operationId": "op-layer-control-1",
+  "capabilityId": "ae.layer.switches.set",
+  "command": "layer.switches.set",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": { "stableId": "comp-main", "hostId": 101 },
+    "layer": { "stableId": "layer-hero", "hostId": 202 },
+    "switches": { "enabled": true, "solo": false, "threeDLayer": true }
+  },
+  "readbackProfile": "M3_LAYER_CONTROL_STRUCTURAL"
+}
