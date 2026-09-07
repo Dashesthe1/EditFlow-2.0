@@ -77,7 +77,7 @@ try {
   Write-Host "Scope: P3 deterministic mask-driven compositing render and P4 induced post-mutation failure/AE-Undo recovery."
   Write-Host "P3 is deliberately not self-accepted: retained render evidence must be visually reviewed before P3 maturity is advanced."
   Write-Host "P5 save/reopen/reconnect transfer is not claimed by this tranche."
-  Write-Host "The proof creates only temporary imported bitmaps, one temporary comp/layers/mask, and restores the AE project baseline with bounded Undo cleanup."
+  Write-Host "The proof creates only temporary imported bitmaps plus one temporary comp/layers/mask; after the terminal post-rollback render, a proof-gated host wrapper verifies that exact unsaved fixture before discarding it and creating a fresh blank project, which the harness must re-observe at the original structural fingerprint."
 
   $NodeArgs = @(
     $Cli,
