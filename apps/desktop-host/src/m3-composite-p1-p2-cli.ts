@@ -14,10 +14,8 @@ import {
   AE_BLEND_MODES_V13,
   AE_COMPOSITE_PROTOCOL_VERSION_V13,
   AE_TRACK_MATTE_TYPES_V13,
-  type AeBlendModeV13,
   type AeCompositeCommandV13,
   type AeCompositeResponseV13,
-  type AeTrackMatteTypeV13,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_3.js";
 import { buildCompositeRequestV13 } from "../../../packages/adapters/ae-cep/src/m3-composite.js";
 import type { ObservedProjectState } from "../../../packages/core-contracts/src/index.js";
@@ -249,10 +247,13 @@ const main = async (): Promise<void> => {
     environment = await client.probe();
     checks.host_probe = environment.hostName === "Adobe After Effects"
       && environment.adapterProtocolVersion === AE_ADAPTER_PROTOCOL_VERSION_V11;
-    await refreshState();
 
-    const baselineFingerprint = state?.projectFingerprint ?? null;
-    const baselineItemCount = projectSnapshot?.itemCount ?? null;
+    const baseline = await client.observe(projectId);
+    state = baseline.observed;
+    hostRevision = baseline.hostRevision;
+    projectSnapshot = baseline.project;
+    const baselineFingerprint = baseline.observed.projectFingerprint;
+    const baselineItemCount = baseline.project.itemCount;
 
     await executeV11("comp.create", {
       stableId: sourceStable,
@@ -430,9 +431,9 @@ const main = async (): Promise<void> => {
       && finalCompositeValue?.["trackMatteType"] === "NO_TRACK_MATTE"
       && finalCompositeValue?.["trackMatteLayer"] === null
       && finalCompositeValue?.["blendMode"] === "NORMAL";
-    checks.p2_final_layer_order_preserved = finalTarget?.index === initialTarget.index
-      && finalSpacer?.index === initialSpacer.index
-      && finalMatte?.index === initialMatte.index;
+    checks.p2_final_layer_order_preserved = finalTarget?.index === initialTarget?.index
+      && finalSpacer?.index === initialSpacer?.index
+      && finalMatte?.index === initialMatte?.index;
 
     checks.p1 = checks.p1_self_matte_deterministic_rejection
       && checks.p1_self_matte_revision_unchanged
@@ -449,7 +450,7 @@ const main = async (): Promise<void> => {
       && checks.p2_final_readback
       && checks.p2_final_layer_order_preserved;
 
-    checks.baseline_captured = baselineFingerprint !== null && typeof baselineItemCount === "number";
+    checks.baseline_captured = baselineFingerprint.length > 0 && baselineItemCount >= 0;
   } catch (error) {
     failureError = error instanceof Error ? error.stack ?? error.message : String(error);
   } finally {
