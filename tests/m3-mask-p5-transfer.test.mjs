@@ -75,11 +75,19 @@ test("M3 P5 cleanup fails closed to the exact saved proof fixture and retains th
   assert.doesNotMatch(source, /projectFile\.remove/);
 });
 
-test("M3 P5 acceptance wrapper requires real transfer, cleanup, and retained saved project evidence", async () => {
+test("M3 P5 acceptance wrapper requires real transfer, cleanup, retained saved project evidence, and quoted process paths", async () => {
   const source = await readFile(acceptancePath, "utf8");
 
   assert.match(source, /EDITFLOW_M3_MASK_P5_PROOF/);
   assert.match(source, /m3-mask-p5-cli\.js/);
+  assert.match(source, /function Quote-StartProcessArgument/);
+  assert.match(source, /\(Quote-StartProcessArgument \$Cli\)/);
+  assert.match(source, /"--config", \(Quote-StartProcessArgument \$ConfigPath\)/);
+  assert.match(source, /"--result", \(Quote-StartProcessArgument \$ResultPath\)/);
+  assert.match(source, /"--afterfx-path", \(Quote-StartProcessArgument \$AfterFx\)/);
+  assert.match(source, /"--reopen-script", \(Quote-StartProcessArgument \$ReopenScript\)/);
+  assert.match(source, /"--cleanup-script", \(Quote-StartProcessArgument \$CleanupScript\)/);
+  assert.match(source, /Start-Process -FilePath "node" -ArgumentList \$NodeArgs/);
   assert.match(source, /cleanupComplete -ne \$true/);
   assert.match(source, /status -ne "ACCEPTED"/);
   assert.match(source, /P5_save_reopen_reconnect_transfer/);
