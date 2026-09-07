@@ -6,6 +6,7 @@
   var hostDir = currentFile.parent;
   var acceptedLoader = new File(hostDir.fsName + "/editflow_host_current_v15.jsx");
   var m3LayerControls = new File(hostDir.fsName + "/editflow_host_m3_layer_controls.jsx");
+  var m3LayerControlsProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_layer_controls_proof_cleanup.jsx");
 
   if (!acceptedLoader.exists) throw new Error("EditFlow protocol 1.5 host loader is missing: " + acceptedLoader.fsName);
   $.evalFile(acceptedLoader);
@@ -56,6 +57,13 @@
       }
       return dispatchBeforeLayerControlsFailure(requestJson);
     };
+  }
+
+  if ($.getenv("EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF") === "1") {
+    if (!m3LayerControlsProofCleanup.exists) {
+      throw new Error("EditFlow M3 layer-controls proof cleanup is missing: " + m3LayerControlsProofCleanup.fsName);
+    }
+    $.evalFile(m3LayerControlsProofCleanup);
   }
 
   if (typeof $.global.EditFlow2_dispatch !== "function") throw new Error("EditFlow protocol 1.6 host dispatcher failed to register.");
