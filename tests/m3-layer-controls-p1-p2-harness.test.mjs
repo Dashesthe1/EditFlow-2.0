@@ -28,7 +28,7 @@ test("M3 layer-controls P1/P2 CLI is bounded to protocol 1.6 structural rejectio
     "preserveTransparency",
     "samplingQuality",
   ]) assert.match(source, new RegExp(`\\"${key}\\"`));
-  for (const kind of ["BEGINNING", "END", "BEFORE", "AFTER"]) assert.match(source, new RegExp(`kind: \\"${kind}\\"`));
+  for (const kind of ["BEGINNING", "END", "BEFORE", "AFTER"]) assert.match(source, new RegExp(`kind: "${kind}"`));
   assert.match(source, /cleanup_fingerprint_restored/);
   assert.match(source, /P1_validation_rejection: checks\.p1 === true/);
   assert.match(source, /P2_structural_readback: checks\.p2 === true/);
