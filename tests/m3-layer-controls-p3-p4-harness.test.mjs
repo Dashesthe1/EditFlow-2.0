@@ -10,6 +10,7 @@ const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const acceptancePath = "scripts/windows/run-m3-layer-controls-p3-p4.ps1";
 const selfHostedPath = "scripts/windows/run-m3-layer-controls-p3-p4-self-hosted.ps1";
 const dialogWatcherPath = "scripts/windows/watch-ae-startup-dialogs.ps1";
+const crashRepairHelperPath = "scripts/windows/continue-known-ae-crash-repair.ps1";
 const workflowPath = ".github/workflows/m3-layer-controls-real-ae-p3-p4.yml";
 
 test("M3 layer-controls P3/P4 CLI requires rendered switch/order evidence and external visual review", async () => {
@@ -89,6 +90,9 @@ test("P3/P4 wrappers fail closed on structural recovery and never self-accept pi
   assert.match(selfHosted, /Copy-CepFailureDiagnostics/);
   assert.match(selfHosted, /LogLevel/);
   assert.match(selfHosted, /watch-ae-startup-dialogs\.ps1/);
+  assert.match(selfHosted, /continue-known-ae-crash-repair\.ps1/);
+  assert.match(selfHosted, /EDITFLOW_M3_LAYER_CONTROLS_CRASH_REPAIR_CONTINUE/);
+  assert.match(selfHosted, /crash-repair-recovery\.log/);
 });
 
 test("startup-dialog diagnostics can retain pixels but expose no AE input or activation mechanism", async () => {
@@ -110,6 +114,28 @@ test("startup-dialog diagnostics can retain pixels but expose no AE input or act
     /\.Invoke\s*\(/,
     /\.SetValue\s*\(/,
   ]) assert.doesNotMatch(source, forbiddenCall);
+});
+
+test("Crash Repair Continue helper is proof-gated, exact-state-only, foreground-verified, and keyboard-only", async () => {
+  const source = await readFile(crashRepairHelperPath, "utf8");
+  assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_CRASH_REPAIR_CONTINUE -ne "1"/);
+  assert.match(source, /ClassName -ne "#32770"/);
+  assert.match(source, /Width -lt 760 -or \$Width -gt 800/);
+  assert.match(source, /Height -lt 470 -or \$Height -gt 510/);
+  assert.match(source, /OS_ViewContainer/);
+  assert.match(source, /OS_EditTextContainer/);
+  assert.match(source, /AE_CApplication_\*/);
+  assert.match(source, /Process\.MainWindowHandle/);
+  assert.match(source, /GetForegroundWindow/);
+  assert.match(source, /SetForegroundWindow/);
+  assert.match(source, /Foreground -ne \[long\]\$Dialog\.Handle/);
+  assert.match(source, /\[System\.Windows\.Forms\.SendKeys\]::SendWait\("\{ENTER\}"\)/);
+  assert.match(source, /CONTINUE_ENTER_SENT/);
+  assert.match(source, /CRASH_REPAIR_DISMISSED/);
+  assert.doesNotMatch(source, /mouse_event/);
+  assert.doesNotMatch(source, /keybd_event/);
+  assert.doesNotMatch(source, /Click\s*\(/);
+  assert.doesNotMatch(source, /Reset Preferences/);
 });
 
 test("real-AE P3/P4 workflow is isolated to the Windows AE control branch", async () => {
