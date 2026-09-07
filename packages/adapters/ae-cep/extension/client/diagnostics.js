@@ -13,8 +13,9 @@
     if (!cep || typeof cep.evalScript !== "function") return;
     var line = (new Date()).toISOString() + "\t" + clean(stage) + "\t" + clean(detail);
     var literal = JSON.stringify(line);
+    var logSuffix = JSON.stringify("/" + LOG_NAME);
     var script = "(function(){try{" +
-      "var marker=new File(Folder.temp.fsName+/" + JSON.stringify("/" + LOG_NAME) + ".slice(1));" +
+      "var marker=new File(Folder.temp.fsName+" + logSuffix + ");" +
       "marker.encoding=\"UTF-8\";" +
       "if(!marker.open(\"a\"))return;" +
       "try{marker.writeln(" + literal + ");}finally{marker.close();}" +
