@@ -3,7 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import { applyM3MaskAcceptedP1P2Evidence } from "./m3-mask-proof-maturity.js";
+import { applyM3MaskAcceptedProofEvidence } from "./m3-mask-proof-maturity.js";
 import {
   AE_MASK_ADAPTER_BUILD_V12,
   AE_MASK_COMMANDS_V12,
@@ -96,7 +96,7 @@ const M3_MASK_DECLARED_CAPABILITIES_V12: readonly CapabilityRecord[] = AE_MASK_C
 );
 
 export const M3_MASK_CAPABILITIES_V12: readonly CapabilityRecord[] =
-  applyM3MaskAcceptedP1P2Evidence(M3_MASK_DECLARED_CAPABILITIES_V12);
+  applyM3MaskAcceptedProofEvidence(M3_MASK_DECLARED_CAPABILITIES_V12);
 
 export const buildMaskRequestV12 = (input: {
   readonly requestId: string;
