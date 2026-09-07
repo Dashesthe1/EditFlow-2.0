@@ -21,4 +21,17 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Validate schemas, typecheck, and test
-        run: npm run check
+        shell: bash
+        run: |
+          set +e
+          npm run check 2>&1 | tee ci-output.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+      - name: Upload CI diagnostic on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostic-${{ github.run_id }}
+          path: ci-output.log
+          if-no-files-found: error
+          retention-days: 1
