@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.3.0",
+  "requestId": "REQ_COMPOSITE_BAD",
+  "transactionId": "TX_COMPOSITE_BAD",
+  "operationId": "OP_COMPOSITE_BAD",
+  "capabilityId": "ae.layer.blend_mode.set",
+  "command": "layer.set_blend_mode",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": {"stableId": "COMP_COMPOSITE"},
+    "layer": {"stableId": "LAYER_TARGET"},
+    "blendMode": "NOT_A_REAL_BLEND_MODE"
+  },
+  "readbackProfile": "M3_COMPOSITE_STRUCTURAL"
+}

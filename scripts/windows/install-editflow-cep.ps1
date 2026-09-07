@@ -65,6 +65,7 @@ $HostFiles = @(
   "editflow_host_render_async.jsx",
   "editflow_host_render_output_path.jsx",
   "editflow_host_m3_masks.jsx",
+  "editflow_host_m3_composite.jsx",
   "editflow_host_m3_proof_cleanup.jsx",
   "editflow_host_current.jsx"
 )
@@ -82,7 +83,7 @@ $Config = [ordered]@{
   port = $Port
   token = $Token
   protocolVersion = "1.1.0"
-  supportedProtocolVersions = @("1.2.0", "1.1.0")
+  supportedProtocolVersions = @("1.3.0", "1.2.0", "1.1.0")
   extensionId = $ExtensionId
   extensionVersion = $ExtensionVersion
 }
@@ -104,7 +105,7 @@ if (-not $SkipDebugMode) {
 Write-Host "EditFlow 2.0 CEP bridge installed."
 Write-Host "Extension: $TargetRoot"
 Write-Host "Runtime config: $ConfigPath"
-Write-Host "Panel protocols advertised: 1.2.0, 1.1.0"
+Write-Host "Panel protocols advertised: 1.3.0, 1.2.0, 1.1.0"
 Write-Host "Each local broker narrows that set to the protocol tranches its current proof/runtime supports."
 Write-Host "Broker: 127.0.0.1:$Port"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }

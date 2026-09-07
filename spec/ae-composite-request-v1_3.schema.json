@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-composite-request-v1_3.schema.json",
+  "title": "EditFlow 2.0 AE M3 Composite Request Protocol 1.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.3.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["layer.set_track_matte", "layer.clear_track_matte", "layer.set_blend_mode", "layer.composite_readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"}
+      }
+    },
+    "trackMatteType": {
+      "enum": ["ALPHA", "ALPHA_INVERTED", "LUMA", "LUMA_INVERTED"]
+    },
+    "blendMode": {
+      "enum": [
+        "ADD", "ALPHA_ADD", "CLASSIC_COLOR_BURN", "CLASSIC_COLOR_DODGE", "CLASSIC_DIFFERENCE",
+        "COLOR", "COLOR_BURN", "COLOR_DODGE", "DANCING_DISSOLVE", "DARKEN", "DARKER_COLOR",
+        "DIFFERENCE", "DISSOLVE", "DIVIDE", "EXCLUSION", "HARD_LIGHT", "HARD_MIX", "HUE",
+        "LIGHTEN", "LIGHTER_COLOR", "LINEAR_BURN", "LINEAR_DODGE", "LINEAR_LIGHT", "LUMINESCENT_PREMUL",
+        "LUMINOSITY", "MULTIPLY", "NORMAL", "OVERLAY", "PIN_LIGHT", "SATURATION", "SCREEN",
+        "SILHOUETTE_ALPHA", "SILHOUETTE_LUMA", "SOFT_LIGHT", "STENCIL_ALPHA", "STENCIL_LUMA",
+        "SUBTRACT", "VIVID_LIGHT"
+      ]
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "layer.set_track_matte"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "layer", "matteLayer", "trackMatteType"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "layer": {"$ref": "#/$defs/objectRef"},
+              "matteLayer": {"$ref": "#/$defs/objectRef"},
+              "trackMatteType": {"$ref": "#/$defs/trackMatteType"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"enum": ["layer.clear_track_matte", "layer.composite_readback"]},
+          "payload": {"$ref": "#/$defs/target"}
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "layer.set_blend_mode"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "layer", "blendMode"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "layer": {"$ref": "#/$defs/objectRef"},
+              "blendMode": {"$ref": "#/$defs/blendMode"}
+            }
+          }
+        }
+      }
+    ]
+  }]
+}
