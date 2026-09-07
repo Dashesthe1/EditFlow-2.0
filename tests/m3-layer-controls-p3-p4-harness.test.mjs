@@ -9,6 +9,7 @@ const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v16.jsx"
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const acceptancePath = "scripts/windows/run-m3-layer-controls-p3-p4.ps1";
 const selfHostedPath = "scripts/windows/run-m3-layer-controls-p3-p4-self-hosted.ps1";
+const dialogWatcherPath = "scripts/windows/watch-ae-startup-dialogs.ps1";
 const workflowPath = ".github/workflows/m3-layer-controls-real-ae-p3-p4.yml";
 
 test("M3 layer-controls P3/P4 CLI requires rendered switch/order evidence and external visual review", async () => {
@@ -87,6 +88,28 @@ test("P3/P4 wrappers fail closed on structural recovery and never self-accept pi
   assert.match(selfHosted, /EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF/);
   assert.match(selfHosted, /Copy-CepFailureDiagnostics/);
   assert.match(selfHosted, /LogLevel/);
+  assert.match(selfHosted, /watch-ae-startup-dialogs\.ps1/);
+});
+
+test("startup-dialog diagnostics can retain pixels but expose no AE input or activation mechanism", async () => {
+  const source = await readFile(dialogWatcherPath, "utf8");
+  assert.match(source, /GetWindowRect/);
+  assert.match(source, /CopyFromScreen/);
+  assert.match(source, /SCREENSHOT_CAPTURED/);
+  assert.match(source, /startup-dialog-pid-/);
+  assert.match(source, /MaxCaptures = 8/);
+  assert.match(source, /Where-Object \{ \$_\.Visible -and \$_\.ClassName -eq "#32770" \}/);
+  for (const forbiddenCall of [
+    /\bSendInput\s*\(/,
+    /\bSendMessage\s*\(/,
+    /\bPostMessage\s*\(/,
+    /\bSetForegroundWindow\s*\(/,
+    /\bSetFocus\s*\(/,
+    /\bmouse_event\s*\(/,
+    /\bkeybd_event\s*\(/,
+    /\.Invoke\s*\(/,
+    /\.SetValue\s*\(/,
+  ]) assert.doesNotMatch(source, forbiddenCall);
 });
 
 test("real-AE P3/P4 workflow is isolated to the Windows AE control branch", async () => {
