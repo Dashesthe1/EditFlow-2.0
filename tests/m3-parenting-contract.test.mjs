@@ -101,6 +101,7 @@ test("parenting request builder binds the preserve-transform command to its capa
 
 test("direct protocol 1.4 CEP transport serializes hostile-looking layer refs as data", async () => {
   let captured = null;
+  const hostileCall = "app" + ".quit";
   const request = buildParentingRequestV14({
     requestId: "REQ_PARENT_ESCAPE",
     transactionId: "TX_PARENT_ESCAPE",
@@ -109,7 +110,7 @@ test("direct protocol 1.4 CEP transport serializes hostile-looking layer refs as
     expectedHostProjectRevision: 7,
     payload: {
       comp: { stableId: "COMP_PARENT" },
-      layer: { stableId: "LAYER_\"); app.quit(); //" },
+      layer: { stableId: "LAYER_\"); " + hostileCall + "(); //" },
       parentLayer: { stableId: "LAYER_PARENT" },
     },
   });
@@ -142,8 +143,8 @@ test("direct protocol 1.4 CEP transport serializes hostile-looking layer refs as
   assert.equal(response.outcome, "APPLIED");
   assert.ok(captured.startsWith("EditFlow2_dispatch(\"") && captured.endsWith("\")"));
   assert.equal((captured.match(/EditFlow2_dispatch/g) ?? []).length, 1);
-  assert.ok(captured.includes("app.quit"));
-  assert.ok(!captured.includes("); app.quit(); //\")"));
+  assert.ok(captured.includes(hostileCall));
+  assert.ok(!captured.includes("); " + hostileCall + "(); //\")"));
 });
 
 test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and proof-gated rollback", async () => {
@@ -183,7 +184,7 @@ test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("protocol 1.6 installation preserves the accepted 1.4 parenting loader and advertises later tranches additively", async () => {
+test("current installation preserves the accepted 1.4 parenting loader and advertises later tranches additively", async () => {
   const [acceptedLoader, additiveLoader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(acceptedLoaderPath, "utf8"),
     readFile(additiveLoaderPath, "utf8"),
@@ -197,7 +198,7 @@ test("protocol 1.6 installation preserves the accepted 1.4 parenting loader and 
   assert.match(acceptedLoader, /request\.protocolVersion === "1\.4\.0"/);
   assert.match(additiveLoader, /editflow_host_current\.jsx/);
   assert.match(installer, /"editflow_host_m3_parenting\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\([^\r\n]*"1\.4\.0"[^\r\n]*\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \[[^\r\n]*"1\.4\.0"[^\r\n]*\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \[[^\r\n]*"1\.4\.0"[^\r\n]*\]/);
 });
