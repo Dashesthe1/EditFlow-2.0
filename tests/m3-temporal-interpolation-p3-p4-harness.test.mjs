@@ -96,6 +96,15 @@ test("temporal P3/P4 proof-owned reset is fail-closed and independently exact-ba
   assert.match(baseline, /status: exact \? "EXACT_MATCH" : "MISMATCH"/);
 });
 
+test("temporal P3/P4 baseline broker IDs remain unique across same-millisecond observe dispatches", async () => {
+  const source = await readFile(baselineCliPath, "utf8");
+  assert.match(source, /let sequence = 0/);
+  assert.match(source, /sequence \+= 1/);
+  assert.match(source, /m3-temporal-p34-baseline-\$\{Date\.now\(\)\}-\$\{sequence\}/);
+  assert.match(source, /broker,\s*requestIdFactory,/s);
+  assert.doesNotMatch(source, /\(\) => `m3-temporal-p34-baseline-\$\{Date\.now\(\)\}`/);
+});
+
 test("temporal P3/P4 wrapper refuses to self-accept visual proof or overclaim P5", async () => {
   const source = await readFile(wrapperPath, "utf8");
   assert.match(source, /VISUAL_REVIEW_REQUIRED/);
