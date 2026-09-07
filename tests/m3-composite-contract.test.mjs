@@ -14,6 +14,13 @@ import {
   isAeTrackMatteTypeV13,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_3.js";
 import {
+  M3_COMPOSITE_P1_P2_ACCEPTED_SOURCE_COMMIT,
+  M3_COMPOSITE_P1_P2_ACCEPTANCE_ARTIFACT,
+  M3_COMPOSITE_P1_P2_ACCEPTANCE_CONTROL_COMMIT,
+  M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN,
+  M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN_ATTEMPT,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-composite-proof-maturity.js";
+import {
   CepEvalScriptCompositeTransportV13,
   M3_COMPOSITE_CAPABILITIES_V13,
   buildCompositeRequestV13,
@@ -50,11 +57,16 @@ test("M3 composite protocol 1.3 exposes arbitrary track mattes and blend modes a
   assert.equal(capabilityForCompositeCommandV13("layer.composite_readback"), "ae.layer.composite.readback");
 });
 
-test("new M3 composite capabilities remain declared-only until real-AE proof promotes them", () => {
+test("M3 composite capabilities expose accepted real-AE P1/P2 structural maturity only", () => {
+  assert.equal(M3_COMPOSITE_P1_P2_ACCEPTED_SOURCE_COMMIT, "4e949b7e75367ee70c790b38f400464d13a57f98");
+  assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "b46d9e573a4a04cf679190e6a8267786cea63535");
+  assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN, 34077728610);
+  assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN_ATTEMPT, 2);
+  assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_ARTIFACT, 10002742928);
   assert.equal(M3_COMPOSITE_CAPABILITIES_V13.length, AE_COMPOSITE_COMMANDS_V13.length);
   for (const capability of M3_COMPOSITE_CAPABILITIES_V13) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.proofMaturity, "STRUCTURAL");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_COMPOSITE_ROUTE_ID_V13);
     assert.equal(capability.routes[0].available, true);
