@@ -13,6 +13,11 @@ test("parenting P1/P2 CLI opts into 1.4, exercises rejection/idempotency, and do
   assert.match(source, /panel\.protocolVersion === AE_PARENTING_PROTOCOL_VERSION_V14/);
   assert.match(source, /new AeCepAdapterClientV11/);
   assert.match(source, /buildParentingRequestV14/);
+  assert.match(source, /transformReadback\(parentTransformResponse\)/);
+  assert.match(source, /transformReadback\(childTransformResponse\)/);
+  assert.match(source, /transformMatches\(parentSetupTransform, parentTransform\)/);
+  assert.match(source, /transformMatches\(childSetupTransform, childTransform\)/);
+  assert.match(source, /setupTransformEvidence/);
   assert.match(source, /PARENT_SELF_REFERENCE/);
   assert.match(source, /HOST_REVISION_CONFLICT/);
   assert.match(source, /PARENT_CYCLE/);
