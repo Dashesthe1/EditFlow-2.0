@@ -12,6 +12,8 @@
   var renderAsync = new File(hostDir.fsName + "/editflow_host_render_async.jsx");
   var renderOutputPath = new File(hostDir.fsName + "/editflow_host_render_output_path.jsx");
   var m3Masks = new File(hostDir.fsName + "/editflow_host_m3_masks.jsx");
+  var m3ProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_proof_cleanup.jsx");
+  var m3ProofMode = $.getenv("EDITFLOW_M3_MASK_P4_PROOF") === "1";
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
   if (!hardening.exists) throw new Error("EditFlow AE host hardening script is missing: " + hardening.fsName);
@@ -22,6 +24,7 @@
   if (!renderAsync.exists) throw new Error("EditFlow AE async-render script is missing: " + renderAsync.fsName);
   if (!renderOutputPath.exists) throw new Error("EditFlow AE render output-path script is missing: " + renderOutputPath.fsName);
   if (!m3Masks.exists) throw new Error("EditFlow M3 mask/Bezier host script is missing: " + m3Masks.fsName);
+  if (m3ProofMode && !m3ProofCleanup.exists) throw new Error("EditFlow M3 proof cleanup script is missing: " + m3ProofCleanup.fsName);
 
   $.evalFile(jsonRuntime);
   if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.parse !== "function" || typeof $.global.EditFlow2_JSON.stringify !== "function") {
@@ -44,6 +47,7 @@
   $.evalFile(renderAsync);
   $.evalFile(renderOutputPath);
   $.evalFile(m3Masks);
+  if (m3ProofMode) $.evalFile(m3ProofCleanup);
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
   }
