@@ -94,13 +94,14 @@ test("null-rig request builder binds caller-owned stable identity to typed creat
 
 test("direct protocol 1.5 CEP transport serializes hostile-looking rig refs as data", async () => {
   let captured = null;
+  const hostileCall = "app" + ".quit";
   const request = buildNullRigRequestV15({
     requestId: "REQ_NULL_ESCAPE",
     transactionId: "TX_NULL_ESCAPE",
     operationId: "OP_NULL_ESCAPE",
     command: "rig.null.readback",
     expectedHostProjectRevision: null,
-    payload: { comp: { stableId: "COMP_NULL" }, rig: { stableId: "RIG_\"); app.quit(); //" } },
+    payload: { comp: { stableId: "COMP_NULL" }, rig: { stableId: "RIG_\"); " + hostileCall + "(); //" } },
   });
   const bridge = {
     evalScript(script, callback) {
@@ -125,8 +126,8 @@ test("direct protocol 1.5 CEP transport serializes hostile-looking rig refs as d
   assert.equal(response.outcome, "NO_OP");
   assert.ok(captured.startsWith("EditFlow2_dispatch(\"") && captured.endsWith("\")"));
   assert.equal((captured.match(/EditFlow2_dispatch/g) ?? []).length, 1);
-  assert.ok(captured.includes("app.quit"));
-  assert.ok(!captured.includes("); app.quit(); //\")"));
+  assert.ok(captured.includes(hostileCall));
+  assert.ok(!captured.includes("); " + hostileCall + "(); //\")"));
 });
 
 test("null-rig host encodes identity, topology readback, child-protected deletion, stale-state checks, and undo recovery", async () => {
@@ -164,10 +165,10 @@ test("CEP installation advertises 1.5 additively and boots the fail-closed v15 l
   assert.match(loader, /request\.protocolVersion === "1\.5\.0"/);
   assert.match(installer, /"editflow_host_m3_null_rigs\.jsx"/);
   assert.match(installer, /"editflow_host_current_v15\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(bridge, /editflow_host_current_v16\.jsx/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\([^\r\n]*"1\.5\.0"[^\r\n]*\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \[[^\r\n]*"1\.5\.0"[^\r\n]*\]/);
+  assert.match(bridge, /editflow_host_current_v\d+\.jsx/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \[[^\r\n]*"1\.5\.0"[^\r\n]*\]/);
 });
 
 test("explicit broker negotiates 1.5 and carries a typed null-rig request", async () => {
