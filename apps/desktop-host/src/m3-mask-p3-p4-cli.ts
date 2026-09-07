@@ -392,9 +392,6 @@ const main = async (): Promise<void> => {
     if (boundPort !== config.port) throw new Error(`CEP broker bound unexpected port ${boundPort}.`);
 
     const panel = await broker.waitForPanel(timeoutMs);
-    panelHostName = panel.hostName;
-    panelHostVersion = panel.hostVersion;
-    panelHostBuild = panel.hostBuild;
     panelExtensionVersion = panel.extensionVersion;
     panelSelectedProtocolVersion = panel.protocolVersion;
     panelSupportedProtocolVersions = [...panel.supportedProtocolVersions];
@@ -414,6 +411,9 @@ const main = async (): Promise<void> => {
       new AeFilesystemPolicyV11([artifactDir]),
     );
     const environment = await client.probe();
+    panelHostName = environment.hostName;
+    panelHostVersion = environment.hostVersion;
+    panelHostBuild = environment.hostBuild;
     checks.host_probe = environment.hostName === "Adobe After Effects"
       && environment.adapterProtocolVersion === AE_ADAPTER_PROTOCOL_VERSION_V11;
 
