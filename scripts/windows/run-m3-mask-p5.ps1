@@ -44,6 +44,16 @@ function Resolve-RunningAfterFx {
   return $RunningPaths[0]
 }
 
+function Quote-StartProcessArgument {
+  param([string]$Value)
+
+  if ($null -eq $Value) { return '""' }
+  if ($Value.Contains('"')) {
+    throw "M3 P5 Start-Process arguments must not contain literal quote characters."
+  }
+  return '"' + $Value + '"'
+}
+
 if ($TimeoutSeconds -lt 20) { throw "TimeoutSeconds must be at least 20." }
 if ($env:EDITFLOW_M3_MASK_P5_PROOF -ne "1") {
   throw "M3 P5 acceptance requires the self-hosted runner-owned AE process to inherit EDITFLOW_M3_MASK_P5_PROOF=1."
@@ -78,13 +88,16 @@ try {
   Write-Host "Scope: public project.save -> fixed .aep reopen -> dispatcher reload -> distinct authenticated CEP session -> exact mask readback -> fresh post-reconnect mutation/readback -> proof-only cleanup."
   Write-Host "P1-P4 are not replayed by this tranche."
 
+  # Start-Process joins ArgumentList into one Windows command line. Quote every
+  # filesystem argument explicitly so paths such as C:\Program Files\Adobe\...
+  # arrive at Node as one argv value instead of being truncated at the first space.
   $NodeArgs = @(
-    $Cli,
-    "--config", $ConfigPath,
-    "--result", $ResultPath,
-    "--afterfx-path", $AfterFx,
-    "--reopen-script", $ReopenScript,
-    "--cleanup-script", $CleanupScript,
+    (Quote-StartProcessArgument $Cli),
+    "--config", (Quote-StartProcessArgument $ConfigPath),
+    "--result", (Quote-StartProcessArgument $ResultPath),
+    "--afterfx-path", (Quote-StartProcessArgument $AfterFx),
+    "--reopen-script", (Quote-StartProcessArgument $ReopenScript),
+    "--cleanup-script", (Quote-StartProcessArgument $CleanupScript),
     "--timeout-ms", ($TimeoutSeconds * 1000)
   )
   $NodeProcess = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru
