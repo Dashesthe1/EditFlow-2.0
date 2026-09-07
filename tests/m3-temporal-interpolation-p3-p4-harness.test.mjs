@@ -87,7 +87,7 @@ test("temporal P3/P4 proof-owned reset is fail-closed and independently exact-ba
   assert.match(cleanup, /project\.close\(CloseOptions\.DO_NOT_SAVE_CHANGES\)/);
   assert.match(cleanup, /app\.newProject\(\)/);
   assert.match(cleanup, /app\.project\.file \|\| app\.project\.numItems !== 0/);
-  assert.doesNotMatch(cleanup, /PROMPT_TO_SAVE_CHANGES|SAVE_CHANGES/);
+  assert.doesNotMatch(cleanup, /PROMPT_TO_SAVE_CHANGES|CloseOptions\.SAVE_CHANGES/);
 
   assert.match(baseline, /projectFingerprint/);
   assert.match(baseline, /itemCount/);
