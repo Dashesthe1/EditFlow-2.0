@@ -36,7 +36,7 @@ test("layer-controls P1/P2 CLI exercises every protocol-1.6 control and preserve
   assert.match(source, /excluded:\s*\["frameBlending", "motionBlur", "shutterAngle", "shutterPhase", "markers"\]/);
 });
 
-test("proof-only fixture builds the exact audio/precomp/solid/camera matrix and no production command", async () => {
+test("proof-only fixture builds the exact audio/precomp/solid/camera matrix with self-contained non-modal evidence", async () => {
   const source = await readFile(fixturePath, "utf8");
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF/);
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX/);
@@ -47,12 +47,16 @@ test("proof-only fixture builds the exact audio/precomp/solid/camera matrix and 
   assert.match(source, /target\.layers\.addCamera/);
   assert.match(source, /target\.numLayers !== 4/);
   assert.match(source, /app\.project\.numItems !== 4/);
+  assert.match(source, /function markerStringify/);
+  assert.match(source, /file\.write\(markerStringify\(value\)\)/);
+  assert.match(source, /stage:\s*stage/);
   assert.match(source, /M3_LAYER_CONTROLS_P1_P2_FIXTURE/);
+  assert.doesNotMatch(source, /EditFlow2_JSON/);
   assert.doesNotMatch(source, /EditFlow2_dispatch\s*=/);
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("proof-only cleanup validates the fixed prefix-owned fixture before restoring blank project", async () => {
+test("proof-only cleanup validates the fixed prefix-owned fixture and emits engine-independent evidence", async () => {
   const source = await readFile(cleanupPath, "utf8");
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF/);
   assert.match(source, /app\.project\.numItems !== 4/);
@@ -60,7 +64,11 @@ test("proof-only cleanup validates the fixed prefix-owned fixture before restori
   assert.match(source, /CloseOptions\.DO_NOT_SAVE_CHANGES/);
   assert.match(source, /app\.newProject\(\)/);
   assert.match(source, /app\.project\.numItems !== 0/);
+  assert.match(source, /function markerStringify/);
+  assert.match(source, /file\.write\(markerStringify\(value\)\)/);
+  assert.match(source, /stage:\s*stage/);
   assert.match(source, /M3_LAYER_CONTROLS_P1_P2_CLEANUP/);
+  assert.doesNotMatch(source, /EditFlow2_JSON/);
   assert.doesNotMatch(source, /EditFlow2_dispatch\s*=/);
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
