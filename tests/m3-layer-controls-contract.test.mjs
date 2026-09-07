@@ -37,11 +37,11 @@ test("M3 layer-controls protocol 1.6 is a fixed switch/order tranche", () => {
   assert.equal(capabilityForLayerControlsCommandV16("layer.controls.readback"), "ae.layer.controls.readback");
 });
 
-test("M3 layer-controls registry stays DECLARED until real-AE evidence is accepted", () => {
+test("M3 layer-controls registry reflects accepted real-AE P1-P5 transfer evidence", () => {
   assert.equal(M3_LAYER_CONTROLS_CAPABILITIES_V16.length, AE_LAYER_CONTROLS_COMMANDS_V16.length);
   for (const capability of M3_LAYER_CONTROLS_CAPABILITIES_V16) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.status, "FULL");
+    assert.equal(capability.proofMaturity, "TRANSFER");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_LAYER_CONTROLS_ROUTE_ID_V16);
     assert.equal(capability.routes[0].available, true);
