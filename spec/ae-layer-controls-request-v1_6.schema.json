@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-layer-controls-request-v1_6.schema.json",
+  "title": "EditFlow 2.0 AE M3 Layer Controls Request Protocol 1.6",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.6.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["layer.controls.set", "layer.controls.readback", "comp.layer_controls.set", "comp.layer_controls.readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "layerControlsPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "solo": {"type": "boolean"},
+        "shy": {"type": "boolean"},
+        "locked": {"type": "boolean"},
+        "audioEnabled": {"type": "boolean"},
+        "adjustmentLayer": {"type": "boolean"},
+        "collapseTransformation": {"type": "boolean"},
+        "effectsActive": {"type": "boolean"},
+        "guideLayer": {"type": "boolean"},
+        "preserveTransparency": {"type": "boolean"},
+        "quality": {"enum": ["BEST", "DRAFT", "WIREFRAME"]},
+        "samplingQuality": {"enum": ["BILINEAR", "BICUBIC"]},
+        "threeDLayer": {"type": "boolean"}
+      }
+    },
+    "compLayerControlsPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "hideShyLayers": {"type": "boolean"}
+      }
+    },
+    "layerTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"}
+      }
+    },
+    "compTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"}
+      }
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "layer.controls.set"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "layer", "controls"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "layer": {"$ref": "#/$defs/objectRef"},
+              "controls": {"$ref": "#/$defs/layerControlsPatch"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "layer.controls.readback"},
+          "payload": {"$ref": "#/$defs/layerTarget"}
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "comp.layer_controls.set"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "controls"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "controls": {"$ref": "#/$defs/compLayerControlsPatch"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "comp.layer_controls.readback"},
+          "payload": {"$ref": "#/$defs/compTarget"}
+        }
+      }
+    ]
+  }]
+}
