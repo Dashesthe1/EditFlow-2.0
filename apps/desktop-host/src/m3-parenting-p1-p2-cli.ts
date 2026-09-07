@@ -87,8 +87,18 @@ const nestedRecord = (value: unknown, key: string): Record<string, unknown> | nu
 const parentingRecord = (response: AeParentingResponseV14): Record<string, unknown> | null =>
   nestedRecord(response.readback, "parenting");
 
+const transformReadback = (response: AeAdapterResponseV11): Record<string, unknown> | null =>
+  nestedRecord(response.readback, "transform");
+
 const objectRef = (record: Record<string, unknown> | null, key: string): Record<string, unknown> | null =>
   record === null ? null : asRecord(record[key]);
+
+const numericVector = (record: Record<string, unknown> | null, key: string): readonly number[] | null => {
+  if (record === null || !Array.isArray(record[key])) return null;
+  const values = record[key] as unknown[];
+  if (values.length === 0 || values.some((value) => typeof value !== "number" || !Number.isFinite(value))) return null;
+  return values as number[];
+};
 
 const compSpacePoint = (parenting: Record<string, unknown> | null): readonly number[] | null => {
   if (parenting === null) return null;
@@ -103,6 +113,16 @@ const pointsClose = (left: readonly number[] | null, right: readonly number[] | 
   if (left === null || right === null || left.length !== right.length) return false;
   return left.every((value, index) => Math.abs(value - right[index]!) <= tolerance);
 };
+
+const transformMatches = (
+  readback: Record<string, unknown> | null,
+  expected: Readonly<{ position: readonly number[]; scale: readonly number[]; rotation: number }>,
+  tolerance = 0.001,
+): boolean => readback !== null
+  && pointsClose(numericVector(readback, "position"), expected.position, tolerance)
+  && pointsClose(numericVector(readback, "scale"), expected.scale, tolerance)
+  && typeof readback["rotation"] === "number"
+  && Math.abs((readback["rotation"] as number) - expected.rotation) <= tolerance;
 
 const localTransform = (parenting: Record<string, unknown> | null): Record<string, unknown> | null =>
   parenting === null ? null : asRecord(parenting["localTransform"]);
@@ -142,6 +162,8 @@ const main = async (): Promise<void> => {
   let initialReadback: Record<string, unknown> | null = null;
   let parentedReadback: Record<string, unknown> | null = null;
   let clearedReadback: Record<string, unknown> | null = null;
+  let parentSetupTransform: Record<string, unknown> | null = null;
+  let childSetupTransform: Record<string, unknown> | null = null;
 
   const projectId = "m3-parenting-p1-p2-real-ae";
   const prefix = `M3_PARENTING_P12_${Date.now()}`;
@@ -307,29 +329,27 @@ const main = async (): Promise<void> => {
       comp: { stableId: targetStable },
       item: { stableId: sourceStable },
     });
-    await executeV11("layer.set_transform", {
+    const parentTransformResponse = await executeV11("layer.set_transform", {
       comp: { stableId: targetStable },
       layer: { stableId: parentLayerStable },
       values: parentTransform,
     });
-    await executeV11("layer.set_transform", {
+    const childTransformResponse = await executeV11("layer.set_transform", {
       comp: { stableId: targetStable },
       layer: { stableId: childLayerStable },
       values: childTransform,
     });
+    parentSetupTransform = transformReadback(parentTransformResponse);
+    childSetupTransform = transformReadback(childTransformResponse);
 
     if (projectSnapshot === null) throw new Error("Project snapshot unavailable after parenting fixture setup.");
     const setupParent = findLayer(projectSnapshot, targetStable, parentLayerStable);
     const setupChild = findLayer(projectSnapshot, targetStable, childLayerStable);
     checks.setup_two_av_layers = setupParent?.kind === "LAYER_AV" && setupChild?.kind === "LAYER_AV";
-    checks.setup_transformed_parent = JSON.stringify(setupParent?.transform?.position) === JSON.stringify(parentTransform.position)
-      && JSON.stringify(setupParent?.transform?.scale) === JSON.stringify(parentTransform.scale)
-      && setupParent?.transform?.rotation === parentTransform.rotation;
-    checks.setup_transformed_child = JSON.stringify(setupChild?.transform?.position) === JSON.stringify(childTransform.position)
-      && JSON.stringify(setupChild?.transform?.scale) === JSON.stringify(childTransform.scale)
-      && setupChild?.transform?.rotation === childTransform.rotation;
+    checks.setup_transformed_parent = transformMatches(parentSetupTransform, parentTransform);
+    checks.setup_transformed_child = transformMatches(childSetupTransform, childTransform);
     if (!checks.setup_two_av_layers || !checks.setup_transformed_parent || !checks.setup_transformed_child) {
-      throw new Error("Parenting fixture did not produce the intended transformed AV parent/child layers.");
+      throw new Error("Parenting fixture did not produce the intended transformed AV parent/child layers in normalized AE transform readback.");
     }
 
     const firstRead = await dispatchV14("layer.parenting_readback", {
@@ -527,6 +547,10 @@ const main = async (): Promise<void> => {
         childLayerStable,
         parentTransform,
         childTransform,
+      },
+      setupTransformEvidence: {
+        parent: parentSetupTransform,
+        child: childSetupTransform,
       },
       geometryEvidence: {
         initial: initialReadback,
