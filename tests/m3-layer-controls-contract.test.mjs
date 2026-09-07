@@ -124,7 +124,7 @@ test("layer-controls host encodes switch capability checks, order primitives, re
   assert.doesNotMatch(source, /frameBlending/);
 });
 
-test("CEP installation advertises 1.6 additively and boots the fail-closed v16 loader", async () => {
+test("CEP installation retains accepted 1.6 beneath the additive v1.7 client", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -137,13 +137,14 @@ test("CEP installation advertises 1.6 additively and boots the fail-closed v16 l
   assert.match(loader, /request\.protocolVersion === "1\.6\.0"/);
   assert.match(installer, /"editflow_host_m3_layer_controls\.jsx"/);
   assert.match(installer, /"editflow_host_current_v16\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(bridge, /editflow_host_current_v16\.jsx/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /"editflow_host_current_v17\.jsx"/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.7\.0", "1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.7\.0", "1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(bridge, /editflow_host_current_v17\.jsx/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.7\.0", "1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });
 
-test("explicit broker negotiates 1.6 and carries a typed layer-controls request", async () => {
+test("explicit broker can still negotiate 1.6 and carry a typed layer-controls request", async () => {
   const protocols = ["1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
   const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000, commandLeaseMs: 50, supportedProtocolVersions: protocols });
   const port = await broker.start();
