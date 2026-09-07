@@ -170,7 +170,7 @@ test("broker stop force-closes an active CEP HTTP request so restart cannot dead
 test("CEP extension uses the fixed dispatcher and a CEP 12 AE manifest", async () => {
   const manifest = await readFile("packages/adapters/ae-cep/extension/CSXS/manifest.xml", "utf8");
   const client = await readFile("packages/adapters/ae-cep/extension/client/bridge.js", "utf8");
-  const activeLoader = await readFile("packages/adapters/ae-cep/host/editflow_host_current_v16.jsx", "utf8");
+  const activeLoader = await readFile("packages/adapters/ae-cep/host/editflow_host_current_v17.jsx", "utf8");
   const bootstrap = await readFile("packages/adapters/ae-cep/extension/host/bootstrap.jsx", "utf8");
 
   assert.match(manifest, /Version="12\.0"/);
@@ -180,8 +180,8 @@ test("CEP extension uses the fixed dispatcher and a CEP 12 AE manifest", async (
   assert.match(client, /EditFlow2_dispatch\(/);
   assert.match(client, /window\.__adobe_cep__/);
   assert.match(client, /getSystemPath\("extension"\)/);
-  assert.match(client, /editflow_host_current_v16\.jsx/);
-  assert.match(activeLoader, /editflow_host_current_v15\.jsx/);
+  assert.match(client, /editflow_host_current_v17\.jsx/);
+  assert.match(activeLoader, /editflow_host_current_v16\.jsx/);
   assert.match(activeLoader, /\$\.evalFile\(acceptedLoader\)/);
   assert.match(client, /\$\.evalFile\(hostFile\)/);
   assert.match(client, /X-EditFlow-Token/);

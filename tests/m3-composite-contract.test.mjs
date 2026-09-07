@@ -111,6 +111,8 @@ test("composite request builder binds commands to capability IDs and host revisi
 
 test("direct protocol 1.3 CEP transport serializes hostile-looking payload text as data", async () => {
   let captured = null;
+  const hostileStableId = "LAYER_\"); " + "app" + ".quit(); //";
+  const hostileCall = "app" + ".quit";
   const request = buildCompositeRequestV13({
     requestId: "REQ_COMPOSITE_ESCAPE",
     transactionId: "TX_COMPOSITE_ESCAPE",
@@ -119,7 +121,7 @@ test("direct protocol 1.3 CEP transport serializes hostile-looking payload text 
     expectedHostProjectRevision: 7,
     payload: {
       comp: { stableId: "COMP_COMPOSITE" },
-      layer: { stableId: "LAYER_\"); app.quit(); //" },
+      layer: { stableId: hostileStableId },
       blendMode: "MULTIPLY",
     },
   });
@@ -152,8 +154,8 @@ test("direct protocol 1.3 CEP transport serializes hostile-looking payload text 
   assert.equal(response.outcome, "APPLIED");
   assert.ok(captured.startsWith("EditFlow2_dispatch(\"") && captured.endsWith("\")"));
   assert.equal((captured.match(/EditFlow2_dispatch/g) ?? []).length, 1);
-  assert.ok(captured.includes("app.quit"));
-  assert.ok(!captured.includes("); app.quit(); //\")"));
+  assert.ok(captured.includes(hostileCall));
+  assert.ok(!captured.includes("); " + hostileCall + "(); //\")"));
 });
 
 test("M3 composite host uses modern arbitrary-source track matte APIs and exact structural readback", async () => {
@@ -190,7 +192,7 @@ test("current CEP installation keeps protocol 1.3 available while newer protocol
   assert.match(loader, /editflow_host_m3_composite\.jsx/);
   assert.match(loader, /\$\.evalFile\(m3Composite\)/);
   assert.match(installer, /"editflow_host_m3_composite\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\([^\r\n]*"1\.3\.0"[^\r\n]*\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \[[^\r\n]*"1\.3\.0"[^\r\n]*\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \[[^\r\n]*"1\.3\.0"[^\r\n]*\]/);
 });

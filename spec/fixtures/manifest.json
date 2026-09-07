@@ -21,5 +21,8 @@
   {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.valid.json","valid":true},
   {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.invalid.json","valid":false},
   {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.valid.json","valid":true},
-  {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.invalid.json","valid":false}
+  {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.invalid.json","valid":false},
+  {"schema":"spec/ae-temporal-interpolation-request-v1_7.schema.json","fixture":"spec/fixtures/ae-temporal-interpolation-request-v1_7.valid.json","valid":true},
+  {"schema":"spec/ae-temporal-interpolation-request-v1_7.schema.json","fixture":"spec/fixtures/ae-temporal-interpolation-request-v1_7.readback.valid.json","valid":true},
+  {"schema":"spec/ae-temporal-interpolation-request-v1_7.schema.json","fixture":"spec/fixtures/ae-temporal-interpolation-request-v1_7.invalid.json","valid":false}
 ]
