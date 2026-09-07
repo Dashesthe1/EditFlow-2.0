@@ -16,9 +16,11 @@
   var reconnectTimer = null;
   var livenessStarted = false;
   var hostReady = false;
+  var renderMaintenanceArmed = true;
   var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
+  var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
   var KNOWN_PROTOCOLS = ["1.2.0", "1.1.0"];
 
   function setStatus(state, text) {
@@ -154,6 +156,7 @@
       sessionId = result.value.sessionId;
       negotiatedProtocolVersion = result.value.protocolVersion;
       connectionGeneration += 1;
+      renderMaintenanceArmed = true;
       var generation = connectionGeneration;
       brokerEl.textContent = "127.0.0.1:" + config.port;
       protocolEl.textContent = negotiatedProtocolVersion;
@@ -193,11 +196,53 @@
           if (response.requestId !== request.requestId || response.operationId !== request.operationId || response.command !== request.command) {
             throw new Error("After Effects dispatcher correlation mismatch.");
           }
+          if (request.command === "render.capture" && response.outcome === "APPLIED"
+              && response.readback && response.readback.state === "SCHEDULED") {
+            renderMaintenanceArmed = true;
+          }
           resolve(response);
         } catch (error) {
           reject(error);
         }
       });
+    });
+  }
+
+  function reconcileHostAsyncRender() {
+    return new Promise(function (resolve, reject) {
+      var cep = window.__adobe_cep__;
+      if (!cep || typeof cep.evalScript !== "function") {
+        reject(new Error("CEP evalScript is unavailable for async render maintenance."));
+        return;
+      }
+      var script = "(function(){try{" +
+        "if(typeof $.global.EditFlow2_reconcileAsyncRender!==\"function\")return \"" + HOST_RENDER_MAINTENANCE_PREFIX + "IDLE\";" +
+        "return \"" + HOST_RENDER_MAINTENANCE_PREFIX + "\"+String($.global.EditFlow2_reconcileAsyncRender());" +
+        "}catch(error){return \"" + HOST_RENDER_MAINTENANCE_PREFIX + "ERROR:\"+String(error);}}())";
+      cep.evalScript(script, function (raw) {
+        if (typeof raw !== "string" || raw === "EvalScript error.") {
+          reject(new Error("After Effects async render maintenance returned an evalScript error."));
+          return;
+        }
+        if (raw.indexOf(HOST_RENDER_MAINTENANCE_PREFIX) !== 0) {
+          reject(new Error("After Effects async render maintenance returned an unexpected result."));
+          return;
+        }
+        var state = raw.substring(HOST_RENDER_MAINTENANCE_PREFIX.length);
+        if (state.indexOf("ERROR:") === 0) {
+          reject(new Error(state.substring(6)));
+          return;
+        }
+        resolve(state);
+      });
+    });
+  }
+
+  function maintainAsyncRenderIfNeeded() {
+    if (!renderMaintenanceArmed) return Promise.resolve("IDLE");
+    return reconcileHostAsyncRender().then(function (state) {
+      if (state === "IDLE" || state === "DONE" || state === "FAILED") renderMaintenanceArmed = false;
+      return state;
     });
   }
 
@@ -241,7 +286,10 @@
   function pollOnce(generation) {
     if (stopped || !sessionId || generation !== connectionGeneration) return Promise.resolve();
     var leasedSessionId = sessionId;
-    return requestJson("/v1/next?sessionId=" + encodeURIComponent(leasedSessionId), { method: "GET" })
+    return maintainAsyncRenderIfNeeded()
+      .then(function () {
+        return requestJson("/v1/next?sessionId=" + encodeURIComponent(leasedSessionId), { method: "GET" });
+      })
       .then(function (result) {
         if (generation !== connectionGeneration) return null;
         if (result.status === 204) return null;
@@ -337,9 +385,7 @@
         connectInFlight = false;
         sessionId = null;
         negotiatedProtocolVersion = null;
-        var message = error && error.message ? error.message : String(error);
-        if (message.indexOf("Host bootstrap:") === 0) setStatus("error", message);
-        else setStatus("error", "Local runtime unavailable: " + message);
+        setStatus("error", "Local runtime unavailable: " + (error && error.message ? error.message : String(error)));
         scheduleReconnect(reconnectDelayMs);
       });
   }
