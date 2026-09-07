@@ -9,7 +9,7 @@
   "use strict";
 
   function appendEvidence(stage, detail) {
-    var marker = new File(Folder.temp.fsName + "/EditFlow2-temporal-host-preflight.log");
+    var marker = new File(Folder.temp.fsName + "/EditFlow2-self-hosted-panel-bootstrap.log");
     marker.encoding = "UTF-8";
     if (!marker.open("a")) return;
     try {
