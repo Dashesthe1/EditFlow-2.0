@@ -5,6 +5,10 @@
  * Cleanup never rethrows through After Effects' -r route. Success or the exact
  * failing stage is written to the proof marker so unattended runs cannot be
  * blocked by a modal script-error dialog.
+ *
+ * Direct -r scripts can execute outside the CEP panel's ExtendScript engine, so
+ * cleanup-marker serialization is self-contained and does not depend on a
+ * panel-populated JSON global.
  */
 (function () {
   "use strict";
@@ -30,11 +34,39 @@
       .replace(/[\r\n\t]+/g, " ")
       .substring(0, 1600);
   }
+  function jsonQuote(value) {
+    return '"' + String(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\r/g, "\\r")
+      .replace(/\n/g, "\\n")
+      .replace(/\t/g, "\\t") + '"';
+  }
+  function markerStringify(value) {
+    if (value === null || value === undefined) return "null";
+    var kind = typeof value;
+    if (kind === "string") return jsonQuote(value);
+    if (kind === "boolean") return value ? "true" : "false";
+    if (kind === "number") return isFinite(value) ? String(value) : "null";
+    if (value instanceof Array) {
+      var arrayParts = [];
+      for (var i = 0; i < value.length; i += 1) arrayParts.push(markerStringify(value[i]));
+      return "[" + arrayParts.join(",") + "]";
+    }
+    if (kind === "object") {
+      var objectParts = [];
+      for (var key in value) {
+        if (value.hasOwnProperty(key)) objectParts.push(jsonQuote(key) + ":" + markerStringify(value[key]));
+      }
+      return "{" + objectParts.join(",") + "}";
+    }
+    return "null";
+  }
   function writeJson(file, value) {
     try {
       file.encoding = "UTF-8";
       if (!file.open("w")) return false;
-      try { file.write($.global.EditFlow2_JSON.stringify(value)); }
+      try { file.write(markerStringify(value)); }
       finally { file.close(); }
       return true;
     } catch (_) {
@@ -47,7 +79,6 @@
   var prefix = $.getenv(PREFIX_ENV);
   if (!prefix || prefix.indexOf("M3_LAYER_CONTROLS_P12_") !== 0) return;
   if (!app.project || app.project.file) return;
-  if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.stringify !== "function") return;
 
   var currentFile = new File($.fileName);
   var repoRoot = currentFile.parent.parent.parent.parent;
