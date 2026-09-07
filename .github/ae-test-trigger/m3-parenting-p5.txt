@@ -1,0 +1,5 @@
+EditFlow M3 parenting P5 real-AE proof trigger marker.
+
+Only updates to this file on ae-test/m3-parenting-p5-control should trigger the isolated self-hosted parenting P5 acceptance workflow.
+
+Run 1 target: save/reopen, distinct authenticated protocol-1.4 reconnect, exact stable-ID parenting plus five-point geometry transfer, fresh clear/re-parent/readback, retained .aep evidence, and proof-owned cleanup.
