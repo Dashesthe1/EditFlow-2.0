@@ -374,33 +374,22 @@ const main = async (): Promise<void> => {
     return completion;
   };
 
-  const undoUntilBaseline = async (): Promise<void> => {
+  const verifyBaselineOnly = async (): Promise<void> => {
     if (client === null) return;
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      const observed = await client.observe(projectId);
-      state = observed.observed;
-      hostRevision = observed.hostRevision;
-      const temporaryPresent = observed.project.items.some((item) =>
-        typeof item.stableId === "string" && temporaryItemStableIds.has(item.stableId));
-      if (!temporaryPresent) {
-        checks.cleanup_temp_items_absent = true;
-        checks.cleanup_item_count_restored = baselineItemCount === null || observed.project.itemCount === baselineItemCount;
-        checks.cleanup_fingerprint_restored = baselineFingerprint === null || observed.observed.projectFingerprint === baselineFingerprint;
-        cleanupComplete = checks.cleanup_item_count_restored && checks.cleanup_fingerprint_restored;
-        return;
-      }
-      operationCounter += 1;
-      const response = await client.undoLast({
-        transactionId,
-        operationId: `${transactionId}_CLEANUP_UNDO_${operationCounter}`,
-        expectedState: state,
-      });
-      recordV11(response);
-      if (response.outcome === "FAILED" || response.outcome === "REJECTED") {
-        throw new Error(`cleanup transaction.undo_last failed: ${response.error?.code ?? response.outcome} ${response.error?.message ?? ""}`.trim());
-      }
+    const observed = await client.observe(projectId);
+    state = observed.observed;
+    hostRevision = observed.hostRevision;
+    const temporaryPresent = observed.project.items.some((item) =>
+      typeof item.stableId === "string" && temporaryItemStableIds.has(item.stableId));
+    checks.cleanup_temp_items_absent = !temporaryPresent;
+    checks.cleanup_item_count_restored = baselineItemCount === null || observed.project.itemCount === baselineItemCount;
+    checks.cleanup_fingerprint_restored = baselineFingerprint === null || observed.observed.projectFingerprint === baselineFingerprint;
+    cleanupComplete = checks.cleanup_temp_items_absent
+      && checks.cleanup_item_count_restored
+      && checks.cleanup_fingerprint_restored;
+    if (!cleanupComplete) {
+      throw new Error("Proof-owned cleanup did not restore the blank baseline; harness fallback Undo is intentionally forbidden.");
     }
-    throw new Error("Cleanup did not return the temporary M3 parenting P3/P4 fixture to baseline within 24 Undo operations.");
   };
 
   try {
@@ -522,6 +511,11 @@ const main = async (): Promise<void> => {
     if (!checks.p3_set_parent_exact || !checks.p3_parented_multi_point_geometry_preserved) {
       throw new Error("Parenting P3 set-parent geometry/readback invariant failed before render.");
     }
+    // Protocol 1.4 mutated the real AE project independently of the v1.1 client.
+    // Re-observe before any checked v1.1 operation so revision/fingerprint guards
+    // remain authoritative instead of being disabled at the cross-protocol boundary.
+    await refreshState();
+    checks.p3_parented_v11_state_refreshed = true;
 
     const parentedCompletion = await renderComp(parentedRenderPath);
     parentedArtifactPath = parentedCompletion.outputPath;
@@ -540,6 +534,8 @@ const main = async (): Promise<void> => {
     if (!checks.p3_clear_parent_exact || !checks.p3_cleared_multi_point_geometry_preserved) {
       throw new Error("Parenting P3 clear-parent geometry/readback invariant failed before render.");
     }
+    await refreshState();
+    checks.p3_cleared_v11_state_refreshed = true;
 
     const clearedCompletion = await renderComp(clearedRenderPath);
     clearedArtifactPath = clearedCompletion.outputPath;
@@ -605,7 +601,7 @@ const main = async (): Promise<void> => {
     failureError = error instanceof Error ? error.stack ?? error.message : String(error);
   } finally {
     try {
-      await undoUntilBaseline();
+      await verifyBaselineOnly();
     } catch (error) {
       cleanupErrors.push(error instanceof Error ? error.message : String(error));
     }
@@ -631,8 +627,10 @@ const main = async (): Promise<void> => {
       && checks.p3_initial_geometry_available === true
       && checks.p3_set_parent_exact === true
       && checks.p3_parented_multi_point_geometry_preserved === true
+      && checks.p3_parented_v11_state_refreshed === true
       && checks.p3_clear_parent_exact === true
       && checks.p3_cleared_multi_point_geometry_preserved === true
+      && checks.p3_cleared_v11_state_refreshed === true
       && checks.p3_visual_artifact_emitted === true
       && checks.p4 === true;
 
@@ -688,11 +686,12 @@ const main = async (): Promise<void> => {
       notes: [
         "P1/P2 are accepted baseline evidence from main and are not replayed in this P3/P4 tranche.",
         "P3 exercises a representable direct-parent envelope with translation, rotation, and uniform parent scale; five-point comp-space source geometry plus retained real-AE renders must remain equivalent across set/clear.",
+        "Protocol 1.4 parenting mutations are followed by fresh project observation before the next checked protocol 1.1 render; cross-protocol revision/fingerprint safety is preserved rather than bypassed.",
         "Run 1 established that rotated non-uniform parent scale can require shear that the direct AVLayer parenting route cannot represent; protocol 1.4 now fails closed and self-rolls back if five-point geometry drifts instead of returning a false APPLIED result.",
         "P3 retained render evidence does not self-claim visual acceptance; independent comparison is still required.",
         "P4 is induced only when the runner-owned AE process inherits EDITFLOW_M3_PARENTING_P4_PROOF=1 and the typed set-parent request uses the exact M3_PARENTING_P4_FAILURE_INJECTION profile.",
         "The P4 error occurs after the real Layer.parent mutation inside the normal parenting undo group; the normal catch path must self-rollback with AE Undo and restore fingerprint plus exact parenting/geometry readback.",
-        "The proof-only parenting cleanup layer may discard only the exact unsaved fixed fixture after the post-rollback render and must leave a fresh blank project whose structural fingerprint matches baseline.",
+        "The proof-only parenting cleanup layer is the sole successful-run fixture disposal route; the Node harness only verifies baseline restoration and never issues broad fallback Undo after a proof failure.",
         "P5 remains explicitly unclaimed and is a separate save/reopen/reconnect transfer tranche.",
       ],
     });

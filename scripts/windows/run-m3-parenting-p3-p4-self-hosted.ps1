@@ -12,6 +12,21 @@ if (-not (Test-Path $TemplatePath -PathType Leaf)) {
   throw "Accepted M3 mask P3/P4 self-hosted runner template is missing: $TemplatePath"
 }
 
+# Connector-authored ref updates do not always emit a GitHub pull_request
+# synchronization event. Make the isolated workstation workflow self-sufficient:
+# run the exact repository CI gate before installing CEP files or launching AE.
+Push-Location $RepoRoot
+try {
+  if (-not (Test-Path (Join-Path $RepoRoot "node_modules") -PathType Container)) {
+    npm install
+    if ($LASTEXITCODE -ne 0) { throw "npm install failed before parenting P3/P4 repository validation." }
+  }
+  npm run check
+  if ($LASTEXITCODE -ne 0) { throw "npm run check failed; parenting P3/P4 real-AE proof will not launch." }
+} finally {
+  Pop-Location
+}
+
 $Template = [System.IO.File]::ReadAllText($TemplatePath)
 $RequiredTokens = @(
   'scripts\windows\run-m3-mask-p3-p4.ps1',
