@@ -1,0 +1,9 @@
+source_candidate_sha=bf26b3a4351a947d130f792ca7a1a26aa6091a2c
+source_main_base_sha=56be74b20247c74cc4eea363a5b24238ae381518
+proof=M3_LAYER_CONTROLS_P1_P2_REAL_AE
+protocol=1.6.0
+scope=P1_validation_rejection+P2_structural_readback
+reason=deterministic_fixture_order_and_cep_failure_diagnostics
+p3=false
+p4=false
+p5=false
