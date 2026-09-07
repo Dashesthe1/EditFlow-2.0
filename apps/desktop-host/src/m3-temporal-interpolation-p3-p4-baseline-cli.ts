@@ -71,6 +71,14 @@ const writeJson = async (filePath: string, value: unknown): Promise<void> => {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
+const requestIdFactory = (() => {
+  let sequence = 0;
+  return (): string => {
+    sequence += 1;
+    return `m3-temporal-p34-baseline-${Date.now()}-${sequence}`;
+  };
+})();
+
 const main = async (): Promise<void> => {
   const configPath = requireArgument("--config");
   const outputPath = requireArgument("--output");
@@ -97,7 +105,7 @@ const main = async (): Promise<void> => {
     }
     const client = new AeCepAdapterClientV11(
       broker,
-      () => `m3-temporal-p34-baseline-${Date.now()}`,
+      requestIdFactory,
       new AeFilesystemPolicyV11([artifactDir]),
     );
     const environment = await client.probe();
