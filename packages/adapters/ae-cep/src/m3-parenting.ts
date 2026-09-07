@@ -3,7 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import { applyM3ParentingAcceptedP1P2Evidence } from "./m3-parenting-proof-maturity.js";
+import { applyM3ParentingAcceptedProofEvidence } from "./m3-parenting-proof-maturity.js";
 import {
   AE_PARENTING_ADAPTER_BUILD_V14,
   AE_PARENTING_COMMANDS_V14,
@@ -92,7 +92,7 @@ const DECLARED_M3_PARENTING_CAPABILITIES_V14: readonly CapabilityRecord[] = AE_P
 );
 
 export const M3_PARENTING_CAPABILITIES_V14: readonly CapabilityRecord[] =
-  applyM3ParentingAcceptedP1P2Evidence(DECLARED_M3_PARENTING_CAPABILITIES_V14);
+  applyM3ParentingAcceptedProofEvidence(DECLARED_M3_PARENTING_CAPABILITIES_V14);
 
 export const buildParentingRequestV14 = (input: {
   readonly requestId: string;
