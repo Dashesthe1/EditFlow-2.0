@@ -15,6 +15,7 @@
 
   var PROOF_ENV = "EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF";
   var PREFIX_ENV = "EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX";
+  var ARTIFACT_DIR_ENV = "EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var stage = "preflight";
@@ -80,10 +81,9 @@
   if (!prefix || prefix.indexOf("M3_LAYER_CONTROLS_P12_") !== 0) return;
   if (!app.project || app.project.file) return;
 
-  var currentFile = new File($.fileName);
-  /* host -> ae-cep -> adapters -> packages -> repository root */
-  var repoRoot = currentFile.parent.parent.parent.parent.parent;
-  var artifactDir = new Folder(repoRoot.fsName + "/proofs/artifacts/m3-layer-controls-p1-p2");
+  var artifactDirPath = $.getenv(ARTIFACT_DIR_ENV);
+  if (!artifactDirPath) return;
+  var artifactDir = new Folder(artifactDirPath);
   try { if (!artifactDir.exists) artifactDir.create(); } catch (_) {}
   var markerFile = new File(artifactDir.fsName + "/cleanup-result.json");
   var target = null;
