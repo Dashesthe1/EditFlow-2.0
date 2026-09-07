@@ -40,6 +40,9 @@ test("proof-only fixture builds the exact audio/precomp/solid/camera matrix with
   const source = await readFile(fixturePath, "utf8");
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF/);
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX/);
+  assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR/);
+  assert.match(source, /new Folder\(artifactDirPath\)/);
+  assert.doesNotMatch(source, /currentFile\.parent\.parent/);
   assert.match(source, /app\.project\.items\.addComp/);
   assert.match(source, /new ImportOptions\(audioFile\)/);
   assert.match(source, /target\.layers\.add\(audioItem\)/);
@@ -59,6 +62,9 @@ test("proof-only fixture builds the exact audio/precomp/solid/camera matrix with
 test("proof-only cleanup validates the fixed prefix-owned fixture and emits engine-independent evidence", async () => {
   const source = await readFile(cleanupPath, "utf8");
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF/);
+  assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR/);
+  assert.match(source, /new Folder\(artifactDirPath\)/);
+  assert.doesNotMatch(source, /currentFile\.parent\.parent/);
   assert.match(source, /app\.project\.numItems !== 4/);
   assert.match(source, /target\.numLayers !== 4/);
   assert.match(source, /CloseOptions\.DO_NOT_SAVE_CHANGES/);
@@ -99,6 +105,8 @@ test("layer-controls self-hosted wrapper reuses accepted startup logic and proof
   assert.match(source, /authenticated protocol 1\.6 registration/);
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF = "1"/);
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX = "M3_LAYER_CONTROLS_P12_"/);
+  assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR = \$ArtifactDir/);
+  assert.match(source, /PreviousProofArtifactDir/);
   assert.doesNotMatch(source, /\$TempPath = Join-Path \$env:TEMP/);
   assert.doesNotMatch(source, /Invoke-Expression/);
   assert.match(source, /Remove-Item \$TempPath -Force -ErrorAction SilentlyContinue/);
