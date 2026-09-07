@@ -20,6 +20,12 @@ import {
   type AeCompositeResponseV13,
   type AeCompositeTransportV13,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_3.js";
+import {
+  AE_PARENTING_PROTOCOL_VERSION_V14,
+  type AeParentingRequestV14,
+  type AeParentingResponseV14,
+  type AeParentingTransportV14,
+} from "../../../packages/adapters/ae-cep/src/protocol-v1_4.js";
 
 export interface LoopbackCepBrokerOptions {
   readonly port: number;
@@ -40,8 +46,8 @@ export interface LoopbackCepPanelSession {
   readonly lastSeenAt: string;
 }
 
-type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13;
-type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13;
+type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14;
+type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14;
 
 interface PendingCommand {
   readonly request: BrokerRequest;
@@ -52,7 +58,7 @@ interface PendingCommand {
   leasedSessionId: string | null;
 }
 
-const COMPILED_PROTOCOLS = [AE_COMPOSITE_PROTOCOL_VERSION_V13, AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
+const COMPILED_PROTOCOLS = [AE_PARENTING_PROTOCOL_VERSION_V14, AE_COMPOSITE_PROTOCOL_VERSION_V13, AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
 const compiledProtocolSet = new Set<string>(COMPILED_PROTOCOLS);
 
 const jsonResponse = (res: ServerResponse, status: number, value: unknown): void => {
@@ -115,7 +121,7 @@ const normalizeBrokerProtocols = (input: readonly string[] | undefined): string[
 const negotiateProtocol = (offered: readonly string[], supported: readonly string[]): string | null =>
   supported.find((protocol) => offered.includes(protocol)) ?? null;
 
-export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12, AeCompositeTransportV13 {
+export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12, AeCompositeTransportV13, AeParentingTransportV14 {
   readonly options: Required<LoopbackCepBrokerOptions>;
   #server: Server | null = null;
   #port = 0;
@@ -197,6 +203,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
   async dispatch(request: AeAdapterRequestV11): Promise<AeAdapterResponseV11>;
   async dispatch(request: AeMaskRequestV12): Promise<AeMaskResponseV12>;
   async dispatch(request: AeCompositeRequestV13): Promise<AeCompositeResponseV13>;
+  async dispatch(request: AeParentingRequestV14): Promise<AeParentingResponseV14>;
   async dispatch(request: BrokerRequest): Promise<BrokerResponse> {
     if (this.#server === null) throw new Error("CEP_BROKER_NOT_STARTED");
     if (!compiledProtocolSet.has(request.protocolVersion)) {
