@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-layer-control-request-v1_6.schema.json",
+  "title": "EditFlow AE Layer Control Request v1.6",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": { "const": "1.6.0" },
+    "requestId": { "type": "string", "minLength": 1 },
+    "transactionId": { "type": "string", "minLength": 1 },
+    "operationId": { "type": "string", "minLength": 1 },
+    "capabilityId": {
+      "enum": ["ae.layer.switches.set", "ae.layer.order.set", "ae.layer.controls.readback"]
+    },
+    "command": {
+      "enum": ["layer.switches.set", "layer.order.set", "layer.controls.readback"]
+    },
+    "expectedHostProjectRevision": { "type": ["integer", "null"], "minimum": 0 },
+    "payload": { "type": "object" },
+    "readbackProfile": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "command": { "const": "layer.switches.set" } }, "required": ["command"] },
+      "then": {
+        "properties": {
+          "capabilityId": { "const": "ae.layer.switches.set" },
+          "payload": { "$ref": "#/$defs/switchPayload" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "command": { "const": "layer.order.set" } }, "required": ["command"] },
+      "then": {
+        "properties": {
+          "capabilityId": { "const": "ae.layer.order.set" },
+          "payload": { "$ref": "#/$defs/orderPayload" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "command": { "const": "layer.controls.readback" } }, "required": ["command"] },
+      "then": {
+        "properties": {
+          "capabilityId": { "const": "ae.layer.controls.readback" },
+          "payload": { "$ref": "#/$defs/readbackPayload" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableId"],
+      "properties": {
+        "stableId": { "type": "string", "minLength": 1 },
+        "hostId": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "commonTarget": {
+      "type": "object",
+      "required": ["comp", "layer"],
+      "properties": {
+        "comp": { "$ref": "#/$defs/objectRef" },
+        "layer": { "$ref": "#/$defs/objectRef" }
+      }
+    },
+    "switchPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "solo": { "type": "boolean" },
+        "shy": { "type": "boolean" },
+        "locked": { "type": "boolean" },
+        "guideLayer": { "type": "boolean" },
+        "adjustmentLayer": { "type": "boolean" },
+        "threeDLayer": { "type": "boolean" },
+        "collapseTransformation": { "type": "boolean" },
+        "audioEnabled": { "type": "boolean" }
+      }
+    },
+    "switchPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/commonTarget" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["comp", "layer", "switches"],
+          "properties": {
+            "comp": { "$ref": "#/$defs/objectRef" },
+            "layer": { "$ref": "#/$defs/objectRef" },
+            "switches": { "$ref": "#/$defs/switchPatch" }
+          }
+        }
+      ]
+    },
+    "placement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["position"],
+          "properties": { "position": { "const": "BEGINNING" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["position"],
+          "properties": { "position": { "const": "END" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["position", "referenceLayer"],
+          "properties": {
+            "position": { "const": "BEFORE" },
+            "referenceLayer": { "$ref": "#/$defs/objectRef" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["position", "referenceLayer"],
+          "properties": {
+            "position": { "const": "AFTER" },
+            "referenceLayer": { "$ref": "#/$defs/objectRef" }
+          }
+        }
+      ]
+    },
+    "orderPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer", "placement"],
+      "properties": {
+        "comp": { "$ref": "#/$defs/objectRef" },
+        "layer": { "$ref": "#/$defs/objectRef" },
+        "placement": { "$ref": "#/$defs/placement" }
+      }
+    },
+    "readbackPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer"],
+      "properties": {
+        "comp": { "$ref": "#/$defs/objectRef" },
+        "layer": { "$ref": "#/$defs/objectRef" }
+      }
+    }
+  }
+}
