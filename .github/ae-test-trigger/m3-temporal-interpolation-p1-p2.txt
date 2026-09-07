@@ -1,0 +1,5 @@
+M3 temporal interpolation P1/P2 real-AE control trigger
+source_commit=9b660195c265f35fff79616b1ae345c01aeaec78
+protocol=1.7.0
+scope=P1_validation_rejection+P2_structural_readback
+startup_mode=production-equivalent-no-preflight
