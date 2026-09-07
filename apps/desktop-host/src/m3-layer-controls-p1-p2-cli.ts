@@ -166,6 +166,7 @@ const main = async (): Promise<void> => {
   let baselineFingerprint: string | null = null;
   let baselineItemCount: number | null = null;
   let initialReadback: Record<string, unknown> | null = null;
+  let fullPatchEvidence: AeLayerSwitchPatchV16 | null = null;
   let fullPatchReadback: Record<string, unknown> | null = null;
   let lockedRejectionReadback: Record<string, unknown> | null = null;
   let restoredReadback: Record<string, unknown> | null = null;
@@ -403,6 +404,7 @@ const main = async (): Promise<void> => {
       collapseTransformation: !baselinePatch.collapseTransformation,
       preserveTransparency: !baselinePatch.preserveTransparency,
     };
+    fullPatchEvidence = fullPatch;
 
     const full = await dispatchV16("layer.switches.set", {
       comp: { stableId: targetStable },
@@ -529,7 +531,7 @@ const main = async (): Promise<void> => {
       },
       switchEvidence: {
         initial: initialReadback,
-        fullPatch,
+        fullPatch: fullPatchEvidence,
         fullPatchReadback,
         lockedRejection: lockedRejectionReadback,
         restored: restoredReadback,
