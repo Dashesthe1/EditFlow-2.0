@@ -1,0 +1,16 @@
+{
+  "protocolVersion": "1.7.0",
+  "requestId": "REQ_TEMPORAL_READBACK_VALID",
+  "transactionId": "TX_TEMPORAL_READBACK_VALID",
+  "operationId": "OP_TEMPORAL_READBACK_VALID",
+  "capabilityId": "ae.property.temporal_interpolation.readback",
+  "command": "property.temporal_interpolation.readback",
+  "expectedHostProjectRevision": null,
+  "payload": {
+    "comp": {"stableId": "COMP_TEMPORAL"},
+    "layer": {"stableId": "LAYER_TEMPORAL"},
+    "propertyPath": ["ADBE Transform Group", "ADBE Opacity"],
+    "keyIndex": 2
+  },
+  "readbackProfile": "M3_TEMPORAL_INTERPOLATION_STRUCTURAL"
+}
