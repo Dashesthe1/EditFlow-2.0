@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.5.0",
+  "requestId": "REQ_NULL_RIG_INVALID",
+  "transactionId": "TX_NULL_RIG_INVALID",
+  "operationId": "OP_NULL_RIG_INVALID",
+  "capabilityId": "ae.layer.null.create",
+  "command": "layer.null_create",
+  "expectedHostProjectRevision": 14,
+  "payload": {
+    "comp": {"stableId": "COMP_NULL_RIG"},
+    "stableId": "NULL_CONTROLLER",
+    "threeDLayer": true
+  },
+  "readbackProfile": "M3_NULL_RIG_STRUCTURAL"
+}
