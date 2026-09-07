@@ -71,7 +71,7 @@ test("P1/P2 acceptance wrapper fails closed on proof overclaim, missing exact st
   assert.doesNotMatch(source, /AfterFX\.exe.*-r/);
 });
 
-test("temporal panel bootstrap preflights the installed v17 loader inside AE and records exact host state before opening CEP", async () => {
+test("temporal panel bootstrap can preflight the installed v17 loader inside AE and record exact host state before opening CEP", async () => {
   const source = await readFile(bootstrapPath, "utf8");
   assert.doesNotThrow(() => new Function(source));
   assert.match(source, /Folder\.userData\.fsName/);
@@ -87,11 +87,14 @@ test("temporal panel bootstrap preflights the installed v17 loader inside AE and
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("self-hosted temporal runner reuses accepted M3 startup machinery, preflights v17, and retains documented CEP failure diagnostics", async () => {
+test("self-hosted temporal runner defaults to the accepted production-style panel bootstrap and makes direct v17 preload explicit", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /run-m3-mask-self-hosted\.ps1/);
   assert.match(source, /run-m3-temporal-interpolation-p1-p2\.ps1/);
-  assert.match(source, /open-editflow-temporal-bridge\.jsx/);
+  assert.match(source, /\[switch\]\$PreflightHostLoader/);
+  assert.match(source, /if \(\$PreflightHostLoader\)/);
+  assert.match(source, /scripts\\windows\\open-editflow-temporal-bridge\.jsx/);
+  assert.match(source, /production-equivalent CEP host bootstrap; no direct host-loader preflight/);
   assert.match(source, /authenticated protocol 1\.7 registration/);
   assert.match(source, /CEP_12\.x\/Documentation\/Debugging%20Handbook\.md/);
   assert.match(source, /CEP12-AEFT\*\.log/);
@@ -106,6 +109,7 @@ test("real-AE temporal P1/P2 workflow is isolated to the Windows AE runner, cont
   assert.match(source, /ae-test\/m3-temporal-interpolation-p1-p2-control/);
   assert.match(source, /\.github\/ae-test-trigger\/m3-temporal-interpolation-p1-p2\.txt/);
   assert.match(source, /run-m3-temporal-interpolation-self-hosted\.ps1/);
+  assert.doesNotMatch(source, /PreflightHostLoader/);
   assert.match(source, /proofs\/artifacts\/m3-temporal-interpolation-p1-p2\//);
   assert.match(source, /if: always\(\)/);
   assert.match(source, /timeout-minutes: 10/);
