@@ -21,7 +21,7 @@
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
   var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
-  var KNOWN_PROTOCOLS = ["1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
+  var KNOWN_PROTOCOLS = ["1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
@@ -44,8 +44,8 @@
   function assertConfig() {
     if (supportedProtocolVersions().length === 0) throw new Error("Unsupported EditFlow CEP protocol configuration.");
     if (config.host !== "127.0.0.1") throw new Error("EditFlow CEP broker host must be 127.0.0.1.");
-    if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("EditFlow CEP broker port is not configured.");
-    if (typeof config.token !== "string" || config.token.length < 32) throw new Error("EditFlow CEP broker token is not configured.");
+    if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("EditFlow CEP bridge config port is not configured.");
+    if (typeof config.token !== "string" || config.token.length < 32) throw new Error("EditFlow CEP bridge token is not configured.");
   }
 
   function brokerUrl(path) {
@@ -97,7 +97,7 @@
       }
       var hostPath;
       try {
-        hostPath = extensionRootPath() + "/host/editflow_host_current_v15.jsx";
+        hostPath = extensionRootPath() + "/host/editflow_host_current_v16.jsx";
       } catch (error) {
         reject(new Error("Host bootstrap: " + (error && error.message ? error.message : String(error))));
         return;
