@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3LayerControlsAcceptedP1P2Evidence } from "./m3-layer-controls-proof-maturity.js";
 import {
   AE_LAYER_CONTROLS_ADAPTER_BUILD_V16,
   AE_LAYER_CONTROLS_COMMANDS_V16,
@@ -72,7 +73,7 @@ export class CepEvalScriptLayerControlsTransportV16 {
 const riskForLayerControlsCommand = (command: AeLayerControlsCommandV16): CapabilityRecord["riskClass"] =>
   command === "layer.switches_readback" ? "R0_READ_ONLY" : "R2_STRUCTURAL";
 
-export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] = AE_LAYER_CONTROLS_COMMANDS_V16.map(
+const M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16: readonly CapabilityRecord[] = AE_LAYER_CONTROLS_COMMANDS_V16.map(
   (command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForLayerControlsCommandV16(command)),
     domain: "layer",
@@ -92,6 +93,9 @@ export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] = A
     fallbackPolicy: "FORBID",
   }),
 );
+
+export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] =
+  applyM3LayerControlsAcceptedP1P2Evidence(M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16);
 
 export const buildLayerControlsRequestV16 = (input: {
   readonly requestId: string;
