@@ -19,5 +19,7 @@
   {"schema":"spec/ae-parenting-request-v1_4.schema.json","fixture":"spec/fixtures/ae-parenting-request-v1_4.valid.json","valid":true},
   {"schema":"spec/ae-parenting-request-v1_4.schema.json","fixture":"spec/fixtures/ae-parenting-request-v1_4.invalid.json","valid":false},
   {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.valid.json","valid":true},
-  {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.invalid.json","valid":false}
+  {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.invalid.json","valid":false},
+  {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.valid.json","valid":true},
+  {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.invalid.json","valid":false}
 ]

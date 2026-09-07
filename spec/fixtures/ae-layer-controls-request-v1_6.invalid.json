@@ -1,0 +1,17 @@
+{
+  "protocolVersion": "1.6.0",
+  "requestId": "REQ_LAYER_CONTROLS_INVALID",
+  "transactionId": "TX_LAYER_CONTROLS_INVALID",
+  "operationId": "OP_LAYER_CONTROLS_INVALID",
+  "capabilityId": "ae.layer.controls.set",
+  "command": "layer.controls.set",
+  "expectedHostProjectRevision": 42,
+  "payload": {
+    "comp": {"stableId": "COMP_CONTROLS"},
+    "layer": {"stableId": "LAYER_CONTROLS"},
+    "controls": {
+      "frameBlending": true
+    }
+  },
+  "readbackProfile": "M3_LAYER_CONTROLS_STRUCTURAL"
+}

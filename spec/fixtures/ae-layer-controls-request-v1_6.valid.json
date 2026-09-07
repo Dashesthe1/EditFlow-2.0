@@ -1,0 +1,29 @@
+{
+  "protocolVersion": "1.6.0",
+  "requestId": "REQ_LAYER_CONTROLS_VALID",
+  "transactionId": "TX_LAYER_CONTROLS_VALID",
+  "operationId": "OP_LAYER_CONTROLS_VALID",
+  "capabilityId": "ae.layer.controls.set",
+  "command": "layer.controls.set",
+  "expectedHostProjectRevision": 42,
+  "payload": {
+    "comp": {"stableId": "COMP_CONTROLS"},
+    "layer": {"stableId": "LAYER_CONTROLS"},
+    "controls": {
+      "enabled": true,
+      "solo": false,
+      "shy": true,
+      "locked": false,
+      "audioEnabled": true,
+      "adjustmentLayer": false,
+      "collapseTransformation": true,
+      "effectsActive": true,
+      "guideLayer": false,
+      "preserveTransparency": true,
+      "quality": "BEST",
+      "samplingQuality": "BICUBIC",
+      "threeDLayer": false
+    }
+  },
+  "readbackProfile": "M3_LAYER_CONTROLS_STRUCTURAL"
+}
