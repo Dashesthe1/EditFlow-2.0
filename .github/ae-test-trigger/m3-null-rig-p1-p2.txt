@@ -1,0 +1,3 @@
+M3 null-rig P1/P2 real-AE trigger
+source=955e24401ee37febf998d8ec4c544e345aebab6d
+reason=Run 3 proved all P1/P2 behavior; this source-changed run verifies managed null backing-source reclamation and exact baseline restoration.
