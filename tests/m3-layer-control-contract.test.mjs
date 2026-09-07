@@ -100,20 +100,24 @@ test("direct protocol 1.6 transport treats hostile-looking refs as JSON data", a
   assert.ok(!captured.includes("); app.quit(); //\")"));
 });
 
-test("layer-control host exposes explicit switches/order, stale-state checks, readback, and undo recovery", async () => {
+test("layer-control host exposes explicit switches/order, stale-state checks, exact readback, and undo recovery", async () => {
   const source = await readFile(hostPath, "utf8");
   for (const command of AE_LAYER_CONTROL_COMMANDS_V16) assert.match(source, new RegExp(`\\"${command.replaceAll(".", "\\.")}\\"`));
   for (const key of ["enabled", "solo", "shy", "locked", "guideLayer", "adjustmentLayer", "threeDLayer", "collapseTransformation", "audioEnabled"]) assert.match(source, new RegExp(`\\"${key}\\"`));
+  assert.match(source, /SWITCH_MUTATION_ORDER/);
   assert.match(source, /moveToBeginning\(\)/);
   assert.match(source, /moveToEnd\(\)/);
   assert.match(source, /moveBefore\(referenceLayer\)/);
   assert.match(source, /moveAfter\(referenceLayer\)/);
+  assert.match(source, /orderMatches/);
+  assert.match(source, /LAYER_ORDER_READBACK_MISMATCH/);
   assert.match(source, /EXPECTED_HOST_REVISION_REQUIRED/);
   assert.match(source, /HOST_REVISION_CONFLICT/);
   assert.match(source, /LAYER_ORDER_SELF_REFERENCE/);
   assert.match(source, /LAYER_SWITCH_READBACK_MISMATCH/);
   assert.match(source, /app\.beginUndoGroup/);
-  assert.match(source, /findMenuCommandId\("Undo"\)/);
+  assert.match(source, /app\.executeCommand\(16\)/);
+  assert.doesNotMatch(source, /findMenuCommandId/);
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
