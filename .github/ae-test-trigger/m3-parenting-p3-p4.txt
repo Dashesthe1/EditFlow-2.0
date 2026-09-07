@@ -3,5 +3,6 @@ EditFlow M3 parenting P3/P4 real-AE proof trigger marker.
 Only updates to this file on ae-test/m3-parenting-p3-p4-control should trigger the isolated self-hosted parenting P3/P4 acceptance workflow.
 
 Run 1: real AE exposed the rotated non-uniform-parent shear limitation.
-Runs 2-4: the new full repository preflight correctly prevented any AE launch while the static no-jump guard was itself too broad.
-Run 5: the guard now asserts the intended direct Layer.parent assignments and forbids only an actual `.setParentWithJump(` method invocation. Run the unchanged fail-closed parenting implementation, P3 retained renders, P4 induced rollback, and disposable-project cleanup after the full repository gate passes.
+Runs 2-4: full repository preflight correctly prevented AE launch while the new static no-jump guard was itself too broad.
+Run 5: all 167 repository checks passed and real AE proved exact five-point preservation for the representable direct-parent envelope, then exposed a stale v1.1 cached-state handoff before the parented render.
+Run 6: re-observe AE after every successful protocol 1.4 parenting mutation before the next checked protocol 1.1 render; successful cleanup is verification-only and the harness no longer issues broad fallback Undo after failure. Run the full P3 retained-render and P4 induced-rollback proof.
