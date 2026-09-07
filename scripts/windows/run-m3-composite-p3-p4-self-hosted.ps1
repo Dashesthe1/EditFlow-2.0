@@ -35,9 +35,27 @@ $Composite = $Composite.Replace('M3 mask/Bezier', 'M3 composite')
 $Composite = $Composite.Replace('isolated M3 AE proof', 'isolated M3 composite AE proof')
 
 [System.IO.File]::WriteAllText($TempPath, $Composite, (New-Object System.Text.UTF8Encoding($false)))
+
+# The two proof cleanup modes are intentionally mutually exclusive. A process-level
+# mask proof flag inherited from an operator shell or diagnostic session must never
+# be allowed to collide with this composite-only runner. Preserve its prior value,
+# clear it for the bounded child proof, then restore it after the generated runner
+# has completed. The generated runner independently arms/disarms only the composite
+# flag before launching its owned After Effects process.
+$OriginalMaskProofEnv = $env:EDITFLOW_M3_MASK_P4_PROOF
+Remove-Item Env:EDITFLOW_M3_MASK_P4_PROOF -ErrorAction SilentlyContinue
+if ($null -ne $OriginalMaskProofEnv) {
+  Write-Host "Composite proof runner temporarily cleared a pre-existing mask proof environment flag."
+}
+
 try {
   & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
   Remove-Item $TempPath -Force -ErrorAction SilentlyContinue
+  if ($null -ne $OriginalMaskProofEnv) {
+    $env:EDITFLOW_M3_MASK_P4_PROOF = $OriginalMaskProofEnv
+  } else {
+    Remove-Item Env:EDITFLOW_M3_MASK_P4_PROOF -ErrorAction SilentlyContinue
+  }
 }
