@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_layer_controls.jsx";
+const cleanupPath = "packages/adapters/ae-cep/host/editflow_host_m3_layer_controls_proof_cleanup.jsx";
+const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v16.jsx";
+const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const cliPath = "apps/desktop-host/src/m3-layer-controls-p3-p4-cli.ts";
 const wrapperPath = "scripts/windows/run-m3-layer-controls-p3-p4.ps1";
 const selfHostedPath = "scripts/windows/run-m3-layer-controls-p3-p4-self-hosted.ps1";
@@ -36,6 +39,29 @@ test("layer-controls P3/P4 harness emits reviewable visibility renders and never
   assert.match(source, /P4_failure_injection_rollback: checks\.p4 === true/);
   assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
   assert.match(source, /cleanup_fingerprint_restored/);
+});
+
+test("layer-controls proof cleanup is env-gated, fixture-exact, and discards only the owned unsaved project after recovery render", async () => {
+  const [cleanup, loader, installer] = await Promise.all([
+    readFile(cleanupPath, "utf8"),
+    readFile(loaderPath, "utf8"),
+    readFile(installerPath, "utf8"),
+  ]);
+  assert.match(cleanup, /EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF/);
+  assert.match(cleanup, /RECOVERY_REQUEST_NAME = "p4-post-rollback\.avi"/);
+  assert.match(cleanup, /app\.project\.file/);
+  assert.match(cleanup, /app\.project\.numItems !== 2/);
+  assert.match(cleanup, /M3_LAYER_CONTROLS_P34_/);
+  assert.match(cleanup, /target\.numLayers !== 1/);
+  assert.match(cleanup, /layer\.source !== sourceMedia/);
+  assert.match(cleanup, /layer\.enabled !== true/);
+  assert.match(cleanup, /layer\.shy !== false/);
+  assert.match(cleanup, /project\.close\(CloseOptions\.DO_NOT_SAVE_CHANGES\)/);
+  assert.match(cleanup, /app\.newProject\(\)/);
+  assert.match(cleanup, /M3_LAYER_CONTROLS_P3_P4_REAL_AE/);
+  assert.match(loader, /editflow_host_m3_layer_controls_proof_cleanup\.jsx/);
+  assert.match(loader, /EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF/);
+  assert.match(installer, /"editflow_host_m3_layer_controls_proof_cleanup\.jsx"/);
 });
 
 test("layer-controls P3/P4 runner safely accepts verified already-loaded panel bootstrap evidence without weakening the shared template", async () => {
