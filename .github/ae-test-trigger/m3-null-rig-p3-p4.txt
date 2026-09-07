@@ -1,0 +1,4 @@
+M3 null-rig P3/P4 real-AE trigger
+source=b16b744456ebaf3367831488358ffa6969ec6ba7
+ci_run=34140723520
+scope=P3 retained visual controller evidence + P4 induced managed-null creation rollback
