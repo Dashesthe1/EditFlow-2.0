@@ -45,6 +45,12 @@ interface RecordedResponse {
   readonly notes: readonly string[];
 }
 
+interface TransformSpec {
+  readonly position: readonly number[];
+  readonly scale: readonly number[];
+  readonly rotation: number;
+}
+
 type PointMap = Readonly<Record<"topLeft" | "topRight" | "bottomRight" | "bottomLeft" | "center", readonly number[]>>;
 
 const argument = (name: string): string | null => {
@@ -148,11 +154,8 @@ const geometryClose = (left: PointMap | null, right: PointMap | null, tolerance 
   return (Object.keys(left) as Array<keyof PointMap>).every((key) => pointsClose(left[key], right[key], tolerance));
 };
 
-const transformMatches = (
-  readback: Record<string, unknown> | null,
-  expected: Readonly<{ position: readonly number[]; scale: readonly number[]; rotation: number }>,
-  tolerance = 0.001,
-): boolean => readback !== null
+const transformMatches = (readback: Record<string, unknown> | null, expected: TransformSpec, tolerance = 0.001): boolean =>
+  readback !== null
   && pointsClose(numericVector(readback, "position"), expected.position, tolerance)
   && pointsClose(numericVector(readback, "scale"), expected.scale, tolerance)
   && typeof readback["rotation"] === "number"
@@ -167,8 +170,7 @@ const relationshipChildStableIds = (relationship: Record<string, unknown> | null
   if (relationship === null || !Array.isArray(relationship["directChildren"])) return [];
   const ids: string[] = [];
   for (const child of relationship["directChildren"] as unknown[]) {
-    const childRecord = asRecord(child);
-    const layer = objectRef(childRecord, "layer");
+    const layer = objectRef(asRecord(child), "layer");
     if (typeof layer?.["stableId"] === "string") ids.push(layer["stableId"] as string);
   }
   return ids;
@@ -223,46 +225,28 @@ const main = async (): Promise<void> => {
   const childCStable = `${prefix}_CHILD_C`;
   const childStables = [childAStable, childBStable, childCStable] as const;
   const nullPosition = [365, 205] as const;
-  const nullTransform = Object.freeze({ position: nullPosition, scale: [118, 118], rotation: 24 });
-  const childTransforms = Object.freeze({
+  const nullTransform: TransformSpec = Object.freeze({ position: nullPosition, scale: [118, 118], rotation: 24 });
+  const childTransforms: Readonly<Record<string, TransformSpec>> = Object.freeze({
     [childAStable]: Object.freeze({ position: [170, 115], scale: [80, 120], rotation: -14 }),
     [childBStable]: Object.freeze({ position: [405, 215], scale: [130, 70], rotation: 19 }),
     [childCStable]: Object.freeze({ position: [640, 325], scale: [92, 92], rotation: 33 }),
   });
+  const childTransformFor = (stableId: string): TransformSpec => {
+    const transform = childTransforms[stableId];
+    if (transform === undefined) throw new Error(`Missing fixed child transform for ${stableId}.`);
+    return transform;
+  };
   let operationCounter = 0;
   let requestCounter = 0;
 
   const recordV11 = (command: string, response: AeAdapterResponseV11): void => {
-    responses.push({
-      protocolVersion: response.protocolVersion,
-      command,
-      outcome: response.outcome,
-      error: response.error,
-      hostProjectRevision: response.hostProjectRevision,
-      notes: response.diagnostics.notes ?? [],
-    });
+    responses.push({ protocolVersion: response.protocolVersion, command, outcome: response.outcome, error: response.error, hostProjectRevision: response.hostProjectRevision, notes: response.diagnostics.notes ?? [] });
   };
-
   const recordV14 = (response: AeParentingResponseV14): void => {
-    responses.push({
-      protocolVersion: response.protocolVersion,
-      command: response.command,
-      outcome: response.outcome,
-      error: response.error,
-      hostProjectRevision: response.hostProjectRevision,
-      notes: response.diagnostics.notes ?? [],
-    });
+    responses.push({ protocolVersion: response.protocolVersion, command: response.command, outcome: response.outcome, error: response.error, hostProjectRevision: response.hostProjectRevision, notes: response.diagnostics.notes ?? [] });
   };
-
   const recordV15 = (response: AeNullRigResponseV15): void => {
-    responses.push({
-      protocolVersion: response.protocolVersion,
-      command: response.command,
-      outcome: response.outcome,
-      error: response.error,
-      hostProjectRevision: response.hostProjectRevision,
-      notes: response.diagnostics.notes,
-    });
+    responses.push({ protocolVersion: response.protocolVersion, command: response.command, outcome: response.outcome, error: response.error, hostProjectRevision: response.hostProjectRevision, notes: response.diagnostics.notes });
   };
 
   const refreshState = async (): Promise<void> => {
@@ -273,10 +257,7 @@ const main = async (): Promise<void> => {
     projectSnapshot = observed.project;
   };
 
-  const executeV11 = async (
-    command: AeAdapterPublicCommandV11,
-    payload: Readonly<Record<string, unknown>>,
-  ): Promise<AeAdapterResponseV11> => {
+  const executeV11 = async (command: AeAdapterPublicCommandV11, payload: Readonly<Record<string, unknown>>): Promise<AeAdapterResponseV11> => {
     if (client === null || state === null) throw new Error("M3 null-rig setup state is not initialized.");
     operationCounter += 1;
     const response = await client.executePublic(command, {
@@ -303,10 +284,7 @@ const main = async (): Promise<void> => {
       operationId: `${transactionId}_V14_OP_${operationCounter}`,
       command: "layer.parenting_readback",
       expectedHostProjectRevision: null,
-      payload: {
-        comp: { stableId: targetStable },
-        layer: { stableId: layerStableId },
-      },
+      payload: { comp: { stableId: targetStable }, layer: { stableId: layerStableId } },
       readbackProfile: "M3_NULL_RIG_P1_P2_GEOMETRY_WITNESS",
     });
     const response = await broker.dispatch(request);
@@ -314,11 +292,7 @@ const main = async (): Promise<void> => {
     return response;
   };
 
-  const dispatchV15 = async (
-    command: AeNullRigCommandV15,
-    payload: Readonly<Record<string, unknown>>,
-    expectedRevision: number | null,
-  ): Promise<AeNullRigResponseV15> => {
+  const dispatchV15 = async (command: AeNullRigCommandV15, payload: Readonly<Record<string, unknown>>, expectedRevision: number | null): Promise<AeNullRigResponseV15> => {
     if (broker === null) throw new Error("M3 null-rig broker is not initialized.");
     operationCounter += 1;
     const request = buildNullRigRequestV15({
@@ -340,8 +314,7 @@ const main = async (): Promise<void> => {
     let allAvailable = true;
     for (const stableId of childStables) {
       const response = await dispatchV14Read(stableId);
-      const parenting = parentingRecord(response);
-      destination[stableId] = geometryPoints(parenting);
+      destination[stableId] = geometryPoints(parentingRecord(response));
       if (response.outcome !== "NO_OP" || destination[stableId] === null) allAvailable = false;
     }
     return allAvailable;
@@ -352,8 +325,9 @@ const main = async (): Promise<void> => {
     try {
       await refreshState();
       if (projectSnapshot === null) return;
-      const present = projectSnapshot.items.some((item) => item.kind === "COMPOSITION" && item.stableId === stableId);
-      if (present) await executeV11("comp.remove", { comp: { stableId } });
+      if (projectSnapshot.items.some((item) => item.kind === "COMPOSITION" && item.stableId === stableId)) {
+        await executeV11("comp.remove", { comp: { stableId } });
+      }
     } catch (error) {
       cleanupErrors.push(`${stableId}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -375,8 +349,7 @@ const main = async (): Promise<void> => {
     hostRevision = after.hostRevision;
     projectSnapshot = after.project;
     checks[`${checkPrefix}_rejected`] = response.outcome === "REJECTED" && response.error?.code === expectedCode;
-    checks[`${checkPrefix}_revision_unchanged`] = response.hostProjectRevision === before.hostRevision
-      && after.hostRevision === before.hostRevision;
+    checks[`${checkPrefix}_revision_unchanged`] = response.hostProjectRevision === before.hostRevision && after.hostRevision === before.hostRevision;
     checks[`${checkPrefix}_fingerprint_unchanged`] = after.observed.projectFingerprint === before.observed.projectFingerprint;
   };
 
@@ -399,21 +372,12 @@ const main = async (): Promise<void> => {
     checks.panel_supports_v11_v14_v15 = panel.supportedProtocolVersions.includes(AE_NULL_RIG_PROTOCOL_VERSION_V15)
       && panel.supportedProtocolVersions.includes(AE_PARENTING_PROTOCOL_VERSION_V14)
       && panel.supportedProtocolVersions.includes(AE_ADAPTER_PROTOCOL_VERSION_V11);
-    if (!checks.panel_negotiated_v15 || !checks.panel_supports_v11_v14_v15) {
-      throw new Error(`Null-rig proof requires negotiated protocol ${AE_NULL_RIG_PROTOCOL_VERSION_V15} with 1.4 geometry witness and 1.1 setup compatibility.`);
-    }
-    if (panel.extensionVersion !== config.extensionVersion) {
-      throw new Error(`Registered CEP panel version ${panel.extensionVersion} does not match installed config ${config.extensionVersion}.`);
-    }
+    if (!checks.panel_negotiated_v15 || !checks.panel_supports_v11_v14_v15) throw new Error("Null-rig proof did not negotiate required protocols.");
+    if (panel.extensionVersion !== config.extensionVersion) throw new Error(`Registered CEP panel version ${panel.extensionVersion} does not match installed config ${config.extensionVersion}.`);
 
-    client = new AeCepAdapterClientV11(
-      broker,
-      () => `m3-null-rig-setup-${++requestCounter}`,
-      new AeFilesystemPolicyV11([artifactDir]),
-    );
+    client = new AeCepAdapterClientV11(broker, () => `m3-null-rig-setup-${++requestCounter}`, new AeFilesystemPolicyV11([artifactDir]));
     environment = await client.probe();
-    checks.host_probe = environment.hostName === "Adobe After Effects"
-      && environment.adapterProtocolVersion === AE_ADAPTER_PROTOCOL_VERSION_V11;
+    checks.host_probe = environment.hostName === "Adobe After Effects" && environment.adapterProtocolVersion === AE_ADAPTER_PROTOCOL_VERSION_V11;
 
     const baseline = await client.observe(projectId);
     state = baseline.observed;
@@ -423,60 +387,25 @@ const main = async (): Promise<void> => {
     baselineItemCount = baseline.project.itemCount;
     baselineFilePath = baseline.project.filePath;
     checks.blank_unsaved_baseline = baseline.project.itemCount === 0 && baseline.project.filePath === null;
-    if (!checks.blank_unsaved_baseline) {
-      throw new Error("M3 null-rig P1/P2 proof requires the isolated self-hosted AE process to begin with a blank unsaved project.");
-    }
+    if (!checks.blank_unsaved_baseline) throw new Error("M3 null-rig P1/P2 proof requires the isolated self-hosted AE process to begin with a blank unsaved project.");
 
-    await executeV11("comp.create", {
-      stableId: sourceStable,
-      name: `${prefix} Source 300x180`,
-      width: 300,
-      height: 180,
-      pixelAspect: 1,
-      duration: 2,
-      frameRate: 30,
-    });
-    await executeV11("comp.create", {
-      stableId: targetStable,
-      name: `${prefix} Target 800x450`,
-      width: 800,
-      height: 450,
-      pixelAspect: 1,
-      duration: 2,
-      frameRate: 30,
-    });
+    await executeV11("comp.create", { stableId: sourceStable, name: `${prefix} Source 300x180`, width: 300, height: 180, pixelAspect: 1, duration: 2, frameRate: 30 });
+    await executeV11("comp.create", { stableId: targetStable, name: `${prefix} Target 800x450`, width: 800, height: 450, pixelAspect: 1, duration: 2, frameRate: 30 });
 
     for (const stableId of childStables) {
-      await executeV11("layer.add_media", {
-        stableId,
-        comp: { stableId: targetStable },
-        item: { stableId: sourceStable },
-      });
-      const transformResponse = await executeV11("layer.set_transform", {
-        comp: { stableId: targetStable },
-        layer: { stableId },
-        values: childTransforms[stableId],
-      });
-      checks[`setup_${stableId}_transform`] = transformMatches(transformReadback(transformResponse), childTransforms[stableId]);
+      const childTransform = childTransformFor(stableId);
+      await executeV11("layer.add_media", { stableId, comp: { stableId: targetStable }, item: { stableId: sourceStable } });
+      const transformResponse = await executeV11("layer.set_transform", { comp: { stableId: targetStable }, layer: { stableId }, values: childTransform });
+      checks[`setup_${stableId}_transform`] = transformMatches(transformReadback(transformResponse), childTransform);
     }
 
     await verifyRejectedWithoutMutation(
       "p1_stale_null_create",
-      async (beforeRevision) => dispatchV15("layer.null_create", {
-        comp: { stableId: targetStable },
-        stableId: `${prefix}_STALE_NULL`,
-        name: `${prefix} stale null`,
-        position: [90, 90],
-      }, Math.max(0, beforeRevision - 1)),
+      async (beforeRevision) => dispatchV15("layer.null_create", { comp: { stableId: targetStable }, stableId: `${prefix}_STALE_NULL`, name: `${prefix} stale null`, position: [90, 90] }, Math.max(0, beforeRevision - 1)),
       "HOST_REVISION_CONFLICT",
     );
 
-    const createNull = await dispatchV15("layer.null_create", {
-      comp: { stableId: targetStable },
-      stableId: controllerStable,
-      name: `${prefix} Controller`,
-      position: nullPosition,
-    }, hostRevision);
+    const createNull = await dispatchV15("layer.null_create", { comp: { stableId: targetStable }, stableId: controllerStable, name: `${prefix} Controller`, position: nullPosition }, hostRevision);
     nullCreateReadback = nullRecord(createNull);
     checks.p2_null_create_applied = createNull.outcome === "APPLIED"
       && nullCreateReadback?.["isNull"] === true
@@ -485,28 +414,16 @@ const main = async (): Promise<void> => {
     if (!checks.p2_null_create_applied) throw new Error("Protocol 1.5 did not create/read back an exact true After Effects null controller.");
 
     await refreshState();
-    const nullTransformResponse = await executeV11("layer.set_transform", {
-      comp: { stableId: targetStable },
-      layer: { stableId: controllerStable },
-      values: nullTransform,
-    });
+    const nullTransformResponse = await executeV11("layer.set_transform", { comp: { stableId: targetStable }, layer: { stableId: controllerStable }, values: nullTransform });
     nullTransformReadback = transformReadback(nullTransformResponse);
     checks.p2_null_transform_setup = transformMatches(nullTransformReadback, nullTransform);
 
-    const repeatCreate = await dispatchV15("layer.null_create", {
-      comp: { stableId: targetStable },
-      stableId: controllerStable,
-      name: `${prefix} Controller`,
-      position: nullPosition,
-    }, hostRevision);
+    const repeatCreate = await dispatchV15("layer.null_create", { comp: { stableId: targetStable }, stableId: controllerStable, name: `${prefix} Controller`, position: nullPosition }, hostRevision);
     checks.p2_repeat_null_create_no_op = repeatCreate.outcome === "NO_OP"
       && nullRecord(repeatCreate)?.["isNull"] === true
       && objectRef(nullRecord(repeatCreate), "layer")?.["stableId"] === controllerStable;
 
-    const nullRead = await dispatchV15("layer.null_readback", {
-      comp: { stableId: targetStable },
-      layer: { stableId: controllerStable },
-    }, null);
+    const nullRead = await dispatchV15("layer.null_readback", { comp: { stableId: targetStable }, layer: { stableId: controllerStable } }, null);
     checks.p2_null_readback_exact = nullRead.outcome === "NO_OP"
       && nullRecord(nullRead)?.["isNull"] === true
       && nullRecord(nullRead)?.["threeDLayer"] === false
@@ -515,62 +432,32 @@ const main = async (): Promise<void> => {
 
     await verifyRejectedWithoutMutation(
       "p1_null_stable_collision",
-      async (beforeRevision) => dispatchV15("layer.null_create", {
-        comp: { stableId: sourceStable },
-        stableId: controllerStable,
-        name: `${prefix} Collision`,
-        position: [30, 30],
-      }, beforeRevision),
+      async (beforeRevision) => dispatchV15("layer.null_create", { comp: { stableId: sourceStable }, stableId: controllerStable, name: `${prefix} Collision`, position: [30, 30] }, beforeRevision),
       "NULL_STABLE_ID_COLLISION",
     );
-
     await verifyRejectedWithoutMutation(
       "p1_non_null_controller",
-      async (beforeRevision) => dispatchV15("rig.bind_children_to_null_preserve_transform", {
-        comp: { stableId: targetStable },
-        controller: { stableId: childAStable },
-        children: [{ stableId: childBStable }],
-      }, beforeRevision),
+      async (beforeRevision) => dispatchV15("rig.bind_children_to_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: childAStable }, children: [{ stableId: childBStable }] }, beforeRevision),
       "NULL_CONTROLLER_REQUIRED",
     );
-
     await verifyRejectedWithoutMutation(
       "p1_duplicate_child",
-      async (beforeRevision) => dispatchV15("rig.bind_children_to_null_preserve_transform", {
-        comp: { stableId: targetStable },
-        controller: { stableId: controllerStable },
-        children: [{ stableId: childAStable }, { stableId: childAStable }],
-      }, beforeRevision),
+      async (beforeRevision) => dispatchV15("rig.bind_children_to_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: [{ stableId: childAStable }, { stableId: childAStable }] }, beforeRevision),
       "NULL_RIG_DUPLICATE_CHILD",
     );
-
     await verifyRejectedWithoutMutation(
       "p1_self_child",
-      async (beforeRevision) => dispatchV15("rig.bind_children_to_null_preserve_transform", {
-        comp: { stableId: targetStable },
-        controller: { stableId: controllerStable },
-        children: [{ stableId: controllerStable }],
-      }, beforeRevision),
+      async (beforeRevision) => dispatchV15("rig.bind_children_to_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: [{ stableId: controllerStable }] }, beforeRevision),
       "NULL_RIG_SELF_REFERENCE",
     );
-
     await verifyRejectedWithoutMutation(
       "p1_unbind_not_bound",
-      async (beforeRevision) => dispatchV15("rig.unbind_children_from_null_preserve_transform", {
-        comp: { stableId: targetStable },
-        controller: { stableId: controllerStable },
-        children: [{ stableId: childAStable }],
-      }, beforeRevision),
+      async (beforeRevision) => dispatchV15("rig.unbind_children_from_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: [{ stableId: childAStable }] }, beforeRevision),
       "NULL_RIG_CHILD_NOT_BOUND",
     );
-
     await verifyRejectedWithoutMutation(
       "p1_missing_revision",
-      async () => dispatchV15("rig.bind_children_to_null_preserve_transform", {
-        comp: { stableId: targetStable },
-        controller: { stableId: controllerStable },
-        children: childStables.map((stableId) => ({ stableId })),
-      }, null),
+      async () => dispatchV15("rig.bind_children_to_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: childStables.map((stableId) => ({ stableId })) }, null),
       "EXPECTED_HOST_REVISION_REQUIRED",
     );
 
@@ -579,14 +466,11 @@ const main = async (): Promise<void> => {
 
     await refreshState();
     if (projectSnapshot === null) throw new Error("Project snapshot unavailable before null-rig binding.");
-    const preBindIndices = Object.fromEntries(childStables.map((stableId) => [stableId, findLayer(projectSnapshot!, targetStable, stableId)?.index ?? null]));
+    const preBindIndices: Record<string, number | null> = {};
+    for (const stableId of childStables) preBindIndices[stableId] = findLayer(projectSnapshot, targetStable, stableId)?.index ?? null;
     const preBindControllerIndex = findLayer(projectSnapshot, targetStable, controllerStable)?.index ?? null;
 
-    const bind = await dispatchV15("rig.bind_children_to_null_preserve_transform", {
-      comp: { stableId: targetStable },
-      controller: { stableId: controllerStable },
-      children: childStables.map((stableId) => ({ stableId })),
-    }, hostRevision);
+    const bind = await dispatchV15("rig.bind_children_to_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: childStables.map((stableId) => ({ stableId })) }, hostRevision);
     boundRelationship = relationshipRecord(bind);
     checks.p2_bind_applied = bind.outcome === "APPLIED"
       && objectRef(boundRelationship, "controller")?.["isNull"] === true
@@ -594,72 +478,44 @@ const main = async (): Promise<void> => {
       && sameStableIdSet(relationshipChildStableIds(boundRelationship), childStables);
 
     await refreshState();
-    checks.p2_project_snapshot_all_bound = projectSnapshot !== null
-      && childStables.every((stableId) => findLayer(projectSnapshot!, targetStable, stableId)?.parentStableId === controllerStable);
+    checks.p2_project_snapshot_all_bound = projectSnapshot !== null && childStables.every((stableId) => findLayer(projectSnapshot!, targetStable, stableId)?.parentStableId === controllerStable);
     checks.p2_layer_order_preserved_after_bind = projectSnapshot !== null
       && childStables.every((stableId) => findLayer(projectSnapshot!, targetStable, stableId)?.index === preBindIndices[stableId])
       && findLayer(projectSnapshot!, targetStable, controllerStable)?.index === preBindControllerIndex;
 
     checks.p2_bound_geometry_available = await captureChildGeometry(boundGeometry);
-    checks.p2_bind_geometry_preserved = checks.p2_bound_geometry_available
-      && childStables.every((stableId) => geometryClose(initialGeometry[stableId] ?? null, boundGeometry[stableId] ?? null));
+    checks.p2_bind_geometry_preserved = checks.p2_bound_geometry_available && childStables.every((stableId) => geometryClose(initialGeometry[stableId] ?? null, boundGeometry[stableId] ?? null));
 
-    const repeatBind = await dispatchV15("rig.bind_children_to_null_preserve_transform", {
-      comp: { stableId: targetStable },
-      controller: { stableId: controllerStable },
-      children: childStables.map((stableId) => ({ stableId })),
-    }, hostRevision);
+    const repeatBind = await dispatchV15("rig.bind_children_to_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: childStables.map((stableId) => ({ stableId })) }, hostRevision);
     checks.p2_repeat_bind_no_op = repeatBind.outcome === "NO_OP"
       && relationshipRecord(repeatBind)?.["childCount"] === childStables.length
       && sameStableIdSet(relationshipChildStableIds(relationshipRecord(repeatBind)), childStables);
 
-    const boundRead = await dispatchV15("rig.relationship_readback", {
-      comp: { stableId: targetStable },
-      controller: { stableId: controllerStable },
-    }, null);
+    const boundRead = await dispatchV15("rig.relationship_readback", { comp: { stableId: targetStable }, controller: { stableId: controllerStable } }, null);
     checks.p2_bound_relationship_readback = boundRead.outcome === "NO_OP"
       && relationshipRecord(boundRead)?.["childCount"] === childStables.length
       && sameStableIdSet(relationshipChildStableIds(relationshipRecord(boundRead)), childStables);
 
     await refreshState();
-    const unbind = await dispatchV15("rig.unbind_children_from_null_preserve_transform", {
-      comp: { stableId: targetStable },
-      controller: { stableId: controllerStable },
-      children: childStables.map((stableId) => ({ stableId })),
-    }, hostRevision);
+    const unbind = await dispatchV15("rig.unbind_children_from_null_preserve_transform", { comp: { stableId: targetStable }, controller: { stableId: controllerStable }, children: childStables.map((stableId) => ({ stableId })) }, hostRevision);
     unboundRelationship = relationshipRecord(unbind);
-    checks.p2_unbind_applied = unbind.outcome === "APPLIED"
-      && unboundRelationship?.["childCount"] === 0
-      && relationshipChildStableIds(unboundRelationship).length === 0;
+    checks.p2_unbind_applied = unbind.outcome === "APPLIED" && unboundRelationship?.["childCount"] === 0 && relationshipChildStableIds(unboundRelationship).length === 0;
 
     await refreshState();
-    checks.p2_project_snapshot_all_unbound = projectSnapshot !== null
-      && childStables.every((stableId) => findLayer(projectSnapshot!, targetStable, stableId)?.parentStableId === null);
+    checks.p2_project_snapshot_all_unbound = projectSnapshot !== null && childStables.every((stableId) => findLayer(projectSnapshot!, targetStable, stableId)?.parentStableId === null);
     checks.p2_layer_order_preserved_after_unbind = projectSnapshot !== null
       && childStables.every((stableId) => findLayer(projectSnapshot!, targetStable, stableId)?.index === preBindIndices[stableId])
       && findLayer(projectSnapshot!, targetStable, controllerStable)?.index === preBindControllerIndex;
 
     checks.p2_unbound_geometry_available = await captureChildGeometry(unboundGeometry);
-    checks.p2_unbind_geometry_preserved = checks.p2_unbound_geometry_available
-      && childStables.every((stableId) => geometryClose(initialGeometry[stableId] ?? null, unboundGeometry[stableId] ?? null));
+    checks.p2_unbind_geometry_preserved = checks.p2_unbound_geometry_available && childStables.every((stableId) => geometryClose(initialGeometry[stableId] ?? null, unboundGeometry[stableId] ?? null));
 
-    const finalRelationship = await dispatchV15("rig.relationship_readback", {
-      comp: { stableId: targetStable },
-      controller: { stableId: controllerStable },
-    }, null);
+    const finalRelationship = await dispatchV15("rig.relationship_readback", { comp: { stableId: targetStable }, controller: { stableId: controllerStable } }, null);
     checks.p2_final_relationship_empty = finalRelationship.outcome === "NO_OP"
       && relationshipRecord(finalRelationship)?.["childCount"] === 0
       && relationshipChildStableIds(relationshipRecord(finalRelationship)).length === 0;
 
-    const p1Prefixes = [
-      "p1_stale_null_create",
-      "p1_null_stable_collision",
-      "p1_non_null_controller",
-      "p1_duplicate_child",
-      "p1_self_child",
-      "p1_unbind_not_bound",
-      "p1_missing_revision",
-    ];
+    const p1Prefixes = ["p1_stale_null_create", "p1_null_stable_collision", "p1_non_null_controller", "p1_duplicate_child", "p1_self_child", "p1_unbind_not_bound", "p1_missing_revision"];
     checks.p1 = p1Prefixes.every((checkPrefix) => checks[`${checkPrefix}_rejected`] === true
       && checks[`${checkPrefix}_revision_unchanged`] === true
       && checks[`${checkPrefix}_fingerprint_unchanged`] === true);
@@ -695,11 +551,8 @@ const main = async (): Promise<void> => {
           if (target?.composition) {
             const stableIds = target.composition.layers.map((layer) => layer.stableId).filter((stableId): stableId is string => stableId !== null);
             const expectedIds = [controllerStable, ...childStables];
-            checks.cleanup_target_fixture_owned = target.composition.layers.length === expectedIds.length
-              && sameStableIdSet(stableIds, expectedIds);
-            if (!checks.cleanup_target_fixture_owned) {
-              cleanupErrors.push("Target composition contains layers outside the exact null-rig proof fixture; refusing broad cleanup.");
-            }
+            checks.cleanup_target_fixture_owned = target.composition.layers.length === expectedIds.length && sameStableIdSet(stableIds, expectedIds);
+            if (!checks.cleanup_target_fixture_owned) cleanupErrors.push("Target composition contains layers outside the exact null-rig proof fixture; refusing broad cleanup.");
           }
         }
       }
@@ -729,10 +582,7 @@ const main = async (): Promise<void> => {
       && checks.cleanup_fingerprint_restored === true;
     if (broker !== null) await broker.stop();
 
-    const ok = failureError === null
-      && cleanupComplete
-      && checks.p1 === true
-      && checks.p2 === true;
+    const ok = failureError === null && cleanupComplete && checks.p1 === true && checks.p2 === true;
     await writeJson(resultPath, {
       proofId: "M3_NULL_RIG_P1_P2_REAL_AE",
       status: ok ? "PASS" : "FAILURE",
@@ -749,29 +599,10 @@ const main = async (): Promise<void> => {
       },
       panel,
       environment,
-      fixture: {
-        sourceStable,
-        targetStable,
-        controllerStable,
-        childStables,
-        nullPosition,
-        nullTransform,
-        childTransforms,
-      },
-      nullEvidence: {
-        create: nullCreateReadback,
-        transform: nullTransformReadback,
-      },
-      relationshipEvidence: {
-        bound: boundRelationship,
-        unbound: unboundRelationship,
-      },
-      geometryWitness: {
-        protocolVersion: AE_PARENTING_PROTOCOL_VERSION_V14,
-        initial: initialGeometry,
-        bound: boundGeometry,
-        unbound: unboundGeometry,
-      },
+      fixture: { sourceStable, targetStable, controllerStable, childStables, nullPosition, nullTransform, childTransforms },
+      nullEvidence: { create: nullCreateReadback, transform: nullTransformReadback },
+      relationshipEvidence: { bound: boundRelationship, unbound: unboundRelationship },
+      geometryWitness: { protocolVersion: AE_PARENTING_PROTOCOL_VERSION_V14, initial: initialGeometry, bound: boundGeometry, unbound: unboundGeometry },
       checks,
       responses,
       failureError,
