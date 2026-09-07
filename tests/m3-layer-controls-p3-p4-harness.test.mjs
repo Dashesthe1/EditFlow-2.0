@@ -1,0 +1,100 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const cliPath = "apps/desktop-host/src/m3-layer-controls-p3-p4-cli.ts";
+const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_layer_controls.jsx";
+const cleanupPath = "packages/adapters/ae-cep/host/editflow_host_m3_layer_controls_proof_cleanup.jsx";
+const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v16.jsx";
+const installerPath = "scripts/windows/install-editflow-cep.ps1";
+const acceptancePath = "scripts/windows/run-m3-layer-controls-p3-p4.ps1";
+const selfHostedPath = "scripts/windows/run-m3-layer-controls-p3-p4-self-hosted.ps1";
+const workflowPath = ".github/workflows/m3-layer-controls-real-ae-p3-p4.yml";
+
+test("M3 layer-controls P3/P4 CLI requires rendered switch/order evidence and external visual review", async () => {
+  const source = await readFile(cliPath, "utf8");
+  assert.match(source, /M3_LAYER_CONTROLS_P3_P4_REAL_AE/);
+  assert.match(source, /layer\.controls\.readback/);
+  assert.match(source, /layer\.switches\.set/);
+  assert.match(source, /layer\.order\.set/);
+  assert.match(source, /switches: \{ enabled: false \}/);
+  assert.match(source, /switches: \{ enabled: true \}/);
+  assert.match(source, /placement: \{ kind: "END" \}/);
+  assert.match(source, /placement: \{ kind: "BEGINNING" \}/);
+  assert.match(source, /M3_LAYER_CONTROLS_P4_FAILURE_INJECTION/);
+  for (const artifact of [
+    "p3-initial-front.avi",
+    "p3-disabled-back.avi",
+    "p3-restored-front.avi",
+    "p3-order-back.avi",
+    "p3-order-restored-front.avi",
+    "p4-post-rollback-front.avi",
+  ]) assert.match(source, new RegExp(artifact.replaceAll(".", "\\.")));
+  assert.match(source, /P3_visual_artifact_emitted: checks\.p3_visual_artifact_emitted === true/);
+  assert.match(source, /P3_visual_proof: false/);
+  assert.match(source, /P4_failure_injection_rollback: checks\.p4 === true/);
+  assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
+  assert.match(source, /cleanup_fingerprint_restored/);
+  assert.doesNotMatch(source, /\beval\s*\(/);
+});
+
+test("P4 injection is doubly gated and occurs only after verified protocol-1.6 order mutation", async () => {
+  const source = await readFile(hostPath, "utf8");
+  assert.match(source, /request\.command === "layer\.order\.set"/);
+  assert.match(source, /request\.readbackProfile === "M3_LAYER_CONTROLS_P4_FAILURE_INJECTION"/);
+  assert.match(source, /\$\.getenv\("EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF"\) === "1"/);
+  assert.match(source, /M3_LAYER_CONTROLS_P4_INDUCED_FAILURE/);
+  assert.match(source, /verifyPlacement\(prepared\.comp, prepared\.layer, request\.payload\.placement, prepared\.relative\);[\s\S]*M3_LAYER_CONTROLS_P4_FAILURE_INJECTION/);
+  assert.match(source, /app\.executeCommand\(16\)/);
+  assert.match(source, /Layer-controls mutation failed and was rolled back through the transaction undo boundary/);
+});
+
+test("proof cleanup is exact, disposable, unsaved-only, and recovery-render gated", async () => {
+  const source = await readFile(cleanupPath, "utf8");
+  assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF/);
+  assert.match(source, /p4-post-rollback-front\.avi/);
+  assert.match(source, /app\.project\.file/);
+  assert.match(source, /app\.project\.numItems !== 3/);
+  assert.match(source, /target\.numLayers !== 2/);
+  assert.match(source, /_FRONT_LAYER/);
+  assert.match(source, /_BACK_LAYER/);
+  assert.match(source, /layer\.enabled !== true/);
+  assert.match(source, /layer\.locked !== false/);
+  assert.match(source, /CloseOptions\.DO_NOT_SAVE_CHANGES/);
+  assert.match(source, /app\.newProject\(\)/);
+});
+
+test("protocol-1.6 loader and installer expose proof cleanup only to the isolated P4 process", async () => {
+  const loader = await readFile(loaderPath, "utf8");
+  const installer = await readFile(installerPath, "utf8");
+  assert.match(loader, /editflow_host_m3_layer_controls_proof_cleanup\.jsx/);
+  assert.match(loader, /\$\.getenv\("EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF"\) === "1"/);
+  assert.match(installer, /editflow_host_m3_layer_controls_proof_cleanup\.jsx/);
+});
+
+test("P3/P4 wrappers fail closed on structural recovery and never self-accept pixels or P5", async () => {
+  const acceptance = await readFile(acceptancePath, "utf8");
+  assert.match(acceptance, /VISUAL_REVIEW_REQUIRED/);
+  assert.match(acceptance, /P3_visual_artifact_emitted/);
+  assert.match(acceptance, /P3_visual_proof/);
+  assert.match(acceptance, /P4_failure_injection_rollback/);
+  assert.match(acceptance, /P5_save_reopen_reconnect_transfer/);
+  assert.match(acceptance, /cleanupComplete/);
+
+  const selfHosted = await readFile(selfHostedPath, "utf8");
+  assert.match(selfHosted, /run-m3-mask-p3-p4-self-hosted\.ps1/);
+  assert.match(selfHosted, /npm run check/);
+  assert.match(selfHosted, /EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF/);
+  assert.match(selfHosted, /Copy-CepFailureDiagnostics/);
+  assert.match(selfHosted, /LogLevel/);
+});
+
+test("real-AE P3/P4 workflow is isolated to the Windows AE control branch", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  assert.match(source, /ae-test\/m3-layer-controls-p3-p4-control/);
+  assert.match(source, /\.github\/ae-test-trigger\/m3-layer-controls-p3-p4\.txt/);
+  assert.match(source, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
+  assert.match(source, /run-m3-layer-controls-p3-p4-self-hosted\.ps1/);
+  assert.match(source, /proofs\/artifacts\/m3-layer-controls-p3-p4\//);
+  assert.match(source, /retention-days: 14/);
+});
