@@ -3,7 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import { applyM3LayerControlsAcceptedP1P2Evidence } from "./m3-layer-controls-proof-maturity.js";
+import { applyM3LayerControlsAcceptedEvidence } from "./m3-layer-controls-proof-maturity.js";
 import {
   AE_LAYER_CONTROLS_ADAPTER_BUILD_V16,
   AE_LAYER_CONTROLS_COMMANDS_V16,
@@ -95,7 +95,7 @@ const M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16: readonly CapabilityRecord[] =
 );
 
 export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] =
-  applyM3LayerControlsAcceptedP1P2Evidence(M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16);
+  applyM3LayerControlsAcceptedEvidence(M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16);
 
 export const buildLayerControlsRequestV16 = (input: {
   readonly requestId: string;
