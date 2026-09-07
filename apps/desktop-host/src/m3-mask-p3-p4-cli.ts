@@ -203,6 +203,12 @@ const main = async (): Promise<void> => {
   let hostRevision: number | null = null;
   let baselineFingerprint: string | null = null;
   let baselineItemCount: number | null = null;
+  let panelHostName: string | null = null;
+  let panelHostVersion: string | null = null;
+  let panelHostBuild: string | null = null;
+  let panelExtensionVersion: string | null = null;
+  let panelSelectedProtocolVersion: string | null = null;
+  let panelSupportedProtocolVersions: readonly string[] | null = null;
 
   const projectId = "m3-mask-p3-p4-real-ae";
   const prefix = `M3_MASK_P34_${Date.now()}`;
@@ -386,6 +392,12 @@ const main = async (): Promise<void> => {
     if (boundPort !== config.port) throw new Error(`CEP broker bound unexpected port ${boundPort}.`);
 
     const panel = await broker.waitForPanel(timeoutMs);
+    panelHostName = panel.hostName;
+    panelHostVersion = panel.hostVersion;
+    panelHostBuild = panel.hostBuild;
+    panelExtensionVersion = panel.extensionVersion;
+    panelSelectedProtocolVersion = panel.protocolVersion;
+    panelSupportedProtocolVersions = [...panel.supportedProtocolVersions];
     checks.panel_negotiated_v12 = panel.protocolVersion === AE_MASK_PROTOCOL_VERSION_V12;
     checks.panel_supports_v11_v12 = panel.supportedProtocolVersions.includes(AE_MASK_PROTOCOL_VERSION_V12)
       && panel.supportedProtocolVersions.includes(AE_ADAPTER_PROTOCOL_VERSION_V11);
@@ -483,6 +495,10 @@ const main = async (): Promise<void> => {
     checks.p3_animated_mask_structural = Array.isArray(animatedMask?.["pathKeyframes"])
       && (animatedMask?.["pathKeyframes"] as unknown[]).length === 3;
 
+    // Protocol 1.2 mask mutations advance AE state outside the M2 client cache.
+    // Refresh before returning to the accepted 1.1 render route so stale-state
+    // protection remains active rather than being bypassed.
+    await refreshState();
     const visualCompletion = await renderComp(visualRenderPath);
     checks.p3_visual_artifact_emitted = visualCompletion.ok && await fileExistsNonEmpty(visualRenderPath);
 
@@ -541,12 +557,6 @@ const main = async (): Promise<void> => {
     } catch (error) {
       cleanupErrors.push(error instanceof Error ? error.stack ?? error.message : String(error));
     }
-    if (broker !== null) {
-      try { await broker.stop(); } catch (error) {
-        cleanupErrors.push(`broker stop: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
     if (client !== null) {
       try {
         const final = await client.observe(projectId);
@@ -559,6 +569,14 @@ const main = async (): Promise<void> => {
       } catch (error) {
         cleanupErrors.push(`final inspect: ${error instanceof Error ? error.message : String(error)}`);
         cleanupComplete = false;
+      }
+    }
+
+    // Keep the authenticated loopback broker alive through final cleanup/readback.
+    // Stopping it earlier would make the final baseline verification impossible.
+    if (broker !== null) {
+      try { await broker.stop(); } catch (error) {
+        cleanupErrors.push(`broker stop: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -610,12 +628,12 @@ const main = async (): Promise<void> => {
         ],
       },
       environment: {
-        host: panel?.hostName ?? null,
-        hostVersion: panel?.hostVersion ?? null,
-        hostBuild: panel?.hostBuild ?? null,
-        extensionVersion: panel?.extensionVersion ?? null,
-        selectedProtocolVersion: panel?.protocolVersion ?? null,
-        supportedProtocolVersions: panel?.supportedProtocolVersions ?? null,
+        host: panelHostName,
+        hostVersion: panelHostVersion,
+        hostBuild: panelHostBuild,
+        extensionVersion: panelExtensionVersion,
+        selectedProtocolVersion: panelSelectedProtocolVersion,
+        supportedProtocolVersions: panelSupportedProtocolVersions,
       },
       responses,
       failureError,
