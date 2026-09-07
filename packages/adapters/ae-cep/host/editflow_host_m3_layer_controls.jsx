@@ -254,6 +254,18 @@
     for (i = 0; i < keys.length; i += 1) if (keys[i] !== "locked") return true;
     return false;
   }
+  function requireRepresentableSwitchState(readback, patch) {
+    var switches = readback.layerSwitches.switches;
+    var finalEnabled = own(patch, "enabled") ? patch.enabled : switches.enabled;
+    var finalSolo = own(patch, "solo") ? patch.solo : switches.solo;
+    if (finalEnabled === false && finalSolo === true) {
+      conflict(
+        "LAYER_SOLO_REQUIRES_ENABLED",
+        "After Effects cannot retain solo:true when enabled:false; request enabled:true or solo:false in the same atomic patch.",
+        { enabled: finalEnabled, solo: finalSolo, layer: readback.layerSwitches.layer }
+      );
+    }
+  }
   function setQuality(layer, value) {
     if (typeof LayerQuality === "undefined") reject("LAYER_QUALITY_UNAVAILABLE", "AE LayerQuality enum is unavailable on this host.");
     if (value === "BEST") layer.quality = LayerQuality.BEST;
@@ -266,7 +278,8 @@
     /* Unlock first so an atomic request cannot deadlock itself. AE 25.6.6 refuses
      * a Solo write while the layer is disabled, so Solo is dependency-aware: if
      * necessary we temporarily enable the layer, write Solo, apply all remaining
-     * switches, then commit the requested final enabled state. Lock remains last. */
+     * switches, then commit the requested final enabled state. Lock remains last.
+     * Unrepresentable disabled+solo final states are rejected before this point. */
     var enabledBeforeSolo = null;
     var temporarilyEnabledForSolo = false;
     if (own(patch, "locked") && patch.locked === false) setBoolean(layer, "locked", false);
@@ -307,6 +320,7 @@
       requireExpectedRevision(request);
       beforeReadback = layerSwitchReadback(prepared.comp, prepared.layer);
       requirePatchApplicability(beforeReadback, prepared.patch);
+      requireRepresentableSwitchState(beforeReadback, prepared.patch);
       if (patchAlreadyMatches(beforeReadback, prepared.patch)) {
         return responseFor(request, "NO_OP", null, [], beforeReadback, startedAt, ["Requested layer-switch patch already matches exact host readback."]);
       }
