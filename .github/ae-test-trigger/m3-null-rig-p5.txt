@@ -1,0 +1,4 @@
+M3 null-rig P5 real-AE trigger
+source=4736f4ceee6e578cda0a199137295644eeb92607
+ci_run=34141633905
+scope=P5 save/reopen/reconnect true-null transfer + transferred and fresh managed-source lifecycle
