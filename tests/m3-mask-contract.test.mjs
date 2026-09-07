@@ -23,7 +23,7 @@ const runtimeConfigPath = "packages/adapters/ae-cep/extension/client/runtime-con
 
 test("M3 mask protocol 1.2 exposes the first human-parity dependency tranche", () => {
   assert.equal(AE_MASK_PROTOCOL_VERSION_V12, "1.2.0");
-  assert.equal(AE_MASK_ADAPTER_BUILD_V12, "0.4.0-dev.1");
+  assert.equal(AE_MASK_ADAPTER_BUILD_V12, "0.4.0-dev.2");
   assert.equal(AE_MASK_ROUTE_ID_V12, "ae-cep.mask.v1_2");
   assert.deepEqual([...AE_MASK_COMMANDS_V12], [
     "mask.create",
@@ -110,7 +110,7 @@ test("direct protocol 1.2 CEP transport serializes the whole request as data in 
         hostProjectRevision: 8,
         diagnostics: {
           adapterProtocolVersion: "1.2.0",
-          adapterBuild: "0.4.0-dev.1",
+          adapterBuild: "0.4.0-dev.2",
           command: request.command,
           notes: [],
         },
