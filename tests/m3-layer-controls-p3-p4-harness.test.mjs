@@ -41,14 +41,16 @@ test("layer-controls P3/P4 harness emits reviewable visibility renders and never
   assert.match(source, /cleanup_fingerprint_restored/);
 });
 
-test("layer-controls proof cleanup is env-gated, fixture-exact, and discards only the owned unsaved project after recovery render", async () => {
-  const [cleanup, loader, installer] = await Promise.all([
+test("layer-controls proof cleanup is env-gated, bound to the exact recovery request, fixture-exact, and discards only the owned unsaved project", async () => {
+  const [cleanup, loader, installer, cli] = await Promise.all([
     readFile(cleanupPath, "utf8"),
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
+    readFile(cliPath, "utf8"),
   ]);
   assert.match(cleanup, /EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF/);
-  assert.match(cleanup, /RECOVERY_REQUEST_NAME = "p4-post-rollback\.avi"/);
+  assert.match(cleanup, /RECOVERY_REQUEST_NAME = "p4-post-rollback-visible\.avi"/);
+  assert.match(cli, /recoveryRenderPath = path\.join\(artifactDir, "p4-post-rollback-visible\.avi"\)/);
   assert.match(cleanup, /app\.project\.file/);
   assert.match(cleanup, /app\.project\.numItems !== 2/);
   assert.match(cleanup, /M3_LAYER_CONTROLS_P34_/);
