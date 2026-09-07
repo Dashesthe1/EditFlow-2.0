@@ -183,7 +183,7 @@ test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("protocol 1.5 installation preserves the accepted 1.4 parenting loader and advertises both tranches", async () => {
+test("protocol 1.6 installation preserves the accepted 1.4 parenting loader and advertises later tranches additively", async () => {
   const [acceptedLoader, additiveLoader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(acceptedLoaderPath, "utf8"),
     readFile(additiveLoaderPath, "utf8"),
@@ -197,7 +197,7 @@ test("protocol 1.5 installation preserves the accepted 1.4 parenting loader and 
   assert.match(acceptedLoader, /request\.protocolVersion === "1\.4\.0"/);
   assert.match(additiveLoader, /editflow_host_current\.jsx/);
   assert.match(installer, /"editflow_host_m3_parenting\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });
