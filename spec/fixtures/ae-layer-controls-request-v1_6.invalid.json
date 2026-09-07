@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.6.0",
+  "requestId": "REQ_LAYER_CONTROLS_INVALID",
+  "transactionId": "TX_LAYER_CONTROLS_INVALID",
+  "operationId": "OP_LAYER_CONTROLS_INVALID",
+  "capabilityId": "ae.layer.order.set",
+  "command": "layer.order.set",
+  "expectedHostProjectRevision": 42,
+  "payload": {
+    "comp": {"stableId": "COMP_MAIN"},
+    "layer": {"stableId": "LAYER_HERO"},
+    "placement": {"kind": "BEFORE"}
+  },
+  "readbackProfile": "M3_LAYER_CONTROLS_STRUCTURAL"
+}
