@@ -41,7 +41,7 @@ test("composite P3/P4 harness proves deterministic LUMA matte plus ADD blend and
   assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
 });
 
-test("composite P3/P4 wrappers derive from accepted mask launch and acceptance machinery without sharing proof flags", async () => {
+test("composite P3/P4 wrappers derive from accepted mask machinery while isolating proof environment flags", async () => {
   const [acceptance, selfHosted] = await Promise.all([
     readFile(acceptancePath, "utf8"),
     readFile(selfHostedPath, "utf8"),
@@ -54,6 +54,9 @@ test("composite P3/P4 wrappers derive from accepted mask launch and acceptance m
   assert.match(selfHosted, /run-m3-composite-p3-p4\.ps1/);
   assert.match(selfHosted, /EDITFLOW_M3_COMPOSITE_P4_PROOF/);
   assert.match(selfHosted, /authenticated protocol 1\.3 registration/);
+  assert.match(selfHosted, /OriginalMaskProofEnv = \$env:EDITFLOW_M3_MASK_P4_PROOF/);
+  assert.match(selfHosted, /Remove-Item Env:EDITFLOW_M3_MASK_P4_PROOF -ErrorAction SilentlyContinue/);
+  assert.match(selfHosted, /\$env:EDITFLOW_M3_MASK_P4_PROOF = \$OriginalMaskProofEnv/);
   assert.doesNotMatch(selfHosted, /EDITFLOW_M3_MASK_P4_PROOF=1/);
 });
 
