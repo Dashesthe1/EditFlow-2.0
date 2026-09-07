@@ -1,0 +1,18 @@
+{
+  "protocolVersion": "1.5.0",
+  "requestId": "REQ_NULL_RIG_VALID",
+  "transactionId": "TX_NULL_RIG_VALID",
+  "operationId": "OP_NULL_RIG_VALID",
+  "capabilityId": "ae.rig.null.bind_children_preserve_transform",
+  "command": "rig.bind_children_to_null_preserve_transform",
+  "expectedHostProjectRevision": 14,
+  "payload": {
+    "comp": {"stableId": "COMP_NULL_RIG"},
+    "controller": {"stableId": "NULL_CONTROLLER"},
+    "children": [
+      {"stableId": "CHILD_A"},
+      {"stableId": "CHILD_B"}
+    ]
+  },
+  "readbackProfile": "M3_NULL_RIG_STRUCTURAL"
+}
