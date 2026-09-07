@@ -1,1 +1,3 @@
-M3 layer-controls P5 control trigger marker. Update only on the isolated ae-test/m3-layer-controls-p5-control branch after repository CI is green.
+M3 layer-controls P5 real-AE trigger run 1.
+CI-green source: a6181c0af2f22fd83141625f6c5852ae0a27b786
+Accepted P1-P4 baseline: 7dc3558b932995dba078030089226b894cf95d85
