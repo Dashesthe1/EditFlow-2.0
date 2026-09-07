@@ -6,16 +6,20 @@
  * later from one fixed app.scheduleTask global driver after CEP has received the
  * command response.
  *
- * The global driver writes RUNNING before invoking renderAsync(), then drives the
- * same job to DONE/FAILED with fixed polling after renderAsync() returns. If the
- * target AE build does not expose renderAsync(), the command fails closed. There is
- * never a silent fallback to blocking RenderQueue.render().
+ * The global driver publishes best-effort RUNNING evidence before invoking
+ * renderAsync(), then drives the same job to DONE/FAILED with fixed polling after
+ * renderAsync() returns. Lifecycle publication is staged through an unobserved
+ * sibling file so a desktop reader can never observe a marker that AE has opened
+ * and truncated but not yet durably replaced. Terminal publication is retried
+ * without discarding the active job. If the target AE build does not expose
+ * renderAsync(), the command fails closed. There is never a silent fallback to
+ * blocking RenderQueue.render().
  */
 (function () {
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderasync3";
+  var BUILD = "0.1.0-dev.4-renderasync4";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -146,7 +150,7 @@
   $.global.EditFlow2_driveAsyncRender = function () {
     var job = $.global.EditFlow2_activeRenderJob;
     if (!job || job.mode !== "ASYNC_HOST_RENDER_V3") return;
-    if (job.state !== "SCHEDULED" && job.state !== "RUNNING") return;
+    if (job.state !== "SCHEDULED" && job.state !== "RUNNING" && job.state !== "FINALIZING") return;
 
     function taskNowMs() { return (new Date()).getTime(); }
     function taskString(value) { return value === null || value === undefined ? "" : String(value); }
@@ -160,12 +164,12 @@
       return "\"" + text + "\"";
     }
     function taskWriteMarker(status, ok, errorMessage) {
-      /* Build the complete payload before opening/truncating the durable marker.
-       * The synchronous SCHEDULED writers already prove EditFlow2_JSON is present
-       * in the installed host. Reusing that clean-room runtime here avoids a
-       * second hand-written serializer at the delayed global execution boundary.
-       * If serialization ever fails, the previous durable marker remains intact.
-       */
+      /* Never open the observer-visible marker for truncating writes from a
+       * scheduled task. Run #2 proved that a failed delayed File.write can leave
+       * the canonical marker at exactly zero bytes. Build and write the complete
+       * payload into a private sibling first, verify it is non-empty, then replace
+       * the canonical marker. If replacement collides with a desktop read, the old
+       * canonical marker remains parseable and terminal publication can retry. */
       if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.stringify !== "function") {
         throw new Error("EditFlow clean-room JSON runtime is unavailable in the async render driver.");
       }
@@ -180,16 +184,35 @@
         queueItemRemoved: job.queueItemRemoved === true
       });
       var marker = new File(job.completionPath);
-      marker.encoding = "UTF-8";
-      if (!marker.open("w")) throw new Error("Unable to open render lifecycle marker: " + marker.fsName);
+      var stagedPath = job.completionPath + ".next";
+      var staged = new File(stagedPath);
+      if (staged.exists && !staged.remove()) {
+        throw new Error("Unable to remove stale staged render lifecycle marker: " + staged.fsName);
+      }
+      staged.encoding = "UTF-8";
+      if (!staged.open("w")) throw new Error("Unable to open staged render lifecycle marker: " + staged.fsName);
       try {
-        marker.write(payload);
+        staged.write(payload);
       } finally {
-        marker.close();
+        staged.close();
+      }
+      staged = new File(stagedPath);
+      if (!staged.exists || staged.length <= 0) {
+        throw new Error("Staged render lifecycle marker was not written durably: " + staged.fsName);
+      }
+      if (marker.exists && !marker.remove()) {
+        throw new Error("Unable to replace render lifecycle marker while it is being observed: " + marker.fsName);
+      }
+      if (!staged.rename(marker.name)) {
+        throw new Error("Unable to promote staged render lifecycle marker: " + staged.fsName);
+      }
+      marker = new File(job.completionPath);
+      if (!marker.exists || marker.length <= 0) {
+        throw new Error("Promoted render lifecycle marker is missing or empty: " + marker.fsName);
       }
     }
     function taskCleanupQueueItem() {
-      if (!job.rqItem) return null;
+      if (job.queueItemRemoved === true || !job.rqItem) return null;
       try {
         job.rqItem.remove();
         job.queueItemRemoved = true;
@@ -199,29 +222,63 @@
         return taskString(cleanupError);
       }
     }
-    function taskFinish(ok, errorMessage) {
-      var cleanupError = taskCleanupQueueItem();
-      if (cleanupError) {
-        ok = false;
-        errorMessage = (errorMessage ? errorMessage + " | " : "") + "Render queue cleanup failed: " + cleanupError;
-      }
-      job.state = ok ? "DONE" : "FAILED";
-      job.completedAtMs = taskNowMs();
-      try { taskWriteMarker(job.state, ok, errorMessage); } catch (_) {}
-      $.global.EditFlow2_lastRenderJob = job;
-      $.global.EditFlow2_activeRenderJob = null;
-    }
     function taskScheduleDrive(delayMs) {
       var taskId = app.scheduleTask("$.global.EditFlow2_driveAsyncRender()", delayMs, false);
       if (typeof taskId !== "number") throw new Error("After Effects did not return an async render driver task identifier.");
       job.driveTaskId = taskId;
     }
+    function taskPublishTerminal() {
+      try {
+        taskWriteMarker(job.terminalOk ? "DONE" : "FAILED", job.terminalOk === true, job.terminalError || null);
+        job.state = job.terminalOk ? "DONE" : "FAILED";
+        job.completedAtMs = taskNowMs();
+        $.global.EditFlow2_lastRenderJob = job;
+        $.global.EditFlow2_activeRenderJob = null;
+        return true;
+      } catch (markerError) {
+        job.markerPublishError = taskString(markerError);
+        job.markerPublishAttempts = (job.markerPublishAttempts || 0) + 1;
+        if (job.markerPublishAttempts >= 40) {
+          /* Retain the active FINALIZING job rather than publishing false success
+           * or silently discarding the only terminal evidence. The desktop timeout
+           * can then report the last durable state and the staged file is retained. */
+          return false;
+        }
+        taskScheduleDrive(250);
+        return false;
+      }
+    }
+    function taskFinish(ok, errorMessage) {
+      if (job.state !== "FINALIZING") {
+        var cleanupError = taskCleanupQueueItem();
+        if (cleanupError) {
+          ok = false;
+          errorMessage = (errorMessage ? errorMessage + " | " : "") + "Render queue cleanup failed: " + cleanupError;
+        }
+        job.terminalOk = ok === true;
+        job.terminalError = errorMessage || null;
+        job.state = "FINALIZING";
+        job.completedAtMs = taskNowMs();
+      }
+      taskPublishTerminal();
+    }
 
     try {
+      if (job.state === "FINALIZING") {
+        taskPublishTerminal();
+        return;
+      }
+
       if (job.state === "SCHEDULED") {
         job.state = "RUNNING";
         job.startedAtMs = taskNowMs();
-        taskWriteMarker("RUNNING", false, null);
+        try {
+          taskWriteMarker("RUNNING", false, null);
+        } catch (runningMarkerError) {
+          /* RUNNING is useful progress evidence, but it is not allowed to gate the
+           * actual render. Preserve the durable SCHEDULED marker and continue. */
+          job.runningMarkerError = taskString(runningMarkerError);
+        }
 
         if (!app.project || !app.project.renderQueue || typeof app.project.renderQueue.renderAsync !== "function") {
           taskFinish(false, "RenderQueue.renderAsync became unavailable before scheduled render start.");
@@ -350,6 +407,10 @@
       if (completionFile.exists) {
         try { completionFile.remove(); } catch (_) {}
       }
+      var stagedCompletionFile = new File(completionPath + ".next");
+      if (stagedCompletionFile.exists) {
+        try { stagedCompletionFile.remove(); } catch (_) {}
+      }
       var priorOutput = new File(payload.outputPath);
       if (priorOutput.exists) {
         try { priorOutput.remove(); } catch (_) {}
@@ -377,7 +438,10 @@
           scheduledAtMs: nowMs(),
           startedAtMs: null,
           renderAsyncReturnedAtMs: null,
-          driveTaskId: null
+          driveTaskId: null,
+          terminalOk: null,
+          terminalError: null,
+          markerPublishAttempts: 0
         };
         $.global.EditFlow2_activeRenderJob = job;
         writeImmediateMarker(job, "SCHEDULED", false, null);
@@ -403,6 +467,7 @@
         response.diagnostics.durationMs = nowMs() - started;
         response.diagnostics.hostRevisionAfter = app.project.revision;
         response.diagnostics.notes.push("CEP dispatch only prepares and schedules the fixed async render driver; RenderQueue.renderAsync() executes after evalScript returns.");
+        response.diagnostics.notes.push("Scheduled lifecycle publication is staged before canonical marker replacement; RUNNING marker failure cannot gate render start and terminal publication retries.");
         response.proofArtifactRefs = [job.completionPath];
         return JSON.stringify(response);
       } catch (setupError) {
