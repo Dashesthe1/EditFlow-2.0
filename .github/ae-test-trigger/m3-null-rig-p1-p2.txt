@@ -3,3 +3,5 @@ EditFlow M3 true-null rig P1/P2 real-AE proof trigger marker.
 Only updates to this file on ae-test/m3-null-rig-p1-p2-control should trigger the isolated self-hosted null-rig P1/P2 acceptance workflow.
 
 Run target: protocol 1.5 true-null creation/readback, deterministic rejection without structural drift, multi-child atomic bind/unbind structural readback, independent protocol-1.4 five-point geometry witness, idempotent create/bind, stable layer order, and exact proof-owned cleanup. P3/P4/P5 remain unclaimed.
+
+Run 1 trigger: execute the exact CI-green candidate at 7b00034c0d380ff3f00dfabec28cb19c66aa7397 without implementation changes.
