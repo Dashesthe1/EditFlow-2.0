@@ -383,6 +383,7 @@ const main = async (): Promise<void> => {
     }
     checks.p2_all_four_matte_modes = AE_TRACK_MATTE_TYPES_V13.every((mode) => matteModeResults[mode] === true);
     checks.p2_arbitrary_matte_source_without_reorder = checks.p2_all_four_matte_modes;
+    const preservedMatteType = AE_TRACK_MATTE_TYPES_V13[AE_TRACK_MATTE_TYPES_V13.length - 1];
 
     const clear = await dispatchV13("layer.clear_track_matte", {
       comp: { stableId: targetStable },
@@ -391,8 +392,8 @@ const main = async (): Promise<void> => {
     const clearComposite = compositeRecord(clear);
     checks.p2_clear_matte = clear.outcome === "APPLIED"
       && clearComposite?.["hasTrackMatte"] === false
-      && clearComposite?.["trackMatteType"] === "NO_TRACK_MATTE"
       && clearComposite?.["trackMatteLayer"] === null;
+    checks.p2_clear_preserves_host_track_matte_type = clearComposite?.["trackMatteType"] === preservedMatteType;
     await refreshState();
 
     for (const blendMode of AE_BLEND_MODES_V13) {
@@ -428,7 +429,7 @@ const main = async (): Promise<void> => {
     const finalMatte = projectSnapshot === null ? null : findLayer(projectSnapshot, targetStable, matteLayerStable);
     checks.p2_final_readback = finalComposite.outcome === "NO_OP"
       && finalCompositeValue?.["hasTrackMatte"] === false
-      && finalCompositeValue?.["trackMatteType"] === "NO_TRACK_MATTE"
+      && finalCompositeValue?.["trackMatteType"] === preservedMatteType
       && finalCompositeValue?.["trackMatteLayer"] === null
       && finalCompositeValue?.["blendMode"] === "NORMAL";
     checks.p2_final_layer_order_preserved = finalTarget?.index === initialTarget?.index
@@ -445,6 +446,7 @@ const main = async (): Promise<void> => {
       && checks.p2_all_four_matte_modes
       && checks.p2_arbitrary_matte_source_without_reorder
       && checks.p2_clear_matte
+      && checks.p2_clear_preserves_host_track_matte_type
       && checks.p2_all_documented_blend_modes
       && checks.p2_restore_normal
       && checks.p2_final_readback
