@@ -263,11 +263,21 @@
   }
   function setBoolean(layer, key, value) { layer[key] = value === true; }
   function applyPatch(layer, patch) {
-    /* Unlock first so an atomic request cannot deadlock itself. Lock last so every
-     * other requested switch reaches the host before the layer becomes locked. */
+    /* Unlock first so an atomic request cannot deadlock itself. AE 25.6.6 refuses
+     * a Solo write while the layer is disabled, so Solo is dependency-aware: if
+     * necessary we temporarily enable the layer, write Solo, apply all remaining
+     * switches, then commit the requested final enabled state. Lock remains last. */
+    var enabledBeforeSolo = null;
+    var temporarilyEnabledForSolo = false;
     if (own(patch, "locked") && patch.locked === false) setBoolean(layer, "locked", false);
-    if (own(patch, "enabled")) setBoolean(layer, "enabled", patch.enabled);
-    if (own(patch, "solo")) setBoolean(layer, "solo", patch.solo);
+    if (own(patch, "solo")) {
+      try { enabledBeforeSolo = layer.enabled === true; } catch (_) { enabledBeforeSolo = null; }
+      if (enabledBeforeSolo === false) {
+        setBoolean(layer, "enabled", true);
+        temporarilyEnabledForSolo = true;
+      }
+      setBoolean(layer, "solo", patch.solo);
+    }
     if (own(patch, "shy")) setBoolean(layer, "shy", patch.shy);
     if (own(patch, "quality")) setQuality(layer, patch.quality);
     if (own(patch, "adjustmentLayer")) setBoolean(layer, "adjustmentLayer", patch.adjustmentLayer);
@@ -276,6 +286,8 @@
     if (own(patch, "effectsActive")) setBoolean(layer, "effectsActive", patch.effectsActive);
     if (own(patch, "collapseTransformation")) setBoolean(layer, "collapseTransformation", patch.collapseTransformation);
     if (own(patch, "preserveTransparency")) setBoolean(layer, "preserveTransparency", patch.preserveTransparency);
+    if (own(patch, "enabled")) setBoolean(layer, "enabled", patch.enabled);
+    else if (temporarilyEnabledForSolo) setBoolean(layer, "enabled", false);
     if (own(patch, "locked") && patch.locked === true) setBoolean(layer, "locked", true);
   }
 
