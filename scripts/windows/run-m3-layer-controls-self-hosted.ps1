@@ -17,7 +17,8 @@ $RequiredTokens = @(
   'scripts\windows\run-m3-mask-p1-p2.ps1',
   'proofs\artifacts\m3-mask-p1-p2',
   'The M3 mask P1/P2 acceptance runner is missing',
-  'authenticated protocol 1.2 registration'
+  'authenticated protocol 1.2 registration',
+  'if ($BootstrapText -match "EXECUTE_COMMAND_SENT") {'
 )
 foreach ($Token in $RequiredTokens) {
   if (-not $Template.Contains($Token)) {
@@ -31,6 +32,8 @@ $LayerControls = $LayerControls.Replace('proofs\artifacts\m3-mask-p1-p2', 'proof
 $LayerControls = $LayerControls.Replace('The M3 mask P1/P2 acceptance runner is missing', 'The M3 layer-controls P1/P2 acceptance runner is missing')
 $LayerControls = $LayerControls.Replace('authenticated protocol 1.2 registration', 'authenticated protocol 1.6 registration')
 $LayerControls = $LayerControls.Replace('isolated M3 AE proof', 'isolated M3 layer-controls AE proof')
+$LayerControls = $LayerControls.Replace('if ($BootstrapText -match "EXECUTE_COMMAND_SENT") {', 'if ($BootstrapText -match "EXECUTE_COMMAND_SENT|PANEL_ALREADY_LOADED") {')
+$LayerControls = $LayerControls.Replace('After Effects executed the fixed panel bootstrap and proved the EditFlow panel open command was sent.', 'After Effects executed the fixed panel bootstrap and proved the EditFlow panel is loaded without reopening an existing restored instance.')
 
 [System.IO.File]::WriteAllText($TempPath, $LayerControls, (New-Object System.Text.UTF8Encoding($false)))
 try {
