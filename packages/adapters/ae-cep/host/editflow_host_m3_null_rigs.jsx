@@ -287,6 +287,14 @@
         var createdFolder = supportFolderOf(createdSource);
         if (createdFolder && !itemWasPresent(itemIdsBeforeCreate, createdFolder)) createdFolder.comment = SUPPORT_FOLDER_MARKER;
         prepared.rig = rig;
+
+        if (request.readbackProfile === "M3_NULL_RIG_P4_FAILURE_INJECTION"
+            && $.getenv("EDITFLOW_M3_NULL_RIG_P4_PROOF") === "1") {
+          var proofFailure = new Error("Induced M3 null-rig P4 host failure after managed-null creation.");
+          proofFailure.editflowCategory = "PROOF_INJECTION";
+          proofFailure.editflowCode = "M3_NULL_RIG_P4_INDUCED_FAILURE";
+          throw proofFailure;
+        }
       } else {
         prepared.rig.remove();
         ownedSource.remove();
