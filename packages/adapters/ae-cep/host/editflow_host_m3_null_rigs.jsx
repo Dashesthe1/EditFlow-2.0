@@ -11,6 +11,8 @@
   var PROTOCOL = "1.5.0";
   var BUILD = "0.4.0-dev.5";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
+  var NULL_SOURCE_PREFIX = "[[EDITFLOW2_NULL_SOURCE:";
+  var SUPPORT_FOLDER_MARKER = "[[EDITFLOW2_NULL_SUPPORT_FOLDER]]";
   var MARKER_SUFFIX = "]]";
   var CAPABILITIES = {
     "rig.null.create": "ae.rig.null.create",
@@ -31,16 +33,77 @@
   function reject(code, message, details) { fail("VALIDATION", code, message, details); }
   function conflict(code, message, details) { fail("CONFLICT", code, message, details); }
 
-  function stableIdFromText(text) {
+  function markerValue(text, prefix) {
     var source = asString(text);
-    var start = source.indexOf(STABLE_PREFIX);
+    var start = source.indexOf(prefix);
     if (start < 0) return null;
-    start += STABLE_PREFIX.length;
+    start += prefix.length;
     var end = source.indexOf(MARKER_SUFFIX, start);
     return end < 0 ? null : source.substring(start, end);
   }
+  function stableIdFromText(text) { return markerValue(text, STABLE_PREFIX); }
+  function nullSourceStableId(item) {
+    try { return markerValue(item.comment, NULL_SOURCE_PREFIX); } catch (_) { return null; }
+  }
   function layerStableId(layer) { try { return stableIdFromText(layer.comment); } catch (_) { return null; } }
   function stableMarker(stableId) { return STABLE_PREFIX + stableId + MARKER_SUFFIX; }
+  function nullSourceMarker(stableId) { return NULL_SOURCE_PREFIX + stableId + MARKER_SUFFIX; }
+  function itemHostId(item) { try { return typeof item.id === "number" ? item.id : null; } catch (_) { return null; } }
+  function projectItemIdSet() {
+    var result = {};
+    var project = app.project;
+    var i, item, id;
+    for (i = 1; i <= project.numItems; i += 1) {
+      item = project.item(i);
+      id = itemHostId(item);
+      if (id !== null) result[String(id)] = true;
+    }
+    return result;
+  }
+  function itemWasPresent(idSet, item) {
+    var id = itemHostId(item);
+    return id !== null && idSet[String(id)] === true;
+  }
+  function isManagedNullSource(item) {
+    try { return item instanceof FootageItem && item.mainSource instanceof SolidSource; } catch (_) { return false; }
+  }
+  function managedSourceOf(layer) {
+    try { return layer && layer.source ? layer.source : null; } catch (_) { return null; }
+  }
+  function supportFolderOf(source) {
+    try {
+      var folder = source ? source.parentFolder : null;
+      return folder && folder instanceof FolderItem ? folder : null;
+    } catch (_) { return null; }
+  }
+  function folderIsManagedSupport(folder) {
+    try { return folder && asString(folder.comment) === SUPPORT_FOLDER_MARKER; } catch (_) { return false; }
+  }
+  function sourceUsedByOtherLayer(source, exceptLayer) {
+    var project = app.project;
+    var i, item, j, layer, layerSource;
+    for (i = 1; i <= project.numItems; i += 1) {
+      item = project.item(i);
+      if (!(item instanceof CompItem)) continue;
+      for (j = 1; j <= item.numLayers; j += 1) {
+        layer = item.layer(j);
+        if (layer === exceptLayer) continue;
+        layerSource = null;
+        try { layerSource = layer.source; } catch (_) {}
+        if (layerSource === source) return true;
+      }
+    }
+    return false;
+  }
+  function findManagedNullSource(stableId) {
+    var project = app.project;
+    var i, item;
+    for (i = 1; i <= project.numItems; i += 1) {
+      item = project.item(i);
+      if (nullSourceStableId(item) === stableId) return item;
+    }
+    return null;
+  }
 
   function findItem(ref) {
     if (!ref || typeof ref !== "object") reject("OBJECT_REF_REQUIRED", "Object reference is required.");
@@ -186,9 +249,23 @@
       if (!isNullLayer(prepared.rig)) return responseFor(request, "REJECTED", { category: "CONFLICT", code: "NULL_RIG_STABLE_ID_COLLISION", message: "Requested null-rig stableId is already owned by a non-null layer.", details: { stableId: prepared.createSpec.stableId } }, [], null, startedAt, ["Stable identity collision prevented creation."]);
       return responseFor(request, "NO_OP", null, [], rigReadback(prepared.comp, prepared.rig), startedAt, ["Managed null with the requested stable identity already exists."]);
     }
+
+    var ownedSource = null;
+    var ownedSupportFolder = null;
+    var removedStableId = null;
     if (request.command === "rig.null.remove") {
       var children = childrenOf(prepared.comp, prepared.rig);
       if (children.length > 0) return responseFor(request, "REJECTED", { category: "CONFLICT", code: "NULL_RIG_HAS_CHILDREN", message: "Null rig cannot be removed while child relationships still target it.", details: { children: children, guidance: "Clear child parenting explicitly through protocol 1.4 before removing the rig." } }, [], rigReadback(prepared.comp, prepared.rig), startedAt, ["Removal refused to prevent implicit relationship destruction."]);
+      removedStableId = layerStableId(prepared.rig);
+      ownedSource = managedSourceOf(prepared.rig);
+      if (!removedStableId || !isManagedNullSource(ownedSource) || nullSourceStableId(ownedSource) !== removedStableId) {
+        return responseFor(request, "REJECTED", { category: "CONFLICT", code: "NULL_RIG_SOURCE_OWNERSHIP_MISMATCH", message: "Managed null backing source is missing or not owned by the targeted rig.", details: { stableId: removedStableId } }, [], rigReadback(prepared.comp, prepared.rig), startedAt, ["Removal refused because EditFlow cannot prove ownership of the null backing source."]);
+      }
+      if (sourceUsedByOtherLayer(ownedSource, prepared.rig)) {
+        return responseFor(request, "REJECTED", { category: "CONFLICT", code: "NULL_RIG_SOURCE_IN_USE", message: "Managed null backing source is still referenced by another layer.", details: { stableId: removedStableId } }, [], rigReadback(prepared.comp, prepared.rig), startedAt, ["Removal refused because reclaiming the backing source would affect another layer."]);
+      }
+      ownedSupportFolder = supportFolderOf(ownedSource);
+      if (!folderIsManagedSupport(ownedSupportFolder)) ownedSupportFolder = null;
     }
 
     var beforeRevision = app.project ? app.project.revision : null;
@@ -199,25 +276,35 @@
       if (request.command === "rig.null.create") {
         var duration = null;
         if (typeof request.payload.duration === "number" && isFinite(request.payload.duration) && request.payload.duration > 0) duration = request.payload.duration;
+        var itemIdsBeforeCreate = projectItemIdSet();
         var rig = duration === null ? prepared.comp.layers.addNull() : prepared.comp.layers.addNull(duration);
         rig.name = typeof prepared.createSpec.name === "string" && prepared.createSpec.name.length > 0 ? prepared.createSpec.name : "EditFlow Null Rig";
         rig.comment = stableMarker(prepared.createSpec.stableId);
         if (request.payload.threeDLayer === true) rig.threeDLayer = true;
+        var createdSource = managedSourceOf(rig);
+        if (!isManagedNullSource(createdSource)) fail("ADAPTER_FAILURE", "NULL_RIG_SOURCE_NOT_MANAGEABLE", "Created AE null does not expose the expected FootageItem/SolidSource backing item.");
+        createdSource.comment = nullSourceMarker(prepared.createSpec.stableId);
+        var createdFolder = supportFolderOf(createdSource);
+        if (createdFolder && !itemWasPresent(itemIdsBeforeCreate, createdFolder)) createdFolder.comment = SUPPORT_FOLDER_MARKER;
         prepared.rig = rig;
       } else {
         prepared.rig.remove();
+        ownedSource.remove();
+        if (ownedSupportFolder && ownedSupportFolder.numItems === 0 && folderIsManagedSupport(ownedSupportFolder)) ownedSupportFolder.remove();
       }
       app.endUndoGroup();
 
       if (request.command === "rig.null.create") {
         var readback = rigReadback(prepared.comp, prepared.rig);
+        var readbackSource = managedSourceOf(prepared.rig);
         if (!readback.nullRig.isNull || !readback.nullRig.layer || readback.nullRig.layer.stableId !== prepared.createSpec.stableId) fail("ADAPTER_FAILURE", "NULL_RIG_CREATE_READBACK_MISMATCH", "Created null rig did not survive exact structural readback.");
-        return responseFor(request, "APPLIED", null, [affected(prepared.rig)], readback, startedAt, ["Created managed AE null with caller-owned stable identity.", "Child attachment remains explicitly delegated to protocol 1.4 preserve-transform parenting."]);
+        if (!isManagedNullSource(readbackSource) || nullSourceStableId(readbackSource) !== prepared.createSpec.stableId) fail("ADAPTER_FAILURE", "NULL_RIG_SOURCE_OWNERSHIP_READBACK_MISMATCH", "Created null rig backing source did not retain exact managed ownership.");
+        return responseFor(request, "APPLIED", null, [affected(prepared.rig)], readback, startedAt, ["Created managed AE null with caller-owned stable identity and owned backing source.", "Child attachment remains explicitly delegated to protocol 1.4 preserve-transform parenting."]);
       }
-      var removedStableId = request.payload.rig.stableId || null;
       var after = findLayer(prepared.comp, request.payload.rig, true);
       if (after) fail("ADAPTER_FAILURE", "NULL_RIG_REMOVE_READBACK_MISMATCH", "Removed null rig still resolves after host mutation.");
-      return responseFor(request, "APPLIED", null, [{ kind: "LAYER", stableId: removedStableId, hostId: null }], { nullRig: { removed: true, stableId: removedStableId } }, startedAt, ["Removed child-free managed null after exact absence readback."]);
+      if (findManagedNullSource(removedStableId)) fail("ADAPTER_FAILURE", "NULL_RIG_SOURCE_REMOVE_READBACK_MISMATCH", "Removed null rig backing source still resolves after host mutation.");
+      return responseFor(request, "APPLIED", null, [{ kind: "LAYER", stableId: removedStableId, hostId: null }], { nullRig: { removed: true, stableId: removedStableId } }, startedAt, ["Removed child-free managed null and reclaimed its owned unused backing source."]);
     } catch (mutationError) {
       try { app.endUndoGroup(); } catch (_) {}
       var notes = ["Null-rig mutation failed."];
