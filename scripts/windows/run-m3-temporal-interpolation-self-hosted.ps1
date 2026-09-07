@@ -1,6 +1,7 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
-  [int]$TimeoutSeconds = 120
+  [int]$TimeoutSeconds = 120,
+  [switch]$PreflightHostLoader
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,11 +82,16 @@ foreach ($Token in $RequiredTokens) {
 
 $Temporal = $Template
 $Temporal = $Temporal.Replace('scripts\windows\run-m3-mask-p1-p2.ps1', 'scripts\windows\run-m3-temporal-interpolation-p1-p2.ps1')
-$Temporal = $Temporal.Replace('scripts\windows\open-editflow-bridge.jsx', 'scripts\windows\open-editflow-temporal-bridge.jsx')
 $Temporal = $Temporal.Replace('proofs\artifacts\m3-mask-p1-p2', 'proofs\artifacts\m3-temporal-interpolation-p1-p2')
 $Temporal = $Temporal.Replace('The M3 mask P1/P2 acceptance runner is missing', 'The M3 temporal-interpolation P1/P2 acceptance runner is missing')
 $Temporal = $Temporal.Replace('authenticated protocol 1.2 registration', 'authenticated protocol 1.7 registration')
 $Temporal = $Temporal.Replace('isolated M3 AE proof', 'isolated M3 temporal-interpolation AE proof')
+if ($PreflightHostLoader) {
+  $Temporal = $Temporal.Replace('scripts\windows\open-editflow-bridge.jsx', 'scripts\windows\open-editflow-temporal-bridge.jsx')
+  Write-Host "Temporal diagnostic mode: direct v1.7 host-loader preflight is enabled before opening CEP."
+} else {
+  Write-Host "Temporal proof mode: production-equivalent CEP host bootstrap; no direct host-loader preflight."
+}
 
 [System.IO.File]::WriteAllText($TempPath, $Temporal, (New-Object System.Text.UTF8Encoding($false)))
 try {
