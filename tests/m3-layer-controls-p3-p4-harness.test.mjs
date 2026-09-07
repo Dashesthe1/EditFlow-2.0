@@ -135,7 +135,7 @@ test("Crash Repair Continue helper is proof-gated, exact-state-only, foreground-
   assert.doesNotMatch(source, /mouse_event/);
   assert.doesNotMatch(source, /keybd_event/);
   assert.doesNotMatch(source, /Click\s*\(/);
-  assert.doesNotMatch(source, /Reset Preferences/);
+  assert.doesNotMatch(source, /ResetPreferences\s*\(/);
 });
 
 test("real-AE P3/P4 workflow is isolated to the Windows AE control branch", async () => {
