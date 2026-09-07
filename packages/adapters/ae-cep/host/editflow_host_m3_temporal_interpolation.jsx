@@ -307,6 +307,19 @@
       mutationStarted = true;
       applyState(prepared.property, prepared.keyIndex, request.payload.interpolation);
       verifyState(prepared.property, prepared.keyIndex, request.payload.interpolation);
+
+      /* Proof-only P4 injection. Ordinary product requests cannot arm this path:
+       * the isolated self-hosted runner must launch its owned AE process with the
+       * exact proof environment flag and the typed protocol-1.7 mutation must carry
+       * the fixed failure-injection readback profile. Injection happens only after a
+       * real temporal-interpolation mutation has passed structural verification while
+       * the normal AE Undo group remains open, so the production rollback path must
+       * recover the exact pre-mutation key state. */
+      if (request.readbackProfile === "M3_TEMPORAL_INTERPOLATION_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_TEMPORAL_INTERPOLATION_P4_PROOF") === "1") {
+        fail("PROOF_INJECTION", "M3_TEMPORAL_INTERPOLATION_P4_INDUCED_FAILURE", "Induced M3 temporal-interpolation P4 failure after verified interpolation mutation.", null);
+      }
+
       app.endUndoGroup();
       return responseFor(request, "APPLIED", null, [affected(prepared.layer)], temporalReadback(prepared.layer, prepared.property, prepared.propertyPath, prepared.keyIndex), startedAt, ["Temporal interpolation mutation applied and structurally verified."]);
     } catch (mutationError) {
