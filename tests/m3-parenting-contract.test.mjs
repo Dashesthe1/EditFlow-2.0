@@ -167,7 +167,7 @@ test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("current CEP installation advertises 1.4 additively and loads parenting fail-closed", async () => {
+test("current CEP installation advertises parenting 1.4 with later protocols additive and loads parenting fail-closed", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -179,7 +179,7 @@ test("current CEP installation advertises 1.4 additively and loads parenting fai
   assert.match(loader, /M3_PARENTING_MODULE_LOAD_FAILED/);
   assert.match(loader, /request\.protocolVersion === "1\.4\.0"/);
   assert.match(installer, /"editflow_host_m3_parenting\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });
