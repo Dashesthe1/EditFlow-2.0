@@ -5,13 +5,15 @@ import { readFile } from "node:fs/promises";
 const cliPath = "apps/desktop-host/src/m3-layer-controls-p1-p2-cli.ts";
 const wrapperPath = "scripts/windows/run-m3-layer-controls-p1-p2.ps1";
 const selfHostedPath = "scripts/windows/run-m3-layer-controls-self-hosted.ps1";
+const panelBootstrapPath = "scripts/windows/open-editflow-bridge.jsx";
 const workflowPath = ".github/workflows/m3-layer-controls-real-ae-p1-p2.yml";
 
 test("M3 layer-controls P1/P2 proof harness is bounded, exhaustive, and evidence-retaining", async () => {
-  const [cli, wrapper, selfHosted, workflow] = await Promise.all([
+  const [cli, wrapper, selfHosted, panelBootstrap, workflow] = await Promise.all([
     readFile(cliPath, "utf8"),
     readFile(wrapperPath, "utf8"),
     readFile(selfHostedPath, "utf8"),
+    readFile(panelBootstrapPath, "utf8"),
     readFile(workflowPath, "utf8"),
   ]);
 
@@ -43,6 +45,13 @@ test("M3 layer-controls P1/P2 proof harness is bounded, exhaustive, and evidence
   assert.match(selfHosted, /run-m3-layer-controls-p1-p2\.ps1/);
   assert.match(selfHosted, /authenticated protocol 1\.6 registration/);
   assert.match(selfHosted, /m3-layer-controls-p1-p2/);
+  assert.match(selfHosted, /EXECUTE_COMMAND_SENT\|PANEL_ALREADY_LOADED/);
+
+  assert.match(panelBootstrap, /EditFlow2_CEP_SCRIPT_PATH_LOADED === true/);
+  assert.match(panelBootstrap, /PANEL_ALREADY_LOADED/);
+  assert.ok(panelBootstrap.indexOf("PANEL_ALREADY_LOADED") < panelBootstrap.indexOf("app.executeCommand(commandId)"),
+    "the fixed bootstrap must detect a restored EditFlow CEP panel before issuing another menu open");
+  assert.match(panelBootstrap, /authenticated broker registration remains the/);
 
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /ae-test\/m3-layer-controls-p1-p2-control/);
