@@ -1,0 +1,1 @@
+fix compiler panel scope, refresh state before render, and keep broker alive through final cleanup verification
