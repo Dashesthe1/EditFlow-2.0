@@ -339,6 +339,21 @@
     try {
       mutationStarted = true;
       applyPatch(prepared.layer, prepared.patch);
+
+      /* Proof-only P4 injection. Ordinary product requests cannot arm this path:
+       * the isolated self-hosted acceptance runner must launch its owned AE child
+       * with EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF=1 and the typed request must use
+       * the exact fixed profile below. The failure occurs after a real switch
+       * mutation so the existing AE-Undo recovery path is exercised. */
+      if (request.command === "layer.switches.set"
+          && request.readbackProfile === "M3_LAYER_CONTROLS_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF") === "1") {
+        var proofFailure = new Error("Induced M3 layer-controls P4 host failure after mutation.");
+        proofFailure.editflowCategory = "PROOF_INJECTION";
+        proofFailure.editflowCode = "M3_LAYER_CONTROLS_P4_INDUCED_FAILURE";
+        throw proofFailure;
+      }
+
       app.endUndoGroup();
       var afterReadback = layerSwitchReadback(prepared.comp, prepared.layer);
       if (!patchAlreadyMatches(afterReadback, prepared.patch)) {
