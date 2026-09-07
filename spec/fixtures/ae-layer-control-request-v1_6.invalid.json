@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.6.0",
+  "requestId": "req-layer-control-bad",
+  "transactionId": "tx-layer-control-bad",
+  "operationId": "op-layer-control-bad",
+  "capabilityId": "ae.layer.switches.set",
+  "command": "layer.order.set",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": { "stableId": "comp-main" },
+    "layer": { "stableId": "layer-hero" },
+    "placement": { "position": "BEFORE" }
+  },
+  "readbackProfile": "M3_LAYER_CONTROL_STRUCTURAL"
+}
