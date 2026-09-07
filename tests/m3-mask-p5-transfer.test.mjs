@@ -5,6 +5,9 @@ import { readFile } from "node:fs/promises";
 const cliPath = "apps/desktop-host/src/m3-mask-p5-cli.ts";
 const reopenPath = "scripts/windows/m3-mask-p5-reopen.jsx";
 const cleanupPath = "scripts/windows/m3-mask-p5-cleanup.jsx";
+const acceptancePath = "scripts/windows/run-m3-mask-p5.ps1";
+const selfHostedPath = "scripts/windows/run-m3-mask-p5-self-hosted.ps1";
+const workflowPath = ".github/workflows/m3-real-ae-p5.yml";
 const protocolPath = "packages/adapters/ae-cep/src/protocol-v1_2.ts";
 
 test("M3 P5 harness proves save reopen authenticated reconnect exact mask transfer and fresh write authority", async () => {
@@ -70,6 +73,46 @@ test("M3 P5 cleanup fails closed to the exact saved proof fixture and retains th
   assert.match(source, /app\.newProject\(\)/);
   assert.match(source, /retainedProjectPath:\s*projectFile\.fsName/);
   assert.doesNotMatch(source, /projectFile\.remove/);
+});
+
+test("M3 P5 acceptance wrapper requires real transfer, cleanup, and retained saved project evidence", async () => {
+  const source = await readFile(acceptancePath, "utf8");
+
+  assert.match(source, /EDITFLOW_M3_MASK_P5_PROOF/);
+  assert.match(source, /m3-mask-p5-cli\.js/);
+  assert.match(source, /cleanupComplete -ne \$true/);
+  assert.match(source, /status -ne "ACCEPTED"/);
+  assert.match(source, /P5_save_reopen_reconnect_transfer/);
+  assert.match(source, /authenticated_reconnect/);
+  assert.match(source, /mask_exact_after_reopen_reconnect/);
+  assert.match(source, /post_reconnect_mutation_readback/);
+  assert.match(source, /saved_project_retained_after_cleanup/);
+});
+
+test("M3 P5 self-hosted runner is zero-baseline isolated and arms proof scripts only for its owned AE process", async () => {
+  const source = await readFile(selfHostedPath, "utf8");
+
+  assert.match(source, /refuses to touch an already-running After Effects session/);
+  assert.match(source, /\$env:EDITFLOW_M3_MASK_P5_PROOF = "1"/);
+  assert.match(source, /P5_PROOF_ARMED/);
+  assert.match(source, /Remove-Item Env:EDITFLOW_M3_MASK_P5_PROOF/);
+  assert.match(source, /P5_PROOF_DISARMED/);
+  assert.match(source, /run-m3-mask-p5\.ps1/);
+  assert.match(source, /EXECUTE_COMMAND_SENT/);
+  assert.match(source, /Stop-OwnedAfterFxSet/);
+  assert.doesNotMatch(source, /Invoke-Expression/);
+});
+
+test("M3 P5 workflow remains isolated to a manual control branch on the interactive Windows AE runner", async () => {
+  const source = await readFile(workflowPath, "utf8");
+
+  assert.match(source, /ae-test\/m3-mask-p5-control/);
+  assert.match(source, /\.github\/ae-test-trigger\/m3-mask-p5\.txt/);
+  assert.match(source, /runs-on:\s*\[self-hosted, Windows, editflow-ae\]/);
+  assert.match(source, /run-m3-mask-p5-self-hosted\.ps1/);
+  assert.match(source, /proofs\/artifacts\/m3-mask-p5-transfer\/\*\*/);
+  assert.match(source, /if:\s*always\(\)/);
+  assert.doesNotMatch(source, /pull_request:/);
 });
 
 test("M3 P5 proof adds no public mask commands and leaves protocol 1.2 command surface unchanged", async () => {
