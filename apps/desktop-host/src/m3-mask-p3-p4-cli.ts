@@ -209,6 +209,8 @@ const main = async (): Promise<void> => {
   let panelExtensionVersion: string | null = null;
   let panelSelectedProtocolVersion: string | null = null;
   let panelSupportedProtocolVersions: readonly string[] | null = null;
+  let visualArtifactPath: string | null = null;
+  let recoveryArtifactPath: string | null = null;
 
   const projectId = "m3-mask-p3-p4-real-ae";
   const prefix = `M3_MASK_P34_${Date.now()}`;
@@ -316,6 +318,9 @@ const main = async (): Promise<void> => {
     return response;
   };
 
+  const sameFilesystemPath = (left: string, right: string): boolean =>
+    path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+
   const renderComp = async (outputPath: string): Promise<RenderCompletionFile> => {
     const scheduled = await executeV11("render.capture", {
       comp: { stableId: targetStable },
@@ -326,14 +331,32 @@ const main = async (): Promise<void> => {
     const readback = asRecord(scheduled.readback);
     const jobId = readback?.["jobId"];
     const completionPath = readback?.["completionPath"];
+    const requestedOutputPath = readback?.["requestedOutputPath"];
+    const canonicalOutputPath = readback?.["outputPath"];
     if (typeof jobId !== "string" || typeof completionPath !== "string") {
       throw new Error("render.capture did not return a jobId and completionPath.");
     }
+    if (typeof requestedOutputPath !== "string" || !sameFilesystemPath(requestedOutputPath, outputPath)) {
+      throw new Error("render.capture requested output-path readback does not match the M3 proof request.");
+    }
+    if (typeof canonicalOutputPath !== "string" || canonicalOutputPath.length === 0) {
+      throw new Error("render.capture did not return After Effects' canonical OutputModule.file path.");
+    }
+    const relativeArtifactPath = path.relative(artifactDir, canonicalOutputPath);
+    if (relativeArtifactPath.startsWith("..") || path.isAbsolute(relativeArtifactPath)) {
+      throw new Error(`render.capture canonical output escaped the M3 artifact directory: ${canonicalOutputPath}`);
+    }
+
     const completion = await waitForRenderCompletion(completionPath, jobId, timeoutMs);
     if (!completion.ok || completion.status !== "DONE" || !completion.queueItemRemoved) {
       throw new Error(`Render job ${jobId} failed: ${completion.error ?? completion.status}`);
     }
-    if (!(await fileExistsNonEmpty(outputPath))) throw new Error(`Render output is missing or empty: ${outputPath}`);
+    if (!sameFilesystemPath(completion.outputPath, canonicalOutputPath)) {
+      throw new Error(`Render completion path '${completion.outputPath}' does not match scheduled canonical path '${canonicalOutputPath}'.`);
+    }
+    if (!(await fileExistsNonEmpty(completion.outputPath))) {
+      throw new Error(`Canonical render output is missing or empty: ${completion.outputPath}`);
+    }
     await refreshState();
     return completion;
   };
@@ -500,7 +523,8 @@ const main = async (): Promise<void> => {
     // protection remains active rather than being bypassed.
     await refreshState();
     const visualCompletion = await renderComp(visualRenderPath);
-    checks.p3_visual_artifact_emitted = visualCompletion.ok && await fileExistsNonEmpty(visualRenderPath);
+    visualArtifactPath = visualCompletion.outputPath;
+    checks.p3_visual_artifact_emitted = visualCompletion.ok && await fileExistsNonEmpty(visualArtifactPath);
 
     const beforeFailureReadback = await dispatchV12("mask.readback", {
       comp: { stableId: targetStable },
@@ -543,7 +567,8 @@ const main = async (): Promise<void> => {
       && stableJson(afterFailureMask) === beforeFailureMaskJson;
 
     const recoveryCompletion = await renderComp(recoveryRenderPath);
-    checks.p4_recovery_visual_artifact_emitted = recoveryCompletion.ok && await fileExistsNonEmpty(recoveryRenderPath);
+    recoveryArtifactPath = recoveryCompletion.outputPath;
+    checks.p4_recovery_visual_artifact_emitted = recoveryCompletion.ok && await fileExistsNonEmpty(recoveryArtifactPath);
     checks.p4 = checks.p4_induced_failure_reported
       && checks.p4_self_rollback_note
       && checks.p4_fingerprint_restored
@@ -615,8 +640,10 @@ const main = async (): Promise<void> => {
       },
       checks,
       visualReviewSpec: {
-        render: visualRenderPath,
-        postRollbackRender: recoveryRenderPath,
+        render: visualArtifactPath,
+        postRollbackRender: recoveryArtifactPath,
+        requestedRender: visualRenderPath,
+        requestedPostRollbackRender: recoveryRenderPath,
         sourceForeground: foregroundPath,
         sourceBackground: backgroundPath,
         expected: [
@@ -641,6 +668,7 @@ const main = async (): Promise<void> => {
       cleanupComplete,
       notes: [
         "P3 emits a deterministic real-AE visual artifact but does not self-claim visual acceptance; retained render evidence must be reviewed before P3 is accepted.",
+        "P3/P4 retain After Effects' canonical OutputModule.file artifacts even when AE changes the requested filename extension.",
         "P4 is induced only when the runner-owned AE process inherits EDITFLOW_M3_MASK_P4_PROOF=1 and the typed mask.set_properties request uses the exact fixed M3_MASK_P4_FAILURE_INJECTION profile.",
         "The induced error occurs after the real mask mutation inside the existing M3 undo group; the existing catch path must report AE Undo self-rollback, restore the project fingerprint, and restore exact mask readback.",
         "P5 remains explicitly unclaimed and is a separate save/reopen/reconnect transfer tranche.",
