@@ -125,6 +125,9 @@ const layerRefStableId = (value: unknown): string | null => {
 const projectHasComp = (project: AeProjectSnapshot | null, stableId: string): boolean =>
   project?.items.some((item) => item.kind === "COMPOSITION" && item.stableId === stableId) ?? false;
 
+const allChecksTrue = (...values: readonly (boolean | undefined)[]): boolean =>
+  values.every((value) => value === true);
+
 const main = async (): Promise<void> => {
   const configPath = requireArgument("--config");
   const resultPath = requireArgument("--result");
@@ -489,28 +492,32 @@ const main = async (): Promise<void> => {
       && orderRecord(finalRead)?.["totalLayers"] === 3
       && switchValues(finalRead)?.["locked"] === false;
 
-    checks.p1 = checks.p1_stale_revision_rejected
-      && checks.p1_stale_revision_revision_unchanged
-      && checks.p1_stale_revision_fingerprint_unchanged
-      && checks.p1_empty_switches_rejected
-      && checks.p1_empty_switches_revision_unchanged
-      && checks.p1_empty_switches_fingerprint_unchanged
-      && checks.p1_self_relative_order_rejected
-      && checks.p1_self_relative_order_revision_unchanged
-      && checks.p1_self_relative_order_fingerprint_unchanged;
+    checks.p1 = allChecksTrue(
+      checks.p1_stale_revision_rejected,
+      checks.p1_stale_revision_revision_unchanged,
+      checks.p1_stale_revision_fingerprint_unchanged,
+      checks.p1_empty_switches_rejected,
+      checks.p1_empty_switches_revision_unchanged,
+      checks.p1_empty_switches_fingerprint_unchanged,
+      checks.p1_self_relative_order_rejected,
+      checks.p1_self_relative_order_revision_unchanged,
+      checks.p1_self_relative_order_fingerprint_unchanged,
+    );
 
-    checks.p2 = checks.p2_initial_readback
-      && checks.p2_all_switches_report_supported
-      && checks.p2_all_switch_writes_exact
-      && checks.p2_lock_applied
-      && checks.p2_repeat_switch_no_op
-      && checks.p2_locked_move_end_exact
-      && checks.p2_repeat_order_no_op
-      && checks.p2_move_before_exact
-      && checks.p2_move_after_exact
-      && checks.p2_move_beginning_exact
-      && checks.p2_unlock_applied
-      && checks.p2_final_readback_exact;
+    checks.p2 = allChecksTrue(
+      checks.p2_initial_readback,
+      checks.p2_all_switches_report_supported,
+      checks.p2_all_switch_writes_exact,
+      checks.p2_lock_applied,
+      checks.p2_repeat_switch_no_op,
+      checks.p2_locked_move_end_exact,
+      checks.p2_repeat_order_no_op,
+      checks.p2_move_before_exact,
+      checks.p2_move_after_exact,
+      checks.p2_move_beginning_exact,
+      checks.p2_unlock_applied,
+      checks.p2_final_readback_exact,
+    );
 
     checks.baseline_captured = baselineFingerprint.length > 0 && baselineItemCount >= 0;
     checks.fixture_comp_present_before_cleanup = projectSnapshot !== null
