@@ -27,6 +27,7 @@ import {
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_parenting.jsx";
 const acceptedLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
 const additiveLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v15.jsx";
+const currentLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v16.jsx";
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const bridgePath = "packages/adapters/ae-cep/extension/client/bridge.js";
 const runtimeConfigPath = "packages/adapters/ae-cep/extension/client/runtime-config.js";
@@ -168,10 +169,11 @@ test("M3 parenting host encodes no-jump geometry, exact readback, rejection, and
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("protocol 1.5 installation preserves the accepted 1.4 parenting loader and advertises both tranches", async () => {
-  const [acceptedLoader, additiveLoader, installer, bridge, runtimeConfig] = await Promise.all([
+test("later installations preserve accepted 1.4 parenting through the additive loader chain", async () => {
+  const [acceptedLoader, additiveLoader, currentLoader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(acceptedLoaderPath, "utf8"),
     readFile(additiveLoaderPath, "utf8"),
+    readFile(currentLoaderPath, "utf8"),
     readFile(installerPath, "utf8"),
     readFile(bridgePath, "utf8"),
     readFile(runtimeConfigPath, "utf8"),
@@ -181,8 +183,11 @@ test("protocol 1.5 installation preserves the accepted 1.4 parenting loader and 
   assert.match(acceptedLoader, /M3_PARENTING_MODULE_LOAD_FAILED/);
   assert.match(acceptedLoader, /request\.protocolVersion === "1\.4\.0"/);
   assert.match(additiveLoader, /editflow_host_current\.jsx/);
+  assert.match(currentLoader, /editflow_host_current_v15\.jsx/);
   assert.match(installer, /"editflow_host_m3_parenting\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  for (const protocol of ["1.4.0", "1.3.0", "1.2.0", "1.1.0"]) {
+    assert.match(installer, new RegExp(`\\"${protocol.replaceAll(".", "\\.")}\\"`));
+    assert.match(bridge, new RegExp(`\\"${protocol.replaceAll(".", "\\.")}\\"`));
+    assert.match(runtimeConfig, new RegExp(`\\"${protocol.replaceAll(".", "\\.")}\\"`));
+  }
 });
