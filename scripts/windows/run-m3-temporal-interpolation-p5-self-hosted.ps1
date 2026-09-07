@@ -8,9 +8,12 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplatePath = Join-Path $RepoRoot "scripts\windows\run-m3-mask-p3-p4-self-hosted.ps1"
 $TempPath = Join-Path $PSScriptRoot ("run-m3-temporal-interpolation-p5-self-hosted-generated-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-temporal-interpolation-p5-transfer"
+$ResultPath = Join-Path $ProofArtifactDir "result.json"
+$SavedProjectPath = Join-Path $ProofArtifactDir "m3-temporal-interpolation-p5-transfer.aep"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
+$MaxPanelRegistrationAttempts = 2
 
 function Copy-CepFailureDiagnostics {
   param([string]$Destination)
@@ -43,6 +46,41 @@ function Copy-CepFailureDiagnostics {
   if ($Copied.Count -gt 0) { $Manifest += $Copied | ForEach-Object { "file=" + $_ } }
   else { $Manifest += "note=No recent CEP12/CEPHtmlEngine AEFT log matched the documented Windows log patterns." }
   [System.IO.File]::WriteAllLines((Join-Path $Destination "cep-failure-diagnostics.txt"), $Manifest, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Test-RetryablePanelRegistrationFailure {
+  if (-not (Test-Path $ResultPath -PathType Leaf)) { return $false }
+  try {
+    $Failure = Get-Content $ResultPath -Raw | ConvertFrom-Json
+    $Responses = @($Failure.responses)
+    return $Failure.proofId -eq "M3_TEMPORAL_INTERPOLATION_P5_REAL_AE" `
+      -and $Failure.status -eq "FAILURE" `
+      -and $Failure.ok -eq $false `
+      -and [string]$Failure.failureError -match "CEP_PANEL_REGISTRATION_TIMEOUT" `
+      -and $Failure.checks.proof_scripts_present -eq $true `
+      -and $Failure.checks.afterfx_present -eq $true `
+      -and $null -eq $Failure.panel.initialSession `
+      -and $null -eq $Failure.panel.reconnectedSession `
+      -and $null -eq $Failure.baseline.projectFingerprint `
+      -and $null -eq $Failure.saved.projectFingerprint `
+      -and $Responses.Count -eq 0 `
+      -and -not (Test-Path $SavedProjectPath -PathType Leaf)
+  } catch {
+    return $false
+  }
+}
+
+function Retain-PanelRetryEvidence {
+  param([int]$Attempt)
+  $Destination = Join-Path $ProofArtifactDir ("panel-registration-retry-attempt-" + $Attempt)
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  foreach ($Name in @("result.json", "cleanup-result.json", "panel-bootstrap.log", "startup-diagnostics.log")) {
+    $Source = Join-Path $ProofArtifactDir $Name
+    if (Test-Path $Source -PathType Leaf) {
+      Copy-Item -LiteralPath $Source -Destination (Join-Path $Destination $Name) -Force
+    }
+  }
+  Copy-CepFailureDiagnostics -Destination $Destination
 }
 
 if (-not (Test-Path $TemplatePath -PathType Leaf)) {
@@ -107,7 +145,10 @@ foreach ($Name in $NearbyP5EnvNames) {
 }
 
 # CEP 12 LogLevel is process-start scoped. Preserve the runner's prior value and
-# retain recent CEP logs only when this isolated transfer attempt fails.
+# retain recent CEP logs only when this isolated transfer attempt fails. A panel
+# menu-open command does not itself prove registration, so allow exactly one fresh
+# retry only for the same zero-mutation CEP_PANEL_REGISTRATION_TIMEOUT envelope
+# already accepted by the temporal P3/P4 self-hosted proof runner.
 try {
   New-Item -Path $CsxsKey -Force | Out-Null
   try {
@@ -122,9 +163,39 @@ try {
   if ($EffectiveLogLevel -ne "6") { throw "Unable to arm CEP 12 verbose logging for temporal P5 proof." }
   Write-Host "CEP 12 LogLevel registry readback before AE launch: $EffectiveLogLevel"
 
-  & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
-  if ($LASTEXITCODE -ne 0) {
-    throw "Temporal P5 generated self-hosted runner exited with code $LASTEXITCODE."
+  $Completed = $false
+  for ($Attempt = 1; $Attempt -le $MaxPanelRegistrationAttempts; $Attempt++) {
+    $AttemptError = $null
+    try {
+      & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+      if ($LASTEXITCODE -ne 0) {
+        throw "Temporal P5 generated self-hosted runner exited with code $LASTEXITCODE."
+      }
+      $Completed = $true
+      break
+    } catch {
+      $AttemptError = $_
+    }
+
+    $RetryableRegistrationFailure = Test-RetryablePanelRegistrationFailure
+    if ($Attempt -lt $MaxPanelRegistrationAttempts -and $RetryableRegistrationFailure) {
+      $RemainingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+      if ($RemainingAfterFx.Count -ne 0) {
+        Retain-PanelRetryEvidence -Attempt $Attempt
+        throw "Temporal P5 panel-registration retry refused because the failed isolated attempt did not return to a zero-After-Effects baseline."
+      }
+      Retain-PanelRetryEvidence -Attempt $Attempt
+      Write-Host ("Authenticated CEP panel registration timed out before any P5 mutation or saved artifact on attempt " + $Attempt + "; retrying one fresh isolated AE launch from the verified zero-process baseline.")
+      Start-Sleep -Seconds 2
+      continue
+    }
+
+    Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
+    throw $AttemptError
+  }
+
+  if (-not $Completed) {
+    throw "Temporal P5 self-hosted runner exhausted its bounded panel-registration attempts."
   }
 } catch {
   Copy-CepFailureDiagnostics -Destination $ProofArtifactDir

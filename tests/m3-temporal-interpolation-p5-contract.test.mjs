@@ -103,6 +103,27 @@ test("temporal interpolation P5 wrappers reuse accepted P5 and protocol 1.7 self
   assert.doesNotMatch(selfHosted, /EDITFLOW_M3_TEMPORAL_INTERPOLATION_P5_PROOF=1/);
 });
 
+test("temporal interpolation P5 permits one bounded retry only for pre-mutation CEP registration timeout from a zero-AE baseline", async () => {
+  const source = await readFile(selfHostedPath, "utf8");
+
+  assert.match(source, /\$MaxPanelRegistrationAttempts = 2/);
+  assert.match(source, /function Test-RetryablePanelRegistrationFailure/);
+  assert.match(source, /M3_TEMPORAL_INTERPOLATION_P5_REAL_AE/);
+  assert.match(source, /CEP_PANEL_REGISTRATION_TIMEOUT/);
+  assert.match(source, /\$null -eq \$Failure\.panel\.initialSession/);
+  assert.match(source, /\$null -eq \$Failure\.panel\.reconnectedSession/);
+  assert.match(source, /\$null -eq \$Failure\.baseline\.projectFingerprint/);
+  assert.match(source, /\$null -eq \$Failure\.saved\.projectFingerprint/);
+  assert.match(source, /\$Responses\.Count -eq 0/);
+  assert.match(source, /-not \(Test-Path \$SavedProjectPath -PathType Leaf\)/);
+  assert.match(source, /function Retain-PanelRetryEvidence/);
+  assert.match(source, /panel-registration-retry-attempt-/);
+  assert.match(source, /Get-Process -Name "AfterFX"/);
+  assert.match(source, /\$RemainingAfterFx\.Count -ne 0/);
+  assert.match(source, /Start-Sleep -Seconds 2/);
+  assert.match(source, /retrying one fresh isolated AE launch from the verified zero-process baseline/);
+});
+
 test("temporal interpolation P5 workflow is isolated on its control branch and retains transfer evidence", async () => {
   const source = await readFile(workflowPath, "utf8");
 
