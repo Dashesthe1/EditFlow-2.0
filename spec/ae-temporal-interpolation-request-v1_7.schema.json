@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-temporal-interpolation-request-v1_7.schema.json",
+  "title": "EditFlow 2.0 AE M3 Temporal Interpolation Request Protocol 1.7",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.7.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["property.temporal_interpolation.set", "property.temporal_interpolation.readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "propertyPath": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {"type": "string", "minLength": 1},
+          {"type": "integer", "minimum": 1}
+        ]
+      }
+    },
+    "interpolationState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inType", "outType", "temporalContinuous", "temporalAutoBezier"],
+      "properties": {
+        "inType": {"enum": ["LINEAR", "BEZIER", "HOLD"]},
+        "outType": {"enum": ["LINEAR", "BEZIER", "HOLD"]},
+        "temporalContinuous": {"type": "boolean"},
+        "temporalAutoBezier": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"temporalContinuous": {"const": true}}, "required": ["temporalContinuous"]},
+          "then": {"properties": {"inType": {"const": "BEZIER"}, "outType": {"const": "BEZIER"}}}
+        },
+        {
+          "if": {"properties": {"temporalAutoBezier": {"const": true}}, "required": ["temporalAutoBezier"]},
+          "then": {"properties": {"inType": {"const": "BEZIER"}, "outType": {"const": "BEZIER"}}}
+        }
+      ]
+    },
+    "targetPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer", "propertyPath", "keyIndex"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"},
+        "propertyPath": {"$ref": "#/$defs/propertyPath"},
+        "keyIndex": {"type": "integer", "minimum": 1}
+      }
+    },
+    "setPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer", "propertyPath", "keyIndex", "interpolation"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"},
+        "propertyPath": {"$ref": "#/$defs/propertyPath"},
+        "keyIndex": {"type": "integer", "minimum": 1},
+        "interpolation": {"$ref": "#/$defs/interpolationState"}
+      }
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "property.temporal_interpolation.set"},
+          "capabilityId": {"const": "ae.property.temporal_interpolation.set"},
+          "expectedHostProjectRevision": {"type": "integer", "minimum": 0},
+          "payload": {"$ref": "#/$defs/setPayload"}
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "property.temporal_interpolation.readback"},
+          "capabilityId": {"const": "ae.property.temporal_interpolation.readback"},
+          "payload": {"$ref": "#/$defs/targetPayload"}
+        }
+      }
+    ]
+  }]
+}
