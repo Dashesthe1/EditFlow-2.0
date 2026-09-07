@@ -1,0 +1,44 @@
+name: M3 Composite P5 Real AE Transfer
+
+on:
+  push:
+    branches:
+      - ae-test/m3-composite-p5-control
+    paths:
+      - .github/ae-test-trigger/m3-composite-p5.txt
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  m3-composite-p5-real-ae:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        shell: cmd
+        run: npm install
+
+      - name: Run isolated M3 composite P5 transfer proof
+        shell: cmd
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows\run-m3-composite-p5-self-hosted.ps1 -TimeoutSeconds 120
+
+      - name: Upload M3 composite P5 proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-composite-p5-proof-${{ github.run_id }}
+          path: |
+            proofs/artifacts/m3-composite-p5-transfer/**
+          if-no-files-found: warn
