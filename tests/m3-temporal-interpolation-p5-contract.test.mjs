@@ -78,7 +78,7 @@ test("temporal interpolation P5 fixed reopen and cleanup scripts are proof-gated
   assert.doesNotThrow(() => new vm.Script(cleanup, { filename: cleanupPath }));
 });
 
-test("temporal interpolation P5 wrappers reuse accepted P5 and current protocol 1.7 self-hosted machinery", async () => {
+test("temporal interpolation P5 wrappers reuse accepted P5 and protocol 1.7 self-hosted launch machinery without rewriting generator guards", async () => {
   const [acceptance, selfHosted] = await Promise.all([
     readFile(acceptancePath, "utf8"),
     readFile(selfHostedPath, "utf8"),
@@ -91,13 +91,15 @@ test("temporal interpolation P5 wrappers reuse accepted P5 and current protocol 
   assert.match(acceptance, /temporal_exact_after_reopen_reconnect/);
   assert.match(acceptance, /34166441340/);
 
-  assert.match(selfHosted, /run-m3-temporal-interpolation-p3-p4-self-hosted\.ps1/);
+  assert.match(selfHosted, /run-m3-mask-p3-p4-self-hosted\.ps1/);
   assert.match(selfHosted, /run-m3-temporal-interpolation-p5\.ps1/);
   assert.match(selfHosted, /npm run check/);
   assert.match(selfHosted, /authenticated protocol 1\.7 registration/);
+  assert.match(selfHosted, /The M3 mask P3\/P4 acceptance runner is missing/);
   assert.match(selfHosted, /EDITFLOW_M3_TEMPORAL_INTERPOLATION_P5_PROOF/);
   assert.match(selfHosted, /EDITFLOW_M3_MASK_P5_PROOF/);
   assert.match(selfHosted, /EDITFLOW_M3_LAYER_CONTROLS_P5_PROOF/);
+  assert.doesNotMatch(selfHosted, /\$P5 = \$Template/);
   assert.doesNotMatch(selfHosted, /EDITFLOW_M3_TEMPORAL_INTERPOLATION_P5_PROOF=1/);
 });
 
