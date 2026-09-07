@@ -81,7 +81,8 @@
   if (!app.project || app.project.file) return;
 
   var currentFile = new File($.fileName);
-  var repoRoot = currentFile.parent.parent.parent.parent;
+  /* host -> ae-cep -> adapters -> packages -> repository root */
+  var repoRoot = currentFile.parent.parent.parent.parent.parent;
   var artifactDir = new Folder(repoRoot.fsName + "/proofs/artifacts/m3-layer-controls-p1-p2");
   try { if (!artifactDir.exists) artifactDir.create(); } catch (_) {}
   var markerFile = new File(artifactDir.fsName + "/cleanup-result.json");
