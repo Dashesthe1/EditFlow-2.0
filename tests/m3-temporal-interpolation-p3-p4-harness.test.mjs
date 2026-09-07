@@ -133,6 +133,20 @@ test("self-hosted temporal P3/P4 runner arms only the proof-owned rollback gate 
   assert.match(source, /Copy-CepFailureDiagnostics/);
 });
 
+test("temporal self-hosted runner retries only pre-proof CEP registration timeout from an exact zero-AE baseline", async () => {
+  const source = await readFile(selfHostedPath, "utf8");
+  assert.match(source, /\$MaxPanelRegistrationAttempts = 2/);
+  assert.match(source, /function Test-RetryablePanelRegistrationFailure/);
+  assert.match(source, /Test-Path \$ResultPath -PathType Leaf/);
+  assert.match(source, /CEP_PANEL_REGISTRATION_TIMEOUT/);
+  assert.match(source, /\$RemainingAfterFx = @\(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue\)/);
+  assert.match(source, /if \(\$RemainingAfterFx\.Count -ne 0\)/);
+  assert.match(source, /Retain-PanelRetryEvidence -Attempt \$Attempt/);
+  assert.match(source, /retrying one fresh isolated AE launch from the verified zero-process baseline/);
+  assert.match(source, /for \(\$Attempt = 1; \$Attempt -le \$MaxPanelRegistrationAttempts; \$Attempt\+\+\)/);
+  assert.doesNotMatch(source, /MaxPanelRegistrationAttempts\s*=\s*[3-9]/);
+});
+
 test("real-AE temporal P3/P4 workflow is isolated and always retains review artifacts", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
