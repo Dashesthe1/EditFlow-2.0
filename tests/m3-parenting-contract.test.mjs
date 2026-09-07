@@ -11,6 +11,14 @@ import {
   isAeParentingCommandV14,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_4.js";
 import {
+  M3_PARENTING_P1_P2_ACCEPTED_SOURCE_COMMIT,
+  M3_PARENTING_P1_P2_ACCEPTANCE_CONTROL_COMMIT,
+  M3_PARENTING_P1_P2_ACCEPTANCE_RUN,
+  M3_PARENTING_P1_P2_ACCEPTANCE_RUN_ATTEMPT,
+  M3_PARENTING_P1_P2_ACCEPTANCE_JOB,
+  M3_PARENTING_P1_P2_ACCEPTANCE_ARTIFACT,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-parenting-proof-maturity.js";
+import {
   CepEvalScriptParentingTransportV14,
   M3_PARENTING_CAPABILITIES_V14,
   buildParentingRequestV14,
@@ -38,11 +46,17 @@ test("M3 parenting protocol 1.4 is an explicit preserve-transform tranche", () =
   assert.equal(capabilityForParentingCommandV14("layer.parenting_readback"), "ae.layer.parenting.readback");
 });
 
-test("parenting capability declarations remain partial until real-AE evidence is accepted", () => {
+test("accepted real-AE parenting P1/P2 evidence promotes only structural maturity", () => {
+  assert.equal(M3_PARENTING_P1_P2_ACCEPTED_SOURCE_COMMIT, "026e83dabe6e354c192f36518234f43e559048e7");
+  assert.equal(M3_PARENTING_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "9b41d8eb576fa809d4aae3ede6e381160ecb483d");
+  assert.equal(M3_PARENTING_P1_P2_ACCEPTANCE_RUN, 34082201184);
+  assert.equal(M3_PARENTING_P1_P2_ACCEPTANCE_RUN_ATTEMPT, 1);
+  assert.equal(M3_PARENTING_P1_P2_ACCEPTANCE_JOB, 101619497171);
+  assert.equal(M3_PARENTING_P1_P2_ACCEPTANCE_ARTIFACT, 10004053330);
   assert.equal(M3_PARENTING_CAPABILITIES_V14.length, AE_PARENTING_COMMANDS_V14.length);
   for (const capability of M3_PARENTING_CAPABILITIES_V14) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.proofMaturity, "STRUCTURAL");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_PARENTING_ROUTE_ID_V14);
     assert.equal(capability.routes[0].available, true);

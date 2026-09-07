@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3ParentingAcceptedP1P2Evidence } from "./m3-parenting-proof-maturity.js";
 import {
   AE_PARENTING_ADAPTER_BUILD_V14,
   AE_PARENTING_COMMANDS_V14,
@@ -69,7 +70,7 @@ export class CepEvalScriptParentingTransportV14 {
 const riskForParentingCommand = (command: AeParentingCommandV14): CapabilityRecord["riskClass"] =>
   command === "layer.parenting_readback" ? "R0_READ_ONLY" : "R1_REVERSIBLE";
 
-export const M3_PARENTING_CAPABILITIES_V14: readonly CapabilityRecord[] = AE_PARENTING_COMMANDS_V14.map(
+const DECLARED_M3_PARENTING_CAPABILITIES_V14: readonly CapabilityRecord[] = AE_PARENTING_COMMANDS_V14.map(
   (command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForParentingCommandV14(command)),
     domain: "layer",
@@ -89,6 +90,9 @@ export const M3_PARENTING_CAPABILITIES_V14: readonly CapabilityRecord[] = AE_PAR
     fallbackPolicy: "FORBID",
   }),
 );
+
+export const M3_PARENTING_CAPABILITIES_V14: readonly CapabilityRecord[] =
+  applyM3ParentingAcceptedP1P2Evidence(DECLARED_M3_PARENTING_CAPABILITIES_V14);
 
 export const buildParentingRequestV14 = (input: {
   readonly requestId: string;

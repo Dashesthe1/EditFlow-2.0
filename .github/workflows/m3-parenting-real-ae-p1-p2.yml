@@ -1,0 +1,50 @@
+name: M3 Parenting P1 P2 Real After Effects
+
+on:
+  workflow_dispatch:
+    inputs:
+      afterfx_path:
+        description: Optional explicit path to AfterFX.exe
+        required: false
+        type: string
+  push:
+    branches:
+      - ae-test/m3-parenting-p1-p2-control
+    paths:
+      - .github/ae-test-trigger/m3-parenting-p1-p2.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-m3-parenting-p1-p2-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  real-ae-parenting-p1-p2:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run isolated M3 parenting P1/P2 proof
+        shell: cmd
+        env:
+          EDITFLOW_AFTERFX_PATH: ${{ github.event.inputs.afterfx_path }}
+        run: |
+          @echo off
+          if defined EDITFLOW_AFTERFX_PATH (
+            powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\run-m3-parenting-self-hosted.ps1" -AfterFxPath "%EDITFLOW_AFTERFX_PATH%"
+          ) else (
+            powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\run-m3-parenting-self-hosted.ps1"
+          )
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-parenting-p1-p2-proof-${{ github.run_id }}
+          path: proofs/artifacts/m3-parenting-p1-p2/
+          if-no-files-found: warn
+          retention-days: 14
