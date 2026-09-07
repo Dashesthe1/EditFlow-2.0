@@ -1,0 +1,4 @@
+proof=M3_COMPOSITE_P5_REAL_AE
+control_branch=ae-test/m3-composite-p5-control
+accepted_p3_p4_main=e629e2b6c463c0467a20e145445976f9a88a4a24
+status=foundation-awaiting-real-ae
