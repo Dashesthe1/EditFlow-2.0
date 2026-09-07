@@ -11,7 +11,7 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplateRoot = Join-Path $RepoRoot "packages\adapters\ae-cep\extension"
 $HostSourceRoot = Join-Path $RepoRoot "packages\adapters\ae-cep\host"
 $ExtensionId = "com.editflow2.bridge.panel"
-$ExtensionVersion = "0.1.0-dev.5"
+$ExtensionVersion = "0.1.0-dev.6"
 $TargetRoot = Join-Path $env:APPDATA "Adobe\CEP\extensions\com.editflow2.bridge"
 $ConfigDir = Join-Path $env:LOCALAPPDATA "EditFlow2"
 $ConfigPath = Join-Path $ConfigDir "bridge-config.json"
@@ -68,12 +68,14 @@ $HostFiles = @(
   "editflow_host_m3_composite.jsx",
   "editflow_host_m3_parenting.jsx",
   "editflow_host_m3_null_rigs.jsx",
+  "editflow_host_m3_layer_controls.jsx",
   "editflow_host_m3_proof_cleanup.jsx",
   "editflow_host_m3_composite_proof_cleanup.jsx",
   "editflow_host_m3_parenting_proof_cleanup.jsx",
   "editflow_host_m3_null_rig_proof_cleanup.jsx",
   "editflow_host_current.jsx",
-  "editflow_host_current_v15.jsx"
+  "editflow_host_current_v15.jsx",
+  "editflow_host_current_v16.jsx"
 )
 foreach ($FileName in $HostFiles) {
   $Source = Join-Path $HostSourceRoot $FileName
@@ -89,7 +91,7 @@ $Config = [ordered]@{
   port = $Port
   token = $Token
   protocolVersion = "1.1.0"
-  supportedProtocolVersions = @("1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
+  supportedProtocolVersions = @("1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
   extensionId = $ExtensionId
   extensionVersion = $ExtensionVersion
 }
@@ -111,7 +113,7 @@ if (-not $SkipDebugMode) {
 Write-Host "EditFlow 2.0 CEP bridge installed."
 Write-Host "Extension: $TargetRoot"
 Write-Host "Runtime config: $ConfigPath"
-Write-Host "Panel protocols advertised: 1.5.0, 1.4.0, 1.3.0, 1.2.0, 1.1.0"
+Write-Host "Panel protocols advertised: 1.6.0, 1.5.0, 1.4.0, 1.3.0, 1.2.0, 1.1.0"
 Write-Host "Each local broker narrows that set to the protocol tranches its current proof/runtime supports."
 Write-Host "Broker: 127.0.0.1:$Port"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }
