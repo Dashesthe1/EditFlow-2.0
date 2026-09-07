@@ -66,7 +66,14 @@ test("scheduled async driver is self-contained for AE global workspace", async (
   assert.match(driver, /function taskCleanupQueueItem\(\)/);
   assert.match(driver, /function taskFinish\(ok, errorMessage\)/);
   assert.match(driver, /function taskScheduleDrive\(delayMs\)/);
-  assert.doesNotMatch(driver, /EditFlow2_JSON/);
+  assert.match(driver, /\$\.global\.EditFlow2_JSON\.stringify/);
+  assert.match(driver, /clean-room JSON runtime is unavailable/);
+  const markerWriterStart = driver.indexOf("function taskWriteMarker(status, ok, errorMessage)");
+  const markerWriterEnd = driver.indexOf("function taskCleanupQueueItem()", markerWriterStart);
+  const markerWriter = driver.slice(markerWriterStart, markerWriterEnd);
+  assert.ok(markerWriter.indexOf("var payload =") >= 0
+    && markerWriter.indexOf("var marker = new File") > markerWriter.indexOf("var payload ="),
+    "scheduled marker payload must be fully serialized before the durable file is opened/truncated");
   assert.doesNotMatch(driver, /\bnowMs\(\)/);
   assert.doesNotMatch(driver, /\basString\(/);
   assert.doesNotMatch(driver, /\bwriteImmediateMarker\(/);

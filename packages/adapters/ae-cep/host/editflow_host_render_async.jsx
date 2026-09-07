@@ -15,7 +15,7 @@
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderasync2";
+  var BUILD = "0.1.0-dev.4-renderasync3";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -160,20 +160,29 @@
       return "\"" + text + "\"";
     }
     function taskWriteMarker(status, ok, errorMessage) {
+      /* Build the complete payload before opening/truncating the durable marker.
+       * The synchronous SCHEDULED writers already prove EditFlow2_JSON is present
+       * in the installed host. Reusing that clean-room runtime here avoids a
+       * second hand-written serializer at the delayed global execution boundary.
+       * If serialization ever fails, the previous durable marker remains intact.
+       */
+      if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.stringify !== "function") {
+        throw new Error("EditFlow clean-room JSON runtime is unavailable in the async render driver.");
+      }
+      var payload = $.global.EditFlow2_JSON.stringify({
+        schemaVersion: 1,
+        jobId: job.jobId,
+        status: status,
+        ok: ok,
+        outputPath: job.outputPath,
+        error: errorMessage || null,
+        completedAtMs: taskNowMs(),
+        queueItemRemoved: job.queueItemRemoved === true
+      });
       var marker = new File(job.completionPath);
       marker.encoding = "UTF-8";
       if (!marker.open("w")) throw new Error("Unable to open render lifecycle marker: " + marker.fsName);
       try {
-        var payload = "{" +
-          "\"schemaVersion\":1," +
-          "\"jobId\":" + taskQuote(job.jobId) + "," +
-          "\"status\":" + taskQuote(status) + "," +
-          "\"ok\":" + (ok ? "true" : "false") + "," +
-          "\"outputPath\":" + taskQuote(job.outputPath) + "," +
-          "\"error\":" + (errorMessage ? taskQuote(errorMessage) : "null") + "," +
-          "\"completedAtMs\":" + taskNowMs() + "," +
-          "\"queueItemRemoved\":" + (job.queueItemRemoved === true ? "true" : "false") +
-          "}";
         marker.write(payload);
       } finally {
         marker.close();
