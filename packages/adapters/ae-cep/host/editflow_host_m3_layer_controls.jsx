@@ -18,6 +18,8 @@
     "layer.controls.readback": "ae.layer.controls.readback"
   };
   var SWITCH_KEYS = ["enabled", "solo", "shy", "locked", "guideLayer", "adjustmentLayer", "threeDLayer", "collapseTransformation", "audioEnabled"];
+  /* Apply locked last so a multi-switch patch cannot make its own remaining writes harder to complete. */
+  var SWITCH_MUTATION_ORDER = ["enabled", "solo", "shy", "guideLayer", "adjustmentLayer", "threeDLayer", "collapseTransformation", "audioEnabled", "locked"];
 
   function nowMs() { return (new Date()).getTime(); }
   function asString(value) { return value === null || value === undefined ? "" : String(value); }
@@ -43,7 +45,6 @@
   function stableIdFromText(text) { return markerValue(text, STABLE_PREFIX); }
   function layerStableId(layer) { try { return stableIdFromText(layer.comment); } catch (_) { return null; } }
   function hostIdOf(layer) { try { return typeof layer.id === "number" ? layer.id : null; } catch (_) { return null; } }
-  function itemHostId(item) { try { return typeof item.id === "number" ? item.id : null; } catch (_) { return null; } }
 
   function findItem(ref) {
     if (!ref || typeof ref !== "object") reject("OBJECT_REF_REQUIRED", "Object reference is required.");
@@ -150,16 +151,18 @@
     };
   }
 
+  function isKnownSwitch(key) {
+    var i;
+    for (i = 0; i < SWITCH_KEYS.length; i += 1) if (SWITCH_KEYS[i] === key) return true;
+    return false;
+  }
   function validateSwitchPatch(layer, switches) {
     if (!switches || typeof switches !== "object") reject("LAYER_SWITCH_PATCH_REQUIRED", "layer.switches.set requires a switches object.");
     var seen = 0;
-    var key, i, current;
+    var key, current;
     for (key in switches) {
       if (!own(switches, key)) continue;
-      if (SWITCH_KEYS.indexOf ? SWITCH_KEYS.indexOf(key) < 0 : false) reject("LAYER_SWITCH_UNSUPPORTED", "Unsupported layer switch: " + key);
-      var known = false;
-      for (i = 0; i < SWITCH_KEYS.length; i += 1) if (SWITCH_KEYS[i] === key) known = true;
-      if (!known) reject("LAYER_SWITCH_UNSUPPORTED", "Unsupported layer switch: " + key);
+      if (!isKnownSwitch(key)) reject("LAYER_SWITCH_UNSUPPORTED", "Unsupported layer switch: " + key);
       if (typeof switches[key] !== "boolean") reject("LAYER_SWITCH_BOOLEAN_REQUIRED", "Layer switch values must be boolean.", { key: key });
       current = safeBooleanRead(layer, key);
       if (current === null) reject("LAYER_SWITCH_NOT_SUPPORTED_BY_LAYER", "Requested switch is not supported by the resolved layer.", { key: key, layer: layerRef(layer) });
@@ -194,8 +197,9 @@
 
   function setSwitches(layer, switches) {
     var changed = false;
-    var key;
-    for (key in switches) {
+    var i, key;
+    for (i = 0; i < SWITCH_MUTATION_ORDER.length; i += 1) {
+      key = SWITCH_MUTATION_ORDER[i];
       if (!own(switches, key)) continue;
       if (safeBooleanRead(layer, key) !== switches[key]) {
         try { layer[key] = switches[key]; }
@@ -207,13 +211,23 @@
     return changed;
   }
 
-  function setOrder(layer, placement, referenceLayer) {
-    var before = layer.index;
+  function orderMatches(comp, layer, placement, referenceLayer) {
+    if (placement.position === "BEGINNING") return layer.index === 1;
+    if (placement.position === "END") return layer.index === comp.numLayers;
+    if (placement.position === "BEFORE") return layer.index + 1 === referenceLayer.index;
+    if (placement.position === "AFTER") return layer.index === referenceLayer.index + 1;
+    return false;
+  }
+  function setOrder(comp, layer, placement, referenceLayer) {
+    if (orderMatches(comp, layer, placement, referenceLayer)) return false;
     if (placement.position === "BEGINNING") layer.moveToBeginning();
     else if (placement.position === "END") layer.moveToEnd();
     else if (placement.position === "BEFORE") layer.moveBefore(referenceLayer);
     else if (placement.position === "AFTER") layer.moveAfter(referenceLayer);
-    return layer.index !== before;
+    if (!orderMatches(comp, layer, placement, referenceLayer)) {
+      fail("ADAPTER_FAILURE", "LAYER_ORDER_READBACK_MISMATCH", "Layer order mutation did not survive immediate host readback.", { layer: layerRef(layer), referenceLayer: layerRef(referenceLayer), placement: placement.position });
+    }
+    return true;
   }
 
   function execute(request) {
@@ -234,12 +248,12 @@
     app.beginUndoGroup("EditFlow M3 layer controls");
     try {
       if (request.command === "layer.switches.set") changed = setSwitches(prepared.layer, request.payload.switches);
-      else if (request.command === "layer.order.set") changed = setOrder(prepared.layer, request.payload.placement, prepared.referenceLayer);
+      else if (request.command === "layer.order.set") changed = setOrder(prepared.comp, prepared.layer, request.payload.placement, prepared.referenceLayer);
       app.endUndoGroup();
       return responseFor(request, changed ? "APPLIED" : "NO_OP", null, changed ? [affected(prepared.layer)] : [], controlsReadback(prepared.comp, prepared.layer), startedAt, [changed ? "Layer controls changed and were read back from After Effects." : "Requested layer controls already matched host state."]);
     } catch (mutationError) {
       try { app.endUndoGroup(); } catch (_) {}
-      try { app.executeCommand(app.findMenuCommandId("Undo")); } catch (_) {}
+      try { app.executeCommand(16); } catch (_) {}
       return responseFor(request, "FAILED", errorPayload(mutationError), [], controlsReadback(prepared.comp, prepared.layer), startedAt, ["Layer-control mutation failed; host undo compensation was requested."]);
     }
   }
