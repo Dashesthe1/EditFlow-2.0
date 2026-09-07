@@ -330,6 +330,10 @@ const main = async (): Promise<void> => {
     path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
 
   const renderComp = async (outputPath: string): Promise<RenderCompletionFile> => {
+    // Protocol 1.6 mutations advance the live host revision without updating the
+    // baseline-1.1 ObservedProjectState object. Re-observe before crossing back
+    // into render.capture so the proof never manufactures a stale-state reject.
+    await refreshState();
     const scheduled = await executeV11("render.capture", {
       comp: { stableId: targetCompStable },
       outputPath,
