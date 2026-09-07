@@ -166,7 +166,7 @@ function Save-ReadOnlyDialogScreenshot {
   $Bitmap = $null
   $Graphics = $null
   try {
-    $Bitmap = New-Object System.Drawing.Bitmap $Width, $Height
+    $Bitmap = [System.Drawing.Bitmap]::new($Width, $Height)
     $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
     # CopyFromScreen is read-only observation of the already-visible desktop pixels.
     # It does not focus, activate, click, type into, message, or otherwise mutate AE.
@@ -175,7 +175,7 @@ function Save-ReadOnlyDialogScreenshot {
       [int]$Dialog.Top,
       0,
       0,
-      (New-Object System.Drawing.Size $Width, $Height),
+      [System.Drawing.Size]::new($Width, $Height),
       [System.Drawing.CopyPixelOperation]::SourceCopy
     )
     $ScreenshotName = "startup-dialog-pid-$($Dialog.ProcessId)-hwnd-$($Dialog.Handle).png"
