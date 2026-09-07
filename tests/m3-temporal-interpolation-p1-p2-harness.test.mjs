@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const cliPath = "apps/desktop-host/src/m3-temporal-interpolation-p1-p2-cli.ts";
 const wrapperPath = "scripts/windows/run-m3-temporal-interpolation-p1-p2.ps1";
 const selfHostedPath = "scripts/windows/run-m3-temporal-interpolation-self-hosted.ps1";
+const bootstrapPath = "scripts/windows/open-editflow-temporal-bridge.jsx";
 const workflowPath = ".github/workflows/m3-temporal-interpolation-real-ae-p1-p2.yml";
 
 test("M3 temporal-interpolation P1/P2 CLI is bounded to a disposable Opacity keyframe and protocols 1.7 plus 1.1 setup", async () => {
@@ -70,15 +71,32 @@ test("P1/P2 acceptance wrapper fails closed on proof overclaim, missing exact st
   assert.doesNotMatch(source, /AfterFX\.exe.*-r/);
 });
 
-test("self-hosted temporal runner reuses accepted M3 startup machinery and retains documented CEP failure diagnostics", async () => {
+test("temporal panel bootstrap preflights the installed v17 loader inside AE and records exact host state before opening CEP", async () => {
+  const source = await readFile(bootstrapPath, "utf8");
+  assert.doesNotThrow(() => new Function(source));
+  assert.match(source, /Folder\.userData\.fsName/);
+  assert.match(source, /editflow_host_current_v17\.jsx/);
+  assert.match(source, /\$\.evalFile\(installedHost\)/);
+  assert.match(source, /HOST_STATE_BEFORE/);
+  assert.match(source, /HOST_LOAD_RETURNED/);
+  assert.match(source, /HOST_LOAD_ERROR/);
+  assert.match(source, /EditFlow2_HOST_PROTOCOL_17/);
+  assert.match(source, /EditFlow2-self-hosted-panel-bootstrap\.log/);
+  assert.match(source, /app\.findMenuCommandId\(menuName\)/);
+  assert.match(source, /app\.executeCommand\(commandId\)/);
+  assert.doesNotMatch(source, /\beval\s*\(/);
+});
+
+test("self-hosted temporal runner reuses accepted M3 startup machinery, preflights v17, and retains documented CEP failure diagnostics", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /run-m3-mask-self-hosted\.ps1/);
   assert.match(source, /run-m3-temporal-interpolation-p1-p2\.ps1/);
+  assert.match(source, /open-editflow-temporal-bridge\.jsx/);
   assert.match(source, /authenticated protocol 1\.7 registration/);
   assert.match(source, /CEP_12\.x\/Documentation\/Debugging%20Handbook\.md/);
   assert.match(source, /CEP12-AEFT\*\.log/);
   assert.match(source, /CEPHtmlEngine12-AEFT-\*\.log/);
-  assert.match(source, /LogLevel/);
+  assert.match(source, /LogLevel registry readback before AE launch/);
   assert.match(source, /Copy-CepFailureDiagnostics/);
 });
 
