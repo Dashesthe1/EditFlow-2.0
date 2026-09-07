@@ -165,7 +165,7 @@ test("M3 composite host uses modern arbitrary-source track matte APIs and exact 
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("current CEP installation advertises 1.3 additively and loads the composite host module", async () => {
+test("current CEP installation keeps protocol 1.3 available while advertising parenting 1.4 additively", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -175,7 +175,7 @@ test("current CEP installation advertises 1.3 additively and loads the composite
   assert.match(loader, /editflow_host_m3_composite\.jsx/);
   assert.match(loader, /\$\.evalFile\(m3Composite\)/);
   assert.match(installer, /"editflow_host_m3_composite\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });
