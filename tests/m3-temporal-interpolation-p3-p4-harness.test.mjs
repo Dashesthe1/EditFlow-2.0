@@ -4,7 +4,9 @@ import { readFile } from "node:fs/promises";
 
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_temporal_interpolation.jsx";
 const cliPath = "apps/desktop-host/src/m3-temporal-interpolation-p3-p4-cli.ts";
+const baselineCliPath = "apps/desktop-host/src/m3-temporal-interpolation-p3-p4-baseline-cli.ts";
 const wrapperPath = "scripts/windows/run-m3-temporal-interpolation-p3-p4.ps1";
+const cleanupPath = "scripts/windows/m3-temporal-interpolation-p3-p4-cleanup.jsx";
 const selfHostedPath = "scripts/windows/run-m3-temporal-interpolation-p3-p4-self-hosted.ps1";
 const workflowPath = ".github/workflows/m3-temporal-interpolation-real-ae-p3-p4.yml";
 
@@ -52,7 +54,7 @@ test("temporal P4 CLI requires exact failed response, structural rollback, finge
   assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
 });
 
-test("temporal P3/P4 cleanup returns the isolated project to its exact pre-proof fingerprint by bounded undo", async () => {
+test("temporal P3/P4 primary cleanup stays bounded and records exact-fingerprint failure rather than claiming success", async () => {
   const source = await readFile(cliPath, "utf8");
   assert.match(source, /baseline_blank/);
   assert.match(source, /for \(let attempt = 0; attempt < 60; attempt \+= 1\)/);
@@ -61,6 +63,37 @@ test("temporal P3/P4 cleanup returns the isolated project to its exact pre-proof
   assert.match(source, /cleanup_item_count_restored/);
   assert.match(source, /cleanup_fingerprint_restored/);
   assert.match(source, /cleanupUndoCount/);
+  assert.match(source, /Cleanup undo budget exhausted before the exact baseline project was restored/);
+});
+
+test("temporal P3/P4 proof-owned reset is fail-closed and independently exact-baseline verified", async () => {
+  const wrapper = await readFile(wrapperPath, "utf8");
+  const cleanup = await readFile(cleanupPath, "utf8");
+  const baseline = await readFile(baselineCliPath, "utf8");
+
+  assert.match(wrapper, /KnownUndoBarrier/);
+  assert.match(wrapper, /Cleanup undo budget exhausted before the exact baseline project was restored/);
+  assert.match(wrapper, /Invoke-ProofOwnedCleanup/);
+  assert.match(wrapper, /Invoke-BaselineProbe -Cli \$BaselineCli -Output \$CleanupVerifyPath -Expected \$BaselinePath/);
+  assert.match(wrapper, /PROOF_OWNED_CLOSE_WITHOUT_SAVE_NEW_PROJECT_EXACT_BASELINE_VERIFY/);
+  assert.match(wrapper, /cleanupUndoBarrierObserved/);
+  assert.match(wrapper, /status = "VISUAL_REVIEW_REQUIRED"/);
+
+  assert.match(cleanup, /EDITFLOW_M3_TEMPORAL_INTERPOLATION_P4_PROOF/);
+  assert.match(cleanup, /\$\.getenv\(PROOF_ENV\) !== "1"/);
+  assert.match(cleanup, /if \(app\.project\.file\) throw new Error\("Temporal P3\/P4 cleanup refuses to discard a saved project\."\)/);
+  assert.match(cleanup, /app\.project\.numItems < 1 \|\| app\.project\.numItems > 3/);
+  assert.match(cleanup, /M3_TEMPORAL_P34_/);
+  assert.match(cleanup, /project\.close\(CloseOptions\.DO_NOT_SAVE_CHANGES\)/);
+  assert.match(cleanup, /app\.newProject\(\)/);
+  assert.match(cleanup, /app\.project\.file \|\| app\.project\.numItems !== 0/);
+  assert.doesNotMatch(cleanup, /PROMPT_TO_SAVE_CHANGES|SAVE_CHANGES/);
+
+  assert.match(baseline, /projectFingerprint/);
+  assert.match(baseline, /itemCount/);
+  assert.match(baseline, /filePath/);
+  assert.match(baseline, /baseline\.projectFingerprint === expected\.projectFingerprint/);
+  assert.match(baseline, /status: exact \? "EXACT_MATCH" : "MISMATCH"/);
 });
 
 test("temporal P3/P4 wrapper refuses to self-accept visual proof or overclaim P5", async () => {
