@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplatePath = Join-Path $RepoRoot "scripts\windows\run-m3-mask-self-hosted.ps1"
-$TempPath = Join-Path $env:TEMP ("EditFlow2-m3-composite-self-hosted-" + [Guid]::NewGuid().ToString("N") + ".ps1")
+$TempPath = Join-Path $PSScriptRoot ("run-m3-composite-self-hosted-generated-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 
 if (-not (Test-Path $TemplatePath -PathType Leaf)) {
   throw "Accepted M3 P1/P2 self-hosted runner template is missing: $TemplatePath"
