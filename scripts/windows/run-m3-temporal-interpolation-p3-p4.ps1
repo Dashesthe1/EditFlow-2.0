@@ -66,7 +66,7 @@ function Invoke-ProofOwnedCleanup {
   if (-not (Test-Path $CleanupScript -PathType Leaf)) { throw "Temporal P3/P4 proof-owned cleanup script is missing: $CleanupScript" }
   if (Test-Path $CleanupMarkerPath -PathType Leaf) { Remove-Item $CleanupMarkerPath -Force }
 
-  Write-Host "Generic Undo could not cross asynchronous render history; dispatching the fixed proof-owned cleanup script inside the isolated AE process."
+  Write-Host "Generic cleanup could not finish through the authenticated command path; dispatching the fixed proof-owned cleanup script inside the isolated AE process."
   Start-Process -FilePath $AfterFx -ArgumentList @("-r", $CleanupScript) | Out-Null
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   $Marker = $null
@@ -170,10 +170,15 @@ try {
 
   if ($Result.cleanupComplete -ne $true) {
     $CleanupErrors = @($Result.cleanupErrors)
-    $KnownUndoBarrier = $CleanupErrors.Count -eq 1 -and [string]$CleanupErrors[0] -match "Cleanup undo budget exhausted before the exact baseline project was restored"
-    if (-not $KnownUndoBarrier) {
+    $KnownUndoBarrier = $CleanupErrors.Count -eq 1 -and [string]$CleanupErrors[0] -match "^cleanup: Cleanup undo budget exhausted before the exact baseline project was restored"
+    $KnownReadOnlyInspectTimeout = $CleanupErrors.Count -eq 1 -and [string]$CleanupErrors[0] -match "^cleanup: CEP_COMMAND_TIMEOUT: project\.inspect m3-temporal-p34-setup-[0-9]+$"
+    if (-not ($KnownUndoBarrier -or $KnownReadOnlyInspectTimeout)) {
       Get-Content $ResultPath -Raw | Write-Host
       throw "Temporal P3/P4 cleanup failed for an unrecognized reason; proof-owned reset is refused."
+    }
+
+    if ($KnownReadOnlyInspectTimeout) {
+      Write-Host "Authenticated cleanup timed out only on the read-only project.inspect checkpoint; mutation-command timeouts remain ineligible for proof-owned reset."
     }
 
     $CleanupMarker = Invoke-ProofOwnedCleanup -AfterFx $AfterFx
@@ -191,7 +196,8 @@ try {
     $Result.checks | Add-Member -NotePropertyName cleanup_item_count_restored -NotePropertyValue $true -Force
     $Result.checks | Add-Member -NotePropertyName cleanup_fingerprint_restored -NotePropertyValue $true -Force
     $Result | Add-Member -NotePropertyName cleanupStrategy -NotePropertyValue "PROOF_OWNED_CLOSE_WITHOUT_SAVE_NEW_PROJECT_EXACT_BASELINE_VERIFY" -Force
-    $Result | Add-Member -NotePropertyName cleanupUndoBarrierObserved -NotePropertyValue $true -Force
+    $Result | Add-Member -NotePropertyName cleanupUndoBarrierObserved -NotePropertyValue $KnownUndoBarrier -Force
+    $Result | Add-Member -NotePropertyName cleanupReadOnlyInspectTimeoutObserved -NotePropertyValue $KnownReadOnlyInspectTimeout -Force
     $Result | Add-Member -NotePropertyName cleanupMarker -NotePropertyValue $CleanupMarker -Force
     $Result | Add-Member -NotePropertyName cleanupBaseline -NotePropertyValue $Baseline -Force
     $Result | Add-Member -NotePropertyName cleanupVerification -NotePropertyValue $CleanupVerify -Force
