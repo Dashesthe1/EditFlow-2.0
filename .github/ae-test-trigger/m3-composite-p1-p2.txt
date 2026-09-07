@@ -1,5 +1,6 @@
 proof=M3_COMPOSITE_P1_P2_REAL_AE
 control_branch=ae-test/m3-composite-p1-p2-control
 accepted_baseline=248ff43b7535c5b470ed9d54cd2d80c17609b990
-validated_head=f3a20cfcd1ac7f05864c963179dcb8026b1529d5
-status=armed-run-3-loader-diagnostic
+validated_head=4e949b7e75367ee70c790b38f400464d13a57f98
+run=4
+status=armed-run-4-ae-semantics-alignment
