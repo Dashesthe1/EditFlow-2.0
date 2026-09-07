@@ -260,7 +260,12 @@ const main = async (): Promise<void> => {
   const parentLayerStable = `${prefix}_PARENT_LAYER`;
   const childLayerStable = `${prefix}_CHILD_LAYER`;
   const temporaryItemStableIds = new Set([sourceMediaStable, targetCompStable]);
-  const parentTransform = Object.freeze({ position: [430, 210], scale: [135, 80], rotation: 27, opacity: 0 });
+  // Run 1 proved that a rotated non-uniformly-scaled direct parent can require
+  // shear that a normal AVLayer local Transform cannot represent. P3/P4 therefore
+  // exercises the nontrivial but representable direct-parent envelope: translation,
+  // rotation, and uniform scale. The protocol host separately fails closed when a
+  // requested direct-parent relationship cannot preserve five-point geometry.
+  const parentTransform = Object.freeze({ position: [430, 210], scale: [135, 135], rotation: 27, opacity: 0 });
   const childTransform = Object.freeze({ position: [220, 120], scale: [75, 125], rotation: -12, opacity: 100 });
   let operationCounter = 0;
   let requestCounter = 0;
@@ -682,9 +687,12 @@ const main = async (): Promise<void> => {
       cleanupErrors,
       notes: [
         "P1/P2 are accepted baseline evidence from main and are not replayed in this P3/P4 tranche.",
-        "P3 requires five-point comp-space source geometry equality plus retained real-AE renders for initial, parented, and cleared states, but the harness does not self-claim visual acceptance.",
+        "P3 exercises a representable direct-parent envelope with translation, rotation, and uniform parent scale; five-point comp-space source geometry plus retained real-AE renders must remain equivalent across set/clear.",
+        "Run 1 established that rotated non-uniform parent scale can require shear that the direct AVLayer parenting route cannot represent; protocol 1.4 now fails closed and self-rolls back if five-point geometry drifts instead of returning a false APPLIED result.",
+        "P3 retained render evidence does not self-claim visual acceptance; independent comparison is still required.",
         "P4 is induced only when the runner-owned AE process inherits EDITFLOW_M3_PARENTING_P4_PROOF=1 and the typed set-parent request uses the exact M3_PARENTING_P4_FAILURE_INJECTION profile.",
         "The P4 error occurs after the real Layer.parent mutation inside the normal parenting undo group; the normal catch path must self-rollback with AE Undo and restore fingerprint plus exact parenting/geometry readback.",
+        "The proof-only parenting cleanup layer may discard only the exact unsaved fixed fixture after the post-rollback render and must leave a fresh blank project whose structural fingerprint matches baseline.",
         "P5 remains explicitly unclaimed and is a separate save/reopen/reconnect transfer tranche.",
       ],
     });
