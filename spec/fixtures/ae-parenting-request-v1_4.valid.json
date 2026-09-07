@@ -1,0 +1,15 @@
+{
+  "protocolVersion": "1.4.0",
+  "requestId": "REQ_PARENTING_1",
+  "transactionId": "TX_PARENTING_1",
+  "operationId": "OP_PARENTING_1",
+  "capabilityId": "ae.layer.parent.set_preserve_transform",
+  "command": "layer.set_parent_preserve_transform",
+  "expectedHostProjectRevision": 17,
+  "payload": {
+    "comp": {"stableId": "COMP_PARENTING"},
+    "layer": {"stableId": "LAYER_CHILD"},
+    "parentLayer": {"stableId": "LAYER_PARENT"}
+  },
+  "readbackProfile": "M3_PARENTING_STRUCTURAL"
+}

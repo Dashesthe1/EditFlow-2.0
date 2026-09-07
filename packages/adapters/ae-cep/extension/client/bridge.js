@@ -21,7 +21,7 @@
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
   var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
-  var KNOWN_PROTOCOLS = ["1.3.0", "1.2.0", "1.1.0"];
+  var KNOWN_PROTOCOLS = ["1.4.0", "1.3.0", "1.2.0", "1.1.0"];
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);

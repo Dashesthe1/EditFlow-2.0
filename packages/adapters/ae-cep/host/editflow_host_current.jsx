@@ -1,4 +1,4 @@
-/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + M3 protocol 1.2 masks + protocol 1.3 composite foundation. */
+/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + M3 protocol 1.2 masks + protocol 1.3 composite + protocol 1.4 parenting foundation. */
 (function () {
   var currentFile = new File($.fileName);
   var hostDir = currentFile.parent;
@@ -13,6 +13,7 @@
   var renderOutputPath = new File(hostDir.fsName + "/editflow_host_render_output_path.jsx");
   var m3Masks = new File(hostDir.fsName + "/editflow_host_m3_masks.jsx");
   var m3Composite = new File(hostDir.fsName + "/editflow_host_m3_composite.jsx");
+  var m3Parenting = new File(hostDir.fsName + "/editflow_host_m3_parenting.jsx");
   var m3ProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_proof_cleanup.jsx");
   var m3CompositeProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_composite_proof_cleanup.jsx");
   var m3ProofMode = $.getenv("EDITFLOW_M3_MASK_P4_PROOF") === "1";
@@ -104,6 +105,56 @@
     };
   }
 
+  /* Protocol 1.4 parenting is additive and fail-closed just like protocol 1.3.
+   * A parenting load defect must never take accepted 1.1/1.2/1.3 dispatch offline.
+   */
+  var parentingLoadError = null;
+  if (!m3Parenting.exists) {
+    parentingLoadError = "EditFlow M3 parenting host script is missing: " + m3Parenting.fsName;
+  } else {
+    try {
+      $.evalFile(m3Parenting);
+    } catch (parentingError) {
+      parentingLoadError = String(parentingError);
+    }
+  }
+
+  if (parentingLoadError !== null) {
+    var dispatchBeforeParentingFailure = $.global.EditFlow2_dispatch;
+    $.global.EditFlow2_M3_PARENTING_LOAD_ERROR = parentingLoadError;
+    $.global.EditFlow2_dispatch = function (requestJson) {
+      var request = null;
+      try { request = $.global.EditFlow2_JSON.parse(requestJson); } catch (_) {}
+      if (request && request.protocolVersion === "1.4.0") {
+        return $.global.EditFlow2_JSON.stringify({
+          protocolVersion: "1.4.0",
+          requestId: request.requestId,
+          transactionId: request.transactionId,
+          operationId: request.operationId,
+          capabilityId: request.capabilityId,
+          command: request.command,
+          outcome: "FAILED",
+          error: {
+            category: "ADAPTER_FAILURE",
+            code: "M3_PARENTING_MODULE_LOAD_FAILED",
+            message: parentingLoadError,
+            details: null
+          },
+          affectedObjects: [],
+          readback: null,
+          hostProjectRevision: app.project ? app.project.revision : null,
+          diagnostics: {
+            adapterProtocolVersion: "1.4.0",
+            adapterBuild: "0.4.0-dev.4",
+            command: request.command,
+            notes: ["Protocol 1.4 parenting host module failed to load; accepted earlier protocol dispatch remains available."]
+          }
+        });
+      }
+      return dispatchBeforeParentingFailure(requestJson);
+    };
+  }
+
   /* Proof-only cleanup is deliberately stricter than normal production dispatch.
    * A proof cleanup module must never fail before the panel can authenticate,
    * otherwise a deterministic host-load defect collapses into an opaque broker
@@ -159,7 +210,7 @@
         hostProjectRevision: app.project ? app.project.revision : null,
         diagnostics: {
           adapterProtocolVersion: request.protocolVersion,
-          adapterBuild: "0.4.0-dev.3-proof-cleanup-diagnostic",
+          adapterBuild: "0.4.0-dev.4-proof-cleanup-diagnostic",
           command: request.command,
           notes: ["Proof cleanup host module failed to load. All proof protocol traffic is blocked before mutation until the load defect is repaired."]
         },
