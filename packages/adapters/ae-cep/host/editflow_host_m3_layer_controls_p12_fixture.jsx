@@ -9,7 +9,7 @@
  *
  * Direct -r scripts can execute in a different ExtendScript engine from the CEP
  * panel. Proof-marker serialization is therefore self-contained and must not
- * depend on the panel-populated $.global.EditFlow2_JSON object.
+ * depend on any panel-populated JSON global.
  */
 (function () {
   "use strict";
