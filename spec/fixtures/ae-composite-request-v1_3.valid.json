@@ -1,0 +1,16 @@
+{
+  "protocolVersion": "1.3.0",
+  "requestId": "REQ_COMPOSITE_1",
+  "transactionId": "TX_COMPOSITE_1",
+  "operationId": "OP_COMPOSITE_1",
+  "capabilityId": "ae.layer.track_matte.set",
+  "command": "layer.set_track_matte",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": {"stableId": "COMP_COMPOSITE"},
+    "layer": {"stableId": "LAYER_TARGET"},
+    "matteLayer": {"stableId": "LAYER_MATTE"},
+    "trackMatteType": "LUMA_INVERTED"
+  },
+  "readbackProfile": "M3_COMPOSITE_STRUCTURAL"
+}
