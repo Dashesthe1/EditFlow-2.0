@@ -100,6 +100,16 @@ test("temporal P3/P4 proof-owned reset is fail-closed and independently exact-ba
   assert.match(baseline, /status: exact \? "EXACT_MATCH" : "MISMATCH"/);
 });
 
+test("temporal proof-owned reset accepts only the exact read-only cleanup inspect timeout, never a mutation timeout", async () => {
+  const source = await readFile(wrapperPath, "utf8");
+  assert.match(source, /\$KnownReadOnlyInspectTimeout = \$CleanupErrors\.Count -eq 1 -and \[string\]\$CleanupErrors\[0\] -match "\^cleanup: CEP_COMMAND_TIMEOUT: project\\\.inspect m3-temporal-p34-setup-\[0-9\]\+\$"/);
+  assert.match(source, /if \(-not \(\$KnownUndoBarrier -or \$KnownReadOnlyInspectTimeout\)\)/);
+  assert.match(source, /mutation-command timeouts remain ineligible for proof-owned reset/);
+  assert.match(source, /cleanupReadOnlyInspectTimeoutObserved/);
+  assert.doesNotMatch(source, /CEP_COMMAND_TIMEOUT: transaction\\\.undo_last/);
+  assert.doesNotMatch(source, /CEP_COMMAND_TIMEOUT: property\\\./);
+});
+
 test("temporal P3/P4 baseline broker IDs remain unique across same-millisecond observe dispatches", async () => {
   const source = await readFile(baselineCliPath, "utf8");
   assert.match(source, /let sequence = 0/);
