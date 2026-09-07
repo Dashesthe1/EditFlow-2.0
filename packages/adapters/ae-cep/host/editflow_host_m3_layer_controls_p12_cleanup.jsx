@@ -141,6 +141,7 @@
       ok: true,
       prefix: prefix,
       stage: "complete",
+      artifactDir: artifactDir.fsName,
       itemCount: app.project.numItems,
       filePath: null,
       hostProjectRevision: app.project.revision
@@ -151,6 +152,7 @@
       ok: false,
       prefix: prefix,
       stage: stage,
+      artifactDir: artifactDir.fsName,
       error: cleanDiagnostic(error),
       hostProjectRevision: app.project ? app.project.revision : null,
       itemCount: app.project ? app.project.numItems : null
