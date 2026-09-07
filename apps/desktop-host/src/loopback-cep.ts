@@ -32,6 +32,11 @@ import {
   type AeNullRigResponseV15,
   type AeNullRigTransportV15,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_5.js";
+import {
+  AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16,
+  type AeLayerControlsRequestV16,
+  type AeLayerControlsResponseV16,
+} from "../../../packages/adapters/ae-cep/src/protocol-v1_6.js";
 
 export interface LoopbackCepBrokerOptions {
   readonly port: number;
@@ -52,8 +57,8 @@ export interface LoopbackCepPanelSession {
   readonly lastSeenAt: string;
 }
 
-type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14 | AeNullRigRequestV15;
-type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14 | AeNullRigResponseV15;
+type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14 | AeNullRigRequestV15 | AeLayerControlsRequestV16;
+type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14 | AeNullRigResponseV15 | AeLayerControlsResponseV16;
 
 interface PendingCommand {
   readonly request: BrokerRequest;
@@ -64,7 +69,7 @@ interface PendingCommand {
   leasedSessionId: string | null;
 }
 
-const COMPILED_PROTOCOLS = [AE_NULL_RIG_PROTOCOL_VERSION_V15, AE_PARENTING_PROTOCOL_VERSION_V14, AE_COMPOSITE_PROTOCOL_VERSION_V13, AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
+const COMPILED_PROTOCOLS = [AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16, AE_NULL_RIG_PROTOCOL_VERSION_V15, AE_PARENTING_PROTOCOL_VERSION_V14, AE_COMPOSITE_PROTOCOL_VERSION_V13, AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
 const compiledProtocolSet = new Set<string>(COMPILED_PROTOCOLS);
 
 const jsonResponse = (res: ServerResponse, status: number, value: unknown): void => {
@@ -211,6 +216,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
   async dispatch(request: AeCompositeRequestV13): Promise<AeCompositeResponseV13>;
   async dispatch(request: AeParentingRequestV14): Promise<AeParentingResponseV14>;
   async dispatch(request: AeNullRigRequestV15): Promise<AeNullRigResponseV15>;
+  async dispatch(request: AeLayerControlsRequestV16): Promise<AeLayerControlsResponseV16>;
   async dispatch(request: BrokerRequest): Promise<BrokerResponse> {
     if (this.#server === null) throw new Error("CEP_BROKER_NOT_STARTED");
     if (!compiledProtocolSet.has(request.protocolVersion)) {

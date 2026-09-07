@@ -138,7 +138,7 @@ test("null-rig host encodes identity, topology readback, child-protected deletio
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("CEP installation advertises 1.5 additively and boots the fail-closed v15 loader", async () => {
+test("current CEP installation keeps accepted 1.5 null-rig support while protocol 1.6 remains additive", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -151,10 +151,10 @@ test("CEP installation advertises 1.5 additively and boots the fail-closed v15 l
   assert.match(loader, /request\.protocolVersion === "1\.5\.0"/);
   assert.match(installer, /"editflow_host_m3_null_rigs\.jsx"/);
   assert.match(installer, /"editflow_host_current_v15\.jsx"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
-  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
-  assert.match(bridge, /editflow_host_current_v15\.jsx/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(bridge, /KNOWN_PROTOCOLS = \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(bridge, /editflow_host_current_v16\.jsx/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.6\.0", "1\.5\.0", "1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });
 
 test("explicit broker negotiates 1.5 and carries a typed null-rig request", async () => {

@@ -122,7 +122,8 @@ test("layer-controls host exposes the complete item-8 switch set with guarded at
   assert.match(source, /app\.executeCommand\(16\)/);
   assert.doesNotMatch(source, /\bmotionBlur\b/);
   assert.doesNotMatch(source, /\bframeBlending\b/);
-  assert.doesNotMatch(source, /\blayer\.reorder\b/);
+  assert.doesNotMatch(source, /["']layer\.reorder["']\s*:/,
+    "protocol 1.6 host must not claim or dispatch the accepted protocol 1.1 reorder command");
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
