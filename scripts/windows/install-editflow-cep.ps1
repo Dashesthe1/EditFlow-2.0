@@ -65,6 +65,7 @@ $HostFiles = @(
   "editflow_host_render_async.jsx",
   "editflow_host_render_output_path.jsx",
   "editflow_host_m3_masks.jsx",
+  "editflow_host_m3_proof_cleanup.jsx",
   "editflow_host_current.jsx"
 )
 foreach ($FileName in $HostFiles) {
