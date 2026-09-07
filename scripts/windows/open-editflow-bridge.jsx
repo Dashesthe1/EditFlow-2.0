@@ -1,7 +1,7 @@
 /* EditFlow 2.0 self-hosted test bootstrap.
  *
- * This fixed script is invoked only by the controlled Windows self-hosted M2
- * launcher. It opens the checked-in CEP panel through After Effects' own menu
+ * This fixed script is invoked only by the controlled Windows self-hosted
+ * launchers. It opens the checked-in CEP panel through After Effects' own menu
  * command API so the authenticated bridge can register without manual UI input.
  *
  * No caller-supplied script text or menu command is executed. A bounded diagnostic
@@ -25,9 +25,6 @@
   var loadedPath = $.fileName;
   appendBootstrapEvidence("SCRIPT_STARTED", loadedPath);
 
-  /* The self-hosted runner copies this source to a uniquely owned Startup filename.
-   * Delete only that temporary copy after AE has loaded it so an interrupted runner
-   * cannot leave a bootstrap that runs during a later user-initiated AE session. */
   try {
     var selfFile = new File(loadedPath);
     if (selfFile.name === "EditFlow2-self-hosted-bootstrap.jsx") {
@@ -81,6 +78,6 @@
     }
   };
 
-  var initialTaskId = app.scheduleTask("$.global.EditFlow2_selfHostedOpenBridge()", 750, false);
-  appendBootstrapEvidence("INITIAL_TASK_SCHEDULED", "taskId=" + initialTaskId);
+  appendBootstrapEvidence("INITIAL_ATTEMPT_DIRECT", "attempt=1");
+  $.global.EditFlow2_selfHostedOpenBridge();
 }());
