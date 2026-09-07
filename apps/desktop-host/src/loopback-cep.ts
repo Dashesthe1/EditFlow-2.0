@@ -171,7 +171,10 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
     this.#pending.clear();
     this.#queue = [];
     if (server !== null) {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
     }
     this.#port = 0;
   }
