@@ -6,20 +6,18 @@
  * later from one fixed app.scheduleTask global driver after CEP has received the
  * command response.
  *
- * The global driver publishes best-effort RUNNING evidence before invoking
- * renderAsync(), then drives the same job to DONE/FAILED with fixed polling after
- * renderAsync() returns. Lifecycle publication is staged through an unobserved
- * sibling file so a desktop reader can never observe a marker that AE has opened
- * and truncated but not yet durably replaced. Terminal publication is retried
- * without discarding the active job. If the target AE build does not expose
- * renderAsync(), the command fails closed. There is never a silent fallback to
- * blocking RenderQueue.render().
+ * Important AE 25.6.6 constraint: File writes issued from app.scheduleTask can open
+ * successfully yet publish zero bytes. The scheduled task therefore performs no
+ * lifecycle file I/O. It only starts the render and records host-global state. The
+ * CEP panel invokes EditFlow2_reconcileAsyncRender through a normal evalScript after
+ * the scripting engine is available again; that normal CEP context owns queue
+ * cleanup and durable DONE/FAILED marker publication.
  */
 (function () {
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderasync4";
+  var BUILD = "0.1.0-dev.4-renderasync5";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -117,7 +115,7 @@
     marker.encoding = "UTF-8";
     if (!marker.open("w")) throw new Error("Unable to open render lifecycle marker: " + marker.fsName);
     try {
-      marker.write($.global.EditFlow2_JSON.stringify({
+      var payload = $.global.EditFlow2_JSON.stringify({
         schemaVersion: 1,
         jobId: job.jobId,
         status: status,
@@ -126,14 +124,19 @@
         error: errorMessage || null,
         completedAtMs: nowMs(),
         queueItemRemoved: job.queueItemRemoved === true
-      }));
+      });
+      if (!marker.write(payload)) throw new Error("After Effects did not write the render lifecycle marker payload.");
     } finally {
       marker.close();
+    }
+    marker = new File(job.completionPath);
+    if (!marker.exists || marker.length <= 0) {
+      throw new Error("Render lifecycle marker is missing or empty after CEP publication: " + marker.fsName);
     }
   }
 
   function cleanupQueueItem(job) {
-    if (!job || !job.rqItem) return null;
+    if (!job || job.queueItemRemoved === true || !job.rqItem) return null;
     try {
       job.rqItem.remove();
       job.queueItemRemoved = true;
@@ -144,193 +147,118 @@
     }
   }
 
-  /* app.scheduleTask executes this function in AE's global workspace. It must be
-   * self-contained: do not add references to wrapper-local helpers or variables.
-   */
+  function publishTerminal(job) {
+    writeImmediateMarker(
+      job,
+      job.terminalOk === true ? "DONE" : "FAILED",
+      job.terminalOk === true,
+      job.terminalError || null
+    );
+    job.state = job.terminalOk === true ? "DONE" : "FAILED";
+    job.completedAtMs = nowMs();
+    $.global.EditFlow2_lastRenderJob = job;
+    $.global.EditFlow2_activeRenderJob = null;
+    return job.state;
+  }
+
+  function beginTerminal(job, ok, errorMessage) {
+    if (job.state !== "FINALIZING") {
+      var cleanupError = cleanupQueueItem(job);
+      if (cleanupError) {
+        ok = false;
+        errorMessage = (errorMessage ? errorMessage + " | " : "") + "Render queue cleanup failed: " + cleanupError;
+      }
+      job.terminalOk = ok === true;
+      job.terminalError = errorMessage || null;
+      job.state = "FINALIZING";
+      job.completedAtMs = nowMs();
+    }
+    return publishTerminal(job);
+  }
+
+  function reconcileActiveRenderJob() {
+    var job = $.global.EditFlow2_activeRenderJob;
+    if (!job || job.mode !== "ASYNC_HOST_RENDER_V4") return "IDLE";
+
+    if (job.state === "FINALIZING") return publishTerminal(job);
+    if (job.state === "SCHEDULED") return "SCHEDULED";
+
+    if (job.driverError) return beginTerminal(job, false, job.driverError);
+
+    var rendering = false;
+    try { rendering = app.project.renderQueue.rendering === true; } catch (_) { rendering = false; }
+    if (rendering) return "RUNNING";
+
+    var statusDone = false;
+    var statusText = "unknown";
+    try {
+      if (job.rqItem) {
+        statusDone = job.rqItem.status === RQItemStatus.DONE;
+        statusText = asString(job.rqItem.status);
+      }
+    } catch (_) {}
+
+    if (!statusDone && job.renderAsyncReturnedAtMs !== null
+        && nowMs() - job.renderAsyncReturnedAtMs < 2000) {
+      return "RUNNING";
+    }
+
+    if (!statusDone) {
+      return beginTerminal(job, false, "After Effects async render stopped without DONE status (status=" + statusText + ").");
+    }
+
+    var output = new File(job.outputPath);
+    if (!output.exists || output.length <= 0) {
+      return beginTerminal(job, false, "After Effects async render reached DONE without a non-empty capture artifact.");
+    }
+
+    return beginTerminal(job, true, null);
+  }
+
+  /* Called by the CEP panel through a normal evalScript boundary. File I/O must
+   * stay here (or in the dispatch path), never in app.scheduleTask callbacks. */
+  $.global.EditFlow2_reconcileAsyncRender = function () {
+    try {
+      return reconcileActiveRenderJob();
+    } catch (error) {
+      var job = $.global.EditFlow2_activeRenderJob;
+      if (job) {
+        job.reconcileError = asString(error);
+        job.reconcileAttempts = (job.reconcileAttempts || 0) + 1;
+      }
+      return "ERROR:" + asString(error);
+    }
+  };
+
+  /* app.scheduleTask executes this function in AE's global workspace. Keep it
+   * self-contained and deliberately free of File I/O. */
   $.global.EditFlow2_driveAsyncRender = function () {
     var job = $.global.EditFlow2_activeRenderJob;
-    if (!job || job.mode !== "ASYNC_HOST_RENDER_V3") return;
-    if (job.state !== "SCHEDULED" && job.state !== "RUNNING" && job.state !== "FINALIZING") return;
+    if (!job || job.mode !== "ASYNC_HOST_RENDER_V4" || job.state !== "SCHEDULED") return;
 
     function taskNowMs() { return (new Date()).getTime(); }
     function taskString(value) { return value === null || value === undefined ? "" : String(value); }
-    function taskQuote(value) {
-      var text = taskString(value);
-      text = text.replace(/\\/g, "\\\\");
-      text = text.replace(/"/g, "\\\"");
-      text = text.replace(/\r/g, "\\r");
-      text = text.replace(/\n/g, "\\n");
-      text = text.replace(/\t/g, "\\t");
-      return "\"" + text + "\"";
-    }
-    function taskWriteMarker(status, ok, errorMessage) {
-      /* Never open the observer-visible marker for truncating writes from a
-       * scheduled task. Run #2 proved that a failed delayed File.write can leave
-       * the canonical marker at exactly zero bytes. Build and write the complete
-       * payload into a private sibling first, verify it is non-empty, then replace
-       * the canonical marker. If replacement collides with a desktop read, the old
-       * canonical marker remains parseable and terminal publication can retry. */
-      if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.stringify !== "function") {
-        throw new Error("EditFlow clean-room JSON runtime is unavailable in the async render driver.");
-      }
-      var payload = $.global.EditFlow2_JSON.stringify({
-        schemaVersion: 1,
-        jobId: job.jobId,
-        status: status,
-        ok: ok,
-        outputPath: job.outputPath,
-        error: errorMessage || null,
-        completedAtMs: taskNowMs(),
-        queueItemRemoved: job.queueItemRemoved === true
-      });
-      var marker = new File(job.completionPath);
-      var stagedPath = job.completionPath + ".next";
-      var staged = new File(stagedPath);
-      if (staged.exists && !staged.remove()) {
-        throw new Error("Unable to remove stale staged render lifecycle marker: " + staged.fsName);
-      }
-      staged.encoding = "UTF-8";
-      if (!staged.open("w")) throw new Error("Unable to open staged render lifecycle marker: " + staged.fsName);
-      try {
-        staged.write(payload);
-      } finally {
-        staged.close();
-      }
-      staged = new File(stagedPath);
-      if (!staged.exists || staged.length <= 0) {
-        throw new Error("Staged render lifecycle marker was not written durably: " + staged.fsName);
-      }
-      if (marker.exists && !marker.remove()) {
-        throw new Error("Unable to replace render lifecycle marker while it is being observed: " + marker.fsName);
-      }
-      if (!staged.rename(marker.name)) {
-        throw new Error("Unable to promote staged render lifecycle marker: " + staged.fsName);
-      }
-      marker = new File(job.completionPath);
-      if (!marker.exists || marker.length <= 0) {
-        throw new Error("Promoted render lifecycle marker is missing or empty: " + marker.fsName);
-      }
-    }
-    function taskCleanupQueueItem() {
-      if (job.queueItemRemoved === true || !job.rqItem) return null;
-      try {
-        job.rqItem.remove();
-        job.queueItemRemoved = true;
-        return null;
-      } catch (cleanupError) {
-        job.queueItemRemoved = false;
-        return taskString(cleanupError);
-      }
-    }
-    function taskScheduleDrive(delayMs) {
-      var taskId = app.scheduleTask("$.global.EditFlow2_driveAsyncRender()", delayMs, false);
-      if (typeof taskId !== "number") throw new Error("After Effects did not return an async render driver task identifier.");
-      job.driveTaskId = taskId;
-    }
-    function taskPublishTerminal() {
-      try {
-        taskWriteMarker(job.terminalOk ? "DONE" : "FAILED", job.terminalOk === true, job.terminalError || null);
-        job.state = job.terminalOk ? "DONE" : "FAILED";
-        job.completedAtMs = taskNowMs();
-        $.global.EditFlow2_lastRenderJob = job;
-        $.global.EditFlow2_activeRenderJob = null;
-        return true;
-      } catch (markerError) {
-        job.markerPublishError = taskString(markerError);
-        job.markerPublishAttempts = (job.markerPublishAttempts || 0) + 1;
-        if (job.markerPublishAttempts >= 40) {
-          /* Retain the active FINALIZING job rather than publishing false success
-           * or silently discarding the only terminal evidence. The desktop timeout
-           * can then report the last durable state and the staged file is retained. */
-          return false;
-        }
-        taskScheduleDrive(250);
-        return false;
-      }
-    }
-    function taskFinish(ok, errorMessage) {
-      if (job.state !== "FINALIZING") {
-        var cleanupError = taskCleanupQueueItem();
-        if (cleanupError) {
-          ok = false;
-          errorMessage = (errorMessage ? errorMessage + " | " : "") + "Render queue cleanup failed: " + cleanupError;
-        }
-        job.terminalOk = ok === true;
-        job.terminalError = errorMessage || null;
-        job.state = "FINALIZING";
-        job.completedAtMs = taskNowMs();
-      }
-      taskPublishTerminal();
-    }
 
+    job.state = "RUNNING";
+    job.startedAtMs = taskNowMs();
     try {
-      if (job.state === "FINALIZING") {
-        taskPublishTerminal();
-        return;
-      }
-
-      if (job.state === "SCHEDULED") {
-        job.state = "RUNNING";
-        job.startedAtMs = taskNowMs();
-        try {
-          taskWriteMarker("RUNNING", false, null);
-        } catch (runningMarkerError) {
-          /* RUNNING is useful progress evidence, but it is not allowed to gate the
-           * actual render. Preserve the durable SCHEDULED marker and continue. */
-          job.runningMarkerError = taskString(runningMarkerError);
-        }
-
-        if (!app.project || !app.project.renderQueue || typeof app.project.renderQueue.renderAsync !== "function") {
-          taskFinish(false, "RenderQueue.renderAsync became unavailable before scheduled render start.");
-          return;
-        }
-
-        /* This call is deliberately outside the CEP evalScript request. Some AE
-         * Windows builds hold the scripting call while renderAsync starts/runs; CEP
-         * must already have received the SCHEDULED response before we cross here. */
-        app.project.renderQueue.renderAsync();
+      if (!app.project || !app.project.renderQueue || typeof app.project.renderQueue.renderAsync !== "function") {
+        job.driverError = "RenderQueue.renderAsync became unavailable before scheduled render start.";
         job.renderAsyncReturnedAtMs = taskNowMs();
-        taskScheduleDrive(250);
+        job.state = "AWAITING_FINALIZE";
         return;
       }
 
-      var rendering = false;
-      try { rendering = app.project.renderQueue.rendering === true; } catch (_) { rendering = false; }
-
-      var statusDone = false;
-      var statusText = "unknown";
-      try {
-        if (job.rqItem) {
-          statusDone = job.rqItem.status === RQItemStatus.DONE;
-          statusText = taskString(job.rqItem.status);
-        }
-      } catch (_) {}
-
-      if (rendering) {
-        taskScheduleDrive(250);
-        return;
-      }
-
-      if (!statusDone && job.renderAsyncReturnedAtMs !== null
-          && taskNowMs() - job.renderAsyncReturnedAtMs < 2000) {
-        taskScheduleDrive(250);
-        return;
-      }
-
-      if (!statusDone) {
-        taskFinish(false, "After Effects async render stopped without DONE status (status=" + statusText + ").");
-        return;
-      }
-
-      var output = new File(job.outputPath);
-      if (!output.exists || output.length <= 0) {
-        taskFinish(false, "After Effects async render reached DONE without a non-empty capture artifact.");
-        return;
-      }
-
-      taskFinish(true, null);
+      /* This call is deliberately outside the CEP evalScript request. Some AE
+       * Windows builds hold the scripting call while renderAsync starts/runs; CEP
+       * has already received the SCHEDULED response before we cross here. */
+      app.project.renderQueue.renderAsync();
+      job.renderAsyncReturnedAtMs = taskNowMs();
+      job.state = "AWAITING_FINALIZE";
     } catch (driverError) {
-      taskFinish(false, "Async render driver failed: " + taskString(driverError));
+      job.driverError = "Async render driver failed: " + taskString(driverError);
+      job.renderAsyncReturnedAtMs = taskNowMs();
+      job.state = "AWAITING_FINALIZE";
     }
   };
 
@@ -345,9 +273,17 @@
       return innerDispatch(requestJson);
     }
 
-    if (!request || request.command !== "render.capture") return innerDispatch(requestJson);
+    /* Any ordinary CEP traffic is also a safe reconciliation opportunity. The
+     * panel has a dedicated maintenance call, but this keeps recovery idempotent
+     * across reconnects and older clients. */
+    if (!request || request.command !== "render.capture") {
+      try { reconcileActiveRenderJob(); } catch (_) {}
+      return innerDispatch(requestJson);
+    }
 
     try {
+      try { reconcileActiveRenderJob(); } catch (_) {}
+
       if (request.protocolVersion !== PROTOCOL) {
         return JSON.stringify(failureResponse(
           request, started, beforeRevision, "REJECTED", "VALIDATION_ERROR", "PROTOCOL_VERSION_MISMATCH",
@@ -433,7 +369,7 @@
           completionPath: completionPath,
           rqItem: rqItem,
           state: "SCHEDULED",
-          mode: "ASYNC_HOST_RENDER_V3",
+          mode: "ASYNC_HOST_RENDER_V4",
           queueItemRemoved: false,
           scheduledAtMs: nowMs(),
           startedAtMs: null,
@@ -441,7 +377,9 @@
           driveTaskId: null,
           terminalOk: null,
           terminalError: null,
-          markerPublishAttempts: 0
+          driverError: null,
+          reconcileError: null,
+          reconcileAttempts: 0
         };
         $.global.EditFlow2_activeRenderJob = job;
         writeImmediateMarker(job, "SCHEDULED", false, null);
@@ -467,7 +405,7 @@
         response.diagnostics.durationMs = nowMs() - started;
         response.diagnostics.hostRevisionAfter = app.project.revision;
         response.diagnostics.notes.push("CEP dispatch only prepares and schedules the fixed async render driver; RenderQueue.renderAsync() executes after evalScript returns.");
-        response.diagnostics.notes.push("Scheduled lifecycle publication is staged before canonical marker replacement; RUNNING marker failure cannot gate render start and terminal publication retries.");
+        response.diagnostics.notes.push("app.scheduleTask performs no lifecycle File I/O; the CEP panel reconciles queue state and publishes terminal evidence through a normal evalScript boundary.");
         response.proofArtifactRefs = [job.completionPath];
         return JSON.stringify(response);
       } catch (setupError) {
