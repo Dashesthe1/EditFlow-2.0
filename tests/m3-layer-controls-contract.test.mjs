@@ -27,7 +27,7 @@ const schemaPath = "spec/ae-layer-controls-request-v1_6.schema.json";
 const token = "m3layercontrolsprotocoltoken0123456789abcdef0123456789";
 const headers = { "Content-Type": "application/json", "X-EditFlow-Token": token };
 
-test("M3 layer-controls protocol 1.6 owns switches while order stays on accepted 1.1 with accepted structural maturity", () => {
+test("M3 layer-controls protocol 1.6 owns switches while order stays on accepted 1.1 with accepted P1-P4 maturity and P5 outstanding", () => {
   assert.equal(AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16, "1.6.0");
   assert.equal(AE_LAYER_CONTROLS_ADAPTER_BUILD_V16, "0.4.0-dev.6");
   assert.equal(AE_LAYER_CONTROLS_ROUTE_ID_V16, "ae-cep-layer-controls-v1.6");
@@ -37,9 +37,17 @@ test("M3 layer-controls protocol 1.6 owns switches while order stays on accepted
   assert.equal(capabilityForLayerControlsCommandV16("layer.switches.set"), "ae.layer.switches.set");
   assert.equal(capabilityForLayerControlsCommandV16("layer.switches_readback"), "ae.layer.switches.readback");
   assert.equal(M3_LAYER_CONTROLS_CAPABILITIES_V16.length, 2);
+
+  const setter = M3_LAYER_CONTROLS_CAPABILITIES_V16.find((capability) => capability.id === "ae.layer.switches.set");
+  const readback = M3_LAYER_CONTROLS_CAPABILITIES_V16.find((capability) => capability.id === "ae.layer.switches.readback");
+  assert.ok(setter, "typed layer switch setter capability must remain registered");
+  assert.ok(readback, "typed layer switch readback capability must remain registered");
+  assert.equal(setter.status, "PARTIAL");
+  assert.equal(setter.proofMaturity, "ROLLBACK");
+  assert.equal(readback.status, "PARTIAL");
+  assert.equal(readback.proofMaturity, "STRUCTURAL");
+
   for (const capability of M3_LAYER_CONTROLS_CAPABILITIES_V16) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "STRUCTURAL");
     assert.equal(capability.routes[0].routeId, AE_LAYER_CONTROLS_ROUTE_ID_V16);
     assert.equal(capability.fallbackPolicy, "FORBID");
     assert.match(capability.description, /layer\.reorder/);
