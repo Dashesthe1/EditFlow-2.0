@@ -79,8 +79,10 @@ $LayerControls = $LayerControls.Replace(
 
 $PreviousProofMode = $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF
 $PreviousProofPrefix = $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX
+$PreviousProofArtifactDir = $env:EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR
 $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF = "1"
 $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX = "M3_LAYER_CONTROLS_P12_" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
+$env:EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR = $ArtifactDir
 
 if (Test-Path $PanelDiagnosticLog -PathType Leaf) { Remove-Item $PanelDiagnosticLog -Force }
 if (Test-Path $PublishedPanelDiagnosticLog -PathType Leaf) { Remove-Item $PublishedPanelDiagnosticLog -Force }
@@ -103,6 +105,8 @@ try {
     else { $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF = $PreviousProofMode }
     if ($null -eq $PreviousProofPrefix) { Remove-Item Env:EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX -ErrorAction SilentlyContinue }
     else { $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX = $PreviousProofPrefix }
+    if ($null -eq $PreviousProofArtifactDir) { Remove-Item Env:EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR -ErrorAction SilentlyContinue }
+    else { $env:EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR = $PreviousProofArtifactDir }
     Remove-Item $TempPath -Force -ErrorAction SilentlyContinue
   }
 }
