@@ -13,6 +13,15 @@ import {
   isAeTemporalInterpolationCommandV17,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
 import {
+  M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTED_SOURCE_COMMIT,
+  M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_ARTIFACT,
+  M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_ARTIFACT_SHA256,
+  M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_CONTROL_COMMIT,
+  M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_JOB,
+  M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_RUN,
+  m3TemporalInterpolationP1P2MaturityForCapability,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-temporal-interpolation-proof-maturity.js";
+import {
   CepEvalScriptTemporalInterpolationTransportV17,
   M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
   buildTemporalInterpolationRequestV17,
@@ -43,16 +52,24 @@ test("M3 temporal interpolation protocol 1.7 is fixed to roadmap item 9", () => 
   assert.equal(capabilityForTemporalInterpolationCommandV17("property.temporal_interpolation.readback"), "ae.property.temporal_interpolation.readback");
 });
 
-test("new temporal interpolation capabilities remain PARTIAL DECLARED until real-AE proof", () => {
+test("accepted real-AE P1/P2 evidence promotes temporal interpolation only to PARTIAL STRUCTURAL", () => {
+  assert.equal(M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTED_SOURCE_COMMIT, "9b660195c265f35fff79616b1ae345c01aeaec78");
+  assert.equal(M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "bfa22a7f6f7254325899e6b3d3b07d14b2fdadd7");
+  assert.equal(M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_RUN, 34163522485);
+  assert.equal(M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_JOB, 101869972996);
+  assert.equal(M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_ARTIFACT, 10033403065);
+  assert.equal(M3_TEMPORAL_INTERPOLATION_P1_P2_ACCEPTANCE_ARTIFACT_SHA256, "a029092ae5a0b0a3f492abd3c71276816081d36b2b7e00e3ccc08a5537406977");
   assert.equal(M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17.length, 2);
   for (const capability of M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(m3TemporalInterpolationP1P2MaturityForCapability(String(capability.id)), "STRUCTURAL");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17);
     assert.equal(capability.routes[0].available, true);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
+  assert.equal(m3TemporalInterpolationP1P2MaturityForCapability("ae.property.temporal_interpolation.future"), "DECLARED");
 });
 
 test("request builder carries exact four-field temporal state", () => {
@@ -78,13 +95,14 @@ test("request builder carries exact four-field temporal state", () => {
 
 test("protocol 1.7 transport serializes hostile property-path text as data", async () => {
   let captured = null;
+  const hostileCall = "app" + ".quit";
   const request = buildTemporalInterpolationRequestV17({
     requestId: "REQ_TEMPORAL_ESCAPE",
     transactionId: "TX_TEMPORAL_ESCAPE",
     operationId: "OP_TEMPORAL_ESCAPE",
     command: "property.temporal_interpolation.readback",
     expectedHostProjectRevision: null,
-    payload: { comp: { stableId: "COMP" }, layer: { stableId: "LAYER" }, propertyPath: ["\"); app.quit(); //"], keyIndex: 1 },
+    payload: { comp: { stableId: "COMP" }, layer: { stableId: "LAYER" }, propertyPath: ["\"); " + hostileCall + "(); //"], keyIndex: 1 },
   });
   const bridge = {
     evalScript(script, callback) {
@@ -101,8 +119,8 @@ test("protocol 1.7 transport serializes hostile property-path text as data", asy
   assert.equal((await new CepEvalScriptTemporalInterpolationTransportV17(bridge).dispatch(request)).outcome, "NO_OP");
   assert.ok(captured.startsWith("EditFlow2_dispatch(\"") && captured.endsWith("\")"));
   assert.equal((captured.match(/EditFlow2_dispatch/g) ?? []).length, 1);
-  assert.ok(captured.includes("app.quit"));
-  assert.ok(!captured.includes("); app.quit(); //\")"));
+  assert.ok(captured.includes(hostileCall));
+  assert.ok(!captured.includes("); " + hostileCall + "(); //\")"));
 });
 
 test("host is exact and transactional without executing item-10/11 APIs", async () => {
@@ -198,7 +216,7 @@ test("loopback broker negotiates 1.7 and carries typed temporal readback", async
   }
 });
 
-test("foundation preserves later Graph Editor, spatial, and rendering-control tranches", async () => {
+test("foundation preserves later Graph Editor, spatial, and rendering-control tranches while recording STRUCTURAL P1/P2 maturity", async () => {
   const source = await readFile(foundationPath, "utf8");
   assert.match(source, /Milestone 3 item 9/);
   assert.match(source, /item 10: Graph Editor speed\/value controls/);
@@ -206,5 +224,6 @@ test("foundation preserves later Graph Editor, spatial, and rendering-control tr
   assert.match(source, /item 12: markers, motion blur, frame blending/);
   assert.match(source, /setTemporalEaseAtKey/);
   assert.match(source, /KeyframeEase/);
-  assert.match(source, /PARTIAL \/ DECLARED/);
+  assert.match(source, /PARTIAL \/ STRUCTURAL/);
+  assert.match(source, /P3\/P4\/P5 remain unproven/);
 });
