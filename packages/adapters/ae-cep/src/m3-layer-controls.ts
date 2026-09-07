@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3LayerControlsAcceptedProofEvidence } from "./m3-layer-controls-proof-maturity.js";
 import {
   AE_LAYER_CONTROLS_ADAPTER_BUILD_V16,
   AE_LAYER_CONTROLS_COMMANDS_V16,
@@ -75,7 +76,7 @@ const riskForLayerControlsCommand = (command: AeLayerControlsCommandV16): Capabi
   return "R2_STRUCTURAL";
 };
 
-export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] =
+const M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16: readonly CapabilityRecord[] =
   AE_LAYER_CONTROLS_COMMANDS_V16.map((command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForLayerControlsCommandV16(command)),
     domain: "layer",
@@ -94,6 +95,9 @@ export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] =
     riskClass: riskForLayerControlsCommand(command),
     fallbackPolicy: "FORBID",
   }));
+
+export const M3_LAYER_CONTROLS_CAPABILITIES_V16: readonly CapabilityRecord[] =
+  applyM3LayerControlsAcceptedProofEvidence(M3_LAYER_CONTROLS_DECLARED_CAPABILITIES_V16);
 
 export const buildLayerControlsRequestV16 = (input: {
   readonly requestId: string;
