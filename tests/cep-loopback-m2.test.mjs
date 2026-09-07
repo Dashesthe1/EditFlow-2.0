@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { readFile } from "node:fs/promises";
+import { createConnection } from "node:net";
 
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { AE_ADAPTER_PROTOCOL_VERSION_V11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
@@ -124,6 +126,44 @@ test("a re-registered CEP panel receives an unacknowledged leased request", asyn
     assert.deepEqual(await dispatchPromise, responseValue);
   } finally {
     await broker.stop();
+  }
+});
+
+test("broker stop force-closes an active CEP HTTP request so restart cannot deadlock", async () => {
+  const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000, commandLeaseMs: 50 });
+  const port = await broker.start();
+  const socket = createConnection({ host: "127.0.0.1", port });
+  let stopPromise = null;
+  let timer = null;
+
+  try {
+    await once(socket, "connect");
+    socket.write([
+      "POST /v1/register HTTP/1.1",
+      `Host: 127.0.0.1:${port}`,
+      "Content-Type: application/json",
+      `X-EditFlow-Token: ${token}`,
+      "Content-Length: 100000",
+      "Connection: keep-alive",
+      "",
+      "{",
+    ].join("\r\n"));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    stopPromise = broker.stop();
+    const stoppedPromptly = await Promise.race([
+      stopPromise.then(() => true),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(false), 1000); }),
+    ]);
+
+    assert.equal(stoppedPromptly, true);
+    assert.equal(broker.isStarted, false);
+    assert.equal(broker.port, 0);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+    socket.destroy();
+    if (stopPromise !== null) await stopPromise;
+    else if (broker.isStarted) await broker.stop();
   }
 });
 
