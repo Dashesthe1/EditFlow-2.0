@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const asyncHostPath = "packages/adapters/ae-cep/host/editflow_host_render_async.jsx";
 const outputPathHostPath = "packages/adapters/ae-cep/host/editflow_host_render_output_path.jsx";
 const currentHostPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
+const bridgeClientPath = "packages/adapters/ae-cep/extension/client/bridge.js";
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const acceptancePath = "apps/desktop-host/src/cep-write-acceptance-cli.ts";
 
@@ -29,47 +30,59 @@ test("CEP render.capture dispatch schedules a fixed driver and never starts rend
   assert.doesNotMatch(dispatch, /app\.project\.renderQueue\.renderAsync\(\)/);
   assert.match(dispatch, /state: "SCHEDULED"/);
   assert.match(dispatch, /mode: "SCHEDULED_HOST_JOB_V1"/);
-  assert.match(dispatch, /ASYNC_HOST_RENDER_V3/);
+  assert.match(dispatch, /ASYNC_HOST_RENDER_V4/);
 });
 
-test("scheduled global driver marks RUNNING before crossing renderAsync boundary", async () => {
+test("scheduled global driver starts renderAsync but performs no lifecycle File I/O", async () => {
   const source = await readFile(asyncHostPath, "utf8");
   const start = source.indexOf("$.global.EditFlow2_driveAsyncRender = function () {");
   const end = source.indexOf("$.global.EditFlow2_dispatch = function", start);
   assert.ok(start >= 0 && end > start);
   const driver = source.slice(start, end);
 
-  const runningMarker = driver.indexOf('taskWriteMarker("RUNNING", false, null)');
-  const renderAsync = driver.indexOf("app.project.renderQueue.renderAsync()");
-  assert.ok(runningMarker >= 0 && renderAsync > runningMarker,
-    "RUNNING evidence must be durable before renderAsync can hold the scripting engine");
+  assert.match(driver, /job\.state = "RUNNING"/);
+  assert.match(driver, /app\.project\.renderQueue\.renderAsync\(\)/);
   assert.match(driver, /job\.renderAsyncReturnedAtMs = taskNowMs\(\)/);
-  assert.match(driver, /taskScheduleDrive\(250\)/);
-  assert.match(driver, /app\.project\.renderQueue\.rendering === true/);
-  assert.match(driver, /RQItemStatus\.DONE/);
-  assert.match(driver, /taskFinish\(true, null\)/);
-  assert.match(driver, /taskFinish\(false,/);
-  assert.match(driver, /job\.rqItem\.remove\(\)/);
+  assert.match(driver, /job\.state = "AWAITING_FINALIZE"/);
+  assert.match(driver, /job\.driverError =/);
+  assert.doesNotMatch(driver, /new File\(/);
+  assert.doesNotMatch(driver, /\.write\(/);
+  assert.doesNotMatch(driver, /taskWriteMarker/);
+  assert.doesNotMatch(driver, /writeImmediateMarker/);
 });
 
-test("scheduled async driver is self-contained for AE global workspace", async () => {
+test("normal CEP reconciliation owns terminal marker publication and queue cleanup", async () => {
   const source = await readFile(asyncHostPath, "utf8");
-  const start = source.indexOf("$.global.EditFlow2_driveAsyncRender = function () {");
-  const end = source.indexOf("$.global.EditFlow2_dispatch = function", start);
-  assert.ok(start >= 0 && end > start);
-  const driver = source.slice(start, end);
 
-  assert.match(driver, /function taskNowMs\(\)/);
-  assert.match(driver, /function taskString\(value\)/);
-  assert.match(driver, /function taskQuote\(value\)/);
-  assert.match(driver, /function taskWriteMarker\(status, ok, errorMessage\)/);
-  assert.match(driver, /function taskCleanupQueueItem\(\)/);
-  assert.match(driver, /function taskFinish\(ok, errorMessage\)/);
-  assert.match(driver, /function taskScheduleDrive\(delayMs\)/);
-  assert.doesNotMatch(driver, /EditFlow2_JSON/);
-  assert.doesNotMatch(driver, /\bnowMs\(\)/);
-  assert.doesNotMatch(driver, /\basString\(/);
-  assert.doesNotMatch(driver, /\bwriteImmediateMarker\(/);
+  assert.match(source, /function reconcileActiveRenderJob\(\)/);
+  assert.match(source, /\$\.global\.EditFlow2_reconcileAsyncRender = function \(\)/);
+  assert.match(source, /function beginTerminal\(job, ok, errorMessage\)/);
+  assert.match(source, /function publishTerminal\(job\)/);
+  assert.match(source, /cleanupQueueItem\(job\)/);
+  assert.match(source, /writeImmediateMarker\(/);
+  assert.match(source, /RQItemStatus\.DONE/);
+  assert.match(source, /new File\(job\.outputPath\)/);
+  assert.match(source, /job\.state === "FINALIZING"/);
+  assert.match(source, /reconcileActiveRenderJob\(\)/);
+});
+
+test("CEP panel arms render maintenance on scheduled capture and pumps host reconciliation", async () => {
+  const source = await readFile(bridgeClientPath, "utf8");
+
+  assert.match(source, /var renderMaintenanceArmed = true/);
+  assert.match(source, /function reconcileHostAsyncRender\(\)/);
+  assert.match(source, /EditFlow2_reconcileAsyncRender/);
+  assert.match(source, /function maintainAsyncRenderIfNeeded\(\)/);
+  assert.match(source, /request\.command === "render\.capture" && response\.outcome === "APPLIED"/);
+  assert.match(source, /response\.readback\.state === "SCHEDULED"/);
+  const pollStart = source.indexOf("function pollOnce(generation)");
+  const pollEnd = source.indexOf("function scheduleReconnect", pollStart);
+  assert.ok(pollStart >= 0 && pollEnd > pollStart);
+  const poll = source.slice(pollStart, pollEnd);
+  const maintenanceIndex = poll.indexOf("maintainAsyncRenderIfNeeded()");
+  const brokerPollIndex = poll.indexOf('requestJson("/v1/next?sessionId="');
+  assert.ok(maintenanceIndex >= 0 && brokerPollIndex > maintenanceIndex,
+    "render maintenance must run through normal CEP evalScript before the next broker lease");
 });
 
 test("render output-path wrapper makes OutputModule.file authoritative without allowing directory escape", async () => {

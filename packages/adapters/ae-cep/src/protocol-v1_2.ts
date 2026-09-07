@@ -1,7 +1,7 @@
 import type { OperationOutcome } from "../../../core-contracts/src/index.js";
 
 export const AE_MASK_PROTOCOL_VERSION_V12 = "1.2.0" as const;
-export const AE_MASK_ADAPTER_BUILD_V12 = "0.4.0-dev.1" as const;
+export const AE_MASK_ADAPTER_BUILD_V12 = "0.4.0-dev.2" as const;
 export const AE_MASK_ROUTE_ID_V12 = "ae-cep.mask.v1_2" as const;
 
 export const AE_MASK_COMMANDS_V12 = [
