@@ -194,7 +194,7 @@ test("mask duplication snapshots the source before mutating AE's indexed Mask Pa
     "destination stableId conflict must be rejected before duplicate mutation");
 });
 
-test("current installer keeps accepted mask protocol 1.2 available while advertising composite 1.3 additively", async () => {
+test("current installer keeps accepted mask protocol 1.2 available while later M3 protocols remain additive", async () => {
   const [loader, installer, bridge, runtimeConfig] = await Promise.all([
     readFile(loaderPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -206,12 +206,12 @@ test("current installer keeps accepted mask protocol 1.2 available while adverti
   assert.match(installer, /"editflow_host_m3_masks\.jsx"/);
   assert.match(installer, /schemaVersion = 1/);
   assert.match(installer, /protocolVersion = "1\.1\.0"/);
-  assert.match(installer, /supportedProtocolVersions = @\("1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
+  assert.match(installer, /supportedProtocolVersions = @\("1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\)/);
   assert.match(installer, /Each local broker narrows that set/);
   assert.match(bridge, /supportedProtocolVersions/);
   assert.match(bridge, /response\.protocolVersion !== request\.protocolVersion/);
   assert.match(bridge, /Broker negotiated an unsupported CEP protocol/);
   assert.doesNotMatch(bridge, /response\.protocolVersion !== "1\.1\.0"/);
   assert.match(runtimeConfig, /schemaVersion: 1/);
-  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
+  assert.match(runtimeConfig, /supportedProtocolVersions: \["1\.4\.0", "1\.3\.0", "1\.2\.0", "1\.1\.0"\]/);
 });
