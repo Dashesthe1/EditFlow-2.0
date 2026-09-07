@@ -321,6 +321,19 @@
         applyPlacement(prepared.layer, request.payload.placement, prepared.relative);
         verifyPlacement(prepared.comp, prepared.layer, request.payload.placement, prepared.relative);
       }
+
+      /* Proof-only P4 injection. Ordinary product requests cannot arm this path:
+       * the isolated self-hosted runner must launch its owned AE process with the
+       * exact proof environment flag and the typed protocol-1.6 order request must
+       * carry the fixed readback profile. Injection happens only after a real order
+       * mutation has passed structural verification, while the AE Undo group is
+       * still open, so the normal rollback path is what must recover the fixture. */
+      if (request.command === "layer.order.set"
+          && request.readbackProfile === "M3_LAYER_CONTROLS_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_LAYER_CONTROLS_P4_PROOF") === "1") {
+        fail("PROOF_INJECTION", "M3_LAYER_CONTROLS_P4_INDUCED_FAILURE", "Induced M3 layer-controls P4 failure after verified order mutation.", null);
+      }
+
       app.endUndoGroup();
       return responseFor(request, "APPLIED", null, [affected(prepared.layer)], controlsReadback(prepared.comp, prepared.layer), startedAt, ["Layer-controls mutation applied and structurally verified."]);
     } catch (mutationError) {
