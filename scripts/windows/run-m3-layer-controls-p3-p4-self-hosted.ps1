@@ -8,9 +8,14 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplatePath = Join-Path $RepoRoot "scripts\windows\run-m3-mask-p3-p4-self-hosted.ps1"
 $TempPath = Join-Path $PSScriptRoot ("run-m3-layer-controls-p3-p4-self-hosted-generated-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-layer-controls-p3-p4"
+$DialogWatcher = Join-Path $RepoRoot "scripts\windows\watch-ae-startup-dialogs.ps1"
+$DialogDetailsPath = Join-Path $ProofArtifactDir "startup-dialog-details.log"
+$ProofQuitScript = Join-Path $RepoRoot "scripts\windows\quit-editflow-proof-ae.jsx"
+$ProofQuitLog = Join-Path $env:TEMP "EditFlow2-layer-controls-proof-quit.log"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
+$WatcherProcess = $null
 
 function Copy-CepFailureDiagnostics {
   param([string]$Destination)
@@ -49,6 +54,15 @@ function Copy-CepFailureDiagnostics {
 if (-not (Test-Path $TemplatePath -PathType Leaf)) {
   throw "Accepted M3 mask P3/P4 self-hosted runner template is missing: $TemplatePath"
 }
+if (-not (Test-Path $DialogWatcher -PathType Leaf)) {
+  throw "Read-only AE startup-dialog watcher is missing: $DialogWatcher"
+}
+if (-not (Test-Path $ProofQuitScript -PathType Leaf)) {
+  throw "Guarded proof-only AE quit script is missing: $ProofQuitScript"
+}
+if ($ProofQuitScript -match "\s") {
+  throw "The proof-only AE quit script path contains whitespace. The proven AfterFX -r route requires an unquoted workspace path: $ProofQuitScript"
+}
 
 # Connector-authored control-branch updates do not always emit a pull_request sync
 # event. Run the exact repository validation gate before installing CEP files or AE.
@@ -65,11 +79,13 @@ try {
 }
 
 $Template = [System.IO.File]::ReadAllText($TemplatePath)
+$AcceptanceInvocation = '& $Acceptance -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds'
 $RequiredTokens = @(
   'scripts\windows\run-m3-mask-p3-p4.ps1',
   'proofs\artifacts\m3-mask-p3-p4',
   'EDITFLOW_M3_MASK_P4_PROOF',
-  'authenticated protocol 1.2 registration'
+  'authenticated protocol 1.2 registration',
+  $AcceptanceInvocation
 )
 foreach ($Token in $RequiredTokens) {
   if (-not $Template.Contains($Token)) {
@@ -86,6 +102,48 @@ $LayerControls = $LayerControls.Replace('M3 mask P3/P4', 'M3 layer-controls P3/P
 $LayerControls = $LayerControls.Replace('M3 mask/Bezier', 'M3 layer-controls')
 $LayerControls = $LayerControls.Replace('isolated M3 AE proof', 'isolated M3 layer-controls AE proof')
 $LayerControls = $LayerControls.Replace('The M3 mask P3/P4 acceptance runner is missing', 'The M3 layer-controls P3/P4 acceptance runner is missing')
+
+# A successful proof has already restored a fresh blank unsaved project through the
+# exact proof cleanup. Dispatch one fixed JSX that refuses any saved/nonblank project,
+# closes only that disposable blank project without saving, and calls app.quit().
+# This avoids leaving After Effects to be force-killed after a successful proof, which
+# can contaminate the next cold-start with crash/startup-recovery state.
+$EscapedProofQuitScript = $ProofQuitScript.Replace("'", "''")
+$EscapedProofQuitLog = $ProofQuitLog.Replace("'", "''")
+$CleanQuitBlock = @"
+& `$Acceptance -AfterFxPath `$AfterFxPath -TimeoutSeconds `$TimeoutSeconds
+if (`$LASTEXITCODE -ne 0) { throw "M3 layer-controls P3/P4 acceptance returned a nonzero exit code before clean shutdown." }
+`$EditFlowProofQuitScript = '$EscapedProofQuitScript'
+`$EditFlowProofQuitLog = '$EscapedProofQuitLog'
+if (Test-Path `$EditFlowProofQuitLog -PathType Leaf) { Remove-Item `$EditFlowProofQuitLog -Force }
+Write-StartupDiagnostic "PROOF_CLEAN_QUIT_DISPATCH" ("script=" + `$EditFlowProofQuitScript)
+`$ProofQuitProcess = Start-Process -FilePath `$AfterFxPath -ArgumentList @("-r", `$EditFlowProofQuitScript) -PassThru
+`$ProofQuitDeadline = (Get-Date).AddSeconds(20)
+`$ProofQuitApproved = `$false
+while ((Get-Date) -lt `$ProofQuitDeadline) {
+  `$ProofQuitText = ""
+  if (Test-Path `$EditFlowProofQuitLog -PathType Leaf) {
+    try { `$ProofQuitText = Get-Content `$EditFlowProofQuitLog -Raw } catch { `$ProofQuitText = "" }
+  }
+  if (`$ProofQuitText -match "QUIT_REFUSED") {
+    Write-StartupDiagnostic "PROOF_CLEAN_QUIT_REFUSED" (ConvertTo-SingleLineDiagnostic `$ProofQuitText)
+    throw "The guarded proof-only After Effects quit script refused shutdown."
+  }
+  `$RemainingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+  if (`$ProofQuitText -match "QUIT_APPROVED" -and `$RemainingAfterFx.Count -eq 0) {
+    `$ProofQuitApproved = `$true
+    break
+  }
+  Start-Sleep -Milliseconds 250
+}
+if (-not `$ProofQuitApproved) {
+  `$RemainingIds = (@(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue) | ForEach-Object { `$_.Id }) -join ","
+  Write-StartupDiagnostic "PROOF_CLEAN_QUIT_TIMEOUT" ("remainingPids=" + `$RemainingIds)
+  throw "The successful proof did not achieve guarded scripted After Effects shutdown within 20 seconds."
+}
+Write-StartupDiagnostic "PROOF_CLEAN_QUIT_CONFIRMED" "aeCount=0"
+"@
+$LayerControls = $LayerControls.Replace($AcceptanceInvocation, $CleanQuitBlock.TrimEnd())
 [System.IO.File]::WriteAllText($TempPath, $LayerControls, (New-Object System.Text.UTF8Encoding($false)))
 
 # Proof flags are process-global to the isolated AE child. Preserve shell values,
@@ -115,6 +173,19 @@ try {
   }
   New-ItemProperty -Path $CsxsKey -Name "LogLevel" -PropertyType String -Value "6" -Force | Out-Null
 
+  New-Item -ItemType Directory -Force -Path $ProofArtifactDir | Out-Null
+  if (Test-Path $DialogDetailsPath -PathType Leaf) { Remove-Item $DialogDetailsPath -Force }
+  $WatcherArgs = @(
+    "-NoLogo",
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", $DialogWatcher,
+    "-OutputPath", $DialogDetailsPath,
+    "-DurationSeconds", [Math]::Min(300, [Math]::Max(140, $TimeoutSeconds + 60)),
+    "-PollMilliseconds", 2000
+  )
+  $WatcherProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $WatcherArgs -PassThru -WindowStyle Hidden
+
   & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
   if ($LASTEXITCODE -ne 0) {
     Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
@@ -124,6 +195,15 @@ try {
   Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
   throw
 } finally {
+  if ($null -ne $WatcherProcess) {
+    try {
+      $WatcherProcess.Refresh()
+      if (-not $WatcherProcess.HasExited) {
+        Stop-Process -Id $WatcherProcess.Id -Force -ErrorAction SilentlyContinue
+        Wait-Process -Id $WatcherProcess.Id -Timeout 5 -ErrorAction SilentlyContinue
+      }
+    } catch {}
+  }
   if ($OriginalLogLevelPresent) {
     New-ItemProperty -Path $CsxsKey -Name "LogLevel" -PropertyType String -Value $OriginalLogLevel -Force -ErrorAction SilentlyContinue | Out-Null
   } else {
