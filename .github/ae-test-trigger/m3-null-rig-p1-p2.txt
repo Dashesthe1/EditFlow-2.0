@@ -4,4 +4,6 @@ Only updates to this file on ae-test/m3-null-rig-p1-p2-control should trigger th
 
 Run target: protocol 1.5 true-null creation/readback, deterministic rejection without structural drift, multi-child atomic bind/unbind structural readback, independent protocol-1.4 five-point geometry witness, idempotent create/bind, stable layer order, and exact proof-owned cleanup. P3/P4/P5 remain unclaimed.
 
-Run 1 trigger: execute the exact CI-green candidate at 7b00034c0d380ff3f00dfabec28cb19c66aa7397 without implementation changes.
+Run 1 negative evidence: workflow 34087751474 / artifact 10005835994 timed out before the initial CEP panel registered. The retained result has panel=null, responses=[], nullEvidence=null, relationshipEvidence=null, and no geometry traffic. After Effects reached the blank untitled project, the fixed EditFlow Bridge menu command was sent, and runner-owned cleanup returned to zero AE processes. This is launcher-registration evidence, not a protocol-1.5 null-rig failure.
+
+Run 2 trigger: controlled no-source-change retry of the same CI-green candidate rooted at 7b00034c0d380ff3f00dfabec28cb19c66aa7397. A repeated initial registration timeout must be treated as launcher reliability evidence and must not be hidden by additional retries.
