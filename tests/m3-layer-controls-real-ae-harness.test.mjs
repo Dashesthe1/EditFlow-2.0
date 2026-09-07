@@ -65,11 +65,15 @@ test("proof-only cleanup validates the fixed prefix-owned fixture before restori
   assert.doesNotMatch(source, /\beval\s*\(/);
 });
 
-test("layer-controls acceptance wrapper requires exact P1/P2 checks, cleanup, and no higher-proof overclaim", async () => {
+test("layer-controls acceptance wrapper requires exact P1/P2 checks, cleanup, safe native argv quoting, and no higher-proof overclaim", async () => {
   const source = await readFile(acceptancePath, "utf8");
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF/);
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX/);
   assert.match(source, /m3-layer-controls-p1-p2-cli\.js/);
+  assert.match(source, /function Quote-StartProcessArgument/);
+  assert.match(source, /"--afterfx-path", \(Quote-StartProcessArgument \$AfterFx\)/);
+  assert.match(source, /"--setup-script", \(Quote-StartProcessArgument \$SetupScript\)/);
+  assert.match(source, /"--cleanup-script", \(Quote-StartProcessArgument \$CleanupScript\)/);
   assert.match(source, /cleanupComplete -ne \$true/);
   assert.match(source, /p1_unknown_control_rejected/);
   assert.match(source, /p2_audio_enable_exact/);
