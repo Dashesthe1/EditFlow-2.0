@@ -35,6 +35,11 @@
   function nowMs() { return (new Date()).getTime(); }
   function asString(value) { return value === null || value === undefined ? "" : String(value); }
   function own(object, key) { return object !== null && object !== undefined && Object.prototype.hasOwnProperty.call(object, key); }
+  function isKnownSwitchKey(key) {
+    var i;
+    for (i = 0; i < SWITCH_KEYS.length; i += 1) if (SWITCH_KEYS[i] === key) return true;
+    return false;
+  }
   function fail(category, code, message, details) {
     var error = new Error(message);
     error.editflowCategory = category;
@@ -193,7 +198,7 @@
     var key;
     for (key in patch) {
       if (!own(patch, key)) continue;
-      if (SWITCH_KEYS.indexOf(key) < 0) reject("LAYER_SWITCH_UNKNOWN", "Unsupported layer switch key: " + key, { key: key });
+      if (!isKnownSwitchKey(key)) reject("LAYER_SWITCH_UNKNOWN", "Unsupported layer switch key: " + key, { key: key });
       count += 1;
       if (key === "quality") {
         if (patch[key] !== "BEST" && patch[key] !== "DRAFT" && patch[key] !== "WIREFRAME") reject("LAYER_QUALITY_INVALID", "quality must be BEST, DRAFT, or WIREFRAME.");
