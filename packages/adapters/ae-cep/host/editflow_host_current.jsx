@@ -1,4 +1,4 @@
-/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + M3 protocol 1.2 masks + protocol 1.3 composite + protocol 1.4 parenting foundation. */
+/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + M3 protocol 1.2 masks + protocol 1.3 composite + protocol 1.4 parenting + protocol 1.5 null rigs. */
 (function () {
   var currentFile = new File($.fileName);
   var hostDir = currentFile.parent;
@@ -14,6 +14,7 @@
   var m3Masks = new File(hostDir.fsName + "/editflow_host_m3_masks.jsx");
   var m3Composite = new File(hostDir.fsName + "/editflow_host_m3_composite.jsx");
   var m3Parenting = new File(hostDir.fsName + "/editflow_host_m3_parenting.jsx");
+  var m3NullRigs = new File(hostDir.fsName + "/editflow_host_m3_null_rigs.jsx");
   var m3ProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_proof_cleanup.jsx");
   var m3CompositeProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_composite_proof_cleanup.jsx");
   var m3ParentingProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_parenting_proof_cleanup.jsx");
@@ -154,6 +155,56 @@
         });
       }
       return dispatchBeforeParentingFailure(requestJson);
+    };
+  }
+
+  /* Protocol 1.5 true-null rigs are additive. A null-rig load defect must never
+   * take accepted 1.1-1.4 dispatch offline; only protocol 1.5 traffic fails closed.
+   */
+  var nullRigLoadError = null;
+  if (!m3NullRigs.exists) {
+    nullRigLoadError = "EditFlow M3 null-rig host script is missing: " + m3NullRigs.fsName;
+  } else {
+    try {
+      $.evalFile(m3NullRigs);
+    } catch (nullRigError) {
+      nullRigLoadError = String(nullRigError);
+    }
+  }
+
+  if (nullRigLoadError !== null) {
+    var dispatchBeforeNullRigFailure = $.global.EditFlow2_dispatch;
+    $.global.EditFlow2_M3_NULL_RIG_LOAD_ERROR = nullRigLoadError;
+    $.global.EditFlow2_dispatch = function (requestJson) {
+      var request = null;
+      try { request = $.global.EditFlow2_JSON.parse(requestJson); } catch (_) {}
+      if (request && request.protocolVersion === "1.5.0") {
+        return $.global.EditFlow2_JSON.stringify({
+          protocolVersion: "1.5.0",
+          requestId: request.requestId,
+          transactionId: request.transactionId,
+          operationId: request.operationId,
+          capabilityId: request.capabilityId,
+          command: request.command,
+          outcome: "FAILED",
+          error: {
+            category: "ADAPTER_FAILURE",
+            code: "M3_NULL_RIG_MODULE_LOAD_FAILED",
+            message: nullRigLoadError,
+            details: null
+          },
+          affectedObjects: [],
+          readback: null,
+          hostProjectRevision: app.project ? app.project.revision : null,
+          diagnostics: {
+            adapterProtocolVersion: "1.5.0",
+            adapterBuild: "0.5.0-dev.1",
+            command: request.command,
+            notes: ["Protocol 1.5 null-rig host module failed to load; accepted earlier protocol dispatch remains available."]
+          }
+        });
+      }
+      return dispatchBeforeNullRigFailure(requestJson);
     };
   }
 

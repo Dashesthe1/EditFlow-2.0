@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-null-rig-request-v1_5.schema.json",
+  "title": "EditFlow 2.0 AE M3 Null Rig Request Protocol 1.5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.5.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["layer.null_create", "layer.null_readback", "rig.bind_children_to_null_preserve_transform", "rig.unbind_children_from_null_preserve_transform", "rig.relationship_readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1, "maxLength": 240},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "position2d": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "relationshipTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "controller"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "controller": {"$ref": "#/$defs/objectRef"}
+      }
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "layer.null_create"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "stableId"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "stableId": {"type": "string", "minLength": 1, "maxLength": 240},
+              "name": {"type": "string", "minLength": 1, "maxLength": 255},
+              "position": {"$ref": "#/$defs/position2d"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "layer.null_readback"},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "layer"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "layer": {"$ref": "#/$defs/objectRef"}
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"enum": ["rig.bind_children_to_null_preserve_transform", "rig.unbind_children_from_null_preserve_transform"]},
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["comp", "controller", "children"],
+            "properties": {
+              "comp": {"$ref": "#/$defs/objectRef"},
+              "controller": {"$ref": "#/$defs/objectRef"},
+              "children": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 128,
+                "items": {"$ref": "#/$defs/objectRef"}
+              }
+            }
+          }
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "rig.relationship_readback"},
+          "payload": {"$ref": "#/$defs/relationshipTarget"}
+        }
+      }
+    ]
+  }]
+}
