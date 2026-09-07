@@ -1,0 +1,52 @@
+name: Dev fix M3 P3 P4 probe metadata
+
+on:
+  push:
+    branches:
+      - feature/m3-mask-p3-p4-proof
+    paths:
+      - .github/ae-test-trigger/dev-m3-p3-p4-probe-fix.txt
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/m3-mask-p3-p4-proof
+          fetch-depth: 0
+      - name: Patch host metadata source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('apps/desktop-host/src/m3-mask-p3-p4-cli.ts')
+          s = p.read_text(encoding='utf-8')
+          old = '''    const panel = await broker.waitForPanel(timeoutMs);\n    panelHostName = panel.hostName;\n    panelHostVersion = panel.hostVersion;\n    panelHostBuild = panel.hostBuild;\n    panelExtensionVersion = panel.extensionVersion;'''
+          new = '''    const panel = await broker.waitForPanel(timeoutMs);\n    panelExtensionVersion = panel.extensionVersion;'''
+          if old not in s:
+              raise SystemExit('Panel metadata seam not found.')
+          s = s.replace(old, new, 1)
+          old_probe = '''    const environment = await client.probe();\n    checks.host_probe = environment.hostName === "Adobe After Effects"\n      && environment.adapterProtocolVersion === AE_ADAPTER_PROTOCOL_VERSION_V11;'''
+          new_probe = '''    const environment = await client.probe();\n    panelHostName = environment.hostName;\n    panelHostVersion = environment.hostVersion;\n    panelHostBuild = environment.hostBuild;\n    checks.host_probe = environment.hostName === "Adobe After Effects"\n      && environment.adapterProtocolVersion === AE_ADAPTER_PROTOCOL_VERSION_V11;'''
+          if old_probe not in s:
+              raise SystemExit('Host probe seam not found.')
+          s = s.replace(old_probe, new_probe, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit fix and remove one-shot materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/dev-fix-m3-p3-p4-probe-metadata.yml
+          rm -f .github/ae-test-trigger/dev-m3-p3-p4-probe-fix.txt
+          git config user.name 'EditFlow M3 P3-P4 Fixer'
+          git config user.email 'editflow-builder@users.noreply.github.com'
+          git add -A apps/desktop-host/src/m3-mask-p3-p4-cli.ts .github/workflows .github/ae-test-trigger
+          git commit -m 'fix: source M3 P3/P4 AE metadata from host probe'
+          git push origin HEAD:feature/m3-mask-p3-p4-proof
