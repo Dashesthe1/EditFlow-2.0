@@ -29,10 +29,6 @@ namespace EditFlow {
     public long Handle;
     public bool Visible;
     public bool Enabled;
-    public int Left;
-    public int Top;
-    public int Right;
-    public int Bottom;
     public string ClassName = "";
     public string Title = "";
   }
@@ -40,14 +36,6 @@ namespace EditFlow {
   public static class StartupDialogReader {
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     private delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT {
-      public int Left;
-      public int Top;
-      public int Right;
-      public int Bottom;
-    }
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
@@ -72,10 +60,6 @@ namespace EditFlow {
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowEnabled(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-
     private static StartupWindowInfo Describe(IntPtr hWnd) {
       uint processId;
       GetWindowThreadProcessId(hWnd, out processId);
@@ -83,17 +67,11 @@ namespace EditFlow {
       GetWindowText(hWnd, title, title.Capacity);
       var className = new StringBuilder(512);
       GetClassName(hWnd, className, className.Capacity);
-      RECT rect;
-      var hasRect = GetWindowRect(hWnd, out rect);
       return new StartupWindowInfo {
         ProcessId = (int)processId,
         Handle = hWnd.ToInt64(),
         Visible = IsWindowVisible(hWnd),
         Enabled = IsWindowEnabled(hWnd),
-        Left = hasRect ? rect.Left : 0,
-        Top = hasRect ? rect.Top : 0,
-        Right = hasRect ? rect.Right : 0,
-        Bottom = hasRect ? rect.Bottom : 0,
         ClassName = className.ToString(),
         Title = title.ToString()
       };
@@ -133,13 +111,6 @@ try {
   $UiAutomationAvailable = $false
 }
 
-try {
-  Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-  $ScreenCaptureAvailable = $true
-} catch {
-  $ScreenCaptureAvailable = $false
-}
-
 function Clean-DiagnosticText {
   param([AllowNull()][string]$Value)
   if ($null -eq $Value) { return "" }
@@ -152,54 +123,11 @@ function Write-DiagnosticLine {
   Add-Content -Path $OutputPath -Value ($Timestamp + "`t" + $Stage + "`t" + $Detail) -Encoding UTF8
 }
 
-function Save-ReadOnlyDialogScreenshot {
-  param($Dialog)
-
-  if (-not $ScreenCaptureAvailable) { return $null }
-  $Width = [int]$Dialog.Right - [int]$Dialog.Left
-  $Height = [int]$Dialog.Bottom - [int]$Dialog.Top
-  if ($Width -lt 1 -or $Height -lt 1 -or $Width -gt 8192 -or $Height -gt 8192) {
-    Write-DiagnosticLine "SCREENSHOT_SKIPPED" ("pid=$($Dialog.ProcessId);hwnd=$($Dialog.Handle);width=$Width;height=$Height;reason=invalid_bounds")
-    return $null
-  }
-
-  $Bitmap = $null
-  $Graphics = $null
-  try {
-    $Bitmap = [System.Drawing.Bitmap]::new($Width, $Height)
-    $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
-    # CopyFromScreen is read-only observation of the already-visible desktop pixels.
-    # It does not focus, activate, click, type into, message, or otherwise mutate AE.
-    $Graphics.CopyFromScreen(
-      [int]$Dialog.Left,
-      [int]$Dialog.Top,
-      0,
-      0,
-      [System.Drawing.Size]::new($Width, $Height),
-      [System.Drawing.CopyPixelOperation]::SourceCopy
-    )
-    $ScreenshotName = "startup-dialog-pid-$($Dialog.ProcessId)-hwnd-$($Dialog.Handle).png"
-    $ScreenshotPath = Join-Path $OutputDir $ScreenshotName
-    $Bitmap.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
-    Write-DiagnosticLine "SCREENSHOT_CAPTURED" ("pid=$($Dialog.ProcessId);hwnd=$($Dialog.Handle);width=$Width;height=$Height;path=$ScreenshotPath")
-    return $ScreenshotPath
-  } catch {
-    Write-DiagnosticLine "SCREENSHOT_ERROR" ("pid=$($Dialog.ProcessId);hwnd=$($Dialog.Handle);error=$(Clean-DiagnosticText $_.Exception.Message)")
-    return $null
-  } finally {
-    if ($null -ne $Graphics) { $Graphics.Dispose() }
-    if ($null -ne $Bitmap) { $Bitmap.Dispose() }
-  }
-}
-
 if (Test-Path $OutputPath -PathType Leaf) { Remove-Item $OutputPath -Force }
-Write-DiagnosticLine "WATCH_START" ("durationSeconds=$DurationSeconds;pollMilliseconds=$PollMilliseconds;uiAutomation=$UiAutomationAvailable;screenCapture=$ScreenCaptureAvailable")
+Write-DiagnosticLine "WATCH_START" ("durationSeconds=$DurationSeconds;pollMilliseconds=$PollMilliseconds;uiAutomation=$UiAutomationAvailable")
 
 $Deadline = (Get-Date).AddSeconds($DurationSeconds)
 $LastSignature = ""
-$CapturedDialogHandles = @{}
-$CaptureCount = 0
-$MaxCaptures = 8
 while ((Get-Date) -lt $Deadline) {
   $AfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
   $ProcessIds = @($AfterFx | ForEach-Object { [int]$_.Id })
@@ -210,7 +138,7 @@ while ((Get-Date) -lt $Deadline) {
       foreach ($Dialog in $Dialogs) {
         $Children = @([EditFlow.StartupDialogReader]::EnumerateChildren([long]$Dialog.Handle))
         $NativeSummary = ($Children | ForEach-Object {
-          "hwnd=$($_.Handle),class=$(Clean-DiagnosticText $_.ClassName),title=$(Clean-DiagnosticText $_.Title),visible=$($_.Visible),enabled=$($_.Enabled),bounds=$($_.Left),$($_.Top),$($_.Right),$($_.Bottom)"
+          "hwnd=$($_.Handle),class=$(Clean-DiagnosticText $_.ClassName),title=$(Clean-DiagnosticText $_.Title),visible=$($_.Visible),enabled=$($_.Enabled)"
         }) -join " | "
         $AutomationSummary = ""
         if ($UiAutomationAvailable) {
@@ -239,18 +167,11 @@ while ((Get-Date) -lt $Deadline) {
             $AutomationSummary = "uiAutomationError=" + (Clean-DiagnosticText $_.Exception.Message)
           }
         }
-        $Detail = "pid=$($Dialog.ProcessId);dialogHwnd=$($Dialog.Handle);title=$(Clean-DiagnosticText $Dialog.Title);bounds=$($Dialog.Left),$($Dialog.Top),$($Dialog.Right),$($Dialog.Bottom);nativeChildren=[$NativeSummary];automation=[$AutomationSummary]"
+        $Detail = "pid=$($Dialog.ProcessId);dialogHwnd=$($Dialog.Handle);title=$(Clean-DiagnosticText $Dialog.Title);nativeChildren=[$NativeSummary];automation=[$AutomationSummary]"
         $Signature = $Detail
         if ($Signature -ne $LastSignature) {
           Write-DiagnosticLine "VISIBLE_DIALOG" $Detail
           $LastSignature = $Signature
-        }
-
-        $CaptureKey = "$($Dialog.ProcessId):$($Dialog.Handle)"
-        if ($CaptureCount -lt $MaxCaptures -and -not $CapturedDialogHandles.ContainsKey($CaptureKey)) {
-          $CapturedDialogHandles[$CaptureKey] = $true
-          $CaptureCount += 1
-          [void](Save-ReadOnlyDialogScreenshot -Dialog $Dialog)
         }
       }
     } catch {
@@ -260,4 +181,4 @@ while ((Get-Date) -lt $Deadline) {
   Start-Sleep -Milliseconds $PollMilliseconds
 }
 
-Write-DiagnosticLine "WATCH_END" ("completed=true;capturesAttempted=$CaptureCount")
+Write-DiagnosticLine "WATCH_END" "completed=true"
