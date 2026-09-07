@@ -328,7 +328,7 @@ const main = async (): Promise<void> => {
       duration: 1,
       frameRate: 24,
     });
-    for (const stableId of [layerA, layerB, layerC]) {
+    for (const stableId of [layerC, layerB, layerA]) {
       await executeV11("layer.add_media", {
         stableId,
         comp: { stableId: targetStable },
