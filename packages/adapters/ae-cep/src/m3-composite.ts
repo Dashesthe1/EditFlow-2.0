@@ -3,7 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import { applyM3CompositeAcceptedP1P2Evidence } from "./m3-composite-proof-maturity.js";
+import { applyM3CompositeAcceptedProofEvidence } from "./m3-composite-proof-maturity.js";
 import {
   AE_COMPOSITE_ADAPTER_BUILD_V13,
   AE_COMPOSITE_COMMANDS_V13,
@@ -94,7 +94,7 @@ const M3_COMPOSITE_DECLARED_CAPABILITIES_V13: readonly CapabilityRecord[] = AE_C
 );
 
 export const M3_COMPOSITE_CAPABILITIES_V13: readonly CapabilityRecord[] =
-  applyM3CompositeAcceptedP1P2Evidence(M3_COMPOSITE_DECLARED_CAPABILITIES_V13);
+  applyM3CompositeAcceptedProofEvidence(M3_COMPOSITE_DECLARED_CAPABILITIES_V13);
 
 export const buildCompositeRequestV13 = (input: {
   readonly requestId: string;
