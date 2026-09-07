@@ -21,7 +21,7 @@
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
   var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
-  var KNOWN_PROTOCOLS = ["1.4.0", "1.3.0", "1.2.0", "1.1.0"];
+  var KNOWN_PROTOCOLS = ["1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
@@ -57,9 +57,7 @@
       "Content-Type": "application/json",
       "X-EditFlow-Token": config.token
     };
-    if (extra) {
-      Object.keys(extra).forEach(function (key) { result[key] = extra[key]; });
-    }
+    if (extra) Object.keys(extra).forEach(function (key) { result[key] = extra[key]; });
     return result;
   }
 
@@ -81,15 +79,10 @@
 
   function extensionRootPath() {
     var cep = window.__adobe_cep__;
-    if (!cep || typeof cep.getSystemPath !== "function") {
-      throw new Error("CEP extension path API is unavailable.");
-    }
+    if (!cep || typeof cep.getSystemPath !== "function") throw new Error("CEP extension path API is unavailable.");
     var path = decodeURI(cep.getSystemPath("extension"));
-    if (path.indexOf("file:///") === 0 && /^[A-Za-z]:\//.test(path.substring(8))) {
-      path = path.substring(8);
-    } else if (path.indexOf("file://") === 0) {
-      path = path.substring(7);
-    }
+    if (path.indexOf("file:///") === 0 && /^[A-Za-z]:\//.test(path.substring(8))) path = path.substring(8);
+    else if (path.indexOf("file://") === 0) path = path.substring(7);
     path = path.replace(/\\/g, "/").replace(/\/+$/, "");
     if (!path) throw new Error("CEP extension root path is empty.");
     return path;
@@ -102,15 +95,13 @@
         reject(new Error("Host bootstrap: CEP evalScript is unavailable in this panel context."));
         return;
       }
-
       var hostPath;
       try {
-        hostPath = extensionRootPath() + "/host/editflow_host_current.jsx";
+        hostPath = extensionRootPath() + "/host/editflow_host_current_v15.jsx";
       } catch (error) {
         reject(new Error("Host bootstrap: " + (error && error.message ? error.message : String(error))));
         return;
       }
-
       var hostPathLiteral = JSON.stringify(hostPath);
       var script = "(function(){try{" +
         "if(typeof $.global.EditFlow2_dispatch===\"function\")return \"" + HOST_BOOTSTRAP_OK + "\";" +
@@ -120,12 +111,8 @@
         "if(typeof $.global.EditFlow2_dispatch!==\"function\")return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "dispatcher did not register\";" +
         "return \"" + HOST_BOOTSTRAP_OK + "\";" +
         "}catch(error){return \"" + HOST_BOOTSTRAP_ERROR_PREFIX + "\"+String(error);}}())";
-
       cep.evalScript(script, function (raw) {
-        if (raw === HOST_BOOTSTRAP_OK) {
-          resolve();
-          return;
-        }
+        if (raw === HOST_BOOTSTRAP_OK) { resolve(); return; }
         if (typeof raw === "string" && raw.indexOf(HOST_BOOTSTRAP_ERROR_PREFIX) === 0) {
           reject(new Error("Host bootstrap: " + raw.substring(HOST_BOOTSTRAP_ERROR_PREFIX.length)));
           return;
@@ -150,9 +137,7 @@
         extensionVersion: config.extensionVersion
       })
     }).then(function (result) {
-      if (!result.value || supported.indexOf(result.value.protocolVersion) < 0) {
-        throw new Error("Broker negotiated an unsupported CEP protocol.");
-      }
+      if (!result.value || supported.indexOf(result.value.protocolVersion) < 0) throw new Error("Broker negotiated an unsupported CEP protocol.");
       sessionId = result.value.sessionId;
       negotiatedProtocolVersion = result.value.protocolVersion;
       connectionGeneration += 1;
@@ -196,14 +181,9 @@
           if (response.requestId !== request.requestId || response.operationId !== request.operationId || response.command !== request.command) {
             throw new Error("After Effects dispatcher correlation mismatch.");
           }
-          if (request.command === "render.capture" && response.outcome === "APPLIED"
-              && response.readback && response.readback.state === "SCHEDULED") {
-            renderMaintenanceArmed = true;
-          }
+          if (request.command === "render.capture" && response.outcome === "APPLIED" && response.readback && response.readback.state === "SCHEDULED") renderMaintenanceArmed = true;
           resolve(response);
-        } catch (error) {
-          reject(error);
-        }
+        } catch (error) { reject(error); }
       });
     });
   }
@@ -229,10 +209,7 @@
           return;
         }
         var state = raw.substring(HOST_RENDER_MAINTENANCE_PREFIX.length);
-        if (state.indexOf("ERROR:") === 0) {
-          reject(new Error(state.substring(6)));
-          return;
-        }
+        if (state.indexOf("ERROR:") === 0) { reject(new Error(state.substring(6))); return; }
         resolve(state);
       });
     });
@@ -263,11 +240,7 @@
       capabilityId: request.capabilityId,
       command: request.command,
       outcome: "FAILED",
-      error: {
-        category: "ADAPTER_FAILURE",
-        code: "CEP_TRANSPORT_HOST_DISPATCH_FAILED",
-        message: message
-      },
+      error: { category: "ADAPTER_FAILURE", code: "CEP_TRANSPORT_HOST_DISPATCH_FAILED", message: message },
       affectedObjects: [],
       readback: null,
       projectSnapshot: null,
@@ -287,9 +260,7 @@
     if (stopped || !sessionId || generation !== connectionGeneration) return Promise.resolve();
     var leasedSessionId = sessionId;
     return maintainAsyncRenderIfNeeded()
-      .then(function () {
-        return requestJson("/v1/next?sessionId=" + encodeURIComponent(leasedSessionId), { method: "GET" });
-      })
+      .then(function () { return requestJson("/v1/next?sessionId=" + encodeURIComponent(leasedSessionId), { method: "GET" }); })
       .then(function (result) {
         if (generation !== connectionGeneration) return null;
         if (result.status === 204) return null;
@@ -307,10 +278,7 @@
 
   function scheduleReconnect(delayMs) {
     if (stopped || reconnectTimer !== null) return;
-    reconnectTimer = setTimeout(function () {
-      reconnectTimer = null;
-      connect();
-    }, delayMs === undefined ? reconnectDelayMs : delayMs);
+    reconnectTimer = setTimeout(function () { reconnectTimer = null; connect(); }, delayMs === undefined ? reconnectDelayMs : delayMs);
   }
 
   function schedulePoll(generation) {
@@ -331,11 +299,7 @@
 
   function livenessOnce() {
     if (stopped) return Promise.resolve();
-    if (!sessionId) {
-      scheduleReconnect(0);
-      return Promise.resolve();
-    }
-
+    if (!sessionId) { scheduleReconnect(0); return Promise.resolve(); }
     var generation = connectionGeneration;
     var observedSessionId = sessionId;
     return requestJson("/v1/status", { method: "GET" })
@@ -362,25 +326,17 @@
   function scheduleLiveness() {
     if (stopped) return;
     setTimeout(function () {
-      livenessOnce()
-        .then(scheduleLiveness)
-        .catch(function () { scheduleLiveness(); });
+      livenessOnce().then(scheduleLiveness).catch(function () { scheduleLiveness(); });
     }, livenessDelayMs);
   }
 
   function connect() {
     if (stopped || connectInFlight) return;
     connectInFlight = true;
-
-    var ready = hostReady
-      ? Promise.resolve()
-      : ensureHostDispatcher().then(function () { hostReady = true; });
-
+    var ready = hostReady ? Promise.resolve() : ensureHostDispatcher().then(function () { hostReady = true; });
     ready
       .then(register)
-      .then(function () {
-        connectInFlight = false;
-      })
+      .then(function () { connectInFlight = false; })
       .catch(function (error) {
         connectInFlight = false;
         sessionId = null;
@@ -392,17 +348,9 @@
 
   function start() {
     if (stopped) return;
-    try {
-      assertConfig();
-    } catch (error) {
-      setStatus("error", error.message);
-      return;
-    }
-
-    if (!livenessStarted) {
-      livenessStarted = true;
-      scheduleLiveness();
-    }
+    try { assertConfig(); }
+    catch (error) { setStatus("error", error.message); return; }
+    if (!livenessStarted) { livenessStarted = true; scheduleLiveness(); }
     connect();
   }
 
