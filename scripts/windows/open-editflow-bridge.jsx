@@ -5,8 +5,9 @@
  * command API so the authenticated bridge can register without manual UI input.
  *
  * No caller-supplied script text or menu command is executed. A bounded diagnostic
- * log in Folder.temp proves whether the bootstrap script ran, whether AE exposed
- * the panel menu command, and whether executeCommand was reached.
+ * log in Folder.temp proves whether the bootstrap script ran, whether the EditFlow
+ * panel was already loaded, whether AE exposed the panel menu command, and whether
+ * executeCommand was reached when a new open was actually required.
  */
 (function () {
   "use strict";
@@ -56,6 +57,23 @@
       } finally {
         marker.close();
       }
+    }
+
+    /* A prior controlled proof can leave the CEP panel restored in AE's saved
+     * workspace. The manifest ScriptPath sets this marker before the HTML client
+     * starts. Re-executing the menu command against an already-loaded panel can
+     * create/toggle a second Drover window and invalidate registration evidence.
+     * Treat the manifest marker as truthful panel-load evidence and leave the
+     * existing instance alone; authenticated broker registration remains the
+     * downstream proof that its client is actually alive. */
+    try {
+      if ($.global.EditFlow2_CEP_SCRIPT_PATH_LOADED === true) {
+        taskWrite("PANEL_ALREADY_LOADED", "attempt=" + attempts + ";manifestScriptPathMarker=true");
+        $.global.EditFlow2_selfHostedBridgeOpened = true;
+        return;
+      }
+    } catch (loadedMarkerError) {
+      taskWrite("PANEL_LOADED_MARKER_ERROR", "attempt=" + attempts + ";error=" + String(loadedMarkerError));
     }
 
     try {

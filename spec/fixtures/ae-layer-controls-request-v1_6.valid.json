@@ -1,0 +1,27 @@
+{
+  "protocolVersion": "1.6.0",
+  "requestId": "REQ_LAYER_SWITCHES_SET_001",
+  "transactionId": "TX_LAYER_SWITCHES_001",
+  "operationId": "OP_LAYER_SWITCHES_SET_001",
+  "capabilityId": "ae.layer.switches.set",
+  "command": "layer.switches.set",
+  "expectedHostProjectRevision": 42,
+  "payload": {
+    "comp": {"stableId": "COMP_LAYER_CONTROLS"},
+    "layer": {"stableId": "LAYER_LAYER_CONTROLS"},
+    "switches": {
+      "enabled": true,
+      "solo": false,
+      "shy": true,
+      "locked": false,
+      "quality": "BEST",
+      "adjustmentLayer": false,
+      "guideLayer": false,
+      "threeDLayer": true,
+      "effectsActive": true,
+      "collapseTransformation": false,
+      "preserveTransparency": true
+    }
+  },
+  "readbackProfile": "M3_LAYER_SWITCHES_STRUCTURAL"
+}
