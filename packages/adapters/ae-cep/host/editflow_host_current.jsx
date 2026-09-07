@@ -14,7 +14,10 @@
   var m3Masks = new File(hostDir.fsName + "/editflow_host_m3_masks.jsx");
   var m3Composite = new File(hostDir.fsName + "/editflow_host_m3_composite.jsx");
   var m3ProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_proof_cleanup.jsx");
+  var m3CompositeProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_composite_proof_cleanup.jsx");
   var m3ProofMode = $.getenv("EDITFLOW_M3_MASK_P4_PROOF") === "1";
+  var m3CompositeProofMode = $.getenv("EDITFLOW_M3_COMPOSITE_P4_PROOF") === "1";
+  if (m3ProofMode && m3CompositeProofMode) throw new Error("EditFlow M3 proof cleanup modes are mutually exclusive.");
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
   if (!hardening.exists) throw new Error("EditFlow AE host hardening script is missing: " + hardening.fsName);
@@ -26,6 +29,7 @@
   if (!renderOutputPath.exists) throw new Error("EditFlow AE render output-path script is missing: " + renderOutputPath.fsName);
   if (!m3Masks.exists) throw new Error("EditFlow M3 mask/Bezier host script is missing: " + m3Masks.fsName);
   if (m3ProofMode && !m3ProofCleanup.exists) throw new Error("EditFlow M3 proof cleanup script is missing: " + m3ProofCleanup.fsName);
+  if (m3CompositeProofMode && !m3CompositeProofCleanup.exists) throw new Error("EditFlow M3 composite proof cleanup script is missing: " + m3CompositeProofCleanup.fsName);
 
   $.evalFile(jsonRuntime);
   if (!$.global.EditFlow2_JSON || typeof $.global.EditFlow2_JSON.parse !== "function" || typeof $.global.EditFlow2_JSON.stringify !== "function") {
@@ -103,6 +107,7 @@
   }
 
   if (m3ProofMode) $.evalFile(m3ProofCleanup);
+  if (m3CompositeProofMode) $.evalFile(m3CompositeProofCleanup);
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
   }
