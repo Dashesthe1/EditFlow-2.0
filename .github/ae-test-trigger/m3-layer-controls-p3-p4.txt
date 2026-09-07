@@ -1,0 +1,4 @@
+run=10
+feature_head=03578c7a366263e8e2bdf03b16bbb9bfe9d00c71
+ci_run=34159958068
+reason=final cleaned candidate after guarded clean shutdown, no startup input automation
