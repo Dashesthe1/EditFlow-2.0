@@ -43,14 +43,17 @@ test("M3 proof cleanup discards only the verified disposable project and verifie
   assert.match(source, /proofCleanupCompleted = true/);
 });
 
-test("current host loads proof cleanup only under the exact proof environment and installer ships the file", async () => {
+test("current host preserves mask proof cleanup gating under the diagnosable fail-closed proof loader", async () => {
   const [currentHost, installer] = await Promise.all([
     readFile(currentHostPath, "utf8"),
     readFile(installerPath, "utf8"),
   ]);
 
   assert.match(currentHost, /m3ProofMode = \$\.getenv\("EDITFLOW_M3_MASK_P4_PROOF"\) === "1"/);
-  assert.match(currentHost, /if \(m3ProofMode && !m3ProofCleanup\.exists\)/);
-  assert.match(currentHost, /if \(m3ProofMode\) \$\.evalFile\(m3ProofCleanup\)/);
+  assert.match(currentHost, /else if \(m3ProofMode\)/);
+  assert.match(currentHost, /if \(!m3ProofCleanup\.exists\)/);
+  assert.match(currentHost, /try \{ \$\.evalFile\(m3ProofCleanup\); \} catch \(maskProofCleanupError\)/);
+  assert.match(currentHost, /M3_PROOF_CLEANUP_MODULE_LOAD_FAILED/);
+  assert.match(currentHost, /All proof protocol traffic is blocked before mutation until the load defect is repaired\./);
   assert.match(installer, /"editflow_host_m3_proof_cleanup\.jsx"/);
 });

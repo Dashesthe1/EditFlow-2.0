@@ -413,6 +413,23 @@
       app.beginUndoGroup("EditFlow 2.0 M3 " + request.command);
       groupOpen = true;
       var result = executePrepared(request, prepared);
+
+      /* Proof-only P4 injection. This branch is unreachable in ordinary product
+       * execution: the self-hosted acceptance runner must explicitly launch AE
+       * with EDITFLOW_M3_COMPOSITE_P4_PROOF=1 and the typed request must use the
+       * exact fixed readback profile below. No caller-supplied code is executed.
+       * The induced error occurs after a real blend-mode mutation so the existing
+       * catch/AE-Undo recovery path is exercised rather than another P1 reject.
+       */
+      if (request.command === "layer.set_blend_mode"
+          && request.readbackProfile === "M3_COMPOSITE_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_COMPOSITE_P4_PROOF") === "1") {
+        var proofFailure = new Error("Induced M3 composite P4 host failure after mutation.");
+        proofFailure.editflowCategory = "PROOF_INJECTION";
+        proofFailure.editflowCode = "M3_COMPOSITE_P4_INDUCED_FAILURE";
+        throw proofFailure;
+      }
+
       app.endUndoGroup();
       groupOpen = false;
 
