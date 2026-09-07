@@ -27,12 +27,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install dependencies
-        shell: powershell
+        shell: cmd
         run: npm install
 
       - name: Run isolated M3 mask P5 transfer proof
-        shell: powershell
-        run: .\scripts\windows\run-m3-mask-p5-self-hosted.ps1 -TimeoutSeconds 120
+        shell: cmd
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\windows\run-m3-mask-p5-self-hosted.ps1 -TimeoutSeconds 120
 
       - name: Upload M3 mask P5 proof artifacts
         if: always()
