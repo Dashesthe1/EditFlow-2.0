@@ -1,0 +1,22 @@
+{
+  "protocolVersion": "1.7.0",
+  "requestId": "REQ_TEMPORAL_SET_VALID",
+  "transactionId": "TX_TEMPORAL_SET_VALID",
+  "operationId": "OP_TEMPORAL_SET_VALID",
+  "capabilityId": "ae.property.temporal_interpolation.set",
+  "command": "property.temporal_interpolation.set",
+  "expectedHostProjectRevision": 12,
+  "payload": {
+    "comp": {"stableId": "COMP_TEMPORAL"},
+    "layer": {"stableId": "LAYER_TEMPORAL"},
+    "propertyPath": ["ADBE Transform Group", "ADBE Opacity"],
+    "keyIndex": 2,
+    "interpolation": {
+      "inType": "BEZIER",
+      "outType": "BEZIER",
+      "temporalContinuous": true,
+      "temporalAutoBezier": false
+    }
+  },
+  "readbackProfile": "M3_TEMPORAL_INTERPOLATION_STRUCTURAL"
+}
