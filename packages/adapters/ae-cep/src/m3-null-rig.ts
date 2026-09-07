@@ -3,7 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import { applyM3NullRigAcceptedP1P2Evidence } from "./m3-null-rig-proof-maturity.js";
+import { applyM3NullRigAcceptedProofEvidence } from "./m3-null-rig-proof-maturity.js";
 import {
   AE_NULL_RIG_ADAPTER_BUILD_V15,
   AE_NULL_RIG_COMMANDS_V15,
@@ -95,7 +95,7 @@ const DECLARED_M3_NULL_RIG_CAPABILITIES_V15: readonly CapabilityRecord[] = AE_NU
 );
 
 export const M3_NULL_RIG_CAPABILITIES_V15: readonly CapabilityRecord[] =
-  applyM3NullRigAcceptedP1P2Evidence(DECLARED_M3_NULL_RIG_CAPABILITIES_V15);
+  applyM3NullRigAcceptedProofEvidence(DECLARED_M3_NULL_RIG_CAPABILITIES_V15);
 
 export const buildNullRigRequestV15 = (input: {
   readonly requestId: string;

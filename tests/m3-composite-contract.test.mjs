@@ -19,6 +19,13 @@ import {
   M3_COMPOSITE_P1_P2_ACCEPTANCE_CONTROL_COMMIT,
   M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN,
   M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN_ATTEMPT,
+  M3_COMPOSITE_P5_ACCEPTED_SOURCE_COMMIT,
+  M3_COMPOSITE_P5_ACCEPTANCE_CONTROL_COMMIT,
+  M3_COMPOSITE_P5_ACCEPTANCE_RUN,
+  M3_COMPOSITE_P5_ACCEPTANCE_RUN_ATTEMPT,
+  M3_COMPOSITE_P5_ACCEPTANCE_JOB,
+  M3_COMPOSITE_P5_ACCEPTANCE_ARTIFACT,
+  m3CompositeAcceptedProofMaturityForCapability,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-composite-proof-maturity.js";
 import {
   CepEvalScriptCompositeTransportV13,
@@ -57,21 +64,29 @@ test("M3 composite protocol 1.3 exposes arbitrary track mattes and blend modes a
   assert.equal(capabilityForCompositeCommandV13("layer.composite_readback"), "ae.layer.composite.readback");
 });
 
-test("M3 composite capabilities expose accepted real-AE P1/P2 structural maturity only", () => {
+test("M3 composite registry is pinned to accepted P1-P5 real-AE evidence", () => {
   assert.equal(M3_COMPOSITE_P1_P2_ACCEPTED_SOURCE_COMMIT, "4e949b7e75367ee70c790b38f400464d13a57f98");
   assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "b46d9e573a4a04cf679190e6a8267786cea63535");
   assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN, 34077728610);
   assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_RUN_ATTEMPT, 2);
   assert.equal(M3_COMPOSITE_P1_P2_ACCEPTANCE_ARTIFACT, 10002742928);
+  assert.equal(M3_COMPOSITE_P5_ACCEPTED_SOURCE_COMMIT, "37e7e0417ec3e7d9e8f1a2df172ff06ecfa26d4b");
+  assert.equal(M3_COMPOSITE_P5_ACCEPTANCE_CONTROL_COMMIT, "a4a34318072c4b19a2efa8590af401e63c97e369");
+  assert.equal(M3_COMPOSITE_P5_ACCEPTANCE_RUN, 34080055645);
+  assert.equal(M3_COMPOSITE_P5_ACCEPTANCE_RUN_ATTEMPT, 2);
+  assert.equal(M3_COMPOSITE_P5_ACCEPTANCE_JOB, 101614103943);
+  assert.equal(M3_COMPOSITE_P5_ACCEPTANCE_ARTIFACT, 10003461751);
   assert.equal(M3_COMPOSITE_CAPABILITIES_V13.length, AE_COMPOSITE_COMMANDS_V13.length);
   for (const capability of M3_COMPOSITE_CAPABILITIES_V13) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(m3CompositeAcceptedProofMaturityForCapability(String(capability.id)), "TRANSFER");
+    assert.equal(capability.status, "FULL");
+    assert.equal(capability.proofMaturity, "TRANSFER");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_COMPOSITE_ROUTE_ID_V13);
     assert.equal(capability.routes[0].available, true);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
+  assert.equal(m3CompositeAcceptedProofMaturityForCapability("ae.layer.composite.future"), "DECLARED");
 });
 
 test("composite request builder binds commands to capability IDs and host revision", () => {

@@ -17,6 +17,12 @@ import {
   M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN_ATTEMPT,
   M3_NULL_RIG_P1_P2_ACCEPTANCE_JOB,
   M3_NULL_RIG_P1_P2_ACCEPTANCE_ARTIFACT,
+  M3_NULL_RIG_P5_ACCEPTED_SOURCE_COMMIT,
+  M3_NULL_RIG_P5_ACCEPTANCE_CONTROL_COMMIT,
+  M3_NULL_RIG_P5_ACCEPTANCE_RUN,
+  M3_NULL_RIG_P5_ACCEPTANCE_JOB,
+  M3_NULL_RIG_P5_ACCEPTANCE_ARTIFACT,
+  m3NullRigAcceptedProofMaturityForCapability,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-null-rig-proof-maturity.js";
 import {
   CepEvalScriptNullRigTransportV15,
@@ -46,22 +52,29 @@ test("M3 null-rig protocol 1.5 is a fixed managed-null tranche", () => {
   assert.equal(capabilityForNullRigCommandV15("rig.null.readback"), "ae.rig.null.readback");
 });
 
-test("accepted real-AE null-rig P1/P2 evidence promotes only structural maturity", () => {
+test("M3 null-rig registry is pinned to accepted P1-P5 real-AE evidence", () => {
   assert.equal(M3_NULL_RIG_P1_P2_ACCEPTED_SOURCE_COMMIT, "955e24401ee37febf998d8ec4c544e345aebab6d");
   assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "9db379f53812abacc3771e3206e279dd5bca5b5f");
   assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN, 34139625065);
   assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_RUN_ATTEMPT, 1);
   assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_JOB, 101798432327);
   assert.equal(M3_NULL_RIG_P1_P2_ACCEPTANCE_ARTIFACT, 10025391737);
+  assert.equal(M3_NULL_RIG_P5_ACCEPTED_SOURCE_COMMIT, "4736f4ceee6e578cda0a199137295644eeb92607");
+  assert.equal(M3_NULL_RIG_P5_ACCEPTANCE_CONTROL_COMMIT, "ddfb8fb52a850c7efdaf61287bf9572c669b7408");
+  assert.equal(M3_NULL_RIG_P5_ACCEPTANCE_RUN, 34142031586);
+  assert.equal(M3_NULL_RIG_P5_ACCEPTANCE_JOB, 101805908584);
+  assert.equal(M3_NULL_RIG_P5_ACCEPTANCE_ARTIFACT, 10026273271);
   assert.equal(M3_NULL_RIG_CAPABILITIES_V15.length, AE_NULL_RIG_COMMANDS_V15.length);
   for (const capability of M3_NULL_RIG_CAPABILITIES_V15) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(m3NullRigAcceptedProofMaturityForCapability(String(capability.id)), "TRANSFER");
+    assert.equal(capability.status, "FULL");
+    assert.equal(capability.proofMaturity, "TRANSFER");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_NULL_RIG_ROUTE_ID_V15);
     assert.equal(capability.routes[0].available, true);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
+  assert.equal(m3NullRigAcceptedProofMaturityForCapability("ae.rig.future"), "DECLARED");
 });
 
 test("null-rig request builder binds caller-owned stable identity to typed create capability", () => {
