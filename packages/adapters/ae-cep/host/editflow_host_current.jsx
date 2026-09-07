@@ -16,8 +16,10 @@
   var m3Parenting = new File(hostDir.fsName + "/editflow_host_m3_parenting.jsx");
   var m3ProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_proof_cleanup.jsx");
   var m3CompositeProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_composite_proof_cleanup.jsx");
+  var m3ParentingProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_parenting_proof_cleanup.jsx");
   var m3ProofMode = $.getenv("EDITFLOW_M3_MASK_P4_PROOF") === "1";
   var m3CompositeProofMode = $.getenv("EDITFLOW_M3_COMPOSITE_P4_PROOF") === "1";
+  var m3ParentingProofMode = $.getenv("EDITFLOW_M3_PARENTING_P4_PROOF") === "1";
 
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
   if (!base.exists) throw new Error("EditFlow base AE host script is missing: " + base.fsName);
@@ -162,11 +164,12 @@
    * dispatchers exist, catch any proof-only load defect, and replace dispatch with a
    * fail-closed diagnostic response for every protocol request. That allows the panel
    * to register while guaranteeing no proof mutation can proceed without its cleanup
-   * guard. Ordinary product sessions never enter this branch because neither proof
-   * environment flag is set.
+   * guard. Ordinary product sessions never enter this branch because none of the
+   * proof environment flags is set.
    */
   var proofCleanupLoadError = null;
-  if (m3ProofMode && m3CompositeProofMode) {
+  var proofModeCount = (m3ProofMode ? 1 : 0) + (m3CompositeProofMode ? 1 : 0) + (m3ParentingProofMode ? 1 : 0);
+  if (proofModeCount > 1) {
     proofCleanupLoadError = "EditFlow M3 proof cleanup modes are mutually exclusive.";
   } else if (m3ProofMode) {
     if (!m3ProofCleanup.exists) {
@@ -179,6 +182,12 @@
       proofCleanupLoadError = "EditFlow M3 composite proof cleanup script is missing: " + m3CompositeProofCleanup.fsName;
     } else {
       try { $.evalFile(m3CompositeProofCleanup); } catch (compositeProofCleanupError) { proofCleanupLoadError = String(compositeProofCleanupError); }
+    }
+  } else if (m3ParentingProofMode) {
+    if (!m3ParentingProofCleanup.exists) {
+      proofCleanupLoadError = "EditFlow M3 parenting proof cleanup script is missing: " + m3ParentingProofCleanup.fsName;
+    } else {
+      try { $.evalFile(m3ParentingProofCleanup); } catch (parentingProofCleanupError) { proofCleanupLoadError = String(parentingProofCleanupError); }
     }
   }
 
