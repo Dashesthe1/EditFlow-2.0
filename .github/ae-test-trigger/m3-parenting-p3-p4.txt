@@ -3,4 +3,5 @@ EditFlow M3 parenting P3/P4 real-AE proof trigger marker.
 Only updates to this file on ae-test/m3-parenting-p3-p4-control should trigger the isolated self-hosted parenting P3/P4 acceptance workflow.
 
 Run 1 trigger: CI-green five-point geometry, visual artifacts, and post-mutation rollback proof.
-Run 2 trigger: fail-closed preserve-geometry guard, representable direct-parent visual envelope, full repository preflight, proof-only disposable cleanup, and post-mutation rollback proof.
+Run 2 trigger: fail-closed preserve-geometry guard, representable direct-parent visual envelope, full repository preflight, proof-only disposable cleanup, and post-mutation rollback proof. Preflight correctly blocked AE on one comment-sensitive static assertion.
+Run 3 trigger: corrected executable-line setParentWithJump guard; rerun the same full repository preflight and isolated real-AE P3/P4 proof.
