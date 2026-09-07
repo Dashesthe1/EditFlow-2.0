@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3CompositeAcceptedP1P2Evidence } from "./m3-composite-proof-maturity.js";
 import {
   AE_COMPOSITE_ADAPTER_BUILD_V13,
   AE_COMPOSITE_COMMANDS_V13,
@@ -69,7 +70,7 @@ export class CepEvalScriptCompositeTransportV13 {
 const riskForCompositeCommand = (command: AeCompositeCommandV13): CapabilityRecord["riskClass"] =>
   command === "layer.composite_readback" ? "R0_READ_ONLY" : "R1_REVERSIBLE";
 
-export const M3_COMPOSITE_CAPABILITIES_V13: readonly CapabilityRecord[] = AE_COMPOSITE_COMMANDS_V13.map(
+const M3_COMPOSITE_DECLARED_CAPABILITIES_V13: readonly CapabilityRecord[] = AE_COMPOSITE_COMMANDS_V13.map(
   (command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForCompositeCommandV13(command)),
     domain: "layer",
@@ -91,6 +92,9 @@ export const M3_COMPOSITE_CAPABILITIES_V13: readonly CapabilityRecord[] = AE_COM
     fallbackPolicy: "FORBID",
   }),
 );
+
+export const M3_COMPOSITE_CAPABILITIES_V13: readonly CapabilityRecord[] =
+  applyM3CompositeAcceptedP1P2Evidence(M3_COMPOSITE_DECLARED_CAPABILITIES_V13);
 
 export const buildCompositeRequestV13 = (input: {
   readonly requestId: string;
