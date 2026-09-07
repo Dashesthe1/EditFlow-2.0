@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
 
 const cleanupPath = "packages/adapters/ae-cep/host/editflow_host_m3_composite_proof_cleanup.jsx";
 const currentHostPath = "packages/adapters/ae-cep/host/editflow_host_current.jsx";
@@ -50,7 +51,7 @@ test("M3 composite proof cleanup verifies restored LUMA plus ADD state before di
   assert.match(source, /proofCleanupCompleted = true/);
 });
 
-test("current host loads exactly one proof cleanup mode and installer ships the composite cleanup file", async () => {
+test("current host keeps proof cleanup fail-closed while making load faults visible after panel registration", async () => {
   const [currentHost, installer] = await Promise.all([
     readFile(currentHostPath, "utf8"),
     readFile(installerPath, "utf8"),
@@ -58,8 +59,20 @@ test("current host loads exactly one proof cleanup mode and installer ships the 
 
   assert.match(currentHost, /m3ProofMode = \$\.getenv\("EDITFLOW_M3_MASK_P4_PROOF"\) === "1"/);
   assert.match(currentHost, /m3CompositeProofMode = \$\.getenv\("EDITFLOW_M3_COMPOSITE_P4_PROOF"\) === "1"/);
-  assert.match(currentHost, /if \(m3ProofMode && m3CompositeProofMode\) throw new Error\("EditFlow M3 proof cleanup modes are mutually exclusive\."\)/);
-  assert.match(currentHost, /if \(m3CompositeProofMode && !m3CompositeProofCleanup\.exists\)/);
-  assert.match(currentHost, /if \(m3CompositeProofMode\) \$\.evalFile\(m3CompositeProofCleanup\)/);
+  assert.match(currentHost, /proofCleanupLoadError = "EditFlow M3 proof cleanup modes are mutually exclusive\."/);
+  assert.match(currentHost, /try \{ \$\.evalFile\(m3CompositeProofCleanup\); \} catch \(compositeProofCleanupError\)/);
+  assert.match(currentHost, /M3_PROOF_CLEANUP_MODULE_LOAD_FAILED/);
+  assert.match(currentHost, /All proof protocol traffic is blocked before mutation until the load defect is repaired\./);
+  assert.doesNotMatch(currentHost, /if \(m3ProofMode && m3CompositeProofMode\) throw/);
   assert.match(installer, /"editflow_host_m3_composite_proof_cleanup\.jsx"/);
+});
+
+test("current loader and composite cleanup remain ordinary JavaScript parseable before AE execution", async () => {
+  const [currentHost, cleanup] = await Promise.all([
+    readFile(currentHostPath, "utf8"),
+    readFile(cleanupPath, "utf8"),
+  ]);
+
+  assert.doesNotThrow(() => new vm.Script(currentHost, { filename: currentHostPath }));
+  assert.doesNotThrow(() => new vm.Script(cleanup, { filename: cleanupPath }));
 });
