@@ -4,4 +4,6 @@ Only updates to this file on ae-test/m3-parenting-p5-control should trigger the 
 
 Run 1 target: save/reopen, distinct authenticated protocol-1.4 reconnect, exact stable-ID parenting plus five-point geometry transfer, fresh clear/re-parent/readback, retained .aep evidence, and proof-owned cleanup.
 
-Run 1 trigger: execute the exact CI-green P5 candidate without source changes.
+Run 1 negative evidence: workflow 34085989051 reached real AE but timed out before the initial CEP panel registered; no parenting traffic occurred.
+
+Run 2 trigger: controlled no-source-change retry of the same CI-green P5 candidate. A repeated initial registration timeout is launcher reliability evidence and must not be hidden by further retries.
