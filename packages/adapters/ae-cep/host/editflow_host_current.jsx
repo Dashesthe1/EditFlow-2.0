@@ -1,4 +1,4 @@
-/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + declared M3 protocol 1.2 mask/Bezier foundation. */
+/* EditFlow 2.0 current AE host loader: accepted M2 protocol 1.1 baseline + M3 protocol 1.2 masks + protocol 1.3 composite foundation. */
 (function () {
   var currentFile = new File($.fileName);
   var hostDir = currentFile.parent;
@@ -12,6 +12,7 @@
   var renderAsync = new File(hostDir.fsName + "/editflow_host_render_async.jsx");
   var renderOutputPath = new File(hostDir.fsName + "/editflow_host_render_output_path.jsx");
   var m3Masks = new File(hostDir.fsName + "/editflow_host_m3_masks.jsx");
+  var m3Composite = new File(hostDir.fsName + "/editflow_host_m3_composite.jsx");
   var m3ProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_proof_cleanup.jsx");
   var m3ProofMode = $.getenv("EDITFLOW_M3_MASK_P4_PROOF") === "1";
   if (!jsonRuntime.exists) throw new Error("EditFlow JSON runtime is missing: " + jsonRuntime.fsName);
@@ -24,6 +25,7 @@
   if (!renderAsync.exists) throw new Error("EditFlow AE async-render script is missing: " + renderAsync.fsName);
   if (!renderOutputPath.exists) throw new Error("EditFlow AE render output-path script is missing: " + renderOutputPath.fsName);
   if (!m3Masks.exists) throw new Error("EditFlow M3 mask/Bezier host script is missing: " + m3Masks.fsName);
+  if (!m3Composite.exists) throw new Error("EditFlow M3 composite host script is missing: " + m3Composite.fsName);
   if (m3ProofMode && !m3ProofCleanup.exists) throw new Error("EditFlow M3 proof cleanup script is missing: " + m3ProofCleanup.fsName);
 
   $.evalFile(jsonRuntime);
@@ -47,6 +49,7 @@
   $.evalFile(renderAsync);
   $.evalFile(renderOutputPath);
   $.evalFile(m3Masks);
+  $.evalFile(m3Composite);
   if (m3ProofMode) $.evalFile(m3ProofCleanup);
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
