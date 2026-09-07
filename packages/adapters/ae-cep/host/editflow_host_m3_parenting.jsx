@@ -136,8 +136,27 @@
       orientation: propertyValueAtCompTime(transform, "ADBE Orientation", compTime),
       xRotation: propertyValueAtCompTime(transform, "ADBE Rotate X", compTime),
       yRotation: propertyValueAtCompTime(transform, "ADBE Rotate Y", compTime),
-      zRotation: propertyValueAtCompTime(transform, "ADBE Rotate Z", compTime)
+      zRotation: propertyValueAtCompTime(transform, "ADBE Rotate Z", compTime),
+      skew: propertyValueAtCompTime(transform, "ADBE Skew", compTime),
+      skewAxis: propertyValueAtCompTime(transform, "ADBE Skew Axis", compTime)
     };
+  }
+
+  function plainPoint(value) {
+    if (!value || typeof value.length !== "number" || value.length < 2) return null;
+    var result = [];
+    var i, coordinate;
+    for (i = 0; i < value.length; i += 1) {
+      coordinate = Number(value[i]);
+      if (typeof coordinate !== "number" || !isFinite(coordinate)) return null;
+      result.push(coordinate);
+    }
+    return result;
+  }
+
+  function sourcePointToCompSnapshot(layer, sourcePoint) {
+    if (typeof layer.sourcePointToComp !== "function") return null;
+    try { return plainPoint(layer.sourcePointToComp(sourcePoint)); } catch (_) { return null; }
   }
 
   function compSpaceAnchorSnapshot(layer, compTime) {
@@ -145,15 +164,86 @@
     var anchor = null;
     try { transform = layer.property("ADBE Transform Group"); } catch (_) { transform = null; }
     if (!transform) return { supported: false, point: null, reason: "TRANSFORM_GROUP_UNAVAILABLE" };
-    anchor = propertyValueAtCompTime(transform, "ADBE Anchor Point", compTime);
+    anchor = plainPoint(propertyValueAtCompTime(transform, "ADBE Anchor Point", compTime));
     if (!anchor || anchor.length < 2 || typeof layer.sourcePointToComp !== "function") {
       return { supported: false, point: null, reason: "SOURCE_POINT_TO_COMP_UNAVAILABLE" };
     }
     try {
-      return { supported: true, point: layer.sourcePointToComp([anchor[0], anchor[1]]), reason: null };
+      return { supported: true, point: sourcePointToCompSnapshot(layer, [anchor[0], anchor[1]]), reason: null };
     } catch (error) {
       return { supported: false, point: null, reason: "SOURCE_POINT_TO_COMP_FAILED: " + String(error) };
     }
+  }
+
+  function sourceGeometrySnapshot(layer, compTime) {
+    if (typeof layer.sourcePointToComp !== "function") {
+      return { supported: false, reason: "SOURCE_POINT_TO_COMP_UNAVAILABLE", sourceRect: null, points: null };
+    }
+
+    var left = 0;
+    var top = 0;
+    var width = null;
+    var height = null;
+    var rect = null;
+    try {
+      if (typeof layer.sourceRectAtTime === "function") rect = layer.sourceRectAtTime(compTime, false);
+    } catch (_) { rect = null; }
+    if (rect && typeof rect.left === "number" && typeof rect.top === "number"
+        && typeof rect.width === "number" && typeof rect.height === "number"
+        && isFinite(rect.left) && isFinite(rect.top) && isFinite(rect.width) && isFinite(rect.height)
+        && rect.width > 0 && rect.height > 0) {
+      left = rect.left;
+      top = rect.top;
+      width = rect.width;
+      height = rect.height;
+    }
+
+    if (width === null || height === null) {
+      try {
+        if (layer.source && typeof layer.source.width === "number" && typeof layer.source.height === "number"
+            && isFinite(layer.source.width) && isFinite(layer.source.height)
+            && layer.source.width > 0 && layer.source.height > 0) {
+          left = 0;
+          top = 0;
+          width = layer.source.width;
+          height = layer.source.height;
+        }
+      } catch (_) {}
+    }
+
+    if (width === null || height === null) {
+      return { supported: false, reason: "SOURCE_BOUNDS_UNAVAILABLE", sourceRect: null, points: null };
+    }
+
+    var sourcePoints = {
+      topLeft: [left, top],
+      topRight: [left + width, top],
+      bottomRight: [left + width, top + height],
+      bottomLeft: [left, top + height],
+      center: [left + width / 2, top + height / 2]
+    };
+    var mapped = {
+      topLeft: sourcePointToCompSnapshot(layer, sourcePoints.topLeft),
+      topRight: sourcePointToCompSnapshot(layer, sourcePoints.topRight),
+      bottomRight: sourcePointToCompSnapshot(layer, sourcePoints.bottomRight),
+      bottomLeft: sourcePointToCompSnapshot(layer, sourcePoints.bottomLeft),
+      center: sourcePointToCompSnapshot(layer, sourcePoints.center)
+    };
+    if (!mapped.topLeft || !mapped.topRight || !mapped.bottomRight || !mapped.bottomLeft || !mapped.center) {
+      return {
+        supported: false,
+        reason: "SOURCE_POINT_TO_COMP_FAILED",
+        sourceRect: { left: left, top: top, width: width, height: height },
+        points: mapped
+      };
+    }
+
+    return {
+      supported: true,
+      reason: null,
+      sourceRect: { left: left, top: top, width: width, height: height },
+      points: mapped
+    };
   }
 
   function parentingReadback(comp, layer) {
@@ -168,7 +258,8 @@
         parentLayer: layerRefSnapshot(parent),
         compTime: compTime,
         localTransform: transformSnapshot(layer, compTime),
-        compSpaceAnchor: compSpaceAnchorSnapshot(layer, compTime)
+        compSpaceAnchor: compSpaceAnchorSnapshot(layer, compTime),
+        compSpaceGeometry: sourceGeometrySnapshot(layer, compTime)
       }
     };
   }
@@ -270,7 +361,7 @@
 
     if (request.command === "layer.parenting_readback") {
       try {
-        return responseFor(request, "NO_OP", null, [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Read-only parenting structural readback."]);
+        return responseFor(request, "NO_OP", null, [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Read-only parenting structural/geometry readback."]);
       } catch (readbackError) {
         return responseFor(request, "FAILED", errorPayload(readbackError), [], null, startedAt, ["Parenting readback failed without mutation."]);
       }
@@ -302,6 +393,15 @@
         prepared.layer.parent = null;
       }
 
+      if (request.command === "layer.set_parent_preserve_transform"
+          && request.readbackProfile === "M3_PARENTING_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_PARENTING_P4_PROOF") === "1") {
+        var proofFailure = new Error("Induced M3 parenting P4 host failure after parent mutation.");
+        proofFailure.editflowCategory = "PROOF_INJECTION";
+        proofFailure.editflowCode = "M3_PARENTING_P4_INDUCED_FAILURE";
+        throw proofFailure;
+      }
+
       var readback = parentingReadback(prepared.comp, prepared.layer);
       if (request.command === "layer.set_parent_preserve_transform") {
         if (!readback.parenting.hasParent || !readback.parenting.parentLayer || readback.parenting.parentLayer.index !== prepared.parentLayer.index) {
@@ -325,11 +425,17 @@
       );
     } catch (mutationError) {
       try { app.endUndoGroup(); } catch (_) {}
+      var notes = ["Parenting mutation failed."];
       var afterFailureRevision = app.project ? app.project.revision : null;
       if (mutationStarted && beforeRevision !== null && afterFailureRevision !== beforeRevision) {
-        try { app.executeCommand(16); } catch (_) {}
+        try {
+          app.executeCommand(16);
+          notes.push("Failed parenting mutation self-rolled back with AE Undo.");
+        } catch (rollbackError) {
+          notes.push("Parenting self-rollback attempt failed: " + asString(rollbackError));
+        }
       }
-      return responseFor(request, "FAILED", errorPayload(mutationError), [], parentingReadback(prepared.comp, prepared.layer), startedAt, ["Parenting mutation failed; transaction attempted immediate AE Undo rollback."]);
+      return responseFor(request, "FAILED", errorPayload(mutationError), [], parentingReadback(prepared.comp, prepared.layer), startedAt, notes);
     }
   }
 
