@@ -42,6 +42,7 @@ test("proof-only fixture builds the exact audio/precomp/solid/camera matrix with
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX/);
   assert.match(source, /EDITFLOW_M3_LAYER_CONTROLS_P12_ARTIFACT_DIR/);
   assert.match(source, /new Folder\(artifactDirPath\)/);
+  assert.match(source, /artifactDir:\s*artifactDir\.fsName/);
   assert.doesNotMatch(source, /currentFile\.parent\.parent/);
   assert.match(source, /app\.project\.items\.addComp/);
   assert.match(source, /new ImportOptions\(audioFile\)/);
