@@ -14,6 +14,7 @@ import {
   type AeTemporalInterpolationRequestV17,
   type AeTemporalInterpolationResponseV17,
 } from "./protocol-v1_7.js";
+import { applyM3TemporalInterpolationAcceptedP1P2Evidence } from "./m3-temporal-interpolation-proof-maturity.js";
 
 export interface CepEvalScriptTemporalInterpolationBridgeV17 {
   evalScript(script: string, callback: (result: string) => void): void;
@@ -75,7 +76,7 @@ const riskForTemporalInterpolationCommand = (
   ? "R0_READ_ONLY"
   : "R1_REVERSIBLE";
 
-export const M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17: readonly CapabilityRecord[] =
+const M3_TEMPORAL_INTERPOLATION_DECLARED_CAPABILITIES_V17: readonly CapabilityRecord[] =
   AE_TEMPORAL_INTERPOLATION_COMMANDS_V17.map((command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForTemporalInterpolationCommandV17(command)),
     domain: "animation",
@@ -98,6 +99,9 @@ export const M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17: readonly CapabilityReco
     riskClass: riskForTemporalInterpolationCommand(command),
     fallbackPolicy: "FORBID",
   }));
+
+export const M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17: readonly CapabilityRecord[] =
+  applyM3TemporalInterpolationAcceptedP1P2Evidence(M3_TEMPORAL_INTERPOLATION_DECLARED_CAPABILITIES_V17);
 
 export const buildTemporalInterpolationRequestV17 = (input: {
   readonly requestId: string;
