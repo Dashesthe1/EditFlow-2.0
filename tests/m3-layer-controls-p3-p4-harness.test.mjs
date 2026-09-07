@@ -6,6 +6,7 @@ const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_layer_controls.
 const cliPath = "apps/desktop-host/src/m3-layer-controls-p3-p4-cli.ts";
 const wrapperPath = "scripts/windows/run-m3-layer-controls-p3-p4.ps1";
 const selfHostedPath = "scripts/windows/run-m3-layer-controls-p3-p4-self-hosted.ps1";
+const sharedMaskSelfHostedPath = "scripts/windows/run-m3-mask-p3-p4-self-hosted.ps1";
 const workflowPath = ".github/workflows/m3-layer-controls-real-ae-p3-p4.yml";
 
 test("protocol 1.6 P4 hook is fixed, proof-gated, and occurs after a real switch mutation", async () => {
@@ -35,6 +36,19 @@ test("layer-controls P3/P4 harness emits reviewable visibility renders and never
   assert.match(source, /P4_failure_injection_rollback: checks\.p4 === true/);
   assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
   assert.match(source, /cleanup_fingerprint_restored/);
+});
+
+test("layer-controls P3/P4 runner safely accepts verified already-loaded panel bootstrap evidence without weakening the shared template", async () => {
+  const [selfHosted, sharedMaskSelfHosted] = await Promise.all([
+    readFile(selfHostedPath, "utf8"),
+    readFile(sharedMaskSelfHostedPath, "utf8"),
+  ]);
+  assert.match(selfHosted, /PANEL_ALREADY_LOADED/);
+  assert.match(selfHosted, /EXECUTE_COMMAND_SENT.*PANEL_ALREADY_LOADED/);
+  assert.match(selfHosted, /authenticated protocol 1\.6 broker/);
+  assert.match(selfHosted, /manifest script-path marker/);
+  assert.match(sharedMaskSelfHosted, /if \(\$BootstrapText -match "EXECUTE_COMMAND_SENT"\) \{/);
+  assert.doesNotMatch(sharedMaskSelfHosted, /EXECUTE_COMMAND_SENT" -or \$BootstrapText -match "PANEL_ALREADY_LOADED/);
 });
 
 test("layer-controls P3/P4 runners are isolated to protocol 1.6 and a dedicated AE control branch", async () => {
