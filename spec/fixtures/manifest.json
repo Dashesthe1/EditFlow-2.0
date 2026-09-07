@@ -13,5 +13,7 @@
   {"schema":"spec/ae-adapter-request-v1_1.schema.json","fixture":"spec/fixtures/ae-adapter-request-v1_1.invalid.json","valid":false},
   {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.valid.json","valid":true},
   {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.animated.valid.json","valid":true},
-  {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.invalid.json","valid":false}
+  {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.invalid.json","valid":false},
+  {"schema":"spec/ae-composite-request-v1_3.schema.json","fixture":"spec/fixtures/ae-composite-request-v1_3.valid.json","valid":true},
+  {"schema":"spec/ae-composite-request-v1_3.schema.json","fixture":"spec/fixtures/ae-composite-request-v1_3.invalid.json","valid":false}
 ]
