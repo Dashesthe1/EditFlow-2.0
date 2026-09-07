@@ -1,1 +1,2 @@
 materialize M3 mask P3/P4 host proof seam and self-hosted runner
+align protocol/component build pin with dev.2
