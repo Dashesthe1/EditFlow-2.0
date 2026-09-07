@@ -25,7 +25,6 @@
   if (!renderAsync.exists) throw new Error("EditFlow AE async-render script is missing: " + renderAsync.fsName);
   if (!renderOutputPath.exists) throw new Error("EditFlow AE render output-path script is missing: " + renderOutputPath.fsName);
   if (!m3Masks.exists) throw new Error("EditFlow M3 mask/Bezier host script is missing: " + m3Masks.fsName);
-  if (!m3Composite.exists) throw new Error("EditFlow M3 composite host script is missing: " + m3Composite.fsName);
   if (m3ProofMode && !m3ProofCleanup.exists) throw new Error("EditFlow M3 proof cleanup script is missing: " + m3ProofCleanup.fsName);
 
   $.evalFile(jsonRuntime);
@@ -49,7 +48,60 @@
   $.evalFile(renderAsync);
   $.evalFile(renderOutputPath);
   $.evalFile(m3Masks);
-  $.evalFile(m3Composite);
+
+  /* Protocol 1.3 is an additive M3 tranche. A load defect in the new optional module
+   * must not take the already accepted 1.1/1.2 dispatcher offline. Preserve that
+   * dispatcher and install a typed 1.3-only diagnostic fallback so the CEP transport
+   * can remain authenticated and report the exact module-load failure to proof/runtime
+   * callers instead of degrading into an opaque panel-registration timeout.
+   */
+  var compositeLoadError = null;
+  if (!m3Composite.exists) {
+    compositeLoadError = "EditFlow M3 composite host script is missing: " + m3Composite.fsName;
+  } else {
+    try {
+      $.evalFile(m3Composite);
+    } catch (compositeError) {
+      compositeLoadError = String(compositeError);
+    }
+  }
+
+  if (compositeLoadError !== null) {
+    var dispatchBeforeCompositeFailure = $.global.EditFlow2_dispatch;
+    $.global.EditFlow2_M3_COMPOSITE_LOAD_ERROR = compositeLoadError;
+    $.global.EditFlow2_dispatch = function (requestJson) {
+      var request = null;
+      try { request = $.global.EditFlow2_JSON.parse(requestJson); } catch (_) {}
+      if (request && request.protocolVersion === "1.3.0") {
+        return $.global.EditFlow2_JSON.stringify({
+          protocolVersion: "1.3.0",
+          requestId: request.requestId,
+          transactionId: request.transactionId,
+          operationId: request.operationId,
+          capabilityId: request.capabilityId,
+          command: request.command,
+          outcome: "FAILED",
+          error: {
+            category: "ADAPTER_FAILURE",
+            code: "M3_COMPOSITE_MODULE_LOAD_FAILED",
+            message: compositeLoadError,
+            details: null
+          },
+          affectedObjects: [],
+          readback: null,
+          hostProjectRevision: app.project ? app.project.revision : null,
+          diagnostics: {
+            adapterProtocolVersion: "1.3.0",
+            adapterBuild: "0.4.0-dev.3",
+            command: request.command,
+            notes: ["Protocol 1.3 composite host module failed to load; accepted earlier protocol dispatch remains available."]
+          }
+        });
+      }
+      return dispatchBeforeCompositeFailure(requestJson);
+    };
+  }
+
   if (m3ProofMode) $.evalFile(m3ProofCleanup);
   if (typeof $.global.EditFlow2_dispatch !== "function") {
     throw new Error("EditFlow current AE dispatcher failed to register.");
