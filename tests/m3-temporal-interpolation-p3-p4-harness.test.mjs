@@ -78,6 +78,10 @@ test("temporal P3/P4 proof-owned reset is fail-closed and independently exact-ba
   assert.match(wrapper, /PROOF_OWNED_CLOSE_WITHOUT_SAVE_NEW_PROJECT_EXACT_BASELINE_VERIFY/);
   assert.match(wrapper, /cleanupUndoBarrierObserved/);
   assert.match(wrapper, /status = "VISUAL_REVIEW_REQUIRED"/);
+  assert.match(wrapper, /\$Result\.checks \| Add-Member -NotePropertyName cleanup_temp_items_absent -NotePropertyValue \$true -Force/);
+  assert.match(wrapper, /\$Result\.checks \| Add-Member -NotePropertyName cleanup_item_count_restored -NotePropertyValue \$true -Force/);
+  assert.match(wrapper, /\$Result\.checks \| Add-Member -NotePropertyName cleanup_fingerprint_restored -NotePropertyValue \$true -Force/);
+  assert.doesNotMatch(wrapper, /\$Result\.checks\.cleanup_(?:temp_items_absent|item_count_restored|fingerprint_restored)\s*=/);
 
   assert.match(cleanup, /EDITFLOW_M3_TEMPORAL_INTERPOLATION_P4_PROOF/);
   assert.match(cleanup, /\$\.getenv\(PROOF_ENV\) !== "1"/);
