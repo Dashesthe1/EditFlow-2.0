@@ -44,6 +44,14 @@ function Resolve-RunningAfterFx {
   return $RunningPaths[0]
 }
 
+function Quote-StartProcessArgument {
+  param([string]$Value)
+
+  if ($null -eq $Value) { return '""' }
+  if ($Value.Contains('"')) { throw "Node proof argument contains an unsupported quote character." }
+  return '"' + $Value + '"'
+}
+
 if ($TimeoutSeconds -lt 20) { throw "TimeoutSeconds must be at least 20." }
 if ($env:EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF -ne "1") { throw "Layer-controls P1/P2 wrapper requires EDITFLOW_M3_LAYER_CONTROLS_P12_PROOF=1 before After Effects is launched." }
 if (-not $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX -or -not $env:EDITFLOW_M3_LAYER_CONTROLS_P12_PREFIX.StartsWith("M3_LAYER_CONTROLS_P12_")) {
@@ -77,14 +85,17 @@ try {
   Write-Host "Protocol 1.6 owns layer-control mutations/readback. Accepted protocol 1.1 is used only for host observation/fingerprinting."
   Write-Host "Proof-only fixed JSX creates and later discards the isolated audio/precomp/solid/camera fixture; it adds no production command."
 
+  # Start-Process joins ArgumentList entries into a native command line. Quote every
+  # filesystem value explicitly so paths such as C:\Program Files\... remain one
+  # Node argv entry instead of being truncated to C:\Program.
   $NodeArgs = @(
-    $Cli,
-    "--config", $ConfigPath,
-    "--result", $ResultPath,
-    "--afterfx-path", $AfterFx,
-    "--setup-script", $SetupScript,
-    "--cleanup-script", $CleanupScript,
-    "--timeout-ms", ($TimeoutSeconds * 1000)
+    (Quote-StartProcessArgument $Cli),
+    "--config", (Quote-StartProcessArgument $ConfigPath),
+    "--result", (Quote-StartProcessArgument $ResultPath),
+    "--afterfx-path", (Quote-StartProcessArgument $AfterFx),
+    "--setup-script", (Quote-StartProcessArgument $SetupScript),
+    "--cleanup-script", (Quote-StartProcessArgument $CleanupScript),
+    "--timeout-ms", [string]($TimeoutSeconds * 1000)
   )
   $NodeProcess = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru
   $HardDeadline = (Get-Date).AddSeconds($TimeoutSeconds + $CleanupGraceSeconds)
