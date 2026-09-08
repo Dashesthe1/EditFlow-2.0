@@ -52,6 +52,22 @@ The self-hosted runner deliberately reuses the accepted isolated AE lifecycle. P
 
 This prevents unaccepted 1.9 behavior from displacing accepted 1.8 in ordinary EditFlow sessions.
 
+### Bounded CEP registration resilience
+
+The first real-AE spatial P1/P2 launch reached a healthy After Effects 25.6.6 project window and executed the fixed `EditFlow 2.0 Bridge` menu command, but the CEP panel did not register with the broker before the timeout. The proof artifact contained no panel session, no host probe, no command responses, no spatial evidence, and no checks, so no project/spatial operation had begun. The runner then restored the workstation to zero After Effects processes.
+
+This matches a previously observed pre-command registration failure in the accepted temporal-ease proof lineage. To make the spatial proof resilient to that infrastructure-only failure without weakening any spatial assertion, the self-hosted wrapper now permits exactly one fresh launch retry only when all of these conditions are true:
+
+- `failureError` contains `CEP_PANEL_REGISTRATION_TIMEOUT`;
+- `panel` is null;
+- `environment` is null;
+- the response array is empty;
+- the evidence array is empty;
+- the checks object has no properties;
+- the failed generated runner has returned the machine to zero `AfterFX` processes.
+
+The failed attempt's result, panel-bootstrap evidence, startup diagnostics, and CEP diagnostics are retained in `panel-registration-retry-attempt-1` before the fresh launch. There are at most two total registration attempts. Any attempt that reaches a broker/AE command, produces structural evidence, or fails a spatial assertion is not retryable and remains a hard proof failure.
+
 ### P1 matrix
 
 P1 must prove deterministic rejection without project-revision, project-fingerprint, or applicable spatial-state mutation for:
