@@ -42,6 +42,18 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.accepted_p1_p2_run_id || '34286914057' }}
 
+      - name: Prepare reversible AE disk-cache guard
+        shell: cmd
+        env:
+          EDITFLOW_AFTERFX_PATH: ${{ inputs.afterfx_path }}
+        run: |
+          @echo off
+          if defined EDITFLOW_AFTERFX_PATH (
+            powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\manage-ae-proof-cache.ps1" -Mode Prepare -AfterFxPath "%EDITFLOW_AFTERFX_PATH%" -StatePath "%RUNNER_TEMP%\EditFlow2-m3-marker-motion-cache-guard.json" -EvidencePath ".\proofs\artifacts\m3-marker-motion-p3-p4\ae-cache-guard.json"
+          ) else (
+            powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\manage-ae-proof-cache.ps1" -Mode Prepare -StatePath "%RUNNER_TEMP%\EditFlow2-m3-marker-motion-cache-guard.json" -EvidencePath ".\proofs\artifacts\m3-marker-motion-p3-p4\ae-cache-guard.json"
+          )
+
       - name: Run isolated M3 marker-motion P3/P4 proof
         shell: cmd
         env:
@@ -53,6 +65,13 @@ jobs:
           ) else (
             powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\run-m3-marker-motion-p3-p4-self-hosted.ps1" -AcceptedP1P2Path ".\.accepted\m3-marker-motion-p1-p2\result.json"
           )
+
+      - name: Restore exact AE preferences after proof
+        if: always()
+        shell: cmd
+        run: |
+          @echo off
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\manage-ae-proof-cache.ps1" -Mode Restore -StatePath "%RUNNER_TEMP%\EditFlow2-m3-marker-motion-cache-guard.json" -EvidencePath ".\proofs\artifacts\m3-marker-motion-p3-p4\ae-cache-guard.json" -RestoreWaitSeconds 45
 
       - name: Upload P3 P4 proof artifacts
         if: always()
