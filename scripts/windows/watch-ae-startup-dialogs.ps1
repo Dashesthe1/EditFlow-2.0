@@ -11,11 +11,14 @@ if ($PollMilliseconds -lt 250 -or $PollMilliseconds -gt 10000) { throw "PollMill
 
 $OutputDir = Split-Path -Parent $OutputPath
 if ($OutputDir) { New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null }
+$ScreenshotDir = if ($OutputDir) { Join-Path $OutputDir "startup-dialog-screenshots" } else { Join-Path (Get-Location).Path "startup-dialog-screenshots" }
 
 # Diagnostic-only Win32/UI Automation reader. It deliberately exposes no input,
 # focus, click, keyboard, SendMessage/PostMessage, InvokePattern, or mutation APIs.
 # Its only purpose is to identify a startup dialog that prevents the isolated
 # runner-owned After Effects process from reaching its normal project window.
+# Pixel capture is limited to the exact bounds of visible AE-owned #32770 dialogs;
+# it never captures the full desktop.
 if (-not ("EditFlow.StartupDialogReader" -as [type])) {
   Add-Type -TypeDefinition @"
 using System;
@@ -31,11 +34,23 @@ namespace EditFlow {
     public bool Enabled;
     public string ClassName = "";
     public string Title = "";
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
   }
 
   public static class StartupDialogReader {
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     private delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT {
+      public int Left;
+      public int Top;
+      public int Right;
+      public int Bottom;
+    }
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
@@ -60,6 +75,10 @@ namespace EditFlow {
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowEnabled(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
     private static StartupWindowInfo Describe(IntPtr hWnd) {
       uint processId;
       GetWindowThreadProcessId(hWnd, out processId);
@@ -67,13 +86,19 @@ namespace EditFlow {
       GetWindowText(hWnd, title, title.Capacity);
       var className = new StringBuilder(512);
       GetClassName(hWnd, className, className.Capacity);
+      var rect = new RECT();
+      GetWindowRect(hWnd, out rect);
       return new StartupWindowInfo {
         ProcessId = (int)processId,
         Handle = hWnd.ToInt64(),
         Visible = IsWindowVisible(hWnd),
         Enabled = IsWindowEnabled(hWnd),
         ClassName = className.ToString(),
-        Title = title.ToString()
+        Title = title.ToString(),
+        Left = rect.Left,
+        Top = rect.Top,
+        Right = rect.Right,
+        Bottom = rect.Bottom
       };
     }
 
@@ -111,6 +136,14 @@ try {
   $UiAutomationAvailable = $false
 }
 
+try {
+  Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+  $ScreenshotAvailable = $true
+  New-Item -ItemType Directory -Force -Path $ScreenshotDir | Out-Null
+} catch {
+  $ScreenshotAvailable = $false
+}
+
 function Clean-DiagnosticText {
   param([AllowNull()][string]$Value)
   if ($null -eq $Value) { return "" }
@@ -123,11 +156,51 @@ function Write-DiagnosticLine {
   Add-Content -Path $OutputPath -Value ($Timestamp + "`t" + $Stage + "`t" + $Detail) -Encoding UTF8
 }
 
+function Save-DialogScreenshot {
+  param($Dialog, [int]$Sequence)
+  if (-not $ScreenshotAvailable) { return "" }
+
+  $Width = [int]$Dialog.Right - [int]$Dialog.Left
+  $Height = [int]$Dialog.Bottom - [int]$Dialog.Top
+  if ($Width -lt 1 -or $Height -lt 1 -or $Width -gt 8192 -or $Height -gt 8192) {
+    Write-DiagnosticLine "SCREENSHOT_SKIPPED" ("pid=$($Dialog.ProcessId);dialogHwnd=$($Dialog.Handle);left=$($Dialog.Left);top=$($Dialog.Top);right=$($Dialog.Right);bottom=$($Dialog.Bottom)")
+    return ""
+  }
+
+  $FileName = "dialog-$($Dialog.ProcessId)-$($Dialog.Handle)-$Sequence.png"
+  $ScreenshotPath = Join-Path $ScreenshotDir $FileName
+  $Bitmap = $null
+  $Graphics = $null
+  try {
+    $Bitmap = [System.Drawing.Bitmap]::new($Width, $Height)
+    $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
+    $Graphics.CopyFromScreen(
+      [int]$Dialog.Left,
+      [int]$Dialog.Top,
+      0,
+      0,
+      [System.Drawing.Size]::new($Width, $Height)
+    )
+    $Bitmap.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    return $ScreenshotPath
+  } catch {
+    Write-DiagnosticLine "SCREENSHOT_ERROR" ("pid=$($Dialog.ProcessId);dialogHwnd=$($Dialog.Handle);error=$(Clean-DiagnosticText $_.Exception.Message)")
+    return ""
+  } finally {
+    if ($null -ne $Graphics) { $Graphics.Dispose() }
+    if ($null -ne $Bitmap) { $Bitmap.Dispose() }
+  }
+}
+
 if (Test-Path $OutputPath -PathType Leaf) { Remove-Item $OutputPath -Force }
-Write-DiagnosticLine "WATCH_START" ("durationSeconds=$DurationSeconds;pollMilliseconds=$PollMilliseconds;uiAutomation=$UiAutomationAvailable")
+if (Test-Path $ScreenshotDir -PathType Container) {
+  Get-ChildItem -LiteralPath $ScreenshotDir -Filter "dialog-*.png" -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+Write-DiagnosticLine "WATCH_START" ("durationSeconds=$DurationSeconds;pollMilliseconds=$PollMilliseconds;uiAutomation=$UiAutomationAvailable;screenshotCapture=$ScreenshotAvailable;screenshotDir=$ScreenshotDir")
 
 $Deadline = (Get-Date).AddSeconds($DurationSeconds)
 $LastSignature = ""
+$ScreenshotSequence = 0
 while ((Get-Date) -lt $Deadline) {
   $AfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
   $ProcessIds = @($AfterFx | ForEach-Object { [int]$_.Id })
@@ -167,10 +240,13 @@ while ((Get-Date) -lt $Deadline) {
             $AutomationSummary = "uiAutomationError=" + (Clean-DiagnosticText $_.Exception.Message)
           }
         }
-        $Detail = "pid=$($Dialog.ProcessId);dialogHwnd=$($Dialog.Handle);title=$(Clean-DiagnosticText $Dialog.Title);nativeChildren=[$NativeSummary];automation=[$AutomationSummary]"
+        $Detail = "pid=$($Dialog.ProcessId);dialogHwnd=$($Dialog.Handle);title=$(Clean-DiagnosticText $Dialog.Title);bounds=$($Dialog.Left),$($Dialog.Top),$($Dialog.Right),$($Dialog.Bottom);nativeChildren=[$NativeSummary];automation=[$AutomationSummary]"
         $Signature = $Detail
         if ($Signature -ne $LastSignature) {
-          Write-DiagnosticLine "VISIBLE_DIALOG" $Detail
+          $ScreenshotSequence += 1
+          $ScreenshotPath = Save-DialogScreenshot $Dialog $ScreenshotSequence
+          $ScreenshotDetail = if ($ScreenshotPath) { ";screenshot=$ScreenshotPath" } else { ";screenshot=" }
+          Write-DiagnosticLine "VISIBLE_DIALOG" ($Detail + $ScreenshotDetail)
           $LastSignature = $Signature
         }
       }
