@@ -4,3 +4,5 @@ Accepted P1/P2 dependency: workflow run 34286914057.
 P3 must emit retained visual artifacts without self-asserting visual acceptance.
 P4 must inject failure only after verified real writes and prove exact structural/project-fingerprint rollback for composition motion, layer motion, marker set, and marker remove.
 P5 remains out of scope.
+
+Retry after coupling the marker-motion runner to the shared guarded quit script's actual evidence log path.
