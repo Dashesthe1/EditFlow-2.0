@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-temporal-ease-request-v1_8.schema.json",
+  "title": "EditFlow 2.0 AE M3 Graph Editor Temporal Ease Request Protocol 1.8",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "requestId", "transactionId", "operationId", "capabilityId", "command", "expectedHostProjectRevision", "payload", "readbackProfile"],
+  "properties": {
+    "protocolVersion": {"const": "1.8.0"},
+    "requestId": {"type": "string", "minLength": 1},
+    "transactionId": {"type": "string", "minLength": 1},
+    "operationId": {"type": "string", "minLength": 1},
+    "capabilityId": {"type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$"},
+    "command": {"enum": ["property.temporal_ease.set", "property.temporal_ease.readback"]},
+    "expectedHostProjectRevision": {"type": ["integer", "null"], "minimum": 0},
+    "payload": {"type": "object"},
+    "readbackProfile": {"type": ["string", "null"]}
+  },
+  "$defs": {
+    "objectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "stableId": {"type": "string", "minLength": 1},
+        "hostId": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "propertyPath": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {"type": "string", "minLength": 1},
+          {"type": "integer", "minimum": 1}
+        ]
+      }
+    },
+    "keyframeEase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speed", "influence"],
+      "properties": {
+        "speed": {"type": "number"},
+        "influence": {"type": "number", "minimum": 0.1, "maximum": 100.0}
+      }
+    },
+    "easeArray": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {"$ref": "#/$defs/keyframeEase"}
+    },
+    "easeState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inEase", "outEase"],
+      "properties": {
+        "inEase": {"$ref": "#/$defs/easeArray"},
+        "outEase": {"$ref": "#/$defs/easeArray"}
+      }
+    },
+    "targetPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer", "propertyPath", "keyIndex"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"},
+        "propertyPath": {"$ref": "#/$defs/propertyPath"},
+        "keyIndex": {"type": "integer", "minimum": 1}
+      }
+    },
+    "setPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comp", "layer", "propertyPath", "keyIndex", "ease"],
+      "properties": {
+        "comp": {"$ref": "#/$defs/objectRef"},
+        "layer": {"$ref": "#/$defs/objectRef"},
+        "propertyPath": {"$ref": "#/$defs/propertyPath"},
+        "keyIndex": {"type": "integer", "minimum": 1},
+        "ease": {"$ref": "#/$defs/easeState"}
+      }
+    }
+  },
+  "allOf": [{
+    "oneOf": [
+      {
+        "properties": {
+          "command": {"const": "property.temporal_ease.set"},
+          "capabilityId": {"const": "ae.property.temporal_ease.set"},
+          "expectedHostProjectRevision": {"type": "integer", "minimum": 0},
+          "payload": {"$ref": "#/$defs/setPayload"}
+        }
+      },
+      {
+        "properties": {
+          "command": {"const": "property.temporal_ease.readback"},
+          "capabilityId": {"const": "ae.property.temporal_ease.readback"},
+          "payload": {"$ref": "#/$defs/targetPayload"}
+        }
+      }
+    ]
+  }]
+}
