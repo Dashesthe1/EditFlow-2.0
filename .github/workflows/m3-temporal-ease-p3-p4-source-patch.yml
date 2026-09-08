@@ -1,0 +1,39 @@
+name: One Shot M3 Temporal Ease P3 P4 Source Patch
+
+on:
+  push:
+    branches:
+      - chatgpt/m3-temporal-ease-p3-p4-draft
+    paths:
+      - .github/patch-trigger/m3-temporal-ease-p3-p4-baseline.txt
+
+permissions:
+  contents: write
+
+jobs:
+  apply-source-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout patch target
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/m3-temporal-ease-p3-p4-draft
+          fetch-depth: 0
+
+      - name: Apply guarded P3 P4 baseline patch
+        run: node scripts/maintenance/patch-m3-temporal-ease-p3-p4-baseline.mjs
+
+      - name: Remove one-shot patch machinery
+        run: |
+          rm -f scripts/maintenance/patch-m3-temporal-ease-p3-p4-baseline.mjs
+          rm -f .github/workflows/m3-temporal-ease-p3-p4-source-patch.yml
+          rm -f .github/patch-trigger/m3-temporal-ease-p3-p4-baseline.txt
+
+      - name: Commit clean source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "M3: use writable temporal ease P3 P4 baseline"
+          git push origin HEAD:chatgpt/m3-temporal-ease-p3-p4-draft
