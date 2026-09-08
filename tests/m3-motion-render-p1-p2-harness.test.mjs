@@ -42,16 +42,17 @@ test("motion-render P2 proves exact composition settings and every AE frame-blen
   assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
 });
 
-test("protocol 1.10 preview installer patches only the installed accepted 1.9 runtime", async () => {
+test("former protocol 1.10 preview installer verifies the accepted standard runtime without patching", async () => {
   const source = await readFile(installerPath, "utf8");
   assert.match(source, /& \$AcceptedInstaller -Port \$Port/);
   assert.match(source, /editflow_host_m3_motion_render\.jsx/);
   assert.match(source, /editflow_host_current_v110\.jsx/);
-  assert.match(source, /\$KnownV19 = 'var KNOWN_PROTOCOLS = \["1\.9\.0"/);
-  assert.match(source, /\$KnownV110 = 'var KNOWN_PROTOCOLS = \["1\.10\.0","1\.9\.0"/);
-  assert.match(source, /editflow_host_current_v19\.jsx', 'editflow_host_current_v110\.jsx/);
-  assert.match(source, /EditFlow2_HOST_PROTOCOL_19', 'EditFlow2_HOST_PROTOCOL_110/);
-  assert.match(source, /supportedProtocolVersions = @\("1\.10\.0", "1\.9\.0"/);
-  assert.match(source, /proof only/);
-  assert.match(source, /production runtime remains protocol 1\.9/);
+  assert.match(source, /var KNOWN_PROTOCOLS = \["1\.10\.0","1\.9\.0"/);
+  assert.match(source, /EditFlow2_HOST_PROTOCOL_110/);
+  assert.match(source, /Supported\[0\].*"1\.10\.0"/);
+  assert.match(source, /Supported\[1\].*"1\.9\.0"/);
+  assert.match(source, /acceptedV19Compatibility/);
+  assert.match(source, /compatibility verifier only/);
+  assert.doesNotMatch(source, /\.Replace\(/);
+  assert.doesNotMatch(source, /Copy-Item/);
 });
