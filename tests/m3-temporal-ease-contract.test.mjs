@@ -213,7 +213,7 @@ test("foundation keeps host-truth cardinality and spatial/rendering controls in 
   assert.match(source, /0\.1\.\.100\.0/);
   assert.match(source, /keyInTemporalEase\(keyIndex\)/);
   assert.match(source, /keyOutTemporalEase\(keyIndex\)/);
-  assert.match(source, /three.*KeyframeEase objects/);
+  assert.match(source, /exposed \*\*three\*\* incoming and \*\*three\*\* outgoing `KeyframeEase` objects/);
   assert.match(source, /scale\.setValue\(\[50, 50\]\)/);
   assert.match(source, /After Effects 25\.6\.6/);
   assert.match(source, /does \*\*not\*\* infer ease cardinality from `PropertyValueType`/);
