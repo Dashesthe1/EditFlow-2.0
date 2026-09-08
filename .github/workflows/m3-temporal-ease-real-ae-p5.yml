@@ -32,12 +32,12 @@ jobs:
         run: npm install
 
       - name: Require retained P1-P4 acceptance gate
-        shell: powershell
+        shell: cmd
         run: |
-          $Gate = "proofs\diagnostics\m3-temporal-ease-p1-p4-acceptance.json"
-          if (-not (Test-Path $Gate -PathType Leaf)) {
-            throw "Temporal-ease P5 is intentionally blocked until independently reviewed protocol-1.8 P1-P4 acceptance is committed."
-          }
+          @if not exist "proofs\diagnostics\m3-temporal-ease-p1-p4-acceptance.json" (
+            @echo Temporal-ease P5 is intentionally blocked until independently reviewed protocol-1.8 P1-P4 acceptance is committed.
+            @exit /b 1
+          )
 
       - name: Run isolated M3 temporal-ease P5 transfer proof
         shell: cmd
