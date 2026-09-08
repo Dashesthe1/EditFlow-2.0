@@ -34,27 +34,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Resolve accepted P1 P2 run
-        id: accepted
-        shell: powershell
-        run: |
-          $RunId = "${{ github.event.inputs.accepted_p1_p2_run_id }}"
-          if (-not $RunId) { $RunId = "34182897797" }
-          if ($RunId -notmatch '^\d+$') { throw "accepted_p1_p2_run_id must be numeric." }
-          "run_id=$RunId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
       - name: Download accepted spatial P1 P2 artifact
         uses: actions/download-artifact@v4
         with:
-          name: m3-spatial-graph-p1-p2-proof-${{ steps.accepted.outputs.run_id }}
+          name: m3-spatial-graph-p1-p2-proof-${{ inputs.accepted_p1_p2_run_id || '34182897797' }}
           path: .accepted/m3-spatial-graph-p1-p2
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ steps.accepted.outputs.run_id }}
+          run-id: ${{ inputs.accepted_p1_p2_run_id || '34182897797' }}
 
       - name: Run isolated M3 spatial-graph P3/P4 proof
         shell: cmd
         env:
-          EDITFLOW_AFTERFX_PATH: ${{ github.event.inputs.afterfx_path }}
+          EDITFLOW_AFTERFX_PATH: ${{ inputs.afterfx_path }}
         run: |
           @echo off
           if defined EDITFLOW_AFTERFX_PATH (
