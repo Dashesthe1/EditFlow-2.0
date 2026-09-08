@@ -16,8 +16,8 @@ $ScreenshotDir = if ($OutputDir) { Join-Path $OutputDir "startup-dialog-screensh
 # Diagnostic-only Win32/UI Automation reader. It deliberately exposes no input,
 # focus, click, keyboard, or mutation APIs. Its only purpose is to identify a
 # startup dialog that prevents the isolated runner-owned After Effects process
-# from reaching its normal project window. Pixel capture is limited to the exact
-# bounds of visible AE-owned #32770 dialogs; it never captures the full desktop.
+# from reaching its normal project window.
+# Pixel capture is limited to the exact bounds of visible AE-owned #32770 dialogs; it never captures the full desktop.
 if (-not ("EditFlow.StartupDialogReader" -as [type])) {
   Add-Type -TypeDefinition @"
 using System;
