@@ -319,6 +319,18 @@
       mutationStarted = true;
       applyEaseState(prepared.property, prepared.keyIndex, request.payload.ease);
       verifyEaseState(prepared.property, prepared.keyIndex, request.payload.ease);
+
+      /* Proof-only P4 injection. Ordinary product requests cannot arm this path:
+       * the isolated self-hosted runner must launch its owned AE process with the
+       * exact proof environment flag and the typed protocol-1.8 mutation must carry
+       * the fixed failure-injection readback profile. Injection occurs only after a
+       * real KeyframeEase mutation passes structural verification while the normal
+       * AE Undo group remains open, exercising the exact production rollback path. */
+      if (request.readbackProfile === "M3_TEMPORAL_EASE_P4_FAILURE_INJECTION"
+          && $.getenv("EDITFLOW_M3_TEMPORAL_EASE_P4_PROOF") === "1") {
+        fail("PROOF_INJECTION", "M3_TEMPORAL_EASE_P4_INDUCED_FAILURE", "Induced M3 temporal-ease P4 failure after verified KeyframeEase mutation.", null);
+      }
+
       app.endUndoGroup();
       return responseFor(request, "APPLIED", null, [affected(prepared.layer)], temporalEaseReadback(prepared.layer, prepared.property, prepared.propertyPath, prepared.keyIndex), startedAt, ["Temporal-ease mutation applied and structurally verified."]);
     } catch (mutationError) {
