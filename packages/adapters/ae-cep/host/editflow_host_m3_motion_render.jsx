@@ -294,6 +294,12 @@
     return { comp: comp, layer: layer };
   }
 
+  function shouldInjectP4(request, command) {
+    return request.readbackProfile === "M3_MOTION_RENDER_P4_FAILURE_INJECTION"
+      && $.getenv("EDITFLOW_M3_MOTION_RENDER_P4_PROOF") === "1"
+      && request.command === command;
+  }
+
   function dispatchV110(request) {
     var startedAt = nowMs();
     var prepared = null;
@@ -310,6 +316,9 @@
         try {
           applyCompSettings(prepared.comp, request.payload.settings);
           verifyComp(prepared.comp, request.payload.settings);
+          if (shouldInjectP4(request, "comp.motion_render.set")) {
+            fail("PROOF_INJECTION", "M3_MOTION_RENDER_P4_COMP_INDUCED_FAILURE", "Induced M3 motion-render P4 failure after verified composition mutation.", null);
+          }
         } catch (compError) {
           try {
             restoreComp(prepared.comp, beforeComp);
@@ -327,6 +336,9 @@
       try {
         applyLayerSettings(prepared.layer, request.payload.settings);
         verifyLayer(prepared.layer, request.payload.settings);
+        if (shouldInjectP4(request, "layer.motion_render.set")) {
+          fail("PROOF_INJECTION", "M3_MOTION_RENDER_P4_LAYER_INDUCED_FAILURE", "Induced M3 motion-render P4 failure after verified layer mutation.", null);
+        }
       } catch (layerError) {
         try {
           restoreLayer(prepared.layer, beforeLayer);
