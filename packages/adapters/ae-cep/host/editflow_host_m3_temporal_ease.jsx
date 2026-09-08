@@ -3,7 +3,7 @@
  *
  * Scope boundary:
  * - INCLUDED: exact per-key KeyframeEase incoming/outgoing speed and influence.
- * - INCLUDED: structural readback, dimension/cardinality validation, transaction rollback.
+ * - INCLUDED: structural readback, live host cardinality validation, transaction rollback.
  * - EXCLUDED: changing keyframe values, interpolation type/auto-Bezier/continuity,
  *   spatial tangents/roving, markers, motion blur, frame blending, and shutter controls.
  */
@@ -114,11 +114,6 @@
     if (typeof keyIndex !== "number" || keyIndex !== Math.floor(keyIndex) || keyIndex < 1) reject("KEY_INDEX_INVALID", "keyIndex must be a positive integer.");
     if (typeof property.numKeys !== "number" || keyIndex > property.numKeys) reject("KEY_INDEX_OUT_OF_RANGE", "keyIndex exceeds the current keyframe count.", { keyIndex: keyIndex, numKeys: property.numKeys });
   }
-  function easeCardinality(property) {
-    if (property.propertyValueType === PropertyValueType.TwoD) return 2;
-    if (property.propertyValueType === PropertyValueType.ThreeD) return 3;
-    return 1;
-  }
   function supportsTemporalEase(property) {
     return typeof property.keyInTemporalEase === "function"
       && typeof property.keyOutTemporalEase === "function"
@@ -126,6 +121,23 @@
       && typeof property.keyInInterpolationType === "function"
       && typeof property.keyOutInterpolationType === "function"
       && typeof property.keyTemporalAutoBezier === "function";
+  }
+  function easeCardinality(property, keyIndex) {
+    if (!supportsTemporalEase(property)) fail("CAPABILITY_UNAVAILABLE", "TEMPORAL_EASE_UNAVAILABLE", "The resolved property does not expose the required temporal-ease readback surface.");
+    var inEase = null;
+    var outEase = null;
+    try {
+      inEase = property.keyInTemporalEase(keyIndex);
+      outEase = property.keyOutTemporalEase(keyIndex);
+    } catch (error) {
+      fail("READBACK", "TEMPORAL_EASE_CARDINALITY_READBACK_FAILED", "Unable to read the host KeyframeEase cardinality for the target key.", { keyIndex: keyIndex, error: asString(error) });
+    }
+    var inLength = inEase && typeof inEase.length === "number" ? inEase.length : 0;
+    var outLength = outEase && typeof outEase.length === "number" ? outEase.length : 0;
+    if (inLength !== outLength || inLength < 1 || inLength > 3) {
+      fail("READBACK", "TEMPORAL_EASE_CARDINALITY_INVALID", "Host incoming/outgoing KeyframeEase cardinality is unavailable or inconsistent.", { keyIndex: keyIndex, inLength: inLength, outLength: outLength });
+    }
+    return inLength;
   }
   function requireManualBezier(property, keyIndex) {
     if (property.keyInInterpolationType(keyIndex) !== KeyframeInterpolationType.BEZIER
@@ -150,11 +162,11 @@
   }
   function validateEaseArray(value, direction, cardinality) {
     if (!(value instanceof Array)) reject("TEMPORAL_EASE_ARRAY_REQUIRED", direction + "Ease must be an array.", { direction: direction });
-    if (value.length !== cardinality) reject("TEMPORAL_EASE_CARDINALITY_MISMATCH", direction + "Ease must contain exactly " + cardinality + " KeyframeEase object(s) for this property value type.", { direction: direction, expected: cardinality, actual: value.length });
+    if (value.length !== cardinality) reject("TEMPORAL_EASE_CARDINALITY_MISMATCH", direction + "Ease must contain exactly " + cardinality + " KeyframeEase object(s) for the live host property/key surface.", { direction: direction, expected: cardinality, actual: value.length });
     var i;
     for (i = 0; i < value.length; i += 1) validateEaseObject(value[i], direction, i);
   }
-  function validateEaseState(property, ease) {
+  function validateEaseState(property, keyIndex, ease) {
     if (!ease || typeof ease !== "object" || ease instanceof Array) reject("TEMPORAL_EASE_STATE_REQUIRED", "ease must be an object.");
     var key;
     var count = 0;
@@ -163,7 +175,7 @@
       if (key !== "inEase" && key !== "outEase") reject("TEMPORAL_EASE_STATE_UNKNOWN_FIELD", "Unknown temporal ease field: " + key, { field: key });
     }
     if (count !== 2 || !own(ease, "inEase") || !own(ease, "outEase")) reject("TEMPORAL_EASE_STATE_INCOMPLETE", "ease must specify exactly inEase and outEase.");
-    var cardinality = easeCardinality(property);
+    var cardinality = easeCardinality(property, keyIndex);
     validateEaseArray(ease.inEase, "in", cardinality);
     validateEaseArray(ease.outEase, "out", cardinality);
   }
@@ -188,20 +200,20 @@
     if (value === KeyframeInterpolationType.HOLD) return "HOLD";
     return "UNKNOWN";
   }
-  function propertyMetadata(property, path) {
+  function propertyMetadata(property, path, keyIndex) {
     var name = null;
     var matchName = null;
     var isSpatial = null;
     try { name = asString(property.name); } catch (_) {}
     try { matchName = asString(property.matchName); } catch (_) {}
     try { isSpatial = typeof property.isSpatial === "boolean" ? property.isSpatial : null; } catch (_) {}
-    return { name: name, matchName: matchName, propertyPath: path, numKeys: property.numKeys, isSpatial: isSpatial, easeCardinality: easeCardinality(property) };
+    return { name: name, matchName: matchName, propertyPath: path, numKeys: property.numKeys, isSpatial: isSpatial, easeCardinality: easeCardinality(property, keyIndex) };
   }
   function temporalEaseReadback(layer, property, path, keyIndex) {
     return {
       temporalEase: {
         layer: layerRef(layer),
-        property: propertyMetadata(property, path),
+        property: propertyMetadata(property, path, keyIndex),
         keyIndex: keyIndex,
         keyTime: property.keyTime(keyIndex),
         interpolation: {
@@ -284,7 +296,7 @@
     if (!supportsTemporalEase(property)) fail("CAPABILITY_UNAVAILABLE", "TEMPORAL_EASE_UNAVAILABLE", "The resolved property does not expose the required temporal-ease surface.");
     if (request.command === "property.temporal_ease.set") {
       requireManualBezier(property, request.payload.keyIndex);
-      validateEaseState(property, request.payload.ease);
+      validateEaseState(property, request.payload.keyIndex, request.payload.ease);
     }
     return { comp: comp, layer: layer, property: property, propertyPath: request.payload.propertyPath, keyIndex: request.payload.keyIndex };
   }
