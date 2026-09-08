@@ -48,7 +48,7 @@ if (-not (Test-Path $PrefsRoot -PathType Container)) {
         $Line = [string]$RawLines[$Index]
         if ($Line -match "(?i)(disk.?cache|media.?cache|cache.?size|cache.?folder|cache.?path|maximum.?disk|enable.?disk)") {
           $Start = [Math]::Max(0, $Index - 2)
-          $End = [Math]::Min($RawLines.Count - 1, $Index + 2)
+          $End = [Math]::Min($RawLines.Count - 1, $Index + 12)
           for ($ContextIndex = $Start; $ContextIndex -le $End; $ContextIndex++) {
             Add-Line ("  line{0}={1}" -f ($ContextIndex + 1), (Safe ([string]$RawLines[$ContextIndex])))
           }
