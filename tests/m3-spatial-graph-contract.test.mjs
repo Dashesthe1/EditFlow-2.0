@@ -40,8 +40,8 @@ test("spatial Graph Editor capabilities remain PARTIAL DECLARED before real-AE p
   }
 });
 
-test("request builder preserves exact spatial state", () => {
-  const state = { inTangent: [-120, 30], outTangent: [140, -20], continuous: false, autoBezier: false, roving: true };
+test("request builder preserves exact MANUAL spatial state", () => {
+  const state = { mode: "MANUAL", inTangent: [-120, 30], outTangent: [140, -20], continuous: false, roving: true };
   const request = buildSpatialGraphRequestV19({
     requestId: "REQ_SPATIAL_BUILD", transactionId: "TX_SPATIAL_BUILD", operationId: "OP_SPATIAL_BUILD",
     command: "property.spatial_graph.set", expectedHostProjectRevision: 101,
@@ -68,7 +68,7 @@ test("protocol 1.9 transport serializes hostile property path as data", async ()
   assert.ok(!captured.includes("); app.quit(); //\")"));
 });
 
-test("host encodes AE spatial dimensionality, endpoint-roving, readback and rollback guards", async () => {
+test("host encodes dimensionality, endpoint-roving, host-owned Auto-Bezier, readback and rollback guards", async () => {
   const source = await readFile(hostPath, "utf8");
   for (const method of ["keyInSpatialTangent", "keyOutSpatialTangent", "keySpatialContinuous", "keySpatialAutoBezier", "keyRoving", "setSpatialTangentsAtKey", "setSpatialContinuousAtKey", "setSpatialAutoBezierAtKey", "setRovingAtKey"]) {
     assert.match(source, new RegExp(`\\.${method}\\(`));
@@ -77,7 +77,10 @@ test("host encodes AE spatial dimensionality, endpoint-roving, readback and roll
   assert.match(source, /PropertyValueType\.ThreeD_SPATIAL/);
   assert.match(source, /SPATIAL_TANGENT_DIMENSION_MISMATCH/);
   assert.match(source, /ROVING_ENDPOINT_FORBIDDEN/);
+  assert.match(source, /AUTO_BEZIER_TANGENTS_FORBIDDEN/);
+  assert.match(source, /requested\.mode === "AUTO_BEZIER"/);
   assert.match(source, /SPATIAL_GRAPH_READBACK_MISMATCH/);
+  assert.match(source, /SPATIAL_GRAPH_ROLLBACK_READBACK_MISMATCH/);
   assert.match(source, /HOST_REVISION_CONFLICT/);
   assert.match(source, /app\.beginUndoGroup/);
   assert.doesNotMatch(source, /\beval\s*\(/);
