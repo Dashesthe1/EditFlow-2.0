@@ -9,7 +9,7 @@ test("Windows CEP installer writes runtime files as UTF-8 without BOM", async ()
   const source = await readFile(installerPath, "utf8");
   assert.match(source, /UTF8Encoding\(\$false\)/);
   assert.match(source, /WriteAllText\(\$ConfigPath, \$ConfigJson \+ \[Environment\]::NewLine, \$Utf8NoBom\)/);
-  assert.match(source, /WriteAllText\(\$RuntimeConfigPath, \$RuntimeConfig, \$Utf8NoBom\)/);
+  assert.match(source, /WriteAllText\(\$RuntimeConfigPath, \(\"window\.EDITFLOW2_BRIDGE_CONFIG = Object\.freeze\(\" \+ \$CompactConfig \+ \"\);`r`n\"\), \$Utf8NoBom\)/);
   assert.doesNotMatch(source, /Set-Content\s+-Path\s+\$ConfigPath/);
   assert.doesNotMatch(source, /Set-Content\s+-Path\s+\$RuntimeConfigPath/);
 });
