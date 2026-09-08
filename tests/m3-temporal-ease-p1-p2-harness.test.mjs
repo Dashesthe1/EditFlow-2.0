@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
 
 const cliPath = "apps/desktop-host/src/m3-temporal-ease-p1-p2-cli.ts";
 const wrapperPath = "scripts/windows/run-m3-temporal-ease-p1-p2.ps1";
 const selfHostedPath = "scripts/windows/run-m3-temporal-ease-self-hosted.ps1";
+const diagnosticBootstrapPath = "scripts/windows/open-editflow-temporal-ease-bridge.jsx";
 const workflowPath = ".github/workflows/m3-temporal-ease-real-ae-p1-p2.yml";
+const diagnosticWorkflowPath = ".github/workflows/m3-temporal-ease-host-bootstrap-diagnostic.yml";
 
 test("temporal-ease P1/P2 CLI uses protocol 1.8 with accepted 1.7 precondition setup and 1.1 disposable fixtures", async () => {
   const source = await readFile(cliPath, "utf8");
@@ -82,17 +85,33 @@ test("P1/P2 wrapper fails closed on overclaim, missing exact evidence, or incomp
   assert.doesNotMatch(source, /AfterFX\.exe.*-r/);
 });
 
-test("self-hosted temporal-ease runner inherits the accepted isolated AE lifecycle while forcing production-equivalent v18 panel bootstrap", async () => {
+test("self-hosted temporal-ease runner inherits the accepted isolated AE lifecycle while keeping v18 host preflight diagnostic-only", async () => {
   const source = await readFile(selfHostedPath, "utf8");
   assert.match(source, /run-m3-temporal-interpolation-self-hosted\.ps1/);
   assert.match(source, /run-m3-temporal-ease-p1-p2\.ps1/);
   assert.match(source, /authenticated protocol 1\.8 registration/);
   assert.match(source, /production-equivalent CEP bootstrap of protocol 1\.8/);
-  assert.match(source, /does not pass -PreflightHostLoader/);
+  assert.match(source, /\[switch\]\$PreflightHostLoader/);
+  assert.match(source, /open-editflow-temporal-ease-bridge\.jsx/);
+  assert.match(source, /diagnostic-only, not acceptance evidence/);
   assert.match(source, /CEP12-AEFT\*\.log/);
   assert.match(source, /CEPHtmlEngine12-AEFT-\*\.log/);
   assert.match(source, /LogLevel registry readback before AE launch/);
   assert.match(source, /Copy-CepFailureDiagnostics/);
+});
+
+test("protocol 1.8 bootstrap diagnostic records exact host-loader state before opening the normal panel command", async () => {
+  const source = await readFile(diagnosticBootstrapPath, "utf8");
+  assert.match(source, /editflow_host_current_v18\.jsx/);
+  assert.match(source, /HOST_STATE_BEFORE/);
+  assert.match(source, /HOST_LOAD_RETURNED/);
+  assert.match(source, /HOST_LOAD_ERROR/);
+  assert.match(source, /EditFlow2_HOST_PROTOCOL_18/);
+  assert.match(source, /EditFlow2_M3_TEMPORAL_EASE_LOAD_ERROR/);
+  assert.match(source, /EditFlow 2\.0 Bridge/);
+  assert.match(source, /EXECUTE_COMMAND_SENT/);
+  assert.doesNotMatch(source, /setTemporalEaseAtKey|setValueAtTime|project\.save/);
+  assert.doesNotThrow(() => new vm.Script(source, { filename: diagnosticBootstrapPath }));
 });
 
 test("real-AE temporal-ease P1/P2 workflow is isolated to the Windows AE runner and dedicated control branch/artifact namespace", async () => {
@@ -104,4 +123,15 @@ test("real-AE temporal-ease P1/P2 workflow is isolated to the Windows AE runner 
   assert.match(source, /proofs\/artifacts\/m3-temporal-ease-p1-p2\//);
   assert.match(source, /if: always\(\)/);
   assert.match(source, /timeout-minutes: 10/);
+});
+
+test("host-bootstrap diagnostic workflow is isolated from the acceptance control branch and requires explicit preflight mode", async () => {
+  const source = await readFile(diagnosticWorkflowPath, "utf8");
+  assert.match(source, /ae-test\/m3-temporal-ease-host-diagnostic-control/);
+  assert.match(source, /m3-temporal-ease-host-diagnostic\.txt/);
+  assert.match(source, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
+  assert.match(source, /run-m3-temporal-ease-self-hosted\.ps1/);
+  assert.match(source, /-PreflightHostLoader/);
+  assert.match(source, /if: always\(\)/);
+  assert.match(source, /m3-temporal-ease-host-diagnostic-/);
 });
