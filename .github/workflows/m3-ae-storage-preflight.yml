@@ -1,0 +1,46 @@
+name: M3 AE Storage Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ae-test/m3-marker-motion-p3-p4-control
+    paths:
+      - .github/ae-test-trigger/m3-ae-storage-preflight.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-m3-ae-storage-preflight-workstation
+  cancel-in-progress: false
+
+jobs:
+  inspect-storage:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Refuse active AE session
+        shell: cmd
+        run: >-
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command
+          "$Ae = @(Get-Process -Name 'AfterFX' -ErrorAction SilentlyContinue); if ($Ae.Count -gt 0) { throw 'Storage preflight refuses to inspect during an active After Effects session.' }"
+
+      - name: Inspect disk space and AE cache preferences
+        shell: cmd
+        run: >-
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File
+          ".\scripts\windows\inspect-ae-storage-preflight.ps1"
+          -OutputPath ".\proofs\artifacts\m3-ae-storage-preflight\storage-preflight.txt"
+
+      - name: Upload preflight artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-ae-storage-preflight-${{ github.run_id }}
+          path: proofs/artifacts/m3-ae-storage-preflight/
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,3 @@
+Inspect the self-hosted editflow-ae workstation's logical-disk free space and relevant After Effects cache preference lines. Read-only; do not launch or modify After Effects.
+Retry after aligning the workflow with the repository's approved explicit PowerShell execution-policy bypass.
+Capture the complete Disk Cache Controls context so the proof runner can redirect cache without guessing preference keys.

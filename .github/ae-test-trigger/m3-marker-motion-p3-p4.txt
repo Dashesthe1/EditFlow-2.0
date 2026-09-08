@@ -1,0 +1,8 @@
+Trigger the isolated protocol 2.0 marker/motion P3/P4 real-After-Effects proof on the ae-test/m3-marker-motion-p3-p4-control branch.
+
+Accepted P1/P2 dependency: workflow run 34286914057.
+P3 must emit retained visual artifacts without self-asserting visual acceptance.
+P4 must inject failure only after verified real writes and prove exact structural/project-fingerprint rollback for composition motion, layer motion, marker set, and marker remove.
+P5 remains out of scope.
+
+Retry on the green startup-diagnostic head after preserving exact AE-owned #32770 dialog pixels. If startup is blocked again, retain only the dialog-bounds screenshots plus read-only UI/native metadata; do not focus, click, type, dismiss, or mutate an unknown window.
