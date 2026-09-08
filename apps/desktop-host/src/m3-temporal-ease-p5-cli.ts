@@ -316,10 +316,12 @@ const main = async (): Promise<void> => {
     inEase: Object.freeze([
       { speed: 18.25, influence: 32.5 },
       { speed: 41.5, influence: 47.25 },
+      { speed: 72.25, influence: 58.75 },
     ]),
     outEase: Object.freeze([
       { speed: 95.75, influence: 69.5 },
       { speed: 63.25, influence: 54.75 },
+      { speed: 128.5, influence: 61.25 },
     ]),
   });
 
@@ -680,13 +682,25 @@ const main = async (): Promise<void> => {
       layer: { stableId: layerStable },
       propertyPath: scalePath,
       keyframes: [
-        { time: 0, value: [100, 100] },
-        { time: keyTime, value: [140, 80] },
-        { time: 1, value: [75, 135] },
+        { time: 0, value: [100, 100, 100] },
+        { time: keyTime, value: [140, 80, 115] },
+        { time: 1, value: [75, 135, 90] },
       ],
     });
     await establishManualBezier(scalePath, "SCALE_TRANSFERRED");
-    await setEaseExact(scalePath, transferredScaleEase, 2, "SCALE_TRANSFERRED");
+    const scaleCardinalityProbe = await dispatchV18(
+      "property.temporal_ease.readback",
+      targetPayload(scalePath),
+      null,
+      "M3_TEMPORAL_EASE_P5_SCALE_CARDINALITY_PROBE",
+    );
+    checks.scale_live_cardinality_three = scaleCardinalityProbe.outcome === "NO_OP"
+      && easeCardinality(scaleCardinalityProbe) === 3
+      && easeKeyIdentityMatches(scaleCardinalityProbe, keyIndex, keyTime);
+    if (!checks.scale_live_cardinality_three) {
+      throw new Error(`M3 temporal-ease P5 live Scale property did not expose the expected three-component ease surface: ${scaleCardinalityProbe.error?.code ?? scaleCardinalityProbe.outcome}`);
+    }
+    await setEaseExact(scalePath, transferredScaleEase, 3, "SCALE_TRANSFERRED");
     checks.post_reconnect_scale_mutation_readback = true;
 
     await launchAfterFxScript(afterFxPath, cleanupScriptPath);
@@ -771,6 +785,7 @@ const main = async (): Promise<void> => {
       && checks.reopened_stable_fixture === true
       && checks.saved_structural_fingerprint_preserved === true
       && checks.opacity_ease_exact_after_reopen_reconnect === true
+      && checks.scale_live_cardinality_three === true
       && checks.post_reconnect_scale_mutation_readback === true
       && checks.proof_cleanup_script_passed === true
       && checks.saved_project_retained_after_cleanup === true
@@ -846,7 +861,7 @@ const main = async (): Promise<void> => {
         "The saved fixture uses a scalar Opacity KeyframeEase state under explicit protocol-1.7 manual-BEZIER/continuity preconditions, then saves through the accepted public v1.1 project.save route.",
         "After Effects closes and reopens only the fixed runner-owned .aep, reloads the additive protocol-1.8 dispatcher, and the loopback broker is restarted so the panel must establish a distinct authenticated 1.8 session.",
         "Post-reconnect readback must recover the exact saved scalar Opacity ease before any new mutation.",
-        "Fresh-session transfer is then exercised on a materially different 2D Scale property with two-component KeyframeEase cardinality and exact readback.",
+        "Fresh-session transfer is then exercised on the live Scale property. The proof first reads and asserts its three-component temporal-ease cardinality, then writes three independent incoming and outgoing KeyframeEase objects and requires exact readback.",
         "The saved .aep is retained as evidence; proof-only cleanup discards only the exact verified disposable project and restores the original blank structural fingerprint.",
       ],
       limitations: [
