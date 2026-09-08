@@ -32,11 +32,11 @@ test("protocol 1.10 declares the bounded motion/frame rendering surface", () => 
   assert.equal(capabilityForMotionRenderCommandV110("motion_render.readback"), "ae.motion_render.readback");
 });
 
-test("protocol 1.10 capabilities remain PARTIAL at accepted real-AE P1/P2 structural maturity", () => {
+test("protocol 1.10 capabilities remain PARTIAL through accepted real-AE P3/P4 rollback maturity", () => {
   assert.equal(M3_MOTION_RENDER_CAPABILITIES_V110.length, 3);
   for (const capability of M3_MOTION_RENDER_CAPABILITIES_V110) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(capability.proofMaturity, "ROLLBACK");
     assert.ok(capability.routes.some((route) => String(route.routeId) === "ae-cep.motion-render.v1_10" && route.available));
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
