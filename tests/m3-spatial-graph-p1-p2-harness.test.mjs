@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const cliPath = "apps/desktop-host/src/m3-spatial-graph-p1-p2-cli.ts";
+const brokerPath = "apps/desktop-host/src/loopback-cep.ts";
 const acceptancePath = "scripts/windows/run-m3-spatial-graph-p1-p2.ps1";
 const selfHostedPath = "scripts/windows/run-m3-spatial-graph-self-hosted.ps1";
 const workflowPath = ".github/workflows/m3-spatial-graph-real-ae-p1-p2.yml";
@@ -21,6 +22,18 @@ test("spatial-graph P1/P2 CLI negotiates 1.9 while reusing accepted 1.5 null and
   assert.match(source, /"ADBE Transform Group", "ADBE Position"/);
   assert.match(source, /\{ time: 0, value: \[80, 280\] \}/);
   assert.match(source, /\{ time: interiorTime, value: \[320, 85, 140\] \}/);
+});
+
+test("authenticated loopback broker compiles protocol 1.9 without making it the default runtime", async () => {
+  const source = await readFile(brokerPath, "utf8");
+  assert.match(source, /AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19/);
+  assert.match(source, /AeSpatialGraphTransportV19/);
+  assert.match(source, /AeSpatialGraphRequestV19/);
+  assert.match(source, /AeSpatialGraphResponseV19/);
+  assert.match(source, /COMPILED_PROTOCOLS = \[AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18/);
+  assert.match(source, /supportedProtocolVersions: normalizeBrokerProtocols/);
+  assert.match(source, /const requested = input \?\? \[AE_ADAPTER_PROTOCOL_VERSION_V11\]/);
+  assert.match(source, /dispatch\(request: AeSpatialGraphRequestV19\): Promise<AeSpatialGraphResponseV19>/);
 });
 
 test("P1 proves documented spatial preconditions reject without revision, fingerprint, or spatial-state mutation", async () => {
@@ -86,7 +99,7 @@ test("self-hosted runner makes protocol 1.9 an isolated test-only install and re
   assert.match(source, /run-m3-spatial-graph-p1-p2\.ps1/);
   assert.match(source, /editflow_host_m3_spatial_graph\.jsx/);
   assert.match(source, /editflow_host_current_v19\.jsx/);
-  assert.match(source, /var KNOWN_PROTOCOLS = \[\\"1\.9\.0\\"/);
+  assert.match(source, /var KNOWN_PROTOCOLS = \["1\.9\.0"/);
   assert.match(source, /EditFlow2_HOST_PROTOCOL_19/);
   assert.match(source, /supportedProtocolVersions = @\("1\.9\.0"/);
   assert.match(source, /normal installer defaults remain accepted protocol 1\.8/);
