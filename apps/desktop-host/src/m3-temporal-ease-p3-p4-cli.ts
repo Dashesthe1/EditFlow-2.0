@@ -299,6 +299,7 @@ const main = async (): Promise<void> => {
   let baselineFingerprint: string | null = null;
   let baselineItemCount: number | null = null;
   let cleanupUndoCount = 0;
+  let nativeBaselineEase: AeTemporalEaseStateV18 | null = null;
   let baselineEase: AeTemporalEaseStateV18 | null = null;
   let strongEase: AeTemporalEaseStateV18 | null = null;
 
@@ -550,14 +551,29 @@ const main = async (): Promise<void> => {
     const interpolationSetup = await dispatchV17(manualBezier);
     checks.manual_bezier_setup = (interpolationSetup.outcome === "APPLIED" || interpolationSetup.outcome === "NO_OP");
 
+    const nativeBaselineRead = await dispatchV18("property.temporal_ease.readback", targetPayload(), null);
+    nativeBaselineEase = easeStateFromResponse(nativeBaselineRead);
+    checks.p3_native_baseline_ease_captured = nativeBaselineRead.outcome === "NO_OP"
+      && nativeBaselineEase !== null
+      && nativeBaselineEase.inEase.length === 1
+      && nativeBaselineEase.outEase.length === 1
+      && interpolationIsManualBezier(nativeBaselineRead);
+    if (nativeBaselineEase === null || !checks.p3_native_baseline_ease_captured) throw new Error("Unable to capture the native AE KeyframeEase state/cardinality.");
+
+    // AE 25.6.6 can expose a native manual-BEZIER baseline influence of 0 even
+    // though KeyframeEase writes correctly require Adobe's documented minimum
+    // influence of 0.1. P3/P4 therefore retain the native readback as provenance
+    // but establish a legal deterministic protocol-1.8 baseline before rendering.
+    // This keeps P3 restoration on the public write path and gives P4 an exact
+    // writable pre-failure state to which the normal transaction undo can return.
+    baselineEase = contrastingEase(nativeBaselineEase, 20);
+    const baselineSet = await setEaseExact(baselineEase);
+    checks.p3_baseline_ease_established = easeStateMatches(baselineSet, baselineEase);
     const baselineRead = await dispatchV18("property.temporal_ease.readback", targetPayload(), null);
-    baselineEase = easeStateFromResponse(baselineRead);
     checks.p3_baseline_ease_captured = baselineRead.outcome === "NO_OP"
-      && baselineEase !== null
-      && baselineEase.inEase.length === 1
-      && baselineEase.outEase.length === 1
+      && easeStateMatches(baselineRead, baselineEase)
       && interpolationIsManualBezier(baselineRead);
-    if (baselineEase === null || !checks.p3_baseline_ease_captured) throw new Error("Unable to capture exact AE baseline KeyframeEase state.");
+    if (!checks.p3_baseline_ease_established || !checks.p3_baseline_ease_captured) throw new Error("Unable to establish and read back the deterministic writable P3/P4 baseline ease.");
 
     const baselineCompletion = await renderComp(baselineRenderPath);
     checks.p3_baseline_artifact = await fileExistsNonEmpty(baselineCompletion.outputPath);
@@ -655,6 +671,8 @@ const main = async (): Promise<void> => {
       && checks.foreground_layer_create === true
       && checks.opacity_keys_created === true
       && checks.manual_bezier_setup === true
+      && checks.p3_native_baseline_ease_captured === true
+      && checks.p3_baseline_ease_established === true
       && checks.p3_baseline_ease_captured === true
       && checks.p3_contrast_state_differs_from_baseline === true
       && checks.p3_contrast_structural === true
@@ -697,6 +715,7 @@ const main = async (): Promise<void> => {
           { time: 0.5, value: 100 },
           { time: 1, value: 0 },
         ],
+        nativeBaselineEase,
         baselineEase,
         strongEase,
       },
@@ -707,9 +726,9 @@ const main = async (): Promise<void> => {
         postRollbackRender: postRollbackRenderPath,
         sampleTimesSeconds: [0, 0.25, 0.5, 0.75, 1],
         expected: [
-          "baselineRender is the exact AE manual-BEZIER KeyframeEase state captured before protocol-1.8 mutation",
+          "baselineRender is the exact deterministic writable protocol-1.8 manual-BEZIER baseline established after retaining AE's native ease readback/cardinality",
           "easedRender must visibly differ from baselineRender at one or more intermediate frames while preserving the same keyframe times and values",
-          "restoredBaselineRender must return to the baseline motion/opacity timing after the exact captured KeyframeEase state is restored",
+          "restoredBaselineRender must return to the baseline motion/opacity timing after the exact deterministic writable KeyframeEase state is restored",
           "postRollbackRender must match restoredBaselineRender after the proof-gated post-verification temporal-ease mutation fails and self-rolls back",
           "P3 remains false until retained renders are decoded and independently reviewed; artifact existence alone is not visual acceptance",
         ],

@@ -23,10 +23,14 @@ test("temporal-ease P3/P4 harness refuses to inherit an unaccepted P1/P2 baselin
   assert.match(source, /accepted_p1_p2_artifact_verified/);
 });
 
-test("P3 captures AE's actual manual-Bezier baseline ease before creating a deliberate zero-speed high-influence contrast", async () => {
+test("P3 retains AE's native ease then establishes a deterministic writable baseline before the high-influence contrast", async () => {
   const source = await readFile(cliPath, "utf8");
   assert.match(source, /property\.temporal_ease\.readback/);
-  assert.match(source, /baselineEase = easeStateFromResponse/);
+  assert.match(source, /nativeBaselineEase = easeStateFromResponse/);
+  assert.match(source, /baselineEase = contrastingEase\(nativeBaselineEase, 20\)/);
+  assert.match(source, /setEaseExact\(baselineEase\)/);
+  assert.match(source, /p3_native_baseline_ease_captured/);
+  assert.match(source, /p3_baseline_ease_established/);
   assert.match(source, /contrastingEase\(baselineEase, 80\)/);
   assert.match(source, /speed: 0, influence/);
   assert.match(source, /p3-baseline\.avi/);
