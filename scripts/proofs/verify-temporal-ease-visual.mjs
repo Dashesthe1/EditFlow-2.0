@@ -8,17 +8,20 @@ import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 export const FIXTURE = Object.freeze({ width: 320, height: 320, frameRate: 24, frameCount: 24, pixelFormat: "rgb24" });
-export const RENDERS = Object.freeze({
-  baselineRender: "p3-baseline.avi",
-  easedRender: "p3-zero-speed-high-influence.avi",
-  restoredBaselineRender: "p3-restored-baseline.avi",
-  postRollbackRender: "p4-post-rollback-baseline.avi",
+export const RENDER_ASSETS = Object.freeze({
+  baselineRender: Object.freeze({ requested: "p3-baseline.avi", retained: "p3-baseline.mp4", marker: "p3-baseline.avi.editflow-render.json" }),
+  easedRender: Object.freeze({ requested: "p3-zero-speed-high-influence.avi", retained: "p3-zero-speed-high-influence.mp4", marker: "p3-zero-speed-high-influence.avi.editflow-render.json" }),
+  restoredBaselineRender: Object.freeze({ requested: "p3-restored-baseline.avi", retained: "p3-restored-baseline.mp4", marker: "p3-restored-baseline.avi.editflow-render.json" }),
+  postRollbackRender: Object.freeze({ requested: "p4-post-rollback-baseline.avi", retained: "p4-post-rollback-baseline.mp4", marker: "p4-post-rollback-baseline.avi.editflow-render.json" }),
 });
+export const RENDERS = Object.freeze(Object.fromEntries(Object.entries(RENDER_ASSETS).map(([role, asset]) => [role, asset.requested])));
+export const RETAINED_RENDERS = Object.freeze(Object.fromEntries(Object.entries(RENDER_ASSETS).map(([role, asset]) => [role, asset.retained])));
 export const THRESHOLDS = Object.freeze({ meanAbsoluteDelta: 3, channelDelta: 8, changedPixelFraction: 0.25, framesPerSide: 2 });
 const FRAME_BYTES = FIXTURE.width * FIXTURE.height * 3;
 const VIDEO_BYTES = FRAME_BYTES * FIXTURE.frameCount;
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const portableBasename = (value) => typeof value === "string" ? value.replaceAll("\\", "/").split("/").at(-1) : null;
 const requireThat = (condition, code, message) => {
   if (!condition) throw Object.assign(new Error(`${code}: ${message}`), { code });
 };
@@ -51,13 +54,26 @@ export function validateEvidenceRecord(proof, dependency, dependencyBytes) {
     && fixture.keyframes.every((key, index) => record(key) && key.time === [0, 0.5, 1][index] && key.value === [0, 100, 0][index]),
     "FIXTURE_IDENTITY", "This verifier covers only the fixed three-key Opacity fixture.");
   requireThat(record(proof.visualReviewSpec), "RENDER_PATHS", "Missing recorded render paths.");
-  for (const [role, basename] of Object.entries(RENDERS)) {
+  for (const [role, asset] of Object.entries(RENDER_ASSETS)) {
     const recorded = proof.visualReviewSpec[role];
     // A downloaded Windows artifact is reviewed on Windows, Linux, or macOS.
     // Never follow the absolute runner path or a directory supplied by the record.
-    requireThat(typeof recorded === "string" && path.win32.basename(recorded) === basename,
-      "RENDER_PATHS", `Unexpected recorded filename for ${role}.`);
+    requireThat(typeof recorded === "string" && portableBasename(recorded) === asset.requested,
+      "RENDER_PATHS", `Unexpected recorded requested filename for ${role}.`);
   }
+}
+
+export function validateRenderMarker(marker, role) {
+  const asset = RENDER_ASSETS[role];
+  requireThat(asset !== undefined, "RENDER_ROLE", `Unknown render role '${role}'.`);
+  requireThat(record(marker) && marker.schemaVersion === 1, "RENDER_MARKER", `${role} marker schema is invalid.`);
+  requireThat(typeof marker.jobId === "string" && marker.jobId.length > 0, "RENDER_MARKER", `${role} marker is missing jobId.`);
+  requireThat(marker.status === "DONE" && marker.ok === true && marker.error === null && marker.queueItemRemoved === true,
+    "RENDER_MARKER", `${role} marker does not prove a completed successful queue lifecycle.`);
+  requireThat(typeof marker.completedAtMs === "number" && Number.isFinite(marker.completedAtMs) && marker.completedAtMs > 0,
+    "RENDER_MARKER", `${role} marker completedAtMs is invalid.`);
+  requireThat(typeof marker.outputPath === "string" && portableBasename(marker.outputPath) === asset.retained,
+    "RENDER_MARKER_OUTPUT", `${role} marker does not bind the requested render to the retained canonical MP4.`);
 }
 
 export function validateVideoMetadata(metadata) {
@@ -104,7 +120,7 @@ export function frameDifference(left, right) {
 }
 
 export function compareDecodedRenders(decoded) {
-  for (const role of Object.keys(RENDERS)) {
+  for (const role of Object.keys(RENDER_ASSETS)) {
     requireThat(Buffer.isBuffer(decoded[role]) && decoded[role].length === VIDEO_BYTES,
       "DECODED_LENGTH", `${role} must contain exactly 24 complete RGB24 frames.`);
   }
@@ -149,6 +165,22 @@ async function readBounded(filePath, maximumBytes) {
   return bytes;
 }
 
+async function resolveEvidenceFile(root, basename) {
+  const filePath = path.join(root, basename);
+  const resolved = await realpath(filePath);
+  requireThat(path.dirname(resolved) === root, "EVIDENCE_PATH_ESCAPE", `${basename} resolved outside the artifact directory.`);
+  // Return the original path so readBounded() can still reject a symlink by lstat.
+  return filePath;
+}
+
+async function evidencePathExists(filePath) {
+  try { await lstat(filePath); return true; }
+  catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 async function runBinary(executable, args, maximumBytes) {
   try {
     const result = await execute(executable, args, {
@@ -164,15 +196,16 @@ async function runBinary(executable, args, maximumBytes) {
 export async function decodeEvidenceVideo(filePath, { ffmpeg = "ffmpeg", ffprobe = "ffprobe" } = {}) {
   filePath = path.resolve(filePath);
   const before = await readBounded(filePath, 64 * 1024 * 1024);
+  const formatWhitelist = "avi,mov,mp4,m4a,3gp,3g2,mj2";
   const metadataBytes = await runBinary(ffprobe, [
-    "-v", "error", "-protocol_whitelist", "file", "-format_whitelist", "avi", "-select_streams", "v",
+    "-v", "error", "-protocol_whitelist", "file", "-format_whitelist", formatWhitelist, "-select_streams", "v",
     "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate,pix_fmt:frame=best_effort_timestamp_time,width,height",
     "-show_frames", "-of", "json", filePath,
   ], 256 * 1024);
   const metadata = parseJson(metadataBytes);
   validateVideoMetadata(metadata);
   const pixels = await runBinary(ffmpeg, [
-    "-v", "error", "-xerror", "-nostdin", "-noautorotate", "-protocol_whitelist", "file", "-format_whitelist", "avi",
+    "-v", "error", "-xerror", "-nostdin", "-noautorotate", "-protocol_whitelist", "file", "-format_whitelist", formatWhitelist,
     "-i", filePath, "-map", "0:v:0", "-an", "-sn", "-dn", "-fps_mode", "passthrough",
     "-threads", "1", "-c:v", "rawvideo", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1",
   ], VIDEO_BYTES + 1);
@@ -190,17 +223,51 @@ export async function reviewEvidence({ proofPath, acceptedP1P2Path, artifactDir 
   const root = await realpath(artifactDir);
   const decoded = {};
   const artifacts = {};
-  for (const [role, basename] of Object.entries(RENDERS)) {
-    const filePath = path.join(root, basename);
-    requireThat(path.dirname(await realpath(filePath)) === root, "EVIDENCE_PATH_ESCAPE", "Render resolved outside the artifact directory.");
+  for (const [role, asset] of Object.entries(RENDER_ASSETS)) {
+    const markerCandidate = path.join(root, asset.marker);
+    const retainedCandidate = path.join(root, asset.retained);
+    const markerPresent = await evidencePathExists(markerCandidate);
+    const retainedPresent = await evidencePathExists(retainedCandidate);
+    let filePath;
+    let marker = null;
+    let markerSha256 = null;
+    let retainedFilename = asset.requested;
+
+    // Production render.capture can canonicalize the requested .avi path to a
+    // retained .mp4. If either canonical artifact is present, require the pair
+    // and bind them through the completion marker instead of silently falling
+    // back to another file. Synthetic/legacy verifier fixtures may still use
+    // the originally requested AVI when neither canonical artifact is present.
+    if (markerPresent || retainedPresent) {
+      requireThat(markerPresent && retainedPresent, "RENDER_CANONICAL_PAIR", `${role} canonical render and completion marker must be retained together.`);
+      const markerPath = await resolveEvidenceFile(root, asset.marker);
+      const markerBytes = await readBounded(markerPath, 64 * 1024);
+      marker = parseJson(markerBytes);
+      validateRenderMarker(marker, role);
+      markerSha256 = digest(markerBytes);
+      filePath = await resolveEvidenceFile(root, asset.retained);
+      retainedFilename = asset.retained;
+    } else {
+      filePath = await resolveEvidenceFile(root, asset.requested);
+    }
+
     const result = await decodeEvidenceVideo(filePath, { ffmpeg, ffprobe });
     decoded[role] = result.pixels;
-    artifacts[role] = { filename: basename, encodedSha256: result.encodedSha256, encodedBytes: result.encodedBytes, metadata: result.metadata };
+    artifacts[role] = {
+      requestedFilename: asset.requested,
+      retainedFilename,
+      markerFilename: marker === null ? null : asset.marker,
+      markerSha256,
+      marker,
+      encodedSha256: result.encodedSha256,
+      encodedBytes: result.encodedBytes,
+      metadata: result.metadata,
+    };
   }
   const review = compareDecodedRenders(decoded);
   return {
     schemaVersion: 1,
-    verifier: "M3_TEMPORAL_EASE_P3_P4_PIXEL_SCREEN_V1",
+    verifier: "M3_TEMPORAL_EASE_P3_P4_PIXEL_SCREEN_V2",
     status: review.ok ? "PIXEL_CHECKS_PASSED_REVIEW_REQUIRED" : "PIXEL_CHECKS_FAILED",
     ...review,
     P3_visual_proof: false, P5_save_reopen_reconnect_transfer: false, independentReviewRequired: true,
