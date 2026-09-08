@@ -1,0 +1,52 @@
+name: M3 Temporal Ease Pixel Verifier Tests
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/m3-temporal-ease-pixel-tests.yml
+      - scripts/proofs/verify-temporal-ease-visual.mjs
+      - proofs/tests/temporal-ease-visual-fixtures.mjs
+      - proofs/tests/temporal-ease-visual-integration.mjs
+      - tests/m3-temporal-ease-visual.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-pixel-verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require FFmpeg and ffprobe
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends ffmpeg
+          fi
+          mkdir -p proofs/artifacts/temporal-ease-pixel-tests
+          node --version | tee proofs/artifacts/temporal-ease-pixel-tests/node-version.txt
+          ffmpeg -version > proofs/artifacts/temporal-ease-pixel-tests/ffmpeg-version.txt
+          ffprobe -version > proofs/artifacts/temporal-ease-pixel-tests/ffprobe-version.txt
+      - name: Test synthetic media only - not an After Effects proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tests/m3-temporal-ease-visual.test.mjs proofs/tests/temporal-ease-visual-integration.mjs \
+            | tee proofs/artifacts/temporal-ease-pixel-tests/test.log
+      - name: Retain verifier test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-ease-pixel-verifier-tests-${{ github.run_id }}
+          path: proofs/artifacts/temporal-ease-pixel-tests/
+          if-no-files-found: warn
+          retention-days: 14
