@@ -1,0 +1,1 @@
+Apply the guarded P3/P4 baseline fix discovered by real-AE run 34176484232, then remove the one-shot patch machinery before committing the resulting source/test changes.
