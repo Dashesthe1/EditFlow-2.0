@@ -107,18 +107,18 @@ test("spatial P3/P4 uses proof-owned cleanup instead of relying on deep generic 
   assert.match(installer, /editflow_host_m3_spatial_graph_proof_cleanup\.jsx/);
 });
 
-test("protocol 1.9 preview installer is isolated and does not alter accepted repository installer defaults", async () => {
+test("former protocol 1.9 preview installer delegates to and verifies the accepted standard installation", async () => {
   const source = await readFile(previewInstallerPath, "utf8");
   assert.match(source, /install-editflow-cep\.ps1/);
+  assert.match(source, /& \$AcceptedInstaller/);
   assert.match(source, /editflow_host_m3_spatial_graph\.jsx/);
   assert.match(source, /editflow_host_m3_spatial_graph_proof_cleanup\.jsx/);
   assert.match(source, /editflow_host_current_v19\.jsx/);
   assert.match(source, /var KNOWN_PROTOCOLS = \["1\.9\.0"/);
-  assert.match(source, /editflow_host_current_v18\.jsx/);
-  assert.match(source, /EditFlow2_HOST_PROTOCOL_18/);
   assert.match(source, /EditFlow2_HOST_PROTOCOL_19/);
-  assert.match(source, /supportedProtocolVersions = @\("1\.9\.0"/);
-  assert.match(source, /Repository\/default installer remains accepted protocol 1\.8/);
+  assert.match(source, /supportedProtocolVersions/);
+  assert.match(source, /compatibility verifier only/);
+  assert.doesNotMatch(source, /\.Replace\(\$KnownV18, \$KnownV19\)/);
 });
 
 test("self-hosted P3/P4 runner derives from accepted temporal lifecycle and swaps only proof-specific surfaces", async () => {

@@ -82,7 +82,7 @@ test("spatial Graph Editor P5 fixed reopen and cleanup scripts are proof-gated v
   assert.doesNotThrow(() => new vm.Script(cleanup, { filename: cleanupPath }));
 });
 
-test("spatial Graph Editor P5 wrappers reuse accepted transfer launchers and isolate protocol 1.9 preview installation", async () => {
+test("spatial Graph Editor P5 wrappers reuse accepted transfer launchers and exercise the standard protocol 1.9 installation", async () => {
   const [acceptance, selfHosted] = await Promise.all([
     readFile(acceptancePath, "utf8"),
     readFile(selfHostedPath, "utf8"),
@@ -98,9 +98,13 @@ test("spatial Graph Editor P5 wrappers reuse accepted transfer launchers and iso
   assert.match(selfHosted, /run-m3-temporal-interpolation-p5-self-hosted\.ps1/);
   assert.match(selfHosted, /run-m3-spatial-graph-p5\.ps1/);
   assert.match(selfHosted, /EDITFLOW_M3_SPATIAL_GRAPH_P5_PROOF/);
-  assert.match(selfHosted, /install-editflow-cep-v19-preview\.ps1/);
+  assert.match(selfHosted, /BaseLifecyclePath/);
+  assert.match(selfHosted, /scripts\\windows\\install-editflow-cep\.ps1/);
   assert.match(selfHosted, /protocol 1\.9/);
-  assert.match(selfHosted, /preview-install strategy already proven by spatial P3\/P4/);
+  assert.match(selfHosted, /production-path proof/);
+  assert.match(selfHosted, /standard EditFlow CEP installer/);
+  assert.match(selfHosted, /former v1\.9 preview verifier/);
+  assert.doesNotMatch(selfHosted, /\.Replace\('scripts\\windows\\install-editflow-cep\.ps1', 'scripts\\windows\\install-editflow-cep-v19-preview\.ps1'\)/);
 });
 
 test("spatial Graph Editor P5 workflow is isolated on its control branch and retains transfer evidence", async () => {
