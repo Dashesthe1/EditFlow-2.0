@@ -54,12 +54,12 @@ This tranche does **not** claim:
 
 ## Required real-AE proof before promotion
 
-The first proof sequence should follow the repository's established P1–P5 maturity discipline:
+Protocol 1.8 follows the same evidence meanings already used by accepted M3 tranches; it does not redefine P1–P5:
 
-- **P1 — exact structural readback:** prove scalar/spatial single-ease cardinality and at least one multi-component temporal property, with exact incoming/outgoing speed/influence readback.
-- **P2 — viewer-visible mutation:** apply deliberately asymmetric numeric ease to real animation and prove that sampled/rendered motion differs from the linear/manual-Bezier baseline while key values and key times remain unchanged.
-- **P3 — persistence:** save, close/reopen or equivalent owned-session persistence boundary, then read back the exact ease state.
-- **P4 — rollback:** induce a post-mutation failure inside the transaction boundary and prove the original ease arrays are restored.
-- **P5 — transfer:** reproduce the capability in a materially different property/context and fresh session, then accept evidence only if correlation, structural truth, and viewer-visible behavior all pass.
+- **P1 — deterministic validation/rejection:** prove bad key/path/cardinality/range/precondition/stale-revision requests are rejected before mutation and preserve revision/fingerprint truth.
+- **P2 — exact structural readback:** prove exact incoming/outgoing speed/influence readback on at least a scalar property and a multi-component temporal property, including live cardinality and exact no-op behavior.
+- **P3 — viewer-visible proof:** apply deliberately asymmetric numeric ease to real animation and prove sampled/rendered behavior differs from an appropriate baseline while key values and key times remain unchanged.
+- **P4 — induced-failure rollback:** force a post-mutation verification failure inside the transaction boundary and prove the original ease arrays and project state are restored.
+- **P5 — save/reopen/reconnect transfer:** prove persistence and reproduce the capability in a materially different property/context and fresh session, accepting transfer only when correlation, structural truth, and viewer-visible behavior all pass.
 
 Until those proofs exist, `ae.property.temporal_ease.set` and `ae.property.temporal_ease.readback` remain **PARTIAL / DECLARED**.
