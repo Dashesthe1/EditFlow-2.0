@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3MotionRenderAcceptedP1P2Evidence } from "./m3-motion-render-proof-maturity.js";
 import {
   AE_MOTION_RENDER_ADAPTER_BUILD_V110,
   AE_MOTION_RENDER_COMMANDS_V110,
@@ -72,7 +73,7 @@ export class CepEvalScriptMotionRenderTransportV110 {
 const riskForMotionRenderCommand = (command: AeMotionRenderCommandV110): CapabilityRecord["riskClass"] =>
   command === "motion_render.readback" ? "R0_READ_ONLY" : "R1_REVERSIBLE";
 
-export const M3_MOTION_RENDER_CAPABILITIES_V110: readonly CapabilityRecord[] =
+const M3_MOTION_RENDER_DECLARED_CAPABILITIES_V110: readonly CapabilityRecord[] =
   AE_MOTION_RENDER_COMMANDS_V110.map((command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForMotionRenderCommandV110(command)),
     domain: command.startsWith("comp.") ? "comp" : command.startsWith("layer.") ? "layer" : "render",
@@ -91,6 +92,9 @@ export const M3_MOTION_RENDER_CAPABILITIES_V110: readonly CapabilityRecord[] =
     riskClass: riskForMotionRenderCommand(command),
     fallbackPolicy: "FORBID",
   }));
+
+export const M3_MOTION_RENDER_CAPABILITIES_V110: readonly CapabilityRecord[] =
+  applyM3MotionRenderAcceptedP1P2Evidence(M3_MOTION_RENDER_DECLARED_CAPABILITIES_V110);
 
 export const buildMotionRenderRequestV110 = (input: {
   readonly requestId: string;
