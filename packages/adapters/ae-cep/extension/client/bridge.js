@@ -21,7 +21,9 @@
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
   var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
-  var KNOWN_PROTOCOLS = ["1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
+  var ACCEPTED_V17_KNOWN_PROTOCOLS = ["1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
+  var ACCEPTED_V17_HOST = Object.freeze({ loader: "editflow_host_current_v17.jsx", flag: "EditFlow2_HOST_PROTOCOL_17" });
+  var KNOWN_PROTOCOLS = ["1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"];
 
   function setStatus(state, text) {
     statusEl.setAttribute("data-state", state);
