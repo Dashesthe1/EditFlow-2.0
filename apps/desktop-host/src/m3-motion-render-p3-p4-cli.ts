@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
@@ -52,6 +53,13 @@ interface RenderCompletionFile {
   readonly error: string | null;
   readonly completedAtMs: number;
   readonly queueItemRemoved: boolean;
+}
+
+interface ProofMarker {
+  readonly proofId: string;
+  readonly ok: boolean;
+  readonly error: string | null;
+  readonly [key: string]: unknown;
 }
 
 interface RecordedResponse {
@@ -159,7 +167,36 @@ const waitForRenderCompletion = async (completionPath: string, jobId: string, ti
   throw new Error(`RENDER_JOB_COMPLETION_TIMEOUT: ${jobId}${lastError ? ` (${lastError})` : ""}`);
 };
 
-const createBmp24 = (width: number, height: number): Buffer => {
+const waitForMarker = async (filePath: string, proofId: string, timeoutMs: number): Promise<ProofMarker> => {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: string | null = null;
+  while (Date.now() < deadline) {
+    try {
+      const parsed = JSON.parse(stripUtf8Bom(await readFile(filePath, "utf8"))) as unknown;
+      const marker = asRecord(parsed);
+      if (marker === null) throw new Error("proof marker must be an object");
+      if (marker["proofId"] !== proofId) throw new Error(`unexpected proofId '${String(marker["proofId"])}'`);
+      if (typeof marker["ok"] !== "boolean") throw new Error("proof marker is missing boolean ok");
+      if (marker["error"] !== null && typeof marker["error"] !== "string") throw new Error("proof marker has invalid error");
+      return marker as unknown as ProofMarker;
+    } catch (error) { lastError = error instanceof Error ? error.message : String(error); }
+    await sleep(150);
+  }
+  throw new Error(`PROOF_MARKER_TIMEOUT: ${proofId}${lastError ? ` (${lastError})` : ""}`);
+};
+
+const launchAfterFxScript = async (afterFxPath: string, scriptPath: string): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(afterFxPath, ["-r", scriptPath], { stdio: "ignore", windowsHide: false });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+};
+
+const createBmp24 = (width: number, height: number, frameIndex = 0, frameCount = 1): Buffer => {
   const rowStride = Math.ceil((width * 3) / 4) * 4;
   const pixelBytes = rowStride * height;
   const buffer = Buffer.alloc(54 + pixelBytes, 0);
@@ -172,15 +209,22 @@ const createBmp24 = (width: number, height: number): Buffer => {
   buffer.writeUInt16LE(1, 26);
   buffer.writeUInt16LE(24, 28);
   buffer.writeUInt32LE(pixelBytes, 34);
+
+  const travelWidth = Math.max(1, width - 28);
+  const movingX = 14 + ((frameIndex * 13) % travelWidth);
+  const movingY = Math.round((height / 2) + Math.sin((frameIndex / Math.max(1, frameCount)) * Math.PI * 4) * Math.min(20, height / 4));
   for (let y = 0; y < height; y += 1) {
     const destinationY = height - 1 - y;
     const rowOffset = 54 + destinationY * rowStride;
     for (let x = 0; x < width; x += 1) {
       const checker = ((Math.floor(x / 8) + Math.floor(y / 8)) % 2) === 0;
-      const diagonal = Math.abs(x - y) <= 3 || Math.abs((width - 1 - x) - y) <= 3;
-      const rgb: readonly [number, number, number] = diagonal
-        ? [255, 255, 255]
-        : checker ? [32, 220, 255] : [238, 40, 176];
+      const movingSquare = Math.abs(x - movingX) <= 9 && Math.abs(y - movingY) <= 9;
+      const movingCore = Math.abs(x - movingX) <= 3 && Math.abs(y - movingY) <= 3;
+      const diagonal = frameCount === 1 && (Math.abs(x - y) <= 3 || Math.abs((width - 1 - x) - y) <= 3);
+      const rgb: readonly [number, number, number] = movingCore
+        ? [255, 44, 44]
+        : movingSquare || diagonal ? [255, 255, 255]
+          : checker ? [32, 220, 255] : [238, 40, 176];
       const offset = rowOffset + x * 3;
       buffer[offset] = rgb[2];
       buffer[offset + 1] = rgb[1];
@@ -194,6 +238,8 @@ const main = async (): Promise<void> => {
   const configPath = requireArgument("--config");
   const resultPath = requireArgument("--result");
   const acceptedP1P2Path = requireArgument("--accepted-p1-p2");
+  const afterFxPath = requireArgument("--afterfx-path");
+  const cleanupScriptPath = requireArgument("--cleanup-script");
   const timeoutMs = Number(argument("--timeout-ms") ?? "240000");
   if (!Number.isFinite(timeoutMs) || timeoutMs < 20_000) throw new Error("--timeout-ms must be at least 20000.");
 
@@ -202,6 +248,9 @@ const main = async (): Promise<void> => {
   const acceptedP1P2Sha256 = createHash("sha256").update(acceptedBytes).digest("hex");
   const artifactDir = path.dirname(resultPath);
   const sourceBmpPath = path.join(artifactDir, "p3-motion-source.bmp");
+  const blendSequenceFrameCount = 36;
+  const blendSequenceFirstPath = path.join(artifactDir, "p3-blend-source-0000.bmp");
+  const cleanupMarkerPath = path.join(artifactDir, "cleanup-result.json");
   const motionBaselinePath = path.join(artifactDir, "p3-motion-baseline.avi");
   const motionEnabledPath = path.join(artifactDir, "p3-motion-blur-enabled.avi");
   const motionRestoredPath = path.join(artifactDir, "p3-motion-restored-baseline.avi");
@@ -224,18 +273,19 @@ const main = async (): Promise<void> => {
   let projectSnapshot: AeProjectSnapshot | null = null;
   let baselineFingerprint: string | null = null;
   let baselineItemCount: number | null = null;
+  let baselineFilePath: string | null = null;
   let environment: Awaited<ReturnType<AeCepAdapterClientV11["probe"]>> | null = null;
   let panel: Awaited<ReturnType<LoopbackCepBroker["waitForPanel"]>> | null = null;
-  let cleanupUndoCount = 0;
+  let cleanupMarker: ProofMarker | null = null;
+  let cleanupResetAttempted = false;
 
   const projectId = "m3-motion-render-p3-p4-real-ae";
   const prefix = `M3_MOTION_RENDER_P34_${Date.now()}`;
   const transactionId = `${prefix}_TX`;
   const mediaStable = `${prefix}_MEDIA`;
+  const blendMediaStable = `${prefix}_BLEND_MEDIA`;
   const motionCompStable = `${prefix}_MOTION_COMP`;
   const motionLayerStable = `${prefix}_MOTION_LAYER`;
-  const blendSourceStable = `${prefix}_BLEND_SOURCE_COMP`;
-  const blendSourceLayerStable = `${prefix}_BLEND_SOURCE_LAYER`;
   const blendTargetStable = `${prefix}_BLEND_TARGET_COMP`;
   const blendTargetLayerStable = `${prefix}_BLEND_TARGET_LAYER`;
   const positionPath = ["ADBE Transform Group", "ADBE Position"] as const;
@@ -336,30 +386,30 @@ const main = async (): Promise<void> => {
     await refreshState();
     return completion;
   };
-  const restoreBaselineThroughUndo = async (): Promise<void> => {
+  const resetProofProject = async (): Promise<void> => {
     if (client === null || baselineFingerprint === null || baselineItemCount === null) return;
-    for (let attempt = 0; attempt < 80; attempt += 1) {
-      const current = await client.observe(projectId);
-      state = current.observed;
-      hostRevision = current.hostRevision;
-      projectSnapshot = current.project;
-      if (current.observed.projectFingerprint === baselineFingerprint && current.project.itemCount === baselineItemCount) return;
-      const response = await client.undoLast({
-        transactionId,
-        operationId: `${transactionId}_CLEANUP_${attempt + 1}`,
-        expectedState: current.observed,
-      });
-      recordResponse(response);
-      cleanupUndoCount += 1;
-      if (response.outcome === "FAILED" || response.outcome === "REJECTED") throw new Error(`Cleanup undo failed: ${response.error?.code ?? response.outcome}`);
+    await rm(cleanupMarkerPath, { force: true });
+    cleanupResetAttempted = true;
+    await launchAfterFxScript(afterFxPath, cleanupScriptPath);
+    cleanupMarker = await waitForMarker(cleanupMarkerPath, "M3_MOTION_RENDER_P3_P4_CLEANUP", timeoutMs);
+    checks.proof_cleanup_script_passed = cleanupMarker.ok === true
+      && cleanupMarker["proofPrefix"] === prefix
+      && cleanupMarker["verifiedItemCount"] === 4
+      && cleanupMarker["blankItemCount"] === 0;
+    if (!checks.proof_cleanup_script_passed) {
+      throw new Error(`Motion-render P3/P4 cleanup proof failed: ${cleanupMarker.error ?? "invalid cleanup marker"}`);
     }
-    throw new Error("Cleanup undo budget exhausted before exact baseline restoration.");
   };
 
   try {
     await mkdir(artifactDir, { recursive: true });
     await writeFile(sourceBmpPath, createBmp24(80, 80));
+    for (let frameIndex = 0; frameIndex < blendSequenceFrameCount; frameIndex += 1) {
+      const frameName = `p3-blend-source-${String(frameIndex).padStart(4, "0")}.bmp`;
+      await writeFile(path.join(artifactDir, frameName), createBmp24(160, 96, frameIndex, blendSequenceFrameCount));
+    }
     checks.fixture_source_written = (await stat(sourceBmpPath)).size > 54;
+    checks.blend_sequence_written = (await stat(blendSequenceFirstPath)).size > 54;
     checks.accepted_p1_p2_record_verified = acceptedP1P2.accepted === true;
 
     const config = parseConfig(JSON.parse(stripUtf8Bom(await readFile(configPath, "utf8"))) as unknown);
@@ -388,11 +438,14 @@ const main = async (): Promise<void> => {
     projectSnapshot = baseline.project;
     baselineFingerprint = baseline.observed.projectFingerprint;
     baselineItemCount = baseline.project.itemCount;
+    baselineFilePath = baseline.project.filePath;
     checks.baseline_blank = baseline.project.itemCount === 0 && baseline.project.filePath === null;
     if (!checks.baseline_blank) throw new Error("Motion-render P3/P4 requires an isolated blank unsaved AE project.");
 
     const media = await executeV11("media.import", { path: sourceBmpPath, stableId: mediaStable, sequence: false });
-    checks.media_import = media.affectedObjects.some((item) => item.stableId === mediaStable && item.kind === "FOOTAGE");
+    const blendMedia = await executeV11("media.import", { path: blendSequenceFirstPath, stableId: blendMediaStable, sequence: true });
+    checks.media_import = media.affectedObjects.some((item) => item.stableId === mediaStable && item.kind === "FOOTAGE")
+      && blendMedia.affectedObjects.some((item) => item.stableId === blendMediaStable && item.kind === "FOOTAGE");
 
     await executeV11("comp.create", { stableId: motionCompStable, name: `${prefix} Motion Blur Visual`, width: 320, height: 180, pixelAspect: 1, duration: 1, frameRate: 24 });
     await executeV11("layer.add_media", { stableId: motionLayerStable, comp: { stableId: motionCompStable }, item: { stableId: mediaStable } });
@@ -406,15 +459,16 @@ const main = async (): Promise<void> => {
     });
     checks.motion_position_keys_created = true;
 
-    await executeV11("comp.create", { stableId: blendSourceStable, name: `${prefix} Blend Source 12fps`, width: 320, height: 180, pixelAspect: 1, duration: 1, frameRate: 12 });
-    await executeV11("layer.add_media", { stableId: blendSourceLayerStable, comp: { stableId: blendSourceStable }, item: { stableId: mediaStable } });
-    await executeV11("property.set_keyframes", {
-      comp: { stableId: blendSourceStable }, layer: { stableId: blendSourceLayerStable }, propertyPath: positionPath,
-      keyframes: [{ time: 0, value: [36, 90] }, { time: 1, value: [284, 90] }],
-    });
     await executeV11("comp.create", { stableId: blendTargetStable, name: `${prefix} Blend Target 24fps`, width: 320, height: 180, pixelAspect: 1, duration: 1, frameRate: 24 });
-    await executeV11("layer.add_media", { stableId: blendTargetLayerStable, comp: { stableId: blendTargetStable }, item: { stableId: blendSourceStable } });
-    checks.blend_12fps_source_in_24fps_target = true;
+    await executeV11("layer.add_media", { stableId: blendTargetLayerStable, comp: { stableId: blendTargetStable }, item: { stableId: blendMediaStable } });
+    const blendStretch = await executeV11("layer.set_timing", {
+      comp: { stableId: blendTargetStable }, layer: { stableId: blendTargetLayerStable }, timing: { stretch: 300 },
+    });
+    await executeV11("layer.set_timing", {
+      comp: { stableId: blendTargetStable }, layer: { stableId: blendTargetLayerStable }, timing: { outPoint: 1 },
+    });
+    checks.blend_retimed_sequence_in_24fps_target = (blendStretch.outcome === "APPLIED" || blendStretch.outcome === "NO_OP")
+      && nested(blendStretch.readback, "layer")?.["stretch"] === 300;
 
     const motionInitial = await readMotion(motionCompStable, motionLayerStable);
     const motionInitialComp = valuesOf(motionInitial, "composition");
@@ -531,7 +585,7 @@ const main = async (): Promise<void> => {
   } catch (error) {
     failureError = error instanceof Error ? error.message : String(error);
   } finally {
-    try { await restoreBaselineThroughUndo(); }
+    try { await resetProofProject(); }
     catch (error) { cleanupErrors.push(error instanceof Error ? error.message : String(error)); }
     try {
       if (client !== null && baselineFingerprint !== null && baselineItemCount !== null) {
@@ -541,8 +595,15 @@ const main = async (): Promise<void> => {
         projectSnapshot = finalState.project;
         checks.cleanup_fingerprint_restored = finalState.observed.projectFingerprint === baselineFingerprint;
         checks.cleanup_item_count_restored = finalState.project.itemCount === baselineItemCount;
-        checks.cleanup_managed_items_absent = ![mediaStable, motionCompStable, blendSourceStable, blendTargetStable].some((stableId) => projectHasStableItem(finalState.project, stableId));
-        cleanupComplete = checks.cleanup_fingerprint_restored === true && checks.cleanup_item_count_restored === true && checks.cleanup_managed_items_absent === true && cleanupErrors.length === 0;
+        checks.cleanup_file_path_restored = finalState.project.filePath === baselineFilePath;
+        checks.cleanup_managed_items_absent = ![mediaStable, blendMediaStable, motionCompStable, blendTargetStable]
+          .some((stableId) => projectHasStableItem(finalState.project, stableId));
+        cleanupComplete = checks.proof_cleanup_script_passed === true
+          && checks.cleanup_fingerprint_restored === true
+          && checks.cleanup_item_count_restored === true
+          && checks.cleanup_file_path_restored === true
+          && checks.cleanup_managed_items_absent === true
+          && cleanupErrors.length === 0;
       }
     } catch (error) { cleanupErrors.push(error instanceof Error ? error.message : String(error)); }
     if (broker !== null) await broker.stop().catch(() => undefined);
@@ -550,12 +611,12 @@ const main = async (): Promise<void> => {
 
   const p4Required = [
     "panel_negotiated_v110", "panel_supports_v110_v11", "host_probe", "baseline_blank",
-    "accepted_p1_p2_record_verified", "fixture_source_written", "media_import",
-    "motion_position_keys_created", "blend_12fps_source_in_24fps_target",
+    "accepted_p1_p2_record_verified", "fixture_source_written", "blend_sequence_written", "media_import",
+    "motion_position_keys_created", "blend_retimed_sequence_in_24fps_target",
     "p3_motion_structural_enabled", "p3_motion_restored_structural",
     "p3_frame_mix_structural", "p3_pixel_motion_structural", "p3_blend_restored_structural",
-    "p3_visual_artifacts_emitted", "p4_structural_rollback_complete",
-    "cleanup_fingerprint_restored", "cleanup_item_count_restored", "cleanup_managed_items_absent",
+    "p3_visual_artifacts_emitted", "p4_structural_rollback_complete", "proof_cleanup_script_passed",
+    "cleanup_fingerprint_restored", "cleanup_item_count_restored", "cleanup_file_path_restored", "cleanup_managed_items_absent",
   ];
   const p4Pass = failureError === null && cleanupComplete && p4Required.every((key) => checks[key] === true);
   await writeJson(resultPath, {
@@ -591,7 +652,8 @@ const main = async (): Promise<void> => {
       rollbackMotionPath,
       rollbackBlendPath,
     },
-    cleanupUndoCount,
+    cleanupResetAttempted,
+    cleanupMarker,
     cleanupComplete,
     cleanupErrors,
   });
