@@ -31,13 +31,13 @@ test("spatial-graph P1/P2 CLI negotiates 1.9 while reusing accepted 1.5 and 1.1 
   assert.match(source, /\{ time: interiorTime, value: 60 \}/);
 });
 
-test("authenticated loopback broker compiles protocol 1.9 without making it the default runtime", async () => {
+test("authenticated loopback broker keeps accepted protocol 1.9 compiled beneath additive 1.10 without changing the default runtime", async () => {
   const source = await readFile(brokerPath, "utf8");
   assert.match(source, /AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19/);
   assert.match(source, /AeSpatialGraphTransportV19/);
   assert.match(source, /AeSpatialGraphRequestV19/);
   assert.match(source, /AeSpatialGraphResponseV19/);
-  assert.match(source, /COMPILED_PROTOCOLS = \[AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18/);
+  assert.match(source, /COMPILED_PROTOCOLS = \[AE_MOTION_RENDER_PROTOCOL_VERSION_V110, AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18/);
   assert.match(source, /supportedProtocolVersions: normalizeBrokerProtocols/);
   assert.match(source, /const requested = input \?\? \[AE_ADAPTER_PROTOCOL_VERSION_V11\]/);
   assert.match(source, /dispatch\(request: AeSpatialGraphRequestV19\): Promise<AeSpatialGraphResponseV19>/);
