@@ -3,7 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import { applyM3MotionRenderAcceptedP1P2Evidence } from "./m3-motion-render-proof-maturity.js";
+import { applyM3MotionRenderAcceptedP3P4Evidence } from "./m3-motion-render-proof-maturity.js";
 import {
   AE_MOTION_RENDER_ADAPTER_BUILD_V110,
   AE_MOTION_RENDER_COMMANDS_V110,
@@ -94,7 +94,7 @@ const M3_MOTION_RENDER_DECLARED_CAPABILITIES_V110: readonly CapabilityRecord[] =
   }));
 
 export const M3_MOTION_RENDER_CAPABILITIES_V110: readonly CapabilityRecord[] =
-  applyM3MotionRenderAcceptedP1P2Evidence(M3_MOTION_RENDER_DECLARED_CAPABILITIES_V110);
+  applyM3MotionRenderAcceptedP3P4Evidence(M3_MOTION_RENDER_DECLARED_CAPABILITIES_V110);
 
 export const buildMotionRenderRequestV110 = (input: {
   readonly requestId: string;
