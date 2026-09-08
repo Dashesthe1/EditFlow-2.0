@@ -10,19 +10,29 @@ import {
   M3_MOTION_RENDER_P1_P2_ACCEPTANCE_ARTIFACT,
   M3_MOTION_RENDER_P1_P2_ACCEPTANCE_ARTIFACT_SHA256,
   M3_MOTION_RENDER_P1_P2_RESULT_SHA256,
+  M3_MOTION_RENDER_P3_P4_ACCEPTED_SOURCE_COMMIT,
+  M3_MOTION_RENDER_P3_P4_ACCEPTANCE_CONTROL_COMMIT,
+  M3_MOTION_RENDER_P3_P4_ACCEPTANCE_RUN,
+  M3_MOTION_RENDER_P3_P4_ACCEPTANCE_JOB,
+  M3_MOTION_RENDER_P3_P4_ACCEPTANCE_ARTIFACT,
+  M3_MOTION_RENDER_P3_P4_ACCEPTANCE_ARTIFACT_SHA256,
+  M3_MOTION_RENDER_P3_P4_RESULT_SHA256,
   applyM3MotionRenderAcceptedP1P2Evidence,
+  applyM3MotionRenderAcceptedP3P4Evidence,
   m3MotionRenderP1P2MaturityForCapability,
+  m3MotionRenderP3P4MaturityForCapability,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-motion-render-proof-maturity.js";
 import { M3_MOTION_RENDER_CAPABILITIES_V110 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-motion-render.js";
 
-const acceptancePath = "proofs/diagnostics/m3-motion-render-p1-p2-acceptance.json";
+const p1P2AcceptancePath = "proofs/diagnostics/m3-motion-render-p1-p2-acceptance.json";
+const p3P4AcceptancePath = "proofs/diagnostics/m3-motion-render-p3-p4-run4-acceptance.md";
 const expectedCapabilities = [
   "ae.comp.motion_render.set",
   "ae.layer.motion_render.set",
   "ae.motion_render.readback",
 ];
 
-test("motion-render P1/P2 maturity is pinned to retained real-AE structural evidence", () => {
+test("motion-render P1/P2 maturity remains pinned to retained real-AE structural evidence", () => {
   assert.equal(M3_MOTION_RENDER_P1_P2_ACCEPTED_SOURCE_COMMIT, "70b1549c56179689fb033db36f13fc4b6dbb5998");
   assert.equal(M3_MOTION_RENDER_P1_P2_ACCEPTANCE_CONTROL_COMMIT, "34adbd69d6cfb847c2900551cd5ee6caa872981a");
   assert.equal(M3_MOTION_RENDER_P1_P2_ACCEPTANCE_RUN, 34275036819);
@@ -36,12 +46,59 @@ test("motion-render P1/P2 maturity is pinned to retained real-AE structural evid
   assert.equal(m3MotionRenderP1P2MaturityForCapability("ae.motion_render.future"), "DECLARED");
 });
 
-test("motion-render capabilities stay PARTIAL at P1/P2 and cannot overclaim visual or transfer maturity", () => {
+test("motion-render accepted P3/P4 evidence is pinned to the successful real-AE rollback run", () => {
+  assert.equal(M3_MOTION_RENDER_P3_P4_ACCEPTED_SOURCE_COMMIT, "042a54b63a73dc3fcbcd77d5cb9d6f981492713e");
+  assert.equal(M3_MOTION_RENDER_P3_P4_ACCEPTANCE_CONTROL_COMMIT, "b25003477abdf7001779bbdd33247e13bd30b1e9");
+  assert.equal(M3_MOTION_RENDER_P3_P4_ACCEPTANCE_RUN, 34279808693);
+  assert.equal(M3_MOTION_RENDER_P3_P4_ACCEPTANCE_JOB, 102241577916);
+  assert.equal(M3_MOTION_RENDER_P3_P4_ACCEPTANCE_ARTIFACT, 10077191111);
+  assert.equal(M3_MOTION_RENDER_P3_P4_ACCEPTANCE_ARTIFACT_SHA256, "79651dec656bd360e14d2db351333e05cbfee4d1e2efdc0c96dc79c56d509dcf");
+  assert.equal(M3_MOTION_RENDER_P3_P4_RESULT_SHA256, "ca8db8ed5443dbde8f0db812584a593b34aebcde7e5aeb7bb85aff95477aae70");
+  for (const capabilityId of expectedCapabilities) {
+    assert.equal(m3MotionRenderP3P4MaturityForCapability(capabilityId), "ROLLBACK");
+  }
+  assert.equal(m3MotionRenderP3P4MaturityForCapability("ae.motion_render.future"), "DECLARED");
+});
+
+test("motion-render capabilities advance through ROLLBACK but stay PARTIAL until P5 transfer", () => {
   for (const capability of M3_MOTION_RENDER_CAPABILITIES_V110) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "STRUCTURAL");
+    assert.equal(capability.proofMaturity, "ROLLBACK");
   }
-  const projected = applyM3MotionRenderAcceptedP1P2Evidence([{
+
+  const stagedP1P2 = applyM3MotionRenderAcceptedP1P2Evidence([{
+    id: "ae.comp.motion_render.set",
+    domain: "render",
+    description: "test",
+    status: "FULL",
+    proofMaturity: "ROBUST",
+    routes: [],
+    readbackStrategy: null,
+    visualProofProfile: null,
+    rollbackStrategy: null,
+    riskClass: "R1_REVERSIBLE",
+    fallbackPolicy: "FORBID",
+  }]);
+  assert.equal(stagedP1P2[0].status, "PARTIAL");
+  assert.equal(stagedP1P2[0].proofMaturity, "STRUCTURAL");
+
+  const stagedP3P4 = applyM3MotionRenderAcceptedP3P4Evidence([{
+    id: "ae.comp.motion_render.set",
+    domain: "render",
+    description: "test",
+    status: "FULL",
+    proofMaturity: "ROBUST",
+    routes: [],
+    readbackStrategy: null,
+    visualProofProfile: null,
+    rollbackStrategy: null,
+    riskClass: "R1_REVERSIBLE",
+    fallbackPolicy: "FORBID",
+  }]);
+  assert.equal(stagedP3P4[0].status, "PARTIAL");
+  assert.equal(stagedP3P4[0].proofMaturity, "ROLLBACK");
+
+  const unknown = applyM3MotionRenderAcceptedP3P4Evidence([{
     id: "ae.motion_render.future",
     domain: "render",
     description: "test",
@@ -54,12 +111,12 @@ test("motion-render capabilities stay PARTIAL at P1/P2 and cannot overclaim visu
     riskClass: "R0_READ_ONLY",
     fallbackPolicy: "FORBID",
   }]);
-  assert.equal(projected[0].status, "PARTIAL");
-  assert.equal(projected[0].proofMaturity, "DECLARED");
+  assert.equal(unknown[0].status, "PARTIAL");
+  assert.equal(unknown[0].proofMaturity, "DECLARED");
 });
 
-test("motion-render P1/P2 acceptance record pins exact evidence and leaves P3/P4/P5 false", async () => {
-  const acceptance = JSON.parse(await readFile(acceptancePath, "utf8"));
+test("motion-render P1/P2 acceptance record pins exact evidence and leaves later proof levels false", async () => {
+  const acceptance = JSON.parse(await readFile(p1P2AcceptancePath, "utf8"));
   assert.equal(acceptance.proofId, "M3_MOTION_RENDER_P1_P2_ACCEPTANCE");
   assert.equal(acceptance.protocolVersion, "1.10.0");
   assert.equal(acceptance.accepted, true);
@@ -87,6 +144,18 @@ test("motion-render P1/P2 acceptance record pins exact evidence and leaves P3/P4
   assert.equal(acceptance.structuralEvidence.pixelMotion.derivedFrameBlending, true);
   assert.equal(acceptance.structuralEvidence.noFrameBlend.derivedFrameBlending, false);
   assert.equal(acceptance.structuralEvidence.cleanupFingerprintRestored, true);
-  assert.ok(acceptance.limitations.some((entry) => /STRUCTURAL maturity only/.test(entry)));
-  assert.ok(acceptance.limitations.some((entry) => /Production runtime remains on accepted protocol 1\.9/.test(entry)));
+});
+
+test("motion-render P3/P4 acceptance record requires independent visual review and does not claim P5", async () => {
+  const acceptance = await readFile(p3P4AcceptancePath, "utf8");
+  assert.match(acceptance, /Exact CI-green source commit under proof: `042a54b63a73dc3fcbcd77d5cb9d6f981492713e`/);
+  assert.match(acceptance, /Real-AE control\/trigger commit: `b25003477abdf7001779bbdd33247e13bd30b1e9`/);
+  assert.match(acceptance, /GitHub Actions real-AE run: `34279808693`/);
+  assert.match(acceptance, /Real-AE job: `102241577916`/);
+  assert.match(acceptance, /artifact id `10077191111`/);
+  assert.match(acceptance, /Artifact ZIP digest: `sha256:79651dec656bd360e14d2db351333e05cbfee4d1e2efdc0c96dc79c56d509dcf`/);
+  assert.match(acceptance, /\*\*P3 is accepted by independent retained-artifact review/);
+  assert.match(acceptance, /\*\*P4 is accepted for both composition and layer motion-render mutation families/);
+  assert.match(acceptance, /remain `PARTIAL`, with accepted proof maturity advanced through `ROLLBACK`/);
+  assert.match(acceptance, /P5 save\/reopen\/reconnect transfer is the next separate tranche/);
 });
