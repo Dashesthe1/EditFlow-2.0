@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_SPATIAL_GRAPH_P1_P4_ACCEPTANCE",
+  "protocolVersion": "1.9.0",
+  "accepted": true,
+  "acceptedAt": "2026-09-08T18:33:40Z",
+  "scope": "protocol-1.9 spatial Graph Editor envelope exercised by retained real-AE P1-P4 evidence",
+  "proofLevels": {
+    "P1_validation_rejection": true,
+    "P2_structural_readback": true,
+    "P3_visual_proof": true,
+    "P4_failure_injection_rollback": true,
+    "P5_save_reopen_reconnect_transfer": false
+  },
+  "p1P2": {
+    "sourceCommit": "041f2db8ee01095dfa6de7ecf9c2de29a232c17b",
+    "controlCommit": "b3d9bfbe2a1ce2c4712525df99b82be171252b01",
+    "workflowRunId": 34182897797,
+    "jobId": 101925388116,
+    "artifactId": 10039524832,
+    "artifactName": "m3-spatial-graph-p1-p2-proof-34182897797",
+    "artifactDigest": "sha256:51967c55811db23f296c3c0f9d0e6800ecc8ba037bcff8283ec801c3cf5b87f5",
+    "afterEffects": "25.6.6 build 4"
+  },
+  "p3P4": {
+    "sourceCommit": "0c297200af3563d2f714d61a2df718af81cd1d4c",
+    "controlCommit": "5dedd0355959fbf24fd0d3d7960abb870389879b",
+    "workflowRunId": 34184591197,
+    "jobId": 102183384263,
+    "artifactId": 10070526495,
+    "artifactName": "m3-spatial-graph-p3-p4-proof-34184591197",
+    "artifactDigest": "sha256:122342798174a2c451a1b94f03a1e79bfa8e9b643ce23d9db607d1d7775ca70a",
+    "resultSha256": "d67703a94dd6940b06529a7da99e6e86e14b3abb9ee0bfc8efca2bdde0b06812",
+    "decodedBaselineSha256": "260285dad93b08ae179fa6b4a5cd7e608782c33fa33f7a3a8ee01e0df6406d72",
+    "decodedCurvedSha256": "331eeb3c88992a4ebf8d49297daf878c4053c4f7f1f12e5e5fb9c32e78701f22",
+    "decodedRestoredBaselineSha256": "260285dad93b08ae179fa6b4a5cd7e608782c33fa33f7a3a8ee01e0df6406d72",
+    "decodedPostRollbackSha256": "260285dad93b08ae179fa6b4a5cd7e608782c33fa33f7a3a8ee01e0df6406d72",
+    "afterEffects": "25.6.6 build 4"
+  },
+  "independentAcceptance": {
+    "recordPath": "proofs/diagnostics/m3-spatial-graph-p3-p4-run1-acceptance.md",
+    "recordCommit": "3a4793ec125609bcac7b9e5aafe2032e17670d32"
+  },
+  "limitations": [
+    "P1-P4 acceptance is bounded to the exercised protocol-1.9 spatial Graph Editor envelope and the exact retained evidence recorded above.",
+    "This record does not claim P5 save/reopen/reconnect transfer and must not promote the spatial capabilities to FULL.",
+    "This record does not claim arbitrary non-spatial properties, arbitrary custom-plugin graph editors, or visual equivalence for every possible multidimensional path."
+  ]
+}

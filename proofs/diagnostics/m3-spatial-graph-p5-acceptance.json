@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_SPATIAL_GRAPH_P5_ACCEPTANCE",
+  "protocolVersion": "1.9.0",
+  "accepted": true,
+  "acceptedAt": "2026-09-08T18:43:25Z",
+  "scope": "protocol-1.9 spatial Graph Editor transfer envelope exercised by the retained real-AE Position fixture",
+  "provenance": {
+    "acceptedSourceCommit": "d42600e0d1004c71d91296bc6e4c31981d9a62a6",
+    "controlCommit": "5ebff93d9e13681914da558eb16c1c9b96f27617",
+    "workflowRunId": 34264619734,
+    "jobId": 102190765510,
+    "artifactId": 10071318446,
+    "artifactName": "m3-spatial-graph-p5-proof-34264619734",
+    "artifactDigest": "sha256:66cf3d6b119115c948cfbdc908ac1f9c10d4893d953c3f44c8ae7527c8beaa55",
+    "resultSha256": "679b6a3cc4c712072368da3fc0753d02cfb366965e26258f0b3d03a231b24297",
+    "savedProjectSha256": "629e0c1008c98bdab63b82ff586f2ddc0ebedab3cbed119506ec7e636c095a42",
+    "afterEffects": "25.6.6 build 4",
+    "extensionVersion": "0.1.0-dev.8"
+  },
+  "proofLevels": {
+    "P1_validation_rejection": true,
+    "P2_structural_readback": true,
+    "P3_visual_proof": true,
+    "P4_failure_injection_rollback": true,
+    "P5_save_reopen_reconnect_transfer": true
+  },
+  "transferEvidence": {
+    "initialSessionId": "933ded34-c956-4024-9e5f-784900b144f5",
+    "reconnectedSessionId": "024f326d-914f-4692-832c-836f7e2ad580",
+    "sessionsDistinct": true,
+    "savedProjectFingerprint": "project:sha256:6175c7bc210bff6d88813a9c5e1a9b89866568edc00768174397409949a046b3",
+    "savedSpatialKeyTime": 0.49995930989583,
+    "savedNativeLayerId": 25,
+    "reopenedNativeLayerId": 25,
+    "nativeLayerIdPreserved": true,
+    "savedState": {
+      "inTangent": [-74.6666641235352, 0, 0],
+      "outTangent": [74.6666641235352, 0, 0],
+      "continuous": true,
+      "autoBezier": true,
+      "roving": true
+    },
+    "postReconnectMutation": {
+      "inTangent": [-96, 132, 0],
+      "outTangent": [156, -84, 0],
+      "continuous": false,
+      "autoBezier": false,
+      "roving": false
+    },
+    "cleanupFingerprintRestored": true
+  },
+  "checksAccepted": [
+    "authenticated protocol-1.9 negotiation before save",
+    "exact pre-save spatial state readback",
+    "non-empty .aep save plus saved-path readback",
+    "fixed .aep reopen with protocol-1.9 dispatcher reload",
+    "distinct authenticated CEP session after broker restart",
+    "stable fixture and saved structural fingerprint after reopen",
+    "exact host-owned spatial state and key-time persistence",
+    "native After Effects Layer.id preservation across reload",
+    "fresh post-reconnect spatial mutation plus exact readback",
+    "proof-only cleanup with blank baseline fingerprint restoration"
+  ],
+  "limitations": [
+    "Transfer acceptance is bounded to the protocol-1.9 spatial Graph Editor capabilities exercised on the Position fixture: spatial tangents, Continuous/Auto Bezier, roving, exact readback, visual path behavior, rollback, and save/reopen/reconnect authority.",
+    "This acceptance does not claim arbitrary custom-plugin curve editors, arbitrary non-spatial property graphs, or every possible multidimensional AE path configuration.",
+    "ROBUST maturity still requires repeated transfer across varied footage/projects and additional spatial property contexts; this acceptance establishes TRANSFER maturity, not ROBUST."
+  ]
+}
