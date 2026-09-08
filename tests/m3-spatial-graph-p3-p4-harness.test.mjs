@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_spatial_graph.jsx";
+const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v19.jsx";
+const proofCleanupPath = "packages/adapters/ae-cep/host/editflow_host_m3_spatial_graph_proof_cleanup.jsx";
 const cliPath = "apps/desktop-host/src/m3-spatial-graph-p3-p4-cli.ts";
 const acceptancePath = "scripts/windows/run-m3-spatial-graph-p3-p4.ps1";
 const previewInstallerPath = "scripts/windows/install-editflow-cep-v19-preview.ps1";
@@ -77,16 +79,39 @@ test("P3/P4 cleanup requires exact blank-project fingerprint and item-count rest
   const source = await readFile(cliPath, "utf8");
   assert.match(source, /baseline\.project\.itemCount === 0 && baseline\.project\.filePath === null/);
   assert.match(source, /restoreBaselineThroughUndo/);
-  assert.match(source, /for \(let attempt = 0; attempt < 60; attempt \+= 1\)/);
   assert.match(source, /cleanup_temp_items_absent/);
   assert.match(source, /cleanup_item_count_restored/);
   assert.match(source, /cleanup_fingerprint_restored/);
+});
+
+test("spatial P3/P4 uses proof-owned cleanup instead of relying on deep generic Undo history", async () => {
+  const [cleanup, loader, installer] = await Promise.all([
+    readFile(proofCleanupPath, "utf8"),
+    readFile(loaderPath, "utf8"),
+    readFile(previewInstallerPath, "utf8"),
+  ]);
+  assert.match(cleanup, /EDITFLOW_M3_SPATIAL_GRAPH_P4_PROOF/);
+  assert.match(cleanup, /p4-post-rollback-straight-baseline\.avi/);
+  assert.match(cleanup, /app\.project\.file/);
+  assert.match(cleanup, /app\.project\.numItems !== 3/);
+  assert.match(cleanup, /M3_SPATIAL_GRAPH_P34_/);
+  assert.match(cleanup, /keyInSpatialTangent/);
+  assert.match(cleanup, /keyOutSpatialTangent/);
+  assert.match(cleanup, /keySpatialAutoBezier/);
+  assert.match(cleanup, /keyRoving/);
+  assert.match(cleanup, /project\.close\(CloseOptions\.DO_NOT_SAVE_CHANGES\)/);
+  assert.match(cleanup, /app\.newProject\(\)/);
+  assert.doesNotMatch(cleanup, /EditFlow2_dispatch\s*=/);
+  assert.match(loader, /editflow_host_m3_spatial_graph_proof_cleanup\.jsx/);
+  assert.match(loader, /\$\.getenv\("EDITFLOW_M3_SPATIAL_GRAPH_P4_PROOF"\) === "1"/);
+  assert.match(installer, /editflow_host_m3_spatial_graph_proof_cleanup\.jsx/);
 });
 
 test("protocol 1.9 preview installer is isolated and does not alter accepted repository installer defaults", async () => {
   const source = await readFile(previewInstallerPath, "utf8");
   assert.match(source, /install-editflow-cep\.ps1/);
   assert.match(source, /editflow_host_m3_spatial_graph\.jsx/);
+  assert.match(source, /editflow_host_m3_spatial_graph_proof_cleanup\.jsx/);
   assert.match(source, /editflow_host_current_v19\.jsx/);
   assert.match(source, /var KNOWN_PROTOCOLS = \["1\.9\.0"/);
   assert.match(source, /editflow_host_current_v18\.jsx/);
