@@ -1,0 +1,2 @@
+Trigger protocol 1.8 temporal-ease diagnostic after deriving KeyframeEase cardinality from live AE key readback.
+Diagnostic-only; not P1/P2 acceptance evidence.
