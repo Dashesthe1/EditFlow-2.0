@@ -14,8 +14,9 @@ if (-not (Test-Path $AcceptedInstaller -PathType Leaf)) { throw "Accepted EditFl
 if ($LASTEXITCODE -ne 0) { throw "Accepted EditFlow CEP installer failed before protocol 1.9 preview patch." }
 
 $SpatialHostSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_m3_spatial_graph.jsx"
+$SpatialProofCleanupSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_m3_spatial_graph_proof_cleanup.jsx"
 $V19LoaderSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_current_v19.jsx"
-foreach ($RequiredSource in @($SpatialHostSource, $V19LoaderSource)) {
+foreach ($RequiredSource in @($SpatialHostSource, $SpatialProofCleanupSource, $V19LoaderSource)) {
   if (-not (Test-Path $RequiredSource -PathType Leaf)) { throw "Protocol 1.9 proof host source is missing: $RequiredSource" }
 }
 if (-not (Test-Path $InstalledHost -PathType Container) -or -not (Test-Path $InstalledClient -PathType Container)) {
@@ -24,6 +25,7 @@ if (-not (Test-Path $InstalledHost -PathType Container) -or -not (Test-Path $Ins
 if (-not (Test-Path $ConfigPath -PathType Leaf)) { throw "Accepted installer did not create bridge-config.json." }
 
 Copy-Item $SpatialHostSource (Join-Path $InstalledHost "editflow_host_m3_spatial_graph.jsx") -Force
+Copy-Item $SpatialProofCleanupSource (Join-Path $InstalledHost "editflow_host_m3_spatial_graph_proof_cleanup.jsx") -Force
 Copy-Item $V19LoaderSource (Join-Path $InstalledHost "editflow_host_current_v19.jsx") -Force
 
 $BridgePath = Join-Path $InstalledClient "bridge.js"
