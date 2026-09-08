@@ -17,12 +17,6 @@ import {
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_5.js";
 import { buildNullRigRequestV15 } from "../../../packages/adapters/ae-cep/src/m3-null-rig.js";
 import {
-  AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16,
-  type AeLayerControlsCommandV16,
-  type AeLayerControlsResponseV16,
-} from "../../../packages/adapters/ae-cep/src/protocol-v1_6.js";
-import { buildLayerControlsRequestV16 } from "../../../packages/adapters/ae-cep/src/m3-layer-controls.js";
-import {
   AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19,
   type AeSpatialGraphCommandV19,
   type AeSpatialGraphObservedStateV19,
@@ -92,10 +86,9 @@ const parseConfig = (value: unknown): BridgeConfigFile => {
   const supported = candidate["supportedProtocolVersions"];
   if (!Array.isArray(supported)
       || !supported.includes(AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19)
-      || !supported.includes(AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16)
       || !supported.includes(AE_NULL_RIG_PROTOCOL_VERSION_V15)
       || !supported.includes(AE_ADAPTER_PROTOCOL_VERSION_V11)) {
-    throw new Error("CEP bridge config does not advertise required spatial-graph 1.9, layer-controls 1.6, null-rig 1.5, and baseline 1.1 protocols.");
+    throw new Error("CEP bridge config does not advertise required spatial-graph 1.9, null-rig 1.5, and baseline 1.1 protocols.");
   }
   if (typeof candidate["extensionId"] !== "string" || candidate["extensionId"].length === 0) throw new Error("CEP extensionId is missing.");
   if (typeof candidate["extensionVersion"] !== "string" || candidate["extensionVersion"].length === 0) throw new Error("CEP extensionVersion is missing.");
@@ -220,8 +213,9 @@ const main = async (): Promise<void> => {
   const prefix = `M3_SPATIAL_GRAPH_P12_${Date.now()}`;
   const transactionId = `${prefix}_TX`;
   const targetStable = `${prefix}_TARGET_COMP`;
-  const layer2dStable = `${prefix}_2D_NULL`;
-  const layer3dStable = `${prefix}_3D_NULL`;
+  const layer2dStable = `${prefix}_2D_POINT_NULL`;
+  const layer3dStable = `${prefix}_3D_POSITION_NULL`;
+  const point2dPath = ["ADBE Effect Parade", "ADBE Point Control", "ADBE Point Control-0001"] as const;
   const positionPath = ["ADBE Transform Group", "ADBE Position"] as const;
   const opacityPath = ["ADBE Transform Group", "ADBE Opacity"] as const;
   const interiorKey = 2;
@@ -249,7 +243,7 @@ const main = async (): Promise<void> => {
     roving: false,
   };
 
-  const recordResponse = (response: AeAdapterResponseV11 | AeNullRigResponseV15 | AeLayerControlsResponseV16 | AeSpatialGraphResponseV19): void => {
+  const recordResponse = (response: AeAdapterResponseV11 | AeNullRigResponseV15 | AeSpatialGraphResponseV19): void => {
     responses.push({
       protocolVersion: response.protocolVersion,
       command: response.command,
@@ -310,28 +304,6 @@ const main = async (): Promise<void> => {
     return response;
   };
 
-  const dispatchV16 = async (
-    command: AeLayerControlsCommandV16,
-    payload: Readonly<Record<string, unknown>>,
-    expectedRevision: number | null,
-  ): Promise<AeLayerControlsResponseV16> => {
-    if (broker === null) throw new Error("M3 broker is not initialized.");
-    operationCounter += 1;
-    const request = buildLayerControlsRequestV16({
-      requestId: `m3-spatial-graph-p12-v16-${++requestCounter}`,
-      transactionId,
-      operationId: `${transactionId}_V16_OP_${operationCounter}`,
-      command,
-      expectedHostProjectRevision: expectedRevision,
-      payload,
-      readbackProfile: "M3_SPATIAL_GRAPH_P1_P2_2D_FIXTURE",
-    });
-    const response = await broker.dispatch(request);
-    recordResponse(response);
-    if (typeof response.hostProjectRevision === "number") hostRevision = response.hostProjectRevision;
-    return response;
-  };
-
   const dispatchV19 = async (
     command: AeSpatialGraphCommandV19,
     payload: Readonly<Record<string, unknown>>,
@@ -367,9 +339,10 @@ const main = async (): Promise<void> => {
 
   const readSpatial = async (
     layerStableId: string,
+    propertyPath: readonly (string | number)[] = positionPath,
     keyIndex = interiorKey,
   ): Promise<AeSpatialGraphResponseV19> =>
-    dispatchV19("property.spatial_graph.readback", targetPayload(layerStableId, keyIndex), null);
+    dispatchV19("property.spatial_graph.readback", targetPayload(layerStableId, keyIndex, propertyPath), null);
 
   const cleanupRig = async (stableId: string, created: boolean): Promise<void> => {
     if (!created || broker === null || client === null) return;
@@ -404,20 +377,28 @@ const main = async (): Promise<void> => {
     checkPrefix: string,
     action: () => Promise<AeSpatialGraphResponseV19>,
     expectedCode: string,
-    stateTarget?: { readonly layerStableId: string; readonly keyIndex: number },
+    stateTarget?: {
+      readonly layerStableId: string;
+      readonly propertyPath: readonly (string | number)[];
+      readonly keyIndex: number;
+    },
   ): Promise<void> => {
     if (client === null) throw new Error("M2 setup client is not initialized.");
     const before = await client.observe(projectId);
     state = before.observed;
     hostRevision = before.hostRevision;
     projectSnapshot = before.project;
-    const spatialBefore = stateTarget === undefined ? null : spatialGraphState(await readSpatial(stateTarget.layerStableId, stateTarget.keyIndex));
+    const spatialBefore = stateTarget === undefined
+      ? null
+      : spatialGraphState(await readSpatial(stateTarget.layerStableId, stateTarget.propertyPath, stateTarget.keyIndex));
     const response = await action();
     const after = await client.observe(projectId);
     state = after.observed;
     hostRevision = after.hostRevision;
     projectSnapshot = after.project;
-    const spatialAfter = stateTarget === undefined ? null : spatialGraphState(await readSpatial(stateTarget.layerStableId, stateTarget.keyIndex));
+    const spatialAfter = stateTarget === undefined
+      ? null
+      : spatialGraphState(await readSpatial(stateTarget.layerStableId, stateTarget.propertyPath, stateTarget.keyIndex));
     checks[`${checkPrefix}_rejected`] = response.outcome === "REJECTED" && response.error?.code === expectedCode;
     checks[`${checkPrefix}_revision_unchanged`] = response.hostProjectRevision === before.hostRevision
       && after.hostRevision === before.hostRevision;
@@ -428,26 +409,26 @@ const main = async (): Promise<void> => {
   const proveManual = async (
     label: string,
     layerStableId: string,
+    propertyPath: readonly (string | number)[],
     desired: Extract<AeSpatialGraphSetStateV19, { readonly mode: "MANUAL" }>,
     dimensions: number,
   ): Promise<void> => {
     if (hostRevision === null) throw new Error("Host revision unavailable before spatial graph mutation.");
-    const beforeRevision = hostRevision;
     const setResponse = await dispatchV19("property.spatial_graph.set", {
-      ...targetPayload(layerStableId),
+      ...targetPayload(layerStableId, interiorKey, propertyPath),
       state: desired,
-    }, beforeRevision);
+    }, hostRevision);
     checks[`p2_${label}_set_exact`] = setResponse.outcome === "APPLIED" && manualStateMatches(setResponse, desired);
     checks[`p2_${label}_dimensions_exact`] = spatialGraphDimensions(setResponse) === dimensions;
     checks[`p2_${label}_key_time_exact`] = closeNumber(spatialGraphKeyTime(setResponse), interiorTime);
 
-    const readResponse = await readSpatial(layerStableId);
+    const readResponse = await readSpatial(layerStableId, propertyPath);
     checks[`p2_${label}_readback_exact`] = readResponse.outcome === "NO_OP" && manualStateMatches(readResponse, desired);
     checks[`p2_${label}_readback_dimensions_exact`] = spatialGraphDimensions(readResponse) === dimensions;
 
     const revisionBeforeNoOp = hostRevision;
     const repeat = await dispatchV19("property.spatial_graph.set", {
-      ...targetPayload(layerStableId),
+      ...targetPayload(layerStableId, interiorKey, propertyPath),
       state: desired,
     }, revisionBeforeNoOp);
     checks[`p2_${label}_repeat_no_op`] = repeat.outcome === "NO_OP" && manualStateMatches(repeat, desired);
@@ -455,7 +436,7 @@ const main = async (): Promise<void> => {
 
     evidence.push({
       label,
-      propertyPath: positionPath,
+      propertyPath,
       keyIndex: interiorKey,
       requested: desired,
       setOutcome: setResponse.outcome,
@@ -478,7 +459,6 @@ const main = async (): Promise<void> => {
       expectedExtensionId: config.extensionId,
       supportedProtocolVersions: [
         AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19,
-        AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16,
         AE_NULL_RIG_PROTOCOL_VERSION_V15,
         AE_ADAPTER_PROTOCOL_VERSION_V11,
       ],
@@ -488,12 +468,11 @@ const main = async (): Promise<void> => {
 
     panel = await broker.waitForPanel(timeoutMs);
     checks.panel_negotiated_v19 = panel.protocolVersion === AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19;
-    checks.panel_supports_v11_v15_v16_v19 = panel.supportedProtocolVersions.includes(AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19)
-      && panel.supportedProtocolVersions.includes(AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16)
+    checks.panel_supports_v11_v15_v19 = panel.supportedProtocolVersions.includes(AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19)
       && panel.supportedProtocolVersions.includes(AE_NULL_RIG_PROTOCOL_VERSION_V15)
       && panel.supportedProtocolVersions.includes(AE_ADAPTER_PROTOCOL_VERSION_V11);
-    if (!checks.panel_negotiated_v19 || !checks.panel_supports_v11_v15_v16_v19) {
-      throw new Error(`Spatial-graph proof requires negotiated protocol ${AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19} with layer-controls 1.6, null-rig 1.5 and baseline 1.1 fixture compatibility.`);
+    if (!checks.panel_negotiated_v19 || !checks.panel_supports_v11_v15_v19) {
+      throw new Error(`Spatial-graph proof requires negotiated protocol ${AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19} with null-rig 1.5 and baseline 1.1 fixture compatibility.`);
     }
     if (panel.extensionVersion !== config.extensionVersion) {
       throw new Error(`Registered CEP panel version ${panel.extensionVersion} does not match installed config ${config.extensionVersion}.`);
@@ -528,25 +507,23 @@ const main = async (): Promise<void> => {
 
     const create2d = await dispatchV15("rig.null.create", {
       comp: { stableId: targetStable },
-      rig: { stableId: layer2dStable, name: `${prefix} 2D Spatial` },
+      rig: { stableId: layer2dStable, name: `${prefix} 2D Point Spatial` },
       threeDLayer: false,
     }, hostRevision);
-    if (create2d.outcome !== "APPLIED" && create2d.outcome !== "NO_OP") throw new Error(`2D null fixture failed: ${create2d.error?.code ?? create2d.outcome}`);
+    if (create2d.outcome !== "APPLIED" && create2d.outcome !== "NO_OP") throw new Error(`2D point null fixture failed: ${create2d.error?.code ?? create2d.outcome}`);
     layer2dCreated = true;
     await refreshState();
 
-    const force2d = await dispatchV16("layer.switches.set", {
+    await executeV11("effect.add", {
       comp: { stableId: targetStable },
       layer: { stableId: layer2dStable },
-      switches: { threeDLayer: false },
-    }, hostRevision);
-    if (force2d.outcome !== "APPLIED" && force2d.outcome !== "NO_OP") throw new Error(`2D layer switch fixture failed: ${force2d.error?.code ?? force2d.outcome}`);
-    checks.fixture_2d_switch_forced = true;
-    await refreshState();
+      matchName: "ADBE Point Control",
+    });
+    checks.fixture_2d_point_control_added = true;
 
     const create3d = await dispatchV15("rig.null.create", {
       comp: { stableId: targetStable },
-      rig: { stableId: layer3dStable, name: `${prefix} 3D Spatial` },
+      rig: { stableId: layer3dStable, name: `${prefix} 3D Position Spatial` },
       threeDLayer: true,
     }, hostRevision);
     if (create3d.outcome !== "APPLIED" && create3d.outcome !== "NO_OP") throw new Error(`3D null fixture failed: ${create3d.error?.code ?? create3d.outcome}`);
@@ -556,7 +533,7 @@ const main = async (): Promise<void> => {
     await executeV11("property.set_keyframes", {
       comp: { stableId: targetStable },
       layer: { stableId: layer2dStable },
-      propertyPath: positionPath,
+      propertyPath: point2dPath,
       keyframes: [
         { time: 0, value: [80, 280] },
         { time: interiorTime, value: [315, 70] },
@@ -584,8 +561,8 @@ const main = async (): Promise<void> => {
       ],
     });
 
-    const initial2d = await readSpatial(layer2dStable);
-    const initial3d = await readSpatial(layer3dStable);
+    const initial2d = await readSpatial(layer2dStable, point2dPath);
+    const initial3d = await readSpatial(layer3dStable, positionPath);
     checks.p2_fixture_2d_spatial = initial2d.outcome === "NO_OP" && spatialGraphDimensions(initial2d) === 2;
     checks.p2_fixture_3d_spatial = initial3d.outcome === "NO_OP" && spatialGraphDimensions(initial3d) === 3;
 
@@ -601,29 +578,41 @@ const main = async (): Promise<void> => {
     await proveRejectedWithoutMutation("p1_bad_2d_dimension", async () => dispatchV19(
       "property.spatial_graph.set",
       {
-        ...targetPayload(layer2dStable),
+        ...targetPayload(layer2dStable, interiorKey, point2dPath),
         state: { ...manual2d, inTangent: [-10, 20, 30] },
       },
       hostRevision,
-    ), "SPATIAL_TANGENT_DIMENSION_MISMATCH", { layerStableId: layer2dStable, keyIndex: interiorKey });
+    ), "SPATIAL_TANGENT_DIMENSION_MISMATCH", {
+      layerStableId: layer2dStable,
+      propertyPath: point2dPath,
+      keyIndex: interiorKey,
+    });
 
     await proveRejectedWithoutMutation("p1_roving_endpoint", async () => dispatchV19(
       "property.spatial_graph.set",
       {
-        ...targetPayload(layer2dStable, 1),
+        ...targetPayload(layer2dStable, 1, point2dPath),
         state: { ...manual2d, roving: true },
       },
       hostRevision,
-    ), "ROVING_ENDPOINT_FORBIDDEN", { layerStableId: layer2dStable, keyIndex: 1 });
+    ), "ROVING_ENDPOINT_FORBIDDEN", {
+      layerStableId: layer2dStable,
+      propertyPath: point2dPath,
+      keyIndex: 1,
+    });
 
     await proveRejectedWithoutMutation("p1_auto_manual_tangent_forbidden", async () => dispatchV19(
       "property.spatial_graph.set",
       {
-        ...targetPayload(layer3dStable),
+        ...targetPayload(layer3dStable, interiorKey, positionPath),
         state: { ...auto3d, inTangent: [-1, 2, 3] },
       },
       hostRevision,
-    ), "AUTO_BEZIER_TANGENTS_FORBIDDEN", { layerStableId: layer3dStable, keyIndex: interiorKey });
+    ), "AUTO_BEZIER_TANGENTS_FORBIDDEN", {
+      layerStableId: layer3dStable,
+      propertyPath: positionPath,
+      keyIndex: interiorKey,
+    });
 
     const beforeStale = await client.observe(projectId);
     state = beforeStale.observed;
@@ -631,28 +620,32 @@ const main = async (): Promise<void> => {
     projectSnapshot = beforeStale.project;
     await proveRejectedWithoutMutation("p1_stale_revision", async () => dispatchV19(
       "property.spatial_graph.set",
-      { ...targetPayload(layer2dStable), state: manual2d },
+      { ...targetPayload(layer2dStable, interiorKey, point2dPath), state: manual2d },
       beforeStale.hostRevision + 1000,
-    ), "HOST_REVISION_CONFLICT", { layerStableId: layer2dStable, keyIndex: interiorKey });
+    ), "HOST_REVISION_CONFLICT", {
+      layerStableId: layer2dStable,
+      propertyPath: point2dPath,
+      keyIndex: interiorKey,
+    });
 
-    await proveManual("2d_manual", layer2dStable, manual2d, 2);
-    await proveManual("3d_manual", layer3dStable, manual3d, 3);
+    await proveManual("2d_manual", layer2dStable, point2dPath, manual2d, 2);
+    await proveManual("3d_manual", layer3dStable, positionPath, manual3d, 3);
 
     if (hostRevision === null) throw new Error("Host revision unavailable before roving proof.");
     const roving2d: Extract<AeSpatialGraphSetStateV19, { readonly mode: "MANUAL" }> = { ...manual2d, roving: true };
     const rovingSet = await dispatchV19("property.spatial_graph.set", {
-      ...targetPayload(layer2dStable),
+      ...targetPayload(layer2dStable, interiorKey, point2dPath),
       state: roving2d,
     }, hostRevision);
     checks.p2_interior_roving_applied = rovingSet.outcome === "APPLIED" && manualStateMatches(rovingSet, roving2d);
-    const rovingRead = await readSpatial(layer2dStable);
+    const rovingRead = await readSpatial(layer2dStable, point2dPath);
     checks.p2_interior_roving_readback = rovingRead.outcome === "NO_OP"
       && spatialGraphState(rovingRead)?.roving === true
       && spatialGraphState(rovingRead)?.autoBezier === false;
 
     if (hostRevision === null) throw new Error("Host revision unavailable before roving reset.");
     const rovingReset = await dispatchV19("property.spatial_graph.set", {
-      ...targetPayload(layer2dStable),
+      ...targetPayload(layer2dStable, interiorKey, point2dPath),
       state: manual2d,
     }, hostRevision);
     checks.p2_interior_roving_reset = (rovingReset.outcome === "APPLIED" || rovingReset.outcome === "NO_OP")
@@ -660,17 +653,17 @@ const main = async (): Promise<void> => {
 
     if (hostRevision === null) throw new Error("Host revision unavailable before auto-Bezier proof.");
     const autoSet = await dispatchV19("property.spatial_graph.set", {
-      ...targetPayload(layer3dStable),
+      ...targetPayload(layer3dStable, interiorKey, positionPath),
       state: auto3d,
     }, hostRevision);
     checks.p2_auto_3d_applied = autoSet.outcome === "APPLIED" && autoStateMatches(autoSet, 3, false);
-    const autoRead = await readSpatial(layer3dStable);
+    const autoRead = await readSpatial(layer3dStable, positionPath);
     checks.p2_auto_3d_readback_host_shaped = autoRead.outcome === "NO_OP" && autoStateMatches(autoRead, 3, false);
     const autoObserved = spatialGraphState(autoRead);
 
     const revisionBeforeAutoNoOp = hostRevision;
     const autoRepeat = await dispatchV19("property.spatial_graph.set", {
-      ...targetPayload(layer3dStable),
+      ...targetPayload(layer3dStable, interiorKey, positionPath),
       state: auto3d,
     }, revisionBeforeAutoNoOp);
     checks.p2_auto_3d_repeat_no_op = autoRepeat.outcome === "NO_OP" && autoStateMatches(autoRepeat, 3, false);
@@ -712,7 +705,7 @@ const main = async (): Promise<void> => {
       "p1_stale_revision_spatial_state_unchanged",
     ]);
     checks.p2 = allChecksTrue(checks, [
-      "fixture_2d_switch_forced",
+      "fixture_2d_point_control_added",
       "p2_fixture_2d_spatial",
       "p2_fixture_3d_spatial",
       "p2_2d_manual_set_exact",
@@ -785,6 +778,7 @@ const main = async (): Promise<void> => {
         targetStable,
         layer2dStable,
         layer3dStable,
+        point2dPath,
         positionPath,
         opacityPath,
         interiorKey,
