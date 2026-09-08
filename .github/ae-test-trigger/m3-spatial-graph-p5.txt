@@ -1,0 +1,4 @@
+M3 spatial Graph Editor P5 standard-runtime promotion proof
+source_head=f170fdcb6ad4351cd27c7e837952e82a3209c4e7
+standard_installer=scripts/windows/install-editflow-cep.ps1
+triggered_at_utc=2026-09-08T19:16:20Z
