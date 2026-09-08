@@ -56,5 +56,7 @@ test("v1.9 host remains additive and fails closed to the accepted v1.8 dispatche
   assert.match(source, /EditFlow2_HOST_PROTOCOL_19/);
   assert.match(source, /protocolVersion:\s*"1\.9\.0"/);
   assert.match(source, /M3_SPATIAL_GRAPH_MODULE_LOAD_FAILED/);
-  assert.match(source, /EditFlow2_v18_dispatch/);
+  assert.match(source, /var dispatchBeforeFailure = \$\.global\.EditFlow2_dispatch/);
+  assert.match(source, /return dispatchBeforeFailure\(requestJson\)/);
+  assert.match(source, /accepted protocol 1\.1-1\.8 dispatch remains available/);
 });
