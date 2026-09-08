@@ -1,6 +1,6 @@
 # M3 Graph Editor Temporal Ease Foundation — Protocol 1.8
 
-Status: **PARTIAL / DECLARED**. This foundation is implemented and contract-testable, but it is not promoted to STRUCTURAL, VISUAL, TRANSFER, or FULL until real-After-Effects proof is accepted.
+Status: **PARTIAL / STRUCTURAL**. Real-After-Effects P1 deterministic rejection and P2 exact structural readback are accepted. The capability is not promoted to VISUAL, TRANSFER, or FULL until P3/P4/P5 evidence is accepted.
 
 ## Roadmap scope
 
@@ -29,6 +29,14 @@ The API contract says `KeyframeEase` is defined by `speed` and `influence`; infl
 
 A protocol-1.8 diagnostic real-AE run on After Effects 25.6.6 confirmed that exact edge: a 2D layer fixture whose Scale keys were supplied as two-value arrays exposed **three** incoming and **three** outgoing `KeyframeEase` objects at the live key. That diagnostic run is not acceptance evidence, but it is authoritative implementation evidence about host cardinality. Protocol 1.8 therefore does **not** infer ease cardinality from `PropertyValueType`; it reads both `keyInTemporalEase(keyIndex)` and `keyOutTemporalEase(keyIndex)`, requires their lengths to agree in the supported 1..3 range, and validates writes against that live host cardinality.
 
+## Accepted P1/P2 evidence
+
+Production-equivalent real-AE run `34176061647` is the accepted protocol-1.8 P1/P2 proof. It ran from feature source commit `718fd72dd9b07c3605163354cf7ce7be26ef8f23` through control commit `033e4e2f005a175f48fefaca1912dc54716d7eb4`, job `101905568438`, with retained artifact `10037290595` and GitHub artifact SHA-256 `b1046dfe32b1b1c73a3acd65e5d5b3deb90fef50e01170ed3b8e8e04d4e2439b`.
+
+The accepted artifact reports `PASS`, all 44 checks true, exact blank-project fingerprint restoration, scalar Opacity cardinality one, and exact Scale cardinality three. The accepted run used normal CEP host bootstrap without direct v1.8 host-loader preload. Full evidence details are retained in `proofs/diagnostics/m3-temporal-ease-p1-p2-run2-acceptance.md`.
+
+This accepted evidence promotes both protocol-1.8 capabilities to **STRUCTURAL** maturity while leaving status **PARTIAL**.
+
 ## Deliberate preconditions
 
 A protocol-1.8 mutation fails closed unless:
@@ -55,14 +63,14 @@ This tranche does **not** claim:
 - Milestone 3 item 12 markers, motion blur, frame blending, or shutter controls;
 - arbitrary code execution or generic ExtendScript evaluation.
 
-## Required real-AE proof before promotion
+## Remaining real-AE proof before full promotion
 
-Protocol 1.8 follows the same evidence meanings already used by accepted M3 tranches; it does not redefine P1–P5:
+Protocol 1.8 follows the same evidence meanings already used by accepted M3 tranches; P1/P2 are now accepted and P3–P5 remain outstanding:
 
-- **P1 — deterministic validation/rejection:** prove bad key/path/cardinality/range/precondition/stale-revision requests are rejected before mutation and preserve revision/fingerprint truth.
-- **P2 — exact structural readback:** prove exact incoming/outgoing speed/influence readback on at least a scalar property and a multi-handle temporal property, including live cardinality and exact no-op behavior. The Scale fixture intentionally supplies two-value keyframe values while proving the three-handle ease surface exposed by live AE.
-- **P3 — viewer-visible proof:** apply deliberately asymmetric numeric ease to real animation and prove sampled/rendered behavior differs from an appropriate baseline while key values and key times remain unchanged.
-- **P4 — induced-failure rollback:** force a post-mutation verification failure inside the transaction boundary and prove the original ease arrays and project state are restored.
-- **P5 — save/reopen/reconnect transfer:** prove persistence and reproduce the capability in a materially different property/context and fresh session, accepting transfer only when correlation, structural truth, and viewer-visible behavior all pass.
+- **P1 — deterministic validation/rejection: ACCEPTED.** Bad key/path/cardinality/range/precondition/stale-revision requests reject before mutation and preserve revision/fingerprint truth.
+- **P2 — exact structural readback: ACCEPTED.** Exact incoming/outgoing speed/influence is proven on scalar Opacity and the live three-handle Scale surface, including exact no-op behavior.
+- **P3 — viewer-visible proof: OUTSTANDING.** Apply deliberately asymmetric numeric ease to real animation and prove sampled/rendered behavior differs from an appropriate baseline while key values and key times remain unchanged.
+- **P4 — induced-failure rollback: OUTSTANDING.** Force a post-mutation verification failure inside the transaction boundary and prove the original ease arrays and project state are restored.
+- **P5 — save/reopen/reconnect transfer: OUTSTANDING.** Prove persistence and reproduce the capability in a materially different property/context and fresh session, accepting transfer only when correlation, structural truth, and viewer-visible behavior all pass.
 
-Until those proofs exist, `ae.property.temporal_ease.set` and `ae.property.temporal_ease.readback` remain **PARTIAL / DECLARED**.
+Until P3–P5 are accepted, `ae.property.temporal_ease.set` and `ae.property.temporal_ease.readback` remain **PARTIAL / STRUCTURAL**.
