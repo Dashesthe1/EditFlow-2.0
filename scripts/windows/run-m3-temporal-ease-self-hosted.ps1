@@ -9,10 +9,12 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplatePath = Join-Path $RepoRoot "scripts\windows\run-m3-temporal-interpolation-self-hosted.ps1"
 $TempPath = Join-Path $PSScriptRoot ("run-m3-temporal-ease-self-hosted-generated-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-temporal-ease-p1-p2"
+$ResultPath = Join-Path $ProofArtifactDir "result.json"
 $DiagnosticBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-temporal-ease-bridge.jsx"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
+$MaxPanelRegistrationAttempts = 2
 
 function Copy-CepFailureDiagnostics {
   param([string]$Destination)
@@ -57,6 +59,44 @@ function Copy-CepFailureDiagnostics {
     $ManifestLines += "note=No recent CEP12/CEPHtmlEngine AEFT log matched the documented Windows log patterns."
   }
   [System.IO.File]::WriteAllLines($ManifestPath, $ManifestLines, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Test-RetryablePanelRegistrationFailure {
+  if (-not (Test-Path $ResultPath -PathType Leaf)) { return $false }
+  try {
+    $Failure = Get-Content $ResultPath -Raw | ConvertFrom-Json
+    $Responses = @($Failure.responses)
+    $Checks = $Failure.checks
+    $NoChecks = $null -eq $Checks -or @($Checks.psobject.Properties).Count -eq 0
+    return $Failure.proof -eq "M3_TEMPORAL_EASE_P1_P2_REAL_AE" `
+      -and $Failure.protocolVersion -eq "1.8.0" `
+      -and $Failure.status -eq "FAIL" `
+      -and $Failure.ok -eq $false `
+      -and [string]$Failure.failureError -match "CEP_PANEL_REGISTRATION_TIMEOUT" `
+      -and $null -eq $Failure.panel `
+      -and $null -eq $Failure.environment `
+      -and $null -eq $Failure.baseline.projectFingerprint `
+      -and $null -eq $Failure.final.projectFingerprint `
+      -and $Responses.Count -eq 0 `
+      -and @($Failure.easeEvidence).Count -eq 0 `
+      -and $NoChecks `
+      -and $Failure.cleanupComplete -eq $false
+  } catch {
+    return $false
+  }
+}
+
+function Retain-PanelRetryEvidence {
+  param([int]$Attempt)
+  $Destination = Join-Path $ProofArtifactDir ("panel-registration-retry-attempt-" + $Attempt)
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  foreach ($Name in @("result.json", "panel-bootstrap.log", "startup-diagnostics.log")) {
+    $Source = Join-Path $ProofArtifactDir $Name
+    if (Test-Path $Source -PathType Leaf) {
+      Copy-Item -LiteralPath $Source -Destination (Join-Path $Destination $Name) -Force
+    }
+  }
+  Copy-CepFailureDiagnostics -Destination $Destination
 }
 
 if (-not (Test-Path $TemplatePath -PathType Leaf)) {
@@ -112,17 +152,45 @@ try {
   }
   Write-Host "CEP 12 LogLevel registry readback before AE launch: $EffectiveLogLevel"
 
-  if ($PreflightHostLoader) {
-    Write-Host "Temporal-ease diagnostic mode: direct fixed v1.8 host-loader preflight before opening CEP; result is diagnostic-only, not acceptance evidence."
-    & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds -PreflightHostLoader
-  } else {
-    Write-Host "Temporal-ease proof mode: production-equivalent CEP bootstrap of protocol 1.8; no direct host-loader preload."
-    & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+  $Completed = $false
+  for ($Attempt = 1; $Attempt -le $MaxPanelRegistrationAttempts; $Attempt++) {
+    $AttemptError = $null
+    try {
+      if ($PreflightHostLoader) {
+        Write-Host "Temporal-ease diagnostic mode: direct fixed v1.8 host-loader preflight before opening CEP; result is diagnostic-only, not acceptance evidence."
+        & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds -PreflightHostLoader
+      } else {
+        Write-Host "Temporal-ease proof mode: production-equivalent CEP bootstrap of protocol 1.8; no direct host-loader preload."
+        & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+      }
+      if ($LASTEXITCODE -ne 0) {
+        throw "Temporal-ease generated self-hosted runner exited with code $LASTEXITCODE."
+      }
+      $Completed = $true
+      break
+    } catch {
+      $AttemptError = $_
+    }
+
+    $RetryableRegistrationFailure = (-not $PreflightHostLoader) -and (Test-RetryablePanelRegistrationFailure)
+    if ($Attempt -lt $MaxPanelRegistrationAttempts -and $RetryableRegistrationFailure) {
+      $RemainingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+      if ($RemainingAfterFx.Count -ne 0) {
+        Retain-PanelRetryEvidence -Attempt $Attempt
+        throw "Temporal-ease panel-registration retry refused because the failed isolated attempt did not return to a zero-After-Effects baseline."
+      }
+      Retain-PanelRetryEvidence -Attempt $Attempt
+      Write-Host ("Authenticated CEP panel registration timed out before any temporal-ease mutation on attempt " + $Attempt + "; retrying one fresh isolated AE launch from the verified zero-process baseline.")
+      Start-Sleep -Seconds 2
+      continue
+    }
+
+    Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
+    throw $AttemptError
   }
 
-  if ($LASTEXITCODE -ne 0) {
-    Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
-    exit $LASTEXITCODE
+  if (-not $Completed) {
+    throw "Temporal-ease self-hosted runner exhausted its bounded panel-registration attempts."
   }
 } catch {
   Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
