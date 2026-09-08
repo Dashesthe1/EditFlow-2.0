@@ -9,46 +9,28 @@ $InstalledRoot = Join-Path $env:APPDATA "Adobe\CEP\extensions\com.editflow2.brid
 $InstalledHost = Join-Path $InstalledRoot "host"
 $InstalledClient = Join-Path $InstalledRoot "client"
 $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
-$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 if (-not (Test-Path $AcceptedInstaller -PathType Leaf)) { throw "Accepted EditFlow CEP installer is missing: $AcceptedInstaller" }
-try {
-  & $AcceptedInstaller -Port $Port
-} catch {
-  throw "Accepted EditFlow CEP installer failed before protocol 1.10 preview installation: $($_.Exception.Message)"
-}
+try { & $AcceptedInstaller -Port $Port }
+catch { throw "Accepted EditFlow CEP installer failed before protocol 1.10 compatibility verification: $($_.Exception.Message)" }
 
-$MotionHostSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_m3_motion_render.jsx"
-$V110LoaderSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_current_v110.jsx"
-foreach ($RequiredSource in @($MotionHostSource, $V110LoaderSource)) {
-  if (-not (Test-Path $RequiredSource -PathType Leaf)) { throw "Protocol 1.10 proof host source is missing: $RequiredSource" }
+foreach ($RequiredName in @("editflow_host_m3_motion_render.jsx", "editflow_host_current_v110.jsx", "editflow_host_current_v19.jsx")) {
+  $RequiredPath = Join-Path $InstalledHost $RequiredName
+  if (-not (Test-Path $RequiredPath -PathType Leaf)) { throw "Accepted protocol 1.10 installation is missing host file: $RequiredPath" }
 }
-Copy-Item $MotionHostSource (Join-Path $InstalledHost "editflow_host_m3_motion_render.jsx") -Force
-Copy-Item $V110LoaderSource (Join-Path $InstalledHost "editflow_host_current_v110.jsx") -Force
 
 $BridgePath = Join-Path $InstalledClient "bridge.js"
+if (-not (Test-Path $BridgePath -PathType Leaf)) { throw "Accepted protocol 1.10 installation is missing bridge.js." }
 $BridgeText = [System.IO.File]::ReadAllText($BridgePath)
-$KnownV19 = 'var KNOWN_PROTOCOLS = ["1.9.0","1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"];'
-$KnownV110 = 'var KNOWN_PROTOCOLS = ["1.10.0","1.9.0","1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"];'
-if (-not $BridgeText.Contains($KnownV19)) { throw "Installed bridge.js protocol list drifted; refusing unverified protocol 1.10 proof patch." }
-if (-not $BridgeText.Contains('editflow_host_current_v19.jsx')) { throw "Installed bridge.js accepted protocol 1.9 host-loader token drifted." }
-if (-not $BridgeText.Contains('EditFlow2_HOST_PROTOCOL_19')) { throw "Installed bridge.js accepted protocol 1.9 host flag token drifted." }
-$BridgeText = $BridgeText.Replace($KnownV19, $KnownV110)
-$BridgeText = $BridgeText.Replace('editflow_host_current_v19.jsx', 'editflow_host_current_v110.jsx')
-$BridgeText = $BridgeText.Replace('EditFlow2_HOST_PROTOCOL_19', 'EditFlow2_HOST_PROTOCOL_110')
-$BridgeText = $BridgeText.Replace('protocol 1.9 host dispatcher', 'protocol 1.10 host dispatcher')
-[System.IO.File]::WriteAllText($BridgePath, $BridgeText, $Utf8NoBom)
+if (-not $BridgeText.Contains('var KNOWN_PROTOCOLS = ["1.10.0","1.9.0"')) { throw "Accepted bridge.js does not advertise protocol 1.10 first." }
+if (-not $BridgeText.Contains('editflow_host_current_v110.jsx')) { throw "Accepted bridge.js does not load the protocol 1.10 host." }
+if (-not $BridgeText.Contains('EditFlow2_HOST_PROTOCOL_110')) { throw "Accepted bridge.js does not verify the protocol 1.10 host flag." }
 
 if (-not (Test-Path $ConfigPath -PathType Leaf)) { throw "Accepted installer did not create bridge-config.json." }
 $Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-$Config.supportedProtocolVersions = @("1.10.0", "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
-$ConfigJson = $Config | ConvertTo-Json -Depth 8
-[System.IO.File]::WriteAllText($ConfigPath, $ConfigJson + [Environment]::NewLine, $Utf8NoBom)
+$Supported = @($Config.supportedProtocolVersions)
+if ($Supported.Count -lt 2 -or [string]$Supported[0] -ne "1.10.0" -or [string]$Supported[1] -ne "1.9.0") { throw "Accepted runtime config does not advertise protocol 1.10 first with protocol 1.9 compatibility." }
+if ($null -eq $Config.acceptedV19Compatibility -or [string]$Config.acceptedV19Compatibility.hostLoader -ne "editflow_host_current_v19.jsx") { throw "Accepted runtime config is missing protocol 1.9 compatibility metadata." }
 
-$RuntimeConfigPath = Join-Path $InstalledClient "runtime-config.js"
-$CompactConfig = $Config | ConvertTo-Json -Depth 8 -Compress
-[System.IO.File]::WriteAllText($RuntimeConfigPath, ("window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze(" + $CompactConfig + ");`r`n"), $Utf8NoBom)
-
-Write-Host "Isolated EditFlow protocol 1.10 motion-render preview installed for proof only."
-Write-Host "Accepted production runtime remains protocol 1.9 outside this isolated proof."
-Write-Host "Preview protocols advertised: 1.10.0 through 1.1.0"
+Write-Host "Protocol 1.10 motion-render is now part of the accepted standard CEP installation."
+Write-Host "The former preview installer remains as a compatibility verifier only; it performs no protocol patching."
