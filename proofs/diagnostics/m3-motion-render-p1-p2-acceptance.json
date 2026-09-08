@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_MOTION_RENDER_P1_P2_ACCEPTANCE",
+  "protocolVersion": "1.10.0",
+  "accepted": true,
+  "acceptedAt": "2026-09-08T20:29:33Z",
+  "scope": "protocol-1.10 motion blur/frame blending structural envelope exercised by a 12fps nested source inside a 24fps target composition",
+  "provenance": {
+    "acceptedSourceCommit": "70b1549c56179689fb033db36f13fc4b6dbb5998",
+    "controlCommit": "34adbd69d6cfb847c2900551cd5ee6caa872981a",
+    "workflowRunId": 34275036819,
+    "jobId": 102225850170,
+    "artifactId": 10075375705,
+    "artifactName": "m3-motion-render-p1-p2-proof-34275036819",
+    "artifactDigest": "sha256:16ae4571d870aefba43e432016b93e8db6efc2060c49eea841315247d3ed9014",
+    "resultSha256": "d29b4ecb1898aacd4b706421e338254e50d525a86449b9c62b47b939e3004927",
+    "afterEffects": "25.6.6 build 4",
+    "extensionVersion": "0.1.0-dev.8",
+    "panelSessionId": "96a4022f-65b2-4286-b23d-706961daf45f"
+  },
+  "proofLevels": {
+    "P1_validation_rejection": true,
+    "P2_structural_readback": true,
+    "P3_visual_proof": false,
+    "P4_failure_injection_rollback": false,
+    "P5_save_reopen_reconnect_transfer": false
+  },
+  "structuralEvidence": {
+    "compositionSettings": {
+      "motionBlur": true,
+      "frameBlending": true,
+      "shutterAngle": 270,
+      "shutterPhase": -90,
+      "samplesPerFrame": 16,
+      "adaptiveSampleLimit": 64
+    },
+    "frameMix": {
+      "motionBlur": true,
+      "frameBlendingType": "FRAME_MIX",
+      "derivedFrameBlending": true
+    },
+    "pixelMotion": {
+      "motionBlur": true,
+      "frameBlendingType": "PIXEL_MOTION",
+      "derivedFrameBlending": true
+    },
+    "noFrameBlend": {
+      "motionBlur": false,
+      "frameBlendingType": "NO_FRAME_BLEND",
+      "derivedFrameBlending": false
+    },
+    "baselineProjectFingerprint": "project:sha256:0a1f2ab2a77b28d4a483592a7e59b2f1614ce3012a85ef680a97ffbbd9b10440",
+    "baselineItemCount": 0,
+    "cleanupFingerprintRestored": true,
+    "cleanupItemCountRestored": true
+  },
+  "checksAccepted": [
+    "authenticated protocol-1.10 panel negotiation",
+    "host probe on After Effects 25.6.6 build 4",
+    "composition and layer motion-render surface support",
+    "invalid shutter-angle rejection without host revision or state mutation",
+    "invalid frame-blending-type rejection without host revision or state mutation",
+    "exact composition motion blur/frame blending/shutter/sample readback",
+    "exact FRAME_MIX write plus derived frameBlending=true readback",
+    "exact PIXEL_MOTION write plus derived frameBlending=true readback",
+    "exact NO_FRAME_BLEND write plus derived frameBlending=false readback",
+    "stale host-revision rejection without state mutation",
+    "layer and composition settings restored",
+    "temporary fixture compositions removed with exact baseline fingerprint restoration"
+  ],
+  "limitations": [
+    "This acceptance establishes STRUCTURAL maturity only. It does not prove that the configured motion blur or frame-blending modes materially change rendered pixels.",
+    "P3 visual evidence, P4 failure-injection rollback including pixel restoration, and P5 save/reopen/reconnect transfer remain required before any capability can be promoted to FULL or TRANSFER.",
+    "Production runtime remains on accepted protocol 1.9; protocol 1.10 continues to use the isolated proof installer until all required gates pass."
+  ]
+}
