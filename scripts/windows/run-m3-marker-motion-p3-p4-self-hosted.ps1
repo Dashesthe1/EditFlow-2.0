@@ -195,7 +195,8 @@ try {
 
   New-Item -ItemType Directory -Force -Path $ProofArtifactDir | Out-Null
   if (Test-Path $DialogDetailsPath -PathType Leaf) { Remove-Item $DialogDetailsPath -Force }
-  $WatcherArgs = @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $DialogWatcher, "-OutputPath", $DialogDetailsPath, "-DurationSeconds", [Math]::Min(420, [Math]::Max(180, $TimeoutSeconds + 90)), "-PollMilliseconds", 2000)
+  # The shared watcher rejects durations above 300 seconds; keep this caller inside that fixed contract.
+  $WatcherArgs = @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $DialogWatcher, "-OutputPath", $DialogDetailsPath, "-DurationSeconds", [Math]::Min(300, [Math]::Max(180, $TimeoutSeconds + 90)), "-PollMilliseconds", 2000)
   $WatcherProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $WatcherArgs -PassThru -WindowStyle Hidden
 
   & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
