@@ -88,6 +88,16 @@ foreach ($FileName in $HostFiles) {
   Copy-Item $Source (Join-Path $InstalledHostDir $FileName) -Force
 }
 
+# Persist the last accepted client/protocol baseline as compatibility metadata. The
+# current panel still advertises 1.8 first, while this record makes the deliberate
+# accepted 1.7 fallback floor inspectable rather than implicit.
+$AcceptedV17Compatibility = [ordered]@{
+  supportedProtocolVersions = @("1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
+  extensionVersion = "0.1.0-dev.7"
+  hostLoader = "editflow_host_current_v17.jsx"
+  hostFlag = "EditFlow2_HOST_PROTOCOL_17"
+}
+
 # supportedProtocolVersions is an additive schema-1 field. Existing M2 readers ignore it,
 # while newer brokers use it to negotiate explicitly scoped protocol tranches.
 $Config = [ordered]@{
@@ -97,6 +107,7 @@ $Config = [ordered]@{
   token = $Token
   protocolVersion = "1.1.0"
   supportedProtocolVersions = @("1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
+  acceptedV17Compatibility = $AcceptedV17Compatibility
   extensionId = $ExtensionId
   extensionVersion = $ExtensionVersion
 }
