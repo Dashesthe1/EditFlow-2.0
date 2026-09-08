@@ -6,6 +6,7 @@
   var hostDir = currentFile.parent;
   var acceptedLoader = new File(hostDir.fsName + "/editflow_host_current_v18.jsx");
   var m3SpatialGraph = new File(hostDir.fsName + "/editflow_host_m3_spatial_graph.jsx");
+  var m3SpatialGraphProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_spatial_graph_proof_cleanup.jsx");
 
   if (!acceptedLoader.exists) throw new Error("EditFlow accepted protocol 1.8 host loader is missing: " + acceptedLoader.fsName);
   $.evalFile(acceptedLoader);
@@ -35,6 +36,13 @@
       }
       return dispatchBeforeFailure(requestJson);
     };
+  }
+
+  if ($.getenv("EDITFLOW_M3_SPATIAL_GRAPH_P4_PROOF") === "1") {
+    if (!m3SpatialGraphProofCleanup.exists) {
+      throw new Error("EditFlow M3 spatial-graph proof cleanup is missing: " + m3SpatialGraphProofCleanup.fsName);
+    }
+    $.evalFile(m3SpatialGraphProofCleanup);
   }
 
   if (typeof $.global.EditFlow2_dispatch !== "function") throw new Error("EditFlow protocol 1.9 host dispatcher failed to register.");
