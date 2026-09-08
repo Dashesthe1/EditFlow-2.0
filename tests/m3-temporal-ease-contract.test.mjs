@@ -208,8 +208,11 @@ test("foundation keeps spatial tangent, roving, and rendering controls in later 
   assert.match(source, /0\.1\.\.100\.0/);
   assert.match(source, /PropertyValueType\.TwoD/);
   assert.match(source, /PropertyValueType\.ThreeD/);
-  assert.match(source, /P1 — exact structural readback/);
-  assert.match(source, /P5 — transfer/);
+  assert.match(source, /P1 — deterministic validation\/rejection/);
+  assert.match(source, /P2 — exact structural readback/);
+  assert.match(source, /P3 — viewer-visible proof/);
+  assert.match(source, /P4 — induced-failure rollback/);
+  assert.match(source, /P5 — save\/reopen\/reconnect transfer/);
   assert.match(source, /Milestone 3 item 11 spatial Bezier paths\/tangents/);
   assert.match(source, /Milestone 3 item 12 markers, motion blur, frame blending/);
   assert.match(source, /PARTIAL \/ DECLARED/);
