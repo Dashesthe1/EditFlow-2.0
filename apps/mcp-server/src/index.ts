@@ -7,6 +7,8 @@ export interface McpServerStatus {
   readonly adobeWritesEnabled: true;
   readonly runtimeMode: "SIMULATED_PLUS_AE_ADAPTER_AND_CEP_BRIDGE";
   readonly capabilityRegistry: "READY";
+  readonly runtimeCapabilityComposition: "M2_BASE_PLUS_ACCEPTED_M3";
+  readonly acceptedM3HostProtocols: "1.2.0_THROUGH_1.8.0_REGISTERED";
   readonly transactionEngine: "SYNC_AND_ASYNC_READY";
   readonly executionPlanValidation: "READY";
   readonly restartRecovery: "COMMITTED_BOUNDARY_RESUME";
@@ -16,8 +18,9 @@ export interface McpServerStatus {
   readonly cepRuntimeBridge: "REAL_AE_PROVEN";
   readonly cepBrokerBinding: "127.0.0.1_AUTHENTICATED";
   readonly realAeAcceptance: "P1_P5_ACCEPTED";
-  readonly humanParityCore: "MASK_BEZIER_FOUNDATION_DECLARED";
+  readonly humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_GRAPH_EDITOR_ACCEPTED";
   readonly m3MaskHostProtocol: "1.2.0_BROKER_GATED";
+  readonly m3LatestHostProtocol: "1.8.0_TRANSFER_ACCEPTED";
 }
 
 export const getMcpServerStatus = (): McpServerStatus => ({
@@ -26,6 +29,8 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   adobeWritesEnabled: true,
   runtimeMode: "SIMULATED_PLUS_AE_ADAPTER_AND_CEP_BRIDGE",
   capabilityRegistry: "READY",
+  runtimeCapabilityComposition: "M2_BASE_PLUS_ACCEPTED_M3",
+  acceptedM3HostProtocols: "1.2.0_THROUGH_1.8.0_REGISTERED",
   transactionEngine: "SYNC_AND_ASYNC_READY",
   executionPlanValidation: "READY",
   restartRecovery: "COMMITTED_BOUNDARY_RESUME",
@@ -35,6 +40,7 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   cepRuntimeBridge: "REAL_AE_PROVEN",
   cepBrokerBinding: "127.0.0.1_AUTHENTICATED",
   realAeAcceptance: "P1_P5_ACCEPTED",
-  humanParityCore: "MASK_BEZIER_FOUNDATION_DECLARED",
+  humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_GRAPH_EDITOR_ACCEPTED",
   m3MaskHostProtocol: "1.2.0_BROKER_GATED",
+  m3LatestHostProtocol: "1.8.0_TRANSFER_ACCEPTED",
 });

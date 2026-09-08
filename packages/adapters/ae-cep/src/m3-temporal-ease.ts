@@ -14,7 +14,7 @@ import {
   type AeTemporalEaseRequestV18,
   type AeTemporalEaseResponseV18,
 } from "./protocol-v1_8.js";
-import { applyM3TemporalEaseAcceptedP1P2Evidence } from "./m3-temporal-ease-proof-maturity.js";
+import { applyM3TemporalEaseAcceptedProofEvidence } from "./m3-temporal-ease-proof-maturity.js";
 
 export interface CepEvalScriptTemporalEaseBridgeV18 {
   evalScript(script: string, callback: (result: string) => void): void;
@@ -98,7 +98,7 @@ const M3_TEMPORAL_EASE_DECLARED_CAPABILITIES_V18: readonly CapabilityRecord[] =
   }));
 
 export const M3_TEMPORAL_EASE_CAPABILITIES_V18: readonly CapabilityRecord[] =
-  applyM3TemporalEaseAcceptedP1P2Evidence(M3_TEMPORAL_EASE_DECLARED_CAPABILITIES_V18);
+  applyM3TemporalEaseAcceptedProofEvidence(M3_TEMPORAL_EASE_DECLARED_CAPABILITIES_V18);
 
 export const buildTemporalEaseRequestV18 = (input: {
   readonly requestId: string;
