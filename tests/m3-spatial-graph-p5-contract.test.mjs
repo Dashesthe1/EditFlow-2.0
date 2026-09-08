@@ -98,10 +98,12 @@ test("spatial Graph Editor P5 wrappers reuse accepted transfer launchers and exe
   assert.match(selfHosted, /run-m3-temporal-interpolation-p5-self-hosted\.ps1/);
   assert.match(selfHosted, /run-m3-spatial-graph-p5\.ps1/);
   assert.match(selfHosted, /EDITFLOW_M3_SPATIAL_GRAPH_P5_PROOF/);
+  assert.match(selfHosted, /BaseLifecyclePath/);
   assert.match(selfHosted, /scripts\\windows\\install-editflow-cep\.ps1/);
   assert.match(selfHosted, /protocol 1\.9/);
-  assert.match(selfHosted, /production-path promotion proof/);
+  assert.match(selfHosted, /production-path proof/);
   assert.match(selfHosted, /standard EditFlow CEP installer/);
+  assert.match(selfHosted, /former v1\.9 preview verifier/);
   assert.doesNotMatch(selfHosted, /\.Replace\('scripts\\windows\\install-editflow-cep\.ps1', 'scripts\\windows\\install-editflow-cep-v19-preview\.ps1'\)/);
 });
 
