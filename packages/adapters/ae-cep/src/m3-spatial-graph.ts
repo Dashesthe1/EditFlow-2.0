@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3SpatialGraphAcceptedProofEvidence } from "./m3-spatial-graph-proof-maturity.js";
 import {
   AE_SPATIAL_GRAPH_ADAPTER_BUILD_V19,
   AE_SPATIAL_GRAPH_COMMANDS_V19,
@@ -71,7 +72,7 @@ export class CepEvalScriptSpatialGraphTransportV19 {
 const riskForSpatialGraphCommand = (command: AeSpatialGraphCommandV19): CapabilityRecord["riskClass"] =>
   command === "property.spatial_graph.readback" ? "R0_READ_ONLY" : "R1_REVERSIBLE";
 
-export const M3_SPATIAL_GRAPH_CAPABILITIES_V19: readonly CapabilityRecord[] =
+const M3_SPATIAL_GRAPH_DECLARED_CAPABILITIES_V19: readonly CapabilityRecord[] =
   AE_SPATIAL_GRAPH_COMMANDS_V19.map((command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForSpatialGraphCommandV19(command)),
     domain: "animation",
@@ -90,6 +91,9 @@ export const M3_SPATIAL_GRAPH_CAPABILITIES_V19: readonly CapabilityRecord[] =
     riskClass: riskForSpatialGraphCommand(command),
     fallbackPolicy: "FORBID",
   }));
+
+export const M3_SPATIAL_GRAPH_CAPABILITIES_V19: readonly CapabilityRecord[] =
+  applyM3SpatialGraphAcceptedProofEvidence(M3_SPATIAL_GRAPH_DECLARED_CAPABILITIES_V19);
 
 export const buildSpatialGraphRequestV19 = (input: {
   readonly requestId: string;
