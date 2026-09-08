@@ -9,6 +9,7 @@ $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-motion-render-p3-p4"
 $ResultPath = Join-Path $ArtifactDir "result.json"
 $AcceptedP1P2Path = Join-Path $RepoRoot "proofs\diagnostics\m3-motion-render-p1-p2-acceptance.json"
+$CleanupScript = Join-Path $RepoRoot "scripts\windows\m3-motion-render-p3-p4-cleanup.jsx"
 $CleanupGraceSeconds = 90
 
 function Resolve-RunningAfterFx {
@@ -34,9 +35,20 @@ function Resolve-RunningAfterFx {
   return $RunningPaths[0]
 }
 
+function Quote-StartProcessArgument {
+  param([string]$Value)
+  if ($null -eq $Value) { return '""' }
+  if ($Value.Contains('"')) { throw "Motion-render P3/P4 Start-Process arguments must not contain literal quote characters." }
+  return '"' + $Value + '"'
+}
+
 if ($TimeoutSeconds -lt 30) { throw "TimeoutSeconds must be at least 30." }
+if ($env:EDITFLOW_M3_MOTION_RENDER_P4_PROOF -ne "1") {
+  throw "Motion-render P3/P4 acceptance requires the self-hosted runner-owned AE process to inherit EDITFLOW_M3_MOTION_RENDER_P4_PROOF=1."
+}
 if (-not (Test-Path $ConfigPath -PathType Leaf)) { throw "EditFlow CEP config is missing; install the isolated protocol 1.10 preview first." }
 if (-not (Test-Path $AcceptedP1P2Path -PathType Leaf)) { throw "Accepted protocol 1.10 P1/P2 record is missing: $AcceptedP1P2Path" }
+if (-not (Test-Path $CleanupScript -PathType Leaf)) { throw "Motion-render P3/P4 proof cleanup script is missing: $CleanupScript" }
 $AfterFx = Resolve-RunningAfterFx $AfterFxPath
 $VersionInfo = (Get-Item $AfterFx).VersionInfo
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
@@ -59,12 +71,15 @@ try {
   if ($VersionInfo.ProductVersion) { Write-Host ("Running AE version: " + $VersionInfo.ProductVersion) }
   Write-Host "P3 emits retained motion-blur and frame-blending render families for independent visual review; this wrapper does not accept P3."
   Write-Host "P4 injects failures only after verified protocol-1.10 comp/layer writes and requires exact structural/fingerprint restoration."
+  Write-Host "Cleanup is a fixed proof-only project reset that refuses any saved, foreign, or mixed-generation fixture."
 
   $NodeArgs = @(
-    $Cli,
-    "--config", $ConfigPath,
-    "--result", $ResultPath,
-    "--accepted-p1-p2", $AcceptedP1P2Path,
+    (Quote-StartProcessArgument $Cli),
+    "--config", (Quote-StartProcessArgument $ConfigPath),
+    "--result", (Quote-StartProcessArgument $ResultPath),
+    "--accepted-p1-p2", (Quote-StartProcessArgument $AcceptedP1P2Path),
+    "--afterfx-path", (Quote-StartProcessArgument $AfterFx),
+    "--cleanup-script", (Quote-StartProcessArgument $CleanupScript),
     "--timeout-ms", ($TimeoutSeconds * 1000)
   )
   $NodeProcess = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru
@@ -117,6 +132,7 @@ try {
     "p4_layer_fingerprint_restored",
     "p4_layer_state_restored",
     "p4_structural_rollback_complete",
+    "proof_cleanup_script_passed",
     "cleanup_fingerprint_restored"
   )) {
     if ($Result.checks.$Key -ne $true) { throw "Motion-render P3/P4 check '$Key' was not true." }
