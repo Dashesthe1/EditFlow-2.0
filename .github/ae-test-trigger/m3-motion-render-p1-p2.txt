@@ -1,0 +1,3 @@
+source_head=70b1549c56179689fb033db36f13fc4b6dbb5998
+proof=protocol-1.10-motion-render-p1-p2
+retry_policy=one-zero-command-cep-registration-retry
