@@ -107,9 +107,17 @@ $BridgeText = $BridgeText.Replace('EditFlow2_HOST_PROTOCOL_18', 'EditFlow2_HOST_
 $BridgeText = $BridgeText.Replace('protocol 1.8 host dispatcher', 'protocol 1.9 host dispatcher')
 [System.IO.File]::WriteAllText($BridgePath, $BridgeText, $Utf8NoBom)
 
-# Preserve the last accepted client/protocol baseline as compatibility metadata. The
-# current panel advertises 1.9 first, while this record makes the deliberate accepted
-# 1.7 fallback floor inspectable rather than implicit.
+# Keep the immediately previous transfer-accepted protocol as explicit compatibility
+# metadata. Protocol 1.9 is additive; protocol 1.8 remains available for temporal-ease
+# sessions and brokers that deliberately negotiate only through that tranche.
+$AcceptedV18Compatibility = [ordered]@{
+  supportedProtocolVersions = @("1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
+  extensionVersion = "0.1.0-dev.8"
+  hostLoader = "editflow_host_current_v18.jsx"
+  hostFlag = "EditFlow2_HOST_PROTOCOL_18"
+}
+
+# Preserve the prior accepted 1.7 client/protocol baseline as compatibility metadata too.
 $AcceptedV17Compatibility = [ordered]@{
   supportedProtocolVersions = @("1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
   extensionVersion = "0.1.0-dev.7"
@@ -126,6 +134,7 @@ $Config = [ordered]@{
   token = $Token
   protocolVersion = "1.1.0"
   supportedProtocolVersions = @("1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
+  acceptedV18Compatibility = $AcceptedV18Compatibility
   acceptedV17Compatibility = $AcceptedV17Compatibility
   extensionId = $ExtensionId
   extensionVersion = $ExtensionVersion
