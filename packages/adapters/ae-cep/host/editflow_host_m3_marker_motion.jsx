@@ -149,6 +149,13 @@
     for (i = 1; i <= property.numKeys; i += 1) result.push({ keyIndex: i, time: property.keyTime(i), marker: markerState(property.keyValue(i)) });
     return { markerTarget: { kind: resolved.kind, comp: { stableId: itemStableId(resolved.comp), hostId: hostIdOf(resolved.comp) }, layer: resolved.layer ? { stableId: layerStableId(resolved.layer), hostId: hostIdOf(resolved.layer), index: resolved.layer.index, name: resolved.layer.name } : null }, markers: result };
   }
+  function sameMarkerState(a, b) {
+    var fields = ["comment", "chapter", "url", "frameTarget", "cuePointName", "duration", "eventCuePoint", "label", "protectedRegion"], i, key;
+    for (i = 0; i < fields.length; i += 1) { key = fields[i]; if (a[key] !== b[key]) return false; }
+    for (key in a.parameters) if (own(a.parameters, key) && a.parameters[key] !== b.parameters[key]) return false;
+    for (key in b.parameters) if (own(b.parameters, key) && a.parameters[key] !== b.parameters[key]) return false;
+    return true;
+  }
 
   function validateCompMotionState(state) {
     if (!state || typeof state !== "object" || state instanceof Array) reject("COMP_MOTION_STATE_REQUIRED", "state must be an object.");
@@ -232,7 +239,12 @@
           if (!finiteNumber(payload.time)) reject("MARKER_TIME_INVALID", "Marker time must be a finite number.");
           resolved = resolveMarkerTarget(payload.target);
           before = readMarkers(resolved);
-          resolved.property.setValueAtTime(payload.time, makeMarker(payload.marker, resolved.kind));
+          var requestedMarker = makeMarker(payload.marker, resolved.kind), existingIndex = resolved.property.numKeys > 0 ? resolved.property.nearestKeyIndex(payload.time) : 0;
+          if (existingIndex >= 1 && Math.abs(resolved.property.keyTime(existingIndex) - payload.time) < 0.000001
+              && sameMarkerState(markerState(resolved.property.keyValue(existingIndex)), markerState(requestedMarker))) {
+            return response(request, "NO_OP", null, [], before, started, ["Requested marker already matched host state at the target time."]);
+          }
+          resolved.property.setValueAtTime(payload.time, requestedMarker);
           after = readMarkers(resolved);
           affected = resolved.layer ? [{ kind: "LAYER", stableId: layerStableId(resolved.layer), hostId: hostIdOf(resolved.layer) }] : [{ kind: "COMP", stableId: itemStableId(resolved.comp), hostId: hostIdOf(resolved.comp) }];
           if (after.markers.length < 1) fail("READBACK", "MARKER_SET_READBACK_MISMATCH", "Marker write did not produce marker readback.");

@@ -37,7 +37,7 @@ test("authenticated loopback broker compiles protocol 1.9 without making it the 
   assert.match(source, /AeSpatialGraphTransportV19/);
   assert.match(source, /AeSpatialGraphRequestV19/);
   assert.match(source, /AeSpatialGraphResponseV19/);
-  assert.match(source, /COMPILED_PROTOCOLS = \[AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18/);
+  assert.match(source, /COMPILED_PROTOCOLS = \[(?:AE_MARKER_MOTION_PROTOCOL_VERSION_V20, )?AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18/);
   assert.match(source, /supportedProtocolVersions: normalizeBrokerProtocols/);
   assert.match(source, /const requested = input \?\? \[AE_ADAPTER_PROTOCOL_VERSION_V11\]/);
   assert.match(source, /dispatch\(request: AeSpatialGraphRequestV19\): Promise<AeSpatialGraphResponseV19>/);
