@@ -126,14 +126,24 @@
   function validateState(property, keyIndex, state) {
     requireSpatialSurface(property);
     if (!state || typeof state !== "object" || state instanceof Array) reject("SPATIAL_GRAPH_STATE_REQUIRED", "state must be an object.");
-    var allowed = { inTangent: true, outTangent: true, continuous: true, autoBezier: true, roving: true }, key, count = 0;
-    for (key in state) if (own(state, key)) { count += 1; if (!allowed[key]) reject("SPATIAL_GRAPH_STATE_UNKNOWN_FIELD", "Unknown spatial graph field: " + key, { field: key }); }
-    if (count !== 5) reject("SPATIAL_GRAPH_STATE_INCOMPLETE", "state must specify exactly inTangent, outTangent, continuous, autoBezier, and roving.");
-    var dimensions = spatialDimensions(property);
-    validateVector(state.inTangent, "inTangent", dimensions);
-    validateVector(state.outTangent, "outTangent", dimensions);
-    if (typeof state.continuous !== "boolean" || typeof state.autoBezier !== "boolean" || typeof state.roving !== "boolean") reject("SPATIAL_GRAPH_FLAG_INVALID", "continuous, autoBezier, and roving must be booleans.");
+    if (state.mode !== "MANUAL" && state.mode !== "AUTO_BEZIER") reject("SPATIAL_GRAPH_MODE_INVALID", "state.mode must be MANUAL or AUTO_BEZIER.");
+    if (typeof state.continuous !== "boolean" || typeof state.roving !== "boolean") reject("SPATIAL_GRAPH_FLAG_INVALID", "continuous and roving must be booleans.");
     if (state.roving === true && (keyIndex === 1 || keyIndex === property.numKeys)) reject("ROVING_ENDPOINT_FORBIDDEN", "After Effects cannot enable roving on the first or last keyframe.", { keyIndex: keyIndex, numKeys: property.numKeys });
+
+    var key, allowed, count = 0;
+    if (state.mode === "MANUAL") {
+      allowed = { mode: true, inTangent: true, outTangent: true, continuous: true, roving: true };
+      for (key in state) if (own(state, key)) { count += 1; if (!allowed[key]) reject("SPATIAL_GRAPH_STATE_UNKNOWN_FIELD", "Unknown MANUAL spatial graph field: " + key, { field: key }); }
+      if (count !== 5 || !own(state, "inTangent") || !own(state, "outTangent")) reject("SPATIAL_GRAPH_STATE_INCOMPLETE", "MANUAL state must specify exactly mode, inTangent, outTangent, continuous, and roving.");
+      var dimensions = spatialDimensions(property);
+      validateVector(state.inTangent, "inTangent", dimensions);
+      validateVector(state.outTangent, "outTangent", dimensions);
+      return;
+    }
+
+    allowed = { mode: true, continuous: true, roving: true };
+    for (key in state) if (own(state, key)) { count += 1; if (!allowed[key]) reject("AUTO_BEZIER_TANGENTS_FORBIDDEN", "AUTO_BEZIER state is host-shaped and must not supply manual tangents.", { field: key }); }
+    if (count !== 3) reject("SPATIAL_GRAPH_STATE_INCOMPLETE", "AUTO_BEZIER state must specify exactly mode, continuous, and roving.");
   }
   function copyVector(value) { var result = [], i; for (i = 0; i < value.length; i += 1) result.push(value[i]); return result; }
   function readState(property, keyIndex) {
@@ -148,13 +158,31 @@
   }
   function closeNumber(a, b) { return Math.abs(a - b) <= 0.0000001; }
   function sameVector(a, b) { if (!a || !b || a.length !== b.length) return false; var i; for (i = 0; i < a.length; i += 1) if (!closeNumber(a[i], b[i])) return false; return true; }
-  function sameState(a, b) { return sameVector(a.inTangent, b.inTangent) && sameVector(a.outTangent, b.outTangent) && a.continuous === b.continuous && a.autoBezier === b.autoBezier && a.roving === b.roving; }
-  function applyState(property, keyIndex, state) {
+  function sameObservedState(a, b) { return sameVector(a.inTangent, b.inTangent) && sameVector(a.outTangent, b.outTangent) && a.continuous === b.continuous && a.autoBezier === b.autoBezier && a.roving === b.roving; }
+  function requestedStateMatches(actual, requested) {
+    if (actual.continuous !== requested.continuous || actual.roving !== requested.roving) return false;
+    if (requested.mode === "AUTO_BEZIER") return actual.autoBezier === true;
+    return actual.autoBezier === false && sameVector(actual.inTangent, requested.inTangent) && sameVector(actual.outTangent, requested.outTangent);
+  }
+  function applyRequestedState(property, keyIndex, state) {
+    if (state.mode === "AUTO_BEZIER") {
+      property.setSpatialContinuousAtKey(keyIndex, state.continuous);
+      property.setSpatialAutoBezierAtKey(keyIndex, true);
+      property.setRovingAtKey(keyIndex, state.roving);
+      return;
+    }
     property.setSpatialAutoBezierAtKey(keyIndex, false);
     property.setSpatialContinuousAtKey(keyIndex, false);
     property.setSpatialTangentsAtKey(keyIndex, state.inTangent, state.outTangent);
     property.setSpatialContinuousAtKey(keyIndex, state.continuous);
-    property.setSpatialAutoBezierAtKey(keyIndex, state.autoBezier);
+    property.setRovingAtKey(keyIndex, state.roving);
+  }
+  function restoreObservedState(property, keyIndex, state) {
+    property.setSpatialAutoBezierAtKey(keyIndex, false);
+    property.setSpatialContinuousAtKey(keyIndex, false);
+    property.setSpatialTangentsAtKey(keyIndex, state.inTangent, state.outTangent);
+    property.setSpatialContinuousAtKey(keyIndex, state.continuous);
+    if (state.autoBezier) property.setSpatialAutoBezierAtKey(keyIndex, true);
     property.setRovingAtKey(keyIndex, state.roving);
   }
   function readback(layer, property, path, keyIndex) {
@@ -187,15 +215,21 @@
       var before = readState(property, payload.keyIndex), applied = false;
       app.beginUndoGroup("EditFlow spatial Graph Editor");
       try {
-        if (sameState(before, payload.state)) return response(request, "NO_OP", null, [], readback(layer, property, payload.propertyPath, payload.keyIndex), started, ["Requested spatial Graph Editor state already matched host state."]);
-        applyState(property, payload.keyIndex, payload.state);
+        if (requestedStateMatches(before, payload.state)) return response(request, "NO_OP", null, [], readback(layer, property, payload.propertyPath, payload.keyIndex), started, ["Requested spatial Graph Editor state already matched host state."]);
+        applyRequestedState(property, payload.keyIndex, payload.state);
         applied = true;
         var after = readState(property, payload.keyIndex);
-        if (!sameState(after, payload.state)) fail("READBACK", "SPATIAL_GRAPH_READBACK_MISMATCH", "Applied spatial Graph Editor state did not match structural readback.", { expected: payload.state, actual: after });
-        return response(request, "APPLIED", null, [{ kind: "LAYER", stableId: layerStableId(layer), hostId: hostIdOf(layer) }], readback(layer, property, payload.propertyPath, payload.keyIndex), started, ["Spatial Graph Editor state applied and verified by structural readback."]);
+        if (!requestedStateMatches(after, payload.state)) fail("READBACK", "SPATIAL_GRAPH_READBACK_MISMATCH", "Applied spatial Graph Editor state did not match structural readback.", { expected: payload.state, actual: after });
+        return response(request, "APPLIED", null, [{ kind: "LAYER", stableId: layerStableId(layer), hostId: hostIdOf(layer) }], readback(layer, property, payload.propertyPath, payload.keyIndex), started, [payload.state.mode === "AUTO_BEZIER" ? "Auto-Bezier enabled; tangent vectors are host-owned and returned as observation." : "Manual spatial tangents applied and verified by structural readback."]);
       } catch (mutationError) {
         if (applied) {
-          try { applyState(property, payload.keyIndex, before); } catch (rollbackError) { fail("ROLLBACK", "SPATIAL_GRAPH_ROLLBACK_FAILED", "Spatial Graph Editor mutation failed and rollback also failed.", { mutationError: asString(mutationError), rollbackError: asString(rollbackError) }); }
+          try {
+            restoreObservedState(property, payload.keyIndex, before);
+            var restored = readState(property, payload.keyIndex);
+            if (!sameObservedState(restored, before)) fail("ROLLBACK", "SPATIAL_GRAPH_ROLLBACK_READBACK_MISMATCH", "Rollback completed but did not restore the exact prior spatial state.", { expected: before, actual: restored });
+          } catch (rollbackError) {
+            fail("ROLLBACK", "SPATIAL_GRAPH_ROLLBACK_FAILED", "Spatial Graph Editor mutation failed and rollback also failed.", { mutationError: asString(mutationError), rollbackError: asString(rollbackError) });
+          }
         }
         throw mutationError;
       } finally { app.endUndoGroup(); }
