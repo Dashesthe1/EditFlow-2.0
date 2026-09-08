@@ -98,6 +98,7 @@
     error: null,
     proofPrefix: null,
     retainedProjectPath: projectFile.fsName,
+    canonicalScaleMiddleValue: null,
     blankItemCount: null,
     verifiedFinalProjectItemCount: null,
     completedAtMs: (new Date()).getTime()
@@ -164,8 +165,13 @@
       throw new Error("Temporal-ease P5 Opacity middle key identity is not exact.");
     }
     var scaleValue = scale.keyValue(2);
-    if (!scaleValue || scaleValue.length !== 3 || !closeNumber(scaleValue[0], 140) || !closeNumber(scaleValue[1], 80) || !closeNumber(scaleValue[2], 115)) {
-      throw new Error("Temporal-ease P5 Scale middle key identity is not exact.");
+    payload.canonicalScaleMiddleValue = scaleValue;
+    // AE documents two-value Scale input as shorthand for an implicit Z scale
+    // of 100. On this non-3D AVLayer the live Scale property remains a ThreeD
+    // quantitative property for temporal-ease cardinality, while keyValue()
+    // canonicalizes the non-material Z scale to 100.
+    if (!scaleValue || scaleValue.length !== 3 || !closeNumber(scaleValue[0], 140) || !closeNumber(scaleValue[1], 80) || !closeNumber(scaleValue[2], 100)) {
+      throw new Error("Temporal-ease P5 canonical Scale middle key identity is not exact.");
     }
 
     requireManualBezier(opacity, 2, "Saved Opacity");
