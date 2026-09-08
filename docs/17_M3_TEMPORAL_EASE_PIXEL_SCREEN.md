@@ -17,11 +17,21 @@ Even successful screening returns `PIXEL_CHECKS_PASSED_REVIEW_REQUIRED`, with
 
 ## Why decoded pixels
 
-The existing draft emits baseline, changed-ease, restored-baseline, and
-post-rollback AVI files. File existence is not visual proof. Conversely, encoded
-file hashes can differ because of container metadata while the decoded pixels
-remain identical. This verifier records encoded hashes for provenance and compares
-all decoded frames for behavior and exact restoration.
+The proof harness requests baseline, changed-ease, restored-baseline, and
+post-rollback `.avi` paths. The production `render.capture` path can canonicalize
+those requests to retained `.mp4` media and emits a sibling
+`.avi.editflow-render.json` completion marker that records the actual output path.
+The verifier therefore preserves the requested AVI identity from `result.json`,
+but when canonical output is retained it requires the marker and MP4 together,
+verifies the successful render lifecycle, binds the marker to the expected MP4,
+and decodes that MP4. It never silently substitutes an unrelated file. The
+original requested AVI remains supported only for legacy/synthetic verifier
+fixtures where neither canonical artifact is present.
+
+File existence is not visual proof. Conversely, encoded file hashes can differ
+because of container metadata while the decoded pixels remain identical. This
+verifier records encoded hashes for provenance and compares all decoded frames for
+behavior and exact restoration.
 
 The supported fixture is deliberately narrow: the existing opaque 320 x 320,
 24 fps, one-second composition, with foreground Opacity keys `(0, 0)`,
@@ -51,13 +61,21 @@ SHA-256 of the retained P1/P2 bytes. This detects mismatched dependencies but do
 not authenticate an artifact's origin: independent review must bind the records
 to the real GitHub run, source commit, host, and retained artifact archive.
 
-Resolve only the four fixed render basenames under the explicitly selected local
-artifact directory. Recorded Windows paths are never followed. Symlinked,
-non-regular, empty, oversized, or path-escaping media fails. Subprocesses are
-invoked without a shell, with local-file/AVI input restrictions, output bounds,
-and a 15-second timeout per invocation. Decoder errors fail rather than skip.
-Input hashes are checked before and after inspection; this is not a security
-sandbox for hostile media or a guarantee against adversarial concurrent writers.
+Recorded Windows render paths are never followed. Their portable basenames must
+match the four fixed requested AVI names. Under the explicitly selected artifact
+directory, production evidence is resolved as a fixed marker/MP4 pair. If either
+member of a canonical pair exists without the other, verification fails closed.
+The marker must report schema 1, `status: DONE`, `ok: true`, `error: null`, a
+positive completion timestamp, `queueItemRemoved: true`, and an `outputPath` whose
+basename is the expected canonical MP4. Only if neither canonical artifact exists
+does the verifier use the original fixed AVI basename for legacy/synthetic tests.
+
+Symlinked, non-regular, empty, oversized, or path-escaping evidence fails.
+Subprocesses are invoked without a shell, with local-file protocol restrictions,
+a bounded AVI/ISO-BMFF format allowlist, output bounds, and a 15-second timeout per
+invocation. Decoder errors fail rather than skip. Input hashes are checked before
+and after inspection; this is not a security sandbox for hostile media or a
+guarantee against adversarial concurrent writers.
 
 FFprobe must report exactly one video stream, the original dimensions and frame
 rate, and all 24 ordered presentation timestamps. FFmpeg decodes to RGB24 without
@@ -114,7 +132,9 @@ binding. The integration suite uses actual FFmpeg/ffprobe against explicitly
 labelled synthetic AVI media and tests the CLI, container-only changes, truncated
 media, wrong frame rates, no-op easing, one-pixel rollback corruption, symlinks,
 missing tools, and dependency mismatches. Missing media tools fail this explicit
-suite; they are not silently skipped.
+suite; they are not silently skipped. The canonical marker/MP4 production path is
+also exercised during retained real-AE review rather than being inferred from the
+requested filename.
 
 The new GitHub-hosted workflow retains test logs and Node/FFmpeg/ffprobe versions.
 It has no AE runner labels or host-launch steps. The normal repository test glob
