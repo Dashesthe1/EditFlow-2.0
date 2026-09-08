@@ -16,6 +16,9 @@ import {
   M3_TEMPORAL_EASE_CAPABILITIES_V18,
   buildTemporalEaseRequestV18,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-temporal-ease.js";
+import {
+  applyM3TemporalEaseAcceptedP1P2Evidence,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-temporal-ease-proof-maturity.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_temporal_ease.jsx";
@@ -45,9 +48,10 @@ test("M3 temporal ease protocol 1.8 is fixed to roadmap item 10 numeric Graph Ed
   assert.equal(capabilityForTemporalEaseCommandV18("property.temporal_ease.readback"), "ae.property.temporal_ease.readback");
 });
 
-test("accepted real-AE P1/P2 promotes protocol 1.8 capabilities only to PARTIAL STRUCTURAL", () => {
-  assert.equal(M3_TEMPORAL_EASE_CAPABILITIES_V18.length, 2);
-  for (const capability of M3_TEMPORAL_EASE_CAPABILITIES_V18) {
+test("historical accepted real-AE P1/P2 projection remains PARTIAL STRUCTURAL after later proof acceptance", () => {
+  const historicalP1P2 = applyM3TemporalEaseAcceptedP1P2Evidence(M3_TEMPORAL_EASE_CAPABILITIES_V18);
+  assert.equal(historicalP1P2.length, 2);
+  for (const capability of historicalP1P2) {
     assert.equal(capability.status, "PARTIAL");
     assert.equal(capability.proofMaturity, "STRUCTURAL");
     assert.equal(capability.routes.length, 1);
@@ -57,7 +61,7 @@ test("accepted real-AE P1/P2 promotes protocol 1.8 capabilities only to PARTIAL 
   }
 });
 
-test("accepted temporal-ease P1/P2 provenance is exact and does not overclaim P3-P5", async () => {
+test("accepted temporal-ease P1/P2 provenance remains exact without constraining later accepted P3-P5 evidence", async () => {
   const [maturity, acceptance] = await Promise.all([
     readFile(maturityPath, "utf8"),
     readFile(acceptancePath, "utf8"),
@@ -70,8 +74,9 @@ test("accepted temporal-ease P1/P2 provenance is exact and does not overclaim P3
   assert.match(maturity, /b1046dfe32b1b1c73a3acd65e5d5b3deb90fef50e01170ed3b8e8e04d4e2439b/);
   assert.match(maturity, /"ae\.property\.temporal_ease\.set": "STRUCTURAL"/);
   assert.match(maturity, /"ae\.property\.temporal_ease\.readback": "STRUCTURAL"/);
+  assert.match(maturity, /export const applyM3TemporalEaseAcceptedP1P2Evidence/);
   assert.match(maturity, /status: "PARTIAL"/);
-  assert.doesNotMatch(maturity, /"TRANSFER"|"ROBUST"|status: "FULL"/);
+  assert.match(maturity, /proofMaturity: m3TemporalEaseP1P2MaturityForCapability/);
 
   assert.match(acceptance, /status: PASS/);
   assert.match(acceptance, /all 44 bounded checks `true`/);
