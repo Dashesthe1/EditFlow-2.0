@@ -8,9 +8,11 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplatePath = Join-Path $RepoRoot "scripts\windows\run-m3-mask-self-hosted.ps1"
 $TempPath = Join-Path $PSScriptRoot ("run-m3-spatial-graph-self-hosted-generated-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-spatial-graph-p1-p2"
+$ResultPath = Join-Path $ProofArtifactDir "result.json"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
+$MaxPanelRegistrationAttempts = 2
 
 function Copy-CepFailureDiagnostics {
   param([string]$Destination)
@@ -44,6 +46,40 @@ function Copy-CepFailureDiagnostics {
   if ($Copied.Count -gt 0) { $Manifest += $Copied | ForEach-Object { "file=" + $_ } }
   else { $Manifest += "note=No recent CEP12/CEPHtmlEngine AEFT log matched the documented Windows log patterns." }
   [System.IO.File]::WriteAllLines((Join-Path $Destination "cep-failure-diagnostics.txt"), $Manifest, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Test-RetryablePanelRegistrationFailure {
+  if (-not (Test-Path $ResultPath -PathType Leaf)) { return $false }
+  try {
+    $Result = Get-Content $ResultPath -Raw | ConvertFrom-Json
+    $Responses = @($Result.responses)
+    $Evidence = @($Result.evidence)
+    $CheckProperties = @()
+    if ($null -ne $Result.checks) { $CheckProperties = @($Result.checks.PSObject.Properties) }
+    return $Result.status -eq "FAILURE" `
+      -and $Result.ok -eq $false `
+      -and [string]$Result.failureError -match "CEP_PANEL_REGISTRATION_TIMEOUT" `
+      -and $null -eq $Result.panel `
+      -and $null -eq $Result.environment `
+      -and $Responses.Count -eq 0 `
+      -and $Evidence.Count -eq 0 `
+      -and $CheckProperties.Count -eq 0
+  } catch {
+    return $false
+  }
+}
+
+function Retain-PanelRetryEvidence {
+  param([int]$Attempt)
+  $Destination = Join-Path $ProofArtifactDir ("panel-registration-retry-attempt-" + $Attempt)
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  foreach ($Name in @("result.json", "panel-bootstrap.log", "startup-diagnostics.log", "cep-failure-diagnostics.txt")) {
+    $Source = Join-Path $ProofArtifactDir $Name
+    if (Test-Path $Source -PathType Leaf) {
+      Copy-Item -LiteralPath $Source -Destination (Join-Path $Destination $Name) -Force
+    }
+  }
+  Copy-CepFailureDiagnostics -Destination $Destination
 }
 
 if (-not (Test-Path $TemplatePath -PathType Leaf)) {
@@ -133,11 +169,36 @@ try {
   Write-Host "CEP 12 LogLevel registry readback before AE launch: $EffectiveLogLevel"
   Write-Host "Spatial-graph proof mode: isolated authenticated protocol 1.9 preview; accepted installation remains 1.8 outside this proof."
 
-  & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
-  if ($LASTEXITCODE -ne 0) {
+  $Completed = $false
+  for ($Attempt = 1; $Attempt -le $MaxPanelRegistrationAttempts; $Attempt++) {
+    $AttemptError = $null
+    try {
+      & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+      if ($LASTEXITCODE -ne 0) { throw "Spatial-graph generated self-hosted runner exited with code $LASTEXITCODE." }
+      $Completed = $true
+      break
+    } catch {
+      $AttemptError = $_
+    }
+
+    $RetryableRegistrationFailure = Test-RetryablePanelRegistrationFailure
+    if ($Attempt -lt $MaxPanelRegistrationAttempts -and $RetryableRegistrationFailure) {
+      $RemainingAfterFx = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+      if ($RemainingAfterFx.Count -ne 0) {
+        Retain-PanelRetryEvidence -Attempt $Attempt
+        throw "Spatial-graph panel-registration retry refused because the failed zero-command attempt did not return to a zero-After-Effects baseline."
+      }
+      Retain-PanelRetryEvidence -Attempt $Attempt
+      Write-Host ("Authenticated CEP panel registration timed out before any spatial command on attempt " + $Attempt + "; retrying one fresh isolated AE launch from the verified zero-process baseline.")
+      Start-Sleep -Seconds 2
+      continue
+    }
+
     Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
-    exit $LASTEXITCODE
+    throw $AttemptError
   }
+
+  if (-not $Completed) { throw "Spatial-graph self-hosted runner exhausted its bounded panel-registration attempts." }
 } catch {
   Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
   throw
