@@ -125,6 +125,8 @@ test("self-hosted runner installs protocol 2.0 only inside proof process and pre
   assert.match(source, /normal installer defaults remain accepted protocol 1\.9/);
   assert.match(source, /watch-ae-startup-dialogs\.ps1/);
   assert.match(source, /quit-editflow-proof-ae\.jsx/);
+  assert.match(source, /EditFlow2-layer-controls-proof-quit\.log/);
+  assert.doesNotMatch(source, /EditFlow2-marker-motion-proof-quit\.log/);
   assert.match(source, /PROOF_CLEAN_QUIT_CONFIRMED/);
   assert.match(source, /AcceptedP1P2Path/);
 });
