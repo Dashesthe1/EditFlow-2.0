@@ -30,11 +30,11 @@ test("M3 spatial Graph Editor protocol 1.9 is a bounded additive surface", () =>
   assert.equal(capabilityForSpatialGraphCommandV19("property.spatial_graph.set"), "ae.property.spatial_graph.set");
 });
 
-test("spatial Graph Editor capabilities remain PARTIAL DECLARED before real-AE proof", () => {
+test("spatial Graph Editor capabilities reflect accepted real-AE P1-P5 transfer evidence", () => {
   assert.equal(M3_SPATIAL_GRAPH_CAPABILITIES_V19.length, 2);
   for (const capability of M3_SPATIAL_GRAPH_CAPABILITIES_V19) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.status, "FULL");
+    assert.equal(capability.proofMaturity, "TRANSFER");
     assert.equal(capability.routes[0].routeId, AE_SPATIAL_GRAPH_ROUTE_ID_V19);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
