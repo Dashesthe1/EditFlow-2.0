@@ -21,13 +21,12 @@ function Get-Sha256([string]$Path) {
 function Write-JsonFile([string]$Path, $Value) {
   $Parent = Split-Path -Parent $Path
   if ($Parent) { New-Item -ItemType Directory -Force -Path $Parent | Out-Null }
-  $Json = $Value | ConvertTo-Json -Depth 8
-  [System.IO.File]::WriteAllText($Path, $Json + [Environment]::NewLine, $Utf8NoBom)
+  [System.IO.File]::WriteAllText($Path, (($Value | ConvertTo-Json -Depth 8) + [Environment]::NewLine), $Utf8NoBom)
 }
 
 function Wait-ForAfterFxExit([int]$Seconds) {
   $Deadline = (Get-Date).AddSeconds([Math]::Max(0, $Seconds))
-  do {
+  while ($true) {
     $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
     if ($Running.Count -eq 0) { return }
     if ((Get-Date) -ge $Deadline) {
@@ -35,7 +34,7 @@ function Wait-ForAfterFxExit([int]$Seconds) {
       throw "AE_CACHE_GUARD_ACTIVE_AFTERFX: refusing preference mutation while After Effects is running (pids=$Ids)."
     }
     Start-Sleep -Milliseconds 250
-  } while ($true)
+  }
 }
 
 function Get-TextEncoding([byte[]]$Bytes) {
@@ -53,11 +52,11 @@ function Get-TextEncoding([byte[]]$Bytes) {
 
 function Read-PreferenceDocument([string]$Path) {
   $Bytes = [System.IO.File]::ReadAllBytes($Path)
-  $EncodingInfo = Get-TextEncoding $Bytes
-  $Preamble = [int]$EncodingInfo.Preamble
-  $PayloadLength = $Bytes.Length - $Preamble
-  $Text = if ($PayloadLength -gt 0) { $EncodingInfo.Encoding.GetString($Bytes, $Preamble, $PayloadLength) } else { "" }
-  return @{ Bytes = $Bytes; Text = $Text; Encoding = $EncodingInfo.Encoding; HasBom = ($Preamble -gt 0) }
+  $Info = Get-TextEncoding $Bytes
+  $Offset = [int]$Info.Preamble
+  $Count = $Bytes.Length - $Offset
+  $Text = if ($Count -gt 0) { $Info.Encoding.GetString($Bytes, $Offset, $Count) } else { "" }
+  return @{ Bytes = $Bytes; Text = $Text; Encoding = $Info.Encoding; HasBom = ($Offset -gt 0) }
 }
 
 function Write-PreferenceDocument([string]$Path, [string]$Text, $Encoding, [bool]$HasBom) {
@@ -80,12 +79,14 @@ function Get-PrefsVersion([string]$Executable) {
 function Get-DiskCacheSettings([string]$Text) {
   $NewLine = if ($Text.Contains("`r`n")) { "`r`n" } else { "`n" }
   $Lines = [regex]::Split($Text, "\r?\n")
-  $SectionIndexes = New-Object System.Collections.Generic.List[int]
+  $Sections = @()
   for ($Index = 0; $Index -lt $Lines.Length; $Index++) {
-    if ($Lines[$Index] -eq '["Disk Cache Controls"]') { $SectionIndexes.Add($Index) }
+    if ($Lines[$Index] -eq '["Disk Cache Controls"]') { $Sections += $Index }
   }
-  if ($SectionIndexes.Count -ne 1) { throw "AE_CACHE_GUARD_SECTION_AMBIGUOUS: expected exactly one [\"Disk Cache Controls\"] section; found $($SectionIndexes.Count)." }
-  $Start = $SectionIndexes[0]
+  if ($Sections.Count -ne 1) {
+    throw ('AE_CACHE_GUARD_SECTION_AMBIGUOUS: expected exactly one ["Disk Cache Controls"] section; found ' + $Sections.Count + '.')
+  }
+  $Start = [int]$Sections[0]
   $End = $Lines.Length
   for ($Index = $Start + 1; $Index -lt $Lines.Length; $Index++) {
     if ($Lines[$Index] -match '^\[.*\]$') { $End = $Index; break }
@@ -98,19 +99,17 @@ function Get-DiskCacheSettings([string]$Text) {
   }
   if ($FolderIndexes.Count -ne 1) { throw "AE_CACHE_GUARD_FOLDER_KEY_AMBIGUOUS: expected exactly one Folder 7 key; found $($FolderIndexes.Count)." }
   if ($MaxIndexes.Count -ne 1) { throw "AE_CACHE_GUARD_MAX_KEY_AMBIGUOUS: expected exactly one Max Size 3 key; found $($MaxIndexes.Count)." }
-  $FolderLine = $Lines[$FolderIndexes[0]]
-  $MaxLine = $Lines[$MaxIndexes[0]]
-  $FolderMatch = [regex]::Match($FolderLine, '^"Folder 7"\s*=\s*"([^"]*)"\s*$')
-  $MaxMatch = [regex]::Match($MaxLine, '^"Max Size 3"\s*=\s*"([0-9]+(?:\.[0-9]+)?)"\s*$')
-  $ReserveMatch = [regex]::Matches($Text, '(?m)^"Minimum Volume Free Space \(Gigabytes\)"\s*=\s*"([0-9]+(?:\.[0-9]+)?)"\s*$')
-  if ($ReserveMatch.Count -ne 1) { throw "AE_CACHE_GUARD_RESERVE_KEY_AMBIGUOUS: expected exactly one Minimum Volume Free Space (Gigabytes) key; found $($ReserveMatch.Count)." }
+  $FolderMatch = [regex]::Match($Lines[$FolderIndexes[0]], '^"Folder 7"\s*=\s*"([^"]*)"\s*$')
+  $MaxMatch = [regex]::Match($Lines[$MaxIndexes[0]], '^"Max Size 3"\s*=\s*"([0-9]+(?:\.[0-9]+)?)"\s*$')
+  $ReserveMatches = [regex]::Matches($Text, '(?m)^"Minimum Volume Free Space \(Gigabytes\)"\s*=\s*"([0-9]+(?:\.[0-9]+)?)"\s*$')
+  if ($ReserveMatches.Count -ne 1) { throw "AE_CACHE_GUARD_RESERVE_KEY_AMBIGUOUS: expected exactly one Minimum Volume Free Space (Gigabytes) key; found $($ReserveMatches.Count)." }
   return @{
     Lines = $Lines
     NewLine = $NewLine
     FolderIndex = [int]$FolderIndexes[0]
     Folder = $FolderMatch.Groups[1].Value
     MaxSizeGb = [double]::Parse($MaxMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-    ReserveGb = [double]::Parse($ReserveMatch[0].Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+    ReserveGb = [double]::Parse($ReserveMatches[0].Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
   }
 }
 
@@ -162,7 +161,7 @@ if ($Mode -eq "Prepare") {
   $OriginalDrive = Get-DriveForPath $Settings.Folder
   $RunToken = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { [Guid]::NewGuid().ToString("N") }
   $TemporaryCacheFolder = Join-Path ($SelectedDrive + "\") (Join-Path $CacheNamespace (Join-Path $Version.PrefsVersion ("m3-marker-motion-p3-p4-" + $RunToken)))
-  $Changed = -not ([string]::Equals($Settings.Folder.TrimEnd('\'), $TemporaryCacheFolder.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase))
+  $Changed = -not [string]::Equals($Settings.Folder.TrimEnd('\'), $TemporaryCacheFolder.TrimEnd('\'), [System.StringComparison]::OrdinalIgnoreCase)
 
   $StateParent = Split-Path -Parent $StatePath
   if ($StateParent) { New-Item -ItemType Directory -Force -Path $StateParent | Out-Null }
@@ -195,11 +194,10 @@ if ($Mode -eq "Prepare") {
     New-Item -ItemType Directory -Force -Path $TemporaryCacheFolder | Out-Null
     $UpdatedLines = @($Settings.Lines)
     $UpdatedLines[$Settings.FolderIndex] = '"Folder 7" = "' + $TemporaryCacheFolder + '"'
-    $UpdatedText = $UpdatedLines -join $Settings.NewLine
-    Write-PreferenceDocument $PrefsPath $UpdatedText $Document.Encoding $Document.HasBom
+    Write-PreferenceDocument $PrefsPath ($UpdatedLines -join $Settings.NewLine) $Document.Encoding $Document.HasBom
     $Readback = Read-PreferenceDocument $PrefsPath
     $ReadbackSettings = Get-DiskCacheSettings $Readback.Text
-    if (-not [string]::Equals($ReadbackSettings.Folder, $TemporaryCacheFolder, [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not [string]::Equals($ReadbackSettings.Folder, $TemporaryCacheFolder, [System.StringComparison]::OrdinalIgnoreCase)) {
       throw "AE_CACHE_GUARD_READBACK_MISMATCH: temporary disk-cache folder did not read back exactly."
     }
     if ($ReadbackSettings.MaxSizeGb -ne $Settings.MaxSizeGb -or $ReadbackSettings.ReserveGb -ne $Settings.ReserveGb) {
@@ -235,8 +233,11 @@ Write-JsonFile $EvidencePath (Build-Evidence $State "RESTORED" $RestoredSha256)
 
 $TemporaryCacheFolder = [string]$State.temporaryCacheFolder
 if ($State.changed -eq $true -and $TemporaryCacheFolder -and $TemporaryCacheFolder -match '(?i)\\EditFlow2\\AfterEffectsDiskCache\\') {
-  try { if (Test-Path $TemporaryCacheFolder -PathType Container) { Remove-Item -LiteralPath $TemporaryCacheFolder -Recurse -Force -ErrorAction Stop } }
-  catch { Write-Warning ("Preferences were restored exactly, but proof-owned cache cleanup failed: " + $_.Exception.Message) }
+  try {
+    if (Test-Path $TemporaryCacheFolder -PathType Container) { Remove-Item -LiteralPath $TemporaryCacheFolder -Recurse -Force -ErrorAction Stop }
+  } catch {
+    Write-Warning ("Preferences were restored exactly, but proof-owned cache cleanup failed: " + $_.Exception.Message)
+  }
 }
 Remove-Item -LiteralPath ([string]$State.backupPath) -Force -ErrorAction Stop
 Remove-Item -LiteralPath $StatePath -Force -ErrorAction Stop
