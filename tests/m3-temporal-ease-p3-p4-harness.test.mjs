@@ -6,6 +6,9 @@ const cliPath = "apps/desktop-host/src/m3-temporal-ease-p3-p4-cli.ts";
 const baselinePath = "apps/desktop-host/src/m3-temporal-ease-p3-p4-baseline-cli.ts";
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_temporal_ease.jsx";
 const cleanupPath = "scripts/windows/m3-temporal-ease-p3-p4-cleanup.jsx";
+const wrapperPath = "scripts/windows/run-m3-temporal-ease-p3-p4.ps1";
+const selfHostedPath = "scripts/windows/run-m3-temporal-ease-p3-p4-self-hosted.ps1";
+const workflowPath = ".github/workflows/m3-temporal-ease-real-ae-p3-p4.yml";
 
 test("temporal-ease P3/P4 harness refuses to inherit an unaccepted P1/P2 baseline", async () => {
   const source = await readFile(cliPath, "utf8");
@@ -95,4 +98,49 @@ test("proof-owned cleanup refuses saved or foreign projects and requires the iso
   assert.match(source, /CloseOptions\.DO_NOT_SAVE_CHANGES/);
   assert.match(source, /app\.newProject\(\)/);
   assert.match(source, /blankItemCount/);
+});
+
+test("acceptance wrapper requires the retained P1/P2 artifact and refuses P3 self-approval or P5 overclaim", async () => {
+  const source = await readFile(wrapperPath, "utf8");
+  assert.match(source, /\[Parameter\(Mandatory = \$true\)\]/);
+  assert.match(source, /\[string\]\$AcceptedP1P2Path/);
+  assert.match(source, /--accepted-p1-p2/);
+  assert.match(source, /accepted_p1_p2_artifact_verified/);
+  assert.match(source, /VISUAL_REVIEW_REQUIRED/);
+  assert.match(source, /P3_visual_proof -eq \$false/);
+  assert.match(source, /P5_save_reopen_reconnect_transfer -eq \$false/);
+  assert.match(source, /proof-owned reset is refused/);
+  assert.match(source, /EXACT_MATCH/);
+  assert.match(source, /cleanup_fingerprint_restored/);
+});
+
+test("self-hosted launcher inherits accepted M3 lifecycle and threads only the temporal-ease proof dependency into acceptance", async () => {
+  const source = await readFile(selfHostedPath, "utf8");
+  assert.match(source, /run-m3-mask-p3-p4-self-hosted\.ps1/);
+  assert.match(source, /npm run check/);
+  assert.match(source, /EDITFLOW_M3_TEMPORAL_EASE_P4_PROOF/);
+  assert.match(source, /authenticated protocol 1\.8 registration/);
+  assert.match(source, /run-m3-temporal-ease-p3-p4\.ps1/);
+  assert.match(source, /AcceptedP1P2Path/);
+  assert.match(source, /& \$Acceptance -AfterFxPath \$AfterFxPath -AcceptedP1P2Path \$AcceptedP1P2Path -TimeoutSeconds \$TimeoutSeconds/);
+  assert.match(source, /MaxPanelRegistrationAttempts = 2/);
+  assert.match(source, /CEP_PANEL_REGISTRATION_TIMEOUT/);
+  assert.match(source, /zero-After-Effects baseline/);
+  assert.match(source, /CEP12-AEFT\*\.log/);
+});
+
+test("P3/P4 workflow is manual-only and downloads one exact P1/P2 artifact from the supplied run before AE starts", async () => {
+  const source = await readFile(workflowPath, "utf8");
+  assert.match(source, /workflow_dispatch:/);
+  assert.doesNotMatch(source, /^\s+push:/m);
+  assert.match(source, /p1_p2_run_id:/);
+  assert.match(source, /actions: read/);
+  assert.match(source, /actions\/download-artifact@v4/);
+  assert.match(source, /m3-temporal-ease-p1-p2-proof-\$\{\{ inputs\.p1_p2_run_id \}\}/);
+  assert.match(source, /github-token: \$\{\{ github\.token \}\}/);
+  assert.match(source, /run-id: \$\{\{ inputs\.p1_p2_run_id \}\}/);
+  assert.match(source, /Expected exactly one downloaded P1\/P2 result\.json/);
+  assert.match(source, /-AcceptedP1P2Path \$Accepted/);
+  assert.match(source, /runs-on: \[self-hosted, Windows, editflow-ae\]/);
+  assert.match(source, /if: always\(\)/);
 });
