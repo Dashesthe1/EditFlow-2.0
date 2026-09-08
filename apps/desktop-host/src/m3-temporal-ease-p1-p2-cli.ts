@@ -221,10 +221,12 @@ const main = async (): Promise<void> => {
     inEase: [
       { speed: 20, influence: 31.25 },
       { speed: 35, influence: 44.5 },
+      { speed: 50, influence: 57.75 },
     ],
     outEase: [
       { speed: 90, influence: 68.75 },
       { speed: 60, influence: 52.5 },
+      { speed: 45, influence: 39.25 },
     ],
   };
 
@@ -561,7 +563,7 @@ const main = async (): Promise<void> => {
     checks.p2_scalar_noop_revision_unchanged = noOp.hostProjectRevision === noOpRevision;
 
     await setInterpolation(scalePath, manualBezier);
-    await proveEase("scale_twod", scalePath, scaleEase, 2);
+    await proveEase("scale_twod", scalePath, scaleEase, 3);
   } catch (error) {
     failureError = error instanceof Error ? error.stack ?? error.message : String(error);
   } finally {
@@ -674,6 +676,7 @@ const main = async (): Promise<void> => {
       failureError,
       limitations: [
         "This artifact proves only P1 deterministic rejection and P2 exact structural temporal-ease readback on disposable Opacity and Scale keyframes.",
+        "Scale uses two supplied value coordinates in this 2D layer fixture, while protocol 1.8 validates and writes the three KeyframeEase handles exposed by the live AE Scale key surface.",
         "Protocol 1.7 is used only to establish the manual-BEZIER precondition; protocol 1.8 exclusively owns numeric KeyframeEase speed/influence mutation and readback.",
         "P3 viewer-visible proof, P4 induced-failure rollback, P5 save/reopen/reconnect transfer, spatial tangents/roving, and motion-blur/frame-blending controls are not claimed.",
       ],
