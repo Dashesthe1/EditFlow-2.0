@@ -1,6 +1,7 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
-  [int]$TimeoutSeconds = 120
+  [int]$TimeoutSeconds = 120,
+  [switch]$PreflightHostLoader
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,6 +9,7 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $TemplatePath = Join-Path $RepoRoot "scripts\windows\run-m3-temporal-interpolation-self-hosted.ps1"
 $TempPath = Join-Path $PSScriptRoot ("run-m3-temporal-ease-self-hosted-generated-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-temporal-ease-p1-p2"
+$DiagnosticBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-temporal-ease-bridge.jsx"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
@@ -60,10 +62,14 @@ function Copy-CepFailureDiagnostics {
 if (-not (Test-Path $TemplatePath -PathType Leaf)) {
   throw "Accepted temporal-interpolation self-hosted runner template is missing: $TemplatePath"
 }
+if ($PreflightHostLoader -and -not (Test-Path $DiagnosticBootstrap -PathType Leaf)) {
+  throw "Protocol 1.8 host-bootstrap diagnostic script is missing: $DiagnosticBootstrap"
+}
 
 $Template = [System.IO.File]::ReadAllText($TemplatePath)
 $RequiredTokens = @(
   'scripts\windows\run-m3-temporal-interpolation-p1-p2.ps1',
+  'scripts\windows\open-editflow-temporal-bridge.jsx',
   'proofs\artifacts\m3-temporal-interpolation-p1-p2',
   'authenticated protocol 1.7 registration',
   'isolated M3 temporal-interpolation AE proof',
@@ -77,14 +83,18 @@ foreach ($Token in $RequiredTokens) {
 
 $Ease = $Template
 $Ease = $Ease.Replace('scripts\windows\run-m3-temporal-interpolation-p1-p2.ps1', 'scripts\windows\run-m3-temporal-ease-p1-p2.ps1')
+$Ease = $Ease.Replace('scripts\windows\open-editflow-temporal-bridge.jsx', 'scripts\windows\open-editflow-temporal-ease-bridge.jsx')
 $Ease = $Ease.Replace('proofs\artifacts\m3-temporal-interpolation-p1-p2', 'proofs\artifacts\m3-temporal-ease-p1-p2')
 $Ease = $Ease.Replace('authenticated protocol 1.7 registration', 'authenticated protocol 1.8 registration')
 $Ease = $Ease.Replace('temporal-interpolation P1/P2', 'temporal-ease P1/P2')
 $Ease = $Ease.Replace('temporal-interpolation proof', 'temporal-ease proof')
 $Ease = $Ease.Replace('temporal-interpolation AE proof', 'temporal-ease AE proof')
 
-# Production proof intentionally does not pass -PreflightHostLoader. The installed
-# CEP panel must bootstrap current_v18 through bridge.js exactly as a real session does.
+# Production proof remains unchanged by default: installed bridge.js must bootstrap
+# current_v18 itself. -PreflightHostLoader is diagnostic-only and directly evaluates
+# the fixed installed v18 loader before opening the same CEP panel command. A passing
+# diagnostic run is not accepted P1/P2 evidence; it only separates host-loader health
+# from client-side CEP registration behavior after a zero-mutation timeout.
 [System.IO.File]::WriteAllText($TempPath, $Ease, (New-Object System.Text.UTF8Encoding($false)))
 try {
   New-Item -Path $CsxsKey -Force | Out-Null
@@ -101,9 +111,15 @@ try {
     throw "Unable to arm CEP 12 verbose logging for the isolated temporal-ease proof. Registry readback was '$EffectiveLogLevel'."
   }
   Write-Host "CEP 12 LogLevel registry readback before AE launch: $EffectiveLogLevel"
-  Write-Host "Temporal-ease proof mode: production-equivalent CEP bootstrap of protocol 1.8; no direct host-loader preload."
 
-  & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+  if ($PreflightHostLoader) {
+    Write-Host "Temporal-ease diagnostic mode: direct fixed v1.8 host-loader preflight before opening CEP; result is diagnostic-only, not acceptance evidence."
+    & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds -PreflightHostLoader
+  } else {
+    Write-Host "Temporal-ease proof mode: production-equivalent CEP bootstrap of protocol 1.8; no direct host-loader preload."
+    & $TempPath -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds
+  }
+
   if ($LASTEXITCODE -ne 0) {
     Copy-CepFailureDiagnostics -Destination $ProofArtifactDir
     exit $LASTEXITCODE
