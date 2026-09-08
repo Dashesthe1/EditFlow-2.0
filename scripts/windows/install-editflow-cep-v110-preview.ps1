@@ -12,8 +12,11 @@ $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 if (-not (Test-Path $AcceptedInstaller -PathType Leaf)) { throw "Accepted EditFlow CEP installer is missing: $AcceptedInstaller" }
-& $AcceptedInstaller -Port $Port
-if ($LASTEXITCODE -ne 0) { throw "Accepted EditFlow CEP installer failed before protocol 1.10 preview installation." }
+try {
+  & $AcceptedInstaller -Port $Port
+} catch {
+  throw "Accepted EditFlow CEP installer failed before protocol 1.10 preview installation: $($_.Exception.Message)"
+}
 
 $MotionHostSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_m3_motion_render.jsx"
 $V110LoaderSource = Join-Path $RepoRoot "packages\adapters\ae-cep\host\editflow_host_current_v110.jsx"
