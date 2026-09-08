@@ -110,6 +110,24 @@ test("self-hosted runner makes protocol 1.9 an isolated test-only install and re
   assert.match(source, /Remove-Item \$TempPath -Force -ErrorAction SilentlyContinue/);
 });
 
+test("self-hosted runner retries only a proven zero-command CEP registration timeout once from zero AE", async () => {
+  const source = await readFile(selfHostedPath, "utf8");
+  assert.match(source, /\$MaxPanelRegistrationAttempts = 2/);
+  assert.match(source, /function Test-RetryablePanelRegistrationFailure/);
+  assert.match(source, /CEP_PANEL_REGISTRATION_TIMEOUT/);
+  assert.match(source, /\$null -eq \$Result\.panel/);
+  assert.match(source, /\$null -eq \$Result\.environment/);
+  assert.match(source, /\$Responses\.Count -eq 0/);
+  assert.match(source, /\$Evidence\.Count -eq 0/);
+  assert.match(source, /\$CheckProperties\.Count -eq 0/);
+  assert.match(source, /Get-Process -Name "AfterFX"/);
+  assert.match(source, /\$RemainingAfterFx\.Count -ne 0/);
+  assert.match(source, /panel-registration-retry-attempt-/);
+  assert.match(source, /Retain-PanelRetryEvidence -Attempt \$Attempt/);
+  assert.match(source, /retrying one fresh isolated AE launch from the verified zero-process baseline/);
+  assert.doesNotMatch(source, /MaxPanelRegistrationAttempts = [3-9]/);
+});
+
 test("real-AE spatial-graph workflow is bounded, self-hosted, explicit-triggered, and artifact-producing", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /ae-test\/m3-spatial-graph-p1-p2-control/);
