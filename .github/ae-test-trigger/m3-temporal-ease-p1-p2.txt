@@ -1,0 +1,2 @@
+Trigger production-equivalent protocol 1.8 temporal-ease P1/P2 proof after live AE KeyframeEase cardinality fix.
+No direct host-loader preflight; this run is the acceptance candidate.
