@@ -14,7 +14,13 @@ const argument = (name: string): string | null => { const i = process.argv.index
 const required = (name: string): string => { const value = argument(name); if (!value) throw new Error(`Missing required argument ${name}.`); return value; };
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const nested = (value: unknown, key: string): Record<string, unknown> | null => { const parent = record(value); return parent === null ? null : record(parent[key]); };
-const equal = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const canonical = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonical);
+  const object = record(value);
+  if (object === null) return value;
+  return Object.fromEntries(Object.keys(object).sort().map((key) => [key, canonical(object[key])]));
+};
+const equal = (a: unknown, b: unknown): boolean => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 const all = (checks: Record<string, boolean>, names: readonly string[]): boolean => names.every((name) => checks[name] === true);
 const writeJson = async (file: string, value: unknown): Promise<void> => { await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8"); };
 const projectHasComp = (project: AeProjectSnapshot | null, stableId: string): boolean => project?.items.some((item) => item.kind === "COMPOSITION" && item.stableId === stableId) ?? false;

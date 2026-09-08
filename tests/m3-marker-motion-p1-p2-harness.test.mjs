@@ -29,6 +29,7 @@ test("P1/P2 CLI proves bounds, target rules, exact readback, removal, idempotenc
   assert.match(source, /P3_visual_proof: false/);
   assert.match(source, /P4_failure_injection_rollback: false/);
   assert.match(source, /P5_save_reopen_reconnect_transfer: false/);
+  assert.match(source, /Object\.keys\(object\)\.sort\(\)/);
 });
 
 test("acceptance wrapper fails closed and isolated runner installs only the protocol 2.0 preview", async () => {
