@@ -1,0 +1,1 @@
+Inspect the self-hosted editflow-ae workstation's logical-disk free space and relevant After Effects cache preference lines. Read-only; do not launch or modify After Effects.
