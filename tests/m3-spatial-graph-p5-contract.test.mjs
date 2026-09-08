@@ -100,7 +100,7 @@ test("spatial Graph Editor P5 wrappers reuse accepted transfer launchers and iso
   assert.match(selfHosted, /EDITFLOW_M3_SPATIAL_GRAPH_P5_PROOF/);
   assert.match(selfHosted, /install-editflow-cep-v19-preview\.ps1/);
   assert.match(selfHosted, /protocol 1\.9/);
-  assert.match(selfHosted, /bounded preview-install strategy/);
+  assert.match(selfHosted, /preview-install strategy already proven by spatial P3\/P4/);
 });
 
 test("spatial Graph Editor P5 workflow is isolated on its control branch and retains transfer evidence", async () => {
