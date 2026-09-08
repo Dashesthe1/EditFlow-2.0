@@ -109,16 +109,21 @@ test("protocol 1.8 transport serializes hostile property-path text as data", asy
   assert.ok(!captured.includes("); " + hostileCall + "(); //\")"));
 });
 
-test("host exposes only item-10 temporal ease APIs with exact validation and rollback", async () => {
+test("host exposes only item-10 temporal ease APIs with live per-key cardinality, exact validation, and rollback", async () => {
   const source = await readFile(hostPath, "utf8");
   for (const command of AE_TEMPORAL_EASE_COMMANDS_V18) assert.ok(source.includes(`"${command}"`));
   for (const method of ["keyInTemporalEase", "keyOutTemporalEase", "setTemporalEaseAtKey"]) {
     assert.match(source, new RegExp(`\\.${method}\\(`));
   }
   assert.match(source, /new\s+KeyframeEase\s*\(/);
-  assert.match(source, /PropertyValueType\.TwoD/);
-  assert.match(source, /PropertyValueType\.ThreeD/);
+  assert.match(source, /function easeCardinality\(property, keyIndex\)/);
+  assert.match(source, /property\.keyInTemporalEase\(keyIndex\)/);
+  assert.match(source, /property\.keyOutTemporalEase\(keyIndex\)/);
+  assert.match(source, /inLength !== outLength \|\| inLength < 1 \|\| inLength > 3/);
+  assert.match(source, /TEMPORAL_EASE_CARDINALITY_READBACK_FAILED/);
+  assert.match(source, /TEMPORAL_EASE_CARDINALITY_INVALID/);
   assert.match(source, /TEMPORAL_EASE_CARDINALITY_MISMATCH/);
+  assert.doesNotMatch(source, /PropertyValueType\.TwoD|PropertyValueType\.ThreeD/);
   assert.match(source, /influence < 0\.1 \|\| value\.influence > 100\.0/);
   assert.match(source, /TEMPORAL_EASE_REQUIRES_BEZIER_INTERPOLATION/);
   assert.match(source, /TEMPORAL_EASE_REQUIRES_MANUAL_BEZIER/);
@@ -201,13 +206,17 @@ test("loopback broker negotiates 1.8 and carries typed temporal ease readback", 
   }
 });
 
-test("foundation keeps spatial tangent, roving, and rendering controls in later tranches", async () => {
+test("foundation keeps host-truth cardinality and spatial/rendering controls in later tranches", async () => {
   const source = await readFile(foundationPath, "utf8");
   assert.match(source, /Milestone 3 item 10/);
   assert.match(source, /KeyframeEase/);
   assert.match(source, /0\.1\.\.100\.0/);
-  assert.match(source, /PropertyValueType\.TwoD/);
-  assert.match(source, /PropertyValueType\.ThreeD/);
+  assert.match(source, /keyInTemporalEase\(keyIndex\)/);
+  assert.match(source, /keyOutTemporalEase\(keyIndex\)/);
+  assert.match(source, /three.*KeyframeEase objects/);
+  assert.match(source, /scale\.setValue\(\[50, 50\]\)/);
+  assert.match(source, /After Effects 25\.6\.6/);
+  assert.match(source, /does \*\*not\*\* infer ease cardinality from `PropertyValueType`/);
   assert.match(source, /P1 — deterministic validation\/rejection/);
   assert.match(source, /P2 — exact structural readback/);
   assert.match(source, /P3 — viewer-visible proof/);
