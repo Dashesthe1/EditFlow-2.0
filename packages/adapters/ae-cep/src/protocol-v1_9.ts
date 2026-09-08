@@ -24,7 +24,23 @@ export interface AeSpatialGraphTargetV19 {
   readonly keyIndex: number;
 }
 
-export interface AeSpatialGraphStateV19 {
+export interface AeSpatialGraphManualStateV19 {
+  readonly mode: "MANUAL";
+  readonly inTangent: readonly number[];
+  readonly outTangent: readonly number[];
+  readonly continuous: boolean;
+  readonly roving: boolean;
+}
+
+export interface AeSpatialGraphAutoBezierStateV19 {
+  readonly mode: "AUTO_BEZIER";
+  readonly continuous: boolean;
+  readonly roving: boolean;
+}
+
+export type AeSpatialGraphSetStateV19 = AeSpatialGraphManualStateV19 | AeSpatialGraphAutoBezierStateV19;
+
+export interface AeSpatialGraphObservedStateV19 {
   readonly inTangent: readonly number[];
   readonly outTangent: readonly number[];
   readonly continuous: boolean;
@@ -33,7 +49,7 @@ export interface AeSpatialGraphStateV19 {
 }
 
 export interface AeSpatialGraphSetPayloadV19 extends AeSpatialGraphTargetV19 {
-  readonly state: AeSpatialGraphStateV19;
+  readonly state: AeSpatialGraphSetStateV19;
 }
 
 export type AeSpatialGraphReadbackPayloadV19 = AeSpatialGraphTargetV19;
