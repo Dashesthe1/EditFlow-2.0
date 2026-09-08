@@ -1,2 +1,5 @@
-trigger: protocol 1.10 motion-render P5 harness development
+trigger: protocol 1.10 production-installer real-AE transfer smoke
 source_branch: feature/m3-motion-render-controls
+source_head: d76e6d3267f966f6bfc31ab62db67d3fe6a66eba
+accepted_p5_run: 34281332554
+reason: validate the promoted ordinary CEP installer and verifier-only v110 helper by rerunning the accepted save reopen distinct authenticated reconnect exact persisted motion-render state fresh post-reconnect comp/layer authority and proof-owned cleanup workflow
