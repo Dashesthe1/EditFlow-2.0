@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_TEMPORAL_EASE_P1_P4_ACCEPTANCE",
+  "protocolVersion": "1.8.0",
+  "accepted": true,
+  "acceptedAt": "2026-09-08T02:04:34Z",
+  "scope": "protocol-1.8 scalar Opacity temporal-ease envelope exercised by retained real-AE P1-P4 evidence",
+  "proofLevels": {
+    "P1_validation_rejection": true,
+    "P2_structural_readback": true,
+    "P3_visual_proof": true,
+    "P4_failure_injection_rollback": true
+  },
+  "p1P2": {
+    "workflowRunId": 34176061647,
+    "artifactId": 10037290595,
+    "artifactName": "m3-temporal-ease-p1-p2-proof-34176061647",
+    "resultSha256": "2c07b73f956c1e71aff94941c7aabe6159c9b04ef976048a4eb325f916be3230",
+    "afterEffects": "25.6.6x4 build 4"
+  },
+  "p3P4": {
+    "workflowRunId": 34176960701,
+    "jobId": 101908166885,
+    "artifactId": 10037617172,
+    "artifactName": "m3-temporal-ease-p3-p4-control-proof-34176960701",
+    "artifactDigest": "sha256:e12076fce752dc2eac4b23939d40d2fd839a1d44095ce0aaad3ee4b51fd15903",
+    "resultSha256": "63319df2e71c1ae09a8ae4941d82f6faf7d3e06aaa37bd8f26f566e731934630",
+    "decodedBaselineSha256": "5f62b32ab1a800fa4b9d39cdfdfc1286edb658b03db75b5793eb9ca8efe92de0",
+    "decodedEasedSha256": "8d75722a30bd9ba4c2b70f66953c6c76866ba4db7cae7929361dfe43907b53b2",
+    "decodedRestoredBaselineSha256": "5f62b32ab1a800fa4b9d39cdfdfc1286edb658b03db75b5793eb9ca8efe92de0",
+    "decodedPostRollbackSha256": "5f62b32ab1a800fa4b9d39cdfdfc1286edb658b03db75b5793eb9ca8efe92de0",
+    "afterEffects": "25.6.6x4 build 4"
+  },
+  "independentAcceptance": {
+    "mainCommit": "72c8dda399ac04528f73f8cb1113af7053b9cbdb",
+    "recordPath": "proofs/diagnostics/m3-temporal-ease-p3-p4-run2-acceptance.md",
+    "recordGitBlobSha": "a3b38bbe3b1cb451dbe2b63c6aeae82a6d44ef40",
+    "normalCiRunId": 34178720063,
+    "pixelVerifierRunId": 34178684269
+  },
+  "limitations": [
+    "P1-P4 acceptance is bounded to the exercised scalar Opacity temporal-ease envelope and the exact retained evidence recorded above.",
+    "This record does not claim P5 save/reopen/reconnect transfer.",
+    "This record does not claim spatial tangents, roving keys, value-graph editing, arbitrary effect-property ease, or visual proof for every multidimensional property shape."
+  ]
+}

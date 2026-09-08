@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_TEMPORAL_EASE_P1_P5_ACCEPTANCE",
+  "protocolVersion": "1.8.0",
+  "accepted": true,
+  "acceptedAt": "2026-09-08T02:25:14Z",
+  "scope": "protocol-1.8 temporal ease: accepted scalar Opacity P1-P4 envelope plus save/reopen/reconnect persistence and fresh-session live Scale cardinality-3 transfer",
+  "proofLevels": {
+    "P1_validation_rejection": true,
+    "P2_structural_readback": true,
+    "P3_visual_proof": true,
+    "P4_failure_injection_rollback": true,
+    "P5_save_reopen_reconnect_transfer": true
+  },
+  "acceptedP1P4": {
+    "recordPath": "proofs/diagnostics/m3-temporal-ease-p1-p4-acceptance.json",
+    "recordSha256": "d898f669ac16efed9668fff8058f7445f44fb1c3fed5122e405fa1e0776558ab",
+    "p1P2WorkflowRunId": 34176061647,
+    "p3P4WorkflowRunId": 34176960701,
+    "p3P4ArtifactId": 10037617172,
+    "p3P4ArtifactDigest": "sha256:e12076fce752dc2eac4b23939d40d2fd839a1d44095ce0aaad3ee4b51fd15903"
+  },
+  "p5": {
+    "featureSourceCommit": "2fac69c519abe9b960ffe517f744b5e824f84253",
+    "controlCommit": "277e63ef585f9266cf52574111ea90536d447f14",
+    "workflowRunId": 34179909375,
+    "jobId": 101916716590,
+    "artifactId": 10038543576,
+    "artifactName": "m3-temporal-ease-p5-proof-34179909375",
+    "artifactDigest": "sha256:826c3ace4d8aed717c979037e648406cc36f7174a8b64c2c80008d213d39d0f8",
+    "resultSha256": "354601baacf1276bb9448f59f2c35bbf2af9e1bde5d2f8d36fe560486c667a02",
+    "savedProjectSha256": "6ec98dc3949d2846653e5ecb5a0191165fc14f11c1a5cb05a471adac754ada42",
+    "reopenMarkerSha256": "3cde2b67b3605054ce9fe999946aaf72149e9abaa1f1793350183e1d2457a71b",
+    "cleanupMarkerSha256": "6a829ecea240faf11b6d69cdc3fd5178e14d0d01084797843c75960726228910",
+    "afterEffects": "25.6.6x4 build 4",
+    "initialSessionId": "a5bbe0ce-3d85-4799-afb9-cc24e1d32f8e",
+    "reconnectedSessionId": "98066edc-8908-4778-a3cb-f4362ec8e43b",
+    "baselineFingerprint": "project:sha256:0a1f2ab2a77b28d4a483592a7e59b2f1614ce3012a85ef680a97ffbbd9b10440",
+    "savedFingerprint": "project:sha256:38063762c3cb6d1fb8701c0b91bda1efdb8a82b9fe156826a6fc19a9ab8c4d39",
+    "canonicalScaleMiddleValue": [140, 80, 100],
+    "scaleEaseCardinality": 3
+  },
+  "independentAcceptance": {
+    "recordPath": "proofs/diagnostics/m3-temporal-ease-p5-run4-acceptance.md",
+    "recordGitBlobSha": "4bd920531794db9a46e0692524f1a2a2045a417b",
+    "codeCiRunId": 34179859182,
+    "artifactScreen": "PASS"
+  },
+  "limitations": [
+    "P3 visual proof remains bounded to the exercised scalar Opacity fixture recorded by the accepted P3/P4 artifact.",
+    "P5 accepts scalar Opacity persistence plus fresh-session live Scale cardinality-3 temporal-ease transfer; it is not a universal proof for every AE property shape or effect property.",
+    "Spatial tangents and motion paths, roving keys, value-graph editing, arbitrary effect-property ease, markers, motion blur/frame blending, and shutter controls remain separate proof tranches."
+  ]
+}
