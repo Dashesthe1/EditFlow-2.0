@@ -5,6 +5,7 @@ import {
   type AeCepAdapterState,
 } from "../../../packages/adapters/ae-cep/src/index.js";
 import { AE_ADAPTER_BUILD } from "../../../packages/adapters/ae-cep/src/protocol.js";
+import { registerAcceptedM3RuntimeCapabilities } from "./ae-runtime-capabilities.js";
 
 export interface DesktopAeSession {
   readonly adapterBuild: typeof AE_ADAPTER_BUILD;
@@ -24,5 +25,6 @@ export const createDesktopAeSession = async (
     priority: 100,
     capabilities: AE_CEP_CAPABILITIES,
   });
+  registerAcceptedM3RuntimeCapabilities(registry);
   return { adapterBuild: AE_ADAPTER_BUILD, state, registry };
 };
