@@ -316,14 +316,23 @@ const main = async (): Promise<void> => {
     const readback = asRecord(scheduled.readback);
     const jobId = readback?.["jobId"];
     const completionPath = readback?.["completionPath"];
+    const requestedOutputPath = readback?.["requestedOutputPath"];
     const canonicalOutputPath = readback?.["outputPath"];
-    if (typeof jobId !== "string" || typeof completionPath !== "string" || typeof canonicalOutputPath !== "string") throw new Error("render.capture readback is incomplete.");
-    if (!sameFilesystemPath(canonicalOutputPath, outputPath)) throw new Error("render.capture output path mismatch.");
-    const relative = path.relative(artifactDir, canonicalOutputPath);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Render output escaped the proof artifact directory.");
+    if (typeof jobId !== "string" || typeof completionPath !== "string") throw new Error("render.capture did not return a jobId and completionPath.");
+    if (typeof requestedOutputPath !== "string" || !sameFilesystemPath(requestedOutputPath, outputPath)) {
+      throw new Error("render.capture requested output-path readback does not match the motion-render proof request.");
+    }
+    if (typeof canonicalOutputPath !== "string" || canonicalOutputPath.length === 0) throw new Error("render.capture did not return After Effects' canonical OutputModule.file path.");
+    const relativeArtifactPath = path.relative(artifactDir, canonicalOutputPath);
+    if (relativeArtifactPath.startsWith("..") || path.isAbsolute(relativeArtifactPath)) {
+      throw new Error(`render.capture canonical output escaped the motion-render proof artifact directory: ${canonicalOutputPath}`);
+    }
     const completion = await waitForRenderCompletion(completionPath, jobId, timeoutMs);
-    if (!completion.ok || completion.status !== "DONE" || !completion.queueItemRemoved) throw new Error(`Render job ${jobId} failed: ${completion.error ?? completion.status}`);
-    if (!(await fileExistsNonEmpty(completion.outputPath))) throw new Error(`Render output missing: ${completion.outputPath}`);
+    if (!completion.ok || completion.status !== "DONE" || !completion.queueItemRemoved) {
+      throw new Error(`Render job ${jobId} failed: ${completion.error ?? completion.status}`);
+    }
+    if (!sameFilesystemPath(completion.outputPath, canonicalOutputPath)) throw new Error("Render completion path does not match scheduled canonical path.");
+    if (!(await fileExistsNonEmpty(completion.outputPath))) throw new Error(`Canonical render output is missing or empty: ${completion.outputPath}`);
     await refreshState();
     return completion;
   };
