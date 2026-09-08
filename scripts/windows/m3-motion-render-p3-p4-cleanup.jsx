@@ -6,8 +6,8 @@
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var PROOF_NAMESPACE = "M3_MOTION_RENDER_P34_";
-  var ITEM_SUFFIXES = ["_MEDIA", "_BLEND_MEDIA", "_MOTION_COMP", "_BLEND_TARGET_COMP"];
-  var LAYER_SUFFIXES = ["_MOTION_LAYER", "_BLEND_TARGET_LAYER"];
+  var ITEM_SUFFIXES = ["_BLEND_TARGET_COMP", "_MOTION_COMP", "_BLEND_MEDIA", "_MEDIA"];
+  var LAYER_SUFFIXES = ["_BLEND_TARGET_LAYER", "_MOTION_LAYER"];
   var proofFile = new File($.fileName);
   var repoRoot = proofFile.parent.parent.parent;
   var artifactDir = new Folder(repoRoot.fsName + "/proofs/artifacts/m3-motion-render-p3-p4");
