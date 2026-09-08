@@ -9,7 +9,7 @@
   if (typeof previousDispatch !== "function") throw new Error("EditFlow M3 spatial-graph layer requires the existing dispatcher.");
 
   var PROTOCOL = "1.9.0";
-  var BUILD = "0.4.0-dev.9";
+  var BUILD = "0.4.0-dev.9.1";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var MARKER_SUFFIX = "]]";
   var CAPABILITIES = {
@@ -220,16 +220,39 @@
         applied = true;
         var after = readState(property, payload.keyIndex);
         if (!requestedStateMatches(after, payload.state)) fail("READBACK", "SPATIAL_GRAPH_READBACK_MISMATCH", "Applied spatial Graph Editor state did not match structural readback.", { expected: payload.state, actual: after });
+
+        /* P4 failure injection is proof-only and requires both a fixed request profile
+         * and a process-start environment flag owned by the isolated self-hosted runner.
+         * It fires only after a real protocol-1.9 spatial mutation has passed structural
+         * verification, so the normal production rollback path is the code under proof. */
+        if (request.readbackProfile === "M3_SPATIAL_GRAPH_P4_FAILURE_INJECTION"
+            && $.getenv("EDITFLOW_M3_SPATIAL_GRAPH_P4_PROOF") === "1") {
+          fail("PROOF_INJECTION", "M3_SPATIAL_GRAPH_P4_INDUCED_FAILURE", "Induced M3 spatial-graph P4 failure after verified spatial mutation.", null);
+        }
+
         return response(request, "APPLIED", null, [{ kind: "LAYER", stableId: layerStableId(layer), hostId: hostIdOf(layer) }], readback(layer, property, payload.propertyPath, payload.keyIndex), started, [payload.state.mode === "AUTO_BEZIER" ? "Auto-Bezier enabled; tangent vectors are host-owned and returned as observation." : "Manual spatial tangents applied and verified by structural readback."]);
       } catch (mutationError) {
         if (applied) {
           try {
             restoreObservedState(property, payload.keyIndex, before);
             var restored = readState(property, payload.keyIndex);
-            if (!sameObservedState(restored, before)) fail("ROLLBACK", "SPATIAL_GRAPH_ROLLBACK_READBACK_MISMATCH", "Rollback completed but did not restore the exact prior spatial state.", { expected: before, actual: restored });
+            if (!sameObservedState(restored, before)) {
+              return response(request, "FAILED", {
+                category: "ROLLBACK_FAILURE",
+                code: "SPATIAL_GRAPH_ROLLBACK_READBACK_MISMATCH",
+                message: "Rollback completed but did not restore the exact prior spatial state.",
+                details: { expected: before, actual: restored, mutationError: errorPayload(mutationError) }
+              }, [], readback(layer, property, payload.propertyPath, payload.keyIndex), started, ["Spatial Graph Editor mutation failed and rollback readback did not match the exact prior state."]);
+            }
           } catch (rollbackError) {
-            fail("ROLLBACK", "SPATIAL_GRAPH_ROLLBACK_FAILED", "Spatial Graph Editor mutation failed and rollback also failed.", { mutationError: asString(mutationError), rollbackError: asString(rollbackError) });
+            return response(request, "FAILED", {
+              category: "ROLLBACK_FAILURE",
+              code: "SPATIAL_GRAPH_ROLLBACK_FAILED",
+              message: "Spatial Graph Editor mutation failed and rollback also failed.",
+              details: { mutationError: errorPayload(mutationError), rollbackError: asString(rollbackError) }
+            }, [], null, started, ["Spatial Graph Editor mutation failed and rollback also failed."]);
           }
+          return response(request, "FAILED", errorPayload(mutationError), [], readback(layer, property, payload.propertyPath, payload.keyIndex), started, ["Spatial Graph Editor mutation failed after a verified write and the exact prior spatial state was restored by structural rollback."]);
         }
         throw mutationError;
       } finally { app.endUndoGroup(); }
