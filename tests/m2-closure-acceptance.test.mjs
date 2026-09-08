@@ -23,10 +23,10 @@ test("M2 accepted real-AE baseline remains enabled while development advances in
   assert.equal(status.restartRecovery, "COMMITTED_BOUNDARY_RESUME");
   assert.equal(status.aeAdapterProtocol, "1.1.0");
   assert.equal(status.runtimeCapabilityComposition, "M2_BASE_PLUS_ACCEPTED_M3");
-  assert.equal(status.acceptedM3HostProtocols, "1.2.0_THROUGH_1.8.0_REGISTERED");
-  assert.equal(status.humanParityCore, "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_GRAPH_EDITOR_ACCEPTED");
+  assert.equal(status.acceptedM3HostProtocols, "1.2.0_THROUGH_1.9.0_REGISTERED");
+  assert.equal(status.humanParityCore, "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_ACCEPTED");
   assert.equal(status.m3MaskHostProtocol, "1.2.0_BROKER_GATED");
-  assert.equal(status.m3LatestHostProtocol, "1.8.0_TRANSFER_ACCEPTED");
+  assert.equal(status.m3LatestHostProtocol, "1.9.0_TRANSFER_ACCEPTED");
 });
 
 test("every public AE protocol 1.1 capability retains explicit M2 evidence maturity", () => {
