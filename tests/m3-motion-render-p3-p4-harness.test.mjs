@@ -32,6 +32,16 @@ test("motion-render P3/P4 CLI emits distinct visual families while leaving P3 un
   assert.match(source, /visualReviewRequired: true/);
 });
 
+test("motion-render P3/P4 render path contract preserves the request while accepting AE canonicalization", async () => {
+  const source = await readFile(cliPath, "utf8");
+  assert.match(source, /const requestedOutputPath = readback\?\.\["requestedOutputPath"\]/);
+  assert.match(source, /sameFilesystemPath\(requestedOutputPath, outputPath\)/);
+  assert.match(source, /After Effects' canonical OutputModule\.file path/);
+  assert.match(source, /path\.relative\(artifactDir, canonicalOutputPath\)/);
+  assert.match(source, /sameFilesystemPath\(completion\.outputPath, canonicalOutputPath\)/);
+  assert.doesNotMatch(source, /sameFilesystemPath\(canonicalOutputPath, outputPath\)/);
+});
+
 test("motion-render P4 host injection is double-gated and occurs only after verified writes", async () => {
   const source = await readFile(hostPath, "utf8");
   assert.match(source, /request\.readbackProfile === "M3_MOTION_RENDER_P4_FAILURE_INJECTION"/);
