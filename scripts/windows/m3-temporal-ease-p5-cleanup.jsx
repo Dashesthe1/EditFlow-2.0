@@ -4,7 +4,7 @@
  * EDITFLOW_M3_TEMPORAL_EASE_P5_PROOF=1. It refuses to discard anything unless
  * the currently open saved project is the fixed P5 artifact and contains exactly
  * the proof-owned two-composition/one-layer fixture with the expected saved
- * scalar Opacity ease and fresh-session two-component Scale ease. The saved .aep
+ * scalar Opacity ease and fresh-session three-component Scale ease. The saved .aep
  * is retained as P5 evidence.
  */
 (function () {
@@ -23,11 +23,13 @@
   var SAVED_OPACITY_OUT = [{ speed: 142.75, influence: 73.5 }];
   var TRANSFER_SCALE_IN = [
     { speed: 18.25, influence: 32.5 },
-    { speed: 41.5, influence: 47.25 }
+    { speed: 41.5, influence: 47.25 },
+    { speed: 72.25, influence: 58.75 }
   ];
   var TRANSFER_SCALE_OUT = [
     { speed: 95.75, influence: 69.5 },
-    { speed: 63.25, influence: 54.75 }
+    { speed: 63.25, influence: 54.75 },
+    { speed: 128.5, influence: 61.25 }
   ];
 
   function asString(value) { return value === null || value === undefined ? "" : String(value); }
@@ -162,7 +164,7 @@
       throw new Error("Temporal-ease P5 Opacity middle key identity is not exact.");
     }
     var scaleValue = scale.keyValue(2);
-    if (!scaleValue || scaleValue.length !== 2 || !closeNumber(scaleValue[0], 140) || !closeNumber(scaleValue[1], 80)) {
+    if (!scaleValue || scaleValue.length !== 3 || !closeNumber(scaleValue[0], 140) || !closeNumber(scaleValue[1], 80) || !closeNumber(scaleValue[2], 115)) {
       throw new Error("Temporal-ease P5 Scale middle key identity is not exact.");
     }
 
