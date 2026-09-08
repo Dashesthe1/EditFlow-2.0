@@ -17,6 +17,12 @@ import {
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_5.js";
 import { buildNullRigRequestV15 } from "../../../packages/adapters/ae-cep/src/m3-null-rig.js";
 import {
+  AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16,
+  type AeLayerControlsCommandV16,
+  type AeLayerControlsResponseV16,
+} from "../../../packages/adapters/ae-cep/src/protocol-v1_6.js";
+import { buildLayerControlsRequestV16 } from "../../../packages/adapters/ae-cep/src/m3-layer-controls.js";
+import {
   AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19,
   type AeSpatialGraphCommandV19,
   type AeSpatialGraphObservedStateV19,
@@ -86,9 +92,10 @@ const parseConfig = (value: unknown): BridgeConfigFile => {
   const supported = candidate["supportedProtocolVersions"];
   if (!Array.isArray(supported)
       || !supported.includes(AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19)
+      || !supported.includes(AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16)
       || !supported.includes(AE_NULL_RIG_PROTOCOL_VERSION_V15)
       || !supported.includes(AE_ADAPTER_PROTOCOL_VERSION_V11)) {
-    throw new Error("CEP bridge config does not advertise required spatial-graph 1.9, null-rig 1.5, and baseline 1.1 protocols.");
+    throw new Error("CEP bridge config does not advertise required spatial-graph 1.9, layer-controls 1.6, null-rig 1.5, and baseline 1.1 protocols.");
   }
   if (typeof candidate["extensionId"] !== "string" || candidate["extensionId"].length === 0) throw new Error("CEP extensionId is missing.");
   if (typeof candidate["extensionVersion"] !== "string" || candidate["extensionVersion"].length === 0) throw new Error("CEP extensionVersion is missing.");
@@ -205,6 +212,9 @@ const main = async (): Promise<void> => {
   let environment: Awaited<ReturnType<AeCepAdapterClientV11["probe"]>> | null = null;
   let baselineFingerprint: string | null = null;
   let baselineItemCount: number | null = null;
+  let targetCreated = false;
+  let layer2dCreated = false;
+  let layer3dCreated = false;
 
   const projectId = "m3-spatial-graph-p1-p2-real-ae";
   const prefix = `M3_SPATIAL_GRAPH_P12_${Date.now()}`;
@@ -239,7 +249,7 @@ const main = async (): Promise<void> => {
     roving: false,
   };
 
-  const recordResponse = (response: AeAdapterResponseV11 | AeNullRigResponseV15 | AeSpatialGraphResponseV19): void => {
+  const recordResponse = (response: AeAdapterResponseV11 | AeNullRigResponseV15 | AeLayerControlsResponseV16 | AeSpatialGraphResponseV19): void => {
     responses.push({
       protocolVersion: response.protocolVersion,
       command: response.command,
@@ -300,6 +310,28 @@ const main = async (): Promise<void> => {
     return response;
   };
 
+  const dispatchV16 = async (
+    command: AeLayerControlsCommandV16,
+    payload: Readonly<Record<string, unknown>>,
+    expectedRevision: number | null,
+  ): Promise<AeLayerControlsResponseV16> => {
+    if (broker === null) throw new Error("M3 broker is not initialized.");
+    operationCounter += 1;
+    const request = buildLayerControlsRequestV16({
+      requestId: `m3-spatial-graph-p12-v16-${++requestCounter}`,
+      transactionId,
+      operationId: `${transactionId}_V16_OP_${operationCounter}`,
+      command,
+      expectedHostProjectRevision: expectedRevision,
+      payload,
+      readbackProfile: "M3_SPATIAL_GRAPH_P1_P2_2D_FIXTURE",
+    });
+    const response = await broker.dispatch(request);
+    recordResponse(response);
+    if (typeof response.hostProjectRevision === "number") hostRevision = response.hostProjectRevision;
+    return response;
+  };
+
   const dispatchV19 = async (
     command: AeSpatialGraphCommandV19,
     payload: Readonly<Record<string, unknown>>,
@@ -338,6 +370,23 @@ const main = async (): Promise<void> => {
     keyIndex = interiorKey,
   ): Promise<AeSpatialGraphResponseV19> =>
     dispatchV19("property.spatial_graph.readback", targetPayload(layerStableId, keyIndex), null);
+
+  const cleanupRig = async (stableId: string, created: boolean): Promise<void> => {
+    if (!created || broker === null || client === null) return;
+    try {
+      await refreshState();
+      const response = await dispatchV15("rig.null.remove", {
+        comp: { stableId: targetStable },
+        rig: { stableId },
+      }, hostRevision);
+      if (response.outcome !== "APPLIED" && response.outcome !== "NO_OP") {
+        throw new Error(`rig.null.remove ${stableId} failed: ${response.error?.code ?? response.outcome}`);
+      }
+      await refreshState();
+    } catch (error) {
+      cleanupErrors.push(`${stableId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   const cleanupComp = async (stableId: string): Promise<void> => {
     if (client === null) return;
@@ -429,6 +478,7 @@ const main = async (): Promise<void> => {
       expectedExtensionId: config.extensionId,
       supportedProtocolVersions: [
         AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19,
+        AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16,
         AE_NULL_RIG_PROTOCOL_VERSION_V15,
         AE_ADAPTER_PROTOCOL_VERSION_V11,
       ],
@@ -438,11 +488,12 @@ const main = async (): Promise<void> => {
 
     panel = await broker.waitForPanel(timeoutMs);
     checks.panel_negotiated_v19 = panel.protocolVersion === AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19;
-    checks.panel_supports_v11_v15_v19 = panel.supportedProtocolVersions.includes(AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19)
+    checks.panel_supports_v11_v15_v16_v19 = panel.supportedProtocolVersions.includes(AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19)
+      && panel.supportedProtocolVersions.includes(AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16)
       && panel.supportedProtocolVersions.includes(AE_NULL_RIG_PROTOCOL_VERSION_V15)
       && panel.supportedProtocolVersions.includes(AE_ADAPTER_PROTOCOL_VERSION_V11);
-    if (!checks.panel_negotiated_v19 || !checks.panel_supports_v11_v15_v19) {
-      throw new Error(`Spatial-graph proof requires negotiated protocol ${AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19} with null-rig 1.5 and baseline 1.1 fixture compatibility.`);
+    if (!checks.panel_negotiated_v19 || !checks.panel_supports_v11_v15_v16_v19) {
+      throw new Error(`Spatial-graph proof requires negotiated protocol ${AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19} with layer-controls 1.6, null-rig 1.5 and baseline 1.1 fixture compatibility.`);
     }
     if (panel.extensionVersion !== config.extensionVersion) {
       throw new Error(`Registered CEP panel version ${panel.extensionVersion} does not match installed config ${config.extensionVersion}.`);
@@ -473,6 +524,7 @@ const main = async (): Promise<void> => {
       duration: 2,
       frameRate: 24,
     });
+    targetCreated = true;
 
     const create2d = await dispatchV15("rig.null.create", {
       comp: { stableId: targetStable },
@@ -480,6 +532,16 @@ const main = async (): Promise<void> => {
       threeDLayer: false,
     }, hostRevision);
     if (create2d.outcome !== "APPLIED" && create2d.outcome !== "NO_OP") throw new Error(`2D null fixture failed: ${create2d.error?.code ?? create2d.outcome}`);
+    layer2dCreated = true;
+    await refreshState();
+
+    const force2d = await dispatchV16("layer.switches.set", {
+      comp: { stableId: targetStable },
+      layer: { stableId: layer2dStable },
+      switches: { threeDLayer: false },
+    }, hostRevision);
+    if (force2d.outcome !== "APPLIED" && force2d.outcome !== "NO_OP") throw new Error(`2D layer switch fixture failed: ${force2d.error?.code ?? force2d.outcome}`);
+    checks.fixture_2d_switch_forced = true;
     await refreshState();
 
     const create3d = await dispatchV15("rig.null.create", {
@@ -488,6 +550,7 @@ const main = async (): Promise<void> => {
       threeDLayer: true,
     }, hostRevision);
     if (create3d.outcome !== "APPLIED" && create3d.outcome !== "NO_OP") throw new Error(`3D null fixture failed: ${create3d.error?.code ?? create3d.outcome}`);
+    layer3dCreated = true;
     await refreshState();
 
     await executeV11("property.set_keyframes", {
@@ -508,6 +571,16 @@ const main = async (): Promise<void> => {
         { time: 0, value: [90, 270, 0] },
         { time: interiorTime, value: [320, 85, 140] },
         { time: 1, value: [550, 250, -80] },
+      ],
+    });
+    await executeV11("property.set_keyframes", {
+      comp: { stableId: targetStable },
+      layer: { stableId: layer2dStable },
+      propertyPath: opacityPath,
+      keyframes: [
+        { time: 0, value: 100 },
+        { time: interiorTime, value: 60 },
+        { time: 1, value: 100 },
       ],
     });
 
@@ -639,6 +712,7 @@ const main = async (): Promise<void> => {
       "p1_stale_revision_spatial_state_unchanged",
     ]);
     checks.p2 = allChecksTrue(checks, [
+      "fixture_2d_switch_forced",
       "p2_fixture_2d_spatial",
       "p2_fixture_3d_spatial",
       "p2_2d_manual_set_exact",
@@ -668,10 +742,13 @@ const main = async (): Promise<void> => {
   } catch (error) {
     failureError = error instanceof Error ? error.stack ?? error.message : String(error);
   } finally {
+    await cleanupRig(layer3dStable, layer3dCreated);
+    await cleanupRig(layer2dStable, layer2dCreated);
     await cleanupComp(targetStable);
     try {
       if (client !== null) {
         await refreshState();
+        checks.cleanup_target_removed = !targetCreated || (projectSnapshot !== null && !projectHasComp(projectSnapshot, targetStable));
         checks.cleanup_item_count_restored = baselineItemCount !== null && projectSnapshot?.itemCount === baselineItemCount;
         checks.cleanup_fingerprint_restored = baselineFingerprint !== null && state?.projectFingerprint === baselineFingerprint;
       }
@@ -679,6 +756,7 @@ const main = async (): Promise<void> => {
       cleanupErrors.push(`final-inspect: ${error instanceof Error ? error.message : String(error)}`);
     }
     cleanupComplete = cleanupErrors.length === 0
+      && checks.cleanup_target_removed === true
       && checks.cleanup_item_count_restored === true
       && checks.cleanup_fingerprint_restored === true;
     if (broker !== null) await broker.stop();
@@ -708,6 +786,7 @@ const main = async (): Promise<void> => {
         layer2dStable,
         layer3dStable,
         positionPath,
+        opacityPath,
         interiorKey,
         interiorTime,
       },
