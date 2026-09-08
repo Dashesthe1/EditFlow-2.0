@@ -1,0 +1,46 @@
+name: M3 Temporal Ease P3 P4 Real AE Control
+
+on:
+  push:
+    branches:
+      - ae-test/m3-temporal-ease-p3-p4-control
+    paths:
+      - .github/ae-test-trigger/m3-temporal-ease-p3-p4-control.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: editflow-m3-temporal-ease-p3-p4-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  real-ae-temporal-ease-p3-p4-control:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download accepted P1 P2 proof artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: m3-temporal-ease-p1-p2-proof-34176061647
+          path: .accepted-p1-p2
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34176061647
+
+      - name: Run isolated P3 P4 proof through fixed bypass wrapper
+        shell: cmd
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\scripts\windows\run-m3-temporal-ease-p3-p4-control.ps1"
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-temporal-ease-p3-p4-control-proof-${{ github.run_id }}
+          path: proofs/artifacts/m3-temporal-ease-p3-p4/
+          if-no-files-found: warn
+          retention-days: 14
