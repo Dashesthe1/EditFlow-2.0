@@ -23,7 +23,9 @@ const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v18.jsx"
 const installerPath = "scripts/windows/install-editflow-cep.ps1";
 const bridgePath = "packages/adapters/ae-cep/extension/client/bridge.js";
 const runtimeConfigPath = "packages/adapters/ae-cep/extension/client/runtime-config.js";
+const maturityPath = "packages/adapters/ae-cep/src/m3-temporal-ease-proof-maturity.ts";
 const foundationPath = "docs/16_M3_GRAPH_EDITOR_TEMPORAL_EASE_FOUNDATION.md";
+const acceptancePath = "proofs/diagnostics/m3-temporal-ease-p1-p2-run2-acceptance.md";
 const token = "m3temporaleasetoken0123456789abcdef0123456789abcdef";
 const headers = { "Content-Type": "application/json", "X-EditFlow-Token": token };
 
@@ -43,16 +45,40 @@ test("M3 temporal ease protocol 1.8 is fixed to roadmap item 10 numeric Graph Ed
   assert.equal(capabilityForTemporalEaseCommandV18("property.temporal_ease.readback"), "ae.property.temporal_ease.readback");
 });
 
-test("protocol 1.8 capabilities stay PARTIAL DECLARED until real-AE proof is accepted", () => {
+test("accepted real-AE P1/P2 promotes protocol 1.8 capabilities only to PARTIAL STRUCTURAL", () => {
   assert.equal(M3_TEMPORAL_EASE_CAPABILITIES_V18.length, 2);
   for (const capability of M3_TEMPORAL_EASE_CAPABILITIES_V18) {
     assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.proofMaturity, "STRUCTURAL");
     assert.equal(capability.routes.length, 1);
     assert.equal(capability.routes[0].routeId, AE_TEMPORAL_EASE_ROUTE_ID_V18);
     assert.equal(capability.routes[0].available, true);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
+});
+
+test("accepted temporal-ease P1/P2 provenance is exact and does not overclaim P3-P5", async () => {
+  const [maturity, acceptance] = await Promise.all([
+    readFile(maturityPath, "utf8"),
+    readFile(acceptancePath, "utf8"),
+  ]);
+  assert.match(maturity, /718fd72dd9b07c3605163354cf7ce7be26ef8f23/);
+  assert.match(maturity, /033e4e2f005a175f48fefaca1912dc54716d7eb4/);
+  assert.match(maturity, /34176061647/);
+  assert.match(maturity, /101905568438/);
+  assert.match(maturity, /10037290595/);
+  assert.match(maturity, /b1046dfe32b1b1c73a3acd65e5d5b3deb90fef50e01170ed3b8e8e04d4e2439b/);
+  assert.match(maturity, /"ae\.property\.temporal_ease\.set": "STRUCTURAL"/);
+  assert.match(maturity, /"ae\.property\.temporal_ease\.readback": "STRUCTURAL"/);
+  assert.match(maturity, /status: "PARTIAL"/);
+  assert.doesNotMatch(maturity, /"TRANSFER"|"ROBUST"|status: "FULL"/);
+
+  assert.match(acceptance, /status: PASS/);
+  assert.match(acceptance, /all 44 bounded checks `true`/);
+  assert.match(acceptance, /Scale state is written and read back exactly at live cardinality three/);
+  assert.match(acceptance, /P3_visual_proof: false/);
+  assert.match(acceptance, /P4_failure_injection_rollback: false/);
+  assert.match(acceptance, /P5_save_reopen_reconnect_transfer: false/);
 });
 
 test("request builder carries exact incoming and outgoing speed/influence arrays", () => {
@@ -208,6 +234,7 @@ test("loopback broker negotiates 1.8 and carries typed temporal ease readback", 
 
 test("foundation keeps host-truth cardinality and spatial/rendering controls in later tranches", async () => {
   const source = await readFile(foundationPath, "utf8");
+  assert.match(source, /PARTIAL \/ STRUCTURAL/);
   assert.match(source, /Milestone 3 item 10/);
   assert.match(source, /KeyframeEase/);
   assert.match(source, /0\.1\.\.100\.0/);
@@ -216,13 +243,13 @@ test("foundation keeps host-truth cardinality and spatial/rendering controls in 
   assert.match(source, /exposed \*\*three\*\* incoming and \*\*three\*\* outgoing `KeyframeEase` objects/);
   assert.match(source, /scale\.setValue\(\[50, 50\]\)/);
   assert.match(source, /After Effects 25\.6\.6/);
+  assert.match(source, /34176061647/);
   assert.match(source, /does \*\*not\*\* infer ease cardinality from `PropertyValueType`/);
-  assert.match(source, /P1 — deterministic validation\/rejection/);
-  assert.match(source, /P2 — exact structural readback/);
-  assert.match(source, /P3 — viewer-visible proof/);
-  assert.match(source, /P4 — induced-failure rollback/);
-  assert.match(source, /P5 — save\/reopen\/reconnect transfer/);
+  assert.match(source, /P1 — deterministic validation\/rejection: ACCEPTED/);
+  assert.match(source, /P2 — exact structural readback: ACCEPTED/);
+  assert.match(source, /P3 — viewer-visible proof: OUTSTANDING/);
+  assert.match(source, /P4 — induced-failure rollback: OUTSTANDING/);
+  assert.match(source, /P5 — save\/reopen\/reconnect transfer: OUTSTANDING/);
   assert.match(source, /Milestone 3 item 11 spatial Bezier paths\/tangents/);
   assert.match(source, /Milestone 3 item 12 markers, motion blur, frame blending/);
-  assert.match(source, /PARTIAL \/ DECLARED/);
 });
