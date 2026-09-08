@@ -5,4 +5,4 @@ P3 must emit retained visual artifacts without self-asserting visual acceptance.
 P4 must inject failure only after verified real writes and prove exact structural/project-fingerprint rollback for composition motion, layer motion, marker set, and marker remove.
 P5 remains out of scope.
 
-Retry after fixing guarded quit evidence coupling and capping the startup-dialog watcher to its documented 300-second contract so any blocking AE modal retains exact diagnostic text and controls.
+Retry on the green startup-diagnostic head after preserving exact AE-owned #32770 dialog pixels. If startup is blocked again, retain only the dialog-bounds screenshots plus read-only UI/native metadata; do not focus, click, type, dismiss, or mutate an unknown window.
