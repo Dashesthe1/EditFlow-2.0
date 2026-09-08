@@ -7,6 +7,7 @@
   var acceptedLoader = new File(hostDir.fsName + "/editflow_host_current_v19.jsx");
   var m3MarkerMotion = new File(hostDir.fsName + "/editflow_host_m3_marker_motion.jsx");
   var m3MarkerMotionAtomicity = new File(hostDir.fsName + "/editflow_host_m3_marker_motion_atomicity.jsx");
+  var m3MarkerMotionProofCleanup = new File(hostDir.fsName + "/editflow_host_m3_marker_motion_proof_cleanup.jsx");
   var p4ProofMode = $.getenv("EDITFLOW_M3_MARKER_MOTION_P4_PROOF") === "1";
 
   if (!acceptedLoader.exists) throw new Error("EditFlow accepted protocol 1.9 host loader is missing: " + acceptedLoader.fsName);
@@ -39,10 +40,9 @@
     };
   }
 
-  /* The P1/P2 preview lineage predates this additive guard, so a missing atomicity
-   * file remains compatible outside P4 proof mode. P3/P4 explicitly installs it.
-   * If the file is present but fails to load, or P4 requests it and it is missing,
-   * protocol 2.0 fails closed while accepted 1.1-1.9 dispatch remains available. */
+  /* The accepted P1/P2 preview lineage predates this additive guard, so a missing
+   * atomicity file remains compatible outside P4 proof mode. P3/P4 explicitly
+   * installs both the atomicity and guarded cleanup modules. */
   var atomicityLoadError = null;
   if (loadError === null) {
     if (!m3MarkerMotionAtomicity.exists) {
@@ -69,6 +69,34 @@
         });
       }
       return dispatchBeforeAtomicityFailure(requestJson);
+    };
+  }
+
+  var proofCleanupLoadError = null;
+  if (p4ProofMode && loadError === null && atomicityLoadError === null) {
+    if (!m3MarkerMotionProofCleanup.exists) proofCleanupLoadError = "EditFlow M3 marker-motion proof cleanup script is required for P4 proof mode: " + m3MarkerMotionProofCleanup.fsName;
+    else {
+      try { $.evalFile(m3MarkerMotionProofCleanup); }
+      catch (cleanupError) { proofCleanupLoadError = String(cleanupError); }
+    }
+  }
+
+  if (proofCleanupLoadError !== null) {
+    var dispatchBeforeCleanupFailure = $.global.EditFlow2_dispatch;
+    $.global.EditFlow2_M3_MARKER_MOTION_PROOF_CLEANUP_LOAD_ERROR = proofCleanupLoadError;
+    $.global.EditFlow2_dispatch = function (requestJson) {
+      var request = null;
+      try { request = $.global.EditFlow2_JSON.parse(requestJson); } catch (_) {}
+      if (request && request.protocolVersion === "2.0.0") {
+        return $.global.EditFlow2_JSON.stringify({
+          protocolVersion: "2.0.0", requestId: request.requestId, transactionId: request.transactionId,
+          operationId: request.operationId, capabilityId: request.capabilityId, command: request.command,
+          outcome: "FAILED", error: { category: "ADAPTER_FAILURE", code: "M3_MARKER_MOTION_PROOF_CLEANUP_LOAD_FAILED", message: proofCleanupLoadError, details: null },
+          affectedObjects: [], readback: null, hostProjectRevision: app.project ? app.project.revision : null,
+          diagnostics: { adapterProtocolVersion: "2.0.0", adapterBuild: "0.4.0-dev.10.2-proof-cleanup", command: request.command, notes: ["P4 proof cleanup guard failed to load; protocol 2.0 proof traffic is blocked before mutation."] }
+        });
+      }
+      return dispatchBeforeCleanupFailure(requestJson);
     };
   }
 
