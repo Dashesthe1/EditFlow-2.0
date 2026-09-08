@@ -1,0 +1,20 @@
+{
+  "protocolVersion": "1.8.0",
+  "requestId": "REQ_EASE_BAD_001",
+  "transactionId": "TX_EASE_BAD_001",
+  "operationId": "OP_EASE_BAD_001",
+  "capabilityId": "ae.property.temporal_ease.set",
+  "command": "property.temporal_ease.set",
+  "expectedHostProjectRevision": 42,
+  "payload": {
+    "comp": {"stableId": "COMP_EASE_001"},
+    "layer": {"stableId": "LAYER_EASE_001"},
+    "propertyPath": ["ADBE Transform Group", "ADBE Opacity"],
+    "keyIndex": 2,
+    "ease": {
+      "inEase": [{"speed": 0, "influence": 0}],
+      "outEase": [{"speed": 0, "influence": 33.333333}]
+    }
+  },
+  "readbackProfile": "M3_TEMPORAL_EASE_STRUCTURAL"
+}

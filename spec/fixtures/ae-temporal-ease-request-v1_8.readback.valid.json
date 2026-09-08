@@ -1,0 +1,16 @@
+{
+  "protocolVersion": "1.8.0",
+  "requestId": "REQ_EASE_READ_001",
+  "transactionId": "TX_EASE_READ_001",
+  "operationId": "OP_EASE_READ_001",
+  "capabilityId": "ae.property.temporal_ease.readback",
+  "command": "property.temporal_ease.readback",
+  "expectedHostProjectRevision": null,
+  "payload": {
+    "comp": {"stableId": "COMP_EASE_001"},
+    "layer": {"stableId": "LAYER_EASE_001"},
+    "propertyPath": ["ADBE Transform Group", "ADBE Position"],
+    "keyIndex": 2
+  },
+  "readbackProfile": "M3_TEMPORAL_EASE_STRUCTURAL"
+}
