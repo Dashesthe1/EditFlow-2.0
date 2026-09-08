@@ -1,0 +1,2 @@
+trigger: protocol 1.10 motion-render P5 harness development
+source_branch: feature/m3-motion-render-controls
