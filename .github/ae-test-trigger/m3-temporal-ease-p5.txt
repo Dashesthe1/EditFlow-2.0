@@ -1,0 +1,10 @@
+M3 temporal-ease P5 real-AE transfer proof
+attempt=4
+source_commit=2fac69c519abe9b960ffe517f744b5e824f84253
+code_ci_run=34179859182
+accepted_main=72c8dda399ac04528f73f8cb1113af7053b9cbdb
+accepted_p1_p2_run=34176061647
+accepted_p3_p4_run=34176960701
+prior_scale_cardinality_failure=34179032302
+prior_cleanup_canonicalization_failure=34179659597
+cleanup_fix=canonical-scale-key-140-80-100-plus-exact-three-component-ease
