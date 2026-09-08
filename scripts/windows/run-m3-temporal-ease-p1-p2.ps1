@@ -69,7 +69,7 @@ try {
   if ($VersionInfo.ProductVersion) { Write-Host ("Running AE version: " + $VersionInfo.ProductVersion) }
   Write-Host "Scope: P1 deterministic rejection and P2 exact KeyframeEase structural readback only. P3/P4/P5 are not claimed."
   Write-Host "Protocol 1.8 owns numeric temporal ease; accepted protocol 1.7 establishes only the manual-BEZIER precondition; protocol 1.1 creates/removes disposable fixtures and keyframes."
-  Write-Host "P2 proves both scalar Opacity cardinality=1 and non-spatial TwoD Scale cardinality=2 with exact incoming/outgoing speed and influence."
+  Write-Host "P2 proves scalar Opacity cardinality=1 and the live three-handle Scale temporal-ease surface exposed by AE even when the 2D-layer fixture supplies two-value Scale keys."
   Write-Host "The proof creates only temporary compositions/layers and restores the exact baseline project fingerprint before completion."
 
   $NodeArgs = @(
