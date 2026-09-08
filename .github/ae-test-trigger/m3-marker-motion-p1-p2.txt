@@ -1,0 +1,2 @@
+Trigger isolated M3 marker-motion protocol 2.0 real-AE P1/P2 proof.
+Source feature commit: e32df7689c165507df13a7d661b8700ffc083432
