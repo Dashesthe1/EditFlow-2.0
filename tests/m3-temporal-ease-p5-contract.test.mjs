@@ -32,7 +32,7 @@ test("temporal ease P5 is blocked on explicit independently reviewed P1-P4 accep
   assert.match(workflow, /independently reviewed protocol-1\.8 P1-P4 acceptance/);
 });
 
-test("temporal ease P5 saves scalar Opacity ease then transfers fresh-session authority to 2D Scale", async () => {
+test("temporal ease P5 saves scalar Opacity ease then transfers fresh-session authority to the live three-component Scale surface", async () => {
   const source = await readFile(cliPath, "utf8");
 
   assert.match(source, /AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18/);
@@ -46,11 +46,16 @@ test("temporal ease P5 saves scalar Opacity ease then transfers fresh-session au
   assert.match(source, /speed: 142\.75, influence: 73\.5/);
   assert.match(source, /transferredScaleEase/);
   assert.match(source, /speed: 18\.25, influence: 32\.5/);
-  assert.match(source, /speed: 63\.25, influence: 54\.75/);
+  assert.match(source, /speed: 72\.25, influence: 58\.75/);
+  assert.match(source, /speed: 128\.5, influence: 61\.25/);
   assert.match(source, /propertyPath: opacityPath/);
   assert.match(source, /propertyPath: scalePath/);
   assert.match(source, /setEaseExact\(opacityPath, savedOpacityEase, 1/);
-  assert.match(source, /setEaseExact\(scalePath, transferredScaleEase, 2/);
+  assert.match(source, /SCALE_CARDINALITY_PROBE/);
+  assert.match(source, /scale_live_cardinality_three/);
+  assert.match(source, /easeCardinality\(scaleCardinalityProbe\) === 3/);
+  assert.match(source, /setEaseExact\(scalePath, transferredScaleEase, 3/);
+  assert.match(source, /\[140, 80, 115\]/);
   assert.match(source, /"project\.save"/);
   assert.match(source, /await broker\.stop\(\)/);
   assert.match(source, /await broker\.start\(\)/);
@@ -81,6 +86,9 @@ test("temporal ease P5 fixed reopen and cleanup scripts are proof-gated v18-awar
   assert.match(cleanup, /targetComp\.numLayers !== 1/);
   assert.match(cleanup, /ADBE Opacity/);
   assert.match(cleanup, /ADBE Scale/);
+  assert.match(cleanup, /scaleValue\.length !== 3/);
+  assert.match(cleanup, /closeNumber\(scaleValue\[2\], 115\)/);
+  assert.match(cleanup, /speed: 72\.25, influence: 58\.75/);
   assert.match(cleanup, /keyTemporalContinuous\(keyIndex\) !== false/);
   assert.match(cleanup, /keyTemporalAutoBezier\(keyIndex\) !== false/);
   assert.match(cleanup, /keyInTemporalEase\(2\)/);
