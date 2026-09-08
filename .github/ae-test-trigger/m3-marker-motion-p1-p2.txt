@@ -1,2 +1,3 @@
-Trigger isolated M3 marker-motion protocol 2.0 real-AE P1/P2 proof.
-Source feature commit: e32df7689c165507df13a7d661b8700ffc083432
+Trigger isolated M3 marker-motion protocol 2.0 real-AE P1/P2 proof, run 2.
+Source feature commit: 454cc19cd7b6c676f9dab15122432ca64d82c7d8
+Run 1 established all AE behavior and failed only on JSON object key order.
