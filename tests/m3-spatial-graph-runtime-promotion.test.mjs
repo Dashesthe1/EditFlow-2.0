@@ -24,14 +24,17 @@ test("standard CEP installer promotes the accepted spatial Graph Editor host to 
   assert.match(source, /Replace\('editflow_host_current_v18\.jsx', 'editflow_host_current_v19\.jsx'\)/);
   assert.match(source, /Replace\('EditFlow2_HOST_PROTOCOL_18', 'EditFlow2_HOST_PROTOCOL_19'\)/);
   assert.match(source, /supportedProtocolVersions = @\("1\.9\.0", "1\.8\.0"/);
+  assert.match(source, /acceptedV18Compatibility/);
   assert.match(source, /Panel protocols advertised: 1\.9\.0, 1\.8\.0/);
   assert.match(source, /refusing unverified protocol 1\.9 promotion/);
 });
 
-test("checked-in runtime config advertises 1.9 first while retaining the 1.1 safe fallback signal", async () => {
+test("checked-in runtime config advertises 1.9 first while retaining accepted 1.8 and the 1.1 safe fallback signal", async () => {
   const source = await readFile(configTemplatePath, "utf8");
   assert.match(source, /protocolVersion: "1\.1\.0"/);
   assert.match(source, /supportedProtocolVersions: \["1\.9\.0","1\.8\.0"/);
+  assert.match(source, /acceptedV18Compatibility/);
+  assert.match(source, /hostLoader: "editflow_host_current_v18\.jsx"/);
   assert.match(source, /acceptedV17Compatibility/);
   assert.match(source, /hostLoader: "editflow_host_current_v17\.jsx"/);
 });
@@ -52,6 +55,6 @@ test("v1.9 host remains additive and fails closed to the accepted v1.8 dispatche
   assert.match(source, /editflow_host_m3_spatial_graph\.jsx/);
   assert.match(source, /EditFlow2_HOST_PROTOCOL_19/);
   assert.match(source, /protocolVersion:\s*"1\.9\.0"/);
-  assert.match(source, /spatial_graph_module_load_failed/);
+  assert.match(source, /M3_SPATIAL_GRAPH_MODULE_LOAD_FAILED/);
   assert.match(source, /EditFlow2_v18_dispatch/);
 });
