@@ -27,6 +27,16 @@ The supported fixture is deliberately narrow: the existing opaque 320 x 320,
 24 fps, one-second composition, with foreground Opacity keys `(0, 0)`,
 `(0.5, 100)`, and `(1, 0)`. Only the middle key's temporal ease changes.
 
+Real-AE run `34176484232` exposed an important baseline edge: after the accepted
+protocol-1.7 manual-BEZIER setup, After Effects 25.6.6 can read back a native
+`KeyframeEase` influence of `0`, while protocol-1.8 writes correctly retain
+Adobe's documented `0.1..100` influence range. The harness therefore retains that
+native readback as provenance/cardinality evidence, then establishes a legal,
+deterministic writable protocol-1.8 baseline at influence `20` before rendering.
+The contrast state uses influence `80`; restoration writes the exact baseline
+state through the public protocol, and P4 rollback must return to that same
+writable baseline. No validation range is weakened for the proof.
+
 A 24-frame render covers frame times `0/24` through `23/24`. The key at one second
 is not rendered. The report explicitly includes `unrenderedKeyframeTimesSeconds:
 [1]`; it never substitutes the last frame for that endpoint. A future terminal-key
