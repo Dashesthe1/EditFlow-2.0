@@ -18,7 +18,7 @@ $RequiredTokens = @(
   'M3_TEMPORAL_INTERPOLATION_P5_REAL_AE',
   'authenticated protocol 1.7 registration',
   'Temporal P5 generated self-hosted runner',
-  '$Temporal = $Template'
+  'scripts\windows\install-editflow-cep.ps1'
 )
 foreach ($Token in $RequiredTokens) {
   if (-not $Template.Contains($Token)) { throw "Accepted temporal-interpolation P5 self-hosted template drifted; missing guarded token: $Token" }
@@ -36,15 +36,16 @@ $Spatial = $Spatial.Replace('temporal P5', 'spatial P5')
 $Spatial = $Spatial.Replace('temporal interpolation', 'spatial Graph Editor')
 $Spatial = $Spatial.Replace('protocol 1.7', 'protocol 1.9')
 
-# The accepted temporal P5 launcher generates its low-level AE runner from the
-# accepted mask P3/P4 lifecycle. Protocol 1.9 is intentionally absent from the
-# normal installer until this tranche reaches transfer maturity, so patch the
-# inner generator at its stable assignment point. This is the same bounded
-# preview-install strategy already proven by spatial P3/P4: only the isolated
-# proof process gets v19; ordinary EditFlow installation remains accepted v18.
-$Needle = '$Temporal = $Template'
-$Replacement = '$Temporal = $Template' + [Environment]::NewLine + '$Temporal = $Temporal.Replace(''scripts\windows\install-editflow-cep.ps1'', ''scripts\windows\install-editflow-cep-v19-preview.ps1'')'
-$Spatial = $Spatial.Replace($Needle, $Replacement)
+# Protocol 1.9 is transfer-accepted and is now installed by the ordinary EditFlow
+# installer. Do not rewrite the generated lifecycle to a preview installer: this P5
+# run is intentionally the production-path promotion proof. It must exercise the same
+# scripts\windows\install-editflow-cep.ps1 path used by standard EditFlow installs.
+if (-not $Spatial.Contains('scripts\windows\install-editflow-cep.ps1')) {
+  throw "Generated spatial P5 runner no longer uses the standard EditFlow CEP installer."
+}
+if ($Spatial.Contains('install-editflow-cep-v19-preview.ps1')) {
+  throw "Spatial P5 production-path proof must not route through the former v1.9 preview verifier."
+}
 
 [System.IO.File]::WriteAllText($TempPath, $Spatial, (New-Object System.Text.UTF8Encoding($false)))
 try {
