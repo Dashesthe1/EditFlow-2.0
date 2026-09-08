@@ -86,8 +86,9 @@ test("temporal ease P5 fixed reopen and cleanup scripts are proof-gated v18-awar
   assert.match(cleanup, /targetComp\.numLayers !== 1/);
   assert.match(cleanup, /ADBE Opacity/);
   assert.match(cleanup, /ADBE Scale/);
+  assert.match(cleanup, /canonicalScaleMiddleValue/);
   assert.match(cleanup, /scaleValue\.length !== 3/);
-  assert.match(cleanup, /closeNumber\(scaleValue\[2\], 115\)/);
+  assert.match(cleanup, /closeNumber\(scaleValue\[2\], 100\)/);
   assert.match(cleanup, /speed: 72\.25, influence: 58\.75/);
   assert.match(cleanup, /keyTemporalContinuous\(keyIndex\) !== false/);
   assert.match(cleanup, /keyTemporalAutoBezier\(keyIndex\) !== false/);
