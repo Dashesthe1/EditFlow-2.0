@@ -1,0 +1,4 @@
+trigger: protocol 1.10 motion-render P3/P4 real-AE proof
+source_branch: feature/m3-motion-render-controls
+source_head: 042a54b63a73dc3fcbcd77d5cb9d6f981492713e
+retry_reason: validate retimed footage fixture and proof-owned cleanup after run 34278019778 isolated cleanup-only failure
