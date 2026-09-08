@@ -48,7 +48,7 @@ test("P1 proves deterministic temporal-ease rejection without mutation across ta
   assert.match(source, /\(hostRevision \?\? 0\) \+ 1000/);
 });
 
-test("P2 proves exact speed/influence on scalar Opacity and two-component Scale including cardinality and no-op", async () => {
+test("P2 proves exact speed/influence on scalar Opacity and the live three-handle Scale surface including cardinality and no-op", async () => {
   const source = await readFile(cliPath, "utf8");
   assert.match(source, /const scalarEase/);
   assert.match(source, /speed: 40, influence: 28\.5/);
@@ -56,14 +56,17 @@ test("P2 proves exact speed/influence on scalar Opacity and two-component Scale 
   assert.match(source, /const scaleEase/);
   assert.match(source, /speed: 20, influence: 31\.25/);
   assert.match(source, /speed: 35, influence: 44\.5/);
+  assert.match(source, /speed: 50, influence: 57\.75/);
   assert.match(source, /speed: 90, influence: 68\.75/);
   assert.match(source, /speed: 60, influence: 52\.5/);
+  assert.match(source, /speed: 45, influence: 39\.25/);
   assert.match(source, /proveEase\("opacity_scalar", opacityPath, scalarEase, 1\)/);
-  assert.match(source, /proveEase\("scale_twod", scalePath, scaleEase, 2\)/);
+  assert.match(source, /proveEase\("scale_twod", scalePath, scaleEase, 3\)/);
   assert.match(source, /p2_scalar_exact_noop/);
   assert.match(source, /p2_scalar_noop_revision_unchanged/);
   assert.match(source, /interpolationIsManualBezier/);
   assert.match(source, /easeStateMatches/);
+  assert.match(source, /three KeyframeEase handles exposed by the live AE Scale key surface/);
   assert.doesNotMatch(source, /setSpatialTangentsAtKey|setRovingAtKey/);
 });
 
@@ -79,6 +82,7 @@ test("P1/P2 wrapper fails closed on overclaim, missing exact evidence, or incomp
   assert.match(source, /p1_bad_influence_rejected/);
   assert.match(source, /p2_opacity_scalar_readback_exact/);
   assert.match(source, /p2_scale_twod_readback_exact/);
+  assert.match(source, /live three-handle Scale temporal-ease surface/);
   assert.match(source, /cleanup_fingerprint_restored/);
   assert.match(source, /cleanup_item_count_restored/);
   assert.match(source, /build:test-runtime/);
