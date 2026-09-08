@@ -32,17 +32,25 @@ After the fixed project is closed/reopened and the additive protocol-1.8 host lo
 
 Fresh-session authority is deliberately transferred to **Scale**, not repeated on Opacity. Real-AE attempt 2 exposed an important fixture assumption: on the actual After Effects 25.6.6 host used by this proof, the live `ADBE Scale` property reports temporal-ease cardinality `3`, even though the layer itself is not promoted to 3D. The protocol correctly rejected the former two-object request with `TEMPORAL_EASE_CARDINALITY_MISMATCH` (`expected: 3`, `actual: 2`).
 
-That behavior is consistent with the current After Effects scripting contract. Scale can have a `ThreeD` quantitative property value, and Adobe documents `[50, 50]` as equivalent to `[50, 50, 100]` for Scale. `setTemporalEaseAtKey` and `keyInTemporalEase`/`keyOutTemporalEase` use three `KeyframeEase` objects for a live `PropertyValueType.ThreeD` property.
+That behavior is consistent with the current After Effects scripting contract. Scale is represented by a three-float quantitative property surface for scripting, and Adobe documents `[50, 50]` as equivalent to `[50, 50, 100]` for Scale. `setTemporalEaseAtKey` and `keyInTemporalEase`/`keyOutTemporalEase` use three `KeyframeEase` objects for a live `PropertyValueType.ThreeD` property.
 
-The corrected proof therefore does **not** weaken EditFlow validation. It now:
+Real-AE attempt 3 then separated two concepts that the earlier fixture had conflated:
 
-1. creates explicit three-component Scale key values;
+- the **visible/non-3D Scale value** is canonicalized with a non-material Z scale of `100`;
+- the **temporal-ease cardinality** of the live Scale property is still `3`.
+
+Attempt 3 successfully passed every actual P5 lifecycle and protocol gate: save, reopen, distinct authenticated CEP reconnect, exact persisted Opacity ease, live Scale cardinality `3`, three-component Scale ease mutation, and exact protocol readback. It failed only because the proof-only cleanup expected the requested Z Scale value `115` instead of AE's canonical non-3D Z value `100`.
+
+The proof therefore does **not** weaken EditFlow validation. It now:
+
+1. creates the Scale key fixture;
 2. establishes the accepted manual-BEZIER precondition;
 3. performs a read-only protocol-1.8 cardinality probe and requires the live host to report `3` at the exact middle key;
 4. only then writes three independent incoming and three independent outgoing `KeyframeEase` objects;
-5. requires exact three-component readback and exact proof-only cleanup verification.
+5. requires exact three-component protocol readback;
+6. during proof-only cleanup, separately verifies AE's canonical Scale key value `[140, 80, 100]` and the exact three-component ease state.
 
-This changes both the property semantics and live ease cardinality from the saved scalar Opacity state while keeping the proof evidence-driven rather than inferring cardinality from the layer's 2D/3D switch.
+This deliberately treats property **value representation** and temporal-ease **handle cardinality** as separate host facts rather than inferring one from the other or from the layer's 2D/3D switch.
 
 ## Exact states
 
@@ -55,7 +63,7 @@ Saved scalar Opacity ease:
 }
 ```
 
-Fresh-session Scale key values:
+Fresh-session Scale values requested by the fixture:
 
 ```json
 [
@@ -64,6 +72,14 @@ Fresh-session Scale key values:
   { "time": 1, "value": [75, 135, 90] }
 ]
 ```
+
+On the non-3D AVLayer used by the proof, AE canonicalizes the middle Scale key exposed by `keyValue(2)` to:
+
+```json
+[140, 80, 100]
+```
+
+The cleanup gate records this canonical value before validating it. The Z value is not treated as a visible third layer dimension; it is the documented default Scale component used by AE's scripting representation.
 
 Fresh-session Scale ease after the live cardinality-3 probe:
 
@@ -106,7 +122,7 @@ Cleanup refuses to discard a project unless all of the following are exact:
 - the source composition is empty;
 - the target has exactly one proof-owned AV layer sourced from the source composition;
 - Opacity has exactly three keys, exact middle key identity, manual-BEZIER flags, and the exact saved scalar ease;
-- Scale has exactly three keys with exact middle value `[140, 80, 115]`, manual-BEZIER flags, and the exact three-component transferred ease.
+- Scale has exactly three keys with canonical middle value `[140, 80, 100]`, manual-BEZIER flags, and the exact three-component transferred ease.
 
 Only after those checks does cleanup close the project without saving and create a blank project. The saved `.aep` remains retained evidence, and the Node harness re-observes the original blank project fingerprint.
 
@@ -116,12 +132,11 @@ The self-hosted runner permits at most one retry, and only for `CEP_PANEL_REGIST
 
 ## External API basis
 
-Consulted September 7, 2026 and rechecked after real-AE attempt 2:
+Consulted September 7, 2026 and rechecked against real-AE attempts 2 and 3:
 
 - After Effects Scripting Guide — `Property`: https://ae-scripting.docsforadobe.dev/property/property/
-  - `PropertyValueType.ThreeD` is a three-float quantitative property type and Scale is a documented example;
-  - Adobe's Scale example states `[50, 50]` is equivalent to `[50, 50, 100]`;
-  - `keyInTemporalEase`, `keyOutTemporalEase`, and `setTemporalEaseAtKey` use three `KeyframeEase` objects for `PropertyValueType.ThreeD`, two for `TwoD`, and one for other value types;
+  - the guide's Scale example explicitly states `[50, 50]` is equivalent to `[50, 50, 100]`;
+  - the same property API defines the live temporal-ease array cardinality, and `keyInTemporalEase`, `keyOutTemporalEase`, and `setTemporalEaseAtKey` use three `KeyframeEase` objects for `PropertyValueType.ThreeD`, two for `TwoD`, and one for other value types;
   - temporal continuity and auto-Bezier are separate interpolation state.
 - After Effects Scripting Guide — `KeyframeEase`: https://ae-scripting.docsforadobe.dev/other/keyframeease/
   - `speed` is floating point;
