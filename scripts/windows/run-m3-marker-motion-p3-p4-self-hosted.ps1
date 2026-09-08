@@ -13,7 +13,8 @@ $ProofArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-marker-motion-p3-p4
 $DialogWatcher = Join-Path $RepoRoot "scripts\windows\watch-ae-startup-dialogs.ps1"
 $DialogDetailsPath = Join-Path $ProofArtifactDir "startup-dialog-details.log"
 $ProofQuitScript = Join-Path $RepoRoot "scripts\windows\quit-editflow-proof-ae.jsx"
-$ProofQuitLog = Join-Path $env:TEMP "EditFlow2-marker-motion-proof-quit.log"
+# The shared fixed quit script owns this exact evidence sink; keep the runner coupled to it.
+$ProofQuitLog = Join-Path $env:TEMP "EditFlow2-layer-controls-proof-quit.log"
 $CsxsKey = "HKCU:\Software\Adobe\CSXS.12"
 $OriginalLogLevelPresent = $false
 $OriginalLogLevel = $null
