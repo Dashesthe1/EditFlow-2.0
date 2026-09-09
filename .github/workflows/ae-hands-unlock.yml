@@ -1,0 +1,48 @@
+name: AE Hands Unlock Stale Proof Directory
+
+on:
+  push:
+    branches:
+      - ae-test/accelerated-proof
+    paths:
+      - .github/workflows/ae-hands-unlock.yml
+      - .github/ae-proof-request/unlock.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-ae-hands-unlock
+  cancel-in-progress: false
+
+jobs:
+  unlock:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 5
+    steps:
+      - name: Release stale After Effects proof directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $afterFx = 'C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe'
+          $targets = @(Get-Process AfterFX -ErrorAction SilentlyContinue | Where-Object { $_.Responding -and $_.MainWindowHandle -ne 0 })
+          if ($targets.Count -ne 1) { throw "Expected one healthy AE process, found $($targets.Count)." }
+          $pidBefore = [int]$targets[0].Id
+
+          $stable = Join-Path $env:TEMP 'ae-hands-stable'
+          New-Item -ItemType Directory -Force -Path $stable | Out-Null
+          $jsx = Join-Path $stable 'noop.jsx'
+          [IO.File]::WriteAllText($jsx, "(function(){app.project;})();`r`n", (New-Object Text.UTF8Encoding($false)))
+          $launcher = Start-Process -FilePath $afterFx -ArgumentList @('-r',$jsx) -PassThru
+          try { Wait-Process -Id $launcher.Id -Timeout 20 -ErrorAction SilentlyContinue } catch {}
+          Start-Sleep -Seconds 2
+
+          $repo = 'C:\Users\Shadow\Downloads\EditFlow2\EditFlow-2.0\actions-runner\_work\EditFlow-2.0\EditFlow-2.0'
+          $locked = Join-Path $repo 'proofs\artifacts\ae-hands-mask-structural-verify-v1'
+          if (Test-Path $locked) {
+            Remove-Item -LiteralPath $locked -Recurse -Force -ErrorAction Stop
+          }
+
+          $after = @(Get-Process AfterFX -ErrorAction SilentlyContinue | Where-Object { $_.Responding -and $_.MainWindowHandle -ne 0 })
+          if ($after.Count -ne 1 -or [int]$after[0].Id -ne $pidBefore) { throw 'Warm AE PID changed during unlock recovery.' }
+          Write-Host "Released stale proof directory; warm AE PID $pidBefore preserved."
