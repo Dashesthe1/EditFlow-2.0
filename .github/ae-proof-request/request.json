@@ -1,9 +1,9 @@
 {
-  "proofId": "infra.ae_hands.mask_act_v5",
-  "proofScript": "scripts/windows/run-ae-hands-mask-act.ps1",
+  "proofId": "infra.ae_hands.mask_structural_verify_v5",
+  "proofScript": "scripts/windows/run-ae-hands-mask-structural-verify.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-hands-mask-act-v5",
-  "timeoutSeconds": 120,
+  "artifactDir": "proofs/artifacts/ae-hands-mask-structural-verify-v5",
+  "timeoutSeconds": 90,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
 }
