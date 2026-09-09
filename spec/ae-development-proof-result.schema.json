@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-development-proof-result.schema.json",
+  "title": "EditFlow AE Development Proof Orchestration Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proofId",
+    "lifecycle",
+    "classification",
+    "ok",
+    "startedAt",
+    "completedAt",
+    "aeReused",
+    "aeLaunched",
+    "aeRestarted",
+    "aePid",
+    "proofExitCode",
+    "retryCount",
+    "proofResultPath",
+    "orchestrationResultPath",
+    "message"
+  ],
+  "properties": {
+    "proofId": {"type": ["string", "null"]},
+    "lifecycle": {
+      "type": ["string", "null"],
+      "enum": ["REUSE_AE", "REOPEN_PROJECT", "RECONNECT_BROKER", "RESTART_AE", "CLEAN_BOOT", null]
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["PASS", "PRODUCT_FAILURE", "INFRASTRUCTURE_FAILURE"]
+    },
+    "ok": {"type": "boolean"},
+    "startedAt": {"type": "string", "format": "date-time"},
+    "completedAt": {"type": "string", "format": "date-time"},
+    "aeReused": {"type": "boolean"},
+    "aeLaunched": {"type": "boolean"},
+    "aeRestarted": {"type": "boolean"},
+    "aePid": {"type": ["integer", "null"], "minimum": 1},
+    "proofExitCode": {"type": ["integer", "null"]},
+    "retryCount": {"type": "integer", "minimum": 0, "maximum": 1},
+    "proofResultPath": {"type": ["string", "null"]},
+    "orchestrationResultPath": {"type": "string", "minLength": 1},
+    "message": {"type": "string"}
+  }
+}
