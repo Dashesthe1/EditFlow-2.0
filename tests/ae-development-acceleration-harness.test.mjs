@@ -60,11 +60,16 @@ test("warm smoke proof is non-mutating and never closes After Effects", async ()
   assert.equal(smoke.includes("taskkill"), false);
 });
 
-test("AE supervisor has a narrow recovery-Continue allow list", async () => {
+test("AE supervisor has narrow native and UI-Automation recovery Continue routes", async () => {
   const supervisor = await read("scripts/windows/ae-host-supervisor.ps1");
   assert.ok(supervisor.includes("RecoveryContext"));
-  assert.ok(supervisor.includes('ContinueButtons.Count -eq 1'));
+  assert.ok(supervisor.includes('NativeContinueButtons.Count -eq 1'));
   assert.ok(supervisor.includes('ClassName -eq "Button"'));
+  assert.ok(supervisor.includes("UIAutomationClient"));
+  assert.ok(supervisor.includes("UIAutomationTypes"));
+  assert.ok(supervisor.includes("Invoke-UiaElement"));
+  assert.ok(supervisor.includes("InvokePattern"));
+  assert.ok(supervisor.includes("INVOKE_CONTINUE_UIA"));
   assert.ok(supervisor.includes("REFUSED_CONTINUE"));
   assert.equal(supervisor.includes("SetCursorPos"), false);
   assert.equal(supervisor.includes("mouse_event"), false);
