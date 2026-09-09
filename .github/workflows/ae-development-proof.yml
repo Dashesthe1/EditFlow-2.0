@@ -1,0 +1,67 @@
+name: Accelerated AE Development Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_path:
+        description: Repository-relative accelerated AE proof request JSON
+        required: false
+        default: .github/ae-proof-request/warm-smoke.json
+        type: string
+      afterfx_path:
+        description: Optional explicit AfterFX.exe path
+        required: false
+        type: string
+  push:
+    branches:
+      - ae-test/accelerated-proof
+    paths:
+      - .github/ae-proof-request/request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editflow-accelerated-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  accelerated-real-ae-proof:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 70
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve proof request
+        id: request
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $requestPath = "${{ github.event.inputs.request_path }}"
+          if (-not $requestPath) { $requestPath = ".github/ae-proof-request/request.json" }
+          if (-not (Test-Path $requestPath -PathType Leaf)) { throw "Accelerated AE proof request does not exist: $requestPath" }
+          $request = Get-Content $requestPath -Raw | ConvertFrom-Json
+          if ([string]$request.artifactDir -notmatch '^proofs/artifacts/[A-Za-z0-9][A-Za-z0-9._/-]*$') { throw "Invalid request artifactDir." }
+          if (([string]$request.artifactDir -split '/') -contains '..') { throw "Request artifactDir may not traverse parent directories." }
+          "request_path=$requestPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "artifact_dir=$($request.artifactDir)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Run accelerated AE proof
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $afterFxPath = "${{ github.event.inputs.afterfx_path }}"
+          if ($afterFxPath) {
+            & ".\scripts\windows\invoke-editflow-ae-proof.ps1" -RequestPath "${{ steps.request.outputs.request_path }}" -AfterFxPath $afterFxPath
+          } else {
+            & ".\scripts\windows\invoke-editflow-ae-proof.ps1" -RequestPath "${{ steps.request.outputs.request_path }}"
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accelerated-ae-proof-${{ github.run_id }}
+          path: ${{ steps.request.outputs.artifact_dir }}
+          if-no-files-found: warn
+          retention-days: 14

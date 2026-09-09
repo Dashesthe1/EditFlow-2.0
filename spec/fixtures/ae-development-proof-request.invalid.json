@@ -1,0 +1,8 @@
+{
+  "proofId": "bad request",
+  "proofScript": "../scripts/windows/arbitrary.ps1",
+  "lifecycle": "AUTO_RESTART_WHATEVER",
+  "artifactDir": "../outside",
+  "timeoutSeconds": 5,
+  "allowInfrastructureRetry": true
+}
