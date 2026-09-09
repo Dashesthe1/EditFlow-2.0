@@ -6,7 +6,7 @@ on:
       request_path:
         description: Repository-relative accelerated AE proof request JSON
         required: false
-        default: .github/ae-proof-request/request.json
+        default: .github/ae-proof-request/warm-smoke.json
         type: string
       afterfx_path:
         description: Optional explicit AfterFX.exe path
