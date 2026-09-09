@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:test-runtime": "tsc -p tsconfig.runtime.json",
     "build:editor-knowledge": "npm run build:test-runtime && node scripts/editor-learning/build-corpus.mjs",
+    "build:editor-taste": "npm run build:test-runtime && node scripts/editor-learning/build-taste-corpus.mjs",
     "test": "npm run build:test-runtime && node --test tests/*.test.mjs",
     "check": "npm run validate:schemas && npm run typecheck && npm test"
   },
