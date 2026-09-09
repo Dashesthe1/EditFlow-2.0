@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/spec/ae-development-proof-request.schema.json",
+  "title": "EditFlow AE Development Proof Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proofId",
+    "proofScript",
+    "lifecycle",
+    "artifactDir",
+    "timeoutSeconds"
+  ],
+  "properties": {
+    "proofId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "proofScript": {
+      "type": "string",
+      "pattern": "^scripts/windows/run-[A-Za-z0-9._-]+\\.ps1$"
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": [
+        "REUSE_AE",
+        "REOPEN_PROJECT",
+        "RECONNECT_BROKER",
+        "RESTART_AE",
+        "CLEAN_BOOT"
+      ],
+      "default": "REUSE_AE"
+    },
+    "artifactDir": {
+      "type": "string",
+      "pattern": "^proofs/artifacts/[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 3600
+    },
+    "allowInfrastructureRetry": {
+      "type": "boolean",
+      "default": false
+    },
+    "resultFile": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.json$",
+      "default": "result.json"
+    }
+  }
+}
