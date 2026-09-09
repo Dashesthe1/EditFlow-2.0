@@ -14,7 +14,7 @@ function Write-SmokeResult {
   param(
     [Parameter(Mandatory = $true)][string]$Classification,
     [Parameter(Mandatory = $true)][string]$Message,
-    [AllowNull()][int]$Pid,
+    [AllowNull()][int]$AeProcessId,
     [bool]$StablePid
   )
   $Result = [ordered]@{
@@ -25,7 +25,7 @@ function Write-SmokeResult {
     lifecycle = $env:EDITFLOW_AE_LIFECYCLE
     mutationStarted = $false
     cleanupComplete = $true
-    aePid = $Pid
+    aePid = $AeProcessId
     stablePid = $StablePid
     startedAt = $StartedAt
     completedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -74,10 +74,10 @@ try {
   $FinalPid = [int]$Final[0].Id
   if ($FinalPid -ne $InitialPid) { throw "AE PID changed during a REUSE-compatible smoke check ($InitialPid -> $FinalPid)." }
 
-  Write-SmokeResult -Classification "PASS" -Message "Warm AE session is healthy and remained on the same process without mutation or shutdown." -Pid $FinalPid -StablePid $true
+  Write-SmokeResult -Classification "PASS" -Message "Warm AE session is healthy and remained on the same process without mutation or shutdown." -AeProcessId $FinalPid -StablePid $true
   exit 0
 } catch {
-  Write-SmokeResult -Classification "INFRASTRUCTURE_FAILURE" -Message $_.Exception.Message -Pid 0 -StablePid $false
+  Write-SmokeResult -Classification "INFRASTRUCTURE_FAILURE" -Message $_.Exception.Message -AeProcessId 0 -StablePid $false
   Write-Error $_.Exception.Message
   exit 1
 }
