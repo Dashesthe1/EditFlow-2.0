@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./references": "./src/reference-learning.ts",
-    "./practice": "./src/practice.ts"
+    "./practice": "./src/practice.ts",
+    "./validation": "./src/validation.ts"
   }
 }
