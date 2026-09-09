@@ -1,0 +1,17 @@
+{
+  "proofId": "infra.ae_warm_session.smoke",
+  "lifecycle": "REUSE_AE",
+  "classification": "PASS",
+  "ok": false,
+  "startedAt": "not-a-date",
+  "completedAt": "not-a-date",
+  "aeReused": true,
+  "aeLaunched": false,
+  "aeRestarted": false,
+  "aePid": 0,
+  "proofExitCode": 0,
+  "retryCount": 9,
+  "proofResultPath": null,
+  "orchestrationResultPath": "",
+  "message": "invalid fixture"
+}
