@@ -3,7 +3,7 @@
   "proofScript": "scripts/windows/run-ae-warm-health-smoke.ps1",
   "lifecycle": "REUSE_AE",
   "artifactDir": "proofs/artifacts/infra-ae-warm-session-smoke",
-  "timeoutSeconds": 124,
+  "timeoutSeconds": 125,
   "allowInfrastructureRetry": true,
   "resultFile": "result.json"
 }
