@@ -386,7 +386,7 @@ const main = async (): Promise<void> => {
       status: ok ? "PASS" : "FAILURE",
       classification,
       ok,
-      message: ok ? "Marker/motion P3/P4 proof passed with warm-process AE reuse." : failureError ?? cleanupErrors.join("; ") || "Marker/motion P3/P4 proof failed.",
+      message: ok ? "Marker/motion P3/P4 proof passed with warm-process AE reuse." : (failureError ?? (cleanupErrors.length > 0 ? cleanupErrors.join("; ") : "Marker/motion P3/P4 proof failed.")),
       startedAt,
       completedAt: new Date().toISOString(),
       mutationStarted,
