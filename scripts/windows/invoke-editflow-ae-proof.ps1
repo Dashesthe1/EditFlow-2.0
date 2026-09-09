@@ -74,6 +74,25 @@ function Wait-ForHealthyAfterFx {
   return $null
 }
 
+function Start-WarmAfterFx {
+  param([Parameter(Mandatory = $true)][string]$ExpectedPath)
+
+  # GitHub's self-hosted runner tags job descendants with RUNNER_TRACKING_ID and
+  # kills those descendants during post-job orphan cleanup. A warm AE process is
+  # intentionally workstation-scoped, not job-scoped. Clear only that tracking
+  # variable for the exact AfterFX launch, then immediately restore it so proof
+  # runners, the supervisor, and every other child remain normal job processes.
+  $HadTrackingId = Test-Path Env:RUNNER_TRACKING_ID
+  $PreviousTrackingId = $env:RUNNER_TRACKING_ID
+  try {
+    $env:RUNNER_TRACKING_ID = ""
+    return Start-Process -FilePath $ExpectedPath -PassThru
+  } finally {
+    if ($HadTrackingId) { $env:RUNNER_TRACKING_ID = $PreviousTrackingId }
+    else { Remove-Item Env:RUNNER_TRACKING_ID -ErrorAction SilentlyContinue }
+  }
+}
+
 function Stop-TargetAfterFx {
   param([Parameter(Mandatory = $true)][string]$ExpectedPath)
   $Targets = @(Get-TargetAfterFxProcesses -ExpectedPath $ExpectedPath)
@@ -135,9 +154,7 @@ function Read-ProofClassification {
   try {
     $ProofResult = Get-Content $ProofResultPath -Raw | ConvertFrom-Json
     $Classification = [string]$ProofResult.classification
-    if ($Classification -in @("PASS", "PRODUCT_FAILURE", "INFRASTRUCTURE_FAILURE")) {
-      return $ProofResult
-    }
+    if ($Classification -in @("PASS", "PRODUCT_FAILURE", "INFRASTRUCTURE_FAILURE")) { return $ProofResult }
   } catch {}
   return $null
 }
@@ -173,9 +190,7 @@ function Invoke-ProofAttempt {
 }
 
 try {
-  if (-not [Environment]::UserInteractive) {
-    throw "The accelerated AE proof harness requires an interactive Windows desktop session."
-  }
+  if (-not [Environment]::UserInteractive) { throw "The accelerated AE proof harness requires an interactive Windows desktop session." }
   if (-not (Test-Path $AfterFxPath -PathType Leaf)) { throw "AfterFX.exe was not found at: $AfterFxPath" }
   if (-not (Test-Path $SupervisorPath -PathType Leaf)) { throw "AE host supervisor is missing: $SupervisorPath" }
   if ($StartupTimeoutSeconds -lt 20 -or $StartupTimeoutSeconds -gt 180) { throw "StartupTimeoutSeconds must be between 20 and 180." }
@@ -223,12 +238,12 @@ try {
     $HadTarget = @(Get-TargetAfterFxProcesses -ExpectedPath $AfterFxPath).Count -gt 0
     Stop-TargetAfterFx -ExpectedPath $AfterFxPath
     $AeRestarted = $HadTarget
-    Start-Process -FilePath $AfterFxPath | Out-Null
+    [void](Start-WarmAfterFx -ExpectedPath $AfterFxPath)
     $AeLaunched = $true
   } else {
     $ExistingTargets = @(Get-TargetAfterFxProcesses -ExpectedPath $AfterFxPath)
     if ($ExistingTargets.Count -eq 0) {
-      Start-Process -FilePath $AfterFxPath | Out-Null
+      [void](Start-WarmAfterFx -ExpectedPath $AfterFxPath)
       $AeLaunched = $true
     } else {
       $AeReused = $true
@@ -237,9 +252,7 @@ try {
 
   $Target = Wait-ForHealthyAfterFx -ExpectedPath $AfterFxPath -TimeoutSeconds $StartupTimeoutSeconds
   if (-not $Target) {
-    if ($AeReused) {
-      throw "Existing target After Effects session did not become healthy; REUSE_AE refuses silent restart escalation."
-    }
+    if ($AeReused) { throw "Existing target After Effects session did not become healthy; REUSE_AE refuses silent restart escalation." }
     throw "After Effects did not expose one healthy project window before the startup timeout."
   }
   $TargetAePid = [int]$Target.Id
