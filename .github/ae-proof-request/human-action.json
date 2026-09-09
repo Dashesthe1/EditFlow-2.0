@@ -1,9 +1,9 @@
 {
   "kind": "click",
-  "targetLabel": "New Composition card observed in live AE screenshot",
-  "normalizedX": 0.647,
-  "normalizedY": 0.729,
-  "allowedRegion": "START_PANEL",
-  "restoreWithEscape": true,
-  "selectionBasis": "GPT visual inspection of live AE before.png from workflow run 34309746190; selected the center of the large New Composition card as a wider, unambiguous human-click target"
+  "targetLabel": "Composition (none) panel observed in live AE screenshot",
+  "normalizedX": 0.483,
+  "normalizedY": 0.221,
+  "allowedRegion": "AE_CLIENT_PANEL",
+  "restoreWithEscape": false,
+  "selectionBasis": "GPT visual inspection of before.png from workflow run 34309746190; chosen to test visible panel focus change without project mutation"
 }
