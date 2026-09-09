@@ -1,0 +1,17 @@
+{
+  "proofId": "infra.ae_warm_session.smoke",
+  "lifecycle": "REUSE_AE",
+  "classification": "PASS",
+  "ok": true,
+  "startedAt": "2026-09-08T23:00:00.000Z",
+  "completedAt": "2026-09-08T23:00:03.000Z",
+  "aeReused": true,
+  "aeLaunched": false,
+  "aeRestarted": false,
+  "aePid": 4242,
+  "proofExitCode": 0,
+  "retryCount": 0,
+  "proofResultPath": "proofs/artifacts/infra-ae-warm-session-smoke/result.json",
+  "orchestrationResultPath": "proofs/artifacts/infra-ae-warm-session-smoke/orchestration-result.json",
+  "message": "Proof passed and the warm After Effects session remains healthy."
+}
