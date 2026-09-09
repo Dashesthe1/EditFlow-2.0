@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { EditorKnowledgeBase } from "../../.tmp/runtime/packages/editor-learning/src/index.js";
+import { assertValidTutorialExtraction } from "../../.tmp/runtime/packages/editor-learning/src/validation.js";
 
 const inputDir = path.resolve(process.argv[2] ?? "training/tutorial-extractions");
 const outputPath = path.resolve(process.argv[3] ?? "training/generated/editor-knowledge.json");
@@ -19,6 +20,7 @@ if (files.length === 0) {
 const knowledge = new EditorKnowledgeBase();
 for (const file of files) {
   const extraction = JSON.parse(await readFile(path.join(inputDir, file), "utf8"));
+  assertValidTutorialExtraction(extraction);
   knowledge.ingestTutorial(extraction);
 }
 
