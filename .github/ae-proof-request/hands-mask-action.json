@@ -1,11 +1,10 @@
 {
-  "description": "GPT-selected inset polygon around the native yellow rectangle seen in gpt-eyes-before-mask.png",
+  "description": "GPT-selected click-only rectangle after Pen tool and layout were stabilized",
   "actions": [
-    {"type": "key", "name": "G"},
-    {"type": "click", "x": 0.450234, "y": 0.354518},
-    {"type": "click", "x": 0.632621, "y": 0.354518},
-    {"type": "click", "x": 0.632621, "y": 0.547170},
-    {"type": "click", "x": 0.450234, "y": 0.547170},
-    {"type": "click", "x": 0.450234, "y": 0.354518}
+    {"type": "click", "x": 0.451277, "y": 0.357498},
+    {"type": "click", "x": 0.631579, "y": 0.357498},
+    {"type": "click", "x": 0.631579, "y": 0.544191},
+    {"type": "click", "x": 0.451277, "y": 0.544191},
+    {"type": "click", "x": 0.451277, "y": 0.357498}
   ]
 }
