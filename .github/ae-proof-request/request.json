@@ -1,9 +1,9 @@
 {
-  "proofId": "infra.ae_senses.jsx_smoke_v1",
-  "proofScript": "scripts/windows/run-ae-senses-jsx-smoke.ps1",
+  "proofId": "infra.ae_senses.eyes_ears_v2",
+  "proofScript": "scripts/windows/run-ae-senses-eyes-ears-v2.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-senses-jsx-smoke-v1",
-  "timeoutSeconds": 90,
+  "artifactDir": "proofs/artifacts/ae-senses-eyes-ears-v2",
+  "timeoutSeconds": 180,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
 }
