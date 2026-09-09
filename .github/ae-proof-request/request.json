@@ -1,8 +1,8 @@
 {
-  "proofId": "infra.ae_human_mode.pixel_click_new_composition_dialog",
+  "proofId": "infra.ae_human_mode.click_home",
   "proofScript": "scripts/windows/run-ae-human-ui-click-diagnostic.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-human-ui-new-composition-dialog",
+  "artifactDir": "proofs/artifacts/ae-human-click-home",
   "timeoutSeconds": 120,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
