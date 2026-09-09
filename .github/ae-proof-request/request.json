@@ -1,9 +1,9 @@
 {
-  "proofId": "m3.marker_motion.p3_p4",
-  "proofScript": "scripts/windows/run-m3-marker-motion-p3-p4.ps1",
+  "proofId": "infra.ae_human_mode.pixel_observe",
+  "proofScript": "scripts/windows/run-ae-human-screen-capture.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/m3-marker-motion-p3-p4",
-  "timeoutSeconds": 420,
-  "allowInfrastructureRetry": true,
+  "artifactDir": "proofs/artifacts/ae-human-screen",
+  "timeoutSeconds": 120,
+  "allowInfrastructureRetry": false,
   "resultFile": "result.json"
 }
