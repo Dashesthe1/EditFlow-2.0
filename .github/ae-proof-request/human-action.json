@@ -1,9 +1,9 @@
 {
   "kind": "click",
-  "targetLabel": "Window menu observed in live AE screenshot",
-  "normalizedX": 0.438,
-  "normalizedY": 0.0815,
-  "allowedRegion": "TOP_MENU_BAR",
+  "targetLabel": "New Composition card observed in live AE screenshot",
+  "normalizedX": 0.647,
+  "normalizedY": 0.729,
+  "allowedRegion": "START_PANEL",
   "restoreWithEscape": true,
-  "selectionBasis": "GPT visual inspection of ae-human-before.png from workflow run 34309289118"
+  "selectionBasis": "GPT visual inspection of live AE before.png from workflow run 34309746190; selected the center of the large New Composition card as a wider, unambiguous human-click target"
 }
