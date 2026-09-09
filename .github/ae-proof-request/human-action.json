@@ -1,9 +1,9 @@
 {
   "kind": "click",
   "targetLabel": "Window menu observed in live AE screenshot",
-  "normalizedX": 0.427,
+  "normalizedX": 0.438,
   "normalizedY": 0.0815,
   "allowedRegion": "TOP_MENU_BAR",
   "restoreWithEscape": true,
-  "selectionBasis": "GPT visual inspection of ae-window-before.png from workflow run 34307358201"
+  "selectionBasis": "GPT visual inspection of ae-human-before.png from workflow run 34309289118"
 }
