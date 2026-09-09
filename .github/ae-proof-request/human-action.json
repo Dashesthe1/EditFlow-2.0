@@ -1,9 +1,9 @@
 {
   "kind": "click",
-  "targetLabel": "Home icon observed at upper-left of live AE workspace",
-  "normalizedX": 0.0301,
-  "normalizedY": 0.1470,
-  "allowedRegion": "AE_CLIENT_TOOLBAR",
+  "targetLabel": "New Composition card observed in live AE screenshot",
+  "normalizedX": 0.647,
+  "normalizedY": 0.729,
+  "allowedRegion": "START_PANEL",
   "restoreWithEscape": false,
-  "selectionBasis": "GPT visual inspection of after.png from successful workflow run 34309911396"
+  "selectionBasis": "GPT visual inspection of live AE before.png; selected the center of the large New Composition card for an unmistakable reversible human-style click proof"
 }
