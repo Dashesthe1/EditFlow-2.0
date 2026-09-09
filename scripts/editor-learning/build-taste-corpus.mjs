@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { EditorialTasteLibrary } from "../../.tmp/runtime/packages/editor-learning/src/reference-learning.js";
+import { assertValidReferenceAnalysis } from "../../.tmp/runtime/packages/editor-learning/src/validation.js";
 
 const inputDir = path.resolve(process.argv[2] ?? "training/reference-extractions");
 const outputPath = path.resolve(process.argv[3] ?? "training/generated/editor-taste.json");
@@ -19,6 +20,7 @@ if (files.length === 0) {
 const taste = new EditorialTasteLibrary();
 for (const file of files) {
   const analysis = JSON.parse(await readFile(path.join(inputDir, file), "utf8"));
+  assertValidReferenceAnalysis(analysis);
   taste.ingestReference(analysis);
 }
 
