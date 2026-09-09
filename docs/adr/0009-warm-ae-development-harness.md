@@ -44,11 +44,24 @@ A Windows-side supervisor may inspect After Effects process/window metadata and 
 
 The initial mutating allowance is limited to an AfterFX-owned recovery/startup dialog whose visible context indicates crash/recovery/repair/restore state and that contains exactly one enabled native `Continue` button. Ambiguous contexts are logged and refused.
 
-### 5. One serialized real-AE lane
+### 5. Warm AE survives self-hosted runner job cleanup
+
+The GitHub self-hosted runner tags processes created inside a job and performs orphan-process cleanup when that job ends. A deliberately warm After Effects process is workstation-scoped rather than job-scoped, so the harness clears `RUNNER_TRACKING_ID` only for the exact target `AfterFX.exe` launch and immediately restores the runner variable afterward.
+
+This exception is intentionally narrow:
+
+- only a validated target AfterFX executable launch is detached from job orphan cleanup;
+- the proof runner, dialog supervisor, broker helpers, and all other child processes remain normally tracked;
+- `REUSE_AE` does not gain authority to terminate or replace an existing AE process;
+- an explicitly declared `RESTART_AE` or `CLEAN_BOOT` may replace AE, and the replacement becomes the next warm workstation-scoped process.
+
+The result is a healthy AE process that may survive multiple independent GPT-triggered Actions jobs without exempting general-purpose subprocesses from runner cleanup.
+
+### 6. One serialized real-AE lane
 
 Real-AE mutation proofs are serialized on the self-hosted Windows acceptance workstation. Repository/schema/type/unit tests remain independent and may run in parallel on normal CI.
 
-### 6. Machine-readable proof orchestration
+### 7. Machine-readable proof orchestration
 
 Every accelerated proof run emits an orchestration result containing at least:
 
@@ -65,7 +78,7 @@ Every accelerated proof run emits an orchestration result containing at least:
 
 The proof itself remains responsible for structural/visual assertions, rollback evidence, cleanup evidence, and its normal proof result.
 
-### 7. Bounded infrastructure retry only
+### 8. Bounded infrastructure retry only
 
 The harness may perform at most one automatic infrastructure retry when all of the following are true:
 
@@ -76,7 +89,7 @@ The harness may perform at most one automatic infrastructure retry when all of t
 
 Product/assertion failures are never blindly retried.
 
-### 8. GPT owns the loop
+### 9. GPT owns the loop
 
 The intended development loop is:
 
@@ -86,7 +99,7 @@ Human interaction is reserved for infrastructure/authentication/licensing or oth
 
 ## Consequences
 
-- New M4–M11 proofs can reuse one healthy AE process across many fixtures.
+- New M4–M11 proofs can reuse one healthy AE process across many fixtures and separate Actions jobs.
 - Startup/recovery overhead is removed from routine proofs.
 - Save/reopen, broker reconnect, restart, and clean-boot behavior remain provable because they are explicit lifecycle modes rather than implicit side effects.
 - Existing accepted cold-start evidence remains unchanged.
