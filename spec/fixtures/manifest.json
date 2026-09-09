@@ -29,5 +29,7 @@
   {"schema":"spec/ae-temporal-ease-request-v1_8.schema.json","fixture":"spec/fixtures/ae-temporal-ease-request-v1_8.readback.valid.json","valid":true},
   {"schema":"spec/ae-temporal-ease-request-v1_8.schema.json","fixture":"spec/fixtures/ae-temporal-ease-request-v1_8.invalid.json","valid":false},
   {"schema":"spec/ae-development-proof-request.schema.json","fixture":"spec/fixtures/ae-development-proof-request.valid.json","valid":true},
-  {"schema":"spec/ae-development-proof-request.schema.json","fixture":"spec/fixtures/ae-development-proof-request.invalid.json","valid":false}
+  {"schema":"spec/ae-development-proof-request.schema.json","fixture":"spec/fixtures/ae-development-proof-request.invalid.json","valid":false},
+  {"schema":"spec/ae-development-proof-result.schema.json","fixture":"spec/fixtures/ae-development-proof-result.valid.json","valid":true},
+  {"schema":"spec/ae-development-proof-result.schema.json","fixture":"spec/fixtures/ae-development-proof-result.invalid.json","valid":false}
 ]
