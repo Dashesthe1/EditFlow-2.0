@@ -17,13 +17,75 @@ using System;
 using System.Runtime.InteropServices;
 public static class EditFlowHumanInputWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct INPUT { public uint type; public InputUnion U; }
+  [StructLayout(LayoutKind.Explicit)] public struct InputUnion {
+    [FieldOffset(0)] public MOUSEINPUT mi;
+    [FieldOffset(0)] public KEYBDINPUT ki;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT {
+    public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public UIntPtr dwExtraInfo;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT {
+    public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public UIntPtr dwExtraInfo;
+  }
+
+  public const uint INPUT_MOUSE = 0;
+  public const uint INPUT_KEYBOARD = 1;
+  public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+  public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+  public const uint KEYEVENTF_KEYUP = 0x0002;
+  public const ushort VK_ESCAPE = 0x1B;
+
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
-  [DllImport("user32.dll")] public static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT point);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+
+  public static bool ForceForeground(IntPtr hwnd) {
+    IntPtr foreground = GetForegroundWindow();
+    uint foregroundPid;
+    uint foregroundThread = GetWindowThreadProcessId(foreground, out foregroundPid);
+    uint currentThread = GetCurrentThreadId();
+    bool attached = false;
+    if (foregroundThread != 0 && foregroundThread != currentThread) {
+      attached = AttachThreadInput(currentThread, foregroundThread, true);
+    }
+    try {
+      ShowWindow(hwnd, 9);
+      BringWindowToTop(hwnd);
+      return SetForegroundWindow(hwnd);
+    } finally {
+      if (attached) AttachThreadInput(currentThread, foregroundThread, false);
+    }
+  }
+
+  public static uint SendLeftClick() {
+    INPUT[] inputs = new INPUT[2];
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].U.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].U.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+    return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+  }
+
+  public static uint SendEscape() {
+    INPUT[] inputs = new INPUT[2];
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].U.ki.wVk = VK_ESCAPE;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].U.ki.wVk = VK_ESCAPE;
+    inputs[1].U.ki.dwFlags = KEYEVENTF_KEYUP;
+    return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+  }
 }
 "@
 
@@ -45,6 +107,19 @@ function Capture-Window {
   return [pscustomobject]@{ left=$rect.Left; top=$rect.Top; width=$width; height=$height; right=$rect.Right; bottom=$rect.Bottom }
 }
 
+function Get-ForegroundPid {
+  $fg = [EditFlowHumanInputWin32]::GetForegroundWindow()
+  [uint32]$pid = 0
+  [void][EditFlowHumanInputWin32]::GetWindowThreadProcessId($fg, [ref]$pid)
+  return [int]$pid
+}
+
+function Get-CursorPoint {
+  $point = New-Object EditFlowHumanInputWin32+POINT
+  if (-not [EditFlowHumanInputWin32]::GetCursorPos([ref]$point)) { throw "GetCursorPos failed." }
+  return [pscustomobject]@{ x=[int]$point.X; y=[int]$point.Y }
+}
+
 function Write-Result {
   param([string]$Classification, [string]$Message, [hashtable]$Extra)
   $payload = [ordered]@{
@@ -53,7 +128,7 @@ function Write-Result {
     message = $Message
     mutationStarted = $false
     cleanupComplete = $true
-    controlMode = "PIXEL_TARGETED_MOUSE_INPUT"
+    controlMode = "PIXEL_TARGETED_SENDINPUT"
     aeScriptingUsed = $false
     uiInputStarted = $false
     completedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -85,8 +160,11 @@ try {
   $target = $targets[0]
   $hwnd = [IntPtr]$target.MainWindowHandle
   if ([EditFlowHumanInputWin32]::IsIconic($hwnd)) { [void][EditFlowHumanInputWin32]::ShowWindow($hwnd, 9) }
-  [void][EditFlowHumanInputWin32]::SetForegroundWindow($hwnd)
+
+  $foregroundBefore = Get-ForegroundPid
+  $foregroundAttempt = [EditFlowHumanInputWin32]::ForceForeground($hwnd)
   Start-Sleep -Milliseconds 600
+  $foregroundAfterFocus = Get-ForegroundPid
 
   $beforePath = Join-Path $ArtifactDir "ae-human-before.png"
   $afterPath = Join-Path $ArtifactDir "ae-human-after-click.png"
@@ -95,16 +173,21 @@ try {
   $x = $rect.left + [int][Math]::Round($nx * ($rect.width - 1))
   $y = $rect.top + [int][Math]::Round($ny * ($rect.height - 1))
 
+  $cursorBefore = Get-CursorPoint
   if (-not [EditFlowHumanInputWin32]::SetCursorPos($x, $y)) { throw "SetCursorPos failed." }
   Start-Sleep -Milliseconds 300
-  [EditFlowHumanInputWin32]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-  [EditFlowHumanInputWin32]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 650
+  $cursorAtTarget = Get-CursorPoint
+  if ([Math]::Abs($cursorAtTarget.x - $x) -gt 2 -or [Math]::Abs($cursorAtTarget.y - $y) -gt 2) {
+    throw "Cursor did not reach the requested target. Requested=($x,$y), actual=($($cursorAtTarget.x),$($cursorAtTarget.y))."
+  }
+
+  $sentMouse = [EditFlowHumanInputWin32]::SendLeftClick()
+  Start-Sleep -Milliseconds 800
+  $foregroundAfterClick = Get-ForegroundPid
   [void](Capture-Window -Hwnd $hwnd -Path $afterPath)
 
-  [EditFlowHumanInputWin32]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
-  [EditFlowHumanInputWin32]::keybd_event(0x1B, 0, 0x0002, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 450
+  $sentEscape = [EditFlowHumanInputWin32]::SendEscape()
+  Start-Sleep -Milliseconds 500
   [void](Capture-Window -Hwnd $hwnd -Path $restoredPath)
 
   $beforeHash = (Get-FileHash $beforePath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -112,15 +195,25 @@ try {
   $restoredHash = (Get-FileHash $restoredPath -Algorithm SHA256).Hash.ToLowerInvariant()
   $target.Refresh()
   if (-not $target.Responding) { throw "After Effects stopped responding after UI input." }
-  if ($beforeHash -eq $afterHash) { throw "The UI screenshot did not change after the click; target was likely ineffective." }
+  if ($sentMouse -ne 2) { throw "SendInput did not accept both mouse input records; accepted $sentMouse of 2." }
+  if ($foregroundAfterFocus -ne [int]$target.Id) { throw "After Effects did not become the foreground process. Foreground PID was $foregroundAfterFocus; expected $($target.Id)." }
+  if ($beforeHash -eq $afterHash) { throw "The UI screenshot did not change after the click even though Windows accepted the input." }
 
-  Write-Result -Classification "PASS" -Message "Moved the real pointer to a GPT-selected pixel target, clicked the live AE interface, observed a visible response, and restored it with Escape." -Extra @{
+  Write-Result -Classification "PASS" -Message "GPT observed AE pixels, moved the physical pointer to the chosen target, Windows accepted a SendInput click, AE visibly responded, and Escape restored the interface." -Extra @{
     uiInputStarted = $true
     aePid = [int]$target.Id
     windowTitle = [string]$target.MainWindowTitle
     targetLabel = [string]$action.targetLabel
     normalizedTarget = [ordered]@{ x=$nx; y=$ny }
     screenTarget = [ordered]@{ x=$x; y=$y }
+    cursorBefore = [ordered]@{ x=$cursorBefore.x; y=$cursorBefore.y }
+    cursorAtTarget = [ordered]@{ x=$cursorAtTarget.x; y=$cursorAtTarget.y }
+    foregroundPidBefore = $foregroundBefore
+    foregroundSetAttempt = $foregroundAttempt
+    foregroundPidAfterFocus = $foregroundAfterFocus
+    foregroundPidAfterClick = $foregroundAfterClick
+    sendInputMouseAccepted = $sentMouse
+    sendInputEscapeAccepted = $sentEscape
     beforeScreenshot = "ae-human-before.png"
     afterScreenshot = "ae-human-after-click.png"
     restoredScreenshot = "ae-human-restored.png"
@@ -132,6 +225,11 @@ try {
   }
   exit 0
 } catch {
-  Write-Result -Classification "INFRASTRUCTURE_FAILURE" -Message $_.Exception.Message -Extra @{}
+  $cursorEvidence = $null
+  try { $cursorEvidence = Get-CursorPoint } catch {}
+  Write-Result -Classification "INFRASTRUCTURE_FAILURE" -Message $_.Exception.Message -Extra @{
+    uiInputStarted = $true
+    cursorAtFailure = if ($cursorEvidence) { [ordered]@{ x=$cursorEvidence.x; y=$cursorEvidence.y } } else { $null }
+  }
   exit 2
 }
