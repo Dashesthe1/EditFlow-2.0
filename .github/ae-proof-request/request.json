@@ -1,8 +1,8 @@
 {
-  "proofId": "infra.ae_human_mode.pixel_click_diagnostic",
-  "proofScript": "scripts/windows/run-ae-human-ui-click-diagnostic.ps1",
+  "proofId": "infra.ae_human_mode.desktop_session_diagnostic",
+  "proofScript": "scripts/windows/run-ae-human-desktop-diagnostic.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-human-ui-click-diagnostic",
+  "artifactDir": "proofs/artifacts/ae-human-desktop-diagnostic",
   "timeoutSeconds": 120,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
