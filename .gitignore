@@ -8,4 +8,5 @@ coverage/
 .env.*
 !.env.example
 proofs/artifacts/
+training/generated/
 *.tmp
