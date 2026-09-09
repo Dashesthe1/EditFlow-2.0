@@ -1,9 +1,9 @@
 {
   "kind": "click",
-  "targetLabel": "Composition (none) panel observed in live AE screenshot",
-  "normalizedX": 0.483,
-  "normalizedY": 0.221,
-  "allowedRegion": "AE_CLIENT_PANEL",
+  "targetLabel": "Home icon observed at upper-left of live AE workspace",
+  "normalizedX": 0.0301,
+  "normalizedY": 0.1470,
+  "allowedRegion": "AE_CLIENT_TOOLBAR",
   "restoreWithEscape": false,
-  "selectionBasis": "GPT visual inspection of before.png from workflow run 34309746190; chosen to test visible panel focus change without project mutation"
+  "selectionBasis": "GPT visual inspection of after.png from successful workflow run 34309911396"
 }
