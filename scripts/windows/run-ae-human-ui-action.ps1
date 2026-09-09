@@ -109,9 +109,9 @@ function Capture-Window {
 
 function Get-ForegroundPid {
   $fg = [EditFlowHumanInputWin32]::GetForegroundWindow()
-  [uint32]$pid = 0
-  [void][EditFlowHumanInputWin32]::GetWindowThreadProcessId($fg, [ref]$pid)
-  return [int]$pid
+  [uint32]$processIdValue = 0
+  [void][EditFlowHumanInputWin32]::GetWindowThreadProcessId($fg, [ref]$processIdValue)
+  return [int]$processIdValue
 }
 
 function Get-CursorPoint {
