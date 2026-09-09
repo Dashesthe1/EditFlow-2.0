@@ -35,7 +35,7 @@ jobs:
 
       - name: Resolve proof request
         id: request
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
         run: |
           $requestPath = "${{ github.event.inputs.request_path }}"
           if (-not $requestPath) { $requestPath = ".github/ae-proof-request/request.json" }
@@ -47,7 +47,7 @@ jobs:
           "artifact_dir=$($request.artifactDir)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Run accelerated AE proof
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
         run: |
           $afterFxPath = "${{ github.event.inputs.afterfx_path }}"
           if ($afterFxPath) {
