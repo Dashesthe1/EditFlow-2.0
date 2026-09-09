@@ -1,8 +1,8 @@
 {
-  "proofId": "infra.ae_hands.mask_act_v1",
-  "proofScript": "scripts/windows/run-ae-hands-mask-act.ps1",
+  "proofId": "infra.ae_hands.mask_observe_v2",
+  "proofScript": "scripts/windows/run-ae-hands-mask-observe-v2.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-hands-mask-act-v1",
+  "artifactDir": "proofs/artifacts/ae-hands-mask-observe-v2",
   "timeoutSeconds": 120,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
