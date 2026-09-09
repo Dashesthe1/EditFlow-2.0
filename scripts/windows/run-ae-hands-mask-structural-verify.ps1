@@ -7,7 +7,10 @@ function Result($c,$m,$e){$o=[ordered]@{classification=$c;ok=($c-eq'PASS');messa
 function HealthyAe($path){$a=@();foreach($p in @(Get-Process AfterFX -ErrorAction SilentlyContinue)){try{$p.Refresh();if([StringComparer]::OrdinalIgnoreCase.Equals((Resolve-Path $p.Path).Path,$path)-and$p.Responding-and$p.MainWindowHandle-ne0){$a+=$p}}catch{}};return @($a)}
 try{
  $resolved=(Resolve-Path $AfterFxPath).Path;$t=HealthyAe $resolved;if($t.Count-ne1){throw "Expected one healthy AE process, found $($t.Count)."};$pid0=[int]$t[0].Id
- $out=Join-Path $ArtifactDir 'mask-structure.txt';$jsx=Join-Path $ArtifactDir 'verify-mask.jsx'
+ $stable=Join-Path $env:TEMP 'ae-hands-stable';New-Item -ItemType Directory -Force -Path $stable|Out-Null
+ $tag=([string]$env:EDITFLOW_PROOF_ID)-replace'[^A-Za-z0-9._-]','_';if(-not$tag){$tag='verify'}
+ $out=Join-Path $stable ("mask-structure-$tag.txt");$jsx=Join-Path $stable ("verify-mask-$tag.jsx")
+ Remove-Item $out -Force -ErrorAction SilentlyContinue
  $escaped=$out.Replace('\','/').Replace("'","\\'")
  $code=@"
 (function(){
@@ -33,6 +36,7 @@ try{
  $launch=Start-Process -FilePath $AfterFxPath -ArgumentList @('-r',$jsx) -PassThru;try{Wait-Process -Id $launch.Id -Timeout 20 -ErrorAction SilentlyContinue}catch{}
  $deadline=(Get-Date).AddSeconds(15);while(((-not(Test-Path $out))-or(Get-Item $out -ErrorAction SilentlyContinue).Length-eq0)-and(Get-Date)-lt$deadline){Start-Sleep -Milliseconds 200}
  if(-not(Test-Path $out)-or(Get-Item $out).Length-eq0){throw 'AE did not produce non-empty mask structural readback.'}
+ $artifactStructure=Join-Path $ArtifactDir 'mask-structure.txt';Copy-Item $out $artifactStructure -Force
  $lines=@(Get-Content $out);$ok=$false;$maskCount=0;$masks=@();$errorText=''
  foreach($line in $lines){
   $parts=$line -split "`t"
