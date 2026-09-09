@@ -1,8 +1,8 @@
 {
-  "proofId": "infra.ae_senses.eyes_ears_v2",
+  "proofId": "infra.ae_senses.eyes_ears_v3",
   "proofScript": "scripts/windows/run-ae-senses-eyes-ears-v2.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-senses-eyes-ears-v2",
+  "artifactDir": "proofs/artifacts/ae-senses-eyes-ears-v3",
   "timeoutSeconds": 180,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
