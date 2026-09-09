@@ -1,10 +1,6 @@
 {
-  "description": "GPT-selected click-only rectangle after Pen tool and layout were stabilized",
+  "description": "Independent hands-only verification: reveal Mask properties on the selected target layer",
   "actions": [
-    {"type": "click", "x": 0.451277, "y": 0.357498},
-    {"type": "click", "x": 0.631579, "y": 0.357498},
-    {"type": "click", "x": 0.631579, "y": 0.544191},
-    {"type": "click", "x": 0.451277, "y": 0.544191},
-    {"type": "click", "x": 0.451277, "y": 0.357498}
+    {"type": "key", "name": "M"}
   ]
 }
