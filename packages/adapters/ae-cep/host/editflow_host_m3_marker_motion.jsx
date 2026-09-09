@@ -9,7 +9,7 @@
   if (typeof previousDispatch !== "function") throw new Error("EditFlow M3 marker-motion layer requires the existing dispatcher.");
 
   var PROTOCOL = "2.0.0";
-  var BUILD = "0.4.0-dev.10.1";
+  var BUILD = "0.4.0-dev.10.2";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var MARKER_SUFFIX = "]]";
   var CAPABILITIES = {
@@ -262,9 +262,47 @@
           comp = findComp(payload.comp); validateCompMotionState(payload.state);
           before = readCompMotion(comp).compMotion.state;
           if (sameCompMotion(before, payload.state)) return response(request, "NO_OP", null, [], readCompMotion(comp), started, ["Requested composition motion state already matched host state."]);
-          setCompMotion(comp, payload.state); after = readCompMotion(comp).compMotion.state;
-          if (!sameCompMotion(after, payload.state)) { setCompMotion(comp, before); if (!sameCompMotion(readCompMotion(comp).compMotion.state, before)) fail("ROLLBACK", "COMP_MOTION_ROLLBACK_READBACK_MISMATCH", "Composition motion rollback did not restore the prior state."); fail("READBACK", "COMP_MOTION_READBACK_MISMATCH", "Composition motion write did not match readback.", { expected: payload.state, actual: after }); }
-          return response(request, "APPLIED", null, [{ kind: "COMP", stableId: itemStableId(comp), hostId: hostIdOf(comp) }], readCompMotion(comp), started, ["Composition motion/frame-blending/shutter state applied and read back."]);
+          var compMotionApplied = false;
+          try {
+            setCompMotion(comp, payload.state);
+            compMotionApplied = true;
+            after = readCompMotion(comp).compMotion.state;
+            if (!sameCompMotion(after, payload.state)) fail("READBACK", "COMP_MOTION_READBACK_MISMATCH", "Composition motion write did not match readback.", { expected: payload.state, actual: after });
+
+            /* P4 proof injection is armed inside the already-running AE process by the
+             * warm proof runner. The fixed readback profile alone cannot activate it,
+             * and ordinary protocol traffic has no command that can arm the global. */
+            if (request.readbackProfile === "M3_MARKER_MOTION_P4_FAILURE_INJECTION"
+                && $.global.EditFlow2_M3_MARKER_MOTION_P4_PROOF === true) {
+              fail("PROOF_INJECTION", "M3_MARKER_MOTION_P4_INDUCED_FAILURE", "Induced M3 marker-motion P4 failure after verified composition-motion mutation.", null);
+            }
+
+            return response(request, "APPLIED", null, [{ kind: "COMP", stableId: itemStableId(comp), hostId: hostIdOf(comp) }], readCompMotion(comp), started, ["Composition motion/frame-blending/shutter state applied and read back."]);
+          } catch (mutationError) {
+            if (compMotionApplied) {
+              try {
+                setCompMotion(comp, before);
+                var restoredCompMotion = readCompMotion(comp).compMotion.state;
+                if (!sameCompMotion(restoredCompMotion, before)) {
+                  return response(request, "FAILED", {
+                    category: "ROLLBACK_FAILURE",
+                    code: "COMP_MOTION_ROLLBACK_READBACK_MISMATCH",
+                    message: "Composition motion rollback completed but did not restore the exact prior state.",
+                    details: { expected: before, actual: restoredCompMotion, mutationError: errorPayload(mutationError) }
+                  }, [], readCompMotion(comp), started, ["Composition motion mutation failed and rollback readback did not match the exact prior state."]);
+                }
+              } catch (rollbackError) {
+                return response(request, "FAILED", {
+                  category: "ROLLBACK_FAILURE",
+                  code: "COMP_MOTION_ROLLBACK_FAILED",
+                  message: "Composition motion mutation failed and rollback also failed.",
+                  details: { mutationError: errorPayload(mutationError), rollbackError: asString(rollbackError) }
+                }, [], null, started, ["Composition motion mutation failed and rollback also failed."]);
+              }
+              return response(request, "FAILED", errorPayload(mutationError), [], readCompMotion(comp), started, ["Composition motion mutation failed after a verified write and the exact prior motion/shutter state was restored by structural rollback."]);
+            }
+            throw mutationError;
+          }
         }
         if (request.command === "layer.motion.set") {
           comp = findComp(payload.comp); layer = findLayer(comp, payload.layer); requireAvLayer(layer); validateLayerMotionState(payload.state);
