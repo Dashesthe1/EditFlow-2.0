@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Release stale After Effects proof directory
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
         run: |
           $ErrorActionPreference = 'Stop'
           $afterFx = 'C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe'
