@@ -1,9 +1,9 @@
 {
-  "proofId": "infra.ae_senses.prereq_v1",
-  "proofScript": "scripts/windows/run-ae-senses-prereq.ps1",
+  "proofId": "infra.ae_senses.eyes_ears_v1",
+  "proofScript": "scripts/windows/run-ae-senses-eyes-ears.ps1",
   "lifecycle": "REUSE_AE",
-  "artifactDir": "proofs/artifacts/ae-senses-prereq-v1",
-  "timeoutSeconds": 120,
+  "artifactDir": "proofs/artifacts/ae-senses-eyes-ears-v1",
+  "timeoutSeconds": 300,
   "allowInfrastructureRetry": false,
   "resultFile": "result.json"
 }
