@@ -1,6 +1,11 @@
 {
-  "description": "Independent hands-only verification: reveal Mask properties on the selected target layer",
+  "description": "Human-style mask attempt: select the yellow target layer in the timeline, then use the already-active Pen tool to draw a closed rectangle",
   "actions": [
-    {"type": "key", "name": "M"}
+    {"type": "click", "x": 0.155000, "y": 0.761668},
+    {"type": "click", "x": 0.451277, "y": 0.357498},
+    {"type": "click", "x": 0.631579, "y": 0.357498},
+    {"type": "click", "x": 0.631579, "y": 0.544191},
+    {"type": "click", "x": 0.451277, "y": 0.544191},
+    {"type": "click", "x": 0.451277, "y": 0.357498}
   ]
 }
