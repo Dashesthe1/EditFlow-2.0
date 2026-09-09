@@ -1,7 +1,9 @@
 {
-  "description": "Human-style mask attempt: select the yellow target layer in the timeline, then use the already-active Pen tool to draw a closed rectangle",
+  "description": "Human-style mask attempt: select target layer, reset to Selection Tool, select Pen exactly once, then draw a closed rectangle",
   "actions": [
     {"type": "click", "x": 0.155000, "y": 0.761668},
+    {"type": "key", "name": "V"},
+    {"type": "key", "name": "G"},
     {"type": "click", "x": 0.451277, "y": 0.357498},
     {"type": "click", "x": 0.631579, "y": 0.357498},
     {"type": "click", "x": 0.631579, "y": 0.544191},
