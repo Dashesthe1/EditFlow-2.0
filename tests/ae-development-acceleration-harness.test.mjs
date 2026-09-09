@@ -33,6 +33,24 @@ test("warm orchestrator never silently escalates REUSE_AE into process terminati
   assert.ok(runner.includes("Proof passed and the warm After Effects session remains healthy."));
 });
 
+test("only the exact AfterFX launch is detached from GitHub job orphan tracking", async () => {
+  const runner = await read("scripts/windows/invoke-editflow-ae-proof.ps1");
+  assert.ok(runner.includes("function Start-WarmAfterFx"));
+  assert.ok(runner.includes('$PreviousTrackingId = $env:RUNNER_TRACKING_ID'));
+  assert.ok(runner.includes('$env:RUNNER_TRACKING_ID = ""'));
+  assert.ok(runner.includes('Start-Process -FilePath $ExpectedPath -PassThru'));
+  assert.ok(runner.includes('$env:RUNNER_TRACKING_ID = $PreviousTrackingId'));
+
+  const warmLaunchCall = "Start-WarmAfterFx -ExpectedPath $AfterFxPath";
+  assert.equal(runner.split(warmLaunchCall).length - 1, 2, "both authorized AE launch paths must use the warm launch helper");
+  assert.equal(runner.includes("Start-Process -FilePath $AfterFxPath | Out-Null"), false, "direct tracked AE launch must not return");
+
+  const supervisorStart = 'Start-Process -FilePath "powershell.exe" -ArgumentList $SupervisorArgs';
+  const proofStart = 'Start-Process -FilePath "powershell.exe" -ArgumentList $Arguments';
+  assert.ok(runner.includes(supervisorStart), "supervisor must remain an ordinary tracked job child");
+  assert.ok(runner.includes(proofStart), "proof runner must remain an ordinary tracked job child");
+});
+
 test("warm smoke proof is non-mutating and never closes After Effects", async () => {
   const smoke = await read("scripts/windows/run-ae-warm-health-smoke.ps1");
   assert.ok(smoke.includes("mutationStarted = $false"));
@@ -66,5 +84,6 @@ test("ADR makes warm AE reusable through the remaining product roadmap", async (
   const adr = await read("docs/adr/0009-warm-ae-development-harness.md");
   for (const lifecycle of lifecycleModes) assert.ok(adr.includes(`\`${lifecycle}\``));
   assert.ok(adr.includes("M4–M11"));
+  assert.ok(adr.includes("RUNNER_TRACKING_ID"));
   assert.ok(adr.includes("A proof MUST NOT close or restart AE merely as a convenient cleanup mechanism."));
 });
