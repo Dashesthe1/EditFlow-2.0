@@ -12,16 +12,18 @@ with pyaudio.PyAudio() as p:
         raise RuntimeError('Default WASAPI loopback device has no input channels')
     channels = min(channels, 2)
     fmt = pyaudio.paInt16
-    with wave.open(out_path, 'wb') as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(p.get_sample_size(fmt))
-        wf.setframerate(rate)
+    wf = wave.open(out_path, 'wb')
+    wf.setnchannels(channels)
+    wf.setsampwidth(p.get_sample_size(fmt))
+    wf.setframerate(rate)
+    def callback(in_data, frame_count, time_info, status):
+        wf.writeframes(in_data)
+        return (in_data, pyaudio.paContinue)
+    try:
         with p.open(format=fmt, channels=channels, rate=rate, input=True,
-                    input_device_index=int(dev['index']), frames_per_buffer=chunk) as stream:
-            remaining = int(rate * duration)
-            while remaining > 0:
-                n = min(chunk, remaining)
-                data = stream.read(n, exception_on_overflow=False)
-                wf.writeframes(data)
-                remaining -= n
+                    input_device_index=int(dev['index']), frames_per_buffer=chunk,
+                    stream_callback=callback) as stream:
+            time.sleep(duration)
+    finally:
+        wf.close()
 print(f'captured={out_path} rate={rate} channels={channels} duration={duration}')
