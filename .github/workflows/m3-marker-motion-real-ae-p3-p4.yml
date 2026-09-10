@@ -75,6 +75,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run accelerated marker-motion P3 P4 proof
+        env:
+          EDITFLOW_M3_MARKER_MOTION_P4_PROOF: "1"
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
         run: |
           $afterFxPath = "${{ github.event.inputs.afterfx_path }}"
