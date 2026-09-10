@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
+$PanelOpenerPath = Join-Path $RepoRoot "scripts\windows\open-editflow2-panel.jsx"
 $ArtifactDir = $env:EDITFLOW_PROOF_ARTIFACT_DIR
 if (-not $ArtifactDir) { $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-marker-motion-p3-p4" }
 $ResultPath = Join-Path $ArtifactDir "result.json"
@@ -16,6 +17,7 @@ if ($env:EDITFLOW_AE_WARM_SESSION -ne "1") { throw "Marker-motion P3/P4 must run
 if ($env:EDITFLOW_AE_LIFECYCLE -notin @("REUSE_AE", "RESTART_AE")) { throw "Marker-motion P3/P4 supports only REUSE_AE or an explicit one-time RESTART_AE preview bootstrap." }
 if (-not (Test-Path $AfterFxPath -PathType Leaf)) { throw "AfterFX.exe not found: $AfterFxPath" }
 if (-not (Test-Path $ConfigPath -PathType Leaf)) { throw "EditFlow CEP runtime config is missing." }
+if (-not (Test-Path $PanelOpenerPath -PathType Leaf)) { throw "Bounded EditFlow panel opener is missing: $PanelOpenerPath" }
 if (-not (Test-Path $AcceptedP1P2Path -PathType Leaf)) { throw "Accepted marker-motion P1/P2 result is missing: $AcceptedP1P2Path" }
 
 $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
@@ -46,6 +48,13 @@ try {
 
   $Cli = Join-Path $RepoRoot "scripts\m3-marker-motion-p3-p4-fast.mjs"
   if (-not (Test-Path $Cli -PathType Leaf)) { throw "Fast marker-motion P3/P4 CLI not found: $Cli" }
+
+  # Adobe's supported -r route executes this static JSX in the already-running AE
+  # instance. The JSX resolves only the exact EditFlow menu label from the manifest;
+  # it does not inspect/click/focus arbitrary windows and does not use keyboard input.
+  $PanelArguments = '-r "' + $PanelOpenerPath + '"'
+  [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -WindowStyle Hidden -PassThru)
+  Start-Sleep -Milliseconds 500
 
   # This also keeps direct/manual runs compatible. For a BOOTSTRAP run the workflow
   # sets the same variable before the lifecycle orchestrator launches After Effects,
