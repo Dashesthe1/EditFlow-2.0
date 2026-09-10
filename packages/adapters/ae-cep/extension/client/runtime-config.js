@@ -5,7 +5,13 @@ window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze({
   port: 0,
   token: "",
   protocolVersion: "1.1.0",
-  supportedProtocolVersions: ["1.9.0","1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"],
+  supportedProtocolVersions: ["2.0.0","1.9.0","1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"],
+  acceptedV19Compatibility: Object.freeze({
+    supportedProtocolVersions: ["1.9.0","1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"],
+    extensionVersion: "0.1.0-dev.8",
+    hostLoader: "editflow_host_current_v19.jsx",
+    hostFlag: "EditFlow2_HOST_PROTOCOL_19"
+  }),
   acceptedV18Compatibility: Object.freeze({
     supportedProtocolVersions: ["1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"],
     extensionVersion: "0.1.0-dev.8",
@@ -19,5 +25,5 @@ window.EDITFLOW2_BRIDGE_CONFIG = Object.freeze({
     hostFlag: "EditFlow2_HOST_PROTOCOL_17"
   }),
   extensionId: "com.editflow2.bridge.panel",
-  extensionVersion: "0.1.0-dev.8"
+  extensionVersion: "0.1.0-dev.10"
 });
