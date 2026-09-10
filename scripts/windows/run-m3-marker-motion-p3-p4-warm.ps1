@@ -11,16 +11,36 @@ $ArtifactDir = $env:EDITFLOW_PROOF_ARTIFACT_DIR
 if (-not $ArtifactDir) { $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m3-marker-motion-p3-p4" }
 $ResultPath = Join-Path $ArtifactDir "result.json"
 $AcceptedP1P2Path = Join-Path $RepoRoot ".accepted\m3-marker-motion-p1-p2\result.json"
+$BrokerReadyPath = Join-Path $ArtifactDir "broker-ready.json"
+$NodeStdoutPath = Join-Path $ArtifactDir "proof-node.stdout.log"
+$NodeStderrPath = Join-Path $ArtifactDir "proof-node.stderr.log"
 $NodeLogPath = Join-Path $ArtifactDir "proof-node.log"
 $WrapperErrorPath = Join-Path $ArtifactDir "wrapper-error.txt"
+$PanelBootstrapTempPath = Join-Path $env:TEMP "EditFlow2-fast-panel-bootstrap.log"
+$PanelBootstrapArtifactPath = Join-Path $ArtifactDir "panel-bootstrap.log"
 $Stage = "preflight"
 $ExitCode = 0
 $LocationPushed = $false
+$NodeProcess = $null
+
+function Publish-NodeDiagnostics {
+  $Parts = @()
+  if (Test-Path $NodeStdoutPath -PathType Leaf) { $Parts += Get-Content $NodeStdoutPath -Raw }
+  if (Test-Path $NodeStderrPath -PathType Leaf) { $Parts += Get-Content $NodeStderrPath -Raw }
+  [System.IO.File]::WriteAllText($NodeLogPath, (($Parts -join [Environment]::NewLine).TrimEnd() + [Environment]::NewLine), (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Publish-PanelBootstrapEvidence {
+  if (Test-Path $PanelBootstrapTempPath -PathType Leaf) {
+    Copy-Item -LiteralPath $PanelBootstrapTempPath -Destination $PanelBootstrapArtifactPath -Force
+  }
+}
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
-if (Test-Path $ResultPath -PathType Leaf) { Remove-Item $ResultPath -Force }
-if (Test-Path $NodeLogPath -PathType Leaf) { Remove-Item $NodeLogPath -Force }
-if (Test-Path $WrapperErrorPath -PathType Leaf) { Remove-Item $WrapperErrorPath -Force }
+foreach ($Path in @($ResultPath, $BrokerReadyPath, $NodeStdoutPath, $NodeStderrPath, $NodeLogPath, $WrapperErrorPath, $PanelBootstrapArtifactPath)) {
+  if (Test-Path $Path -PathType Leaf) { Remove-Item $Path -Force }
+}
+if (Test-Path $PanelBootstrapTempPath -PathType Leaf) { Remove-Item $PanelBootstrapTempPath -Force }
 
 try {
   if ($TimeoutSeconds -lt 20) { throw "TimeoutSeconds must be at least 20." }
@@ -60,26 +80,75 @@ try {
   $Cli = Join-Path $RepoRoot "scripts\m3-marker-motion-p3-p4-fast.mjs"
   if (-not (Test-Path $Cli -PathType Leaf)) { throw "Fast marker-motion P3/P4 CLI not found: $Cli" }
 
-  # Execute only the static, manifest-declared EditFlow panel opener in the already-running AE instance.
+  # Keep a cleanup/result margin inside the outer lifecycle-orchestrator timeout.
+  $InnerTimeoutSeconds = [Math]::Max(20, [Math]::Min(60, [Math]::Max(20, $TimeoutSeconds - 15)))
+  $NodeArgs = @(
+    $Cli,
+    "--config", $ConfigPath,
+    "--result", $ResultPath,
+    "--accepted-p1-p2", $AcceptedP1P2Path,
+    "--broker-ready", $BrokerReadyPath,
+    "--timeout-ms", ($InnerTimeoutSeconds * 1000)
+  )
+
+  # Start the authenticated loopback broker first. The CLI writes broker-ready.json
+  # immediately after the port is listening, before it waits for CEP registration.
+  $Stage = "start_node_broker"
+  $env:EDITFLOW_M3_MARKER_MOTION_P4_PROOF = "1"
+  $NodeProcess = Start-Process -FilePath "node" -ArgumentList $NodeArgs -NoNewWindow -PassThru -RedirectStandardOutput $NodeStdoutPath -RedirectStandardError $NodeStderrPath
+
+  $Stage = "wait_broker_ready"
+  $BrokerDeadline = (Get-Date).AddSeconds(5)
+  $BrokerReady = $false
+  while ((Get-Date) -lt $BrokerDeadline) {
+    if (Test-Path $BrokerReadyPath -PathType Leaf) {
+      try {
+        $Ready = Get-Content $BrokerReadyPath -Raw | ConvertFrom-Json
+        if ($Ready.schemaVersion -eq 1 -and $Ready.state -eq "LISTENING") {
+          $BrokerReady = $true
+          break
+        }
+      } catch {}
+    }
+    $NodeProcess.Refresh()
+    if ($NodeProcess.HasExited) { break }
+    Start-Sleep -Milliseconds 50
+  }
+  if (-not $BrokerReady) {
+    $NodeProcess.Refresh()
+    if (-not $NodeProcess.HasExited) {
+      # No panel command has been issued yet, so stopping this pre-registration
+      # Node process cannot interrupt an AE mutation.
+      Stop-Process -Id $NodeProcess.Id -Force -ErrorAction SilentlyContinue
+      $NodeProcess.WaitForExit()
+    }
+    Publish-NodeDiagnostics
+    throw "Fast marker-motion broker did not signal LISTENING within five seconds."
+  }
+
+  # Only after the broker is listening, execute the static manifest-declared panel
+  # opener in the already-running AE process. If the panel is already open, its
+  # reconnect loop can register immediately; this command remains bounded evidence.
   $Stage = "open_editflow_panel"
   $PanelArguments = '-r "' + $PanelOpenerPath + '"'
   [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -WindowStyle Hidden -PassThru)
-  Start-Sleep -Milliseconds 500
 
-  # BOOTSTRAP launches inherit this gate from the workflow. REUSE_AE retains that process environment.
   $Stage = "run_node_proof"
-  $env:EDITFLOW_M3_MARKER_MOTION_P4_PROOF = "1"
-  try {
-    & node $Cli --config $ConfigPath --result $ResultPath --accepted-p1-p2 $AcceptedP1P2Path --timeout-ms ($TimeoutSeconds * 1000) *> $NodeLogPath
-    $NodeExit = $LASTEXITCODE
-  } finally {
-    Remove-Item Env:EDITFLOW_M3_MARKER_MOTION_P4_PROOF -ErrorAction SilentlyContinue
-  }
+  $NodeProcess.WaitForExit()
+  $NodeExit = $NodeProcess.ExitCode
+  Publish-NodeDiagnostics
+  Publish-PanelBootstrapEvidence
+  Remove-Item Env:EDITFLOW_M3_MARKER_MOTION_P4_PROOF -ErrorAction SilentlyContinue
 
   if ($NodeExit -ne 0 -and (Test-Path $NodeLogPath -PathType Leaf)) {
     Write-Host "--- marker-motion node diagnostic tail ---"
     Get-Content $NodeLogPath -Tail 80 | Write-Host
     Write-Host "--- end marker-motion node diagnostic tail ---"
+  }
+  if (Test-Path $PanelBootstrapArtifactPath -PathType Leaf) {
+    Write-Host "--- marker-motion panel bootstrap evidence ---"
+    Get-Content $PanelBootstrapArtifactPath -Tail 40 | Write-Host
+    Write-Host "--- end marker-motion panel bootstrap evidence ---"
   }
 
   $Stage = "validate_result"
@@ -106,23 +175,30 @@ try {
     Write-Host "Warm After Effects process was not closed by this proof wrapper."
   }
 } catch {
+  Publish-PanelBootstrapEvidence
+  if ($NodeProcess) {
+    try { Publish-NodeDiagnostics } catch {}
+  }
+
   $Message = "Marker-motion warm wrapper failed at stage '$Stage': $($_.Exception.Message)"
   ($Message + [Environment]::NewLine + ($_ | Out-String)) | Out-File -FilePath $WrapperErrorPath -Encoding utf8
 
   if (-not (Test-Path $ResultPath -PathType Leaf)) {
     $NodeTail = if (Test-Path $NodeLogPath -PathType Leaf) { (@(Get-Content $NodeLogPath -Tail 40) -join [Environment]::NewLine) } else { $null }
+    $PreMutationStage = $Stage -in @("preflight", "npm_install", "build_test_runtime", "start_node_broker", "wait_broker_ready")
     $Fallback = [ordered]@{
       proofId = "M3_MARKER_MOTION_P3_P4_REAL_AE"
-      classification = "PRODUCT_FAILURE"
+      classification = if ($PreMutationStage) { "INFRASTRUCTURE_FAILURE" } else { "PRODUCT_FAILURE" }
       status = "FAILURE"
       ok = $false
       message = $Message
       lifecycle = $env:EDITFLOW_AE_LIFECYCLE
-      mutationStarted = $false
-      cleanupComplete = $true
+      mutationStarted = if ($PreMutationStage) { $false } else { $null }
+      cleanupComplete = if ($PreMutationStage) { $true } else { $false }
       wrapperStage = $Stage
       diagnosticLog = if ($NodeTail) { "proof-node.log" } else { "wrapper-error.txt" }
       nodeDiagnosticTail = $NodeTail
+      panelBootstrapEvidence = if (Test-Path $PanelBootstrapArtifactPath -PathType Leaf) { "panel-bootstrap.log" } else { $null }
     }
     $Fallback | ConvertTo-Json -Depth 6 | Out-File -FilePath $ResultPath -Encoding utf8
   }
