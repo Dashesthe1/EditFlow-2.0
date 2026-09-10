@@ -230,8 +230,8 @@ const main = async (): Promise<void> => {
   const frameMixLayerMotion: AeLayerMotionStateV20 = { motionBlur: true, frameBlendingType: "FRAME_MIX" };
   const pixelMotionLayerMotion: AeLayerMotionStateV20 = { motionBlur: true, frameBlendingType: "PIXEL_MOTION" };
 
-  const recordResponse = (response: { readonly protocolVersion: string; readonly command: string; readonly outcome: string; readonly error: unknown; readonly hostProjectRevision: number | null; readonly diagnostics: { readonly notes: readonly string[] } }): void => {
-    responses.push({ protocolVersion: response.protocolVersion, command: response.command, outcome: response.outcome, error: response.error, hostProjectRevision: response.hostProjectRevision, notes: response.diagnostics.notes });
+  const recordResponse = (response: { readonly protocolVersion: string; readonly command: string; readonly outcome: string; readonly error: unknown; readonly hostProjectRevision: number | null; readonly diagnostics: { readonly notes?: readonly string[] } }): void => {
+    responses.push({ protocolVersion: response.protocolVersion, command: response.command, outcome: response.outcome, error: response.error, hostProjectRevision: response.hostProjectRevision, notes: response.diagnostics.notes ?? [] });
   };
 
   const refresh = async (): Promise<void> => {
@@ -469,7 +469,7 @@ const main = async (): Promise<void> => {
     const classification = ok ? "PASS" : classificationHint;
     const message = ok
       ? "Marker/motion P3 artifacts emitted for independent visual review; P4 failure injection, rollback, recovery render, and exact warm-project cleanup passed."
-      : (failureError ?? cleanupErrors.join("; ") || "Marker/motion P3/P4 proof failed bounded checks.");
+      : (failureError ?? (cleanupErrors.join("; ") || "Marker/motion P3/P4 proof failed bounded checks."));
 
     await writeJson(resultPath, {
       proofId: "M3_MARKER_MOTION_P3_P4_REAL_AE",
