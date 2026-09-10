@@ -1,0 +1,705 @@
+{
+  "source": {
+    "sourceId": "tutorial.microwave_trend_after_effects",
+    "title": "microwave trend edit tutorial on after effects",
+    "sourceRef": "Clipto AI Video Downloader microwave trend edit tutorial on after effects.mp4",
+    "durationSeconds": 616.465306,
+    "tags": [
+      "after effects",
+      "sports edit",
+      "microwave trend",
+      "time remap",
+      "glitch",
+      "third-party plugins"
+    ]
+  },
+  "demonstrations": [
+    {
+      "demonstrationId": "demo.microwave.time_remap_and_blur",
+      "sourceId": "tutorial.microwave_trend_after_effects",
+      "title": "Flow-shaped time remap with motion-compensated blur",
+      "objective": "Compress and release source motion with a shaped speed curve while retaining a smoother, more stylized motion impression around the ramp.",
+      "contextTags": [
+        "sports action",
+        "speed ramp",
+        "portrait crop",
+        "motion accent"
+      ],
+      "actions": [
+        {
+          "id": "action.microwave.time_remap.enable",
+          "timeSeconds": 120,
+          "intent": "Control source timing around selected action moments.",
+          "action": "Enable and keyframe Time Remap on the footage/precomp.",
+          "target": "footage/precomp Time Remap",
+          "parameters": {},
+          "expectedVisualChange": "The clip can accelerate and decelerate independently of its original playback timing."
+        },
+        {
+          "id": "action.microwave.time_remap.flow_curve",
+          "timeSeconds": 120,
+          "intent": "Replace linear timing with a deliberate acceleration profile.",
+          "action": "Shape the selected timing interpolation with the Flow/Graph Editor using a curve that begins shallow and rises steeply near the end.",
+          "target": "selected Time Remap keyframe interval",
+          "parameters": {
+            "observedFlowTuple": "0.48, 0.01, 1.00, 0.51"
+          },
+          "expectedVisualChange": "Motion holds or eases early, then accelerates strongly into the destination moment."
+        },
+        {
+          "id": "action.microwave.blurmo.apply",
+          "timeSeconds": 300,
+          "intent": "Add motion-responsive blur treatment around the retimed movement.",
+          "action": "Apply Sapphire S_BlurMoCurves and tune the motion/blur controls for the current shot.",
+          "target": "retimed footage/precomp",
+          "parameters": {
+            "effect": "S_BlurMoCurves",
+            "observedCenterXY": "489.0, 396.0",
+            "observedZDist": 1,
+            "observedRotate": 0,
+            "observedShiftX": 0,
+            "observedShiftY": 0,
+            "observedShutterDuration": 1,
+            "observedShutterShift": 0,
+            "observedExposureBias": 0.5,
+            "observedBrightness": 1,
+            "observedBlurResolution": "Full"
+          },
+          "expectedVisualChange": "The retimed action receives a smoother blur treatment without replacing the underlying timing structure."
+        }
+      ],
+      "observations": [
+        "Time Remap is visibly expanded in the timeline with multiple timing keyframes.",
+        "The Flow panel repeatedly shows a strongly non-linear easing curve rather than a linear ramp.",
+        "S_BlurMoCurves is visibly open in Effect Controls later in the construction.",
+        "The source values are treated as evidence from this demonstration, not universal values for unrelated footage."
+      ],
+      "inferredPrinciples": [
+        "Shape speed changes around meaningful motion rather than changing playback speed uniformly.",
+        "Use blur as support for accelerated motion, not as a substitute for readable timing.",
+        "Curve shape should transfer; exact timing and center coordinates should adapt to the new footage."
+      ],
+      "candidateSkillIds": [
+        "skill.flow_shaped_time_remap",
+        "skill.motion_blur_curves_support"
+      ]
+    },
+    {
+      "demonstrationId": "demo.microwave.staggered_duplicate_sequence",
+      "sourceId": "tutorial.microwave_trend_after_effects",
+      "title": "Stair-stepped duplicate sequence",
+      "objective": "Turn repeated instances of the same visual source into a fast cascading progression rather than showing one continuous layer.",
+      "contextTags": [
+        "duplicate layers",
+        "stagger",
+        "cascade",
+        "rapid progression"
+      ],
+      "actions": [
+        {
+          "id": "action.microwave.stagger.duplicate",
+          "timeSeconds": 360,
+          "intent": "Create repeated temporal instances of the source treatment.",
+          "action": "Build multiple footage/precomp instances from the same source family.",
+          "target": "Neymar precomp instances",
+          "parameters": {
+            "observedVisibleInstances": 10
+          },
+          "expectedVisualChange": "Multiple independently timed instances become available for a cascading sequence."
+        },
+        {
+          "id": "action.microwave.stagger.offset",
+          "timeSeconds": 360,
+          "intent": "Create a progressive rhythmic handoff between duplicate instances.",
+          "action": "Offset the duplicate layer in-points in a staircase pattern across the timeline.",
+          "target": "duplicate precomp layer timing",
+          "parameters": {},
+          "expectedVisualChange": "Successive copies enter one after another instead of simultaneously."
+        }
+      ],
+      "observations": [
+        "Approximately ten Neymar precomp layers are visible at once in the timeline.",
+        "Their in-points form a clear staircase from earlier lower layers to later upper layers.",
+        "The duplicated layers are combined with later adjustment-layer processing and flash treatment."
+      ],
+      "inferredPrinciples": [
+        "A repeated effect can feel like progression when duplicate instances are rhythmically offset instead of merely stacked.",
+        "The spacing should follow the pace of the edit; the visible tutorial spacing should not be copied blindly to unrelated footage."
+      ],
+      "candidateSkillIds": [
+        "skill.staggered_duplicate_cascade"
+      ]
+    },
+    {
+      "demonstrationId": "demo.microwave.glitch_monochrome_stack",
+      "sourceId": "tutorial.microwave_trend_after_effects",
+      "title": "Adjustment-layer monochrome and chromatic glitch accent",
+      "objective": "Escalate the repeated sequence with a temporary processed look that combines monochrome contrast, glitch breakup, RGB separation, and noise.",
+      "contextTags": [
+        "glitch",
+        "monochrome",
+        "rgb split",
+        "adjustment layer",
+        "accent"
+      ],
+      "actions": [
+        {
+          "id": "action.microwave.glitch.adjustment_layer",
+          "timeSeconds": 390,
+          "intent": "Apply a shared look across the active visual stack without modifying every duplicate separately.",
+          "action": "Place the look/effect stack on an adjustment layer above the staggered footage layers.",
+          "target": "Adjustment Layer 4",
+          "parameters": {},
+          "expectedVisualChange": "The active layers inherit a common temporary treatment."
+        },
+        {
+          "id": "action.microwave.glitch.cross_glitch",
+          "timeSeconds": 405,
+          "intent": "Introduce a brief digital breakup during the accent.",
+          "action": "Apply BCC Cross Glitch and tune its automatic glitch behavior.",
+          "target": "Adjustment Layer 4",
+          "parameters": {
+            "effect": "BCC Cross Glitch",
+            "observedGlitchIntensity": 50,
+            "observedGlitchInterval": 10,
+            "observedIntervalRandom": 10,
+            "observedGlitchDuration": 75,
+            "observedDurationRandom": 15,
+            "observedDurationMode": "Average",
+            "observedEdgeHandling": "Reflect"
+          },
+          "expectedVisualChange": "The image breaks into a pronounced digital/glitch accent for the treated interval."
+        },
+        {
+          "id": "action.microwave.glitch.finish_stack",
+          "timeSeconds": 435,
+          "intent": "Unify the glitch into a stylized monochrome/chromatic finish.",
+          "action": "Combine BCC Cross Glitch with Hue/Saturation, Brightness/Contrast, Sapphire S_TimeWarpRGB, and Noise on the same adjustment layer.",
+          "target": "Adjustment Layer 4 effect stack",
+          "parameters": {
+            "observedEffects": "BCC Cross Glitch | Hue/Saturation | Brightness/Contrast | S_TimeWarpRGB | Noise"
+          },
+          "expectedVisualChange": "The shot becomes largely monochrome with visible chromatic edge separation and texture around the subject."
+        }
+      ],
+      "observations": [
+        "At about 390 seconds the preview is visibly monochrome while Adjustment Layer 4 is selected.",
+        "At about 405 seconds BCC Cross Glitch is visibly open and the preview has strong RGB/digital breakup.",
+        "At about 435 seconds the effect stack names BCC Cross Glitch, Hue/Saturation, Brightness/Contrast, S_TimeWarpRGB, and Noise are simultaneously visible.",
+        "Some effect values are readable in the source, but they are stored only as observed starting evidence because plugin versions and footage context can change the correct values."
+      ],
+      "inferredPrinciples": [
+        "A short accent can layer several related treatments when they support one visual idea instead of competing independently.",
+        "Keeping the treatment on an adjustment layer makes the effect temporally local and easier to tune across a duplicated sequence.",
+        "Monochrome reduction can preserve subject readability while RGB separation and glitch provide the transient energy."
+      ],
+      "candidateSkillIds": [
+        "skill.glitch_monochrome_chromatic_accent"
+      ]
+    },
+    {
+      "demonstrationId": "demo.microwave.white_flash",
+      "sourceId": "tutorial.microwave_trend_after_effects",
+      "title": "Short white-solid flash accent",
+      "objective": "Create a high-contrast punctuation point around the end of the processed sequence.",
+      "contextTags": [
+        "white flash",
+        "transition accent",
+        "contrast"
+      ],
+      "actions": [
+        {
+          "id": "action.microwave.flash.solid",
+          "timeSeconds": 450,
+          "intent": "Create an unambiguous luminance peak between or over surrounding footage moments.",
+          "action": "Add and trim a white solid layer above the active footage/effect stack.",
+          "target": "White Solid 2",
+          "parameters": {},
+          "expectedVisualChange": "The composition briefly becomes full white before returning to the underlying sequence."
+        }
+      ],
+      "observations": [
+        "White Solid 2 is visibly selected and fills the portrait composition at about 450 seconds.",
+        "Two white-solid rows are visible near the top of the timeline above the adjustment and duplicate-footage stack."
+      ],
+      "inferredPrinciples": [
+        "A flash works as punctuation because its luminance contrast is much stronger than the surrounding processed frames.",
+        "The flash should be brief enough to accent the transition without obscuring the subject sequence for an extended duration."
+      ],
+      "candidateSkillIds": [
+        "skill.short_white_flash_accent"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": "skill.flow_shaped_time_remap",
+      "name": "Flow-Shaped Time Remap",
+      "summary": "Use Time Remap keyframes and a deliberately non-linear Flow/Graph Editor curve to create a controlled hold-to-acceleration speed ramp around meaningful action moments.",
+      "domains": [
+        "timing",
+        "motion"
+      ],
+      "tags": [
+        "time remap",
+        "speed ramp",
+        "flow",
+        "graph editor",
+        "action"
+      ],
+      "intents": [
+        "build anticipation",
+        "accelerate into an accent",
+        "reshape source timing"
+      ],
+      "prerequisites": [
+        "A source shot with a readable action or motion event to anchor the ramp."
+      ],
+      "whenToUse": [
+        "The source contains a motion phase that benefits from holding early frames and accelerating toward a later action moment.",
+        "The edit needs timing contrast rather than uniform slow motion or uniform speed-up."
+      ],
+      "whenNotToUse": [
+        "The source has no stable or readable motion event to anchor the timing change.",
+        "Aggressive retiming would destroy dialogue sync or essential real-time continuity."
+      ],
+      "whyItWorks": [
+        "A shallow-to-steep timing curve creates contrast between anticipation and release.",
+        "Aligning the curve to an actual motion event makes the ramp feel motivated instead of arbitrary."
+      ],
+      "procedure": [
+        {
+          "id": "enable-time-remap",
+          "intent": "Expose source time as an animatable property.",
+          "action": "Enable Time Remap and create/position timing keyframes around the chosen motion event.",
+          "expectedOutcome": "The source timing can be compressed or expanded around the event.",
+          "requiredCapabilities": [
+            "ae.layer.time_remap"
+          ]
+        },
+        {
+          "id": "shape-remap-curve",
+          "intent": "Turn the timing change into a deliberate acceleration profile.",
+          "action": "Use the Graph Editor or Flow to shape a smooth non-linear curve, then preview the actual motion rather than judging the curve in isolation.",
+          "expectedOutcome": "The shot eases/holds before accelerating cleanly into the target moment.",
+          "requiredCapabilities": [
+            "ae.keyframe.temporal_interpolation"
+          ]
+        }
+      ],
+      "parameterGuidance": [
+        {
+          "parameter": "curve shape",
+          "guidance": "The source visibly demonstrates a shallow beginning and steep ending. A Flow tuple near 0.48, 0.01, 1.00, 0.51 is visible, but treat it as source evidence rather than a universal preset.",
+          "minimum": null,
+          "maximum": null,
+          "unit": null
+        },
+        {
+          "parameter": "keyframe spacing",
+          "guidance": "Adapt to the new shot's motion events and audio accents; do not preserve the tutorial's absolute frame spacing by default.",
+          "minimum": null,
+          "maximum": null,
+          "unit": null
+        }
+      ],
+      "visualTargets": [
+        "The subject remains readable through the acceleration.",
+        "The acceleration has a clear intentional peak rather than a uniform speed change.",
+        "The ramp lands on a meaningful source-motion or edit accent."
+      ],
+      "failureModes": [
+        "Over-compression makes the action unreadable.",
+        "The curve is smooth mathematically but peaks at the wrong visual moment.",
+        "The ramp copies tutorial timing even though the new shot has different motion."
+      ],
+      "adaptationRules": [
+        "Bind timing to the new clip's action apex, direction change, contact, or audio accent.",
+        "Preserve the hold-to-acceleration relationship while changing absolute keyframe spacing as required."
+      ],
+      "variants": [
+        "acceleration into impact",
+        "brief hold then release",
+        "mirrored deceleration after an accent"
+      ],
+      "sourceIds": [
+        "tutorial.microwave_trend_after_effects"
+      ],
+      "confidence": 0.84,
+      "mastery": "OBSERVED"
+    },
+    {
+      "id": "skill.motion_blur_curves_support",
+      "name": "Motion-Blur-Curves Support for Retimed Action",
+      "summary": "Support a retimed action ramp with Sapphire S_BlurMoCurves so fast movement feels intentionally smeared while the underlying subject remains legible.",
+      "domains": [
+        "motion",
+        "effects"
+      ],
+      "tags": [
+        "S_BlurMoCurves",
+        "Sapphire",
+        "motion blur",
+        "speed ramp"
+      ],
+      "intents": [
+        "smooth accelerated motion",
+        "increase motion energy"
+      ],
+      "prerequisites": [
+        "A retimed or fast-moving shot.",
+        "Sapphire S_BlurMoCurves available, or an equivalent motion-responsive blur route."
+      ],
+      "whenToUse": [
+        "Fast retimed motion looks too crisp or staccato and benefits from a controlled smear."
+      ],
+      "whenNotToUse": [
+        "The subject is already motion-blurred enough to lose important details.",
+        "A blur would obscure a face, object contact, or other critical read."
+      ],
+      "whyItWorks": [
+        "Motion blur visually bridges larger temporal changes and can make speed ramps feel less mechanically sampled."
+      ],
+      "procedure": [
+        {
+          "id": "apply-blurmocurves",
+          "intent": "Add motion-responsive blur to the accelerated phase.",
+          "action": "Apply S_BlurMoCurves and tune its center, shutter, exposure, wrap, and mask behavior for the current footage.",
+          "expectedOutcome": "The speed ramp retains legibility while gaining a smoother high-speed motion impression.",
+          "requiredCapabilities": [
+            "ae.effect.add",
+            "ae.effect.property.set"
+          ]
+        }
+      ],
+      "parameterGuidance": [
+        {
+          "parameter": "S_BlurMoCurves source observation",
+          "guidance": "At the observed tutorial frame: Center XY is about 489,396; Z Dist 1; Rotate/Shift 0; Shutter Duration 1; Shutter Shift 0; Exposure Bias 0.5; Brightness 1; Blur Resolution Full. Re-center and retune for new footage rather than treating these as a preset.",
+          "minimum": null,
+          "maximum": null,
+          "unit": null
+        }
+      ],
+      "visualTargets": [
+        "Blur supports the fast phase without turning the subject into an unreadable smear.",
+        "The blur feels synchronized with the retiming rather than continuously heavy."
+      ],
+      "failureModes": [
+        "Blur is equally strong during slow/readable phases.",
+        "Effect center or motion assumptions do not match the new shot.",
+        "The blur hides the exact impact or expression the timing was meant to emphasize."
+      ],
+      "adaptationRules": [
+        "Re-evaluate center and shutter behavior for the new framing and motion direction.",
+        "Reduce blur where facial or object readability is more important than motion intensity."
+      ],
+      "variants": [
+        "short ramp blur",
+        "impact-adjacent smear"
+      ],
+      "sourceIds": [
+        "tutorial.microwave_trend_after_effects"
+      ],
+      "confidence": 0.82,
+      "mastery": "OBSERVED"
+    },
+    {
+      "id": "skill.staggered_duplicate_cascade",
+      "name": "Staggered Duplicate Cascade",
+      "summary": "Build a rhythmic cascade by creating multiple instances of a source/precomp and offsetting their layer timing in a staircase pattern.",
+      "domains": [
+        "timing",
+        "layer construction",
+        "transition"
+      ],
+      "tags": [
+        "duplicate layers",
+        "stagger",
+        "cascade",
+        "echo",
+        "microwave trend"
+      ],
+      "intents": [
+        "create rapid progression",
+        "repeat motion rhythmically",
+        "escalate a transition"
+      ],
+      "prerequisites": [
+        "A source or precomp that can be repeated without destroying continuity."
+      ],
+      "whenToUse": [
+        "The edit benefits from repeated snapshots/instances that advance in quick succession.",
+        "A transition needs escalating density before a stronger visual accent."
+      ],
+      "whenNotToUse": [
+        "The repeated instances make the subject action impossible to follow.",
+        "The scene requires strict continuous spatial continuity."
+      ],
+      "whyItWorks": [
+        "Temporal offsets convert duplication into directional progression and rhythm.",
+        "The staircase structure creates anticipation because each repeated instance advances the sequence toward the next treatment."
+      ],
+      "procedure": [
+        {
+          "id": "duplicate-source-instances",
+          "intent": "Create enough repeated instances to form a visible cascade.",
+          "action": "Duplicate or instantiate the source/precomp repeatedly while preserving a consistent base treatment.",
+          "expectedOutcome": "Several independently timed copies are available in the timeline.",
+          "requiredCapabilities": [
+            "ae.layer.duplicate"
+          ]
+        },
+        {
+          "id": "stagger-in-points",
+          "intent": "Convert simultaneous duplicates into rhythmic progression.",
+          "action": "Offset each layer's active range/in-point progressively so the starts form a staircase pattern.",
+          "expectedOutcome": "Copies hand off in rapid sequence rather than appearing simultaneously.",
+          "requiredCapabilities": [
+            "ae.layer.timing.set"
+          ]
+        }
+      ],
+      "parameterGuidance": [
+        {
+          "parameter": "instance count",
+          "guidance": "Roughly ten duplicate precomp instances are visibly used in the tutorial section. Use as evidence of a dense cascade, not as a mandatory count.",
+          "minimum": null,
+          "maximum": null,
+          "unit": "layers"
+        },
+        {
+          "parameter": "stagger spacing",
+          "guidance": "Choose spacing from the desired rhythm, shot duration, and motion; preserve the staircase relationship rather than the source's exact frame intervals.",
+          "minimum": null,
+          "maximum": null,
+          "unit": "frames"
+        }
+      ],
+      "visualTargets": [
+        "The cascade reads as a purposeful progression, not accidental duplicate clutter.",
+        "The viewer can still identify the subject across the repeated instances.",
+        "Layer timing builds toward a clear following accent or release."
+      ],
+      "failureModes": [
+        "Too many overlapping copies produce visual noise without progression.",
+        "Uniform simultaneous starts remove the cascade effect.",
+        "Spacing ignores the edit's rhythm and feels mechanical."
+      ],
+      "adaptationRules": [
+        "Scale instance count and spacing to the new clip length and rhythm.",
+        "Preserve the direction of temporal progression even when the exact number of layers changes."
+      ],
+      "variants": [
+        "dense rapid cascade",
+        "sparser repeated handoff"
+      ],
+      "sourceIds": [
+        "tutorial.microwave_trend_after_effects"
+      ],
+      "confidence": 0.9,
+      "mastery": "OBSERVED"
+    },
+    {
+      "id": "skill.glitch_monochrome_chromatic_accent",
+      "name": "Glitch-Monochrome Chromatic Accent",
+      "summary": "Use a short adjustment-layer stack combining monochrome/contrast reduction, digital glitch, RGB time/edge separation, and noise to create one coherent high-energy accent.",
+      "domains": [
+        "effects",
+        "color",
+        "transition"
+      ],
+      "tags": [
+        "BCC Cross Glitch",
+        "S_TimeWarpRGB",
+        "Hue/Saturation",
+        "Brightness/Contrast",
+        "Noise",
+        "adjustment layer",
+        "monochrome",
+        "rgb split"
+      ],
+      "intents": [
+        "escalate an impact",
+        "create digital breakup",
+        "temporarily simplify color while adding edge energy"
+      ],
+      "prerequisites": [
+        "A short accent interval where a processed look is editorially motivated.",
+        "BCC Cross Glitch and Sapphire S_TimeWarpRGB for exact reconstruction, or equivalent glitch/RGB-separation tools."
+      ],
+      "whenToUse": [
+        "A fast transition or repeated sequence needs a brief, clearly bounded digital accent.",
+        "The subject silhouette/read remains strong enough to survive monochrome and glitch processing."
+      ],
+      "whenNotToUse": [
+        "The scene already has weak subject separation or important color information that must remain readable.",
+        "The treatment would be held so long that the glitch becomes the scene rather than an accent."
+      ],
+      "whyItWorks": [
+        "Monochrome reduction simplifies competing color information while chromatic edge separation and glitch restore transient energy.",
+        "An adjustment layer lets several effects behave as one temporally bounded visual idea."
+      ],
+      "procedure": [
+        {
+          "id": "create-accent-adjustment-layer",
+          "intent": "Bound the treatment to one shared interval.",
+          "action": "Create/trim an adjustment layer above the target footage stack for the accent duration.",
+          "expectedOutcome": "The treatment can affect the full active stack without duplicating the effect chain on every source layer.",
+          "requiredCapabilities": [
+            "ae.layer.adjustment.create",
+            "ae.layer.timing.set"
+          ]
+        },
+        {
+          "id": "build-glitch-color-stack",
+          "intent": "Create a coherent digital accent rather than unrelated effect clutter.",
+          "action": "Combine BCC Cross Glitch, Hue/Saturation, Brightness/Contrast, S_TimeWarpRGB, and Noise; tune the stack while previewing the subject read.",
+          "expectedOutcome": "The active interval becomes largely monochrome with glitch breakup, chromatic edge separation, and added texture.",
+          "requiredCapabilities": [
+            "ae.effect.add",
+            "ae.effect.property.set"
+          ]
+        }
+      ],
+      "parameterGuidance": [
+        {
+          "parameter": "BCC Cross Glitch source observation",
+          "guidance": "Visible source values include Glitch Intensity about 50, Glitch Interval about 10, Interval Random about 10, Glitch Duration about 75, Duration Random about 15, Duration Mode Average, Edge Handling Reflect. Treat these as reconstruction clues, not a universal preset.",
+          "minimum": null,
+          "maximum": null,
+          "unit": null
+        },
+        {
+          "parameter": "accent duration",
+          "guidance": "Keep the processed stack short and transition-focused; adapt duration to the new edit rhythm and readability threshold.",
+          "minimum": null,
+          "maximum": null,
+          "unit": "frames"
+        }
+      ],
+      "visualTargets": [
+        "The processed interval is clearly different from surrounding footage but remains recognizable as the same subject/action.",
+        "RGB separation is concentrated around edges/motion rather than making the whole frame unreadable.",
+        "The glitch has a clear entrance and exit."
+      ],
+      "failureModes": [
+        "Stacked effects compete and destroy subject readability.",
+        "Glitch is held too long and loses its accent function.",
+        "Monochrome treatment removes important visual information without compensating hierarchy.",
+        "Exact plugin values are copied to footage with different scale/motion and produce a mismatched result."
+      ],
+      "adaptationRules": [
+        "Tune glitch intensity and duration to the new shot's detail density and motion.",
+        "Keep the subject silhouette or face as the readability anchor while increasing edge/color breakup around it.",
+        "If the exact third-party plugins are unavailable, preserve the visual intent only if an equivalent implementation can be evaluated rather than silently approximated."
+      ],
+      "variants": [
+        "monochrome RGB-edge accent",
+        "heavier digital breakup",
+        "noise-light variant"
+      ],
+      "sourceIds": [
+        "tutorial.microwave_trend_after_effects"
+      ],
+      "confidence": 0.94,
+      "mastery": "OBSERVED"
+    },
+    {
+      "id": "skill.short_white_flash_accent",
+      "name": "Short White Flash Accent",
+      "summary": "Use a tightly trimmed white solid above the active visual stack to create a brief high-luminance punctuation point around a transition or impact.",
+      "domains": [
+        "transition",
+        "timing",
+        "compositing"
+      ],
+      "tags": [
+        "white flash",
+        "solid",
+        "luminance accent"
+      ],
+      "intents": [
+        "punctuate an impact",
+        "bridge a processed transition",
+        "create a luminance peak"
+      ],
+      "prerequisites": [
+        "A transition or impact moment where a brief full-frame luminance interruption is appropriate."
+      ],
+      "whenToUse": [
+        "A high-energy sequence needs a short, unmistakable punctuation point."
+      ],
+      "whenNotToUse": [
+        "A full-frame flash would obscure important content or conflict with accessibility/viewer comfort constraints.",
+        "The surrounding edit already contains excessive flash accents."
+      ],
+      "whyItWorks": [
+        "A full white frame creates extreme luminance contrast against normal footage, producing a strong perceptual punctuation point."
+      ],
+      "procedure": [
+        {
+          "id": "create-white-solid",
+          "intent": "Create a controllable full-frame luminance source.",
+          "action": "Create a white solid above the relevant footage/effect stack and trim it to the intended flash interval.",
+          "expectedOutcome": "The composition briefly becomes white and then returns cleanly to the surrounding edit.",
+          "requiredCapabilities": [
+            "ae.layer.solid.create",
+            "ae.layer.timing.set"
+          ]
+        }
+      ],
+      "parameterGuidance": [
+        {
+          "parameter": "duration",
+          "guidance": "Keep the flash brief and rhythmically motivated. Determine duration from the new frame rate, accent strength, and viewer comfort rather than copying the source blindly.",
+          "minimum": null,
+          "maximum": null,
+          "unit": "frames"
+        }
+      ],
+      "visualTargets": [
+        "The flash is perceived as punctuation, not as a sustained blank shot.",
+        "The edit returns to readable imagery immediately after the flash."
+      ],
+      "failureModes": [
+        "Flash duration is long enough to feel like missing footage.",
+        "Frequent flashes reduce their impact and can become uncomfortable.",
+        "The flash lands off the intended visual/audio accent."
+      ],
+      "adaptationRules": [
+        "Align the flash to the new edit's actual impact or transition event.",
+        "Reduce or omit the flash when readability, comfort, or style calls for a softer transition."
+      ],
+      "variants": [
+        "single-frame punctuation",
+        "brief two-stage flash"
+      ],
+      "sourceIds": [
+        "tutorial.microwave_trend_after_effects"
+      ],
+      "confidence": 0.91,
+      "mastery": "OBSERVED"
+    }
+  ],
+  "edges": [
+    {
+      "fromSkillId": "skill.flow_shaped_time_remap",
+      "toSkillId": "skill.motion_blur_curves_support",
+      "relation": "OFTEN_PRECEDES",
+      "rationale": "The tutorial establishes retimed motion before demonstrating S_BlurMoCurves support."
+    },
+    {
+      "fromSkillId": "skill.staggered_duplicate_cascade",
+      "toSkillId": "skill.glitch_monochrome_chromatic_accent",
+      "relation": "COMBINES_WITH",
+      "rationale": "The adjustment-layer glitch/color stack is visibly applied over the already staggered duplicate sequence."
+    },
+    {
+      "fromSkillId": "skill.glitch_monochrome_chromatic_accent",
+      "toSkillId": "skill.short_white_flash_accent",
+      "relation": "OFTEN_PRECEDES",
+      "rationale": "The tutorial constructs the glitch/monochrome section before adding the white-solid flash treatment above the sequence."
+    }
+  ]
+}
