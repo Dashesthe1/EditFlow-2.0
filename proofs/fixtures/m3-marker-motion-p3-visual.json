@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_MARKER_MOTION_P3_VISUAL_FIXTURE",
+  "composition": {
+    "width": 320,
+    "height": 180,
+    "frameRate": 24,
+    "durationSeconds": 0.5
+  },
+  "positionMotion": {
+    "start": [-80, 90],
+    "end": [400, 90],
+    "durationSeconds": 0.5
+  },
+  "shutterComparisons": [
+    { "motionBlur": false, "label": "no-blur" },
+    { "motionBlur": true, "shutterAngle": 30, "shutterPhase": -15, "label": "shutter-30" },
+    { "motionBlur": true, "shutterAngle": 360, "shutterPhase": -180, "label": "shutter-360" }
+  ],
+  "frameBlendingComparisons": ["FRAME_MIX", "PIXEL_MOTION"],
+  "acceptance": {
+    "shutter30MustBeViewerVisibleAgainstNoBlur": true,
+    "shutter360MustBeBroaderThanShutter30": true,
+    "frameMixMustBeVisiblyDistinctFromPixelMotion": true,
+    "rollbackRecoveryMustMatchBaseline": true
+  },
+  "acceptedEvidence": {
+    "workflowRunId": 34506818837,
+    "artifactId": 10164183740,
+    "artifactSha256": "4c7af69295ab5f9274f63e50b7a388a211ee3c75bd3e681629986554148b5809"
+  }
+}
