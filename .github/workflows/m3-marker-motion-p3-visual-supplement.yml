@@ -1,0 +1,72 @@
+name: M3 Marker Motion P3 Strong Motion Visual Supplement
+
+on:
+  push:
+    branches:
+      - ae-test/m3-marker-motion-p3-p4-fast-control
+    paths:
+      - .github/ae-test-trigger/m3-marker-motion-p3-visual-supplement.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: editflow-accelerated-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  visual-supplement:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    steps:
+      - name: Sync persistent feature source and strengthen proof-only motion
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $repoRoot = Join-Path $env:LOCALAPPDATA "EditFlow2\warm-runner\EditFlow-2.0"
+          git -C $repoRoot fetch --depth=1 origin m3/marker-motion-p3-p4
+          if ($LASTEXITCODE -ne 0) { throw "Feature fetch failed." }
+          git -C $repoRoot reset --hard FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Feature reset failed." }
+          $cli = Join-Path $repoRoot "scripts\m3-marker-motion-p3-p4-fast.mjs"
+          $text = Get-Content $cli -Raw
+          $old = 'keyframes: [{ time: 0, value: [40, 90] }, { time: 0.5, value: [280, 90] }],'
+          $new = 'keyframes: [{ time: 0, value: [-80, 90] }, { time: 0.5, value: [400, 90] }],'
+          if (-not $text.Contains($old)) { throw "Expected motion fixture line not found; refusing ambiguous proof patch." }
+          $text = $text.Replace($old, $new)
+          [System.IO.File]::WriteAllText($cli, $text, (New-Object System.Text.UTF8Encoding($false)))
+          Write-Host "P3 supplement motion: x=-80 to x=400 over 0.5s at 24fps; production host code unchanged."
+          Write-Host "Patched proof CLI SHA256: $((Get-FileHash -Algorithm SHA256 -LiteralPath $cli).Hash.ToLowerInvariant())"
+          "EDITFLOW_FAST_REPO_ROOT=$repoRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run supplemental visual proof
+        continue-on-error: true
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $repoRoot = $env:EDITFLOW_FAST_REPO_ROOT
+          $runRelative = "proofs/artifacts/m3-marker-motion-p3-p4/visual-supplement-$env:GITHUB_RUN_ID"
+          $artifactDir = Join-Path $repoRoot ($runRelative -replace '/', '\')
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          "EDITFLOW_SUPPLEMENT_ARTIFACT_DIR=$artifactDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $requestPath = Join-Path $repoRoot (".p3-visual-supplement-" + $env:GITHUB_RUN_ID + ".json")
+          try {
+            $request = Get-Content (Join-Path $repoRoot ".github\ae-proof-request\m3-marker-motion-p3-p4.json") -Raw | ConvertFrom-Json
+            $request.lifecycle = "REUSE_AE"
+            $request.timeoutSeconds = 60
+            $request.allowInfrastructureRetry = $false
+            $request.artifactDir = $runRelative
+            $request | ConvertTo-Json -Depth 8 | Out-File -LiteralPath $requestPath -Encoding utf8
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\windows\invoke-editflow-ae-proof.ps1") -RequestPath $requestPath -AfterFxPath "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe" -StartupTimeoutSeconds 20
+            Write-Host "Supplement proof exit code: $LASTEXITCODE (P3 artifacts are retained for independent review even if later P4/cleanup work times out)."
+          } finally {
+            Remove-Item -LiteralPath $requestPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload visual supplement artifact
+        if: always() && env.EDITFLOW_SUPPLEMENT_ARTIFACT_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-marker-motion-p3-visual-supplement-${{ github.run_id }}
+          path: ${{ env.EDITFLOW_SUPPLEMENT_ARTIFACT_DIR }}
+          if-no-files-found: warn
