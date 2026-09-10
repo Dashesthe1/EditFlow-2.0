@@ -130,8 +130,8 @@ try {
   # opener in the already-running AE process. If the panel is already open, its
   # reconnect loop can register immediately; this command remains bounded evidence.
   $Stage = "open_editflow_panel"
-  $PanelArguments = '-r "' + $PanelOpenerPath + '"'
-  [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -WindowStyle Hidden -PassThru)
+  $PanelArguments = @("-r", $PanelOpenerPath)
+  [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -PassThru)
 
   $Stage = "run_node_proof"
   $NodeProcess.WaitForExit()
