@@ -16,9 +16,10 @@ if (-not (Test-Path $BaseInstaller -PathType Leaf)) { throw "Accepted CEP instal
 
 # Always rebuild the installed preview from the accepted protocol-1.9 baseline. The
 # base installer preserves the authentication token, so refreshing proof code does not
-# invalidate an already-open panel solely because files were recopied.
+# invalidate an already-open panel solely because files were recopied. This is a
+# PowerShell script boundary, so ErrorActionPreference/throw is authoritative; do not
+# interpret a stale $LASTEXITCODE left by an internal native command as installer failure.
 & $BaseInstaller -Port $Port -SkipDebugMode
-if ($LASTEXITCODE -ne 0) { throw "Accepted CEP installer failed." }
 
 $InstalledHostDir = Join-Path $TargetRoot "host"
 foreach ($FileName in @("editflow_host_m3_marker_motion.jsx", "editflow_host_current_v20.jsx")) {
