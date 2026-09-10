@@ -52,16 +52,16 @@ A recipe may never silently replace a missing capability with a weaker blur, tra
 
 EditFlow 2.0 starts a new development line. Previous EditFlow version numbers have no compatibility or lineage meaning here.
 
-Current product milestone version: **`0.4.0-dev`**.
+Current product milestone version: **`0.5.0-dev`**.
 
 ## Current phase
 
-**M3 — Human-Parity Core: in progress.**
+**M4 — Tracking & Isolation: in progress.**
 
-M2 — Adobe Host Baseline is accepted and remains the proven real-AE foundation: authenticated CEP protocol 1.1 transport, bounded render/readback, rollback/recovery, stable identity through save/reopen/reconnect, and final baseline CRUD/readback all passed on the declared Windows / After Effects 2025 environment.
+M3 — Human-Parity Core is accepted. Its authenticated real-AE protocol stack spans 1.2 through 2.0 and covers literal mask/Bezier geometry, compositing and arbitrary track mattes, parenting/null/layer controls, exact temporal interpolation/ease, manual spatial Graph Editor tangents, and marker/motion controls. The M3 exit gate passed with an integrated object/mask-driven transition whose curved mask geometry, matte relationship, temporal easing and spatial trajectory were structurally exact and viewer-visible rather than approximated. The construction survived save/reopen and a distinct authenticated CEP reconnect, then transferred exactly to materially different footage. Routine integrated P3 execution remained below the 30-second warm-AE target; the full save/reopen/reconnect/two-fixture P5 chain is recorded as a bounded lifecycle exception.
 
-The first M3 tranche is the dependency chain required for literal object-driven constructions: typed mask CRUD, arbitrary open/closed Bezier geometry, exact vertices and in/out tangents, animated mask paths, variable-feather Shape data, mask feather/expansion/opacity/modes/inversion, and structural mask readback. These protocol 1.2 capabilities remain **DECLARED and unroutable** until authenticated broker negotiation for 1.2 is implemented and proven; M2 evidence is not inherited.
+M2 — Adobe Host Baseline remains the proven real-AE foundation: authenticated CEP protocol 1.1 transport, bounded render/readback, rollback/recovery, stable identity through save/reopen/reconnect, and final baseline CRUD/readback all passed on the declared Windows / After Effects 2025 environment.
 
-After the mask/Bezier tranche is transport-proven, M3 continues through track mattes, blend modes, parenting/null rigs, relevant layer switches, exact temporal/spatial interpolation and Graph Editor controls, markers, motion blur, frame blending, and shutter controls. The milestone closes only after the real object/mask-driven reveal construction is Object-Aware Verified and every required M3 capability reaches at least TRANSFER maturity.
+M4 now advances through point tracking, two-point rotation/scale tracking, four-point and perspective tracking, mask tracking, face tracking, stabilization, semantic attach points, subject/object segmentation, segmentation-to-mask/matte export, and manual repair/resume. The first implementation tranche is point tracking, using the same persistent self-hosted runner and warm After Effects process so routine development/proof cycles stay around 30 seconds or faster wherever the operation itself allows it.
 
-Authoritative documents live in `docs/`, machine-readable contracts live in `spec/`, and accepted proof manifests live in `proofs/manifests/`.
+Authoritative documents live in `docs/`, machine-readable contracts live in `spec/`, and accepted proof manifests live in `proofs/manifests/` and `proofs/diagnostics/`.
