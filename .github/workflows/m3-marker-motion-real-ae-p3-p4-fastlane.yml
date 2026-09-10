@@ -1,0 +1,196 @@
+name: M3 Marker Motion P3 P4 Persistent Warm Real After Effects
+
+on:
+  push:
+    branches:
+      - ae-test/m3-marker-motion-p3-p4-fast-control
+    paths:
+      - .github/ae-test-trigger/m3-marker-motion-p3-p4-fastlane.txt
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: editflow-accelerated-real-ae-workstation
+  cancel-in-progress: false
+
+env:
+  EDITFLOW_FEATURE_BRANCH: m3/marker-motion-p3-p4
+  EDITFLOW_AFTERFX_PATH: C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe
+  EDITFLOW_ACCEPTED_P1_P2_ARTIFACT_ID: "10079885025"
+  EDITFLOW_ACCEPTED_P1_P2_ZIP_SHA256: 75bd92ea1661b0871f73b2368f6bcce217956b311aa73b722fedd2c13b420ade
+
+jobs:
+  warm-proof:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EDITFLOW_M3_MARKER_MOTION_P4_PROOF: "1"
+    steps:
+      - name: Sync persistent EditFlow source without destructive clean
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $repoRoot = Join-Path $env:LOCALAPPDATA "EditFlow2\warm-runner\EditFlow-2.0"
+          $parent = Split-Path $repoRoot -Parent
+          New-Item -ItemType Directory -Force -Path $parent | Out-Null
+
+          if (-not (Test-Path (Join-Path $repoRoot ".git") -PathType Container)) {
+            if (Test-Path $repoRoot) { throw "Persistent warm source exists without .git; refusing destructive replacement: $repoRoot" }
+            git clone --filter=blob:none --no-checkout https://github.com/Dashesthe1/EditFlow-2.0.git $repoRoot
+            if ($LASTEXITCODE -ne 0) { throw "Initial persistent EditFlow clone failed." }
+          }
+
+          git -C $repoRoot fetch --depth=1 origin $env:EDITFLOW_FEATURE_BRANCH
+          if ($LASTEXITCODE -ne 0) { throw "Persistent EditFlow fetch failed." }
+          git -C $repoRoot reset --hard FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Persistent EditFlow hard reset to fetched tracked source failed." }
+
+          $head = (git -C $repoRoot rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $head) { throw "Could not resolve persistent source HEAD." }
+          Write-Host "Persistent source HEAD: $head"
+          Write-Host "No git clean was executed; node_modules and proof caches remain warm."
+          "EDITFLOW_FAST_REPO_ROOT=$repoRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "EDITFLOW_FAST_HEAD=$head" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Restore pinned accepted marker-motion P1 P2 evidence
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $acceptedDir = Join-Path $env:EDITFLOW_FAST_REPO_ROOT ".accepted\m3-marker-motion-p1-p2"
+          New-Item -ItemType Directory -Force -Path $acceptedDir | Out-Null
+          $zip = Join-Path $env:TEMP ("editflow-p1-p2-" + [Guid]::NewGuid().ToString("N") + ".zip")
+          $expanded = Join-Path $env:TEMP ("editflow-p1-p2-" + [Guid]::NewGuid().ToString("N"))
+          try {
+            $headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = "application/vnd.github+json"
+              "X-GitHub-Api-Version" = "2022-11-28"
+              "User-Agent" = "EditFlow-accelerated-runner"
+            }
+            $uri = "https://api.github.com/repos/Dashesthe1/EditFlow-2.0/actions/artifacts/$env:EDITFLOW_ACCEPTED_P1_P2_ARTIFACT_ID/zip"
+            Invoke-WebRequest -Headers $headers -Uri $uri -OutFile $zip -UseBasicParsing
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+            if ($actual -ne $env:EDITFLOW_ACCEPTED_P1_P2_ZIP_SHA256) {
+              throw "Accepted P1/P2 artifact digest mismatch: $actual"
+            }
+            Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
+            $results = @(Get-ChildItem -LiteralPath $expanded -Filter "result.json" -File -Recurse)
+            if ($results.Count -ne 1) { throw "Accepted P1/P2 artifact must contain exactly one result.json; found $($results.Count)." }
+            Copy-Item -LiteralPath $results[0].FullName -Destination (Join-Path $acceptedDir "result.json") -Force
+            Write-Host "Pinned accepted P1/P2 evidence restored with verified SHA-256."
+          } finally {
+            Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $expanded -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Verify installed protocol 2.0 preview is unchanged
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $targetRoot = Join-Path $env:APPDATA "Adobe\CEP\extensions\com.editflow2.bridge"
+          $configPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
+          if (-not (Test-Path $configPath -PathType Leaf)) { throw "PREVIEW_BOOTSTRAP_REQUIRED: bridge config is missing." }
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          if ($config.extensionVersion -ne "0.1.0-dev.10" -or @($config.supportedProtocolVersions) -notcontains "2.0.0") {
+            throw "PREVIEW_BOOTSTRAP_REQUIRED: installed CEP config is not the accepted protocol-2.0 preview."
+          }
+          foreach ($name in @("editflow_host_m3_marker_motion.jsx", "editflow_host_current_v20.jsx")) {
+            $source = Join-Path $env:EDITFLOW_FAST_REPO_ROOT "packages\adapters\ae-cep\host\$name"
+            $installed = Join-Path $targetRoot "host\$name"
+            if (-not (Test-Path $installed -PathType Leaf)) { throw "PREVIEW_BOOTSTRAP_REQUIRED: installed $name is missing." }
+            $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash
+            $installedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installed).Hash
+            if ($sourceHash -ne $installedHash) { throw "PREVIEW_BOOTSTRAP_REQUIRED: installed $name differs from feature source." }
+          }
+          Write-Host "Installed protocol-2.0 preview matches feature host source; no reinstall or AE restart needed."
+
+      - name: Capture AE state before warm proof
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $targets = @(Get-Process -Name AfterFX -ErrorAction SilentlyContinue)
+          Write-Host "AfterFX process count: $($targets.Count)"
+          foreach ($p in $targets) {
+            try { $p.Refresh() } catch {}
+            Write-Host "pid=$($p.Id) responding=$($p.Responding) handle=$($p.MainWindowHandle) title=$($p.MainWindowTitle) path=$($p.Path)"
+          }
+
+      - name: Run persistent warm marker-motion P3 P4 proof
+        id: proof
+        continue-on-error: true
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $repoRoot = $env:EDITFLOW_FAST_REPO_ROOT
+          $runRelative = "proofs/artifacts/m3-marker-motion-p3-p4/run-$env:GITHUB_RUN_ID"
+          $artifactDir = Join-Path $repoRoot ($runRelative -replace '/', '\')
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          $requestPath = Join-Path $repoRoot (".fastlane-marker-motion-" + $env:GITHUB_RUN_ID + ".json")
+          try {
+            $request = Get-Content (Join-Path $repoRoot ".github\ae-proof-request\m3-marker-motion-p3-p4.json") -Raw | ConvertFrom-Json
+            $request.lifecycle = "REUSE_AE"
+            $request.timeoutSeconds = 60
+            $request.allowInfrastructureRetry = $false
+            $request.artifactDir = $runRelative
+            $request | ConvertTo-Json -Depth 8 | Out-File -LiteralPath $requestPath -Encoding utf8
+            "EDITFLOW_FAST_ARTIFACT_DIR=$artifactDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\windows\invoke-editflow-ae-proof.ps1") -RequestPath $requestPath -AfterFxPath $env:EDITFLOW_AFTERFX_PATH -StartupTimeoutSeconds 20
+            $code = $LASTEXITCODE
+            Write-Host "Warm proof exit code: $code"
+            if ($code -ne 0) { exit $code }
+          } finally {
+            Remove-Item -LiteralPath $requestPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Print bounded warm-proof diagnostics
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $dir = $env:EDITFLOW_FAST_ARTIFACT_DIR
+          if (-not $dir -or -not (Test-Path $dir -PathType Container)) {
+            Write-Host "No proof artifact directory was produced."
+            exit 0
+          }
+          foreach ($name in @("progress.jsonl", "result.json", "orchestration-result.json", "wrapper-error.txt")) {
+            $path = Join-Path $dir $name
+            if (Test-Path $path -PathType Leaf) {
+              Write-Host "--- $name ---"
+              Get-Content $path -Tail 120 | Write-Host
+              Write-Host "--- end $name ---"
+            }
+          }
+
+      - name: Capture AE state after warm proof
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $targets = @(Get-Process -Name AfterFX -ErrorAction SilentlyContinue)
+          Write-Host "AfterFX process count: $($targets.Count)"
+          foreach ($p in $targets) {
+            try { $p.Refresh() } catch {}
+            Write-Host "pid=$($p.Id) responding=$($p.Responding) handle=$($p.MainWindowHandle) title=$($p.MainWindowTitle) path=$($p.Path)"
+          }
+
+      - name: Upload marker-motion warm proof artifact
+        if: always() && env.EDITFLOW_FAST_ARTIFACT_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-marker-motion-p3-p4-fastlane-${{ github.run_id }}
+          path: ${{ env.EDITFLOW_FAST_ARTIFACT_DIR }}
+          if-no-files-found: warn
+
+      - name: Enforce proof result
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          if ("${{ steps.proof.outcome }}" -ne "success") { throw "Persistent warm marker-motion proof failed; see bounded diagnostics/artifact." }
+          $resultPath = Join-Path $env:EDITFLOW_FAST_ARTIFACT_DIR "result.json"
+          if (-not (Test-Path $resultPath -PathType Leaf)) { throw "Persistent warm proof did not emit result.json." }
+          $result = Get-Content $resultPath -Raw | ConvertFrom-Json
+          if ($result.classification -ne "PASS" -or $result.ok -ne $true -or $result.cleanupComplete -ne $true) {
+            throw "Persistent warm marker-motion proof did not pass exact result/cleanup gates."
+          }
+          Write-Host "Persistent warm marker-motion P3/P4 structural and rollback proof passed."
