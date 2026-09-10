@@ -1,6 +1,6 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
-  [int]$TimeoutSeconds = 180
+  [int]$TimeoutSeconds = 90
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,9 +44,13 @@ try {
   npm run build:test-runtime
   if ($LASTEXITCODE -ne 0) { throw "TypeScript runtime build failed." }
 
-  $Cli = Join-Path $RepoRoot ".tmp\runtime\apps\desktop-host\src\m3-marker-motion-p3-p4-cli.js"
-  if (-not (Test-Path $Cli -PathType Leaf)) { throw "Compiled marker-motion P3/P4 CLI not found: $Cli" }
+  $Cli = Join-Path $RepoRoot "scripts\m3-marker-motion-p3-p4-fast.mjs"
+  if (-not (Test-Path $Cli -PathType Leaf)) { throw "Fast marker-motion P3/P4 CLI not found: $Cli" }
 
+  # This also keeps direct/manual runs compatible. For a BOOTSTRAP run the workflow
+  # sets the same variable before the lifecycle orchestrator launches After Effects,
+  # so the new AE process inherits the proof gate. REUSE_AE then retains that warm
+  # process environment without another process restart.
   $env:EDITFLOW_M3_MARKER_MOTION_P4_PROOF = "1"
   try {
     & node $Cli --config $ConfigPath --result $ResultPath --accepted-p1-p2 $AcceptedP1P2Path --timeout-ms ($TimeoutSeconds * 1000)
@@ -65,10 +69,15 @@ try {
   if ($Result.status -ne "VISUAL_REVIEW_REQUIRED" -or $Result.visualReviewRequired -ne $true) { throw "P3/P4 must remain visual-review-required before P3 acceptance." }
   if ($Result.proofLevels.P3_visual_artifact_emitted -ne $true -or $Result.proofLevels.P3_visual_proof -ne $false) { throw "P3 artifacts must be emitted without self-asserting visual acceptance." }
   if ($Result.proofLevels.P4_failure_injection_rollback -ne $true) { throw "P4 rollback proof did not pass." }
+  foreach ($Surface in @("comp_motion_set", "layer_motion_set", "marker_set", "marker_remove")) {
+    if ($Result.p4Matrix.$Surface.ok -ne $true) { throw "P4 rollback matrix did not pass for $Surface." }
+  }
   if ($Result.proofLevels.P5_save_reopen_reconnect_transfer -ne $false) { throw "P3/P4 harness must not claim P5." }
   if ($Result.cleanupComplete -ne $true) { throw "P3/P4 did not restore the exact warm-project baseline." }
 
-  Write-Host "Marker-motion P3/P4 structural/rollback proof passed."
+  Write-Host "Marker-motion fast P3/P4 structural/rollback proof passed."
+  Write-Host "P4 passed composition motion, layer motion, marker set, and marker remove rollback." 
+  Write-Host "Measured proof elapsed ms: $($Result.elapsedMs); 30-second target met: $($Result.speedTargetMet)"
   Write-Host "P3 viewer-visible artifacts were emitted and still require independent visual acceptance."
   Write-Host "Warm After Effects process was not closed by this proof wrapper."
 } finally {
