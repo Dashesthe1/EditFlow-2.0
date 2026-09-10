@@ -53,7 +53,7 @@ test("accelerated marker-motion requests separate one-time bootstrap from steady
   const bootstrap = JSON.parse(await readFile(bootstrapRequestPath, "utf8"));
   const reuse = JSON.parse(await readFile(reuseRequestPath, "utf8"));
   assert.equal(bootstrap.proofScript, "scripts/windows/run-m3-marker-motion-p3-p4-warm.ps1");
-  assert.equal(reuse.proofScript, bootstrap.proofScript);
+  assert.equal(reuse.proofScript, "scripts/windows/run-m3-marker-motion-p3-p4-warm-armed.ps1");
   assert.equal(bootstrap.lifecycle, "RESTART_AE");
   assert.equal(bootstrap.allowInfrastructureRetry, false);
   assert.equal(reuse.lifecycle, "REUSE_AE");
@@ -69,7 +69,8 @@ test("warm wrapper never owns AE shutdown and opens only the declared EditFlow p
   assert.match(source, /npm run build:test-runtime/);
   assert.match(source, /m3-marker-motion-p3-p4-fast\.mjs/);
   assert.match(source, /open-editflow2-panel\.jsx/);
-  assert.match(source, /-r \\"|'-r "/);
+  assert.match(source, /\$PanelArguments\s*=\s*@\("-r",\s*\$PanelOpenerRuntimePath\)/);
+  assert.match(source, /Start-Process\s+-FilePath\s+\$AfterFxPath\s+-ArgumentList\s+\$PanelArguments\s+-PassThru/);
   for (const surface of ["comp_motion_set", "layer_motion_set", "marker_set", "marker_remove"]) assert.ok(source.includes(surface));
   assert.match(opener, /EditFlow 2\.0 Bridge/);
   assert.match(opener, /app\.findMenuCommandId/);
