@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_HUMAN_PARITY_EXIT_GATE_ACCEPTANCE",
+  "status": "ACCEPTED",
+  "milestone": "M3_HUMAN_PARITY_CORE",
+  "milestoneVersion": "0.4.0-dev",
+  "exitGate": "Construct and transfer an object/mask-driven transition whose geometry, mattes and curves are not approximated.",
+  "acceptedAt": "2026-09-10",
+  "runtime": {
+    "host": "Adobe After Effects 2025",
+    "platform": "Windows",
+    "warmRunner": "editflow-ae",
+    "acceptedProtocolRange": "1.2.0_THROUGH_2.0.0_REGISTERED"
+  },
+  "p3IntegratedVisual": {
+    "runId": 34512695690,
+    "jobId": 102990474226,
+    "artifactId": 10166426411,
+    "artifactName": "m3-human-parity-exit-gate-p3-34512695690",
+    "sha256": "56ba74d124bd58da6867b9b9297a66448273a6cf6bd8bb31c2cfc6168bd1d03d",
+    "coreElapsedMs": 17281,
+    "wrapperElapsedMs": 23567,
+    "speedTargetMs": 30000,
+    "speedTargetMet": true,
+    "structuralReadback": true,
+    "visualArtifact": true,
+    "independentVisualReview": "ACCEPTED",
+    "visualReviewFindings": [
+      "The reveal aperture is curved and non-rectangular rather than a box approximation.",
+      "The aperture expands materially from the early frame through the midpoint to near-full-frame reveal.",
+      "The foreground follows the authored curved spatial trajectory while the temporal opacity curve is exact-readback verified."
+    ]
+  },
+  "p5IntegratedTransfer": {
+    "runId": 34513732049,
+    "jobId": 102993899373,
+    "artifactId": 10166846750,
+    "artifactName": "m3-human-parity-exit-gate-p5-34513732049",
+    "sha256": "e5b2792b27fad8b36bdf1edf5f59052b4c1b644bc0d9d4c8046bbbab65252f6e",
+    "coreElapsedMs": 41914,
+    "wrapperElapsedMs": 48284,
+    "routineSpeedTargetMs": 30000,
+    "boundedLifecycleException": true,
+    "boundedLifecycleCeilingMs": 55000,
+    "saveReopenReconnect": true,
+    "distinctAuthenticatedReconnect": true,
+    "savedFingerprintPreserved": true,
+    "stableIdsPreserved": true,
+    "firstConstructionSignatureSurvived": true,
+    "secondUnrelatedFixtureSignatureExact": true,
+    "geometryMattesCurvesTransferred": true,
+    "transferredProjectSaved": true,
+    "cleanupComplete": true,
+    "initialSessionId": "d1f97d43-d026-4a1b-82f4-978f09b6786e",
+    "reconnectedSessionId": "c6e8fd5f-8727-4c26-acb3-177793fb5235"
+  },
+  "acceptedIntegrationSurfaces": [
+    "animated arbitrary Bezier mask geometry",
+    "alpha track matte with arbitrary matte layer",
+    "blend mode composition",
+    "exact temporal interpolation",
+    "exact temporal ease",
+    "manual spatial Bezier tangents",
+    "marker/readback on integrated construction",
+    "save/reopen/distinct authenticated reconnect",
+    "unrelated-fixture transfer"
+  ],
+  "proofLevels": {
+    "P1_constituent_validation": true,
+    "P2_constituent_structural_readback": true,
+    "P3_integrated_viewer_visible": true,
+    "P4_constituent_failure_rollback": true,
+    "P5_integrated_save_reopen_reconnect_transfer": true
+  },
+  "cleanup": {
+    "proofNamespace": "M3_EXIT_",
+    "warmAeReused": true,
+    "aeRestartRequired": false,
+    "finalBlankUnsavedProject": true
+  }
+}

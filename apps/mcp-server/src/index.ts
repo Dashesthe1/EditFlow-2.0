@@ -1,5 +1,5 @@
-export const EDITFLOW_VERSION = "0.4.0-dev" as const;
-export const EDITFLOW_PHASE = "M3_HUMAN_PARITY_CORE_IN_PROGRESS" as const;
+export const EDITFLOW_VERSION = "0.5.0-dev" as const;
+export const EDITFLOW_PHASE = "M4_TRACKING_ISOLATION_IN_PROGRESS" as const;
 
 export interface McpServerStatus {
   readonly version: typeof EDITFLOW_VERSION;
@@ -18,9 +18,11 @@ export interface McpServerStatus {
   readonly cepRuntimeBridge: "REAL_AE_PROVEN";
   readonly cepBrokerBinding: "127.0.0.1_AUTHENTICATED";
   readonly realAeAcceptance: "P1_P5_ACCEPTED";
-  readonly humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_ACCEPTED";
+  readonly humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED";
+  readonly m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED";
   readonly m3MaskHostProtocol: "1.2.0_BROKER_GATED";
   readonly m3LatestHostProtocol: "2.0.0_TRANSFER_ACCEPTED";
+  readonly trackingIsolation: "POINT_TRACKING_NEXT";
 }
 
 export const getMcpServerStatus = (): McpServerStatus => ({
@@ -40,7 +42,9 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   cepRuntimeBridge: "REAL_AE_PROVEN",
   cepBrokerBinding: "127.0.0.1_AUTHENTICATED",
   realAeAcceptance: "P1_P5_ACCEPTED",
-  humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_ACCEPTED",
+  humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",
+  m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED",
   m3MaskHostProtocol: "1.2.0_BROKER_GATED",
   m3LatestHostProtocol: "2.0.0_TRANSFER_ACCEPTED",
+  trackingIsolation: "POINT_TRACKING_NEXT",
 });

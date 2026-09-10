@@ -1,0 +1,1 @@
+(function(){"use strict";var f=new File(Folder.temp.fsName+"/EditFlow2-m3-exit-p5-disarm.txt");try{$.setenv("EDITFLOW_M3_EXIT_GATE_P5_PROOF","");f.open("w");f.write($.getenv("EDITFLOW_M3_EXIT_GATE_P5_PROOF")!=="1"?"DISARMED":"ERROR disarm failed");f.close();}catch(e){try{f.open("w");f.write("ERROR "+String(e));f.close();}catch(_){}}}());

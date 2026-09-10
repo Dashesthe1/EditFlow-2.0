@@ -12,10 +12,10 @@ import {
   m2ProofMaturityForCapability,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m2-proof-maturity.js";
 
-test("M2 accepted real-AE baseline remains enabled while development advances into M3", () => {
+test("M2 accepted real-AE baseline remains enabled while development advances into M4", () => {
   const status = getMcpServerStatus();
-  assert.equal(status.version, "0.4.0-dev");
-  assert.equal(status.phase, "M3_HUMAN_PARITY_CORE_IN_PROGRESS");
+  assert.equal(status.version, "0.5.0-dev");
+  assert.equal(status.phase, "M4_TRACKING_ISOLATION_IN_PROGRESS");
   assert.equal(status.adobeWritesEnabled, true);
   assert.equal(status.cepRuntimeBridge, "REAL_AE_PROVEN");
   assert.equal(status.cepBrokerBinding, "127.0.0.1_AUTHENTICATED");
@@ -24,9 +24,11 @@ test("M2 accepted real-AE baseline remains enabled while development advances in
   assert.equal(status.aeAdapterProtocol, "1.1.0");
   assert.equal(status.runtimeCapabilityComposition, "M2_BASE_PLUS_ACCEPTED_M3");
   assert.equal(status.acceptedM3HostProtocols, "1.2.0_THROUGH_2.0.0_REGISTERED");
-  assert.equal(status.humanParityCore, "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_ACCEPTED");
+  assert.equal(status.humanParityCore, "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED");
+  assert.equal(status.m3ExitGate, "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED");
   assert.equal(status.m3MaskHostProtocol, "1.2.0_BROKER_GATED");
   assert.equal(status.m3LatestHostProtocol, "2.0.0_TRANSFER_ACCEPTED");
+  assert.equal(status.trackingIsolation, "POINT_TRACKING_NEXT");
 });
 
 test("every public AE protocol 1.1 capability retains explicit M2 evidence maturity", () => {
@@ -78,12 +80,13 @@ test("M2 manifest remains accepted and records both real-AE evidence families", 
   assert.equal(manifest.evidence.dedicated_p4_p5.verdict, "PASS");
 });
 
-test("root metadata and README advertise M3 without rewriting accepted M2 history", async () => {
+test("root metadata and README preserve accepted M2/M3 history while advertising M4", async () => {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   const readme = await readFile("README.md", "utf8");
-  assert.equal(pkg.version, "0.4.0-dev");
-  assert.match(readme, /M3 — Human-Parity Core: in progress/);
-  assert.match(readme, /M2 — Adobe Host Baseline is accepted/);
-  assert.match(readme, /DECLARED and unroutable/);
+  assert.equal(pkg.version, "0.5.0-dev");
+  assert.match(readme, /M4 — Tracking & Isolation: in progress/);
+  assert.match(readme, /M3 — Human-Parity Core is accepted/);
+  assert.match(readme, /M2 — Adobe Host Baseline remains/);
+  assert.match(readme, /point tracking/);
   assert.doesNotMatch(readme, /Phase 0 — Clean-room architecture/);
 });
