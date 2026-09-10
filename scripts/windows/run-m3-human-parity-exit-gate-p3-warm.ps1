@@ -23,7 +23,9 @@ try{
     $node=Start-Process -FilePath node -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     $d=(Get-Date).AddSeconds(5);while((Get-Date)-lt $d -and -not(Test-Path $ready)){$node.Refresh();if($node.HasExited){break};Start-Sleep -Milliseconds 50};if(-not(Test-Path $ready)){if(Test-Path $stderr){Get-Content $stderr -Tail 80|Write-Host};throw "Exit-gate broker did not become ready"}
     $d=(Get-Date).AddMilliseconds(900);while((Get-Date)-lt $d -and -not(PanelConnected)){Start-Sleep -Milliseconds 50};if(-not(PanelConnected)){[void](Start-Process -FilePath $AfterFxPath -ArgumentList @("-r",$opener)-PassThru);Write-Host "Opened EditFlow panel for fresh exit-gate broker"}else{Write-Host "Warm EditFlow panel reconnected automatically"}
-    if(-not $node.WaitForExit($ProofTimeoutSeconds*1000)){Stop-Process -Id $node.Id -Force -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 500;throw "Exit-gate core exceeded $ProofTimeoutSeconds seconds"};if($node.ExitCode -ne 0){if(Test-Path $stderr){Get-Content $stderr -Tail 80|Write-Host};if(Test-Path $core){Get-Content $core -Raw|Write-Host};throw "Exit-gate core failed with $($node.ExitCode)"}
+    if(-not $node.WaitForExit($ProofTimeoutSeconds*1000)){Stop-Process -Id $node.Id -Force -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 500;throw "Exit-gate core exceeded $ProofTimeoutSeconds seconds"}
+    $node.WaitForExit();$node.Refresh();$nodeExit=[int]$node.ExitCode
+    if($nodeExit -ne 0){if(Test-Path $stderr){Get-Content $stderr -Tail 80|Write-Host};if(Test-Path $core){Get-Content $core -Raw|Write-Host};throw "Exit-gate core failed with $nodeExit"}
   }finally{Pop-Location}
   $post=Ae $cleanup $cleanupEv "CLEANED ";$blankAfter=Ae $verify $verifyEv "BLANK_UNSAVED";$c=Get-Content $core -Raw|ConvertFrom-Json
   $elapsed=[int]((Get-Date)-$start).TotalMilliseconds;$ok=$c.ok -eq $true -and $c.proofLevels.integratedStructuralReadback -eq $true -and $c.proofLevels.integratedVisualArtifactEmitted -eq $true -and $blankAfter -eq "BLANK_UNSAVED"
