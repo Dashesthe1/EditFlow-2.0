@@ -78,8 +78,12 @@ test("host uses native AE marker, motion blur, frame blending and shutter surfac
     "HOST_REVISION_CONFLICT", "SHUTTER_ANGLE_INVALID", "SHUTTER_PHASE_INVALID", "MOTION_SAMPLES_INVALID",
     "MOTION_ADAPTIVE_LIMIT_INVALID", "LAYER_PROTECTED_REGION_FORBIDDEN", "COMP_MOTION_READBACK_MISMATCH",
     "LAYER_MOTION_READBACK_MISMATCH", "COMP_MOTION_ROLLBACK_READBACK_MISMATCH", "LAYER_MOTION_ROLLBACK_READBACK_MISMATCH",
+    "M3_MARKER_MOTION_P4_FAILURE_INJECTION", "M3_MARKER_MOTION_P4_INDUCED_FAILURE", "MARKER_MOTION_ROLLBACK_FAILED",
   ]) assert.ok(source.includes(guard), `missing host guard ${guard}`);
   assert.match(source, /app\.beginUndoGroup/);
+  assert.match(source, /app\.executeCommand\(16\)/);
+  assert.match(source, /EDITFLOW_M3_MARKER_MOTION_P4_PROOF/);
+  assert.match(source, /rolled back through the transaction undo boundary/);
   assert.doesNotMatch(source, /\beval\s*\(/);
   assert.doesNotThrow(() => new vm.Script(source, { filename: hostPath }));
 });
