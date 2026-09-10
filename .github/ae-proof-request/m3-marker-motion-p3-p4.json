@@ -3,7 +3,7 @@
   "proofScript": "scripts/windows/run-m3-marker-motion-p3-p4-warm.ps1",
   "lifecycle": "REUSE_AE",
   "artifactDir": "proofs/artifacts/m3-marker-motion-p3-p4",
-  "timeoutSeconds": 180,
+  "timeoutSeconds": 90,
   "allowInfrastructureRetry": true,
   "resultFile": "result.json"
 }
