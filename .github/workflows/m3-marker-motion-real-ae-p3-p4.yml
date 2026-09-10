@@ -72,7 +72,25 @@ jobs:
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
         run: |
           & ".\scripts\windows\install-editflow-cep-v20-preview.ps1"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Report AE state before proof
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $processes = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+          Write-Host "AfterFX process count before proof: $($processes.Count)"
+          foreach ($process in $processes) {
+            try {
+              $process.Refresh()
+              Write-Host ("AE_STATE_BEFORE pid={0} responding={1} handle={2} title={3} path={4}" -f $process.Id, $process.Responding, $process.MainWindowHandle, [string]$process.MainWindowTitle, [string]$process.Path)
+            } catch {
+              Write-Host ("AE_STATE_BEFORE pid={0} inspection_error={1}" -f $process.Id, $_.Exception.Message)
+            }
+          }
+          $configPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
+          if (Test-Path $configPath -PathType Leaf) {
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            Write-Host ("CEP_CONFIG extensionVersion={0} protocols={1}" -f $config.extensionVersion, (($config.supportedProtocolVersions | ForEach-Object { [string]$_ }) -join ","))
+          }
 
       - name: Run accelerated marker-motion P3 P4 proof
         env:
@@ -86,6 +104,21 @@ jobs:
             & ".\scripts\windows\invoke-editflow-ae-proof.ps1" -RequestPath "${{ steps.mode.outputs.request_path }}"
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Report AE state after proof
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $processes = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+          Write-Host "AfterFX process count after proof: $($processes.Count)"
+          foreach ($process in $processes) {
+            try {
+              $process.Refresh()
+              Write-Host ("AE_STATE_AFTER pid={0} responding={1} handle={2} title={3} path={4}" -f $process.Id, $process.Responding, $process.MainWindowHandle, [string]$process.MainWindowTitle, [string]$process.Path)
+            } catch {
+              Write-Host ("AE_STATE_AFTER pid={0} inspection_error={1}" -f $process.Id, $_.Exception.Message)
+            }
+          }
 
       - name: Upload marker-motion P3 P4 proof artifacts
         if: always()
