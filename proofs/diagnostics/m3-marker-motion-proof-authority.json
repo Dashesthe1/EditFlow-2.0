@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "2.0.0",
+  "promotionMaturity": "TRANSFER",
+  "authoritativeEvidence": {
+    "P1_P2": {
+      "runId": 34286914057,
+      "artifactId": 10079885025,
+      "artifactSha256": "75bd92ea1661b0871f73b2368f6bcce217956b311aa73b722fedd2c13b420ade"
+    },
+    "P3": {
+      "fixture": "proofs/fixtures/m3-marker-motion-p3-visual.json",
+      "runId": 34506818837,
+      "artifactId": 10164183740,
+      "artifactSha256": "4c7af69295ab5f9274f63e50b7a388a211ee3c75bd3e681629986554148b5809",
+      "independentVisualReviewRequired": true,
+      "independentVisualReviewAccepted": true
+    },
+    "P4": {
+      "cli": "scripts/m3-marker-motion-p4-fast-regression.mjs",
+      "wrapper": "scripts/windows/run-m3-marker-motion-p4-fast-regression.ps1",
+      "workflow": ".github/workflows/m3-marker-motion-p4-fast-regression.yml",
+      "runId": 34508045587,
+      "artifactId": 10164628534,
+      "artifactSha256": "1785d94837928b8b56929e15e42cf8ff2d4e90072438ca9dc4a7a386293e0eb8",
+      "elapsedMs": 15995,
+      "speedTargetMs": 30000,
+      "cleanupModel": "PROOF_OWNED_STABLE_ID_NAMESPACE_PLUS_FINAL_BLANK_UNSAVED_VERIFY"
+    },
+    "P5": {
+      "cli": "scripts/m3-marker-motion-p5.mjs",
+      "wrapper": "scripts/windows/run-m3-marker-motion-p5-warm.ps1",
+      "runId": 34507680568,
+      "artifactId": 10164488951,
+      "artifactSha256": "86dce7ee3438a5bf0c4776de8bba5973f85235b88a801fe586422473d01b21fe"
+    }
+  },
+  "legacyDiagnostics": {
+    "promotionAuthority": false,
+    "paths": [
+      "scripts/m3-marker-motion-p3-p4-fast.mjs",
+      "scripts/windows/run-m3-marker-motion-p3-p4-warm.ps1",
+      "scripts/windows/run-m3-marker-motion-p3-p4-warm-armed.ps1",
+      ".github/ae-proof-request/m3-marker-motion-p3-p4-bootstrap.json",
+      ".github/ae-proof-request/m3-marker-motion-p3-p4.json"
+    ],
+    "reason": "The historical combined P3/P4 harness retains its original generic undo-to-baseline diagnostic cleanup and is not the promotion or routine regression authority. P3 is bound to the committed strong-motion fixture and independently reviewed retained artifact; routine P4 uses the dedicated bounded proof-owned cleanup regression."
+  },
+  "promotionRules": {
+    "combinedLegacyHarnessMustNotGatePromotion": true,
+    "p3MustRemainBoundToCommittedStrongMotionFixture": true,
+    "p4MustUseDedicatedBoundedRegression": true,
+    "p4SpeedTargetMs": 30000,
+    "robustMaturityClaimed": false
+  }
+}
