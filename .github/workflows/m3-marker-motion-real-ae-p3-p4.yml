@@ -105,6 +105,28 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Print proof diagnostics
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $artifactDir = "proofs/artifacts/m3-marker-motion-p3-p4"
+          if (-not (Test-Path $artifactDir -PathType Container)) {
+            Write-Host "PROOF_DIAGNOSTICS artifact_dir_missing=$artifactDir"
+            exit 0
+          }
+          Write-Host "PROOF_DIAGNOSTICS files:"
+          Get-ChildItem $artifactDir -File | Sort-Object Name | ForEach-Object {
+            Write-Host ("  {0} bytes={1}" -f $_.Name, $_.Length)
+          }
+          foreach ($name in @("orchestration-result.json", "result.json", "ae-host-supervisor.log")) {
+            $path = Join-Path $artifactDir $name
+            if (Test-Path $path -PathType Leaf) {
+              Write-Host ("--- BEGIN {0} ---" -f $name)
+              Get-Content $path -Raw
+              Write-Host ("--- END {0} ---" -f $name)
+            }
+          }
+
       - name: Report AE state after proof
         if: always()
         shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
