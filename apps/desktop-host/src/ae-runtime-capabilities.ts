@@ -1,6 +1,7 @@
 import type { CapabilityAdapterDeclaration, CapabilityRegistry } from "../../../packages/capability-registry/src/index.js";
 import { M3_COMPOSITE_CAPABILITIES_V13 } from "../../../packages/adapters/ae-cep/src/m3-composite.js";
 import { M3_LAYER_CONTROLS_CAPABILITIES_V16 } from "../../../packages/adapters/ae-cep/src/m3-layer-controls.js";
+import { M3_MARKER_MOTION_CAPABILITIES_V20 } from "../../../packages/adapters/ae-cep/src/m3-marker-motion.js";
 import { M3_MASK_CAPABILITIES_V12 } from "../../../packages/adapters/ae-cep/src/m3-mask.js";
 import { M3_NULL_RIG_CAPABILITIES_V15 } from "../../../packages/adapters/ae-cep/src/m3-null-rig.js";
 import { M3_PARENTING_CAPABILITIES_V14 } from "../../../packages/adapters/ae-cep/src/m3-parenting.js";
@@ -23,6 +24,7 @@ export const AE_ACCEPTED_M3_RUNTIME_CAPABILITY_GROUPS: readonly CapabilityAdapte
   Object.freeze({ adapterId: "ae-cep.m3.temporal-interpolation", adapterVersion: "1.7.0", priority: 117, capabilities: M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 }),
   Object.freeze({ adapterId: "ae-cep.m3.temporal-ease", adapterVersion: "1.8.0", priority: 118, capabilities: M3_TEMPORAL_EASE_CAPABILITIES_V18 }),
   Object.freeze({ adapterId: "ae-cep.m3.spatial-graph", adapterVersion: "1.9.0", priority: 119, capabilities: M3_SPATIAL_GRAPH_CAPABILITIES_V19 }),
+  Object.freeze({ adapterId: "ae-cep.m3.marker-motion", adapterVersion: "2.0.0", priority: 120, capabilities: M3_MARKER_MOTION_CAPABILITIES_V20 }),
 ]);
 
 export const AE_ACCEPTED_M3_RUNTIME_PROTOCOLS = Object.freeze([
@@ -34,6 +36,7 @@ export const AE_ACCEPTED_M3_RUNTIME_PROTOCOLS = Object.freeze([
   "1.7.0",
   "1.8.0",
   "1.9.0",
+  "2.0.0",
 ] as const);
 
 export const registerAcceptedM3RuntimeCapabilities = (registry: CapabilityRegistry): void => {
