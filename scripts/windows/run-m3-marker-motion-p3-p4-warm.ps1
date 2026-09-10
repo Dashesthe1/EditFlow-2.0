@@ -37,6 +37,17 @@ function Publish-PanelBootstrapEvidence {
   }
 }
 
+function Test-BrokerPanelConnected {
+  try {
+    $Config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    $Headers = @{ "X-EditFlow-Token" = [string]$Config.token }
+    $Status = Invoke-RestMethod -Method Get -Uri ("http://127.0.0.1:{0}/v1/status" -f [int]$Config.port) -Headers $Headers -TimeoutSec 1
+    return $Status.panelConnected -eq $true -and $null -ne $Status.session
+  } catch {
+    return $false
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 foreach ($Path in @($ResultPath, $BrokerReadyPath, $NodeStdoutPath, $NodeStderrPath, $NodeLogPath, $WrapperErrorPath, $PanelBootstrapArtifactPath)) {
   if (Test-Path $Path -PathType Leaf) { Remove-Item $Path -Force }
@@ -127,14 +138,28 @@ try {
     throw "Fast marker-motion broker did not signal LISTENING within five seconds."
   }
 
-  # Only after the broker is listening, execute the static manifest-declared panel
-  # opener in the already-running AE process. If the panel is already open, its
-  # reconnect loop can register immediately; this command remains bounded evidence.
-  $Stage = "open_editflow_panel"
-  $PanelOpenerRuntimePath = Join-Path $env:TEMP ("EditFlow2-fast-panel-opener-" + [Guid]::NewGuid().ToString("N") + ".jsx")
-  Copy-Item -LiteralPath $PanelOpenerPath -Destination $PanelOpenerRuntimePath -Force
-  $PanelArguments = @("-r", $PanelOpenerRuntimePath)
-  [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -PassThru)
+  # Warm panels reconnect to a fresh broker on their own. Do not execute the menu
+  # command after that registration because the menu item can toggle an already-open
+  # panel closed. Only invoke the bounded opener when no panel has registered yet.
+  $Stage = "ensure_editflow_panel"
+  $PanelReconnectDeadline = (Get-Date).AddMilliseconds(900)
+  $PanelAlreadyConnected = $false
+  while ((Get-Date) -lt $PanelReconnectDeadline) {
+    if (Test-BrokerPanelConnected) {
+      $PanelAlreadyConnected = $true
+      break
+    }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($PanelAlreadyConnected) {
+    Write-Host "Warm EditFlow CEP panel already registered; skipping toggle-prone menu opener."
+  } else {
+    $PanelOpenerRuntimePath = Join-Path $env:TEMP ("EditFlow2-fast-panel-opener-" + [Guid]::NewGuid().ToString("N") + ".jsx")
+    Copy-Item -LiteralPath $PanelOpenerPath -Destination $PanelOpenerRuntimePath -Force
+    $PanelArguments = @("-r", $PanelOpenerRuntimePath)
+    [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -PassThru)
+    Write-Host "Warm EditFlow CEP panel was not registered; executed bounded menu opener."
+  }
 
   $Stage = "run_node_proof"
   $NodeProcess.WaitForExit()
