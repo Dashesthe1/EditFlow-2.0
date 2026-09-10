@@ -552,7 +552,7 @@ const main = async () => {
       ok,
       message: ok
         ? "Fast warm marker/motion proof emitted bounded P3 visual artifacts, proved P4 rollback across all four mutator families, and restored the exact pre-proof project fingerprint."
-        : (failureError ?? cleanupErrors.join("; ") || "Marker/motion P3/P4 proof failed."),
+        : (failureError ?? (cleanupErrors.join("; ") || "Marker/motion P3/P4 proof failed.")),
       lifecycle: process.env.EDITFLOW_AE_LIFECYCLE ?? null,
       startedAt,
       completedAt: new Date().toISOString(),
