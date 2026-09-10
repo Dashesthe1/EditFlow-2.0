@@ -97,10 +97,12 @@ test("accepted protocol-2.0 marker motion is visible as transfer-mature runtime 
   }
 });
 
-test("MCP diagnostics describe the composed M3 runtime through marker-motion protocol 2.0", () => {
+test("MCP diagnostics preserve accepted M3 runtime while M4 begins", () => {
   const status = getMcpServerStatus();
   assert.equal(status.runtimeCapabilityComposition, "M2_BASE_PLUS_ACCEPTED_M3");
   assert.equal(status.acceptedM3HostProtocols, "1.2.0_THROUGH_2.0.0_REGISTERED");
-  assert.equal(status.humanParityCore, "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_ACCEPTED");
+  assert.equal(status.humanParityCore, "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED");
+  assert.equal(status.m3ExitGate, "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED");
   assert.equal(status.m3LatestHostProtocol, "2.0.0_TRANSFER_ACCEPTED");
+  assert.equal(status.trackingIsolation, "POINT_TRACKING_NEXT");
 });
