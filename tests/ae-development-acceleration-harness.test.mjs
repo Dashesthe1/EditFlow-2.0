@@ -30,7 +30,22 @@ test("warm orchestrator never silently escalates REUSE_AE into process terminati
   const stopCall = "Stop-TargetAfterFx -ExpectedPath $AfterFxPath";
   assert.equal(runner.split(stopCall).length - 1, 1, "target-AE stop helper must have exactly one call site");
   assert.ok(runner.indexOf(stopCall) > runner.indexOf(restartGate), "AE stop call must remain behind explicit restart gate");
-  assert.ok(runner.includes("Proof passed and the warm After Effects session remains healthy."));
+  assert.ok(runner.includes("Proof passed and the host-verified warm After Effects session remains healthy."));
+});
+
+test("blank or nonstandard AE titles require a direct existing-process host probe", async () => {
+  const runner = await read("scripts/windows/invoke-editflow-ae-proof.ps1");
+  const probe = await read("scripts/windows/ae-host-readiness-probe-template.jsx");
+  assert.ok(runner.includes("function Test-AfterFxDirectReadiness"));
+  assert.ok(runner.includes('if ($Process.MainWindowTitle -like "Adobe After Effects*")'));
+  assert.ok(runner.includes("Test-AfterFxDirectReadiness -ExpectedPath $ExpectedPath -Process $Process"));
+  assert.ok(runner.includes("DIRECT_AE_SCRIPT"));
+  assert.ok(runner.includes("healthEvidence = $LastHealthEvidence"));
+  assert.ok(runner.includes("-r \"") || runner.includes("'-r \"'"), "probe must use the supported After Effects -r script route");
+  assert.ok(probe.includes("EDITFLOW_AE_READINESS_V1"));
+  assert.ok(probe.includes("app.name"));
+  assert.ok(probe.includes("app.project"));
+  assert.equal(probe.includes("app.executeCommand"), false, "readiness probe must remain read-only against AE state");
 });
 
 test("only the exact AfterFX launch is detached from GitHub job orphan tracking", async () => {
