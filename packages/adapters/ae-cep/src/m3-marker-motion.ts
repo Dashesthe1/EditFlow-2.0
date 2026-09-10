@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM3MarkerMotionAcceptedProofEvidence } from "./m3-marker-motion-proof-maturity.js";
 import {
   AE_MARKER_MOTION_ADAPTER_BUILD_V20,
   AE_MARKER_MOTION_COMMANDS_V20,
@@ -70,7 +71,7 @@ export class CepEvalScriptMarkerMotionTransportV20 {
 
 const isReadOnly = (command: AeMarkerMotionCommandV20): boolean => command.endsWith(".readback");
 
-export const M3_MARKER_MOTION_CAPABILITIES_V20: readonly CapabilityRecord[] =
+const M3_MARKER_MOTION_DECLARED_CAPABILITIES_V20: readonly CapabilityRecord[] =
   AE_MARKER_MOTION_COMMANDS_V20.map((command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForMarkerMotionCommandV20(command)),
     domain: command.startsWith("marker.") ? "timeline" : "animation",
@@ -89,6 +90,9 @@ export const M3_MARKER_MOTION_CAPABILITIES_V20: readonly CapabilityRecord[] =
     riskClass: isReadOnly(command) ? "R0_READ_ONLY" : "R1_REVERSIBLE",
     fallbackPolicy: "FORBID",
   }));
+
+export const M3_MARKER_MOTION_CAPABILITIES_V20: readonly CapabilityRecord[] =
+  applyM3MarkerMotionAcceptedProofEvidence(M3_MARKER_MOTION_DECLARED_CAPABILITIES_V20);
 
 export const buildMarkerMotionRequestV20 = (input: {
   readonly requestId: string;
