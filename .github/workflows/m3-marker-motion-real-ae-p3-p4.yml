@@ -22,7 +22,7 @@ on:
         type: string
   push:
     branches:
-      - ae-test/m3-marker-motion-p3-p4-control
+      - ae-test/m3-marker-motion-p3-p4-fast-control
     paths:
       - .github/ae-test-trigger/m3-marker-motion-p3-p4.txt
 
