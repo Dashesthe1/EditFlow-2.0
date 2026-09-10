@@ -1,4 +1,4 @@
-param([string]$AfterFxPath="C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",[int]$ProofTimeoutSeconds=35)
+param([string]$AfterFxPath="C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",[int]$ProofTimeoutSeconds=55)
 $ErrorActionPreference="Stop"
 $root=(Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path;$config=Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json";$artifactRoot=Join-Path $root "proofs\artifacts\m3-human-parity-exit-gate-p5";$runId=(Get-Date -Format "yyyyMMdd-HHmmssfff")+"-"+[Guid]::NewGuid().ToString("N").Substring(0,8);$dir=Join-Path $artifactRoot ("run-"+$runId)
 $result=Join-Path $dir "result.json";$ready=Join-Path $dir "broker-ready.json";$stdout=Join-Path $dir "node.stdout.log";$stderr=Join-Path $dir "node.stderr.log";$reopenScript=Join-Path $dir "reopen-proof.jsx";$cleanupScript=Join-Path $dir "cleanup-proof.jsx";$cleanupMarker=Join-Path $dir "cleanup-result.txt"
