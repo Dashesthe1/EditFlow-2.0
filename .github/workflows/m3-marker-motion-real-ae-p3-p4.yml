@@ -1,0 +1,130 @@
+name: M3 Marker Motion P3 P4 Accelerated Real After Effects
+
+on:
+  workflow_dispatch:
+    inputs:
+      proof_mode:
+        description: Use BOOTSTRAP after protocol-2.0 host changes; use REUSE for normal warm reruns
+        required: false
+        default: REUSE
+        type: choice
+        options:
+          - REUSE
+          - BOOTSTRAP
+      afterfx_path:
+        description: Optional explicit path to AfterFX.exe
+        required: false
+        type: string
+      accepted_p1_p2_run_id:
+        description: Accepted marker-motion P1/P2 workflow run ID
+        required: false
+        default: "34286914057"
+        type: string
+  push:
+    branches:
+      - ae-test/m3-marker-motion-p3-p4-fast-control
+    paths:
+      - .github/ae-test-trigger/m3-marker-motion-p3-p4.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: editflow-accelerated-real-ae-workstation
+  cancel-in-progress: false
+
+jobs:
+  real-ae-marker-motion-p3-p4:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve proof mode
+        id: mode
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $mode = "${{ github.event.inputs.proof_mode }}"
+          if (-not $mode -and (Test-Path ".github/ae-test-trigger/m3-marker-motion-p3-p4.txt" -PathType Leaf)) {
+            $mode = (Get-Content ".github/ae-test-trigger/m3-marker-motion-p3-p4.txt" -Raw).Trim().ToUpperInvariant()
+          }
+          if ($mode -notin @("REUSE", "BOOTSTRAP")) { throw "proof_mode must be REUSE or BOOTSTRAP." }
+          $request = if ($mode -eq "BOOTSTRAP") {
+            ".github/ae-proof-request/m3-marker-motion-p3-p4-bootstrap.json"
+          } else {
+            ".github/ae-proof-request/m3-marker-motion-p3-p4.json"
+          }
+          "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "request_path=$request" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Marker-motion P3/P4 mode: $mode"
+
+      - name: Download accepted marker-motion P1 P2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: m3-marker-motion-p1-p2-proof-${{ inputs.accepted_p1_p2_run_id || '34286914057' }}
+          path: .accepted/m3-marker-motion-p1-p2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.accepted_p1_p2_run_id || '34286914057' }}
+
+      - name: Refresh protocol 2.0 preview files
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          & ".\scripts\windows\install-editflow-cep-v20-preview.ps1"
+
+      - name: Report AE state before proof
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $processes = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+          Write-Host "AfterFX process count before proof: $($processes.Count)"
+          foreach ($process in $processes) {
+            try {
+              $process.Refresh()
+              Write-Host ("AE_STATE_BEFORE pid={0} responding={1} handle={2} title={3} path={4}" -f $process.Id, $process.Responding, $process.MainWindowHandle, [string]$process.MainWindowTitle, [string]$process.Path)
+            } catch {
+              Write-Host ("AE_STATE_BEFORE pid={0} inspection_error={1}" -f $process.Id, $_.Exception.Message)
+            }
+          }
+          $configPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
+          if (Test-Path $configPath -PathType Leaf) {
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            Write-Host ("CEP_CONFIG extensionVersion={0} protocols={1}" -f $config.extensionVersion, (($config.supportedProtocolVersions | ForEach-Object { [string]$_ }) -join ","))
+          }
+
+      - name: Run accelerated marker-motion P3 P4 proof
+        env:
+          EDITFLOW_M3_MARKER_MOTION_P4_PROOF: "1"
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $afterFxPath = "${{ github.event.inputs.afterfx_path }}"
+          if ($afterFxPath) {
+            & ".\scripts\windows\invoke-editflow-ae-proof.ps1" -RequestPath "${{ steps.mode.outputs.request_path }}" -AfterFxPath $afterFxPath
+          } else {
+            & ".\scripts\windows\invoke-editflow-ae-proof.ps1" -RequestPath "${{ steps.mode.outputs.request_path }}"
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Report AE state after proof
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $processes = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
+          Write-Host "AfterFX process count after proof: $($processes.Count)"
+          foreach ($process in $processes) {
+            try {
+              $process.Refresh()
+              Write-Host ("AE_STATE_AFTER pid={0} responding={1} handle={2} title={3} path={4}" -f $process.Id, $process.Responding, $process.MainWindowHandle, [string]$process.MainWindowTitle, [string]$process.Path)
+            } catch {
+              Write-Host ("AE_STATE_AFTER pid={0} inspection_error={1}" -f $process.Id, $_.Exception.Message)
+            }
+          }
+
+      - name: Upload marker-motion P3 P4 proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m3-marker-motion-p3-p4-proof-${{ github.run_id }}
+          path: proofs/artifacts/m3-marker-motion-p3-p4/
+          if-no-files-found: warn
+          retention-days: 14

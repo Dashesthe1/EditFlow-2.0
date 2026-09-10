@@ -17,10 +17,7 @@ import {
   buildMarkerMotionRequestV20,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-marker-motion.js";
 
-const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_marker_motion.jsx";
-const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v20.jsx";
-
-test("M3 marker-motion protocol 2.0 is bounded and remains unpromoted", () => {
+test("M3 marker-motion protocol 2.0 is bounded and transfer-accepted", () => {
   assert.equal(AE_MARKER_MOTION_PROTOCOL_VERSION_V20, "2.0.0");
   assert.equal(AE_MARKER_MOTION_ADAPTER_BUILD_V20, "0.4.0-dev.10");
   assert.equal(AE_MARKER_MOTION_ROUTE_ID_V20, "ae-cep.marker-motion.v2_0");
@@ -34,8 +31,8 @@ test("M3 marker-motion protocol 2.0 is bounded and remains unpromoted", () => {
   assert.equal(capabilityForMarkerMotionCommandV20("layer.motion.set"), "ae.layer.motion.set");
   assert.equal(M3_MARKER_MOTION_CAPABILITIES_V20.length, 7);
   for (const capability of M3_MARKER_MOTION_CAPABILITIES_V20) {
-    assert.equal(capability.status, "PARTIAL");
-    assert.equal(capability.proofMaturity, "DECLARED");
+    assert.equal(capability.status, "FULL");
+    assert.equal(capability.proofMaturity, "TRANSFER");
     assert.equal(capability.routes[0].routeId, AE_MARKER_MOTION_ROUTE_ID_V20);
     assert.equal(capability.fallbackPolicy, "FORBID");
   }
@@ -67,7 +64,7 @@ test("protocol 2.0 transport serializes hostile marker text as data", async () =
 });
 
 test("host uses native AE marker, motion blur, frame blending and shutter surfaces with guards", async () => {
-  const source = await readFile(hostPath, "utf8");
+  const source = await readFile("packages/adapters/ae-cep/host/editflow_host_m3_marker_motion.jsx", "utf8");
   for (const token of [
     "new MarkerValue", ".markerProperty", ".marker", ".setValueAtTime(", ".removeKey(",
     ".motionBlur", ".frameBlending", ".frameBlendingType", ".shutterAngle", ".shutterPhase",
@@ -78,18 +75,22 @@ test("host uses native AE marker, motion blur, frame blending and shutter surfac
     "HOST_REVISION_CONFLICT", "SHUTTER_ANGLE_INVALID", "SHUTTER_PHASE_INVALID", "MOTION_SAMPLES_INVALID",
     "MOTION_ADAPTIVE_LIMIT_INVALID", "LAYER_PROTECTED_REGION_FORBIDDEN", "COMP_MOTION_READBACK_MISMATCH",
     "LAYER_MOTION_READBACK_MISMATCH", "COMP_MOTION_ROLLBACK_READBACK_MISMATCH", "LAYER_MOTION_ROLLBACK_READBACK_MISMATCH",
+    "M3_MARKER_MOTION_P4_FAILURE_INJECTION", "M3_MARKER_MOTION_P4_INDUCED_FAILURE", "MARKER_MOTION_ROLLBACK_FAILED",
   ]) assert.ok(source.includes(guard), `missing host guard ${guard}`);
   assert.match(source, /app\.beginUndoGroup/);
+  assert.match(source, /app\.executeCommand\(16\)/);
+  assert.match(source, /EDITFLOW_M3_MARKER_MOTION_P4_PROOF/);
+  assert.match(source, /rolled back through the transaction undo boundary/);
   assert.doesNotMatch(source, /\beval\s*\(/);
-  assert.doesNotThrow(() => new vm.Script(source, { filename: hostPath }));
+  assert.doesNotThrow(() => new vm.Script(source, { filename: "editflow_host_m3_marker_motion.jsx" }));
 });
 
 test("v20 loader is additive over accepted v19 and fails closed for protocol 2.0", async () => {
-  const source = await readFile(loaderPath, "utf8");
+  const source = await readFile("packages/adapters/ae-cep/host/editflow_host_current_v20.jsx", "utf8");
   assert.match(source, /editflow_host_current_v19\.jsx/);
   assert.match(source, /editflow_host_m3_marker_motion\.jsx/);
   assert.match(source, /M3_MARKER_MOTION_MODULE_LOAD_FAILED/);
   assert.match(source, /request\.protocolVersion === "2\.0\.0"/);
   assert.match(source, /EditFlow2_HOST_PROTOCOL_20 = true/);
-  assert.doesNotThrow(() => new vm.Script(source, { filename: loaderPath }));
+  assert.doesNotThrow(() => new vm.Script(source, { filename: "editflow_host_current_v20.jsx" }));
 });
