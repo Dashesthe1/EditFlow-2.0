@@ -1,0 +1,9 @@
+{
+  "proofId": "m3.marker_motion.p3_p4.bootstrap",
+  "proofScript": "scripts/windows/run-m3-marker-motion-p3-p4-warm.ps1",
+  "lifecycle": "RESTART_AE",
+  "artifactDir": "proofs/artifacts/m3-marker-motion-p3-p4",
+  "timeoutSeconds": 180,
+  "allowInfrastructureRetry": false,
+  "resultFile": "result.json"
+}
