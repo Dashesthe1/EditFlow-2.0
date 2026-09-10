@@ -215,6 +215,10 @@ export const M1_STATIC_AE_CAPABILITIES: readonly CapabilityRecord[] = [
   unavailableAeCapability("ae.keyframe.set", "animation", "Create or update a typed keyframe.", "R1_REVERSIBLE"),
   unavailableAeCapability("ae.precompose.layers", "composition", "Precompose a declared layer set.", "R2_STRUCTURAL"),
   unavailableAeCapability("ae.render.capture", "render", "Capture bounded review evidence.", "R0_READ_ONLY"),
+  unavailableAeCapability("ae.runtime.knowledge.inspect", "environment", "Capture installed After Effects runtime knowledge.", "R0_READ_ONLY"),
+  unavailableAeCapability("ae.host.reflection.inspect", "environment", "Inspect the ExtendScript reflection surface.", "R0_READ_ONLY"),
+  unavailableAeCapability("ae.effect.catalog.inspect", "effect", "Enumerate the installed effect catalog and stable matchName identifiers.", "R0_READ_ONLY"),
+  unavailableAeCapability("ae.property.graph.inspect", "property", "Inspect existing property graphs and property metadata.", "R0_READ_ONLY"),
 ] as const;
 
 export const createM1CapabilityRegistry = (
@@ -227,3 +231,5 @@ export const createM1CapabilityRegistry = (
   registry.registerStatic(M1_STATIC_AE_CAPABILITIES);
   return registry;
 };
+
+export * from "./ae-runtime-knowledge.js";

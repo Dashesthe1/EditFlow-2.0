@@ -1,0 +1,9 @@
+{
+  "proofId": "infra.ae_runtime_knowledge.capture",
+  "proofScript": "scripts/windows/capture-ae-runtime-knowledge.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/ae-runtime-knowledge",
+  "timeoutSeconds": 120,
+  "allowInfrastructureRetry": true,
+  "resultFile": "result.json"
+}
