@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
@@ -145,6 +145,13 @@ const main = async () => {
   const startedAt = new Date(startedAtMs).toISOString();
   const artifactDir = path.dirname(resultPath);
   await mkdir(artifactDir, { recursive: true });
+  const progressPath = path.join(artifactDir, "progress.jsonl");
+  await writeFile(progressPath, "", "utf8");
+  const progress = async (stage, details = {}) => {
+    try {
+      await appendFile(progressPath, `${JSON.stringify({ at: new Date().toISOString(), elapsedMs: Date.now() - startedAtMs, stage, ...details })}\n`, "utf8");
+    } catch {}
+  };
 
   const motionSourcePath = path.join(artifactDir, "p3-motion-source.bmp");
   const sequenceStartPath = path.join(artifactDir, "p3-sequence-0001.bmp");
@@ -175,6 +182,7 @@ const main = async () => {
 
   const projectId = "m3-marker-motion-p3-p4-fast";
   const prefix = `M3_MARKER_MOTION_FAST_${Date.now()}`;
+  await progress("proof.start", { prefix, timeoutMs });
   const transactionId = `${prefix}_TX`;
   const motionSourceStable = `${prefix}_MOTION_SOURCE`;
   const sequenceSourceStable = `${prefix}_SEQUENCE_SOURCE`;
@@ -311,9 +319,13 @@ const main = async () => {
   };
 
   const runP4 = async ({ name, command, payload, readback, project }) => {
+    await progress(`p4.${name}.start`, { command });
     const beforeProject = await refresh();
+    await progress(`p4.${name}.before_project`, { hostRevision: beforeProject.hostRevision });
     const beforeValue = await readback();
+    await progress(`p4.${name}.before_readback`);
     const induced = await dispatchV20(command, payload(), beforeProject.hostRevision, "M3_MARKER_MOTION_P4_FAILURE_INJECTION");
+    await progress(`p4.${name}.dispatch_returned`, { outcome: induced.outcome, errorCategory: induced.error?.category ?? null, errorCode: induced.error?.code ?? null });
     const notes = induced.diagnostics?.notes ?? [];
     const gateActive = induced.outcome === "FAILED"
       && induced.error?.category === "PROOF_INJECTION"
@@ -321,6 +333,7 @@ const main = async () => {
     if (!gateActive && induced.outcome === "APPLIED") classificationHint = "INFRASTRUCTURE_FAILURE";
     const responseValue = project(induced);
     const afterProject = await refresh();
+    await progress(`p4.${name}.after_project`, { hostRevision: afterProject.hostRevision });
     const afterValue = await readback();
     const result = {
       inducedFailure: gateActive,
@@ -332,6 +345,7 @@ const main = async () => {
     };
     result.ok = Object.values(result).every((value) => value === true);
     p4Matrix[name] = result;
+    await progress(`p4.${name}.complete`, result);
     if (!result.ok) throw new Error(`P4 ${name} rollback matrix failed: ${JSON.stringify(result)}`);
   };
 
@@ -346,7 +360,7 @@ const main = async () => {
     broker = new LoopbackCepBroker({
       port: config.port,
       token: config.token,
-      commandTimeoutMs: Math.min(timeoutMs, 30_000),
+      commandTimeoutMs: Math.min(timeoutMs, 8_000),
       commandLeaseMs: 2_000,
       expectedExtensionId: config.extensionId,
       supportedProtocolVersions: [AE_MARKER_MOTION_PROTOCOL_VERSION_V20, AE_ADAPTER_PROTOCOL_VERSION_V11],
@@ -374,6 +388,8 @@ const main = async () => {
     hostRevision = baseline.hostRevision;
     baselineFingerprint = baseline.observed.projectFingerprint;
     baselineItemCount = baseline.project.itemCount;
+    await writeJson(path.join(artifactDir, "warm-baseline.json"), { schemaVersion: 1, prefix, projectFingerprint: baselineFingerprint, itemCount: baselineItemCount, capturedAt: new Date().toISOString() });
+    await progress("baseline.captured", { itemCount: baselineItemCount, projectFingerprint: baselineFingerprint });
     classificationHint = "PRODUCT_FAILURE";
 
     await writeFile(motionSourcePath, createBmp24(48, 48, (x, y) => {
@@ -460,6 +476,7 @@ const main = async () => {
     await setLayerExact(blendCompStable, blendLayerStable, { motionBlur: nativeBlendLayer.motionBlur, frameBlendingType: nativeBlendLayer.frameBlendingType });
     await setCompExact(blendCompStable, nativeBlendComp);
     checks.p3_visual_artifact_emitted = ["p3_motion_no_blur", "p3_motion_shutter_30", "p3_motion_shutter_360", "p3_frame_mix", "p3_pixel_motion"].every((key) => checks[key] === true);
+    await progress("p3.render_set.complete", { ok: checks.p3_visual_artifact_emitted });
 
     const compContrast = {
       ...nativeMotionComp,
@@ -516,10 +533,14 @@ const main = async () => {
     checks.p4_all_mutators = Object.values(p4Matrix).length === 4 && Object.values(p4Matrix).every((entry) => entry.ok === true);
     await setCompExact(motionCompStable, nativeMotionComp);
     await setLayerExact(motionCompStable, motionLayerStable, { motionBlur: nativeMotionLayer.motionBlur, frameBlendingType: nativeMotionLayer.frameBlendingType });
+    await progress("p4.recovery_render.start");
     checks.p4_recovery_artifact = await existsNonEmpty((await renderComp(motionCompStable, recoveryPath)).outputPath);
+    await progress("p4.recovery_render.complete", { ok: checks.p4_recovery_artifact });
   } catch (error) {
     failureError = error instanceof Error ? error.stack ?? error.message : String(error);
+    await progress("proof.error", { message: error instanceof Error ? error.message : String(error) });
   } finally {
+    await progress("cleanup.start", { mutationStarted, cleanupUndoCount });
     let cleanupComplete = false;
     if (client) {
       try {
@@ -539,6 +560,7 @@ const main = async () => {
       try { await broker.stop(); } catch (error) { cleanupErrors.push(error instanceof Error ? error.message : String(error)); }
     }
     if (cleanupErrors.length > 0) cleanupComplete = false;
+    await progress("cleanup.complete", { cleanupComplete, cleanupUndoCount, cleanupErrors });
 
     const p3Structural = checks.accepted_p1_p2 === true
       && checks.panel_v20 === true
