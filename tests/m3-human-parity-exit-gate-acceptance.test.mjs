@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
-import { AE_RUNTIME_CAPABILITY_FAMILIES } from "../.tmp/runtime/apps/desktop-host/src/ae-runtime-capabilities.js";
+import {
+  AE_ACCEPTED_M3_RUNTIME_CAPABILITY_GROUPS,
+  AE_ACCEPTED_M3_RUNTIME_PROTOCOLS,
+} from "../.tmp/runtime/apps/desktop-host/src/ae-runtime-capabilities.js";
 
 const manifestPath = "proofs/diagnostics/m3-human-parity-exit-gate-acceptance.json";
 
@@ -39,12 +42,15 @@ test("M3 human-parity exit gate is pinned to immutable real-AE P3/P5 evidence", 
 });
 
 test("all accepted M3 protocol families remain present when M4 begins", () => {
-  const byProtocol = new Map(AE_RUNTIME_CAPABILITY_FAMILIES.map((family) => [family.protocolVersion, family]));
-  for (const protocol of ["1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "2.0.0"]) {
-    const family = byProtocol.get(protocol);
-    assert.ok(family, `missing accepted M3 protocol family ${protocol}`);
-    assert.equal(family.acceptanceStatus, "ACCEPTED", `${protocol} must remain accepted`);
-  }
+  assert.deepEqual(
+    [...AE_ACCEPTED_M3_RUNTIME_PROTOCOLS],
+    ["1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "2.0.0"],
+  );
+  assert.deepEqual(
+    AE_ACCEPTED_M3_RUNTIME_CAPABILITY_GROUPS.map((group) => group.adapterVersion),
+    [...AE_ACCEPTED_M3_RUNTIME_PROTOCOLS],
+  );
+  assert.ok(AE_ACCEPTED_M3_RUNTIME_CAPABILITY_GROUPS.every((group) => group.capabilities.length > 0));
 });
 
 test("MCP status closes M3 and opens M4 without weakening accepted M3 history", () => {
