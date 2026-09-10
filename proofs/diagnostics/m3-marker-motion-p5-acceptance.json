@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "proofId": "M3_MARKER_MOTION_P5_ACCEPTANCE",
+  "protocolVersion": "2.0.0",
+  "accepted": true,
+  "acceptedAt": "2026-09-10T17:21:35.369Z",
+  "scope": "protocol-2.0 marker, composition motion/shutter, and layer motion/frame-blending transfer envelope",
+  "provenance": {
+    "p1p2": {
+      "acceptedSourceCommit": "454cc19cd7b6c676f9dab15122432ca64d82c7d8",
+      "controlCommit": "16146cb00ebcef2b0a34ec629875dfee53f1ca73",
+      "workflowRunId": 34286914057,
+      "jobId": 102264510880,
+      "artifactId": 10079885025,
+      "artifactName": "m3-marker-motion-p1-p2-proof-34286914057",
+      "artifactDigest": "sha256:75bd92ea1661b0871f73b2368f6bcce217956b311aa73b722fedd2c13b420ade"
+    },
+    "p3": {
+      "acceptedSourceCommit": "59688365d879530bb79efe4746745da720ecbeaa",
+      "controlCommit": "868246515d7cd0fb1c4dcbf84c55be57b470f896",
+      "workflowRunId": 34506818837,
+      "jobId": 102970927495,
+      "artifactId": 10164183740,
+      "artifactName": "m3-marker-motion-p3-visual-supplement-34506818837",
+      "artifactDigest": "sha256:4c7af69295ab5f9274f63e50b7a388a211ee3c75bd3e681629986554148b5809",
+      "proofCliSha256": "a86de953b5b3ccf243f8fdf89dba80af6f361f9d5354b263966b44376bcc221d",
+      "independentReviewAccepted": true
+    },
+    "p4": {
+      "acceptedSourceCommit": "62c21fa868cd19b0bc51530222cb310bc05bb524",
+      "controlCommit": "28c38604f7f78655c854722d874e5bf90ce3b3d1",
+      "workflowRunId": 34508045587,
+      "jobId": 102974965343,
+      "artifactId": 10164628534,
+      "artifactName": "m3-marker-motion-p4-fast-regression-34508045587",
+      "artifactDigest": "sha256:1785d94837928b8b56929e15e42cf8ff2d4e90072438ca9dc4a7a386293e0eb8",
+      "elapsedMs": 15995,
+      "speedTargetMs": 30000
+    },
+    "p5": {
+      "acceptedSourceCommit": "d9bc3e4debb31bdb7c08d35f289ccabab29f3804",
+      "controlCommit": "1bb5dff7970877507f3814a84412d4b374c6a038",
+      "workflowRunId": 34507680568,
+      "jobId": 102973777466,
+      "artifactId": 10164488951,
+      "artifactName": "m3-marker-motion-p5-proof-34507680568",
+      "artifactDigest": "sha256:86dce7ee3438a5bf0c4776de8bba5973f85235b88a801fe586422473d01b21fe",
+      "resultSha256": "e62b3442e6341e3422d6e31855c7d8e360a35ec38f791e29f35d288c8b9933b8",
+      "savedProjectSha256": "a42134fb1ac6c2581cc54fd9dfc01829aabbe853c3fb52b9f2190339c75d99df",
+      "extensionVersion": "0.1.0-dev.10"
+    }
+  },
+  "proofLevels": {
+    "P1_validation_rejection": true,
+    "P2_structural_readback": true,
+    "P3_visual_proof": true,
+    "P4_failure_injection_rollback": true,
+    "P5_save_reopen_reconnect_transfer": true
+  },
+  "transferEvidence": {
+    "initialSessionId": "45f2f7c3-dd25-4bf7-8a9f-3792d7d40af3",
+    "reconnectedSessionId": "45112243-a025-4ae8-b70d-c177b9bfe47f",
+    "sessionsDistinct": true,
+    "reopenedStableIds": true,
+    "savedFingerprintPreserved": true,
+    "compositionMotionExactAfterReconnect": true,
+    "layerMotionExactAfterReconnect": true,
+    "compositionMarkerExactAfterReconnect": true,
+    "layerMarkerExactAfterReconnect": true,
+    "freshCompositionMutationAccepted": true,
+    "freshMarkerMutationAccepted": true,
+    "cleanupComplete": true
+  },
+  "checksAccepted": [
+    "deterministic P1 validation rejection",
+    "exact P2 structural marker/motion/shutter readback",
+    "independently reviewed P3 shutter and frame-blending visual differences",
+    "P4 induced-failure rollback for comp.motion.set, layer.motion.set, marker.set, and marker.remove",
+    "exact P4 response, structural, project-fingerprint, and item-count restoration",
+    "P5 non-empty .aep save and reopen",
+    "distinct authenticated protocol-2.0 CEP reconnect",
+    "saved stable IDs and structural state preserved after reopen",
+    "fresh post-reconnect composition-motion and marker mutations",
+    "proof-owned cleanup with proof gates disarmed"
+  ],
+  "limitations": [
+    "Transfer acceptance is bounded to protocol-2.0 composition/layer markers, composition motion blur/frame blending/shutter sampling, and layer motion blur/frame-blending mode.",
+    "P3 viewer-visible evidence is bound to the retained strong-motion proof CLI hash and artifact; it does not claim every footage or motion configuration.",
+    "ROBUST maturity still requires repeated transfer across varied projects, footage, timing, and motion contexts; this acceptance establishes TRANSFER maturity, not ROBUST."
+  ]
+}
