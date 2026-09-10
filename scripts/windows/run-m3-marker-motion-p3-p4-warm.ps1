@@ -22,6 +22,7 @@ $Stage = "preflight"
 $ExitCode = 0
 $LocationPushed = $false
 $NodeProcess = $null
+$PanelOpenerRuntimePath = $null
 
 function Publish-NodeDiagnostics {
   $Parts = @()
@@ -130,7 +131,9 @@ try {
   # opener in the already-running AE process. If the panel is already open, its
   # reconnect loop can register immediately; this command remains bounded evidence.
   $Stage = "open_editflow_panel"
-  $PanelArguments = @("-r", $PanelOpenerPath)
+  $PanelOpenerRuntimePath = Join-Path $env:TEMP ("EditFlow2-fast-panel-opener-" + [Guid]::NewGuid().ToString("N") + ".jsx")
+  Copy-Item -LiteralPath $PanelOpenerPath -Destination $PanelOpenerRuntimePath -Force
+  $PanelArguments = @("-r", $PanelOpenerRuntimePath)
   [void](Start-Process -FilePath $AfterFxPath -ArgumentList $PanelArguments -PassThru)
 
   $Stage = "run_node_proof"
@@ -207,6 +210,7 @@ try {
   $ExitCode = 1
 } finally {
   Remove-Item Env:EDITFLOW_M3_MARKER_MOTION_P4_PROOF -ErrorAction SilentlyContinue
+  if ($PanelOpenerRuntimePath) { Remove-Item -LiteralPath $PanelOpenerRuntimePath -Force -ErrorAction SilentlyContinue }
   if ($LocationPushed) { Pop-Location }
 }
 
