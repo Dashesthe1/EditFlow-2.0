@@ -9,7 +9,7 @@
   if (typeof previousDispatch !== "function") throw new Error("EditFlow M3 marker-motion layer requires the existing dispatcher.");
 
   var PROTOCOL = "2.0.0";
-  var BUILD = "0.4.0-dev.10.1";
+  var BUILD = "0.4.0-dev.10.2";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var MARKER_SUFFIX = "]]";
   var CAPABILITIES = {
@@ -206,6 +206,18 @@
   function sameLayerMotion(a, b) { return a.motionBlur === b.motionBlur && a.frameBlendingType === b.frameBlendingType; }
   function setLayerMotion(layer, state) { layer.motionBlur = state.motionBlur; layer.frameBlendingType = frameBlendingEnum(state.frameBlendingType); }
 
+  function rollbackReadback(request, payload) {
+    try {
+      if (request.command === "marker.set" || request.command === "marker.remove") return readMarkers(resolveMarkerTarget(payload.target));
+      if (request.command === "comp.motion.set") return readCompMotion(findComp(payload.comp));
+      if (request.command === "layer.motion.set") {
+        var comp = findComp(payload.comp);
+        return readLayerMotion(findLayer(comp, payload.layer));
+      }
+    } catch (_) {}
+    return null;
+  }
+
   function response(request, outcome, error, affected, readbackValue, started, notes) {
     return $.global.EditFlow2_JSON.stringify({ protocolVersion: PROTOCOL, requestId: request.requestId, transactionId: request.transactionId, operationId: request.operationId, capabilityId: request.capabilityId, command: request.command, outcome: outcome, error: error, affectedObjects: affected || [], readback: readbackValue || null, hostProjectRevision: app.project ? app.project.revision : null, diagnostics: { adapterProtocolVersion: PROTOCOL, adapterBuild: BUILD, command: request.command, durationMs: nowMs() - started, notes: notes || [] } });
   }
@@ -216,6 +228,7 @@
     try { request = $.global.EditFlow2_JSON.parse(requestJson); } catch (_) { return previousDispatch(requestJson); }
     if (!request || request.protocolVersion !== PROTOCOL || !CAPABILITIES[request.command]) return previousDispatch(requestJson);
     var started = nowMs(), payload = request.payload || {}, before, after, comp, layer, resolved, affected;
+    var mutationStarted = false;
     try {
       if (request.capabilityId !== CAPABILITIES[request.command]) reject("CAPABILITY_COMMAND_MISMATCH", "capabilityId does not match the marker-motion command.");
 
@@ -244,6 +257,7 @@
               && sameMarkerState(markerState(resolved.property.keyValue(existingIndex)), markerState(requestedMarker))) {
             return response(request, "NO_OP", null, [], before, started, ["Requested marker already matched host state at the target time."]);
           }
+          mutationStarted = true;
           resolved.property.setValueAtTime(payload.time, requestedMarker);
           after = readMarkers(resolved);
           affected = resolved.layer ? [{ kind: "LAYER", stableId: layerStableId(resolved.layer), hostId: hostIdOf(resolved.layer) }] : [{ kind: "COMP", stableId: itemStableId(resolved.comp), hostId: hostIdOf(resolved.comp) }];
@@ -253,6 +267,7 @@
         if (request.command === "marker.remove") {
           resolved = resolveMarkerTarget(payload.target);
           if (!integer(payload.keyIndex) || payload.keyIndex < 1 || payload.keyIndex > resolved.property.numKeys) reject("MARKER_KEY_INDEX_INVALID", "keyIndex must address an existing marker.");
+          mutationStarted = true;
           resolved.property.removeKey(payload.keyIndex);
           after = readMarkers(resolved);
           affected = resolved.layer ? [{ kind: "LAYER", stableId: layerStableId(resolved.layer), hostId: hostIdOf(resolved.layer) }] : [{ kind: "COMP", stableId: itemStableId(resolved.comp), hostId: hostIdOf(resolved.comp) }];
@@ -262,14 +277,20 @@
           comp = findComp(payload.comp); validateCompMotionState(payload.state);
           before = readCompMotion(comp).compMotion.state;
           if (sameCompMotion(before, payload.state)) return response(request, "NO_OP", null, [], readCompMotion(comp), started, ["Requested composition motion state already matched host state."]);
+          mutationStarted = true;
           setCompMotion(comp, payload.state); after = readCompMotion(comp).compMotion.state;
           if (!sameCompMotion(after, payload.state)) { setCompMotion(comp, before); if (!sameCompMotion(readCompMotion(comp).compMotion.state, before)) fail("ROLLBACK", "COMP_MOTION_ROLLBACK_READBACK_MISMATCH", "Composition motion rollback did not restore the prior state."); fail("READBACK", "COMP_MOTION_READBACK_MISMATCH", "Composition motion write did not match readback.", { expected: payload.state, actual: after }); }
+          if (request.readbackProfile === "M3_MARKER_MOTION_P4_FAILURE_INJECTION"
+              && $.getenv("EDITFLOW_M3_MARKER_MOTION_P4_PROOF") === "1") {
+            fail("PROOF_INJECTION", "M3_MARKER_MOTION_P4_INDUCED_FAILURE", "Induced M3 marker-motion P4 failure after verified composition motion mutation.", null);
+          }
           return response(request, "APPLIED", null, [{ kind: "COMP", stableId: itemStableId(comp), hostId: hostIdOf(comp) }], readCompMotion(comp), started, ["Composition motion/frame-blending/shutter state applied and read back."]);
         }
         if (request.command === "layer.motion.set") {
           comp = findComp(payload.comp); layer = findLayer(comp, payload.layer); requireAvLayer(layer); validateLayerMotionState(payload.state);
           before = readLayerMotion(layer).layerMotion.state;
           if (sameLayerMotion(before, payload.state)) return response(request, "NO_OP", null, [], readLayerMotion(layer), started, ["Requested layer motion state already matched host state."]);
+          mutationStarted = true;
           setLayerMotion(layer, payload.state); after = readLayerMotion(layer).layerMotion.state;
           if (!sameLayerMotion(after, payload.state)) { setLayerMotion(layer, before); if (!sameLayerMotion(readLayerMotion(layer).layerMotion.state, before)) fail("ROLLBACK", "LAYER_MOTION_ROLLBACK_READBACK_MISMATCH", "Layer motion rollback did not restore the prior state."); fail("READBACK", "LAYER_MOTION_READBACK_MISMATCH", "Layer motion write did not match readback.", { expected: payload.state, actual: after }); }
           return response(request, "APPLIED", null, [{ kind: "LAYER", stableId: layerStableId(layer), hostId: hostIdOf(layer) }], readLayerMotion(layer), started, ["Layer motion blur/frame-blending state applied and read back."]);
@@ -277,7 +298,15 @@
         reject("COMMAND_NOT_IMPLEMENTED", "Marker-motion command is not implemented.");
       } finally { app.endUndoGroup(); }
     } catch (error) {
-      return response(request, error.editflowCategory === "VALIDATION" || error.editflowCategory === "CONFLICT" || error.editflowCategory === "CAPABILITY_PRECONDITION" ? "REJECTED" : "FAILED", errorPayload(error), [], null, started, ["Protocol 2.0 marker-motion command failed closed."]);
+      if (mutationStarted) {
+        var rollbackError = null;
+        try { app.executeCommand(16); } catch (undoError) { rollbackError = undoError; }
+        if (rollbackError) {
+          return response(request, "FAILED", { category: "ROLLBACK_FAILURE", code: "MARKER_MOTION_ROLLBACK_FAILED", message: asString(rollbackError), details: { mutationError: errorPayload(error) } }, [], null, started, ["Protocol 2.0 marker-motion mutation failed and undo rollback also failed."]);
+        }
+        return response(request, "FAILED", errorPayload(error), [], rollbackReadback(request, payload), started, ["Protocol 2.0 marker-motion mutation failed and was rolled back through the transaction undo boundary."]);
+      }
+      return response(request, error.editflowCategory === "VALIDATION" || error.editflowCategory === "CONFLICT" || error.editflowCategory === "CAPABILITY_PRECONDITION" ? "REJECTED" : "FAILED", errorPayload(error), [], null, started, ["Protocol 2.0 marker-motion command failed closed before host mutation."]);
     }
   };
 
