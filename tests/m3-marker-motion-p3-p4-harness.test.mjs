@@ -2,14 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const cliPath = "apps/desktop-host/src/m3-marker-motion-p3-p4-cli.ts";
+const cliPath = "scripts/m3-marker-motion-p3-p4-fast.mjs";
 const wrapperPath = "scripts/windows/run-m3-marker-motion-p3-p4-warm.ps1";
 const installerPath = "scripts/windows/install-editflow-cep-v20-preview.ps1";
+const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_marker_motion.jsx";
 const bootstrapRequestPath = ".github/ae-proof-request/m3-marker-motion-p3-p4-bootstrap.json";
 const reuseRequestPath = ".github/ae-proof-request/m3-marker-motion-p3-p4.json";
 const workflowPath = ".github/workflows/m3-marker-motion-real-ae-p3-p4.yml";
 
-test("marker-motion P3/P4 CLI emits visual contrasts without self-accepting P3", async () => {
+test("fast marker-motion P3/P4 emits bounded visual contrasts and all-mutator P4 matrix", async () => {
   const source = await readFile(cliPath, "utf8");
   for (const token of [
     "M3_MARKER_MOTION_P1_P2_REAL_AE",
@@ -18,16 +19,33 @@ test("marker-motion P3/P4 CLI emits visual contrasts without self-accepting P3",
     "render.capture",
     "M3_MARKER_MOTION_P4_FAILURE_INJECTION",
     "M3_MARKER_MOTION_P4_INDUCED_FAILURE",
-    "p4_fingerprint_restored",
+    'name: "comp_motion_set"',
+    'name: "layer_motion_set"',
+    'name: "marker_set"',
+    'name: "marker_remove"',
     "client.undoLast",
     "P3_visual_artifact_emitted",
     "P3_visual_proof: false",
     "P4_failure_injection_rollback",
     "P5_save_reopen_reconnect_transfer: false",
+    "speedTargetMs: 30_000",
     "VISUAL_REVIEW_REQUIRED",
-  ]) assert.ok(source.includes(token), `missing P3/P4 proof token ${token}`);
-  assert.match(source, /timeSpanDuration:\s*0\.75/);
+  ]) assert.ok(source.includes(token), `missing fast P3/P4 proof token ${token}`);
+  assert.match(source, /timeSpanDuration:\s*0\.5/);
   assert.match(source, /width:\s*320,\s*height:\s*180/);
+  assert.match(source, /duration:\s*0\.5,\s*frameRate:\s*24/);
+});
+
+test("protocol-2.0 production host gates failure injection after all four mutator families and verifies rollback readback", async () => {
+  const source = await readFile(hostPath, "utf8");
+  const injectionRefs = source.match(/maybeInjectP4Failure\(request\)/g) ?? [];
+  assert.ok(injectionRefs.length >= 5, "expected one helper declaration plus four mutator injection sites");
+  assert.match(source, /sameMarkerReadback/);
+  assert.match(source, /rollbackMatches/);
+  assert.match(source, /MARKER_ROLLBACK_READBACK_MISMATCH/);
+  assert.match(source, /COMP_MOTION_ROLLBACK_READBACK_MISMATCH/);
+  assert.match(source, /LAYER_MOTION_ROLLBACK_READBACK_MISMATCH/);
+  assert.match(source, /app\.executeCommand\(16\)/);
 });
 
 test("accelerated marker-motion requests separate one-time bootstrap from steady-state reuse", async () => {
@@ -42,12 +60,13 @@ test("accelerated marker-motion requests separate one-time bootstrap from steady
   assert.equal(reuse.artifactDir, "proofs/artifacts/m3-marker-motion-p3-p4");
 });
 
-test("warm wrapper never owns AE process shutdown", async () => {
+test("warm wrapper never owns AE shutdown and requires four-surface P4 success", async () => {
   const source = await readFile(wrapperPath, "utf8");
   assert.match(source, /EDITFLOW_AE_WARM_SESSION/);
   assert.match(source, /EDITFLOW_M3_MARKER_MOTION_P4_PROOF/);
   assert.match(source, /npm run build:test-runtime/);
-  assert.match(source, /m3-marker-motion-p3-p4-cli\.js/);
+  assert.match(source, /m3-marker-motion-p3-p4-fast\.mjs/);
+  for (const surface of ["comp_motion_set", "layer_motion_set", "marker_set", "marker_remove"]) assert.ok(source.includes(surface));
   assert.doesNotMatch(source, /Stop-Process\s+.*AfterFX/i);
   assert.doesNotMatch(source, /taskkill/i);
 });
@@ -61,13 +80,14 @@ test("protocol-2.0 preview installer derives from accepted 1.9 and preserves aut
   assert.doesNotMatch(source, /RotateToken/);
 });
 
-test("real-AE marker-motion P3/P4 workflow uses the shared accelerated lane and pinned P1/P2", async () => {
+test("real-AE workflow seeds the P4 gate before bootstrap and uses the shared accelerated lane", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /editflow-accelerated-real-ae-workstation/);
   assert.match(source, /34286914057/);
   assert.match(source, /m3-marker-motion-p1-p2-proof-/);
   assert.match(source, /install-editflow-cep-v20-preview\.ps1/);
   assert.match(source, /invoke-editflow-ae-proof\.ps1/);
+  assert.match(source, /EDITFLOW_M3_MARKER_MOTION_P4_PROOF:\s*"1"/);
   assert.match(source, /BOOTSTRAP/);
   assert.match(source, /REUSE/);
 });
