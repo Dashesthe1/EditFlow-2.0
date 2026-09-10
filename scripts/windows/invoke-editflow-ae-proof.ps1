@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $SupervisorPath = Join-Path $RepoRoot "scripts\windows\ae-host-supervisor.ps1"
+$ReadinessProbeTemplatePath = Join-Path $RepoRoot "scripts\windows\ae-host-readiness-probe-template.jsx"
 $AllowedLifecycles = @("REUSE_AE", "REOPEN_PROJECT", "RECONNECT_BROKER", "RESTART_AE", "CLEAN_BOOT")
 $SupervisorProcess = $null
 $StartedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -22,6 +23,7 @@ $ArtifactPath = $null
 $OrchestrationResultPath = $null
 $ProofResultPath = $null
 $Request = $null
+$LastHealthEvidence = $null
 
 function ConvertTo-SafeRelativePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
@@ -45,13 +47,79 @@ function Get-TargetAfterFxProcesses {
   return @($Matches)
 }
 
+function Test-AfterFxDirectReadiness {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExpectedPath,
+    [Parameter(Mandatory = $true)]$Process,
+    [int]$TimeoutMilliseconds = 4000
+  )
+
+  if (-not $ArtifactPath -or -not (Test-Path $ReadinessProbeTemplatePath -PathType Leaf)) { return $false }
+  try {
+    $Process.Refresh()
+    if (-not $Process.Responding -or $Process.MainWindowHandle -eq 0) { return $false }
+  } catch { return $false }
+
+  $ProbeId = [Guid]::NewGuid().ToString("N")
+  $ProbeScriptPath = Join-Path $ArtifactPath "ae-readiness-$ProbeId.jsx"
+  $ProbeResultPath = Join-Path $ArtifactPath "ae-readiness-$ProbeId.txt"
+  try {
+    $Template = [System.IO.File]::ReadAllText($ReadinessProbeTemplatePath)
+    $ResultForJs = $ProbeResultPath.Replace('\', '/').Replace('"', '\"')
+    $ProbeSource = $Template.Replace("__EDITFLOW_AE_PROBE_RESULT__", $ResultForJs)
+    [System.IO.File]::WriteAllText($ProbeScriptPath, $ProbeSource, (New-Object System.Text.UTF8Encoding($false)))
+
+    $ProbeArguments = '-r "' + $ProbeScriptPath + '"'
+    [void](Start-Process -FilePath $ExpectedPath -ArgumentList $ProbeArguments -WindowStyle Hidden -PassThru)
+
+    $Deadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    do {
+      if (Test-Path $ProbeResultPath -PathType Leaf) {
+        $Text = [System.IO.File]::ReadAllText($ProbeResultPath).Trim()
+        if ($Text -match '^EDITFLOW_AE_READINESS_V1\|1\|([^|]*)\|([^|]*)\|1\|(-?\d+)$') {
+          $script:LastHealthEvidence = [ordered]@{
+            mode = "DIRECT_AE_SCRIPT"
+            pid = [int]$Process.Id
+            appName = [string]$Matches[1]
+            appVersion = [string]$Matches[2]
+            itemCount = [int]$Matches[3]
+            mainWindowTitle = [string]$Process.MainWindowTitle
+          }
+          return $true
+        }
+        return $false
+      }
+      Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $Deadline)
+    return $false
+  } catch {
+    return $false
+  } finally {
+    Remove-Item $ProbeScriptPath -Force -ErrorAction SilentlyContinue
+    Remove-Item $ProbeResultPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Get-HealthyTargetAfterFx {
   param([Parameter(Mandatory = $true)][string]$ExpectedPath)
   $Healthy = @()
   foreach ($Process in @(Get-TargetAfterFxProcesses -ExpectedPath $ExpectedPath)) {
     try {
       $Process.Refresh()
-      if ($Process.Responding -and $Process.MainWindowHandle -ne 0 -and $Process.MainWindowTitle -like "Adobe After Effects*") {
+      if (-not $Process.Responding -or $Process.MainWindowHandle -eq 0) { continue }
+      if ($Process.MainWindowTitle -like "Adobe After Effects*") {
+        $script:LastHealthEvidence = [ordered]@{
+          mode = "NORMAL_MAIN_WINDOW"
+          pid = [int]$Process.Id
+          appName = "Adobe After Effects"
+          appVersion = $null
+          itemCount = $null
+          mainWindowTitle = [string]$Process.MainWindowTitle
+        }
+        $Healthy += $Process
+        continue
+      }
+      if (Test-AfterFxDirectReadiness -ExpectedPath $ExpectedPath -Process $Process) {
         $Healthy += $Process
       }
     } catch {}
@@ -68,7 +136,7 @@ function Wait-ForHealthyAfterFx {
   do {
     $Healthy = @(Get-HealthyTargetAfterFx -ExpectedPath $ExpectedPath)
     if ($Healthy.Count -eq 1) { return $Healthy[0] }
-    if ($Healthy.Count -gt 1) { throw "More than one healthy target After Effects project window is present; refusing ambiguous automation." }
+    if ($Healthy.Count -gt 1) { throw "More than one verified target After Effects project host is present; refusing ambiguous automation." }
     Start-Sleep -Milliseconds 250
   } while ((Get-Date) -lt $Deadline)
   return $null
@@ -139,6 +207,7 @@ function Write-OrchestrationResult {
     aeLaunched = $AeLaunched
     aeRestarted = $AeRestarted
     aePid = $TargetAePid
+    healthEvidence = $LastHealthEvidence
     proofExitCode = $ProofExitCode
     retryCount = $RetryCount
     proofResultPath = if ($ProofResultPath) { $ProofResultPath.Substring($RepoRoot.Length).TrimStart('\') -replace '\\','/' } else { $null }
@@ -193,6 +262,7 @@ try {
   if (-not [Environment]::UserInteractive) { throw "The accelerated AE proof harness requires an interactive Windows desktop session." }
   if (-not (Test-Path $AfterFxPath -PathType Leaf)) { throw "AfterFX.exe was not found at: $AfterFxPath" }
   if (-not (Test-Path $SupervisorPath -PathType Leaf)) { throw "AE host supervisor is missing: $SupervisorPath" }
+  if (-not (Test-Path $ReadinessProbeTemplatePath -PathType Leaf)) { throw "AE host readiness probe template is missing: $ReadinessProbeTemplatePath" }
   if ($StartupTimeoutSeconds -lt 20 -or $StartupTimeoutSeconds -gt 180) { throw "StartupTimeoutSeconds must be between 20 and 180." }
 
   $ResolvedRequestPath = (Resolve-Path $RequestPath).Path
@@ -252,8 +322,8 @@ try {
 
   $Target = Wait-ForHealthyAfterFx -ExpectedPath $AfterFxPath -TimeoutSeconds $StartupTimeoutSeconds
   if (-not $Target) {
-    if ($AeReused) { throw "Existing target After Effects session did not become healthy; REUSE_AE refuses silent restart escalation." }
-    throw "After Effects did not expose one healthy project window before the startup timeout."
+    if ($AeReused) { throw "Existing target After Effects session did not become host-verified healthy; REUSE_AE refuses silent restart escalation." }
+    throw "After Effects did not become host-verified ready before the startup timeout."
   }
   $TargetAePid = [int]$Target.Id
 
@@ -269,11 +339,11 @@ try {
       $HealthyAfter = @(Get-HealthyTargetAfterFx -ExpectedPath $AfterFxPath)
       if ($HealthyAfter.Count -ne 1) {
         $FinalClassification = "PRODUCT_FAILURE"
-        $FinalMessage = "Proof returned PASS but did not preserve exactly one healthy warm After Effects session."
+        $FinalMessage = "Proof returned PASS but did not preserve exactly one host-verified warm After Effects session."
       } else {
         $TargetAePid = [int]$HealthyAfter[0].Id
         $FinalClassification = "PASS"
-        $FinalMessage = "Proof passed and the warm After Effects session remains healthy."
+        $FinalMessage = "Proof passed and the host-verified warm After Effects session remains healthy."
       }
       break
     }
@@ -304,7 +374,7 @@ try {
     if ($Attempt -lt $MaxAttempts -and $RetrySafe) {
       $WarmHealthy = @(Get-HealthyTargetAfterFx -ExpectedPath $AfterFxPath)
       if ($WarmHealthy.Count -ne 1) {
-        $FinalMessage = "Infrastructure retry refused because the declared lifecycle no longer has one healthy AE session."
+        $FinalMessage = "Infrastructure retry refused because the declared lifecycle no longer has one host-verified AE session."
         break
       }
       $RetryCount += 1
