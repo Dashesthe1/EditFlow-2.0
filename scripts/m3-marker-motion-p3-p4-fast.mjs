@@ -137,6 +137,7 @@ const main = async () => {
   const configPath = required("--config");
   const resultPath = required("--result");
   const acceptedPath = required("--accepted-p1-p2");
+  const brokerReadyPath = arg("--broker-ready");
   const timeoutMs = Number(arg("--timeout-ms") ?? "90000");
   if (!Number.isFinite(timeoutMs) || timeoutMs < 20_000) throw new Error("--timeout-ms must be at least 20000.");
 
@@ -351,7 +352,15 @@ const main = async () => {
       supportedProtocolVersions: [AE_MARKER_MOTION_PROTOCOL_VERSION_V20, AE_ADAPTER_PROTOCOL_VERSION_V11],
     });
     if (await broker.start() !== config.port) throw new Error("CEP broker bound an unexpected port.");
-    panel = await broker.waitForPanel(timeoutMs);
+    if (brokerReadyPath) {
+      await writeJson(brokerReadyPath, {
+        schemaVersion: 1,
+        state: "LISTENING",
+        port: config.port,
+        readyAt: new Date().toISOString(),
+      });
+    }
+    panel = await broker.waitForPanel(Math.min(timeoutMs, 10_000));
     checks.panel_v20 = panel.protocolVersion === AE_MARKER_MOTION_PROTOCOL_VERSION_V20;
     checks.panel_compat_v11 = panel.supportedProtocolVersions.includes(AE_ADAPTER_PROTOCOL_VERSION_V11);
     if (!checks.panel_v20 || !checks.panel_compat_v11) throw new Error("Protocol 2.0 panel negotiation failed.");
