@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const cliPath = "scripts/m3-marker-motion-p3-p4-fast.mjs";
 const wrapperPath = "scripts/windows/run-m3-marker-motion-p3-p4-warm.ps1";
+const panelOpenerPath = "scripts/windows/open-editflow2-panel.jsx";
 const installerPath = "scripts/windows/install-editflow-cep-v20-preview.ps1";
 const hostPath = "packages/adapters/ae-cep/host/editflow_host_m3_marker_motion.jsx";
 const bootstrapRequestPath = ".github/ae-proof-request/m3-marker-motion-p3-p4-bootstrap.json";
@@ -60,13 +61,20 @@ test("accelerated marker-motion requests separate one-time bootstrap from steady
   assert.equal(reuse.artifactDir, "proofs/artifacts/m3-marker-motion-p3-p4");
 });
 
-test("warm wrapper never owns AE shutdown and requires four-surface P4 success", async () => {
+test("warm wrapper never owns AE shutdown and opens only the declared EditFlow panel", async () => {
   const source = await readFile(wrapperPath, "utf8");
+  const opener = await readFile(panelOpenerPath, "utf8");
   assert.match(source, /EDITFLOW_AE_WARM_SESSION/);
   assert.match(source, /EDITFLOW_M3_MARKER_MOTION_P4_PROOF/);
   assert.match(source, /npm run build:test-runtime/);
   assert.match(source, /m3-marker-motion-p3-p4-fast\.mjs/);
+  assert.match(source, /open-editflow2-panel\.jsx/);
+  assert.match(source, /-r \\"|'-r "/);
   for (const surface of ["comp_motion_set", "layer_motion_set", "marker_set", "marker_remove"]) assert.ok(source.includes(surface));
+  assert.match(opener, /EditFlow 2\.0 Bridge/);
+  assert.match(opener, /app\.findMenuCommandId/);
+  assert.match(opener, /app\.executeCommand/);
+  assert.doesNotMatch(opener, /SendKeys|SetCursorPos|mouse_event|Invoke-Expression/);
   assert.doesNotMatch(source, /Stop-Process\s+.*AfterFX/i);
   assert.doesNotMatch(source, /taskkill/i);
 });
