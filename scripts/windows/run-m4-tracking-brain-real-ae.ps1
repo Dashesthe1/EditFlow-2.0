@@ -10,6 +10,7 @@ $TrackingRunner = Join-Path $PSScriptRoot "run-m4-tracking-real-ae.ps1"
 $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m4-point-tracking-real-ae"
 $TrackingResult = Join-Path $ArtifactDir "result.json"
 $SemanticResult = Join-Path $ArtifactDir "semantic-decision.json"
+$IntegrityResult = Join-Path $ArtifactDir "evidence-integrity.json"
 
 if (-not (Test-Path $TrackingRunner -PathType Leaf)) { throw "M4 tracking runner is missing: $TrackingRunner" }
 $Before = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Where-Object { $_.Responding -and $_.MainWindowHandle -ne 0 })
@@ -39,6 +40,21 @@ if (-not $Semantic.ok -or $Semantic.classification -ne "PASS_DECISION_ONLY_FAIL_
   throw "M4 semantic/Editor Brain result did not satisfy the fail-closed decision gate."
 }
 
+$IntegrityCli = Join-Path $RepoRoot ".tmp\runtime\apps\desktop-host\src\m4-tracking-evidence-integrity-cli.js"
+if (-not (Test-Path $IntegrityCli -PathType Leaf)) { throw "Compiled M4 evidence-integrity CLI is missing: $IntegrityCli" }
+Remove-Item $IntegrityResult -Force -ErrorAction SilentlyContinue
+& node $IntegrityCli --artifact-root $ArtifactDir --tracking-result $TrackingResult --semantic-result $SemanticResult --result $IntegrityResult
+if ($LASTEXITCODE -ne 0) {
+  if (Test-Path $IntegrityResult -PathType Leaf) { Get-Content $IntegrityResult -Raw | Write-Host }
+  throw "M4 evidence-integrity proof failed."
+}
+if (-not (Test-Path $IntegrityResult -PathType Leaf)) { throw "M4 evidence-integrity result is missing: $IntegrityResult" }
+$Integrity = Get-Content $IntegrityResult -Raw | ConvertFrom-Json
+if (-not $Integrity.ok -or $Integrity.classification -ne "PASS" -or $Integrity.algorithm -ne "SHA-256" -or -not ($Integrity.evidenceSetSha256 -is [string]) -or $Integrity.evidenceSetSha256.Length -ne 64) {
+  Get-Content $IntegrityResult -Raw | Write-Host
+  throw "M4 retained evidence did not satisfy the SHA-256 integrity gate."
+}
+
 $After = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Where-Object { $_.Responding -and $_.MainWindowHandle -ne 0 })
 if ($After.Count -ne 1 -or [int]$After[0].Id -ne $InitialPid) { throw "After Effects PID changed during the tracking-to-brain REUSE_AE proof." }
 
@@ -46,3 +62,5 @@ Write-Host "M4 tracking -> Trusted Editor State -> Editor Brain decision-only pr
 Write-Host ("After Effects PID preserved: " + $InitialPid)
 Write-Host ("Tracking artifact: " + $TrackingResult)
 Write-Host ("Semantic/brain artifact: " + $SemanticResult)
+Write-Host ("Evidence integrity artifact: " + $IntegrityResult)
+Write-Host ("Evidence set SHA-256: " + $Integrity.evidenceSetSha256)
