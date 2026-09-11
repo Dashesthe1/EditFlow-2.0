@@ -92,7 +92,7 @@ test("continuous fast loop executes a reflex horizon without observation between
   assert.deepEqual(requests.map((request) => request.expectedHostProjectRevision), [10, 11, 12]);
 });
 
-test("current desktop v1.1 session installs the continuous reflex loop as the default execution runner", async () => {
+test("current desktop v1.1 session installs the editor brain over the continuous reflex loop", async () => {
   const state = baselineState();
   let reads = 0;
   const adapter = {

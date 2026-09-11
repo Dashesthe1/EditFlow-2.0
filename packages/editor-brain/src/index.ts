@@ -64,6 +64,10 @@ export interface EditorDecisionV0 {
   readonly escalationReason: string | null;
 }
 
+export interface EditorBrainPolicyV0 {
+  decide(state: EditorStateV0): EditorDecisionV0;
+}
+
 export interface EditorBrainOptionsV0 {
   readonly minConfidence?: number;
   readonly decisionBudgetMs?: number;
@@ -131,7 +135,7 @@ export const compileEditorStyleProfileV0 = (
     evidenceIds: [...new Set(evidence.map((item) => item.evidenceId))],
   };
 };
-export class EditorBrainV0 {
+export class EditorBrainV0 implements EditorBrainPolicyV0 {
   readonly minConfidence: number;
   readonly decisionBudgetMs: number;
   readonly clock: () => number;
@@ -267,11 +271,11 @@ export interface EditorReflexRunnerV0 {
   run(goal: ReflexGoal, transactionId?: string): Promise<ContinuousFastLoopResult>;
 }
 export class EditorBrainRuntimeV0 {
-  readonly brain: EditorBrainV0;
+  readonly brain: EditorBrainPolicyV0;
   readonly runner: EditorReflexRunnerV0;
   readonly clock: () => number;
 
-  constructor(brain: EditorBrainV0, runner: EditorReflexRunnerV0, clock: () => number = () => performance.now()) {
+  constructor(brain: EditorBrainPolicyV0, runner: EditorReflexRunnerV0, clock: () => number = () => performance.now()) {
     this.brain = brain;
     this.runner = runner;
     this.clock = clock;
