@@ -14,11 +14,12 @@ test("M4 real-AE workflow is manual, serialized, and uses the persistent warm AE
   assert.match(source, /No git clean was executed/);
 });
 
-test("M4 real-AE workflow enforces tracking, project safety, semantic readback, and fail-closed Brain evidence", async () => {
+test("M4 real-AE workflow enforces tracking, project safety, semantic readback, Brain refusal, and SHA-256 integrity", async () => {
   const source = await readFile(workflowPath, "utf8");
   assert.match(source, /run-m4-tracking-brain-real-ae\.ps1/);
   assert.match(source, /result\.json/);
   assert.match(source, /semantic-decision\.json/);
+  assert.match(source, /evidence-integrity\.json/);
   assert.match(source, /fixedTrackingProfile/);
   assert.match(source, /exactFrameManifest/);
   assert.match(source, /stableMotion/);
@@ -29,6 +30,9 @@ test("M4 real-AE workflow enforces tracking, project safety, semantic readback, 
   assert.match(source, /pointTrackingCapabilityStillUnavailable/);
   assert.match(source, /brainFailClosed/);
   assert.match(source, /noAeMutationExecuted/);
+  assert.match(source, /\$integrity\.algorithm -ne "SHA-256"/);
+  assert.match(source, /\$integrity\.evidenceSetSha256\.Length -ne 64/);
+  assert.match(source, /\$integrity\.artifactCount -lt 7/);
 });
 
 test("M4 real-AE workflow verifies the same warm AE PID and contains no host shutdown command", async () => {
