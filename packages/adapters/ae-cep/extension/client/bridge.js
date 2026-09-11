@@ -9,7 +9,7 @@
   var sessionId = null;
   var negotiatedProtocolVersion = null;
   var connectionGeneration = 0;
-  var pollDelayMs = 125;
+  var pollDelayMs = 16;
   var reconnectDelayMs = 750;
   var livenessDelayMs = 500;
   var connectInFlight = false;
