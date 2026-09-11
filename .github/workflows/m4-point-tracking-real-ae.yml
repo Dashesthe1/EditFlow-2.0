@@ -89,7 +89,7 @@ jobs:
         run: |
           $dir = $env:EDITFLOW_M4_ARTIFACT_DIR
           if ($dir -and (Test-Path $dir -PathType Container)) {
-            foreach ($name in @("result.json", "semantic-decision.json", "m4-tracking-proof.tif.editflow-render.json", "m4-tracking-proof.tif.editflow-render.json.frames.json")) {
+            foreach ($name in @("result.json", "semantic-decision.json", "evidence-integrity.json", "m4-tracking-proof.tif.editflow-render.json", "m4-tracking-proof.tif.editflow-render.json.frames.json")) {
               $file = Join-Path $dir $name
               if (Test-Path $file -PathType Leaf) {
                 Write-Host "--- $name ---"
@@ -113,7 +113,7 @@ jobs:
           if ([string]$targets[0].Id -ne [string]$env:EDITFLOW_M4_AE_PID) { throw "Warm AE PID changed during M4 proof ($env:EDITFLOW_M4_AE_PID -> $($targets[0].Id))." }
           Write-Host "Warm AE PID preserved: $env:EDITFLOW_M4_AE_PID"
 
-      - name: Upload M4 tracking and semantic evidence
+      - name: Upload M4 tracking semantic and integrity evidence
         if: always() && env.EDITFLOW_M4_ARTIFACT_DIR != ''
         uses: actions/upload-artifact@v4
         with:
@@ -128,12 +128,16 @@ jobs:
           if ("${{ steps.proof.outcome }}" -ne "success") { throw "M4 warm proof failed; inspect retained diagnostics/artifact." }
           $trackingPath = Join-Path $env:EDITFLOW_M4_ARTIFACT_DIR "result.json"
           $semanticPath = Join-Path $env:EDITFLOW_M4_ARTIFACT_DIR "semantic-decision.json"
-          if (-not (Test-Path $trackingPath -PathType Leaf) -or -not (Test-Path $semanticPath -PathType Leaf)) { throw "M4 proof did not retain both tracking and semantic result files." }
+          $integrityPath = Join-Path $env:EDITFLOW_M4_ARTIFACT_DIR "evidence-integrity.json"
+          if (-not (Test-Path $trackingPath -PathType Leaf) -or -not (Test-Path $semanticPath -PathType Leaf) -or -not (Test-Path $integrityPath -PathType Leaf)) { throw "M4 proof did not retain tracking, semantic, and integrity result files." }
           $tracking = Get-Content $trackingPath -Raw | ConvertFrom-Json
           $semantic = Get-Content $semanticPath -Raw | ConvertFrom-Json
+          $integrity = Get-Content $integrityPath -Raw | ConvertFrom-Json
           if ($tracking.ok -ne $true -or $tracking.classification -ne "PASS") { throw "M4 authenticated point tracking did not pass." }
           if ($tracking.checks.fixedTrackingProfile -ne $true -or $tracking.checks.exactFrameManifest -ne $true -or $tracking.checks.stableMotion -ne $true -or $tracking.checks.projectStructureUnchanged -ne $true) { throw "M4 tracking result missed a required exact evidence/safety check." }
           if ($tracking.safety.renderQueueOwnedAndRemoved -ne $true -or $tracking.safety.compositionMutationPerformed -ne $false -or $tracking.safety.projectSavePerformed -ne $false) { throw "M4 tracking result violated its no-project-mutation safety contract." }
           if ($semantic.ok -ne $true -or $semantic.classification -ne "PASS_DECISION_ONLY_FAIL_CLOSED") { throw "M4 semantic/Brain decision-only gate did not pass." }
           if ($semantic.checks.semanticReadbackPassed -ne $true -or $semantic.checks.identityNotInvented -ne $true -or $semantic.checks.extentNotInvented -ne $true -or $semantic.checks.pointTrackingCapabilityStillUnavailable -ne $true -or $semantic.checks.brainFailClosed -ne $true -or $semantic.checks.noAeMutationExecuted -ne $true) { throw "M4 semantic/Brain result missed a required fail-closed check." }
-          Write-Host "M4 P1/P2 authenticated tracking plus decision-only Brain gate passed."
+          if ($integrity.ok -ne $true -or $integrity.classification -ne "PASS" -or $integrity.algorithm -ne "SHA-256" -or -not ($integrity.evidenceSetSha256 -is [string]) -or $integrity.evidenceSetSha256.Length -ne 64) { throw "M4 evidence integrity result did not pass." }
+          if ([int]$integrity.artifactCount -lt 7) { throw "M4 evidence integrity manifest omitted required retained artifacts." }
+          Write-Host ("M4 P1/P2 authenticated tracking plus decision-only Brain and evidence-integrity gates passed. Evidence set SHA-256: " + $integrity.evidenceSetSha256)
