@@ -2,13 +2,14 @@
   "proof_id": "M4_POINT_TRACK_REAL_AE_V1",
   "status": "PENDING_LIVE_ACCEPTANCE",
   "milestone_version": "0.5.0-dev",
-  "code_readiness_commit": "eee89b75a480a1ca9ef74b64517ce9db1b174055",
+  "code_readiness_commit": "912116e405c57e82f4a3bf5cb357017288c0ed4d",
   "code_readiness_ci": {
-    "run_id": 34648650513,
+    "run_id": 34649377713,
     "verdict": "PASS",
     "schema_validation": true,
     "typecheck": true,
-    "test_suite": true
+    "test_suite": true,
+    "semantic_runtime_fixture": true
   },
   "target_environment": {
     "os": "Windows",
@@ -49,6 +50,28 @@
         "render_queue_owned_and_removed",
         "same_after_effects_pid"
       ]
+    },
+    "semantic_editor_brain_decision": {
+      "implemented": true,
+      "ci_fixture_verdict": "PASS",
+      "parent_live_result_required": true,
+      "retained_live_result": false,
+      "required_result_file": "semantic-decision.json",
+      "expected_classification": "PASS_DECISION_ONLY_FAIL_CLOSED",
+      "required_checks": [
+        "semantic_readback_passed",
+        "identity_not_invented",
+        "extent_not_invented",
+        "point_tracking_capability_still_unavailable",
+        "brain_fail_closed",
+        "no_ae_mutation_executed"
+      ],
+      "expected_brain_escalation": "LOW_OBJECT_CONFIDENCE",
+      "notes": [
+        "Point tracking alone is not treated as person, hero, face, or whole-object identity evidence.",
+        "The decision-only stage preserves measured center/motion/track confidence while identity and geometry confidence remain zero.",
+        "Editor Brain v1 must refuse an object-aware construction until independent identity/geometry evidence exists."
+      ]
     }
   },
   "accepted_proof_levels": {
@@ -66,5 +89,5 @@
       "production_route_available": false
     }
   ],
-  "closure_rule": "Code readiness, repository CI, and a direct AE pixel experiment do not authorize production capability promotion. ae.tracking.point remains fail-closed until retained authenticated live-AE evidence satisfies the declared gate; formal visual, recovery, and transfer maturity must still be proven separately."
+  "closure_rule": "Code readiness, repository CI, a direct AE pixel experiment, and a synthetic track-to-Brain decision fixture do not authorize production capability promotion. ae.tracking.point remains fail-closed until retained authenticated live-AE evidence satisfies the declared gate; formal visual, recovery, and transfer maturity must still be proven separately."
 }
