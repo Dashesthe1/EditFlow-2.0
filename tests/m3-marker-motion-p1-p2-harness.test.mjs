@@ -12,7 +12,7 @@ test("protocol 2.0 is compiled into the authenticated broker without becoming it
   const source = await readFile(broker, "utf8");
   assert.match(source, /AE_MARKER_MOTION_PROTOCOL_VERSION_V20/);
   assert.match(source, /AeMarkerMotionTransportV20/);
-  assert.match(source, /COMPILED_PROTOCOLS = \[AE_MARKER_MOTION_PROTOCOL_VERSION_V20/);
+  assert.match(source, /COMPILED_PROTOCOLS = \[(?:AE_POINT_TRACKING_PROTOCOL_VERSION_V21, )?AE_MARKER_MOTION_PROTOCOL_VERSION_V20/);
   assert.match(source, /const requested = input \?\? \[AE_ADAPTER_PROTOCOL_VERSION_V11\]/);
   assert.match(source, /dispatch\(request: AeMarkerMotionRequestV20\): Promise<AeMarkerMotionResponseV20>/);
 });

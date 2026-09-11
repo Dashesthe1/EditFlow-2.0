@@ -62,6 +62,12 @@ import {
   type AeMarkerMotionResponseV20,
   type AeMarkerMotionTransportV20,
 } from "../../../packages/adapters/ae-cep/src/protocol-v2_0.js";
+import {
+  AE_POINT_TRACKING_PROTOCOL_VERSION_V21,
+  type AePointTrackingRequestV21,
+  type AePointTrackingResponseV21,
+  type AePointTrackingTransportV21,
+} from "../../../packages/adapters/ae-cep/src/protocol-v2_1.js";
 
 export interface LoopbackCepBrokerOptions {
   readonly port: number;
@@ -82,8 +88,8 @@ export interface LoopbackCepPanelSession {
   readonly lastSeenAt: string;
 }
 
-type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14 | AeNullRigRequestV15 | AeLayerControlsRequestV16 | AeTemporalInterpolationRequestV17 | AeTemporalEaseRequestV18 | AeSpatialGraphRequestV19 | AeMarkerMotionRequestV20;
-type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14 | AeNullRigResponseV15 | AeLayerControlsResponseV16 | AeTemporalInterpolationResponseV17 | AeTemporalEaseResponseV18 | AeSpatialGraphResponseV19 | AeMarkerMotionResponseV20;
+type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14 | AeNullRigRequestV15 | AeLayerControlsRequestV16 | AeTemporalInterpolationRequestV17 | AeTemporalEaseRequestV18 | AeSpatialGraphRequestV19 | AeMarkerMotionRequestV20 | AePointTrackingRequestV21;
+type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14 | AeNullRigResponseV15 | AeLayerControlsResponseV16 | AeTemporalInterpolationResponseV17 | AeTemporalEaseResponseV18 | AeSpatialGraphResponseV19 | AeMarkerMotionResponseV20 | AePointTrackingResponseV21;
 
 interface PendingCommand {
   readonly request: BrokerRequest;
@@ -94,7 +100,7 @@ interface PendingCommand {
   leasedSessionId: string | null;
 }
 
-const COMPILED_PROTOCOLS = [AE_MARKER_MOTION_PROTOCOL_VERSION_V20, AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18, AE_TEMPORAL_INTERPOLATION_PROTOCOL_VERSION_V17, AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16, AE_NULL_RIG_PROTOCOL_VERSION_V15, AE_PARENTING_PROTOCOL_VERSION_V14, AE_COMPOSITE_PROTOCOL_VERSION_V13, AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
+const COMPILED_PROTOCOLS = [AE_POINT_TRACKING_PROTOCOL_VERSION_V21, AE_MARKER_MOTION_PROTOCOL_VERSION_V20, AE_SPATIAL_GRAPH_PROTOCOL_VERSION_V19, AE_TEMPORAL_EASE_PROTOCOL_VERSION_V18, AE_TEMPORAL_INTERPOLATION_PROTOCOL_VERSION_V17, AE_LAYER_CONTROLS_PROTOCOL_VERSION_V16, AE_NULL_RIG_PROTOCOL_VERSION_V15, AE_PARENTING_PROTOCOL_VERSION_V14, AE_COMPOSITE_PROTOCOL_VERSION_V13, AE_MASK_PROTOCOL_VERSION_V12, AE_ADAPTER_PROTOCOL_VERSION_V11] as const;
 const compiledProtocolSet = new Set<string>(COMPILED_PROTOCOLS);
 
 const jsonResponse = (res: ServerResponse, status: number, value: unknown): void => {
@@ -157,7 +163,7 @@ const normalizeBrokerProtocols = (input: readonly string[] | undefined): string[
 const negotiateProtocol = (offered: readonly string[], supported: readonly string[]): string | null =>
   supported.find((protocol) => offered.includes(protocol)) ?? null;
 
-export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12, AeCompositeTransportV13, AeParentingTransportV14, AeNullRigTransportV15, AeLayerControlsTransportV16, AeTemporalInterpolationTransportV17, AeTemporalEaseTransportV18, AeSpatialGraphTransportV19, AeMarkerMotionTransportV20 {
+export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12, AeCompositeTransportV13, AeParentingTransportV14, AeNullRigTransportV15, AeLayerControlsTransportV16, AeTemporalInterpolationTransportV17, AeTemporalEaseTransportV18, AeSpatialGraphTransportV19, AeMarkerMotionTransportV20, AePointTrackingTransportV21 {
   readonly options: Required<LoopbackCepBrokerOptions>;
   #server: Server | null = null;
   #port = 0;
@@ -246,6 +252,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
   async dispatch(request: AeTemporalEaseRequestV18): Promise<AeTemporalEaseResponseV18>;
   async dispatch(request: AeSpatialGraphRequestV19): Promise<AeSpatialGraphResponseV19>;
   async dispatch(request: AeMarkerMotionRequestV20): Promise<AeMarkerMotionResponseV20>;
+  async dispatch(request: AePointTrackingRequestV21): Promise<AePointTrackingResponseV21>;
   async dispatch(request: BrokerRequest): Promise<BrokerResponse> {
     if (this.#server === null) throw new Error("CEP_BROKER_NOT_STARTED");
     if (!compiledProtocolSet.has(request.protocolVersion)) {

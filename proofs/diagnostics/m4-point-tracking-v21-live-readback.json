@@ -1,0 +1,57 @@
+{
+  "proof": "M4 point-tracking protocol 2.1 live readback",
+  "status": "PASS",
+  "protocolVersion": "2.1.0",
+  "adapterBuild": "0.5.0-dev.1",
+  "runtimePromotion": "NOT_PROMOTED",
+  "environment": {
+    "afterEffectsVersion": "25.6.6x4",
+    "existingProcessReused": true,
+    "persistentAfterEffectsProcessCountBefore": 1,
+    "persistentAfterEffectsProcessCountAfter": 1
+  },
+  "checks": {
+    "protocol21": true,
+    "readbackOutcomeNoOp": true,
+    "oneTemporaryTrackerRead": true,
+    "oneTemporaryTrackPointRead": true,
+    "twoKeyedSamplesRead": true,
+    "compCoordinatesPresent": true,
+    "motionVisibleInReadback": true,
+    "trackerRollbackExact": true,
+    "projectItemCountRestored": true
+  },
+  "readback": {
+    "first": {
+      "timeSeconds": 0,
+      "confidence": 0.96,
+      "compNormalized": [0.45535713831584, 0.46296296296296]
+    },
+    "second": {
+      "timeSeconds": 0.5,
+      "confidence": 0.91,
+      "compNormalized": [0.59077377319336, 0.46296296296296]
+    }
+  },
+  "trackingState": {
+    "subjectId": "SUBJECT_LIVE_TRACK_01",
+    "velocityX": 0.27083326975503996,
+    "velocityY": 0,
+    "trackConfidence": 0.91,
+    "driftRisk": 0.045069439146253325,
+    "occlusionProxy": 0.08999999999999997,
+    "framingQuality": 0.81845245361328
+  },
+  "editorBrainV1": {
+    "route": "LOCAL",
+    "technique": "IMPACT_PULSE",
+    "confidence": 0.8914499843597399,
+    "objectRationaleCodes": ["TRACKED_SUBJECT_BOUND"]
+  },
+  "limitations": [
+    "Protocol 2.1 readback does not initiate After Effects tracker analysis.",
+    "Analyze Forward and Analyze Backward control remain unproven and are not promoted.",
+    "residualError is currently zero when adapting native AE tracker samples because no native residual-error semantic has been proven.",
+    "occlusion is currently represented as a confidence-derived proxy until richer perception evidence is integrated."
+  ]
+}
