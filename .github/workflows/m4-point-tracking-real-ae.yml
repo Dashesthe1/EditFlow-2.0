@@ -1,0 +1,143 @@
+name: M4 Point Tracking P1 P2 Persistent Warm Real After Effects
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: editflow-accelerated-real-ae-workstation
+  cancel-in-progress: false
+
+env:
+  EDITFLOW_FEATURE_BRANCH: m4-editor-brain-v1-foundation
+  EDITFLOW_AFTERFX_PATH: C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe
+
+jobs:
+  warm-proof:
+    runs-on: [self-hosted, Windows, editflow-ae]
+    steps:
+      - name: Sync persistent M4 source without destructive clean
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $repoRoot = Join-Path $env:LOCALAPPDATA "EditFlow2\warm-runner\EditFlow-2.0-m4-tracking"
+          $parent = Split-Path $repoRoot -Parent
+          New-Item -ItemType Directory -Force -Path $parent | Out-Null
+          if (-not (Test-Path (Join-Path $repoRoot ".git") -PathType Container)) {
+            if (Test-Path $repoRoot) { throw "Persistent M4 source exists without .git; refusing destructive replacement: $repoRoot" }
+            git clone --filter=blob:none --no-checkout https://github.com/Dashesthe1/EditFlow-2.0.git $repoRoot
+            if ($LASTEXITCODE -ne 0) { throw "Initial persistent M4 clone failed." }
+          }
+          git -C $repoRoot fetch --depth=1 origin $env:EDITFLOW_FEATURE_BRANCH
+          if ($LASTEXITCODE -ne 0) { throw "Persistent M4 fetch failed." }
+          git -C $repoRoot reset --hard FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Persistent M4 reset to fetched tracked source failed." }
+          $head = (git -C $repoRoot rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $head) { throw "Could not resolve persistent M4 source HEAD." }
+          Write-Host "Persistent M4 source HEAD: $head"
+          Write-Host "No git clean was executed; node_modules/proof caches stay warm outside tracked source."
+          "EDITFLOW_M4_REPO_ROOT=$repoRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "EDITFLOW_M4_HEAD=$head" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Ensure warm Node dependencies
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $typescript = Join-Path $env:EDITFLOW_M4_REPO_ROOT "node_modules\typescript\bin\tsc"
+          if (-not (Test-Path $typescript -PathType Leaf)) {
+            Push-Location $env:EDITFLOW_M4_REPO_ROOT
+            try {
+              npm.cmd ci
+              if ($LASTEXITCODE -ne 0) { throw "npm ci failed for M4 warm source." }
+            } finally { Pop-Location }
+          } else {
+            Write-Host "Warm node_modules already present; dependency install skipped."
+          }
+
+      - name: Preflight one healthy warm After Effects process
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $targets = @(Get-Process -Name AfterFX -ErrorAction SilentlyContinue | Where-Object { $_.Responding -and $_.MainWindowHandle -ne 0 })
+          if ($targets.Count -ne 1) { throw "M4 warm proof requires exactly one responsive AE project process; found $($targets.Count)." }
+          $pidValue = [int]$targets[0].Id
+          Write-Host "Warm AE pid=$pidValue title=$($targets[0].MainWindowTitle)"
+          "EDITFLOW_M4_AE_PID=$pidValue" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run authenticated tracking to Editor Brain decision-only proof
+        id: proof
+        continue-on-error: true
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $repoRoot = $env:EDITFLOW_M4_REPO_ROOT
+          $artifactDir = Join-Path $repoRoot "proofs\artifacts\m4-point-tracking-real-ae"
+          if (Test-Path $artifactDir -PathType Container) { Remove-Item $artifactDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          "EDITFLOW_M4_ARTIFACT_DIR=$artifactDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\windows\run-m4-tracking-brain-real-ae.ps1") -AfterFxPath $env:EDITFLOW_AFTERFX_PATH -TimeoutSeconds 120 -Frames 12
+          $code = $LASTEXITCODE
+          Write-Host "M4 warm proof exit code: $code"
+          if ($code -ne 0) { exit $code }
+
+      - name: Print bounded M4 diagnostics
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $dir = $env:EDITFLOW_M4_ARTIFACT_DIR
+          if ($dir -and (Test-Path $dir -PathType Container)) {
+            foreach ($name in @("result.json", "semantic-decision.json", "evidence-integrity.json", "m4-tracking-proof.tif.editflow-render.json", "m4-tracking-proof.tif.editflow-render.json.frames.json")) {
+              $file = Join-Path $dir $name
+              if (Test-Path $file -PathType Leaf) {
+                Write-Host "--- $name ---"
+                Get-Content $file -Raw | Write-Host
+                Write-Host "--- end $name ---"
+              }
+            }
+          }
+          $bootstrapLog = Join-Path $env:TEMP "EditFlow2-m4-panel-bootstrap.log"
+          if (Test-Path $bootstrapLog -PathType Leaf) {
+            Write-Host "--- panel bootstrap ---"
+            Get-Content $bootstrapLog -Tail 80 | Write-Host
+          }
+
+      - name: Verify warm AE process identity after proof
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          $targets = @(Get-Process -Name AfterFX -ErrorAction SilentlyContinue | Where-Object { $_.Responding -and $_.MainWindowHandle -ne 0 })
+          if ($targets.Count -ne 1) { throw "Warm AE process count changed after M4 proof: $($targets.Count)." }
+          if ([string]$targets[0].Id -ne [string]$env:EDITFLOW_M4_AE_PID) { throw "Warm AE PID changed during M4 proof ($env:EDITFLOW_M4_AE_PID -> $($targets[0].Id))." }
+          Write-Host "Warm AE PID preserved: $env:EDITFLOW_M4_AE_PID"
+
+      - name: Upload M4 tracking semantic and integrity evidence
+        if: always() && env.EDITFLOW_M4_ARTIFACT_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: m4-point-tracking-p1-p2-${{ github.run_id }}
+          path: ${{ env.EDITFLOW_M4_ARTIFACT_DIR }}
+          if-no-files-found: error
+
+      - name: Enforce M4 evidence gate
+        if: always()
+        shell: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -command ". '{0}'"
+        run: |
+          if ("${{ steps.proof.outcome }}" -ne "success") { throw "M4 warm proof failed; inspect retained diagnostics/artifact." }
+          $trackingPath = Join-Path $env:EDITFLOW_M4_ARTIFACT_DIR "result.json"
+          $semanticPath = Join-Path $env:EDITFLOW_M4_ARTIFACT_DIR "semantic-decision.json"
+          $integrityPath = Join-Path $env:EDITFLOW_M4_ARTIFACT_DIR "evidence-integrity.json"
+          if (-not (Test-Path $trackingPath -PathType Leaf) -or -not (Test-Path $semanticPath -PathType Leaf) -or -not (Test-Path $integrityPath -PathType Leaf)) { throw "M4 proof did not retain tracking, semantic, and integrity result files." }
+          $tracking = Get-Content $trackingPath -Raw | ConvertFrom-Json
+          $semantic = Get-Content $semanticPath -Raw | ConvertFrom-Json
+          $integrity = Get-Content $integrityPath -Raw | ConvertFrom-Json
+          if ($tracking.ok -ne $true -or $tracking.classification -ne "PASS") { throw "M4 authenticated point tracking did not pass." }
+          if ($tracking.checks.fixedTrackingProfile -ne $true -or $tracking.checks.exactFrameManifest -ne $true -or $tracking.checks.stableMotion -ne $true -or $tracking.checks.projectStructureUnchanged -ne $true) { throw "M4 tracking result missed a required exact evidence/safety check." }
+          if ($tracking.safety.renderQueueOwnedAndRemoved -ne $true -or $tracking.safety.compositionMutationPerformed -ne $false -or $tracking.safety.projectSavePerformed -ne $false) { throw "M4 tracking result violated its no-project-mutation safety contract." }
+          if ($semantic.ok -ne $true -or $semantic.classification -ne "PASS_DECISION_ONLY_FAIL_CLOSED") { throw "M4 semantic/Brain decision-only gate did not pass." }
+          if ($semantic.checks.semanticReadbackPassed -ne $true -or $semantic.checks.identityNotInvented -ne $true -or $semantic.checks.extentNotInvented -ne $true -or $semantic.checks.pointTrackingCapabilityStillUnavailable -ne $true -or $semantic.checks.brainFailClosed -ne $true -or $semantic.checks.noAeMutationExecuted -ne $true) { throw "M4 semantic/Brain result missed a required fail-closed check." }
+          if ($integrity.ok -ne $true -or $integrity.classification -ne "PASS" -or $integrity.algorithm -ne "SHA-256" -or -not ($integrity.evidenceSetSha256 -is [string]) -or $integrity.evidenceSetSha256.Length -ne 64) { throw "M4 evidence integrity result did not pass." }
+          if ([int]$integrity.artifactCount -lt 7) { throw "M4 evidence integrity manifest omitted required retained artifacts." }
+          Write-Host ("M4 P1/P2 authenticated tracking plus decision-only Brain and evidence-integrity gates passed. Evidence set SHA-256: " + $integrity.evidenceSetSha256)
