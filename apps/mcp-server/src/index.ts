@@ -1,6 +1,6 @@
 export const EDITFLOW_VERSION = "0.5.0-dev" as const;
 export const EDITFLOW_PHASE = "M4_TRACKING_ISOLATION_IN_PROGRESS" as const;
-export const EDITFLOW_DEFAULT_EXECUTION_RUNNER = "REFLEX_CONTINUOUS_FAST_LOOP_V1" as const;
+export const EDITFLOW_DEFAULT_EXECUTION_RUNNER = "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0" as const;
 
 export interface McpServerStatus {
   readonly version: typeof EDITFLOW_VERSION;
@@ -19,6 +19,10 @@ export interface McpServerStatus {
   readonly cepRuntimeBridge: "REAL_AE_PROVEN";
   readonly cepBrokerBinding: "127.0.0.1_AUTHENTICATED";
   readonly defaultExecutionRunner: typeof EDITFLOW_DEFAULT_EXECUTION_RUNNER;
+  readonly editorBrain: "V0_LOCAL_EXPLAINABLE_POLICY";
+  readonly editorBrainDecisionBudgetMs: 50;
+  readonly editorBrainKnowledgeMode: "PRECOMPILED_REFERENCE_TUTORIAL_EVIDENCE";
+  readonly editorBrainFailureMode: "FAIL_CLOSED_AND_ESCALATE";
   readonly ordinaryIntentBudgetMs: 2000;
   readonly routineMicroActionBudgetMs: 1000;
   readonly slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE";
@@ -47,6 +51,10 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   cepRuntimeBridge: "REAL_AE_PROVEN",
   cepBrokerBinding: "127.0.0.1_AUTHENTICATED",
   defaultExecutionRunner: EDITFLOW_DEFAULT_EXECUTION_RUNNER,
+  editorBrain: "V0_LOCAL_EXPLAINABLE_POLICY",
+  editorBrainDecisionBudgetMs: 50,
+  editorBrainKnowledgeMode: "PRECOMPILED_REFERENCE_TUTORIAL_EVIDENCE",
+  editorBrainFailureMode: "FAIL_CLOSED_AND_ESCALATE",
   ordinaryIntentBudgetMs: 2000,
   routineMicroActionBudgetMs: 1000,
   slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE",
