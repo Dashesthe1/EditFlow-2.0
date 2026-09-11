@@ -4,7 +4,7 @@
 
 M4 is the first milestone where EditFlow must reason about persistent subjects and objects inside the frame rather than treating video primarily as a rectangle.
 
-This document defines the first M4 vertical slice. It does **not** declare tracking, segmentation, matte export, or drift repair complete. Those capabilities remain unavailable until a real execution route and the required proof maturity exist.
+This document defines the active M4 vertical slice. It does **not** declare tracking, segmentation, matte export, or drift repair complete. Those capabilities remain unavailable until a real execution route and the required proof maturity exist.
 
 ## Development rule
 
@@ -59,13 +59,34 @@ It currently knows how to:
 - identify cases where isolation is unnecessary;
 - fall back to Editor Brain v0 when object-aware reasoning is not required.
 
+## Slice 2 — M4 P1 point-tracking foundation
+
+`packages/point-tracker/src/index.ts` now provides a deterministic local point-tracking core with:
+
+- typed request/result/sample contracts;
+- fixed feature and search windows;
+- normalized appearance error;
+- match uniqueness;
+- maximum-jump checks;
+- forward/backward round-trip error;
+- explicit `STABLE`, `AT_RISK`, `DRIFTING`, and `LOST` classification;
+- persistent entity binding;
+- trajectory confidence and evidence provenance;
+- semantic readback into `EditorSubjectStateV1`, including center, motion direction, speed, acceleration, track confidence and observation time.
+
+`packages/point-tracker/src/bmp.ts` adds a dependency-free, bounded frame-evidence seam for AE-rendered images. It accepts uncompressed 24-bit or 32-bit Windows BMP input, validates file/header/dimension/byte limits before decoding, handles top-down and bottom-up storage, produces deterministic 8-bit luminance, and preserves evidence provenance.
+
+The implementation does **not** require FFmpeg. This keeps the first tracking route self-contained and avoids adding a recurring software or inference dependency.
+
+`packages/capability-registry/src/m4.ts` registers `ae.tracking.point` truthfully as `ADAPTER_REQUIRED` with `STRUCTURAL` proof and an unavailable route. Structural implementation is therefore visible to planning, but production resolution fails closed until real-AE capture and the remaining proof gates pass.
+
 ## Four M4 gates
 
 ### 1. Capability Gate
 
-Current slice: **FOUNDATION ONLY**.
+Current slice: **STRUCTURAL FOUNDATION — NOT PRODUCTION AVAILABLE**.
 
-No M4 tracking/isolation capability is promoted by this slice. The next capability implementation must begin with a truthful point-tracking route and capability record.
+The deterministic point tracker, bounded BMP evidence decoder, semantic state readback, and capability record exist and are unit-tested. The route remains unavailable because a real `render.capture` → BMP evidence proof has not yet passed on the self-hosted AE runner.
 
 ### 2. Brain Gate
 
@@ -77,30 +98,29 @@ The Brain has explicit policies for track acceptance/rejection, drift-repair rou
 
 Current slice: **NOT YET PASSED**.
 
-The first point-tracking implementation must define visual invariants including target retention, drift bounds, occlusion behavior, and viewer-visible reframe stability. Structural host success alone is insufficient.
+The first real-AE point-tracking proof must demonstrate target retention in rendered pixels and define measurable invariants for drift, ambiguity, loss/occlusion, and viewer-visible reframe stability. Structural host success alone is insufficient.
 
 ### 4. Workflow Gate
 
 Current slice: **NOT YET PASSED**.
 
-The first real M4 workflow proof must demonstrate observe → track → read back semantic state → decide → construct → preview → detect drift/defect → repair or fail closed, without corrupting the project.
+The first real M4 workflow proof must demonstrate observe → capture pixels → track → read back semantic state → decide → construct → preview → detect drift/defect → repair or fail closed, without corrupting the project.
 
 ## Next implementation slice
 
-Build **M4 P1: point tracking + semantic track readback** as the first real capability slice.
+Complete **M4 P1 real-AE frame ingestion and visual point-track proof** using the existing warm self-hosted After Effects/CEP runner.
 
 Required outputs:
 
-- a capability-registry entry with truthful status and proof maturity;
-- typed track request/result contracts;
-- a tracker/AE adapter execution route;
-- persistent target identity across frames;
+- render-backed frame evidence originating from the real AE composition;
+- deterministic decode into `GrayFrameV1` without external media-decoding dependencies;
+- persistent target identity across captured frames;
 - normalized trajectory samples with confidence and provenance;
-- track-state classification (`STABLE`, `AT_RISK`, `DRIFTING`, `LOST`);
-- readback into `EditorSubjectStateV1`;
-- deterministic tracked-reframe construction;
-- visual drift criteria and proof frames;
+- explicit visual drift criteria and proof frames;
+- stable/ambiguous/lost-track cases that produce the correct state classification;
+- readback into `EditorSubjectStateV1` and an Editor Brain v1 decision;
+- deterministic tracked-reframe construction only after the capability gate is satisfied;
 - recovery proof for lost/drifting tracks;
-- transfer proof on materially different footage.
+- transfer proof on materially different motion/appearance evidence.
 
-Only after these pass should `m4.point_tracking` be considered usable by Editor Brain v1.
+Only after real-host, visual, recovery, and transfer evidence passes should `ae.tracking.point` be promoted from its current fail-closed foundation state for production use.
