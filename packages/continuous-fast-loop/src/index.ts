@@ -28,6 +28,7 @@ export interface ContinuousFastLoopResult {
 export const DEFAULT_CONTINUOUS_FAST_LOOP_BUDGET_MS = 2_000;
 export const DEFAULT_CONTINUOUS_FAST_LOOP_MAX_ACTIONS = 16;
 export const DEFAULT_CONTINUOUS_FAST_LOOP_LEASE_TTL_MS = 120_000;
+
 export class ContinuousFastLoop {
   readonly client: AeCepAdapterClientV11;
   readonly budgetMs: number;
@@ -59,6 +60,7 @@ export class ContinuousFastLoop {
     this.#refreshBeforeNextGoal = false;
     return this.#state;
   }
+
   async run(goal: ReflexGoal, transactionId = "continuous-fast-loop"): Promise<ContinuousFastLoopResult> {
     let resolveResult!: (value: ContinuousFastLoopResult) => void;
     let rejectResult!: (reason?: unknown) => void;

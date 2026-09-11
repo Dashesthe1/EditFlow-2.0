@@ -23,7 +23,8 @@ export interface ReflexLocalPlan {
   readonly intents: readonly RoutineIntent[];
 }
 
-export interface ReflexEscalatedPlan {  readonly route: "ESCALATE";
+export interface ReflexEscalatedPlan {
+  readonly route: "ESCALATE";
   readonly reason: ReflexEscalationReason;
   readonly detail: string;
 }
@@ -50,6 +51,7 @@ const resolveLayer = (comp: AeCompositionSnapshot, ref: AeRoutineRef): AeLayerSn
   for (const layer of comp.layers) if (refMatches(ref, layer.hostId, layer.stableId)) return layer;
   return null;
 };
+
 const requireLayer = (
   state: AeCepAdapterStateV11,
   compRef: AeRoutineRef,
@@ -77,6 +79,7 @@ const baselineTransform = (snapshot: AeTransformSnapshot): Record<string, unknow
   if (finite(snapshot.opacity)) values.opacity = snapshot.opacity;
   return values;
 };
+
 const shiftedPosition = (position: readonly number[] | undefined, dx: number, dy: number): number[] | null => {
   if (!position || position.length < 2 || !position.every(finite)) return null;
   const result = [...position];
@@ -110,6 +113,7 @@ export class ReflexPlanner {
   constructor(options: ReflexPlannerOptions = {}) {
     this.maxActions = options.maxActions ?? 16;
   }
+
   compile(goal: ReflexGoal, state: AeCepAdapterStateV11): ReflexPlan {
     if (!goal || typeof goal !== "object" || !("kind" in goal)) return escalate("NOT_REFLEX", "Goal is not a recognized reflex directive.");
     if (goal.kind === "SHORT_HORIZON") {

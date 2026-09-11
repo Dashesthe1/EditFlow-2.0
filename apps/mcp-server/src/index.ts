@@ -25,7 +25,8 @@ export interface McpServerStatus {
   readonly realAeAcceptance: "P1_P5_ACCEPTED";
   readonly humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED";
   readonly m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED";
-  readonly m3MaskHostProtocol: "1.2.0_BROKER_GATED";  readonly m3LatestHostProtocol: "2.0.0_TRANSFER_ACCEPTED";
+  readonly m3MaskHostProtocol: "1.2.0_BROKER_GATED";
+  readonly m3LatestHostProtocol: "2.0.0_TRANSFER_ACCEPTED";
   readonly trackingIsolation: "POINT_TRACKING_NEXT";
 }
 
@@ -50,7 +51,8 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   routineMicroActionBudgetMs: 1000,
   slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE",
   realAeAcceptance: "P1_P5_ACCEPTED",
-  humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",  m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED",
+  humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",
+  m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED",
   m3MaskHostProtocol: "1.2.0_BROKER_GATED",
   m3LatestHostProtocol: "2.0.0_TRANSFER_ACCEPTED",
   trackingIsolation: "POINT_TRACKING_NEXT",
