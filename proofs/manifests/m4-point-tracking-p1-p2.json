@@ -2,15 +2,16 @@
   "proof_id": "M4_POINT_TRACK_REAL_AE_V1",
   "status": "PENDING_LIVE_ACCEPTANCE",
   "milestone_version": "0.5.0-dev",
-  "code_readiness_commit": "6d98b47d4e4840f10aab8cf006cfd69b25f9a621",
+  "code_readiness_commit": "8b6deed02d4b253304da305a80bf49b7e8a9754f",
   "code_readiness_ci": {
-    "run_id": 34649684004,
+    "run_id": 34650373794,
     "verdict": "PASS",
     "schema_validation": true,
     "typecheck": true,
     "test_suite": true,
     "semantic_runtime_fixture": true,
     "tracking_render_vm_runtime_fixture": true,
+    "evidence_integrity_runtime_fixture": true,
     "warm_runner_contract": true,
     "self_hosted_workflow_contract": true
   },
@@ -75,6 +76,32 @@
         "The decision-only stage preserves measured center/motion/track confidence while identity and geometry confidence remain zero.",
         "Editor Brain v1 must refuse an object-aware construction until independent identity/geometry evidence exists."
       ]
+    },
+    "content_addressed_integrity": {
+      "implemented": true,
+      "ci_fixture_verdict": "PASS",
+      "parent_live_results_required": true,
+      "retained_live_result": false,
+      "required_result_file": "evidence-integrity.json",
+      "algorithm": "SHA-256",
+      "required_artifact_roles": [
+        "tracking_result",
+        "semantic_brain_result",
+        "render_lifecycle_marker",
+        "tracking_frame_manifest",
+        "tracking_tiff_frame"
+      ],
+      "required_checks": [
+        "all_paths_inside_artifact_root",
+        "all_files_non_empty",
+        "per_artifact_sha256",
+        "locale_independent_ordinal_artifact_order",
+        "evidence_set_sha256"
+      ],
+      "notes": [
+        "The integrity manifest hashes both proof result files, render lifecycle evidence, the exact frame manifest, and every retained TIFF frame.",
+        "The integrity manifest does not hash itself; its evidence-set digest is derived from the sorted role/path/size/per-file-hash records."
+      ]
     }
   },
   "accepted_proof_levels": {
@@ -92,5 +119,5 @@
       "production_route_available": false
     }
   ],
-  "closure_rule": "Code readiness, repository CI, direct AE pixel experimentation, VM sequence simulation, and synthetic track-to-Brain decision fixtures do not authorize production capability promotion. ae.tracking.point remains fail-closed until retained authenticated live-AE evidence satisfies the declared gate; formal visual, recovery, and transfer maturity must still be proven separately."
+  "closure_rule": "Code readiness, repository CI, direct AE pixel experimentation, VM sequence simulation, synthetic track-to-Brain decision fixtures, and synthetic evidence-integrity fixtures do not authorize production capability promotion. ae.tracking.point remains fail-closed until retained authenticated live-AE tracking, semantic-decision, and SHA-256 integrity artifacts satisfy the declared gate; formal visual, recovery, and transfer maturity must still be proven separately."
 }
