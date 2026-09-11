@@ -1,6 +1,11 @@
 name: M4 Point Tracking P1 P2 Persistent Warm Real After Effects
 
 on:
+  push:
+    branches:
+      - ae-test/m4-point-tracking-p1-p2-control
+    paths:
+      - .github/ae-test-trigger/m4-point-tracking-p1-p2.txt
   workflow_dispatch:
 
 permissions:
