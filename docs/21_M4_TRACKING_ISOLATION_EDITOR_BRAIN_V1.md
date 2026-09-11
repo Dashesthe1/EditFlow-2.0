@@ -129,21 +129,41 @@ The branch now contains the complete bounded acceptance path:
 
 Repository schema validation, TypeScript typecheck, and the complete unit/contract test suite pass with this route present. The authenticated warm-AE acceptance run itself is still pending execution on the self-hosted Shadow/AE workstation; code readiness must not be confused with host acceptance.
 
+## Slice 4 — Track → Trusted State → Editor Brain decision-only gate
+
+A point track is evidence for a persistent image feature, not automatically evidence that the feature is a person, hero subject, face, or whole object. M4 now makes that distinction explicit.
+
+`apps/desktop-host/src/m4-tracking-semantic-decision-cli.ts` consumes only a passing retained `M4_POINT_TRACK_REAL_AE_V1` result. It then:
+
+- validates the stable proof-feature track and confidence floor;
+- creates an `Unclassified tracked feature` seed state rather than inventing semantic identity;
+- assigns zero identity confidence, zero geometry confidence, zero object scale, and no attach points because point tracking did not measure those facts;
+- applies the official `applyPointTrackToEditorSubjectV1` helper so only measured track-derived center, motion direction, speed, acceleration, status, confidence, observation time, and provenance are promoted;
+- validates the resulting `EditorSubjectStateV1`;
+- exposes `ae.tracking.point` to the Brain exactly as it currently exists: `ADAPTER_REQUIRED`, `STRUCTURAL`, `available: false`;
+- invokes `EditorBrainV1` in decision-only mode;
+- requires the Brain to return `ESCALATE / DELEGATE_V0 / LOW_OBJECT_CONFIDENCE` with no delegated mutation program;
+- writes `semantic-decision.json` and declares no maturity promotion.
+
+This behavior is executable in CI using a synthetic stable trajectory. It proves the semantic/Brain boundary and its fail-closed behavior, but it does not replace the pending authenticated real-AE parent proof.
+
+`scripts/windows/run-m4-tracking-brain-real-ae.ps1` chains the authenticated tracking runner into this semantic/Brain stage only after `result.json` is a real `PASS`, then re-verifies that the same warm AE PID remains present. The semantic stage itself performs no AE operation.
+
 ## Four M4 gates
 
 ### 1. Capability Gate
 
 Current slice: **STRUCTURAL + TYPED FRAME-EVIDENCE ROUTE READY — NOT PRODUCTION AVAILABLE**.
 
-The deterministic tracker, BMP/TIFF decoders, semantic state readback, additive typed TIFF capture profile, bounded frame manifest, authenticated proof CLI, and warm-AE runner exist and pass repository CI. Direct real-AE TIFF pixels have also been decoded and tracked successfully.
+The deterministic tracker, BMP/TIFF decoders, semantic state readback, additive typed TIFF capture profile, bounded frame manifest, authenticated proof CLI, warm-AE runner, and track-to-Brain decision-only stage exist and pass repository CI. Direct real-AE TIFF pixels have also been decoded and tracked successfully.
 
 The gate remains open because the complete authenticated `render.capture` → TIFF manifest → decoder → point tracker path has not yet produced a retained passing self-hosted AE acceptance artifact. `ae.tracking.point` therefore remains unavailable in the production capability registry.
 
 ### 2. Brain Gate
 
-Current slice: **INITIAL PASS**.
+Current slice: **INITIAL PASS + FAIL-CLOSED SEMANTIC BOUNDARY**.
 
-The Brain has explicit policies for track acceptance/rejection, drift-repair routing, tracked reframing, subject preservation, and foreground-occlusion candidacy. Decisions remain confidence-gated and explainable. Production use remains blocked by the Capability Gate.
+The Brain has explicit policies for track acceptance/rejection, drift-repair routing, tracked reframing, subject preservation, and foreground-occlusion candidacy. The new decision-only stage additionally proves that a stable generic point track does not become a trusted hero/object automatically: without independent identity and geometry evidence, Brain v1 escalates with `LOW_OBJECT_CONFIDENCE` and emits no AE construction. Production use remains blocked by the Capability Gate.
 
 ### 3. Visual Gate
 
@@ -153,25 +173,28 @@ The direct AE experiment demonstrates retention of a deliberately moving target 
 
 ### 4. Workflow Gate
 
-Current slice: **HARNESS READY — NOT YET PASSED**.
+Current slice: **TRACK→STATE→BRAIN HARNESS READY — NOT YET PASSED**.
 
-The authenticated observe → capture pixels → track → semantic readback portion is implemented as a bounded proof harness. The full M4 workflow still must demonstrate decide → construct → preview → detect drift/defect → repair or fail closed without corrupting the project.
+The authenticated observe → capture pixels → track → semantic readback → decision-only Brain path is implemented as a bounded proof harness. It intentionally stops before construction because current point evidence does not establish semantic object identity and the capability remains unavailable. The full M4 workflow still must demonstrate decide → construct → preview → detect drift/defect → repair or fail closed without corrupting the project.
 
 ## Next implementation slice
 
-Run and retain **M4 P1/P2 authenticated warm-AE acceptance** through the checked-in harness, then advance only from evidence.
+Run and retain **M4 P1/P2 authenticated warm-AE acceptance plus the decision-only semantic/Brain stage** through the checked-in harness, then advance only from evidence.
 
 Required immediate outputs:
 
 - terminal authenticated `render.capture` evidence from the current M4 host wrapper;
 - exact TIFF frame manifest and decoded `GrayFrameV1` sequence;
 - stable real-composition trajectory with confidence/provenance, or an explicit `EVIDENCE_INSUFFICIENT` result if the active clip lacks suitable motion;
-- unchanged project fingerprint, item count, active composition, and cleaned Render Queue after proof;
-- retained `M4_POINT_TRACK_REAL_AE_V1` result artifact.
+- unchanged project fingerprint, item count, active composition, cleaned Render Queue, and unchanged AE PID after proof;
+- retained `M4_POINT_TRACK_REAL_AE_V1` `result.json` artifact;
+- retained `semantic-decision.json` generated only from a passing parent result;
+- proof that measured motion entered Trusted Editor State while identity/extent were not invented;
+- proof that Editor Brain v1 remained fail closed with `LOW_OBJECT_CONFIDENCE` and no mutation program for the unclassified point feature.
 
 After that accepted result, continue with:
 
-- semantic readback into `EditorSubjectStateV1` and Editor Brain v1 decision on retained real-host evidence;
+- independent subject/object identity and extent acquisition rather than treating a point as a whole subject;
 - deterministic tracked-reframe construction only at the proof maturity actually reached;
 - formal visual ambiguity/loss/occlusion cases;
 - recovery proof for lost/drifting tracks;
