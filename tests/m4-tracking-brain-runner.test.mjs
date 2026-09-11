@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const runnerPath = "scripts/windows/run-m4-tracking-brain-real-ae.ps1";
 
-test("M4 tracking-to-brain runner chains only retained passing tracking evidence into the decision-only stage", async () => {
+test("M4 tracking-to-brain runner chains only retained passing tracking evidence into decision and integrity stages", async () => {
   const source = await readFile(runnerPath, "utf8");
   assert.match(source, /run-m4-tracking-real-ae\.ps1/);
   assert.match(source, /\$Tracking\.ok/);
@@ -12,6 +12,10 @@ test("M4 tracking-to-brain runner chains only retained passing tracking evidence
   assert.match(source, /m4-tracking-semantic-decision-cli\.js/);
   assert.match(source, /semantic-decision\.json/);
   assert.match(source, /PASS_DECISION_ONLY_FAIL_CLOSED/);
+  assert.match(source, /m4-tracking-evidence-integrity-cli\.js/);
+  assert.match(source, /evidence-integrity\.json/);
+  assert.match(source, /\$Integrity\.algorithm -ne "SHA-256"/);
+  assert.match(source, /\$Integrity\.evidenceSetSha256\.Length -ne 64/);
 });
 
 test("M4 tracking-to-brain runner preserves one warm AE PID and does not own host shutdown", async () => {
