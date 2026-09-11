@@ -1,0 +1,70 @@
+{
+  "proof_id": "M4_POINT_TRACK_REAL_AE_V1",
+  "status": "PENDING_LIVE_ACCEPTANCE",
+  "milestone_version": "0.5.0-dev",
+  "code_readiness_commit": "eee89b75a480a1ca9ef74b64517ce9db1b174055",
+  "code_readiness_ci": {
+    "run_id": 34648650513,
+    "verdict": "PASS",
+    "schema_validation": true,
+    "typecheck": true,
+    "test_suite": true
+  },
+  "target_environment": {
+    "os": "Windows",
+    "host": "Adobe After Effects 2025",
+    "accepted_render_protocol": "1.1.0",
+    "accepted_host_base": "protocol 2.0",
+    "m4_output_profile": "TRACKING_TIFF_SEQUENCE_V1",
+    "output_module_template": "TIFF Sequence with Alpha"
+  },
+  "evidence": {
+    "direct_real_ae_pixel_experiment": {
+      "performed": true,
+      "retained_as_formal_acceptance_artifact": false,
+      "result": "PASS",
+      "frame_count": 4,
+      "decoder": "bounded baseline TIFF -> GrayFrameV1",
+      "tracker_status": "STABLE",
+      "tracker_confidence": 1.0,
+      "match_uniqueness": 1.0,
+      "round_trip_error_px": 0,
+      "notes": [
+        "Real After Effects TIFF sequence pixels were decoded and tracked successfully in a bounded direct experiment.",
+        "This evidence establishes host-format feasibility but does not replace the authenticated CEP acceptance artifact."
+      ]
+    },
+    "authenticated_warm_cep": {
+      "run_id": null,
+      "artifact_id": null,
+      "artifact_path": "proofs/artifacts/m4-point-tracking-real-ae/",
+      "verdict": "PENDING",
+      "retained_result": false,
+      "required_result_file": "result.json",
+      "required_checks": [
+        "fixed_tracking_profile",
+        "exact_frame_manifest",
+        "stable_motion",
+        "project_structure_unchanged",
+        "render_queue_owned_and_removed",
+        "same_after_effects_pid"
+      ]
+    }
+  },
+  "accepted_proof_levels": {
+    "P1_typed_live_validation": false,
+    "P2_semantic_tracking_readback": false,
+    "P3_visual_external_review": false,
+    "P4_failure_recovery": false,
+    "P5_transfer": false
+  },
+  "capability_evidence": [
+    {
+      "capability": "ae.tracking.point",
+      "status": "ADAPTER_REQUIRED",
+      "proof_maturity": "STRUCTURAL",
+      "production_route_available": false
+    }
+  ],
+  "closure_rule": "Code readiness, repository CI, and a direct AE pixel experiment do not authorize production capability promotion. ae.tracking.point remains fail-closed until retained authenticated live-AE evidence satisfies the declared gate; formal visual, recovery, and transfer maturity must still be proven separately."
+}
