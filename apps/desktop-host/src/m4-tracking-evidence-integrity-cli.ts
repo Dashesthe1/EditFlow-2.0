@@ -73,7 +73,7 @@ const main = async (): Promise<void> => {
     artifacts.push(await digestArtifact(artifactRoot, completionPath, "render_lifecycle_marker"));
     artifacts.push(await digestArtifact(artifactRoot, frameManifestPath, "tracking_frame_manifest"));
     for (const framePath of manifest["framePaths"] as string[]) artifacts.push(await digestArtifact(artifactRoot, framePath, "tracking_tiff_frame"));
-    artifacts.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    artifacts.sort((left, right) => left.relativePath < right.relativePath ? -1 : left.relativePath > right.relativePath ? 1 : 0);
     const canonical = artifacts.map((artifact) => `${artifact.role}\t${artifact.relativePath}\t${artifact.sizeBytes}\t${artifact.sha256}`).join("\n");
     const evidenceSetSha256 = createHash("sha256").update(canonical, "utf8").digest("hex");
     report = {
