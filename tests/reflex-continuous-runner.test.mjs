@@ -5,6 +5,7 @@ import { AE_ADAPTER_PROTOCOL_VERSION_V11 } from "../.tmp/runtime/packages/adapte
 import { AeCepAdapterClientV11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
 import { ContinuousFastLoop } from "../.tmp/runtime/packages/continuous-fast-loop/src/index.js";
 import { ReflexPlanner } from "../.tmp/runtime/packages/reflex-planner/src/index.js";
+import { EditorBrainRuntimeV0, EditorBrainV0 } from "../.tmp/runtime/packages/editor-brain/src/index.js";
 import { createDesktopAeSessionV11, DEFAULT_AE_EXECUTION_MODE } from "../.tmp/runtime/apps/desktop-host/src/v1_1.js";
 
 const baselineState = () => ({
@@ -100,6 +101,8 @@ test("current desktop v1.1 session installs the continuous reflex loop as the de
   const session = await createDesktopAeSessionV11(adapter, "reflex-test");
   assert.equal(reads, 1);
   assert.equal(session.executionMode, DEFAULT_AE_EXECUTION_MODE);
-  assert.equal(session.executionMode, "REFLEX_CONTINUOUS_FAST_LOOP_V1");
+  assert.equal(session.executionMode, "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0");
   assert.ok(session.runner instanceof ContinuousFastLoop);
+  assert.ok(session.editorBrain instanceof EditorBrainV0);
+  assert.ok(session.editorRunner instanceof EditorBrainRuntimeV0);
 });
