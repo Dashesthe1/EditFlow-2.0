@@ -17,8 +17,12 @@ if ($Before.Count -ne 1) { throw "M4 tracking-to-brain proof requires exactly on
 $InitialPid = [int]$Before[0].Id
 
 & $TrackingRunner -AfterFxPath $AfterFxPath -TimeoutSeconds $TimeoutSeconds -Frames $Frames
-if ($LASTEXITCODE -ne 0) { throw "Authenticated M4 tracking proof failed before semantic/brain evaluation." }
 if (-not (Test-Path $TrackingResult -PathType Leaf)) { throw "Authenticated M4 tracking result is missing: $TrackingResult" }
+$Tracking = Get-Content $TrackingResult -Raw | ConvertFrom-Json
+if (-not $Tracking.ok -or $Tracking.classification -ne "PASS") {
+  Get-Content $TrackingResult -Raw | Write-Host
+  throw "Authenticated M4 tracking proof failed before semantic/brain evaluation."
+}
 
 $SemanticCli = Join-Path $RepoRoot ".tmp\runtime\apps\desktop-host\src\m4-tracking-semantic-decision-cli.js"
 if (-not (Test-Path $SemanticCli -PathType Leaf)) { throw "Compiled M4 semantic-decision CLI is missing: $SemanticCli" }
