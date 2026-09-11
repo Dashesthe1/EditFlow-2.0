@@ -103,7 +103,7 @@ export class EditorBrainV1 {
 
     if (subject.trackStatus === "DRIFTING" || subject.trackStatus === "LOST") {
       const repair = context.capabilities.driftRepair;
-      if (!isEditorCapabilityUsableV1(repair, "STRUCTURAL")) {
+      if (!repair || !isEditorCapabilityUsableV1(repair, "STRUCTURAL")) {
         return this.#escalate(started, "REPAIR_TRACK", subject, "DRIFT_REPAIR_CAPABILITY_UNAVAILABLE", [
           `TRACK_${subject.trackStatus}`,
           "DO_NOT_CONTINUE_DRIFTING_TRACK",
@@ -132,7 +132,7 @@ export class EditorBrainV1 {
 
     if (occlusionCandidate) {
       const pointTracking = context.capabilities.pointTracking;
-      if (!isEditorCapabilityUsableV1(pointTracking, "STRUCTURAL")) {
+      if (!pointTracking || !isEditorCapabilityUsableV1(pointTracking, "STRUCTURAL")) {
         return this.#escalate(started, "FOREGROUND_OCCLUSION_CANDIDATE", subject,
           "POINT_TRACKING_CAPABILITY_UNAVAILABLE", [
             "FOREGROUND_OCCLUDER_COVERS_TRANSITION_REGION",
@@ -187,13 +187,14 @@ export class EditorBrainV1 {
     context: EditorObjectContextV1,
     subject: EditorSubjectStateV1,
   ): EditorStateV0 {
+    const reframeTarget = context.reframeTarget ?? baseState.reframeTarget;
     return {
       ...baseState,
       subjectX: subject.center.x,
       subjectY: subject.center.y,
       motionMagnitude: clamp01(subject.speed),
       motionDirection: toReflexDirection(subject),
-      reframeTarget: context.reframeTarget ?? baseState.reframeTarget,
+      ...(reframeTarget ? { reframeTarget } : {}),
     };
   }
 
