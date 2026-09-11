@@ -321,3 +321,5 @@ export class EditorBrainRuntimeV0 {
     };
   }
 }
+
+export * from "./m4.js";
