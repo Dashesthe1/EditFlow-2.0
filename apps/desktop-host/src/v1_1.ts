@@ -6,11 +6,16 @@ import {
 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { applyM2AcceptedProofEvidence } from "../../../packages/adapters/ae-cep/src/m2-proof-maturity.js";
 import { AE_ADAPTER_BUILD_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
+import { ContinuousFastLoop } from "../../../packages/continuous-fast-loop/src/index.js";
+
+export const DEFAULT_AE_EXECUTION_MODE = "REFLEX_CONTINUOUS_FAST_LOOP_V1" as const;
 
 export interface DesktopAeSessionV11 {
   readonly adapterBuild: typeof AE_ADAPTER_BUILD_V11;
   readonly state: AeCepAdapterStateV11;
   readonly registry: CapabilityRegistry;
+  readonly executionMode: typeof DEFAULT_AE_EXECUTION_MODE;
+  readonly runner: ContinuousFastLoop;
 }
 
 export const createDesktopAeSessionV11 = async (
@@ -25,5 +30,12 @@ export const createDesktopAeSessionV11 = async (
     priority: 110,
     capabilities: applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
   });
-  return { adapterBuild: AE_ADAPTER_BUILD_V11, state, registry };
+  const runner = new ContinuousFastLoop(adapter, state);
+  return {
+    adapterBuild: AE_ADAPTER_BUILD_V11,
+    state,
+    registry,
+    executionMode: DEFAULT_AE_EXECUTION_MODE,
+    runner,
+  };
 };
