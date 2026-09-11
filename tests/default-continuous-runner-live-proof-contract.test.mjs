@@ -4,11 +4,15 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("default live proof measures one high-level intent through the standard continuous runner", async () => {
-  const proof = await read("scripts/default-continuous-runner-live-proof.mjs");
+test("default live proof measures editor-brain decision through the continuous AE runner", async () => {
+  const proof = await read("scripts/editor-brain-live-proof.mjs");
   assert.match(proof, /createDesktopAeSessionV11/);
   assert.match(proof, /DEFAULT_AE_EXECUTION_MODE/);
-  assert.match(proof, /kind: "IMPACT_PULSE"/);
+  assert.match(proof, /session\.editorRunner\.run/);
+  assert.match(proof, /compileEditorStyleProfileV0/);
+  assert.match(proof, /editorBrainSelectedImpact/);
+  assert.match(proof, /learnedEvidenceBound/);
+  assert.match(proof, /editorDecisionMs/);
   assert.match(proof, /threeMicroActionsCompleted/);
   assert.match(proof, /highLevelIntentToCompletionMs/);
   assert.match(proof, /intentWithinBudget/);

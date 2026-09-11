@@ -7,8 +7,9 @@ import {
 import { applyM2AcceptedProofEvidence } from "../../../packages/adapters/ae-cep/src/m2-proof-maturity.js";
 import { AE_ADAPTER_BUILD_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
 import { ContinuousFastLoop } from "../../../packages/continuous-fast-loop/src/index.js";
+import { EditorBrainRuntimeV0, EditorBrainV0 } from "../../../packages/editor-brain/src/index.js";
 
-export const DEFAULT_AE_EXECUTION_MODE = "REFLEX_CONTINUOUS_FAST_LOOP_V1" as const;
+export const DEFAULT_AE_EXECUTION_MODE = "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0" as const;
 
 export interface DesktopAeSessionV11 {
   readonly adapterBuild: typeof AE_ADAPTER_BUILD_V11;
@@ -16,6 +17,8 @@ export interface DesktopAeSessionV11 {
   readonly registry: CapabilityRegistry;
   readonly executionMode: typeof DEFAULT_AE_EXECUTION_MODE;
   readonly runner: ContinuousFastLoop;
+  readonly editorBrain: EditorBrainV0;
+  readonly editorRunner: EditorBrainRuntimeV0;
 }
 
 export const createDesktopAeSessionV11 = async (
@@ -31,11 +34,15 @@ export const createDesktopAeSessionV11 = async (
     capabilities: applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
   });
   const runner = new ContinuousFastLoop(adapter, state);
+  const editorBrain = new EditorBrainV0();
+  const editorRunner = new EditorBrainRuntimeV0(editorBrain, runner);
   return {
     adapterBuild: AE_ADAPTER_BUILD_V11,
     state,
     registry,
     executionMode: DEFAULT_AE_EXECUTION_MODE,
     runner,
+    editorBrain,
+    editorRunner,
   };
 };
