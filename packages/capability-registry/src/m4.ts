@@ -9,9 +9,10 @@ export const M4_POINT_TRACKING_CAPABILITY_ID = asCapabilityId("ae.tracking.point
 export const M4_POINT_TRACKING_ROUTE_ID = asRouteId("m4.point_tracking.local_luma_v1");
 
 /**
- * The deterministic tracker core has structural proof, but the end-to-end AE
- * frame-ingest adapter is not wired yet. Keep this capability unavailable to
- * production planning until the real host route and visual proof are complete.
+ * The deterministic tracker core and bounded BMP-to-luminance evidence decoder
+ * have structural proof, but a real After Effects capture route has not yet
+ * passed visual/recovery/transfer proof. Keep this capability unavailable to
+ * production planning until those gates are complete.
  */
 export const M4_POINT_TRACKING_FOUNDATION_CAPABILITY: CapabilityRecord = {
   id: M4_POINT_TRACKING_CAPABILITY_ID,
@@ -23,21 +24,22 @@ export const M4_POINT_TRACKING_FOUNDATION_CAPABILITY: CapabilityRecord = {
     routeId: M4_POINT_TRACKING_ROUTE_ID,
     kind: "SUBSYSTEM_ADAPTER",
     available: false,
-    adapterVersion: "m4-p1-core.1",
+    adapterVersion: "m4-p1-core.2",
     limitations: [
       "Deterministic luminance-frame tracking core is implemented and structurally tested.",
-      "AE render.capture output is not yet decoded into bounded luminance frame evidence by the production runner.",
-      "No real-footage visual drift proof or transfer proof has passed yet.",
+      "Bounded, dependency-free 24/32-bit BI_RGB BMP evidence decoding is implemented and structurally tested.",
+      "A real AE render.capture-to-BMP proof has not yet passed on the self-hosted After Effects runner.",
+      "No real-footage visual drift proof, recovery proof, or transfer proof has passed yet.",
     ],
   }],
-  inputSchemaRef: "PointTrackRequestV1 + GrayFrameV1[]",
+  inputSchemaRef: "PointTrackRequestV1 + GrayFrameV1[] (including bounded BMP frame evidence)",
   outputSchemaRef: "PointTrackResultV1",
   readbackStrategy: "Apply PointTrackResultV1 to persistent EditorSubjectStateV1 with confidence and provenance.",
   visualProofProfile: "M4_POINT_TRACK_DRIFT_V1",
   rollbackStrategy: "READ_ONLY_ANALYSIS_NO_PROJECT_MUTATION",
   riskClass: "R0_READ_ONLY",
   limitations: [
-    "Foundation-only until AE capture-to-frame ingestion, real-host visual proof, recovery proof, and transfer proof pass.",
+    "Foundation-only until real AE capture ingestion, visual proof, recovery proof, and cross-footage transfer proof pass.",
   ],
   fallbackPolicy: "FORBID",
 };
