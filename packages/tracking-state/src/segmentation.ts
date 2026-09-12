@@ -69,75 +69,73 @@ export interface AcceptedSubjectSegmentationV1 extends SubjectSegmentationResult
   readonly evidenceIds: readonly string[];
 }
 
-/**
- * A provider implementation may be local, remote, model-backed, or host-native. The tracking
- * layer depends only on this contract and does not assume a particular segmentation model.
- */
+/** Provider implementations may be local, remote, model-backed, or host-native. */
 export interface SubjectSegmentationProviderV1 {
   readonly providerId: string;
   segment(request: SubjectSegmentationRequestV1): Promise<SubjectSegmentationResultV1>;
 }
 
-const finite01 = (value: number): boolean =>
-  Number.isFinite(value) && value >= 0 && value <= 1;
+const finite01 = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 
-const finiteNonNegative = (value: number): boolean =>
-  Number.isFinite(value) && value >= 0;
+const finiteNonNegative = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
 
 const nonEmpty = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
-const validNormalizedBox = (
-  value: readonly [number, number, number, number] | undefined,
-): boolean => {
-  if (!value || value.length !== 4) return false;
+const validNormalizedBox = (value: unknown): value is readonly [number, number, number, number] => {
+  if (!Array.isArray(value) || value.length !== 4) return false;
   const [x, y, width, height] = value;
-  return [x, y, width, height].every(finite01)
-    && width > 0
+  if (![x, y, width, height].every(finite01)) return false;
+  return width > 0
     && height > 0
     && x + width <= 1 + Number.EPSILON
     && y + height <= 1 + Number.EPSILON;
 };
 
-const validPoint = (value: SegmentationPointPromptV1): boolean =>
-  finite01(value.x) && finite01(value.y);
+const validPoint = (value: unknown): value is SegmentationPointPromptV1 => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return finite01(candidate["x"]) && finite01(candidate["y"]);
+};
 
 const validEncoding = (value: unknown): value is SegmentationMaskEncodingV1 =>
   typeof value === "string"
   && (SEGMENTATION_MASK_ENCODINGS_V1 as readonly string[]).includes(value);
 
-const validSha256 = (value: string | undefined): boolean =>
-  value === undefined || /^[a-f0-9]{64}$/.test(value);
+const validSha256 = (value: unknown): boolean =>
+  value === undefined || (typeof value === "string" && /^[a-f0-9]{64}$/.test(value));
 
 export const validateSubjectSegmentationRequestV1 = (
   request: SubjectSegmentationRequestV1,
 ): boolean => {
-  if (!request || !nonEmpty(request.requestId) || !nonEmpty(request.sourceId)
+  if (!request || typeof request !== "object" || !nonEmpty(request.requestId) || !nonEmpty(request.sourceId)
     || !nonEmpty(request.semanticId) || !finiteNonNegative(request.timestampMs)) return false;
   if (request.entityClass !== undefined && !nonEmpty(request.entityClass)) return false;
   if (request.preferredEncoding !== undefined && !validEncoding(request.preferredEncoding)) return false;
 
   const prompt = request.prompt;
   if (!prompt) return true;
+  if (typeof prompt !== "object" || Array.isArray(prompt)) return false;
   if (prompt.boundingBox !== undefined && !validNormalizedBox(prompt.boundingBox)) return false;
   if (prompt.previousArtifactId !== undefined && !nonEmpty(prompt.previousArtifactId)) return false;
-  if (prompt.positivePoints !== undefined && !prompt.positivePoints.every(validPoint)) return false;
-  if (prompt.negativePoints !== undefined && !prompt.negativePoints.every(validPoint)) return false;
+  if (prompt.positivePoints !== undefined
+    && (!Array.isArray(prompt.positivePoints) || !prompt.positivePoints.every(validPoint))) return false;
+  if (prompt.negativePoints !== undefined
+    && (!Array.isArray(prompt.negativePoints) || !prompt.negativePoints.every(validPoint))) return false;
   return true;
 };
 
 /**
  * Validate and correlate a provider result before downstream mask/matte application.
- *
- * The function is intentionally fail-closed: it does not repair provider output, infer subject
- * identity, coerce timestamps, or substitute a different mask encoding. Accepted results remain
- * immutable evidence records; AE application is a separate transactional capability.
+ * This never repairs output, guesses identity, coerces time, or substitutes encodings.
  */
 export const acceptSubjectSegmentationResultV1 = (
   request: SubjectSegmentationRequestV1,
   result: SubjectSegmentationResultV1,
 ): AcceptedSubjectSegmentationV1 | null => {
-  if (!validateSubjectSegmentationRequestV1(request) || !result) return null;
+  if (!validateSubjectSegmentationRequestV1(request) || !result || typeof result !== "object") return null;
   if (result.requestId !== request.requestId
     || result.sourceId !== request.sourceId
     || result.semanticId !== request.semanticId
@@ -151,14 +149,16 @@ export const acceptSubjectSegmentationResultV1 = (
   }
 
   const mask = result.mask;
-  if (!mask || !validEncoding(mask.encoding)) return null;
+  if (!mask || typeof mask !== "object" || !validEncoding(mask.encoding)) return null;
   if (request.preferredEncoding !== undefined && mask.encoding !== request.preferredEncoding) return null;
   if (!Number.isInteger(mask.width) || mask.width <= 0 || !Number.isInteger(mask.height) || mask.height <= 0) {
     return null;
   }
   if (!validNormalizedBox(mask.boundsNormalized)) return null;
-  if (!mask.artifact || !nonEmpty(mask.artifact.artifactId) || !nonEmpty(mask.artifact.contentType)
+  if (!mask.artifact || typeof mask.artifact !== "object"
+    || !nonEmpty(mask.artifact.artifactId) || !nonEmpty(mask.artifact.contentType)
     || !validSha256(mask.artifact.sha256)) return null;
+  if (!Array.isArray(result.evidenceIds)) return null;
 
   const evidenceIds = [...new Set(result.evidenceIds.filter(nonEmpty))];
   if (evidenceIds.length === 0) return null;
