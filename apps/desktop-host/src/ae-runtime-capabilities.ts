@@ -8,6 +8,11 @@ import { M3_PARENTING_CAPABILITIES_V14 } from "../../../packages/adapters/ae-cep
 import { M3_SPATIAL_GRAPH_CAPABILITIES_V19 } from "../../../packages/adapters/ae-cep/src/m3-spatial-graph.js";
 import { M3_TEMPORAL_EASE_CAPABILITIES_V18 } from "../../../packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import { M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 } from "../../../packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
+import { M4_POINT_TRACKING_CAPABILITIES_V21 } from "../../../packages/adapters/ae-cep/src/m4-point-tracking.js";
+import {
+  capabilityForTrackerAnalysisDriverV1,
+  type TrackerVisualAnalysisDriverV1,
+} from "../../../packages/adapters/ae-cep/src/m4-tracker-analysis.js";
 
 /**
  * Single composition point for every M3 capability family that has reached an
@@ -43,4 +48,30 @@ export const registerAcceptedM3RuntimeCapabilities = (registry: CapabilityRegist
   for (const declaration of AE_ACCEPTED_M3_RUNTIME_CAPABILITY_GROUPS) {
     registry.registerAdapter(declaration);
   }
+};
+
+export interface M4TrackerRuntimeRegistrationV1 {
+  readonly pointTrackingV21Available: boolean;
+  readonly visualDriver: TrackerVisualAnalysisDriverV1 | null;
+}
+
+export const registerAcceptedM4TrackerRuntimeCapabilities = (
+  registry: CapabilityRegistry,
+  registration: M4TrackerRuntimeRegistrationV1,
+): void => {
+  if (!registration.pointTrackingV21Available) return;
+  registry.registerAdapter({
+    adapterId: "ae-cep.m4.point-tracking",
+    adapterVersion: "2.1.0",
+    priority: 121,
+    capabilities: M4_POINT_TRACKING_CAPABILITIES_V21,
+  });
+  const analysis = capabilityForTrackerAnalysisDriverV1(registration.visualDriver);
+  if (!analysis.routes.some((route) => route.available)) return;
+  registry.registerAdapter({
+    adapterId: "ae-cep.m4.tracker-analysis",
+    adapterVersion: "0.5.0-dev.2",
+    priority: 122,
+    capabilities: [analysis],
+  });
 };

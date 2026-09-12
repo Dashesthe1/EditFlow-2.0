@@ -14,18 +14,25 @@ export type TrackerAnalysisEscalationV1 =
   | "VISUAL_DRIVER_UNAVAILABLE"
   | "TRACKER_TARGET_UNAVAILABLE"
   | "VISUAL_ACTION_REFUSED"
+  | "ANALYSIS_DIRECTION_UNPROVEN"
   | "ANALYSIS_NOT_OBSERVED";
 
 export interface TrackerVisualAnalysisDriverV1 {
   readonly driverId: string;
   readonly verifiedVision: boolean;
   readonly verifiedCursorControl: boolean;
+  readonly supportedDirections: readonly TrackerAnalysisDirectionV1[];
   analyze(input: TrackerVisualAnalysisRequestV1): Promise<TrackerVisualAnalysisResultV1>;
 }
 export interface TrackerVisualAnalysisRequestV1 {
   readonly direction: TrackerAnalysisDirectionV1;
   readonly trackerIndex: number;
   readonly pointIndex: number;
+  readonly compHostId: number;
+  readonly layerHostId: number;
+  readonly expectedCompName: string;
+  readonly expectedLayerName: string;
+  readonly expectedTrackerName: string;
   readonly expectedControl: "TRACKER_ANALYZE_FORWARD" | "TRACKER_ANALYZE_BACKWARD";
 }
 
@@ -64,10 +71,33 @@ export const M4_TRACKER_ANALYSIS_CAPABILITY_V1: CapabilityRecord = {
   riskClass: "R4_EXTERNAL_UI",
   limitations: [
     "AE 25.6.6 exposes no tested menu, UIA, Win32 child-control, or keyboard route for Analyze; guarded visual control remains required.",
-    "Analyze Forward has real-AE vision+cursor proof, but Analyze Backward and production visual-driver registration remain unproven.",
+    "Analyze Forward has real-AE vision+cursor proof; the production route remains unavailable until a verified driver is attached.",
+    "Analyze Backward remains unproven and unavailable.",
     "Analysis is not accepted unless native tracker sample count increases after the visual action.",
   ],
   fallbackPolicy: "EXPLICIT_ONLY",
+};
+
+export const capabilityForTrackerAnalysisDriverV1 = (
+  driver: TrackerVisualAnalysisDriverV1 | null,
+): CapabilityRecord => {
+  const available = !!driver
+    && driver.verifiedVision
+    && driver.verifiedCursorControl
+    && driver.supportedDirections.includes("FORWARD");
+  if (!available) return M4_TRACKER_ANALYSIS_CAPABILITY_V1;
+  return {
+    ...M4_TRACKER_ANALYSIS_CAPABILITY_V1,
+    status: "PARTIAL",
+    proofMaturity: "VISUAL",
+    routes: M4_TRACKER_ANALYSIS_CAPABILITY_V1.routes.map((route) => ({ ...route, available: true })),
+    limitations: [
+      "Analyze Forward is accepted through the verified EditGPT Eyes/Hands visual route with protocol 2.1 post-action truth.",
+      "The current partial route runs a bounded configurable Forward segment and verifies a clean Stop-state return before readback; full-range tracking is a later tranche.",
+      "Analyze Backward remains unavailable until an equivalent real-AE acceptance proof is retained.",
+      "Native tracker sample growth remains the authority for analysis success.",
+    ],
+  };
 };
 
 const readback = async (
@@ -119,10 +149,18 @@ export class GuardedTrackerAnalysisControllerV1 {
     if (!driver || !driver.verifiedVision || !driver.verifiedCursorControl) {
       return this.#escalate(input.direction, "VISUAL_DRIVER_UNAVAILABLE", baselineSampleCount, baselineSampleCount, before);
     }
+    if (!driver.supportedDirections.includes(input.direction)) {
+      return this.#escalate(input.direction, "ANALYSIS_DIRECTION_UNPROVEN", baselineSampleCount, baselineSampleCount, before);
+    }
     const action = await driver.analyze({
       direction: input.direction,
       trackerIndex,
       pointIndex,
+      compHostId: input.compHostId,
+      layerHostId: input.layerHostId,
+      expectedCompName: before?.comp.name ?? "",
+      expectedLayerName: before?.layer.name ?? "",
+      expectedTrackerName: before?.trackers.find((item) => item.trackerIndex === trackerIndex)?.name ?? "",
       expectedControl: input.direction === "FORWARD" ? "TRACKER_ANALYZE_FORWARD" : "TRACKER_ANALYZE_BACKWARD",
     });
     if (action.status !== "COMPLETED") return this.#escalate(input.direction, "VISUAL_ACTION_REFUSED", baselineSampleCount, baselineSampleCount, before, action.visualEvidenceId ?? null);

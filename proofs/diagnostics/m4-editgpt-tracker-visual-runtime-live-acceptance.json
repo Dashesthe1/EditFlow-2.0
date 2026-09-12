@@ -1,0 +1,70 @@
+{
+  "status": "PASS_FORWARD_PRODUCTION_VISUAL_DRIVER",
+  "proofScope": "M4_TRACKER_ANALYZE_FORWARD_PRODUCTION_DRIVER",
+  "runtimePromotion": "PARTIAL_FORWARD_ONLY_EXPLICIT_REGISTRATION",
+  "generatedAt": "2026-09-11T22:53:42.7672691-05:00",
+  "afterEffects": {
+    "productVersion": "25.6.6",
+    "processId": 18028,
+    "warmProcessReused": true,
+    "savedOrClosed": false
+  },
+  "fixture": {
+    "compHostId": 145,
+    "layerHostId": 157,
+    "compName": "EF2_M4_TRACK_ANALYSIS_FIXTURE",
+    "layerName": "EF2_M4_TRACK_TARGET",
+    "trackerName": "Tracker 1"
+  },
+  "protocol21Truth": {
+    "baselineKeyedSampleCount": 0,
+    "finalKeyedSampleCount": 195,
+    "finalSampleCount": 195,
+    "firstTimeSeconds": 0,
+    "lastTimeSeconds": 3.23498498498498,
+    "sampleGrowthObserved": true
+  },
+  "visualDriver": {
+    "driverId": "editgpt.eyes-hands.tracker.v1",
+    "direction": "FORWARD",
+    "expectedControl": "TRACKER_ANALYZE_FORWARD",
+    "analysisWindowSeconds": 5,
+    "guardedVisualTargetVerified": true,
+    "activeStopObserved": true,
+    "stopClicked": true,
+    "finalAnalyzeControlState": "NORMAL_FORWARD"
+  },
+  "evidence": {
+    "fullVisualProof": "proofs/artifacts/m4-tracker-visual-runtime-bounded/result.json",
+    "postActionVisual": "proofs/artifacts/m4-tracker-visual-runtime-bounded/after_analysis.jpg",
+    "driverResult": "proofs/artifacts/m4-tracker-runtime-driver-bounded-result.json",
+    "protocol21PostReadback": "proofs/artifacts/m4-tracker-v21-inspect-fixture.json"
+  },
+  "verification": {
+    "npmRunCheck": {
+      "passed": true,
+      "tests": 474,
+      "failed": 0,
+      "contractFixtures": 33,
+      "typecheckPassed": true
+    }
+  },
+  "cleanup": {
+    "status": "PASS",
+    "fixtureRemoved": true,
+    "projectItemCountAfter": 2,
+    "originalCompRestored": true,
+    "activeCompHostId": 1,
+    "activeCompName": "Comp 1",
+    "afterEffectsStillRunning": true
+  },
+  "harnessNotes": [
+    "Long synchronous Remote Desktop Commander process calls can terminate the child proof launcher at transport timeout after native AE analysis has begun. The retained acceptance run used a detached Node launcher so the bounded Stop/completion logic could finish normally.",
+    "A no-driver 45-second control run, repeated Eyes/Hands focus-only run, and AE tracker-reactivation-only run each retained zero keyed samples, isolating tracker sample growth to the guarded Analyze action.",
+    "After Effects was reused in place and was not restarted, saved, or closed for this proof."
+  ],
+  "limitations": [
+    "Analyze Backward remains unproven and unavailable.",
+    "The accepted production visual route is Forward-only and bounded; native protocol 2.1 tracker sample growth remains the authority for success."
+  ]
+}

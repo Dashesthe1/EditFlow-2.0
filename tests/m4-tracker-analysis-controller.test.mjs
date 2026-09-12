@@ -3,13 +3,15 @@ import assert from "node:assert/strict";
 import {
   GuardedTrackerAnalysisControllerV1,
   M4_TRACKER_ANALYSIS_CAPABILITY_V1,
+  capabilityForTrackerAnalysisDriverV1,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-tracker-analysis.js";
 
 const readback = (count, includePoint = true) => ({
-  comp: { hostId: 1, stableId: null, width: 1920, height: 1080 },
-  layer: { hostId: 2, stableId: null },
+  comp: { hostId: 1, stableId: null, name: "Proof Comp", width: 1920, height: 1080 },
+  layer: { hostId: 2, stableId: null, name: "Proof Layer" },
   trackers: includePoint ? [{
     trackerIndex: 1,
+    name: "Tracker 1",
     points: [{ pointIndex: 1, samples: Array.from({ length: count }, (_, i) => ({ time: i / 30 })) }],
   }] : [],
 });
@@ -43,7 +45,7 @@ test("missing verified visual driver fails closed after typed pre-readback", asy
 
 test("unverified cursor driver cannot press Analyze", async () => {
   let actionCalls = 0;
-  const driver = { driverId: "UNVERIFIED", verifiedVision: true, verifiedCursorControl: false,
+  const driver = { driverId: "UNVERIFIED", verifiedVision: true, verifiedCursorControl: false, supportedDirections: ["FORWARD"],
     async analyze() { actionCalls += 1; return { status: "COMPLETED" }; } };
   const result = await new GuardedTrackerAnalysisControllerV1(transport(readback(1)), driver).run(runInput);
   assert.equal(result.escalationReason, "VISUAL_DRIVER_UNAVAILABLE");
@@ -51,7 +53,7 @@ test("unverified cursor driver cannot press Analyze", async () => {
 });
 test("verified visual action is rejected when native tracker samples do not increase", async () => {
   const t = transport(readback(2), readback(2));
-  const driver = { driverId: "VISION_CURSOR", verifiedVision: true, verifiedCursorControl: true,
+  const driver = { driverId: "VISION_CURSOR", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
     async analyze(input) { assert.equal(input.expectedControl, "TRACKER_ANALYZE_FORWARD"); return { status: "COMPLETED", visualEvidenceId: "VIS_1" }; } };
   const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run(runInput);
   assert.equal(result.route, "ESCALATE");
@@ -62,7 +64,7 @@ test("verified visual action is rejected when native tracker samples do not incr
 
 test("verified visual action succeeds only after native tracker samples increase", async () => {
   const t = transport(readback(1), readback(5));
-  const driver = { driverId: "VISION_CURSOR", verifiedVision: true, verifiedCursorControl: true,
+  const driver = { driverId: "VISION_CURSOR", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
     async analyze() { return { status: "COMPLETED", visualEvidenceId: "VIS_2" }; } };
   const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run(runInput);
   assert.equal(result.route, "LOCAL");
@@ -74,9 +76,65 @@ test("verified visual action succeeds only after native tracker samples increase
 
 test("missing tracker target escalates before any visual action", async () => {
   let actionCalls = 0;
-  const driver = { driverId: "VISION_CURSOR", verifiedVision: true, verifiedCursorControl: true,
+  const driver = { driverId: "VISION_CURSOR", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
     async analyze() { actionCalls += 1; return { status: "COMPLETED" }; } };
   const result = await new GuardedTrackerAnalysisControllerV1(transport(readback(0, false)), driver).run(runInput);
   assert.equal(result.escalationReason, "TRACKER_TARGET_UNAVAILABLE");
   assert.equal(actionCalls, 0);
+});
+
+test("accepted Forward driver promotes only the guarded Forward route", () => {
+  const driver = {
+    driverId: "EDITGPT_FORWARD",
+    verifiedVision: true,
+    verifiedCursorControl: true,
+    supportedDirections: ["FORWARD"],
+    async analyze() { return { status: "REFUSED" }; },
+  };
+  const capability = capabilityForTrackerAnalysisDriverV1(driver);
+  assert.equal(capability.status, "PARTIAL");
+  assert.equal(capability.proofMaturity, "VISUAL");
+  assert.equal(capability.routes[0].available, true);
+  assert.ok(capability.limitations.some((value) => value.includes("Analyze Backward remains unavailable")));
+
+  const backwardOnly = { ...driver, supportedDirections: ["BACKWARD"] };
+  assert.equal(capabilityForTrackerAnalysisDriverV1(backwardOnly).routes[0].available, false);
+});
+
+test("controller binds the visual action to typed pre-readback identity", async () => {
+  const t = transport(readback(1), readback(4));
+  let seen = null;
+  const driver = {
+    driverId: "EDITGPT_FORWARD",
+    verifiedVision: true,
+    verifiedCursorControl: true,
+    supportedDirections: ["FORWARD"],
+    async analyze(input) { seen = input; return { status: "COMPLETED", visualEvidenceId: "VIS_BOUND" }; },
+  };
+  const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run(runInput);
+  assert.equal(result.route, "LOCAL");
+  assert.equal(seen.compHostId, 1);
+  assert.equal(seen.layerHostId, 2);
+  assert.equal(seen.expectedCompName, "Proof Comp");
+  assert.equal(seen.expectedLayerName, "Proof Layer");
+  assert.equal(seen.expectedTrackerName, "Tracker 1");
+  assert.equal(seen.expectedControl, "TRACKER_ANALYZE_FORWARD");
+});
+
+test("unproven Analyze Backward never reaches the visual driver", async () => {
+  let calls = 0;
+  const driver = {
+    driverId: "EDITGPT_FORWARD",
+    verifiedVision: true,
+    verifiedCursorControl: true,
+    supportedDirections: ["FORWARD"],
+    async analyze() { calls += 1; return { status: "COMPLETED" }; },
+  };
+  const result = await new GuardedTrackerAnalysisControllerV1(transport(readback(1)), driver).run({
+    ...runInput,
+    direction: "BACKWARD",
+  });
+  assert.equal(result.route, "ESCALATE");
+  assert.equal(result.escalationReason, "ANALYSIS_DIRECTION_UNPROVEN");
+  assert.equal(calls, 0);
 });
