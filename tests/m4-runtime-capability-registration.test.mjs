@@ -32,6 +32,7 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   const session = await createDesktopAeSession(adapter, "m4-default");
   assert.equal(session.registry.get("ae.tracker.readback"), null);
   assert.equal(session.registry.get("ae.tracker.two_point_transform"), null);
+  assert.equal(session.registry.get("ae.tracker.four_point_perspective"), null);
   assert.equal(session.registry.get("ae.tracker.analysis.guarded_visual"), null);
 });
 
@@ -47,6 +48,10 @@ test("explicit protocol 2.1 availability registers readback without inventing a 
   assert.ok(twoPoint);
   assert.equal(twoPoint.proofMaturity, "STRUCTURAL");
   assert.ok(twoPoint.routes.some((route) => route.available));
+  const fourPoint = session.registry.get("ae.tracker.four_point_perspective");
+  assert.ok(fourPoint);
+  assert.equal(fourPoint.proofMaturity, "STRUCTURAL");
+  assert.ok(fourPoint.routes.some((route) => route.kind === "HOST_ADAPTER" && route.available));
   assert.equal(session.registry.get("ae.tracker.analysis.guarded_visual"), null);
 });
 
@@ -68,5 +73,6 @@ test("visual proof cannot register analysis when protocol 2.1 readback is unavai
   });
   assert.equal(session.registry.get("ae.tracker.readback"), null);
   assert.equal(session.registry.get("ae.tracker.two_point_transform"), null);
+  assert.equal(session.registry.get("ae.tracker.four_point_perspective"), null);
   assert.equal(session.registry.get("ae.tracker.analysis.guarded_visual"), null);
 });

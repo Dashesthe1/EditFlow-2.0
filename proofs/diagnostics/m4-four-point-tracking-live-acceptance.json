@@ -1,0 +1,53 @@
+{
+  "status": "PASS_FOUR_POINT_PERSPECTIVE",
+  "proofScope": "M4_FOUR_POINT_STRUCTURAL_PERSPECTIVE_V1",
+  "runtimePromotion": "PARTIAL_STRUCTURAL_PROTOCOL_2_1_FOUR_POINT_PROJECTIVE_GEOMETRY",
+  "generatedAt": "2026-09-12T11:13:20.2546196-05:00",
+  "afterEffects": {
+    "processId": 15772,
+    "warmProcessReused": true,
+    "savedOrClosed": false
+  },
+  "liveProof": {
+    "protocol21": true,
+    "oneTrackerFourPoints": true,
+    "synchronizedSamples": true,
+    "exactNativeAttachPoints": true,
+    "usableCompCorners": true,
+    "nonAffinePerspectiveGeometry": true
+  },
+  "geometry": {
+    "baselineAreaPx": 360000,
+    "destinationCornersNormalized": [[0.25,0.25],[0.76,0.17],[0.18,0.78],[0.85,0.82]],
+    "finalQuadAreaNormalized": 0.3483,
+    "finalConfidence": 0.91
+  },
+  "runtimeVerification": {
+    "converterAcceptedRealAeReadback": true,
+    "baselineIdentityHomography": true,
+    "homographyReprojectsAllFourCorners": true,
+    "projectiveDenominatorIsNonAffine": true,
+    "confidenceUsesWeakestNativePoint": true
+  },
+  "verification": {
+    "focusedTestsPassed": 12,
+    "npmRunCheckPassed": true,
+    "testsPassed": 496,
+    "testsFailed": 0,
+    "contractFixtures": 33,
+    "typecheckPassed": true
+  },
+  "cleanup": {
+    "projectItemCountAfter": 7,
+    "fixtureRemoved": true,
+    "originalCompRestored": true,
+    "activeCompName": "Comp 1",
+    "afterEffectsStillRunning": true
+  },
+  "limitations": [
+    "This acceptance proves read-only projective geometry derivation from four explicitly mapped native AE tracker points.",
+    "It does not claim native four-point image analysis or arbitrary tracker-layout automation.",
+    "Corner semantics are caller-supplied rather than inferred from tracker array order.",
+    "Degenerate, concave, self-crossing, winding-flipped, missing, or unsynchronized geometry fails closed."
+  ]
+}
