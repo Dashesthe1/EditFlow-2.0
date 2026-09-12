@@ -1,0 +1,27 @@
+{
+  "proof": "M4 tracker analysis route boundary",
+  "status": "PASS_BOUNDARY_NOT_ANALYSIS",
+  "runtimePromotion": "NOT_PROMOTED",
+  "environment": {
+    "afterEffectsVersion": "25.6.6x4",
+    "existingAfterEffectsPid": 18028,
+    "existingProcessReused": true
+  },
+  "discovery": {
+    "trackerPanelCommandId": 5005,
+    "trackMotionCommandId": 2568,
+    "analyzeForwardMenuCommandId": 0,
+    "analyzeBackwardMenuCommandId": 0,
+    "uiaNamedAnalyzeControls": false,
+    "nativeChildAnalyzeControls": false,
+    "keyboardMenuRouteVerified": false
+  },
+  "fixture": {
+    "isolatedDisposableComposition": true,
+    "trackMotionCreatedOneTracker": true,
+    "fixtureRemovedExactly": true,
+    "originalCompRestored": true,
+    "originalUserTrackerPreserved": true
+  },
+  "conclusion": "Analysis requires a verified visual vision+cursor driver; typed protocol 2.1 readback remains the post-action source of truth."
+}
