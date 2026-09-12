@@ -24,6 +24,15 @@ const transport = (...reads) => ({
   },
 });
 
+const readbackTwo = (countA, countB) => ({
+  comp: { hostId: 1, stableId: null, name: "Proof Comp", width: 1920, height: 1080 },
+  layer: { hostId: 2, stableId: null, name: "Proof Layer" },
+  trackers: [{ trackerIndex: 1, name: "Tracker 1", points: [
+    { pointIndex: 1, samples: Array.from({ length: countA }, (_, i) => ({ time: i / 30 })) },
+    { pointIndex: 2, samples: Array.from({ length: countB }, (_, i) => ({ time: i / 30 })) },
+  ] }],
+});
+
 const runInput = { compHostId: 1, layerHostId: 2, direction: "FORWARD" };
 test("analysis capability stays explicit guarded UI until a visual driver is proven", () => {
   assert.equal(M4_TRACKER_ANALYSIS_CAPABILITY_V1.status, "ADAPTER_REQUIRED");
@@ -158,4 +167,59 @@ test("dual-direction verified driver executes Backward only after typed pre-read
   const capability = capabilityForTrackerAnalysisDriverV1(driver);
   assert.ok(capability.limitations.some((value) => value.includes("Analyze Forward and Analyze Backward")));
   assert.ok(!capability.limitations.some((value) => value.includes("Analyze Backward remains unavailable")));
+});
+
+
+test("two-point analysis succeeds only when both required native sample sets grow", async () => {
+  const t = transport(readbackTwo(1, 1), readbackTwo(5, 6));
+  let seen = null;
+  const driver = { driverId: "EDITGPT_DUAL", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD", "BACKWARD"],
+    async analyze(input) { seen = input; return { status: "COMPLETED", visualEvidenceId: "VIS_TWO_POINT" }; } };
+  const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run({ ...runInput, requiredPointIndices: [1, 2] });
+  assert.equal(result.route, "LOCAL");
+  assert.deepEqual(seen.requiredPointIndices, [1, 2]);
+  assert.deepEqual(result.baselinePointSampleCounts, [{ pointIndex: 1, sampleCount: 1 }, { pointIndex: 2, sampleCount: 1 }]);
+  assert.deepEqual(result.finalPointSampleCounts, [{ pointIndex: 1, sampleCount: 5 }, { pointIndex: 2, sampleCount: 6 }]);
+});
+
+test("two-point analysis rejects partial growth when only one required point advances", async () => {
+  const t = transport(readbackTwo(1, 1), readbackTwo(5, 1));
+  const driver = { driverId: "EDITGPT_DUAL", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
+    async analyze() { return { status: "COMPLETED", visualEvidenceId: "VIS_PARTIAL" }; } };
+  const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run({ ...runInput, requiredPointIndices: [1, 2] });
+  assert.equal(result.route, "ESCALATE");
+  assert.equal(result.escalationReason, "ANALYSIS_NOT_OBSERVED");
+  assert.deepEqual(result.finalPointSampleCounts, [{ pointIndex: 1, sampleCount: 5 }, { pointIndex: 2, sampleCount: 1 }]);
+});
+
+test("two-point analysis refuses before visual action when the second required point is absent", async () => {
+  let calls = 0;
+  const driver = { driverId: "EDITGPT_DUAL", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
+    async analyze() { calls += 1; return { status: "COMPLETED" }; } };
+  const result = await new GuardedTrackerAnalysisControllerV1(transport(readback(1)), driver).run({ ...runInput, requiredPointIndices: [1, 2] });
+  assert.equal(result.route, "ESCALATE");
+  assert.equal(result.escalationReason, "TRACKER_TARGET_UNAVAILABLE");
+  assert.equal(calls, 0);
+});
+
+test("two-point analysis preserves the explicitly requested primary point", async () => {
+  const t = transport(readbackTwo(1, 1), readbackTwo(4, 5));
+  let seen = null;
+  const driver = { driverId: "EDITGPT_DUAL", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
+    async analyze(input) { seen = input; return { status: "COMPLETED", visualEvidenceId: "VIS_PRIMARY_TWO" }; } };
+  const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run({ ...runInput, pointIndex: 2, requiredPointIndices: [1, 2] });
+  assert.equal(result.route, "LOCAL");
+  assert.equal(seen.pointIndex, 2);
+  assert.equal(result.baselineSampleCount, 1);
+  assert.equal(result.finalSampleCount, 5);
+});
+
+test("two-point analysis refuses when required points omit the requested primary point", async () => {
+  let calls = 0;
+  const driver = { driverId: "EDITGPT_DUAL", verifiedVision: true, verifiedCursorControl: true, supportedDirections: ["FORWARD"],
+    async analyze() { calls += 1; return { status: "COMPLETED" }; } };
+  const result = await new GuardedTrackerAnalysisControllerV1(transport(readbackTwo(1, 1)), driver).run({ ...runInput, pointIndex: 2, requiredPointIndices: [1] });
+  assert.equal(result.route, "ESCALATE");
+  assert.equal(result.escalationReason, "TRACKER_TARGET_UNAVAILABLE");
+  assert.equal(calls, 0);
 });

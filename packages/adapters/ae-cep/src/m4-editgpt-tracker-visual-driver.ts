@@ -175,12 +175,17 @@ export class EditGptTrackerVisualDriverV1 implements TrackerVisualAnalysisDriver
       || !input.expectedCompName || !input.expectedLayerName || !input.expectedTrackerName) {
       return refuse("Tracker visual request is missing an exact typed target binding.");
     }
+    const requiredPointIndices = input.requiredPointIndices ?? [input.pointIndex];
+    if (requiredPointIndices.length === 0 || requiredPointIndices.some((value) => !Number.isInteger(value) || value <= 0) || !requiredPointIndices.includes(input.pointIndex)) {
+      return refuse("Tracker visual request contains an invalid required-point set.");
+    }
     const payload = JSON.stringify({
       schema: "editflow.tracker.visual.v1",
       direction: input.direction,
       expectedControl: input.expectedControl,
       trackerIndex: input.trackerIndex,
       pointIndex: input.pointIndex,
+      requiredPointIndices,
       compHostId: input.compHostId,
       layerHostId: input.layerHostId,
       expectedCompName: input.expectedCompName,

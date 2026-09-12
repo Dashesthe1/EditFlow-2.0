@@ -1,0 +1,87 @@
+{
+  "status": "PASS_TWO_POINT_NATIVE_ANALYSIS",
+  "proofScope": "M4_TWO_POINT_GUARDED_NATIVE_ANALYSIS_FORWARD",
+  "runtimePromotion": "PARTIAL_VISUAL_PROTOCOL_2_1_DUAL_POINT_GROWTH",
+  "generatedAt": "2026-09-12T10:22:15.3766865-05:00",
+  "afterEffects": {
+    "processId": 15772,
+    "warmProcessReused": true,
+    "savedOrClosed": false
+  },
+  "fixture": {
+    "baselineProjectItems": 7,
+    "compHostId": 119,
+    "layerHostId": 131,
+    "compName": "TP_FIXTURE",
+    "layerName": "TP_TARGET",
+    "trackerName": "Tracker 1",
+    "requiredPointIndices": [1, 2]
+  },
+  "visualAction": {
+    "driverId": "editgpt.eyes-hands.tracker.v1",
+    "semanticModel": "Qwen/Qwen3-VL-8B-Instruct-GGUF:Q8_0",
+    "direction": "FORWARD",
+    "expectedControl": "TRACKER_ANALYZE_FORWARD",
+    "guardedVisualTargetVerified": true,
+    "activeStopObserved": true,
+    "stopClicked": true,
+    "finalState": "NORMAL_FORWARD",
+    "visualEvidence": "proofs/artifacts/m4-two-point-analysis-visual/after_analysis.jpg"
+  },
+  "readback": {
+    "protocolVersion": "2.1.0",
+    "outcome": "NO_OP",
+    "trackerCount": 1,
+    "pointCount": 2,
+    "before": {
+      "point1KeyedSampleCount": 0,
+      "point2KeyedSampleCount": 0,
+      "point1SampleCount": 1,
+      "point2SampleCount": 1
+    },
+    "after": {
+      "point1KeyedSampleCount": 7,
+      "point2KeyedSampleCount": 7,
+      "point1SampleCount": 7,
+      "point2SampleCount": 7
+    }
+  },
+  "acceptance": {
+    "allRequiredPointsPresentBeforeAction": true,
+    "allRequiredPointsGrew": true,
+    "point1SampleGrowth": 6,
+    "point2SampleGrowth": 6,
+    "partialGrowthWouldBeRejected": true,
+    "nativeReadbackIsAuthority": true
+  },
+  "verification": {
+    "focusedTests": {
+      "passed": 32,
+      "failed": 0
+    },
+    "npmRunCheck": {
+      "passed": true,
+      "tests": 488,
+      "failed": 0,
+      "contractFixtures": 33,
+      "typecheckPassed": true
+    }
+  },
+  "cleanup": {
+    "status": "PASS",
+    "projectItemCountBeforeFixture": 7,
+    "projectItemCountAfter": 7,
+    "ownedFolderRemoved": true,
+    "fixtureRemoved": true,
+    "sourceRemoved": true,
+    "originalCompRestored": true,
+    "activeCompName": "Comp 1",
+    "afterEffectsStillRunning": true
+  },
+  "limitations": [
+    "This acceptance proves a bounded guarded Analyze Forward action on one real-AE two-point tracker fixture.",
+    "Visual completion alone is not accepted; protocol 2.1 native readback must show growth for every required tracker point.",
+    "This does not promote arbitrary tracker layouts, arbitrary point sets, or full-range analysis policy.",
+    "Two-point center/scale/rotation derivation remains separately covered by the retained structural readback acceptance."
+  ]
+}

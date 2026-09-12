@@ -18,6 +18,7 @@ const request = {
   direction: "FORWARD",
   trackerIndex: 1,
   pointIndex: 1,
+  requiredPointIndices: [1, 2],
   compHostId: 101,
   layerHostId: 202,
   expectedCompName: "Bound Comp",
@@ -67,6 +68,7 @@ test("EditGPT visual driver launches only the fixed sidecar command with request
   assert.equal(payload.schema, "editflow.tracker.visual.v1");
   assert.equal(payload.expectedCompName, "Bound Comp");
   assert.equal(payload.expectedLayerName, "Bound Layer");
+  assert.deepEqual(payload.requiredPointIndices, [1, 2]);
 });
 test("EditGPT visual driver fails closed on malformed or mismatched sidecar output", async () => {
   const malformed = new EditGptTrackerVisualDriverV1(config, {
@@ -152,4 +154,30 @@ test("production visual route is shell-free, target-bound, and contains no works
   assert.match(py, /Motion Source field to equal the layer name/);
   assert.match(py, /targetBinding/);
   assert.doesNotMatch(py, /C:\\\\Users\\\\Shadow|pyautogui|SetCursorPos/);
+});
+
+
+test("EditGPT visual driver refuses an invalid required point set before sidecar launch", async () => {
+  let calls = 0;
+  const driver = new EditGptTrackerVisualDriverV1(config, { async run() { calls += 1; return processResult(""); } });
+  const result = await driver.analyze({ ...request, requiredPointIndices: [2] });
+  assert.equal(result.status, "REFUSED");
+  assert.match(result.detail, /invalid required-point set/);
+  assert.equal(calls, 0);
+});
+
+test("two-point live proof scripts are reversible and never save or close the user project", async () => {
+  const setup = await readFile("scripts/windows/m4-two-point-analysis-fixture-setup.jsx", "utf8");
+  const cleanup = await readFile("scripts/windows/m4-two-point-analysis-cleanup.jsx", "utf8");
+  const readback = await readFile("scripts/windows/m4-two-point-analysis-readback.jsx", "utf8");
+  const liveDriver = await readFile("scripts/m4-two-point-analysis-driver-live.mjs", "utf8");
+  const joined = [setup, cleanup, readback, liveDriver].join("\n");
+  assert.doesNotMatch(joined, /app\.project\.save|app\.project\.close|app\.quit|saveAs\s*\(/);
+  assert.match(cleanup, /EF2_M4_TP_ANALYSIS_OWNED/);
+  assert.match(cleanup, /fixture\.parentFolder\.id !== folder\.id/);
+  assert.match(cleanup, /sourceComp\.parentFolder\.id !== folder\.id/);
+  assert.match(cleanup, /black\.parentFolder\.id !== folder\.id/);
+  assert.match(cleanup, /feature\.parentFolder\.id !== folder\.id/);
+  assert.match(cleanup, /folder\.numItems !== 0/);
+  assert.match(cleanup, /original\.openInViewer\(\)/);
 });
