@@ -1,4 +1,5 @@
 export * from "./semantic-attach.js";
+export * from "./segmentation.js";
 
 export interface SubjectObservationV1 {
   readonly semanticId: string;
