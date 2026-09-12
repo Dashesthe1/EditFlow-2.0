@@ -1,0 +1,59 @@
+{
+  "status": "PASS_TWO_POINT_STRUCTURAL_READBACK",
+  "proofScope": "M4_TWO_POINT_ROTATION_SCALE_STRUCTURAL",
+  "runtimePromotion": "PARTIAL_STRUCTURAL_PROTOCOL_2_1",
+  "generatedAt": "2026-09-12T08:52:13.8964246-05:00",
+  "afterEffects": {
+    "productVersion": "25.6.6x4",
+    "processId": 15772,
+    "warmProcessReused": true,
+    "savedOrClosed": false
+  },
+  "fixture": {
+    "compHostId": 53,
+    "layerHostId": 65,
+    "compName": "EF2_M4_TWO_POINT_FIXTURE",
+    "layerName": "EF2_M4_TWO_POINT_TARGET",
+    "trackerName": "Tracker 1"
+  },
+  "readback": {
+    "protocolVersion": "2.1.0",
+    "outcome": "NO_OP",
+    "trackerCount": 1,
+    "pointCount": 2,
+    "point1KeyedSampleCount": 2,
+    "point2KeyedSampleCount": 2,
+    "synchronizedSamples": true
+  },
+  "geometry": {
+    "baselineDistancePx": 200,
+    "finalDistancePx": 300,
+    "scaleRatio": 1.5,
+    "rotationDeltaDegrees": 90
+  },
+  "verification": {
+    "focusedTests": {
+      "passed": 10,
+      "failed": 0
+    },
+    "npmRunCheck": {
+      "passed": true,
+      "tests": 481,
+      "failed": 0,
+      "contractFixtures": 33,
+      "typecheckPassed": true
+    }
+  },
+  "cleanup": {
+    "status": "PASS",
+    "fixtureRemoved": true,
+    "projectItemCountAfter": 3,
+    "originalCompRestored": true,
+    "activeCompName": "Comp 1",
+    "afterEffectsStillRunning": true
+  },
+  "limitations": [
+    "This acceptance proves read-only two-point transform derivation from synchronized native AE tracker samples.",
+    "Guarded native image analysis must separately prove sample growth for both tracker points before two-point Analyze is promoted."
+  ]
+}

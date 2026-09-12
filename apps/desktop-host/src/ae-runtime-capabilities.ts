@@ -9,6 +9,7 @@ import { M3_SPATIAL_GRAPH_CAPABILITIES_V19 } from "../../../packages/adapters/ae
 import { M3_TEMPORAL_EASE_CAPABILITIES_V18 } from "../../../packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import { M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 } from "../../../packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
 import { M4_POINT_TRACKING_CAPABILITIES_V21 } from "../../../packages/adapters/ae-cep/src/m4-point-tracking.js";
+import { M4_TWO_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-two-point-tracking.js";
 import {
   capabilityForTrackerAnalysisDriverV1,
   type TrackerVisualAnalysisDriverV1,
@@ -66,12 +67,18 @@ export const registerAcceptedM4TrackerRuntimeCapabilities = (
     priority: 121,
     capabilities: M4_POINT_TRACKING_CAPABILITIES_V21,
   });
+  registry.registerAdapter({
+    adapterId: "ae-cep.m4.two-point-tracking",
+    adapterVersion: "0.5.0-dev.1",
+    priority: 122,
+    capabilities: [M4_TWO_POINT_TRACKING_CAPABILITY_V1],
+  });
   const analysis = capabilityForTrackerAnalysisDriverV1(registration.visualDriver);
   if (!analysis.routes.some((route) => route.available)) return;
   registry.registerAdapter({
     adapterId: "ae-cep.m4.tracker-analysis",
     adapterVersion: "0.5.0-dev.2",
-    priority: 122,
+    priority: 123,
     capabilities: [analysis],
   });
 };
