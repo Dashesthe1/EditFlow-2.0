@@ -36,6 +36,15 @@ const secondFace = {
   evidenceIds: ["SCENE:FRAME_120:FACE_02"],
 };
 
+const assertPointClose = (actual, expected, epsilon = 1e-12) => {
+  assert.ok(actual);
+  assert.equal(actual.length, expected.length);
+  for (let index = 0; index < expected.length; index += 1) {
+    assert.ok(Math.abs(actual[index] - expected[index]) <= epsilon,
+      `coordinate ${index}: expected ${expected[index]}, got ${actual[index]}`);
+  }
+};
+
 test("semantic attach capability is declared, read-only, and not falsely runtime-proven", () => {
   assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.status, "PARTIAL");
   assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.proofMaturity, "DECLARED");
@@ -53,7 +62,7 @@ test("exact semanticId resolves the entity bounding-box center deterministically
   assert.equal(result.semanticId, "FACE_PETER_01");
   assert.equal(result.source, "BOUNDING_BOX");
   assert.equal(result.anchor, "CENTER");
-  assert.deepEqual(result.pointNormalized, [0.4, 0.35]);
+  assertPointClose(result.pointNormalized, [0.4, 0.35]);
   assert.equal(result.pointCompPx, null);
   assert.equal(result.confidence, 0.94);
   assert.deepEqual(result.evidenceIds, ["SCENE:FRAME_120:FACE_01"]);
@@ -76,7 +85,7 @@ test("all bounding-box anchor geometries are derived without inventing landmarks
       target: { kind: "BOUNDING_BOX", anchor },
     });
     assert.ok(result);
-    assert.deepEqual(result.pointNormalized, point);
+    assertPointClose(result.pointNormalized, point);
     assert.equal(result.landmark, null);
   }
 });
@@ -89,7 +98,7 @@ test("optional comp extent converts normalized attach geometry into composition 
     compHeight: 1080,
   });
   assert.ok(result);
-  assert.deepEqual(result.pointCompPx, [768, 378]);
+  assertPointClose(result.pointCompPx, [768, 378]);
 });
 
 test("named landmark requires exact upstream evidence and merges provenance", () => {
@@ -103,8 +112,8 @@ test("named landmark requires exact upstream evidence and merges provenance", ()
   assert.equal(result.source, "LANDMARK");
   assert.equal(result.anchor, null);
   assert.equal(result.landmark, "nose_tip");
-  assert.deepEqual(result.pointNormalized, [0.41, 0.31]);
-  assert.deepEqual(result.pointCompPx, [410, 155]);
+  assertPointClose(result.pointNormalized, [0.41, 0.31]);
+  assertPointClose(result.pointCompPx, [410, 155]);
   assert.equal(result.confidence, 0.91);
   assert.deepEqual(result.evidenceIds, ["SCENE:FRAME_120:FACE_01", "POSE:FRAME_120:NOSE_TIP"]);
 
