@@ -8,8 +8,9 @@
   try {
     if (!app.project) throw new Error("No project open.");
     var original = app.project.activeItem;
-    if (!original || !(original instanceof CompItem) || original.numLayers < 1) throw new Error("Active source comp required.");
     var existing = findByName("EF2_M4_MASK_TRACK_FIXTURE");
+    if (!original || !(original instanceof CompItem) || original.numLayers < 1 || (existing && original.id === existing.id)) original = findByName("Comp 1");
+    if (!original || !(original instanceof CompItem) || original.numLayers < 1) throw new Error("Source comp required.");
     if (existing) existing.remove();
     var source = original.layer(1).source;
     if (!source) throw new Error("Active layer has no source.");

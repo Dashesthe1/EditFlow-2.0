@@ -10,6 +10,10 @@ import { M3_TEMPORAL_EASE_CAPABILITIES_V18 } from "../../../packages/adapters/ae
 import { M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 } from "../../../packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
 import { M4_POINT_TRACKING_CAPABILITIES_V21 } from "../../../packages/adapters/ae-cep/src/m4-point-tracking.js";
 import { M4_FOUR_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-four-point-tracking.js";
+import {
+  capabilityForMaskTrackingDriverV1,
+  type MaskVisualTrackingDriverV1,
+} from "../../../packages/adapters/ae-cep/src/m4-mask-tracking.js";
 import { M4_TWO_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-two-point-tracking.js";
 import {
   capabilityForTrackerAnalysisDriverV1,
@@ -55,14 +59,15 @@ export const registerAcceptedM3RuntimeCapabilities = (registry: CapabilityRegist
 export interface M4TrackerRuntimeRegistrationV1 {
   readonly pointTrackingV21Available: boolean;
   readonly visualDriver: TrackerVisualAnalysisDriverV1 | null;
+  readonly maskVisualDriver?: MaskVisualTrackingDriverV1 | null;
 }
 
 export const registerAcceptedM4TrackerRuntimeCapabilities = (
   registry: CapabilityRegistry,
   registration: M4TrackerRuntimeRegistrationV1,
 ): void => {
-  if (!registration.pointTrackingV21Available) return;
-  registry.registerAdapter({
+  if (registration.pointTrackingV21Available) {
+    registry.registerAdapter({
     adapterId: "ae-cep.m4.point-tracking",
     adapterVersion: "2.1.0",
     priority: 121,
@@ -79,13 +84,20 @@ export const registerAcceptedM4TrackerRuntimeCapabilities = (
     adapterVersion: "0.5.0-dev.1",
     priority: 123,
     capabilities: [M4_FOUR_POINT_TRACKING_CAPABILITY_V1],
-  });
-  const analysis = capabilityForTrackerAnalysisDriverV1(registration.visualDriver);
-  if (!analysis.routes.some((route) => route.available)) return;
-  registry.registerAdapter({
-    adapterId: "ae-cep.m4.tracker-analysis",
-    adapterVersion: "0.5.0-dev.2",
-    priority: 124,
-    capabilities: [analysis],
-  });
+    });
+  }
+  const analysis = registration.pointTrackingV21Available
+    ? capabilityForTrackerAnalysisDriverV1(registration.visualDriver)
+    : null;
+  if (analysis?.routes.some((route) => route.available)) {
+    registry.registerAdapter({
+      adapterId: "ae-cep.m4.tracker-analysis", adapterVersion: "0.5.0-dev.2", priority: 124, capabilities: [analysis],
+    });
+  }
+  const maskTracking = capabilityForMaskTrackingDriverV1(registration.maskVisualDriver ?? null);
+  if (maskTracking.routes.some((route) => route.available)) {
+    registry.registerAdapter({
+      adapterId: "ae-cep.m4.mask-tracking", adapterVersion: "0.5.0-dev.1", priority: 125, capabilities: [maskTracking],
+    });
+  }
 };

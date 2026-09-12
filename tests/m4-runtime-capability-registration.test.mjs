@@ -21,6 +21,10 @@ const fakeObservedState = (projectId) => ({
 });
 
 const adapter = { observe: async (projectId) => fakeObservedState(projectId) };
+const maskForwardDriver = {
+  driverId: "editgpt.eyes-hands.mask-tracking.v1", verifiedVision: true, verifiedCursorControl: true,
+  supportedDirections: ["FORWARD"], async analyze() { return { status: "REFUSED" }; },
+};
 const forwardDriver = {
   driverId: "editgpt.eyes-hands.tracker.v1",
   verifiedVision: true,
@@ -34,6 +38,7 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("ae.tracker.two_point_transform"), null);
   assert.equal(session.registry.get("ae.tracker.four_point_perspective"), null);
   assert.equal(session.registry.get("ae.tracker.analysis.guarded_visual"), null);
+  assert.equal(session.registry.get("ae.mask.tracking.guarded_visual"), null);
 });
 
 test("explicit protocol 2.1 availability registers readback without inventing a visual driver", async () => {
@@ -75,4 +80,16 @@ test("visual proof cannot register analysis when protocol 2.1 readback is unavai
   assert.equal(session.registry.get("ae.tracker.two_point_transform"), null);
   assert.equal(session.registry.get("ae.tracker.four_point_perspective"), null);
   assert.equal(session.registry.get("ae.tracker.analysis.guarded_visual"), null);
+});
+
+
+test("verified mask driver registers independently of protocol 2.1 point tracking", async () => {
+  const session = await createDesktopAeSession(adapter, "m4-mask", {
+    m4TrackerRuntime: { pointTrackingV21Available: false, visualDriver: null, maskVisualDriver: maskForwardDriver },
+  });
+  const mask = session.registry.get("ae.mask.tracking.guarded_visual");
+  assert.ok(mask);
+  assert.equal(mask.proofMaturity, "VISUAL");
+  assert.ok(mask.routes.some((route) => route.kind === "GUARDED_UI" && route.available));
+  assert.equal(session.registry.get("ae.tracker.readback"), null);
 });
