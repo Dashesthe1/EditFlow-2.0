@@ -132,7 +132,7 @@ export class EditGptTrackerVisualDriverV1 implements TrackerVisualAnalysisDriver
   readonly driverId = "editgpt.eyes-hands.tracker.v1";
   readonly verifiedVision = true;
   readonly verifiedCursorControl = true;
-  readonly supportedDirections = Object.freeze(["FORWARD"] as const);
+  readonly supportedDirections = Object.freeze(["FORWARD", "BACKWARD"] as const);
   readonly config: Required<Omit<EditGptTrackerVisualDriverConfigV1, "evidenceDirectory">> & {
     readonly evidenceDirectory: string | null;
   };
@@ -166,8 +166,9 @@ export class EditGptTrackerVisualDriverV1 implements TrackerVisualAnalysisDriver
   }
 
   async analyze(input: TrackerVisualAnalysisRequestV1): Promise<TrackerVisualAnalysisResultV1> {
-    if (input.direction !== "FORWARD" || input.expectedControl !== "TRACKER_ANALYZE_FORWARD") {
-      return refuse("Analyze direction is not covered by the retained real-AE visual proof.");
+    const expectedControl = input.direction === "FORWARD" ? "TRACKER_ANALYZE_FORWARD" : "TRACKER_ANALYZE_BACKWARD";
+    if (!this.supportedDirections.includes(input.direction) || input.expectedControl !== expectedControl) {
+      return refuse("Analyze direction/control pair is not covered by the retained real-AE visual proofs.");
     }
     if (!Number.isInteger(input.compHostId) || input.compHostId <= 0
       || !Number.isInteger(input.layerHostId) || input.layerHostId <= 0

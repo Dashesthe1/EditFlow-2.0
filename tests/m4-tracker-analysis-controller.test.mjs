@@ -138,3 +138,24 @@ test("unproven Analyze Backward never reaches the visual driver", async () => {
   assert.equal(result.escalationReason, "ANALYSIS_DIRECTION_UNPROVEN");
   assert.equal(calls, 0);
 });
+
+test("dual-direction verified driver executes Backward only after typed pre-readback binding", async () => {
+  const t = transport(readback(1), readback(6));
+  let seen = null;
+  const driver = {
+    driverId: "EDITGPT_DUAL", verifiedVision: true, verifiedCursorControl: true,
+    supportedDirections: ["FORWARD", "BACKWARD"],
+    async analyze(input) { seen = input; return { status: "COMPLETED", visualEvidenceId: "VIS_BACKWARD" }; },
+  };
+  const result = await new GuardedTrackerAnalysisControllerV1(t, driver).run({ ...runInput, direction: "BACKWARD" });
+  assert.equal(result.route, "LOCAL");
+  assert.equal(result.baselineSampleCount, 1);
+  assert.equal(result.finalSampleCount, 6);
+  assert.equal(seen.direction, "BACKWARD");
+  assert.equal(seen.expectedControl, "TRACKER_ANALYZE_BACKWARD");
+  assert.equal(seen.expectedCompName, "Proof Comp");
+  assert.equal(seen.expectedLayerName, "Proof Layer");
+  const capability = capabilityForTrackerAnalysisDriverV1(driver);
+  assert.ok(capability.limitations.some((value) => value.includes("Analyze Forward and Analyze Backward")));
+  assert.ok(!capability.limitations.some((value) => value.includes("Analyze Backward remains unavailable")));
+});

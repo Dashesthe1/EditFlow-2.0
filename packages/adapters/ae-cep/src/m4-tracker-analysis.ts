@@ -86,12 +86,17 @@ export const capabilityForTrackerAnalysisDriverV1 = (
     && driver.verifiedCursorControl
     && driver.supportedDirections.includes("FORWARD");
   if (!available) return M4_TRACKER_ANALYSIS_CAPABILITY_V1;
+  const backwardAvailable = driver.supportedDirections.includes("BACKWARD");
   return {
     ...M4_TRACKER_ANALYSIS_CAPABILITY_V1,
     status: "PARTIAL",
     proofMaturity: "VISUAL",
     routes: M4_TRACKER_ANALYSIS_CAPABILITY_V1.routes.map((route) => ({ ...route, available: true })),
-    limitations: [
+    limitations: backwardAvailable ? [
+      "Analyze Forward and Analyze Backward are accepted through verified EditGPT Eyes/Hands visual routes with protocol 2.1 post-action truth.",
+      "The current partial route runs a bounded configurable directional segment and verifies a clean Stop-state return before readback; full-range policy remains a later tranche.",
+      "Native tracker sample growth remains the authority for analysis success.",
+    ] : [
       "Analyze Forward is accepted through the verified EditGPT Eyes/Hands visual route with protocol 2.1 post-action truth.",
       "The current partial route runs a bounded configurable Forward segment and verifies a clean Stop-state return before readback; full-range tracking is a later tranche.",
       "Analyze Backward remains unavailable until an equivalent real-AE acceptance proof is retained.",

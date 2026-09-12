@@ -95,13 +95,30 @@ test("EditGPT visual driver fails closed on malformed or mismatched sidecar outp
   assert.match(mismatch.detail, /correlation mismatch/);
 });
 
-test("EditGPT visual driver refuses unproven Backward without starting the sidecar", async () => {
+test("EditGPT visual driver supports Backward only with the exact correlated control", async () => {
   let calls = 0;
-  const runner = { async run() { calls += 1; return processResult("{}"); } };
+  const backward = { ...request, direction: "BACKWARD", expectedControl: "TRACKER_ANALYZE_BACKWARD" };
+  const runner = { async run(invocation) {
+    calls += 1;
+    const payload = JSON.parse(invocation.args[2]);
+    assert.equal(payload.direction, "BACKWARD");
+    assert.equal(payload.expectedControl, "TRACKER_ANALYZE_BACKWARD");
+    return processResult(JSON.stringify({
+      status: "COMPLETED", visualEvidenceId: "EVIDENCE_BACKWARD", guardedVisualTargetVerified: true,
+      targetBinding: {
+        direction: backward.direction, expectedControl: backward.expectedControl,
+        compHostId: backward.compHostId, layerHostId: backward.layerHostId,
+        expectedCompName: backward.expectedCompName, expectedLayerName: backward.expectedLayerName,
+        expectedTrackerName: backward.expectedTrackerName,
+      },
+    }));
+  } };
   const driver = new EditGptTrackerVisualDriverV1(config, runner);
-  const result = await driver.analyze({ ...request, direction: "BACKWARD", expectedControl: "TRACKER_ANALYZE_BACKWARD" });
-  assert.equal(result.status, "REFUSED");
-  assert.equal(calls, 0);
+  assert.equal((await driver.analyze(backward)).status, "COMPLETED");
+  assert.equal(calls, 1);
+  const mismatch = await driver.analyze({ ...backward, expectedControl: "TRACKER_ANALYZE_FORWARD" });
+  assert.equal(mismatch.status, "REFUSED");
+  assert.equal(calls, 1);
 });
 test("EditGPT visual driver refuses sidecar failure and timeout", async () => {
   const failed = new EditGptTrackerVisualDriverV1(config, {
@@ -121,10 +138,12 @@ test("production visual route is shell-free, target-bound, and contains no works
   assert.match(ts, /shell:\s*false/);
   assert.doesNotMatch(ts, /exec\(|execFile\(|Invoke-Expression|cmd\.exe/);
   assert.match(py, /visible AE state does not match the typed tracker target/);
-  assert.match(py, /detect_analyze_forward_cv/);
+  assert.match(py, /detect_analyze_row_cv/);
   assert.match(py, /2-1-1-2 Tracker Analyze row signature/);
   assert.match(py, /target_patch_change/);
   assert.match(py, /one-frame forward/);
+  assert.match(py, /one-frame backward/);
+  assert.match(py, /controlFillRatio/);
   assert.match(py, /active Stop state/);
   assert.match(py, /fillRatios/);
   assert.match(py, /STOP_CLICKED/);

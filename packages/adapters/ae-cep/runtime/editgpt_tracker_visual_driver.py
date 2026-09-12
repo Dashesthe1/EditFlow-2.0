@@ -212,8 +212,12 @@ async def guarded_click_target(eyes, hands, qwen, output: Path, instruction: str
 def validate_request(value: dict) -> dict:
     if value.get("schema") != "editflow.tracker.visual.v1":
         raise ValueError("unsupported request schema")
-    if value.get("direction") != "FORWARD" or value.get("expectedControl") != "TRACKER_ANALYZE_FORWARD":
-        raise ValueError("only retained Analyze Forward proof is supported")
+    direction = value.get("direction")
+    if direction not in ("FORWARD", "BACKWARD"):
+        raise ValueError("unsupported tracker analysis direction")
+    expected_control = "TRACKER_ANALYZE_FORWARD" if direction == "FORWARD" else "TRACKER_ANALYZE_BACKWARD"
+    if value.get("expectedControl") != expected_control:
+        raise ValueError("expectedControl does not match tracker analysis direction")
     for key in ("compHostId", "layerHostId", "trackerIndex", "pointIndex"):
         if not isinstance(value.get(key), int) or value[key] <= 0:
             raise ValueError(f"{key} must be a positive integer")
@@ -320,7 +324,7 @@ def _cv_group_bbox(group: list[dict]) -> tuple[int, int, int, int]:
     )
 
 
-def detect_analyze_forward_cv(panel_image: np.ndarray) -> dict:
+def detect_analyze_row_cv(panel_image: np.ndarray) -> dict:
     gray = cv2.cvtColor(panel_image, cv2.COLOR_BGR2GRAY)
     height, width = gray.shape
     y_start, y_end = int(height * 0.54), int(height * 0.84)
@@ -374,9 +378,16 @@ def detect_analyze_forward_cv(panel_image: np.ndarray) -> dict:
     return best
 
 
-async def ground_analyze_forward(eyes, hands, qwen, output: Path, image: np.ndarray) -> dict:
+async def ground_analyze(eyes, hands, qwen, output: Path, image: np.ndarray, request: dict) -> dict:
     current = image
     last_reason = "not attempted"
+    direction = request["direction"]
+    is_forward = direction == "FORWARD"
+    primary_index, neighbor_index = (2, 3) if is_forward else (1, 0)
+    direction_label = "Forward" if is_forward else "Backward"
+    primary_ordinal = "third" if is_forward else "second"
+    neighbor_label = "one-frame forward" if is_forward else "one-frame backward"
+    neighbor_ordinal = "fourth" if is_forward else "first"
     for attempt in range(2):
         panel_ok, panel = locate_tracker_panel_signature(qwen, current, f"m4_tracker_analyze_panel_{attempt + 1}")
         if not panel_ok:
@@ -393,11 +404,11 @@ async def ground_analyze_forward(eyes, hands, qwen, output: Path, image: np.ndar
                     ),
                     client=qwen, min_confidence=0.60,
                 )
-                detected = detect_analyze_forward_cv(crop)
+                detected = detect_analyze_row_cv(crop)
                 boxes = detected["bboxes"]
                 centers = detected["centers"]
-                primary_box, neighbor_box = boxes[2], boxes[3]
-                primary_center, neighbor_center = centers[2], centers[3]
+                primary_box, neighbor_box = boxes[primary_index], boxes[neighbor_index]
+                primary_center, neighbor_center = centers[primary_index], centers[neighbor_index]
                 anchor_left = anchor.x < centers[0][0]
                 anchor_vertical = abs(anchor.y - detected["rowY"]) <= 60
                 if not (anchor_left and anchor_vertical):
@@ -405,15 +416,15 @@ async def ground_analyze_forward(eyes, hands, qwen, output: Path, image: np.ndar
                 primary_local = SemanticPointerTarget(
                     x=int(round(primary_center[0])), y=int(round(primary_center[1])),
                     confidence=min(0.99, float(anchor.confidence)),
-                    target="continuous Analyze Forward",
-                    reason="Resolved as the third group in the verified 2-1-1-2 Tracker Analyze row signature.",
+                    target=f"continuous Analyze {direction_label}",
+                    reason=f"Resolved as the {primary_ordinal} group in the verified 2-1-1-2 Tracker Analyze row signature.",
                     bbox_pixels=primary_box,
                 )
                 neighbor_local = SemanticPointerTarget(
                     x=int(round(neighbor_center[0])), y=int(round(neighbor_center[1])),
                     confidence=min(0.99, float(anchor.confidence)),
-                    target="one-frame forward",
-                    reason="Resolved as the fourth group in the verified 2-1-1-2 Tracker Analyze row signature.",
+                    target=neighbor_label,
+                    reason=f"Resolved as the {neighbor_ordinal} group in the verified 2-1-1-2 Tracker Analyze row signature.",
                     bbox_pixels=neighbor_box,
                 )
                 primary = offset_pointer_target(primary_local, x1, y1)
@@ -434,13 +445,15 @@ async def ground_analyze_forward(eyes, hands, qwen, output: Path, image: np.ndar
                     "panel_bounds": list(panel["bounds"]),
                     "image": current,
                     "semantic_attempt": attempt + 1,
+                    "control_index": primary_index,
+                    "direction": direction,
                 }
             except Exception as exc:
                 last_reason = f"{type(exc).__name__}: {exc}"
         if attempt == 0:
             await asyncio.sleep(0.35)
             _meta, current = await capture(eyes, hands, output, "analyze_ground_retry")
-    raise RuntimeError(f"Analyze Forward local row verification failed after retry: {last_reason}")
+    raise RuntimeError(f"Analyze {direction_label} local row verification failed after retry: {last_reason}")
 
 
 async def click_grounded_analyze(eyes, hands, qwen, output: Path, request: dict, grounded: dict) -> dict:
@@ -461,7 +474,7 @@ async def click_grounded_analyze(eyes, hands, qwen, output: Path, request: dict,
         "hands_click", {"x": screen_x, "y": screen_y, "button": "left", "count": 1}
     )
     if clicked.is_error:
-        raise RuntimeError("Hands could not click verified Analyze Forward")
+        raise RuntimeError(f"Hands could not click verified Analyze {request["direction"].title()}")
     return {
         "target_binding": binding_evidence,
         "screen": {"x": screen_x, "y": screen_y},
@@ -474,9 +487,12 @@ async def click_grounded_analyze(eyes, hands, qwen, output: Path, request: dict,
 async def wait_for_analysis_completion(eyes, hands, output: Path, grounded: dict, analysis_window_s: float = 5.0, timeout_s: float = 30.0) -> dict:
     panel_bounds = tuple(grounded["panel_bounds"])
     baseline = grounded["cv_signature"]
-    baseline_fill = float(baseline["fillRatios"][2])
+    control_index = int(grounded["control_index"])
+    direction = str(grounded["direction"])
+    baseline_fill = float(baseline["fillRatios"][control_index])
     active_threshold = max(0.84, baseline_fill + 0.22)
     normal_threshold = min(0.78, baseline_fill + 0.12)
+    normal_state = f"NORMAL_{direction}"
     active_observed = False
     active_started = None
     stop_clicked = False
@@ -488,27 +504,27 @@ async def wait_for_analysis_completion(eyes, hands, output: Path, grounded: dict
         meta, image = await capture(eyes, hands, output, f"analysis_state_{probe:02d}")
         x1, y1, x2, y2 = panel_bounds
         crop = image[y1:y2, x1:x2]
-        signature = detect_analyze_forward_cv(crop)
+        signature = detect_analyze_row_cv(crop)
         center_drift = max(abs(signature["centers"][i][0]-baseline["centers"][i][0]) + abs(signature["centers"][i][1]-baseline["centers"][i][1]) for i in range(4))
         if center_drift > 10:
             raise RuntimeError(f"Analyze row geometry drifted during tracking ({center_drift:.2f}px)")
-        fill = float(signature["fillRatios"][2])
-        state = "ACTIVE_STOP" if fill >= active_threshold else ("NORMAL_FORWARD" if fill <= normal_threshold else "TRANSITION")
-        states.append({"probe": probe, "state": state, "forwardFillRatio": fill, "centerDrift": center_drift})
+        fill = float(signature["fillRatios"][control_index])
+        state = "ACTIVE_STOP" if fill >= active_threshold else (normal_state if fill <= normal_threshold else "TRANSITION")
+        states.append({"probe": probe, "state": state, "controlFillRatio": fill, "centerDrift": center_drift})
         now = time.monotonic()
         if not active_observed:
             if state == "ACTIVE_STOP":
                 active_observed = True
                 active_started = now
             elif probe >= 12:
-                raise RuntimeError("Analyze Forward click never produced the required active Stop state")
+                raise RuntimeError(f"Analyze {direction.title()} click never produced the required active Stop state")
         else:
-            if state == "NORMAL_FORWARD":
-                return {"complete": True, "probeCount": probe, "activeStopObserved": True, "stopClicked": stop_clicked, "states": states}
+            if state == normal_state:
+                return {"complete": True, "probeCount": probe, "activeStopObserved": True, "stopClicked": stop_clicked, "finalState": normal_state, "states": states}
             if not stop_clicked and active_started is not None and now-active_started >= analysis_window_s:
                 status = structured(await hands.call_tool("hands_status", {}))
                 transform = CoordinateTransform.from_status(meta, status)
-                cx, cy = signature["centers"][2]
+                cx, cy = signature["centers"][control_index]
                 screen_x, screen_y = transform.encoded_to_screen(x1+cx, y1+cy)
                 clicked = await hands.call_tool("hands_click", {"x": screen_x, "y": screen_y, "button": "left", "count": 1})
                 if clicked.is_error:
@@ -545,7 +561,7 @@ async def run(request: dict, output: Path, analysis_window_s: float = 5.0) -> di
             await asyncio.sleep(0.20)
             panel_image = await ensure_tracker_panel(eyes, hands, qwen, output, request, proof)
             panel_image = await ensure_current_tracker(eyes, hands, qwen, output, request, proof)
-            grounded = await ground_analyze_forward(eyes, hands, qwen, output, panel_image)
+            grounded = await ground_analyze(eyes, hands, qwen, output, panel_image, request)
             proof["analyzeSelection"] = {
                 "primary": grounded["primary"].__dict__,
                 "neighbor": grounded["neighbor"].__dict__,
@@ -553,6 +569,8 @@ async def run(request: dict, output: Path, analysis_window_s: float = 5.0) -> di
                 "anchorSemantic": grounded["anchor_observation"].as_dict(),
                 "cvSignature": grounded["cv_signature"],
                 "rowVerification": grounded["row_verification"],
+                "controlIndex": grounded["control_index"],
+                "direction": grounded["direction"],
             }
             proof["click"] = await click_grounded_analyze(eyes, hands, qwen, output, request, grounded)
             proof["completion"] = await wait_for_analysis_completion(eyes, hands, output, grounded, analysis_window_s=analysis_window_s)
@@ -567,7 +585,7 @@ async def run(request: dict, output: Path, analysis_window_s: float = 5.0) -> di
             return {
                 "status": "COMPLETED",
                 "visualEvidenceId": evidence_path,
-                "detail": "Verified Analyze Forward completed through EditGPT Eyes/Hands.",
+                "detail": f"Verified Analyze {request["direction"].title()} completed through EditGPT Eyes/Hands.",
                 "guardedVisualTargetVerified": True,
                 "targetBinding": target_binding(request),
                 "proof": proof,

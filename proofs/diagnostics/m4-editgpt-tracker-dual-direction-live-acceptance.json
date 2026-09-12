@@ -1,0 +1,88 @@
+{
+  "status": "PASS_BIDIRECTIONAL_PRODUCTION_VISUAL_DRIVER",
+  "proofScope": "M4_TRACKER_ANALYZE_FORWARD_BACKWARD_PRODUCTION_DRIVER",
+  "runtimePromotion": "PARTIAL_BOUNDED_BIDIRECTIONAL_EXPLICIT_REGISTRATION",
+  "generatedAt": "2026-09-11T23:21:52.6756218-05:00",
+  "afterEffects": {
+    "productVersion": "25.6.6",
+    "processId": 18028,
+    "warmProcessReused": true,
+    "savedOrClosed": false
+  },
+  "backwardProductionProof": {
+    "fixture": {
+      "compHostId": 171,
+      "layerHostId": 183,
+      "compName": "EF2_M4_TRACK_ANALYSIS_FIXTURE",
+      "layerName": "EF2_M4_TRACK_TARGET",
+      "trackerName": "Tracker 1"
+    },
+    "baselineKeyedSampleCount": 0,
+    "finalKeyedSampleCount": 179,
+    "finalSampleCount": 179,
+    "firstTimeSeconds": 0.00141808475142,
+    "lastTimeSeconds": 2.96963630296964,
+    "controlIndex": 1,
+    "control": "TRACKER_ANALYZE_BACKWARD",
+    "activeStopObserved": true,
+    "stopClicked": false,
+    "finalState": "NORMAL_BACKWARD",
+    "guardedTargetBinding": true,
+    "visualEvidence": "proofs/artifacts/m4-tracker-visual-runtime-backward-production/result.json",
+    "wrapperEvidence": "proofs/artifacts/m4-tracker-runtime-driver-backward-result.json"
+  },
+  "forwardRegression": {
+    "fixture": {
+      "compHostId": 197,
+      "layerHostId": 209,
+      "compName": "EF2_M4_TRACK_ANALYSIS_FIXTURE",
+      "layerName": "EF2_M4_TRACK_TARGET",
+      "trackerName": "Tracker 1"
+    },
+    "explicitStartTimeSeconds": 0,
+    "baselineKeyedSampleCount": 0,
+    "finalKeyedSampleCount": 196,
+    "finalSampleCount": 196,
+    "firstTimeSeconds": 0,
+    "lastTimeSeconds": 3.25166833500167,
+    "controlIndex": 2,
+    "control": "TRACKER_ANALYZE_FORWARD",
+    "activeStopObserved": true,
+    "stopClicked": true,
+    "finalState": "NORMAL_FORWARD",
+    "guardedTargetBinding": true,
+    "visualEvidence": "proofs/artifacts/m4-tracker-visual-runtime-bounded/result.json",
+    "protocol21PostReadback": "proofs/artifacts/m4-tracker-v21-inspect-fixture.json"
+  },
+  "negativeControl": {
+    "description": "A visual-only Forward attempt from invalid carried-over playhead state returned visual completion but protocol 2.1 readback stayed at zero keyed samples. It was rejected and is not acceptance evidence.",
+    "finalKeyedSampleCount": 0,
+    "authority": "Protocol 2.1 post-action tracker sample growth remains required for analysis acceptance."
+  },
+  "verification": {
+    "focusedDualDirectionTests": {
+      "passed": 19,
+      "failed": 0
+    },
+    "npmRunCheck": {
+      "passed": true,
+      "tests": 475,
+      "failed": 0,
+      "contractFixtures": 33,
+      "typecheckPassed": true
+    }
+  },
+  "cleanup": {
+    "status": "PASS",
+    "fixtureRemoved": true,
+    "projectItemCountAfter": 2,
+    "originalCompRestored": true,
+    "activeCompHostId": 1,
+    "activeCompName": "Comp 1",
+    "afterEffectsStillRunning": true
+  },
+  "limitations": [
+    "Production tracker analysis remains a bounded directional segment; full-range tracking policy is a later tranche.",
+    "The caller must provide valid analyzable frame range in the requested direction; visual completion alone cannot override protocol 2.1 sample-growth truth."
+  ]
+}
