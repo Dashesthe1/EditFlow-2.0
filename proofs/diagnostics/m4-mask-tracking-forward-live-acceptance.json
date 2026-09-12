@@ -1,0 +1,51 @@
+{
+  "status": "PASS_FORWARD_MASK_TRACKING_NATIVE_READBACK",
+  "proofScope": "M4_MASK_TRACKING_FORWARD_GUARDED_VISUAL",
+  "generatedAt": "2026-09-12T11:56:00-05:00",
+  "afterEffects": {
+    "product": "Adobe After Effects 2025",
+    "processId": 15772,
+    "warmProcessReused": true,
+    "savedOrClosed": false
+  },
+  "fixture": {
+    "compHostId": 184,
+    "layerHostId": 196,
+    "compName": "EF2_M4_MASK_TRACK_FIXTURE",
+    "layerName": "EF2_M4_MASK_TRACK_TARGET",
+    "maskStableId": "M4_MASK_TRACK_1",
+    "maskName": "EditFlow Track Mask"
+  },
+  "visualBinding": {
+    "driverId": "editgpt.eyes-hands.tracker.v1",
+    "direction": "FORWARD",
+    "trackerPanelMaskModeConfidence": 0.98,
+    "maskModeVisibleEvidence": "Tracker panel visibly showed Masks: EditFlow Track Mask and a Method selector."
+  },
+  "nativeMaskPathTruth": {
+    "baselinePathKeyCount": 0,
+    "finalPathKeyCount": 180,
+    "firstKeyTimeSeconds": 0,
+    "lastKeyTimeSeconds": 5.97263930597264,
+    "pathGrowthObserved": true
+  },
+  "verification": {
+    "npmRunCheck": {
+      "passed": true,
+      "contractFixtures": 33,
+      "tests": 503,
+      "failed": 0,
+      "typecheckPassed": true
+    }
+  },
+  "evidence": {
+    "visualGround": "proofs/artifacts/m4-tracker-editgpt-visual-driver/analyze_ground.jpg",
+    "visualPostAction": "proofs/artifacts/m4-tracker-editgpt-visual-driver/after_analyze.jpg",
+    "maskReadback": "proofs/artifacts/m4-mask-tracking-v1-inspect.json"
+  },
+  "limitations": [
+    "Analyze Backward is not yet accepted for mask tracking.",
+    "The semantic row-order advisory disagreed with the geometry-specific target proof, so native Mask Path growth remains the authoritative success signal.",
+    "This proof promotes only the bounded guarded Forward mask-tracking route; it does not authorize arbitrary Tracker-panel UI control."
+  ]
+}
