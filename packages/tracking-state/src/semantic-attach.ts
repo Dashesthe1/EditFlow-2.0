@@ -91,6 +91,10 @@ const validEntity = (entity: SemanticSceneEntityGeometryV1): boolean =>
 const validCompExtent = (value: number | undefined): value is number =>
   value !== undefined && Number.isFinite(value) && value > 0;
 
+const isBoundingBoxAnchor = (value: unknown): value is SemanticAttachBoundingBoxAnchorV1 =>
+  typeof value === "string"
+  && (SEMANTIC_ATTACH_BOUNDING_BOX_ANCHORS_V1 as readonly string[]).includes(value);
+
 const boundingBoxAnchorPoint = (
   box: readonly [number, number, number, number],
   anchor: SemanticAttachBoundingBoxAnchorV1,
@@ -163,15 +167,19 @@ export const resolveSemanticAttachPointV1 = (
   const entity = selectEntity(entities, query);
   if (!entity || entity.confidence < minConfidence) return null;
 
-  if (query.target.kind === "BOUNDING_BOX") {
-    const pointNormalized = boundingBoxAnchorPoint(entity.boundingBox, query.target.anchor);
+  const target = query.target;
+  if (!target || (target.kind !== "BOUNDING_BOX" && target.kind !== "LANDMARK")) return null;
+
+  if (target.kind === "BOUNDING_BOX") {
+    if (!isBoundingBoxAnchor(target.anchor)) return null;
+    const pointNormalized = boundingBoxAnchorPoint(entity.boundingBox, target.anchor);
     const pointCompPx = normalizedToComp(pointNormalized, query);
     if ((query.compWidth !== undefined || query.compHeight !== undefined) && !pointCompPx) return null;
     return {
       semanticId: entity.semanticId,
       entityClass: entity.entityClass,
       source: "BOUNDING_BOX",
-      anchor: query.target.anchor,
+      anchor: target.anchor,
       landmark: null,
       pointNormalized,
       pointCompPx,
@@ -180,7 +188,8 @@ export const resolveSemanticAttachPointV1 = (
     };
   }
 
-  const landmarkName = query.target.landmark.trim();
+  if (typeof target.landmark !== "string") return null;
+  const landmarkName = target.landmark.trim();
   if (!landmarkName) return null;
   const landmark = entity.landmarks?.[landmarkName];
   if (!landmark || !finite01(landmark.x) || !finite01(landmark.y) || !finite01(landmark.confidence)) {
