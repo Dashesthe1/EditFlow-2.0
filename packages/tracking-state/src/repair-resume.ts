@@ -91,11 +91,14 @@ const evidence = (value: unknown): readonly string[] | null => {
   const ids = [...new Set(value.filter(nonEmpty))];
   return ids.length > 0 ? ids : null;
 };
-const validPolicy = (policy: TrackingRepairPolicyV1): boolean =>
-  !!policy && [policy.minResumeConfidence, policy.maxResumeDriftRisk, policy.maxResumeOcclusion].every(finite01);
+const validPolicy = (value: unknown): value is TrackingRepairPolicyV1 => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const policy = value as Record<string, unknown>;
+  return [policy["minResumeConfidence"], policy["maxResumeDriftRisk"], policy["maxResumeOcclusion"]].every(finite01);
+};
 const validTriggerReason = (value: unknown): value is TrackingRepairTriggerReasonV1 =>
   typeof value === "string" && (TRACKING_REPAIR_TRIGGERS_V1 as readonly string[]).includes(value);
-const mergeEvidence = (...groups: readonly (readonly string[])[]): readonly string[] =>
+const mergeEvidence = (...groups: (readonly string[])[]): readonly string[] =>
   [...new Set(groups.flat())];
 
 export const createTrackingRepairStateV1 = (input: {
