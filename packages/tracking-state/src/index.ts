@@ -1,3 +1,5 @@
+export * from "./semantic-attach.js";
+
 export interface SubjectObservationV1 {
   readonly semanticId: string;
   readonly timestampMs: number;
