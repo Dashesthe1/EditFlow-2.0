@@ -28,6 +28,8 @@ test("analysis capability stays explicit guarded UI until a visual driver is pro
   assert.equal(M4_TRACKER_ANALYSIS_CAPABILITY_V1.riskClass, "R4_EXTERNAL_UI");
   assert.equal(M4_TRACKER_ANALYSIS_CAPABILITY_V1.routes[0].kind, "GUARDED_UI");
   assert.equal(M4_TRACKER_ANALYSIS_CAPABILITY_V1.routes[0].available, false);
+  assert.ok(M4_TRACKER_ANALYSIS_CAPABILITY_V1.limitations.some((value) => value.includes("Analyze Forward has real-AE vision+cursor proof")));
+  assert.ok(M4_TRACKER_ANALYSIS_CAPABILITY_V1.limitations.some((value) => value.includes("Analyze Backward") && value.includes("unproven")));
 });
 
 test("missing verified visual driver fails closed after typed pre-readback", async () => {

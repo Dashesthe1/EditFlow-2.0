@@ -72,13 +72,13 @@
       try { return property.value; } catch (_) { return null; }
     }
   }
-  function addKeyTimes(property, times) {
+  function addKeyTimes(property, times, seen) {
     if (!property) return;
-    var i, time, j, exists;
+    var i, time, timeKey;
     for (i = 1; i <= property.numKeys; i += 1) {
-      time = property.keyTime(i); exists = false;
-      for (j = 0; j < times.length; j += 1) if (Math.abs(times[j] - time) < 0.000001) { exists = true; break; }
-      if (!exists) times.push(time);
+      time = property.keyTime(i);
+      timeKey = String(Math.round(time * 1000000));
+      if (!seen[timeKey]) { seen[timeKey] = true; times.push(time); }
     }
   }
   function child(point, matchName) { try { return point.property(matchName); } catch (_) { return null; } }
@@ -90,8 +90,8 @@
     var confidence = child(point, "ADBE MTracker Pt Confidence");
     var attach = child(point, "ADBE MTracker Pt Attach Pt");
     var attachOffset = child(point, "ADBE MTracker Pt Attach Pt Ofst");
-    var times = [], samples = [], oldTime = comp.time, i, time, attachValue, compPoint, normalized, conf;
-    addKeyTimes(center, times); addKeyTimes(attach, times); addKeyTimes(confidence, times);
+    var times = [], seen = {}, samples = [], oldTime = comp.time, i, time, attachValue, compPoint, normalized, conf;
+    addKeyTimes(center, times, seen); addKeyTimes(attach, times, seen); addKeyTimes(confidence, times, seen);
     times.sort(function (a, b) { return a - b; });
     var keyedSampleCount = times.length;
     if (times.length === 0) times.push(comp.time);

@@ -83,6 +83,14 @@ test("protocol 2.1 host reads tracker properties without creating or analyzing t
   assert.equal(source.includes("beginUndoGroup("), false);
 });
 
+test("protocol 2.1 host deduplicates large tracker key sets in linear time", async () => {
+  const source = await readFile("packages/adapters/ae-cep/host/editflow_host_m4_point_tracking.jsx", "utf8");
+  assert.ok(source.includes("function addKeyTimes(property, times, seen)"));
+  assert.ok(source.includes("timeKey = String(Math.round(time * 1000000))"));
+  assert.ok(source.includes("addKeyTimes(center, times, seen)"));
+  assert.equal(source.includes("for (j = 0; j < times.length; j += 1)"), false);
+});
+
 test("v21 loader is additive over accepted v20 and fails closed only for 2.1", async () => {
   const source = await readFile("packages/adapters/ae-cep/host/editflow_host_current_v21.jsx", "utf8");
   assert.ok(source.includes("editflow_host_current_v20.jsx"));

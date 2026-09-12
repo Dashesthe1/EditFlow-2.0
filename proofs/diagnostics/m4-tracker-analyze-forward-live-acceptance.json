@@ -1,0 +1,85 @@
+{
+  "proof": "M4 guarded native Analyze Forward real-AE acceptance",
+  "status": "PASS_FORWARD_CONTROL_AND_READBACK",
+  "runtimePromotion": "NOT_PROMOTED",
+  "environment": {
+    "afterEffectsVersion": "25.6.6x4",
+    "existingAfterEffectsPid": 18028,
+    "existingProcessReused": true,
+    "afterEffectsRestarted": false,
+    "captureSurface": "dxcam 1920x1080 physical desktop",
+    "cursorSurface": "editgpt WindowsInputBackend DPI-aware Win32 SendInput"
+  },
+  "controlDiscovery": {
+    "expectedControl": "TRACKER_ANALYZE_FORWARD",
+    "verifiedPhysicalCoordinate": [1703, 915],
+    "analyzeOneFrameBackwardApproximateCoordinate": [1625, 915],
+    "analyzeBackwardApproximateCoordinate": [1668, 915],
+    "analyzeOneFrameForwardApproximateCoordinate": [1743, 915],
+    "legacyGeometryDetectorWasWrong": true,
+    "legacyDetectorFailure": "The prior edge-geometry cluster was left of the actual Analyze buttons and selected a backward control instead of Analyze Forward.",
+    "visualStopStateObserved": true,
+    "visualProgressObserved": true,
+    "stopStateArtifact": "proofs/artifacts/m4-correct-analyze-forward-click.png",
+    "progressArtifact": "proofs/artifacts/m4-analysis-progress-30s.png"
+  },
+  "nativeTrackerEvidence": {
+    "baselineKeyedSampleCount": 0,
+    "finalCenterKeyCount": 1783,
+    "finalAttachKeyCount": 1783,
+    "finalConfidenceKeyCount": 1783,
+    "firstTimeSeconds": 0,
+    "lastTimeSeconds": 29.7153403403403,
+    "firstFeatureCenter": [769, 419],
+    "lastFeatureCenter": [1044.78515625, 346.5],
+    "firstConfidencePercent": 100,
+    "lastConfidencePercent": 97.1565923506506,
+    "nativeEvidenceArtifact": "proofs/artifacts/m4-native-key-count.json"
+  },
+  "protocol21ReadbackEvidence": {
+    "outcome": "NO_OP",
+    "trackerCount": 1,
+    "pointCount": 1,
+    "keyedSampleCount": 1783,
+    "sampleCount": 1783,
+    "firstTimeSeconds": 0,
+    "lastTimeSeconds": 29.7153403403403,
+    "adapterDurationMs": 18181,
+    "serializedArtifactBytes": 557396,
+    "artifact": "proofs/artifacts/m4-tracker-v21-inspect-current.json"
+  },
+  "readbackScalabilityFix": {
+    "problem": "Protocol 2.1 key-time deduplication used a nested linear scan and became quadratic on real dense tracker data.",
+    "fix": "Deduplicate rounded-microsecond key times through a shared seen map before sorting and sampling.",
+    "targetedContractTests": {"passed": 8, "failed": 0},
+    "fullRepositoryCheck": {
+      "schemaFixturesPassed": 33,
+      "typecheckPassed": true,
+      "testsPassed": 462,
+      "testsFailed": 0
+    }
+  },
+  "cleanup": {
+    "status": "PASS",
+    "fixtureRemovedCount": 1,
+    "projectItemCountAfter": 2,
+    "originalCompHostId": 1,
+    "originalLayerHostId": 14,
+    "trackerCountAfter": 1,
+    "centerKeyCountAfter": 0,
+    "attachKeyCountAfter": 0,
+    "confidenceKeyCountAfter": 0,
+    "featureCenterRestored": [540, 540],
+    "featureSizeRestored": [20, 20],
+    "searchSizeRestored": [40, 40],
+    "attachPointRestored": [540, 540],
+    "layerOutPointRestoredSeconds": 58.6469675999266,
+    "cleanupArtifact": "proofs/artifacts/m4-native-analysis-proof-cleanup.json"
+  },
+  "limitations": [
+    "Analyze Backward is not yet proven by the live guarded visual route.",
+    "The verified DPI-aware vision+cursor path is not yet registered as the production EditFlow visual driver, so the runtime route remains unavailable and unpromoted.",
+    "The 18.181 second full readback of 1783 samples proves correctness and scalability recovery, not fast-loop latency for dense full-history reads.",
+    "The accepted native proof is bounded to guarded Analyze Forward plus protocol 2.1 post-action truth; it does not promote arbitrary Tracker-panel UI control."
+  ]
+}

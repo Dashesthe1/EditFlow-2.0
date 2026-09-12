@@ -63,7 +63,8 @@ export const M4_TRACKER_ANALYSIS_CAPABILITY_V1: CapabilityRecord = {
   rollbackStrategy: "FIXTURE_OR_PROJECT_TRANSACTION_OWNED_CLEANUP",
   riskClass: "R4_EXTERNAL_UI",
   limitations: [
-    "AE 25.6.6 does not expose Analyze Forward/Backward through tested menu, UIA, Win32 child controls, or keyboard routes.",
+    "AE 25.6.6 exposes no tested menu, UIA, Win32 child-control, or keyboard route for Analyze; guarded visual control remains required.",
+    "Analyze Forward has real-AE vision+cursor proof, but Analyze Backward and production visual-driver registration remain unproven.",
     "Analysis is not accepted unless native tracker sample count increases after the visual action.",
   ],
   fallbackPolicy: "EXPLICIT_ONLY",
