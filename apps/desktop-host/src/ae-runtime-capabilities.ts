@@ -9,6 +9,11 @@ import { M3_SPATIAL_GRAPH_CAPABILITIES_V19 } from "../../../packages/adapters/ae
 import { M3_TEMPORAL_EASE_CAPABILITIES_V18 } from "../../../packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import { M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 } from "../../../packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
 import { M4_POINT_TRACKING_CAPABILITIES_V21 } from "../../../packages/adapters/ae-cep/src/m4-point-tracking.js";
+import {
+  capabilityForFaceTrackingDriverV1,
+  M4_FACE_READBACK_CAPABILITIES_V22,
+  type FaceVisualTrackingDriverV1,
+} from "../../../packages/adapters/ae-cep/src/m4-face-tracking.js";
 import { M4_FOUR_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-four-point-tracking.js";
 import {
   capabilityForMaskTrackingDriverV1,
@@ -60,6 +65,8 @@ export interface M4TrackerRuntimeRegistrationV1 {
   readonly pointTrackingV21Available: boolean;
   readonly visualDriver: TrackerVisualAnalysisDriverV1 | null;
   readonly maskVisualDriver?: MaskVisualTrackingDriverV1 | null;
+  readonly faceTrackingV22Available?: boolean;
+  readonly faceVisualDriver?: FaceVisualTrackingDriverV1 | null;
 }
 
 export const registerAcceptedM4TrackerRuntimeCapabilities = (
@@ -99,5 +106,16 @@ export const registerAcceptedM4TrackerRuntimeCapabilities = (
     registry.registerAdapter({
       adapterId: "ae-cep.m4.mask-tracking", adapterVersion: "0.5.0-dev.1", priority: 125, capabilities: [maskTracking],
     });
+  }
+  if (registration.faceTrackingV22Available) {
+    registry.registerAdapter({
+      adapterId: "ae-cep.m4.face-readback", adapterVersion: "2.2.0", priority: 126, capabilities: M4_FACE_READBACK_CAPABILITIES_V22,
+    });
+    const faceTracking = capabilityForFaceTrackingDriverV1(registration.faceVisualDriver ?? null);
+    if (faceTracking.routes.some((route) => route.available)) {
+      registry.registerAdapter({
+        adapterId: "ae-cep.m4.face-tracking", adapterVersion: "0.5.0-dev.1", priority: 127, capabilities: [faceTracking],
+      });
+    }
   }
 };
