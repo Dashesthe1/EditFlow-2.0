@@ -51,6 +51,9 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("ae.face.tracking.detailed.guarded_visual"), null);
   assert.equal(session.registry.get("ae.stabilization.readback"), null);
   assert.equal(session.registry.get("ae.stabilization.position.guarded_visual"), null);
+  assert.equal(session.registry.get("ae.tracker.repair.readback"), null);
+  assert.equal(session.registry.get("ae.tracker.repair.feature_center.set"), null);
+  assert.equal(session.registry.get("tracking.repair_resume.state"), null);
 });
 
 test("explicit protocol 2.1 availability registers readback without inventing a visual driver", async () => {
@@ -162,4 +165,36 @@ test("stabilization visual proof cannot register without protocol 2.3 readback",
   });
   assert.equal(session.registry.get("ae.stabilization.readback"), null);
   assert.equal(session.registry.get("ae.stabilization.position.guarded_visual"), null);
+});
+
+test("protocol 2.4 tracker repair registers only when explicitly available", async () => {
+  const session = await createDesktopAeSession(adapter, "m4-tracker-repair", {
+    m4TrackerRuntime: { pointTrackingV21Available: false, visualDriver: null, trackerRepairV24Available: true },
+  });
+  const readback = session.registry.get("ae.tracker.repair.readback");
+  const write = session.registry.get("ae.tracker.repair.feature_center.set");
+  assert.ok(readback);
+  assert.ok(write);
+  assert.equal(readback.proofMaturity, "STRUCTURAL");
+  assert.equal(write.proofMaturity, "ROLLBACK");
+  assert.ok(readback.routes.some((route) => route.kind === "HOST_ADAPTER" && route.available));
+  assert.ok(write.routes.some((route) => route.kind === "HOST_ADAPTER" && route.available));
+  assert.equal(write.riskClass, "R1_REVERSIBLE");
+  assert.equal(session.registry.get("ae.tracker.readback"), null);
+});
+
+test("repair/resume state registers only with protocol 2.4 plus verified point analysis", async () => {
+  const session = await createDesktopAeSession(adapter, "m4-tracker-repair-resume", {
+    m4TrackerRuntime: {
+      pointTrackingV21Available: true,
+      visualDriver: forwardDriver,
+      trackerRepairV24Available: true,
+    },
+  });
+  const repair = session.registry.get("tracking.repair_resume.state");
+  assert.ok(repair);
+  assert.equal(repair.status, "PARTIAL");
+  assert.equal(repair.proofMaturity, "VISUAL");
+  assert.ok(repair.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+  assert.ok(repair.limitations.some((value) => value.includes("Analyze Forward")));
 });
