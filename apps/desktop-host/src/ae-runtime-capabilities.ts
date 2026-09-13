@@ -16,6 +16,11 @@ import {
 } from "../../../packages/adapters/ae-cep/src/m4-face-tracking.js";
 import { M4_FOUR_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-four-point-tracking.js";
 import {
+  capabilityForStabilizationDriverV1,
+  M4_STABILIZATION_READBACK_CAPABILITIES_V23,
+  type StabilizationVisualDriverV1,
+} from "../../../packages/adapters/ae-cep/src/m4-stabilization.js";
+import {
   capabilityForMaskTrackingDriverV1,
   type MaskVisualTrackingDriverV1,
 } from "../../../packages/adapters/ae-cep/src/m4-mask-tracking.js";
@@ -67,6 +72,8 @@ export interface M4TrackerRuntimeRegistrationV1 {
   readonly maskVisualDriver?: MaskVisualTrackingDriverV1 | null;
   readonly faceTrackingV22Available?: boolean;
   readonly faceVisualDriver?: FaceVisualTrackingDriverV1 | null;
+  readonly stabilizationV23Available?: boolean;
+  readonly stabilizationVisualDriver?: StabilizationVisualDriverV1 | null;
 }
 
 export const registerAcceptedM4TrackerRuntimeCapabilities = (
@@ -115,6 +122,17 @@ export const registerAcceptedM4TrackerRuntimeCapabilities = (
     if (faceTracking.routes.some((route) => route.available)) {
       registry.registerAdapter({
         adapterId: "ae-cep.m4.face-tracking", adapterVersion: "0.5.0-dev.1", priority: 127, capabilities: [faceTracking],
+      });
+    }
+  }
+  if (registration.stabilizationV23Available) {
+    registry.registerAdapter({
+      adapterId: "ae-cep.m4.stabilization-readback", adapterVersion: "2.3.0", priority: 128, capabilities: M4_STABILIZATION_READBACK_CAPABILITIES_V23,
+    });
+    const stabilization = capabilityForStabilizationDriverV1(registration.stabilizationVisualDriver ?? null);
+    if (stabilization.routes.some((route) => route.available)) {
+      registry.registerAdapter({
+        adapterId: "ae-cep.m4.stabilization", adapterVersion: "0.5.0-dev.1", priority: 129, capabilities: [stabilization],
       });
     }
   }

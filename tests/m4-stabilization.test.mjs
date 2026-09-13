@@ -37,7 +37,7 @@ test("stabilization capability stays declared/read-only until a retained real-AE
   assert.equal(M4_STABILIZATION_CAPABILITY_V1.proofMaturity, "DECLARED");
   assert.equal(M4_STABILIZATION_CAPABILITY_V1.routes[0].available, true);
   assert.equal(M4_STABILIZATION_CAPABILITY_V1.riskClass, "R0_READ_ONLY");
-  assert.ok(M4_STABILIZATION_CAPABILITY_V1.limitations.some((value) => value.includes("Runtime capability registration is intentionally withheld")));
+  assert.ok(M4_STABILIZATION_CAPABILITY_V1.limitations.some((value) => value.includes("read-only solver remains separate")));
 });
 
 test("position stabilization derives inverse composition-space translation from one native point", () => {

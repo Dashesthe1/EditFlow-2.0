@@ -36,6 +36,10 @@ const faceForwardDriver = {
   driverId: "editgpt.eyes-hands.face-tracking.v1", verifiedVision: true, verifiedCursorControl: true,
   supportedDirections: ["FORWARD"], async analyze() { return { status: "REFUSED" }; },
 };
+const stabilizationForwardDriver = {
+  driverId: "editgpt.eyes-hands.stabilization.v1", verifiedVision: true, verifiedCursorControl: true,
+  supportedDirections: ["FORWARD"], async stabilize() { return { status: "REFUSED" }; },
+};
 test("default desktop session does not silently expose unconfigured M4 tracking routes", async () => {
   const session = await createDesktopAeSession(adapter, "m4-default");
   assert.equal(session.registry.get("ae.tracker.readback"), null);
@@ -45,6 +49,8 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("ae.mask.tracking.guarded_visual"), null);
   assert.equal(session.registry.get("ae.face.readback"), null);
   assert.equal(session.registry.get("ae.face.tracking.detailed.guarded_visual"), null);
+  assert.equal(session.registry.get("ae.stabilization.readback"), null);
+  assert.equal(session.registry.get("ae.stabilization.position.guarded_visual"), null);
 });
 
 test("explicit protocol 2.1 availability registers readback without inventing a visual driver", async () => {
@@ -128,4 +134,32 @@ test("face visual proof cannot register without protocol 2.2 readback", async ()
   });
   assert.equal(session.registry.get("ae.face.readback"), null);
   assert.equal(session.registry.get("ae.face.tracking.detailed.guarded_visual"), null);
+});
+
+
+test("protocol 2.3 stabilization truth and guarded Position route register only when explicitly available", async () => {
+  const readbackOnly = await createDesktopAeSession(adapter, "m4-stabilization-readback", {
+    m4TrackerRuntime: { stabilizationV23Available: true, stabilizationVisualDriver: null },
+  });
+  const readback = readbackOnly.registry.get("ae.stabilization.readback");
+  assert.ok(readback);
+  assert.equal(readback.proofMaturity, "STRUCTURAL");
+  assert.ok(readback.routes.some((route) => route.kind === "HOST_ADAPTER" && route.available));
+  assert.equal(readbackOnly.registry.get("ae.stabilization.position.guarded_visual"), null);
+
+  const live = await createDesktopAeSession(adapter, "m4-stabilization-live", {
+    m4TrackerRuntime: { stabilizationV23Available: true, stabilizationVisualDriver: stabilizationForwardDriver },
+  });
+  const stabilization = live.registry.get("ae.stabilization.position.guarded_visual");
+  assert.ok(stabilization);
+  assert.equal(stabilization.proofMaturity, "VISUAL");
+  assert.ok(stabilization.routes.some((route) => route.kind === "GUARDED_UI" && route.available));
+});
+
+test("stabilization visual proof cannot register without protocol 2.3 readback", async () => {
+  const session = await createDesktopAeSession(adapter, "m4-stabilization-no-v23", {
+    m4TrackerRuntime: { stabilizationV23Available: false, stabilizationVisualDriver: stabilizationForwardDriver },
+  });
+  assert.equal(session.registry.get("ae.stabilization.readback"), null);
+  assert.equal(session.registry.get("ae.stabilization.position.guarded_visual"), null);
 });
