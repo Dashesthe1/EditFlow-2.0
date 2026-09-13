@@ -32,6 +32,8 @@ All prompt geometry uses normalized source coordinates.
 
 The provider may later be local, remote, host-native, or model-backed. The core tracking contract does not depend on a particular model family, runtime, licensing scheme, or hardware backend.
 
+A concrete local `sam3.1.local` adapter now exists as a separate structural foundation. It deliberately remains outside production runtime registration until retained live SAM 3.1 inference evidence is accepted. The provider refuses unsupported point prompts and prior-artifact temporal refinement, explicitly selects a SAM 3.1 checkpoint rather than accepting the image builder's SAM 3.0 default, and verifies materialized mask bytes by SHA-256 before exposing an artifact to downstream code. See `M4_SAM31_LOCAL_PROVIDER_CONTRACT.md`.
+
 ## Result contract
 
 A provider result must correlate exactly to the request by:

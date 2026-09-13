@@ -1,0 +1,48 @@
+{
+  "proof": "M4_SAM31_LOCAL_PROVIDER_PREFLIGHT",
+  "accepted": false,
+  "status": "STRUCTURAL_FOUNDATION_ONLY",
+  "providerId": "sam3.1.local",
+  "sidecarSchema": "editflow.segmentation.sam3.1.v1",
+  "structuralTests": {
+    "passed": 6,
+    "failed": 0,
+    "shellFreeInvocation": true,
+    "exactSourceBinding": true,
+    "unsupportedPointPromptsRefused": true,
+    "unsupportedPreviousArtifactRefinementRefused": true,
+    "artifactPathContainment": true,
+    "artifactSha256Verified": true,
+    "explicitSam31CheckpointSelection": true,
+    "implicitSam30FallbackForbidden": true
+  },
+  "livePreflight": {
+    "nodeToPythonTransport": true,
+    "expectedRefusalObserved": true,
+    "refusalCode": "CHECKPOINT_ACCESS_REQUIRED",
+    "afterEffectsMutated": false,
+    "runtimeRegistered": false,
+    "liveInferenceAccepted": false
+  },
+  "workstation": {
+    "pythonVersion": "3.12.10",
+    "torchVersion": "2.13.0+cu126",
+    "cudaAvailable": true,
+    "cudaRuntime": "12.6",
+    "bf16Supported": true,
+    "gpu": "NVIDIA RTX A4500",
+    "computeCapability": [8, 6],
+    "sam3PackageInstalledInSelectedVenv": false,
+    "huggingFaceAuthPresent": false
+  },
+  "blockers": [
+    "SAM3_PACKAGE_NOT_INSTALLED_IN_SELECTED_VENV",
+    "CHECKPOINT_ACCESS_REQUIRED"
+  ],
+  "limitations": [
+    "No retained live SAM 3.1 inference evidence yet.",
+    "Point prompts are intentionally refused by this provider tranche.",
+    "previousArtifactId temporal refinement is intentionally refused by this provider tranche.",
+    "After Effects raster materialization and matte application are separate unproven M4 work."
+  ]
+}
