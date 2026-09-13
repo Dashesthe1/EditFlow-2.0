@@ -58,9 +58,10 @@ The state model itself remains `R0_READ_ONLY`; host repair writes are separate r
 3. protocol 2.4 applies the correction with exact key readback, idempotency, and stale-revision rejection;
 4. protocol 2.1 independently verifies the corrected frame and newly generated post-repair sample;
 5. the state-model tests continue to prove that failed verification cannot resume;
-6. guarded native Analyze Forward resumes from the repaired frame and produces a new sample within 0.15 px of known ground truth;
-7. induced post-write failure restores the exact Feature Center keys and the owned proof fixture cleans up to the baseline project item count.
+6. guarded native Analyze Forward resumes from an earlier repaired frame and produces a new later sample within 0.15 px of known ground truth;
+7. guarded native Analyze Backward resumes from a later repaired frame, produces a new earlier sample within 0.15 px of known ground truth, and requires the same typed-target, four-button Analyze-row, active-Stop, and post-action binding guards;
+8. induced post-write failure restores the exact Feature Center keys and each owned proof fixture cleans up to the baseline project item count.
 
 ## Human-parity status
 
-The deterministic repair/resume model is now connected to a retained real-AE **point-tracker Feature Center repair + Analyze Forward resume** path. Human-parity remains partial: Backward repair/resume, mask-point repair, automatic drift/identity-loss detection, occlusion recovery, and generalized semantic correction-to-host mapping still require separate retained proofs.
+The deterministic repair/resume model is now connected to retained real-AE **point-tracker Feature Center repair + Analyze Forward/Backward resume** paths. Human-parity remains partial: mask-point repair, automatic drift/identity-loss detection, occlusion recovery, and generalized semantic correction-to-host mapping still require separate retained proofs.

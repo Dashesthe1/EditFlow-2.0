@@ -23,12 +23,12 @@ export const M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1: CapabilityRecord = {
   inputSchemaRef: "TrackingRepairStateV1 + TrackingRepairEventV1",
   outputSchemaRef: "TrackingRepairStateV1 | null",
   readbackStrategy: "EVIDENCE_BACKED_REPAIR_STATE_PLUS_PROTOCOL_2_4_WRITE_AND_PROTOCOL_2_1_POST_RESUME_READBACK",
-  visualProofProfile: "M4_TRACKER_REPAIR_RESUME_FORWARD_VISUAL",
+  visualProofProfile: "M4_TRACKER_REPAIR_RESUME_BIDIRECTIONAL_VISUAL",
   rollbackStrategy: "STATE_NONE; HOST_CORRECTION_PROTOCOL_2_4_TRANSACTION_UNDO",
   riskClass: "R0_READ_ONLY",
   limitations: [
     "Repair corrections remain normalized semantic tracking observations; the proven host mapping currently covers exact Motion Tracker Feature Center correction only.",
-    "Retained live proof covers guarded native Analyze Forward resume after correction; Backward resume, mask-point repair, automatic drift detection, and occlusion recovery remain unclaimed.",
+    "Retained live proof covers guarded native Analyze Forward and Analyze Backward resume after exact Feature Center correction; mask-point repair, automatic drift detection, identity-loss recovery, and occlusion recovery remain unclaimed.",
   ],
   fallbackPolicy: "FORBID",
 };

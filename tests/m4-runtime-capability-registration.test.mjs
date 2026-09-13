@@ -196,5 +196,6 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   assert.equal(repair.status, "PARTIAL");
   assert.equal(repair.proofMaturity, "VISUAL");
   assert.ok(repair.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
-  assert.ok(repair.limitations.some((value) => value.includes("Analyze Forward")));
+  assert.equal(repair.visualProofProfile, "M4_TRACKER_REPAIR_RESUME_BIDIRECTIONAL_VISUAL");
+  assert.ok(repair.limitations.some((value) => value.includes("Analyze Forward and Analyze Backward")));
 });

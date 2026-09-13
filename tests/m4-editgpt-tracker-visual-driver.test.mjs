@@ -145,6 +145,10 @@ test("production visual route is shell-free, target-bound, and contains no works
   assert.match(py, /target_patch_change/);
   assert.match(py, /one-frame forward/);
   assert.match(py, /one-frame backward/);
+  assert.match(py, /reveal_analyze_row/);
+  assert.match(py, /hands_scroll/);
+  assert.match(py, /typed target binding changed during bounded Tracker-panel scroll/);
+  assert.match(py, /verified_pre_scroll_tracker_bounds/);
   assert.match(py, /controlFillRatio/);
   assert.match(py, /active Stop state/);
   assert.match(py, /fillRatios/);
@@ -180,4 +184,20 @@ test("two-point live proof scripts are reversible and never save or close the us
   assert.match(cleanup, /feature\.parentFolder\.id !== folder\.id/);
   assert.match(cleanup, /folder\.numItems !== 0/);
   assert.match(cleanup, /original\.openInViewer\(\)/);
+});
+
+
+test("backward repair/resume retained proof is portable, bounded, and reversible", async () => {
+  const driver = await readFile("scripts/m4-tracker-repair-resume-backward-driver-live.mjs", "utf8");
+  const acceptance = await readFile("scripts/m4-tracker-repair-resume-backward-acceptance.mjs", "utf8");
+  const fixture = await readFile("scripts/windows/m4-tracker-repair-resume-backward-fixture.jsx", "utf8");
+  const readback = await readFile("scripts/windows/m4-tracker-repair-resume-backward-readback.jsx", "utf8");
+  const cleanup = await readFile("scripts/windows/m4-tracker-repair-resume-backward-cleanup.jsx", "utf8");
+  const joined = [driver, acceptance, fixture, readback, cleanup].join("\n");
+  assert.doesNotMatch(joined, /C:\\\\Users\\\\Shadow/);
+  assert.match(driver, /EDITGPT_PYTHON/);
+  assert.match(driver, /USERPROFILE/);
+  assert.match(acceptance, /path\.relative\(root, value\)/);
+  assert.doesNotMatch(joined, /app\.project\.save|app\.project\.close|app\.quit|saveAs\s*\(/);
+  assert.match(cleanup, /baselineItems/);
 });

@@ -315,6 +315,50 @@ async def ensure_current_tracker(eyes, hands, qwen, output: Path, request: dict,
     return image
 
 
+async def reveal_analyze_row(eyes, hands, qwen, output: Path, image: np.ndarray, request: dict, proof: dict) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    current = image
+    verified_bounds: tuple[int, int, int, int] | None = None
+    attempts: list[dict] = []
+    for attempt in range(4):
+        panel_ok, panel = locate_tracker_panel_signature(qwen, current, f"m4_tracker_reveal_panel_{attempt + 1}")
+        if panel_ok:
+            verified_bounds = tuple(panel["bounds"])
+        if verified_bounds is None:
+            raise RuntimeError("Tracker panel bounds were never visually verified before Analyze reveal")
+        x1, y1, x2, y2 = verified_bounds
+        crop = current[y1:y2, x1:x2]
+        try:
+            signature = detect_analyze_row_cv(crop)
+            attempts.append({"attempt": attempt + 1, "visible": True, "signature": signature, "bounds": list(verified_bounds)})
+            proof["analyzeRowReveal"] = {"scrollAttempts": attempt, "attempts": attempts, "bounds": list(verified_bounds)}
+            return current, verified_bounds
+        except RuntimeError as exc:
+            attempts.append({"attempt": attempt + 1, "visible": False, "reason": str(exc), "bounds": list(verified_bounds)})
+        if attempt == 3:
+            break
+        bound, binding_evidence = await verify_target_binding(qwen, current, request, f"m4_tracker_target_binding_before_reveal_scroll_{attempt + 1}")
+        if not bound:
+            raise RuntimeError("typed target binding changed before bounded Tracker-panel scroll")
+        meta, _fresh = await capture(eyes, hands, output, f"analyze_reveal_pre_scroll_{attempt + 1}")
+        status = structured(await hands.call_tool("hands_status", {}))
+        transform = CoordinateTransform.from_status(meta, status)
+        scroll_x = int(x1 + min(58, max(28, (x2 - x1) * 0.22)))
+        scroll_y = int(y1 + min(118, max(76, (y2 - y1) * 0.46)))
+        sx, sy = transform.encoded_to_screen(scroll_x, scroll_y)
+        scrolled = await hands.call_tool("hands_scroll", {"scroll_x": 0, "scroll_y": 360, "x": sx, "y": sy})
+        if scrolled.is_error:
+            raise RuntimeError("could not scroll inside verified Tracker panel to reveal Analyze row")
+        await asyncio.sleep(0.30)
+        _meta, current = await capture(eyes, hands, output, f"analyze_reveal_after_scroll_{attempt + 1}")
+        rebound, rebound_evidence = await verify_target_binding(qwen, current, request, f"m4_tracker_target_binding_after_reveal_scroll_{attempt + 1}")
+        attempts[-1]["bindingBeforeScroll"] = binding_evidence
+        attempts[-1]["bindingAfterScroll"] = rebound_evidence
+        if not rebound:
+            raise RuntimeError("typed target binding changed during bounded Tracker-panel scroll")
+    proof["analyzeRowReveal"] = {"scrollAttempts": 3, "attempts": attempts, "bounds": list(verified_bounds) if verified_bounds else None}
+    raise RuntimeError("Analyze row remained outside the verified Tracker panel after bounded scroll")
+
+
 def _cv_group_bbox(group: list[dict]) -> tuple[int, int, int, int]:
     return (
         min(item["x1"] for item in group),
@@ -378,7 +422,7 @@ def detect_analyze_row_cv(panel_image: np.ndarray) -> dict:
     return best
 
 
-async def ground_analyze(eyes, hands, qwen, output: Path, image: np.ndarray, request: dict) -> dict:
+async def ground_analyze(eyes, hands, qwen, output: Path, image: np.ndarray, request: dict, panel_bounds: tuple[int, int, int, int] | None = None) -> dict:
     current = image
     last_reason = "not attempted"
     direction = request["direction"]
@@ -389,7 +433,10 @@ async def ground_analyze(eyes, hands, qwen, output: Path, image: np.ndarray, req
     neighbor_label = "one-frame forward" if is_forward else "one-frame backward"
     neighbor_ordinal = "fourth" if is_forward else "first"
     for attempt in range(2):
-        panel_ok, panel = locate_tracker_panel_signature(qwen, current, f"m4_tracker_analyze_panel_{attempt + 1}")
+        if panel_bounds is None:
+            panel_ok, panel = locate_tracker_panel_signature(qwen, current, f"m4_tracker_analyze_panel_{attempt + 1}")
+        else:
+            panel_ok, panel = True, {"bounds": list(panel_bounds), "source": "verified_pre_scroll_tracker_bounds"}
         if not panel_ok:
             last_reason = f"Tracker panel signature unavailable: {panel}"
         else:
@@ -561,7 +608,8 @@ async def run(request: dict, output: Path, analysis_window_s: float = 5.0) -> di
             await asyncio.sleep(0.20)
             panel_image = await ensure_tracker_panel(eyes, hands, qwen, output, request, proof)
             panel_image = await ensure_current_tracker(eyes, hands, qwen, output, request, proof)
-            grounded = await ground_analyze(eyes, hands, qwen, output, panel_image, request)
+            panel_image, verified_panel_bounds = await reveal_analyze_row(eyes, hands, qwen, output, panel_image, request, proof)
+            grounded = await ground_analyze(eyes, hands, qwen, output, panel_image, request, verified_panel_bounds)
             proof["analyzeSelection"] = {
                 "primary": grounded["primary"].__dict__,
                 "neighbor": grounded["neighbor"].__dict__,

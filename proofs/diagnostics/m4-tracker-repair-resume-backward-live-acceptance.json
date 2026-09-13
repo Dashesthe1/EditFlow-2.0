@@ -1,0 +1,90 @@
+{
+  "proof": "M4_TRACKER_REPAIR_RESUME_BACKWARD_LIVE_ACCEPTANCE",
+  "accepted": true,
+  "protocol": {
+    "repair": "2.4.0",
+    "verification": "2.1.0"
+  },
+  "checks": {
+    "repairApplied": true,
+    "repairReadbackExact": true,
+    "visualResumeCompleted": true,
+    "activeStopObserved": true,
+    "postResumeReadbackAccepted": true,
+    "cleanupRestoredBaseline": true
+  },
+  "target": {
+    "compName": "RRB_FIXTURE",
+    "layerName": "RRB_TARGET",
+    "trackerName": "Tracker 1",
+    "pointIndex": 1
+  },
+  "repair": {
+    "time": 2,
+    "desiredFeatureCenter": [
+      444,
+      360
+    ],
+    "hostDurationMs": 24
+  },
+  "resume": {
+    "direction": "BACKWARD",
+    "visualEvidenceId": "proofs/artifacts/m4-tracker-repair-resume-backward-visual/after_analysis.jpg",
+    "activeStopObserved": true,
+    "stopClicked": true,
+    "preResumeKeyCount": 2,
+    "postResumeKeyCount": 3,
+    "preRepairSampleCount": 1,
+    "groundTruthErrorPx": 0.14947916666699,
+    "nearestPreRepairSample": {
+      "time": 1.96666666666667,
+      "featureCenter": [
+        440.1171875,
+        360
+      ],
+      "featureSize": [
+        90,
+        90
+      ],
+      "searchOffset": [
+        0,
+        0
+      ],
+      "searchSize": [
+        220,
+        220
+      ],
+      "confidence": 0.99865400078985,
+      "attachPoint": [
+        440.1171875,
+        360
+      ],
+      "attachPointOffset": [
+        0,
+        0
+      ],
+      "compPoint": [
+        440.1171875,
+        360
+      ],
+      "compNormalized": [
+        0.61127387152778,
+        0.5
+      ]
+    }
+  },
+  "cleanup": {
+    "ok": true,
+    "itemCountAfter": 4,
+    "baselineItems": 4,
+    "autoSolidsRemoved": true,
+    "folderRemoved": true,
+    "fixtureRemoved": true,
+    "sourceRemoved": true
+  },
+  "limitations": [
+    "Analyze Backward direction only",
+    "Feature Center repair only",
+    "Automatic drift detection and mask repair remain unproven"
+  ]
+}
