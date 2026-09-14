@@ -59,6 +59,8 @@ The Python sidecar requires:
 
 The current development workstation has a SAM 3 environment at `C:\\Users\\Shadow\\sam3-runtime\\.venv`, the `sam3`, `torch`, and `huggingface_hub` packages are importable, CUDA and BF16 are available on the NVIDIA RTX A4500, and the runtime prerequisites are therefore present. No Hugging Face token is available through either the environment or the local Hugging Face token store, and no local large SAM checkpoint candidate is configured, so checkpoint-backed live inference remains blocked and unaccepted.
 
+The temporal sidecar is pinned to the current upstream multiplex builder contract: an explicit checkpoint is passed only as `checkpoint_path`, while `use_fa3` is forced to `False` on the target workstation because the RTX A4500 runtime has no `flash_attn_interface`. The upstream high-level builder already suppresses Hugging Face download when an explicit checkpoint is present; the sidecar therefore does not pass the unsupported `download_from_hf` keyword. When no explicit checkpoint is configured, Hugging Face authorization is checked before importing SAM/Torch or constructing a model, so a missing credential fails cheaply with `CHECKPOINT_ACCESS_REQUIRED`.
+
 ## Artifact integrity
 
 A successful sidecar result must return an absolute materialized artifact path and a segmentation result accepted by `acceptSubjectSegmentationResultV1`.
@@ -90,6 +92,8 @@ Deterministic adapter tests prove:
 - byte-level SHA-256 verification;
 - timeout/process/malformed-output/provider-mismatch refusal;
 - source inspection showing explicit SAM 3.1 checkpoint selection and no implicit SAM 3.0 download path.
+- temporal source inspection pinned to the current multiplex builder signature, including the non-FA3 path required by the target RTX A4500 runtime and refusal of unsupported builder keywords;
+- real temporal sidecar preflight reaching `CHECKPOINT_ACCESS_REQUIRED` before model construction when no authorized checkpoint is available.
 
 A real Node-to-Python preflight reaches the expected `CHECKPOINT_ACCESS_REQUIRED` refusal without downloading a model or mutating After Effects. The current workstation runtime preflight is retained at `proofs/diagnostics/m4-sam31-runtime-preflight.json`; it records importable SAM 3 / Torch / Hugging Face packages, CUDA + BF16 readiness on the RTX A4500, no configured Hugging Face token, no local checkpoint candidate, and the exact sidecar refusal.
 

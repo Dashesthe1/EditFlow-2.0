@@ -251,7 +251,9 @@ test("SAM 3.1 temporal runtime is shell-free and pinned to the current multiplex
   assert.match(py, /"type": "start_session"/);
   assert.match(py, /"type": "propagate_in_video"/);
   assert.match(py, /"type": "close_session"/);
-  assert.match(py, /"download_from_hf"\] = False/);
+  assert.match(py, /build_kwargs: dict\[str, Any\] = \{"use_fa3": False\}/);
+  assert.match(py, /HF_TOKEN/);
+  assert.doesNotMatch(py, /"download_from_hf"/);
   assert.match(py, /SAM31_MODEL:facebook\/sam3\.1/);
   assert.match(py, /exact subject binding is ambiguous/);
   assert.match(py, /temporal propagation did not cover requested frames/);

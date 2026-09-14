@@ -261,6 +261,21 @@ def save_png(mask, encoding: str, output: Path) -> str:
 
 def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
     request, source, artifact_dir, checkpoint, threshold = validate_payload(payload)
+    if checkpoint is None:
+        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        if not token:
+            try:
+                from huggingface_hub import get_token
+
+                token = get_token()
+            except Exception:
+                token = None
+        if not token:
+            raise PermissionError(
+                "SAM 3.1 checkpoint access is not authenticated; accept the facebook/sam3.1 terms "
+                "and configure approved Hugging Face access or provide checkpointPath"
+            )
+
     import sam3
     import torch
     from sam3.model_builder import build_sam3_multiplex_video_predictor
@@ -270,11 +285,10 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
     if not torch.cuda.is_bf16_supported():
         raise RuntimeError("CUDA BF16 support is required for the registered SAM 3.1 temporal provider")
 
-    build_kwargs: dict[str, Any] = {}
+    build_kwargs: dict[str, Any] = {"use_fa3": False}
     checkpoint_source = "HF:facebook/sam3.1"
     if checkpoint is not None:
         build_kwargs["checkpoint_path"] = str(checkpoint)
-        build_kwargs["download_from_hf"] = False
         checkpoint_source = "LOCAL_EXPLICIT"
 
     with contextlib.redirect_stdout(sys.stderr):
