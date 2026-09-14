@@ -62,3 +62,24 @@ test("segmentation sequence P5 proof is current-session safe and crosses save/re
   assert.match(cleanup, /M4_TRANSFER_SEQUENCE_COMP/);
   assert.match(cleanup, /original_project_reopened/);
 });
+
+test("retained P5 acceptance proves same-process save/reopen/reconnect transfer and restoration", async () => {
+  const retained = JSON.parse(await read("proofs/diagnostics/m4-segmentation-sequence-p5-live-acceptance.json"));
+
+  assert.equal(retained.proofId, "M4_SEGMENTATION_SEQUENCE_P5_SAVE_REOPEN_RECONNECT");
+  assert.equal(retained.status, "ACCEPTED");
+  assert.equal(retained.ok, true);
+  assert.equal(retained.classification, "PASS");
+  assert.equal(retained.cleanupComplete, true);
+  assert.equal(retained.visualCheckpointPassed, true);
+  assert.equal(retained.failure, null);
+  assert.equal(retained.checks.user_project_saved_in_place, true);
+  assert.equal(retained.checks.direct_reopen_readback_passed, true);
+  assert.equal(retained.checks.authenticated_reconnect, true);
+  assert.equal(retained.checks.post_reconnect_host_probe, true);
+  assert.equal(retained.checks.composite_exact_after_reconnect, true);
+  assert.equal(retained.checks.post_reconnect_mutation_readback, true);
+  assert.equal(retained.checks.post_reconnect_saved_state_reopens, true);
+  assert.equal(retained.checks.original_project_restored, true);
+  assert.notEqual(retained.sessions.initial.sessionId, retained.sessions.reconnected.sessionId);
+});

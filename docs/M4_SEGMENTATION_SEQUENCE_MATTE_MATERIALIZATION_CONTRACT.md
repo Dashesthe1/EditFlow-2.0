@@ -1,6 +1,6 @@
 # M4 Segmentation Sequence Matte Materialization Contract
 
-Status: **PARTIAL / DETERMINISTIC REAL-AE DYNAMIC VISUAL EVIDENCE**
+Status: **FULL / TRANSFER — RETAINED REAL-AE P5**
 Capability ID: `tracking.segmentation.sequence_matte_materialize.plan`
 Route ID: `m4.tracking.segmentation-sequence-matte-materialize.v1`
 
@@ -37,14 +37,15 @@ The proof removes only proof-owned objects and verifies project item count, Rend
 
 ## Promotion boundary
 
-This evidence raises the AE-side planner from `STRUCTURAL` to `VISUAL`. A separate retained warm-process transfer proof now exercises the same five-operation materialization contract against materially different real Spider-Man footage, with exact source-item preservation, structural sequence/matte readback, moving-mask pixel evidence against same-timestamp source baselines, and proof-owned cleanup. It does **not** prove live SAM 3.1 inference, session-boundary robustness, or unrestricted production dispatch.
+The planner/materialization surface now has retained P5 transfer evidence. The accepted lifecycle proof reuses the already-running After Effects process, saves the user project once, performs the proof in a disposable lifecycle copy, reopens that copy without restarting AE, establishes a distinct authenticated CEP session, verifies exact temporal sequence/matte readback, performs a fresh post-reconnect matte mutation with exact readback, preserves the three visual checkpoints, and restores the saved user-project baseline.
 
-Production registration remains withheld until authenticated live SAM 3.1 sequence output is retained and the contract survives reconnect/save-reopen boundaries without hidden approximation. Warm-process materially different-footage transfer is now retained.
+This promotes `tracking.segmentation.sequence_matte_materialize.plan` to `FULL / TRANSFER`. It does **not** promote the live SAM 3.1 provider or unrestricted production dispatch. Production registration remains withheld until checkpoint-backed SAM 3.1 temporal output is retained through the accepted provider correlation, provenance, per-frame digest, and downstream materialization gates.
 
 ## Related evidence
 
 - `proofs/diagnostics/m4-segmentation-sequence-materialization-live-acceptance.json`
 - `proofs/diagnostics/m4-segmentation-sequence-transfer-live-acceptance.json`
+- `proofs/diagnostics/m4-segmentation-sequence-p5-live-acceptance.json`
 - `proofs/manifests/m4-segmentation-sequence-materialization-real-ae.request.json`
 - `proofs/manifests/m4-segmentation-sequence-transfer-real-ae.request.json`
 - `M4_MEDIA_SEQUENCE_PROTOCOL_25_CONTRACT.md`

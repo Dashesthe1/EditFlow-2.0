@@ -68,15 +68,15 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
   id: asCapabilityId("tracking.segmentation.sequence_matte_materialize.plan"),
   domain: "tracking",
   description: "Plan an integrity-verified temporal segmentation raster sequence into native After Effects sequence import, exact forward timing, alignment, and track-matte binding.",
-  status: "PARTIAL",
-  proofMaturity: "VISUAL",
+  status: "FULL",
+  proofMaturity: "TRANSFER",
   routes: [{
     routeId: asRouteId("m4.tracking.segmentation-sequence-matte-materialize.v1"),
     kind: "SUBSYSTEM_ADAPTER",
     available: true,
-    adapterVersion: "0.5.0-dev.2",
+    adapterVersion: "0.5.0-dev.3",
     limitations: [
-      "Protocol 2.5 native sequence import/readback, deterministic real-AE dynamic matte visual proof, and materially different real-footage warm-process transfer are retained; live SAM 3.1 provider-generated sequence proof remains blocked by gated checkpoint access and session-boundary transfer remains open.",
+      "Protocol 2.5 native sequence import/readback, dynamic visual proof, materially different real-footage transfer, and save/reopen plus distinct authenticated CEP reconnect are retained through P5; live SAM 3.1 provider-generated sequence proof remains blocked by gated checkpoint access.",
       "V1 requires uniform mask geometry and forward target-layer timing; reverse-stretch sequence synchronization is refused.",
     ],
   }],
@@ -89,7 +89,7 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
   limitations: [
     "This capability emits a plan and never dispatches mutations by itself.",
     "Every numbered frame must match the accepted artifact identity, digest, content type, geometry, and cadence.",
-    "Production runtime registration remains withheld until live temporal-provider output plus session-boundary transfer evidence pass; warm-process unrelated-footage transfer is retained.",
+    "Production runtime registration remains withheld until live temporal-provider output is retained; P5 save/reopen/reconnect transfer is accepted for the planner/materialization surface.",
   ],
   fallbackPolicy: "FORBID",
 };

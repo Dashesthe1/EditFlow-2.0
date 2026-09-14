@@ -1,0 +1,1346 @@
+{
+    "schemaVersion":  1,
+    "proofId":  "M4_SEGMENTATION_SEQUENCE_P5_SAVE_REOPEN_RECONNECT",
+    "status":  "ACCEPTED",
+    "ok":  true,
+    "startedAt":  "2026-09-14T20:28:48.990Z",
+    "completedAt":  "2026-09-14T20:29:04.322Z",
+    "cleanupComplete":  true,
+    "checks":  {
+                   "present_bridge-config.json":  true,
+                   "present_AfterFX.exe":  true,
+                   "present_open-editflow-bridge.jsx":  true,
+                   "present_m4-segmentation-sequence-p5-stage1-template.jsx":  true,
+                   "present_m4-segmentation-sequence-p5-reopen-template.jsx":  true,
+                   "present_m4-segmentation-sequence-p5-cleanup-template.jsx":  true,
+                   "present_plan.json":  true,
+                   "present_editflow_host_current_v25.jsx":  true,
+                   "broker_bound_expected_port":  true,
+                   "initial_authenticated_panel":  true,
+                   "initial_host_probe":  true,
+                   "pre_proof_disk_backup_created":  true,
+                   "user_project_saved_in_place":  true,
+                   "user_snapshot_created":  true,
+                   "lifecycle_copy_created":  true,
+                   "stage1_materialization_saved":  true,
+                   "stage1_project_path":  true,
+                   "direct_reopen_readback_passed":  true,
+                   "broker_rebound_same_port":  true,
+                   "authenticated_reconnect":  true,
+                   "post_reconnect_host_probe":  true,
+                   "reopened_project_path":  true,
+                   "reopened_item_count_preserved":  true,
+                   "reopened_fingerprint_preserved":  true,
+                   "composite_exact_after_reconnect":  true,
+                   "post_reconnect_clear_applied":  true,
+                   "post_reconnect_reassign_applied":  true,
+                   "post_reconnect_mutation_readback":  true,
+                   "post_reconnect_saved_state_reopens":  true,
+                   "retained_proof_project_created":  true,
+                   "cleanup_script_passed":  true,
+                   "original_project_restored":  true
+               },
+    "sessions":  {
+                     "initial":  {
+                                     "sessionId":  "6e8565b6-58b4-493c-95aa-f8afcec128d1",
+                                     "protocolVersion":  "1.3.0",
+                                     "supportedProtocolVersions":  [
+                                                                       "1.3.0",
+                                                                       "1.1.0"
+                                                                   ],
+                                     "extensionId":  "com.editflow2.bridge.panel",
+                                     "extensionVersion":  "0.1.0-dev.10",
+                                     "registeredAt":  "2026-09-14T20:28:53.139Z"
+                                 },
+                     "reconnected":  {
+                                         "sessionId":  "405413a5-b7b4-4593-ae45-b9564044a702",
+                                         "protocolVersion":  "1.3.0",
+                                         "supportedProtocolVersions":  [
+                                                                           "1.3.0",
+                                                                           "1.1.0"
+                                                                       ],
+                                         "extensionId":  "com.editflow2.bridge.panel",
+                                         "extensionVersion":  "0.1.0-dev.10",
+                                         "registeredAt":  "2026-09-14T20:28:59.740Z"
+                                     }
+                 },
+    "baseline":  {
+                     "projectPath":  "C:\\Users\\Shadow\\Documents\\psier.aep",
+                     "itemCount":  3,
+                     "fingerprint":  "project:sha256:2b741c93e617d3e1d72f434465356a8d2e25602a5b050dcfc937a5fcc3387660"
+                 },
+    "lifecycle":  {
+                      "projectPath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-lifecycle.aep",
+                      "fingerprint":  "project:sha256:d46c46cadef43fae7495d180c6d80a7c5a32a76fa98c8a9ed54903e345e061c4"
+                  },
+    "responses":  [
+                      {
+                          "protocolVersion":  "1.1.0",
+                          "command":  "project.save",
+                          "outcome":  "APPLIED",
+                          "error":  null,
+                          "hostProjectRevision":  921,
+                          "notes":  [
+
+                                    ]
+                      },
+                      {
+                          "protocolVersion":  "1.3.0",
+                          "command":  "layer.composite_readback",
+                          "outcome":  "NO_OP",
+                          "error":  null,
+                          "hostProjectRevision":  1078,
+                          "notes":  [
+                                        "Read-only M3 composite structural readback."
+                                    ]
+                      },
+                      {
+                          "protocolVersion":  "1.3.0",
+                          "command":  "layer.clear_track_matte",
+                          "outcome":  "APPLIED",
+                          "error":  null,
+                          "hostProjectRevision":  1079,
+                          "notes":  [
+                                        "M3 composite operation applied through typed protocol 1.3."
+                                    ]
+                      },
+                      {
+                          "protocolVersion":  "1.3.0",
+                          "command":  "layer.set_track_matte",
+                          "outcome":  "APPLIED",
+                          "error":  null,
+                          "hostProjectRevision":  1080,
+                          "notes":  [
+                                        "M3 composite operation applied through typed protocol 1.3."
+                                    ]
+                      },
+                      {
+                          "protocolVersion":  "1.3.0",
+                          "command":  "layer.composite_readback",
+                          "outcome":  "NO_OP",
+                          "error":  null,
+                          "hostProjectRevision":  1080,
+                          "notes":  [
+                                        "Read-only M3 composite structural readback."
+                                    ]
+                      },
+                      {
+                          "protocolVersion":  "1.1.0",
+                          "command":  "project.save",
+                          "outcome":  "APPLIED",
+                          "error":  null,
+                          "hostProjectRevision":  1080,
+                          "notes":  [
+
+                                    ]
+                      }
+                  ],
+    "stage1Result":  {
+                         "schemaVersion":  1,
+                         "proofId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                         "ok":  true,
+                         "mutationStarted":  true,
+                         "lifecycleSaved":  true,
+                         "checkCount":  15,
+                         "checks":  {
+                                        "baseline_frames_requested":  true,
+                                        "target_source_exact":  true,
+                                        "sequence_temporal":  true,
+                                        "sequence_frame_count":  true,
+                                        "sequence_frame_rate":  true,
+                                        "sequence_first_path":  true,
+                                        "matte_source_exact":  true,
+                                        "matte_timing_exact":  true,
+                                        "track_matte_bound":  true,
+                                        "live_matte_is_sequence":  true,
+                                        "plan_operation_sequence":  true,
+                                        "review_frames_requested":  true,
+                                        "lifecycle_project_saved":  true,
+                                        "lifecycle_state_retained":  true,
+                                        "source_item_preserved":  true
+                                    },
+                         "responses":  [
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-1",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_1",
+                                               "capabilityId":  "ae.media.import",
+                                               "command":  "media.import",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "stableId":  "M4_TRANSFER_BG_MEDIA",
+                                                                           "hostId":  206,
+                                                                           "kind":  "FOOTAGE"
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "itemHostId":  206,
+                                                                "name":  "transfer-background.bmp"
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  951,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "media.import",
+                                                                   "durationMs":  187,
+                                                                   "hostRevisionBefore":  951,
+                                                                   "hostRevisionAfter":  951,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-2",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_2",
+                                               "capabilityId":  "ae.comp.create",
+                                               "command":  "comp.create",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "stableId":  "M4_TRANSFER_SEQUENCE_COMP",
+                                                                           "hostId":  207,
+                                                                           "kind":  "COMPOSITION"
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "composition":  {
+                                                                                    "hostId":  207,
+                                                                                    "stableId":  "M4_TRANSFER_SEQUENCE_COMP",
+                                                                                    "name":  "M4 Segmentation Sequence P5 Lifecycle Proof",
+                                                                                    "width":  1080,
+                                                                                    "height":  1080,
+                                                                                    "pixelAspect":  1,
+                                                                                    "duration":  1.0011680293676,
+                                                                                    "frameRate":  59.9301147460938,
+                                                                                    "displayStartTime":  0,
+                                                                                    "layers":  [
+
+                                                                                               ]
+                                                                                }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  975,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "comp.create",
+                                                                   "durationMs":  22,
+                                                                   "hostRevisionBefore":  951,
+                                                                   "hostRevisionAfter":  975,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-3",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_3",
+                                               "capabilityId":  "ae.layer.create",
+                                               "command":  "layer.add_media",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "stableId":  "M4_TRANSFER_BG_LAYER",
+                                                                           "hostId":  219,
+                                                                           "kind":  "LAYER_AV"
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "layer":  {
+                                                                              "hostId":  219,
+                                                                              "stableId":  "M4_TRANSFER_BG_LAYER",
+                                                                              "index":  1,
+                                                                              "name":  "transfer-background.bmp",
+                                                                              "kind":  "LAYER_AV",
+                                                                              "sourceHostId":  206,
+                                                                              "sourceStableId":  "M4_TRANSFER_BG_MEDIA",
+                                                                              "startTime":  0,
+                                                                              "inPoint":  0,
+                                                                              "outPoint":  1.0011680293676,
+                                                                              "stretch":  100,
+                                                                              "parentStableId":  null,
+                                                                              "transform":  {
+                                                                                                "anchorPoint":  [
+                                                                                                                    540,
+                                                                                                                    540,
+                                                                                                                    0
+                                                                                                                ],
+                                                                                                "position":  [
+                                                                                                                 540,
+                                                                                                                 540,
+                                                                                                                 0
+                                                                                                             ],
+                                                                                                "scale":  [
+                                                                                                              100,
+                                                                                                              100,
+                                                                                                              100
+                                                                                                          ],
+                                                                                                "rotation":  0,
+                                                                                                "opacity":  100
+                                                                                            },
+                                                                              "enabled":  true,
+                                                                              "locked":  false,
+                                                                              "shy":  false,
+                                                                              "solo":  false,
+                                                                              "threeDLayer":  false,
+                                                                              "adjustmentLayer":  false
+                                                                          }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  980,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "layer.add_media",
+                                                                   "durationMs":  67,
+                                                                   "hostRevisionBefore":  975,
+                                                                   "hostRevisionAfter":  980,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "2.5.0",
+                                               "requestId":  "m4-sequence-p5-stage1-4",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_4",
+                                               "capabilityId":  "ae.media.sequence.import",
+                                               "command":  "media.sequence.import",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "kind":  "FOOTAGE",
+                                                                           "stableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                           "hostId":  221
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "stableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                "hostId":  221,
+                                                                "name":  "transfer-mask-[0001-0003].bmp",
+                                                                "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\transfer-mask-0001.bmp",
+                                                                "width":  240,
+                                                                "height":  135,
+                                                                "duration":  0.25,
+                                                                "frameRate":  12,
+                                                                "frameDuration":  0.08333333333333,
+                                                                "nativeFrameRate":  12,
+                                                                "conformFrameRate":  12,
+                                                                "displayFrameRate":  12,
+                                                                "isStill":  false,
+                                                                "frameCount":  3
+                                                            },
+                                               "hostProjectRevision":  1002,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "2.5.0",
+                                                                   "adapterBuild":  "0.5.0-dev.2",
+                                                                   "command":  "media.sequence.import",
+                                                                   "durationMs":  156,
+                                                                   "notes":  [
+                                                                                 "Native After Effects image sequence imported, conformed, and read back exactly."
+                                                                             ]
+                                                               }
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-5",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_5",
+                                               "capabilityId":  "ae.layer.create",
+                                               "command":  "layer.add_media",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                           "hostId":  222,
+                                                                           "kind":  "LAYER_AV"
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "layer":  {
+                                                                              "hostId":  222,
+                                                                              "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                              "index":  1,
+                                                                              "name":  "transfer-mask-[0001-0003].bmp",
+                                                                              "kind":  "LAYER_AV",
+                                                                              "sourceHostId":  221,
+                                                                              "sourceStableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                              "startTime":  0,
+                                                                              "inPoint":  0,
+                                                                              "outPoint":  0.25,
+                                                                              "stretch":  100,
+                                                                              "parentStableId":  null,
+                                                                              "transform":  {
+                                                                                                "anchorPoint":  [
+                                                                                                                    120,
+                                                                                                                    67.5,
+                                                                                                                    0
+                                                                                                                ],
+                                                                                                "position":  [
+                                                                                                                 540,
+                                                                                                                 540,
+                                                                                                                 0
+                                                                                                             ],
+                                                                                                "scale":  [
+                                                                                                              100,
+                                                                                                              100,
+                                                                                                              100
+                                                                                                          ],
+                                                                                                "rotation":  0,
+                                                                                                "opacity":  100
+                                                                                            },
+                                                                              "enabled":  true,
+                                                                              "locked":  false,
+                                                                              "shy":  false,
+                                                                              "solo":  false,
+                                                                              "threeDLayer":  false,
+                                                                              "adjustmentLayer":  false
+                                                                          }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  1007,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "layer.add_media",
+                                                                   "durationMs":  24,
+                                                                   "hostRevisionBefore":  1002,
+                                                                   "hostRevisionAfter":  1007,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-6",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_6",
+                                               "capabilityId":  "ae.layer.transform.set",
+                                               "command":  "layer.set_transform",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "transform":  {
+                                                                                  "anchorPoint":  [
+                                                                                                      120,
+                                                                                                      67.5
+                                                                                                  ],
+                                                                                  "position":  [
+                                                                                                   540,
+                                                                                                   540
+                                                                                               ],
+                                                                                  "scale":  [
+                                                                                                450,
+                                                                                                800
+                                                                                            ],
+                                                                                  "rotation":  0,
+                                                                                  "opacity":  100
+                                                                              }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  1012,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "layer.set_transform",
+                                                                   "durationMs":  14,
+                                                                   "hostRevisionBefore":  1007,
+                                                                   "hostRevisionAfter":  1012,
+                                                                   "notes":  [
+                                                                                 "Transform vector readback normalized from AE array-like property values."
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-7",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_7",
+                                               "capabilityId":  "ae.layer.timing.set",
+                                               "command":  "layer.set_timing",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "layer":  {
+                                                                              "hostId":  222,
+                                                                              "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                              "index":  1,
+                                                                              "name":  "transfer-mask-[0001-0003].bmp",
+                                                                              "kind":  "LAYER_AV",
+                                                                              "sourceHostId":  221,
+                                                                              "sourceStableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                              "startTime":  0,
+                                                                              "inPoint":  0,
+                                                                              "outPoint":  0.25,
+                                                                              "stretch":  100,
+                                                                              "parentStableId":  null,
+                                                                              "transform":  {
+                                                                                                "anchorPoint":  [
+                                                                                                                    120,
+                                                                                                                    67.5,
+                                                                                                                    0
+                                                                                                                ],
+                                                                                                "position":  [
+                                                                                                                 540,
+                                                                                                                 540,
+                                                                                                                 0
+                                                                                                             ],
+                                                                                                "scale":  [
+                                                                                                              450,
+                                                                                                              800,
+                                                                                                              100
+                                                                                                          ],
+                                                                                                "rotation":  0,
+                                                                                                "opacity":  100
+                                                                                            },
+                                                                              "enabled":  true,
+                                                                              "locked":  false,
+                                                                              "shy":  false,
+                                                                              "solo":  false,
+                                                                              "threeDLayer":  false,
+                                                                              "adjustmentLayer":  false
+                                                                          }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  1024,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "layer.set_timing",
+                                                                   "durationMs":  16,
+                                                                   "hostRevisionBefore":  1012,
+                                                                   "hostRevisionAfter":  1024,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.3.0",
+                                               "requestId":  "m4-sequence-p5-stage1-8",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_8",
+                                               "capabilityId":  "ae.layer.track_matte.set",
+                                               "command":  "layer.set_track_matte",
+                                               "outcome":  "APPLIED",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "kind":  "LAYER",
+                                                                           "stableId":  "M4_TRANSFER_TARGET_LAYER",
+                                                                           "hostId":  220
+                                                                       },
+                                                                       {
+                                                                           "kind":  "LAYER",
+                                                                           "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                           "hostId":  222
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "composite":  {
+                                                                                  "layer":  {
+                                                                                                "stableId":  "M4_TRANSFER_TARGET_LAYER",
+                                                                                                "hostId":  220,
+                                                                                                "index":  2,
+                                                                                                "name":  "Clipto AI Video Downloader Best spidey sense of all timeðŸ”¥ _ Spider-Man Edit (The Amazing Spider-man 2).mp4"
+                                                                                            },
+                                                                                  "hasTrackMatte":  true,
+                                                                                  "trackMatteType":  "LUMA",
+                                                                                  "trackMatteLayer":  {
+                                                                                                          "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                                                          "hostId":  222,
+                                                                                                          "index":  1,
+                                                                                                          "name":  "transfer-mask-[0001-0003].bmp"
+                                                                                                      },
+                                                                                  "blendMode":  "NORMAL"
+                                                                              }
+                                                            },
+                                               "hostProjectRevision":  1027,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.3.0",
+                                                                   "adapterBuild":  "0.4.0-dev.3",
+                                                                   "command":  "layer.set_track_matte",
+                                                                   "durationMs":  8,
+                                                                   "notes":  [
+                                                                                 "M3 composite operation applied through typed protocol 1.3."
+                                                                             ]
+                                                               }
+                                           },
+                                           {
+                                               "protocolVersion":  "2.5.0",
+                                               "requestId":  "m4-sequence-p5-stage1-9",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_9",
+                                               "capabilityId":  "ae.media.sequence.readback",
+                                               "command":  "media.sequence.readback",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "stableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                "hostId":  221,
+                                                                "name":  "transfer-mask-[0001-0003].bmp",
+                                                                "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\transfer-mask-0001.bmp",
+                                                                "width":  240,
+                                                                "height":  135,
+                                                                "duration":  0.25,
+                                                                "frameRate":  12,
+                                                                "frameDuration":  0.08333333333333,
+                                                                "nativeFrameRate":  12,
+                                                                "conformFrameRate":  12,
+                                                                "displayFrameRate":  12,
+                                                                "isStill":  false,
+                                                                "frameCount":  3
+                                                            },
+                                               "hostProjectRevision":  1027,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "2.5.0",
+                                                                   "adapterBuild":  "0.5.0-dev.2",
+                                                                   "command":  "media.sequence.readback",
+                                                                   "durationMs":  3,
+                                                                   "notes":  [
+                                                                                 "Read-only image-sequence footage readback."
+                                                                             ]
+                                                               }
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-stage1-10",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_10",
+                                               "capabilityId":  "ae.object.readback",
+                                               "command":  "readback.object",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "layer":  {
+                                                                              "hostId":  222,
+                                                                              "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                              "index":  1,
+                                                                              "name":  "transfer-mask-[0001-0003].bmp",
+                                                                              "kind":  "LAYER_AV",
+                                                                              "sourceHostId":  221,
+                                                                              "sourceStableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                              "startTime":  0,
+                                                                              "inPoint":  0,
+                                                                              "outPoint":  0.25,
+                                                                              "stretch":  100,
+                                                                              "parentStableId":  null,
+                                                                              "transform":  {
+                                                                                                "anchorPoint":  [
+                                                                                                                    120,
+                                                                                                                    67.5,
+                                                                                                                    0
+                                                                                                                ],
+                                                                                                "position":  [
+                                                                                                                 540,
+                                                                                                                 540,
+                                                                                                                 0
+                                                                                                             ],
+                                                                                                "scale":  [
+                                                                                                              450,
+                                                                                                              800,
+                                                                                                              100
+                                                                                                          ],
+                                                                                                "rotation":  0,
+                                                                                                "opacity":  100
+                                                                                            },
+                                                                              "enabled":  false,
+                                                                              "locked":  false,
+                                                                              "shy":  false,
+                                                                              "solo":  false,
+                                                                              "threeDLayer":  false,
+                                                                              "adjustmentLayer":  false
+                                                                          }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  1027,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "readback.object",
+                                                                   "durationMs":  13,
+                                                                   "hostRevisionBefore":  1027,
+                                                                   "hostRevisionAfter":  1027,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.3.0",
+                                               "requestId":  "m4-sequence-p5-stage1-11",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_STAGE1_11",
+                                               "capabilityId":  "ae.layer.composite.readback",
+                                               "command":  "layer.composite_readback",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "kind":  "LAYER",
+                                                                           "stableId":  "M4_TRANSFER_TARGET_LAYER",
+                                                                           "hostId":  220
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "composite":  {
+                                                                                  "layer":  {
+                                                                                                "stableId":  "M4_TRANSFER_TARGET_LAYER",
+                                                                                                "hostId":  220,
+                                                                                                "index":  2,
+                                                                                                "name":  "Clipto AI Video Downloader Best spidey sense of all timeðŸ”¥ _ Spider-Man Edit (The Amazing Spider-man 2).mp4"
+                                                                                            },
+                                                                                  "hasTrackMatte":  true,
+                                                                                  "trackMatteType":  "LUMA",
+                                                                                  "trackMatteLayer":  {
+                                                                                                          "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                                                          "hostId":  222,
+                                                                                                          "index":  1,
+                                                                                                          "name":  "transfer-mask-[0001-0003].bmp"
+                                                                                                      },
+                                                                                  "blendMode":  "NORMAL"
+                                                                              }
+                                                            },
+                                               "hostProjectRevision":  1027,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.3.0",
+                                                                   "adapterBuild":  "0.4.0-dev.3",
+                                                                   "command":  "layer.composite_readback",
+                                                                   "durationMs":  0,
+                                                                   "notes":  [
+                                                                                 "Read-only M3 composite structural readback."
+                                                                             ]
+                                                               }
+                                           }
+                                       ],
+                         "failure":  null,
+                         "source":  {
+                                        "hostId":  13,
+                                        "name":  "Clipto AI Video Downloader Best spidey sense of all timeðŸ”¥ _ Spider-Man Edit (The Amazing Spider-man 2).mp4",
+                                        "width":  1080,
+                                        "height":  1080,
+                                        "duration":  39.7463707658935,
+                                        "frameRate":  59.9301147460938
+                                    },
+                         "baseline":  {
+                                          "itemCount":  3,
+                                          "renderQueueCount":  0,
+                                          "projectFile":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-lifecycle.aep"
+                                      },
+                         "after":  {
+                                       "itemCount":  6,
+                                       "renderQueueCount":  0,
+                                       "projectFile":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-lifecycle.aep"
+                                   },
+                         "artifacts":  {
+                                           "plan":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\plan.json",
+                                           "lifecycleProject":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-lifecycle.aep",
+                                           "baselineFrames":  [
+                                                                  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\baseline-0.png",
+                                                                  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\baseline-1.png",
+                                                                  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\baseline-2.png"
+                                                              ],
+                                           "reviewFrames":  [
+                                                                "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\pre-save-0.png",
+                                                                "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\pre-save-1.png",
+                                                                "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\pre-save-2.png"
+                                                            ]
+                                       }
+                     },
+    "reopenResult":  {
+                         "schemaVersion":  1,
+                         "proofId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN",
+                         "ok":  true,
+                         "checkCount":  13,
+                         "checks":  {
+                                        "project_reopened_exact":  true,
+                                        "dispatcher_reloaded":  true,
+                                        "stable_objects_rebound":  true,
+                                        "sequence_import_idempotent_after_reopen":  true,
+                                        "sequence_temporal":  true,
+                                        "sequence_frame_count":  true,
+                                        "sequence_frame_rate":  true,
+                                        "sequence_first_path":  true,
+                                        "matte_source_exact":  true,
+                                        "matte_timing_exact":  true,
+                                        "track_matte_exact":  true,
+                                        "live_matte_is_sequence":  true,
+                                        "reopen_frames_requested":  true
+                                    },
+                         "responses":  [
+                                           {
+                                               "protocolVersion":  "2.5.0",
+                                               "requestId":  "m4-sequence-p5-reopen-1",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN_1",
+                                               "capabilityId":  "ae.media.sequence.import",
+                                               "command":  "media.sequence.import",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "stableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                "hostId":  221,
+                                                                "name":  "transfer-mask-[0001-0003].bmp",
+                                                                "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\transfer-mask-0001.bmp",
+                                                                "width":  240,
+                                                                "height":  135,
+                                                                "duration":  0.25,
+                                                                "frameRate":  12,
+                                                                "frameDuration":  0.08333333333333,
+                                                                "nativeFrameRate":  12,
+                                                                "conformFrameRate":  12,
+                                                                "displayFrameRate":  12,
+                                                                "isStill":  false,
+                                                                "frameCount":  3
+                                                            },
+                                               "hostProjectRevision":  1131,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "2.5.0",
+                                                                   "adapterBuild":  "0.5.0-dev.2",
+                                                                   "command":  "media.sequence.import",
+                                                                   "durationMs":  2,
+                                                                   "notes":  [
+                                                                                 "Requested image sequence is already imported with matching stable identity and interpretation."
+                                                                             ]
+                                                               }
+                                           },
+                                           {
+                                               "protocolVersion":  "2.5.0",
+                                               "requestId":  "m4-sequence-p5-reopen-2",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN_2",
+                                               "capabilityId":  "ae.media.sequence.readback",
+                                               "command":  "media.sequence.readback",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "stableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                "hostId":  221,
+                                                                "name":  "transfer-mask-[0001-0003].bmp",
+                                                                "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\transfer-mask-0001.bmp",
+                                                                "width":  240,
+                                                                "height":  135,
+                                                                "duration":  0.25,
+                                                                "frameRate":  12,
+                                                                "frameDuration":  0.08333333333333,
+                                                                "nativeFrameRate":  12,
+                                                                "conformFrameRate":  12,
+                                                                "displayFrameRate":  12,
+                                                                "isStill":  false,
+                                                                "frameCount":  3
+                                                            },
+                                               "hostProjectRevision":  1131,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "2.5.0",
+                                                                   "adapterBuild":  "0.5.0-dev.2",
+                                                                   "command":  "media.sequence.readback",
+                                                                   "durationMs":  2,
+                                                                   "notes":  [
+                                                                                 "Read-only image-sequence footage readback."
+                                                                             ]
+                                                               }
+                                           },
+                                           {
+                                               "protocolVersion":  "1.1.0",
+                                               "requestId":  "m4-sequence-p5-reopen-3",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN_3",
+                                               "capabilityId":  "ae.object.readback",
+                                               "command":  "readback.object",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "layer":  {
+                                                                              "hostId":  222,
+                                                                              "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                              "index":  1,
+                                                                              "name":  "transfer-mask-[0001-0003].bmp",
+                                                                              "kind":  "LAYER_AV",
+                                                                              "sourceHostId":  221,
+                                                                              "sourceStableId":  "M4_TRANSFER_MASK_MEDIA",
+                                                                              "startTime":  0,
+                                                                              "inPoint":  0,
+                                                                              "outPoint":  0.25,
+                                                                              "stretch":  100,
+                                                                              "parentStableId":  null,
+                                                                              "transform":  {
+                                                                                                "anchorPoint":  [
+                                                                                                                    120,
+                                                                                                                    67.5,
+                                                                                                                    0
+                                                                                                                ],
+                                                                                                "position":  [
+                                                                                                                 540,
+                                                                                                                 540,
+                                                                                                                 0
+                                                                                                             ],
+                                                                                                "scale":  [
+                                                                                                              450,
+                                                                                                              800,
+                                                                                                              100
+                                                                                                          ],
+                                                                                                "rotation":  0,
+                                                                                                "opacity":  100
+                                                                                            },
+                                                                              "enabled":  false,
+                                                                              "locked":  false,
+                                                                              "shy":  false,
+                                                                              "solo":  false,
+                                                                              "threeDLayer":  false,
+                                                                              "adjustmentLayer":  false
+                                                                          }
+                                                            },
+                                               "projectSnapshot":  null,
+                                               "environmentProbe":  null,
+                                               "hostProjectRevision":  1131,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.1.0",
+                                                                   "adapterBuild":  "0.1.0-dev.3",
+                                                                   "command":  "readback.object",
+                                                                   "durationMs":  13,
+                                                                   "hostRevisionBefore":  1131,
+                                                                   "hostRevisionAfter":  1131,
+                                                                   "notes":  [
+
+                                                                             ]
+                                                               },
+                                               "proofArtifactRefs":  [
+
+                                                                     ]
+                                           },
+                                           {
+                                               "protocolVersion":  "1.3.0",
+                                               "requestId":  "m4-sequence-p5-reopen-4",
+                                               "transactionId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN",
+                                               "operationId":  "M4_SEGMENTATION_SEQUENCE_P5_REOPEN_4",
+                                               "capabilityId":  "ae.layer.composite.readback",
+                                               "command":  "layer.composite_readback",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+                                                                       {
+                                                                           "kind":  "LAYER",
+                                                                           "stableId":  "M4_TRANSFER_TARGET_LAYER",
+                                                                           "hostId":  220
+                                                                       }
+                                                                   ],
+                                               "readback":  {
+                                                                "composite":  {
+                                                                                  "layer":  {
+                                                                                                "stableId":  "M4_TRANSFER_TARGET_LAYER",
+                                                                                                "hostId":  220,
+                                                                                                "index":  2,
+                                                                                                "name":  "Clipto AI Video Downloader Best spidey sense of all timeðŸ”¥ _ Spider-Man Edit (The Amazing Spider-man 2).mp4"
+                                                                                            },
+                                                                                  "hasTrackMatte":  true,
+                                                                                  "trackMatteType":  "LUMA",
+                                                                                  "trackMatteLayer":  {
+                                                                                                          "stableId":  "M4_TRANSFER_MATTE_LAYER",
+                                                                                                          "hostId":  222,
+                                                                                                          "index":  1,
+                                                                                                          "name":  "transfer-mask-[0001-0003].bmp"
+                                                                                                      },
+                                                                                  "blendMode":  "NORMAL"
+                                                                              }
+                                                            },
+                                               "hostProjectRevision":  1131,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "1.3.0",
+                                                                   "adapterBuild":  "0.4.0-dev.3",
+                                                                   "command":  "layer.composite_readback",
+                                                                   "durationMs":  0,
+                                                                   "notes":  [
+                                                                                 "Read-only M3 composite structural readback."
+                                                                             ]
+                                                               }
+                                           }
+                                       ],
+                         "failure":  null,
+                         "projectFile":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-lifecycle.aep",
+                         "projectItemCount":  6,
+                         "hostProjectRevision":  1131,
+                         "reviewFrames":  [
+                                              "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\post-reopen-0.png",
+                                              "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\post-reopen-1.png",
+                                              "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\post-reopen-2.png"
+                                          ]
+                     },
+    "cleanupResult":  {
+                          "schemaVersion":  1,
+                          "proofId":  "M4_SEGMENTATION_SEQUENCE_P5_CLEANUP",
+                          "ok":  true,
+                          "checkCount":  4,
+                          "checks":  {
+                                         "cleanup_scope_guarded":  true,
+                                         "proof_objects_removed":  true,
+                                         "lifecycle_cleanup_saved":  true,
+                                         "original_project_reopened":  true
+                                     },
+                          "failure":  null,
+                          "projectFile":  "C:\\Users\\Shadow\\Documents\\psier.aep",
+                          "projectItemCount":  3,
+                          "projectRevision":  951
+                      },
+    "failure":  null,
+    "cleanupErrors":  [
+
+                      ],
+    "artifacts":  {
+                      "plan":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\plan.json",
+                      "originalDiskBackup":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\user-project-pre-proof-disk-backup.aep",
+                      "userSavedSnapshot":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\user-project-saved-snapshot.aep",
+                      "retainedProofProject":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-retained.aep",
+                      "lifecycleProject":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\m4-segmentation-sequence-p5-lifecycle.aep",
+                      "stage1Result":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\stage1-result.json",
+                      "reopenResult":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\reopen-result.json",
+                      "cleanupResult":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\cleanup-result.json",
+                      "baselineFrames":  [
+                                             "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\baseline-0.png",
+                                             "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\baseline-1.png",
+                                             "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\baseline-2.png"
+                                         ],
+                      "preSaveFrames":  [
+                                            "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\pre-save-0.png",
+                                            "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\pre-save-1.png",
+                                            "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\pre-save-2.png"
+                                        ],
+                      "reopenFrames":  [
+                                           "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\post-reopen-0.png",
+                                           "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\post-reopen-1.png",
+                                           "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-p5\\post-reopen-2.png"
+                                       ]
+                  },
+    "classification":  "PASS",
+    "visualCheckpointPassed":  true,
+    "visualEvidence":  [
+                           {
+                               "frameIndex":  0,
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  270,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    12,
+                                                                    16,
+                                                                    19
+                                                                ],
+                                                   "preSave":  [
+                                                                   12,
+                                                                   16,
+                                                                   19
+                                                               ],
+                                                   "postReopen":  [
+                                                                      12,
+                                                                      16,
+                                                                      19
+                                                                  ],
+                                                   "expected":  "SOURCE_BASELINE",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  540,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    20,
+                                                                    17,
+                                                                    17
+                                                                ],
+                                                   "preSave":  [
+                                                                   15,
+                                                                   35,
+                                                                   80
+                                                               ],
+                                                   "postReopen":  [
+                                                                      15,
+                                                                      35,
+                                                                      80
+                                                                  ],
+                                                   "expected":  "BACKGROUND",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  810,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    16,
+                                                                    14,
+                                                                    12
+                                                                ],
+                                                   "preSave":  [
+                                                                   15,
+                                                                   35,
+                                                                   80
+                                                               ],
+                                                   "postReopen":  [
+                                                                      15,
+                                                                      35,
+                                                                      80
+                                                                  ],
+                                                   "expected":  "BACKGROUND",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "y":  20,
+                                                  "pass":  true,
+                                                  "preSave":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                  "postReopen":  [
+                                                                     15,
+                                                                     35,
+                                                                     80
+                                                                 ],
+                                                  "x":  20
+                                              },
+                               "pass":  true
+                           },
+                           {
+                               "frameIndex":  1,
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  270,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    0,
+                                                                    1,
+                                                                    3
+                                                                ],
+                                                   "preSave":  [
+                                                                   15,
+                                                                   35,
+                                                                   80
+                                                               ],
+                                                   "postReopen":  [
+                                                                      15,
+                                                                      35,
+                                                                      80
+                                                                  ],
+                                                   "expected":  "BACKGROUND",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  540,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    74,
+                                                                    87,
+                                                                    96
+                                                                ],
+                                                   "preSave":  [
+                                                                   74,
+                                                                   87,
+                                                                   96
+                                                               ],
+                                                   "postReopen":  [
+                                                                      74,
+                                                                      87,
+                                                                      96
+                                                                  ],
+                                                   "expected":  "SOURCE_BASELINE",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  810,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    4,
+                                                                    0,
+                                                                    0
+                                                                ],
+                                                   "preSave":  [
+                                                                   15,
+                                                                   35,
+                                                                   80
+                                                               ],
+                                                   "postReopen":  [
+                                                                      15,
+                                                                      35,
+                                                                      80
+                                                                  ],
+                                                   "expected":  "BACKGROUND",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "y":  20,
+                                                  "pass":  true,
+                                                  "preSave":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                  "postReopen":  [
+                                                                     15,
+                                                                     35,
+                                                                     80
+                                                                 ],
+                                                  "x":  20
+                                              },
+                               "pass":  true
+                           },
+                           {
+                               "frameIndex":  2,
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  270,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    5,
+                                                                    7,
+                                                                    9
+                                                                ],
+                                                   "preSave":  [
+                                                                   15,
+                                                                   35,
+                                                                   80
+                                                               ],
+                                                   "postReopen":  [
+                                                                      15,
+                                                                      35,
+                                                                      80
+                                                                  ],
+                                                   "expected":  "BACKGROUND",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  540,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    79,
+                                                                    95,
+                                                                    103
+                                                                ],
+                                                   "preSave":  [
+                                                                   15,
+                                                                   35,
+                                                                   80
+                                                               ],
+                                                   "postReopen":  [
+                                                                      15,
+                                                                      35,
+                                                                      80
+                                                                  ],
+                                                   "expected":  "BACKGROUND",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  810,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    7,
+                                                                    3,
+                                                                    1
+                                                                ],
+                                                   "preSave":  [
+                                                                   7,
+                                                                   3,
+                                                                   1
+                                                               ],
+                                                   "postReopen":  [
+                                                                      7,
+                                                                      3,
+                                                                      1
+                                                                  ],
+                                                   "expected":  "SOURCE_BASELINE",
+                                                   "stableAcrossBoundary":  true,
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "y":  20,
+                                                  "pass":  true,
+                                                  "preSave":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                  "postReopen":  [
+                                                                     15,
+                                                                     35,
+                                                                     80
+                                                                 ],
+                                                  "x":  20
+                                              },
+                               "pass":  true
+                           }
+                       ],
+    "message":  "Segmentation sequence materialization survived save/reopen plus a distinct authenticated CEP reconnect, retained exact temporal matte readback, accepted a fresh post-reconnect matte mutation, preserved visual output, and restored the saved user-project baseline."
+}
