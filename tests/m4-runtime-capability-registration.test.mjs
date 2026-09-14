@@ -214,7 +214,7 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   assert.equal(automatic.riskClass, "R0_READ_ONLY");
   assert.ok(automatic.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
   assert.ok(autoCorrect);
-  assert.equal(autoCorrect.proofMaturity, "STRUCTURAL");
+  assert.equal(autoCorrect.proofMaturity, "VISUAL");
   assert.equal(autoCorrect.riskClass, "R0_READ_ONLY");
   assert.ok(autoCorrect.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });

@@ -1,6 +1,6 @@
 # M4 Automatic Corrective Recovery Contract
 
-Status: **PARTIAL / STRUCTURAL / R0_READ_ONLY**
+Status: **PARTIAL / VISUAL / R0_READ_ONLY**
 Capability ID: `tracking.repair_resume.auto_correct.plan`
 Route ID: `m4.tracking.repair-auto-correct-plan.v1`
 
@@ -60,6 +60,8 @@ The planner is registered only when protocol 2.4 tracker repair is explicitly av
 
 ## Proof maturity
 
-Current maturity is `STRUCTURAL`. Unit coverage proves accepted drift, low-confidence, and explicit identity-loss composition plus fail-closed occlusion, identity, mapping, timing, and point-binding cases.
+Current maturity is `VISUAL` for the retained persistent-drift / Analyze Forward route. The warm real-AE proof observed `GOOD -> PENDING_FAILURE -> ESCALATE`, consumed the composer's exact three-operation protocol 2.4 plan, observed the deliberately wrong `[250,330]` Feature Center before mutation, corrected it to `[276,360]` with exact independent post-readback, then completed guarded Analyze Forward through EditGPT Eyes/Hands.
 
-Promotion to `VISUAL` requires retained warm real-AE evidence that an automatically emitted escalation trigger drives the exact protocol 2.4 correction, exact post-write readback, guarded native analysis resume, post-analysis verification, and proof-owned cleanup without saving, replacing, or restarting the user's project.
+Protocol 2.1 post-analysis truth increased keyed samples from 2 to 3, preserved the repair key, measured the first native post-repair sample at 0.998654 confidence and approximately 0.1495 px ground-truth error, satisfied `VERIFY_REPAIR`, reached `RESUMED`, restored the project from the proof fixture back to its 4-item baseline, and preserved the same warm After Effects process.
+
+Low-confidence and explicit identity-confidence-loss triggers remain structurally tested over the same exact host correction surface rather than independently live-proven. Subject occlusion remains escalation-only. Unit coverage continues to enforce fail-closed identity, mapping, timing, and point-binding behavior.

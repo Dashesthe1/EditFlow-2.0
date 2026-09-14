@@ -18,7 +18,7 @@ export const M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1: CapabilityRecord = 
   domain: "tracking",
   description: "Plan evidence-bound automatic corrective recovery by composing a latched repair trigger, exact protocol 2.4 Feature Center correction, exact readback, and guarded directional tracker resume.",
   status: "PARTIAL",
-  proofMaturity: "STRUCTURAL",
+  proofMaturity: "VISUAL",
   routes: [{
     routeId: asRouteId("m4.tracking.repair-auto-correct-plan.v1"),
     kind: "SUBSYSTEM_ADAPTER",
@@ -32,14 +32,15 @@ export const M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1: CapabilityRecord = 
   inputSchemaRef: "M4AutomaticCorrectiveRecoveryInputV1",
   outputSchemaRef: "M4AutomaticCorrectiveRecoveryPlanV1 | null",
   readbackStrategy: "AUTO_ESCALATION_TRIGGER_PLUS_PROTOCOL_2_4_PRE_POST_READBACK_PLUS_GUARDED_PROTOCOL_2_1_POST_RESUME_TRUTH",
-  visualProofProfile: null,
+  visualProofProfile: "M4_AUTOMATIC_CORRECTIVE_RECOVERY_DRIFT_FORWARD_VISUAL",
   rollbackStrategy: "PLANNER_NONE; HOST_CORRECTION_PROTOCOL_2_4_TRANSACTION_UNDO",
   riskClass: "R0_READ_ONLY",
   limitations: [
     "Automatic correction is allowed only for persistent low confidence, drift risk, or explicit identity-confidence loss.",
     "Subject occlusion is escalation-only because hidden geometry is not a safe automatic correction target.",
     "The caller must provide exact comp/layer stable and host IDs, tracker/point indices, composition time, Feature Center coordinates, normalized semantic correction, and retained mapping evidence; the planner never guesses semantic or host geometry.",
-    "The planner does not dispatch the write or visual Analyze action; retained real-AE automatic-composition proof remains required before visual promotion.",
+    "Retained warm real-AE evidence proves persistent drift escalation through exact Feature Center correction, guarded Analyze Forward, protocol 2.1 post-analysis truth, state verification, resume, and full proof-owned cleanup.",
+    "Low-confidence and explicit identity-confidence-loss triggers compose through the same exact host surface but remain structurally tested rather than independently live-proven.",
   ],
   fallbackPolicy: "FORBID",
 };

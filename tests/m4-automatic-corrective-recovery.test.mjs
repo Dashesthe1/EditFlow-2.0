@@ -84,13 +84,13 @@ const inputFor = (reason) => ({
   requiredPointIndices: [1],
 });
 
-test("automatic corrective recovery capability is structural, read-only, and evidence-gated", () => {
+test("automatic corrective recovery capability is visual, read-only, and evidence-gated", () => {
   const capability = M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1;
   assert.equal(capability.status, "PARTIAL");
-  assert.equal(capability.proofMaturity, "STRUCTURAL");
+  assert.equal(capability.proofMaturity, "VISUAL");
   assert.equal(capability.riskClass, "R0_READ_ONLY");
   assert.equal(capability.fallbackPolicy, "FORBID");
-  assert.equal(capability.visualProofProfile, null);
+  assert.equal(capability.visualProofProfile, "M4_AUTOMATIC_CORRECTIVE_RECOVERY_DRIFT_FORWARD_VISUAL");
   assert.ok(capability.limitations.some((value) => value.includes("Subject occlusion")));
   assert.ok(capability.limitations.some((value) => value.includes("never guesses")));
 });
