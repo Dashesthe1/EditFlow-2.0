@@ -1,0 +1,9 @@
+{
+  "proofId": "m4.media_sequence.v25.live",
+  "proofScript": "scripts/windows/run-m4-media-sequence-v25-live.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/m4-media-sequence-v25-live",
+  "timeoutSeconds": 45,
+  "allowInfrastructureRetry": false,
+  "resultFile": "result.json"
+}

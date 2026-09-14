@@ -49,13 +49,15 @@ It also retains a rendered artifact and a review PNG whose expected subject and 
 The proof injects a guarded failure after matte application, applies the existing transaction Undo route, verifies that the track matte is structurally cleared, reapplies the exact planned matte operation, and verifies restoration.
 Two consecutive retained runs passed in the same persistent After Effects process, with the proof fixture and Render Queue restored to the pre-proof baseline after each run.
 
+Protocol 2.5 now separately has retained real-AE proof for native numbered image-sequence import/readback, exact frame-rate/frame-count interpretation, idempotency, stale-revision refusal, and rollback. That closes the AE-side sequence-import primitive without changing this static V1 planner. See `M4_MEDIA_SEQUENCE_PROTOCOL_25_CONTRACT.md`.
+
 ## What this does not prove
 
 This tranche does not claim:
 
 - live SAM 3.1 inference or production provider registration;
 - save/reopen/reconnect or materially different-footage transfer;
-- dynamic multi-frame segmentation sequence materialization;
+- end-to-end dynamic multi-frame segmentation materialization (the AE-native sequence import/readback primitive is now proven, but temporal provider output, sequence integrity, timing plan assembly, and dynamic visual proof remain open);
 - 3D or non-square-pixel materialization;
 - unrestricted production dispatch of the composed write plan.
 
