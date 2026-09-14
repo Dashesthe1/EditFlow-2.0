@@ -108,6 +108,14 @@ Runtime promotion requires retained live evidence that:
 
 Separate deterministic real-AE materialization tranches now retain static and temporal raster import/alignment, exact timing, track-matte binding, readback, rollback/cleanup, and viewer-visible pixel evidence. The remaining end-to-end gap is to feed those proven materialization surfaces with checkpoint-backed live SAM 3.1 output and retain transfer/session evidence.
 
+## Guarded production registration
+
+The desktop host now has a fail-closed M4 segmentation runtime gate. A normal session registers neither the provider-neutral subject/object segmentation route nor the temporal sequence-matte materialization route for production use.
+
+Registration requires one `editflow.m4.segmentation-runtime-evidence.v1` attestation with the exact `sam3.1.local` provider ID, the temporal sidecar schema, model family `sam3.1`, lowercase SHA-256 checkpoint and retained-result digests, at least two materially different source fixtures, and explicit accepted gates for live inference, exact request/result correlation, per-frame SHA-256 integrity, materially different transfer, and absence of hidden fallback. Any missing, malformed, mismatched, uppercase, or false field leaves both runtime capabilities unregistered.
+
+When that attestation is valid, the host projects the provider-neutral acceptance surface to `FULL / TRANSFER` for that retained evidence ID and registers it together with the already accepted `FULL / TRANSFER` sequence-matte materialization planner. This gate does not manufacture evidence: on the current workstation it remains closed because no authorized SAM 3.1 checkpoint is available.
+
 ## Temporal sequence tranche
 
 A second, additive provider surface now implements `SubjectSegmentationSequenceProviderV1` using sidecar schema `editflow.segmentation.sam3.1.sequence.v1`. This does not replace the image-only provider above.

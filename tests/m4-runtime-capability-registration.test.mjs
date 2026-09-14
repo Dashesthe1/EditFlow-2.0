@@ -21,6 +21,22 @@ const fakeObservedState = (projectId) => ({
 });
 
 const adapter = { observe: async (projectId) => fakeObservedState(projectId) };
+const validSegmentationEvidence = (overrides = {}) => ({
+  schema: "editflow.m4.segmentation-runtime-evidence.v1",
+  providerId: "sam3.1.local",
+  sidecarSchema: "editflow.segmentation.sam3.1.sequence.v1",
+  modelFamily: "sam3.1",
+  evidenceId: "M4:SAM31:LIVE:TRANSFER:001",
+  checkpointSha256: "a".repeat(64),
+  resultSha256: "b".repeat(64),
+  sourceFixtureCount: 2,
+  liveInferenceAccepted: true,
+  exactCorrelationAccepted: true,
+  perFrameSha256Accepted: true,
+  materiallyDifferentTransferAccepted: true,
+  noHiddenFallbackAccepted: true,
+  ...overrides,
+});
 const maskForwardDriver = {
   driverId: "editgpt.eyes-hands.mask-tracking.v1", verifiedVision: true, verifiedCursorControl: true,
   supportedDirections: ["FORWARD"], async analyze() { return { status: "REFUSED" }; },
@@ -56,6 +72,9 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("tracking.repair_resume.state"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_correct.plan"), null);
+  assert.equal(session.registry.get("tracking.segmentation.subject_object.accept"), null);
+  assert.equal(session.registry.get("tracking.segmentation.sequence_matte_materialize.plan"), null);
+  assert.equal(session.m4SegmentationRuntimeRegistered, false);
   const maskPointRepair = session.registry.get("tracking.mask_point_repair.plan");
   assert.ok(maskPointRepair);
   assert.equal(maskPointRepair.proofMaturity, "VISUAL");
@@ -190,6 +209,9 @@ test("protocol 2.4 tracker repair registers only when explicitly available", asy
   assert.equal(session.registry.get("ae.tracker.readback"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_correct.plan"), null);
+  assert.equal(session.registry.get("tracking.segmentation.subject_object.accept"), null);
+  assert.equal(session.registry.get("tracking.segmentation.sequence_matte_materialize.plan"), null);
+  assert.equal(session.m4SegmentationRuntimeRegistered, false);
 });
 
 test("repair/resume state registers only with protocol 2.4 plus verified point analysis", async () => {
@@ -217,4 +239,55 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   assert.equal(autoCorrect.proofMaturity, "VISUAL");
   assert.equal(autoCorrect.riskClass, "R0_READ_ONLY");
   assert.ok(autoCorrect.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+});
+
+test("segmentation runtime registration fails closed on malformed or incomplete live evidence", async () => {
+  const cases = [
+    true,
+    validSegmentationEvidence({ schema: "wrong.schema" }),
+    validSegmentationEvidence({ providerId: "sam3.0.local" }),
+    validSegmentationEvidence({ sidecarSchema: "editflow.segmentation.sam3.1.v1" }),
+    validSegmentationEvidence({ modelFamily: "sam3.0" }),
+    validSegmentationEvidence({ evidenceId: "bad spaced id" }),
+    validSegmentationEvidence({ checkpointSha256: "A".repeat(64) }),
+    validSegmentationEvidence({ resultSha256: "f".repeat(63) }),
+    validSegmentationEvidence({ sourceFixtureCount: 1 }),
+    validSegmentationEvidence({ liveInferenceAccepted: false }),
+    validSegmentationEvidence({ exactCorrelationAccepted: false }),
+    validSegmentationEvidence({ perFrameSha256Accepted: false }),
+    validSegmentationEvidence({ materiallyDifferentTransferAccepted: false }),
+    validSegmentationEvidence({ noHiddenFallbackAccepted: false }),
+  ];
+
+  for (const [index, evidence] of cases.entries()) {
+    const session = await createDesktopAeSession(adapter, `m4-segmentation-refuse-${index}`, {
+      m4SegmentationRuntimeEvidence: evidence,
+    });
+    assert.equal(session.m4SegmentationRuntimeRegistered, false);
+    assert.equal(session.registry.get("tracking.segmentation.subject_object.accept"), null);
+    assert.equal(session.registry.get("tracking.segmentation.sequence_matte_materialize.plan"), null);
+  }
+});
+
+
+test("segmentation runtime registers only after exact live SAM 3.1 transfer evidence passes", async () => {
+  const evidence = validSegmentationEvidence();
+  const session = await createDesktopAeSession(adapter, "m4-segmentation-accept", {
+    m4SegmentationRuntimeEvidence: evidence,
+  });
+
+  assert.equal(session.m4SegmentationRuntimeRegistered, true);
+  const acceptance = session.registry.get("tracking.segmentation.subject_object.accept");
+  const materialize = session.registry.get("tracking.segmentation.sequence_matte_materialize.plan");
+  assert.ok(acceptance);
+  assert.ok(materialize);
+  assert.equal(acceptance.status, "FULL");
+  assert.equal(acceptance.proofMaturity, "TRANSFER");
+  assert.equal(acceptance.riskClass, "R0_READ_ONLY");
+  assert.ok(acceptance.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+  assert.ok(acceptance.limitations.some((value) => value.includes(evidence.evidenceId)));
+  assert.equal(materialize.status, "FULL");
+  assert.equal(materialize.proofMaturity, "TRANSFER");
+  assert.equal(materialize.riskClass, "R0_READ_ONLY");
+  assert.ok(materialize.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });

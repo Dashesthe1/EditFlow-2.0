@@ -33,3 +33,27 @@ export const M4_SUBJECT_SEGMENTATION_CAPABILITY_V1: CapabilityRecord = {
   ],
   fallbackPolicy: "FORBID",
 };
+
+export const capabilityForAcceptedM4SubjectSegmentationRuntimeV1 = (evidenceId: string): CapabilityRecord | null => {
+  const acceptedEvidenceId = evidenceId.trim();
+  if (acceptedEvidenceId.length === 0) return null;
+
+  return {
+    ...M4_SUBJECT_SEGMENTATION_CAPABILITY_V1,
+    status: "FULL",
+    proofMaturity: "TRANSFER",
+    routes: M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.routes.map((route) => ({
+      ...route,
+      adapterVersion: "0.5.0-dev.3",
+      limitations: [
+        `Runtime registration is pinned to retained checkpoint-backed SAM 3.1 sequence evidence '${acceptedEvidenceId}'.`,
+        "An exact semanticId is required; class-only subject guessing remains forbidden.",
+      ],
+    })),
+    limitations: [
+      "This provider-neutral acceptance surface does not choose or silently swap providers.",
+      `Production runtime registration was admitted only after retained live SAM 3.1 transfer evidence '${acceptedEvidenceId}' passed the desktop-host runtime gate.`,
+      "Accepted raster artifacts are not automatically converted into After Effects Bezier masks; static and temporal raster-to-matte materialization remain separate capabilities.",
+    ],
+  };
+};
