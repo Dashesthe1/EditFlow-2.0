@@ -90,7 +90,7 @@ test("automatic corrective recovery capability is visual, read-only, and evidenc
   assert.equal(capability.proofMaturity, "VISUAL");
   assert.equal(capability.riskClass, "R0_READ_ONLY");
   assert.equal(capability.fallbackPolicy, "FORBID");
-  assert.equal(capability.visualProofProfile, "M4_AUTOMATIC_CORRECTIVE_RECOVERY_ELIGIBLE_FORWARD_VISUAL");
+  assert.equal(capability.visualProofProfile, "M4_AUTOMATIC_CORRECTIVE_RECOVERY_ELIGIBLE_FORWARD_DRIFT_BACKWARD_VISUAL");
   assert.ok(capability.limitations.some((value) => value.includes("Subject occlusion")));
   assert.ok(capability.limitations.some((value) => value.includes("never guesses")));
 });

@@ -69,3 +69,24 @@ test("low-confidence live proof isolates tracking confidence and preserves accep
   assert.match(acceptance, /repairStateResumed/);
   assert.match(acceptance, /cleanupRestoredBaseline/);
 });
+
+test("automatic drift Backward live proof consumes the composed direction without weakening gates", async () => {
+  const fixture = await read("scripts/windows/m4-automatic-corrective-recovery-backward-fixture.jsx");
+  const planner = await read("scripts/m4-automatic-corrective-recovery-backward-plan-live.mjs");
+  const driver = await read("scripts/m4-automatic-corrective-recovery-backward-driver-live.mjs");
+  const readback = await read("scripts/windows/m4-automatic-corrective-recovery-backward-readback.jsx");
+  const acceptance = await read("scripts/m4-automatic-corrective-recovery-backward-acceptance.mjs");
+  assert.match(fixture, /proofDirection:"BACKWARD"/);
+  assert.match(fixture, /wrongFeatureCenter:\[470,330\]/);
+  assert.match(fixture, /desiredRepairCenter:\[444,360\]/);
+  assert.match(planner, /trackConfidence: 0\.96/);
+  assert.match(planner, /resumeDirection: "BACKWARD"/);
+  assert.match(planner, /TRACK_DRIFT_RISK_HIGH/);
+  assert.match(driver, /TRACKER_ANALYZE_BACKWARD/);
+  assert.match(readback, /preRepairSamplesAdded/);
+  assert.match(readback, /backwardMotionObserved/);
+  assert.match(acceptance, /PASS_REAL_AE_AUTOMATIC_DRIFT_BACKWARD_CORRECTIVE_RECOVERY/);
+  assert.match(acceptance, /backwardDirectionComposed/);
+  assert.match(acceptance, /repairStateResumed/);
+  assert.match(acceptance, /cleanupRestoredBaseline/);
+});
