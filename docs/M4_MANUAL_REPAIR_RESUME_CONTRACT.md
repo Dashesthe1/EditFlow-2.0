@@ -8,7 +8,7 @@ Route ID: `m4.tracking.repair-resume-state.v1`
 
 Provide a deterministic state model for pausing unreliable subject tracking, recording manual repair evidence, verifying the repaired track against explicit policy, and resuming only after verification succeeds.
 
-The model aligns with existing M4 editor-brain escalation semantics rather than inventing a second failure detector. Supported triggers include invalid subject state, low tracking confidence, high drift risk, occlusion, identity uncertainty, and explicit manual repair request.
+The state model accepts explicit escalation triggers for invalid subject state, low tracking confidence, high drift risk, occlusion, identity uncertainty, and manual repair request. A separate deterministic monitor now translates persistent evidence-backed tracking failures into those same trigger semantics without adding hidden thresholds or host mutation.
 
 ## States
 
@@ -30,6 +30,14 @@ State creation requires caller-owned normalized thresholds:
 - `maxResumeOcclusion`
 
 The repair model contains no hidden threshold relaxation. A failed verification reports every violated threshold and remains `REPAIR_IN_PROGRESS`.
+
+## Automatic escalation monitor
+
+The read-only `tracking.repair_resume.auto_escalate` monitor requires caller-owned thresholds for tracking confidence, drift risk, occlusion, identity confidence, and failure persistence. It requires at least one verified good sample before it can escalate.
+
+Identity loss is never guessed from motion. `IDENTITY_UNCERTAIN` can be emitted only when the caller supplies explicit normalized identity-confidence evidence. A changing failure reason restarts the persistence count, and one accepted trigger latches until the caller explicitly resets the monitor after repair/resume.
+
+The monitor therefore suppresses one-frame noise and duplicate escalation without pretending to perform the corrective AE action itself.
 
 ## Repair cycle
 
@@ -64,4 +72,4 @@ The state model itself remains `R0_READ_ONLY`; host repair writes are separate r
 
 ## Human-parity status
 
-The deterministic repair/resume model is now connected to retained real-AE **point-tracker Feature Center repair + Analyze Forward/Backward resume** paths. Human-parity remains partial: mask-point repair, automatic drift/identity-loss detection, occlusion recovery, and generalized semantic correction-to-host mapping still require separate retained proofs.
+The deterministic repair/resume model is now connected to retained real-AE **point-tracker Feature Center repair + Analyze Forward/Backward resume** paths, and automatic confidence/drift/occlusion/explicit-identity escalation is structurally modeled. Human-parity remains partial: mask-point repair, automatic corrective recovery after drift/identity loss, occlusion recovery, and generalized semantic correction-to-host mapping still require separate retained proofs.

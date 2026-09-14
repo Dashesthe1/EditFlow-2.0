@@ -28,7 +28,28 @@ export const M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1: CapabilityRecord = {
   riskClass: "R0_READ_ONLY",
   limitations: [
     "Repair corrections remain normalized semantic tracking observations; the proven host mapping currently covers exact Motion Tracker Feature Center correction only.",
-    "Retained live proof covers guarded native Analyze Forward and Analyze Backward resume after exact Feature Center correction; mask-point repair, automatic drift detection, identity-loss recovery, and occlusion recovery remain unclaimed.",
+    "Retained live proof covers guarded native Analyze Forward and Analyze Backward resume after exact Feature Center correction; mask-point repair and automatic corrective host actions for drift, identity loss, and occlusion remain unclaimed. Deterministic automatic escalation is declared separately.",
+  ],
+  fallbackPolicy: "FORBID",
+};
+
+export const M4_TRACKING_AUTO_ESCALATION_CAPABILITY_V1: CapabilityRecord = {
+  id: asCapabilityId("tracking.repair_resume.auto_escalate"),
+  domain: "tracking",
+  description: "Deterministic evidence-gated monitor that converts persistent low confidence, drift, occlusion, or explicit identity-confidence loss into one latched repair trigger.",
+  status: "PARTIAL",
+  proofMaturity: "STRUCTURAL",
+  routes: [{ routeId: asRouteId("m4.tracking.repair-auto-escalate.v1"), kind: "SUBSYSTEM_ADAPTER", available: true, adapterVersion: "0.5.0-dev.1", limitations: ["Requires a verified last-good baseline and caller-owned persistence thresholds before escalation."] }],
+  inputSchemaRef: "AutomaticTrackingRepairPolicyV1 + AutomaticTrackingRepairSampleV1",
+  outputSchemaRef: "AutomaticTrackingRepairEvaluationV1 | null",
+  readbackStrategy: "TRACKING_ESTIMATE_PLUS_EXPLICIT_IDENTITY_CONFIDENCE_EVIDENCE",
+  visualProofProfile: null,
+  rollbackStrategy: "NONE_REQUIRED",
+  riskClass: "R0_READ_ONLY",
+  limitations: [
+    "Identity uncertainty is evaluated only when the caller supplies explicit normalized identity confidence; it is never inferred from motion alone.",
+    "A trigger is emitted once and latched until the caller explicitly resets the monitor after repair/resume.",
+    "This monitor escalates into repair state only; it does not move tracker features, mask points, or issue AE analysis commands.",
   ],
   fallbackPolicy: "FORBID",
 };

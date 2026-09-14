@@ -22,6 +22,7 @@ import {
 } from "../../../packages/adapters/ae-cep/src/m4-stabilization.js";
 import {
   M4_TRACKER_REPAIR_PROTOCOL_24_CAPABILITIES,
+  M4_TRACKING_AUTO_ESCALATION_CAPABILITY_V1,
   M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1,
 } from "../../../packages/adapters/ae-cep/src/m4-repair-resume.js";
 import {
@@ -147,7 +148,7 @@ export const registerAcceptedM4TrackerRuntimeCapabilities = (
     });
     if (analysis?.routes.some((route) => route.available)) {
       registry.registerAdapter({
-        adapterId: "ae-cep.m4.tracker-repair-resume", adapterVersion: "0.5.0-dev.1", priority: 131, capabilities: [M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1],
+        adapterId: "ae-cep.m4.tracker-repair-resume", adapterVersion: "0.5.0-dev.1", priority: 131, capabilities: [M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1, M4_TRACKING_AUTO_ESCALATION_CAPABILITY_V1],
       });
     }
   }

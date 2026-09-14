@@ -1,3 +1,4 @@
+export * from "./automatic-repair.js";
 export * from "./semantic-attach.js";
 export * from "./segmentation.js";
 export * from "./repair-resume.js";

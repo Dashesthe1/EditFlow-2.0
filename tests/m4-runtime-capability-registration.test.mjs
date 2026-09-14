@@ -54,6 +54,7 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("ae.tracker.repair.readback"), null);
   assert.equal(session.registry.get("ae.tracker.repair.feature_center.set"), null);
   assert.equal(session.registry.get("tracking.repair_resume.state"), null);
+  assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
 });
 
 test("explicit protocol 2.1 availability registers readback without inventing a visual driver", async () => {
@@ -181,6 +182,7 @@ test("protocol 2.4 tracker repair registers only when explicitly available", asy
   assert.ok(write.routes.some((route) => route.kind === "HOST_ADAPTER" && route.available));
   assert.equal(write.riskClass, "R1_REVERSIBLE");
   assert.equal(session.registry.get("ae.tracker.readback"), null);
+  assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
 });
 
 test("repair/resume state registers only with protocol 2.4 plus verified point analysis", async () => {
@@ -192,10 +194,15 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
     },
   });
   const repair = session.registry.get("tracking.repair_resume.state");
+  const automatic = session.registry.get("tracking.repair_resume.auto_escalate");
   assert.ok(repair);
+  assert.ok(automatic);
   assert.equal(repair.status, "PARTIAL");
   assert.equal(repair.proofMaturity, "VISUAL");
   assert.ok(repair.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
   assert.equal(repair.visualProofProfile, "M4_TRACKER_REPAIR_RESUME_BIDIRECTIONAL_VISUAL");
   assert.ok(repair.limitations.some((value) => value.includes("Analyze Forward and Analyze Backward")));
+  assert.equal(automatic.proofMaturity, "STRUCTURAL");
+  assert.equal(automatic.riskClass, "R0_READ_ONLY");
+  assert.ok(automatic.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });
