@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("segmentation sequence P5 proof is current-session safe and crosses save/reopen/reconnect", async () => {
+  const manifest = JSON.parse(await read("proofs/manifests/m4-segmentation-sequence-p5-real-ae.request.json"));
   const runner = await read("scripts/windows/run-m4-segmentation-sequence-p5.ps1");
   const proof = await read("scripts/m4-segmentation-sequence-p5-proof.mjs");
   const stage1 = await read("scripts/windows/m4-segmentation-sequence-p5-stage1-template.jsx");
@@ -17,6 +18,13 @@ test("segmentation sequence P5 proof is current-session safe and crosses save/re
   const proofPath = fileURLToPath(new URL("../scripts/m4-segmentation-sequence-p5-proof.mjs", import.meta.url));
 
   await execFileAsync(process.execPath, ["--check", proofPath]);
+
+  assert.equal(manifest.lifecycle, "REUSE_AE");
+  assert.equal(manifest.allowInfrastructureRetry, false);
+  assert.equal(manifest.preserveCurrentAfterEffectsProcess, true);
+  assert.equal(manifest.userProjectPolicy, "SAVE_ONCE_THEN_USE_DISPOSABLE_COPY_AND_RESTORE_SAVED_BASELINE");
+  assert.equal(manifest.sessionBoundary, "SAVE_REOPEN_THEN_DISTINCT_AUTHENTICATED_CEP_SESSION");
+  assert.equal(manifest.productionPromotionOnPass, false);
 
   assert.match(runner, /Reusing current After Effects PID/);
   assert.match(runner, /exactly one already-running After Effects process/);
