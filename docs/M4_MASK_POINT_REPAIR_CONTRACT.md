@@ -1,6 +1,6 @@
 # M4 Mask-Point Repair Contract
 
-Status: **PARTIAL / STRUCTURAL / R0_READ_ONLY**
+Status: **PARTIAL / VISUAL / R0_READ_ONLY**
 Capability ID: `tracking.mask_point_repair.plan`
 Route ID: `m4.tracking.mask-point-repair-plan.v1`
 
@@ -32,19 +32,20 @@ For an animated mask path, the caller must supply an exact existing keyframe tim
 
 A valid animated plan clones the complete ordered keyframe set, modifies only the requested point at the exact target key, and preserves every other keyframe and path component exactly. Duplicate, decreasing, or malformed key times fail closed.
 
-## Safety boundary
+## Retained real-AE acceptance
 
-This tranche proves deterministic planning only. It does not yet claim:
+The bounded warm-AE proof now binds an exact existing mask, introduces a known bad static-path vertex, applies the planner output through protocol 1.2, verifies the complete post-write path, issues a deliberate failed request, uses typed transaction Undo to restore the exact bad shape, reapplies the repair, and validates the viewer-visible correction by retained before/after pixels. The proof-owned composition and media are then removed and the original project baseline is restored without saving, closing, or restarting After Effects.
 
-- real-AE mask-point mutation for the M4 repair workflow;
-- post-write protocol 1.2 readback of the repaired point;
-- induced-failure Undo recovery for this M4 composition;
-- viewer-visible correction of a failed mask track;
+This acceptance promotes the planner to `VISUAL` and permits default runtime registration. The public planner remains `R0_READ_ONLY`; the actual path write remains the accepted `R1_REVERSIBLE` protocol 1.2 host operation.
+
+## Remaining boundary
+
+Retained real-AE evidence currently covers **static-path vertex repair** only. The following remain unclaimed at live-proof maturity:
+
+- tangent-only or combined vertex/tangent host repair;
+- animated exact-key mask repair;
 - automatic selection of which mask vertex should be repaired;
-- semantic correction-to-mask mapping for arbitrary footage.
+- semantic correction-to-mask mapping for arbitrary footage;
+- materially different footage transfer/save-reopen proof for this M4 repair workflow.
 
-The actual `mask.set_path` write remains an accepted `R1_REVERSIBLE` protocol 1.2 operation, but M4 runtime registration of this higher-level repair planner is withheld until retained real-AE repair evidence exists.
-
-## Promotion gate
-
-Promotion requires a bounded warm-AE proof that binds an exact existing mask, introduces a known bad tracked-path point, applies the planned repair through protocol 1.2, verifies exact post-write readback, demonstrates induced-failure rollback, retains a viewer-visible repair checkpoint, and restores the proof-owned project baseline without saving, closing, or restarting the user's After Effects process.
+Animated repair continues to refuse interpolation-time guesses and remains structurally tested only.

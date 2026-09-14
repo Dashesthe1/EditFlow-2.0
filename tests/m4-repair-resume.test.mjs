@@ -56,7 +56,8 @@ test("repair/resume state projects the retained bidirectional live proof while r
   assert.equal(M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1.visualProofProfile, "M4_TRACKER_REPAIR_RESUME_BIDIRECTIONAL_VISUAL");
   assert.ok(M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1.limitations.some((value) => value.includes("Analyze Forward and Analyze Backward")));
   assert.ok(!M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1.limitations.some((value) => value.includes("Backward resume, mask-point repair")));
-  assert.ok(M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1.limitations.some((value) => value.includes("mask-point repair")));
+  assert.ok(M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1.limitations.some((value) => value.includes("static-path mask vertex repair")));
+  assert.ok(M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1.limitations.some((value) => value.includes("tangent/animated mask repair")));
 });
 
 test("state creation requires exact identity and explicit normalized resume policy", () => {

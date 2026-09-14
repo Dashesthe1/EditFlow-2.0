@@ -7,6 +7,7 @@ import {
 import { AE_ADAPTER_BUILD } from "../../../packages/adapters/ae-cep/src/protocol.js";
 import {
   registerAcceptedM3RuntimeCapabilities,
+  registerAcceptedM4FoundationRuntimeCapabilities,
   registerAcceptedM4TrackerRuntimeCapabilities,
   type M4TrackerRuntimeRegistrationV1,
 } from "./ae-runtime-capabilities.js";
@@ -35,6 +36,7 @@ export const createDesktopAeSession = async (
     capabilities: AE_CEP_CAPABILITIES,
   });
   registerAcceptedM3RuntimeCapabilities(registry);
+  registerAcceptedM4FoundationRuntimeCapabilities(registry);
   if (options.m4TrackerRuntime) registerAcceptedM4TrackerRuntimeCapabilities(registry, options.m4TrackerRuntime);
   return { adapterBuild: AE_ADAPTER_BUILD, state, registry };
 };

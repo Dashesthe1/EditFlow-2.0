@@ -15,6 +15,7 @@ import {
   type FaceVisualTrackingDriverV1,
 } from "../../../packages/adapters/ae-cep/src/m4-face-tracking.js";
 import { M4_FOUR_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-four-point-tracking.js";
+import { M4_MASK_POINT_REPAIR_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-mask-point-repair.js";
 import {
   capabilityForStabilizationDriverV1,
   M4_STABILIZATION_READBACK_CAPABILITIES_V23,
@@ -69,6 +70,15 @@ export const registerAcceptedM3RuntimeCapabilities = (registry: CapabilityRegist
   for (const declaration of AE_ACCEPTED_M3_RUNTIME_CAPABILITY_GROUPS) {
     registry.registerAdapter(declaration);
   }
+};
+
+export const registerAcceptedM4FoundationRuntimeCapabilities = (registry: CapabilityRegistry): void => {
+  registry.registerAdapter({
+    adapterId: "ae-cep.m4.mask-point-repair",
+    adapterVersion: "0.5.0-dev.1",
+    priority: 132,
+    capabilities: [M4_MASK_POINT_REPAIR_CAPABILITY_V1],
+  });
 };
 
 export interface M4TrackerRuntimeRegistrationV1 {

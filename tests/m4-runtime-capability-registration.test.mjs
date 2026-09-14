@@ -55,6 +55,11 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("ae.tracker.repair.feature_center.set"), null);
   assert.equal(session.registry.get("tracking.repair_resume.state"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
+  const maskPointRepair = session.registry.get("tracking.mask_point_repair.plan");
+  assert.ok(maskPointRepair);
+  assert.equal(maskPointRepair.proofMaturity, "VISUAL");
+  assert.equal(maskPointRepair.riskClass, "R0_READ_ONLY");
+  assert.ok(maskPointRepair.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });
 
 test("explicit protocol 2.1 availability registers readback without inventing a visual driver", async () => {

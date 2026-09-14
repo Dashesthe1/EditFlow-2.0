@@ -31,8 +31,11 @@ const base = (overrides = {}) => ({
 
 test("mask-point repair planner is read-only and inherits the accepted protocol 1.2 write surface", () => {
   assert.equal(M4_MASK_POINT_REPAIR_CAPABILITY_V1.status, "PARTIAL");
-  assert.equal(M4_MASK_POINT_REPAIR_CAPABILITY_V1.proofMaturity, "STRUCTURAL");
+  assert.equal(M4_MASK_POINT_REPAIR_CAPABILITY_V1.proofMaturity, "VISUAL");
   assert.equal(M4_MASK_POINT_REPAIR_CAPABILITY_V1.riskClass, "R0_READ_ONLY");
+  assert.equal(M4_MASK_POINT_REPAIR_CAPABILITY_V1.visualProofProfile, "M4_MASK_POINT_REPAIR_STATIC_VERTEX_VISUAL");
+  assert.ok(M4_MASK_POINT_REPAIR_CAPABILITY_V1.limitations.some((value) => value.includes("static-path vertex repair")));
+  assert.ok(M4_MASK_POINT_REPAIR_CAPABILITY_V1.limitations.some((value) => value.includes("Tangent-only repair")));
   assert.equal(M4_MASK_POINT_REPAIR_CAPABILITY_V1.fallbackPolicy, "FORBID");
   assert.ok(M4_MASK_POINT_REPAIR_CAPABILITY_V1.limitations.some((value) => value.includes("existing exact mask path")));
 });
