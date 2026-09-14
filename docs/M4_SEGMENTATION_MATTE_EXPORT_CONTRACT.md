@@ -6,9 +6,9 @@ Route ID: `m4.tracking.segmentation-matte-export.v1`
 
 ## Purpose
 
-Bridge an already accepted subject/object segmentation artifact to EditFlow's proven After Effects protocol 1.3 track-matte contract without fabricating the missing host-side materialization step.
+Bridge an already accepted subject/object segmentation artifact to EditFlow's proven After Effects protocol 1.3 track-matte contract without weakening artifact identity or channel semantics.
 
-The planner produces the exact `layer.set_track_matte` payload that will eventually be used after the raster artifact is materialized as an AE layer. It does not import media, add a layer, align a cropped raster, or write the matte while those operations cannot be live-proven.
+The planner produces the exact `layer.set_track_matte` payload used after the raster artifact is materialized as an AE layer. A separate composed materialization planner and retained real-AE proof now exercise exact media import, matte-layer creation, 2D crop alignment, target timing, and track-matte application; this export planner itself remains read-only and does not dispatch those writes.
 
 ## Explicit channel semantics
 
@@ -52,16 +52,9 @@ Planning returns `null` for unknown channels, invalid inversion values, malforme
 
 ## Safety and proof maturity
 
-This tranche is `R0_READ_ONLY`. It performs no AE write and requires no rollback. Runtime registration is withheld until retained proof covers:
+This tranche is `R0_READ_ONLY`. It performs no AE write and requires no rollback. Retained real-AE composition evidence now covers exact artifact materialization/import, cropped 2D alignment, track-matte transaction dispatch, structural readback of the intended matte source/type, retained render emission, and deterministic cleanup to the pre-proof warm-project baseline.
 
-1. exact artifact materialization/import;
-2. cropped/full-frame alignment;
-3. track-matte transaction dispatch;
-4. structural readback proving the intended matte source/type;
-5. visual proof of the isolation result;
-6. deterministic rollback/cleanup to the pre-proof state.
-
-The actual write uses the existing reversible `ae.layer.track_matte.set` capability and must inherit its transaction/undo/readback requirements.
+The retained deterministic real-AE fixture now also proves a pixel-validated visual isolation checkpoint plus an induced failure followed by Undo, structural verification that the track matte cleared, and exact matte reapplication. Runtime registration remains withheld because materially different footage transfer/save-reopen evidence, live segmentation-provider integration, dynamic sequence materialization, and broader production robustness are still open. The actual write uses the existing reversible `ae.layer.track_matte.set` capability and inherits its transaction/undo/readback requirements.
 
 ## Human-parity status
 

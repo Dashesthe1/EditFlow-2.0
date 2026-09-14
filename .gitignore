@@ -9,3 +9,4 @@ coverage/
 !.env.example
 proofs/artifacts/
 *.tmp
+__pycache__/
