@@ -1,6 +1,6 @@
 # M4 Segmentation Matte Materialization Contract
 
-Status: **PARTIAL / STRUCTURAL + DETERMINISTIC REAL-AE VISUAL/ROLLBACK EVIDENCE**
+Status: **PARTIAL / VISUAL / DETERMINISTIC REAL-AE VISUAL+ROLLBACK EVIDENCE**
 Capability ID: `tracking.segmentation.matte_materialize.plan`
 Route ID: `m4.tracking.segmentation-matte-materialize.v1`
 
@@ -61,7 +61,7 @@ This tranche does not claim:
 - 3D or non-square-pixel materialization;
 - unrestricted production dispatch of the composed write plan.
 
-The configured development venv still lacks the `sam3` package and authenticated gated checkpoint access, so SAM 3.1 provider promotion remains separately blocked.
+The configured SAM 3 runtime has the required package plus CUDA/BF16 support, but no Hugging Face token or explicit local SAM 3.1 checkpoint is available. Checkpoint-backed provider promotion therefore remains separately blocked; see `proofs/diagnostics/m4-sam31-runtime-preflight.json`.
 
 ## Promotion boundary
 

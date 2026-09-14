@@ -166,13 +166,13 @@ test("planner refuses stable-ID collisions and unsupported matte channels", () =
   badChannel.channel = "UNKNOWN";
   assert.equal(buildSegmentationMatteMaterializationPlanV1(badChannel), null);
 });
-test("materialization planner records accepted real-AE structural evidence without claiming runtime dispatch", () => {
+test("materialization planner retains deterministic real-AE visual and rollback evidence without runtime dispatch", () => {
   assert.equal(String(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.id), "tracking.segmentation.matte_materialize.plan");
   assert.equal(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.status, "PARTIAL");
-  assert.equal(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.proofMaturity, "STRUCTURAL");
+  assert.equal(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.proofMaturity, "VISUAL");
   assert.equal(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.riskClass, "R0_READ_ONLY");
   assert.match(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.limitations.join(" "), /does not dispatch AE mutations/i);
-  assert.match(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.routes[0].limitations.join(" "), /viewer-visible acceptance.*remain open/i);
+  assert.match(M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1.routes[0].limitations.join(" "), /pixel-validated viewer-visible output.*guarded failure Undo\/reapply/i);
 });
 
 const proofRunnerSource = readFileSync(new URL("../scripts/windows/run-m4-segmentation-matte-materialization.ps1", import.meta.url), "utf8");

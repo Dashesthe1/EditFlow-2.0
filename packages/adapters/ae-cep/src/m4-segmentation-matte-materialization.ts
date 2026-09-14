@@ -89,14 +89,14 @@ export const M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1: CapabilityReco
   domain: "tracking",
   description: "Plan exact segmentation-raster import, 2D source-space alignment, target timing, and protocol 1.3 track-matte binding by composing accepted AE protocol surfaces.",
   status: "PARTIAL",
-  proofMaturity: "STRUCTURAL",
+  proofMaturity: "VISUAL",
   routes: [{
     routeId: asRouteId("m4.tracking.segmentation-matte-materialize.v1"),
     kind: "SUBSYSTEM_ADAPTER",
     available: true,
-    adapterVersion: "0.5.0-dev.1",
+    adapterVersion: "0.5.0-dev.2",
     limitations: [
-      "Retained real-AE proof covers exact materialization, structural readback, matte binding, render emission, and baseline cleanup; viewer-visible acceptance, transfer, failure-path rollback, and production runtime registration remain open.",
+      "Retained real-AE proof covers exact materialization, structural readback, matte binding, pixel-validated viewer-visible output, guarded failure Undo/reapply, render emission, and baseline cleanup; transfer, live-provider integration, and production runtime registration remain open.",
       "V1 requires a 2D target layer and square-pixel source geometry.",
     ],
   }],
@@ -109,7 +109,7 @@ export const M4_SEGMENTATION_MATTE_MATERIALIZATION_CAPABILITY_V1: CapabilityReco
   limitations: [
     "This capability emits a plan; it does not dispatch AE mutations by itself.",
     "3D layers, non-square-pixel source geometry, and missing geometry provenance fail closed.",
-    "Dynamic temporal segmentation still requires a sequence-aware provider/materialization tranche.",
+    "Temporal materialization exists as a separate VISUAL sequence-aware planner; this V1 remains intentionally static-only."
   ],
   fallbackPolicy: "FORBID",
 };

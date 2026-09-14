@@ -34,11 +34,13 @@ const baseInput = {
   channel: "ALPHA",
 };
 
-test("matte export capability remains declared/read-only until materialization and live write proof exist", () => {
+test("matte export capability retains deterministic real-AE visual evidence while remaining read-only", () => {
   assert.equal(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.status, "PARTIAL");
-  assert.equal(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.proofMaturity, "DECLARED");
+  assert.equal(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.proofMaturity, "VISUAL");
   assert.equal(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.riskClass, "R0_READ_ONLY");
   assert.equal(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.fallbackPolicy, "FORBID");
+  assert.equal(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.visualProofProfile, "SEGMENTATION_MATTE_MATERIALIZATION_CHECKPOINT");
+  assert.match(M4_SEGMENTATION_MATTE_EXPORT_CAPABILITY_V1.routes[0].limitations.join(" "), /retained deterministic real-AE materialization visual\/rollback proof/i);
 });
 
 test("alpha segmentation artifact maps to the exact protocol 1.3 track-matte payload", () => {

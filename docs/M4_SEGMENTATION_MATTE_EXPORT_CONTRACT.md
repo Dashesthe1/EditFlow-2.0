@@ -1,6 +1,6 @@
 # M4 Segmentation -> Matte Export Contract
 
-Status: **PARTIAL / DECLARED / R0_READ_ONLY**  
+Status: **PARTIAL / VISUAL / R0_READ_ONLY**
 Capability ID: `tracking.segmentation.matte_export.plan`  
 Route ID: `m4.tracking.segmentation-matte-export.v1`
 
@@ -31,7 +31,7 @@ Every plan retains:
 - exact AE matte-layer stable ID;
 - `requiresExactArtifactProof: true`.
 
-A future write executor must prove the matte layer was created from that exact artifact before it may dispatch `ae.layer.track_matte.set`.
+Any write executor must prove the matte layer was created from that exact artifact before it may dispatch `ae.layer.track_matte.set`. The retained bounded materialization proof satisfies this requirement for its proof-owned fixture and then verifies the resulting matte structurally and visually.
 
 Cropped artifact bounds are preserved because the raster must be aligned into source/comp space before matte binding. The planner does not silently stretch a crop to full frame.
 
@@ -54,8 +54,8 @@ Planning returns `null` for unknown channels, invalid inversion values, malforme
 
 This tranche is `R0_READ_ONLY`. It performs no AE write and requires no rollback. Retained real-AE composition evidence now covers exact artifact materialization/import, cropped 2D alignment, track-matte transaction dispatch, structural readback of the intended matte source/type, retained render emission, and deterministic cleanup to the pre-proof warm-project baseline.
 
-The retained deterministic real-AE fixture now also proves a pixel-validated visual isolation checkpoint plus an induced failure followed by Undo, structural verification that the track matte cleared, and exact matte reapplication. Runtime registration remains withheld because materially different footage transfer/save-reopen evidence, live segmentation-provider integration, dynamic sequence materialization, and broader production robustness are still open. The actual write uses the existing reversible `ae.layer.track_matte.set` capability and inherits its transaction/undo/readback requirements.
+The retained deterministic real-AE fixture proves a pixel-validated visual isolation checkpoint plus an induced failure followed by Undo, structural verification that the track matte cleared, and exact matte reapplication. A separate deterministic temporal proof now covers native sequence import, exact cadence/timing, moving-mask visual evidence, matte binding, and baseline restoration. Runtime registration remains withheld because checkpoint-backed live segmentation-provider integration plus materially different-footage and session/save-reopen transfer evidence are still open. The actual write uses the existing reversible `ae.layer.track_matte.set` capability and inherits its transaction/undo/readback requirements.
 
 ## Human-parity status
 
-This closes the deterministic **segmentation-to-matte export planning** portion of M4. Live artifact import/alignment/matte application remains unproven while the authorized After Effects workstation is offline. Bezier contour extraction from raster masks is also not claimed by this tranche; it requires an explicit contour-generation route and separate geometry proof.
+This closes the deterministic **segmentation-to-matte export planning** proof gap through retained real-AE static visual/rollback evidence, while the separate temporal materialization route has its own dynamic visual proof. Checkpoint-backed live-provider output and transfer/session robustness remain unproven. Bezier contour extraction from raster masks is also not claimed by this tranche; it requires an explicit contour-generation route and separate geometry proof.
