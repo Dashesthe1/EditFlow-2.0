@@ -1,0 +1,42 @@
+{
+  "status": "PASS_STRUCTURAL_MASK_POINT_REPAIR",
+  "proofScope": "M4_MASK_POINT_REPAIR_PLAN_V1",
+  "sourceCommit": "61fb13f2b74ccbfb180f0b00488d445a1c289fc7",
+  "runtimePromotion": "WITHHELD_PENDING_REAL_AE_PROOF",
+  "generatedAt": "2026-09-13T21:35:38.7789199-05:00",
+  "capability": {
+    "id": "tracking.mask_point_repair.plan",
+    "routeId": "m4.tracking.mask-point-repair-plan.v1",
+    "riskClass": "R0_READ_ONLY",
+    "proofMaturity": "STRUCTURAL",
+    "hostWriteProtocol": "1.2.0",
+    "hostWriteCommand": "mask.set_path",
+    "hostWriteCapabilityId": "ae.mask.path.set"
+  },
+  "plannerBehavior": {
+    "requiresExactCompLayerMaskIdentity": true,
+    "requiresEvidence": true,
+    "staticPointRepair": true,
+    "animatedExactExistingKeyOnly": true,
+    "interpolationTimeGuessingForbidden": true,
+    "untouchedGeometryPreserved": true,
+    "untouchedKeyframesPreserved": true,
+    "variableFeatherPreserved": true,
+    "sourceReadbackNotMutated": true
+  },
+  "verification": {
+    "focusedTestsPassed": 8,
+    "npmRunCheckPassed": true,
+    "testsPassed": 622,
+    "testsFailed": 0,
+    "contractFixtures": 33,
+    "typecheckPassed": true
+  },
+  "limitations": [
+    "This acceptance proves deterministic planning only; it does not claim an M4 real-AE mask-point write.",
+    "Post-write protocol 1.2 readback for the M4 repair composition remains to be proven.",
+    "Induced-failure Undo recovery for the composed M4 repair remains to be proven.",
+    "Viewer-visible correction of a failed tracked mask remains to be proven.",
+    "The planner does not choose which vertex should be repaired and does not infer semantic correspondence from footage."
+  ]
+}
