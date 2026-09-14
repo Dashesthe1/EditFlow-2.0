@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
+const execFileAsync = promisify(execFile);
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("segmentation sequence P5 proof is current-session safe and crosses save/reopen/reconnect", async () => {
@@ -10,6 +14,9 @@ test("segmentation sequence P5 proof is current-session safe and crosses save/re
   const stage1 = await read("scripts/windows/m4-segmentation-sequence-p5-stage1-template.jsx");
   const reopen = await read("scripts/windows/m4-segmentation-sequence-p5-reopen-template.jsx");
   const cleanup = await read("scripts/windows/m4-segmentation-sequence-p5-cleanup-template.jsx");
+  const proofPath = fileURLToPath(new URL("../scripts/m4-segmentation-sequence-p5-proof.mjs", import.meta.url));
+
+  await execFileAsync(process.execPath, ["--check", proofPath]);
 
   assert.match(runner, /Reusing current After Effects PID/);
   assert.match(runner, /exactly one already-running After Effects process/);
