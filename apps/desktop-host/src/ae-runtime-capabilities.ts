@@ -20,6 +20,10 @@ import { M4_MASK_POINT_REPAIR_CAPABILITY_V1 } from "../../../packages/adapters/a
 import { capabilityForAcceptedM4SubjectSegmentationRuntimeV1 } from "../../../packages/adapters/ae-cep/src/m4-segmentation.js";
 import { M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-segmentation-sequence-materialization.js";
 import {
+  isTrustedM4SegmentationRuntimeEvidenceV1,
+  type TrustedM4SegmentationRuntimeEvidenceV1,
+} from "./m4-segmentation-runtime-evidence.js";
+import {
   capabilityForStabilizationDriverV1,
   M4_STABILIZATION_READBACK_CAPABILITIES_V23,
   type StabilizationVisualDriverV1,
@@ -84,60 +88,18 @@ export const registerAcceptedM4FoundationRuntimeCapabilities = (registry: Capabi
   });
 };
 
-export const M4_SEGMENTATION_RUNTIME_EVIDENCE_SCHEMA_V1 = "editflow.m4.segmentation-runtime-evidence.v1" as const;
-const M4_SEGMENTATION_RUNTIME_PROVIDER_ID_V1 = "sam3.1.local" as const;
-const M4_SEGMENTATION_RUNTIME_SIDECAR_SCHEMA_V1 = "editflow.segmentation.sam3.1.sequence.v1" as const;
-const M4_SEGMENTATION_RUNTIME_MODEL_FAMILY_V1 = "sam3.1" as const;
-const LOWER_SHA256 = /^[0-9a-f]{64}$/;
-const EVIDENCE_ID_V1 = /^[A-Za-z0-9][A-Za-z0-9:._/-]{2,127}$/;
-
-export interface M4SegmentationRuntimeEvidenceV1 {
-  readonly schema: typeof M4_SEGMENTATION_RUNTIME_EVIDENCE_SCHEMA_V1;
-  readonly providerId: typeof M4_SEGMENTATION_RUNTIME_PROVIDER_ID_V1;
-  readonly sidecarSchema: typeof M4_SEGMENTATION_RUNTIME_SIDECAR_SCHEMA_V1;
-  readonly modelFamily: typeof M4_SEGMENTATION_RUNTIME_MODEL_FAMILY_V1;
-  readonly evidenceId: string;
-  readonly checkpointSha256: string;
-  readonly resultSha256: string;
-  readonly sourceFixtureCount: number;
-  readonly liveInferenceAccepted: true;
-  readonly exactCorrelationAccepted: true;
-  readonly perFrameSha256Accepted: true;
-  readonly materiallyDifferentTransferAccepted: true;
-  readonly noHiddenFallbackAccepted: true;
-}
-
-export const isAcceptedM4SegmentationRuntimeEvidenceV1 = (
-  value: unknown,
-): value is M4SegmentationRuntimeEvidenceV1 => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const evidence = value as Record<string, unknown>;
-  return evidence.schema === M4_SEGMENTATION_RUNTIME_EVIDENCE_SCHEMA_V1 &&
-    evidence.providerId === M4_SEGMENTATION_RUNTIME_PROVIDER_ID_V1 &&
-    evidence.sidecarSchema === M4_SEGMENTATION_RUNTIME_SIDECAR_SCHEMA_V1 &&
-    evidence.modelFamily === M4_SEGMENTATION_RUNTIME_MODEL_FAMILY_V1 &&
-    typeof evidence.evidenceId === "string" && EVIDENCE_ID_V1.test(evidence.evidenceId) &&
-    typeof evidence.checkpointSha256 === "string" && LOWER_SHA256.test(evidence.checkpointSha256) &&
-    typeof evidence.resultSha256 === "string" && LOWER_SHA256.test(evidence.resultSha256) &&
-    Number.isInteger(evidence.sourceFixtureCount) && (evidence.sourceFixtureCount as number) >= 2 &&
-    evidence.liveInferenceAccepted === true &&
-    evidence.exactCorrelationAccepted === true &&
-    evidence.perFrameSha256Accepted === true &&
-    evidence.materiallyDifferentTransferAccepted === true &&
-    evidence.noHiddenFallbackAccepted === true;
-};
-
 export const registerAcceptedM4SegmentationRuntimeCapabilities = (
   registry: CapabilityRegistry,
-  evidence: unknown,
+  attestation: unknown,
 ): boolean => {
-  if (!isAcceptedM4SegmentationRuntimeEvidenceV1(evidence)) return false;
+  if (!isTrustedM4SegmentationRuntimeEvidenceV1(attestation)) return false;
+  const evidence = attestation.evidence;
   const acceptedSubjectSegmentation = capabilityForAcceptedM4SubjectSegmentationRuntimeV1(evidence.evidenceId);
   if (acceptedSubjectSegmentation === null) return false;
 
   registry.registerAdapter({
     adapterId: "m4.segmentation.sam31.accepted-runtime",
-    adapterVersion: "0.5.0-dev.3",
+    adapterVersion: "0.5.0-dev.4",
     priority: 133,
     capabilities: [
       acceptedSubjectSegmentation,
@@ -146,6 +108,8 @@ export const registerAcceptedM4SegmentationRuntimeCapabilities = (
   });
   return true;
 };
+
+export type { TrustedM4SegmentationRuntimeEvidenceV1 };
 
 export interface M4TrackerRuntimeRegistrationV1 {
   readonly pointTrackingV21Available: boolean;

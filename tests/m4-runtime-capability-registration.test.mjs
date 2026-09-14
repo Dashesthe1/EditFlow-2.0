@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { createDesktopAeSession } from "../.tmp/runtime/apps/desktop-host/src/index.js";
+import { registerAcceptedM4SegmentationRuntimeCapabilities } from "../.tmp/runtime/apps/desktop-host/src/ae-runtime-capabilities.js";
 
 const fakeObservedState = (projectId) => ({
   observed: {
@@ -37,6 +42,20 @@ const validSegmentationEvidence = (overrides = {}) => ({
   noHiddenFallbackAccepted: true,
   ...overrides,
 });
+const withSegmentationEvidenceFile = async (evidence, fn, digestOverride = null) => {
+  const dir = await mkdtemp(join(tmpdir(), "editflow-m4-seg-evidence-"));
+  const evidencePath = join(dir, "accepted.json");
+  const bytes = Buffer.from(JSON.stringify(evidence), "utf8");
+  const digest = digestOverride ?? createHash("sha256").update(bytes).digest("hex");
+  await writeFile(evidencePath, bytes);
+  await writeFile(`${evidencePath}.sha256`, `${digest}\n`, "utf8");
+  try {
+    return await fn({ evidencePath }, createHash("sha256").update(bytes).digest("hex"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+};
+
 const maskForwardDriver = {
   driverId: "editgpt.eyes-hands.mask-tracking.v1", verifiedVision: true, verifiedCursorControl: true,
   supportedDirections: ["FORWARD"], async analyze() { return { status: "REFUSED" }; },
@@ -241,7 +260,7 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   assert.ok(autoCorrect.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });
 
-test("segmentation runtime registration fails closed on malformed or incomplete live evidence", async () => {
+test("segmentation runtime registration fails closed on malformed or incomplete retained evidence files", async () => {
   const cases = [
     true,
     validSegmentationEvidence({ schema: "wrong.schema" }),
@@ -257,37 +276,65 @@ test("segmentation runtime registration fails closed on malformed or incomplete 
     validSegmentationEvidence({ perFrameSha256Accepted: false }),
     validSegmentationEvidence({ materiallyDifferentTransferAccepted: false }),
     validSegmentationEvidence({ noHiddenFallbackAccepted: false }),
+    validSegmentationEvidence({ unexpectedField: true }),
   ];
 
   for (const [index, evidence] of cases.entries()) {
-    const session = await createDesktopAeSession(adapter, `m4-segmentation-refuse-${index}`, {
-      m4SegmentationRuntimeEvidence: evidence,
+    await withSegmentationEvidenceFile(evidence, async (file) => {
+      const session = await createDesktopAeSession(adapter, `m4-segmentation-refuse-${index}`, {
+        m4SegmentationRuntimeEvidenceFile: file,
+      });
+      assert.equal(session.m4SegmentationRuntimeRegistered, false);
+      assert.equal(session.m4SegmentationRuntimeEvidenceFileSha256, null);
+      assert.equal(session.registry.get("tracking.segmentation.subject_object.accept"), null);
+      assert.equal(session.registry.get("tracking.segmentation.sequence_matte_materialize.plan"), null);
     });
-    assert.equal(session.m4SegmentationRuntimeRegistered, false);
-    assert.equal(session.registry.get("tracking.segmentation.subject_object.accept"), null);
-    assert.equal(session.registry.get("tracking.segmentation.sequence_matte_materialize.plan"), null);
   }
 });
 
-
-test("segmentation runtime registers only after exact live SAM 3.1 transfer evidence passes", async () => {
-  const evidence = validSegmentationEvidence();
-  const session = await createDesktopAeSession(adapter, "m4-segmentation-accept", {
-    m4SegmentationRuntimeEvidence: evidence,
+test("caller-supplied evidence objects cannot bypass the retained-file loader", async () => {
+  const forged = validSegmentationEvidence();
+  const session = await createDesktopAeSession(adapter, "m4-segmentation-direct-object-refuse", {
+    m4SegmentationRuntimeEvidence: forged,
   });
+  assert.equal(session.m4SegmentationRuntimeRegistered, false);
+  assert.equal(session.m4SegmentationRuntimeEvidenceFileSha256, null);
+  assert.equal(registerAcceptedM4SegmentationRuntimeCapabilities(session.registry, forged), false);
+  assert.equal(session.registry.get("tracking.segmentation.subject_object.accept"), null);
+  assert.equal(session.registry.get("tracking.segmentation.sequence_matte_materialize.plan"), null);
+});
 
-  assert.equal(session.m4SegmentationRuntimeRegistered, true);
-  const acceptance = session.registry.get("tracking.segmentation.subject_object.accept");
-  const materialize = session.registry.get("tracking.segmentation.sequence_matte_materialize.plan");
-  assert.ok(acceptance);
-  assert.ok(materialize);
-  assert.equal(acceptance.status, "FULL");
-  assert.equal(acceptance.proofMaturity, "TRANSFER");
-  assert.equal(acceptance.riskClass, "R0_READ_ONLY");
-  assert.ok(acceptance.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
-  assert.ok(acceptance.limitations.some((value) => value.includes(evidence.evidenceId)));
-  assert.equal(materialize.status, "FULL");
-  assert.equal(materialize.proofMaturity, "TRANSFER");
-  assert.equal(materialize.riskClass, "R0_READ_ONLY");
-  assert.ok(materialize.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+test("retained segmentation evidence refuses a mismatched sidecar digest", async () => {
+  await withSegmentationEvidenceFile(validSegmentationEvidence(), async (file) => {
+    const session = await createDesktopAeSession(adapter, "m4-segmentation-digest-refuse", {
+      m4SegmentationRuntimeEvidenceFile: file,
+    });
+    assert.equal(session.m4SegmentationRuntimeRegistered, false);
+    assert.equal(session.m4SegmentationRuntimeEvidenceFileSha256, null);
+  }, "0".repeat(64));
+});
+
+test("segmentation runtime registers only after exact retained live SAM 3.1 transfer evidence passes", async () => {
+  const evidence = validSegmentationEvidence();
+  await withSegmentationEvidenceFile(evidence, async (file, fileSha256) => {
+    const session = await createDesktopAeSession(adapter, "m4-segmentation-accept", {
+      m4SegmentationRuntimeEvidenceFile: file,
+    });
+
+    assert.equal(session.m4SegmentationRuntimeRegistered, true);
+    assert.equal(session.m4SegmentationRuntimeEvidenceFileSha256, fileSha256);
+    const acceptance = session.registry.get("tracking.segmentation.subject_object.accept");
+    const materialize = session.registry.get("tracking.segmentation.sequence_matte_materialize.plan");
+    assert.ok(acceptance);
+    assert.ok(materialize);
+    assert.equal(acceptance.status, "FULL");
+    assert.equal(acceptance.proofMaturity, "TRANSFER");
+    assert.equal(acceptance.riskClass, "R0_READ_ONLY");
+    assert.ok(acceptance.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+    assert.ok(acceptance.limitations.some((value) => value.includes(evidence.evidenceId)));
+    assert.equal(materialize.status, "FULL");
+    assert.equal(materialize.proofMaturity, "TRANSFER");
+    assert.equal(materialize.riskClass, "R0_READ_ONLY");
+    assert.ok(materialize.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+  });
 });
