@@ -69,14 +69,14 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
   domain: "tracking",
   description: "Plan an integrity-verified temporal segmentation raster sequence into native After Effects sequence import, exact forward timing, alignment, and track-matte binding.",
   status: "PARTIAL",
-  proofMaturity: "STRUCTURAL",
+  proofMaturity: "VISUAL",
   routes: [{
     routeId: asRouteId("m4.tracking.segmentation-sequence-matte-materialize.v1"),
     kind: "SUBSYSTEM_ADAPTER",
     available: true,
     adapterVersion: "0.5.0-dev.2",
     limitations: [
-      "Protocol 2.5 native sequence import/readback is real-AE proven, but an end-to-end dynamic provider-to-render visual proof is not yet retained.",
+      "Protocol 2.5 native sequence import/readback and deterministic real-AE dynamic matte visual proof are retained; live SAM 3.1 provider-generated sequence proof remains blocked by gated checkpoint access.",
       "V1 requires uniform mask geometry and forward target-layer timing; reverse-stretch sequence synchronization is refused.",
     ],
   }],
@@ -89,7 +89,7 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
   limitations: [
     "This capability emits a plan and never dispatches mutations by itself.",
     "Every numbered frame must match the accepted artifact identity, digest, content type, geometry, and cadence.",
-    "Production runtime registration remains withheld until temporal-provider and materially changing dynamic visual evidence pass.",
+    "Production runtime registration remains withheld until live temporal-provider output plus unrelated-footage and session-boundary transfer evidence pass.",
   ],
   fallbackPolicy: "FORBID",
 };

@@ -1,0 +1,9 @@
+{
+  "proofId": "m4-segmentation-sequence-materialization-real-ae",
+  "lifecycle": "REUSE_AE",
+  "timeoutSeconds": 90,
+  "proofScript": "scripts/windows/run-m4-segmentation-sequence-materialization.ps1",
+  "artifactDir": "proofs/artifacts/m4-segmentation-sequence-materialization",
+  "resultFile": "result.json",
+  "allowInfrastructureRetry": false
+}

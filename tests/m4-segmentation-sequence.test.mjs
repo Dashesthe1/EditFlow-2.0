@@ -180,13 +180,14 @@ test("dynamic matte planner refuses broken numbered sequence, hash drift, revers
   }
 });
 
-test("dynamic sequence capability remains planning-only until temporal provider visual proof", () => {
+test("dynamic sequence capability retains visual AE proof while production waits for live provider transfer evidence", () => {
   const capability = M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1;
   assert.equal(String(capability.id), "tracking.segmentation.sequence_matte_materialize.plan");
   assert.equal(capability.status, "PARTIAL");
-  assert.equal(capability.proofMaturity, "STRUCTURAL");
+  assert.equal(capability.proofMaturity, "VISUAL");
   assert.equal(capability.riskClass, "R0_READ_ONLY");
   assert.match(capability.limitations.join(" "), /never dispatches mutations/i);
   assert.match(capability.limitations.join(" "), /production runtime registration remains withheld/i);
-  assert.match(capability.routes[0].limitations.join(" "), /end-to-end dynamic provider-to-render visual proof.*not yet retained/i);
+  assert.match(capability.routes[0].limitations.join(" "), /deterministic real-AE dynamic matte visual proof.*retained/i);
+  assert.match(capability.routes[0].limitations.join(" "), /live SAM 3\.1 provider-generated sequence proof.*blocked/i);
 });

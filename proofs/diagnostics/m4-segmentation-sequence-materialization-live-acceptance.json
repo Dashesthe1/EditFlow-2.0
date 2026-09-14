@@ -1,0 +1,198 @@
+{
+    "status":  "PASS_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION",
+    "proofScope":  "M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_REAL_AE",
+    "proofBaseCommit":  "e4e88b499c3d76a841a068bcaeb673668b65e1db",
+    "runtimePromotion":  "WITHHELD_LIVE_PROVIDER_AND_TRANSFER",
+    "generatedAt":  "2026-09-14T17:27:38.1305004Z",
+    "afterEffects":  {
+                         "processId":  4352,
+                         "warmProcessReused":  true,
+                         "launched":  false,
+                         "restarted":  false,
+                         "project":  "psier.aep",
+                         "baselineRestored":  true,
+                         "supervisorScriptErrors":  0
+                     },
+    "liveProof":  {
+                      "nativeSequenceImport":  true,
+                      "exactFrameCount":  true,
+                      "exactFrameRate":  true,
+                      "exactFirstFramePath":  true,
+                      "exactMatteTiming":  true,
+                      "trackMatteBound":  true,
+                      "dynamicVisualMotion":  true,
+                      "projectBaselineRestored":  true
+                  },
+    "fastBatchHostDurations":  [
+                                   {
+                                       "command":  "media.sequence.import",
+                                       "durationMs":  35
+                                   },
+                                   {
+                                       "command":  "layer.add_media",
+                                       "durationMs":  41
+                                   },
+                                   {
+                                       "command":  "layer.set_transform",
+                                       "durationMs":  35
+                                   },
+                                   {
+                                       "command":  "layer.set_timing",
+                                       "durationMs":  20
+                                   },
+                                   {
+                                       "command":  "layer.set_track_matte",
+                                       "durationMs":  27
+                                   }
+                               ],
+    "visualEvidence":  [
+                           {
+                               "frameIndex":  0,
+                               "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-materialization\\dynamic-review-0.png",
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  60,
+                                                   "y":  67,
+                                                   "r":  245,
+                                                   "g":  72,
+                                                   "b":  36,
+                                                   "expected":  "SUBJECT",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  120,
+                                                   "y":  67,
+                                                   "r":  15,
+                                                   "g":  35,
+                                                   "b":  80,
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  180,
+                                                   "y":  67,
+                                                   "r":  15,
+                                                   "g":  35,
+                                                   "b":  80,
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "x":  10,
+                                                  "y":  10,
+                                                  "r":  15,
+                                                  "g":  35,
+                                                  "b":  80,
+                                                  "pass":  true
+                                              },
+                               "pass":  true
+                           },
+                           {
+                               "frameIndex":  1,
+                               "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-materialization\\dynamic-review-1.png",
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  60,
+                                                   "y":  67,
+                                                   "r":  15,
+                                                   "g":  35,
+                                                   "b":  80,
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  120,
+                                                   "y":  67,
+                                                   "r":  245,
+                                                   "g":  72,
+                                                   "b":  36,
+                                                   "expected":  "SUBJECT",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  180,
+                                                   "y":  67,
+                                                   "r":  15,
+                                                   "g":  35,
+                                                   "b":  80,
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "x":  10,
+                                                  "y":  10,
+                                                  "r":  15,
+                                                  "g":  35,
+                                                  "b":  80,
+                                                  "pass":  true
+                                              },
+                               "pass":  true
+                           },
+                           {
+                               "frameIndex":  2,
+                               "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-materialization\\dynamic-review-2.png",
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  60,
+                                                   "y":  67,
+                                                   "r":  15,
+                                                   "g":  35,
+                                                   "b":  80,
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  120,
+                                                   "y":  67,
+                                                   "r":  15,
+                                                   "g":  35,
+                                                   "b":  80,
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  180,
+                                                   "y":  67,
+                                                   "r":  245,
+                                                   "g":  72,
+                                                   "b":  36,
+                                                   "expected":  "SUBJECT",
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "x":  10,
+                                                  "y":  10,
+                                                  "r":  15,
+                                                  "g":  35,
+                                                  "b":  80,
+                                                  "pass":  true
+                                              },
+                               "pass":  true
+                           }
+                       ],
+    "verification":  {
+                         "focusedTestsPassed":  11,
+                         "focusedTestsFailed":  0,
+                         "fullCheckPassed":  true,
+                         "contractFixtures":  33,
+                         "typecheckPassed":  true,
+                         "fullTestsPassed":  655,
+                         "fullTestsFailed":  0
+                     },
+    "providerGate":  {
+                         "authenticatedCheckpointAccessPresent":  false,
+                         "liveSam31InferenceAccepted":  false
+                     },
+    "limitations":  [
+                        "Visual proof uses a deterministic three-frame mask sequence rather than live SAM 3.1 provider output.",
+                        "Production registration remains withheld pending live provider output plus unrelated-footage and session-boundary transfer evidence.",
+                        "V1 requires forward timing with uniform mask geometry and refuses reverse-stretch synchronization.",
+                        "The public capability remains planning-only and does not dispatch mutations itself."
+                    ]
+}

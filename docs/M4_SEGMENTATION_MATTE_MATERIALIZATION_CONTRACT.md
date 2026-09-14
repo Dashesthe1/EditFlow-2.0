@@ -57,7 +57,7 @@ This tranche does not claim:
 
 - live SAM 3.1 inference or production provider registration;
 - save/reopen/reconnect or materially different-footage transfer;
-- end-to-end dynamic multi-frame segmentation materialization (the AE-native sequence import/readback primitive is now proven, but temporal provider output, sequence integrity, timing plan assembly, and dynamic visual proof remain open);
+- live-provider end-to-end dynamic multi-frame segmentation (deterministic temporal sequence integrity, timing-plan assembly, native AE import/binding, and dynamic visual motion are now retained; live SAM 3.1-generated output remains open);
 - 3D or non-square-pixel materialization;
 - unrestricted production dispatch of the composed write plan.
 
