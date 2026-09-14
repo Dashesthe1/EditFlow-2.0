@@ -1,0 +1,59 @@
+{
+  "status": "PASS_SEGMENTATION_MATTE_MATERIALIZATION",
+  "proofScope": "M4_SEGMENTATION_MATTE_MATERIALIZATION_REAL_AE",
+  "sourceCommit": "3fbc83e0c4e40dc324267cd2a356dd1e5d649ba8",
+  "runtimePromotion": "WITHHELD_PLAN_ONLY",
+  "generatedAt": "2026-09-13T20:49:24.6971908-05:00",
+  "afterEffects": {
+    "processId": 9212,
+    "warmProcessReused": true,
+    "consecutiveRunsPassed": 2,
+    "savedOrClosed": false,
+    "stillRunningAfterProof": true
+  },
+  "liveProof": {
+    "exactArtifactImport": true,
+    "exact2dCropAlignment": true,
+    "targetTimingPreserved": true,
+    "lumaTrackMatteBound": true,
+    "structuralReadbackPassed": true,
+    "failureInjected": true,
+    "undoClearedTrackMatte": true,
+    "reapplyRestoredTrackMatte": true,
+    "pixelValidatedVisualIsolation": true,
+    "retainedRenderEmitted": true,
+    "warmProjectBaselineRestored": true
+  },
+  "visualEvidence": {
+    "width": 240,
+    "height": 135,
+    "subjectPixel": { "x": 132, "y": 72, "r": 248, "g": 76, "b": 38, "pass": true },
+    "backgroundPixels": [
+      { "x": 0, "y": 0, "r": 12, "g": 28, "b": 58, "pass": true },
+      { "x": 190, "y": 90, "r": 20, "g": 48, "b": 92, "pass": true }
+    ]
+  },
+  "verification": {
+    "focusedTestsPassed": 18,
+    "npmRunCheckPassed": true,
+    "testsPassed": 605,
+    "testsFailed": 0,
+    "contractFixtures": 33,
+    "typecheckPassed": true,
+    "hostChecksPassed": 21,
+    "hostChecksFailed": 0
+  },
+  "providerGate": {
+    "sam3PackagePresentInConfiguredVenv": false,
+    "authenticatedCheckpointAccessPresent": false,
+    "liveSam31InferenceAccepted": false
+  },
+  "limitations": [
+    "The public capability remains a read-only materialization planner and is not registered for unrestricted production dispatch.",
+    "The visual and rollback evidence uses a deterministic proof fixture rather than a live SAM 3.1-generated artifact.",
+    "Save/reopen/reconnect and materially different-footage transfer remain unproven for this materialization tranche.",
+    "Dynamic multi-frame segmentation sequence materialization remains open.",
+    "V1 deliberately refuses 3D targets and non-square-pixel source geometry.",
+    "SAM 3.1 provider promotion remains blocked until the intended package/checkpoint can be loaded and live inference evidence is retained."
+  ]
+}
