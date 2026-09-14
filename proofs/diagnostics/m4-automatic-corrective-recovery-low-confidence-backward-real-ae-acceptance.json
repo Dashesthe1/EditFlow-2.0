@@ -1,0 +1,174 @@
+{
+  "status": "PASS_REAL_AE_AUTOMATIC_LOW_CONFIDENCE_BACKWARD_CORRECTIVE_RECOVERY",
+  "proofScope": "M4_AUTOMATIC_CORRECTIVE_RECOVERY_LOW_CONFIDENCE_BACKWARD_REAL_AE",
+  "accepted": true,
+  "sourceCommit": "a85a9f570d41388d4ac11b81494f1cd30040b4b9",
+  "generatedAt": "2026-09-14T13:23:50.066Z",
+  "capability": {
+    "id": "tracking.repair_resume.auto_correct.plan",
+    "routeId": "m4.tracking.repair-auto-correct-plan.v1",
+    "provedReason": "TRACK_CONFIDENCE_LOW",
+    "provedDirection": "BACKWARD",
+    "protocols": {
+      "correction": "2.4.0",
+      "verification": "2.1.0"
+    }
+  },
+  "checks": {
+    "lowTrackingConfidenceEscalated": true,
+    "backwardDirectionComposed": true,
+    "composerEmittedExactSequence": true,
+    "composerBoundExactTarget": true,
+    "wrongStateObservedBeforeMutation": true,
+    "composerCorrectionApplied": true,
+    "protocol24ApplyReadbackExact": true,
+    "protocol24IndependentPostReadbackExact": true,
+    "guardedVisualResumeCompleted": true,
+    "activeStopObserved": true,
+    "protocol21PostAnalysisAccepted": true,
+    "nativeSamplesGrew": true,
+    "backwardTrajectoryMatchedGroundTruth": true,
+    "repairVerificationAccepted": true,
+    "repairStateResumed": true,
+    "cleanupRestoredBaseline": true
+  },
+  "automaticTrigger": {
+    "good": {
+      "semanticId": "M4_AUTO_CORRECT_SUBJECT",
+      "status": "GOOD",
+      "primaryReason": null,
+      "consecutiveFailureSamples": 0,
+      "lastGoodTimestampMs": 0,
+      "trigger": null,
+      "evidenceIds": [
+        "ACR:BACKWARD:BASELINE:GOOD"
+      ]
+    },
+    "pending": {
+      "semanticId": "M4_AUTO_CORRECT_SUBJECT",
+      "status": "PENDING_FAILURE",
+      "primaryReason": "TRACK_CONFIDENCE_LOW",
+      "consecutiveFailureSamples": 1,
+      "lastGoodTimestampMs": 0,
+      "trigger": null,
+      "evidenceIds": [
+        "ACR:BACKWARD:LOW_CONFIDENCE:FRAME_2000"
+      ]
+    },
+    "escalation": {
+      "semanticId": "M4_AUTO_CORRECT_SUBJECT",
+      "status": "ESCALATE",
+      "primaryReason": "TRACK_CONFIDENCE_LOW",
+      "consecutiveFailureSamples": 2,
+      "lastGoodTimestampMs": 0,
+      "trigger": {
+        "reason": "TRACK_CONFIDENCE_LOW",
+        "failureTimestampMs": 2000,
+        "lastGoodTimestampMs": 0,
+        "evidenceIds": [
+          "ACR:BACKWARD:LOW_CONFIDENCE:FRAME_2000",
+          "ACR:BACKWARD:LOW_CONFIDENCE:FRAME_2033"
+        ]
+      },
+      "evidenceIds": [
+        "ACR:BACKWARD:LOW_CONFIDENCE:FRAME_2000",
+        "ACR:BACKWARD:LOW_CONFIDENCE:FRAME_2033"
+      ]
+    }
+  },
+  "correction": {
+    "time": 2,
+    "wrongFeatureCenter": [
+      470,
+      330
+    ],
+    "desiredFeatureCenter": [
+      444,
+      360
+    ],
+    "hostDurationMs": 24
+  },
+  "resume": {
+    "direction": "BACKWARD",
+    "visualEvidenceId": "proofs/artifacts/m4-automatic-corrective-recovery-backward-visual/after_analysis.jpg",
+    "activeStopObserved": true,
+    "stopClicked": true,
+    "preResumeKeyCount": 2,
+    "postResumeKeyCount": 3,
+    "preRepairSampleCount": 1,
+    "groundTruthErrorPx": 0.14947916666699,
+    "nearestPreRepairSample": {
+      "time": 1.96666666666667,
+      "featureCenter": [
+        440.1171875,
+        360
+      ],
+      "featureSize": [
+        90,
+        90
+      ],
+      "searchOffset": [
+        0,
+        0
+      ],
+      "searchSize": [
+        220,
+        220
+      ],
+      "confidence": 0.99865400078985,
+      "attachPoint": [
+        440.1171875,
+        360
+      ],
+      "attachPointOffset": [
+        0,
+        0
+      ],
+      "compPoint": [
+        440.1171875,
+        360
+      ],
+      "compNormalized": [
+        0.61127387152778,
+        0.5
+      ]
+    }
+  },
+  "stateVerification": {
+    "verificationTimestampMs": 2001,
+    "evidenceSampleMediaTime": 1.96666666666667,
+    "derivedTrackConfidence": 0.99865400078985,
+    "derivedDriftRisk": 0.0016608796296332222,
+    "occlusion": 0,
+    "verification": {
+      "timestampMs": 2001,
+      "trackConfidence": 0.99865400078985,
+      "driftRisk": 0.0016608796296332222,
+      "occlusion": 0,
+      "accepted": true,
+      "rejectionReasons": [],
+      "evidenceIds": [
+        "ACR:PROTOCOL21_BACKWARD_POST_ANALYSIS_SAMPLE",
+        "ACR:BACKWARD_FIXTURE_UNOCCLUDED_GROUND_TRUTH"
+      ]
+    },
+    "finalStatus": "RESUMED"
+  },
+  "cleanup": {
+    "ok": true,
+    "itemCountAfter": 4,
+    "baselineItems": 4,
+    "autoSolidsRemoved": false,
+    "folderRemoved": true,
+    "fixtureRemoved": true,
+    "sourceRemoved": true,
+    "blackRemoved": true,
+    "featureRemoved": true
+  },
+  "limitations": [
+    "Retained live proof covers persistent low tracking-confidence escalation, exact point-tracker Feature Center correction, and guarded Analyze Backward resume.",
+    "Persistent drift and explicit identity-confidence loss use the same evidence-bound Backward host/visual resume path; this proof independently covers low tracking confidence.",
+    "Occlusion recovery remains escalation-only and is not an automatic write path.",
+    "Generalized semantic correction inference remains out of scope; exact correction geometry and semantic-to-host mapping are still required evidence inputs."
+  ]
+}

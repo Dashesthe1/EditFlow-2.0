@@ -90,3 +90,27 @@ test("automatic drift Backward live proof consumes the composed direction withou
   assert.match(acceptance, /repairStateResumed/);
   assert.match(acceptance, /cleanupRestoredBaseline/);
 });
+
+test("low-confidence and identity-loss Backward proofs independently retain the same guarded gates", async () => {
+  const lowPlan = await read("scripts/m4-automatic-corrective-recovery-low-confidence-backward-plan-live.mjs");
+  const lowAcceptance = await read("scripts/m4-automatic-corrective-recovery-low-confidence-backward-acceptance.mjs");
+  const identityPlan = await read("scripts/m4-automatic-corrective-recovery-identity-backward-plan-live.mjs");
+  const identityAcceptance = await read("scripts/m4-automatic-corrective-recovery-identity-backward-acceptance.mjs");
+  assert.match(lowPlan, /sample\(2000, 0\.45/);
+  assert.match(lowPlan, /sample\(2033, 0\.44/);
+  assert.match(lowPlan, /TRACK_CONFIDENCE_LOW/);
+  assert.match(lowPlan, /resumeDirection: "BACKWARD"/);
+  assert.match(lowAcceptance, /PASS_REAL_AE_AUTOMATIC_LOW_CONFIDENCE_BACKWARD_CORRECTIVE_RECOVERY/);
+  assert.match(lowAcceptance, /lowTrackingConfidenceEscalated/);
+  assert.match(identityPlan, /sample\(2000, 0\.25/);
+  assert.match(identityPlan, /sample\(2033, 0\.24/);
+  assert.match(identityPlan, /IDENTITY_UNCERTAIN/);
+  assert.match(identityPlan, /resumeDirection: "BACKWARD"/);
+  assert.match(identityAcceptance, /PASS_REAL_AE_AUTOMATIC_IDENTITY_BACKWARD_CORRECTIVE_RECOVERY/);
+  assert.match(identityAcceptance, /explicitIdentityEscalated/);
+  for (const acceptance of [lowAcceptance, identityAcceptance]) {
+    assert.match(acceptance, /backwardDirectionComposed/);
+    assert.match(acceptance, /repairStateResumed/);
+    assert.match(acceptance, /cleanupRestoredBaseline/);
+  }
+});
