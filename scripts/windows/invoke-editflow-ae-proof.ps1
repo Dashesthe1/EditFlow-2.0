@@ -228,6 +228,24 @@ function Read-ProofClassification {
   return $null
 }
 
+function Get-SupervisorScriptErrors {
+  param([AllowNull()][string]$Path)
+  if (-not $Path -or -not (Test-Path $Path -PathType Leaf)) { return @() }
+  return @(Get-Content -Path $Path -ErrorAction SilentlyContinue | Where-Object { $_ -like "*`tSCRIPT_ERROR_DETECTED`t*" })
+}
+
+function Get-SupervisorScriptErrorDetail {
+  param([Parameter(Mandatory = $true)][string]$LogLine)
+  $Parts = $LogLine -split "`t", 3
+  if ($Parts.Count -lt 3) { return $LogLine }
+  $Detail = [string]$Parts[2]
+  $Marker = ";message="
+  $MessageIndex = $Detail.IndexOf($Marker, [StringComparison]::OrdinalIgnoreCase)
+  if ($MessageIndex -ge 0) { return $Detail.Substring($MessageIndex + $Marker.Length) }
+  if ($Detail.StartsWith("message=", [StringComparison]::OrdinalIgnoreCase)) { return $Detail.Substring(8) }
+  return $Detail
+}
+
 function Invoke-ProofAttempt {
   param([Parameter(Mandatory = $true)][string]$ProofPath, [Parameter(Mandatory = $true)][int]$TimeoutSeconds)
 
@@ -240,22 +258,53 @@ function Invoke-ProofAttempt {
     "-TimeoutSeconds", [string]$TimeoutSeconds
   ) -join " "
 
+  $InitialScriptErrorCount = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath).Count
   $Process = Start-Process -FilePath "powershell.exe" -ArgumentList $Arguments -PassThru -WindowStyle Hidden
+  $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   $Completed = $false
-  try {
-    Wait-Process -Id $Process.Id -Timeout $TimeoutSeconds -ErrorAction Stop
-    $Completed = $true
-  } catch {
-    $Completed = $false
+  $DetectedScriptError = $null
+
+  do {
+    try {
+      $Process.Refresh()
+      if ($Process.HasExited) {
+        $Completed = $true
+        break
+      }
+    } catch {
+      $Completed = $true
+      break
+    }
+
+    $CurrentScriptErrors = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath)
+    if ($CurrentScriptErrors.Count -gt $InitialScriptErrorCount) {
+      $DetectedScriptError = Get-SupervisorScriptErrorDetail -LogLine ([string]$CurrentScriptErrors[-1])
+      break
+    }
+    Start-Sleep -Milliseconds 100
+  } while ((Get-Date) -lt $Deadline)
+
+  # Check once more after process completion so a popup logged in the same scheduler
+  # slice as process exit is still surfaced as the primary failure reason.
+  if (-not $DetectedScriptError) {
+    $FinalScriptErrors = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath)
+    if ($FinalScriptErrors.Count -gt $InitialScriptErrorCount) {
+      $DetectedScriptError = Get-SupervisorScriptErrorDetail -LogLine ([string]$FinalScriptErrors[-1])
+    }
+  }
+
+  if ($DetectedScriptError) {
+    Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{ exitCode = 65; timedOut = $false; scriptError = $DetectedScriptError }
   }
 
   if (-not $Completed) {
     Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
-    return [pscustomobject]@{ exitCode = 124; timedOut = $true }
+    return [pscustomobject]@{ exitCode = 124; timedOut = $true; scriptError = $null }
   }
 
   $Process.Refresh()
-  return [pscustomobject]@{ exitCode = [int]$Process.ExitCode; timedOut = $false }
+  return [pscustomobject]@{ exitCode = [int]$Process.ExitCode; timedOut = $false; scriptError = $null }
 }
 
 try {
@@ -334,6 +383,12 @@ try {
     $AttemptResult = Invoke-ProofAttempt -ProofPath $ProofPath -TimeoutSeconds ([int]$Request.timeoutSeconds)
     $ProofExitCode = [int]$AttemptResult.exitCode
     $ProofResult = Read-ProofClassification
+
+    if ($AttemptResult.scriptError) {
+      $FinalClassification = "PRODUCT_FAILURE"
+      $FinalMessage = "After Effects rejected a script: $([string]$AttemptResult.scriptError)"
+      break
+    }
 
     if (-not $AttemptResult.timedOut -and $ProofExitCode -eq 0 -and $ProofResult -and [string]$ProofResult.classification -eq "PASS") {
       $HealthyAfter = @(Get-HealthyTargetAfterFx -ExpectedPath $AfterFxPath)

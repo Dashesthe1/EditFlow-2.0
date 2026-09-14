@@ -44,6 +44,8 @@ A Windows-side supervisor may inspect After Effects process/window metadata and 
 
 The initial mutating allowance is limited to an AfterFX-owned recovery/startup dialog whose visible context indicates crash/recovery/repair/restore state and that contains exactly one enabled native `Continue` button. Ambiguous contexts are logged and refused.
 
+After Effects 2025 may render script/compiler failures in custom-drawn modal content that exposes neither the message nor the acknowledgement button through normal Win32/UI Automation text. For those dialogs, the supervisor may capture only the AfterFX-owned `#32770` window with `PrintWindow`, run the workstation's built-in Windows OCR locally, and dismiss with a dialog-scoped Enter only when OCR confirms `Unable to execute script`, finds exactly one `OK`/`Close` acknowledgement (including the observed OCR variant `0K`), and finds no unsafe alternative action such as Cancel/Yes/No/Retry/Ignore/Abort/Continue/Save. The exact extracted script-error body is logged and surfaced as a product failure; ambiguous visual results are refused. No cursor coordinates, mouse events, arbitrary typing, or external OCR service are authorized by this route.
+
 ### 5. Warm AE survives self-hosted runner job cleanup
 
 The GitHub self-hosted runner tags processes created inside a job and performs orphan-process cleanup when that job ends. A deliberately warm After Effects process is workstation-scoped rather than job-scoped, so the harness clears `RUNNER_TRACKING_ID` only for the exact target `AfterFX.exe` launch and immediately restores the runner variable afterward.

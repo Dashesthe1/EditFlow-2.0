@@ -31,6 +31,10 @@ test("warm orchestrator never silently escalates REUSE_AE into process terminati
   assert.equal(runner.split(stopCall).length - 1, 1, "target-AE stop helper must have exactly one call site");
   assert.ok(runner.indexOf(stopCall) > runner.indexOf(restartGate), "AE stop call must remain behind explicit restart gate");
   assert.ok(runner.includes("Proof passed and the host-verified warm After Effects session remains healthy."));
+  assert.ok(runner.includes("Get-SupervisorScriptErrors"));
+  assert.ok(runner.includes("SCRIPT_ERROR_DETECTED"));
+  assert.ok(runner.includes("After Effects rejected a script:"));
+  assert.ok(runner.includes("exitCode = 65"));
 });
 
 test("blank or nonstandard AE titles require a direct existing-process host probe", async () => {
@@ -75,7 +79,16 @@ test("warm smoke proof is non-mutating and never closes After Effects", async ()
   assert.equal(smoke.includes("taskkill"), false);
 });
 
-test("AE supervisor has narrow native and UI-Automation recovery Continue routes", async () => {
+test("popup-guard integration smoke uses the proven AfterFX -r argument route", async () => {
+  const smoke = await read("scripts/windows/run-popup-guard-integration-smoke.ps1");
+  assert.ok(smoke.includes("intentionalPopupGuardFailure = ;"));
+  assert.ok(smoke.includes("$Arguments = @('-r', $BadScript)"));
+  assert.ok(smoke.includes("Start-Process -FilePath $AfterFxPath -ArgumentList $Arguments"));
+  assert.equal(smoke.includes("Stop-Process"), false);
+  assert.equal(smoke.includes("SetCursorPos"), false);
+});
+
+test("AE supervisor has narrow recovery and script-error dismissal routes", async () => {
   const supervisor = await read("scripts/windows/ae-host-supervisor.ps1");
   assert.ok(supervisor.includes("RecoveryContext"));
   assert.ok(supervisor.includes('NativeContinueButtons.Count -eq 1'));
@@ -86,6 +99,18 @@ test("AE supervisor has narrow native and UI-Automation recovery Continue routes
   assert.ok(supervisor.includes("InvokePattern"));
   assert.ok(supervisor.includes("INVOKE_CONTINUE_UIA"));
   assert.ok(supervisor.includes("REFUSED_CONTINUE"));
+  assert.ok(supervisor.includes("ScriptErrorContext"));
+  assert.ok(supervisor.includes("unable\\s+to\\s+execute\\s+script"));
+  assert.ok(supervisor.includes("NativeScriptAckButtons.Count -eq 1"));
+  assert.ok(supervisor.includes("DISMISS_SCRIPT_ERROR_NATIVE"));
+  assert.ok(supervisor.includes("DISMISS_SCRIPT_ERROR_UIA"));
+  assert.ok(supervisor.includes("DISMISS_SCRIPT_ERROR_OCR_ENTER"));
+  assert.ok(supervisor.includes("Windows.Media.Ocr.OcrEngine"));
+  assert.ok(supervisor.includes("PrintWindowToHdc"));
+  assert.ok(supervisor.includes("GetDpiForWindow"));
+  assert.ok(supervisor.includes("VisualUnsafeButtonMatches"));
+  assert.ok(supervisor.includes("InvokeDialogEnter"));
+  assert.ok(supervisor.includes("REFUSED_SCRIPT_ERROR_DISMISS"));
   assert.equal(supervisor.includes("SetCursorPos"), false);
   assert.equal(supervisor.includes("mouse_event"), false);
   assert.equal(supervisor.includes("SendKeys"), false);
@@ -106,4 +131,7 @@ test("ADR makes warm AE reusable through the remaining product roadmap", async (
   assert.ok(adr.includes("M4–M11"));
   assert.ok(adr.includes("RUNNER_TRACKING_ID"));
   assert.ok(adr.includes("A proof MUST NOT close or restart AE merely as a convenient cleanup mechanism."));
+  assert.ok(adr.includes("built-in Windows OCR locally"));
+  assert.ok(adr.includes("exact extracted script-error body is logged and surfaced as a product failure"));
+  assert.ok(adr.includes("No cursor coordinates, mouse events, arbitrary typing, or external OCR service"));
 });
