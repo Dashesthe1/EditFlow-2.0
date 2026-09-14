@@ -41,3 +41,16 @@ test("automatic corrective acceptance requires verified resume and proof-owned c
   assert.match(cleanup, /EF2_M4_AUTO_CORRECT_OWNED/);
   assert.match(cleanup, /itemCountAfter:app\.project\.numItems/);
 });
+
+test("identity-confidence live proof isolates identity loss and preserves acceptance gates", async () => {
+  const planner = await read("scripts/m4-automatic-corrective-recovery-identity-plan-live.mjs");
+  const acceptance = await read("scripts/m4-automatic-corrective-recovery-identity-acceptance.mjs");
+  assert.match(planner, /trackConfidence: 0\.96/);
+  assert.match(planner, /driftRisk: 0\.04/);
+  assert.match(planner, /identityConfidence/);
+  assert.match(planner, /IDENTITY_UNCERTAIN/);
+  assert.match(acceptance, /explicitIdentityEscalated/);
+  assert.match(acceptance, /PASS_REAL_AE_AUTOMATIC_IDENTITY_CORRECTIVE_RECOVERY/);
+  assert.match(acceptance, /repairStateResumed/);
+  assert.match(acceptance, /cleanupRestoredBaseline/);
+});
