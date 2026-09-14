@@ -107,3 +107,23 @@ Runtime promotion requires retained live evidence that:
 6. no After Effects project mutation occurs during this read-only provider proof.
 
 After provider promotion, the separate M4 materialization/application tranche must still prove exact raster import/alignment, matte binding, readback, rollback, and viewer-visible After Effects output.
+
+## Temporal sequence tranche
+
+A second, additive provider surface now implements `SubjectSegmentationSequenceProviderV1` using sidecar schema `editflow.segmentation.sam3.1.sequence.v1`. This does not replace the image-only provider above.
+
+The temporal adapter is structurally proven to:
+
+- bind exact `requestId`, `sourceId`, `semanticId`, `startFrameIndex`, `startTimestampMs`, frame rate, frame count, and prompt-frame index;
+- accept text, normalized box, and native positive/negative point prompts while still refusing unimplemented `previousArtifactId` refinement;
+- launch through the same shell-free bounded process boundary;
+- require exact source provenance before inference;
+- use the current SAM 3.1 multiplex video-session path (`build_sam3_multiplex_video_predictor`, `start_session`, `add_prompt`, bounded forward/backward `propagate_in_video`, and `close_session`);
+- refuse class-only multi-object output when exact subject identity remains ambiguous;
+- require complete requested frame coverage;
+- write one contiguous numbered PNG sequence, retain per-frame SHA-256 evidence, and re-hash every returned file in TypeScript before making the sequence resolvable;
+- reject path escape, duplicate artifact paths, byte drift, provider mismatch, malformed output, and start-frame correlation drift.
+
+The runtime preserves the prompt-frame object ID across propagation. A temporarily absent tracked object is represented as a zero mask with explicit occlusion evidence rather than silently rebinding to another instance. Sequence-level timing remains source-frame exact; local output frame `0` always corresponds to the declared absolute `startFrameIndex`.
+
+The current structural tests also prove exact integration with the protocol-2.5 temporal matte planner. Live SAM 3.1 inference remains unpromoted until the workstation has the SAM 3.1 package and authorized checkpoint access and a retained real-video sequence passes the same byte-integrity gates.

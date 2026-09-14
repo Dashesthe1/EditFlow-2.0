@@ -1,6 +1,7 @@
 export * from "./automatic-repair.js";
 export * from "./semantic-attach.js";
 export * from "./segmentation.js";
+export * from "./segmentation-sequence.js";
 export * from "./repair-resume.js";
 
 export interface SubjectObservationV1 {

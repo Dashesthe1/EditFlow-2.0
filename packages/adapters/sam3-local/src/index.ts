@@ -281,3 +281,5 @@ export class Sam31LocalSegmentationProviderV1 implements SubjectSegmentationProv
     return parsed.accepted;
   }
 }
+
+export * from "./sequence.js";

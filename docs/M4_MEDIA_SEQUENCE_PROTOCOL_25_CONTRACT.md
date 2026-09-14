@@ -53,11 +53,15 @@ The proof ran under the AE host supervisor, reused the existing After Effects PI
 
 This closes the missing **AE-native image-sequence import/readback primitive** for dynamic segmentation materialization. It does not by itself make segmentation dynamic end to end.
 
+The following downstream structural gaps are now closed by the temporal segmentation tranche:
+
+- a provider/runtime contract emits one exactly correlated temporal series;
+- every returned frame is path-contained, unique, material, and independently SHA-256 verified before downstream resolution;
+- temporal matte planning binds the verified numbered sequence to protocol 2.5 with exact source/comp timing and fail-closed range checks.
+
 Still open are:
 
-- a provider/runtime contract that emits a correlated temporal series rather than one independent mask result;
-- full sequence-artifact integrity across every frame, not only first-frame path identity;
-- temporal materialization planning that binds sequence timing to exact source/comp timing;
+- live SAM 3.1 video-session inference with the intended gated checkpoint on the target workstation;
 - viewer-visible dynamic matte proof on materially changing footage;
 - save/reopen/reconnect and unrelated-footage transfer evidence;
 - production runtime registration after those gates pass.
