@@ -22,6 +22,8 @@ test("segmentation sequence P5 proof is current-session safe and crosses save/re
   assert.match(runner, /exactly one already-running After Effects process/);
   assert.doesNotMatch(runner, /Stop-Process[^\n]*AfterFX/i);
   assert.doesNotMatch(runner, /AfterFX\.exe[^\n]*-m/i);
+  assert.match(runner, /Compiled proof runtime is incomplete; building test runtime once/);
+  assert.match(runner, /Reusing existing compiled proof runtime; no rebuild required/);
   assert.match(runner, /npm run build:test-runtime/);
   assert.match(runner, /post-reopen/);
   assert.match(runner, /stableAcrossBoundary/);
