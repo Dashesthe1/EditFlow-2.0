@@ -110,6 +110,14 @@ Runtime promotion requires retained live evidence that:
 5. a second materially different subject/source can be segmented without hidden state carryover;
 6. no After Effects project mutation occurs during this read-only provider proof.
 
+### Live proof harness
+
+`scripts/proofs/m4-sam31-live-transfer-proof.mjs` is the retained live-promotion harness for this gate. It deliberately requires an already-authorized explicit local SAM 3.1 checkpoint plus at least two distinct absolute source-video files; it does not download or authorize a checkpoint on the operator's behalf. Before inference it hashes the checkpoint and every source fixture, rejects duplicate source bytes before constructing a provider, and creates a fresh temporal provider instance for each fixture so hidden session carryover cannot satisfy transfer evidence.
+
+For each fixture the harness requires exact request/result correlation, the native `sam3.1.local` identity, explicit local-checkpoint provenance, native video-session temporal-propagation provenance, adapter-verified artifact materialization, and an independent SHA-256 re-read of every retained mask frame. It also hashes only the ordered mask-frame digests for the cross-fixture transfer gate, so two different source files cannot pass merely because request/source metadata differ; identical verified mask sequences are refused.
+
+Only after every live gate succeeds does the harness write the detailed live-acceptance proof, the exact `editflow.m4.segmentation-runtime-evidence.v1` promotion file, and its lowercase SHA-256 sidecar. The sidecar is written last so partial or failed runs remain fail-closed. The harness has no After Effects control dependency and issues no project mutation. Run it after `npm run build:test-runtime` with `node scripts/proofs/m4-sam31-live-transfer-proof.mjs --config <absolute-config.json>`.
+
 Separate deterministic real-AE materialization tranches now retain static and temporal raster import/alignment, exact timing, track-matte binding, readback, rollback/cleanup, and viewer-visible pixel evidence. The remaining end-to-end gap is to feed those proven materialization surfaces with checkpoint-backed live SAM 3.1 output and retain transfer/session evidence.
 
 ## Guarded production registration
