@@ -1,0 +1,319 @@
+{
+    "status":  "PASS_SEGMENTATION_SEQUENCE_WARM_FOOTAGE_TRANSFER",
+    "proofScope":  "M4_SEGMENTATION_SEQUENCE_TRANSFER_REAL_AE",
+    "proofBaseCommit":  "8d07ec1b11c879c83aba191ffdf662eede8056b3",
+    "runtimePromotion":  "WITHHELD_LIVE_PROVIDER_AND_SESSION_BOUNDARY",
+    "generatedAt":  "2026-09-14T18:42:54.6957071Z",
+    "afterEffects":  {
+                         "processId":  4352,
+                         "warmProcessReused":  true,
+                         "launched":  false,
+                         "restarted":  false,
+                         "project":  "psier.aep",
+                         "baselineItemCount":  4,
+                         "finalItemCount":  4,
+                         "baselineRestored":  true,
+                         "projectSavedByProof":  false
+                     },
+    "source":  {
+                   "hostId":  13,
+                   "width":  1080,
+                   "height":  1080,
+                   "duration":  39.7463707658935,
+                   "frameRate":  59.9301147460938,
+                   "sourceItemPreserved":  true
+               },
+    "liveProof":  {
+                      "materiallyDifferentRealFootage":  true,
+                      "nativeSequenceImport":  true,
+                      "exactFrameCount":  true,
+                      "exactFrameRate":  true,
+                      "exactMatteTiming":  true,
+                      "trackMatteBound":  true,
+                      "movingMaskPixelCheckpoint":  true,
+                      "projectBaselineRestored":  true
+                  },
+    "commandEvidence":  [
+                            {
+                                "command":  "media.import",
+                                "outcome":  "APPLIED",
+                                "durationMs":  48
+                            },
+                            {
+                                "command":  "comp.create",
+                                "outcome":  "APPLIED",
+                                "durationMs":  24
+                            },
+                            {
+                                "command":  "layer.add_media",
+                                "outcome":  "APPLIED",
+                                "durationMs":  19
+                            },
+                            {
+                                "command":  "media.sequence.import",
+                                "outcome":  "APPLIED",
+                                "durationMs":  166
+                            },
+                            {
+                                "command":  "layer.add_media",
+                                "outcome":  "APPLIED",
+                                "durationMs":  19
+                            },
+                            {
+                                "command":  "layer.set_transform",
+                                "outcome":  "APPLIED",
+                                "durationMs":  26
+                            },
+                            {
+                                "command":  "layer.set_timing",
+                                "outcome":  "APPLIED",
+                                "durationMs":  15
+                            },
+                            {
+                                "command":  "layer.set_track_matte",
+                                "outcome":  "APPLIED",
+                                "durationMs":  1
+                            },
+                            {
+                                "command":  "media.sequence.readback",
+                                "outcome":  "NO_OP",
+                                "durationMs":  2
+                            },
+                            {
+                                "command":  "readback.object",
+                                "outcome":  "NO_OP",
+                                "durationMs":  13
+                            },
+                            {
+                                "command":  "layer.composite_readback",
+                                "outcome":  "NO_OP",
+                                "durationMs":  0
+                            }
+                        ],
+    "visualEvidence":  [
+                           {
+                               "frameIndex":  0,
+                               "baselinePath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-transfer\\transfer-baseline-0.png",
+                               "reviewPath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-transfer\\transfer-review-0.png",
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  270,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    12,
+                                                                    16,
+                                                                    19
+                                                                ],
+                                                   "output":  [
+                                                                  12,
+                                                                  16,
+                                                                  19
+                                                              ],
+                                                   "expected":  "SOURCE_BASELINE",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  540,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    20,
+                                                                    17,
+                                                                    17
+                                                                ],
+                                                   "output":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  810,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    16,
+                                                                    14,
+                                                                    12
+                                                                ],
+                                                   "output":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "y":  20,
+                                                  "pass":  true,
+                                                  "rgb":  [
+                                                              15,
+                                                              35,
+                                                              80
+                                                          ],
+                                                  "x":  20
+                                              },
+                               "pass":  true
+                           },
+                           {
+                               "frameIndex":  1,
+                               "baselinePath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-transfer\\transfer-baseline-1.png",
+                               "reviewPath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-transfer\\transfer-review-1.png",
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  270,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    0,
+                                                                    1,
+                                                                    3
+                                                                ],
+                                                   "output":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  540,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    74,
+                                                                    87,
+                                                                    96
+                                                                ],
+                                                   "output":  [
+                                                                  74,
+                                                                  87,
+                                                                  96
+                                                              ],
+                                                   "expected":  "SOURCE_BASELINE",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  810,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    4,
+                                                                    0,
+                                                                    0
+                                                                ],
+                                                   "output":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "y":  20,
+                                                  "pass":  true,
+                                                  "rgb":  [
+                                                              15,
+                                                              35,
+                                                              80
+                                                          ],
+                                                  "x":  20
+                                              },
+                               "pass":  true
+                           },
+                           {
+                               "frameIndex":  2,
+                               "baselinePath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-transfer\\transfer-baseline-2.png",
+                               "reviewPath":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-segmentation-sequence-transfer\\transfer-review-2.png",
+                               "dimensionsPass":  true,
+                               "samples":  [
+                                               {
+                                                   "x":  270,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    5,
+                                                                    7,
+                                                                    9
+                                                                ],
+                                                   "output":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  540,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    79,
+                                                                    95,
+                                                                    103
+                                                                ],
+                                                   "output":  [
+                                                                  15,
+                                                                  35,
+                                                                  80
+                                                              ],
+                                                   "expected":  "BACKGROUND",
+                                                   "pass":  true
+                                               },
+                                               {
+                                                   "x":  810,
+                                                   "y":  536,
+                                                   "baseline":  [
+                                                                    7,
+                                                                    3,
+                                                                    1
+                                                                ],
+                                                   "output":  [
+                                                                  7,
+                                                                  3,
+                                                                  1
+                                                              ],
+                                                   "expected":  "SOURCE_BASELINE",
+                                                   "pass":  true
+                                               }
+                                           ],
+                               "background":  {
+                                                  "y":  20,
+                                                  "pass":  true,
+                                                  "rgb":  [
+                                                              15,
+                                                              35,
+                                                              80
+                                                          ],
+                                                  "x":  20
+                                              },
+                               "pass":  true
+                           }
+                       ],
+    "verification":  {
+                         "focusedTestsPassed":  18,
+                         "focusedTestsFailed":  0,
+                         "fullCheckPassed":  true,
+                         "contractFixtures":  33,
+                         "typecheckPassed":  true,
+                         "fullTestsPassed":  656,
+                         "fullTestsFailed":  0
+                     },
+    "providerGate":  {
+                         "authenticatedCheckpointAccessPresent":  false,
+                         "liveSam31InferenceAccepted":  false
+                     },
+    "sessionBoundaryGate":  {
+                                "saveReopenReconnectAccepted":  false,
+                                "reason":  "Current user project is dirty; lifecycle proof was intentionally not forced against it."
+                            },
+    "limitations":  [
+                        "This proof transfers deterministic temporal mask materialization to materially different real footage; it is not live SAM 3.1 output.",
+                        "Save/reopen/reconnect segmentation transfer remains unproven in this dirty user project and must be isolated before acceptance.",
+                        "Production segmentation runtime registration remains withheld.",
+                        "The public capability remains planning-only and does not dispatch mutations itself."
+                    ]
+}

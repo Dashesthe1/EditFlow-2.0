@@ -1,0 +1,9 @@
+{
+  "proofId": "m4-segmentation-sequence-transfer-real-ae",
+  "lifecycle": "REUSE_AE",
+  "timeoutSeconds": 60,
+  "runner": "scripts/windows/run-m4-segmentation-sequence-transfer.ps1",
+  "resultFile": "result.json",
+  "sourceHostId": 13,
+  "allowInfrastructureRetry": false
+}

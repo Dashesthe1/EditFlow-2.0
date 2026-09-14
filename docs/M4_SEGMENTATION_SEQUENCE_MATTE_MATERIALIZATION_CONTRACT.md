@@ -37,13 +37,15 @@ The proof removes only proof-owned objects and verifies project item count, Rend
 
 ## Promotion boundary
 
-This evidence raises the AE-side planner from `STRUCTURAL` to `VISUAL`. It does **not** prove live SAM 3.1 inference, unrelated-footage transfer, session-boundary robustness, or unrestricted production dispatch.
+This evidence raises the AE-side planner from `STRUCTURAL` to `VISUAL`. A separate retained warm-process transfer proof now exercises the same five-operation materialization contract against materially different real Spider-Man footage, with exact source-item preservation, structural sequence/matte readback, moving-mask pixel evidence against same-timestamp source baselines, and proof-owned cleanup. It does **not** prove live SAM 3.1 inference, session-boundary robustness, or unrestricted production dispatch.
 
-Production registration remains withheld until authenticated live SAM 3.1 sequence output is retained and the same contract survives materially different footage plus reconnect/save-reopen boundaries without hidden approximation.
+Production registration remains withheld until authenticated live SAM 3.1 sequence output is retained and the contract survives reconnect/save-reopen boundaries without hidden approximation. Warm-process materially different-footage transfer is now retained.
 
 ## Related evidence
 
 - `proofs/diagnostics/m4-segmentation-sequence-materialization-live-acceptance.json`
+- `proofs/diagnostics/m4-segmentation-sequence-transfer-live-acceptance.json`
 - `proofs/manifests/m4-segmentation-sequence-materialization-real-ae.request.json`
+- `proofs/manifests/m4-segmentation-sequence-transfer-real-ae.request.json`
 - `M4_MEDIA_SEQUENCE_PROTOCOL_25_CONTRACT.md`
 - `M4_SEGMENTATION_MATTE_MATERIALIZATION_CONTRACT.md`

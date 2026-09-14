@@ -180,7 +180,7 @@ test("dynamic matte planner refuses broken numbered sequence, hash drift, revers
   }
 });
 
-test("dynamic sequence capability retains visual AE proof while production waits for live provider transfer evidence", () => {
+test("dynamic sequence capability retains visual AE proof while production waits for live provider and session-boundary evidence", () => {
   const capability = M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1;
   assert.equal(String(capability.id), "tracking.segmentation.sequence_matte_materialize.plan");
   assert.equal(capability.status, "PARTIAL");

@@ -76,7 +76,7 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
     available: true,
     adapterVersion: "0.5.0-dev.2",
     limitations: [
-      "Protocol 2.5 native sequence import/readback and deterministic real-AE dynamic matte visual proof are retained; live SAM 3.1 provider-generated sequence proof remains blocked by gated checkpoint access.",
+      "Protocol 2.5 native sequence import/readback, deterministic real-AE dynamic matte visual proof, and materially different real-footage warm-process transfer are retained; live SAM 3.1 provider-generated sequence proof remains blocked by gated checkpoint access and session-boundary transfer remains open.",
       "V1 requires uniform mask geometry and forward target-layer timing; reverse-stretch sequence synchronization is refused.",
     ],
   }],
@@ -89,7 +89,7 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
   limitations: [
     "This capability emits a plan and never dispatches mutations by itself.",
     "Every numbered frame must match the accepted artifact identity, digest, content type, geometry, and cadence.",
-    "Production runtime registration remains withheld until live temporal-provider output plus unrelated-footage and session-boundary transfer evidence pass.",
+    "Production runtime registration remains withheld until live temporal-provider output plus session-boundary transfer evidence pass; warm-process unrelated-footage transfer is retained.",
   ],
   fallbackPolicy: "FORBID",
 };
