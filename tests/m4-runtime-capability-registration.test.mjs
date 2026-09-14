@@ -55,6 +55,7 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(session.registry.get("ae.tracker.repair.feature_center.set"), null);
   assert.equal(session.registry.get("tracking.repair_resume.state"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
+  assert.equal(session.registry.get("tracking.repair_resume.auto_correct.plan"), null);
   const maskPointRepair = session.registry.get("tracking.mask_point_repair.plan");
   assert.ok(maskPointRepair);
   assert.equal(maskPointRepair.proofMaturity, "VISUAL");
@@ -188,6 +189,7 @@ test("protocol 2.4 tracker repair registers only when explicitly available", asy
   assert.equal(write.riskClass, "R1_REVERSIBLE");
   assert.equal(session.registry.get("ae.tracker.readback"), null);
   assert.equal(session.registry.get("tracking.repair_resume.auto_escalate"), null);
+  assert.equal(session.registry.get("tracking.repair_resume.auto_correct.plan"), null);
 });
 
 test("repair/resume state registers only with protocol 2.4 plus verified point analysis", async () => {
@@ -200,6 +202,7 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   });
   const repair = session.registry.get("tracking.repair_resume.state");
   const automatic = session.registry.get("tracking.repair_resume.auto_escalate");
+  const autoCorrect = session.registry.get("tracking.repair_resume.auto_correct.plan");
   assert.ok(repair);
   assert.ok(automatic);
   assert.equal(repair.status, "PARTIAL");
@@ -210,4 +213,8 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   assert.equal(automatic.proofMaturity, "STRUCTURAL");
   assert.equal(automatic.riskClass, "R0_READ_ONLY");
   assert.ok(automatic.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+  assert.ok(autoCorrect);
+  assert.equal(autoCorrect.proofMaturity, "STRUCTURAL");
+  assert.equal(autoCorrect.riskClass, "R0_READ_ONLY");
+  assert.ok(autoCorrect.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });

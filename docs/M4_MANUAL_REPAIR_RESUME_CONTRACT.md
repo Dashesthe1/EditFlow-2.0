@@ -37,7 +37,7 @@ The read-only `tracking.repair_resume.auto_escalate` monitor requires caller-own
 
 Identity loss is never guessed from motion. `IDENTITY_UNCERTAIN` can be emitted only when the caller supplies explicit normalized identity-confidence evidence. A changing failure reason restarts the persistence count, and one accepted trigger latches until the caller explicitly resets the monitor after repair/resume.
 
-The monitor therefore suppresses one-frame noise and duplicate escalation without pretending to perform the corrective AE action itself.
+The monitor therefore suppresses one-frame noise and duplicate escalation without pretending to perform the corrective AE action itself. The separate `tracking.repair_resume.auto_correct.plan` composer may now bind an eligible drift/low-confidence/explicit-identity trigger to exact protocol 2.4 correction and guarded resume operations, but only when correction geometry and semantic-to-host mapping are independently evidenced.
 
 ## Repair cycle
 
@@ -72,4 +72,4 @@ The state model itself remains `R0_READ_ONLY`; host repair writes are separate r
 
 ## Human-parity status
 
-The deterministic repair/resume model is now connected to retained real-AE **point-tracker Feature Center repair + Analyze Forward/Backward resume** paths, and automatic confidence/drift/occlusion/explicit-identity escalation is structurally modeled. Mask-point repair now also has retained warm real-AE acceptance for exact static-path vertex correction through protocol 1.2, including post-write readback, typed Undo restoration, reapply, viewer-visible correction, and cleanup. Human-parity remains partial: tangent/animated mask-point repair, automatic corrective recovery after drift/identity loss, occlusion recovery, and generalized semantic correction-to-host mapping still require separate retained proofs.
+The deterministic repair/resume model is now connected to retained real-AE **point-tracker Feature Center repair + Analyze Forward/Backward resume** paths, and automatic confidence/drift/occlusion/explicit-identity escalation is structurally modeled. Mask-point repair now also has retained warm real-AE acceptance for exact static-path vertex correction through protocol 1.2, including post-write readback, typed Undo restoration, reapply, viewer-visible correction, and cleanup. Human-parity remains partial: tangent/animated mask-point repair, retained warm real-AE proof of the new automatic drift/identity corrective-recovery composition, occlusion recovery, and generalized semantic correction-to-host mapping still require separate retained proofs.
