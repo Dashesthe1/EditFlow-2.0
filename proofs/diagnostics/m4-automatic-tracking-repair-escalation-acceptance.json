@@ -1,0 +1,45 @@
+{
+  "status": "PASS_STRUCTURAL_AUTO_ESCALATION",
+  "proofScope": "M4_AUTOMATIC_TRACKING_REPAIR_ESCALATION_V1",
+  "sourceCommit": "fa8990788e05636c050c5e4a3c14b874199e248f",
+  "runtimePromotion": "PARTIAL_STRUCTURAL_READ_ONLY",
+  "generatedAt": "2026-09-13T21:15:01.2137414-05:00",
+  "capability": {
+    "id": "tracking.repair_resume.auto_escalate",
+    "riskClass": "R0_READ_ONLY",
+    "proofMaturity": "STRUCTURAL",
+    "requiresRepairProtocol24AndVerifiedPointAnalysis": true
+  },
+  "monitorBehavior": {
+    "requiresLastGoodBaseline": true,
+    "requiresCallerOwnedPersistenceThreshold": true,
+    "suppressesSingleSampleFailure": true,
+    "failureReasonChangeRestartsPersistence": true,
+    "explicitIdentityConfidenceRequired": true,
+    "identityLossNeverInferredFromMotionOnly": true,
+    "oneTriggerThenLatched": true,
+    "explicitResetRequiredAfterRepairResume": true
+  },
+  "integration": {
+    "feedsExistingRepairTriggerContract": true,
+    "doesNotBypassRepairVerification": true,
+    "notRegisteredWithoutProtocol24": true,
+    "notRegisteredWithoutVerifiedPointAnalysis": true,
+    "noAeMutation": true
+  },
+  "verification": {
+    "focusedTestsPassed": 29,
+    "npmRunCheckPassed": true,
+    "testsPassed": 614,
+    "testsFailed": 0,
+    "contractFixtures": 33,
+    "typecheckPassed": true
+  },
+  "limitations": [
+    "This acceptance is deterministic structural evidence, not a real-AE automatic recovery proof.",
+    "The monitor escalates persistent confidence, drift, occlusion, or explicit identity-confidence failures but does not perform the corrective tracker or mask write.",
+    "Mask-point repair remains unproven.",
+    "Automatic corrective recovery after drift or identity loss remains unproven.",
+    "Occlusion recovery and generalized semantic correction-to-host mapping remain unproven."
+  ]
+}
