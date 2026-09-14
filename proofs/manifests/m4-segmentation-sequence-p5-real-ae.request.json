@@ -1,0 +1,13 @@
+{
+  "proofId": "m4-segmentation-sequence-p5-real-ae",
+  "lifecycle": "REUSE_AE",
+  "timeoutSeconds": 90,
+  "runner": "scripts/windows/run-m4-segmentation-sequence-p5.ps1",
+  "resultFile": "result.json",
+  "sourceHostId": 13,
+  "allowInfrastructureRetry": false,
+  "preserveCurrentAfterEffectsProcess": true,
+  "userProjectPolicy": "SAVE_ONCE_THEN_USE_DISPOSABLE_COPY_AND_RESTORE_SAVED_BASELINE",
+  "sessionBoundary": "SAVE_REOPEN_THEN_DISTINCT_AUTHENTICATED_CEP_SESSION",
+  "productionPromotionOnPass": false
+}
