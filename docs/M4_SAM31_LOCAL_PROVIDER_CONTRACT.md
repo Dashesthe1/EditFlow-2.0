@@ -91,7 +91,7 @@ Deterministic adapter tests prove:
 - timeout/process/malformed-output/provider-mismatch refusal;
 - source inspection showing explicit SAM 3.1 checkpoint selection and no implicit SAM 3.0 download path.
 
-A real Node-to-Python preflight also reaches the expected `CHECKPOINT_ACCESS_REQUIRED` refusal without downloading a model or mutating After Effects.
+A real Node-to-Python preflight reaches the expected `CHECKPOINT_ACCESS_REQUIRED` refusal without downloading a model or mutating After Effects. The current workstation runtime preflight is retained at `proofs/diagnostics/m4-sam31-runtime-preflight.json`; it records importable SAM 3 / Torch / Hugging Face packages, CUDA + BF16 readiness on the RTX A4500, no configured Hugging Face token, no local checkpoint candidate, and the exact sidecar refusal.
 
 These checks are structural/provider evidence only. They support `STRUCTURAL` maturity for the public provider-neutral segmentation acceptance boundary, but they do not promote live SAM 3.1 inference or register this provider into production runtime.
 

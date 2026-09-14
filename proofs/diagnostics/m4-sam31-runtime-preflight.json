@@ -1,0 +1,37 @@
+{
+    "schemaVersion":  1,
+    "proofId":  "M4_SAM31_RUNTIME_PREFLIGHT",
+    "generatedAt":  "2026-09-14T17:46:32.1021336Z",
+    "proofBaseCommit":  "bd58c1661dac5e6e8669bd3789a710843c0f4eea",
+    "classification":  "EXPECTED_GATE",
+    "providerId":  "sam3.1.local",
+    "environment":  {
+                        "python":  "C:\\Users\\Shadow\\sam3-runtime\\.venv\\Scripts\\python.exe",
+                        "sam3Importable":  true,
+                        "torchImportable":  true,
+                        "huggingFaceHubImportable":  true,
+                        "cudaAvailable":  true,
+                        "bf16Available":  true,
+                        "gpu":  "NVIDIA RTX A4500",
+                        "hfTokenEnvironment":  false,
+                        "hfStoredToken":  false,
+                        "localCheckpointCandidate":  false
+                    },
+    "sidecar":  {
+                    "script":  "packages/adapters/sam3-local/runtime/sam31_segmentation_provider.py",
+                    "status":  "REFUSED",
+                    "code":  "CHECKPOINT_ACCESS_REQUIRED",
+                    "detail":  "SAM 3.1 checkpoint access is not authenticated; accept the facebook/sam3.1 terms and configure approved Hugging Face access or provide checkpointPath",
+                    "exitCode":  0
+                },
+    "claims":  {
+                   "runtimePrerequisitesPresent":  true,
+                   "checkpointAccessPresent":  false,
+                   "liveInferenceAccepted":  false,
+                   "afterEffectsMutated":  false
+               },
+    "limitations":  [
+                        "This preflight proves runtime/package/GPU readiness and the expected checkpoint-access refusal only.",
+                        "It does not prove model loading, segmentation quality, temporal propagation, or production registration."
+                    ]
+}
