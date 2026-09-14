@@ -54,3 +54,18 @@ test("identity-confidence live proof isolates identity loss and preserves accept
   assert.match(acceptance, /repairStateResumed/);
   assert.match(acceptance, /cleanupRestoredBaseline/);
 });
+
+
+test("low-confidence live proof isolates tracking confidence and preserves acceptance gates", async () => {
+  const planner = await read("scripts/m4-automatic-corrective-recovery-low-confidence-plan-live.mjs");
+  const acceptance = await read("scripts/m4-automatic-corrective-recovery-low-confidence-acceptance.mjs");
+  assert.match(planner, /driftRisk: 0\.04/);
+  assert.match(planner, /identityConfidence: 0\.99/);
+  assert.match(planner, /sample\(500, 0\.45/);
+  assert.match(planner, /sample\(533, 0\.44/);
+  assert.match(planner, /TRACK_CONFIDENCE_LOW/);
+  assert.match(acceptance, /lowTrackingConfidenceEscalated/);
+  assert.match(acceptance, /PASS_REAL_AE_AUTOMATIC_LOW_CONFIDENCE_CORRECTIVE_RECOVERY/);
+  assert.match(acceptance, /repairStateResumed/);
+  assert.match(acceptance, /cleanupRestoredBaseline/);
+});

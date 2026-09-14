@@ -28,7 +28,7 @@ export const M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1: CapabilityRecord = {
   riskClass: "R0_READ_ONLY",
   limitations: [
     "Repair corrections remain normalized semantic tracking observations; the proven host mapping currently covers exact Motion Tracker Feature Center correction only.",
-    "Retained live proof covers guarded native Analyze Forward and Analyze Backward resume after exact Feature Center correction plus exact static-path mask vertex repair through protocol 1.2. Separate retained automatic-corrective proofs now cover persistent drift and explicit identity-confidence loss through exact correction, guarded Analyze Forward, verification, and resume; low-confidence automatic correction, tangent/animated mask repair, and occlusion recovery remain unclaimed. Deterministic automatic escalation is declared separately.",
+    "Retained live proof covers guarded native Analyze Forward and Analyze Backward resume after exact Feature Center correction plus exact static-path mask vertex repair through protocol 1.2. Separate retained automatic-corrective proofs now cover persistent low confidence, persistent drift, and explicit identity-confidence loss through exact correction, guarded Analyze Forward, verification, and resume; automatic-corrective Analyze Backward, tangent/animated mask repair, and occlusion recovery remain unclaimed. Deterministic automatic escalation is declared separately.",
   ],
   fallbackPolicy: "FORBID",
 };

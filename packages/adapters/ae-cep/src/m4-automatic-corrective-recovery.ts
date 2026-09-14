@@ -32,15 +32,15 @@ export const M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1: CapabilityRecord = 
   inputSchemaRef: "M4AutomaticCorrectiveRecoveryInputV1",
   outputSchemaRef: "M4AutomaticCorrectiveRecoveryPlanV1 | null",
   readbackStrategy: "AUTO_ESCALATION_TRIGGER_PLUS_PROTOCOL_2_4_PRE_POST_READBACK_PLUS_GUARDED_PROTOCOL_2_1_POST_RESUME_TRUTH",
-  visualProofProfile: "M4_AUTOMATIC_CORRECTIVE_RECOVERY_DRIFT_IDENTITY_FORWARD_VISUAL",
+  visualProofProfile: "M4_AUTOMATIC_CORRECTIVE_RECOVERY_ELIGIBLE_FORWARD_VISUAL",
   rollbackStrategy: "PLANNER_NONE; HOST_CORRECTION_PROTOCOL_2_4_TRANSACTION_UNDO",
   riskClass: "R0_READ_ONLY",
   limitations: [
     "Automatic correction is allowed only for persistent low confidence, drift risk, or explicit identity-confidence loss.",
     "Subject occlusion is escalation-only because hidden geometry is not a safe automatic correction target.",
     "The caller must provide exact comp/layer stable and host IDs, tracker/point indices, composition time, Feature Center coordinates, normalized semantic correction, and retained mapping evidence; the planner never guesses semantic or host geometry.",
-    "Retained warm real-AE evidence independently proves persistent drift and explicit identity-confidence-loss escalation through exact Feature Center correction, guarded Analyze Forward, protocol 2.1 post-analysis truth, state verification, resume, and full proof-owned cleanup.",
-    "Low tracking confidence composes through the same exact host surface but remains structurally tested rather than independently live-proven.",
+    "Retained warm real-AE evidence independently proves every V1-eligible automatic failure reason—persistent low tracking confidence, persistent drift, and explicit identity-confidence loss—through exact Feature Center correction, guarded Analyze Forward, protocol 2.1 post-analysis truth, state verification, resume, and full proof-owned cleanup.",
+    "Retained automatic correction is live-proven only for guarded Analyze Forward; automatic Analyze Backward remains structurally composed but not independently live-proven.",
   ],
   fallbackPolicy: "FORBID",
 };
