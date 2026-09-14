@@ -1,0 +1,57 @@
+{
+    "schemaVersion":  1,
+    "proofId":  "M4_SAM31_SEQUENCE_RUNTIME_PREFLIGHT",
+    "generatedAt":  "2026-09-14T23:47:32.4816049Z",
+    "proofBaseCommit":  "2d0806a00bf2526449d36d869134ac1cd1cfc7a7",
+    "classification":  "EXPECTED_GATE",
+    "providerId":  "sam3.1.local",
+    "sidecarSchema":  "editflow.segmentation.sam3.1.sequence.v1",
+    "samUpstream":  {
+                        "repository":  "facebookresearch/sam3",
+                        "localCommit":  "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+                        "remoteMainCommit":  "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7",
+                        "localMatchesRemoteMain":  true,
+                        "builder":  "build_sam3_multiplex_video_predictor",
+                        "builderSignature":  "(checkpoint_path: Optional[str] = None, bpe_path: Optional[str] = None, max_num_objects: int = 16, multiplex_count: int = 16, use_fa3: bool = True, use_rope_real: bool = True, compile: bool = False, warm_up: bool = False, session_expiration_sec: int = 1200, default_output_prob_thresh: float = 0.5, async_loading_frames: bool = True)",
+                        "acceptsCheckpointPath":  true,
+                        "acceptsUseFa3":  true,
+                        "acceptsDownloadFromHf":  false
+                    },
+    "environment":  {
+                        "python":  "C:\\Users\\Shadow\\sam3-runtime\\.venv\\Scripts\\python.exe",
+                        "gpu":  "NVIDIA RTX A4500",
+                        "computeCapability":  [
+                                                  8,
+                                                  6
+                                              ],
+                        "cudaAvailable":  true,
+                        "bf16Available":  true,
+                        "flashAttnInterfaceAvailable":  false,
+                        "flashAttnPackageAvailable":  false,
+                        "selectedUseFa3":  false,
+                        "hfTokenPresent":  false,
+                        "localCheckpointCandidatePresent":  false
+                    },
+    "sidecar":  {
+                    "script":  "packages/adapters/sam3-local/runtime/sam31_segmentation_sequence_provider.py",
+                    "status":  "REFUSED",
+                    "code":  "CHECKPOINT_ACCESS_REQUIRED",
+                    "detail":  "SAM 3.1 checkpoint access is not authenticated; accept the facebook/sam3.1 terms and configure approved Hugging Face access or provide checkpointPath",
+                    "exitCode":  0,
+                    "stderrEmpty":  true,
+                    "elapsedMs":  660.2
+                },
+    "claims":  {
+                   "upstreamApiCompatible":  true,
+                   "targetRuntimeUsesNonFa3Path":  true,
+                   "checkpointAccessPresent":  false,
+                   "liveInferenceAccepted":  false,
+                   "productionRuntimePromoted":  false,
+                   "afterEffectsMutated":  false
+               },
+    "limitations":  [
+                        "This is EXPECTED_GATE diagnostic evidence only; it is not live-inference acceptance or production-promotion evidence.",
+                        "No authorized SAM 3.1 checkpoint was available, so model loading, segmentation quality, temporal propagation, and downstream transfer were not exercised.",
+                        "The afterEffectsMutated=false claim records that this provider preflight issued no After Effects control action; it does not replace a future retained end-to-end no-mutation proof."
+                    ]
+}
