@@ -20,6 +20,15 @@ $ResultPath = Join-Path $ArtifactDir "result.json"
 $BaselinePaths = @(0..2 | ForEach-Object { Join-Path $ArtifactDir ("baseline-{0}.png" -f $_) })
 $PreSavePaths = @(0..2 | ForEach-Object { Join-Path $ArtifactDir ("pre-save-{0}.png" -f $_) })
 $ReopenPaths = @(0..2 | ForEach-Object { Join-Path $ArtifactDir ("post-reopen-{0}.png" -f $_) })
+$RuntimeFiles = @(
+  (Join-Path $RepoRoot ".tmp\runtime\apps\desktop-host\src\loopback-cep.js"),
+  (Join-Path $RepoRoot ".tmp\runtime\packages\adapters\ae-cep\src\v1_1.js"),
+  (Join-Path $RepoRoot ".tmp\runtime\packages\adapters\ae-cep\src\protocol-v1_1.js"),
+  (Join-Path $RepoRoot ".tmp\runtime\packages\adapters\ae-cep\src\protocol-v1_3.js"),
+  (Join-Path $RepoRoot ".tmp\runtime\packages\adapters\ae-cep\src\m3-composite.js"),
+  (Join-Path $RepoRoot ".tmp\runtime\packages\tracking-state\src\segmentation-sequence.js"),
+  (Join-Path $RepoRoot ".tmp\runtime\packages\adapters\ae-cep\src\m4-segmentation-sequence-materialization.js")
+)
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $env:EDITFLOW_PROOF_ARTIFACT_DIR = $ArtifactDir
 $env:EDITFLOW_M4_TRANSFER_SOURCE_HOST_ID = $SourceHostId.ToString()
@@ -66,8 +75,17 @@ try {
 
   Push-Location $RepoRoot
   try {
-    npm run build:test-runtime
-    if ($LASTEXITCODE -ne 0) { throw "TypeScript proof runtime build failed." }
+    $MissingRuntimeFiles = @($RuntimeFiles | Where-Object { -not (Test-Path $_ -PathType Leaf) })
+    if ($MissingRuntimeFiles.Count -gt 0) {
+      Write-Host "Compiled proof runtime is incomplete; building test runtime once."
+      npm run build:test-runtime
+      if ($LASTEXITCODE -ne 0) { throw "TypeScript proof runtime build failed." }
+      $StillMissing = @($RuntimeFiles | Where-Object { -not (Test-Path $_ -PathType Leaf) })
+      if ($StillMissing.Count -gt 0) { throw "Compiled proof runtime is still incomplete after build: $($StillMissing -join ', ')" }
+    } else {
+      Write-Host "Reusing existing compiled proof runtime; no rebuild required."
+    }
+
     node $PlanScript
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $PlanPath -PathType Leaf)) { throw "Segmentation P5 proof-plan generation failed." }
 
