@@ -1,0 +1,57 @@
+{
+  "status": "PASS_REAL_AE_MASK_POINT_REPAIR",
+  "proofScope": "M4_MASK_POINT_REPAIR_REAL_AE",
+  "sourceCommit": "2a82558d9e5e5ac58ad0dbe46b4a6ac02832b16a",
+  "generatedAt": "2026-09-14T06:56:02.2163983-05:00",
+  "runtimePromotion": "ACCEPTED_STATIC_VERTEX_ONLY",
+  "capability": {
+    "id": "tracking.mask_point_repair.plan",
+    "routeId": "m4.tracking.mask-point-repair-plan.v1",
+    "status": "PARTIAL",
+    "proofMaturity": "VISUAL",
+    "riskClass": "R0_READ_ONLY",
+    "visualProofProfile": "M4_MASK_POINT_REPAIR_STATIC_VERTEX_VISUAL",
+    "hostWriteProtocol": "1.2.0",
+    "hostWriteCommand": "mask.set_path",
+    "hostWriteCapabilityId": "ae.mask.path.set"
+  },
+  "realAeProof": {
+    "classification": "PASS",
+    "hostChecksPassed": 17,
+    "cleanupComplete": true,
+    "wrongFrameEmitted": true,
+    "repairedFrameEmitted": true,
+    "visualCheckpointPassed": true,
+    "postWriteReadbackExact": true,
+    "rollbackUndoApplied": true,
+    "rollbackRestoredWrongShape": true,
+    "reapplyReadbackExact": true,
+    "projectBaselineRestored": true
+  },
+  "visualEvidence": {
+    "dimensions": { "width": 240, "height": 135, "pass": true },
+    "repairedSample": {
+      "x": 165,
+      "y": 88,
+      "wrong": { "r": 18, "g": 48, "b": 102, "backgroundPass": true },
+      "repaired": { "r": 244, "g": 64, "b": 38, "foregroundPass": true }
+    },
+    "stableInsidePreserved": true,
+    "outsidePreserved": true
+  },
+  "verification": {
+    "npmRunCheckPassed": true,
+    "testsPassed": 624,
+    "testsFailed": 0,
+    "contractFixtures": 33,
+    "typecheckPassed": true,
+    "realAeHarnessTestsIncluded": true
+  },
+  "limitations": [
+    "Retained real-AE acceptance currently covers exact static-path vertex repair only.",
+    "Tangent-only and combined vertex/tangent repair remain structurally tested but not live-proven.",
+    "Animated exact-key mask repair remains structurally tested but not live-proven.",
+    "The planner does not choose which vertex should be repaired or infer semantic correspondence from footage.",
+    "Materially different footage transfer/save-reopen proof for this M4 repair workflow remains open."
+  ]
+}
