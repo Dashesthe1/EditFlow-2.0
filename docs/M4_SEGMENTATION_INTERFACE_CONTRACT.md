@@ -1,12 +1,12 @@
 # M4 Subject/Object Segmentation Interface
 
-Status: **PARTIAL / DECLARED / R0_READ_ONLY**  
+Status: **PARTIAL / STRUCTURAL / R0_READ_ONLY**
 Capability ID: `tracking.segmentation.subject_object.accept`  
 Route ID: `m4.tracking.segmentation.subject-object.v1`
 
 ## Purpose
 
-Define the model/provider-neutral boundary between EditFlow scene/tracking intelligence and a future subject/object segmentation engine. This tranche does **not** bundle, select, download, or execute a segmentation model. It establishes the exact request/result contract required before segmentation output can be trusted by downstream After Effects mask or matte application.
+Define the model/provider-neutral boundary between EditFlow scene/tracking intelligence and subject/object segmentation providers. Concrete optional `sam3.1.local` image and temporal adapters are now bundled as structurally proven implementations, while this acceptance capability itself remains provider-neutral and does not silently select or execute a provider. The contract establishes the exact request/result evidence required before segmentation output can be trusted downstream.
 
 ## Subject binding
 
@@ -30,7 +30,7 @@ All prompt geometry uses normalized source coordinates.
 
 `segment(request) -> SubjectSegmentationResultV1`
 
-The provider may later be local, remote, host-native, or model-backed. The core tracking contract does not depend on a particular model family, runtime, licensing scheme, or hardware backend.
+A provider may be local, remote, host-native, or model-backed. The core tracking contract does not depend on a particular model family, runtime, licensing scheme, or hardware backend.
 
 A concrete local `sam3.1.local` adapter now exists as a separate structural foundation. It deliberately remains outside production runtime registration until retained live SAM 3.1 inference evidence is accepted. The provider refuses unsupported point prompts and prior-artifact temporal refinement, explicitly selects a SAM 3.1 checkpoint rather than accepting the image builder's SAM 3.0 default, and verifies materialized mask bytes by SHA-256 before exposing an artifact to downstream code. See `M4_SAM31_LOCAL_PROVIDER_CONTRACT.md`.
 
@@ -87,11 +87,11 @@ Runtime-shaped malformed inputs are guarded so external JavaScript callers fail 
 
 EditFlow already has typed transactional After Effects Bezier-mask operations. This interface intentionally sits **before** those host writes. A raster segmentation artifact is not automatically treated as an AE Bezier path, track matte, alpha matte, or Roto Brush result.
 
-The next M4 tranche must define a truthful segmentation-to-mask/matte application strategy with coordinate conversion, transaction ownership, readback, rollback, and real-AE visual proof.
+Separate static and temporal raster-to-matte materialization capabilities now provide retained real-AE coordinate/timing alignment, track-matte binding, structural readback, cleanup, and pixel-validated visual evidence. They remain distinct from this provider-neutral acceptance boundary and do not turn raster segmentation into invented Bezier geometry.
 
 ## Safety and proof maturity
 
-This capability is `R0_READ_ONLY` and requires no rollback. It begins at `DECLARED` proof maturity with deterministic contract tests. Runtime registration is withheld until at least one concrete provider produces retained end-to-end evidence through this boundary.
+This capability is `R0_READ_ONLY` and requires no rollback. It is now `STRUCTURAL`: deterministic request/result validation, concrete shell-free SAM 3.1 image/temporal adapters, source/provenance binding, and artifact-integrity checks are retained. Runtime provider registration remains withheld until checkpoint-backed live inference and transfer evidence pass through this boundary.
 
 A promotion proof should demonstrate:
 
@@ -104,4 +104,4 @@ A promotion proof should demonstrate:
 
 ## Human-parity status
 
-This closes the M4 **subject/object segmentation interface** gap, not segmentation execution or AE application. Remaining M4 work includes segmentation-to-mask/matte application, visual/readback proof in After Effects, occlusion/identity recovery, and manual repair/resume workflows.
+This closes the structural M4 **subject/object segmentation interface** and provider-adapter foundation. Deterministic static and temporal raster-to-matte application now also have retained real-AE visual evidence. Remaining segmentation work is checkpoint-backed live SAM 3.1 inference, materially different source/session transfer, and guarded production provider registration; those remain unclaimed here.

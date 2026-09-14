@@ -49,12 +49,13 @@ const validResult = () => ({
   evidenceIds: ["SEGMENT:FRAME_30", "SEGMENT:FRAME_30", "MODEL:LOCAL:1.0.0"],
 });
 
-test("segmentation capability is declared read-only and does not claim a bundled provider", () => {
+test("segmentation capability is structural, read-only, provider-neutral, and not runtime promoted", () => {
   assert.equal(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.status, "PARTIAL");
-  assert.equal(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.proofMaturity, "DECLARED");
+  assert.equal(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.proofMaturity, "STRUCTURAL");
   assert.equal(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.riskClass, "R0_READ_ONLY");
   assert.equal(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.fallbackPolicy, "FORBID");
-  assert.ok(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.limitations.some((value) => value.includes("does not create, execute, download, or choose")));
+  assert.ok(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.routes[0].limitations.some((value) => value.includes("SAM 3.1 image and temporal provider adapters")));
+  assert.ok(M4_SUBJECT_SEGMENTATION_CAPABILITY_V1.limitations.some((value) => value.includes("Runtime provider registration remains withheld")));
 });
 
 test("well-formed segmentation request accepts normalized box, prompts, and prior artifact", () => {

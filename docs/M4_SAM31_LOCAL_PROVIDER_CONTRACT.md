@@ -57,7 +57,7 @@ The Python sidecar requires:
 - CUDA BF16 support;
 - an explicit local SAM 3.1 checkpoint or authenticated access to the gated `facebook/sam3.1` checkpoint.
 
-The current development workstation has Python 3.12, CUDA, BF16 support, and an NVIDIA RTX A4500. The selected Python environment does not currently have the `sam3` package installed and Hugging Face checkpoint access is not authenticated, so live inference is not accepted yet.
+The current development workstation has a SAM 3 environment at `C:\\Users\\Shadow\\sam3-runtime\\.venv`, the `sam3`, `torch`, and `huggingface_hub` packages are importable, CUDA and BF16 are available on the NVIDIA RTX A4500, and the runtime prerequisites are therefore present. No Hugging Face token is available through either the environment or the local Hugging Face token store, and no local large SAM checkpoint candidate is configured, so checkpoint-backed live inference remains blocked and unaccepted.
 
 ## Artifact integrity
 
@@ -93,7 +93,7 @@ Deterministic adapter tests prove:
 
 A real Node-to-Python preflight also reaches the expected `CHECKPOINT_ACCESS_REQUIRED` refusal without downloading a model or mutating After Effects.
 
-These checks are structural/provider evidence only. They do **not** promote the public M4 segmentation capability beyond `DECLARED`, and they do not register this provider into production runtime yet.
+These checks are structural/provider evidence only. They support `STRUCTURAL` maturity for the public provider-neutral segmentation acceptance boundary, but they do not promote live SAM 3.1 inference or register this provider into production runtime.
 
 ## Promotion gate
 
@@ -106,7 +106,7 @@ Runtime promotion requires retained live evidence that:
 5. a second materially different subject/source can be segmented without hidden state carryover;
 6. no After Effects project mutation occurs during this read-only provider proof.
 
-After provider promotion, the separate M4 materialization/application tranche must still prove exact raster import/alignment, matte binding, readback, rollback, and viewer-visible After Effects output.
+Separate deterministic real-AE materialization tranches now retain static and temporal raster import/alignment, exact timing, track-matte binding, readback, rollback/cleanup, and viewer-visible pixel evidence. The remaining end-to-end gap is to feed those proven materialization surfaces with checkpoint-backed live SAM 3.1 output and retain transfer/session evidence.
 
 ## Temporal sequence tranche
 
@@ -126,4 +126,4 @@ The temporal adapter is structurally proven to:
 
 The runtime preserves the prompt-frame object ID across propagation. A temporarily absent tracked object is represented as a zero mask with explicit occlusion evidence rather than silently rebinding to another instance. Sequence-level timing remains source-frame exact; local output frame `0` always corresponds to the declared absolute `startFrameIndex`.
 
-The current structural tests also prove exact integration with the protocol-2.5 temporal matte planner. Live SAM 3.1 inference remains unpromoted until the workstation has the SAM 3.1 package and authorized checkpoint access and a retained real-video sequence passes the same byte-integrity gates.
+The current structural tests also prove exact integration with the protocol-2.5 temporal matte planner, and a separate deterministic real-AE proof now verifies that planner through moving sequence import, timing, LUMA matte binding, three frame-specific visual checkpoints, and baseline restoration. Live SAM 3.1 inference remains unpromoted until authorized checkpoint access or an explicit local checkpoint is available and a retained real-video sequence passes the same byte-integrity and downstream materialization gates.

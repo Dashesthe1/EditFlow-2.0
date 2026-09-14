@@ -9,14 +9,14 @@ export const M4_SUBJECT_SEGMENTATION_CAPABILITY_V1: CapabilityRecord = {
   domain: "tracking",
   description: "Accept and validate provider-neutral subject/object segmentation artifacts bound to an exact semantic identity before downstream AE mask or matte application.",
   status: "PARTIAL",
-  proofMaturity: "DECLARED",
+  proofMaturity: "STRUCTURAL",
   routes: [{
     routeId: asRouteId("m4.tracking.segmentation.subject-object.v1"),
     kind: "SUBSYSTEM_ADAPTER",
     available: true,
-    adapterVersion: "0.5.0-dev.1",
+    adapterVersion: "0.5.0-dev.2",
     limitations: [
-      "Contract and validation boundary only; no segmentation provider/model is bundled by this tranche.",
+      "Concrete local SAM 3.1 image and temporal provider adapters are bundled and structurally tested, but retained checkpoint-backed live inference is not yet accepted.",
       "An exact semanticId is required; class-only subject guessing is forbidden.",
     ],
   }],
@@ -27,9 +27,9 @@ export const M4_SUBJECT_SEGMENTATION_CAPABILITY_V1: CapabilityRecord = {
   rollbackStrategy: "NONE_REQUIRED",
   riskClass: "R0_READ_ONLY",
   limitations: [
-    "This capability does not create, execute, download, or choose a segmentation model/provider.",
-    "Accepted raster artifacts are not automatically converted into After Effects Bezier masks or mattes.",
-    "Runtime capability registration is intentionally withheld until a concrete provider and retained end-to-end evidence are accepted.",
+    "This provider-neutral acceptance capability does not itself execute or choose a provider; optional sam3.1.local image and temporal adapters exist as structurally proven provider implementations.",
+    "Accepted raster artifacts are not automatically converted into After Effects Bezier masks; static and temporal raster-to-matte materialization are separate visually proven capabilities.",
+    "Runtime provider registration remains withheld until checkpoint-backed live SAM 3.1 evidence plus transfer robustness are accepted."
   ],
   fallbackPolicy: "FORBID",
 };
