@@ -183,6 +183,7 @@ test("M4 SAM 3.1 live proof emits digest-bound runtime evidence only after all g
     assert.equal(evidence.perFrameSha256Accepted, true);
     assert.equal(evidence.materiallyDifferentTransferAccepted, true);
     assert.equal(evidence.noHiddenFallbackAccepted, true);
+    assert.equal(evidence.temporalMaterialAccepted, true);
     assert.match(evidence.checkpointSha256, /^[0-9a-f]{64}$/);
     assert.match(evidence.resultSha256, /^[0-9a-f]{64}$/);
     assert.equal(sidecar, sha256(evidenceBytes));
@@ -232,6 +233,24 @@ test("M4 SAM 3.1 live proof refuses identical verified mask sequences across dis
   } finally {
     await fixture.cleanup();
   }
+});
+test("M4 SAM 3.1 live proof refuses prompt-only material with blank temporal propagation", async () => {
+  const fixture = await makeFixture();
+  try {
+    const promptOnlyFactory = (args) => {
+      const provider = fakeProviderFactory(args);
+      return { ...provider, segmentSequence: async (request) => {
+        const result = await provider.segmentSequence(request);
+        return { ...result, frames: result.frames.map((frame) => frame.frameIndex === request.promptFrameIndex
+          ? frame : { ...frame, confidence: 0, occlusion: 1 }) };
+      } };
+    };
+    await assert.rejects(
+      () => runSam31LiveTransferProof(fixture.config, { ...deps, providerFactory: promptOnlyFactory }),
+      /TEMPORAL_MATERIAL_MISSING:fixture-a/,
+    );
+    assert.equal(await exists(fixture.config.runtimeEvidencePath), false);
+  } finally { await fixture.cleanup(); }
 });
 test("M4 SAM 3.1 live proof refuses missing native SAM 3.1 provenance", async () => {
   const fixture = await makeFixture();

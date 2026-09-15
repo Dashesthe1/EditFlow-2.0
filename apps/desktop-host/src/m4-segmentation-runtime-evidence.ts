@@ -24,6 +24,7 @@ export interface M4SegmentationRuntimeEvidenceV1 {
   readonly perFrameSha256Accepted: true;
   readonly materiallyDifferentTransferAccepted: true;
   readonly noHiddenFallbackAccepted: true;
+  readonly temporalMaterialAccepted: true;
 }
 export interface M4SegmentationRuntimeEvidenceFileV1 {
   readonly evidencePath: string;
@@ -50,6 +51,7 @@ const EXACT_KEYS = Object.freeze([
   "schema",
   "sidecarSchema",
   "sourceFixtureCount",
+  "temporalMaterialAccepted",
 ] as const);
 const TRUSTED_ATTESTATIONS = new WeakSet<object>();
 
@@ -76,7 +78,8 @@ export const isAcceptedM4SegmentationRuntimeEvidenceV1 = (
     evidence.exactCorrelationAccepted === true &&
     evidence.perFrameSha256Accepted === true &&
     evidence.materiallyDifferentTransferAccepted === true &&
-    evidence.noHiddenFallbackAccepted === true;
+    evidence.noHiddenFallbackAccepted === true &&
+    evidence.temporalMaterialAccepted === true;
 };
 
 export const isTrustedM4SegmentationRuntimeEvidenceV1 = (

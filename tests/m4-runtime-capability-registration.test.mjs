@@ -40,6 +40,7 @@ const validSegmentationEvidence = (overrides = {}) => ({
   perFrameSha256Accepted: true,
   materiallyDifferentTransferAccepted: true,
   noHiddenFallbackAccepted: true,
+  temporalMaterialAccepted: true,
   ...overrides,
 });
 const withSegmentationEvidenceFile = async (evidence, fn, digestOverride = null) => {
@@ -276,6 +277,7 @@ test("segmentation runtime registration fails closed on malformed or incomplete 
     validSegmentationEvidence({ perFrameSha256Accepted: false }),
     validSegmentationEvidence({ materiallyDifferentTransferAccepted: false }),
     validSegmentationEvidence({ noHiddenFallbackAccepted: false }),
+    validSegmentationEvidence({ temporalMaterialAccepted: false }),
     validSegmentationEvidence({ unexpectedField: true }),
   ];
 

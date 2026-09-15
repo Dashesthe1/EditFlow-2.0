@@ -151,16 +151,17 @@ test("SAM 3.1 temporal adapter sends one exact sidecar request and retains only 
   }
 });
 
-test("SAM 3.1 temporal adapter permits native point prompts but refuses unbound and prior-artifact requests before launch", async () => {
+test("SAM 3.1 temporal adapter refuses point-only seeds, unbound requests, and prior-artifact requests before launch", async () => {
   const fixture = await makeFixture();
   let calls = 0;
   const runner = { async run() { calls += 1; return processResult(completed(fixture)); } };
   try {
     const provider = new Sam31LocalSegmentationSequenceProviderV1(fixture.config, runner);
     const pointRequest = { ...fixture.request, entityClass: undefined, prompt: { positivePoints: [{ x: 0.4, y: 0.4 }] } };
-    const pointResult = { ...fixture.result, entityClass: undefined };
-    const pointRunner = { async run() { return processResult(completed(fixture, pointResult)); } };
-    await new Sam31LocalSegmentationSequenceProviderV1(fixture.config, pointRunner).segmentSequence(pointRequest);
+    await assert.rejects(
+      provider.segmentSequence(pointRequest),
+      providerErrorCode("POINT_ONLY_TEMPORAL_PROMPT_UNSUPPORTED"),
+    );
     await assert.rejects(
       provider.segmentSequence({ ...fixture.request, entityClass: undefined, prompt: { negativePoints: [{ x: 0.1, y: 0.1 }] } }),
       providerErrorCode("SUBJECT_PROMPT_REQUIRED"),

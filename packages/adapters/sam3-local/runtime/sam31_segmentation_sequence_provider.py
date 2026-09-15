@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import inspect
 import json
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -231,7 +234,8 @@ def target_mask(outputs: dict[str, Any], target_id: Any, dimensions: tuple[int, 
     for index, obj_id in enumerate(ids):
         if obj_id == target_id:
             mask = mask_for_index(outputs, index)
-            return mask, score_for_index(outputs, index, 0.5), False
+            present = bool(mask.any())
+            return mask, score_for_index(outputs, index, 0.5) if present else 0.0, not present
     if dimensions is None:
         raise LookupError("target object disappeared before mask dimensions were established")
     height, width = dimensions
@@ -258,6 +262,55 @@ def save_png(mask, encoding: str, output: Path) -> str:
     Image.fromarray(array, mode="L").save(output, format="PNG")
     return hashlib.sha256(output.read_bytes()).hexdigest()
 
+
+def materialize_frame_window(source_path: Path, start_frame: int, frame_count: int, output_dir: Path) -> None:
+    import cv2
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
+    if source_path.is_dir():
+        frames = [item for item in source_path.iterdir() if item.is_file() and item.suffix.lower() in image_exts]
+        try:
+            frames.sort(key=lambda item: int(item.stem))
+        except ValueError:
+            frames.sort(key=lambda item: item.name)
+        selected = frames[start_frame : start_frame + frame_count]
+        if len(selected) != frame_count:
+            raise LookupError("resolved frame directory does not cover the requested SAM 3.1 window")
+        for local_index, frame_path in enumerate(selected):
+            shutil.copy2(frame_path, output_dir / f"{local_index}{frame_path.suffix.lower()}")
+        return
+
+    if source_path.suffix.lower() in image_exts:
+        if start_frame != 0 or frame_count != 1:
+            raise LookupError("single-image source cannot satisfy the requested temporal SAM 3.1 window")
+        shutil.copy2(source_path, output_dir / f"0{source_path.suffix.lower()}")
+        return
+
+    capture = cv2.VideoCapture(str(source_path))
+    if not capture.isOpened():
+        raise RuntimeError(f"unable to open source video for bounded SAM 3.1 extraction: {source_path}")
+    try:
+        capture.set(cv2.CAP_PROP_POS_FRAMES, float(start_frame))
+        reported = int(round(float(capture.get(cv2.CAP_PROP_POS_FRAMES))))
+        if reported != start_frame:
+            capture.release()
+            capture = cv2.VideoCapture(str(source_path))
+            if not capture.isOpened():
+                raise RuntimeError(f"unable to reopen source video for exact SAM 3.1 extraction: {source_path}")
+            for _ in range(start_frame):
+                ok, _frame = capture.read()
+                if not ok:
+                    raise LookupError("source video ended before the requested SAM 3.1 start frame")
+        for local_index in range(frame_count):
+            ok, frame = capture.read()
+            if not ok:
+                raise LookupError("source video ended inside the requested SAM 3.1 frame window")
+            output_path = output_dir / f"{local_index}.png"
+            if not cv2.imwrite(str(output_path), frame):
+                raise RuntimeError(f"failed to materialize bounded SAM 3.1 frame: {output_path}")
+    finally:
+        capture.release()
 
 def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
     request, source, artifact_dir, checkpoint, threshold = validate_payload(payload)
@@ -294,13 +347,65 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
     with contextlib.redirect_stdout(sys.stderr):
         predictor = build_sam3_multiplex_video_predictor(**build_kwargs)
 
+    import sam3.model.decoder as sam31_decoder
+    from torch.nn.attention import SDPBackend, sdpa_kernel as torch_sdpa_kernel
+    native_sdpa_kernel = sam31_decoder.sdpa_kernel
+
+    def compatible_sdpa_kernel(_requested_backend: Any):
+        return torch_sdpa_kernel([
+            SDPBackend.FLASH_ATTENTION,
+            SDPBackend.EFFICIENT_ATTENTION,
+            SDPBackend.MATH,
+        ])
+
+    sam31_decoder.sdpa_kernel = compatible_sdpa_kernel
+
+    detector = predictor.model.detector
+    native_grounding_methods: dict[str, Any] = {}
+    for grounding_method_name in (
+        "forward_video_grounding_batched_multigpu",
+        "forward_video_grounding_multigpu",
+    ):
+        if not hasattr(detector, grounding_method_name):
+            continue
+        native_grounding = getattr(detector, grounding_method_name)
+        native_grounding_methods[grounding_method_name] = native_grounding
+
+        def compatible_grounding(*args: Any, _native_grounding=native_grounding, **kwargs: Any):
+            max_frames = kwargs.get("max_frame_num_to_track")
+            if max_frames is not None:
+                # Upstream treats the end frame as inclusive when deriving the tracking
+                # window, then reuses it as an exclusive chunk end. Extend the detector
+                # bound by one frame while leaving propagation itself unchanged.
+                kwargs["max_frame_num_to_track"] = int(max_frames) + 1
+            return _native_grounding(*args, **kwargs)
+
+        setattr(detector, grounding_method_name, compatible_grounding)
+    native_init_state = predictor.model.init_state
+    native_init_parameters = inspect.signature(native_init_state).parameters
+    start_session_compat = "offload_state_to_cpu" not in native_init_parameters
+    if start_session_compat:
+        def compatible_init_state(*args: Any, **kwargs: Any):
+            kwargs.pop("offload_state_to_cpu", None)
+            return native_init_state(*args, **kwargs)
+        predictor.model.init_state = compatible_init_state
+
+    start_frame = int(request["startFrameIndex"])
+    frame_count = int(request["frameCount"])
+    prompt_local = int(request["promptFrameIndex"])
+    prompt_absolute = start_frame + prompt_local
+    end_frame = start_frame + frame_count - 1
+    window_manager = tempfile.TemporaryDirectory(prefix="editflow-sam31-window-")
+    window_dir = Path(window_manager.name)
+
     session_id: str | None = None
     try:
+        materialize_frame_window(Path(str(source["absolutePath"])), start_frame, frame_count, window_dir)
         with contextlib.redirect_stdout(sys.stderr):
             started = predictor.handle_request({
                 "type": "start_session",
-                "resource_path": str(source["absolutePath"]),
-                "offload_video_to_cpu": False,
+                "resource_path": str(window_dir),
+                "offload_video_to_cpu": True,
                 "offload_state_to_cpu": False,
             })
         session_id = str(started.get("session_id", ""))
@@ -308,36 +413,22 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError("SAM 3.1 did not return a video session id")
 
         prompt = request.get("prompt") or {}
-        start_frame = int(request["startFrameIndex"])
-        frame_count = int(request["frameCount"])
-        prompt_local = int(request["promptFrameIndex"])
-        prompt_absolute = start_frame + prompt_local
-        end_frame = start_frame + frame_count - 1
-        add_request: dict[str, Any] = {
-            "type": "add_prompt",
-            "session_id": session_id,
-            "frame_index": prompt_absolute,
-            "output_prob_thresh": threshold,
-            "rel_coordinates": True,
-        }
+        points = list(prompt.get("positivePoints") or []) + list(prompt.get("negativePoints") or [])
+        semantic_available = nonempty(request.get("entityClass")) or prompt.get("boundingBox") is not None
+        if not semantic_available:
+            raise LookupError("SAM 3.1 multiplex temporal propagation requires entityClass or boundingBox; point-only prompts are not a validated temporal seed path")
+        add_request: dict[str, Any] = {"type": "add_prompt", "session_id": session_id, "frame_index": prompt_local, "output_prob_thresh": threshold, "rel_coordinates": True}
         if nonempty(request.get("entityClass")):
             add_request["text"] = str(request["entityClass"])
-        points = list(prompt.get("positivePoints") or []) + list(prompt.get("negativePoints") or [])
-        if points:
-            add_request["points"] = [[float(point["x"]), float(point["y"])] for point in points]
-            add_request["point_labels"] = [1] * len(prompt.get("positivePoints") or []) + [0] * len(prompt.get("negativePoints") or [])
         if prompt.get("boundingBox") is not None:
             add_request["bounding_boxes"] = [[float(item) for item in prompt["boundingBox"]]]
             add_request["bounding_box_labels"] = [1]
-
         with contextlib.redirect_stdout(sys.stderr):
             prompted = predictor.handle_request(add_request)
         prompt_outputs = prompted.get("outputs")
         if not isinstance(prompt_outputs, dict):
-            raise LookupError("SAM 3.1 prompt response did not contain object outputs")
+            raise LookupError("SAM 3.1 semantic prompt response did not contain object outputs")
         target_id = choose_target(prompt_outputs, prompt)
-        prompt_mask, _, _ = target_mask(prompt_outputs, target_id, None)
-        prompt_dimensions = (int(prompt_mask.shape[0]), int(prompt_mask.shape[1]))
         outputs_by_frame: dict[int, dict[str, Any]] = {prompt_absolute: prompt_outputs}
 
         def propagate(direction: str, maximum: int) -> None:
@@ -347,8 +438,8 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
                 "type": "propagate_in_video",
                 "session_id": session_id,
                 "propagation_direction": direction,
-                "start_frame_index": prompt_absolute,
-                "max_frame_num_to_track": maximum + 1,
+                "start_frame_index": prompt_local,
+                "max_frame_num_to_track": maximum,
                 "output_prob_thresh": threshold,
             }
             with contextlib.redirect_stdout(sys.stderr):
@@ -357,11 +448,11 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
                         continue
                     frame_index = response.get("frame_index")
                     outputs = response.get("outputs")
-                    if isinstance(frame_index, int) and start_frame <= frame_index <= end_frame and isinstance(outputs, dict):
-                        outputs_by_frame[frame_index] = outputs
+                    if isinstance(frame_index, int) and 0 <= frame_index < frame_count and isinstance(outputs, dict):
+                        outputs_by_frame[start_frame + frame_index] = outputs
 
-        propagate("backward", prompt_absolute - start_frame)
-        propagate("forward", end_frame - prompt_absolute)
+        propagate("forward", frame_count - 1 - prompt_local)
+        propagate("backward", prompt_local)
         missing = [frame for frame in range(start_frame, end_frame + 1) if frame not in outputs_by_frame]
         if missing:
             raise LookupError(f"SAM 3.1 temporal propagation did not cover requested frames: {missing[:8]}")
@@ -384,7 +475,16 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
 
         frames: list[dict[str, Any]] = []
         artifact_frames: list[dict[str, Any]] = []
-        dimensions: tuple[int, int] | None = prompt_dimensions
+        dimensions: tuple[int, int] | None = None
+        for absolute_index in range(start_frame, end_frame + 1):
+            try:
+                seeded_mask, _, _ = target_mask(outputs_by_frame[absolute_index], target_id, None)
+                dimensions = (int(seeded_mask.shape[0]), int(seeded_mask.shape[1]))
+                break
+            except LookupError:
+                continue
+        if dimensions is None:
+            raise LookupError(f"SAM 3.1 temporal propagation never exposed target object {target_id}")
         previous_mask = None
         for local_index in range(frame_count):
             absolute_index = start_frame + local_index
@@ -448,6 +548,10 @@ def run_sequence(payload: dict[str, Any]) -> dict[str, Any]:
                     predictor.handle_request({"type": "close_session", "session_id": session_id})
             except Exception:
                 pass
+        window_manager.cleanup()
+        for grounding_method_name, native_grounding in native_grounding_methods.items():
+            setattr(detector, grounding_method_name, native_grounding)
+        sam31_decoder.sdpa_kernel = native_sdpa_kernel
 
 
 def parse_args() -> argparse.Namespace:

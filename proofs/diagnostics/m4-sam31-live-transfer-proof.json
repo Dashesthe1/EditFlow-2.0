@@ -1,0 +1,206 @@
+{
+  "schema": "editflow.m4.sam31-live-transfer-proof.v1",
+  "generatedAt": "2026-09-15T04:28:49.979Z",
+  "classification": "LIVE_ACCEPTANCE",
+  "evidenceId": "M4:SAM31:LIVE:TRANSFER:WORKSTATION01",
+  "providerId": "sam3.1.local",
+  "sidecarSchema": "editflow.segmentation.sam3.1.sequence.v1",
+  "modelFamily": "sam3.1",
+  "samSource": {
+    "directory": "C:\\Users\\Shadow\\sam3-runtime\\sam3-src",
+    "commit": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7"
+  },
+  "checkpoint": {
+    "path": "C:\\Users\\Shadow\\sam3-runtime\\checkpoints\\sam3.1\\sam3.1_multiplex.pt",
+    "sha256": "0567debeec80ba4ac6369540c6c248025283cb3ff2b92827509e57e2b3541cb6"
+  },
+  "resultSha256": "1d6c34c7e45758c67a700cc8995e88b09e16eb5afedc0bf1ebfbddbe7400b7f9",
+  "sourceFixtureCount": 2,
+  "fixtures": [
+    {
+      "fixtureId": "spider-peter-window",
+      "sourceId": "SOURCE_SPIDER_PETER",
+      "semanticId": "SUBJECT_PETER_PARKER",
+      "sourcePath": "C:\\Users\\Shadow\\EditFlow-2.0\\.tmp\\m4-sam31-bounded-fixtures\\spider-frames-258-263.avi",
+      "sourceSha256": "eca739ecff9335849ba4c22e31b5d113fb418f6034aa25f5034526eced183fc2",
+      "sourceMedia": {
+        "status": "COMPLETED",
+        "frameRate": 23.976,
+        "frameCount": 6,
+        "width": 3840,
+        "height": 1600,
+        "expectedFrameRate": 23.976023976023978
+      },
+      "request": {
+        "requestId": "M4_SAM31_LIVE_spider-peter-window_eca739ecff93",
+        "sourceId": "SOURCE_SPIDER_PETER",
+        "semanticId": "SUBJECT_PETER_PARKER",
+        "entityClass": "person",
+        "startTimestampMs": 0,
+        "startFrameIndex": 0,
+        "frameRate": 23.976,
+        "frameCount": 6,
+        "promptFrameIndex": 2,
+        "prompt": {
+          "positivePoints": [
+            {
+              "x": 0.645,
+              "y": 0.5
+            }
+          ]
+        },
+        "preferredEncoding": "ALPHA"
+      },
+      "providerId": "sam3.1.local",
+      "providerVersion": "sam3.1:code-0.1.0",
+      "evidenceIds": [
+        "SOURCE_FIXTURE:spider-peter-window",
+        "SOURCE_SHA256:eca739ecff9335849ba4c22e31b5d113fb418f6034aa25f5034526eced183fc2",
+        "SAM31_MODEL:facebook/sam3.1",
+        "SAM31_CODE_VERSION:0.1.0",
+        "SAM31_CHECKPOINT:LOCAL_EXPLICIT",
+        "SAM31_SEQUENCE_TARGET:0",
+        "SAM31_TEMPORAL:VIDEO_SESSION_PROPAGATION",
+        "SAM31_EDGE_QUALITY:MODEL_CONFIDENCE_PROXY",
+        "SAM31_OCCLUSION:TARGET_PRESENCE"
+      ],
+      "temporalMaterial": {
+        "materialFrameCount": 6,
+        "materialBeforePrompt": true,
+        "materialAfterPrompt": true
+      },
+      "frames": [
+        {
+          "frameIndex": 0,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_spider-peter-window_eca739ecff93:0:58efe03e0c02aac9167ff9eb",
+          "sha256": "58efe03e0c02aac9167ff9eb1e236298d1088f17449ec897bfb5dac380796319"
+        },
+        {
+          "frameIndex": 1,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_spider-peter-window_eca739ecff93:1:fe2bd1f7a192e89b58cd9439",
+          "sha256": "fe2bd1f7a192e89b58cd94391f7f73e0078ceed6fa4d79bd418533d7a891b79e"
+        },
+        {
+          "frameIndex": 2,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_spider-peter-window_eca739ecff93:2:40906dab4151abeda7a0e0ee",
+          "sha256": "40906dab4151abeda7a0e0ee592607c8758a59c25344b9819e9648fae5ca3eed"
+        },
+        {
+          "frameIndex": 3,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_spider-peter-window_eca739ecff93:3:61e82d98622c4237ade12615",
+          "sha256": "61e82d98622c4237ade1261509027593a37b62eefb912a724d82efd2145be024"
+        },
+        {
+          "frameIndex": 4,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_spider-peter-window_eca739ecff93:4:3ad499d83b78f9b0c6bfc6cb",
+          "sha256": "3ad499d83b78f9b0c6bfc6cbdbc8c285591ed1d71792a0e88580053f949f532c"
+        },
+        {
+          "frameIndex": 5,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_spider-peter-window_eca739ecff93:5:49b0c357d70f5367e408dc32",
+          "sha256": "49b0c357d70f5367e408dc32a5894e59172e15f816a13dce5643d306c0afe451"
+        }
+      ],
+      "sequenceSha256": "9ef33c58b58b2ad7a7a5baadd162763fbc3da77a24a1462180a5577112d3081d"
+    },
+    {
+      "fixtureId": "studioc-person-window",
+      "sourceId": "SOURCE_STUDIOC_PERSON",
+      "semanticId": "SUBJECT_STUDIOC_PERSON",
+      "sourcePath": "C:\\Users\\Shadow\\EditFlow-2.0\\.tmp\\m4-sam31-bounded-fixtures\\studio-c-frames-361-366.avi",
+      "sourceSha256": "d633b4be7a21dc7d1182e57a74c827b587e880bef60acca3123ca021e06160c9",
+      "sourceMedia": {
+        "status": "COMPLETED",
+        "frameRate": 59.94,
+        "frameCount": 6,
+        "width": 1080,
+        "height": 1080,
+        "expectedFrameRate": 59.94006971482176
+      },
+      "request": {
+        "requestId": "M4_SAM31_LIVE_studioc-person-window_d633b4be7a21",
+        "sourceId": "SOURCE_STUDIOC_PERSON",
+        "semanticId": "SUBJECT_STUDIOC_PERSON",
+        "entityClass": "person",
+        "startTimestampMs": 0,
+        "startFrameIndex": 0,
+        "frameRate": 59.94,
+        "frameCount": 6,
+        "promptFrameIndex": 3,
+        "prompt": {
+          "positivePoints": [
+            {
+              "x": 0.26,
+              "y": 0.52
+            }
+          ]
+        },
+        "preferredEncoding": "ALPHA"
+      },
+      "providerId": "sam3.1.local",
+      "providerVersion": "sam3.1:code-0.1.0",
+      "evidenceIds": [
+        "SOURCE_FIXTURE:studioc-person-window",
+        "SOURCE_SHA256:d633b4be7a21dc7d1182e57a74c827b587e880bef60acca3123ca021e06160c9",
+        "SAM31_MODEL:facebook/sam3.1",
+        "SAM31_CODE_VERSION:0.1.0",
+        "SAM31_CHECKPOINT:LOCAL_EXPLICIT",
+        "SAM31_SEQUENCE_TARGET:1",
+        "SAM31_TEMPORAL:VIDEO_SESSION_PROPAGATION",
+        "SAM31_EDGE_QUALITY:MODEL_CONFIDENCE_PROXY",
+        "SAM31_OCCLUSION:TARGET_PRESENCE"
+      ],
+      "temporalMaterial": {
+        "materialFrameCount": 6,
+        "materialBeforePrompt": true,
+        "materialAfterPrompt": true
+      },
+      "frames": [
+        {
+          "frameIndex": 0,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_studioc-person-window_d633b4be7a21:0:2b523d537c526c97b8eabc27",
+          "sha256": "2b523d537c526c97b8eabc27abc4d8728f5fd025b0c54956cbdfb7ec356873c7"
+        },
+        {
+          "frameIndex": 1,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_studioc-person-window_d633b4be7a21:1:4733db6949b94a6e9e20eea2",
+          "sha256": "4733db6949b94a6e9e20eea28d3b0d286dddbc5a4130ef22ecdc933182635321"
+        },
+        {
+          "frameIndex": 2,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_studioc-person-window_d633b4be7a21:2:1fae55962930ecdfb75e9d8b",
+          "sha256": "1fae55962930ecdfb75e9d8beae17cd2aed7fcabe70b8edd838516bdc2a9902c"
+        },
+        {
+          "frameIndex": 3,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_studioc-person-window_d633b4be7a21:3:2bc61e39dae0c67bb3dec3bf",
+          "sha256": "2bc61e39dae0c67bb3dec3bfe43cbee4023debb5b64ae8e2e95c6e27bdef775e"
+        },
+        {
+          "frameIndex": 4,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_studioc-person-window_d633b4be7a21:4:e9bcd280ea9fe2c94542a331",
+          "sha256": "e9bcd280ea9fe2c94542a3310512ae08037b4f0e9bf8dab0f979c4ee7eeca9c0"
+        },
+        {
+          "frameIndex": 5,
+          "artifactId": "sam31-sequence:M4_SAM31_LIVE_studioc-person-window_d633b4be7a21:5:a2c4910ad994d49700833019",
+          "sha256": "a2c4910ad994d49700833019b31e5f499e3714dca9577e78fe8318ea615af124"
+        }
+      ],
+      "sequenceSha256": "ee5a3a8e81ab9483e5471f94c015c57a35e8352dea566e27139e26d331c7548a"
+    }
+  ],
+  "gates": {
+    "liveInferenceAccepted": true,
+    "exactCorrelationAccepted": true,
+    "perFrameSha256Accepted": true,
+    "materiallyDifferentTransferAccepted": true,
+    "noHiddenFallbackAccepted": true,
+    "temporalMaterialAccepted": true
+  },
+  "afterEffects": {
+    "controlActionsIssued": 0,
+    "projectMutationRequested": false,
+    "note": "This proof harness has no After Effects control dependency or mutation path."
+  }
+}

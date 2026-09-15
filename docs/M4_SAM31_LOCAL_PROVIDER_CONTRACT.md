@@ -1,12 +1,12 @@
 # M4 Local SAM 3.1 Segmentation Provider
 
-Status: **STRUCTURAL FOUNDATION / NOT RUNTIME PROMOTED**
+Status: **LIVE TEMPORAL RUNTIME PROMOTED / DIGEST-BOUND TRANSFER EVIDENCE**
 Provider ID: `sam3.1.local`
 Sidecar schema: `editflow.segmentation.sam3.1.v1`
 
 ## Purpose
 
-Provide a concrete local implementation of `SubjectSegmentationProviderV1` without weakening the provider-neutral M4 segmentation contract. This tranche establishes bounded process execution, exact source binding, exact SAM 3.1 checkpoint selection, fail-closed output validation, and retained artifact integrity. It does not yet claim accepted live SAM 3.1 inference or After Effects materialization/application.
+Provide concrete local SAM 3.1 image and temporal segmentation surfaces without weakening the provider-neutral M4 contract. The image-only provider remains a separate bounded path; the temporal sequence provider is now live-promoted from retained two-source checkpoint-backed evidence and can feed the already transfer-proven sequence-matte materialization planner. The live promotion proof itself remains read-only and does not mutate After Effects.
 
 ## Exact model-family rule
 
@@ -57,7 +57,7 @@ The Python sidecar requires:
 - CUDA BF16 support;
 - an explicit local SAM 3.1 checkpoint or authenticated access to the gated `facebook/sam3.1` checkpoint.
 
-The current development workstation has a SAM 3 environment at `C:\\Users\\Shadow\\sam3-runtime\\.venv`, the `sam3`, `torch`, and `huggingface_hub` packages are importable, CUDA and BF16 are available on the NVIDIA RTX A4500, and the runtime prerequisites are therefore present. No Hugging Face token is available through either the environment or the local Hugging Face token store, and no local large SAM checkpoint candidate is configured, so checkpoint-backed live inference remains blocked and unaccepted.
+The current development workstation has the SAM 3 runtime, CUDA/BF16 support on the NVIDIA RTX A4500, and an explicitly authorized local `facebook/sam3.1` multiplex checkpoint. The retained promotion evidence binds that checkpoint to SHA-256 `0567debeec80ba4ac6369540c6c248025283cb3ff2b92827509e57e2b3541cb6`; live temporal inference is therefore no longer blocked by checkpoint access.
 
 The temporal sidecar is pinned to the current upstream multiplex builder contract: an explicit checkpoint is passed only as `checkpoint_path`, while `use_fa3` is forced to `False` on the target workstation because the RTX A4500 runtime has no `flash_attn_interface`. The upstream high-level builder already suppresses Hugging Face download when an explicit checkpoint is present; the sidecar therefore does not pass the unsupported `download_from_hf` keyword. When no explicit checkpoint is configured, Hugging Face authorization is checked before importing SAM/Torch or constructing a model, so a missing credential fails cheaply with `CHECKPOINT_ACCESS_REQUIRED`.
 
@@ -82,70 +82,66 @@ The provider records exact model/checkpoint/source provenance. Single-frame imag
 
 ## Current proof status
 
-Deterministic adapter tests prove:
+The temporal provider has retained live acceptance evidence on the target workstation. `scripts/proofs/m4-sam31-live-transfer-proof.mjs` completed against two materially different real-video fixtures with the explicit SAM 3.1 checkpoint and no hidden fallback.
 
-- one fixed shell-free sidecar invocation;
-- exact request/source correlation;
-- pre-launch refusal of unsupported point/prior-artifact prompts;
-- exact source provenance requirement;
-- artifact-directory containment;
-- byte-level SHA-256 verification;
-- timeout/process/malformed-output/provider-mismatch refusal;
-- source inspection showing explicit SAM 3.1 checkpoint selection and no implicit SAM 3.0 download path.
-- temporal source inspection pinned to the current multiplex builder signature, including the non-FA3 path required by the target RTX A4500 runtime and refusal of unsupported builder keywords;
-- real temporal sidecar preflight reaching `CHECKPOINT_ACCESS_REQUIRED` before model construction when no authorized checkpoint is available.
+The accepted path is semantic initialization followed by point-based target disambiguation and native full video-grounding propagation. Fresh point-only temporal seeding is deliberately refused because the multiplex partial-refinement path did not produce reliable temporal material in validation.
 
-A real Node-to-Python preflight reaches the expected `CHECKPOINT_ACCESS_REQUIRED` refusal without downloading a model or mutating After Effects. The current workstation image-runtime preflight is retained at `proofs/diagnostics/m4-sam31-runtime-preflight.json`; it records importable SAM 3 / Torch / Hugging Face packages, CUDA + BF16 readiness on the RTX A4500, no configured Hugging Face token, no local checkpoint candidate, and the exact sidecar refusal. The temporal-runtime compatibility/gate diagnostic is retained separately at `proofs/diagnostics/m4-sam31-sequence-runtime-preflight.json`; it pins the exact upstream SAM commit and multiplex builder signature, target GPU/FlashAttention posture, selected non-FA3 path, and the fast temporal `CHECKPOINT_ACCESS_REQUIRED` refusal while remaining explicitly classified `EXPECTED_GATE`.
+Retained evidence:
 
-These checks are structural/provider evidence only. They support `STRUCTURAL` maturity for the public provider-neutral segmentation acceptance boundary, but they do not promote live SAM 3.1 inference or register this provider into production runtime.
+- `proofs/diagnostics/m4-sam31-live-transfer-proof.json`;
+- `proofs/diagnostics/m4-segmentation-runtime-evidence-live.json`;
+- `proofs/diagnostics/m4-segmentation-runtime-evidence-live.json.sha256`.
+
+Both retained fixtures contain six material mask frames, material coverage on both sides of the prompt frame, and six distinct per-frame mask digests. The strict retained-file loader accepts the real evidence bytes at SHA-256 `c403b2d9f45f198eb1747c1250f0569b527bf70e08401d018967d17d33d74ecc`, and a real runtime-registration check projects both segmentation acceptance and sequence-matte planning as `FULL / TRANSFER / R0_READ_ONLY`.
+
+Deterministic regression coverage also rejects the original false-positive shape in which only the prompt frame is material while temporal neighbors are blank. The live proof itself has no After Effects control dependency and issues no project mutation.
 
 ## Promotion gate
 
-Runtime promotion requires retained live evidence that:
+The retained live promotion gate is now satisfied for the temporal SAM 3.1 route. Acceptance requires all of the following:
 
-1. the intended SAM 3.1 code and checkpoint load on the target workstation;
-2. real source pixels produce a retained segmentation mask;
-3. the result passes exact request/result correlation and provenance checks;
-4. the materialized PNG bytes match the accepted digest;
-5. a second materially different subject/source can be segmented without hidden state carryover;
-6. no After Effects project mutation occurs during this read-only provider proof.
+1. the intended SAM 3.1 code and explicit checkpoint load on the target workstation;
+2. real source pixels produce retained temporal masks;
+3. exact request/result correlation and provenance checks pass;
+4. every materialized PNG matches its accepted lowercase SHA-256 digest;
+5. at least two materially different sources produce materially different verified sequences without hidden session carryover;
+6. temporal material exists on both sides of an interior prompt frame when those sides are requested;
+7. no After Effects project mutation occurs during the read-only provider proof.
 
 ### Live proof harness
 
-`scripts/proofs/m4-sam31-live-transfer-proof.mjs` is the retained live-promotion harness for this gate. It deliberately requires an already-authorized explicit local SAM 3.1 checkpoint plus at least two distinct absolute source-video files; it does not download or authorize a checkpoint on the operator's behalf. Before inference it hashes the checkpoint and every source fixture, probes each material video through the pinned SAM runtime to verify actual frame rate, frame count, dimensions, and requested temporal bounds, rejects metadata/range mismatches and duplicate source bytes before constructing a provider, and creates a fresh temporal provider instance for each fixture so hidden session carryover cannot satisfy transfer evidence.
+`scripts/proofs/m4-sam31-live-transfer-proof.mjs` is the retained promotion harness. It requires an already-authorized explicit local SAM 3.1 checkpoint plus at least two distinct absolute source-video files; it never accepts model terms or authorizes an account on the operator's behalf.
 
-After the operator has independently accepted the gated model terms and configured an authorized Hugging Face token, `scripts/proofs/m4-sam31-checkpoint-materialize.py --destination-directory <absolute-directory>` may materialize the exact upstream `facebook/sam3.1` `config.json` and `sam3.1_multiplex.pt` files locally. The helper refuses before network access when no token is present, never prints or persists the token, and returns the explicit checkpoint path plus SHA-256 so the live proof can remain local-checkpoint and digest bound. It does not accept model terms or perform account authorization.
+Each fixture must provide semantic initialization through `entityClass` or a normalized bounding box. Positive/negative points may disambiguate the semantic candidates, but point-only fresh temporal seeding is refused. The sidecar then runs the bounded native multiplex video-session path and retains exact frame-correlated PNG artifacts.
 
-For each fixture the harness requires exact request/result correlation, the native `sam3.1.local` identity, explicit local-checkpoint provenance, native video-session temporal-propagation provenance, adapter-verified artifact materialization, and an independent SHA-256 re-read of every retained mask frame. It also hashes only the ordered mask-frame digests for the cross-fixture transfer gate, so two different source files cannot pass merely because request/source metadata differ; identical verified mask sequences are refused.
+The harness independently re-hashes checkpoint, source, and output bytes, requires native SAM 3.1/checkpoint/temporal provenance, rejects duplicate source bytes and identical verified mask sequences across sources, and fails closed with `TEMPORAL_MATERIAL_MISSING` when an interior prompt has no material temporal result before or after it.
 
-Only after every live gate succeeds does the harness write the detailed live-acceptance proof, the exact `editflow.m4.segmentation-runtime-evidence.v1` promotion file, and its lowercase SHA-256 sidecar. The sidecar is written last so partial or failed runs remain fail-closed. The harness has no After Effects control dependency and issues no project mutation. Run it after `npm run build:test-runtime` with `node scripts/proofs/m4-sam31-live-transfer-proof.mjs --config <absolute-config.json>`.
-
-Separate deterministic real-AE materialization tranches now retain static and temporal raster import/alignment, exact timing, track-matte binding, readback, rollback/cleanup, and viewer-visible pixel evidence. The remaining end-to-end gap is to feed those proven materialization surfaces with checkpoint-backed live SAM 3.1 output and retain transfer/session evidence.
+Only after every gate succeeds does the harness write the detailed live proof, the exact `editflow.m4.segmentation-runtime-evidence.v1` file, and its SHA-256 sidecar. The retained runtime evidence now includes `temporalMaterialAccepted: true` in addition to the original live-inference, correlation, per-frame integrity, transfer, and no-hidden-fallback gates.
 
 ## Guarded production registration
 
-The desktop host now has a fail-closed M4 segmentation runtime gate. A normal session registers neither the provider-neutral subject/object segmentation route nor the temporal sequence-matte materialization route for production use.
+The desktop host remains fail-closed by default. A normal session registers neither the provider-neutral subject/object acceptance route nor the temporal sequence-matte materialization route unless it is supplied a retained evidence file and matching lowercase SHA-256 sidecar.
 
-Registration requires a retained `editflow.m4.segmentation-runtime-evidence.v1` JSON file plus a matching lowercase SHA-256 sidecar for the exact JSON bytes. The loader recomputes that file digest before parsing and then requires the exact `sam3.1.local` provider ID, temporal sidecar schema, model family `sam3.1`, lowercase checkpoint and retained-result digests, at least two materially different source fixtures, and explicit accepted gates for live inference, exact request/result correlation, per-frame SHA-256 integrity, materially different transfer, and absence of hidden fallback. Extra fields, missing fields, malformed JSON, missing files, digest mismatch, provider/schema drift, uppercase hashes, or any false acceptance field leave both runtime capabilities unregistered.
+The exact evidence schema requires the `sam3.1.local` provider ID, temporal sidecar schema, model family `sam3.1`, lowercase checkpoint/result digests, at least two source fixtures, and all six acceptance booleans: live inference, exact correlation, per-frame SHA-256 integrity, materially different transfer, no hidden fallback, and temporal material. Extra fields, missing fields, malformed JSON, missing files, digest mismatch, provider/schema drift, uppercase hashes, or any false acceptance field leave both runtime capabilities unregistered.
 
-Successful loads produce a process-issued trusted attestation tracked through a private runtime `WeakSet`. The registry refuses structurally identical caller-created objects, so an ordinary JavaScript caller cannot bypass the retained-file loader merely by supplying an object whose acceptance booleans are all `true`. When the trusted attestation is valid, the host projects the provider-neutral acceptance surface to `FULL / TRANSFER` for that retained evidence ID and registers it together with the already accepted `FULL / TRANSFER` sequence-matte materialization planner. This is digest-bound retained-evidence validation, not a claim of external digital-signature authentication. The gate does not manufacture evidence: on the current workstation it remains closed because no authorized SAM 3.1 checkpoint is available.
+Successful loads produce a process-issued trusted attestation tracked through a private runtime `WeakSet`; structurally similar caller-created objects are not trusted. The actual retained workstation evidence has been loaded through this path and registers `tracking.segmentation.subject_object.accept` plus `tracking.segmentation.sequence_matte_materialize.plan` as `FULL / TRANSFER / R0_READ_ONLY`. This is digest-bound retained-evidence validation, not external digital-signature authentication.
 
 ## Temporal sequence tranche
 
-A second, additive provider surface now implements `SubjectSegmentationSequenceProviderV1` using sidecar schema `editflow.segmentation.sam3.1.sequence.v1`. This does not replace the image-only provider above.
+The additive temporal surface implements `SubjectSegmentationSequenceProviderV1` with sidecar schema `editflow.segmentation.sam3.1.sequence.v1`. It does not replace the image-only provider.
 
-The temporal adapter is structurally proven to:
+The promoted temporal adapter:
 
-- bind exact `requestId`, `sourceId`, `semanticId`, `startFrameIndex`, `startTimestampMs`, frame rate, frame count, and prompt-frame index;
-- accept text, normalized box, and native positive/negative point prompts while still refusing unimplemented `previousArtifactId` refinement;
-- launch through the same shell-free bounded process boundary;
-- require exact source provenance before inference;
-- use the current SAM 3.1 multiplex video-session path (`build_sam3_multiplex_video_predictor`, `start_session`, `add_prompt`, bounded forward/backward `propagate_in_video`, and `close_session`);
-- refuse class-only multi-object output when exact subject identity remains ambiguous;
-- require complete requested frame coverage;
-- write one contiguous numbered PNG sequence, retain per-frame SHA-256 evidence, and re-hash every returned file in TypeScript before making the sequence resolvable;
-- reject path escape, duplicate artifact paths, byte drift, provider mismatch, malformed output, and start-frame correlation drift.
+- binds exact `requestId`, `sourceId`, `semanticId`, `startFrameIndex`, `startTimestampMs`, frame rate, frame count, and prompt-frame index;
+- requires semantic text or a normalized box as the fresh temporal seed;
+- permits positive/negative points as exact candidate-binding cues while refusing point-only fresh temporal seeding and unimplemented `previousArtifactId` refinement;
+- launches through the same shell-free bounded process boundary and requires exact source provenance before inference;
+- uses the current SAM 3.1 multiplex video-session path with bounded frame-window materialization, semantic `add_prompt`, native full video-grounding propagation, and `close_session`;
+- refuses ambiguous multi-object output when exact subject identity cannot be resolved;
+- requires complete requested frame coverage and treats an empty target-ID mask as absent rather than material;
+- writes one contiguous numbered PNG sequence, retains per-frame SHA-256 evidence, and re-hashes every returned file in TypeScript before making the sequence resolvable;
+- rejects path escape, duplicate artifact paths, byte drift, provider mismatch, malformed output, start-frame correlation drift, and prompt-only/blank temporal propagation.
 
-The runtime preserves the prompt-frame object ID across propagation. A temporarily absent tracked object is represented as a zero mask with explicit occlusion evidence rather than silently rebinding to another instance. Sequence-level timing remains source-frame exact; local output frame `0` always corresponds to the declared absolute `startFrameIndex`.
+The runtime preserves the selected semantic object ID across propagation. A temporarily absent target is represented as a zero mask with explicit zero-confidence/occlusion evidence rather than silently rebinding to another instance. Sequence timing remains source-frame exact; local output frame `0` always corresponds to the declared absolute `startFrameIndex`.
 
-The current structural tests also prove exact integration with the protocol-2.5 temporal matte planner. Separate deterministic real-AE proofs now verify that planner through moving sequence import, timing, LUMA matte binding, three frame-specific visual checkpoints, materially different real-footage transfer, save/reopen persistence, a distinct authenticated CEP reconnect, fresh post-reconnect mutation/readback, and restoration of the saved user-project baseline. The planner/materialization surface is therefore `FULL / TRANSFER`; live SAM 3.1 inference remains unpromoted until authorized checkpoint access or an explicit local checkpoint is available and a retained real-video sequence passes the same byte-integrity and downstream materialization gates.
+The protocol-2.5 sequence-matte planner/materialization surface was already `FULL / TRANSFER` from deterministic real-AE proofs. With the retained live SAM 3.1 evidence now accepted by the strict runtime loader, the live temporal segmentation acceptance route is also `FULL / TRANSFER` for sessions configured with that retained evidence. The live promotion harness itself remains read-only and does not mutate the user's After Effects project.

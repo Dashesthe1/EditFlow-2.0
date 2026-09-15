@@ -238,8 +238,11 @@ export class Sam31LocalSegmentationSequenceProviderV1 implements SubjectSegmenta
       return providerError("TEMPORAL_ARTIFACT_REFINEMENT_UNSUPPORTED", "SAM 3.1 temporal provider does not bind previousArtifactId into the native video session yet.");
     }
     const hasPositivePoint = (request.prompt?.positivePoints?.length ?? 0) > 0;
-    if (!request.entityClass && !request.prompt?.boundingBox && !hasPositivePoint) {
-      return providerError("SUBJECT_PROMPT_REQUIRED", "SAM 3.1 temporal segmentation requires text, a normalized subject box, or at least one positive point.");
+    if (!request.entityClass && !request.prompt?.boundingBox) {
+      if (hasPositivePoint) {
+        return providerError("POINT_ONLY_TEMPORAL_PROMPT_UNSUPPORTED", "SAM 3.1 multiplex temporal propagation requires a semantic text or normalized box seed; points may disambiguate that semantic result but are not a validated fresh temporal seed path.");
+      }
+      return providerError("SUBJECT_PROMPT_REQUIRED", "SAM 3.1 temporal segmentation requires semantic text or a normalized subject box.");
     }
     const source = await this.config.sourceResolver.resolve(request);
     if (!source || source.sourceId !== request.sourceId || !nonEmpty(source.absolutePath) || !absolute(source.absolutePath)) {

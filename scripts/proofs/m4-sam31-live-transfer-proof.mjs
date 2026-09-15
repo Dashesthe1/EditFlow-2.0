@@ -66,7 +66,7 @@ const validateFixtureShape = (fixture, index) => {
   if (!Number.isInteger(fixture.promptFrameIndex) || fixture.promptFrameIndex < 0 || fixture.promptFrameIndex >= fixture.frameCount) throw new TypeError(`fixtures[${index}].promptFrameIndex is outside the requested sequence.`);
   if (fixture.boundingBox !== undefined && !validBox(fixture.boundingBox)) throw new TypeError(`fixtures[${index}].boundingBox is invalid.`);
   if (!validPoints(fixture.positivePoints) || !validPoints(fixture.negativePoints)) throw new TypeError(`fixtures[${index}] contains invalid point prompts.`);
-  if (!fixture.entityClass && !fixture.boundingBox && !(fixture.positivePoints?.length > 0)) throw new TypeError(`fixtures[${index}] needs entityClass, boundingBox, or a positive point.`);
+  if (!fixture.entityClass && !fixture.boundingBox) throw new TypeError(`fixtures[${index}] needs entityClass or boundingBox; points may only disambiguate a semantic seed.`);
 };
 
 export const validateLiveProofConfig = async (config) => {
@@ -158,6 +158,19 @@ const defaultSourceProbe = (config, fixture) => {
   return value;
 };
 
+const verifyTemporalMaterial = (result, request, fixtureId) => {
+  const material = new Set((result.frames ?? []).filter((frame) => Number.isInteger(frame?.frameIndex)
+    && typeof frame.confidence === "number" && frame.confidence > 0
+    && typeof frame.occlusion === "number" && frame.occlusion < 1).map((frame) => frame.frameIndex));
+  const before = [...material].some((index) => index < request.promptFrameIndex);
+  const after = [...material].some((index) => index > request.promptFrameIndex);
+  if ((request.promptFrameIndex > 0 && !before)
+    || (request.promptFrameIndex < request.frameCount - 1 && !after)) {
+    throw new Error(`TEMPORAL_MATERIAL_MISSING:${fixtureId}`);
+  }
+  return { materialFrameCount: material.size, materialBeforePrompt: before, materialAfterPrompt: after };
+};
+
 const verifyResolvedSequence = async (verified, hashFile = sha256File) => {
   if (!verified || !Array.isArray(verified.frames) || verified.frames.length !== verified.frameCount) {
     throw new Error("VERIFIED_SEQUENCE_MISSING");
@@ -220,6 +233,7 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
       throw new Error(`EXACT_CORRELATION_FAILED:${fixture.fixtureId}`);
     }
     if (!requiredRuntimeEvidence(result)) throw new Error(`HIDDEN_FALLBACK_OR_PROVENANCE_MISSING:${fixture.fixtureId}`);
+    const temporalMaterial = verifyTemporalMaterial(result, request, fixture.fixtureId);
     const verified = provider.resolveSequence(request.requestId);
     if (!verified || verified.requestId !== request.requestId || verified.sourceId !== request.sourceId
       || verified.semanticId !== request.semanticId || verified.frameCount !== request.frameCount) {
@@ -239,6 +253,7 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
       providerId: result.providerId,
       providerVersion: result.providerVersion,
       evidenceIds: result.evidenceIds,
+      temporalMaterial,
       frames,
       sequenceSha256,
     });
@@ -279,6 +294,7 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
       perFrameSha256Accepted: true,
       materiallyDifferentTransferAccepted: true,
       noHiddenFallbackAccepted: true,
+      temporalMaterialAccepted: true,
     },
     afterEffects: {
       controlActionsIssued: 0,
@@ -301,6 +317,7 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
     perFrameSha256Accepted: true,
     materiallyDifferentTransferAccepted: true,
     noHiddenFallbackAccepted: true,
+    temporalMaterialAccepted: true,
   };
   const proofBytes = Buffer.from(`${JSON.stringify(proof, null, 2)}\n`, "utf8");
   const evidenceBytes = Buffer.from(JSON.stringify(runtimeEvidence), "utf8");
