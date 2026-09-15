@@ -281,7 +281,10 @@ export const acceptSubjectSegmentationSeriesResultV1 = (
   const acceptedFrames: AcceptedSubjectSegmentationV1[] = [];
   let referenceMask: SegmentationMaskDescriptorV1 | null = null;
   for (let index = 0; index < request.frames.length; index += 1) {
-    const accepted = acceptSubjectSegmentationResultV1(request.frames[index], result.frames[index]);
+    const frameRequest = request.frames[index];
+    const frameResult = result.frames[index];
+    if (!frameRequest || !frameResult) return null;
+    const accepted = acceptSubjectSegmentationResultV1(frameRequest, frameResult);
     if (!accepted) return null;
     if (accepted.providerId !== result.providerId || accepted.providerVersion !== result.providerVersion) return null;
     if (request.preferredEncoding !== undefined && accepted.mask.encoding !== request.preferredEncoding) return null;
