@@ -15,7 +15,7 @@ The adapter contract defines these bounded operations:
 - `INSPECT_SESSION` â€” read exact session identity/progress without mutation;
 - `SEED_FOREGROUND` / `SEED_BACKGROUND` â€” evidence-bound normalized layer-space seed strokes;
 - `PROPAGATE_FORWARD` / `PROPAGATE_BACKWARD` â€” bounded propagation over an explicit time range;
-- `REFINE_EDGE` â€” bounded edge-refinement semantics;
+- `REFINE_EDGE` â€” evidence-bound normalized Refine Edge stroke geometry at an explicit frame time;
 - `FREEZE` / `UNFREEZE` â€” explicit session freeze state changes;
 - `REPAIR_STROKE` â€” evidence-bound manual correction after matte failure/drift;
 - `EXPORT_MATTE` â€” explicit stable-ID export to `MASK` or `TRACK_MATTE` output.
@@ -41,7 +41,7 @@ The implementation must fail closed on:
 - missing mutation evidence;
 - non-finite/out-of-range normalized stroke geometry;
 - propagation ranges that are empty, reversed, or unbounded;
-- inferred foreground/background roles;
+- inferred foreground/background/Refine Edge roles or implicit Refine Edge geometry;
 - implicit export destination or unstable output identity;
 - unexpected AE panels, dialogs, state, or target changes.
 
@@ -68,6 +68,8 @@ Speed claims, if made, must measure actual AE action-to-action latency. Routine 
 ## Current boundary
 
 ## Guarded seed and propagation controllers
+
+The `REFINE_EDGE` semantic boundary is now explicit even though execution remains unproven: a request must bind one finite non-negative `atTime` plus a normalized `RotoBrushStrokeV1` whose role is exactly `REFINE_EDGE`. The contract no longer accepts an abstract amount-only payload because that would leave the UI layer to invent where the user intended to paint. This correction does not make the Refine Edge route available; retained native readback proof is still required.
 
 `GuardedRotoBrushSeedControllerV1` performs an exact protocol-2.6 pre-readback, derives both an opaque session revision and an effect-only fingerprint, validates the semantic stroke, invokes at most one verified vision+cursor seed action, then performs one exact post-readback. Success requires the same comp/layer identity, exactly one `ADBE Samurai` effect, a non-truncated property tree, and a changed effect-only fingerprint. A host-project revision change by itself cannot count as Roto Brush success. Both `SEED_FOREGROUND` and `SEED_BACKGROUND` have now passed retained real-AE proof through the same guarded controller. Background seeding is a modifier-held subtract stroke (`Alt` during the guarded drag) against an already seeded native Roto session.
 

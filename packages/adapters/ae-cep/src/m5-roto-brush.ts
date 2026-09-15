@@ -44,11 +44,6 @@ export interface RotoBrushTimeRangeV1 {
   readonly endTime: number;
 }
 
-export interface RotoBrushRefineEdgeV1 {
-  readonly amount: number;
-  readonly radiusNormalized: number;
-}
-
 export interface RotoBrushExportV1 {
   readonly kind: RotoBrushExportKindV1;
   readonly stableId: string;
@@ -61,7 +56,6 @@ export interface RotoBrushActionRequestV1 {
   readonly atTime?: number | null;
   readonly range?: RotoBrushTimeRangeV1 | null;
   readonly stroke?: RotoBrushStrokeV1 | null;
-  readonly refineEdge?: RotoBrushRefineEdgeV1 | null;
   readonly export?: RotoBrushExportV1 | null;
   readonly evidenceIds?: readonly string[];
 }
@@ -71,7 +65,6 @@ export interface RotoBrushSemanticActionV1 extends RotoBrushActionRequestV1 {
   readonly atTime: number | null;
   readonly range: RotoBrushTimeRangeV1 | null;
   readonly stroke: RotoBrushStrokeV1 | null;
-  readonly refineEdge: RotoBrushRefineEdgeV1 | null;
   readonly export: RotoBrushExportV1 | null;
   readonly evidenceIds: readonly string[];
 }
@@ -131,11 +124,10 @@ export const prepareRotoBrushSemanticActionV1 = (input: RotoBrushActionRequestV1
   const atTime = input.atTime ?? null;
   const range = input.range ?? null;
   const stroke = input.stroke ?? null;
-  const refineEdge = input.refineEdge ?? null;
   const exportValue = input.export ?? null;
   const evidenceIds = exactEvidence(input.evidenceIds);
   if (input.operation === "INSPECT_SESSION") {
-    return Object.freeze({ ...input, expectedSessionRevision, atTime, range, stroke, refineEdge, export: exportValue, evidenceIds });
+    return Object.freeze({ ...input, expectedSessionRevision, atTime, range, stroke, export: exportValue, evidenceIds });
   }
   requireMutationGuard(expectedSessionRevision, evidenceIds);
   if (input.operation === "SEED_FOREGROUND" || input.operation === "SEED_BACKGROUND" || input.operation === "REPAIR_STROKE") {
@@ -146,17 +138,15 @@ export const prepareRotoBrushSemanticActionV1 = (input: RotoBrushActionRequestV1
   }
   if (input.operation === "PROPAGATE_FORWARD" || input.operation === "PROPAGATE_BACKWARD") validateRange(range);
   if (input.operation === "REFINE_EDGE") {
-    if (!refineEdge || !finite(refineEdge.amount) || refineEdge.amount < 0 || refineEdge.amount > 1
-      || !finite(refineEdge.radiusNormalized) || refineEdge.radiusNormalized <= 0 || refineEdge.radiusNormalized > 0.25) {
-      throw new RangeError("REFINE_EDGE requires amount in [0,1] and radiusNormalized in (0,0.25].");
-    }
+    if (!finite(atTime) || atTime < 0) throw new RangeError("REFINE_EDGE requires a finite non-negative atTime.");
+    validateStroke(stroke, "REFINE_EDGE");
   }
   if (input.operation === "EXPORT_MATTE") {
     if (!exportValue || (exportValue.kind !== "MASK" && exportValue.kind !== "TRACK_MATTE") || !nonEmptyString(exportValue.stableId)) {
       throw new TypeError("EXPORT_MATTE requires an explicit MASK or TRACK_MATTE stable export identity.");
     }
   }
-  return Object.freeze({ ...input, expectedSessionRevision, atTime, range, stroke, refineEdge, export: exportValue, evidenceIds });
+  return Object.freeze({ ...input, expectedSessionRevision, atTime, range, stroke, export: exportValue, evidenceIds });
 };
 
 const route = (suffix: string) => Object.freeze({

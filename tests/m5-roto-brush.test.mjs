@@ -85,11 +85,17 @@ test("propagation is bounded and fails closed on non-increasing ranges", () => {
 });
 
 test("Refine Edge and export require bounded explicit semantic payloads", () => {
+  const refineStroke = {
+    role: "REFINE_EDGE",
+    pointsNormalized: [{ x: 0.31, y: 0.24 }, { x: 0.34, y: 0.3 }, { x: 0.36, y: 0.36 }],
+    radiusNormalized: 0.02,
+  };
   const refine = prepareRotoBrushSemanticActionV1({
     operation: "REFINE_EDGE", target, expectedSessionRevision: revision,
-    refineEdge: { amount: 0.6, radiusNormalized: 0.02 }, evidenceIds,
+    atTime: 0.5, stroke: refineStroke, evidenceIds,
   });
-  assert.equal(refine.refineEdge.amount, 0.6);
+  assert.equal(refine.atTime, 0.5);
+  assert.equal(refine.stroke.role, "REFINE_EDGE");
   const exported = prepareRotoBrushSemanticActionV1({
     operation: "EXPORT_MATTE", target, expectedSessionRevision: revision,
     export: { kind: "TRACK_MATTE", stableId: "M5_ROTO_MATTE_001" }, evidenceIds,
@@ -97,8 +103,12 @@ test("Refine Edge and export require bounded explicit semantic payloads", () => 
   assert.equal(exported.export.stableId, "M5_ROTO_MATTE_001");
   assert.throws(() => prepareRotoBrushSemanticActionV1({
     operation: "REFINE_EDGE", target, expectedSessionRevision: revision,
-    refineEdge: { amount: 1.2, radiusNormalized: 0.02 }, evidenceIds,
+    stroke: refineStroke, evidenceIds,
   }), /REFINE_EDGE/);
+  assert.throws(() => prepareRotoBrushSemanticActionV1({
+    operation: "REFINE_EDGE", target, expectedSessionRevision: revision,
+    atTime: 0.5, stroke: { ...refineStroke, role: "FOREGROUND" }, evidenceIds,
+  }), /role/);
   assert.throws(() => prepareRotoBrushSemanticActionV1({
     operation: "EXPORT_MATTE", target, expectedSessionRevision: revision,
     export: { kind: "TRACK_MATTE", stableId: "" }, evidenceIds,
