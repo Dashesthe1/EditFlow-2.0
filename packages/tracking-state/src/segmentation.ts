@@ -75,6 +75,49 @@ export interface SubjectSegmentationProviderV1 {
   segment(request: SubjectSegmentationRequestV1): Promise<SubjectSegmentationResultV1>;
 }
 
+/**
+ * Additive temporal segmentation request. Each frame remains an exact V1 request so
+ * accepted single-frame correlation rules are reused rather than weakened.
+ */
+export interface SubjectSegmentationSeriesRequestV1 {
+  readonly seriesId: string;
+  readonly sourceId: string;
+  readonly semanticId: string;
+  readonly entityClass?: string;
+  /** Explicit sequence rate consumed by downstream materialization. */
+  readonly frameRate: number;
+  readonly preferredEncoding?: SegmentationMaskEncodingV1;
+  /** Strictly timestamp-ordered, unique frame requests for one source/subject identity. */
+  readonly frames: readonly SubjectSegmentationRequestV1[];
+}
+
+export interface SubjectSegmentationSeriesResultV1 {
+  readonly seriesId: string;
+  readonly sourceId: string;
+  readonly semanticId: string;
+  readonly entityClass?: string;
+  readonly providerId: string;
+  readonly providerVersion?: string;
+  readonly frameRate: number;
+  readonly frames: readonly SubjectSegmentationResultV1[];
+  readonly evidenceIds: readonly string[];
+}
+
+export interface AcceptedSubjectSegmentationSeriesV1 extends Omit<SubjectSegmentationSeriesResultV1, "frames" | "evidenceIds"> {
+  readonly frames: readonly AcceptedSubjectSegmentationV1[];
+  readonly evidenceIds: readonly string[];
+}
+
+/**
+ * Temporal providers must emit one correlated series. Adapters that merely loop a
+ * single-frame provider do not satisfy this interface unless they can truthfully
+ * preserve the temporal-series guarantees validated below.
+ */
+export interface SubjectSegmentationSeriesProviderV1 {
+  readonly providerId: string;
+  segmentSeries(request: SubjectSegmentationSeriesRequestV1): Promise<SubjectSegmentationSeriesResultV1>;
+}
+
 const finite01 = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 
@@ -107,6 +150,14 @@ const validEncoding = (value: unknown): value is SegmentationMaskEncodingV1 =>
 const validSha256 = (value: unknown): boolean =>
   value === undefined || (typeof value === "string" && /^[a-f0-9]{64}$/.test(value));
 
+const requiredSha256 = (value: unknown): value is string =>
+  typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+
+const sameNormalizedBox = (
+  left: readonly [number, number, number, number],
+  right: readonly [number, number, number, number],
+): boolean => left.length === right.length && left.every((value, index) => value === right[index]);
+
 export const validateSubjectSegmentationRequestV1 = (
   request: SubjectSegmentationRequestV1,
 ): boolean => {
@@ -124,6 +175,39 @@ export const validateSubjectSegmentationRequestV1 = (
     && (!Array.isArray(prompt.positivePoints) || !prompt.positivePoints.every(validPoint))) return false;
   if (prompt.negativePoints !== undefined
     && (!Array.isArray(prompt.negativePoints) || !prompt.negativePoints.every(validPoint))) return false;
+  return true;
+};
+
+export const validateSubjectSegmentationSeriesRequestV1 = (
+  request: SubjectSegmentationSeriesRequestV1,
+): boolean => {
+  if (!request || typeof request !== "object"
+    || !nonEmpty(request.seriesId)
+    || !nonEmpty(request.sourceId)
+    || !nonEmpty(request.semanticId)
+    || typeof request.frameRate !== "number"
+    || !Number.isFinite(request.frameRate)
+    || request.frameRate <= 0
+    || request.frameRate > 99
+    || !Array.isArray(request.frames)
+    || request.frames.length === 0) return false;
+  if (request.entityClass !== undefined && !nonEmpty(request.entityClass)) return false;
+  if (request.preferredEncoding !== undefined && !validEncoding(request.preferredEncoding)) return false;
+
+  const seenRequestIds = new Set<string>();
+  let previousTimestamp = -1;
+  for (const frame of request.frames) {
+    if (!validateSubjectSegmentationRequestV1(frame)) return false;
+    if (frame.sourceId !== request.sourceId || frame.semanticId !== request.semanticId) return false;
+    if (frame.entityClass !== request.entityClass) return false;
+    if (frame.timestampMs <= previousTimestamp) return false;
+    if (seenRequestIds.has(frame.requestId)) return false;
+    if (request.preferredEncoding !== undefined
+      && frame.preferredEncoding !== undefined
+      && frame.preferredEncoding !== request.preferredEncoding) return false;
+    seenRequestIds.add(frame.requestId);
+    previousTimestamp = frame.timestampMs;
+  }
   return true;
 };
 
@@ -165,6 +249,59 @@ export const acceptSubjectSegmentationResultV1 = (
 
   return {
     ...result,
+    evidenceIds,
+  };
+};
+
+/**
+ * Correlate a temporal provider result against every exact frame request. This is
+ * intentionally stricter than single-frame acceptance because downstream native
+ * image-sequence materialization requires homogeneous raster geometry and explicit
+ * integrity evidence for every frame.
+ */
+export const acceptSubjectSegmentationSeriesResultV1 = (
+  request: SubjectSegmentationSeriesRequestV1,
+  result: SubjectSegmentationSeriesResultV1,
+): AcceptedSubjectSegmentationSeriesV1 | null => {
+  if (!validateSubjectSegmentationSeriesRequestV1(request) || !result || typeof result !== "object") return null;
+  if (result.seriesId !== request.seriesId
+    || result.sourceId !== request.sourceId
+    || result.semanticId !== request.semanticId
+    || result.entityClass !== request.entityClass
+    || result.frameRate !== request.frameRate
+    || !nonEmpty(result.providerId)
+    || !Array.isArray(result.frames)
+    || result.frames.length !== request.frames.length
+    || !Array.isArray(result.evidenceIds)) return null;
+  if (result.providerVersion !== undefined && !nonEmpty(result.providerVersion)) return null;
+
+  const evidenceIds = [...new Set(result.evidenceIds.filter(nonEmpty))];
+  if (evidenceIds.length === 0) return null;
+
+  const acceptedFrames: AcceptedSubjectSegmentationV1[] = [];
+  let referenceMask: SegmentationMaskDescriptorV1 | null = null;
+  for (let index = 0; index < request.frames.length; index += 1) {
+    const accepted = acceptSubjectSegmentationResultV1(request.frames[index], result.frames[index]);
+    if (!accepted) return null;
+    if (accepted.providerId !== result.providerId || accepted.providerVersion !== result.providerVersion) return null;
+    if (request.preferredEncoding !== undefined && accepted.mask.encoding !== request.preferredEncoding) return null;
+    if (!requiredSha256(accepted.mask.artifact.sha256)) return null;
+
+    if (referenceMask === null) {
+      referenceMask = accepted.mask;
+    } else if (accepted.mask.encoding !== referenceMask.encoding
+      || accepted.mask.width !== referenceMask.width
+      || accepted.mask.height !== referenceMask.height
+      || accepted.mask.artifact.contentType !== referenceMask.artifact.contentType
+      || !sameNormalizedBox(accepted.mask.boundsNormalized, referenceMask.boundsNormalized)) {
+      return null;
+    }
+    acceptedFrames.push(accepted);
+  }
+
+  return {
+    ...result,
+    frames: acceptedFrames,
     evidenceIds,
   };
 };
