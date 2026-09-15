@@ -1,4 +1,6 @@
 param(
+  [ValidateSet("FOREGROUND","BACKGROUND")]
+  [string]$SeedRole = "FOREGROUND",
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [string]$SourcePath = "C:\Users\Shadow\Downloads\Main Clips\Peter Parker - The Amazing Spider-Man [2012] - [REMUX 4K HEVC-H265] - chaszq-00.51.24.562-00.51.42.047.mp4",
   [int]$TimeoutSeconds = 20
@@ -14,7 +16,8 @@ $NodeProof = Join-Path $RepoRoot "scripts\m5-roto-brush-live-proof.mjs"
 $PythonPath = "C:\Users\Shadow\editgpt\.venv\Scripts\python.exe"
 $VisualScript = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime\editgpt_roto_brush_seed_visual_driver.py"
 $VisualWorkdir = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime"
-$ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m5-roto-brush-live-proof"
+$ArtifactDirName = if ($SeedRole -eq "BACKGROUND") { "m5-roto-brush-background-live-proof" } else { "m5-roto-brush-live-proof" }
+$ArtifactDir = Join-Path $RepoRoot ("proofs\artifacts\" + $ArtifactDirName)
 $EvidenceDir = Join-Path $ArtifactDir "visual-evidence"
 $LiveResultPath = Join-Path $ArtifactDir "live-result.json"
 $ResultPath = Join-Path $ArtifactDir "result.json"
@@ -50,7 +53,7 @@ function Test-SemanticReady {
   catch { return $false }
 }
 $Classification = "INFRASTRUCTURE_FAILURE"
-$Message = "M5 Roto Brush live foreground-seed proof did not complete."
+$Message = ("M5 Roto Brush live " + $SeedRole.ToLowerInvariant() + "-seed proof did not complete.")
 $BaselineAePids = @(); $AfterAePids = @(); $SameAeProcess = $false
 $Enter = $null; $Fixture = $null; $Live = $null; $Restore = $null
 $PrimaryFailure = $null; $RestoreFailure = $null; $RestoreAttempted = $false
@@ -89,12 +92,13 @@ try {
       --visual-script $VisualScript `
       --visual-workdir $VisualWorkdir `
       --evidence-dir $EvidenceDir `
+      --seed-role $SeedRole `
       --timeout-ms ($TimeoutSeconds * 1000)
     $NodeExit = $LASTEXITCODE
   } finally { Pop-Location }
   if (-not (Test-Path $LiveResultPath -PathType Leaf)) { throw "M5 live controller exited without a result (exit $NodeExit)." }
   $Live = Get-Content $LiveResultPath -Raw | ConvertFrom-Json
-  if ($Live.proofId -ne "M5_ROTO_BRUSH_FOREGROUND_SEED_REAL_AE_V1") { throw "Unexpected M5 live proof result identity." }
+  if ($Live.proofId -ne ("M5_ROTO_BRUSH_" + $SeedRole + "_SEED_REAL_AE_V1")) { throw "Unexpected M5 live proof result identity." }
   if ($NodeExit -ne 0 -or $Live.ok -ne $true) {
     $Reason = if ($Live.failure) { [string]$Live.failure } else { "M5 guarded live seed controller failed." }
     throw $Reason
@@ -115,7 +119,7 @@ try {
   $SameAeProcess = (($BaselineAePids -join ',') -eq ($AfterAePids -join ',')) -and $BaselineAePids.Count -eq 1
   if ($null -eq $PrimaryFailure -and $null -eq $RestoreFailure -and $Live -and $Live.ok -eq $true -and $RestoreAttempted -and $Restore.ok -eq $true -and $SameAeProcess) {
     $Classification = "PASS"
-    $Message = "M5 live Roto Brush foreground seed passed with native ADBE Samurai change, bounded action latency, exact restore, and one warm AE process."
+    $Message = ("M5 live Roto Brush " + $SeedRole.ToLowerInvariant() + " seed passed with native ADBE Samurai change, bounded action latency, exact restore, and one warm AE process.")
   } else {
     if ($null -ne $RestoreFailure) { $Message = $RestoreFailure }
     elseif ($null -ne $PrimaryFailure) { $Message = $PrimaryFailure }
@@ -123,7 +127,7 @@ try {
     else { $Message = "M5 live proof did not satisfy all retained gates." }
   }
   $Result = [ordered]@{
-    proofId = "M5_ROTO_BRUSH_FOREGROUND_SEED_RETAINED_REAL_AE_V1"
+    proofId = ("M5_ROTO_BRUSH_" + $SeedRole + "_SEED_RETAINED_REAL_AE_V1")
     classification = $Classification
     ok = ($Classification -eq "PASS")
     message = $Message

@@ -27,7 +27,7 @@ test("M5 Roto Brush readback fallback is fixed protocol-2.6 data dispatch", asyn
   assert.match(jsx, /EditFlow2_dispatch\(requestText\)/);
   assert.doesNotMatch(jsx, /eval\(requestText\)|evalScript/);
 });
-test("M5 foreground seed fast path normalizes tool state and enforces retained speed proof", async () => {
+test("M5 seed fast path normalizes tool state and enforces retained speed proof", async () => {
   const py = await read("packages/adapters/ae-cep/runtime/editgpt_roto_brush_seed_visual_driver.py");
   const node = await read("scripts/m5-roto-brush-live-proof.mjs");
   assert.match(py, /hands_keypress", \{"keys": \["V"\]\}/);
@@ -36,7 +36,7 @@ test("M5 foreground seed fast path normalizes tool state and enforces retained s
   assert.match(py, /target_patch_change\(selection_image, tool_image, toolbar_bounds\)/);
   assert.match(py, /selection_to_roto_family/);
   assert.match(py, /roto_family_to_draw_seed/);
-  assert.match(node, /gaps\.every\(\(value\) => value <= 3000\)/);
+  assert.match(node, /allGaps\.every\(\(value\) => value <= 3000\)/);
   assert.match(node, /finalEffectMatchCount === 1/);
   assert.match(node, /baselineEffectFingerprint !== controllerResult\.finalEffectFingerprint/);
 });

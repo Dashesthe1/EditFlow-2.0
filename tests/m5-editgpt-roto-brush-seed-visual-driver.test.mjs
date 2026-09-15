@@ -24,18 +24,18 @@ const request = {
   expectedTool: "ROTO_BRUSH",
   evidenceIds: ["EVIDENCE_1"],
 };
-const binding = () => ({
-  operation: request.operation,
-  compHostId: request.compHostId,
-  layerHostId: request.layerHostId,
-  expectedCompName: request.expectedCompName,
-  expectedLayerName: request.expectedLayerName,
-  expectedSessionRevision: request.expectedSessionRevision,
-  expectedEffectMatchCount: request.expectedEffectMatchCount,
-  atTime: request.atTime,
-  stroke: request.stroke,
-  expectedTool: request.expectedTool,
-  evidenceIds: request.evidenceIds,
+const binding = (value = request) => ({
+  operation: value.operation,
+  compHostId: value.compHostId,
+  layerHostId: value.layerHostId,
+  expectedCompName: value.expectedCompName,
+  expectedLayerName: value.expectedLayerName,
+  expectedSessionRevision: value.expectedSessionRevision,
+  expectedEffectMatchCount: value.expectedEffectMatchCount,
+  atTime: value.atTime,
+  stroke: value.stroke,
+  expectedTool: value.expectedTool,
+  evidenceIds: value.evidenceIds,
 });
 const processResult = (stdout, extra = {}) => ({
   exitCode: 0, signal: null, stdout, stderr: "", timedOut: false, ...extra,
@@ -55,7 +55,7 @@ test("Roto Brush seed visual driver launches a fixed correlated foreground sidec
   assert.equal(result.status, "COMPLETED");
   assert.equal(result.visualEvidenceId, "ROTO_EVIDENCE");
   assert.deepEqual(result.aeActionToActionLatenciesMs, [420]);
-  assert.deepEqual(driver.supportedRoles, ["FOREGROUND"]);
+  assert.deepEqual(driver.supportedRoles, ["FOREGROUND", "BACKGROUND"]);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].executablePath, config.executablePath);
   const payload = JSON.parse(calls[0].args[2]);
@@ -65,17 +65,26 @@ test("Roto Brush seed visual driver launches a fixed correlated foreground sidec
   assert.deepEqual(payload.evidenceIds, ["EVIDENCE_1"]);
 });
 
-test("Roto Brush seed visual driver refuses background before launching the sidecar", async () => {
-  let calls = 0;
-  const driver = new EditGptRotoBrushSeedVisualDriverV1(config, { async run() { calls += 1; return processResult(""); } });
-  const result = await driver.seed({
+test("Roto Brush seed visual driver launches correlated background sidecar", async () => {
+  const calls = [];
+  const backgroundRequest = {
     ...request,
     operation: "SEED_BACKGROUND",
     stroke: { ...request.stroke, role: "BACKGROUND" },
-  });
-  assert.equal(result.status, "REFUSED");
-  assert.match(result.detail, /foreground/i);
-  assert.equal(calls, 0);
+  };
+  const driver = new EditGptRotoBrushSeedVisualDriverV1(config, { async run(invocation) {
+    calls.push(invocation);
+    return processResult(JSON.stringify({
+      status: "COMPLETED", visualEvidenceId: "ROTO_BACKGROUND_EVIDENCE", guardedVisualTargetVerified: true,
+      nativeStrokeAttempted: true, targetBinding: binding(backgroundRequest), aeActionToActionLatenciesMs: [410],
+    }));
+  } });
+  const result = await driver.seed(backgroundRequest);
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(calls.length, 1);
+  const payload = JSON.parse(calls[0].args[2]);
+  assert.equal(payload.operation, "SEED_BACKGROUND");
+  assert.equal(payload.stroke.role, "BACKGROUND");
 });
 test("Roto Brush seed visual driver fails closed on mismatched or unverified sidecar output", async () => {
   const mismatch = new EditGptRotoBrushSeedVisualDriverV1(config, { async run() {
@@ -99,19 +108,25 @@ test("Roto Brush seed visual driver fails closed on mismatched or unverified sid
   } });
   assert.match((await timed.seed(request)).detail, /timed out/);
 });
-test("Roto Brush foreground sidecar is target-bound, normalized, popup-aware, and uses guarded drag", async () => {
+test("Roto Brush seed sidecar is target-bound, normalized, popup-aware, and uses guarded modifier drag", async () => {
   const ts = await readFile("packages/adapters/ae-cep/src/m5-editgpt-roto-brush-seed-visual-driver.ts", "utf8");
   const py = await readFile("packages/adapters/ae-cep/runtime/editgpt_roto_brush_seed_visual_driver.py", "utf8");
-  assert.match(ts, /supportedRoles = Object\.freeze\(\["FOREGROUND"\]/);
+  assert.match(ts, /supportedRoles = Object\.freeze\(\["FOREGROUND", "BACKGROUND"\]/);
   assert.match(ts, /expectedSessionRevision/);
   assert.match(ts, /JSON\.stringify\(binding\["stroke"\]\)/);
   assert.match(py, /pointsNormalized/);
   assert.match(py, /locate_layer_canvas/);
   assert.match(py, /hands_computer_action/);
   assert.match(py, /"type": "drag"/);
+  assert.match(py, /stroke_modifiers = \["ALT"\]/);
+  assert.match(py, /"modifiers": stroke_modifiers/);
   assert.match(py, /\["ALT", "W"\]/);
   assert.match(py, /inspect_error_popup/);
   assert.match(py, /acknowledgementOnly/);
+  assert.match(py, /isModalDialog/);
+  assert.match(py, /blocksEditorUI/);
+  assert.match(py, /modalFalsePositiveRejected/);
+  assert.match(py, /Local runtime unavailable: Failed to fetch/);
   assert.match(py, /aeActionToActionLatenciesMs/);
   assert.doesNotMatch(py, /pyautogui|SetCursorPos|C:\\\\Users\\\\Shadow/);
 });

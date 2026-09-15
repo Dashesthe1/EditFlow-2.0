@@ -9,6 +9,7 @@ import {
   deriveRotoBrushSessionRevisionV26,
 } from "./m5-roto-brush-readback.js";
 import type {
+  AeRotoBrushPropertyNodeV26,
   AeRotoBrushRequestV26,
   AeRotoBrushResponseV26,
 } from "./protocol-v2_6.js";
@@ -22,7 +23,8 @@ export type RotoBrushSeedEscalationV1 =
   | "VISUAL_ACTION_REFUSED"
   | "POST_TARGET_DRIFT"
   | "ROTO_EFFECT_IDENTITY_NOT_ESTABLISHED"
-  | "NATIVE_ROTO_CHANGE_NOT_OBSERVED";
+  | "NATIVE_ROTO_CHANGE_NOT_OBSERVED"
+  | "NATIVE_SEED_ROLE_NOT_OBSERVED";
 
 export interface RotoBrushReadbackTransportV26 {
   dispatch(request: AeRotoBrushRequestV26): Promise<AeRotoBrushResponseV26>;
@@ -93,6 +95,17 @@ const exactEffectState = (response: AeRotoBrushResponseV26): boolean => {
     && (readback.effectMatchCount === 0 || readback.effectMatchCount === 1);
 };
 
+const nativeSeedRoleCount = (response: AeRotoBrushResponseV26, role: "FOREGROUND" | "BACKGROUND"): number => {
+  const effect = response.readback?.effect;
+  if (!effect) return 0;
+  const prefix = role === "FOREGROUND" ? "Foreground" : "Background";
+  const countNodes = (nodes: readonly AeRotoBrushPropertyNodeV26[]): number => nodes.reduce((count, node) => {
+    const own = node.matchName === "ADBE Paint Atom" && node.name.trim().startsWith(prefix) ? 1 : 0;
+    return count + own + countNodes(node.children);
+  }, 0);
+  return countNodes(effect.properties);
+};
+
 const readback = async (
   transport: RotoBrushReadbackTransportV26,
   input: { compHostId: number; layerHostId: number },
@@ -133,6 +146,8 @@ export class GuardedRotoBrushSeedControllerV1 {
     const before = await readback(this.transport, input, "BEFORE");
     if (!exactTarget(before, input)) return this.#escalate(input.operation, "TARGET_UNAVAILABLE", before);
     if (!exactEffectState(before)) return this.#escalate(input.operation, "AMBIGUOUS_OR_TRUNCATED_EFFECT_STATE", before);
+    const expectedRole = input.operation === "SEED_FOREGROUND" ? "FOREGROUND" : "BACKGROUND";
+    const baselineSeedRoleCount = nativeSeedRoleCount(before, expectedRole);
 
     let baselineSessionRevision: string;
     let baselineEffectFingerprint: string;
@@ -156,7 +171,6 @@ export class GuardedRotoBrushSeedControllerV1 {
       stroke: input.stroke,
       evidenceIds: input.evidenceIds,
     });
-    const expectedRole = input.operation === "SEED_FOREGROUND" ? "FOREGROUND" : "BACKGROUND";
     const driver = this.visualDriver;
     if (!driver || !driver.verifiedVision || !driver.verifiedCursorControl) {
       return this.#escalate(input.operation, "VISUAL_DRIVER_UNAVAILABLE", before, baselineSessionRevision, baselineEffectFingerprint);
@@ -199,6 +213,9 @@ export class GuardedRotoBrushSeedControllerV1 {
     const finalEffectFingerprint = deriveRotoBrushEffectFingerprintV26(after);
     if (finalEffectFingerprint === baselineEffectFingerprint) {
       return this.#escalate(input.operation, "NATIVE_ROTO_CHANGE_NOT_OBSERVED", after, baselineSessionRevision, baselineEffectFingerprint, visual.visualEvidenceId ?? null, latencies, finalSessionRevision, finalEffectFingerprint);
+    }
+    if (nativeSeedRoleCount(after, expectedRole) <= baselineSeedRoleCount) {
+      return this.#escalate(input.operation, "NATIVE_SEED_ROLE_NOT_OBSERVED", after, baselineSessionRevision, baselineEffectFingerprint, visual.visualEvidenceId ?? null, latencies, finalSessionRevision, finalEffectFingerprint);
     }
     return {
       route: "LOCAL",

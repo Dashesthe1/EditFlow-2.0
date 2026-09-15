@@ -74,7 +74,7 @@ const parseResult = (raw: string, request: RotoBrushSeedVisualRequestV1): RotoBr
   return {
     status: "COMPLETED",
     visualEvidenceId: evidence,
-    detail: typeof root["detail"] === "string" ? String(root["detail"]) : "Verified Roto Brush foreground seed stroke completed.",
+    detail: typeof root["detail"] === "string" ? String(root["detail"]) : "Verified Roto Brush seed stroke completed.",
     aeActionToActionLatenciesMs: latencies,
   };
 };
@@ -83,7 +83,7 @@ export class EditGptRotoBrushSeedVisualDriverV1 implements RotoBrushSeedVisualDr
   readonly driverId = "editgpt.eyes-hands.roto-brush-seed.v1";
   readonly verifiedVision = true;
   readonly verifiedCursorControl = true;
-  readonly supportedRoles = Object.freeze(["FOREGROUND"] as const);
+  readonly supportedRoles = Object.freeze(["FOREGROUND", "BACKGROUND"] as const);
   readonly config: Required<Omit<EditGptRotoBrushSeedVisualDriverConfigV1, "evidenceDirectory">> & {
     readonly evidenceDirectory: string | null;
   };
@@ -106,8 +106,10 @@ export class EditGptRotoBrushSeedVisualDriverV1 implements RotoBrushSeedVisualDr
   }
 
   async seed(input: RotoBrushSeedVisualRequestV1): Promise<RotoBrushSeedVisualResultV1> {
-    if (input.operation !== "SEED_FOREGROUND" || input.stroke.role !== "FOREGROUND") {
-      return refuse("Only foreground Roto Brush seed strokes are proven for this visual driver tranche.");
+    const expectedRole = input.operation === "SEED_FOREGROUND" ? "FOREGROUND"
+      : input.operation === "SEED_BACKGROUND" ? "BACKGROUND" : null;
+    if (!expectedRole || input.stroke.role !== expectedRole) {
+      return refuse("Roto Brush seed operation and stroke role must match a proven seed role.");
     }
     if (input.expectedTool !== "ROTO_BRUSH" || !input.expectedSessionRevision || input.evidenceIds.length === 0) {
       return refuse("Roto Brush seed request is missing the exact tool, revision, or retained evidence guard.");

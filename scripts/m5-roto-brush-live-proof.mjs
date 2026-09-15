@@ -25,6 +25,8 @@ const visualScript = required("--visual-script");
 const visualWorkdir = required("--visual-workdir");
 const evidenceDir = required("--evidence-dir");
 const timeoutMs = Number(arg("--timeout-ms") ?? "15000");
+const seedRole = String(arg("--seed-role") ?? "FOREGROUND").toUpperCase();
+if (seedRole !== "FOREGROUND" && seedRole !== "BACKGROUND") throw new Error("--seed-role must be FOREGROUND or BACKGROUND");
 const requestPath = path.join(os.tmpdir(), "EditFlow2-m5-roto-brush-readback-request.json");
 const responsePath = path.join(os.tmpdir(), "EditFlow2-m5-roto-brush-readback-response.json");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,7 +82,8 @@ const visualDriver = new EditGptRotoBrushSeedVisualDriverV1({
 });
 const controller = new GuardedRotoBrushSeedControllerV1(transport, visualDriver);
 const proof = {
-  proofId: "M5_ROTO_BRUSH_FOREGROUND_SEED_REAL_AE_V1",
+  proofId: `M5_ROTO_BRUSH_${seedRole}_SEED_REAL_AE_V1`,
+  seedRole,
   ok: false,
   status: "FAILED",
   fixture: {
@@ -92,39 +95,49 @@ const proof = {
     height: fixture.height,
     atTime: fixture.atTime,
   },
+  bootstrap: null,
   controller: null,
   typedReadbackRoundtripsMs: [],
   speed: { maxAeActionGapMs: null, withinThreeSecondCeiling: false, subSecondAll: false },
   failure: null,
 };
 try {
-  const controllerResult = await controller.run({
-    operation: "SEED_FOREGROUND",
+  const runSeed = (operation, role, points, evidenceId) => controller.run({
+    operation,
     compHostId: fixture.compHostId,
     layerHostId: fixture.layerHostId,
     expectedCompName: fixture.compName,
     expectedLayerName: fixture.layerName,
     atTime: fixture.atTime,
-    stroke: {
-      role: "FOREGROUND",
-      pointsNormalized: [
-        { x: 0.48, y: 0.36 },
-        { x: 0.50, y: 0.46 },
-        { x: 0.52, y: 0.56 },
-      ],
-      radiusNormalized: 0.035,
-    },
-    evidenceIds: ["M5:ROTO:FOREGROUND:REAL_AE:001"],
+    stroke: { role, pointsNormalized: points, radiusNormalized: 0.035 },
+    evidenceIds: [evidenceId],
   });
+  const allGaps = [];
+  if (seedRole === "BACKGROUND") {
+    const bootstrap = await runSeed(
+      "SEED_FOREGROUND", "FOREGROUND",
+      [{ x: 0.48, y: 0.36 }, { x: 0.50, y: 0.46 }, { x: 0.52, y: 0.56 }],
+      "M5:ROTO:BACKGROUND:BOOTSTRAP_FOREGROUND:001",
+    );
+    proof.bootstrap = bootstrap;
+    allGaps.push(...bootstrap.aeActionToActionLatenciesMs);
+    if (bootstrap.route !== "LOCAL" || bootstrap.finalEffectMatchCount !== 1) {
+      throw new Error(bootstrap.escalationReason || "Background proof foreground bootstrap failed.");
+    }
+  }
+  const operation = seedRole === "BACKGROUND" ? "SEED_BACKGROUND" : "SEED_FOREGROUND";
+  const points = seedRole === "BACKGROUND"
+    ? [{ x: 0.70, y: 0.34 }, { x: 0.72, y: 0.44 }, { x: 0.74, y: 0.54 }]
+    : [{ x: 0.48, y: 0.36 }, { x: 0.50, y: 0.46 }, { x: 0.52, y: 0.56 }];
+  const controllerResult = await runSeed(operation, seedRole, points, `M5:ROTO:${seedRole}:REAL_AE:001`);
   proof.controller = controllerResult;
   proof.typedReadbackRoundtripsMs = transport.roundtripsMs;
-  const gaps = Array.isArray(controllerResult.aeActionToActionLatenciesMs)
-    ? controllerResult.aeActionToActionLatenciesMs : [];
-  const maxGap = gaps.length ? Math.max(...gaps) : null;
+  allGaps.push(...controllerResult.aeActionToActionLatenciesMs);
+  const maxGap = allGaps.length ? Math.max(...allGaps) : null;
   proof.speed = {
     maxAeActionGapMs: maxGap,
-    withinThreeSecondCeiling: gaps.length > 0 && gaps.every((value) => value <= 3000),
-    subSecondAll: gaps.length > 0 && gaps.every((value) => value < 1000),
+    withinThreeSecondCeiling: allGaps.length > 0 && allGaps.every((value) => value <= 3000),
+    subSecondAll: allGaps.length > 0 && allGaps.every((value) => value < 1000),
   };
   proof.ok = controllerResult.route === "LOCAL"
     && controllerResult.finalEffectMatchCount === 1

@@ -31,8 +31,9 @@ DRIVER_ID = "editgpt.eyes-hands.roto-brush-seed.v1"
 def validate_request(value: dict) -> dict:
     if value.get("schema") != SCHEMA:
         raise ValueError("unsupported Roto Brush seed request schema")
-    if value.get("operation") != "SEED_FOREGROUND":
-        raise ValueError("only SEED_FOREGROUND is proven in this visual driver tranche")
+    operation = value.get("operation")
+    if operation not in {"SEED_FOREGROUND", "SEED_BACKGROUND"}:
+        raise ValueError("operation must be SEED_FOREGROUND or SEED_BACKGROUND")
     for key in ("compHostId", "layerHostId"):
         if not isinstance(value.get(key), int) or value[key] <= 0:
             raise ValueError(f"{key} must be a positive integer")
@@ -49,11 +50,12 @@ def validate_request(value: dict) -> dict:
     evidence = value.get("evidenceIds")
     if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item.strip() for item in evidence):
         raise ValueError("evidenceIds must contain at least one non-empty string")
-    validate_stroke(value.get("stroke"))
+    expected_role = "FOREGROUND" if operation == "SEED_FOREGROUND" else "BACKGROUND"
+    validate_stroke(value.get("stroke"), expected_role)
     return value
-def validate_stroke(stroke) -> None:
-    if not isinstance(stroke, dict) or stroke.get("role") != "FOREGROUND":
-        raise ValueError("stroke.role must be FOREGROUND")
+def validate_stroke(stroke, expected_role: str) -> None:
+    if not isinstance(stroke, dict) or stroke.get("role") != expected_role:
+        raise ValueError(f"stroke.role must be {expected_role}")
     points = stroke.get("pointsNormalized")
     if not isinstance(points, list) or len(points) < 2 or len(points) > 128:
         raise ValueError("stroke requires between 2 and 128 normalized points")
@@ -169,17 +171,18 @@ def screen_stroke_path(meta: dict, hands_status: dict, encoded: list[dict[str, i
         sx, sy = transform.encoded_to_screen(point["x"], point["y"])
         result.append({"x": sx, "y": sy})
     return result
-def inspect_error_popup(qwen, image) -> dict:
+def inspect_error_popup(qwen, image, source: str = "m5_roto_seed_modal_inspection") -> dict:
     observation = qwen.observe(
         image,
         prompt=(
-            "Inspect only the visible Adobe After Effects UI for a modal error/warning dialog. "
-            "Return only JSON with keys visible, message, acknowledgementOnly, buttonLabel, confidence. "
-            "message must transcribe the visible error text briefly and exactly enough to diagnose it. "
-            "acknowledgementOnly is true only when the dialog has a single harmless OK or Close acknowledgement action."
+            "Inspect only the visible Adobe After Effects UI for a SEPARATE MODAL error or warning dialog that overlays and blocks normal editor interaction. "
+            "A docked panel, inline banner, status message, Effect Controls content, tooltip, tab, or the EditFlow Bridge message 'Local runtime unavailable: Failed to fetch' is NOT a modal dialog. "
+            "Return only JSON with keys visible, isModalDialog, blocksEditorUI, message, acknowledgementOnly, buttonLabel, confidence. "
+            "Set visible=false unless a distinct floating dialog box is visibly present. message must transcribe visible dialog text briefly and exactly enough to diagnose it. "
+            "acknowledgementOnly is true only when that same modal dialog has a single harmless OK or Close acknowledgement action."
         ),
-        source="m5_roto_seed_modal_inspection",
-        max_tokens=180,
+        source=source,
+        max_tokens=220,
         max_width=image.shape[1],
         jpeg_quality=92,
     )
@@ -188,19 +191,46 @@ def inspect_error_popup(qwen, image) -> dict:
     return payload
 
 
+def qualified_modal(popup: dict) -> bool:
+    try:
+        confidence = float(popup.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    message = str(popup.get("message") or "").strip()
+    return (
+        bool(popup.get("visible"))
+        and bool(popup.get("isModalDialog"))
+        and bool(popup.get("blocksEditorUI"))
+        and confidence >= 0.90
+        and len(message) >= 3
+    )
+
+
 async def refuse_modal_if_present(eyes, hands, qwen, output: Path, image, proof: dict) -> None:
     popup = inspect_error_popup(qwen, image)
     proof["modalInspection"] = popup
     if not bool(popup.get("visible")):
         return
-    message = str(popup.get("message") or "After Effects displayed an error dialog")
+    if not qualified_modal(popup):
+        confirmation = inspect_error_popup(qwen, image, "m5_roto_seed_modal_confirmation")
+        proof["modalConfirmation"] = confirmation
+        if not qualified_modal(confirmation):
+            proof["modalFalsePositiveRejected"] = True
+            return
+        popup = confirmation
+    message = str(popup.get("message") or "After Effects displayed an error dialog").strip()
     label = str(popup.get("buttonLabel") or "").strip()
     if bool(popup.get("acknowledgementOnly")) and label.lower() in {"ok", "close"}:
-        proof["modalAcknowledgement"] = await guarded_click_target(
-            eyes, hands, qwen, output,
-            f"Point to the single {literal_label(label)} acknowledgement button in the currently visible After Effects error dialog.",
-            "roto_seed_modal_ack",
-        )
+        try:
+            proof["modalAcknowledgement"] = await guarded_click_target(
+                eyes, hands, qwen, output,
+                f"Point to the single {literal_label(label)} acknowledgement button in the currently visible separate modal After Effects dialog containing {literal_label(message)}.",
+                "roto_seed_modal_ack",
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"After Effects modal error after Roto Brush seed: {message}; acknowledgement could not be safely grounded: {exception_detail(exc)}"
+            ) from exc
     raise RuntimeError(f"After Effects modal error after Roto Brush seed: {message}")
 async def run(request: dict, output: Path) -> dict:
     request = validate_request(request)
@@ -294,15 +324,17 @@ async def run(request: dict, output: Path) -> dict:
             stroke_started = time.perf_counter()
             latencies.append(max(0.0, (stroke_started - tool_finished) * 1000.0))
             proof["actionLatencyLabels"] = ["selection_to_roto_family", "roto_family_to_draw_seed"]
+            stroke_modifiers = ["ALT"] if request["operation"] == "SEED_BACKGROUND" else []
             dragged = await hands.call_tool(
-                "hands_computer_action", {"action": {"type": "drag", "button": "left", "path": screen_path}}
+                "hands_computer_action", {"action": {"type": "drag", "button": "left", "path": screen_path, "modifiers": stroke_modifiers}}
             )
             stroke_finished = time.perf_counter()
             if dragged.is_error:
-                raise RuntimeError("Hands could not draw the verified Roto Brush foreground stroke")
+                raise RuntimeError(f"Hands could not draw the verified Roto Brush {request['stroke']['role'].lower()} stroke")
             proof["strokeAction"] = {
                 "encodedPath": encoded,
                 "screenPath": screen_path,
+                "modifiers": stroke_modifiers,
                 "toolActionDurationMs": max(0.0, (tool_finished - tool_started) * 1000.0),
                 "strokeDurationMs": max(0.0, (stroke_finished - stroke_started) * 1000.0),
                 "actionToActionLatencyMs": latencies[-1],
@@ -314,12 +346,12 @@ async def run(request: dict, output: Path) -> dict:
             final_bound, final_evidence = verify_target_binding(qwen, final_image, request, "m5_roto_seed_binding_after")
             proof["targetBindingAfter"] = final_evidence
             if not final_bound:
-                raise RuntimeError("typed Roto Brush target changed after foreground seed stroke")
+                raise RuntimeError("typed Roto Brush target changed after seed stroke")
             evidence_path = str((output / "after_seed.jpg").resolve())
             return {
                 "status": "COMPLETED",
                 "visualEvidenceId": evidence_path,
-                "detail": "Verified foreground Roto Brush seed stroke attempted through EditGPT Eyes/Hands.",
+                "detail": f"Verified {request['stroke']['role'].lower()} Roto Brush seed stroke attempted through EditGPT Eyes/Hands.",
                 "guardedVisualTargetVerified": True,
                 "nativeStrokeAttempted": True,
                 "targetBinding": target_binding(request),
@@ -333,7 +365,7 @@ async def run(request: dict, output: Path) -> dict:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="EditFlow guarded EditGPT Roto Brush foreground seed visual driver")
+    parser = argparse.ArgumentParser(description="EditFlow guarded EditGPT Roto Brush seed visual driver")
     parser.add_argument("--request-json", required=True)
     parser.add_argument("--evidence-dir", default="proofs/artifacts/m5-roto-brush-seed-visual-runtime")
     return parser.parse_args()

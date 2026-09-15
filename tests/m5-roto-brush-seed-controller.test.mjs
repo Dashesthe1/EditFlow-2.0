@@ -19,17 +19,22 @@ const stroke = {
   pointsNormalized: [{ x: 0.4, y: 0.35 }, { x: 0.45, y: 0.42 }],
   radiusNormalized: 0.03,
 };
-const property = (value) => ({
-  index: 1, name: "Strokes", matchName: "ADBE Roto Brush Strokes", propertyType: 1, propertyValueType: 1,
-  numProperties: 0, numKeys: 0, canSetExpression: false, expressionEnabled: null, value, children: [],
+const strokeAtom = (value, role = "FOREGROUND") => ({
+  index: 1, name: `${role === "FOREGROUND" ? "Foreground" : "Background"} 1`, matchName: "ADBE Paint Atom",
+  propertyType: 2, propertyValueType: null, numProperties: 0, numKeys: 0,
+  canSetExpression: false, expressionEnabled: null, value, children: [],
 });
-const readbackValue = ({ effect = false, value = null, compName = "Roto Proof", layerName = "Subject", truncated = false, effectCount = effect ? 1 : 0 } = {}) => ({
+const property = (value, role = "FOREGROUND") => ({
+  index: 1, name: "Strokes", matchName: "ADBE Samurai Strokes Group", propertyType: 1, propertyValueType: 1,
+  numProperties: 1, numKeys: 0, canSetExpression: false, expressionEnabled: null, value: null, children: [strokeAtom(value, role)],
+});
+const readbackValue = ({ effect = false, value = null, role = "FOREGROUND", compName = "Roto Proof", layerName = "Subject", truncated = false, effectCount = effect ? 1 : 0 } = {}) => ({
   comp: { stableId: "COMP", hostId: 10, name: compName, width: 1920, height: 1080, time: 0.25 },
   layer: { stableId: "LAYER", hostId: 20, name: layerName, index: 1 },
   rotoBrushMatchName: "ADBE Samurai",
   effectMatchCount: effectCount,
-  effect: effect ? { effectIndex: 1, name: "Roto Brush & Refine Edge", matchName: "ADBE Samurai", enabled: true, numProperties: 1, properties: [property(value)] } : null,
-  propertyNodeCount: effect ? 1 : 0,
+  effect: effect ? { effectIndex: 1, name: "Roto Brush & Refine Edge", matchName: "ADBE Samurai", enabled: true, numProperties: 1, properties: [property(value, role)] } : null,
+  propertyNodeCount: effect ? 2 : 0,
   propertyTreeTruncated: truncated,
 });
 const response = (readback, hostProjectRevision = 10) => ({
@@ -86,6 +91,34 @@ test("foreground seed binds typed pre-readback, one visual action, and changed n
   assert.deepEqual(result.aeActionToActionLatenciesMs, [120, 180]);
   assert.equal(result.finalEffectMatchCount, 1);
   assert.notEqual(result.baselineEffectFingerprint, result.finalEffectFingerprint);
+});
+
+test("background seed requires a new native Background stroke", async () => {
+  const io = transport([
+    response(readbackValue({ effect: false }), 10),
+    response(readbackValue({ effect: true, value: "subtract-1", role: "BACKGROUND" }), 11),
+  ]);
+  const visual = driver();
+  const result = await new GuardedRotoBrushSeedControllerV1(io, visual).run(runInput({
+    operation: "SEED_BACKGROUND",
+    stroke: { ...stroke, role: "BACKGROUND" },
+  }));
+  assert.equal(result.route, "LOCAL");
+  assert.equal(result.escalationReason, null);
+  assert.equal(visual.calls[0].operation, "SEED_BACKGROUND");
+  assert.equal(visual.calls[0].stroke.role, "BACKGROUND");
+});
+
+test("background seed refuses when native readback lacks a new Background stroke", async () => {
+  const io = transport([
+    response(readbackValue({ effect: false }), 10),
+    response(readbackValue({ effect: true, value: "wrong-role", role: "FOREGROUND" }), 11),
+  ]);
+  const result = await new GuardedRotoBrushSeedControllerV1(io, driver()).run(runInput({
+    operation: "SEED_BACKGROUND",
+    stroke: { ...stroke, role: "BACKGROUND" },
+  }));
+  assert.equal(result.escalationReason, "NATIVE_SEED_ROLE_NOT_OBSERVED");
 });
 
 test("missing or unverified visual driver stops after typed pre-readback", async () => {
