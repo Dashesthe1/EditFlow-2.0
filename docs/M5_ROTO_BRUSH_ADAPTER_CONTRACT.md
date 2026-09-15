@@ -67,6 +67,11 @@ Speed claims, if made, must measure actual AE action-to-action latency. Routine 
 
 ## Current boundary
 
+## Guarded seed controller
+
+The first interactive controller tranche is seed-only. `GuardedRotoBrushSeedControllerV1` performs an exact protocol-2.6 pre-readback, derives both an opaque session revision and an effect-only fingerprint, validates the semantic stroke, invokes at most one verified vision+cursor seed action, then performs one exact post-readback. Success requires the same comp/layer identity, exactly one `ADBE Samurai` effect, a non-truncated property tree, and a changed effect-only fingerprint. A host-project revision change by itself cannot count as Roto Brush success. No visual driver is installed or production-registered in this tranche.
+
+The visual-driver result can retain measured AE action-to-action latencies for later speed proof. Those measurements are evidence only; the controller does not claim a latency target without a real-AE retained run.
 ## Proof isolation preflight
 
 Before the development protocol 2.6 loader or any guarded interactive action may run, the M5 proof gate must observe exactly one responsive warm AE process and a project that is unsaved, contains zero project items, reports dirty === false, and exposes a valid positive project revision. Saved, nonempty, dirty, or dirty-state-unavailable projects are refused. The preflight itself is read-only and does not load EditFlow host modules, create a project, close a project, save, clean, or issue UI actions.

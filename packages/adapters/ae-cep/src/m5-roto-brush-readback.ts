@@ -70,6 +70,20 @@ export const deriveRotoBrushSessionRevisionV26 = (response: AeRotoBrushResponseV
   return `ROTO_V26_${createHash("sha256").update(bytes).digest("hex")}`;
 };
 
+export const deriveRotoBrushEffectFingerprintV26 = (response: AeRotoBrushResponseV26): string => {
+  if (response.outcome !== "NO_OP" || response.readback === null) {
+    throw new TypeError("A successful Roto Brush readback is required to derive effect fingerprint.");
+  }
+  if (response.readback.propertyTreeTruncated) {
+    throw new TypeError("Roto Brush effect fingerprint refuses truncated property-tree truth.");
+  }
+  const bytes = JSON.stringify({
+    rotoBrushMatchName: response.readback.rotoBrushMatchName,
+    effectMatchCount: response.readback.effectMatchCount,
+    effect: response.readback.effect,
+  });
+  return `ROTO_EFFECT_V26_${createHash("sha256").update(bytes).digest("hex")}`;
+};
 export const assertRotoBrushEffectIdentityV26 = (response: AeRotoBrushResponseV26): void => {
   if (response.outcome !== "NO_OP" || !response.readback) throw new TypeError("Roto Brush readback did not succeed.");
   if (response.readback.effectMatchCount !== 1 || !response.readback.effect || response.readback.effect.matchName !== "ADBE Samurai") {
