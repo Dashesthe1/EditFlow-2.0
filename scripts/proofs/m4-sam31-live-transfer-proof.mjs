@@ -19,6 +19,8 @@ const CHECKPOINT_EVIDENCE = "SAM31_CHECKPOINT:LOCAL_EXPLICIT";
 const TEMPORAL_EVIDENCE = "SAM31_TEMPORAL:VIDEO_SESSION_PROPAGATION";
 const LOWER_SHA256 = /^[0-9a-f]{64}$/;
 const EVIDENCE_ID = /^[A-Za-z0-9][A-Za-z0-9:._/-]{2,127}$/;
+const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const SOURCE_PROBE_PATH = path.join(SCRIPT_DIRECTORY, "m4-sam31-source-probe.py");
 
 const nonEmpty = (value) => typeof value === "string" && value.trim().length > 0;
 const absolute = (value) => nonEmpty(value) && (path.isAbsolute(value) || path.win32.isAbsolute(value));
@@ -104,14 +106,14 @@ const buildPrompt = (fixture) => {
   if (fixture.negativePoints !== undefined) prompt.negativePoints = fixture.negativePoints;
   return Object.keys(prompt).length > 0 ? prompt : undefined;
 };
-const buildRequest = (fixture, sourceSha256) => ({
+const buildRequest = (fixture, sourceSha256, sourceMedia) => ({
   requestId: `M4_SAM31_LIVE_${safeName(fixture.fixtureId)}_${sourceSha256.slice(0, 12)}`,
   sourceId: fixture.sourceId,
   semanticId: fixture.semanticId,
   ...(fixture.entityClass ? { entityClass: fixture.entityClass } : {}),
-  startTimestampMs: fixture.startFrameIndex * 1000 / fixture.frameRate,
+  startTimestampMs: fixture.startFrameIndex * 1000 / sourceMedia.frameRate,
   startFrameIndex: fixture.startFrameIndex,
-  frameRate: fixture.frameRate,
+  frameRate: sourceMedia.frameRate,
   frameCount: fixture.frameCount,
   promptFrameIndex: fixture.promptFrameIndex,
   ...(buildPrompt(fixture) ? { prompt: buildPrompt(fixture) } : {}),
@@ -139,6 +141,22 @@ const defaultSamCommitResolver = (directory) => execFileSync("git", ["-C", direc
   encoding: "utf8",
   windowsHide: true,
 }).trim();
+const defaultSourceProbe = (config, fixture) => {
+  const raw = execFileSync(config.pythonPath, [SOURCE_PROBE_PATH, "--source", fixture.sourcePath], {
+    cwd: config.workingDirectory,
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  });
+  const value = JSON.parse(raw.trim());
+  if (!value || value.status !== "COMPLETED") throw new Error(`SOURCE_MEDIA_PROBE_FAILED:${fixture.fixtureId}`);
+  if (!Number.isFinite(value.frameRate) || value.frameRate <= 0 || !Number.isInteger(value.frameCount)
+    || value.frameCount <= 0 || !Number.isInteger(value.width) || value.width <= 0
+    || !Number.isInteger(value.height) || value.height <= 0) {
+    throw new Error(`SOURCE_MEDIA_METADATA_INVALID:${fixture.fixtureId}`);
+  }
+  return value;
+};
 
 const verifyResolvedSequence = async (verified, hashFile = sha256File) => {
   if (!verified || !Array.isArray(verified.frames) || verified.frames.length !== verified.frameCount) {
@@ -157,7 +175,9 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
   const hashFile = dependencies.hashFile ?? sha256File;
   const providerFactory = dependencies.providerFactory ?? defaultProviderFactory;
   const resolveSamCommit = dependencies.samCommitResolver ?? defaultSamCommitResolver;
+  const probeSource = dependencies.sourceProbe ?? ((fixture) => defaultSourceProbe(config, fixture));
   const now = dependencies.now ?? (() => new Date());
+  if (!dependencies.sourceProbe) await requireFile("sourceProbePath", SOURCE_PROBE_PATH);
   await mkdir(config.artifactDirectory, { recursive: true });
   await mkdir(path.dirname(config.proofOutputPath), { recursive: true });
   await mkdir(path.dirname(config.runtimeEvidencePath), { recursive: true });
@@ -168,15 +188,23 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
   if (!nonEmpty(samSourceCommit)) throw new Error("SAM_SOURCE_COMMIT_UNAVAILABLE");
   const fixtureInputs = [];
   for (const fixture of config.fixtures) {
-    fixtureInputs.push({ fixture, sourceSha256: await hashFile(fixture.sourcePath) });
+    const sourceMedia = await probeSource(fixture);
+    const frameRateTolerance = Math.max(1e-4, fixture.frameRate * 1e-6);
+    if (Math.abs(sourceMedia.frameRate - fixture.frameRate) > frameRateTolerance) {
+      throw new Error(`SOURCE_FRAME_RATE_MISMATCH:${fixture.fixtureId}`);
+    }
+    if (fixture.startFrameIndex + fixture.frameCount > sourceMedia.frameCount) {
+      throw new Error(`SOURCE_FRAME_RANGE_EXCEEDED:${fixture.fixtureId}`);
+    }
+    fixtureInputs.push({ fixture, sourceMedia, sourceSha256: await hashFile(fixture.sourcePath) });
   }
   if (new Set(fixtureInputs.map((item) => item.sourceSha256)).size !== fixtureInputs.length) {
     throw new Error("MATERIALLY_DIFFERENT_SOURCE_BYTES_REQUIRED");
   }
   const fixtureSummaries = [];
 
-  for (const { fixture, sourceSha256 } of fixtureInputs) {
-    const request = buildRequest(fixture, sourceSha256);
+  for (const { fixture, sourceMedia, sourceSha256 } of fixtureInputs) {
+    const request = buildRequest(fixture, sourceSha256, sourceMedia);
     const artifactDirectory = path.join(config.artifactDirectory, safeName(fixture.fixtureId));
     await mkdir(artifactDirectory, { recursive: true });
     const sourceMaterial = {
@@ -206,6 +234,7 @@ export const runSam31LiveTransferProof = async (inputConfig, dependencies = {}) 
       semanticId: fixture.semanticId,
       sourcePath: fixture.sourcePath,
       sourceSha256,
+      sourceMedia: { ...sourceMedia, expectedFrameRate: fixture.frameRate },
       request,
       providerId: result.providerId,
       providerVersion: result.providerVersion,

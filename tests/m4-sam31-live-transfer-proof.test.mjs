@@ -155,6 +155,13 @@ const fakeProviderFactory = ({ fixture, sourceMaterial, artifactDirectory }) => 
 const deps = {
   providerFactory: fakeProviderFactory,
   samCommitResolver: () => "a".repeat(40),
+  sourceProbe: (fixture) => ({
+    status: "COMPLETED",
+    frameRate: fixture.frameRate,
+    frameCount: fixture.startFrameIndex + fixture.frameCount + 100,
+    width: 1920,
+    height: 1080,
+  }),
   now: () => new Date("2026-09-14T23:59:00.000Z"),
 };
 test("M4 SAM 3.1 live proof emits digest-bound runtime evidence only after all gates pass", async () => {
@@ -246,6 +253,43 @@ test("M4 SAM 3.1 live proof refuses missing native SAM 3.1 provenance", async ()
       () => runSam31LiveTransferProof(fixture.config, { ...deps, providerFactory: fallbackFactory }),
       /HIDDEN_FALLBACK_OR_PROVENANCE_MISSING/,
     );
+    assert.equal(await exists(fixture.config.runtimeEvidencePath), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+test("M4 SAM 3.1 live proof refuses a source frame-rate mismatch before provider construction", async () => {
+  const fixture = await makeFixture();
+  let providerCalls = 0;
+  try {
+    await assert.rejects(
+      () => runSam31LiveTransferProof(fixture.config, {
+        ...deps,
+        sourceProbe: (item) => ({ status: "COMPLETED", frameRate: item.frameRate + 1, frameCount: 1000, width: 1920, height: 1080 }),
+        providerFactory: (args) => { providerCalls += 1; return fakeProviderFactory(args); },
+      }),
+      /SOURCE_FRAME_RATE_MISMATCH/,
+    );
+    assert.equal(providerCalls, 0);
+    assert.equal(await exists(fixture.config.runtimeEvidencePath), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("M4 SAM 3.1 live proof refuses a temporal range outside the material source", async () => {
+  const fixture = await makeFixture();
+  let providerCalls = 0;
+  try {
+    await assert.rejects(
+      () => runSam31LiveTransferProof(fixture.config, {
+        ...deps,
+        sourceProbe: (item) => ({ status: "COMPLETED", frameRate: item.frameRate, frameCount: item.startFrameIndex + item.frameCount - 1, width: 1920, height: 1080 }),
+        providerFactory: (args) => { providerCalls += 1; return fakeProviderFactory(args); },
+      }),
+      /SOURCE_FRAME_RANGE_EXCEEDED/,
+    );
+    assert.equal(providerCalls, 0);
     assert.equal(await exists(fixture.config.runtimeEvidencePath), false);
   } finally {
     await fixture.cleanup();
