@@ -26,17 +26,29 @@ All prompt geometry uses normalized source coordinates.
 
 ## Provider boundary
 
-`SubjectSegmentationProviderV1` exposes one operation:
+`SubjectSegmentationProviderV1` exposes one single-frame operation:
 
 `segment(request) -> SubjectSegmentationResultV1`
 
-The provider may later be local, remote, host-native, or model-backed. The core tracking contract does not depend on a particular model family, runtime, licensing scheme, or hardware backend.
+The provider may be local, remote, host-native, or model-backed. The core tracking contract does not depend on a particular model family, runtime, licensing scheme, or hardware backend.
 
 A concrete local `sam3.1.local` adapter now exists as a separate structural foundation. It deliberately remains outside production runtime registration until retained live SAM 3.1 inference evidence is accepted. The provider refuses unsupported point prompts and prior-artifact temporal refinement, explicitly selects a SAM 3.1 checkpoint rather than accepting the image builder's SAM 3.0 default, and verifies materialized mask bytes by SHA-256 before exposing an artifact to downstream code. See `M4_SAM31_LOCAL_PROVIDER_CONTRACT.md`.
 
+## Temporal series boundary
+
+Dynamic segmentation now has a separate additive provider contract:
+
+`segmentSeries(request) -> SubjectSegmentationSeriesResultV1`
+
+The temporal request is one exact source/semantic identity containing strictly ordered V1 frame requests, a bounded explicit frame rate, and optional series-wide encoding. The temporal result must preserve exact frame order/count and one provider identity while keeping raster encoding, dimensions, normalized source bounds, and artifact content type homogeneous across the series.
+
+Every temporal frame is independently accepted through the single-frame validator. Temporal acceptance additionally requires a lowercase SHA-256 digest on every frame artifact before the series can be trusted by downstream sequence planning.
+
+The existing single-frame `sam3.1.local` adapter does **not** implement this temporal interface and is not silently looped to imitate temporal model behavior. See `M4_TEMPORAL_SEGMENTATION_SERIES_CONTRACT.md`.
+
 ## Result contract
 
-A provider result must correlate exactly to the request by:
+A single-frame provider result must correlate exactly to the request by:
 
 - request ID;
 - source ID;
@@ -56,7 +68,7 @@ The artifact descriptor contains integer raster dimensions, normalized source-sp
 
 ## Quality and provenance
 
-Every accepted result contains normalized `[0, 1]` values for:
+Every accepted single-frame result contains normalized `[0, 1]` values for:
 
 - confidence;
 - edge quality;
@@ -64,6 +76,8 @@ Every accepted result contains normalized `[0, 1]` values for:
 - occlusion.
 
 At least one non-empty evidence ID is mandatory. Evidence IDs are de-duplicated on acceptance. The validator does not invent missing provenance.
+
+Temporal series also require non-empty series provenance, with duplicate series evidence IDs removed on acceptance.
 
 ## Fail-closed validation
 
@@ -81,27 +95,30 @@ At least one non-empty evidence ID is mandatory. Evidence IDs are de-duplicated 
 - non-normalized quality metrics;
 - absent provenance.
 
+`validateSubjectSegmentationSeriesRequestV1` and `acceptSubjectSegmentationSeriesResultV1` add refusal for duplicate request IDs, non-increasing timestamps, source/subject/class drift, frame-count/order mismatch, provider drift, raster-shape/content-type drift, and missing per-frame SHA-256 integrity evidence.
+
 Runtime-shaped malformed inputs are guarded so external JavaScript callers fail closed instead of throwing.
 
 ## Relationship to existing AE mask support
 
-EditFlow already has typed transactional After Effects Bezier-mask operations. This interface intentionally sits **before** those host writes. A raster segmentation artifact is not automatically treated as an AE Bezier path, track matte, alpha matte, or Roto Brush result.
+EditFlow already has typed transactional After Effects Bezier-mask operations. These interfaces intentionally sit **before** host writes. A raster segmentation artifact is not automatically treated as an AE Bezier path, track matte, alpha matte, or Roto Brush result.
 
-The next M4 tranche must define a truthful segmentation-to-mask/matte application strategy with coordinate conversion, transaction ownership, readback, rollback, and real-AE visual proof.
+Protocol 2.5 now separately proves native numbered image-sequence import/readback for temporal rasters. The remaining composed path must create and byte-verify the exact numbered series, bind exact source/comp timing, apply the temporal matte transactionally, and retain viewer-visible real-AE proof.
 
 ## Safety and proof maturity
 
-This capability is `R0_READ_ONLY` and requires no rollback. It begins at `DECLARED` proof maturity with deterministic contract tests. Runtime registration is withheld until at least one concrete provider produces retained end-to-end evidence through this boundary.
+The segmentation acceptance surfaces are `R0_READ_ONLY` and require no rollback. The single-frame provider foundation and temporal-series contract remain outside production runtime registration until concrete live providers produce retained evidence through them.
 
 A promotion proof should demonstrate:
 
 1. exact subject identity survives request/result correlation;
-2. real segmentation output is retained under a stable artifact identity;
+2. real segmentation output is retained under stable artifact identity;
 3. dimensions, bounds, encoding, quality, and provenance read back truthfully;
 4. ambiguous or mismatched subject evidence fails closed;
-5. temporal refinement can explicitly reference a prior artifact without hidden mutable state;
-6. no After Effects project state changes occur in this read-only tranche.
+5. temporal output preserves exact frame ordering and one stable source/subject identity without hidden substitution;
+6. every temporal frame is byte-verified before materialization planning;
+7. no After Effects project state changes occur during the read-only provider proof.
 
 ## Human-parity status
 
-This closes the M4 **subject/object segmentation interface** gap, not segmentation execution or AE application. Remaining M4 work includes segmentation-to-mask/matte application, visual/readback proof in After Effects, occlusion/identity recovery, and manual repair/resume workflows.
+The M4 segmentation interface now includes both single-frame and temporal-series acceptance boundaries. Remaining work is execution and composition: live SAM 3.1 temporal inference, canonical sequence materialization/integrity, exact timing plan assembly, viewer-visible dynamic matte proof, rollback/readback across the composed write path, transfer/save-reopen evidence, and production runtime registration.
