@@ -30,6 +30,8 @@ The read-only inspect capability is `R0_READ_ONLY`. Every mutating capability is
 
 No M5 Roto Brush capability is registered into the default desktop runtime in this tranche.
 
+A draft read-only protocol 2.6.0 now defines bounded ADBE Samurai effect/session discovery. Its host layer walks a capped custom property tree (depth 5, 512 nodes), rejects ambiguous multiple-effect identity without an explicit effect index, and derives an opaque session revision from exact readback plus host project revision. The protocol is layered over the accepted 2.5 loader for development proof only; it is not installed or registered as a production capability yet.
+
 ## Guardrails
 
 The implementation must fail closed on:
