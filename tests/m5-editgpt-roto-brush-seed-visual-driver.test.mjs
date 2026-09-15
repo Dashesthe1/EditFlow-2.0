@@ -8,6 +8,8 @@ const config = {
   executablePath: "C:\\EditGPT\\python.exe",
   scriptPath: "C:\\EditFlow\\editgpt_roto_brush_seed_visual_driver.py",
   workingDirectory: "C:\\EditFlow",
+  afterFxPath: "C:\\Adobe\\AfterFX.exe",
+  toolSelectScriptPath: "C:\\EditFlow\\m5-roto-brush-tool-select.jsx",
   evidenceDirectory: "C:\\EditFlow\\proofs\\m5-roto-seed",
   timeoutMs: 90000,
 };
@@ -120,7 +122,10 @@ test("Roto Brush seed sidecar is target-bound, normalized, popup-aware, and uses
   assert.match(py, /"type": "drag"/);
   assert.match(py, /stroke_modifiers = \["ALT"\]/);
   assert.match(py, /"modifiers": stroke_modifiers/);
-  assert.match(py, /\["ALT", "W"\]/);
+  assert.match(py, /select_grouped_toolbar_tool/);
+  assert.match(py, /"ROTO_BRUSH"/);
+  assert.match(py, /retained_tool_flyout/);
+  assert.match(py, /holdToMemberClickGapMs/);
   assert.match(py, /inspect_error_popup/);
   assert.match(py, /acknowledgementOnly/);
   assert.match(py, /isModalDialog/);

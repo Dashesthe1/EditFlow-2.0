@@ -6,12 +6,12 @@ import {
   type TrackerVisualSidecarRunnerV1,
 } from "./m4-editgpt-tracker-visual-driver.js";
 import type {
-  RotoBrushSeedVisualDriverV1,
-  RotoBrushSeedVisualRequestV1,
-  RotoBrushSeedVisualResultV1,
-} from "./m5-roto-brush-seed-controller.js";
+  RotoBrushRefineEdgeVisualDriverV1,
+  RotoBrushRefineEdgeVisualRequestV1,
+  RotoBrushRefineEdgeVisualResultV1,
+} from "./m5-roto-brush-refine-edge-controller.js";
 
-export interface EditGptRotoBrushSeedVisualDriverConfigV1 {
+export interface EditGptRotoBrushRefineEdgeVisualDriverConfigV1 {
   readonly executablePath: string;
   readonly scriptPath: string;
   readonly workingDirectory: string;
@@ -28,7 +28,7 @@ const assertAbsolute = (name: string, value: string): void => {
 const record = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : null;
-const refuse = (detail: string, visualEvidenceId: string | null = null): RotoBrushSeedVisualResultV1 => ({
+const refuse = (detail: string, visualEvidenceId: string | null = null): RotoBrushRefineEdgeVisualResultV1 => ({
   status: "REFUSED",
   visualEvidenceId,
   detail,
@@ -39,7 +39,7 @@ const cleanLatencies = (value: unknown): readonly number[] => {
   const values = value.filter((item): item is number => typeof item === "number" && Number.isFinite(item) && item >= 0);
   return values.length === value.length ? Object.freeze([...values]) : [];
 };
-const exactBinding = (binding: Record<string, unknown> | null, request: RotoBrushSeedVisualRequestV1): boolean =>
+const exactBinding = (binding: Record<string, unknown> | null, request: RotoBrushRefineEdgeVisualRequestV1): boolean =>
   !!binding
   && binding["operation"] === request.operation
   && binding["compHostId"] === request.compHostId
@@ -47,52 +47,53 @@ const exactBinding = (binding: Record<string, unknown> | null, request: RotoBrus
   && binding["expectedCompName"] === request.expectedCompName
   && binding["expectedLayerName"] === request.expectedLayerName
   && binding["expectedSessionRevision"] === request.expectedSessionRevision
+  && binding["expectedEffectFingerprint"] === request.expectedEffectFingerprint
   && binding["expectedEffectMatchCount"] === request.expectedEffectMatchCount
   && binding["expectedTool"] === request.expectedTool
   && binding["atTime"] === request.atTime
   && JSON.stringify(binding["stroke"]) === JSON.stringify(request.stroke)
   && JSON.stringify(binding["evidenceIds"]) === JSON.stringify(request.evidenceIds);
 
-const parseResult = (raw: string, request: RotoBrushSeedVisualRequestV1): RotoBrushSeedVisualResultV1 => {
+const parseResult = (raw: string, request: RotoBrushRefineEdgeVisualRequestV1): RotoBrushRefineEdgeVisualResultV1 => {
   let parsed: unknown;
   try { parsed = JSON.parse(raw.trim()); }
-  catch { return refuse("EditGPT Roto Brush seed sidecar returned malformed JSON."); }
+  catch { return refuse("EditGPT Refine Edge sidecar returned malformed JSON."); }
   const root = record(parsed);
-  if (!root) return refuse("EditGPT Roto Brush seed sidecar returned a non-object result.");
+  if (!root) return refuse("EditGPT Refine Edge sidecar returned a non-object result.");
   const evidence = typeof root["visualEvidenceId"] === "string" ? String(root["visualEvidenceId"]) : null;
   const latencies = cleanLatencies(root["aeActionToActionLatenciesMs"]);
   if (root["status"] !== "COMPLETED") {
     return {
-      ...refuse(typeof root["detail"] === "string" ? String(root["detail"]) : "EditGPT Roto Brush seed sidecar refused the action.", evidence),
+      ...refuse(typeof root["detail"] === "string" ? String(root["detail"]) : "EditGPT Refine Edge sidecar refused the action.", evidence),
       aeActionToActionLatenciesMs: latencies,
     };
   }
   if (!exactBinding(record(root["targetBinding"]), request)) {
-    return { ...refuse("EditGPT Roto Brush seed sidecar target correlation mismatch.", evidence), aeActionToActionLatenciesMs: latencies };
+    return { ...refuse("EditGPT Refine Edge sidecar target correlation mismatch.", evidence), aeActionToActionLatenciesMs: latencies };
   }
   if (root["guardedVisualTargetVerified"] !== true || root["nativeStrokeAttempted"] !== true || !evidence) {
-    return { ...refuse("EditGPT Roto Brush seed sidecar did not retain verified stroke evidence.", evidence), aeActionToActionLatenciesMs: latencies };
+    return { ...refuse("EditGPT Refine Edge sidecar did not retain verified stroke evidence.", evidence), aeActionToActionLatenciesMs: latencies };
   }
   return {
     status: "COMPLETED",
     visualEvidenceId: evidence,
-    detail: typeof root["detail"] === "string" ? String(root["detail"]) : "Verified Roto Brush seed stroke completed.",
+    detail: typeof root["detail"] === "string" ? String(root["detail"]) : "Verified Refine Edge stroke completed.",
     aeActionToActionLatenciesMs: latencies,
   };
 };
 
-export class EditGptRotoBrushSeedVisualDriverV1 implements RotoBrushSeedVisualDriverV1 {
-  readonly driverId = "editgpt.eyes-hands.roto-brush-seed.v1";
+export class EditGptRotoBrushRefineEdgeVisualDriverV1 implements RotoBrushRefineEdgeVisualDriverV1 {
+  readonly driverId = "editgpt.eyes-hands.roto-brush-refine-edge.v1";
   readonly verifiedVision = true;
   readonly verifiedCursorControl = true;
-  readonly supportedRoles = Object.freeze(["FOREGROUND", "BACKGROUND"] as const);
-  readonly config: Required<Omit<EditGptRotoBrushSeedVisualDriverConfigV1, "evidenceDirectory">> & {
+  readonly supportsRefineEdge = true;
+  readonly config: Required<Omit<EditGptRotoBrushRefineEdgeVisualDriverConfigV1, "evidenceDirectory">> & {
     readonly evidenceDirectory: string | null;
   };
   readonly runner: TrackerVisualSidecarRunnerV1;
 
   constructor(
-    config: EditGptRotoBrushSeedVisualDriverConfigV1,
+    config: EditGptRotoBrushRefineEdgeVisualDriverConfigV1,
     runner: TrackerVisualSidecarRunnerV1 = new NodeTrackerVisualSidecarRunnerV1(),
   ) {
     assertAbsolute("executablePath", config.executablePath);
@@ -109,23 +110,23 @@ export class EditGptRotoBrushSeedVisualDriverV1 implements RotoBrushSeedVisualDr
     this.runner = runner;
   }
 
-  async seed(input: RotoBrushSeedVisualRequestV1): Promise<RotoBrushSeedVisualResultV1> {
-    const expectedRole = input.operation === "SEED_FOREGROUND" ? "FOREGROUND"
-      : input.operation === "SEED_BACKGROUND" ? "BACKGROUND" : null;
-    if (!expectedRole || input.stroke.role !== expectedRole) {
-      return refuse("Roto Brush seed operation and stroke role must match a proven seed role.");
+  async refine(input: RotoBrushRefineEdgeVisualRequestV1): Promise<RotoBrushRefineEdgeVisualResultV1> {
+    if (input.operation !== "REFINE_EDGE" || input.stroke.role !== "REFINE_EDGE") {
+      return refuse("Refine Edge operation and stroke role must both be REFINE_EDGE.");
     }
-    if (input.expectedTool !== "ROTO_BRUSH" || !input.expectedSessionRevision || input.evidenceIds.length === 0) {
-      return refuse("Roto Brush seed request is missing the exact tool, revision, or retained evidence guard.");
+    if (input.expectedTool !== "REFINE_EDGE" || input.expectedEffectMatchCount !== 1
+      || !input.expectedSessionRevision || !input.expectedEffectFingerprint || input.evidenceIds.length === 0) {
+      return refuse("Refine Edge request is missing the exact tool, native effect, revision, fingerprint, or evidence guard.");
     }
     const payload = JSON.stringify({
-      schema: "editflow.roto-brush-seed.visual.v1",
+      schema: "editflow.roto-brush-refine-edge.visual.v1",
       operation: input.operation,
       compHostId: input.compHostId,
       layerHostId: input.layerHostId,
       expectedCompName: input.expectedCompName,
       expectedLayerName: input.expectedLayerName,
       expectedSessionRevision: input.expectedSessionRevision,
+      expectedEffectFingerprint: input.expectedEffectFingerprint,
       expectedEffectMatchCount: input.expectedEffectMatchCount,
       atTime: input.atTime,
       stroke: input.stroke,
@@ -145,12 +146,12 @@ export class EditGptRotoBrushSeedVisualDriverV1 implements RotoBrushSeedVisualDr
         timeoutMs: this.config.timeoutMs,
       });
     } catch (error) {
-      return refuse(`EditGPT Roto Brush seed sidecar failed to launch: ${String(error)}`);
+      return refuse(`EditGPT Refine Edge sidecar failed to launch: ${String(error)}`);
     }
-    if (result.timedOut) return refuse("EditGPT Roto Brush seed sidecar timed out.");
+    if (result.timedOut) return refuse("EditGPT Refine Edge sidecar timed out.");
     if (result.exitCode !== 0) {
       const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${String(result.exitCode)}`;
-      return refuse(`EditGPT Roto Brush seed sidecar failed: ${detail}`);
+      return refuse(`EditGPT Refine Edge sidecar failed: ${detail}`);
     }
     return parseResult(result.stdout, input);
   }

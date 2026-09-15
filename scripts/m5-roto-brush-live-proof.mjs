@@ -21,6 +21,7 @@ const fixturePath = required("--fixture");
 const resultPath = required("--result");
 const readbackScript = required("--readback-script");
 const pythonPath = required("--python");
+const toolSelectScript = required("--tool-select-script");
 const visualScript = required("--visual-script");
 const visualWorkdir = required("--visual-workdir");
 const evidenceDir = required("--evidence-dir");
@@ -77,6 +78,8 @@ const visualDriver = new EditGptRotoBrushSeedVisualDriverV1({
   executablePath: pythonPath,
   scriptPath: visualScript,
   workingDirectory: visualWorkdir,
+  afterFxPath,
+  toolSelectScriptPath: toolSelectScript,
   evidenceDirectory: evidenceDir,
   timeoutMs: 120000,
 });

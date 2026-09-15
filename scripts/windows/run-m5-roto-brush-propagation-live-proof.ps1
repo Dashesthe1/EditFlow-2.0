@@ -12,6 +12,7 @@ $RestoreScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-isolation-re
 $PreflightRunner = Join-Path $RepoRoot "scripts\windows\run-m5-roto-brush-proof-preflight.ps1"
 $FixtureScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-fixture-setup.jsx"
 $ReadbackScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-readback-dispatch.jsx"
+$ToolSelectScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-tool-select.jsx"
 $NodeProof = Join-Path $RepoRoot "scripts\m5-roto-brush-propagation-live-proof.mjs"
 $PythonPath = "C:\Users\Shadow\editgpt\.venv\Scripts\python.exe"
 $SeedVisualScript = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime\editgpt_roto_brush_seed_visual_driver.py"
@@ -59,7 +60,7 @@ $BaselineAePids = @(); $AfterAePids = @(); $SameAeProcess = $false
 $Enter = $null; $Fixture = $null; $Live = $null; $Restore = $null
 $PrimaryFailure = $null; $RestoreFailure = $null; $RestoreAttempted = $false
 try {
-  foreach ($Required in @($AfterFxPath,$SourcePath,$EnterScript,$RestoreScript,$PreflightRunner,$FixtureScript,$ReadbackScript,$NodeProof,$PythonPath,$SeedVisualScript,$PropagationVisualScript)) {
+  foreach ($Required in @($AfterFxPath,$SourcePath,$EnterScript,$RestoreScript,$PreflightRunner,$FixtureScript,$ReadbackScript,$ToolSelectScript,$NodeProof,$PythonPath,$SeedVisualScript,$PropagationVisualScript)) {
     if (-not (Test-Path -LiteralPath $Required -PathType Leaf)) { throw "Required M5 live-proof file missing: $Required" }
   }
   $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
@@ -89,6 +90,7 @@ try {
       --fixture $FixtureMarker `
       --result $LiveResultPath `
       --readback-script $ReadbackScript `
+      --tool-select-script $ToolSelectScript `
       --python $PythonPath `
       --seed-visual-script $SeedVisualScript `
       --propagation-visual-script $PropagationVisualScript `

@@ -1,6 +1,4 @@
 param(
-  [ValidateSet("FOREGROUND","BACKGROUND")]
-  [string]$SeedRole = "FOREGROUND",
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [string]$SourcePath = "C:\Users\Shadow\Downloads\Main Clips\Peter Parker - The Amazing Spider-Man [2012] - [REMUX 4K HEVC-H265] - chaszq-00.51.24.562-00.51.42.047.mp4",
   [int]$TimeoutSeconds = 20
@@ -13,12 +11,12 @@ $PreflightRunner = Join-Path $RepoRoot "scripts\windows\run-m5-roto-brush-proof-
 $FixtureScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-fixture-setup.jsx"
 $ReadbackScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-readback-dispatch.jsx"
 $ToolSelectScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-tool-select.jsx"
-$NodeProof = Join-Path $RepoRoot "scripts\m5-roto-brush-live-proof.mjs"
+$NodeProof = Join-Path $RepoRoot "scripts\m5-roto-brush-refine-edge-live-proof.mjs"
 $PythonPath = "C:\Users\Shadow\editgpt\.venv\Scripts\python.exe"
-$VisualScript = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime\editgpt_roto_brush_seed_visual_driver.py"
+$SeedVisualScript = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime\editgpt_roto_brush_seed_visual_driver.py"
+$RefineVisualScript = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime\editgpt_roto_brush_refine_edge_visual_driver.py"
 $VisualWorkdir = Join-Path $RepoRoot "packages\adapters\ae-cep\runtime"
-$ArtifactDirName = if ($SeedRole -eq "BACKGROUND") { "m5-roto-brush-background-live-proof" } else { "m5-roto-brush-live-proof" }
-$ArtifactDir = Join-Path $RepoRoot ("proofs\artifacts\" + $ArtifactDirName)
+$ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\m5-roto-brush-refine-edge-live-proof"
 $EvidenceDir = Join-Path $ArtifactDir "visual-evidence"
 $LiveResultPath = Join-Path $ArtifactDir "live-result.json"
 $ResultPath = Join-Path $ArtifactDir "result.json"
@@ -54,16 +52,16 @@ function Test-SemanticReady {
   catch { return $false }
 }
 $Classification = "INFRASTRUCTURE_FAILURE"
-$Message = ("M5 Roto Brush live " + $SeedRole.ToLowerInvariant() + "-seed proof did not complete.")
+$Message = "M5 Roto Brush Refine Edge retained proof did not complete."
 $BaselineAePids = @(); $AfterAePids = @(); $SameAeProcess = $false
 $Enter = $null; $Fixture = $null; $Live = $null; $Restore = $null
 $PrimaryFailure = $null; $RestoreFailure = $null; $RestoreAttempted = $false
 try {
-  foreach ($Required in @($AfterFxPath,$SourcePath,$EnterScript,$RestoreScript,$PreflightRunner,$FixtureScript,$ReadbackScript,$ToolSelectScript,$NodeProof,$PythonPath,$VisualScript)) {
-    if (-not (Test-Path -LiteralPath $Required -PathType Leaf)) { throw "Required M5 live-proof file missing: $Required" }
+  foreach ($Required in @($AfterFxPath,$SourcePath,$EnterScript,$RestoreScript,$PreflightRunner,$FixtureScript,$ReadbackScript,$ToolSelectScript,$NodeProof,$PythonPath,$SeedVisualScript,$RefineVisualScript)) {
+    if (-not (Test-Path -LiteralPath $Required -PathType Leaf)) { throw "Required M5 Refine Edge live-proof file missing: $Required" }
   }
   $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
-  if ($Running.Count -ne 1) { throw "M5 Roto Brush live proof requires exactly one already-running After Effects process; found $($Running.Count)." }
+  if ($Running.Count -ne 1) { throw "M5 Refine Edge live proof requires exactly one already-running After Effects process; found $($Running.Count)." }
   if (-not $Running[0].Responding -or $Running[0].MainWindowHandle -eq 0) { throw "The current After Effects process is not a responsive visible proof target." }
   $BaselineAePids = @($Running | ForEach-Object { $_.Id } | Sort-Object)
   if (-not (Test-LocalPort 8765) -or -not (Test-LocalPort 8766)) { throw "EditGPT Eyes/Hands MCP sidecars are not ready on loopback." }
@@ -91,18 +89,18 @@ try {
       --readback-script $ReadbackScript `
       --tool-select-script $ToolSelectScript `
       --python $PythonPath `
-      --visual-script $VisualScript `
+      --seed-visual-script $SeedVisualScript `
+      --refine-visual-script $RefineVisualScript `
       --visual-workdir $VisualWorkdir `
       --evidence-dir $EvidenceDir `
-      --seed-role $SeedRole `
       --timeout-ms ($TimeoutSeconds * 1000)
     $NodeExit = $LASTEXITCODE
   } finally { Pop-Location }
-  if (-not (Test-Path $LiveResultPath -PathType Leaf)) { throw "M5 live controller exited without a result (exit $NodeExit)." }
+  if (-not (Test-Path $LiveResultPath -PathType Leaf)) { throw "M5 Refine Edge live controller exited without a result (exit $NodeExit)." }
   $Live = Get-Content $LiveResultPath -Raw | ConvertFrom-Json
-  if ($Live.proofId -ne ("M5_ROTO_BRUSH_" + $SeedRole + "_SEED_REAL_AE_V1")) { throw "Unexpected M5 live proof result identity." }
+  if ($Live.proofId -ne "M5_ROTO_BRUSH_REFINE_EDGE_REAL_AE_V1") { throw "Unexpected M5 Refine Edge live proof result identity." }
   if ($NodeExit -ne 0 -or $Live.ok -ne $true) {
-    $Reason = if ($Live.failure) { [string]$Live.failure } else { "M5 guarded live seed controller failed." }
+    $Reason = if ($Live.failure) { [string]$Live.failure } else { "M5 guarded live Refine Edge controller failed." }
     throw $Reason
   }
 } catch {
@@ -121,15 +119,15 @@ try {
   $SameAeProcess = (($BaselineAePids -join ',') -eq ($AfterAePids -join ',')) -and $BaselineAePids.Count -eq 1
   if ($null -eq $PrimaryFailure -and $null -eq $RestoreFailure -and $Live -and $Live.ok -eq $true -and $RestoreAttempted -and $Restore.ok -eq $true -and $SameAeProcess) {
     $Classification = "PASS"
-    $Message = ("M5 live Roto Brush " + $SeedRole.ToLowerInvariant() + " seed passed with native ADBE Samurai change, bounded action latency, exact restore, and one warm AE process.")
+    $Message = "M5 live Roto Brush Refine Edge passed with native stroke readback, bounded action latency, exact restore, and one warm AE process."
   } else {
     if ($null -ne $RestoreFailure) { $Message = $RestoreFailure }
     elseif ($null -ne $PrimaryFailure) { $Message = $PrimaryFailure }
-    elseif (-not $SameAeProcess) { $Message = "After Effects process identity changed during the M5 live proof." }
-    else { $Message = "M5 live proof did not satisfy all retained gates." }
+    elseif (-not $SameAeProcess) { $Message = "After Effects process identity changed during the M5 Refine Edge proof." }
+    else { $Message = "M5 Refine Edge proof did not satisfy all retained gates." }
   }
   $Result = [ordered]@{
-    proofId = ("M5_ROTO_BRUSH_" + $SeedRole + "_SEED_RETAINED_REAL_AE_V1")
+    proofId = "M5_ROTO_BRUSH_REFINE_EDGE_RETAINED_REAL_AE_V1"
     classification = $Classification
     ok = ($Classification -eq "PASS")
     message = $Message
