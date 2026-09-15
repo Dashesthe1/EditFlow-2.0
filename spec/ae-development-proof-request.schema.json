@@ -50,6 +50,48 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.json$",
       "default": "result.json"
+    },
+    "proofStrategy": {
+      "type": "string",
+      "enum": [
+        "INCREMENTAL_FIRST",
+        "FULL_ACCEPTANCE"
+      ],
+      "default": "INCREMENTAL_FIRST"
+    },
+    "incrementalNodeId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "incrementalDependencies": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 260,
+        "pattern": "^(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$"
+      }
+    },
+    "checkpointKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "allowEvidenceReuse": {
+      "type": "boolean",
+      "default": true
+    },
+    "focusedTests": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^tests/[A-Za-z0-9._/-]+\\.test\\.mjs$"
+      }
     }
   }
 }

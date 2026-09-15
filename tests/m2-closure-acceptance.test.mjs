@@ -80,13 +80,14 @@ test("M2 manifest remains accepted and records both real-AE evidence families", 
   assert.equal(manifest.evidence.dedicated_p4_p5.verdict, "PASS");
 });
 
-test("root metadata and README preserve accepted M2/M3 history while advertising M4", async () => {
+test("root metadata and README preserve accepted M2/M3/M4 history while advertising M5", async () => {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   const readme = await readFile("README.md", "utf8");
-  assert.equal(pkg.version, "0.5.0-dev");
-  assert.match(readme, /M4 — Tracking & Isolation: in progress/);
-  assert.match(readme, /M3 — Human-Parity Core is accepted/);
-  assert.match(readme, /M2 — Adobe Host Baseline remains/);
-  assert.match(readme, /point tracking/);
+  assert.equal(pkg.version, "0.6.0-dev");
+  assert.match(readme, /M5 — Interactive AE Adapters: in progress/);
+  assert.match(readme, /M4 — Tracking & Isolation is accepted/);
+  assert.match(readme, /M3 — Human-Parity Core remains accepted/);
+  assert.match(readme, /M2 — Adobe Host Baseline remains accepted/);
+  assert.match(readme, /Incremental Proof Engine/);
   assert.doesNotMatch(readme, /Phase 0 — Clean-room architecture/);
 });

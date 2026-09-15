@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $SupervisorPath = Join-Path $RepoRoot "scripts\windows\ae-host-supervisor.ps1"
 $ReadinessProbeTemplatePath = Join-Path $RepoRoot "scripts\windows\ae-host-readiness-probe-template.jsx"
+$IncrementalGatePath = Join-Path $RepoRoot "scripts\incremental-proof-gate.mjs"
 $AllowedLifecycles = @("REUSE_AE", "REOPEN_PROJECT", "RECONNECT_BROKER", "RESTART_AE", "CLEAN_BOOT")
 $SupervisorProcess = $null
 $StartedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -24,6 +25,16 @@ $OrchestrationResultPath = $null
 $ProofResultPath = $null
 $Request = $null
 $LastHealthEvidence = $null
+$ProofStrategy = "INCREMENTAL_FIRST"
+$IncrementalDecision = "UNPLANNED"
+$IncrementalContentKey = $null
+$IncrementalTokenPath = $null
+$EvidenceReused = $false
+$ProofCacheDir = $null
+$ProofEnvironmentFingerprint = $null
+$FailureCapsulePath = $null
+$ValidationMode = $null
+$ValidationDurationMs = $null
 
 function ConvertTo-SafeRelativePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
@@ -192,6 +203,35 @@ function Stop-TargetAfterFx {
   throw "Target After Effects process did not stop after an explicitly authorized restart request."
 }
 
+function Write-FailureCapsule {
+  param([Parameter(Mandatory = $true)][string]$Classification, [Parameter(Mandatory = $true)][string]$Message)
+  if (-not $ArtifactPath -or $Classification -eq "PASS") { return }
+  $script:FailureCapsulePath = Join-Path $ArtifactPath "failure-capsule.json"
+  $ProofPayload = $null
+  if ($ProofResultPath -and (Test-Path $ProofResultPath -PathType Leaf)) {
+    try { $ProofPayload = Get-Content $ProofResultPath -Raw | ConvertFrom-Json } catch {}
+  }
+  $ScriptErrors = @()
+  if ($SupervisorLogPath -and (Test-Path $SupervisorLogPath -PathType Leaf)) {
+    $ScriptErrors = @(Get-Content $SupervisorLogPath -ErrorAction SilentlyContinue | Where-Object { $_ -like "*`tSCRIPT_ERROR_DETECTED`t*" } | Select-Object -Last 5)
+  }
+  $Capsule = [ordered]@{
+    schema = "editflow.failure-capsule.v1"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    proofId = if ($Request) { [string]$Request.proofId } else { $null }
+    nodeId = if ($Request -and $Request.incrementalNodeId) { [string]$Request.incrementalNodeId } else { if ($Request) { [string]$Request.proofId } else { $null } }
+    failureClass = $Classification
+    detail = $Message
+    proofStrategy = $ProofStrategy
+    incrementalDecision = $IncrementalDecision
+    incrementalContentKey = $IncrementalContentKey
+    evidenceTokenPath = $IncrementalTokenPath
+    scriptErrors = $ScriptErrors
+    proofResult = $ProofPayload
+  }
+  [System.IO.File]::WriteAllText($FailureCapsulePath, (($Capsule | ConvertTo-Json -Depth 32) + [Environment]::NewLine), (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Write-OrchestrationResult {
   param([Parameter(Mandatory = $true)][string]$Classification, [Parameter(Mandatory = $true)][string]$Message)
   if (-not $OrchestrationResultPath) { return }
@@ -213,9 +253,18 @@ function Write-OrchestrationResult {
     proofResultPath = if ($ProofResultPath) { $ProofResultPath.Substring($RepoRoot.Length).TrimStart('\') -replace '\\','/' } else { $null }
     orchestrationResultPath = $OrchestrationResultPath.Substring($RepoRoot.Length).TrimStart('\') -replace '\\','/'
     message = $Message
+    proofStrategy = $ProofStrategy
+    incrementalDecision = $IncrementalDecision
+    incrementalContentKey = $IncrementalContentKey
+    incrementalTokenPath = $IncrementalTokenPath
+    evidenceReused = $EvidenceReused
+    validationMode = $ValidationMode
+    validationDurationMs = $ValidationDurationMs
+    failureCapsulePath = if ($FailureCapsulePath) { $FailureCapsulePath.Substring($RepoRoot.Length).TrimStart('\') -replace '\\','/' } else { $null }
   }
   $Json = $Result | ConvertTo-Json -Depth 8
   [System.IO.File]::WriteAllText($OrchestrationResultPath, $Json + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+  Write-FailureCapsule -Classification $Classification -Message $Message
 }
 
 function Read-ProofClassification {
@@ -244,6 +293,57 @@ function Get-SupervisorScriptErrorDetail {
   if ($MessageIndex -ge 0) { return $Detail.Substring($MessageIndex + $Marker.Length) }
   if ($Detail.StartsWith("message=", [StringComparison]::OrdinalIgnoreCase)) { return $Detail.Substring(8) }
   return $Detail
+}
+
+function Invoke-IncrementalProofGate {
+  param(
+    [Parameter(Mandatory = $true)][string]$Action,
+    [AllowNull()][string]$ResultPath
+  )
+  $GateArgs = @(
+    $IncrementalGatePath,
+    "--action", $Action,
+    "--request", $ResolvedRequestPath,
+    "--repo", $RepoRoot,
+    "--cache-dir", $ProofCacheDir,
+    "--environment", $ProofEnvironmentFingerprint
+  )
+  if ($ResultPath) { $GateArgs += @("--result", $ResultPath) }
+  $GateOutput = & node @GateArgs
+  if ($LASTEXITCODE -ne 0) { throw "Incremental proof gate failed during $Action." }
+  return ($GateOutput | Out-String | ConvertFrom-Json)
+}
+
+function Invoke-ProofValidation {
+  $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  Push-Location $RepoRoot
+  try {
+    if ($ProofStrategy -eq "FULL_ACCEPTANCE") {
+      & npm.cmd run check
+      if ($LASTEXITCODE -ne 0) { throw "Full acceptance validation failed." }
+      $script:ValidationMode = "FULL_ACCEPTANCE"
+    } else {
+      $FocusedTests = @($Request.focusedTests | Where-Object { $_ })
+      if ($FocusedTests.Count -eq 0) {
+        & npm.cmd run check
+        if ($LASTEXITCODE -ne 0) { throw "Fallback full validation failed." }
+        $script:ValidationMode = "FULL_FALLBACK_NO_FOCUSED_TESTS"
+      } else {
+        & npm.cmd run validate:schemas
+        if ($LASTEXITCODE -ne 0) { throw "Schema validation failed." }
+        & npm.cmd run build:test-runtime
+        if ($LASTEXITCODE -ne 0) { throw "Incremental runtime build failed." }
+        $TestArgs = @("--test") + @($FocusedTests)
+        & node @TestArgs
+        if ($LASTEXITCODE -ne 0) { throw "Focused development tests failed." }
+        $script:ValidationMode = "FOCUSED_INCREMENTAL"
+      }
+    }
+  } finally {
+    Pop-Location
+    $Stopwatch.Stop()
+    $script:ValidationDurationMs = [Math]::Round($Stopwatch.Elapsed.TotalMilliseconds, 3)
+  }
 }
 
 function Invoke-ProofAttempt {
@@ -312,6 +412,7 @@ try {
   if (-not (Test-Path $AfterFxPath -PathType Leaf)) { throw "AfterFX.exe was not found at: $AfterFxPath" }
   if (-not (Test-Path $SupervisorPath -PathType Leaf)) { throw "AE host supervisor is missing: $SupervisorPath" }
   if (-not (Test-Path $ReadinessProbeTemplatePath -PathType Leaf)) { throw "AE host readiness probe template is missing: $ReadinessProbeTemplatePath" }
+  if (-not (Test-Path $IncrementalGatePath -PathType Leaf)) { throw "Incremental proof gate is missing: $IncrementalGatePath" }
   if ($StartupTimeoutSeconds -lt 20 -or $StartupTimeoutSeconds -gt 180) { throw "StartupTimeoutSeconds must be between 20 and 180." }
 
   $ResolvedRequestPath = (Resolve-Path $RequestPath).Path
@@ -338,6 +439,33 @@ try {
   $ProofResultPath = Join-Path $ArtifactPath $ResultFile
   $OrchestrationResultPath = Join-Path $ArtifactPath "orchestration-result.json"
   $SupervisorLogPath = Join-Path $ArtifactPath "ae-host-supervisor.log"
+
+  $ProofCacheDir = if ($env:EDITFLOW_PROOF_CACHE_DIR) {
+    [string]$env:EDITFLOW_PROOF_CACHE_DIR
+  } elseif ($env:LOCALAPPDATA) {
+    Join-Path $env:LOCALAPPDATA "EditFlow2\incremental-proof-cache"
+  } else {
+    Join-Path $RepoRoot ".tmp\incremental-proof-cache"
+  }
+  $AfterFxVersion = [string](Get-Item $AfterFxPath).VersionInfo.FileVersion
+  $NodeVersion = [string](& node --version)
+  $ProofEnvironmentFingerprint = "afterfx=$AfterFxVersion|node=$NodeVersion|os=$([Environment]::OSVersion.VersionString)"
+  $IncrementalPlan = Invoke-IncrementalProofGate -Action "plan" -ResultPath $null
+  $ProofStrategy = [string]$IncrementalPlan.strategy
+  $IncrementalDecision = [string]$IncrementalPlan.action
+  $IncrementalContentKey = [string]$IncrementalPlan.contentKey
+  if ($IncrementalPlan.tokenPath) { $IncrementalTokenPath = [string]$IncrementalPlan.tokenPath }
+  if ($IncrementalDecision -eq "REUSE_PASS") {
+    $EvidenceReused = $true
+    $ProofResultPath = $null
+    $ProofExitCode = 0
+    $FinalClassification = "PASS"
+    $FinalMessage = "Incremental proof engine reused an accepted PASS token because all declared dependencies still match."
+    Write-OrchestrationResult -Classification $FinalClassification -Message $FinalMessage
+    exit 0
+  }
+
+  Invoke-ProofValidation
 
   $env:EDITFLOW_AE_LIFECYCLE = [string]$Request.lifecycle
   $env:EDITFLOW_AE_WARM_SESSION = "1"
@@ -399,6 +527,8 @@ try {
         $TargetAePid = [int]$HealthyAfter[0].Id
         $FinalClassification = "PASS"
         $FinalMessage = "Proof passed and the host-verified warm After Effects session remains healthy."
+        $Recorded = Invoke-IncrementalProofGate -Action "record" -ResultPath $ProofResultPath
+        $IncrementalTokenPath = [string]$Recorded.tokenPath
       }
       break
     }
