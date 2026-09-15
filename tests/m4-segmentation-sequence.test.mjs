@@ -180,14 +180,15 @@ test("dynamic matte planner refuses broken numbered sequence, hash drift, revers
   }
 });
 
-test("dynamic sequence capability is transfer-proven while production still waits for live provider output", () => {
+test("dynamic sequence capability is transfer-proven with live provider E2E while production dispatch stays bounded", () => {
   const capability = M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1;
   assert.equal(String(capability.id), "tracking.segmentation.sequence_matte_materialize.plan");
   assert.equal(capability.status, "FULL");
   assert.equal(capability.proofMaturity, "TRANSFER");
   assert.equal(capability.riskClass, "R0_READ_ONLY");
   assert.match(capability.limitations.join(" "), /never dispatches mutations/i);
-  assert.match(capability.limitations.join(" "), /production runtime registration remains withheld/i);
-  assert.match(capability.routes[0].limitations.join(" "), /save\/reopen plus distinct authenticated CEP reconnect.*retained through P5/i);
-  assert.match(capability.routes[0].limitations.join(" "), /live SAM 3\.1 provider-generated sequence proof.*blocked/i);
+  assert.match(capability.limitations.join(" "), /digest-bound runtime registration is accepted/i);
+  assert.match(capability.limitations.join(" "), /unrestricted production write dispatch remains withheld/i);
+  assert.match(capability.routes[0].limitations.join(" "), /save\/reopen plus distinct authenticated CEP reconnect.*retained/i);
+  assert.match(capability.routes[0].limitations.join(" "), /checkpoint-backed live SAM 3\.1 provider-generated dynamic sequence E2E.*retained/i);
 });

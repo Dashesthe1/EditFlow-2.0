@@ -1,6 +1,6 @@
 # M4 Segmentation Matte Materialization Contract
 
-Status: **PARTIAL / VISUAL / DETERMINISTIC REAL-AE VISUAL+ROLLBACK EVIDENCE**
+Status: **PARTIAL / VISUAL — STATIC V1; TEMPORAL SIBLING LIVE E2E ACCEPTED**
 Capability ID: `tracking.segmentation.matte_materialize.plan`
 Route ID: `m4.tracking.segmentation-matte-materialize.v1`
 
@@ -24,6 +24,7 @@ The planner fails closed unless it receives:
 V1 deliberately refuses 3D target layers, non-square-pixel source geometry, missing evidence, malformed crop bounds, zero target scale, or ambiguous identity.
 
 ## Alignment model
+
 A cropped segmentation raster is not stretched blindly to the target layer. Its normalized source-space bounds determine the crop center and source-space extent.
 
 The planner maps that crop center through the target layer's scale and rotation to derive the matte position. Matte scale is derived independently from normalized source extent versus raster resolution, while target rotation and timing are preserved exactly.
@@ -42,27 +43,29 @@ The planner does not dispatch these writes itself and therefore remains `R0_READ
 
 ## Retained real-AE evidence
 
-The warm-process proof uses a deterministic cropped LUMA raster and verifies exact matte stable identity, exact imported source, crop alignment, opacity, timing, target-state preservation, track-matte source/type, artifact path, artifact dimensions, and operation order.
+The warm-process static proof uses a deterministic cropped LUMA raster and verifies exact matte stable identity, exact imported source, crop alignment, opacity, timing, target-state preservation, track-matte source/type, artifact path, artifact dimensions, and operation order.
 
-It also retains a rendered artifact and a review PNG whose expected subject and background pixels are validated outside After Effects.
+It also retains a rendered artifact and a review PNG whose expected subject and background pixels are validated outside After Effects. The proof injects a guarded failure after matte application, applies the existing transaction Undo route, verifies that the track matte is structurally cleared, reapplies the exact planned matte operation, and verifies restoration.
 
-The proof injects a guarded failure after matte application, applies the existing transaction Undo route, verifies that the track matte is structurally cleared, reapplies the exact planned matte operation, and verifies restoration.
 Two consecutive retained runs passed in the same persistent After Effects process, with the proof fixture and Render Queue restored to the pre-proof baseline after each run.
 
-Protocol 2.5 now separately has retained real-AE proof for native numbered image-sequence import/readback, exact frame-rate/frame-count interpretation, idempotency, stale-revision refusal, and rollback. That closes the AE-side sequence-import primitive without changing this static V1 planner. See `M4_MEDIA_SEQUENCE_PROTOCOL_25_CONTRACT.md`.
+Protocol 2.5 separately has retained real-AE proof for native numbered image-sequence import/readback, exact frame-rate/frame-count interpretation, idempotency, stale-revision refusal, and rollback. The sibling temporal planner now carries live SAM 3.1 output through that primitive to a dynamic AE matte; see `M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CONTRACT.md`.
 
-## What this does not prove
+## Scope boundary
 
-This tranche does not claim:
+This static V1 tranche still does not claim 3D/non-square-pixel materialization or unrestricted production dispatch. The live SAM 3.1 temporal E2E proof does not change the static crop/alignment contract or silently promote unsupported static geometry cases.
 
-- live SAM 3.1 inference or production provider registration;
-- save/reopen/reconnect or materially different-footage transfer;
-- live-provider end-to-end dynamic multi-frame segmentation (deterministic temporal sequence integrity, timing-plan assembly, native AE import/binding, and dynamic visual motion are now retained; live SAM 3.1-generated output remains open);
-- 3D or non-square-pixel materialization;
-- unrestricted production dispatch of the composed write plan.
-
-The configured SAM 3 runtime has the required package plus CUDA/BF16 support, but no Hugging Face token or explicit local SAM 3.1 checkpoint is available. Checkpoint-backed provider promotion therefore remains separately blocked; see `proofs/diagnostics/m4-sam31-runtime-preflight.json`.
+The earlier checkpoint-access blocker is no longer current: the target workstation has retained checkpoint-backed SAM 3.1 temporal evidence, and the digest-bound runtime loader can register the accepted segmentation route plus the sibling temporal planner. Live multi-frame materialization, materially different-footage transfer, and save/reopen/reconnect are therefore established for the temporal route, not retroactively attributed to unsupported static V1 cases.
 
 ## Promotion boundary
 
-Production registration remains withheld until the live provider can supply exact accepted artifacts and transfer/robustness evidence demonstrates that the same materialization contract survives unrelated footage and session boundaries without hidden approximation.
+The static planner remains planning-only and retains its existing bounded evidence level. The temporal sibling is separately accepted as `FULL / TRANSFER / R0_READ_ONLY` with live SAM 3.1 E2E and P5 lifecycle evidence.
+
+Neither planner is an unrestricted production mutation API. Any production writes must continue through typed operation validation, project-state guards, and the production control path.
+
+## Related evidence
+
+- `M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CONTRACT.md`
+- `M4_MEDIA_SEQUENCE_PROTOCOL_25_CONTRACT.md`
+- `M4_SAM31_LOCAL_PROVIDER_CONTRACT.md`
+- `proofs/diagnostics/m4-sam31-live-sequence-matte-e2e-live-acceptance.json`

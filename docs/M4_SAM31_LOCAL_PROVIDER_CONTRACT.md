@@ -110,7 +110,7 @@ The retained live promotion gate is now satisfied for the temporal SAM 3.1 route
 
 ### Live proof harness
 
-`scripts/proofs/m4-sam31-live-transfer-proof.mjs` is the retained promotion harness. It requires an already-authorized explicit local SAM 3.1 checkpoint plus at least two distinct absolute source-video files; it never accepts model terms or authorizes an account on the operator's behalf.
+`scripts/proofs/m4-sam31-live-transfer-proof.mjs` is the retained promotion harness. It requires an already-authorized explicit local SAM 3.1 checkpoint plus at least two distinct absolute source-video files; it never accepts model terms or authorizes an account on the operator's behalf. It does not download or authorize a checkpoint on the operator's behalf.
 
 Each fixture must provide semantic initialization through `entityClass` or a normalized bounding box. Positive/negative points may disambiguate the semantic candidates, but point-only fresh temporal seeding is refused. The sidecar then runs the bounded native multiplex video-session path and retains exact frame-correlated PNG artifacts.
 
@@ -145,3 +145,19 @@ The promoted temporal adapter:
 The runtime preserves the selected semantic object ID across propagation. A temporarily absent target is represented as a zero mask with explicit zero-confidence/occlusion evidence rather than silently rebinding to another instance. Sequence timing remains source-frame exact; local output frame `0` always corresponds to the declared absolute `startFrameIndex`.
 
 The protocol-2.5 sequence-matte planner/materialization surface was already `FULL / TRANSFER` from deterministic real-AE proofs. With the retained live SAM 3.1 evidence now accepted by the strict runtime loader, the live temporal segmentation acceptance route is also `FULL / TRANSFER` for sessions configured with that retained evidence. The live promotion harness itself remains read-only and does not mutate the user's After Effects project.
+
+## Downstream live SAM 3.1 → After Effects acceptance
+
+The provider-promotion harness described above remains intentionally read-only. A separate bounded downstream proof now consumes its retained checkpoint-backed `sam3.1.local` configuration and executes the accepted temporal sequence through the sequence-matte planner and native After Effects surfaces.
+
+`M4_SAM31_LIVE_SEQUENCE_MATTE_E2E_REAL_AE` produced six material 1080×1080 masks at 59.94 fps, imported them through protocol 2.5 as a native temporal image sequence, applied exact transform/timing plus a LUMA track matte, and read the sequence/matte/composite state back exactly. Three source-frame visual checkpoints passed and produced three distinct review-frame SHA-256 values.
+
+The proof reused the already-running AE process, removed only proof-owned objects, and restored project item count, Render Queue count, and project-file identity. A follow-on P5 lifecycle rerun accepted save/reopen plus a distinct authenticated CEP reconnect, a fresh post-reconnect matte mutation, visual stability, and exact restoration of the saved user-project baseline.
+
+This closes the live-provider-to-AE dynamic materialization evidence gap without changing the public capability boundary: digest-bound runtime registration exposes the accepted segmentation route and temporal planner as `FULL / TRANSFER / R0_READ_ONLY`; unrestricted production write dispatch remains outside this acceptance.
+
+Retained downstream evidence:
+
+- `proofs/diagnostics/m4-sam31-live-sequence-matte-e2e-live-acceptance.json`;
+- `proofs/manifests/m4-sam31-live-sequence-matte-e2e-real-ae.request.json`;
+- `M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CONTRACT.md`.

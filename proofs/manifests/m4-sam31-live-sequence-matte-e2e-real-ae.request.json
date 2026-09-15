@@ -1,0 +1,13 @@
+{
+  "proofId": "m4-sam31-live-sequence-matte-e2e-real-ae",
+  "lifecycle": "REUSE_AE",
+  "timeoutSeconds": 60,
+  "runner": "scripts/windows/run-m4-sam31-live-sequence-matte-e2e.ps1",
+  "artifactDir": "proofs/artifacts/m4-sam31-live-sequence-matte-e2e",
+  "resultFile": "result.json",
+  "allowInfrastructureRetry": false,
+  "preserveCurrentAfterEffectsProcess": true,
+  "mutationScope": "PROOF_OWNED_ITEMS_ONLY",
+  "userProjectPolicy": "TEMPORARY_PROOF_ITEMS_THEN_SCOPED_CLEANUP",
+  "productionPromotionOnPass": false
+}

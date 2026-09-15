@@ -1,0 +1,145 @@
+{
+  "schema": "editflow.m4.sam31-live-sequence-matte-e2e-proof.v1",
+  "generatedAt": "2026-09-15T12:22:11.849Z",
+  "proofId": "M4_SAM31_LIVE_SEQUENCE_MATTE_E2E_REAL_AE",
+  "classification": "PASS",
+  "ok": true,
+  "source": {
+    "providerId": "sam3.1.local",
+    "providerVersion": "sam3.1:code-0.1.0",
+    "retainedLiveEvidenceId": "M4:SAM31:LIVE:TRANSFER:WORKSTATION01",
+    "retainedSourceSha256": "d633b4be7a21dc7d1182e57a74c827b587e880bef60acca3123ca021e06160c9",
+    "requestId": "M4_SAM31_E2E_d633b4be7a21",
+    "frameRate": 59.94,
+    "frameCount": 6,
+    "promptFrameIndex": 3
+  },
+  "materialization": {
+    "plannedOperations": [
+      "media.sequence.import",
+      "layer.add_media",
+      "layer.set_transform",
+      "layer.set_timing",
+      "layer.set_track_matte"
+    ],
+    "hostChecks": {
+      "sequence_temporal": true,
+      "sequence_frame_count": true,
+      "sequence_frame_rate": true,
+      "sequence_first_path": true,
+      "matte_source_exact": true,
+      "matte_timing_exact": true,
+      "track_matte_bound": true,
+      "live_matte_is_sequence": true,
+      "plan_operation_sequence": true,
+      "review_frames_requested": true,
+      "project_baseline_restored": true
+    },
+    "cleanupComplete": true
+  },
+  "visual": {
+    "checkpointPassed": true,
+    "reviewFrameSha256": [
+      "c8c154cb8899816444cb47245b57ff23c2d90fa38fdaa8a6dd370e71d2e79d2f",
+      "66d94a47334c0da32e70c23cedef31a9eb55d0fbb08ec3267f1e3acf556f459d",
+      "8533bd47adc1c811ef05d34c38349715383c514fb9fff5877c1a070936d2b147"
+    ],
+    "frames": [
+      {
+        "reviewIndex": 0,
+        "sourceFrameIndex": 0,
+        "dimensionsPass": true,
+        "foreground": {
+          "x": 260,
+          "y": 810,
+          "r": 245,
+          "g": 72,
+          "b": 36,
+          "pass": true
+        },
+        "background": {
+          "x": 1079,
+          "y": 0,
+          "r": 15,
+          "g": 35,
+          "b": 80,
+          "pass": true
+        },
+        "pass": true
+      },
+      {
+        "reviewIndex": 1,
+        "sourceFrameIndex": 3,
+        "dimensionsPass": true,
+        "foreground": {
+          "x": 229,
+          "y": 800,
+          "r": 245,
+          "g": 72,
+          "b": 36,
+          "pass": true
+        },
+        "background": {
+          "x": 1079,
+          "y": 0,
+          "r": 15,
+          "g": 35,
+          "b": 80,
+          "pass": true
+        },
+        "pass": true
+      },
+      {
+        "reviewIndex": 2,
+        "sourceFrameIndex": 5,
+        "dimensionsPass": true,
+        "foreground": {
+          "x": 229,
+          "y": 799,
+          "r": 245,
+          "g": 72,
+          "b": 36,
+          "pass": true
+        },
+        "background": {
+          "x": 1079,
+          "y": 0,
+          "r": 15,
+          "g": 35,
+          "b": 80,
+          "pass": true
+        },
+        "pass": true
+      }
+    ]
+  },
+  "afterEffects": {
+    "warmProcessReused": true,
+    "baselinePids": [
+      8672
+    ],
+    "afterPids": [
+      8672
+    ],
+    "projectBaselineRestored": true,
+    "baselineItemCount": 3,
+    "afterItemCount": 3,
+    "baselineRenderQueueCount": 0,
+    "afterRenderQueueCount": 0
+  },
+  "lifecycle": {
+    "proofId": "M4_SEGMENTATION_SEQUENCE_P5_SAVE_REOPEN_RECONNECT",
+    "status": "ACCEPTED",
+    "ok": true,
+    "classification": "PASS",
+    "cleanupComplete": true,
+    "visualCheckpointPassed": true,
+    "authenticatedReconnect": true,
+    "originalProjectRestored": true
+  },
+  "scope": {
+    "runtimePlannerRegistration": "DIGEST_BOUND_FULL_TRANSFER_R0_READ_ONLY",
+    "productionWriteDispatchPromoted": false,
+    "note": "This retained proof accepts bounded live SAM 3.1 to native AE dynamic matte materialization. It does not promote unrestricted production write dispatch."
+  }
+}

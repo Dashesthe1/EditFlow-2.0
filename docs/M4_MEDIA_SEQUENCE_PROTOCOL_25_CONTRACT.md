@@ -1,6 +1,6 @@
 # M4 Media Sequence Protocol 2.5
 
-Status: **PARTIAL / REAL-AE STRUCTURAL + ROLLBACK PROOF**
+Status: **FULL / TRANSFER PRIMITIVE — RETAINED REAL-AE + DOWNSTREAM LIVE E2E**
 Protocol: `2.5.0`
 Route ID: `ae-cep.media-sequence.v2_5`
 
@@ -34,7 +34,7 @@ After import, exact host readback must match requested path, frame rate, and fra
 
 ## Retained real-AE proof
 
-The accepted proof generated three numbered 64x48 BMP mask frames and executed protocol 2.5 in the already-running After Effects 2025 process.
+The accepted primitive proof generated three numbered 64×48 BMP mask frames and executed protocol 2.5 in the already-running After Effects 2025 process.
 
 The host read back:
 
@@ -49,21 +49,29 @@ The same warm-process proof independently read the sequence back, proved identic
 
 The proof ran under the AE host supervisor, reused the existing After Effects PID, did not restart or close the application, and left the warm host verified healthy.
 
-## Promotion boundary
+## Downstream acceptance
 
-This closes the missing **AE-native image-sequence import/readback primitive** for dynamic segmentation materialization. It does not by itself make segmentation dynamic end to end.
+The temporal segmentation route now closes the downstream gates that were previously open around this primitive:
 
-The following downstream structural gaps are now closed by the temporal segmentation tranche:
+- checkpoint-backed live SAM 3.1 video-session inference is retained with exact per-frame SHA-256/provenance evidence;
+- the accepted sequence planner binds verified temporal masks to protocol 2.5 with exact cadence and target timing;
+- viewer-visible dynamic matte output passes distinct multi-frame pixel checkpoints in real AE using live SAM 3.1 masks;
+- materially different-footage transfer is retained;
+- save/reopen plus a distinct authenticated CEP reconnect preserves the temporal sequence/matte state and accepts a fresh post-reconnect mutation;
+- digest-bound runtime registration exposes the accepted segmentation route and sequence-matte planner as `FULL / TRANSFER / R0_READ_ONLY` only when trusted evidence is loaded.
 
-- a provider/runtime contract emits one exactly correlated temporal series;
-- every returned frame is path-contained, unique, material, and independently SHA-256 verified before downstream resolution;
-- temporal matte planning binds the verified numbered sequence to protocol 2.5 with exact source/comp timing and fail-closed range checks.
+The live E2E proof imported six 1080×1080 SAM 3.1 masks at 59.94 fps, read them back as a native six-frame sequence, bound them as a LUMA track matte, produced three distinct validated review frames, reused the same AE PID, and restored the proof-owned project baseline.
 
-Still open are:
+## Remaining boundary
 
-- live SAM 3.1 video-session inference with the intended gated checkpoint on the target workstation;
-- viewer-visible dynamic matte proof on materially changing footage;
-- save/reopen/reconnect and unrelated-footage transfer evidence;
-- production runtime registration after those gates pass.
+Protocol 2.5 is an accepted typed AE primitive, but acceptance of the primitive and the read-only planner does not authorize unrestricted production write dispatch. Production execution must continue through the normal typed-operation validation, project-state guards, and production control path; callers may not treat retained proof harnesses as a general arbitrary-write API.
 
 Protocol 1.1 still-image import remains unchanged and remains the path for static segmentation materialization.
+
+## Related evidence
+
+- `proofs/diagnostics/m4-sam31-live-sequence-matte-e2e-live-acceptance.json`
+- `proofs/diagnostics/m4-segmentation-sequence-p5-live-acceptance.json`
+- `proofs/manifests/m4-sam31-live-sequence-matte-e2e-real-ae.request.json`
+- `M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CONTRACT.md`
+- `M4_SAM31_LOCAL_PROVIDER_CONTRACT.md`

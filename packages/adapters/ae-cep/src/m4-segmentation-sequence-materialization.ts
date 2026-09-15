@@ -74,9 +74,9 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
     routeId: asRouteId("m4.tracking.segmentation-sequence-matte-materialize.v1"),
     kind: "SUBSYSTEM_ADAPTER",
     available: true,
-    adapterVersion: "0.5.0-dev.3",
+    adapterVersion: "0.5.0-dev.4",
     limitations: [
-      "Protocol 2.5 native sequence import/readback, dynamic visual proof, materially different real-footage transfer, and save/reopen plus distinct authenticated CEP reconnect are retained through P5; live SAM 3.1 provider-generated sequence proof remains blocked by gated checkpoint access.",
+      "Protocol 2.5 native sequence import/readback, dynamic visual proof, materially different real-footage transfer, save/reopen plus distinct authenticated CEP reconnect, and checkpoint-backed live SAM 3.1 provider-generated dynamic sequence E2E are retained.",
       "V1 requires uniform mask geometry and forward target-layer timing; reverse-stretch sequence synchronization is refused.",
     ],
   }],
@@ -89,7 +89,7 @@ export const M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1: Capab
   limitations: [
     "This capability emits a plan and never dispatches mutations by itself.",
     "Every numbered frame must match the accepted artifact identity, digest, content type, geometry, and cadence.",
-    "Production runtime registration remains withheld until live temporal-provider output is retained; P5 save/reopen/reconnect transfer is accepted for the planner/materialization surface.",
+    "Digest-bound runtime registration is accepted only with trusted live SAM 3.1 transfer evidence; unrestricted production write dispatch remains withheld.",
   ],
   fallbackPolicy: "FORBID",
 };
