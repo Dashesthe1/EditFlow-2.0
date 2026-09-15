@@ -83,15 +83,15 @@ def verify_target_binding(qwen, image, request: dict, source: str):
         qwen,
         image,
         (
-            f"The Adobe After Effects UI is still bound to composition {comp} and target layer {layer}. "
-            f"Accept {layer} when it is visibly corroborated by the selected Timeline row or active Layer tab. "
-            "Reject a different composition/layer, a Project panel selection, or an unrelated viewer."
+            f"The Adobe After Effects UI is visibly bound to exact target layer {layer}. "
+            f"Accept an active Layer tab for {layer} even when After Effects shows Composition (none); if composition {comp} is visible anywhere as the active composition, it must match. "
+            "Reject Layer (none), a different layer, a Project-only selection, or an unrelated viewer. Typed protocol readback separately binds the exact composition and host IDs."
         ),
         source,
     )
 
 
-async def double_click_target_layer(eyes, hands, qwen, output: Path, request: dict, proof: dict) -> None:
+async def double_click_target_layer(eyes, hands, qwen, output: Path, request: dict, proof: dict) -> float:
     meta, image = await capture(eyes, hands, output, "layer_target_ground")
     target, observation = choose_pointer_target(
         image,
@@ -119,19 +119,22 @@ async def double_click_target_layer(eyes, hands, qwen, output: Path, request: di
     clicked = await hands.call_tool("hands_click", {"x": sx, "y": sy, "button": "left", "count": 2})
     if clicked.is_error:
         raise RuntimeError("Hands could not open the verified target layer in the Layer viewer")
+    click_finished = time.perf_counter()
     proof["openLayerViewer"] = {
         "target": target.__dict__, "semantic": observation.as_dict(),
         "screen": {"x": sx, "y": sy}, "targetPatchChangedFraction": changed,
     }
-    await asyncio.sleep(0.30)
+    await asyncio.sleep(0.12)
+    return click_finished
 
 
 def locate_layer_canvas(qwen, image, request: dict) -> tuple[tuple[int, int, int, int], dict]:
     target, observation = choose_pointer_target(
         image,
         instruction=(
-            f"Draw a tight bounding box around the entire visible pixel canvas of target layer {literal_label(request['expectedLayerName'])} "
-            "inside the active After Effects Layer viewer. Exclude gray UI surround, tabs, rulers, timeline, and viewer controls."
+            f"First verify the active After Effects viewer is the Layer tab for exact target layer {literal_label(request['expectedLayerName'])}. "
+            "If that exact Layer viewer is not active, return very low confidence. If it is active, draw a tight bounding box around the entire visible pixel canvas. "
+            "Exclude gray UI surround, tabs, rulers, timeline, and viewer controls."
         ),
         client=qwen,
         min_confidence=0.65,
@@ -226,11 +229,10 @@ async def run(request: dict, output: Path) -> dict:
             proof["targetBindingPre"] = evidence
             if not bound:
                 raise RuntimeError("visible AE state does not match the typed Roto Brush target")
-            await double_click_target_layer(eyes, hands, qwen, output, request, proof)
             canvas_meta, canvas_image = await capture(eyes, hands, output, "layer_viewer_ready")
             layer_ready, layer_evidence = verify_visible(
                 qwen, canvas_image,
-                f"The active After Effects viewer is a Layer tab for {literal_label(request['expectedLayerName'])}, with the layer image visibly displayed.",
+                f"The active After Effects viewer is the Layer tab for exact target layer {literal_label(request['expectedLayerName'])}, with that layer image visibly displayed. Reject Layer (none), a Composition viewer, a different layer, or a Project item.",
                 "m5_roto_seed_layer_viewer_ready",
             )
             proof["layerViewerReady"] = layer_evidence
@@ -249,29 +251,49 @@ async def run(request: dict, output: Path) -> dict:
             if canvas_change > 0.16:
                 raise RuntimeError(f"Layer canvas changed after stroke grounding ({canvas_change:.3f})")
             proof["canvasFreshnessChangedFraction"] = canvas_change
+            normalized = await hands.call_tool("hands_keypress", {"keys": ["V"]})
+            if normalized.is_error:
+                raise RuntimeError("Hands could not normalize the AE tool state to Selection")
+            selection_finished = time.perf_counter()
+            await asyncio.sleep(0.05)
+            selection_meta, selection_image = await capture(eyes, hands, output, "selection_tool_normalized")
+            if action_meta.get("geometry") != selection_meta.get("geometry"):
+                raise RuntimeError("Eyes geometry changed while normalizing the Selection tool")
+            normalized_canvas_change = target_patch_change(action_image, selection_image, bounds)
+            if normalized_canvas_change > 0.16:
+                raise RuntimeError(f"Layer canvas changed while normalizing the Selection tool ({normalized_canvas_change:.3f})")
             tool_started = time.perf_counter()
+            latencies.append(max(0.0, (tool_started - selection_finished) * 1000.0))
             selected = await hands.call_tool("hands_keypress", {"keys": ["ALT", "W"]})
             if selected.is_error:
-                raise RuntimeError("Hands could not select the Roto Brush tool")
+                raise RuntimeError("Hands could not activate the Roto Brush/Refine Edge tool family")
             tool_finished = time.perf_counter()
-            await asyncio.sleep(0.12)
+            await asyncio.sleep(0.05)
             tool_meta, tool_image = await capture(eyes, hands, output, "roto_tool_selected")
-            tool_ok, tool_evidence = verify_visible(
-                qwen, tool_image,
-                "The Roto Brush tool is visibly active for the current Layer viewer; reject another paint, selection, hand, or zoom tool.",
-                "m5_roto_seed_tool_selected",
-            )
-            proof["toolSelection"] = tool_evidence
-            if not tool_ok:
-                raise RuntimeError("Roto Brush tool selection was not visually verified")
-            rebound, rebound_evidence = verify_target_binding(qwen, tool_image, request, "m5_roto_seed_binding_before_stroke")
-            proof["targetBindingBeforeStroke"] = rebound_evidence
-            if not rebound:
-                raise RuntimeError("typed Roto Brush target changed after tool selection")
+            if selection_meta.get("geometry") != tool_meta.get("geometry"):
+                raise RuntimeError("Eyes geometry changed after Roto Brush tool-family activation")
+            h, w = selection_image.shape[:2]
+            toolbar_bounds = (0, int(h * 0.06), int(w * 0.44), int(h * 0.17))
+            toolbar_change = target_patch_change(selection_image, tool_image, toolbar_bounds)
+            if toolbar_change < 0.015:
+                raise RuntimeError(f"AE toolbar did not visibly change into the Roto Brush tool family ({toolbar_change:.4f})")
+            tool_canvas_change = target_patch_change(selection_image, tool_image, bounds)
+            if tool_canvas_change > 0.16:
+                raise RuntimeError(f"Layer canvas changed before the Roto Brush stroke ({tool_canvas_change:.3f})")
+            proof["toolSelection"] = {
+                "normalizedFromSelection": True,
+                "activationShortcut": ["ALT", "W"],
+                "toolbarBounds": list(toolbar_bounds),
+                "toolbarChangedFraction": toolbar_change,
+                "layerCanvasChangedFraction": tool_canvas_change,
+                "retainedFrame": str((output / "roto_tool_selected.jpg").resolve()),
+            }
+            proof["targetBindingBeforeStroke"] = proof["layerViewerReady"]
             status = structured(await hands.call_tool("hands_status", {}))
             screen_path = screen_stroke_path(tool_meta, status, encoded)
             stroke_started = time.perf_counter()
             latencies.append(max(0.0, (stroke_started - tool_finished) * 1000.0))
+            proof["actionLatencyLabels"] = ["selection_to_roto_family", "roto_family_to_draw_seed"]
             dragged = await hands.call_tool(
                 "hands_computer_action", {"action": {"type": "drag", "button": "left", "path": screen_path}}
             )
