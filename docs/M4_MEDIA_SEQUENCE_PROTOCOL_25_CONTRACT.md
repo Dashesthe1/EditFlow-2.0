@@ -49,14 +49,20 @@ The same warm-process proof independently read the sequence back, proved identic
 
 The proof ran under the AE host supervisor, reused the existing After Effects PID, did not restart or close the application, and left the warm host verified healthy.
 
+## Temporal provider boundary
+
+The additive `SubjectSegmentationSeriesProviderV1` contract now defines the core temporal-series shape and fail-closed acceptance rules expected upstream of protocol 2.5. It requires exact series/frame correlation, strict frame ordering, one provider identity, homogeneous raster geometry/encoding/content type, and lowercase SHA-256 evidence on every accepted frame.
+
+This is a structural contract only. The existing `sam3.1.local` adapter remains single-frame and is not silently looped or relabeled as a temporal provider. See `M4_TEMPORAL_SEGMENTATION_SERIES_CONTRACT.md`.
+
 ## Promotion boundary
 
-This closes the missing **AE-native image-sequence import/readback primitive** for dynamic segmentation materialization. It does not by itself make segmentation dynamic end to end.
+This closes the missing **AE-native image-sequence import/readback primitive** and the core **temporal segmentation-series acceptance boundary** for dynamic segmentation. It does not by itself make segmentation dynamic end to end.
 
 Still open are:
 
-- a provider/runtime contract that emits a correlated temporal series rather than one independent mask result;
-- full sequence-artifact integrity across every frame, not only first-frame path identity;
+- a live temporal provider/runtime implementation, including real SAM 3.1 temporal inference evidence on the target workstation;
+- full materialized sequence-artifact byte integrity and canonical ordering across every frame, not only per-frame descriptor digests and first-frame path identity;
 - temporal materialization planning that binds sequence timing to exact source/comp timing;
 - viewer-visible dynamic matte proof on materially changing footage;
 - save/reopen/reconnect and unrelated-footage transfer evidence;
