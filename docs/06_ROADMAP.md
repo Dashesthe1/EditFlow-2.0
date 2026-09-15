@@ -106,7 +106,7 @@ Dedicated workflow adapters for:
 
 Each adapter must expose semantic operations, progress/evidence, repair hooks, export outputs, and guarded failure behavior.
 
-In progress 2026-09-15: the Roto Brush / Refine Edge adapter now has a declared semantic contract and fail-closed normalized action model. Runtime registration remains intentionally unavailable until retained real-AE session/readback and guarded-interaction proof passes. See docs/M5_ROTO_BRUSH_ADAPTER_CONTRACT.md.
+In progress 2026-09-15: the Roto Brush / Refine Edge adapter now has a declared semantic contract plus accepted retained real-AE foreground seed, background seed, three-frame forward propagation, and three-frame backward propagation proofs. The seed proofs establish exact protocol-2.6 target/effect/stroke readback; the propagation proofs establish bounded symmetric frame stepping with authoritative endpoint readback and approximately 92-94 ms propagation action gaps while preserving one warm AE process and exact project restore. Runtime registration remains intentionally unavailable until the remaining Refine Edge, freeze/unfreeze, repair/export, popup-fault, transfer, and production-registration gates pass. See docs/M5_ROTO_BRUSH_ADAPTER_CONTRACT.md.
 
 Exit gate: each adapter reaches the proof maturity required by its risk class; no capability is mislabeled as ordinary effect-property access.
 

@@ -113,8 +113,8 @@
       effectReadback = { effectIndex: effect.propertyIndex || 1, name: asString(effect.name), matchName: ROTO_MATCH, enabled: enabled, numProperties: Number(effect.numProperties) || 0, properties: properties };
     }
     return {
-      comp: { stableId: itemStableId(comp), hostId: hostIdOf(comp), name: comp.name, width: comp.width, height: comp.height, time: comp.time },
-      layer: { stableId: layerStableId(layer), hostId: hostIdOf(layer), name: layer.name, index: layer.index },
+      comp: { stableId: itemStableId(comp), hostId: hostIdOf(comp), name: comp.name, width: comp.width, height: comp.height, duration: comp.duration, frameRate: comp.frameRate, frameDuration: comp.frameDuration, time: comp.time },
+      layer: { stableId: layerStableId(layer), hostId: hostIdOf(layer), name: layer.name, index: layer.index, time: layer.time },
       rotoBrushMatchName: ROTO_MATCH,
       effectMatchCount: matches.length,
       effect: effectReadback,

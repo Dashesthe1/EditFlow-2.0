@@ -49,6 +49,9 @@ export interface AeRotoBrushReadbackV26 {
     readonly name: string;
     readonly width: number;
     readonly height: number;
+    readonly duration: number;
+    readonly frameRate: number;
+    readonly frameDuration: number;
     readonly time: number;
   };
   readonly layer: {
@@ -56,6 +59,7 @@ export interface AeRotoBrushReadbackV26 {
     readonly hostId: number | null;
     readonly name: string;
     readonly index: number;
+    readonly time: number;
   };
   readonly rotoBrushMatchName: typeof AE_ROTO_BRUSH_EFFECT_MATCH_NAME_V26;
   readonly effectMatchCount: number;
