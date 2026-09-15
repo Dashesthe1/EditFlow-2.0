@@ -1,0 +1,13 @@
+{
+  "proofId": "m4-exit-gate-semantic-attach-real-ae",
+  "lifecycle": "REUSE_AE",
+  "timeoutSeconds": 60,
+  "runner": "scripts/windows/run-m4-exit-gate-semantic-attach.ps1",
+  "artifactDir": "proofs/artifacts/m4-exit-gate-semantic-attach",
+  "resultFile": "result.json",
+  "allowInfrastructureRetry": false,
+  "preserveCurrentAfterEffectsProcess": true,
+  "mutationScope": "PROOF_OWNED_ITEMS_ONLY",
+  "userProjectPolicy": "TEMPORARY_PROOF_ITEMS_THEN_SCOPED_CLEANUP",
+  "productionPromotionOnPass": false
+}

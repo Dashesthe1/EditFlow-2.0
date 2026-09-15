@@ -100,6 +100,12 @@ test("default desktop session does not silently expose unconfigured M4 tracking 
   assert.equal(maskPointRepair.proofMaturity, "VISUAL");
   assert.equal(maskPointRepair.riskClass, "R0_READ_ONLY");
   assert.ok(maskPointRepair.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+  const semanticAttach = session.registry.get("ae.tracker.semantic_attach.resolve");
+  assert.ok(semanticAttach);
+  assert.equal(semanticAttach.status, "FULL");
+  assert.equal(semanticAttach.proofMaturity, "TRANSFER");
+  assert.equal(semanticAttach.riskClass, "R0_READ_ONLY");
+  assert.ok(semanticAttach.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
 });
 
 test("explicit protocol 2.1 availability registers readback without inventing a visual driver", async () => {

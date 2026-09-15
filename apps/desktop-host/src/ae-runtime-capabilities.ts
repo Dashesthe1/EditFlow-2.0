@@ -19,6 +19,7 @@ import { M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1 } from "../../../package
 import { M4_MASK_POINT_REPAIR_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-mask-point-repair.js";
 import { capabilityForAcceptedM4SubjectSegmentationRuntimeV1 } from "../../../packages/adapters/ae-cep/src/m4-segmentation.js";
 import { M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-segmentation-sequence-materialization.js";
+import { M4_SEMANTIC_ATTACH_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-semantic-attach.js";
 import {
   isTrustedM4SegmentationRuntimeEvidenceV1,
   type TrustedM4SegmentationRuntimeEvidenceV1,
@@ -85,6 +86,12 @@ export const registerAcceptedM4FoundationRuntimeCapabilities = (registry: Capabi
     adapterVersion: "0.5.0-dev.1",
     priority: 132,
     capabilities: [M4_MASK_POINT_REPAIR_CAPABILITY_V1],
+  });
+  registry.registerAdapter({
+    adapterId: "ae-cep.m4.semantic-attach",
+    adapterVersion: "0.5.0-dev.2",
+    priority: 134,
+    capabilities: [M4_SEMANTIC_ATTACH_CAPABILITY_V1],
   });
 };
 

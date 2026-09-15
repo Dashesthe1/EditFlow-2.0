@@ -1,6 +1,6 @@
 # M4 Semantic Attach Points Contract
 
-Status: **PARTIAL / DECLARED / R0_READ_ONLY**  
+Status: **FULL / TRANSFER / R0_READ_ONLY**
 Capability ID: `ae.tracker.semantic_attach.resolve`  
 Route ID: `ae.m4.tracker.semantic-attach-resolve.v1`
 
@@ -94,22 +94,29 @@ No fallback to guessed semantics is allowed.
 
 ## Safety and proof maturity
 
-This tranche is `R0_READ_ONLY`; it changes no After Effects state and requires no rollback. It begins at `DECLARED` proof maturity with deterministic unit coverage.
+This capability remains `R0_READ_ONLY`; the resolver itself changes no After Effects state and requires no rollback. The accepted proof maturity is now `TRANSFER` because exact evidence-backed semantic attachment was exercised through a live After Effects construction on two materially different retained SAM 3.1 source fixtures.
 
-Runtime capability registration is intentionally withheld until the scene-intelligence producer is integrated and a retained proof demonstrates that semantic identity, geometry, confidence, and evidence provenance survive the full path into this resolver.
+Runtime capability registration is accepted through the M4 foundation registry. This does **not** promote unrestricted AE write dispatch: the resolver remains a pure subsystem adapter with `FORBID` fallback, and downstream writes remain governed by their own typed capabilities and proof gates.
 
-## Required promotion proof
+## Accepted transfer proof
 
-A future retained proof should demonstrate at minimum:
+Retained proof `M4_EXIT_GATE_SEMANTIC_ATTACH_REAL_AE` demonstrates:
 
-1. scene intelligence emits a real entity with stable semantic identity and evidence provenance;
-2. exact-id resolution produces the intended normalized attach point;
-3. at least one evidence-backed landmark resolves without fallback invention;
-4. ambiguous class-only input fails closed;
-5. the resolved attach point can seed or bind a downstream tracker/effect target without identity drift;
-6. confidence/evidence remain traceable through readback;
-7. no unrelated project state changes.
+1. two digest-bound real source fixtures with materially different footage;
+2. retained SAM 3.1 masks converted into deterministic interior landmarks with exact per-frame evidence provenance;
+3. exact-`semanticId` landmark resolution at all six frames of each fixture;
+4. ambiguous class-only input failing closed;
+5. a visible AE construction attached to the resolved point with frame-held keyframes;
+6. an intentionally wrong attachment, explicit repair state reaching `RESUMED`, and visible wrong-to-correct relocation;
+7. native temporal source and matte sequences, LUMA matte isolation, and downstream composite readback;
+8. transfer to the unrelated second fixture without identity fallback;
+9. seven visual checkpoints passing, warm AE process reuse, and exact project-baseline restoration;
+10. fast-path routine dispatch gaps of 7 ms maximum and approximately 0.53 ms mean in the retained run.
+
+The retained acceptance artifact is `proofs/diagnostics/m4-exit-gate-semantic-attach-real-ae-acceptance.json`.
 
 ## Human-parity status
 
-This closes the deterministic **semantic attach-point resolution** portion of the M4 roadmap. It does not yet provide semantic detection, segmentation, landmark extraction, automatic target recovery after occlusion, or tracker application. The next M4 gap is the subject/object segmentation interface, followed by segmentation-to-mask/matte application and manual repair/resume workflows.
+The M4 semantic attach requirement and the wider Tracking & Isolation exit gate are now accepted at the bounded proof level: a moving real-world subject is isolated, a visible construction follows evidence-backed semantic geometry, deliberate drift is repaired, and the workflow transfers to unrelated footage.
+
+The resolver still does not claim to be a detector, face/pose model, segmenter, or tracker. Those remain separate upstream/downstream capabilities with their own evidence and failure semantics. The next roadmap milestone is M5 interactive AE adapters.

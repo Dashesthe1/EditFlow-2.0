@@ -90,6 +90,8 @@ Exit gate: construct and transfer an object/mask-driven transition whose geometr
 
 Exit gate: track/isolate a moving real-world object, attach a visible construction, repair drift, and transfer to unrelated footage.
 
+Accepted 2026-09-15: `M4_EXIT_GATE_SEMANTIC_ATTACH_REAL_AE` proves bounded live-AE isolation, evidence-backed semantic attachment, visible drift repair/resume, transfer across two materially different retained SAM 3.1 fixtures, warm-process reuse, and exact project-baseline restoration.
+
 ## Milestone 5 — Interactive AE Adapters (`0.6.0-dev`)
 
 Dedicated workflow adapters for:

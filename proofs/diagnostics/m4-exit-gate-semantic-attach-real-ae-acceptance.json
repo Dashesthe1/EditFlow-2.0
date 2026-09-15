@@ -1,0 +1,349 @@
+{
+    "schema":  "editflow.m4.exit-gate-semantic-attach-real-ae-proof.v1",
+    "generatedAt":  "2026-09-15T14:16:36.6068983Z",
+    "proofId":  "M4_EXIT_GATE_SEMANTIC_ATTACH_REAL_AE",
+    "classification":  "PASS",
+    "ok":  true,
+    "source":  {
+                   "retainedSam31EvidenceId":  "M4:SAM31:LIVE:TRANSFER:WORKSTATION01",
+                   "retainedSam31Classification":  "LIVE_ACCEPTANCE",
+                   "fixtureCount":  2,
+                   "fixtures":  [
+                                    {
+                                        "fixtureId":  "spider-peter-window",
+                                        "semanticId":  "SUBJECT_PETER_PARKER",
+                                        "entityClass":  "person",
+                                        "sourceSha256":  "eca739ecff9335849ba4c22e31b5d113fb418f6034aa25f5034526eced183fc2",
+                                        "frameRate":  23.976,
+                                        "frameCount":  6,
+                                        "distinctAttachPoints":  6
+                                    },
+                                    {
+                                        "fixtureId":  "studioc-person-window",
+                                        "semanticId":  "SUBJECT_STUDIOC_PERSON",
+                                        "entityClass":  "person",
+                                        "sourceSha256":  "d633b4be7a21dc7d1182e57a74c827b587e880bef60acca3123ca021e06160c9",
+                                        "frameRate":  59.94,
+                                        "frameCount":  6,
+                                        "distinctAttachPoints":  6
+                                    }
+                                ]
+               },
+    "semanticAttach":  {
+                           "landmark":  "mask_interior_attach",
+                           "authority":  "DETERMINISTIC_DISTANCE_FIELD_INTERIOR_FROM_DIGEST_BOUND_ACCEPTED_SAM31_MASK",
+                           "gates":  {
+                                         "retainedTemporalIsolationAccepted":  true,
+                                         "materiallyDifferentTransferAccepted":  true,
+                                         "exactCorrelationAccepted":  true,
+                                         "semanticAttachExactIdAccepted":  true,
+                                         "semanticAttachLandmarkAccepted":  true,
+                                         "ambiguousClassFailsClosed":  true,
+                                         "dynamicAttachmentAccepted":  true,
+                                         "visibleRepairStateResumed":  true
+                                     },
+                           "repairStatus":  "RESUMED"
+                       },
+    "materialization":  {
+                            "hostChecks":  {
+                                               "spider-peter-window:sequence_temporal":  true,
+                                               "spider-peter-window:sequence_frame_count":  true,
+                                               "spider-peter-window:sequence_frame_rate":  true,
+                                               "spider-peter-window:mask_source_exact":  true,
+                                               "spider-peter-window:track_matte_bound":  true,
+                                               "spider-peter-window:source_exact":  true,
+                                               "spider-peter-window:source_temporal":  true,
+                                               "spider-peter-window:comp_geometry_exact":  true,
+                                               "spider-peter-window:marker_key_count":  true,
+                                               "spider-peter-window:semantic_marker_exact":  true,
+                                               "spider-peter-window:semantic_marker_dynamic":  true,
+                                               "spider-peter-window:review_frames_emitted":  true,
+                                               "spider-peter-window:repair_state_resumed":  true,
+                                               "spider-peter-window:drift_and_repair_frames_emitted":  true,
+                                               "spider-peter-window:scoped_cleanup":  true,
+                                               "studioc-person-window:sequence_temporal":  true,
+                                               "studioc-person-window:sequence_frame_count":  true,
+                                               "studioc-person-window:sequence_frame_rate":  true,
+                                               "studioc-person-window:mask_source_exact":  true,
+                                               "studioc-person-window:track_matte_bound":  true,
+                                               "studioc-person-window:source_exact":  true,
+                                               "studioc-person-window:source_temporal":  true,
+                                               "studioc-person-window:comp_geometry_exact":  true,
+                                               "studioc-person-window:marker_key_count":  true,
+                                               "studioc-person-window:semantic_marker_exact":  true,
+                                               "studioc-person-window:semantic_marker_dynamic":  true,
+                                               "studioc-person-window:review_frames_emitted":  true,
+                                               "studioc-person-window:scoped_cleanup":  true,
+                                               "project_baseline_restored":  true,
+                                               "retained_plan_gates":  true
+                                           },
+                            "cleanupComplete":  true
+                        },
+    "visual":  {
+                   "checkpointPassed":  true,
+                   "passCount":  7,
+                   "evidenceCount":  7,
+                   "evidence":  [
+                                    {
+                                        "kind":  "FINAL_ATTACH",
+                                        "fixtureId":  "spider-peter-window",
+                                        "frameIndex":  0,
+                                        "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\spider-peter-window-review-0.png",
+                                        "pass":  true,
+                                        "dimensionsPass":  true,
+                                        "backgroundPass":  true,
+                                        "subjectInteriorPass":  true,
+                                        "ring":  {
+                                                     "r":  255,
+                                                     "g":  0,
+                                                     "b":  255,
+                                                     "score":  510,
+                                                     "pass":  true
+                                                 },
+                                        "center":  {
+                                                       "x":  2356,
+                                                       "y":  1269,
+                                                       "r":  29,
+                                                       "g":  29,
+                                                       "b":  32
+                                                   },
+                                        "background":  {
+                                                           "x":  0,
+                                                           "y":  0,
+                                                           "r":  5,
+                                                           "g":  20,
+                                                           "b":  184
+                                                       }
+                                    },
+                                    {
+                                        "kind":  "FINAL_ATTACH",
+                                        "fixtureId":  "spider-peter-window",
+                                        "frameIndex":  2,
+                                        "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\spider-peter-window-review-1.png",
+                                        "pass":  true,
+                                        "dimensionsPass":  true,
+                                        "backgroundPass":  true,
+                                        "subjectInteriorPass":  true,
+                                        "ring":  {
+                                                     "r":  255,
+                                                     "g":  0,
+                                                     "b":  255,
+                                                     "score":  510,
+                                                     "pass":  true
+                                                 },
+                                        "center":  {
+                                                       "x":  2404,
+                                                       "y":  1174,
+                                                       "r":  39,
+                                                       "g":  34,
+                                                       "b":  39
+                                                   },
+                                        "background":  {
+                                                           "x":  0,
+                                                           "y":  0,
+                                                           "r":  5,
+                                                           "g":  20,
+                                                           "b":  184
+                                                       }
+                                    },
+                                    {
+                                        "kind":  "FINAL_ATTACH",
+                                        "fixtureId":  "spider-peter-window",
+                                        "frameIndex":  5,
+                                        "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\spider-peter-window-review-2.png",
+                                        "pass":  true,
+                                        "dimensionsPass":  true,
+                                        "backgroundPass":  true,
+                                        "subjectInteriorPass":  true,
+                                        "ring":  {
+                                                     "r":  255,
+                                                     "g":  0,
+                                                     "b":  255,
+                                                     "score":  510,
+                                                     "pass":  true
+                                                 },
+                                        "center":  {
+                                                       "x":  1769,
+                                                       "y":  1586,
+                                                       "r":  43,
+                                                       "g":  40,
+                                                       "b":  44
+                                                   },
+                                        "background":  {
+                                                           "x":  0,
+                                                           "y":  0,
+                                                           "r":  5,
+                                                           "g":  20,
+                                                           "b":  184
+                                                       }
+                                    },
+                                    {
+                                        "kind":  "FINAL_ATTACH",
+                                        "fixtureId":  "studioc-person-window",
+                                        "frameIndex":  0,
+                                        "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\studioc-person-window-review-0.png",
+                                        "pass":  true,
+                                        "dimensionsPass":  true,
+                                        "backgroundPass":  true,
+                                        "subjectInteriorPass":  true,
+                                        "ring":  {
+                                                     "r":  255,
+                                                     "g":  0,
+                                                     "b":  255,
+                                                     "score":  510,
+                                                     "pass":  true
+                                                 },
+                                        "center":  {
+                                                       "x":  260,
+                                                       "y":  810,
+                                                       "r":  158,
+                                                       "g":  163,
+                                                       "b":  139
+                                                   },
+                                        "background":  {
+                                                           "x":  1079,
+                                                           "y":  0,
+                                                           "r":  5,
+                                                           "g":  20,
+                                                           "b":  184
+                                                       }
+                                    },
+                                    {
+                                        "kind":  "FINAL_ATTACH",
+                                        "fixtureId":  "studioc-person-window",
+                                        "frameIndex":  3,
+                                        "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\studioc-person-window-review-1.png",
+                                        "pass":  true,
+                                        "dimensionsPass":  true,
+                                        "backgroundPass":  true,
+                                        "subjectInteriorPass":  true,
+                                        "ring":  {
+                                                     "r":  255,
+                                                     "g":  0,
+                                                     "b":  255,
+                                                     "score":  510,
+                                                     "pass":  true
+                                                 },
+                                        "center":  {
+                                                       "x":  229,
+                                                       "y":  800,
+                                                       "r":  168,
+                                                       "g":  173,
+                                                       "b":  151
+                                                   },
+                                        "background":  {
+                                                           "x":  1079,
+                                                           "y":  0,
+                                                           "r":  5,
+                                                           "g":  20,
+                                                           "b":  184
+                                                       }
+                                    },
+                                    {
+                                        "kind":  "FINAL_ATTACH",
+                                        "fixtureId":  "studioc-person-window",
+                                        "frameIndex":  5,
+                                        "path":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\studioc-person-window-review-2.png",
+                                        "pass":  true,
+                                        "dimensionsPass":  true,
+                                        "backgroundPass":  true,
+                                        "subjectInteriorPass":  true,
+                                        "ring":  {
+                                                     "r":  255,
+                                                     "g":  0,
+                                                     "b":  255,
+                                                     "score":  510,
+                                                     "pass":  true
+                                                 },
+                                        "center":  {
+                                                       "x":  229,
+                                                       "y":  799,
+                                                       "r":  164,
+                                                       "g":  169,
+                                                       "b":  147
+                                                   },
+                                        "background":  {
+                                                           "x":  1079,
+                                                           "y":  0,
+                                                           "r":  5,
+                                                           "g":  20,
+                                                           "b":  184
+                                                       }
+                                    },
+                                    {
+                                        "kind":  "VISIBLE_REPAIR",
+                                        "fixtureId":  "spider-peter-window",
+                                        "frameIndex":  2,
+                                        "pass":  true,
+                                        "driftFrame":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\spider-peter-window-drift.png",
+                                        "repairedFrame":  "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\artifacts\\m4-exit-gate-semantic-attach\\spider-peter-window-repaired.png",
+                                        "hashesDiffer":  true,
+                                        "driftWrong":  {
+                                                           "r":  255,
+                                                           "g":  0,
+                                                           "b":  255,
+                                                           "score":  510,
+                                                           "pass":  true
+                                                       },
+                                        "driftCorrect":  {
+                                                             "r":  41,
+                                                             "g":  35,
+                                                             "b":  43,
+                                                             "score":  14,
+                                                             "pass":  false
+                                                         },
+                                        "repairedCorrect":  {
+                                                                "r":  255,
+                                                                "g":  0,
+                                                                "b":  255,
+                                                                "score":  510,
+                                                                "pass":  true
+                                                            },
+                                        "repairedWrong":  {
+                                                              "r":  18,
+                                                              "g":  7,
+                                                              "b":  9,
+                                                              "score":  13,
+                                                              "pass":  false
+                                                          }
+                                    }
+                                ],
+                   "reviewFrameSha256":  [
+                                             "12fbee54f19d7dbb545aaaa252ebd51fa4a3aa00e1016e3210d3b64741baffe2",
+                                             "0bceeb8816a615a642ed948e9dbdc195634f0b43d2c45b37730314451e32840c",
+                                             "9eb73f7fd24d7207e8ce0706a3e965d333f55ef6788429bbfa790a23a6aa60fa",
+                                             "0bceeb8816a615a642ed948e9dbdc195634f0b43d2c45b37730314451e32840c",
+                                             "ddfe7f2a51f195557344ac59fc257d36bafd8a5a4c38df0a13131869a1851657",
+                                             "b844e6a2a8fdbfab55fcc6277cda05bd5ee0596356b090e7c6e4c85d43f2576c",
+                                             "bd6461c35dd84a9e38b00d99ae86aa55f10911a1997904bb5f9359cba243f7bd",
+                                             "b2e55d00c674b25bbfe2418076a5f88a5ae6d2060ab7bc82eaa183da832f8dd3"
+                                         ]
+               },
+    "afterEffects":  {
+                         "warmProcessReused":  true,
+                         "baselinePids":  [
+                                              8672
+                                          ],
+                         "afterPids":  [
+                                           8672
+                                       ],
+                         "projectBaselineRestored":  true,
+                         "baselineItemCount":  3,
+                         "afterItemCount":  3,
+                         "baselineRenderQueueCount":  0,
+                         "afterRenderQueueCount":  0
+                     },
+    "fastPath":  {
+                     "dispatchCount":  20,
+                     "maxRoutineGapMs":  7,
+                     "meanRoutineGapMs":  0.53333333333333333,
+                     "maxDispatchDurationMs":  265
+                 },
+    "scope":  {
+                  "runtimeCapabilityPromotion":  "FULL_TRANSFER_R0_READ_ONLY",
+                  "runtimeFoundationRegistration":  true,
+                  "fallbackPolicy":  "FORBID",
+                  "productionWriteDispatchPromoted":  false,
+                  "note":  "This proof promotes the read-only semantic attach resolver and its accepted runtime declaration. It does not promote unrestricted AE write dispatch."
+              }
+}

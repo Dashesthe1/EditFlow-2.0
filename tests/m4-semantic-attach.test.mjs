@@ -45,12 +45,13 @@ const assertPointClose = (actual, expected, epsilon = 1e-12) => {
   }
 };
 
-test("semantic attach capability is declared, read-only, and not falsely runtime-proven", () => {
-  assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.status, "PARTIAL");
-  assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.proofMaturity, "DECLARED");
+test("semantic attach capability is transfer-proven, read-only, and visually integrated", () => {
+  assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.status, "FULL");
+  assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.proofMaturity, "TRANSFER");
   assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.riskClass, "R0_READ_ONLY");
   assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.routes[0].kind, "SUBSYSTEM_ADAPTER");
-  assert.ok(M4_SEMANTIC_ATTACH_CAPABILITY_V1.limitations.some((value) => value.includes("Runtime capability registration is intentionally withheld")));
+  assert.equal(M4_SEMANTIC_ATTACH_CAPABILITY_V1.visualProofProfile, "M4_EXIT_GATE_SEMANTIC_ATTACH_REAL_AE");
+  assert.ok(M4_SEMANTIC_ATTACH_CAPABILITY_V1.limitations.some((value) => value.includes("exact evidence-backed upstream geometry")));
 });
 
 test("exact semanticId resolves the entity bounding-box center deterministically", () => {
