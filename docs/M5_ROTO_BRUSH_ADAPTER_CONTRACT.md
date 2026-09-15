@@ -67,4 +67,8 @@ Speed claims, if made, must measure actual AE action-to-action latency. Routine 
 
 ## Current boundary
 
+## Proof isolation preflight
+
+Before the development protocol 2.6 loader or any guarded interactive action may run, the M5 proof gate must observe exactly one responsive warm AE process and a project that is unsaved, contains zero project items, reports dirty === false, and exposes a valid positive project revision. Saved, nonempty, dirty, or dirty-state-unavailable projects are refused. The preflight itself is read-only and does not load EditFlow host modules, create a project, close a project, save, clean, or issue UI actions.
+
 This tranche is intentionally code/read-only with respect to live After Effects. It establishes the semantic contract and fail-closed validation only. It does not seed, propagate, freeze, repair, export, or register a production Roto Brush route.
