@@ -1,6 +1,8 @@
 param(
   [string]$AfterFxPath = "C:\Program Files\Adobe\Adobe After Effects 2025\Support Files\AfterFX.exe",
   [string]$SourcePath = "C:\Users\Shadow\Downloads\Main Clips\Peter Parker - The Amazing Spider-Man [2012] - [REMUX 4K HEVC-H265] - chaszq-00.51.24.562-00.51.42.047.mp4",
+  [string]$CompName = "EF2_M5_ROTO_PROOF_COMP",
+  [string]$LayerName = "EF2_M5_ROTO_SUBJECT",
   [int]$TimeoutSeconds = 20
 )
 $ErrorActionPreference = "Stop"
@@ -85,7 +87,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "M5 blank-project preflight failed." }
   $Preflight = $PreflightText | ConvertFrom-Json
   if ($Preflight.eligible -ne $true -or $Preflight.safeToIssueInteractiveActions -ne $true) { throw "M5 preflight did not authorize the isolation project." }
-  $FixtureRequest = [ordered]@{ sourcePath=$SourcePath; compName="EF2_M5_ROTO_PROOF_COMP"; layerName="EF2_M5_ROTO_SUBJECT"; atTime=0.5 }
+  if ($CompName -notlike "EF2_M5_ROTO_*" -or $LayerName -notlike "EF2_M5_ROTO_*") { throw "M5 export fixture names must stay proof-owned." }
+  $FixtureRequest = [ordered]@{ sourcePath=$SourcePath; compName=$CompName; layerName=$LayerName; atTime=0.5 }
   [System.IO.File]::WriteAllText($FixtureInput, (($FixtureRequest | ConvertTo-Json -Depth 6) + [Environment]::NewLine), $Utf8NoBom)
   Invoke-AeScript $FixtureScript
   $Fixture = Wait-JsonMarker $FixtureMarker $TimeoutSeconds "M5 Roto Brush fixture setup"

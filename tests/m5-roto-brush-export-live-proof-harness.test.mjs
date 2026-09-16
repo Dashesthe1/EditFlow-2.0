@@ -35,6 +35,8 @@ test("export runner recovers retained isolation state before a new entry and cle
   assert.doesNotMatch(source, /Remove-Item \$LiveResultPath,\$ResultPath,\$StatePath/);
   assert.match(source, /RestoreStabilityVerified = \$true/);
   assert.match(source, /Remove-Item \$StatePath -Force/);
+  assert.match(source, /\[string\]\$LayerName = "EF2_M5_ROTO_SUBJECT"/);
+  assert.match(source, /fixture names must stay proof-owned/);
 });
 
 test("export runner keeps one warm AE process and restores in finally through the warm CEP proof endpoint", async () => {
