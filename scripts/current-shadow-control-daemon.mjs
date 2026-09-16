@@ -38,6 +38,18 @@ const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFI
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
+const proofScriptRoot = path.resolve(repoRoot, "scripts", "windows");
+const resolveProofScript = async (value) => {
+  if (typeof value !== "string" || value.length === 0) throw new Error("PROOF_SCRIPT_PATH_REQUIRED");
+  const candidate = path.resolve(value);
+  const relative = path.relative(proofScriptRoot, candidate);
+  if (relative.startsWith("..") || path.isAbsolute(relative) || path.extname(candidate).toLowerCase() !== ".jsx") {
+    throw new Error("PROOF_SCRIPT_PATH_NOT_ALLOWED");
+  }
+  await readFile(candidate, "utf8");
+  return candidate;
+};
+
 const readJson = async (req) => {
   const chunks = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -132,6 +144,26 @@ const server = createServer(async (req, res) => {
       if (typeof body.signature !== "string" || typeof body.success !== "boolean") throw new Error("ERROR_OUTCOME_INPUT_REQUIRED");
       const entry = await errorMemory.recordOutcome(body.signature, body.success);
       sendJson(res, entry ? 200 : 404, { ok: Boolean(entry), entry });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/proof-script") {
+      const body = await readJson(req);
+      const scriptPath = await resolveProofScript(body.scriptPath);
+      const activePanel = broker.panelSession ?? panel;
+      if (!activePanel || typeof activePanel.protocolVersion !== "string") throw new Error("CEP_PANEL_NOT_CONNECTED");
+      const sequence = ++requestCounter;
+      const suffix = `${Date.now()}-${sequence}`;
+      const response = await broker.dispatch({
+        protocolVersion: activePanel.protocolVersion,
+        requestId: `shadow-proof-request-${suffix}`,
+        transactionId: `shadow-proof-tx-${suffix}`,
+        operationId: `shadow-proof-op-${suffix}`,
+        capabilityId: "internal.proof.eval_file",
+        command: "proof.eval_file",
+        payload: { scriptPath },
+      });
+      const ok = response?.outcome === "APPLIED";
+      sendJson(res, ok ? 200 : 502, { ok, scriptPath, response });
       return;
     }
     if (req.method === "POST" && url.pathname === "/run") {

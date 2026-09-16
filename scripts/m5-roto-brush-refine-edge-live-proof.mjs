@@ -1,7 +1,6 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 
 import { GuardedRotoBrushSeedControllerV1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m5-roto-brush-seed-controller.js";
@@ -19,6 +18,7 @@ const required = (name) => {
   return value;
 };
 const afterFxPath = required("--afterfx-path");
+const proofScriptEndpoint = arg("--proof-script-endpoint") ?? "http://127.0.0.1:32146/proof-script";
 const fixturePath = required("--fixture");
 const resultPath = required("--result");
 const readbackScript = required("--readback-script");
@@ -43,12 +43,18 @@ const waitJson = async (filePath, deadlineMs) => {
   throw new Error(`Timed out waiting for ${filePath}`);
 };
 const invokeAeScript = async () => {
-  await new Promise((resolve, reject) => {
-    const child = spawn(afterFxPath, ["-r", readbackScript], { stdio: "ignore", windowsHide: false, detached: false });
-    let settled = false;
-    child.once("error", (error) => { if (!settled) { settled = true; reject(error); } });
-    setTimeout(() => { if (!settled) { settled = true; child.unref(); resolve(); } }, 40);
+  const response = await fetch(proofScriptEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scriptPath: readbackScript }),
   });
+  const text = await response.text();
+  let payload = null;
+  try { payload = text ? JSON.parse(text) : null; } catch {}
+  if (!response.ok || payload?.ok !== true) {
+    throw new Error(`Warm CEP proof script dispatch failed: ${payload?.error ?? text ?? response.status}`);
+  }
+  return payload;
 };
 
 class FixedAeRotoReadbackTransport {

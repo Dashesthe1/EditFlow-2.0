@@ -7,14 +7,16 @@
   try {
     var request = readJson(reqPath);
     response.requestId = request.requestId;
-    response.tool = request.tool;
-    if (request.schema !== response.schema || !request.requestId) throw new Error("invalid tool-select request");
+    var requestedTool = String(request.tool);
+    response.tool = requestedTool;
+    if (String(request.schema) !== response.schema || !request.requestId) throw new Error("invalid tool-select request");
     if (!app.project) throw new Error("no active After Effects project");
-    // Bind to the empirically verified AE 25.6.6 ToolType values directly. In the active
-    // Layer-viewer context, symbolic ToolType lookup was observed to echo the previous
-    // grouped-tool member even though standalone enum discovery reported the documented values.
-    var expected = request.tool === "ROTO_BRUSH" ? 9041
-      : request.tool === "REFINE_EDGE" ? 9042 : null;
+    // Bind to the empirically verified AE 25.6.6 ToolType values directly. Keep these
+    // branches explicit: ExtendScript associated the prior chained conditional expression
+    // in a way that mapped ROTO_BRUSH to 9042. Do not collapse this back to a chained ternary.
+    var expected = null;
+    if (requestedTool === "ROTO_BRUSH") expected = 9041;
+    else if (requestedTool === "REFINE_EDGE") expected = 9042;
     if (expected === null) throw new Error("unsupported tool-select target");
     app.project.toolType = expected;
     response.toolType = String(app.project.toolType);

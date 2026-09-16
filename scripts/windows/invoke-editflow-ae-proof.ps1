@@ -36,6 +36,36 @@ $FailureCapsulePath = $null
 $ValidationMode = $null
 $ValidationDurationMs = $null
 
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class EditFlowAeVisibleWindowLookup {
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
+  public static string FindAfterEffectsTitle(uint targetPid) {
+    string found = null;
+    EnumWindows(delegate(IntPtr hWnd, IntPtr lParam) {
+      uint pid; GetWindowThreadProcessId(hWnd, out pid);
+      if (pid != targetPid || !IsWindowVisible(hWnd)) return true;
+      var text = new StringBuilder(512); GetWindowText(hWnd, text, text.Capacity);
+      var title = text.ToString();
+      if (title.StartsWith("Adobe After Effects", StringComparison.OrdinalIgnoreCase)) { found = title; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+}
+"@
+
+function Get-AfterFxVisibleApplicationTitle {
+  param([Parameter(Mandatory = $true)][int]$ProcessId)
+  return [EditFlowAeVisibleWindowLookup]::FindAfterEffectsTitle([uint32]$ProcessId)
+}
+
 function ConvertTo-SafeRelativePath {
   param([Parameter(Mandatory = $true)][string]$RelativePath)
   if ([System.IO.Path]::IsPathRooted($RelativePath)) { throw "Absolute paths are not allowed in proof requests: $RelativePath" }
@@ -117,20 +147,26 @@ function Get-HealthyTargetAfterFx {
   foreach ($Process in @(Get-TargetAfterFxProcesses -ExpectedPath $ExpectedPath)) {
     try {
       $Process.Refresh()
-      if (-not $Process.Responding -or $Process.MainWindowHandle -eq 0) { continue }
+      if (-not $Process.Responding) { continue }
+      $ApplicationTitle = $null
       if ($Process.MainWindowTitle -like "Adobe After Effects*") {
+        $ApplicationTitle = [string]$Process.MainWindowTitle
+      } else {
+        $ApplicationTitle = Get-AfterFxVisibleApplicationTitle -ProcessId ([int]$Process.Id)
+      }
+      if ($ApplicationTitle) {
         $script:LastHealthEvidence = [ordered]@{
           mode = "NORMAL_MAIN_WINDOW"
           pid = [int]$Process.Id
           appName = "Adobe After Effects"
           appVersion = $null
           itemCount = $null
-          mainWindowTitle = [string]$Process.MainWindowTitle
+          mainWindowTitle = [string]$ApplicationTitle
         }
         $Healthy += $Process
         continue
       }
-      if (Test-AfterFxDirectReadiness -ExpectedPath $ExpectedPath -Process $Process) {
+      if ($Process.MainWindowHandle -ne 0 -and (Test-AfterFxDirectReadiness -ExpectedPath $ExpectedPath -Process $Process)) {
         $Healthy += $Process
       }
     } catch {}

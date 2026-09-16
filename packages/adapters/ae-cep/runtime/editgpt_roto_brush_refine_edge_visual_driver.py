@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import json
 import math
-import subprocess
+import urllib.request
 import tempfile
 import time
 from pathlib import Path
@@ -141,69 +141,44 @@ async def refuse_modal_if_present(eyes, hands, qwen, output: Path, image, proof:
     raise RuntimeError(f"After Effects modal error after Refine Edge stroke: {message}")
 
 
-async def select_grouped_toolbar_tool(hands, meta: dict, status: dict, image, tool: str) -> dict:
-    if tool not in {"ROTO_BRUSH", "REFINE_EDGE"}:
-        raise ValueError(f"unsupported grouped toolbar tool: {tool}")
-    h, w = image.shape[:2]
-    if w < 900 or h < 500:
-        raise RuntimeError("Eyes frame is too small for retained AE toolbar geometry")
-    # Retained real-AE flyout proof on the same workstation established the family button
-    # at encoded (388,70), Roto Brush row center at (462,70), and Refine Edge row
-    # center at (470,98) in a 1280x720 Eyes frame. Scale those retained coordinates
-    # to the current Eyes geometry, then execute hold -> member click locally with no
-    # semantic observation between the two AE actions.
-    family = (int(round(w * (388.0 / 1280.0))), int(round(h * (70.0 / 720.0))))
-    member_ref = (462.0, 70.0) if tool == "ROTO_BRUSH" else (470.0, 98.0)
-    member = (int(round(w * (member_ref[0] / 1280.0))), int(round(h * (member_ref[1] / 720.0))))
-    transform = CoordinateTransform.from_status(meta, status)
-    family_screen = transform.encoded_to_screen(*family)
-    member_screen = transform.encoded_to_screen(*member)
-    hold_started = time.perf_counter()
-    held = await hands.call_tool("hands_computer_action", {"action": {"type": "click_hold", "x": family_screen[0], "y": family_screen[1], "button": "left", "duration_ms": 600}})
-    hold_finished = time.perf_counter()
-    if held.is_error:
-        raise RuntimeError("Hands could not open the retained Roto Brush/Refine Edge tool flyout")
-    member_started = time.perf_counter()
-    chosen = await hands.call_tool("hands_click", {"x": member_screen[0], "y": member_screen[1], "button": "left", "count": 1})
-    member_finished = time.perf_counter()
-    if chosen.is_error:
-        raise RuntimeError(f"Hands could not select {tool} from the retained tool flyout")
-    return {
-        "method": "retained_tool_flyout",
-        "requestedTool": tool,
-        "familyEncoded": list(family),
-        "memberEncoded": list(member),
-        "familyScreen": {"x": family_screen[0], "y": family_screen[1]},
-        "memberScreen": {"x": member_screen[0], "y": member_screen[1]},
-        "holdDurationMs": max(0.0, (hold_finished - hold_started) * 1000.0),
-        "holdToMemberClickGapMs": max(0.0, (member_started - hold_finished) * 1000.0),
-        "memberClickDurationMs": max(0.0, (member_finished - member_started) * 1000.0),
-        "retainedAuthority": "M5 retained real-AE toolbar flyout proof",
-    }
-
-
-def select_native_tool(afterfx_path: str, tool_select_script: str, tool: str) -> dict:
+def select_native_tool(_afterfx_path: str, tool_select_script: str, tool: str) -> dict:
     request_path = Path(tempfile.gettempdir()) / "EditFlow2-m5-roto-brush-tool-select-request.json"
     response_path = Path(tempfile.gettempdir()) / "EditFlow2-m5-roto-brush-tool-select-response.json"
     response_path.unlink(missing_ok=True)
     request_id = f"M5_TOOL_{tool}_{time.time_ns()}"
     request_path.write_text(json.dumps({"schema": "editflow.roto-brush-tool-select.v1", "requestId": request_id, "tool": tool}) + "\n", encoding="utf-8")
     started = time.perf_counter()
-    subprocess.Popen([afterfx_path, "-r", tool_select_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.monotonic() + 3.0
+    payload = json.dumps({"scriptPath": tool_select_script}).encode("utf-8")
+    dispatch_request = urllib.request.Request(
+        "http://127.0.0.1:32146/proof-script",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(dispatch_request, timeout=2.0) as dispatch_response:
+            dispatch = json.loads(dispatch_response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"Warm CEP native {tool} tool selection dispatch failed: {exception_detail(exc)}") from exc
+    if dispatch.get("ok") is not True:
+        raise RuntimeError(f"Warm CEP native {tool} tool selection dispatch was refused")
+    deadline = time.monotonic() + 0.75
     while time.monotonic() < deadline:
         if response_path.is_file() and response_path.stat().st_size > 0:
             response = json.loads(response_path.read_text(encoding="utf-8-sig"))
             break
-        time.sleep(0.01)
+        time.sleep(0.005)
     else:
-        raise RuntimeError(f"After Effects native {tool} tool selection timed out")
+        raise RuntimeError(f"Warm CEP native {tool} tool selection timed out waiting for correlated readback")
     elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
     if response.get("schema") != "editflow.roto-brush-tool-select.v1" or response.get("requestId") != request_id:
         raise RuntimeError("After Effects native tool selector correlation mismatch")
     if response.get("ok") is not True or response.get("tool") != tool:
         raise RuntimeError(str(response.get("error") or f"After Effects refused native {tool} tool selection"))
-    return {**response, "roundtripMs": elapsed_ms}
+    expected_tool_type = "9041" if tool == "ROTO_BRUSH" else "9042" if tool == "REFINE_EDGE" else None
+    if expected_tool_type is None or str(response.get("toolType")) != expected_tool_type:
+        raise RuntimeError(f"After Effects native {tool} toolType mismatch: {response.get('toolType')}")
+    return {**response, "roundtripMs": elapsed_ms, "dispatchTransport": "WARM_CEP"}
 
 
 async def run(request: dict, output: Path, afterfx_path: str, tool_select_script: str) -> dict:
@@ -218,6 +193,7 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
         if armed.is_error:
             raise RuntimeError("EditGPT Hands could not arm")
         started_here = False
+        maximized_here = False
         try:
             started = await eyes.call_tool("eyes_start_live", {"fps": 30, "buffer_seconds": 0.7})
             if started.is_error:
@@ -241,24 +217,78 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
             proof["layerViewerReady"] = layer_evidence
             if not layer_ready:
                 raise RuntimeError("exact target Layer viewer was not visually verified")
-            bounds, canvas_ground = locate_layer_canvas(qwen, canvas_image, request)
+            try:
+                bounds, canvas_ground = locate_layer_canvas(qwen, canvas_image, request)
+            except RuntimeError as exc:
+                if "Layer canvas bounding box is implausibly small" not in str(exc):
+                    raise
+                proof["smallLayerCanvasDetected"] = str(exc)
+                proof["layerTabFocusBeforeMaximize"] = await guarded_click_target(
+                    eyes, hands, qwen, output,
+                    f"Point to the active After Effects Layer viewer tab whose visible label is exactly Layer {literal_label(request['expectedLayerName'])}. Do not point to Effect Controls, Composition, Project, Preview, or another tab.",
+                    "refine_layer_tab_focus",
+                )
+                toggled = await hands.call_tool("hands_keypress", {"keys": ["GRAVE"]})
+                if toggled.is_error:
+                    raise RuntimeError("Hands could not maximize the verified Refine Edge Layer viewer")
+                maximized_here = True
+                await asyncio.sleep(0.12)
+                canvas_meta, canvas_image = await capture(eyes, hands, output, "refine_layer_viewer_maximized")
+                rebound, rebound_evidence = verify_target_binding(qwen, canvas_image, request, "m5_roto_refine_binding_maximized")
+                proof["targetBindingMaximized"] = rebound_evidence
+                if not rebound:
+                    raise RuntimeError("typed Refine Edge target changed after maximizing the Layer viewer")
+                bounds, canvas_ground = locate_layer_canvas(qwen, canvas_image, request)
+                proof["layerViewerMaximized"] = True
             proof["layerCanvas"] = {**canvas_ground, "bounds": list(bounds)}
+
+            # Roto Brush may continue repainting the Layer image briefly after a seed stroke.
+            # Lease only the local frame geometry until two consecutive frames settle; do not
+            # re-enter semantic reasoning between these micro-observations.
+            action_meta = canvas_meta
+            action_image = canvas_image
+            stabilization_changes: list[float] = []
+            stable_frames = 0
+            for _attempt in range(20):
+                await asyncio.sleep(0.10)
+                latest = await eyes.call_tool("eyes_latest_frame", {"max_width": 1280, "jpeg_quality": 92})
+                if latest.is_error:
+                    raise RuntimeError("freshness capture failed while waiting for Refine Edge Layer stability")
+                latest_meta, latest_image, _ = frame_parts(latest)
+                if canvas_meta.get("geometry") != latest_meta.get("geometry"):
+                    raise RuntimeError("Eyes geometry changed while waiting for Refine Edge Layer stability")
+                canvas_change = target_patch_change(action_image, latest_image, bounds)
+                stabilization_changes.append(float(canvas_change))
+                action_meta, action_image = latest_meta, latest_image
+                if canvas_change <= 0.16:
+                    stable_frames += 1
+                    if stable_frames >= 2:
+                        break
+                else:
+                    stable_frames = 0
+            if stable_frames < 2:
+                last_change = stabilization_changes[-1] if stabilization_changes else 1.0
+                raise RuntimeError(f"Layer canvas did not settle before Refine Edge tool selection ({last_change:.3f})")
+            proof["canvasStabilization"] = {
+                "method": "local_frame_stability_lease",
+                "changes": stabilization_changes,
+                "requiredConsecutiveStableFrames": 2,
+                "threshold": 0.16,
+            }
+            settled_bound, settled_evidence = verify_target_binding(
+                qwen, action_image, request, "m5_roto_refine_binding_stable"
+            )
+            proof["targetBindingStable"] = settled_evidence
+            if not settled_bound:
+                raise RuntimeError("typed Roto Brush target changed while waiting for Refine Edge Layer stability")
+            bounds, settled_canvas_ground = locate_layer_canvas(qwen, action_image, request)
+            proof["layerCanvasSettled"] = {**settled_canvas_ground, "bounds": list(bounds)}
             encoded = encoded_stroke_path(request["stroke"], bounds)
-            latest = await eyes.call_tool("eyes_latest_frame", {"max_width": 1280, "jpeg_quality": 92})
-            if latest.is_error:
-                raise RuntimeError("freshness capture failed before Refine Edge tool selection")
-            action_meta, action_image, _ = frame_parts(latest)
-            if canvas_meta.get("geometry") != action_meta.get("geometry"):
-                raise RuntimeError("Eyes geometry changed after Refine Edge stroke grounding")
-            canvas_change = target_patch_change(canvas_image, action_image, bounds)
-            if canvas_change > 0.16:
-                raise RuntimeError(f"Layer canvas changed after Refine Edge stroke grounding ({canvas_change:.3f})")
 
             status = structured(await hands.call_tool("hands_status", {}))
             tool_started = time.perf_counter()
-            tool_select = await select_grouped_toolbar_tool(hands, action_meta, status, action_image, "REFINE_EDGE")
+            tool_select = select_native_tool(afterfx_path, tool_select_script, "REFINE_EDGE")
             tool_finished = time.perf_counter()
-            latencies.append(float(tool_select["holdToMemberClickGapMs"]))
             await asyncio.sleep(0.03)
             tool_meta, tool_image = await capture(eyes, hands, output, "refine_edge_tool_selected")
             if action_meta.get("geometry") != tool_meta.get("geometry"):
@@ -273,14 +303,15 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
                 **tool_select,
                 "toolbarBounds": list(toolbar_bounds),
                 "toolbarChangedFraction": toolbar_change,
-                "toolIdentityAuthority": "retained exact flyout member + native protocol-2.6 post-readback",
+                "toolIdentityAuthority": "verified app.project.toolType over warm CEP + native protocol-2.6 post-readback",
+                "selectorRoundtripMs": float(tool_select["roundtripMs"]),
                 "layerCanvasChangedFraction": tool_canvas_change,
                 "retainedFrame": str((output / "refine_edge_tool_selected.jpg").resolve()),
             }
             screen_path = screen_stroke_path(tool_meta, status, encoded)
             stroke_started = time.perf_counter()
             latencies.append(max(0.0, (stroke_started - tool_finished) * 1000.0))
-            proof["actionLatencyLabels"] = ["flyout_hold_to_refine_member_click", "refine_member_click_to_draw"]
+            proof["actionLatencyLabels"] = ["native_refine_tool_to_draw"]
             dragged = await hands.call_tool("hands_computer_action", {"action": {"type": "drag", "button": "left", "path": screen_path, "modifiers": []}})
             stroke_finished = time.perf_counter()
             if dragged.is_error:
@@ -312,6 +343,12 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
                 "proof": proof,
             }
         finally:
+            if maximized_here:
+                try:
+                    await hands.call_tool("hands_keypress", {"keys": ["GRAVE"]})
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    pass
             if started_here:
                 await eyes.call_tool("eyes_stop_live", {})
             await hands.call_tool("hands_disarm", {})

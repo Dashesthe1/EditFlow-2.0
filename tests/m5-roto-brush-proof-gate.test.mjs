@@ -70,7 +70,9 @@ test("Windows preflight reuses one responsive AE process and cannot restart, clo
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /\$Running\.Count -ne 1/);
   assert.match(source, /Responding/);
-  assert.match(source, /-ArgumentList @\("-r", \$PreflightScript\)/);
+  assert.match(source, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(source, /dispatchTransport = "WARM_CEP"/);
+  assert.doesNotMatch(source, /-ArgumentList @\("-r", \$PreflightScript\)/);
   assert.match(source, /Start-Sleep -Milliseconds 100/);
   assert.match(source, /Protocol 2\.6 host loading and interactive proof actions are blocked/);
   assert.doesNotMatch(source, /Stop-Process/);

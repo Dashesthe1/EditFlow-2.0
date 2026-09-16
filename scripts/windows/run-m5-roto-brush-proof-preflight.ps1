@@ -12,7 +12,10 @@ $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
 if ($Running.Count -ne 1) { throw "M5 Roto Brush proof preflight requires exactly one already-running After Effects process; found $($Running.Count). No AE lifecycle action was attempted." }
 if (-not $Running[0].Responding -or $Running[0].MainWindowHandle -eq 0) { throw "The existing After Effects process is not a responsive visible proof target. No AE lifecycle action was attempted." }
 Remove-Item $Marker -Force -ErrorAction SilentlyContinue
-$Dispatch = Start-Process -FilePath $AfterFxPath -ArgumentList @("-r", $PreflightScript) -PassThru
+$ProofScriptEndpoint = "http://127.0.0.1:32146/proof-script"
+$Body = @{ scriptPath = $PreflightScript } | ConvertTo-Json -Compress
+$Dispatch = Invoke-RestMethod -Uri $ProofScriptEndpoint -Method Post -ContentType "application/json" -Body $Body -TimeoutSec ([Math]::Max($TimeoutSeconds, 30))
+if (-not $Dispatch.ok) { throw "M5 Roto Brush read-only preflight warm CEP dispatch failed." }
 $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while (-not (Test-Path $Marker -PathType Leaf)) {
   if ((Get-Date) -ge $Deadline) { throw "M5 Roto Brush read-only preflight timed out; development host load and interactive actions remain forbidden." }
@@ -27,7 +30,8 @@ $Summary = [ordered]@{
   safeToIssueInteractiveActions = [bool]$Result.safeToIssueInteractiveActions
   state = $Result.state
   existingAfterFxId = $Running[0].Id
-  dispatchProcessId = $Dispatch.Id
+  dispatchProcessId = $null
+  dispatchTransport = "WARM_CEP"
 }
 $Summary | ConvertTo-Json -Depth 5 | Write-Output
 if (-not $Result.eligible) { throw "M5 Roto Brush proof preflight refused: $($Result.refusalCode). Protocol 2.6 host loading and interactive proof actions are blocked." }

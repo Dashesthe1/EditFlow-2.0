@@ -36,16 +36,20 @@ test("M5 Refine Edge live proof bootstraps one native Roto effect then requires 
   assert.match(node, /typedReadbackRoundtripsMs/);
 });
 
-test("M5 Refine Edge keeps retained flyout micro-actions local without a semantic rethink loop", async () => {
+test("M5 Refine Edge uses warm CEP native tool selection without a semantic rethink loop", async () => {
   const py = await read("packages/adapters/ae-cep/runtime/editgpt_roto_brush_refine_edge_visual_driver.py");
-  const first = py.indexOf('tool_select = await select_grouped_toolbar_tool(hands, action_meta, status, action_image, "REFINE_EDGE")');
+  const first = py.indexOf('tool_select = select_native_tool(afterfx_path, tool_select_script, "REFINE_EDGE")');
   const checkpoint = py.indexOf('tool_meta, tool_image = await capture');
   assert.ok(first >= 0 && checkpoint > first);
   const localBatch = py.slice(first, checkpoint);
   assert.doesNotMatch(localBatch, /qwen\.|verify_visible|choose_pointer_target/);
-  assert.match(py, /retained_tool_flyout/);
-  assert.match(py, /flyout_hold_to_refine_member_click/);
-  assert.match(py, /refine_member_click_to_draw/);
+  assert.match(py, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(py, /native_refine_tool_to_draw/);
+  assert.match(py, /smallLayerCanvasDetected/);
+  assert.match(py, /layerTabFocusBeforeMaximize/);
+  assert.match(py, /\["GRAVE"\]/);
+  assert.match(py, /maximized_here/);
+  assert.doesNotMatch(py, /retained_tool_flyout/);
   assert.match(py, /aeActionToActionLatenciesMs/);
   assert.match(py, /inspect_error_popup/);
   assert.match(py, /acknowledgementOnly/);

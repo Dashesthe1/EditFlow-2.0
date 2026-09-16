@@ -21,6 +21,7 @@
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
   var HOST_RENDER_MAINTENANCE_PREFIX = "__EDITFLOW2_RENDER_MAINTENANCE__:";
+  var PROOF_EVAL_PREFIX = "__EDITFLOW2_PROOF_EVAL__:";
   var ACCEPTED_V17_KNOWN_PROTOCOLS = ["1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
   var ACCEPTED_V17_HOST = Object.freeze({ loader: "editflow_host_current_v17.jsx", flag: "EditFlow2_HOST_PROTOCOL_17" });
   var KNOWN_PROTOCOLS = ["1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"];
@@ -153,6 +154,73 @@
     });
   }
 
+  function evalProofFile(request) {
+    return new Promise(function (resolve, reject) {
+      var cep = window.__adobe_cep__;
+      if (!cep || typeof cep.evalScript !== "function") {
+        reject(new Error("CEP evalScript is unavailable in this panel context."));
+        return;
+      }
+      if (!request || supportedProtocolVersions().indexOf(request.protocolVersion) < 0) {
+        reject(new Error("Broker leased an unsupported proof eval request."));
+        return;
+      }
+      var payload = request.payload || {};
+      if (typeof payload.scriptPath !== "string" || payload.scriptPath.length === 0) {
+        reject(new Error("Proof eval request is missing scriptPath."));
+        return;
+      }
+      var scriptPath = payload.scriptPath.replace(/\\/g, "/");
+      var scriptPathLiteral = JSON.stringify(scriptPath);
+      var script = "(function(){try{" +
+        "var proofFile=new File(" + scriptPathLiteral + ");" +
+        "if(!proofFile.exists)return \"" + PROOF_EVAL_PREFIX + "ERROR:file missing: \"+proofFile.fsName;" +
+        "$.evalFile(proofFile);" +
+        "return \"" + PROOF_EVAL_PREFIX + "OK\";" +
+        "}catch(error){return \"" + PROOF_EVAL_PREFIX + "ERROR:\"+String(error);}}())";
+      cep.evalScript(script, function (raw) {
+        if (raw === "EvalScript error.") {
+          reject(new Error("After Effects returned an evalScript error while running the proof file."));
+          return;
+        }
+        if (typeof raw !== "string") {
+          reject(new Error("After Effects returned a non-string proof eval result."));
+          return;
+        }
+        if (raw.indexOf(PROOF_EVAL_PREFIX + "ERROR:") === 0) {
+          reject(new Error(raw.substring((PROOF_EVAL_PREFIX + "ERROR:").length)));
+          return;
+        }
+        if (raw !== PROOF_EVAL_PREFIX + "OK") {
+          reject(new Error("After Effects returned an unexpected proof eval result: " + raw));
+          return;
+        }
+        resolve({
+          protocolVersion: request.protocolVersion,
+          requestId: request.requestId,
+          transactionId: request.transactionId,
+          operationId: request.operationId,
+          capabilityId: request.capabilityId,
+          command: request.command,
+          outcome: "APPLIED",
+          error: null,
+          affectedObjects: [],
+          readback: { scriptPath: payload.scriptPath, state: "COMPLETED" },
+          projectSnapshot: null,
+          environmentProbe: null,
+          hostProjectRevision: null,
+          diagnostics: {
+            adapterProtocolVersion: request.protocolVersion,
+            adapterBuild: config.extensionVersion,
+            command: request.command,
+            notes: ["Private local proof file executed through the existing warm CEP panel; no AfterFX process launch was used."]
+          },
+          proofArtifactRefs: []
+        });
+      });
+    });
+  }
+
   function evalHostDispatcher(request) {
     return new Promise(function (resolve, reject) {
       var cep = window.__adobe_cep__;
@@ -266,7 +334,8 @@
       .then(function (result) {
         if (generation !== connectionGeneration) return null;
         if (result.status === 204) return null;
-        return evalHostDispatcher(result.value)
+        var evaluator = result.value && result.value.command === "proof.eval_file" ? evalProofFile : evalHostDispatcher;
+        return evaluator(result.value)
           .then(function (response) {
             if (generation !== connectionGeneration) return null;
             return postResponse(response, leasedSessionId);
