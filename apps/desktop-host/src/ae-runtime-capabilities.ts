@@ -40,6 +40,14 @@ import {
 } from "../../../packages/adapters/ae-cep/src/m4-mask-tracking.js";
 import { M4_TWO_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-two-point-tracking.js";
 import {
+  capabilitiesForAcceptedM5RotoBrushRuntimeV1,
+  M5_ROTO_BRUSH_ACCEPTED_RUNTIME_VERSION,
+} from "../../../packages/adapters/ae-cep/src/m5-roto-brush.js";
+import {
+  isTrustedM5RotoBrushRuntimeEvidenceV1,
+  type TrustedM5RotoBrushRuntimeEvidenceV1,
+} from "./m5-roto-brush-runtime-evidence.js";
+import {
   capabilityForTrackerAnalysisDriverV1,
   type TrackerVisualAnalysisDriverV1,
 } from "../../../packages/adapters/ae-cep/src/m4-tracker-analysis.js";
@@ -117,6 +125,24 @@ export const registerAcceptedM4SegmentationRuntimeCapabilities = (
 };
 
 export type { TrustedM4SegmentationRuntimeEvidenceV1 };
+
+export const registerAcceptedM5RotoBrushRuntimeCapabilities = (
+  registry: CapabilityRegistry,
+  attestation: unknown,
+): boolean => {
+  if (!isTrustedM5RotoBrushRuntimeEvidenceV1(attestation)) return false;
+  const capabilities = capabilitiesForAcceptedM5RotoBrushRuntimeV1(attestation.evidence.evidenceId);
+  if (!capabilities || capabilities.length !== 7 || capabilities.some((capability) => !capability.routes.some((route) => route.available))) return false;
+  registry.registerAdapter({
+    adapterId: "ae-cep.m5.roto-brush.accepted-runtime",
+    adapterVersion: M5_ROTO_BRUSH_ACCEPTED_RUNTIME_VERSION,
+    priority: 140,
+    capabilities,
+  });
+  return true;
+};
+
+export type { TrustedM5RotoBrushRuntimeEvidenceV1 };
 
 export interface M4TrackerRuntimeRegistrationV1 {
   readonly pointTrackingV21Available: boolean;

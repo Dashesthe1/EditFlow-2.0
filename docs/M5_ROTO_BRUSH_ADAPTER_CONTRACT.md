@@ -1,12 +1,12 @@
 # M5 Roto Brush / Refine Edge Adapter Contract
 
-Status: **DECLARED / ADAPTER REQUIRED / R4 EXTERNAL UI**
+Status: **GUARDED PRODUCTION REGISTERED / DIGEST-BOUND EVIDENCE / MASK UNAVAILABLE**
 Milestone: `M5 Interactive AE Adapters (0.6.0-dev)`
-Adapter build: `0.6.0-dev.2`
+Adapter build: `0.6.0-dev.3`
 
 ## Purpose
 
-Roto Brush, Refine Edge, propagation, freeze, repair, and object-matte export are interactive After Effects subsystem workflows. They are not ordinary effect-property writes. This contract creates the semantic boundary before any production route is exposed.
+Roto Brush, Refine Edge, propagation, freeze, repair, and object-matte export are interactive After Effects subsystem workflows. They are not ordinary effect-property writes. This contract defines the semantic boundary and the evidence-gated production envelope; default sessions remain fail-closed unless the retained M5 runtime evidence is supplied and digest-validated.
 
 ## Semantic operations
 
@@ -24,13 +24,13 @@ All mutating operations require an exact target binding, an expected opaque sess
 
 ## Capability posture
 
-Seven capability records are declared for inspect, seed, propagate, Refine Edge, freeze, repair, and export. Every route is a first-class `SUBSYSTEM_ADAPTER` and remains unavailable in the default production runtime while the milestone proof gates are incomplete. Development proof has now accepted both seed roles, bounded propagation in both directions, Refine Edge, guarded freeze/unfreeze, guarded manual repair, the `TRACK_MATTE` form of structural export, transfer of that accepted path across materially different footage, and explicit popup-fault capture/recovery. That proof status does not change the declared production capability posture. The `MASK` export form remains fail-closed and unproven.
+Seven capability records cover inspect, seed, propagate, Refine Edge, freeze, repair, and export. The default desktop runtime still registers none of them. A configured session may register the proven envelope only after `proofs/diagnostics/m5-roto-brush-runtime-evidence-live.json` passes the strict retained-file loader and its SHA-256 sidecar matches exactly. The accepted projection is intentionally non-uniform: inspect and seed are `FULL / TRANSFER`; bounded propagation, Refine Edge, freeze/unfreeze, and repair are `PARTIAL / VISUAL`; export is `PARTIAL / TRANSFER` because only `TRACK_MATTE` is accepted. `MASK` remains fail-closed and unproven.
 
-The read-only inspect capability is `R0_READ_ONLY`. The public mutating capability declarations remain conservatively classified `R4_EXTERNAL_UI` while the production subsystem route is unregistered and `MASK` export remains unproven. Retained `TRACK_MATTE` development proof is an explicit exception at the implementation level: it uses the deterministic typed v1.1 `layer.duplicate` host route rather than cursor/UI mutation, with protocol-2.6 Roto readback before and after. A later production tranche may narrow the public export capability/risk posture only when its supported export kinds are registered explicitly.
+The read-only inspect capability remains `R0_READ_ONLY`. Interactive seed, propagation, Refine Edge, freeze, and repair remain conservatively `R4_EXTERNAL_UI` because their accepted routes require guarded visual control plus typed pre/post truth. The export capability also retains the conservative public risk class even though its accepted `TRACK_MATTE` implementation uses deterministic typed v1.1 `layer.duplicate` with protocol-2.6 Roto readback before and after. Registration does not widen that implementation to `MASK`.
 
-No M5 Roto Brush capability is registered into the default desktop runtime in this tranche.
+No M5 Roto Brush capability is registered into an unconfigured default desktop session. Digest-valid retained evidence is an explicit opt-in production gate, and caller-created lookalike evidence objects cannot bypass it.
 
-A draft read-only protocol 2.6.0 now defines bounded ADBE Samurai effect/session discovery. Its host layer walks a capped custom property tree (depth 5, 512 nodes), rejects ambiguous multiple-effect identity without an explicit effect index, and derives an opaque session revision from exact readback plus host project revision. The protocol is layered over the accepted 2.5 loader for development proof only; it is not installed or registered as a production capability yet.
+Protocol 2.6.0 defines bounded ADBE Samurai effect/session discovery. Its host layer walks a capped custom property tree (depth 5, 512 nodes), rejects ambiguous multiple-effect identity without an explicit effect index, and derives an opaque session revision from exact readback plus host project revision. The accepted production projection uses this exact readback surface only inside the digest-gated M5 envelope; default sessions still do not register the capability.
 
 ## Guardrails
 
@@ -77,19 +77,19 @@ The `REFINE_EDGE` semantic boundary is explicit and retained real-AE execution i
 
 The accepted retained forward proof advanced three frames from `0.5005005005` to `0.6256256256`; the accepted retained backward proof moved three frames from `0.5005005005` to `0.3753753754`. Propagation action-to-action gaps were approximately 92-94 ms. Including the seed bootstrap, the maximum measured warm AE action gap was 266.9 ms forward and 274.3 ms backward. Typed protocol-2.6 readback roundtrips were approximately 0.71-0.83 s. Both directions therefore satisfy the project-wide 3-second ceiling and the sub-second warm-action target.
 
-These controllers and visual drivers remain proof-only and are not registered in the default desktop runtime. Refine Edge, guarded freeze/unfreeze, guarded manual repair, structural `TRACK_MATTE` export, materially different-footage transfer, and explicit popup fault injection/recovery now have retained development proof; `MASK` conversion and production route registration remain unproven.
+These controllers and visual drivers remain unavailable to an unconfigured default desktop session. Their retained proofs now authorize the bounded digest-gated production projection; this does not create unrestricted UI control, arbitrary propagation, or `MASK` conversion.
 
 ## Proof isolation preflight
 
 Before the development protocol 2.6 loader or any guarded interactive action may run, the M5 proof gate must observe exactly one responsive warm AE process and a project that is unsaved, contains zero project items, reports dirty === false, and exposes a valid positive project revision. Saved, nonempty, dirty, or dirty-state-unavailable projects are refused. The preflight itself is read-only and does not load EditFlow host modules, create a project, close a project, save, clean, or issue UI actions.
 
-The preflight itself remains intentionally read-only. Retained isolated real-AE proofs have now passed for foreground seed, background seed, three-frame forward propagation, three-frame backward propagation, Refine Edge, guarded freeze/unfreeze, guarded manual repair, structural `TRACK_MATTE` export, materially different-footage transfer, and explicit popup fault injection/recovery. `MASK` conversion and production route registration remain outside this proven tranche.
+The preflight itself remains intentionally read-only. Retained isolated real-AE proofs have passed for foreground seed, background seed, three-frame forward propagation, three-frame backward propagation, Refine Edge, guarded freeze/unfreeze, guarded manual repair, structural `TRACK_MATTE` export, materially different-footage transfer, and explicit popup fault injection/recovery. Those accepted results are now pinned by the guarded production-registration evidence; `MASK` conversion remains outside the proven tranche.
 
 ## Proof-only EditGPT seed driver
 
 `EditGptRotoBrushSeedVisualDriverV1` wraps a fixed EditGPT Eyes/Hands sidecar for `SEED_FOREGROUND` and `SEED_BACKGROUND` development proof. It correlates the exact comp/layer binding, session revision, effect-match count, time, stroke geometry, tool identity, role, and retained evidence IDs. The fixture opens the exact target with AE's native `layer.openInViewer()` route; the sidecar verifies that Layer viewer, grounds only the displayed source-image pixels (excluding empty padding), safely maximizes and rebinds the verified Layer viewer when the image is too small, maps normalized layer-space stroke points only inside that verified canvas, then selects the native Roto Brush tool through the warm CEP proof route before one guarded drag. Foreground uses the unmodified drag; background uses the same verified path with the `Alt` modifier held for the subtract gesture. Exact Roto identity is not inferred from the toolbar icon: protocol-2.6 post-readback must establish the intended native `ADBE Samurai` effect/stroke change. Post-action modal errors are inspected; only an unambiguous single OK/Close acknowledgement may be dismissed, with the visible error text retained in the refusal detail. Actual AE action-to-action latency is returned as evidence.
 
-The visual driver advertises both proven seed roles but remains unregistered in the default desktop runtime. With structural `TRACK_MATTE` export, materially different-footage transfer, and explicit popup-fault handling now accepted for development proof, production promotion requires only the production-registration gate. `MASK` conversion remains an unsupported export variant rather than an implied fallback.
+The visual driver advertises both proven seed roles. The default desktop runtime remains unregistered, while the digest-gated production projection admits both roles only when the retained M5 evidence file is trusted. `MASK` conversion remains an unsupported export variant rather than an implied fallback.
 
 ## Retained real-AE foreground seed proof
 
@@ -131,6 +131,12 @@ The transfer wrapper intentionally uses short proof-owned Layer labels during cr
 ## Retained real-AE Popup-Fault Recovery proof
 
 Accepted 2026-09-16: `M5_ROTO_BRUSH_POPUP_FAULT_HANDLING_RETAINED_REAL_AE_V1` injects one declared invalid JSX statement into the already-running AE host, requires the supervisor to retain the exact script-error body, and permits consumption only when it contains the request-declared expected error signature. The retained run captured `Unable to execute script at line 2. ; does not have a value`, dismissed only the single acknowledgement path through guarded local OCR + Enter, and then proved the same After Effects PID `16404` accepted a valid follow-up health script against the unchanged saved project. No AE launch, restart, retry, project mutation, cursor coordinate, or arbitrary typing route was used. The measured fault-to-follow-up recovery roundtrip was approximately 1837.0 ms, below the project-wide 3-second ceiling. Unexpected script errors and missing expected faults remain fail-closed.
+
+## Guarded production registration
+
+Accepted 2026-09-16: the retained file `proofs/diagnostics/m5-roto-brush-runtime-evidence-live.json` pins the accepted foreground/background seed, both bounded propagation directions, Refine Edge, Freeze/Unfreeze, repair, `TRACK_MATTE` export, materially different-footage transfer, and popup-fault proof IDs plus their retained result SHA-256 values. Its matching sidecar digest is `ddf373ea782648fbc223482e22e5a36fe8cd66e145fc1e41e18607ca0b8e822c`. The strict desktop-host loader rejects extra/missing fields, proof-ID drift, malformed or uppercase hashes, fewer than two transfer fixtures, widened `MASK` claims, failed same-process/restore/transfer/popup gates, latency values above 3000 ms, or any evidence/sidecar digest mismatch.
+
+Successful loads produce a process-issued attestation tracked through a private `WeakSet`; a caller-created object with the same fields is not trusted. Only then does `registerAcceptedM5RotoBrushRuntimeCapabilities` install the seven evidence-bounded records. Exact session inspection and both seed roles project as `FULL / TRANSFER`; bounded forward/backward propagation, Refine Edge, Freeze/Unfreeze, and repair project as `PARTIAL / VISUAL`; export projects as `PARTIAL / TRANSFER` and explicitly permits only the proven `TRACK_MATTE` envelope. The default desktop session registers none of these capabilities, and registration itself performs no After Effects mutation or process lifecycle action.
 
 ## Warm-AE proof isolation roundtrip
 

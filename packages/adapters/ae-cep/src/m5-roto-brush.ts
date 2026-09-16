@@ -251,3 +251,62 @@ export const M5_ROTO_BRUSH_CAPABILITIES_V1: readonly CapabilityRecord[] = Object
   M5_ROTO_BRUSH_REPAIR_CAPABILITY_V1,
   M5_ROTO_BRUSH_EXPORT_CAPABILITY_V1,
 ]);
+export const M5_ROTO_BRUSH_ACCEPTED_RUNTIME_VERSION = "0.6.0-dev.3";
+
+type AcceptedRuntimeProjectionV1 = Readonly<{
+  capability: CapabilityRecord;
+  status: CapabilityRecord["status"];
+  proofMaturity: CapabilityRecord["proofMaturity"];
+  limitations: readonly string[];
+}>;
+
+const acceptedRuntimeProjectionV1 = (evidenceId: string): readonly AcceptedRuntimeProjectionV1[] => Object.freeze([
+  { capability: M5_ROTO_BRUSH_SESSION_INSPECT_CAPABILITY_V1, status: "FULL", proofMaturity: "TRANSFER", limitations: [
+    `Protocol 2.6 exact Roto Brush session inspection is admitted by retained evidence '${evidenceId}'.`,
+    "Inspection remains read-only and exact-target bound.",
+  ] },
+  { capability: M5_ROTO_BRUSH_SEED_CAPABILITY_V1, status: "FULL", proofMaturity: "TRANSFER", limitations: [
+    `Foreground and background seed routes are admitted by retained two-source transfer evidence '${evidenceId}'.`,
+    "Every seed remains guarded by exact target binding, session revision, visual evidence, and native post-readback truth.",
+  ] },
+  { capability: M5_ROTO_BRUSH_PROPAGATE_CAPABILITY_V1, status: "PARTIAL", proofMaturity: "VISUAL", limitations: [
+    `Forward and backward propagation are admitted only inside the retained bounded propagation envelope '${evidenceId}'.`,
+    "Propagation is bounded to the controller's proven finite frame range and does not imply arbitrary full-clip propagation.",
+  ] },
+  { capability: M5_ROTO_BRUSH_REFINE_EDGE_CAPABILITY_V1, status: "PARTIAL", proofMaturity: "VISUAL", limitations: [
+    `Refine Edge is admitted only through the retained native-stroke visual/readback proof '${evidenceId}'.`,
+    "No generic effect-property substitute is permitted for Refine Edge.",
+  ] },
+  { capability: M5_ROTO_BRUSH_FREEZE_CAPABILITY_V1, status: "PARTIAL", proofMaturity: "VISUAL", limitations: [
+    `Freeze/Unfreeze is admitted only through retained visible-state transition evidence '${evidenceId}'.`,
+    "The route must preserve exact target binding and may not infer frozen state from a click alone.",
+  ] },
+  { capability: M5_ROTO_BRUSH_REPAIR_CAPABILITY_V1, status: "PARTIAL", proofMaturity: "VISUAL", limitations: [
+    `Manual foreground/background repair is admitted only through retained visible-change plus native-stroke evidence '${evidenceId}'.`,
+    "Repair remains explicit and bounded; it does not authorize guessed subject geometry.",
+  ] },
+  { capability: M5_ROTO_BRUSH_EXPORT_CAPABILITY_V1, status: "PARTIAL", proofMaturity: "TRANSFER", limitations: [
+    `TRACK_MATTE export is admitted by retained structural transfer evidence '${evidenceId}'.`,
+    "MASK conversion remains unproven and unavailable; callers must request TRACK_MATTE explicitly.",
+  ] },
+]);
+
+export const capabilitiesForAcceptedM5RotoBrushRuntimeV1 = (evidenceId: string): readonly CapabilityRecord[] | null => {
+  const acceptedEvidenceId = evidenceId.trim();
+  if (acceptedEvidenceId.length === 0) return null;
+  return Object.freeze(acceptedRuntimeProjectionV1(acceptedEvidenceId).map(({ capability: base, status, proofMaturity, limitations }) => Object.freeze({
+    ...base,
+    status,
+    proofMaturity,
+    routes: Object.freeze(base.routes.map((item) => Object.freeze({
+      ...item,
+      available: true,
+      adapterVersion: M5_ROTO_BRUSH_ACCEPTED_RUNTIME_VERSION,
+      limitations: Object.freeze([
+        `Production registration is pinned to retained M5 Roto Brush evidence '${acceptedEvidenceId}'.`,
+        ...limitations,
+      ]),
+    }))),
+    limitations: Object.freeze([...limitations]),
+  })));
+};

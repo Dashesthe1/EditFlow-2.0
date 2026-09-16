@@ -10,12 +10,17 @@ import {
   registerAcceptedM4FoundationRuntimeCapabilities,
   registerAcceptedM4SegmentationRuntimeCapabilities,
   registerAcceptedM4TrackerRuntimeCapabilities,
+  registerAcceptedM5RotoBrushRuntimeCapabilities,
   type M4TrackerRuntimeRegistrationV1,
 } from "./ae-runtime-capabilities.js";
 import {
   loadTrustedM4SegmentationRuntimeEvidenceV1,
   type M4SegmentationRuntimeEvidenceFileV1,
 } from "./m4-segmentation-runtime-evidence.js";
+import {
+  loadTrustedM5RotoBrushRuntimeEvidenceV1,
+  type M5RotoBrushRuntimeEvidenceFileV1,
+} from "./m5-roto-brush-runtime-evidence.js";
 
 export interface DesktopAeSession {
   readonly adapterBuild: typeof AE_ADAPTER_BUILD;
@@ -23,11 +28,14 @@ export interface DesktopAeSession {
   readonly registry: CapabilityRegistry;
   readonly m4SegmentationRuntimeRegistered: boolean;
   readonly m4SegmentationRuntimeEvidenceFileSha256: string | null;
+  readonly m5RotoBrushRuntimeRegistered: boolean;
+  readonly m5RotoBrushRuntimeEvidenceFileSha256: string | null;
 }
 
 export interface DesktopAeSessionOptions {
   readonly m4TrackerRuntime?: M4TrackerRuntimeRegistrationV1 | null;
   readonly m4SegmentationRuntimeEvidenceFile?: M4SegmentationRuntimeEvidenceFileV1 | null;
+  readonly m5RotoBrushRuntimeEvidenceFile?: M5RotoBrushRuntimeEvidenceFileV1 | null;
 }
 
 export const createDesktopAeSession = async (
@@ -53,11 +61,20 @@ export const createDesktopAeSession = async (
     registry,
     m4SegmentationRuntimeAttestation,
   );
+  const m5RotoBrushRuntimeAttestation = options.m5RotoBrushRuntimeEvidenceFile
+    ? await loadTrustedM5RotoBrushRuntimeEvidenceV1(options.m5RotoBrushRuntimeEvidenceFile)
+    : null;
+  const m5RotoBrushRuntimeRegistered = registerAcceptedM5RotoBrushRuntimeCapabilities(
+    registry,
+    m5RotoBrushRuntimeAttestation,
+  );
   return {
     adapterBuild: AE_ADAPTER_BUILD,
     state,
     registry,
     m4SegmentationRuntimeRegistered,
     m4SegmentationRuntimeEvidenceFileSha256: m4SegmentationRuntimeAttestation?.evidenceFileSha256 ?? null,
+    m5RotoBrushRuntimeRegistered,
+    m5RotoBrushRuntimeEvidenceFileSha256: m5RotoBrushRuntimeAttestation?.evidenceFileSha256 ?? null,
   };
 };
