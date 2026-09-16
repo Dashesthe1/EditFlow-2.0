@@ -64,7 +64,7 @@ All M# development testing uses the Incremental Proof Engine through `scripts/wi
 
 M4 — Tracking & Isolation is accepted. Commit `a55c0ac` closes the M4 exit gate with bounded live-AE isolation, evidence-backed semantic attachment, visible drift repair/resume, transfer across materially different retained SAM 3.1 fixtures, warm-process reuse, and exact project-baseline restoration.
 
-M5 currently advances through Roto Brush / Refine Edge and the remaining interactive AE subsystem adapters. Retained real-AE evidence covers foreground and background Roto Brush seeds, bounded forward/backward propagation, warm-AE isolation/restore, and Refine Edge stroke readback. The next M5 work continues from that accepted rotoscoping foundation.
+M5 currently advances through Roto Brush / Refine Edge and the remaining interactive AE subsystem adapters. Retained real-AE evidence covers foreground and background Roto Brush seeds, bounded forward/backward propagation, warm-AE isolation/restore, Refine Edge stroke readback, and guarded FREEZE -> FROZEN -> UNFREEZE -> UNFROZEN state truth. The next M5 gates are manual repair, structural matte export, materially different-footage transfer, popup-fault handling, and production registration.
 
 M3 — Human-Parity Core remains accepted as the prior human-parity manipulation baseline.
 

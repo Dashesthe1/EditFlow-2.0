@@ -24,7 +24,7 @@ All mutating operations require an exact target binding, an expected opaque sess
 
 ## Capability posture
 
-Seven capability records are declared for inspect, seed, propagate, Refine Edge, freeze, repair, and export. Every route is a first-class `SUBSYSTEM_ADAPTER` and remains unavailable in the default production runtime while the milestone proof gates are incomplete. Development proof has now accepted both seed roles and bounded propagation in both directions, but that proof status does not change the declared production capability posture.
+Seven capability records are declared for inspect, seed, propagate, Refine Edge, freeze, repair, and export. Every route is a first-class `SUBSYSTEM_ADAPTER` and remains unavailable in the default production runtime while the milestone proof gates are incomplete. Development proof has now accepted both seed roles, bounded propagation in both directions, Refine Edge, and guarded freeze/unfreeze, but that proof status does not change the declared production capability posture.
 
 The read-only inspect capability is `R0_READ_ONLY`. Every mutating capability is currently classified `R4_EXTERNAL_UI` because no deeper typed host mutation surface has yet been proven for AE 25.6.6. A later tranche may lower the risk class only with retained evidence for a deeper deterministic route.
 
@@ -69,7 +69,7 @@ Speed claims, if made, must measure actual AE action-to-action latency. Routine 
 
 ## Guarded seed and propagation controllers
 
-The `REFINE_EDGE` semantic boundary is now explicit even though execution remains unproven: a request must bind one finite non-negative `atTime` plus a normalized `RotoBrushStrokeV1` whose role is exactly `REFINE_EDGE`. The contract no longer accepts an abstract amount-only payload because that would leave the UI layer to invent where the user intended to paint. This correction does not make the Refine Edge route available; retained native readback proof is still required.
+The `REFINE_EDGE` semantic boundary is explicit and retained real-AE execution is now accepted for development proof: a request binds one finite non-negative `atTime` plus a normalized `RotoBrushStrokeV1` whose role is exactly `REFINE_EDGE`. The contract does not accept an abstract amount-only payload because that would leave the UI layer to invent where the user intended to paint. This proof acceptance does not register the Refine Edge route into the production runtime.
 
 `GuardedRotoBrushSeedControllerV1` performs an exact protocol-2.6 pre-readback, derives both an opaque session revision and an effect-only fingerprint, validates the semantic stroke, invokes at most one verified vision+cursor seed action, then performs one exact post-readback. Success requires the same comp/layer identity, exactly one `ADBE Samurai` effect, a non-truncated property tree, and a changed effect-only fingerprint. A host-project revision change by itself cannot count as Roto Brush success. Both `SEED_FOREGROUND` and `SEED_BACKGROUND` have now passed retained real-AE proof through the same guarded controller. Background seeding is a modifier-held subtract stroke (`Alt` during the guarded drag) against an already seeded native Roto session.
 
@@ -77,19 +77,19 @@ The `REFINE_EDGE` semantic boundary is now explicit even though execution remain
 
 The accepted retained forward proof advanced three frames from `0.5005005005` to `0.6256256256`; the accepted retained backward proof moved three frames from `0.5005005005` to `0.3753753754`. Propagation action-to-action gaps were approximately 92-94 ms. Including the seed bootstrap, the maximum measured warm AE action gap was 266.9 ms forward and 274.3 ms backward. Typed protocol-2.6 readback roundtrips were approximately 0.71-0.83 s. Both directions therefore satisfy the project-wide 3-second ceiling and the sub-second warm-action target.
 
-These controllers and visual drivers remain proof-only and are not registered in the default desktop runtime. Refine Edge, freeze/unfreeze, repair, export, transfer, explicit popup fault injection, and production route registration remain unproven.
+These controllers and visual drivers remain proof-only and are not registered in the default desktop runtime. Refine Edge and guarded freeze/unfreeze now have retained development proof; repair, export, transfer, explicit popup fault injection, and production route registration remain unproven.
 
 ## Proof isolation preflight
 
 Before the development protocol 2.6 loader or any guarded interactive action may run, the M5 proof gate must observe exactly one responsive warm AE process and a project that is unsaved, contains zero project items, reports dirty === false, and exposes a valid positive project revision. Saved, nonempty, dirty, or dirty-state-unavailable projects are refused. The preflight itself is read-only and does not load EditFlow host modules, create a project, close a project, save, clean, or issue UI actions.
 
-The preflight itself remains intentionally read-only. Retained isolated real-AE proofs have now passed for foreground seed, background seed, three-frame forward propagation, and three-frame backward propagation. Refine Edge, freeze/unfreeze, repair, export, transfer, explicit popup fault injection, and production route registration remain outside this proven tranche.
+The preflight itself remains intentionally read-only. Retained isolated real-AE proofs have now passed for foreground seed, background seed, three-frame forward propagation, three-frame backward propagation, Refine Edge, and guarded freeze/unfreeze. Repair, export, transfer, explicit popup fault injection, and production route registration remain outside this proven tranche.
 
 ## Proof-only EditGPT seed driver
 
 `EditGptRotoBrushSeedVisualDriverV1` wraps a fixed EditGPT Eyes/Hands sidecar for `SEED_FOREGROUND` and `SEED_BACKGROUND` development proof. It correlates the exact comp/layer binding, session revision, effect-match count, time, stroke geometry, tool identity, role, and retained evidence IDs. The fixture opens the exact target with AE's native `layer.openInViewer()` route; the sidecar verifies that Layer viewer, grounds the visible layer canvas, maps normalized layer-space stroke points only inside that verified canvas, normalizes AE to Selection with `V`, then issues one `Alt+W` activation and requires a retained toolbar-state change while the bound canvas stays fresh before one guarded drag. Foreground uses the unmodified drag; background uses the same verified path with the `Alt` modifier held for the subtract gesture. Exact Roto identity is not inferred from the toolbar icon: protocol-2.6 post-readback must establish the intended native `ADBE Samurai` effect/stroke change. Post-action modal errors are inspected; only an unambiguous single OK/Close acknowledgement may be dismissed, with the visible error text retained in the refusal detail. Actual AE action-to-action latency is returned as evidence.
 
-The visual driver advertises both proven seed roles but remains unregistered in the default desktop runtime. Production promotion still requires the remaining Refine Edge, freeze/unfreeze, repair/export, transfer, popup-fault, and production-registration gates.
+The visual driver advertises both proven seed roles but remains unregistered in the default desktop runtime. Production promotion still requires repair/export, transfer, popup-fault, and production-registration gates.
 
 ## Retained real-AE foreground seed proof
 
@@ -106,6 +106,13 @@ Accepted 2026-09-15: `M5_ROTO_BRUSH_BACKGROUND_SEED_RETAINED_REAL_AE_V1` reuses 
 Accepted 2026-09-15: `M5_ROTO_BRUSH_PROPAGATION_FORWARD_RETAINED_REAL_AE_V1` and `M5_ROTO_BRUSH_PROPAGATION_BACKWARD_RETAINED_REAL_AE_V1` prove symmetric bounded propagation from the same real-video fixture and warm AE process. Each proof first creates one exact foreground seed, acquires Layer-viewer keyboard focus through a safe Selection-tool canvas click, and executes a three-action local batch using `Ctrl+Right` or `Ctrl+Left`. Protocol-2.6 post-readback proves the exact three-frame endpoint, the same target, one non-truncated `ADBE Samurai` effect, and an unchanged effect-only fingerprint during pure propagation.
 
 Forward propagation measured 92.06 ms and 93.47 ms between the three local frame-step actions; backward measured 93.53 ms and 93.11 ms. The respective whole-proof maximum warm-action gaps were 266.86 ms and 274.30 ms. Both wrappers restored the original saved clean project in `finally` without closing or restarting the After Effects process.
+## Retained real-AE Refine Edge proof
+
+Accepted 2026-09-15: `M5_ROTO_BRUSH_REFINE_EDGE_RETAINED_REAL_AE_V1` reuses the guarded foreground-seed bootstrap, applies one normalized `REFINE_EDGE` stroke to the exact bound Layer viewer, and requires protocol-2.6 native readback to increase the retained Refine Edge stroke count from zero to one without changing target identity or truncating the `ADBE Samurai` property tree. The accepted proof kept one warm AE process, restored the exact user project, and measured a maximum warm action gap of approximately 243.5 ms.
+
+## Retained real-AE Freeze/Unfreeze proof
+
+Accepted 2026-09-16: `M5_ROTO_BRUSH_FREEZE_STATE_DISCOVERY_RETAINED_REAL_AE_V1` starts from a verified visible `UNFROZEN` Roto Brush state, requires immediate native Freeze-processing acknowledgement after the guarded click, waits for visible `FROZEN` truth, then reuses the same verified control coordinate for `UNFREEZE` and requires visible `UNFROZEN` truth. The accepted run observed native `Freezing N of 74` progress, reached `FROZEN` after approximately 104.9 seconds, returned to `UNFROZEN` in approximately 4.5 seconds, and restored the exact pre-freeze native effect readback plus the original project. The same After Effects process identity was preserved throughout. The proof-only warm Roto/Refine setup measured a maximum AE action gap of approximately 243.3 ms and all measured routine actions were sub-second.
 
 ## Warm-AE proof isolation roundtrip
 
