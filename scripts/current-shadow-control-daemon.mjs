@@ -7,6 +7,7 @@ import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/pa
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { createDesktopAeSessionV11 } from "../.tmp/runtime/apps/desktop-host/src/v1_1.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
+import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -33,6 +34,9 @@ const client = new AeCepAdapterClientV11(
   new AeFilesystemPolicyV11([process.env.USERPROFILE ?? repoRoot]),
 );
 const session = await createDesktopAeSessionV11(client, "shadow-current-project");
+const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
+const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
+const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const readJson = async (req) => {
   const chunks = [];
@@ -49,6 +53,25 @@ const sendJson = (res, status, value) => {
   res.end(body);
 };
 
+const failureContext = (req, requestPath) => ({
+  process: { pid: process.pid, execPath: process.execPath },
+  request: { method: req.method ?? null, path: requestPath },
+  afterEffects: { hostRevision: session.runner.hostRevision, projectId: "shadow-current-project" },
+  cep: {
+    connected: Boolean(broker.panelSession ?? panel),
+    sessionId: (broker.panelSession ?? panel)?.sessionId ?? null,
+    protocolVersion: (broker.panelSession ?? panel)?.protocolVersion ?? null,
+    extensionVersion: (broker.panelSession ?? panel)?.extensionVersion ?? null,
+  },
+});
+
+const triageFailure = async (error, req, requestPath) => {
+  const errorText = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack ?? null : null;
+  const triage = await errorMemory.diagnose(errorText);
+  return { error: errorText, stack, context: failureContext(req, requestPath), triage };
+};
+
 const statusPayload = () => ({
   ok: true,
   service: "EditFlow Current Shadow Control",
@@ -57,11 +80,13 @@ const statusPayload = () => ({
   hostRevision: session.runner.hostRevision,
   panel,
   controlPlane: getMcpServerStatus(),
+  errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
 
 const server = createServer(async (req, res) => {
+  const requestPath = req.url ?? "/";
   try {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const url = new URL(requestPath, "http://127.0.0.1");
     if (req.method === "GET" && url.pathname === "/healthz") {
       sendJson(res, 200, statusPayload());
       return;
@@ -75,15 +100,59 @@ const server = createServer(async (req, res) => {
       sendJson(res, 200, { ...statusPayload(), revision: state.hostRevision, state });
       return;
     }
+    if (req.method === "GET" && url.pathname === "/error-memory") {
+      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 20) || 20));
+      const [stats, entries] = await Promise.all([errorMemory.stats(), errorMemory.list(limit)]);
+      sendJson(res, 200, { ok: true, path: errorMemoryPath, stats, entries });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/triage-error") {
+      const body = await readJson(req);
+      if (typeof body.errorText !== "string" || body.errorText.trim().length === 0) throw new Error("ERROR_TEXT_REQUIRED");
+      const triage = await errorMemory.diagnose(body.errorText);
+      sendJson(res, 200, { ok: true, triage, context: body.context ?? null });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/remember-error") {
+      const body = await readJson(req);
+      if (typeof body.errorText !== "string" || typeof body.resolution !== "string") throw new Error("ERROR_MEMORY_INPUT_REQUIRED");
+      const entry = await errorMemory.remember({
+        errorText: body.errorText,
+        resolution: body.resolution,
+        avoidRepeat: body.avoidRepeat,
+        domain: body.domain,
+        code: body.code,
+        verified: body.verified,
+      });
+      sendJson(res, 200, { ok: true, entry });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/error-outcome") {
+      const body = await readJson(req);
+      if (typeof body.signature !== "string" || typeof body.success !== "boolean") throw new Error("ERROR_OUTCOME_INPUT_REQUIRED");
+      const entry = await errorMemory.recordOutcome(body.signature, body.success);
+      sendJson(res, entry ? 200 : 404, { ok: Boolean(entry), entry });
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/run") {
       const body = await readJson(req);
       const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-fast-${Date.now()}`;
       const result = await session.runner.run(body.goal, transactionId);
       sendJson(res, 200, { ...result, status: statusPayload() });
       return;
-    }    sendJson(res, 404, { error: "NOT_FOUND" });
+    }
+    sendJson(res, 404, { error: "NOT_FOUND" });
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    try {
+      sendJson(res, 500, await triageFailure(error, req, requestPath));
+    } catch (triageError) {
+      sendJson(res, 500, {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack ?? null : null,
+        context: failureContext(req, requestPath),
+        triageError: triageError instanceof Error ? triageError.message : String(triageError),
+      });
+    }
   }
 });
 

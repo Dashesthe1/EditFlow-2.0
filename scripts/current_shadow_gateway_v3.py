@@ -77,6 +77,44 @@ def build_server():
         return _http("GET", "/status")
 
     @mcp.tool()
+    def triage_error(error_text: str, context_json: str = "") -> dict[str, Any]:
+        """Classify an exact failure locally first and return a known fix or bounded lookup plan."""
+        payload: dict[str, Any] = {"errorText": error_text}
+        if context_json:
+            payload["context"] = json.loads(context_json)
+        return _http("POST", "/triage-error", payload)
+
+    @mcp.tool()
+    def remember_error_resolution(
+        error_text: str,
+        resolution: str,
+        avoid_repeat: str = "",
+        domain: str = "",
+        code: str = "",
+        verified: bool = True,
+    ) -> dict[str, Any]:
+        """Persist a proven failure resolution so the same normalized signature is fixed locally next time."""
+        payload: dict[str, Any] = {"errorText": error_text, "resolution": resolution, "verified": verified}
+        if avoid_repeat:
+            payload["avoidRepeat"] = avoid_repeat
+        if domain:
+            payload["domain"] = domain
+        if code:
+            payload["code"] = code
+        return _http("POST", "/remember-error", payload)
+
+    @mcp.tool()
+    def get_error_memory(limit: int = 20) -> dict[str, Any]:
+        """Read recent normalized error signatures and their retained fixes."""
+        safe_limit = max(1, min(100, int(limit)))
+        return _http("GET", f"/error-memory?limit={safe_limit}")
+
+    @mcp.tool()
+    def record_error_outcome(signature: str, success: bool) -> dict[str, Any]:
+        """Record whether applying a retained fix succeeded, improving future triage confidence."""
+        return _http("POST", "/error-outcome", {"signature": signature, "success": success})
+
+    @mcp.tool()
     def get_mcp_surface() -> dict[str, Any]:
         """Describe the stable Shadow compatibility surface backed by the current repo."""
         return {
@@ -86,6 +124,7 @@ def build_server():
             "tools": [
                 "get_edit_state", "get_editflow2_state", "get_after_effects_state",
                 "probe_after_effects", "get_production_status", "list_adaptive_capabilities",
+                "triage_error", "remember_error_resolution", "get_error_memory", "record_error_outcome",
                 "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_refresh",
             ],
         }
@@ -103,7 +142,8 @@ def build_server():
             "controlPlane": status.get("controlPlane"),
             "capabilities": [
                 "CURRENT_AE_STATE", "WARM_CEP_PROBE", "CONTINUOUS_FAST_LOOP",
-                "ROUTINE_DECISION_ENGINE", "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN",
+                "ROUTINE_DECISION_ENGINE", "ERROR_TRIAGE_MEMORY",
+                "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN",
             ],
         }
 
