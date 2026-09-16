@@ -28,22 +28,22 @@ from editgpt_tracker_visual_driver import (
     verify_visible,
 )
 
-SCHEMA = "editflow.roto-brush-seed.visual.v1"
-DRIVER_ID = "editgpt.eyes-hands.roto-brush-seed.v1"
+SCHEMA = "editflow.roto-brush-repair.visual.v1"
+DRIVER_ID = "editgpt.eyes-hands.roto-brush-repair.v1"
 def validate_request(value: dict) -> dict:
     if value.get("schema") != SCHEMA:
-        raise ValueError("unsupported Roto Brush seed request schema")
+        raise ValueError("unsupported Roto Brush repair request schema")
     operation = value.get("operation")
-    if operation not in {"SEED_FOREGROUND", "SEED_BACKGROUND"}:
-        raise ValueError("operation must be SEED_FOREGROUND or SEED_BACKGROUND")
+    if operation != "REPAIR_STROKE":
+        raise ValueError("operation must be REPAIR_STROKE")
     for key in ("compHostId", "layerHostId"):
         if not isinstance(value.get(key), int) or value[key] <= 0:
             raise ValueError(f"{key} must be a positive integer")
-    for key in ("expectedCompName", "expectedLayerName", "expectedSessionRevision"):
+    for key in ("expectedCompName", "expectedLayerName", "expectedSessionRevision", "expectedEffectFingerprint"):
         if not isinstance(value.get(key), str) or not value[key].strip():
             raise ValueError(f"{key} must be a non-empty string")
-    if value.get("expectedEffectMatchCount") not in (0, 1):
-        raise ValueError("expectedEffectMatchCount must be 0 or 1")
+    if value.get("expectedEffectMatchCount") != 1:
+        raise ValueError("expectedEffectMatchCount must be 1 for repair")
     if value.get("expectedTool") != "ROTO_BRUSH":
         raise ValueError("expectedTool must be ROTO_BRUSH")
     at_time = value.get("atTime")
@@ -52,8 +52,10 @@ def validate_request(value: dict) -> dict:
     evidence = value.get("evidenceIds")
     if not isinstance(evidence, list) or not evidence or not all(isinstance(item, str) and item.strip() for item in evidence):
         raise ValueError("evidenceIds must contain at least one non-empty string")
-    expected_role = "FOREGROUND" if operation == "SEED_FOREGROUND" else "BACKGROUND"
-    validate_stroke(value.get("stroke"), expected_role)
+    role = value.get("stroke", {}).get("role") if isinstance(value.get("stroke"), dict) else None
+    if role not in {"FOREGROUND", "BACKGROUND"}:
+        raise ValueError("repair stroke role must be FOREGROUND or BACKGROUND")
+    validate_stroke(value.get("stroke"), role)
     return value
 def validate_stroke(stroke, expected_role: str) -> None:
     if not isinstance(stroke, dict) or stroke.get("role") != expected_role:
@@ -76,7 +78,7 @@ def validate_stroke(stroke, expected_role: str) -> None:
 def target_binding(request: dict) -> dict:
     return {key: request[key] for key in (
         "operation", "compHostId", "layerHostId", "expectedCompName", "expectedLayerName",
-        "expectedSessionRevision", "expectedEffectMatchCount", "atTime", "stroke", "expectedTool", "evidenceIds",
+        "expectedSessionRevision", "expectedEffectFingerprint", "expectedEffectMatchCount", "atTime", "stroke", "expectedTool", "evidenceIds",
     )}
 
 
@@ -173,7 +175,7 @@ def screen_stroke_path(meta: dict, hands_status: dict, encoded: list[dict[str, i
         sx, sy = transform.encoded_to_screen(point["x"], point["y"])
         result.append({"x": sx, "y": sy})
     return result
-def inspect_error_popup(qwen, image, source: str = "m5_roto_seed_modal_inspection") -> dict:
+def inspect_error_popup(qwen, image, source: str = "m5_roto_repair_modal_inspection") -> dict:
     observation = qwen.observe(
         image,
         prompt=(
@@ -214,7 +216,7 @@ async def refuse_modal_if_present(eyes, hands, qwen, output: Path, image, proof:
     if not bool(popup.get("visible")):
         return
     if not qualified_modal(popup):
-        confirmation = inspect_error_popup(qwen, image, "m5_roto_seed_modal_confirmation")
+        confirmation = inspect_error_popup(qwen, image, "m5_roto_repair_modal_confirmation")
         proof["modalConfirmation"] = confirmation
         if not qualified_modal(confirmation):
             proof["modalFalsePositiveRejected"] = True
@@ -227,13 +229,13 @@ async def refuse_modal_if_present(eyes, hands, qwen, output: Path, image, proof:
             proof["modalAcknowledgement"] = await guarded_click_target(
                 eyes, hands, qwen, output,
                 f"Point to the single {literal_label(label)} acknowledgement button in the currently visible separate modal After Effects dialog containing {literal_label(message)}.",
-                "roto_seed_modal_ack",
+                "roto_repair_modal_ack",
             )
         except Exception as exc:
             raise RuntimeError(
-                f"After Effects modal error after Roto Brush seed: {message}; acknowledgement could not be safely grounded: {exception_detail(exc)}"
+                f"After Effects modal error after Roto Brush repair: {message}; acknowledgement could not be safely grounded: {exception_detail(exc)}"
             ) from exc
-    raise RuntimeError(f"After Effects modal error after Roto Brush seed: {message}")
+    raise RuntimeError(f"After Effects modal error after Roto Brush repair: {message}")
 def select_native_tool(_afterfx_path: str, tool_select_script: str, tool: str) -> dict:
     request_path = Path(tempfile.gettempdir()) / "EditFlow2-m5-roto-brush-tool-select-request.json"
     response_path = Path(tempfile.gettempdir()) / "EditFlow2-m5-roto-brush-tool-select-response.json"
@@ -294,11 +296,11 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
             started_here = bool(structured(started).get("started", False))
             focused = await hands.call_tool("hands_focus_after_effects", {})
             if focused.is_error:
-                raise RuntimeError("After Effects could not be focused before Roto Brush seed")
+                raise RuntimeError("After Effects could not be focused before Roto Brush repair")
             await hands.call_tool("hands_keypress", {"keys": ["ESC"]})
             await asyncio.sleep(0.15)
-            _meta, image = await capture(eyes, hands, output, "pre_seed_target")
-            bound, evidence = verify_target_binding(qwen, image, request, "m5_roto_seed_binding_pre")
+            _meta, image = await capture(eyes, hands, output, "pre_repair_target")
+            bound, evidence = verify_target_binding(qwen, image, request, "m5_roto_repair_binding_pre")
             proof["targetBindingPre"] = evidence
             if not bound:
                 raise RuntimeError("visible AE state does not match the typed Roto Brush target")
@@ -306,7 +308,7 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
             layer_ready, layer_evidence = verify_visible(
                 qwen, canvas_image,
                 f"The active After Effects viewer is the Layer tab for exact target layer {literal_label(request['expectedLayerName'])}, with that layer image visibly displayed. Reject Layer (none), a Composition viewer, a different layer, or a Project item.",
-                "m5_roto_seed_layer_viewer_ready",
+                "m5_roto_repair_layer_viewer_ready",
             )
             proof["layerViewerReady"] = layer_evidence
             if not layer_ready:
@@ -320,18 +322,18 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
                 proof["layerTabFocusBeforeMaximize"] = await guarded_click_target(
                     eyes, hands, qwen, output,
                     f"Point to the active After Effects Layer viewer tab whose visible label is exactly Layer {literal_label(request['expectedLayerName'])}. Do not point to Effect Controls, Composition, Project, Preview, or another tab.",
-                    "m5_roto_seed_layer_tab_focus",
+                    "m5_roto_repair_layer_tab_focus",
                 )
                 toggled = await hands.call_tool("hands_keypress", {"keys": ["GRAVE"]})
                 if toggled.is_error:
-                    raise RuntimeError("Hands could not maximize the verified Roto Brush seed Layer viewer")
+                    raise RuntimeError("Hands could not maximize the verified Roto Brush repair Layer viewer")
                 maximized_here = True
                 await asyncio.sleep(0.12)
-                canvas_meta, canvas_image = await capture(eyes, hands, output, "m5_roto_seed_layer_viewer_maximized")
-                rebound, rebound_evidence = verify_target_binding(qwen, canvas_image, request, "m5_roto_seed_binding_maximized")
+                canvas_meta, canvas_image = await capture(eyes, hands, output, "m5_roto_repair_layer_viewer_maximized")
+                rebound, rebound_evidence = verify_target_binding(qwen, canvas_image, request, "m5_roto_repair_binding_maximized")
                 proof["targetBindingMaximized"] = rebound_evidence
                 if not rebound:
-                    raise RuntimeError("typed Roto Brush seed target changed after maximizing the Layer viewer")
+                    raise RuntimeError("typed Roto Brush repair target changed after maximizing the Layer viewer")
                 bounds, canvas_ground = locate_layer_canvas(qwen, canvas_image, request)
                 proof["layerViewerMaximized"] = True
             proof["layerCanvas"] = {**canvas_ground, "bounds": list(bounds)}
@@ -374,8 +376,8 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
             screen_path = screen_stroke_path(tool_meta, status, encoded)
             stroke_started = time.perf_counter()
             latencies.append(max(0.0, (stroke_started - tool_finished) * 1000.0))
-            proof["actionLatencyLabels"] = ["native_roto_tool_to_draw_seed"]
-            stroke_modifiers = ["ALT"] if request["operation"] == "SEED_BACKGROUND" else []
+            proof["actionLatencyLabels"] = ["native_roto_tool_to_draw_repair"]
+            stroke_modifiers = ["ALT"] if request["stroke"]["role"] == "BACKGROUND" else []
             dragged = await hands.call_tool(
                 "hands_computer_action", {"action": {"type": "drag", "button": "left", "path": screen_path, "modifiers": stroke_modifiers}}
             )
@@ -391,52 +393,66 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
                 "actionToActionLatencyMs": latencies[-1],
                 "handsResult": structured(dragged),
             }
-            await asyncio.sleep(0.35)
-            _final_meta, final_image = await capture(eyes, hands, output, "after_seed")
-            await refuse_modal_if_present(eyes, hands, qwen, output, final_image, proof)
             xs = [point["x"] for point in encoded]
             ys = [point["y"] for point in encoded]
             canvas_w = max(1, bounds[2] - bounds[0])
             canvas_h = max(1, bounds[3] - bounds[1])
             margin = max(6, int(max(canvas_w, canvas_h) * float(request["stroke"]["radiusNormalized"]) * 1.6))
-            stroke_bounds = (
+            repair_bounds = (
                 max(bounds[0], min(xs) - margin), max(bounds[1], min(ys) - margin),
                 min(bounds[2], max(xs) + margin), min(bounds[3], max(ys) + margin),
             )
-            visible_stroke_change = target_patch_change(tool_image, final_image, stroke_bounds)
-            visible_samples = [{"frame": "after_seed.jpg", "delayAfterPriorCaptureMs": 350, "changedFraction": visible_stroke_change}]
-            best_frame_name = "after_seed.jpg"
-            for retry_index, retry_delay in enumerate((0.25, 0.50, 1.00), start=1):
-                if visible_stroke_change >= 0.002:
+            await asyncio.sleep(0.35)
+            final_meta, final_image = await capture(eyes, hands, output, "after_repair")
+            if tool_meta.get("geometry") != final_meta.get("geometry"):
+                raise RuntimeError("Eyes geometry changed before Roto Brush repair visual verification")
+            await refuse_modal_if_present(eyes, hands, qwen, output, final_image, proof)
+            visible_samples = []
+            visible_repair_change = target_patch_change(tool_image, final_image, repair_bounds)
+            visible_samples.append({"frame": "after_repair.jpg", "delayAfterPriorCaptureMs": 350, "changedFraction": visible_repair_change})
+            best_frame_name = "after_repair.jpg"
+            for retry_index, retry_delay in enumerate((0.25, 0.45), start=1):
+                if visible_repair_change >= 0.002:
                     break
                 await asyncio.sleep(retry_delay)
-                retry_name = f"after_seed_retry_{retry_index}"
+                retry_name = f"after_repair_retry_{retry_index}"
                 retry_meta, retry_image = await capture(eyes, hands, output, retry_name)
                 if tool_meta.get("geometry") != retry_meta.get("geometry"):
-                    raise RuntimeError("Eyes geometry changed during Roto Brush seed visual repaint retry")
-                retry_change = target_patch_change(tool_image, retry_image, stroke_bounds)
-                visible_samples.append({"frame": f"{retry_name}.jpg", "delayAfterPriorCaptureMs": int(retry_delay * 1000), "changedFraction": retry_change})
-                if retry_change > visible_stroke_change:
-                    visible_stroke_change = retry_change
+                    raise RuntimeError("Eyes geometry changed during Roto Brush repair visual retry")
+                retry_change = target_patch_change(tool_image, retry_image, repair_bounds)
+                visible_samples.append({
+                    "frame": f"{retry_name}.jpg",
+                    "delayAfterPriorCaptureMs": int(retry_delay * 1000),
+                    "changedFraction": retry_change,
+                })
+                if retry_change > visible_repair_change:
+                    visible_repair_change = retry_change
                     final_image = retry_image
                     best_frame_name = f"{retry_name}.jpg"
-            proof["visibleStrokeChange"] = {
-                "strokeBounds": list(stroke_bounds), "changedFraction": visible_stroke_change,
-                "thresholdForRepairDefectProof": 0.002, "samples": visible_samples,
+            visible_repair_change_observed = visible_repair_change >= 0.002
+            proof["visibleRepairChange"] = {
+                "repairBounds": list(repair_bounds),
+                "changedFraction": visible_repair_change,
+                "threshold": 0.002,
+                "observed": visible_repair_change_observed,
+                "samples": visible_samples,
                 "beforeFrame": str((output / "roto_tool_selected.jpg").resolve()),
                 "afterFrame": str((output / best_frame_name).resolve()),
             }
-            final_bound, final_evidence = verify_target_binding(qwen, final_image, request, "m5_roto_seed_binding_after")
+            if not visible_repair_change_observed:
+                raise RuntimeError(f"Roto Brush repair produced no visible pixel change in the guarded correction region after bounded retries ({visible_repair_change:.6f})")
+            final_bound, final_evidence = verify_target_binding(qwen, final_image, request, "m5_roto_repair_binding_after")
             proof["targetBindingAfter"] = final_evidence
             if not final_bound:
-                raise RuntimeError("typed Roto Brush target changed after seed stroke")
-            evidence_path = str((output / best_frame_name).resolve())
+                raise RuntimeError("typed Roto Brush target changed after repair stroke")
+            evidence_path = str((output / "after_repair.jpg").resolve())
             return {
                 "status": "COMPLETED",
                 "visualEvidenceId": evidence_path,
-                "detail": f"Verified {request['stroke']['role'].lower()} Roto Brush seed stroke attempted through EditGPT Eyes/Hands.",
+                "detail": f"Verified {request['stroke']['role'].lower()} Roto Brush repair stroke attempted through EditGPT Eyes/Hands.",
                 "guardedVisualTargetVerified": True,
-                "nativeStrokeAttempted": True,
+                "nativeRepairStrokeAttempted": True,
+                "visibleRepairChangeObserved": visible_repair_change_observed,
                 "targetBinding": target_binding(request),
                 "aeActionToActionLatenciesMs": latencies,
                 "proof": proof,
@@ -454,11 +470,11 @@ async def run(request: dict, output: Path, afterfx_path: str, tool_select_script
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="EditFlow guarded EditGPT Roto Brush seed visual driver")
+    parser = argparse.ArgumentParser(description="EditFlow guarded EditGPT Roto Brush repair visual driver")
     parser.add_argument("--request-json", required=True)
     parser.add_argument("--afterfx-path", required=True)
     parser.add_argument("--tool-select-script", required=True)
-    parser.add_argument("--evidence-dir", default="proofs/artifacts/m5-roto-brush-seed-visual-runtime")
+    parser.add_argument("--evidence-dir", default="proofs/artifacts/m5-roto-brush-repair-visual-runtime")
     return parser.parse_args()
 
 

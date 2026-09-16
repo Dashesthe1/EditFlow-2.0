@@ -134,5 +134,18 @@ test("Roto Brush seed sidecar is target-bound, normalized, popup-aware, and uses
   assert.match(py, /modalFalsePositiveRejected/);
   assert.match(py, /Local runtime unavailable: Failed to fetch/);
   assert.match(py, /aeActionToActionLatenciesMs/);
+  assert.match(py, /after_seed_retry_/);
+  assert.match(py, /visible_samples/);
   assert.doesNotMatch(py, /pyautogui|SetCursorPos|C:\\\\Users\\\\Shadow/);
+});
+
+test("Roto Brush seed visual driver safely maximizes a verified Layer viewer when canvas grounding is too small", async () => {
+  const py = await readFile("packages/adapters/ae-cep/runtime/editgpt_roto_brush_seed_visual_driver.py", "utf8");
+  assert.match(py, /smallLayerCanvasDetected/);
+  assert.match(py, /letterbox\/pillarbox padding/);
+  assert.match(py, /image\.shape\[0\] \* image\.shape\[1\] \* 0\.08/);
+  assert.match(py, /layerTabFocusBeforeMaximize/);
+  assert.match(py, /\["GRAVE"\]/);
+  assert.match(py, /maximized_here = True/);
+  assert.match(py, /if maximized_here:/);
 });

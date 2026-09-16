@@ -114,3 +114,14 @@ test("Refine Edge and export require bounded explicit semantic payloads", () => 
     export: { kind: "TRACK_MATTE", stableId: "" }, evidenceIds,
   }), /EXPORT_MATTE/);
 });
+test("repair stroke requires an explicit foreground or background correction role", () => {
+  const repair = prepareRotoBrushSemanticActionV1({
+    operation: "REPAIR_STROKE", target, expectedSessionRevision: revision,
+    atTime: 0.5, stroke, evidenceIds,
+  });
+  assert.equal(repair.stroke.role, "FOREGROUND");
+  assert.throws(() => prepareRotoBrushSemanticActionV1({
+    operation: "REPAIR_STROKE", target, expectedSessionRevision: revision,
+    atTime: 0.5, stroke: { ...stroke, role: "REFINE_EDGE" }, evidenceIds,
+  }), /FOREGROUND or BACKGROUND correction role/);
+});

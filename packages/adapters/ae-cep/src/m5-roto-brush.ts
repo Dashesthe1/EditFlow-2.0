@@ -135,6 +135,9 @@ export const prepareRotoBrushSemanticActionV1 = (input: RotoBrushActionRequestV1
     const expectedRole = input.operation === "SEED_FOREGROUND" ? "FOREGROUND"
       : input.operation === "SEED_BACKGROUND" ? "BACKGROUND" : null;
     validateStroke(stroke, expectedRole);
+    if (input.operation === "REPAIR_STROKE" && stroke?.role !== "FOREGROUND" && stroke?.role !== "BACKGROUND") {
+      throw new TypeError("REPAIR_STROKE requires an explicit FOREGROUND or BACKGROUND correction role.");
+    }
   }
   if (input.operation === "PROPAGATE_FORWARD" || input.operation === "PROPAGATE_BACKWARD") validateRange(range);
   if (input.operation === "REFINE_EDGE") {
