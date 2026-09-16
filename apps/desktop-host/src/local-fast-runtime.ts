@@ -36,6 +36,8 @@ export interface LocalFastBatchResultV1 {
   readonly route: "LOCAL" | "ESCALATE";
   readonly planningMs: number;
   readonly actionMs: number;
+  readonly actionTimingsMs: readonly number[];
+  readonly dispatchTimingsMs: readonly number[];
   readonly meanActionMs: number;
   readonly maxActionMs: number;
   readonly totalMs: number;
@@ -115,6 +117,7 @@ export class LocalFastRuntimeV1 {
     const result = await this.session.runner.run({ kind: "SHORT_HORIZON", intents }, transactionId);
     const totalMs = this.clock() - started;
     const actionTimings = result.actions.map((action) => action.timings.totalMs);
+    const dispatchTimings = result.actions.map((action) => action.timings.dispatchMs);
     const maxActionMs = actionTimings.length > 0 ? Math.max(...actionTimings) : 0;
     const meanActionMs = actionTimings.length > 0 ? actionTimings.reduce((sum, value) => sum + value, 0) / actionTimings.length : 0;
     return {
@@ -125,6 +128,8 @@ export class LocalFastRuntimeV1 {
       route: result.route,
       planningMs: result.planningMs,
       actionMs: result.actionMs,
+      actionTimingsMs: actionTimings,
+      dispatchTimingsMs: dispatchTimings,
       meanActionMs,
       maxActionMs,
       totalMs,

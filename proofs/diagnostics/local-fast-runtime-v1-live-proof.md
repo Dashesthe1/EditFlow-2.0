@@ -46,3 +46,29 @@ One checkpoint state read after the batch verified revision 51 and exact restora
 ## Acceptance
 
 PASS. Twenty real AE writes were executed inside one local orchestration request with no model reasoning or full project observation between micro-actions. The final checkpoint read verified state coherence and reversible restoration.
+
+## Per-action timing + Shadow MCP tunnel proof
+
+A later live pass added explicit per-action and per-dispatch timing arrays to `LocalFastRuntimeV1` so action-to-action latency is retained rather than inferred only from aggregate means.
+
+A reversible localhost `/run-batch` proof executed 8 opacity writes (`99 <-> 100`) and restored the original opacity exactly:
+
+- Requested/completed actions: 8 / 8
+- Route: `LOCAL`; escalations: 0
+- Total local runtime: 654.878 ms
+- Mean action time: 81.726 ms
+- Maximum action time: 155.726 ms
+- Final opacity: 100
+
+A second proof used the actual ChatGPT `EditFlow - Shadow` MCP tunnel through the compatibility `apply_edit_plan` entry point. One MCP call carried 6 routine transform intents through `SHORT_HORIZON -> ContinuousFastLoop -> RoutineDecisionEngine -> warm CEP -> AE` with no observation between micro-actions:
+
+- Requested/completed actions: 6 / 6
+- Route: `LOCAL`; escalations: 0
+- Summed action time: 471.450 ms
+- Mean action time: 78.575 ms
+- Maximum action time: 84.412 ms
+- Whole goal time: 472.089 ms
+- Host revision: 105 -> 111
+- Checkpoint read after the batch: opacity restored exactly to 100
+
+During this proof the Shadow route briefly drifted to the older repo and later hit the retained `CEP_HOST_PROBE_CALLBACK_STALL` signature. The known recovery path recycled only the Shadow control/gateway processes, reopened the fixed bridge in the already-running AE process, and recovered with one state read. After recovery, the MCP batch passed without restarting After Effects.

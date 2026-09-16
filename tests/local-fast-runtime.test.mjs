@@ -85,6 +85,10 @@ test("local fast runtime executes a many-action routine batch with no observatio
   assert.equal(result.route, "LOCAL");
   assert.equal(result.requestedActions, 20);
   assert.equal(result.completedActions, 20);
+  assert.equal(result.actionTimingsMs.length, 20);
+  assert.equal(result.dispatchTimingsMs.length, 20);
+  assert.ok(result.actionTimingsMs.every((value) => Number.isFinite(value) && value >= 0));
+  assert.ok(result.dispatchTimingsMs.every((value) => Number.isFinite(value) && value >= 0));
   assert.equal(fake.requests.length, 20);
   assert.equal(fake.observes, 1);
   assert.deepEqual(fake.requests.map((request) => request.expectedHostProjectRevision), Array.from({ length: 20 }, (_, i) => 7 + i));
