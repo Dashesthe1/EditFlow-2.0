@@ -85,8 +85,25 @@ def build_server():
             "primaryExecution": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
             "tools": [
                 "get_edit_state", "get_editflow2_state", "get_after_effects_state",
-                "probe_after_effects", "get_production_status", "validate_edit_plan",
-                "apply_edit_plan", "fast_ae_run", "fast_ae_refresh",
+                "probe_after_effects", "get_production_status", "list_adaptive_capabilities",
+                "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_refresh",
+            ],
+        }
+
+    @mcp.tool()
+    def list_adaptive_capabilities() -> dict[str, Any]:
+        """Legacy introspection alias for the current fast-path capability surface."""
+        status = _http("GET", "/status")
+        return {
+            "service": "EditFlow Current Shadow Gateway",
+            "compatibilityAlias": True,
+            "primaryExecution": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
+            "hostRevision": status.get("hostRevision"),
+            "executionMode": status.get("executionMode"),
+            "controlPlane": status.get("controlPlane"),
+            "capabilities": [
+                "CURRENT_AE_STATE", "WARM_CEP_PROBE", "CONTINUOUS_FAST_LOOP",
+                "ROUTINE_DECISION_ENGINE", "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN",
             ],
         }
 
