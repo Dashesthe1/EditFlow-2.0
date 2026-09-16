@@ -66,10 +66,15 @@ test("normal CEP reconciliation owns terminal marker publication and queue clean
   assert.match(source, /reconcileActiveRenderJob\(\)/);
 });
 
-test("CEP panel arms render maintenance on scheduled capture and pumps host reconciliation", async () => {
+test("CEP panel starts maintenance idle, then arms it only after a scheduled capture", async () => {
   const source = await readFile(bridgeClientPath, "utf8");
 
-  assert.match(source, /var renderMaintenanceArmed = true/);
+  assert.match(source, /var renderMaintenanceArmed = false/);
+  const registerStart = source.indexOf("function register()");
+  const registerEnd = source.indexOf("function evalProofFile", registerStart);
+  const register = source.slice(registerStart, registerEnd);
+  assert.match(register, /renderMaintenanceArmed = false/);
+  assert.doesNotMatch(register, /renderMaintenanceArmed = true/);
   assert.match(source, /function reconcileHostAsyncRender\(\)/);
   assert.match(source, /EditFlow2_reconcileAsyncRender/);
   assert.match(source, /function maintainAsyncRenderIfNeeded\(\)/);

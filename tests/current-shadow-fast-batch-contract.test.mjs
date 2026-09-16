@@ -11,6 +11,8 @@ test("current Shadow control daemon exposes the persistent local routine batch e
   assert.match(source, /runtime\.runRoutineBatch/);
   assert.match(source, /maxBatchActions: 64/);
   assert.match(source, /actionBudgetMs: 1_000/);
+  assert.match(source, /panel: broker\.panelSession \?\? panel/);
+  assert.doesNotMatch(source, /\n  panel,\n/);
 });
 
 test("current Shadow MCP gateway exposes one-call local AE batching", async () => {

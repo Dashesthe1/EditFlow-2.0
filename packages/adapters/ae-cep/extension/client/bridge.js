@@ -16,7 +16,7 @@
   var reconnectTimer = null;
   var livenessStarted = false;
   var hostReady = false;
-  var renderMaintenanceArmed = true;
+  var renderMaintenanceArmed = false;
   var HOST_ERROR_PREFIX = "__EDITFLOW2_HOST_ERROR__:";
   var HOST_BOOTSTRAP_OK = "__EDITFLOW2_HOST_BOOTSTRAP_OK__";
   var HOST_BOOTSTRAP_ERROR_PREFIX = "__EDITFLOW2_HOST_BOOTSTRAP_ERROR__:";
@@ -144,7 +144,7 @@
       sessionId = result.value.sessionId;
       negotiatedProtocolVersion = result.value.protocolVersion;
       connectionGeneration += 1;
-      renderMaintenanceArmed = true;
+      renderMaintenanceArmed = false;
       var generation = connectionGeneration;
       brokerEl.textContent = "127.0.0.1:" + config.port;
       protocolEl.textContent = negotiatedProtocolVersion;

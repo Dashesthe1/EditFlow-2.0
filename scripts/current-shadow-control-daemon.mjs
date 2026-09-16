@@ -98,7 +98,7 @@ const statusPayload = () => ({
   adapterBuild: session.adapterBuild,
   hostRevision: session.runner.hostRevision,
   localRuntime: runtime.status(),
-  panel,
+  panel: broker.panelSession ?? panel,
   controlPlane: getMcpServerStatus(),
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
