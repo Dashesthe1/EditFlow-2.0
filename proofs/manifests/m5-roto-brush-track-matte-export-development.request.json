@@ -1,0 +1,43 @@
+{
+  "proofId": "M5_ROTO_BRUSH_TRACK_MATTE_EXPORT_RETAINED_REAL_AE_V1",
+  "proofScript": "scripts/windows/run-m5-roto-brush-export-live-proof.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/m5-roto-brush-export-live-proof",
+  "timeoutSeconds": 120,
+  "resultFile": "result.json",
+  "proofStrategy": "INCREMENTAL_FIRST",
+  "incrementalNodeId": "M5:ROTO:TRACK_MATTE_EXPORT",
+  "checkpointKey": "M5:ROTO:TRACK_MATTE_EXPORT_SESSION:V1",
+  "allowEvidenceReuse": true,
+  "allowInfrastructureRetry": false,
+  "incrementalDependencies": [
+    "scripts/windows/run-m5-roto-brush-export-live-proof.ps1",
+    "scripts/windows/m5-roto-brush-isolation-enter.jsx",
+    "scripts/windows/m5-roto-brush-isolation-restore-scheduled.jsx",
+    "scripts/windows/run-m5-roto-brush-proof-preflight.ps1",
+    "scripts/windows/m5-roto-brush-fixture-setup.jsx",
+    "scripts/windows/m5-roto-brush-export-dispatch.jsx",
+    "scripts/windows/m5-roto-brush-tool-select.jsx",
+    "scripts/m5-roto-brush-export-live-proof.mjs",
+    "packages/adapters/ae-cep/src/m5-roto-brush-export-controller.ts",
+    "packages/adapters/ae-cep/src/m5-roto-brush-readback.ts",
+    "packages/adapters/ae-cep/src/m5-roto-brush-seed-controller.ts",
+    "packages/adapters/ae-cep/src/m5-editgpt-roto-brush-seed-visual-driver.ts",
+    "packages/adapters/ae-cep/runtime/editgpt_roto_brush_seed_visual_driver.py",
+    "packages/adapters/ae-cep/src/m5-roto-brush.ts",
+    "packages/adapters/ae-cep/src/protocol-v1_1.ts",
+    "packages/adapters/ae-cep/src/protocol-v2_6.ts",
+    "tests/m5-roto-brush-export-controller.test.mjs",
+    "tests/m5-roto-brush-export-live-proof-harness.test.mjs",
+    "tests/m5-roto-brush.test.mjs",
+    "tests/m5-roto-brush-seed-controller.test.mjs",
+    "tests/m5-editgpt-roto-brush-seed-visual-driver.test.mjs"
+  ],
+  "focusedTests": [
+    "tests/m5-roto-brush-export-controller.test.mjs",
+    "tests/m5-roto-brush-export-live-proof-harness.test.mjs",
+    "tests/m5-roto-brush.test.mjs",
+    "tests/m5-roto-brush-seed-controller.test.mjs",
+    "tests/m5-editgpt-roto-brush-seed-visual-driver.test.mjs"
+  ]
+}
