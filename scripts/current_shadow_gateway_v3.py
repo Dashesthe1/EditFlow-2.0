@@ -125,7 +125,7 @@ def build_server():
                 "get_edit_state", "get_editflow2_state", "get_after_effects_state",
                 "probe_after_effects", "get_production_status", "list_adaptive_capabilities",
                 "triage_error", "remember_error_resolution", "get_error_memory", "record_error_outcome",
-                "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_refresh",
+                "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_batch", "fast_ae_refresh",
             ],
         }
 
@@ -142,7 +142,7 @@ def build_server():
             "controlPlane": status.get("controlPlane"),
             "capabilities": [
                 "CURRENT_AE_STATE", "WARM_CEP_PROBE", "CONTINUOUS_FAST_LOOP",
-                "ROUTINE_DECISION_ENGINE", "ERROR_TRIAGE_MEMORY",
+                "ROUTINE_DECISION_ENGINE", "LOCAL_BATCH_RUNTIME", "ERROR_TRIAGE_MEMORY",
                 "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN",
             ],
         }
@@ -187,6 +187,15 @@ def build_server():
             raise ValueError("goal_json must decode to an object")
         tx = transaction_id or f"shadow-fast-{int(time.time() * 1000)}"
         return _http("POST", "/run", {"goal": goal, "transactionId": tx})
+
+    @mcp.tool()
+    def fast_ae_batch(intents_json: str, transaction_id: str = "") -> dict[str, Any]:
+        """Execute up to 64 allow-listed AE routine actions locally in one MCP round trip."""
+        intents = json.loads(intents_json)
+        if not isinstance(intents, list) or not intents:
+            raise ValueError("intents_json must decode to a non-empty routine-intent list")
+        tx = transaction_id or f"shadow-batch-{int(time.time() * 1000)}"
+        return _http("POST", "/run-batch", {"intents": intents, "transactionId": tx})
 
     @mcp.tool()
     def fast_ae_refresh() -> dict[str, Any]:

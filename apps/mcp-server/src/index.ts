@@ -25,6 +25,9 @@ export interface McpServerStatus {
   readonly editorBrainFailureMode: "FAIL_CLOSED_AND_ESCALATE";
   readonly ordinaryIntentBudgetMs: 2000;
   readonly routineMicroActionBudgetMs: 1000;
+  readonly localRuntime: "PERSISTENT_BATCH_RUNTIME_V1";
+  readonly mcpCommandGranularity: "COARSE_GRAINED_BATCHES";
+  readonly routineBatchMaxActions: 64;
   readonly slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE";
   readonly realAeAcceptance: "P1_P5_ACCEPTED";
   readonly humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED";
@@ -57,6 +60,9 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   editorBrainFailureMode: "FAIL_CLOSED_AND_ESCALATE",
   ordinaryIntentBudgetMs: 2000,
   routineMicroActionBudgetMs: 1000,
+  localRuntime: "PERSISTENT_BATCH_RUNTIME_V1",
+  mcpCommandGranularity: "COARSE_GRAINED_BATCHES",
+  routineBatchMaxActions: 64,
   slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE",
   realAeAcceptance: "P1_P5_ACCEPTED",
   humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",
