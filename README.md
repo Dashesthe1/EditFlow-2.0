@@ -66,6 +66,8 @@ M4 — Tracking & Isolation is accepted. Commit `a55c0ac` closes the M4 exit gat
 
 M5 Roto Brush / Refine Edge has completed its guarded production-registration gate. Retained real-AE evidence covers foreground and background seeds, bounded forward/backward propagation, warm-AE isolation/restore, Refine Edge, guarded FREEZE -> FROZEN -> UNFREEZE -> UNFROZEN state truth, visible native manual repair, stable structural TRACK_MATTE export with exact native Roto preservation, transfer across materially different footage, and exact popup-fault capture plus safe same-process recovery. The default desktop runtime remains fail-closed; supplying the digest-bound retained M5 evidence registers only the proven seven-capability envelope, while MASK conversion remains unavailable.
 
+M5 Mocha AE has entered guarded adapter development. A retained read-only real-AE discovery proof binds the installed `Mocha AE` effect to match name `mochaAECC` (Boris FX Mocha 12.2), confirms it is addable on the active AV layer, preserves the same warm AE process/project state, and completes the host roundtrip in under one second. Mutating Mocha operations remain unavailable pending launch/session and tracking proofs.
+
 M3 — Human-Parity Core remains accepted as the prior human-parity manipulation baseline.
 
 M2 — Adobe Host Baseline remains accepted as the authenticated CEP, readback, rollback/recovery, stable-identity, and baseline CRUD foundation.

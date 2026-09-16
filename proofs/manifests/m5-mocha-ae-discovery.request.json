@@ -1,0 +1,23 @@
+{
+  "proofId": "M5_MOCHA_AE_DISCOVERY_RETAINED_REAL_AE_V1",
+  "proofScript": "scripts/windows/run-m5-mocha-ae-discovery.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/m5-mocha-ae-discovery-live-proof",
+  "timeoutSeconds": 45,
+  "resultFile": "result.json",
+  "proofStrategy": "INCREMENTAL_FIRST",
+  "incrementalNodeId": "M5_MOCHA_AE_DISCOVERY",
+  "checkpointKey": "M5:MOCHA:DISCOVERY:V1",
+  "allowEvidenceReuse": false,
+  "allowInfrastructureRetry": false,
+  "incrementalDependencies": [
+    "scripts/windows/run-m5-mocha-ae-discovery.ps1",
+    "scripts/windows/invoke-editflow-ae-proof.ps1",
+    "scripts/windows/ae-host-supervisor.ps1",
+    "spec/ae-development-proof-request.schema.json",
+    "tests/m5-mocha-ae-discovery-live-proof-harness.test.mjs"
+  ],
+  "focusedTests": [
+    "tests/m5-mocha-ae-discovery-live-proof-harness.test.mjs"
+  ]
+}
