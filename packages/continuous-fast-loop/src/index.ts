@@ -5,6 +5,7 @@ import { RoutineDecisionEngine, type RoutineExecutionResult } from "../../routin
 
 export interface ContinuousFastLoopOptions {
   readonly budgetMs?: number;
+  readonly actionBudgetMs?: number;
   readonly maxActions?: number;
   readonly leaseTtlMs?: number;
   readonly clock?: () => number;
@@ -26,12 +27,14 @@ export interface ContinuousFastLoopResult {
 }
 
 export const DEFAULT_CONTINUOUS_FAST_LOOP_BUDGET_MS = 2_000;
+export const DEFAULT_CONTINUOUS_FAST_LOOP_ACTION_BUDGET_MS = 1_000;
 export const DEFAULT_CONTINUOUS_FAST_LOOP_MAX_ACTIONS = 16;
 export const DEFAULT_CONTINUOUS_FAST_LOOP_LEASE_TTL_MS = 120_000;
 
 export class ContinuousFastLoop {
   readonly client: AeCepAdapterClientV11;
   readonly budgetMs: number;
+  readonly actionBudgetMs: number;
   readonly leaseTtlMs: number;
   readonly clock: () => number;
   readonly planner: ReflexPlanner;
@@ -44,11 +47,12 @@ export class ContinuousFastLoop {
   constructor(client: AeCepAdapterClientV11, initialState: AeCepAdapterStateV11, options: ContinuousFastLoopOptions = {}) {
     this.client = client;
     this.budgetMs = options.budgetMs ?? DEFAULT_CONTINUOUS_FAST_LOOP_BUDGET_MS;
+    this.actionBudgetMs = options.actionBudgetMs ?? DEFAULT_CONTINUOUS_FAST_LOOP_ACTION_BUDGET_MS;
     this.leaseTtlMs = options.leaseTtlMs ?? DEFAULT_CONTINUOUS_FAST_LOOP_LEASE_TTL_MS;
     this.clock = options.clock ?? (() => performance.now());
     this.planner = new ReflexPlanner({ maxActions: options.maxActions ?? DEFAULT_CONTINUOUS_FAST_LOOP_MAX_ACTIONS });
     this.#state = initialState;
-    this.#engine = new RoutineDecisionEngine(client, initialState, { budgetMs: this.budgetMs, leaseTtlMs: this.leaseTtlMs, clock: this.clock });
+    this.#engine = new RoutineDecisionEngine(client, initialState, { budgetMs: this.actionBudgetMs, leaseTtlMs: this.leaseTtlMs, clock: this.clock });
   }
 
   get state(): AeCepAdapterStateV11 { return this.#state; }

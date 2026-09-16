@@ -6,10 +6,14 @@ import {
 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { applyM2AcceptedProofEvidence } from "../../../packages/adapters/ae-cep/src/m2-proof-maturity.js";
 import { AE_ADAPTER_BUILD_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
-import { ContinuousFastLoop } from "../../../packages/continuous-fast-loop/src/index.js";
+import { ContinuousFastLoop, type ContinuousFastLoopOptions } from "../../../packages/continuous-fast-loop/src/index.js";
 import { EditorBrainRuntimeV0, EditorBrainV0 } from "../../../packages/editor-brain/src/index.js";
 
 export const DEFAULT_AE_EXECUTION_MODE = "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0" as const;
+
+export interface DesktopAeSessionV11Options {
+  readonly runner?: ContinuousFastLoopOptions;
+}
 
 export interface DesktopAeSessionV11 {
   readonly adapterBuild: typeof AE_ADAPTER_BUILD_V11;
@@ -24,6 +28,7 @@ export interface DesktopAeSessionV11 {
 export const createDesktopAeSessionV11 = async (
   adapter: AeCepAdapterClientV11,
   projectId = "after-effects-project",
+  options: DesktopAeSessionV11Options = {},
 ): Promise<DesktopAeSessionV11> => {
   const state = await adapter.observe(projectId);
   const registry = createM1CapabilityRegistry(state.observed.environmentFingerprint);
@@ -33,7 +38,7 @@ export const createDesktopAeSessionV11 = async (
     priority: 110,
     capabilities: applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
   });
-  const runner = new ContinuousFastLoop(adapter, state);
+  const runner = new ContinuousFastLoop(adapter, state, options.runner);
   const editorBrain = new EditorBrainV0();
   const editorRunner = new EditorBrainRuntimeV0(editorBrain, runner);
   return {
