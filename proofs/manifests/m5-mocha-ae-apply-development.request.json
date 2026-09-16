@@ -1,0 +1,24 @@
+{
+  "proofId": "M5_MOCHA_AE_APPLY_RETAINED_REAL_AE_V1",
+  "proofScript": "scripts/windows/run-m5-mocha-ae-apply-live-proof.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/m5-mocha-ae-apply-live-proof",
+  "timeoutSeconds": 90,
+  "resultFile": "result.json",
+  "proofStrategy": "INCREMENTAL_FIRST",
+  "incrementalNodeId": "M5_MOCHA_AE_APPLY",
+  "checkpointKey": "M5:MOCHA:APPLY:V1",
+  "allowEvidenceReuse": false,
+  "allowInfrastructureRetry": false,
+  "incrementalDependencies": [
+    "scripts/windows/m5-mocha-ae-source-probe.jsx",
+    "scripts/windows/m5-mocha-ae-isolation-enter.jsx",
+    "scripts/windows/m5-mocha-ae-fixture-apply.jsx",
+    "scripts/windows/m5-mocha-ae-isolation-restore.jsx",
+    "scripts/windows/run-m5-mocha-ae-apply-live-proof.ps1",
+    "scripts/windows/invoke-editflow-ae-proof.ps1",
+    "scripts/windows/ae-host-supervisor.ps1",
+    "tests/m5-mocha-ae-apply-live-proof-harness.test.mjs"
+  ],
+  "focusedTests": ["tests/m5-mocha-ae-apply-live-proof-harness.test.mjs"]
+}

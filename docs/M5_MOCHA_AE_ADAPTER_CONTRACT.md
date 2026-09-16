@@ -1,6 +1,6 @@
 # M5 Mocha AE Adapter Contract
 
-Status: **DISCOVERY PROVEN / MUTATION UNAVAILABLE**
+Status: **DISCOVERY + APPLY PROVEN / LAUNCH UNAVAILABLE**
 Milestone: `M5 Interactive AE Adapters (0.6.0-dev)`
 
 ## Purpose
@@ -52,7 +52,7 @@ The retained proof established:
 
 This proof authorizes discovery/availability knowledge only. It does not authorize adding the effect, launching Mocha, drawing splines, tracking, repair, or export.
 
-## Next proof gate
+## Apply/launch proof gate
 
 The next gate is a guarded `APPLY_MOCHA_EFFECT -> LAUNCH_SESSION` development proof. It must:
 
@@ -63,3 +63,17 @@ The next gate is a guarded `APPLY_MOCHA_EFFECT -> LAUNCH_SESSION` development pr
 5. capture and safely handle any modal/error state;
 6. restore the exact pre-proof project and preserve the same After Effects PID;
 7. measure actual AE action-to-action latency for routine host actions.
+
+## Accepted real-AE effect-apply proof
+
+Accepted 2026-09-16: `M5_MOCHA_AE_APPLY_RETAINED_REAL_AE_V1` uses a separately namespaced proof-owned blank project, imports the current file-backed footage, and adds exactly one `mochaAECC` effect to one proof-owned AV layer. Exact structural readback reports display name `Mocha AE`, one effect instance, and a capped 62-node property tree.
+
+The retained tree exposes `Launch Mocha AE` as property index `5` with match name `mochaAECC-2353`, alongside tracking/export surfaces including `Tracking Data`, corner points, center, rotation, scale, export option, and layer-export target controls. This is discovery evidence only; the proof does not infer that those properties are safely writable or clickable from scripting.
+
+The accepted run preserved After Effects PID `16404`, restored the exact saved project at revision `126` with all seven restore checks true, and logged no script-error popup. Measured warm roundtrips were approximately 743 ms for source binding, 727 ms for isolation entry, 2042 ms for import+effect+structural readback, and 1018 ms for exact restore. All remained below the 3-second ceiling.
+
+This proof authorizes `APPLY_MOCHA_EFFECT` development evidence only. It does not authorize `LAUNCH_SESSION`, planar region creation, tracking, repair, or export.
+
+## Current next gate
+
+The next retained gate is `LAUNCH_SESSION`: recreate the exact proof-owned `mochaAECC` binding, expose the verified `Launch Mocha AE` control, invoke only that control through a guarded UI route, prove the resulting Boris FX Mocha process/window/session identity, handle any modal/license/error state fail-closed, then close only the proof-owned Mocha session and restore the exact saved AE project without restarting AE.
