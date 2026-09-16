@@ -19,6 +19,17 @@ function Wait-Http([string]$Uri, [int]$Seconds = 20) {
   throw "Timed out waiting for $Uri"
 }
 
+function Open-WarmCepBridge {
+  $PanelBootstrap = Join-Path $Root "scripts\windows\open-editflow-bridge.jsx"
+  if (-not (Test-Path $PanelBootstrap -PathType Leaf)) { return $false }
+  $Candidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.Responding -and $_.MainWindowHandle -ne 0 -and -not [string]::IsNullOrWhiteSpace($_.Path) } catch { $false }
+  })
+  if ($Candidates.Count -ne 1) { return $false }
+  Start-Process -FilePath $Candidates[0].Path -ArgumentList @("-r", $PanelBootstrap) | Out-Null
+  return $true
+}
+
 $Node = (Get-Command node.exe -ErrorAction Stop).Source
 $Npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 $Tailscale = (Get-Command tailscale.exe -ErrorAction Stop).Source
@@ -63,6 +74,11 @@ if (-not (Test-Listening 32146)) {
     -WorkingDirectory $Root `
     -RedirectStandardOutput (Join-Path $LogRoot "control.out.log") `
     -RedirectStandardError (Join-Path $LogRoot "control.err.log") | Out-Null
+  $BrokerDeadline = (Get-Date).AddSeconds(5)
+  while (-not (Test-Listening 32145) -and (Get-Date) -lt $BrokerDeadline) { Start-Sleep -Milliseconds 100 }
+  if ((Test-Listening 32145) -and (Open-WarmCepBridge)) {
+    Write-Host "Reused the running After Effects process to open/reconnect the EditFlow CEP bridge."
+  }
 }
 $health = Wait-Http "http://127.0.0.1:32146/healthz" 20
 

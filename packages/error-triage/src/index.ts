@@ -123,6 +123,18 @@ const BUILTIN_RULES: readonly BuiltinRule[] = [
     avoidRepeat: "Keep display names separate from executable paths and command lines.",
   },
   {
+    domain: "CEP", code: "CEP_PANEL_REGISTRATION_TIMEOUT", confidence: 0.995, action: "APPLY_KNOWN_FIX",
+    test: (text) => text.includes("cep_panel_registration_timeout"),
+    resolution: "Keep the current After Effects process. Start or reuse the local CEP broker, then dispatch the fixed open-editflow-bridge.jsx bootstrap through AfterFX -r so only the EditFlow CEP panel re-registers; verify broker registration before continuing.",
+    avoidRepeat: "Do not restart After Effects for this signature; reopen/reconnect only the EditFlow CEP bridge unless After Effects itself is demonstrably unhealthy.",
+  },
+  {
+    domain: "CEP", code: "CEP_HOST_PROBE_CALLBACK_STALL", confidence: 0.99, action: "APPLY_KNOWN_FIX",
+    test: (text) => text.includes("cep_command_timeout: host.probe"),
+    resolution: "Do not keep retrying the same CEP session. Recycle only the current Shadow control daemon and MCP gateway, reopen the fixed EditFlow bridge panel into the already-running After Effects process, then perform one state read to verify recovery.",
+    avoidRepeat: "Do not restart After Effects or repeatedly issue host.probe against the same timed-out CEP session; recycle the Shadow route once while preserving the AE process and project.",
+  },
+  {
     domain: "CEP", code: "CEP_PROTOCOL_MISMATCH", confidence: 0.97, action: "APPLY_KNOWN_FIX",
     test: (text) => text.includes("unsupported") && text.includes("protocol") && (text.includes("cep") || text.includes("editflow") || text.includes("broker")),
     resolution: "Compare the live panel supportedProtocolVersions, broker compiled protocols, and loaded host protocol. Promote or reconnect only the bridge/control route when possible; do not restart After Effects by default.",

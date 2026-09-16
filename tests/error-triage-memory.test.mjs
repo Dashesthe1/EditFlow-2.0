@@ -21,6 +21,8 @@ test("fast triage recognizes recurring local failures without online research", 
     ["=Join-Path : The term '=Join-Path' is not recognized", "POWERSHELL_VARIABLE_STRIPPED"],
     ["expected exactly one match for token, found 3", "PATCH_GUARD_NON_UNIQUE"],
     ["Windows cannot find '\"EditFlow Shadow Gateway\"'", "BAD_QUOTED_GATEWAY_COMMAND"],
+    ["CEP_PANEL_REGISTRATION_TIMEOUT", "CEP_PANEL_REGISTRATION_TIMEOUT"],
+    ["CEP_COMMAND_TIMEOUT: host.probe shadow-current-5", "CEP_HOST_PROBE_CALLBACK_STALL"],
     ["Broker leased an unsupported EditFlow protocol request", "CEP_PROTOCOL_MISMATCH"],
   ];
   for (const [message, code] of cases) {
