@@ -17,6 +17,8 @@ test("accelerated AE proof request declares the permanent lifecycle contract", a
   assert.deepEqual(schema.properties.lifecycle.enum, lifecycleModes);
   assert.equal(schema.properties.lifecycle.default, "REUSE_AE");
   assert.equal(schema.properties.allowInfrastructureRetry.default, false);
+  assert.equal(schema.properties.expectedScriptErrorContains.minLength, 8);
+  assert.equal(schema.properties.expectedScriptErrorContains.maxLength, 240);
   assert.match(schema.properties.proofScript.pattern, /scripts\/windows\/run-/);
   assert.match(schema.properties.artifactDir.pattern, /proofs\/artifacts/);
 });
@@ -35,6 +37,11 @@ test("warm orchestrator never silently escalates REUSE_AE into process terminati
   assert.ok(runner.includes("SCRIPT_ERROR_DETECTED"));
   assert.ok(runner.includes("After Effects rejected a script:"));
   assert.ok(runner.includes("exitCode = 65"));
+  assert.ok(runner.includes("Consume-NewSupervisorScriptErrors"));
+  assert.ok(runner.includes("expectedScriptErrorContains"));
+  assert.ok(runner.includes("expectedScriptErrorObserved"));
+  assert.ok(runner.includes("Expected script-error fault injection is allowed only with REUSE_AE."));
+  assert.ok(runner.includes("Expected script-error fault injection cannot enable infrastructure retry."));
 });
 
 test("blank or nonstandard AE titles require a direct existing-process host probe", async () => {
@@ -82,8 +89,13 @@ test("warm smoke proof is non-mutating and never closes After Effects", async ()
 test("popup-guard integration smoke uses the proven AfterFX -r argument route", async () => {
   const smoke = await read("scripts/windows/run-popup-guard-integration-smoke.ps1");
   assert.ok(smoke.includes("intentionalPopupGuardFailure = ;"));
-  assert.ok(smoke.includes("$Arguments = @('-r', $BadScript)"));
+  assert.ok(smoke.includes("$Arguments = @('-r', $Path)"));
+  assert.ok(smoke.includes("Invoke-AeScript -Path $BadScript"));
   assert.ok(smoke.includes("Start-Process -FilePath $AfterFxPath -ArgumentList $Arguments"));
+  assert.ok(smoke.includes("popupFaultInjected = $true"));
+  assert.ok(smoke.includes("postFaultAeResponsive"));
+  assert.ok(smoke.includes("sameAeProcess"));
+  assert.ok(smoke.includes("recoveryRoundtripMs"));
   assert.equal(smoke.includes("Stop-Process"), false);
   assert.equal(smoke.includes("SetCursorPos"), false);
 });

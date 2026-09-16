@@ -1,0 +1,27 @@
+{
+  "proofId": "M5_ROTO_BRUSH_POPUP_FAULT_HANDLING_RETAINED_REAL_AE_V1",
+  "proofScript": "scripts/windows/run-popup-guard-integration-smoke.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/m5-roto-brush-popup-fault-live-proof",
+  "timeoutSeconds": 45,
+  "resultFile": "result.json",
+  "proofStrategy": "INCREMENTAL_FIRST",
+  "incrementalNodeId": "M5_ROTO_POPUP_FAULT",
+  "checkpointKey": "M5:ROTO:POPUP_FAULT_SESSION:V1",
+  "allowEvidenceReuse": false,
+  "allowInfrastructureRetry": false,
+  "expectedScriptErrorContains": "Unable to execute script",
+  "incrementalDependencies": [
+    "scripts/windows/run-popup-guard-integration-smoke.ps1",
+    "scripts/windows/invoke-editflow-ae-proof.ps1",
+    "scripts/windows/ae-host-supervisor.ps1",
+    "scripts/windows/ae-host-readiness-probe-template.jsx",
+    "spec/ae-development-proof-request.schema.json",
+    "tests/ae-development-acceleration-harness.test.mjs",
+    "tests/m5-roto-brush-popup-fault-live-proof-harness.test.mjs"
+  ],
+  "focusedTests": [
+    "tests/ae-development-acceleration-harness.test.mjs",
+    "tests/m5-roto-brush-popup-fault-live-proof-harness.test.mjs"
+  ]
+}

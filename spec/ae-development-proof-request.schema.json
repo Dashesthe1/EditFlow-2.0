@@ -46,6 +46,11 @@
       "type": "boolean",
       "default": false
     },
+    "expectedScriptErrorContains": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 240
+    },
     "resultFile": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.json$",

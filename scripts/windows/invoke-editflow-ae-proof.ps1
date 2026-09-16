@@ -35,6 +35,8 @@ $ProofEnvironmentFingerprint = $null
 $FailureCapsulePath = $null
 $ValidationMode = $null
 $ValidationDurationMs = $null
+$ExpectedScriptErrorContains = ""
+$ExpectedScriptErrorObserved = $false
 
 Add-Type @"
 using System;
@@ -294,6 +296,8 @@ function Write-OrchestrationResult {
     incrementalContentKey = $IncrementalContentKey
     incrementalTokenPath = $IncrementalTokenPath
     evidenceReused = $EvidenceReused
+    expectedScriptErrorContains = $ExpectedScriptErrorContains
+    expectedScriptErrorObserved = $ExpectedScriptErrorObserved
     validationMode = $ValidationMode
     validationDurationMs = $ValidationDurationMs
     failureCapsulePath = if ($FailureCapsulePath) { $FailureCapsulePath.Substring($RepoRoot.Length).TrimStart('\') -replace '\\','/' } else { $null }
@@ -382,6 +386,24 @@ function Invoke-ProofValidation {
   }
 }
 
+function Consume-NewSupervisorScriptErrors {
+  param([Parameter(Mandatory = $true)][int]$SeenCount)
+  $Lines = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath)
+  if ($Lines.Count -le $SeenCount) { return [pscustomobject]@{ seenCount = $Lines.Count; unexpected = $null } }
+  $Unexpected = $null
+  for ($Index = $SeenCount; $Index -lt $Lines.Count; $Index++) {
+    $Detail = Get-SupervisorScriptErrorDetail -LogLine ([string]$Lines[$Index])
+    $IsExpected = $false
+    if ($ExpectedScriptErrorContains -and -not $script:ExpectedScriptErrorObserved) {
+      $IsExpected = $Detail.IndexOf($ExpectedScriptErrorContains, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    }
+    if ($IsExpected) { $script:ExpectedScriptErrorObserved = $true; continue }
+    $Unexpected = $Detail
+    break
+  }
+  return [pscustomobject]@{ seenCount = $Lines.Count; unexpected = $Unexpected }
+}
+
 function Invoke-ProofAttempt {
   param([Parameter(Mandatory = $true)][string]$ProofPath, [Parameter(Mandatory = $true)][int]$TimeoutSeconds)
 
@@ -394,7 +416,7 @@ function Invoke-ProofAttempt {
     "-TimeoutSeconds", [string]$TimeoutSeconds
   ) -join " "
 
-  $InitialScriptErrorCount = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath).Count
+  $SeenScriptErrorCount = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath).Count
   $Process = Start-Process -FilePath "powershell.exe" -ArgumentList $Arguments -PassThru -WindowStyle Hidden
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   $Completed = $false
@@ -412,9 +434,10 @@ function Invoke-ProofAttempt {
       break
     }
 
-    $CurrentScriptErrors = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath)
-    if ($CurrentScriptErrors.Count -gt $InitialScriptErrorCount) {
-      $DetectedScriptError = Get-SupervisorScriptErrorDetail -LogLine ([string]$CurrentScriptErrors[-1])
+    $ScriptErrorScan = Consume-NewSupervisorScriptErrors -SeenCount $SeenScriptErrorCount
+    $SeenScriptErrorCount = [int]$ScriptErrorScan.seenCount
+    if ($ScriptErrorScan.unexpected) {
+      $DetectedScriptError = [string]$ScriptErrorScan.unexpected
       break
     }
     Start-Sleep -Milliseconds 100
@@ -423,10 +446,9 @@ function Invoke-ProofAttempt {
   # Check once more after process completion so a popup logged in the same scheduler
   # slice as process exit is still surfaced as the primary failure reason.
   if (-not $DetectedScriptError) {
-    $FinalScriptErrors = @(Get-SupervisorScriptErrors -Path $SupervisorLogPath)
-    if ($FinalScriptErrors.Count -gt $InitialScriptErrorCount) {
-      $DetectedScriptError = Get-SupervisorScriptErrorDetail -LogLine ([string]$FinalScriptErrors[-1])
-    }
+    $FinalScriptErrorScan = Consume-NewSupervisorScriptErrors -SeenCount $SeenScriptErrorCount
+    $SeenScriptErrorCount = [int]$FinalScriptErrorScan.seenCount
+    if ($FinalScriptErrorScan.unexpected) { $DetectedScriptError = [string]$FinalScriptErrorScan.unexpected }
   }
 
   if ($DetectedScriptError) {
@@ -459,6 +481,14 @@ try {
 
   if (-not $Request.proofId -or [string]$Request.proofId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "Invalid proofId." }
   if ([string]$Request.lifecycle -notin $AllowedLifecycles) { throw "Unsupported AE lifecycle: $($Request.lifecycle)" }
+  $ExpectedScriptErrorContains = ""
+  $ExpectedScriptErrorObserved = $false
+  if ($Request.PSObject.Properties.Name -contains "expectedScriptErrorContains" -and $Request.expectedScriptErrorContains) {
+    $ExpectedScriptErrorContains = ([string]$Request.expectedScriptErrorContains).Trim()
+    if ($ExpectedScriptErrorContains.Length -lt 8 -or $ExpectedScriptErrorContains.Length -gt 240) { throw "expectedScriptErrorContains must be 8-240 characters." }
+    if ([string]$Request.lifecycle -ne "REUSE_AE") { throw "Expected script-error fault injection is allowed only with REUSE_AE." }
+    if ([bool]$Request.allowInfrastructureRetry) { throw "Expected script-error fault injection cannot enable infrastructure retry." }
+  }
   if ([int]$Request.timeoutSeconds -lt 10 -or [int]$Request.timeoutSeconds -gt 3600) { throw "timeoutSeconds must be between 10 and 3600." }
   if ([string]$Request.proofScript -notmatch '^scripts/windows/run-[A-Za-z0-9._-]+\.ps1$') { throw "proofScript is outside the allow-listed run-*.ps1 surface." }
   if ([string]$Request.artifactDir -notmatch '^proofs/artifacts/[A-Za-z0-9][A-Za-z0-9._/-]*$') { throw "artifactDir must be below proofs/artifacts/." }
@@ -551,6 +581,11 @@ try {
     if ($AttemptResult.scriptError) {
       $FinalClassification = "PRODUCT_FAILURE"
       $FinalMessage = "After Effects rejected a script: $([string]$AttemptResult.scriptError)"
+      break
+    }
+    if (-not $AttemptResult.timedOut -and $ExpectedScriptErrorContains -and -not $ExpectedScriptErrorObserved) {
+      $FinalClassification = "PRODUCT_FAILURE"
+      $FinalMessage = "Proof declared an expected After Effects script-error fault, but no matching popup was observed."
       break
     }
 
