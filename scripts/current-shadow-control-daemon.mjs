@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
-import { createDesktopAeSessionV11 } from "../.tmp/runtime/apps/desktop-host/src/v1_1.js";
+import { LocalFastRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/local-fast-runtime.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
@@ -33,7 +33,14 @@ const client = new AeCepAdapterClientV11(
   () => `shadow-current-${++requestCounter}`,
   new AeFilesystemPolicyV11([process.env.USERPROFILE ?? repoRoot]),
 );
-const session = await createDesktopAeSessionV11(client, "shadow-current-project");
+const runtime = await LocalFastRuntimeV1.create(client, {
+  projectId: "shadow-current-project",
+  maxBatchActions: 64,
+  totalBudgetMs: 30_000,
+  actionBudgetMs: 1_000,
+  leaseTtlMs: 120_000,
+});
+const session = runtime.session;
 const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
@@ -78,6 +85,7 @@ const statusPayload = () => ({
   repoRoot,  executionMode: session.executionMode,
   adapterBuild: session.adapterBuild,
   hostRevision: session.runner.hostRevision,
+  localRuntime: runtime.status(),
   panel,
   controlPlane: getMcpServerStatus(),
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
@@ -137,7 +145,14 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/run") {
       const body = await readJson(req);
       const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-fast-${Date.now()}`;
-      const result = await session.runner.run(body.goal, transactionId);
+      const result = await runtime.runGoal(body.goal, transactionId);
+      sendJson(res, 200, { ...result, status: statusPayload() });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/run-batch") {
+      const body = await readJson(req);
+      const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-batch-${Date.now()}`;
+      const result = await runtime.runRoutineBatch(body.intents, transactionId);
       sendJson(res, 200, { ...result, status: statusPayload() });
       return;
     }

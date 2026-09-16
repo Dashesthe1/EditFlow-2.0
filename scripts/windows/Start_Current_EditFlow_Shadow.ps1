@@ -60,12 +60,12 @@ if ([string]::IsNullOrWhiteSpace($env:EDITFLOW_SHADOW_ALLOWED_HOSTS)) {
 }
 
 $Compiled = Join-Path $Root ".tmp\runtime\apps\desktop-host\src\loopback-cep.js"
-if (-not (Test-Path $Compiled)) {
+if (-not (Test-Listening 32146)) {
+  # A fresh/recycled daemon must always load the current source revision.
   Push-Location $Root
   try { & $Npm run build:test-runtime } finally { Pop-Location }
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-}
-if (-not (Test-Listening 32146)) {
+  if (-not (Test-Path $Compiled)) { throw "EditFlow runtime build did not produce $Compiled." }
   if (Test-Listening 32145) {
     throw "CEP broker port 32145 is already owned by another process; refusing to replace a live broker blindly."
   }
