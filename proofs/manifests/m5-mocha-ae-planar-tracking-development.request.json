@@ -13,6 +13,7 @@
   "incrementalDependencies": [
     "scripts/m5-mocha-ae-launch-target.py",
     "scripts/m5-mocha-ae-effect-controls-tab-target.py",
+    "scripts/m5-mocha-ae-generate-proof-source.py",
     "scripts/windows/m5-mocha-ae-source-probe.jsx",
     "scripts/windows/m5-mocha-ae-isolation-enter.jsx",
     "scripts/windows/m5-mocha-ae-fixture-apply.jsx",

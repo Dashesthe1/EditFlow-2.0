@@ -58,3 +58,20 @@ test("seed positioning uses exact transport identity and bounded frame 0 to 1", 
   assert.match(seek, /InvokePattern/);
   assert.doesNotMatch(seek, /SetCursorPos|mouse_event|SendInput/);
 });
+test("planar tracking can materialize a file-backed source and restore the exact in-place fingerprint", async () => {
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const runner = await readFile(runnerPath, "utf8");
+  assert.ok(manifest.incrementalDependencies.includes("scripts/m5-mocha-ae-generate-proof-source.py"));
+  assert.match(runner, /GenerateSourceScript/);
+  assert.match(runner, /ControlsScript/);
+  assert.match(runner, /Mocha effect apply/);
+  assert.match(runner, /GUARDED_EFFECT_CONTROLS_LAUNCH/);
+  assert.match(runner, /-File \$ClickScript/);
+  assert.doesNotMatch(runner, /NATIVE_TRACK_IN_BORIS_FX_MOCHA/);
+  assert.match(runner, /m5-mocha-proof-source\.avi/);
+  assert.match(runner, /ControlStateEndpoint/);
+  assert.match(runner, /BaselineProjectFingerprint/);
+  assert.match(runner, /FinalProjectFingerprint/);
+  assert.match(runner, /FingerprintRestored/);
+  assert.match(runner, /projectFingerprintRestored/);
+});

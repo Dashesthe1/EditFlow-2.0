@@ -4,6 +4,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $ProofScriptEndpoint='http://127.0.0.1:32146/proof-script'
+$ControlStateEndpoint='http://127.0.0.1:32146/state'
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $ArtifactDir=$env:EDITFLOW_PROOF_ARTIFACT_DIR
 if(-not $ArtifactDir){throw 'EDITFLOW_PROOF_ARTIFACT_DIR is required.'}
@@ -18,6 +19,7 @@ $RestoreScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-isolation-restor
 $VerifyScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-isolation-verify.jsx'
 $CaptureScript=Join-Path $RepoRoot 'scripts\windows\m5-capture-ae-screen-physical.ps1'
 $TargetScript=Join-Path $RepoRoot 'scripts\m5-mocha-ae-launch-target.py'
+$GenerateSourceScript=Join-Path $RepoRoot 'scripts\m5-mocha-ae-generate-proof-source.py'
 $TabTargetScript=Join-Path $RepoRoot 'scripts\m5-mocha-ae-effect-controls-tab-target.py'
 $TabClickScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-guarded-effect-controls-tab-click.ps1'
 $ClickScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-guarded-launch-click.ps1'
@@ -71,15 +73,15 @@ function Capture-And-Target([string]$Name){
 $Classification='INFRASTRUCTURE_FAILURE'; $Message='M5 Mocha AE launch proof did not complete.'
 $MutationStarted=$false; $CleanupComplete=$false; $RestoreAttempted=$false; $ForcedMochaClose=$false
 $BaselineAePids=@(); $AfterAePids=@(); $BaselineMochaPids=@(); $LaunchedMocha=$null; $MochaIdentity=$null
-$Source=$null; $Enter=$null; $Fixture=$null; $Controls=$null; $Restore=$null; $SettledRestore=$null; $Click=$null; $Registration=$null; $StartupPrompts=$null; $Seek=$null; $Region=$null; $Track=$null; $CloseProof=$null
+$Source=$null; $Enter=$null; $BaselineProjectFingerprint=$null; $FinalProjectFingerprint=$null; $FingerprintRestored=$false; $Fixture=$null; $Controls=$null; $Restore=$null; $SettledRestore=$null; $Click=$null; $Registration=$null; $StartupPrompts=$null; $Seek=$null; $Region=$null; $Track=$null; $CloseProof=$null
 $SourceMs=$null; $EnterMs=$null; $ApplyMs=$null; $ControlsMs=$null; $ControlsActivationMs=$null; $ControlsTabClickMs=$null; $RestoreMs=$null; $SettledRestoreMs=$null; $ClickToWindowMs=$null; $RegistrationDismissMs=$null; $StartupPromptMs=$null
-$PrimaryFailure=$null; $RestoreFailure=$null; $ClickIssued=$false
+$PrimaryFailure=$null; $RestoreFailure=$null; $LaunchIssued=$false
 $ProofMutex=New-Object System.Threading.Mutex($false,'EditFlow2_M5_Mocha_AE_Proof'); $ProofMutexAcquired=$false
 $LaunchVerified=$false; $PlanarRegionVerified=$false; $PlanarTrackingVerified=$false; $TargetStabilityPx=$null; $TargetAreaDelta=$null
 try{
   try{$ProofMutexAcquired=$ProofMutex.WaitOne(0)}catch [System.Threading.AbandonedMutexException]{$ProofMutexAcquired=$true}
   if(-not $ProofMutexAcquired){throw 'Another EditFlow M5 Mocha AE proof already owns the local proof lease.'}
-  foreach($required in @($AfterFxPath,$SourceProbe,$EnterScript,$FixtureScript,$ControlsScript,$ActivateControlsScript,$RestoreScript,$VerifyScript,$CaptureScript,$TargetScript,$TabTargetScript,$TabClickScript,$ClickScript,$DialogEvidenceScript,$RegistrationScript,$StartupPromptScript,$CreateRegionScript,$SeekScript,$TrackScript,$CloseProofScript)){
+  foreach($required in @($AfterFxPath,$SourceProbe,$GenerateSourceScript,$EnterScript,$FixtureScript,$ControlsScript,$ActivateControlsScript,$RestoreScript,$VerifyScript,$CaptureScript,$TargetScript,$TabTargetScript,$TabClickScript,$ClickScript,$DialogEvidenceScript,$RegistrationScript,$StartupPromptScript,$CreateRegionScript,$SeekScript,$TrackScript,$CloseProofScript)){
     if(-not(Test-Path $required -PathType Leaf)){throw "Required launch proof file missing: $required"}
   }
   $ae=@(Get-Process AfterFX -ErrorAction SilentlyContinue)
@@ -88,9 +90,20 @@ try{
   $BaselineAePids=@($ae|ForEach-Object Id|Sort-Object)
   $BaselineMochaPids=@(Get-Process mocha4ae_adobe -ErrorAction SilentlyContinue|ForEach-Object Id|Sort-Object)
   if($BaselineMochaPids.Count -ne 0){throw 'Launch proof refuses to run while a pre-existing Mocha AE process is open.'}
+  $baselineControl=Invoke-RestMethod -Method Get -Uri $ControlStateEndpoint -TimeoutSec 10
+  $BaselineProjectFingerprint=[string]$baselineControl.state.observed.projectFingerprint
+  if(-not $BaselineProjectFingerprint){throw 'Current EditFlow project fingerprint was unavailable before Mocha proof.'}
   Remove-Item $StatePath,$BackupStatePath,$SourceMarker,$EnterMarker,$FixtureInput,$FixtureMarker,$ControlsMarker,$RestoreMarker,$VerifyMarker -Force -ErrorAction SilentlyContinue
   $run=Invoke-AeTimed $SourceProbe $SourceMarker 'Mocha source probe'; $Source=$run.value; $SourceMs=$run.roundtripMs
-  if($Source.ok -ne $true -or -not $Source.sourcePath){throw "Mocha source probe refused: $($Source.failure)"}
+  if($Source.ok -ne $true -or -not $Source.sourcePath){
+    $probeFailure=[string]$Source.failure
+    $generatedSource=Join-Path $ArtifactDir 'm5-mocha-proof-source.avi'; $generatedMetaPath=Join-Path $ArtifactDir 'm5-mocha-proof-source.json'
+    python $GenerateSourceScript --output $generatedSource --result $generatedMetaPath | Out-Null
+    if($LASTEXITCODE -ne 0 -or -not(Test-Path $generatedMetaPath -PathType Leaf)){throw "Synthetic Mocha proof source generation failed after source probe refusal: $probeFailure"}
+    $generatedMeta=[IO.File]::ReadAllText($generatedMetaPath,[Text.Encoding]::UTF8)|ConvertFrom-Json
+    if($generatedMeta.ok -ne $true -or -not(Test-Path ([string]$generatedMeta.sourcePath) -PathType Leaf)){throw 'Synthetic Mocha proof source metadata was invalid.'}
+    $Source=[pscustomobject]@{ok=$true;sourcePath=[string]$generatedMeta.sourcePath;generated=$true;generator=[string]$generatedMeta.generator;sha256=[string]$generatedMeta.sha256;probeFailure=$probeFailure}
+  }
   $run=Invoke-AeTimed $EnterScript $EnterMarker 'Mocha isolation entry'; $Enter=$run.value; $EnterMs=$run.roundtripMs
   if($Enter.version -ne 'M5_MOCHA_AE_ISOLATION_V1' -or $Enter.ok -ne $true){throw "Mocha isolation entry refused: $($Enter.failure)"}
   $Classification='PRODUCT_FAILURE'
@@ -134,8 +147,9 @@ try{
   $launchSw=[Diagnostics.Stopwatch]::StartNew()
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ClickScript -AfterFxPid $BaselineAePids[0] -TargetJson $fresh.targetPath -ResultPath $clickResult | Out-Null
   if($LASTEXITCODE -ne 0){throw 'Guarded Mocha launch click failed.'}
-  $ClickIssued=$true
+  $LaunchIssued=$true
   $Click=[IO.File]::ReadAllText($clickResult,[Text.Encoding]::UTF8)|ConvertFrom-Json
+  $LaunchMode='GUARDED_EFFECT_CONTROLS_LAUNCH'
   Start-Sleep -Milliseconds 500
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CaptureScript -OutputPath (Join-Path $ArtifactDir 'launch-after-click.png') | Out-Null
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File $DialogEvidenceScript -AfterFxPid $BaselineAePids[0] -ResultPath (Join-Path $ArtifactDir 'launch-after-click-windows.json') | Out-Null
@@ -209,7 +223,7 @@ try{
 }catch{
   $PrimaryFailure=$_.Exception.Message
 }finally{
-  if($ClickIssued -eq $true){
+  if($LaunchIssued -eq $true){
     $remaining=@(Get-Process mocha4ae_adobe -ErrorAction SilentlyContinue)
     if($remaining.Count -eq 1){
       try{
@@ -232,10 +246,16 @@ try{
       if($SettledRestore.version -ne 'M5_MOCHA_AE_ISOLATION_V1' -or $SettledRestore.ok -ne $true){throw "Mocha settled restore verification refused: $($SettledRestore.failure)"}
     }catch{$RestoreFailure=$_.Exception.Message}
   }
+  try {
+    $finalControl=Invoke-RestMethod -Method Get -Uri $ControlStateEndpoint -TimeoutSec 10
+    $FinalProjectFingerprint=[string]$finalControl.state.observed.projectFingerprint
+    $FingerprintRestored=($FinalProjectFingerprint -eq $BaselineProjectFingerprint)
+    if(-not $FingerprintRestored -and -not $RestoreFailure){$RestoreFailure="Project fingerprint did not restore exactly after Mocha proof."}
+  }catch{if(-not $RestoreFailure){$RestoreFailure="Final project fingerprint verification failed: $($_.Exception.Message)"}}
   $AfterAePids=@(Get-Process AfterFX -ErrorAction SilentlyContinue|ForEach-Object Id|Sort-Object)
   $SameAeProcess=(($BaselineAePids -join ',') -eq ($AfterAePids -join ',')) -and $BaselineAePids.Count -eq 1
   $MochaRemaining=@(Get-Process mocha4ae_adobe -ErrorAction SilentlyContinue|ForEach-Object Id|Sort-Object)
-  $CleanupComplete=$RestoreAttempted -and $null -ne $Restore -and $Restore.ok -eq $true -and $null -ne $SettledRestore -and $SettledRestore.ok -eq $true -and $MochaRemaining.Count -eq 0 -and $SameAeProcess
+  $CleanupComplete=$RestoreAttempted -and $null -ne $Restore -and $Restore.ok -eq $true -and $null -ne $SettledRestore -and $SettledRestore.ok -eq $true -and $MochaRemaining.Count -eq 0 -and $SameAeProcess -and $FingerprintRestored
   $warm=@($SourceMs,$EnterMs,$ApplyMs,$ControlsMs,$ControlsActivationMs,$ControlsTabClickMs,$RestoreMs,$SettledRestoreMs)|Where-Object{$null -ne $_}
   $MaxWarmMs=if($warm.Count){[Math]::Round(($warm|Measure-Object -Maximum).Maximum,3)}else{$null}
   if($null -eq $PrimaryFailure -and $null -eq $RestoreFailure -and $LaunchVerified -and $PlanarRegionVerified -and $PlanarTrackingVerified -and $CleanupComplete -and $MaxWarmMs -le 3000){
@@ -249,8 +269,8 @@ try{
   $Result=[ordered]@{
     proofId='M5_MOCHA_AE_PLANAR_TRACKING_RETAINED_REAL_AE_V1';classification=$Classification;ok=($Classification -eq 'PASS');message=$Message
     mutationStarted=$MutationStarted;cleanupComplete=$CleanupComplete;launchVerified=$LaunchVerified;planarRegionVerified=$PlanarRegionVerified;planarTrackingVerified=$PlanarTrackingVerified;forcedMochaClose=$ForcedMochaClose
-    proofDispatchMode='WARM_CEP_PROOF_SCRIPT';baselineAePids=$BaselineAePids;afterAePids=$AfterAePids;sameAeProcess=$SameAeProcess;baselineMochaPids=$BaselineMochaPids;remainingMochaPids=$MochaRemaining
-    sourceProbeRoundtripMs=$SourceMs;isolationEnterRoundtripMs=$EnterMs;effectApplyRoundtripMs=$ApplyMs;effectControlsRoundtripMs=$ControlsMs;effectControlsActivationMs=$ControlsActivationMs;effectControlsTabClickMs=$ControlsTabClickMs;restoreRoundtripMs=$RestoreMs;settledRestoreVerifyRoundtripMs=$SettledRestoreMs;maxMeasuredWarmAeRoundtripMs=$MaxWarmMs;maxMeasuredMochaOneFrameSolveMs=$MaxTrackMs;clickToMochaWindowMs=$ClickToWindowMs;registrationDismissMs=$RegistrationDismissMs;startupPromptMs=$StartupPromptMs
+    proofDispatchMode='WARM_CEP_PROOF_SCRIPT';isolationMode=if($Enter){[string]$Enter.mode}else{$null};baselineProjectFingerprint=$BaselineProjectFingerprint;finalProjectFingerprint=$FinalProjectFingerprint;projectFingerprintRestored=$FingerprintRestored;baselineAePids=$BaselineAePids;afterAePids=$AfterAePids;sameAeProcess=$SameAeProcess;baselineMochaPids=$BaselineMochaPids;remainingMochaPids=$MochaRemaining
+    sourceProbeRoundtripMs=$SourceMs;isolationEnterRoundtripMs=$EnterMs;effectApplyRoundtripMs=$ApplyMs;effectControlsRoundtripMs=$ControlsMs;effectControlsActivationMs=$ControlsActivationMs;effectControlsTabClickMs=$ControlsTabClickMs;launchMode=$LaunchMode;restoreRoundtripMs=$RestoreMs;settledRestoreVerifyRoundtripMs=$SettledRestoreMs;maxMeasuredWarmAeRoundtripMs=$MaxWarmMs;maxMeasuredMochaOneFrameSolveMs=$MaxTrackMs;clickToMochaWindowMs=$ClickToWindowMs;registrationDismissMs=$RegistrationDismissMs;startupPromptMs=$StartupPromptMs
     effectControlsActivationMode=$ControlsTabActivationMode;targetStabilityPx=$TargetStabilityPx;targetAreaDelta=$TargetAreaDelta;click=$Click;mochaIdentity=$MochaIdentity
     source=$Source;enter=$Enter;fixture=$Fixture;controls=$Controls;registration=$Registration;startupPrompts=$StartupPrompts;seek=$Seek;region=$Region;track=$Track;closeProof=$CloseProof;restore=$Restore;settledRestore=$SettledRestore;primaryFailure=$PrimaryFailure;restoreFailure=$RestoreFailure
   }

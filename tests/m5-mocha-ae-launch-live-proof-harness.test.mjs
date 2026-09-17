@@ -62,13 +62,17 @@ test("visual launch target is bounded, fresh-frame checked, and exact-AE foregro
   assert.match(runner, /GUARDED_TAB_CLICK/);
   assert.match(click, /GetForegroundWindow/);
   assert.match(click, /foreground process/);
+  assert.match(click, /WindowFromPoint/);
+  assert.match(click, /ScreenToClient/);
+  assert.match(click, /PostMessage/);
+  assert.match(click, /PostMessage\.PidBound\.ClientPoint/);
 });
 
 test("Mocha isolation keeps an independent restore-state backup", async () => {
   const enter = await readFile(enterPath, "utf8");
   const restore = await readFile(restorePath, "utf8");
   assert.match(enter, /isolation-state-backup\.json/);
-  assert.match(enter, /write\(backupStateFile, state\)/);
+  assert.match(enter, /writeJson\(backupStateFile, state\)/);
   assert.match(restore, /isolation-state-backup\.json/);
   assert.match(restore, /stateFile\.exists \? stateFile : backupStateFile/);
   assert.match(restore, /Restore refuses an unsaved project containing non-M5 proof items/);

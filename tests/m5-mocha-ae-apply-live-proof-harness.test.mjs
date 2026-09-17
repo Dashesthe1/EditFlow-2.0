@@ -53,3 +53,17 @@ test("Mocha isolation is separately namespaced and restore refuses unrelated uns
   assert.match(restore, /Restore refuses an unsaved project containing non-M5 proof items/);
   assert.match(restore, /DO_NOT_SAVE_CHANGES/);
 });
+
+test("Mocha isolation supports exact in-place restoration for unsaved projects", async () => {
+  const enter = await readFile(enterPath, "utf8");
+  const fixture = await readFile(fixturePath, "utf8");
+  const restore = await readFile(restorePath, "utf8");
+  assert.match(enter, /IN_PLACE_UNSAVED/);
+  assert.match(enter, /snapshotItems/);
+  assert.match(enter, /already contains EF2_M5_MOCHA_/);
+  assert.match(fixture, /verifyBaseline/);
+  assert.match(fixture, /state\.mode === "IN_PLACE_UNSAVED"/);
+  assert.match(restore, /expectedById/);
+  assert.match(restore, /item\.remove\(\)/);
+  assert.match(restore, /In-place restore refuses unexpected non-proof item/);
+});

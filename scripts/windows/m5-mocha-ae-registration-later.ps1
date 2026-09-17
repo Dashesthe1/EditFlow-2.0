@@ -43,10 +43,16 @@ function Find-RegisterLaterButton($windows) {
 }
 $p=Get-Process -Id $MochaPid -ErrorAction Stop
 if(-not $p.Responding){throw 'Mocha AE is not responsive before registration handling.'}
-$windows=Get-MochaWindows
-$registration=@($windows | Where-Object { $_.Title -eq 'Registration' })
-$main=@($windows | Where-Object { $_.Title -eq 'Mocha AE' })
-if($main.Count -ne 1){throw "Expected exactly one visible Mocha AE main window; found $($main.Count)."}
+$deadline=(Get-Date).AddSeconds(5)
+do{
+  $windows=Get-MochaWindows
+  $registration=@($windows | Where-Object { $_.Title -eq 'Registration' })
+  $main=@($windows | Where-Object { $_.Title -eq 'Mocha AE' })
+  if($main.Count -gt 1){throw "Expected at most one visible Mocha AE main window; found $($main.Count)."}
+  if($main.Count -eq 1){break}
+  Start-Sleep -Milliseconds 100
+}while((Get-Date)-lt$deadline)
+if($main.Count -ne 1){throw "Expected exactly one visible Mocha AE main window before registration handling; found $($main.Count)."}
 $dismissed=$false; $invokeMs=$null
 if($registration.Count -gt 1){throw "Expected at most one Registration modal; found $($registration.Count)."}
 if($registration.Count -eq 1){

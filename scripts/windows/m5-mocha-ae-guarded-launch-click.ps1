@@ -20,6 +20,8 @@ public static class EditFlowMochaLaunchMouse {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+  [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder text, int max);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int max);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -44,18 +46,29 @@ if([int]$fgPid -ne $AfterFxPid){
 }
 if([int]$fgPid -ne $AfterFxPid){throw 'After Effects is not the foreground process for the guarded Mocha click.'}
 $screenX=$bounds.Left+$x; $screenY=$bounds.Top+$y
-if(-not [EditFlowMochaLaunchMouse]::SetCursorPos($screenX,$screenY)){throw 'Could not position pointer on verified Mocha target.'}
-Start-Sleep -Milliseconds 120
 $point=New-Object EditFlowMochaLaunchMouse+POINT; $point.X=$screenX; $point.Y=$screenY
 $hit=[EditFlowMochaLaunchMouse]::WindowFromPoint($point); if($hit -eq [IntPtr]::Zero){throw 'WindowFromPoint did not resolve the Mocha button receiver.'}
 [uint32]$hitPid=0; [void][EditFlowMochaLaunchMouse]::GetWindowThreadProcessId($hit,[ref]$hitPid)
 if([int]$hitPid -ne $AfterFxPid){throw "Verified Mocha point resolved outside After Effects PID $AfterFxPid."}
 $classText=New-Object Text.StringBuilder 256; [void][EditFlowMochaLaunchMouse]::GetClassName($hit,$classText,$classText.Capacity)
 $titleText=New-Object Text.StringBuilder 512; [void][EditFlowMochaLaunchMouse]::GetWindowText($hit,$titleText,$titleText.Capacity)
-$down=[EditFlowMochaLaunchMouse]::Mouse(0x0002); if($down -ne 1){throw 'SendInput did not deliver Mocha mouse-down.'}
-Start-Sleep -Milliseconds 120
-$up=[EditFlowMochaLaunchMouse]::Mouse(0x0004); if($up -ne 1){throw 'SendInput did not deliver Mocha mouse-up.'}
-$payload=[ordered]@{ok=$true;afterFxPid=$AfterFxPid;foregroundPid=[int]$fgPid;foregroundActivationApplied=$foregroundActivationApplied;iconImageX=$iconX;imageX=$x;imageY=$y;screenX=$screenX;screenY=$screenY;hitOffsetX=0;delivery='SendInput.HumanTimed.PhysicalDpi';receiverHandle=[int64]$hit;receiverPid=[int]$hitPid;receiverClass=$classText.ToString();receiverTitle=$titleText.ToString();downEvents=[int]$down;upEvents=[int]$up;clickedAt=(Get-Date).ToUniversalTime().ToString('o')}
+$cursorMoved=[EditFlowMochaLaunchMouse]::SetCursorPos($screenX,$screenY)
+if($cursorMoved){
+  Start-Sleep -Milliseconds 120
+  $down=[EditFlowMochaLaunchMouse]::Mouse(0x0002); if($down -ne 1){throw 'SendInput did not deliver Mocha mouse-down.'}
+  Start-Sleep -Milliseconds 120
+  $up=[EditFlowMochaLaunchMouse]::Mouse(0x0004); if($up -ne 1){throw 'SendInput did not deliver Mocha mouse-up.'}
+  $delivery='SendInput.HumanTimed.PhysicalDpi'; $downEvents=[int]$down; $upEvents=[int]$up
+}else{
+  $client=New-Object EditFlowMochaLaunchMouse+POINT; $client.X=$screenX; $client.Y=$screenY
+  if(-not [EditFlowMochaLaunchMouse]::ScreenToClient($hit,[ref]$client)){throw 'ScreenToClient failed for PID-bound Mocha fallback.'}
+  $packed=(($client.Y -band 0xFFFF) -shl 16) -bor ($client.X -band 0xFFFF)
+  if(-not [EditFlowMochaLaunchMouse]::PostMessage($hit,0x0201,[IntPtr]1,[IntPtr]$packed)){throw 'PID-bound Mocha fallback did not post mouse-down.'}
+  Start-Sleep -Milliseconds 120
+  if(-not [EditFlowMochaLaunchMouse]::PostMessage($hit,0x0202,[IntPtr]0,[IntPtr]$packed)){throw 'PID-bound Mocha fallback did not post mouse-up.'}
+  $delivery='PostMessage.PidBound.ClientPoint'; $downEvents=1; $upEvents=1
+}
+$payload=[ordered]@{ok=$true;afterFxPid=$AfterFxPid;foregroundPid=[int]$fgPid;foregroundActivationApplied=$foregroundActivationApplied;iconImageX=$iconX;imageX=$x;imageY=$y;screenX=$screenX;screenY=$screenY;hitOffsetX=0;cursorMoved=$cursorMoved;delivery=$delivery;receiverHandle=[int64]$hit;receiverPid=[int]$hitPid;receiverClass=$classText.ToString();receiverTitle=$titleText.ToString();downEvents=$downEvents;upEvents=$upEvents;clickedAt=(Get-Date).ToUniversalTime().ToString('o')}
 $dir=Split-Path -Parent $ResultPath; if($dir){New-Item -ItemType Directory -Force -Path $dir|Out-Null}
 [IO.File]::WriteAllText($ResultPath,(($payload|ConvertTo-Json -Depth 6)+[Environment]::NewLine),(New-Object Text.UTF8Encoding($false)))
 $payload|ConvertTo-Json -Depth 6

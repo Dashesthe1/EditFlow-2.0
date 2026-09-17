@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -73,4 +73,22 @@ test("workspace helper restores Essentials through exact process-bound QAction i
   assert.match(workspace, /QAction/);
   assert.match(workspace, /ProcessId/);
   assert.match(workspace, /WorkspaceOnly/);
+});
+
+test("repair proof can use generated footage while requiring exact project fingerprint restoration", async () => {
+  const manifest = JSON.parse((await readFile(manifestPath, "utf8")).replace(/^\uFEFF/, ""));
+  const runner = await readFile(runnerPath, "utf8");
+  assert.ok(manifest.incrementalDependencies.includes("scripts/m5-mocha-ae-generate-proof-source.py"));
+  assert.match(runner, /GenerateSourceScript/);
+  assert.match(runner, /ControlsScript/);
+  assert.match(runner, /Mocha effect apply/);
+  assert.match(runner, /GUARDED_EFFECT_CONTROLS_LAUNCH/);
+  assert.match(runner, /-File \$ClickScript/);
+  assert.doesNotMatch(runner, /NATIVE_TRACK_IN_BORIS_FX_MOCHA/);
+  assert.match(runner, /m5-mocha-proof-source\.avi/);
+  assert.match(runner, /ControlStateEndpoint/);
+  assert.match(runner, /BaselineProjectFingerprint/);
+  assert.match(runner, /FinalProjectFingerprint/);
+  assert.match(runner, /FingerprintRestored/);
+  assert.match(runner, /projectFingerprintRestored/);
 });
