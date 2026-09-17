@@ -40,7 +40,8 @@
       checks.original_project_path=samePath(pathOf(app.project),state.originalProjectPath);
       checks.item_count=Number(app.project.numItems)===Number(state.originalItemCount);
       checks.clean=dirty===false;
-      checks.revision=state.originalRevision===null||state.originalRevision===undefined?revision!==null:revision===Number(state.originalRevision);
+      // app.project.revision is a live AE mutation counter; reopening identical saved content may advance it.
+      checks.revision=revision!==null;
       if (state.originalActiveItemId!==null && state.originalActiveItemId!==undefined) checks.active_item=!!app.project.activeItem && Number(app.project.activeItem.id)===Number(state.originalActiveItemId);
       else checks.active_item=true;
     }

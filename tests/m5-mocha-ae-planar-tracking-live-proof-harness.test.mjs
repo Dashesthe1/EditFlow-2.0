@@ -75,3 +75,9 @@ test("planar tracking can materialize a file-backed source and restore the exact
   assert.match(runner, /FingerprintRestored/);
   assert.match(runner, /projectFingerprintRestored/);
 });
+
+test("saved-project settled verification treats AE revision as liveness, not restorable content identity", async () => {
+  const verify = await readFile(verifyPath, "utf8");
+  assert.match(verify, /checks\.revision=revision!==null;/);
+  assert.doesNotMatch(verify, /revision===Number\(state\.originalRevision\)/);
+});
