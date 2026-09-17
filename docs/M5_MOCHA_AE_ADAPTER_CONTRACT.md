@@ -1,6 +1,6 @@
 # M5 Mocha AE Adapter Contract
 
-Status: **DISCOVERY + APPLY + LAUNCH PROVEN / PLANAR REGION UNAVAILABLE**
+Status: **DISCOVERY + APPLY + LAUNCH + PLANAR REGION + BOUNDED PLANAR TRACKING PROVEN / REPAIR + EXPORT UNAVAILABLE**
 Milestone: `M5 Interactive AE Adapters (0.6.0-dev)`
 
 ## Purpose
@@ -90,6 +90,16 @@ The retained action creates one explicit bounded four-point X-Spline region and 
 
 This proof authorizes `CREATE_PLANAR_REGION` development evidence for the exact retained Mocha session. It does not authorize planar tracking, repair, or export.
 
+## Accepted real-AE bounded planar-tracking proof
+
+Accepted 2026-09-16: `M5_MOCHA_AE_PLANAR_TRACKING_RETAINED_REAL_AE_V1` reuses the proven warm AE/Mocha launch and bounded X-Spline path, moves only through the exact Mocha timeline transport identity to seed frame `1`, then invokes the exact single-frame semantic controls `Track To Next Frame` and `Track To Previous Frame`. The retained range is deliberately bounded to frames `0..2`; it does not invoke Mocha's unbounded `Track Forwards`, `Track Backwards`, or combined continuous-tracking controls.
+
+Independent UI Automation readback verifies actual tracked-range progress rather than click delivery: after the forward solve, `Next Tracked End` resolves frame `2`; after the backward solve, `Previous Tracked End` resolves frame `0`. Exactly one proof-owned `Layer 1` remains bound throughout. The accepted run measured approximately `103.305 ms` for the exact seed transport, `551.672 ms` for the one-frame forward solve with a `31.179 ms` tracked-end readback, and `137.557 ms` for the one-frame backward solve with a `48.339 ms` tracked-end readback. Solver time is reported separately from routine warm-host action latency.
+
+After tracking, the proof closed only the proof-owned Mocha session without force-kill, restored the exact saved project at revision `126` with `dirty=false`, and preserved After Effects PID `16404`. The maximum measured warm AE roundtrip was `1208.451 ms`, below the 3-second ceiling. Guarded click-to-responsive-Mocha verification was approximately `5.939 s` and remains external/UI verification time rather than a warm AE action gap.
+
+This proof authorizes bounded `TRACK_FORWARD` / `TRACK_BACKWARD` development evidence only for the exact retained single-frame semantic route. It does not authorize repair or export.
+
 ## Current next gate
 
-The next retained gate is bounded `TRACK_FORWARD` / `TRACK_BACKWARD`: reuse the proven session and planar region, track only an explicit proof-owned frame range, independently verify actual planar-motion data/progress rather than cursor delivery, then close the proof-owned session and restore the exact saved AE project without restarting AE.
+The next retained gate is `REPAIR_TRACK`: create or identify one explicit proof-owned tracking defect over a bounded frame range, bind the exact affected planar region and correction frame(s), perform only the intended manual correction path, independently verify the repaired planar trajectory/data, then close the proof-owned session and restore the exact saved AE project without restarting AE. `EXPORT_TRACK` / `EXPORT_ROTO` remain separately gated.
