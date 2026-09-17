@@ -26,13 +26,16 @@ public static class EfAeWindowEnum {
 $windows=@([EfAeWindowEnum]::Run([uint32]$AfterFxPid) | Where-Object { $_.Visible })
 $evidence=@()
 foreach($w in $windows){
-  $names=@()
-  try{
-    $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$w.Handle)
-    $all=$root.FindAll([System.Windows.Automation.TreeScope]::Subtree,[System.Windows.Automation.Condition]::TrueCondition)
-    for($i=0;$i -lt $all.Count;$i+=1){$n=[string]$all.Item($i).Current.Name;if($n -and -not $names.Contains($n)){$names+=$n}}
-  }catch{}
-  $evidence += [ordered]@{handle=$w.Handle;className=$w.ClassName;title=$w.Title;x=$w.X;y=$w.Y;width=$w.Width;height=$w.Height;uiaNames=$names}
+  $names=@(); $uiaInspected=$false
+  if($w.Width -le 900 -and $w.Height -le 700){
+    try{
+      $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$w.Handle)
+      $all=$root.FindAll([System.Windows.Automation.TreeScope]::Subtree,[System.Windows.Automation.Condition]::TrueCondition)
+      for($i=0;$i -lt $all.Count;$i+=1){$n=[string]$all.Item($i).Current.Name;if($n -and -not $names.Contains($n)){$names+=$n}}
+      $uiaInspected=$true
+    }catch{}
+  }
+  $evidence += [ordered]@{handle=$w.Handle;className=$w.ClassName;title=$w.Title;x=$w.X;y=$w.Y;width=$w.Width;height=$w.Height;uiaInspected=$uiaInspected;uiaNames=$names}
 }
 $payload=[ordered]@{afterFxPid=$AfterFxPid;capturedAt=(Get-Date).ToUniversalTime().ToString('o');windows=$evidence}
 $dir=Split-Path -Parent $ResultPath;if($dir){New-Item -ItemType Directory -Force -Path $dir|Out-Null}

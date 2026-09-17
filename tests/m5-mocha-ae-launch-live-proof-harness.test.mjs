@@ -11,6 +11,8 @@ const clickPath = "scripts/windows/m5-mocha-ae-guarded-launch-click.ps1";
 const activatePath = "scripts/windows/m5-mocha-ae-activate-effect-controls.ps1";
 const enterPath = "scripts/windows/m5-mocha-ae-isolation-enter.jsx";
 const restorePath = "scripts/windows/m5-mocha-ae-isolation-restore.jsx";
+const registrationPath = "scripts/windows/m5-mocha-ae-registration-later.ps1";
+const dialogEvidencePath = "scripts/windows/m5-ae-dialog-evidence.ps1";
 
 test("M5 Mocha launch proof is warm-AE, no-retry, and requires clean external-session ownership", async () => {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -19,6 +21,7 @@ test("M5 Mocha launch proof is warm-AE, no-retry, and requires clean external-se
   assert.equal(manifest.allowEvidenceReuse, false);
   assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-capture-ae-screen-physical.ps1"));
   assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-ae-dialog-evidence.ps1"));
+  assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-mocha-ae-registration-later.ps1"));
   const runner = await readFile(runnerPath, "utf8");
   assert.match(runner, /BaselineMochaPids/);
   assert.match(runner, /pre-existing Mocha AE process/);
@@ -59,4 +62,18 @@ test("Mocha isolation keeps an independent restore-state backup", async () => {
   assert.match(restore, /isolation-state-backup\.json/);
   assert.match(restore, /stateFile\.exists \? stateFile : backupStateFile/);
   assert.match(restore, /Restore refuses an unsaved project containing non-M5 proof items/);
+});
+
+test("Mocha first-run registration is handled only by the fixed Register later action", async () => {
+  const registration = await readFile(registrationPath, "utf8");
+  const runner = await readFile(runnerPath, "utf8");
+  assert.match(registration, /Register later/);
+  assert.match(registration, /Registration/);
+  assert.match(registration, /InvokePattern/);
+  assert.doesNotMatch(registration, /Parameter\(Mandatory=\$true\).*ButtonName/);
+  assert.match(runner, /m5-mocha-ae-registration-later\.ps1/);
+  assert.match(runner, /registrationDismissMs/);
+  const dialogEvidence = await readFile(dialogEvidencePath, "utf8");
+  assert.match(dialogEvidence, /Width -le 900/);
+  assert.match(dialogEvidence, /Height -le 700/);
 });

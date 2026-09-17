@@ -20,6 +20,7 @@ $TabTargetScript=Join-Path $RepoRoot 'scripts\m5-mocha-ae-effect-controls-tab-ta
 $TabClickScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-guarded-effect-controls-tab-click.ps1'
 $ClickScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-guarded-launch-click.ps1'
 $DialogEvidenceScript=Join-Path $RepoRoot 'scripts\windows\m5-ae-dialog-evidence.ps1'
+$RegistrationScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-registration-later.ps1'
 $StatePath=Join-Path $env:TEMP 'EditFlow2-m5-mocha-ae-isolation-state.json'
 $BackupStatePath=Join-Path $env:TEMP 'EditFlow2-m5-mocha-ae-isolation-state-backup.json'
 $SourceMarker=Join-Path $env:TEMP 'EditFlow2-m5-mocha-ae-source.json'
@@ -58,12 +59,12 @@ function Capture-And-Target([string]$Name){
 $Classification='INFRASTRUCTURE_FAILURE'; $Message='M5 Mocha AE launch proof did not complete.'
 $MutationStarted=$false; $CleanupComplete=$false; $RestoreAttempted=$false; $ForcedMochaClose=$false
 $BaselineAePids=@(); $AfterAePids=@(); $BaselineMochaPids=@(); $LaunchedMocha=$null; $MochaIdentity=$null
-$Source=$null; $Enter=$null; $Fixture=$null; $Controls=$null; $Restore=$null; $Click=$null
-$SourceMs=$null; $EnterMs=$null; $ApplyMs=$null; $ControlsMs=$null; $ControlsActivationMs=$null; $ControlsTabClickMs=$null; $RestoreMs=$null; $ClickToWindowMs=$null
+$Source=$null; $Enter=$null; $Fixture=$null; $Controls=$null; $Restore=$null; $Click=$null; $Registration=$null
+$SourceMs=$null; $EnterMs=$null; $ApplyMs=$null; $ControlsMs=$null; $ControlsActivationMs=$null; $ControlsTabClickMs=$null; $RestoreMs=$null; $ClickToWindowMs=$null; $RegistrationDismissMs=$null
 $PrimaryFailure=$null; $RestoreFailure=$null; $ClickIssued=$false
 $LaunchVerified=$false; $TargetStabilityPx=$null; $TargetAreaDelta=$null
 try{
-  foreach($required in @($AfterFxPath,$SourceProbe,$EnterScript,$FixtureScript,$ControlsScript,$ActivateControlsScript,$RestoreScript,$CaptureScript,$TargetScript,$TabTargetScript,$TabClickScript,$ClickScript,$DialogEvidenceScript)){
+  foreach($required in @($AfterFxPath,$SourceProbe,$EnterScript,$FixtureScript,$ControlsScript,$ActivateControlsScript,$RestoreScript,$CaptureScript,$TargetScript,$TabTargetScript,$TabClickScript,$ClickScript,$DialogEvidenceScript,$RegistrationScript)){
     if(-not(Test-Path $required -PathType Leaf)){throw "Required launch proof file missing: $required"}
   }
   $ae=@(Get-Process AfterFX -ErrorAction SilentlyContinue)
@@ -143,6 +144,13 @@ try{
   if($title -notmatch '(?i)mocha'){throw "Mocha process window title did not identify Mocha: $title"}
   if($title -match '(?i)license|activation|error|warning'){throw "Unexpected Mocha launch state: $title"}
   $MochaIdentity=[ordered]@{pid=$LaunchedMocha.Id;path=$exePath;title=$title;fileVersion=[string]$vi.FileVersion;productVersion=[string]$vi.ProductVersion;company=[string]$vi.CompanyName;productName=[string]$vi.ProductName;mainWindowHandle=[int64]$LaunchedMocha.MainWindowHandle}
+  $registrationResult=Join-Path $ArtifactDir 'mocha-registration.json'
+  $registrationSw=[Diagnostics.Stopwatch]::StartNew()
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File $RegistrationScript -MochaPid $LaunchedMocha.Id -ResultPath $registrationResult | Out-Null
+  $registrationSw.Stop(); $RegistrationDismissMs=[Math]::Round($registrationSw.Elapsed.TotalMilliseconds,3)
+  if($LASTEXITCODE -ne 0){throw 'Mocha registration-state handling failed.'}
+  $Registration=[IO.File]::ReadAllText($registrationResult,[Text.Encoding]::UTF8)|ConvertFrom-Json
+  if($Registration.ok -ne $true){throw 'Mocha registration-state handling did not return verified session state.'}
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CaptureScript -OutputPath (Join-Path $ArtifactDir 'launch-post.png') | Out-Null
   $LaunchVerified=$true
   $closeRequested=$LaunchedMocha.CloseMainWindow()
@@ -192,9 +200,9 @@ try{
     proofId='M5_MOCHA_AE_LAUNCH_REAL_AE_V1';classification=$Classification;ok=($Classification -eq 'PASS');message=$Message
     mutationStarted=$MutationStarted;cleanupComplete=$CleanupComplete;launchVerified=$LaunchVerified;forcedMochaClose=$ForcedMochaClose
     baselineAePids=$BaselineAePids;afterAePids=$AfterAePids;sameAeProcess=$SameAeProcess;baselineMochaPids=$BaselineMochaPids;remainingMochaPids=$MochaRemaining
-    sourceProbeRoundtripMs=$SourceMs;isolationEnterRoundtripMs=$EnterMs;effectApplyRoundtripMs=$ApplyMs;effectControlsRoundtripMs=$ControlsMs;effectControlsActivationMs=$ControlsActivationMs;effectControlsTabClickMs=$ControlsTabClickMs;restoreRoundtripMs=$RestoreMs;maxMeasuredWarmAeRoundtripMs=$MaxWarmMs;clickToMochaWindowMs=$ClickToWindowMs
+    sourceProbeRoundtripMs=$SourceMs;isolationEnterRoundtripMs=$EnterMs;effectApplyRoundtripMs=$ApplyMs;effectControlsRoundtripMs=$ControlsMs;effectControlsActivationMs=$ControlsActivationMs;effectControlsTabClickMs=$ControlsTabClickMs;restoreRoundtripMs=$RestoreMs;maxMeasuredWarmAeRoundtripMs=$MaxWarmMs;clickToMochaWindowMs=$ClickToWindowMs;registrationDismissMs=$RegistrationDismissMs
     effectControlsActivationMode=$ControlsTabActivationMode;targetStabilityPx=$TargetStabilityPx;targetAreaDelta=$TargetAreaDelta;click=$Click;mochaIdentity=$MochaIdentity
-    source=$Source;enter=$Enter;fixture=$Fixture;controls=$Controls;restore=$Restore;primaryFailure=$PrimaryFailure;restoreFailure=$RestoreFailure
+    source=$Source;enter=$Enter;fixture=$Fixture;controls=$Controls;registration=$Registration;restore=$Restore;primaryFailure=$PrimaryFailure;restoreFailure=$RestoreFailure
   }
   [IO.File]::WriteAllText($ResultPath,(($Result|ConvertTo-Json -Depth 40)+[Environment]::NewLine),$Utf8NoBom)
 }

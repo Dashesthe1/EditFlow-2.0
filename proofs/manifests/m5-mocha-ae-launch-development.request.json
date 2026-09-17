@@ -20,6 +20,7 @@
     "scripts/windows/m5-mocha-ae-activate-effect-controls.ps1",
     "scripts/windows/m5-capture-ae-screen-physical.ps1",
     "scripts/windows/m5-ae-dialog-evidence.ps1",
+    "scripts/windows/m5-mocha-ae-registration-later.ps1",
     "scripts/windows/m5-mocha-ae-guarded-effect-controls-tab-click.ps1",
     "scripts/windows/m5-mocha-ae-guarded-launch-click.ps1",
     "scripts/windows/m5-mocha-ae-isolation-restore.jsx",
