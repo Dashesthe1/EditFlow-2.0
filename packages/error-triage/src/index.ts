@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 export type ErrorDomain =
   | "AE" | "CEP" | "EDITFLOW" | "WINDOWS" | "NODE" | "PYTHON" | "GIT" | "SHELL" | "UNKNOWN";
@@ -94,7 +95,7 @@ const BUILTIN_RULES: readonly BuiltinRule[] = [
   },
   {
     domain: "SHELL", code: "POWERSHELL_NPM_PS1_BLOCKED", confidence: 0.995, action: "APPLY_KNOWN_FIX",
-    test: (text) => text.includes("npm.ps1 cannot be loaded because running scripts is disabled") && text.includes("pssecurityexception"),
+    test: (text) => text.includes("npm.ps1 cannot be loaded because running scripts is disabled"),
     resolution: "Invoke npm.cmd directly instead of npm so PowerShell does not route through the blocked npm.ps1 shim.",
     avoidRepeat: "Use npm.cmd for repository build/test commands on this workstation unless execution policy is deliberately changed outside the test loop.",
   },
@@ -226,6 +227,7 @@ export class ErrorMemoryStore {
   readonly filePath: string;
   #loaded = false;
   #entries = new Map<string, ErrorMemoryEntry>();
+  #persistTail: Promise<void> = Promise.resolve();
 
   constructor(filePath: string) { this.filePath = filePath; }
 
@@ -324,10 +326,36 @@ export class ErrorMemoryStore {
   }
 
   async #persist(): Promise<void> {
-    await mkdir(path.dirname(this.filePath), { recursive: true });
     const value: ErrorMemoryFileV1 = { schema: "editflow.error-memory.v1", entries: [...this.#entries.values()] };
-    const tempPath = `${this.filePath}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-    await rename(tempPath, this.filePath);
+    const serialized = `${JSON.stringify(value, null, 2)}\n`;
+    const persist = this.#persistTail.catch(() => undefined).then(async () => {
+      await mkdir(path.dirname(this.filePath), { recursive: true });
+      const tempPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(tempPath, serialized, "utf8");
+        let lastRenameError: unknown = null;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          try {
+            await rename(tempPath, this.filePath);
+            return;
+          } catch (error) {
+            lastRenameError = error;
+            const code = (error as NodeJS.ErrnoException).code;
+            const retryable = process.platform === "win32" && ["EPERM", "EACCES", "EBUSY", "EEXIST"].includes(code ?? "");
+            if (!retryable) throw error;
+            if (attempt < 3) await delay(20 * (2 ** attempt));
+          }
+        }
+        try {
+          await copyFile(tempPath, this.filePath);
+        } catch (copyError) {
+          throw new AggregateError([lastRenameError, copyError], "Could not persist EditFlow error memory after Windows replace retries");
+        }
+      } finally {
+        await rm(tempPath, { force: true }).catch(() => undefined);
+      }
+    });
+    this.#persistTail = persist;
+    await persist;
   }
 }

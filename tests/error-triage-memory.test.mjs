@@ -17,6 +17,7 @@ test("fast triage recognizes recurring local failures without online research", 
     ["rg : The term 'rg' is not recognized as the name of a cmdlet", "MISSING_RIPGREP"],
     ["The token '&&' is not a valid statement separator in this version.", "POWERSHELL_AND_AND_UNSUPPORTED"],
     ["npm.ps1 cannot be loaded because running scripts is disabled on this system. FullyQualifiedErrorId : UnauthorizedAccess PSSecurityException", "POWERSHELL_NPM_PS1_BLOCKED"],
+    ["npm : File C:\\Program Files\\nodejs\\npm.ps1 cannot be loaded because running scripts is disabled on this system. FullyQualifiedErrorId : UnauthorizedAccess", "POWERSHELL_NPM_PS1_BLOCKED"],
     ["ModuleNotFoundError: No module named 'mcp'", "PYTHON_WRONG_ENV_MCP"],
     ["=Join-Path : The term '=Join-Path' is not recognized", "POWERSHELL_VARIABLE_STRIPPED"],
     ["expected exactly one match for token, found 3", "PATCH_GUARD_NON_UNIQUE"],
@@ -77,6 +78,33 @@ test("verified resolutions persist and win over built-in or online lookup", asyn
     assert.equal(stats.entries, 1);
     assert.equal(stats.successfulUses, 1);
     assert.equal(stats.failedUses, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("error memory serializes concurrent persistence without temp-file collisions", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-error-memory-concurrent-"));
+  try {
+    const filePath = path.join(root, "memory.json");
+    const store = new ErrorMemoryStore(filePath);
+    const labels = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet", "kilo", "lima"];
+    const messages = labels.map((label) => `Concurrent EditFlow ${label} failure`);
+    await Promise.all(messages.map((message, index) => store.remember({
+      errorText: message,
+      resolution: `Resolution ${index}`,
+      domain: "EDITFLOW",
+      code: `CONCURRENT_${index}`,
+      verified: true,
+    })));
+
+    const reloaded = new ErrorMemoryStore(filePath);
+    const entries = await reloaded.list(20);
+    assert.equal(entries.length, messages.length);
+    assert.deepEqual(
+      new Set(entries.map((entry) => entry.code)),
+      new Set(messages.map((_, index) => `CONCURRENT_${index}`)),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
