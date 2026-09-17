@@ -7,6 +7,7 @@ const runnerPath = "scripts/windows/run-m5-mocha-ae-apply-live-proof.ps1";
 const fixturePath = "scripts/windows/m5-mocha-ae-fixture-apply.jsx";
 const enterPath = "scripts/windows/m5-mocha-ae-isolation-enter.jsx";
 const restorePath = "scripts/windows/m5-mocha-ae-isolation-restore.jsx";
+const sourceProbePath = "scripts/windows/m5-mocha-ae-source-probe.jsx";
 
 test("M5 Mocha apply proof is warm-AE, non-retrying, and exact-restore bound", async () => {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -17,6 +18,16 @@ test("M5 Mocha apply proof is warm-AE, non-retrying, and exact-restore bound", a
   assert.match(runner, /finally/);
   assert.match(runner, /sameAeProcess/i);
   assert.match(runner, /maxMeasuredWarmAeRoundtripMs/);
+});
+
+test("Mocha source probe publishes one complete atomic read-only result", async () => {
+  const probe = await readFile(sourceProbePath, "utf8");
+  assert.match(probe, /EditFlow2-m5-mocha-ae-source\.pending\.json/);
+  assert.match(probe, /pending\.write\(text\)/);
+  assert.match(probe, /pending\.rename\(out\.name\)/);
+  assert.match(probe, /Cannot publish source probe atomically/);
+  assert.match(probe, /e\.line/);
+  assert.doesNotMatch(probe, /out\.write\(JSON\.stringify/);
 });
 
 test("Mocha fixture adds exactly one registered mochaAECC effect inside owned isolation", async () => {
