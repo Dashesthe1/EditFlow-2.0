@@ -46,8 +46,11 @@ test("visual launch target is bounded, fresh-frame checked, and exact-AE foregro
   assert.match(click, /SetThreadDpiAwarenessContext/);
   assert.match(runner, /TargetStabilityPx/);
   assert.match(runner, /TargetAreaDelta/);
-  assert.match(activate, /AppActivate/);
+  assert.match(activate, /AttachThreadInput/);
+  assert.match(activate, /SetForegroundWindow/);
+  assert.match(activate, /Get-ForegroundPid/);
   assert.match(activate, /SendKeys/);
+  assert.match(activate, /foreground ownership could not be restored/);
   assert.match(tabDetector, /expected exactly one bounded Effect Controls tab icon/);
   assert.match(tabDetector, /0\.12 \* width/);
   assert.match(tabClick, /GetForegroundWindow/);
