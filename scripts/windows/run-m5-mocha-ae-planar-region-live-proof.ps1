@@ -23,6 +23,8 @@ $ClickScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-guarded-launch-cli
 $DialogEvidenceScript=Join-Path $RepoRoot 'scripts\windows\m5-ae-dialog-evidence.ps1'
 $RegistrationScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-registration-later.ps1'
 $StartupPromptScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-startup-prompts.ps1'
+$CreateRegionScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-guarded-create-planar-region.ps1'
+$CloseProofScript=Join-Path $RepoRoot 'scripts\windows\m5-mocha-ae-close-proof-session.ps1'
 $StatePath=Join-Path $env:TEMP 'EditFlow2-m5-mocha-ae-isolation-state.json'
 $BackupStatePath=Join-Path $env:TEMP 'EditFlow2-m5-mocha-ae-isolation-state-backup.json'
 $SourceMarker=Join-Path $env:TEMP 'EditFlow2-m5-mocha-ae-source.json'
@@ -62,12 +64,12 @@ function Capture-And-Target([string]$Name){
 $Classification='INFRASTRUCTURE_FAILURE'; $Message='M5 Mocha AE launch proof did not complete.'
 $MutationStarted=$false; $CleanupComplete=$false; $RestoreAttempted=$false; $ForcedMochaClose=$false
 $BaselineAePids=@(); $AfterAePids=@(); $BaselineMochaPids=@(); $LaunchedMocha=$null; $MochaIdentity=$null
-$Source=$null; $Enter=$null; $Fixture=$null; $Controls=$null; $Restore=$null; $SettledRestore=$null; $Click=$null; $Registration=$null; $StartupPrompts=$null
+$Source=$null; $Enter=$null; $Fixture=$null; $Controls=$null; $Restore=$null; $SettledRestore=$null; $Click=$null; $Registration=$null; $StartupPrompts=$null; $Region=$null; $CloseProof=$null
 $SourceMs=$null; $EnterMs=$null; $ApplyMs=$null; $ControlsMs=$null; $ControlsActivationMs=$null; $ControlsTabClickMs=$null; $RestoreMs=$null; $SettledRestoreMs=$null; $ClickToWindowMs=$null; $RegistrationDismissMs=$null; $StartupPromptMs=$null
 $PrimaryFailure=$null; $RestoreFailure=$null; $ClickIssued=$false
-$LaunchVerified=$false; $TargetStabilityPx=$null; $TargetAreaDelta=$null
+$LaunchVerified=$false; $PlanarRegionVerified=$false; $TargetStabilityPx=$null; $TargetAreaDelta=$null
 try{
-  foreach($required in @($AfterFxPath,$SourceProbe,$EnterScript,$FixtureScript,$ControlsScript,$ActivateControlsScript,$RestoreScript,$VerifyScript,$CaptureScript,$TargetScript,$TabTargetScript,$TabClickScript,$ClickScript,$DialogEvidenceScript,$RegistrationScript,$StartupPromptScript)){
+  foreach($required in @($AfterFxPath,$SourceProbe,$EnterScript,$FixtureScript,$ControlsScript,$ActivateControlsScript,$RestoreScript,$VerifyScript,$CaptureScript,$TargetScript,$TabTargetScript,$TabClickScript,$ClickScript,$DialogEvidenceScript,$RegistrationScript,$StartupPromptScript,$CreateRegionScript,$CloseProofScript)){
     if(-not(Test-Path $required -PathType Leaf)){throw "Required launch proof file missing: $required"}
   }
   $ae=@(Get-Process AfterFX -ErrorAction SilentlyContinue)
@@ -165,17 +167,24 @@ try{
   if([string]$StartupPrompts.mainWindowTitle -ne 'Mocha AE'){throw 'Mocha final main-window identity was not exact after startup-prompt handling.'}
   $MochaIdentity.title=[string]$StartupPrompts.mainWindowTitle
   $MochaIdentity.mainWindowHandle=[int64]$StartupPrompts.mainWindowHandle
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CaptureScript -OutputPath (Join-Path $ArtifactDir 'launch-post.png') | Out-Null
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CaptureScript -OutputPath (Join-Path $ArtifactDir 'planar-before.png') | Out-Null
+  $regionResult=Join-Path $ArtifactDir 'planar-region-action.json'
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CreateRegionScript -MochaPid $LaunchedMocha.Id -ResultPath $regionResult | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'Mocha planar-region action failed.'}
+  $Region=[IO.File]::ReadAllText($regionResult,[Text.Encoding]::UTF8)|ConvertFrom-Json
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CaptureScript -OutputPath (Join-Path $ArtifactDir 'planar-after.png') | Out-Null
+  if($Region.ok -ne $true -or $Region.layer1UiaVerified -ne $true){throw 'Mocha planar region was not independently verified as exactly one Layer 1 UI element.'}
+  $PlanarRegionVerified=$true
   $LaunchVerified=$true
-  $closeRequested=$LaunchedMocha.CloseMainWindow()
-  $closeDeadline=(Get-Date).AddSeconds(8)
-  while((Get-Date)-lt$closeDeadline -and (Get-Process -Id $LaunchedMocha.Id -ErrorAction SilentlyContinue)){Start-Sleep -Milliseconds 100}
-  if(Get-Process -Id $LaunchedMocha.Id -ErrorAction SilentlyContinue){
-    $ForcedMochaClose=$true
-    Stop-Process -Id $LaunchedMocha.Id -Force -ErrorAction Stop
-    Start-Sleep -Milliseconds 250
+  $closeProofResult=Join-Path $ArtifactDir 'planar-close-proof.json'
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CloseProofScript -MochaPid $LaunchedMocha.Id -ResultPath $closeProofResult | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'Mocha semantic proof-session close failed.'}
+  $CloseProof=[IO.File]::ReadAllText($closeProofResult,[Text.Encoding]::UTF8)|ConvertFrom-Json
+  if($CloseProof.closed -ne $true){
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File $CaptureScript -OutputPath (Join-Path $ArtifactDir 'planar-close-state.png') | Out-Null
+    throw 'Exact WM_CLOSE did not close the proof-owned Mocha session.'
   }
-  if(Get-Process -Id $LaunchedMocha.Id -ErrorAction SilentlyContinue){throw 'Proof-owned Mocha AE process did not close.'}
+  if(Get-Process -Id $LaunchedMocha.Id -ErrorAction SilentlyContinue){throw 'Proof-owned Mocha AE process remained after verified semantic close.'}
 }catch{
   $PrimaryFailure=$_.Exception.Message
 }finally{
@@ -191,9 +200,10 @@ try{
       }catch{}
     }
   }
-  if((Test-Path $StatePath -PathType Leaf) -or (Test-Path $BackupStatePath -PathType Leaf)){
+  if($MutationStarted -eq $true){
     $RestoreAttempted=$true
     try{
+      if(-not ((Test-Path $StatePath -PathType Leaf) -or (Test-Path $BackupStatePath -PathType Leaf))){throw 'Mocha isolation restore state and backup are missing after mutation.'}
       $run=Invoke-AeTimed $RestoreScript $RestoreMarker 'Mocha isolation restore'; $Restore=$run.value; $RestoreMs=$run.roundtripMs
       if($Restore.version -ne 'M5_MOCHA_AE_ISOLATION_V1' -or $Restore.ok -ne $true){throw "Mocha isolation restore refused: $($Restore.failure)"}
       Start-Sleep -Milliseconds 800
@@ -207,19 +217,19 @@ try{
   $CleanupComplete=$RestoreAttempted -and $null -ne $Restore -and $Restore.ok -eq $true -and $null -ne $SettledRestore -and $SettledRestore.ok -eq $true -and $MochaRemaining.Count -eq 0 -and $SameAeProcess
   $warm=@($SourceMs,$EnterMs,$ApplyMs,$ControlsMs,$ControlsActivationMs,$ControlsTabClickMs,$RestoreMs,$SettledRestoreMs)|Where-Object{$null -ne $_}
   $MaxWarmMs=if($warm.Count){[Math]::Round(($warm|Measure-Object -Maximum).Maximum,3)}else{$null}
-  if($null -eq $PrimaryFailure -and $null -eq $RestoreFailure -and $LaunchVerified -and $CleanupComplete -and $MaxWarmMs -le 3000){
-    $Classification='PASS'; $Message='Mocha AE guarded visual launch, Boris FX session identity, proof-owned close, exact project restore, and warm-process reuse passed.'
+  if($null -eq $PrimaryFailure -and $null -eq $RestoreFailure -and $LaunchVerified -and $PlanarRegionVerified -and $CleanupComplete -and $MaxWarmMs -le 3000){
+    $Classification='PASS'; $Message='Mocha AE exact session created and independently verified one bounded X-Spline planar region, then restored the exact AE project.'
   }elseif($null -ne $RestoreFailure){$Message=$RestoreFailure}
   elseif($null -ne $PrimaryFailure){$Message=$PrimaryFailure}
   elseif(-not $CleanupComplete){$Message='Mocha launch proof cleanup or exact AE restoration did not complete.'}
   elseif($MaxWarmMs -gt 3000){$Message="Warm AE roundtrip ceiling exceeded: $MaxWarmMs ms"}
   $Result=[ordered]@{
-    proofId='M5_MOCHA_AE_LAUNCH_REAL_AE_V1';classification=$Classification;ok=($Classification -eq 'PASS');message=$Message
-    mutationStarted=$MutationStarted;cleanupComplete=$CleanupComplete;launchVerified=$LaunchVerified;forcedMochaClose=$ForcedMochaClose
+    proofId='M5_MOCHA_AE_CREATE_PLANAR_REGION_RETAINED_REAL_AE_V1';classification=$Classification;ok=($Classification -eq 'PASS');message=$Message
+    mutationStarted=$MutationStarted;cleanupComplete=$CleanupComplete;launchVerified=$LaunchVerified;planarRegionVerified=$PlanarRegionVerified;forcedMochaClose=$ForcedMochaClose
     baselineAePids=$BaselineAePids;afterAePids=$AfterAePids;sameAeProcess=$SameAeProcess;baselineMochaPids=$BaselineMochaPids;remainingMochaPids=$MochaRemaining
     sourceProbeRoundtripMs=$SourceMs;isolationEnterRoundtripMs=$EnterMs;effectApplyRoundtripMs=$ApplyMs;effectControlsRoundtripMs=$ControlsMs;effectControlsActivationMs=$ControlsActivationMs;effectControlsTabClickMs=$ControlsTabClickMs;restoreRoundtripMs=$RestoreMs;settledRestoreVerifyRoundtripMs=$SettledRestoreMs;maxMeasuredWarmAeRoundtripMs=$MaxWarmMs;clickToMochaWindowMs=$ClickToWindowMs;registrationDismissMs=$RegistrationDismissMs;startupPromptMs=$StartupPromptMs
     effectControlsActivationMode=$ControlsTabActivationMode;targetStabilityPx=$TargetStabilityPx;targetAreaDelta=$TargetAreaDelta;click=$Click;mochaIdentity=$MochaIdentity
-    source=$Source;enter=$Enter;fixture=$Fixture;controls=$Controls;registration=$Registration;startupPrompts=$StartupPrompts;restore=$Restore;settledRestore=$SettledRestore;primaryFailure=$PrimaryFailure;restoreFailure=$RestoreFailure
+    source=$Source;enter=$Enter;fixture=$Fixture;controls=$Controls;registration=$Registration;startupPrompts=$StartupPrompts;region=$Region;closeProof=$CloseProof;restore=$Restore;settledRestore=$SettledRestore;primaryFailure=$PrimaryFailure;restoreFailure=$RestoreFailure
   }
   [IO.File]::WriteAllText($ResultPath,(($Result|ConvertTo-Json -Depth 40)+[Environment]::NewLine),$Utf8NoBom)
 }

@@ -82,6 +82,14 @@ The proof began with no pre-existing Mocha session, detected the exact first-run
 
 This proof authorizes `LAUNCH_SESSION` development evidence for the exact retained Mocha identity and guarded route. It does not authorize spline creation, planar tracking, repair, or export.
 
+## Accepted real-AE planar-region proof
+
+Accepted 2026-09-16: `M5_MOCHA_AE_CREATE_PLANAR_REGION_RETAINED_REAL_AE_V1` reuses the proven warm AE/Mocha launch route, clears only the exact known first-run `Thank you from Boris FX` and `Welcome to Mocha AE` prompts, verifies the final `Mocha AE` main-window identity, and selects the exact `Create X-spline Layer` control before mutation.
+
+The retained action creates one explicit bounded four-point X-Spline region and verifies delivery stayed inside the proof-owned Mocha process. Independent UI Automation readback finds exactly one `Layer 1`. The passing run then closes only the proof-owned Mocha session, restores the exact saved AE project at revision `126`, preserves the same After Effects process, and records a maximum measured warm AE roundtrip of `1220.155 ms`. The bounded planar-region action batch itself was approximately `1628.003 ms`; click-to-responsive-Mocha-window and startup-prompt handling remain external/UI verification time, not warm AE action gaps. Closing the modified proof-owned Mocha session verifies the exact unsaved-project prompt and invokes only the exact `Don't Save` button; no force-kill was required.
+
+This proof authorizes `CREATE_PLANAR_REGION` development evidence for the exact retained Mocha session. It does not authorize planar tracking, repair, or export.
+
 ## Current next gate
 
-The next retained gate is `CREATE_PLANAR_REGION`: launch the exact proven session, create one proof-owned planar region from explicit bounded geometry, verify one Mocha-owned spline/region and its session binding without inferring success from cursor delivery alone, then close the proof-owned session and restore the exact saved AE project without restarting AE.
+The next retained gate is bounded `TRACK_FORWARD` / `TRACK_BACKWARD`: reuse the proven session and planar region, track only an explicit proof-owned frame range, independently verify actual planar-motion data/progress rather than cursor delivery, then close the proof-owned session and restore the exact saved AE project without restarting AE.

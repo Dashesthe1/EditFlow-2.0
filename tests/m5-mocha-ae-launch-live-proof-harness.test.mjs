@@ -12,6 +12,7 @@ const activatePath = "scripts/windows/m5-mocha-ae-activate-effect-controls.ps1";
 const enterPath = "scripts/windows/m5-mocha-ae-isolation-enter.jsx";
 const restorePath = "scripts/windows/m5-mocha-ae-isolation-restore.jsx";
 const registrationPath = "scripts/windows/m5-mocha-ae-registration-later.ps1";
+const startupPromptPath = "scripts/windows/m5-mocha-ae-startup-prompts.ps1";
 const dialogEvidencePath = "scripts/windows/m5-ae-dialog-evidence.ps1";
 
 test("M5 Mocha launch proof is warm-AE, no-retry, and requires clean external-session ownership", async () => {
@@ -22,6 +23,7 @@ test("M5 Mocha launch proof is warm-AE, no-retry, and requires clean external-se
   assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-capture-ae-screen-physical.ps1"));
   assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-ae-dialog-evidence.ps1"));
   assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-mocha-ae-registration-later.ps1"));
+  assert.ok(manifest.incrementalDependencies.includes("scripts/windows/m5-mocha-ae-startup-prompts.ps1"));
   const runner = await readFile(runnerPath, "utf8");
   assert.match(runner, /BaselineMochaPids/);
   assert.match(runner, /pre-existing Mocha AE process/);
