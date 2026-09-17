@@ -1,0 +1,41 @@
+{
+  "tutorialId": "tutorial.speed-ramp.001",
+  "title": "Motion-driven speed ramp",
+  "sourceRef": "upload://tutorial-speed-ramp.mp4",
+  "durationMs": 12000,
+  "evidenceRefs": ["frame:120", "transcript:4.2-8.9"],
+  "skills": [
+    {
+      "skillId": "skill.motion-speed-ramp",
+      "name": "Motion-driven speed ramp",
+      "objective": "Speed up movement through a cut while retaining readability.",
+      "whenToUse": "Directional movement provides enough visual continuity to support a ramp.",
+      "adaptationVariables": ["motionDirection", "transitionFrame", "handleLength"],
+      "validationCriteria": ["motion remains readable", "no temporal discontinuity"],
+      "steps": [
+        {
+          "stepId": "step.remap",
+          "startMs": 4200,
+          "endMs": 6100,
+          "intent": "Create the timing curve.",
+          "action": "Enable time remapping and shape the temporal curve.",
+          "observableResult": "Playback speeds into the transition and eases out.",
+          "capabilityRequirements": [
+            {
+              "capabilityId": "ae.time.remap.set",
+              "reason": "Create the remap keys.",
+              "minimumProofMaturity": "TRANSFER",
+              "preferredRouteKinds": ["HOST_ADAPTER"]
+            },
+            {
+              "capabilityId": "ae.graph.temporal.set",
+              "reason": "Shape the timing curve.",
+              "minimumProofMaturity": "TRANSFER"
+            }
+          ],
+          "evidenceRefs": ["frame:126", "frame:155"]
+        }
+      ]
+    }
+  ]
+}
