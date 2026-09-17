@@ -1,0 +1,30 @@
+{
+  "proofId": "M5_MOCHA_AE_LAUNCH_RETAINED_REAL_AE_V1",
+  "proofScript": "scripts/windows/run-m5-mocha-ae-launch-live-proof.ps1",
+  "lifecycle": "REUSE_AE",
+  "artifactDir": "proofs/artifacts/m5-mocha-ae-launch-live-proof",
+  "timeoutSeconds": 120,
+  "resultFile": "result.json",
+  "proofStrategy": "INCREMENTAL_FIRST",
+  "incrementalNodeId": "M5_MOCHA_AE_LAUNCH",
+  "checkpointKey": "M5:MOCHA:LAUNCH:V1",
+  "allowEvidenceReuse": false,
+  "allowInfrastructureRetry": false,
+  "incrementalDependencies": [
+    "scripts/m5-mocha-ae-launch-target.py",
+    "scripts/m5-mocha-ae-effect-controls-tab-target.py",
+    "scripts/windows/m5-mocha-ae-source-probe.jsx",
+    "scripts/windows/m5-mocha-ae-isolation-enter.jsx",
+    "scripts/windows/m5-mocha-ae-fixture-apply.jsx",
+    "scripts/windows/m5-mocha-ae-effect-controls-prepare.jsx",
+    "scripts/windows/m5-mocha-ae-activate-effect-controls.ps1",
+    "scripts/windows/m5-capture-ae-screen-physical.ps1",
+    "scripts/windows/m5-ae-dialog-evidence.ps1",
+    "scripts/windows/m5-mocha-ae-guarded-effect-controls-tab-click.ps1",
+    "scripts/windows/m5-mocha-ae-guarded-launch-click.ps1",
+    "scripts/windows/m5-mocha-ae-isolation-restore.jsx",
+    "scripts/windows/run-m5-mocha-ae-launch-live-proof.ps1",
+    "tests/m5-mocha-ae-launch-live-proof-harness.test.mjs"
+  ],
+  "focusedTests": ["tests/m5-mocha-ae-launch-live-proof-harness.test.mjs"]
+}

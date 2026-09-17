@@ -13,6 +13,7 @@ $EnterScript = Join-Path $RepoRoot "scripts\windows\m5-mocha-ae-isolation-enter.
 $FixtureScript = Join-Path $RepoRoot "scripts\windows\m5-mocha-ae-fixture-apply.jsx"
 $RestoreScript = Join-Path $RepoRoot "scripts\windows\m5-mocha-ae-isolation-restore.jsx"
 $StatePath = Join-Path $env:TEMP "EditFlow2-m5-mocha-ae-isolation-state.json"
+$BackupStatePath = Join-Path $env:TEMP "EditFlow2-m5-mocha-ae-isolation-state-backup.json"
 $SourceMarker = Join-Path $env:TEMP "EditFlow2-m5-mocha-ae-source.json"
 $EnterMarker = Join-Path $env:TEMP "EditFlow2-m5-mocha-ae-isolation-enter.json"
 $FixtureInput = Join-Path $env:TEMP "EditFlow2-m5-mocha-ae-fixture-input.json"
@@ -52,7 +53,7 @@ try {
   if ($running.Count -ne 1) { throw "Mocha proof requires exactly one already-running After Effects process; found $($running.Count)." }
   if (-not $running[0].Responding -or $running[0].MainWindowHandle -eq 0) { throw "The existing After Effects process is not a responsive visible target." }
   $BaselinePids = @($running | ForEach-Object { $_.Id } | Sort-Object)
-  Remove-Item $StatePath,$SourceMarker,$EnterMarker,$FixtureInput,$FixtureMarker,$RestoreMarker -Force -ErrorAction SilentlyContinue
+  Remove-Item $StatePath,$BackupStatePath,$SourceMarker,$EnterMarker,$FixtureInput,$FixtureMarker,$RestoreMarker -Force -ErrorAction SilentlyContinue
   $probeRun = Invoke-AeScriptTimed $SourceProbe $SourceMarker "Mocha source probe"
   $Source = $probeRun.value; $SourceMs = $probeRun.roundtripMs
   if ($Source.ok -ne $true -or -not $Source.sourcePath) { throw "Mocha source probe refused: $($Source.failure)" }
@@ -71,7 +72,7 @@ try {
 } catch {
   $PrimaryFailure = $_.Exception.Message
 } finally {
-  if (Test-Path $StatePath -PathType Leaf) {
+  if ((Test-Path $StatePath -PathType Leaf) -or (Test-Path $BackupStatePath -PathType Leaf)) {
     $RestoreAttempted = $true
     try {
       $restoreRun = Invoke-AeScriptTimed $RestoreScript $RestoreMarker "Mocha isolation restore"

@@ -4,6 +4,7 @@
   var VERSION = "M5_MOCHA_AE_ISOLATION_V1";
   var OWNED_PREFIX = "EF2_M5_MOCHA_";
   var stateFile = new File(Folder.temp.fsName + "/EditFlow2-m5-mocha-ae-isolation-state.json");
+  var backupStateFile = new File(Folder.temp.fsName + "/EditFlow2-m5-mocha-ae-isolation-state-backup.json");
   var resultFile = new File(Folder.temp.fsName + "/EditFlow2-m5-mocha-ae-isolation-restore.json");
   function read(file) {
     if (!file.exists || !file.open("r")) throw new Error("Cannot read " + file.fsName);
@@ -20,8 +21,9 @@
   }
   var checks = {}, failure = null, state = null;
   try {
-    if (!stateFile.exists) throw new Error("M5 isolation state is missing.");
-    state = JSON.parse(read(stateFile));
+    var restoreStateFile = stateFile.exists ? stateFile : backupStateFile;
+    if (!restoreStateFile.exists) throw new Error("M5 isolation state and backup are missing.");
+    state = JSON.parse(read(restoreStateFile));
     if (!state || state.version !== VERSION) throw new Error("M5 isolation state version mismatch.");
     if (typeof state.originalProjectPath !== "string" || !state.originalProjectPath) throw new Error("Original project path is missing from isolation state.");
     if (typeof state.originalItemCount !== "number" || state.originalItemCount < 0 || Math.floor(state.originalItemCount) !== state.originalItemCount) throw new Error("Original item count is invalid.");

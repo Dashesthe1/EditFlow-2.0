@@ -1,6 +1,6 @@
 # M5 Mocha AE Adapter Contract
 
-Status: **DISCOVERY + APPLY PROVEN / LAUNCH UNAVAILABLE**
+Status: **DISCOVERY + APPLY + LAUNCH PROVEN / PLANAR REGION UNAVAILABLE**
 Milestone: `M5 Interactive AE Adapters (0.6.0-dev)`
 
 ## Purpose
@@ -72,8 +72,16 @@ The retained tree exposes `Launch Mocha AE` as property index `5` with match nam
 
 The accepted run preserved After Effects PID `16404`, restored the exact saved project at revision `126` with all seven restore checks true, and logged no script-error popup. Measured warm roundtrips were approximately 743 ms for source binding, 727 ms for isolation entry, 2042 ms for import+effect+structural readback, and 1018 ms for exact restore. All remained below the 3-second ceiling.
 
-This proof authorizes `APPLY_MOCHA_EFFECT` development evidence only. It does not authorize `LAUNCH_SESSION`, planar region creation, tracking, repair, or export.
+This proof authorizes `APPLY_MOCHA_EFFECT` development evidence only. It does not by itself authorize `LAUNCH_SESSION`, planar region creation, tracking, repair, or export.
+
+## Accepted real-AE launch proof
+
+Accepted 2026-09-16: `M5_MOCHA_AE_LAUNCH_RETAINED_REAL_AE_V1` recreated the proof-owned `mochaAECC` binding, activated the verified Effect Controls target, grounded the single bounded Mocha launch mark on two fresh physical-screen captures, and delivered one guarded physical click while After Effects PID `16404` remained the foreground receiver. The action launched exactly one responsive `mocha4ae_adobe.exe` session from the installed After Effects Mocha bundle; the executable path, Boris FX company identity, version `12.2.0.48`, and `Mocha AE` window title were verified before cleanup.
+
+The proof began with no pre-existing Mocha session, closed only the proof-owned Mocha process, restored the exact saved project at revision `126`, and preserved the same After Effects PID. Measured routine warm roundtrips were approximately 965 ms for source binding, 811 ms for isolation entry, 836 ms for effect application, 864 ms for Effect Controls preparation, 1221 ms for Effect Controls activation, and 1232 ms for exact restore. The maximum measured warm AE roundtrip was `1231.907 ms`, below the 3-second ceiling. The external Mocha startup/window-verification path took approximately `70.25 s`; this is recorded separately from the warm AE action gap.
+
+This proof authorizes `LAUNCH_SESSION` development evidence for the exact retained Mocha identity and guarded route. It does not authorize spline creation, planar tracking, repair, or export.
 
 ## Current next gate
 
-The next retained gate is `LAUNCH_SESSION`: recreate the exact proof-owned `mochaAECC` binding, expose the verified `Launch Mocha AE` control, invoke only that control through a guarded UI route, prove the resulting Boris FX Mocha process/window/session identity, handle any modal/license/error state fail-closed, then close only the proof-owned Mocha session and restore the exact saved AE project without restarting AE.
+The next retained gate is `CREATE_PLANAR_REGION`: launch the exact proven session, create one proof-owned planar region from explicit bounded geometry, verify one Mocha-owned spline/region and its session binding without inferring success from cursor delivery alone, then close the proof-owned session and restore the exact saved AE project without restarting AE.

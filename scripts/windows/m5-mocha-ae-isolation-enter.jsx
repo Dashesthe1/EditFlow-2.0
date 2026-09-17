@@ -3,6 +3,7 @@
   "use strict";
   var VERSION = "M5_MOCHA_AE_ISOLATION_V1";
   var stateFile = new File(Folder.temp.fsName + "/EditFlow2-m5-mocha-ae-isolation-state.json");
+  var backupStateFile = new File(Folder.temp.fsName + "/EditFlow2-m5-mocha-ae-isolation-state-backup.json");
   var resultFile = new File(Folder.temp.fsName + "/EditFlow2-m5-mocha-ae-isolation-enter.json");
   function quote(value) {
     var text = value === null || value === undefined ? "" : String(value);
@@ -42,7 +43,8 @@
       "\"originalActiveItemId\":" + (originalActiveItemId === null ? "null" : String(originalActiveItemId)) + "," +
       "\"originalActiveItemName\":" + (originalActiveItemName === null ? "null" : quote(originalActiveItemName)) + "," +
       "\"enteredAtMs\":" + String((new Date()).getTime()) + "}";
-    write(stateFile, state); stateWritten = true;
+    write(stateFile, state);
+    write(backupStateFile, state); stateWritten = true;
     var closed = project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
     if (closed === false) throw new Error("After Effects refused to close the clean original project.");
     app.newProject();
