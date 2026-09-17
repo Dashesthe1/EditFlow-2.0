@@ -100,6 +100,15 @@ After tracking, the proof closed only the proof-owned Mocha session without forc
 
 This proof authorizes bounded `TRACK_FORWARD` / `TRACK_BACKWARD` development evidence only for the exact retained single-frame semantic route. It does not authorize repair or export.
 
+## Repair-track retained candidate (not yet accepted)
+
+Prepared 2026-09-17: `M5_MOCHA_AE_REPAIR_TRACK_RETAINED_REAL_AE_V1` is now implemented as a non-retrying `REUSE_AE` proof candidate. It reuses the authenticated warm CEP `/proof-script` route for AE-side source binding, isolation, fixture setup, and exact restoration; it does not launch a second After Effects process for routine host actions.
+
+The candidate binds the proof-owned Mocha session to the exact `AdjustTrack` UI tree, enters the Classic workspace through process-bound UI Automation, invokes `Set Points`, and performs a bounded manual correction transaction on one explicit correction frame. The retained repair action is constrained to frames `0..2` and `1..16` semantic nudges: establish a reference frame, create a deliberate defect with exact `Nudge Right` actions, then apply the same-count inverse `Nudge Left` actions. Baseline, defect, and repaired physical-screen evidence are captured, and an independent verifier requires both a visible defect and strong restoration before the candidate can pass.
+
+Static and repository validation pass: all PowerShell helpers parse, the Python verifier compiles, the focused repair contract is `5/5`, and the full repository suite is `825/825` with typecheck passing. This is development evidence only; it does not promote `REPAIR_TRACK` to accepted capability status.
+
+A live read-only source preflight on the current AE session completed through warm CEP in approximately `84.020 ms` while preserving After Effects PID `17992`, but correctly returned `Active composition/layer required.` The currently open fast-path test project is unsaved and has no active file-backed footage layer, so the repair mutation gate is intentionally blocked: M5 isolation requires a clean saved project whose exact path can be restored, and the source probe requires an active file-backed AV layer. No project was saved, replaced, closed, or mutated to bypass those preconditions.
 ## Current next gate
 
 The next retained gate is `REPAIR_TRACK`: create or identify one explicit proof-owned tracking defect over a bounded frame range, bind the exact affected planar region and correction frame(s), perform only the intended manual correction path, independently verify the repaired planar trajectory/data, then close the proof-owned session and restore the exact saved AE project without restarting AE. `EXPORT_TRACK` / `EXPORT_ROTO` remain separately gated.
