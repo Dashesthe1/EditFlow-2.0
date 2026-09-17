@@ -174,10 +174,18 @@ def build_server():
         decision_json: str = "",
     ) -> dict[str, Any]:
         """Execute a validated short-horizon goal through the persistent ContinuousFastLoop."""
-        goal = _normalize_goal(operations_json)
+        parsed = json.loads(operations_json)
         transaction_id = idempotency_key or plan_id or f"shadow-fast-{int(time.time() * 1000)}"
-        result = _http("POST", "/run", {"goal": goal, "transactionId": transaction_id})
-        return {"baseRevision": base_revision, "planId": plan_id, "result": result}
+        if isinstance(parsed, list):
+            if not parsed:
+                raise ValueError("operations_json routine-intent list must not be empty")
+            result = _http("POST", "/run-batch", {"intents": parsed, "transactionId": transaction_id})
+            execution_path = "LOCAL_BATCH_RUNTIME"
+        else:
+            goal = _normalize_goal(operations_json)
+            result = _http("POST", "/run", {"goal": goal, "transactionId": transaction_id})
+            execution_path = "CONTINUOUS_FAST_LOOP"
+        return {"baseRevision": base_revision, "planId": plan_id, "executionPath": execution_path, "result": result}
 
     @mcp.tool()
     def fast_ae_run(goal_json: str, transaction_id: str = "") -> dict[str, Any]:

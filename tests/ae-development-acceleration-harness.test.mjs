@@ -110,6 +110,9 @@ test("AE supervisor has narrow recovery and script-error dismissal routes", asyn
   assert.ok(supervisor.includes("Invoke-UiaElement"));
   assert.ok(supervisor.includes("InvokePattern"));
   assert.ok(supervisor.includes("INVOKE_CONTINUE_UIA"));
+  assert.ok(supervisor.includes("VisualContinueMatches"));
+  assert.ok(supervisor.includes("VisualRecoveryEnterSafe"));
+  assert.ok(supervisor.includes("INVOKE_CONTINUE_OCR_ENTER"));
   assert.ok(supervisor.includes("REFUSED_CONTINUE"));
   assert.ok(supervisor.includes("ScriptErrorContext"));
   assert.ok(supervisor.includes("unable\\s+to\\s+execute\\s+script"));

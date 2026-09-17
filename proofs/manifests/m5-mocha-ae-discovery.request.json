@@ -12,6 +12,7 @@
   "allowInfrastructureRetry": false,
   "incrementalDependencies": [
     "scripts/windows/run-m5-mocha-ae-discovery.ps1",
+    "scripts/windows/m5-mocha-ae-discovery-probe.jsx",
     "scripts/windows/invoke-editflow-ae-proof.ps1",
     "scripts/windows/ae-host-supervisor.ps1",
     "spec/ae-development-proof-request.schema.json",

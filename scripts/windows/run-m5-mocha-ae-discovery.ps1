@@ -3,65 +3,24 @@ param(
   [int]$TimeoutSeconds = 30
 )
 $ErrorActionPreference = "Stop"
+$ProofScriptEndpoint = "http://127.0.0.1:32146/proof-script"
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\.." )).Path
 $ArtifactDir = $env:EDITFLOW_PROOF_ARTIFACT_DIR
 if (-not $ArtifactDir) { throw "EDITFLOW_PROOF_ARTIFACT_DIR is required." }
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 $ResultPath = Join-Path $ArtifactDir "result.json"
-$ProbeScript = Join-Path $ArtifactDir "mocha-ae-discovery.jsx"
-$ProbeMarker = Join-Path $ArtifactDir "mocha-ae-discovery.txt"
+$ProbeScript = Join-Path $RepoRoot "scripts\windows\m5-mocha-ae-discovery-probe.jsx"
+$ProbeMarker = Join-Path $env:TEMP "EditFlow2-m5-mocha-ae-discovery.txt"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $BaselineAePids = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | ForEach-Object { $_.Id } | Sort-Object)
 if ($BaselineAePids.Count -ne 1) { throw "Mocha discovery requires exactly one already-running After Effects process; found $($BaselineAePids.Count)." }
-Remove-Item $ResultPath,$ProbeScript,$ProbeMarker -Force -ErrorAction SilentlyContinue
-$MarkerForJs = $ProbeMarker.Replace('\','/').Replace('"','\"')
-$ProbeSource = @"
-(function () {
-  function esc(v) { return String(v === null || v === undefined ? "" : v).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\t/g, " "); }
-  var p = app.project;
-  var revBefore = p ? p.revision : null;
-  var itemCountBefore = p ? p.numItems : 0;
-  var effects = [];
-  var all = app.effects || [];
-  for (var i = 0; i < all.length; i++) {
-    var e = all[i];
-    var displayName = String(e.displayName || "");
-    var matchName = String(e.matchName || "");
-    var category = String(e.category || "");
-    if (/mocha/i.test(displayName) || /mocha/i.test(matchName) || /mocha/i.test(category)) effects.push(e);
-  }
-"@
-$ProbeSource += @"
-  var exact = null;
-  for (var j = 0; j < effects.length; j++) {
-    if (/^mocha ae$/i.test(String(effects[j].displayName || ""))) { exact = effects[j]; break; }
-  }
-  if (!exact && effects.length) exact = effects[0];
-  var activeItem = p ? p.activeItem : null;
-  var targetLayer = (activeItem && activeItem.layers && activeItem.numLayers > 0) ? activeItem.layer(1) : null;
-  var canAdd = "";
-  if (targetLayer && exact) {
-    var parade = targetLayer.property("ADBE Effect Parade");
-    if (parade && typeof parade.canAddProperty === "function") canAdd = String(parade.canAddProperty(exact.matchName || exact.displayName));
-  }
-  var out = new File("$MarkerForJs");
-  if (!out.open("w")) throw new Error("EDITFLOW_M5_MOCHA_DISCOVERY_OPEN_FAILED");
-  out.writeln("HOST_VERSION\t" + esc(app.version));
-  out.writeln("PROJECT_PATH\t" + esc((p && p.file) ? p.file.fsName : ""));
-  out.writeln("REVISION_BEFORE\t" + esc(revBefore));
-  out.writeln("REVISION_AFTER\t" + esc(p ? p.revision : null));
-  out.writeln("ITEMS_BEFORE\t" + esc(itemCountBefore));
-  out.writeln("ITEMS_AFTER\t" + esc(p ? p.numItems : 0));
-  out.writeln("ACTIVE_ITEM\t" + esc(activeItem ? activeItem.name : ""));
-  out.writeln("TARGET_LAYER\t" + esc(targetLayer ? targetLayer.name : ""));
-  out.writeln("CAN_ADD\t" + esc(canAdd));
-  out.writeln("EXACT\t" + esc(exact ? exact.displayName : "") + "\t" + esc(exact ? exact.matchName : "") + "\t" + esc(exact ? exact.category : "") + "\t" + esc(exact ? exact.version : ""));
-  for (var k = 0; k < effects.length; k++) out.writeln("EFFECT\t" + esc(effects[k].displayName) + "\t" + esc(effects[k].matchName) + "\t" + esc(effects[k].category) + "\t" + esc(effects[k].version));
-  out.close();
-}());
-"@
-[System.IO.File]::WriteAllText($ProbeScript, $ProbeSource, $Utf8NoBom)
+Remove-Item $ResultPath,$ProbeMarker -Force -ErrorAction SilentlyContinue
+if (-not (Test-Path $ProbeScript -PathType Leaf)) { throw "Required Mocha discovery probe missing: $ProbeScript" }
 $Timer = [System.Diagnostics.Stopwatch]::StartNew()
-[void](Start-Process -FilePath $AfterFxPath -ArgumentList @('-r', $ProbeScript) -PassThru)
+$body = @{ scriptPath = $ProbeScript } | ConvertTo-Json -Compress
+try { $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri $ProofScriptEndpoint -ContentType "application/json" -Body $body -TimeoutSec 10 } catch { throw "Warm CEP discovery dispatch failed: $($_.Exception.Message)" }
+$payload = $response.Content | ConvertFrom-Json
+if ($response.StatusCode -ne 200 -or $payload.ok -ne $true) { throw "Warm CEP discovery dispatch refused." }
 $Deadline = (Get-Date).AddSeconds([Math]::Max(5, $TimeoutSeconds - 2))
 while (-not (Test-Path $ProbeMarker -PathType Leaf) -and (Get-Date) -lt $Deadline) { Start-Sleep -Milliseconds 50 }
 $Timer.Stop()
@@ -90,6 +49,7 @@ $CanAdd = if ($CanAddText -eq "true") { $true } elseif ($CanAddText -eq "false")
 $Ok = ($null -ne $Exact) -and $SameAeProcess -and $ProjectUnchanged
 $Result = [ordered]@{
   proofId = "M5_MOCHA_AE_DISCOVERY_REAL_AE_V1"
+  proofDispatchMode = "WARM_CEP_PROOF_SCRIPT"
   classification = if ($Ok) { "PASS" } else { "PRODUCT_FAILURE" }
   ok = $Ok
   mutationStarted = $false

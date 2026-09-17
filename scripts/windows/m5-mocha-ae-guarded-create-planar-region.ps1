@@ -53,14 +53,23 @@ try {
   $fg=[EfMochaPlanarRegionInput]::GetForegroundWindow(); [uint32]$fgPid=0; [void][EfMochaPlanarRegionInput]::GetWindowThreadProcessId($fg,[ref]$fgPid)
   if([int]$fgPid -ne $MochaPid){throw 'Mocha AE did not retain foreground focus for planar-region input.'}
   $shell=New-Object -ComObject WScript.Shell
-  $toolX=[int][Math]::Round($r.L+0.159*$w); $toolY=[int][Math]::Round($r.T+0.073*$h)
-  $toolPt=New-Object EfMochaPlanarRegionInput+POINT; $toolPt.X=$toolX; $toolPt.Y=$toolY
-  $toolHit=[EfMochaPlanarRegionInput]::WindowFromPoint($toolPt); [uint32]$toolHitPid=0; [void][EfMochaPlanarRegionInput]::GetWindowThreadProcessId($toolHit,[ref]$toolHitPid)
-  if([int]$toolHitPid -ne $MochaPid){throw 'Candidate X-Spline tool point resolves outside Mocha.'}
-  [void][EfMochaPlanarRegionInput]::SetCursorPos($toolX,$toolY); Start-Sleep -Milliseconds 1300
+  $root=[System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
+  if($null -eq $root){throw 'Mocha UI Automation root was unavailable for X-Spline targeting.'}
+  $toolCond=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'Create X-spline Layer')
+  $toolMatches=$root.FindAll([System.Windows.Automation.TreeScope]::Subtree,$toolCond)
+  $toolCandidates=@()
+  for($i=0;$i -lt $toolMatches.Count;$i+=1){$candidate=$toolMatches.Item($i);$cc=$candidate.Current;if([string]$cc.ClassName -eq 'GUI::DropdownToolButton' -and [string]$cc.ControlType.ProgrammaticName -eq 'ControlType.Button' -and [bool]$cc.IsEnabled -and -not [bool]$cc.IsOffscreen){$toolCandidates+=$candidate}}
+  if($toolCandidates.Count -ne 1){throw "Expected one exact enabled visible Create X-spline Layer UIA button; found $($toolCandidates.Count)."}
+  $toolElement=$toolCandidates[0];$tb=$toolElement.Current.BoundingRectangle
+  if($tb.Width -lt 8 -or $tb.Height -lt 8){throw 'Exact X-Spline UIA button has invalid bounds.'}
+  $toolX=[int][Math]::Round($tb.X+$tb.Width/2);$toolY=[int][Math]::Round($tb.Y+$tb.Height/2)
+  $toolPt=New-Object EfMochaPlanarRegionInput+POINT;$toolPt.X=$toolX;$toolPt.Y=$toolY
+  $toolHit=[EfMochaPlanarRegionInput]::WindowFromPoint($toolPt);[uint32]$toolHitPid=0;[void][EfMochaPlanarRegionInput]::GetWindowThreadProcessId($toolHit,[ref]$toolHitPid)
+  if([int]$toolHitPid -ne $MochaPid){throw 'Exact X-Spline UIA center resolves outside Mocha.'}
+  [void][EfMochaPlanarRegionInput]::SetCursorPos($toolX,$toolY);Start-Sleep -Milliseconds 120
   $ae=[System.Windows.Automation.AutomationElement]::FromPoint((New-Object System.Windows.Point($toolX,$toolY)))
-  $toolProbe=[ordered]@{x=$toolX;y=$toolY;name=[string]$ae.Current.Name;automationId=[string]$ae.Current.AutomationId;className=[string]$ae.Current.ClassName;controlType=[string]$ae.Current.ControlType.ProgrammaticName}
-  if($toolProbe.name -ne 'Create X-spline Layer' -or $toolProbe.className -ne 'GUI::DropdownToolButton' -or $toolProbe.controlType -ne 'ControlType.Button'){throw 'Exact Create X-spline Layer tool identity was not verified.'}
+  $toolProbe=[ordered]@{x=$toolX;y=$toolY;name=[string]$ae.Current.Name;automationId=[string]$ae.Current.AutomationId;className=[string]$ae.Current.ClassName;controlType=[string]$ae.Current.ControlType.ProgrammaticName;targetSource='SEMANTIC_UIA_BOUNDS'}
+  if($toolProbe.name -ne 'Create X-spline Layer' -or $toolProbe.className -ne 'GUI::DropdownToolButton' -or $toolProbe.controlType -ne 'ControlType.Button'){throw 'Exact Create X-spline Layer tool identity was not verified at semantic UIA center.'}
   $sw=[Diagnostics.Stopwatch]::StartNew()
   if(-not [EfMochaPlanarRegionInput]::SetCursorPos($toolX,$toolY)){throw 'Could not position exact X-Spline tool pointer.'}
   if([EfMochaPlanarRegionInput]::Mouse(0x0002) -ne 1){throw 'X-Spline tool mouse-down was not delivered.'}

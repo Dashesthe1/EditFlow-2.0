@@ -22,6 +22,11 @@ test("M5 Mocha planar-region proof is retained, warm-AE, and non-retrying", asyn
   assert.match(runner, /layer1UiaVerified/);
   assert.match(runner, /sameAeProcess/i);
   assert.match(runner, /maxMeasuredWarmAeRoundtripMs/);
+  assert.match(runner, /ProofScriptEndpoint/);
+  assert.match(runner, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(runner, /Invoke-WebRequest/);
+  assert.match(runner, /WARM_CEP_PROOF_SCRIPT/);
+  assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFxPath/);
 });
 
 test("planar-region creation binds exact Mocha tool identity and bounded geometry", async () => {
@@ -33,6 +38,13 @@ test("planar-region creation binds exact Mocha tool identity and bounded geometr
   assert.match(create, /@\(0\.69,0\.49\)/);
   assert.match(create, /layer1UiaCount/);
   assert.match(create, /AutomationElement/);
+  assert.match(create, /PropertyCondition/);
+  assert.match(create, /FindAll/);
+  assert.match(create, /BoundingRectangle/);
+  assert.match(create, /toolCandidates\.Count -ne 1/);
+  assert.match(create, /SEMANTIC_UIA_BOUNDS/);
+  assert.doesNotMatch(create, /0\.159\*\$w/);
+  assert.doesNotMatch(create, /0\.073\*\$h/);
   assert.match(create, /PHYSICAL_EXACT_UIA_TARGET/);
   assert.match(create, /SetCursorPos\(\$toolX,\$toolY\)/);
   assert.match(create, /X-Spline tool mouse-down/);

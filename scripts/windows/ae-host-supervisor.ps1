@@ -415,6 +415,17 @@ while ((Get-Date) -lt $Deadline) {
       $VisualUnsafeButtonMatches = if ($VisualContext) {
         @([regex]::Matches($VisualContext, '(?i)\b(?:Cancel|Yes|No|Retry|Ignore|Abort|Continue|Save)\b'))
       } else { @() }
+      $VisualContinueMatches = if ($VisualContext) {
+        @([regex]::Matches($VisualContext, '(?i)(?<![A-Za-z0-9])Continu\s*e(?![A-Za-z0-9])'))
+      } else { @() }
+      $VisualRecoveryEnterSafe = (
+        $RecoveryContext -and
+        $VisualContinueMatches.Count -eq 1 -and
+        (
+          ($VisualContext -match '(?i)\bstartup\s+options\b' -and $VisualContext -match '(?i)\bhow\s+would\s+you\s+like\s+to\s+proceed\b') -or
+          ($VisualContext -match '(?i)\bcrash\s+repair\s+options\b' -and $VisualContext -match '(?i)\bdetected\s+a\s+crash\b' -and $VisualContext -match '(?i)\bsafe\s+mode\b')
+        )
+      )
 
       $NativeContinueButtons = @($Children | Where-Object {
         $_.Visible -and $_.Enabled -and $_.ClassName -eq "Button" -and ((($_.Title -replace "&", "").Trim()) -ieq "Continue")
@@ -480,8 +491,14 @@ while ((Get-Date) -lt $Deadline) {
         } catch {
           Write-SupervisorLog "UIA_INVOKE_ERROR" ("pid=$($Window.ProcessId);dialogHwnd=$($Window.Handle);error=" + (ConvertTo-SingleLine $_.Exception.Message))
         }
-      } elseif (($NativeContinueButtons.Count + $UiaContinueButtons.Count) -gt 0) {
-        Write-SupervisorLog "REFUSED_CONTINUE" ("pid=$($Window.ProcessId);dialogHwnd=$($Window.Handle);nativeContinue=$($NativeContinueButtons.Count);uiaContinue=$($UiaContinueButtons.Count);recoveryContext=$RecoveryContext")
+      } elseif ($RecoveryContext -and $NativeContinueButtons.Count -eq 0 -and $UiaContinueButtons.Count -eq 0 -and $VisualRecoveryEnterSafe) {
+        $InvokedDialogs[$HandleKey] = $true
+        Write-SupervisorLog "INVOKE_CONTINUE_OCR_ENTER" ("pid=$($Window.ProcessId);dialogHwnd=$($Window.Handle);visualContinue=$($VisualContinueMatches.Count);contextMatched=true")
+        [EditFlow.AeHostSupervisorNative]::InvokeDialogEnter($Window.Handle)
+        $InvocationCount += 1
+        Start-Sleep -Milliseconds 750
+      } elseif (($NativeContinueButtons.Count + $UiaContinueButtons.Count + $VisualContinueMatches.Count) -gt 0) {
+        Write-SupervisorLog "REFUSED_CONTINUE" ("pid=$($Window.ProcessId);dialogHwnd=$($Window.Handle);nativeContinue=$($NativeContinueButtons.Count);uiaContinue=$($UiaContinueButtons.Count);visualContinue=$($VisualContinueMatches.Count);recoveryContext=$RecoveryContext;visualRecoveryEnterSafe=$VisualRecoveryEnterSafe")
       }
     }
   }

@@ -29,6 +29,11 @@ test("M5 Mocha planar-tracking proof is warm-AE, retained, and non-retrying", as
   assert.match(runner, /EditFlow2_M5_Mocha_AE_Proof/);
   assert.match(runner, /WaitOne\(0\)/);
   assert.match(runner, /owns the local proof lease/);
+  assert.match(runner, /ProofScriptEndpoint/);
+  assert.match(runner, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(runner, /Invoke-WebRequest/);
+  assert.match(runner, /WARM_CEP_PROOF_SCRIPT/);
+  assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFxPath/);
 });
 
 test("tracking gate uses exact single-frame semantic controls and independent tracked-end readback", async () => {

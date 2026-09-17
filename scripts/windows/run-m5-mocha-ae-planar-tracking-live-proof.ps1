@@ -3,6 +3,7 @@ param(
   [int]$TimeoutSeconds = 45
 )
 $ErrorActionPreference='Stop'
+$ProofScriptEndpoint='http://127.0.0.1:32146/proof-script'
 $RepoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $ArtifactDir=$env:EDITFLOW_PROOF_ARTIFACT_DIR
 if(-not $ArtifactDir){throw 'EDITFLOW_PROOF_ARTIFACT_DIR is required.'}
@@ -48,7 +49,11 @@ function Wait-JsonMarker([string]$Path,[int]$Seconds,[string]$Label){
 function Invoke-AeTimed([string]$ScriptPath,[string]$MarkerPath,[string]$Label){
   Remove-Item $MarkerPath -Force -ErrorAction SilentlyContinue
   $sw=[Diagnostics.Stopwatch]::StartNew()
-  [void](Start-Process -FilePath $AfterFxPath -ArgumentList @('-r',$ScriptPath) -PassThru)
+  $body=@{scriptPath=$ScriptPath}|ConvertTo-Json -Compress
+  try{$response=Invoke-WebRequest -UseBasicParsing -Method Post -Uri $ProofScriptEndpoint -ContentType 'application/json' -Body $body -TimeoutSec 10}
+  catch{throw "Warm CEP proof-script dispatch failed for ${Label}: $($_.Exception.Message)"}
+  $payload=$response.Content|ConvertFrom-Json
+  if($response.StatusCode -ne 200 -or $payload.ok -ne $true){throw "Warm CEP proof-script dispatch refused for $Label"}
   $value=Wait-JsonMarker $MarkerPath $TimeoutSeconds $Label
   $sw.Stop()
   [pscustomobject]@{value=$value;roundtripMs=[Math]::Round($sw.Elapsed.TotalMilliseconds,3)}
@@ -244,7 +249,7 @@ try{
   $Result=[ordered]@{
     proofId='M5_MOCHA_AE_PLANAR_TRACKING_RETAINED_REAL_AE_V1';classification=$Classification;ok=($Classification -eq 'PASS');message=$Message
     mutationStarted=$MutationStarted;cleanupComplete=$CleanupComplete;launchVerified=$LaunchVerified;planarRegionVerified=$PlanarRegionVerified;planarTrackingVerified=$PlanarTrackingVerified;forcedMochaClose=$ForcedMochaClose
-    baselineAePids=$BaselineAePids;afterAePids=$AfterAePids;sameAeProcess=$SameAeProcess;baselineMochaPids=$BaselineMochaPids;remainingMochaPids=$MochaRemaining
+    proofDispatchMode='WARM_CEP_PROOF_SCRIPT';baselineAePids=$BaselineAePids;afterAePids=$AfterAePids;sameAeProcess=$SameAeProcess;baselineMochaPids=$BaselineMochaPids;remainingMochaPids=$MochaRemaining
     sourceProbeRoundtripMs=$SourceMs;isolationEnterRoundtripMs=$EnterMs;effectApplyRoundtripMs=$ApplyMs;effectControlsRoundtripMs=$ControlsMs;effectControlsActivationMs=$ControlsActivationMs;effectControlsTabClickMs=$ControlsTabClickMs;restoreRoundtripMs=$RestoreMs;settledRestoreVerifyRoundtripMs=$SettledRestoreMs;maxMeasuredWarmAeRoundtripMs=$MaxWarmMs;maxMeasuredMochaOneFrameSolveMs=$MaxTrackMs;clickToMochaWindowMs=$ClickToWindowMs;registrationDismissMs=$RegistrationDismissMs;startupPromptMs=$StartupPromptMs
     effectControlsActivationMode=$ControlsTabActivationMode;targetStabilityPx=$TargetStabilityPx;targetAreaDelta=$TargetAreaDelta;click=$Click;mochaIdentity=$MochaIdentity
     source=$Source;enter=$Enter;fixture=$Fixture;controls=$Controls;registration=$Registration;startupPrompts=$StartupPrompts;seek=$Seek;region=$Region;track=$Track;closeProof=$CloseProof;restore=$Restore;settledRestore=$SettledRestore;primaryFailure=$PrimaryFailure;restoreFailure=$RestoreFailure

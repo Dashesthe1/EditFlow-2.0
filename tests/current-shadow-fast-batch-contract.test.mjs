@@ -17,6 +17,9 @@ test("current Shadow control daemon exposes the persistent local routine batch e
 
 test("current Shadow MCP gateway exposes one-call local AE batching", async () => {
   const source = await read("scripts/current_shadow_gateway_v3.py");
+  assert.match(source, /def apply_edit_plan\(/);
+  assert.match(source, /isinstance\(parsed, list\)/);
+  assert.match(source, /execution_path = "LOCAL_BATCH_RUNTIME"/);
   assert.match(source, /def fast_ae_batch\(/);
   assert.match(source, /"POST", "\/run-batch"/);
   assert.match(source, /LOCAL_BATCH_RUNTIME/);
