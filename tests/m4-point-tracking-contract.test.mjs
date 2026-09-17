@@ -15,14 +15,14 @@ import {
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-point-tracking.js";
 import { TrackingStateReducerV1 } from "../.tmp/runtime/packages/tracking-state/src/index.js";
 
-test("M4 point tracking protocol 2.1 begins read-only and unpromoted", () => {
+test("M4 point tracking protocol 2.1 is structurally promoted after retained real-AE proof", () => {
   assert.equal(AE_POINT_TRACKING_PROTOCOL_VERSION_V21, "2.1.0");
   assert.equal(AE_POINT_TRACKING_ADAPTER_BUILD_V21, "0.5.0-dev.1");
   assert.equal(AE_POINT_TRACKING_ROUTE_ID_V21, "ae-cep.point-tracking.v2_1");
   assert.deepEqual([...AE_POINT_TRACKING_COMMANDS_V21], ["tracker.readback"]);
   assert.equal(M4_POINT_TRACKING_CAPABILITIES_V21.length, 1);
   assert.equal(M4_POINT_TRACKING_CAPABILITIES_V21[0].riskClass, "R0_READ_ONLY");
-  assert.equal(M4_POINT_TRACKING_CAPABILITIES_V21[0].proofMaturity, "DECLARED");
+  assert.equal(M4_POINT_TRACKING_CAPABILITIES_V21[0].proofMaturity, "STRUCTURAL");
 });
 test("point-tracking transport serializes payload as data in one dispatcher call", async () => {
   let captured = "";

@@ -69,7 +69,7 @@ export const M4_POINT_TRACKING_CAPABILITIES_V21: readonly CapabilityRecord[] =
     domain: "tracking",
     description: "M4 read-only point-tracker structural/keyframe readback from After Effects Motion Trackers.",
     status: "PARTIAL",
-    proofMaturity: "DECLARED",
+    proofMaturity: "STRUCTURAL",
     routes: [{
       routeId: asRouteId(AE_POINT_TRACKING_ROUTE_ID_V21),
       kind: "HOST_ADAPTER",
