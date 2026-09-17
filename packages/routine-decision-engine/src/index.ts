@@ -253,6 +253,7 @@ export class RoutineDecisionEngine {
   }
 
   get hostRevision(): number { return this.#hostRevision; }
+  get requiresRefresh(): boolean { return !this.#valid || this.clock() > this.#expiresAtMs; }
   invalidate(): void { this.#valid = false; }
   refresh(state: AeCepAdapterStateV11): void {
     this.#hostRevision = state.hostRevision;

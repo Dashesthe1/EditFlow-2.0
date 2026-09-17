@@ -98,17 +98,27 @@ test("local fast runtime executes a many-action routine batch with no observatio
   assert.equal(runtime.status().actionBudgetMs, DEFAULT_LOCAL_FAST_ACTION_BUDGET_MS);
 });
 
-test("local fast runtime refreshes once at the next batch boundary, not once per action", async () => {
+test("local fast runtime reuses the warm lease across batches and refreshes once after idle expiry", async () => {
+  let now = 0;
   const fake = createFakeAdapter();
-  const runtime = await LocalFastRuntimeV1.create(fake.adapter, { projectId: "local-fast-test" });
+  const runtime = await LocalFastRuntimeV1.create(fake.adapter, {
+    projectId: "local-fast-test", leaseTtlMs: 10, clock: () => now,
+  });
   await runtime.runRoutineBatch(transformIntents(12), "TX_FIRST");
   assert.equal(fake.observes, 1);
-  await runtime.runRoutineBatch(transformIntents(8), "TX_SECOND");
 
-  assert.equal(fake.requests.length, 20);
-  assert.equal(fake.observes, 2);
+  now = 5;
+  await runtime.runRoutineBatch(transformIntents(8), "TX_SECOND");
+  assert.equal(fake.observes, 1);
   assert.equal(fake.requests[12].expectedHostProjectRevision, 19);
-  assert.equal(runtime.status().hostRevision, 27);
+
+  now = 11;
+  const recovered = await runtime.runRoutineBatch(transformIntents(1), "TX_AFTER_IDLE");
+  assert.equal(recovered.route, "LOCAL");
+  assert.equal(recovered.escalationReason, null);
+  assert.equal(fake.observes, 2);
+  assert.equal(fake.requests[20].expectedHostProjectRevision, 27);
+  assert.equal(runtime.status().hostRevision, 28);
 });
 
 test("local fast runtime rejects oversized batches before any AE dispatch", async () => {

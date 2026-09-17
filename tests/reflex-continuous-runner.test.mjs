@@ -106,3 +106,53 @@ test("current desktop v1.1 session installs the editor brain over the continuous
   assert.ok(session.editorBrain instanceof EditorBrainV0);
   assert.ok(session.editorRunner instanceof EditorBrainRuntimeV0);
 });
+
+test("continuous fast loop reuses the warm lease across successful goals without a full observation", async () => {
+  const requests = [];
+  let reads = 0;
+  let now = 0;
+  const client = new AeCepAdapterClientV11({ async dispatch(request) {
+    requests.push(structuredClone(request));
+    return responseFor(request, request.expectedHostProjectRevision + 1);
+  } }, () => `warm-goal-${requests.length + 1}`);
+  client.observe = async () => { reads += 1; return baselineState(); };
+  const runner = new ContinuousFastLoop(client, baselineState(), { leaseTtlMs: 100, clock: () => now });
+  const goal = (opacity) => ({ kind: "SHORT_HORIZON", intents: [{
+    kind: "SET_LAYER_TRANSFORM", comp: { stableId: "COMP" }, layer: { stableId: "LAYER" }, values: { opacity },
+  }] });
+
+  const first = await runner.run(goal(90), "TX_WARM_1");
+  now = 50;
+  const second = await runner.run(goal(80), "TX_WARM_2");
+
+  assert.equal(first.route, "LOCAL");
+  assert.equal(second.route, "LOCAL");
+  assert.equal(reads, 0);
+  assert.deepEqual(requests.map((request) => request.expectedHostProjectRevision), [10, 11]);
+  assert.equal(runner.hostRevision, 12);
+});
+
+test("continuous fast loop refreshes an expired idle lease once at the next goal boundary and continues locally", async () => {
+  const requests = [];
+  let reads = 0;
+  let now = 0;
+  const client = new AeCepAdapterClientV11({ async dispatch(request) {
+    requests.push(structuredClone(request));
+    return responseFor(request, request.expectedHostProjectRevision + 1);
+  } }, () => `idle-recovery-${requests.length + 1}`);
+  client.observe = async () => { reads += 1; return baselineState(); };
+  const runner = new ContinuousFastLoop(client, baselineState(), { leaseTtlMs: 10, clock: () => now });
+  now = 11;
+
+  const result = await runner.run({ kind: "SHORT_HORIZON", intents: [{
+    kind: "SET_LAYER_TRANSFORM", comp: { stableId: "COMP" }, layer: { stableId: "LAYER" }, values: { opacity: 75 },
+  }] }, "TX_IDLE_RECOVERY");
+
+  assert.equal(result.route, "LOCAL");
+  assert.equal(result.completedActions, 1);
+  assert.equal(result.escalationReason, null);
+  assert.equal(reads, 1);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].expectedHostProjectRevision, 10);
+  assert.equal(result.actions.some((action) => action.reason === "LEASE_EXPIRED"), false);
+});

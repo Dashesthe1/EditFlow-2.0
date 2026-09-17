@@ -83,7 +83,7 @@ export class ContinuousFastLoop {
 
   async #runOne(goal: ReflexGoal, transactionId: string): Promise<ContinuousFastLoopResult> {
     const started = this.clock();
-    if (this.#refreshBeforeNextGoal) await this.refresh();
+    if (this.#refreshBeforeNextGoal || this.#engine.requiresRefresh) await this.refresh();
     const plan = this.planner.compile(goal, this.#state);
     const plannedAt = this.clock();
     if (plan.route === "ESCALATE") {
@@ -109,7 +109,6 @@ export class ContinuousFastLoop {
         break;
       }
     }
-    if (actions.some((action) => action.route === "LOCAL")) this.#refreshBeforeNextGoal = true;
     const completed = this.clock();
     const actionMs = actions.reduce((sum, action) => sum + action.timings.totalMs, 0);
     const completedActions = actions.filter((action) => action.route === "LOCAL").length;
