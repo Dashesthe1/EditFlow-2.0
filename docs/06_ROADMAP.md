@@ -194,3 +194,14 @@ Exit gate: complete a multi-technique edit from raw footage with technique-level
 ## Development sequencing rule
 
 Do not jump ahead to tutorial-specific effects while a lower milestone capability needed for literal construction is missing. Build the manipulation vocabulary first, then the intelligence that composes it.
+
+## Tutorial-driven sequencing revision — 2026-09-17
+
+The previous sequencing rule is superseded as the default development strategy by tutorial-driven capability discovery.
+Do not attempt to complete the full After Effects manipulation surface speculatively before learning work begins.
+Instead, ingest one professional tutorial, compile its semantic construction, compare its requirements with the live Capability Registry,
+and implement or prove only the missing capabilities that block literal reconstruction and transfer of that tutorial.
+
+Previously accepted lower-milestone capabilities and proof gates remain authoritative and reusable.
+Broad capability-audit work is still required for the eventual release contract, but it no longer blocks tutorial-led learning progress.
+See `docs/TUTORIAL_DRIVEN_LEARNING_ROADMAP.md`.
