@@ -23,6 +23,7 @@ test("fast triage recognizes recurring local failures without online research", 
     ["expected exactly one match for token, found 3", "PATCH_GUARD_NON_UNIQUE"],
     ["Windows cannot find '\"EditFlow Shadow Gateway\"'", "BAD_QUOTED_GATEWAY_COMMAND"],
     ["CEP_PANEL_REGISTRATION_TIMEOUT", "CEP_PANEL_REGISTRATION_TIMEOUT"],
+    ["CEP_PANEL_STALE: session-1 ageMs=30001 thresholdMs=15000", "CEP_PANEL_STALE"],
     ["CEP_COMMAND_TIMEOUT: host.probe shadow-current-5", "CEP_HOST_PROBE_CALLBACK_STALL"],
     ["Broker leased an unsupported EditFlow protocol request", "CEP_PROTOCOL_MISMATCH"],
   ];

@@ -98,6 +98,104 @@ test("loopback CEP broker binds locally, rejects bad tokens, and correlates pane
   }
 });
 
+test("idle CEP panel sessions fail fast before the command timeout", async () => {
+  const broker = new LoopbackCepBroker({
+    port: 0,
+    token,
+    commandTimeoutMs: 1000,
+    commandLeaseMs: 50,
+    panelStaleAfterMs: 50,
+  });
+  const port = await broker.start();
+  try {
+    await registerPanel(port);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    assert.equal(broker.panelSession, null);
+    const statusResponse = await fetch(`http://127.0.0.1:${port}/v1/status`, { headers });
+    const status = await statusResponse.json();
+    assert.equal(status.panelConnected, false);
+    assert.equal(status.session, null);
+
+    const startedAt = Date.now();
+    await assert.rejects(broker.dispatch(makeRequest("REQ_STALE_IDLE")), /CEP_PANEL_STALE/);
+    assert.ok(Date.now() - startedAt < 300, "stale-session refusal should not consume the command timeout");
+  } finally {
+    await broker.stop();
+  }
+});
+
+test("an actively leased CEP command is not misclassified as a stale panel", async () => {
+  const broker = new LoopbackCepBroker({
+    port: 0,
+    token,
+    commandTimeoutMs: 1000,
+    commandLeaseMs: 5000,
+    panelStaleAfterMs: 100,
+  });
+  const port = await broker.start();
+  try {
+    const registered = await registerPanel(port);
+    const request = makeRequest("REQ_BUSY_PANEL");
+    const dispatchPromise = broker.dispatch(request);
+    const leased = await fetch(`http://127.0.0.1:${port}/v1/next?sessionId=${encodeURIComponent(registered.sessionId)}`, { headers });
+    assert.equal(leased.status, 200);
+    assert.equal((await leased.json()).requestId, request.requestId);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.notEqual(broker.panelSession, null);
+
+    const responseValue = makeResponse(request);
+    const accepted = await fetch(`http://127.0.0.1:${port}/v1/response`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sessionId: registered.sessionId, response: responseValue }),
+    });
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(await dispatchPromise, responseValue);
+    assert.notEqual(broker.panelSession, null);
+  } finally {
+    await broker.stop();
+  }
+});
+
+test("a stale panel can become fresh again when its existing session resumes polling", async () => {
+  const broker = new LoopbackCepBroker({
+    port: 0,
+    token,
+    commandTimeoutMs: 1000,
+    commandLeaseMs: 50,
+    panelStaleAfterMs: 50,
+  });
+  const port = await broker.start();
+  try {
+    const registered = await registerPanel(port);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(broker.panelSession, null);
+
+    const resumedPoll = await fetch(`http://127.0.0.1:${port}/v1/next?sessionId=${encodeURIComponent(registered.sessionId)}`, { headers });
+    assert.equal(resumedPoll.status, 204);
+    assert.equal(broker.panelSession?.sessionId, registered.sessionId);
+
+    const request = makeRequest("REQ_RESUMED_PANEL");
+    const dispatchPromise = broker.dispatch(request);
+    const leased = await fetch(`http://127.0.0.1:${port}/v1/next?sessionId=${encodeURIComponent(registered.sessionId)}`, { headers });
+    assert.equal(leased.status, 200);
+    assert.equal((await leased.json()).requestId, request.requestId);
+
+    const responseValue = makeResponse(request);
+    const accepted = await fetch(`http://127.0.0.1:${port}/v1/response`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sessionId: registered.sessionId, response: responseValue }),
+    });
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(await dispatchPromise, responseValue);
+  } finally {
+    await broker.stop();
+  }
+});
+
 test("a re-registered CEP panel receives an unacknowledged leased request", async () => {
   const broker = new LoopbackCepBroker({ port: 0, token, commandTimeoutMs: 2000, commandLeaseMs: 5000 });
   const port = await broker.start();

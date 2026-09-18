@@ -74,6 +74,7 @@ export interface LoopbackCepBrokerOptions {
   readonly token: string;
   readonly commandTimeoutMs?: number;
   readonly commandLeaseMs?: number;
+  readonly panelStaleAfterMs?: number;
   readonly expectedExtensionId?: string;
   readonly supportedProtocolVersions?: readonly string[];
 }
@@ -178,11 +179,16 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
     if (typeof options.token !== "string" || options.token.length < 32) {
       throw new TypeError("Loopback CEP broker token must contain at least 32 characters.");
     }
+    if (options.panelStaleAfterMs !== undefined
+      && (!Number.isFinite(options.panelStaleAfterMs) || options.panelStaleAfterMs <= 0)) {
+      throw new TypeError("Loopback CEP broker panelStaleAfterMs must be a positive finite number.");
+    }
     this.options = {
       port: options.port,
       token: options.token,
       commandTimeoutMs: options.commandTimeoutMs ?? 30_000,
       commandLeaseMs: options.commandLeaseMs ?? 3_000,
+      panelStaleAfterMs: options.panelStaleAfterMs ?? 15_000,
       expectedExtensionId: options.expectedExtensionId ?? "com.editflow2.bridge.panel",
       supportedProtocolVersions: normalizeBrokerProtocols(options.supportedProtocolVersions),
     };
@@ -190,7 +196,8 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
 
   get port(): number { return this.#port; }
   get panelSession(): LoopbackCepPanelSession | null {
-    return this.#session === null ? null : structuredClone(this.#session);
+    if (this.#session === null || this.#isSessionStale(this.#session)) return null;
+    return structuredClone(this.#session);
   }
   get isStarted(): boolean { return this.#server !== null; }
 
@@ -236,7 +243,8 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
   async waitForPanel(timeoutMs = 60_000): Promise<LoopbackCepPanelSession> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (this.#session !== null) return structuredClone(this.#session);
+      const session = this.panelSession;
+      if (session !== null) return session;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     throw new Error("CEP_PANEL_REGISTRATION_TIMEOUT");
@@ -260,6 +268,12 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
     }
     if (!this.options.supportedProtocolVersions.includes(request.protocolVersion)) {
       throw new Error(`CEP_BROKER_PROTOCOL_UNAVAILABLE: ${request.protocolVersion}`);
+    }
+    if (this.#session !== null && this.#isSessionStale(this.#session)) {
+      const ageMs = Math.max(0, Date.now() - Date.parse(this.#session.lastSeenAt));
+      throw new Error(
+        `CEP_PANEL_STALE: ${this.#session.sessionId} ageMs=${ageMs} thresholdMs=${this.options.panelStaleAfterMs}`,
+      );
     }
     if (this.#session !== null && !this.#session.supportedProtocolVersions.includes(request.protocolVersion)) {
       throw new Error(`CEP_BROKER_PROTOCOL_UNAVAILABLE: ${request.protocolVersion}`);
@@ -310,6 +324,20 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
   #touchSession(): void {
     if (this.#session === null) return;
     this.#session = { ...this.#session, lastSeenAt: nowIso() };
+  }
+
+  #hasActiveLease(sessionId: string): boolean {
+    for (const pending of this.#pending.values()) {
+      if (pending.leasedAt !== null && pending.leasedSessionId === sessionId) return true;
+    }
+    return false;
+  }
+
+  #isSessionStale(session: LoopbackCepPanelSession): boolean {
+    if (this.#hasActiveLease(session.sessionId)) return false;
+    const lastSeenMs = Date.parse(session.lastSeenAt);
+    if (!Number.isFinite(lastSeenMs)) return true;
+    return Date.now() - lastSeenMs >= this.options.panelStaleAfterMs;
   }
 
   #nextLeasable(session: LoopbackCepPanelSession): PendingCommand | null {
@@ -438,12 +466,13 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
       }
 
       if (req.method === "GET" && url.pathname === "/v1/status") {
+        const session = this.panelSession;
         jsonResponse(res, 200, {
-          protocolVersion: this.#session?.protocolVersion ?? null,
+          protocolVersion: session?.protocolVersion ?? null,
           supportedProtocolVersions: this.options.supportedProtocolVersions,
-          panelConnected: this.#session !== null,
+          panelConnected: session !== null,
           pendingCommands: this.#pending.size,
-          session: this.#session,
+          session,
         });
         return;
       }

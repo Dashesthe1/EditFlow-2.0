@@ -130,6 +130,12 @@ const BUILTIN_RULES: readonly BuiltinRule[] = [
     avoidRepeat: "Do not restart After Effects for this signature; reopen/reconnect only the EditFlow CEP bridge unless After Effects itself is demonstrably unhealthy.",
   },
   {
+    domain: "CEP", code: "CEP_PANEL_STALE", confidence: 0.995, action: "APPLY_KNOWN_FIX",
+    test: (text) => text.includes("cep_panel_stale"),
+    resolution: "Keep the current After Effects process and project. Reopen or reconnect only the EditFlow CEP bridge, verify its last-seen heartbeat advances, then retry one state read.",
+    avoidRepeat: "Do not wait through repeated command timeouts or restart After Effects for a stale panel session; reconnect the bridge once and verify freshness first.",
+  },
+  {
     domain: "CEP", code: "CEP_HOST_PROBE_CALLBACK_STALL", confidence: 0.99, action: "APPLY_KNOWN_FIX",
     test: (text) => text.includes("cep_command_timeout: host.probe"),
     resolution: "Do not keep retrying the same CEP session. Recycle only the current Shadow control daemon and MCP gateway, reopen the fixed EditFlow bridge panel into the already-running After Effects process, then perform one state read to verify recovery.",
