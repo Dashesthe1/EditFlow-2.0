@@ -49,18 +49,18 @@ export const TUTORIAL_001_TRANSFER_PROFILE = Object.freeze({
     zoomTemporalPhase: 0.5,
   }),
   visual: Object.freeze({
-    timesMs: Object.freeze([2800, 3100, 3200, 3300, 3600]),
+    timesMs: Object.freeze([2400, 3100, 3200, 3300, 4000]),
     rules: Object.freeze({
-      minAnchorToPeakRatio: 0.45,
+      anchorToleranceMs: 150,
       changeThreshold: 12,
       borderWidth: 12,
-      maxBorderNearBlackRatio: 0.001,
+      maxBorderTransparentRatio: 0.001,
       roi: Object.freeze({
         center: Object.freeze([0.35, 0.58]),
         radiusPx: 100,
       }),
       minRoiLumaStd: 15,
-      tailTimesMs: Object.freeze([2800, 3600]),
+      tailTimesMs: Object.freeze([2400, 4000]),
       minAnchorToTailRatio: 1.05,
     }),
   }),

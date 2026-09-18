@@ -78,10 +78,11 @@ test("Tutorial 001 transfer runner reuses the normal semantic compiler and warm 
 });
 
 test("Tutorial 001 transfer proof keeps visual and motion gates bounded", () => {
-  assert.deepEqual(P.visual.timesMs, [2800, 3100, 3200, 3300, 3600]);
-  assert.deepEqual(P.visual.rules.tailTimesMs, [2800, 3600]);
-  assert.ok(P.visual.rules.minAnchorToPeakRatio > 0);
+  assert.deepEqual(P.visual.timesMs, [2400, 3100, 3200, 3300, 4000]);
+  assert.deepEqual(P.visual.rules.tailTimesMs, [2400, 4000]);
+  assert.equal(P.visual.rules.anchorToleranceMs, 150);
   assert.ok(P.visual.rules.minAnchorToTailRatio > 1);
+  assert.ok(P.visual.rules.maxBorderTransparentRatio <= 0.001);
   assert.ok(P.motion.rules.minTrendRatio > 1);
   assert.ok(P.motion.rules.maxPlaybackRate <= 2.5);
 });

@@ -116,7 +116,7 @@
   populate(sourceOut, true);
   populate(sourceIn, false);
 
-  var visualTimes = [2800, 3100, 3200, 3300, 3600];
+  var visualTimes = [2400, 3100, 3200, 3300, 4000];
   var visualFiles = saveFrames(target, phase, visualTimes);
   var visual = {
     proof: "M5_TUTORIAL_001_TRANSFER_VISUAL_V1",
