@@ -885,6 +885,53 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       throw new TypeError("appliedOperationCount must be a non-negative integer.");
     }
 
+    const stabilization = this.#stabilizationRecoveryCheckpoint;
+    if (stabilization !== null) {
+      await this.readState();
+      let truth = await readStabilizationTruthCountsV1(
+        this.transport,
+        stabilization,
+        `RECOVERY_${this.#rollbackCounter}_PRE`,
+      );
+      let attempts = 0;
+      const restoredTruth = (): boolean =>
+        truth.trackerKeyCount === stabilization.baseline.trackerKeyCount
+        && truth.anchorKeyCount === stabilization.baseline.anchorKeyCount;
+
+      while (!restoredTruth() && attempts < GUARDED_STABILIZATION_RECOVERY_UNDO_LIMIT_V1) {
+        const revision = await this.#knownHostRevision();
+        const response = await this.client.undoLastAtKnownHostRevision({
+          transactionId: this.transactionId,
+          operationId: `rollback:stabilization:${++this.#rollbackCounter}`,
+          expectedHostProjectRevision: revision,
+        });
+        this.#accept(response);
+        attempts += 1;
+        truth = await readStabilizationTruthCountsV1(
+          this.transport,
+          stabilization,
+          `RECOVERY_${this.#rollbackCounter}_POST`,
+        );
+      }
+      if (!restoredTruth()) {
+        throw new Error(
+          `STABILIZATION_RECOVERY_EXHAUSTED: semantic tracker/Anchor Point truth did not return to baseline after ${attempts} bounded undo attempts.`,
+        );
+      }
+      this.#stabilizationRecoveryCheckpoint = null;
+      const restored = await this.readState();
+      if (
+        restored.projectId !== snapshot.projectId
+        || restored.projectFingerprint !== snapshot.projectFingerprint
+        || restored.environmentFingerprint !== snapshot.environmentFingerprint
+      ) {
+        throw new Error(
+          "Guarded stabilization recovery restored semantic tracking truth but not the pre-group project structure/environment.",
+        );
+      }
+      return;
+    }
+
     for (let index = 0; index < appliedOperationCount; index += 1) {
       const revision = await this.#knownHostRevision();
       const response = await this.client.undoLastAtKnownHostRevision({
