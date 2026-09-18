@@ -385,8 +385,15 @@ export const readStabilizationTruthCountsV1 = async (
   transport: AeStabilizationTransportV23,
   input: { readonly compHostId: number; readonly layerHostId: number },
   suffix: string,
-): Promise<StabilizationTruthCountsV1> =>
-  stabilizationTruthCountsV1(await readTruth(transport, input, suffix));
+): Promise<StabilizationTruthCountsV1> => {
+  const truth = await readTruth(transport, input, suffix);
+  if (truth === null
+    || truth.comp.hostId !== input.compHostId
+    || truth.layer.hostId !== input.layerHostId) {
+    return { trackerKeyCount: -1, anchorKeyCount: -1 };
+  }
+  return stabilizationTruthCountsV1(truth);
+};
 
 export class GuardedStabilizationControllerV1 {
   readonly transport: AeStabilizationTransportV23;
