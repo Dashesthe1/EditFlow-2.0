@@ -13,6 +13,7 @@ import type { VirtualAeOperationV1 } from "../../virtual-ae/src/index.js";
 import { AE_ADAPTER_ROUTE_ID_V11 } from "../../adapters/ae-cep/src/protocol-v1_1.js";
 import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../../adapters/ae-cep/src/protocol-v1_7.js";
 import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../../adapters/ae-cep/src/protocol-v1_8.js";
+import { AE_MARKER_MOTION_ROUTE_ID_V20 } from "../../adapters/ae-cep/src/protocol-v2_0.js";
 import { AE_TIME_REMAP_ROUTE_ID_V27 } from "../../adapters/ae-cep/src/protocol-v2_7.js";
 import {
   NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
@@ -408,6 +409,40 @@ const hasSetProperty = (
   && operation.layerId === layerId
   && operation.propertyPath === propertyPath);
 
+const nativeTransformField = (propertyPath: string): string | null => {
+  if (propertyPath === "Transform.Position") return "position";
+  if (propertyPath === "Transform.Scale") return "scale";
+  if (propertyPath === "Transform.AnchorPoint") return "anchorPoint";
+  if (propertyPath === "Transform.Rotation") return "rotation";
+  if (propertyPath === "Transform.Opacity") return "opacity";
+  return null;
+};
+
+const validateStaticTransformValue = (propertyPath: string, value: unknown): void => {
+  if (propertyPath === "Transform.Position" || propertyPath === "Transform.AnchorPoint") {
+    if (!finiteVector(value)) {
+      throw new NativeAeRecipeLoweringError("INVALID_STATIC_TRANSFORM",
+        `${propertyPath} requires a finite 2D/3D vector.`);
+    }
+    return;
+  }
+  if (propertyPath === "Transform.Scale") {
+    if (!finiteVector(value)) {
+      throw new NativeAeRecipeLoweringError("INVALID_STATIC_TRANSFORM",
+        "Transform.Scale requires a finite 2D/3D percentage vector.");
+    }
+    return;
+  }
+  if (!finite(value)) {
+    throw new NativeAeRecipeLoweringError("INVALID_STATIC_TRANSFORM",
+      `${propertyPath} requires a finite number.`);
+  }
+  if (propertyPath === "Transform.Opacity" && (value < 0 || value > 100)) {
+    throw new NativeAeRecipeLoweringError("INVALID_STATIC_TRANSFORM",
+      "Transform.Opacity must stay within [0, 100].");
+  }
+};
+
 const layerOrder = (operations: readonly VirtualAeOperationV1[]): readonly string[] => {
   const ordered: string[] = [];
   for (const operation of operations) {
@@ -486,6 +521,53 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       },
       "R2_STRUCTURAL",
     );
+  }
+
+  for (const operation of compiled.operations) {
+    if (operation.type === "SET_PROPERTY") {
+      const transformField = nativeTransformField(operation.propertyPath);
+      if (transformField !== null) {
+        validateStaticTransformValue(operation.propertyPath, operation.value);
+        emit(
+          "ae.layer.transform.set",
+          AE_ADAPTER_ROUTE_ID_V11,
+          "layer.set_transform",
+          {
+            comp: { stableId: operation.compId },
+            layer: { stableId: operation.layerId },
+            values: { [transformField]: structuredClone(operation.value) },
+          },
+          "R1_REVERSIBLE",
+        );
+      }
+      continue;
+    }
+    if (operation.type === "SET_COMP_MOTION") {
+      emit(
+        "ae.comp.motion.set",
+        AE_MARKER_MOTION_ROUTE_ID_V20,
+        "comp.motion.set",
+        {
+          comp: { stableId: operation.compId },
+          state: structuredClone(operation.state),
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_LAYER_MOTION") {
+      emit(
+        "ae.layer.motion.set",
+        AE_MARKER_MOTION_ROUTE_ID_V20,
+        "layer.motion.set",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          state: structuredClone(operation.state),
+        },
+        "R1_REVERSIBLE",
+      );
+    }
   }
 
   type EmittedCurve = Readonly<{
@@ -671,9 +753,15 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     "TimeRemap.Interpolation",
     "TimeRemap.TemporalEase",
     "Transform.CameraPush.Policy",
+    "Transform.Position",
+    "Transform.Scale",
+    "Transform.AnchorPoint",
+    "Transform.Rotation",
+    "Transform.Opacity",
   ]);
   for (const operation of compiled.operations) {
-    if (operation.type === "PRECOMPOSE" || operation.type === "ADD_KEYFRAME") continue;
+    if (operation.type === "PRECOMPOSE" || operation.type === "ADD_KEYFRAME"
+      || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION") continue;
     if (operation.type === "SET_PROPERTY" && supportedSetPaths.has(operation.propertyPath)) continue;
     throw new NativeAeRecipeLoweringError(
       "UNSUPPORTED_NATIVE_OPERATION",

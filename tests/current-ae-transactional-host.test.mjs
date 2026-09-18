@@ -15,6 +15,9 @@ import {
   AE_TEMPORAL_EASE_ROUTE_ID_V18,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
 import {
+  AE_MARKER_MOTION_ROUTE_ID_V20,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
 import {
@@ -726,4 +729,53 @@ test("live adaptive ease authors legal boundary state and reuses one cardinality
   }
   assert.ok(easeSets[0].payload.ease.outEase[0].speed > 0);
   assert.ok(easeSets[1].payload.ease.inEase[0].speed > 0);
+});
+
+test("current AE host dispatches retained M3 motion controls with revision sequencing", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-current-motion",
+    () => `req-motion-${++requestCounter}`,
+  );
+
+  await host.readState();
+  await host.apply(operation({
+    id: "OP_COMP_MOTION",
+    capabilityId: "ae.comp.motion.set",
+    routeId: AE_MARKER_MOTION_ROUTE_ID_V20,
+    command: "comp.motion.set",
+    payload: {
+      comp: { stableId: "COMP" },
+      state: {
+        motionBlur: true,
+        frameBlending: true,
+        shutterAngle: 180,
+        shutterPhase: -90,
+        samplesPerFrame: 16,
+        adaptiveSampleLimit: 128,
+      },
+    },
+  }));
+  await host.apply(operation({
+    id: "OP_LAYER_MOTION",
+    capabilityId: "ae.layer.motion.set",
+    routeId: AE_MARKER_MOTION_ROUTE_ID_V20,
+    command: "layer.motion.set",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      state: { motionBlur: true, frameBlendingType: "FRAME_MIX" },
+    },
+  }));
+
+  const writes = transport.requests.filter((request) =>
+    request.command === "comp.motion.set" || request.command === "layer.motion.set");
+  assert.deepEqual(writes.map((request) => request.command), [
+    "comp.motion.set",
+    "layer.motion.set",
+  ]);
+  assert.deepEqual(writes.map((request) => request.expectedHostProjectRevision), [20, 21]);
 });

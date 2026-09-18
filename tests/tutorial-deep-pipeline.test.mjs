@@ -135,7 +135,7 @@ const registryWith = (record = capability()) => {
   return registry;
 };
 
-test("deep upload pipeline preserves provenance and compiles the complete tutorial intelligence path", async () => {
+test("deep upload pipeline preserves provenance and reports compiler readiness separately from AE access", async () => {
   const analyzer = { analyze: async () => packet() };
   const result = await learnDeepFromTutorialUploadV1(
     upload(),
@@ -149,7 +149,8 @@ test("deep upload pipeline preserves provenance and compiles the complete tutori
   assert.equal(result.lesson.skills[0].editingIr.nodes[0].kind, "TRANSFORM_ANIMATION");
   assert.equal(result.capabilityReport.summary.ready, 1);
   assert.deepEqual(result.blockingCapabilityIds, []);
-  assert.equal(result.readyForReconstruction, true);
+  assert.deepEqual(result.compilerBlockedPrimitiveKinds, ["TRANSFORM_ANIMATION"]);
+  assert.equal(result.readyForReconstruction, false);
   assert.equal(result.targetState, "TRANSFER_VERIFIED");
   const l2 = result.proofPlans[0].stages.find((stage) => stage.level === 2);
   const l6 = result.proofPlans[0].stages.find((stage) => stage.level === 6);
@@ -167,6 +168,7 @@ test("deep upload pipeline surfaces capability blockers before reconstruction", 
   );
   assert.equal(result.readyForReconstruction, false);
   assert.deepEqual(result.blockingCapabilityIds, ["ae.layer.transform.set"]);
+  assert.deepEqual(result.compilerBlockedPrimitiveKinds, ["TRANSFORM_ANIMATION"]);
   assert.equal(result.capabilityReport.findings[0].state, "UNREGISTERED");
 });
 
