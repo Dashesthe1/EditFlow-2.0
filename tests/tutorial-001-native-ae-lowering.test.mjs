@@ -214,6 +214,22 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
     ["layers.precompose", "layers.precompose"],
   );
 
+  const replacementLayerIds = plan.operations
+    .slice(0, 2)
+    .map((operation) => operation.input.payload.replacementStableId);
+  assert.equal(new Set(replacementLayerIds).size, 2);
+  assert.ok(replacementLayerIds.every((layerId) => typeof layerId === "string"));
+
+  const postPrecomposeLayerIds = plan.operations
+    .slice(2)
+    .map((operation) => operation.input.payload.layer?.stableId)
+    .filter((layerId) => typeof layerId === "string");
+  assert.ok(postPrecomposeLayerIds.length > 0);
+  assert.ok(postPrecomposeLayerIds.every((layerId) =>
+    replacementLayerIds.includes(layerId)));
+  assert.ok(!postPrecomposeLayerIds.includes("layer.outgoing"));
+  assert.ok(!postPrecomposeLayerIds.includes("layer.incoming"));
+
   const routeCounts = new Map();
   for (const operation of plan.operations) {
     routeCounts.set(
