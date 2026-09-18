@@ -1,0 +1,23 @@
+{
+  "proof": "M3_TEMPORAL_EASE_BOUNDARY_LIVE_V1",
+  "sourceCommit": "1fa369da5936e9bc9ca3bdc64a52c8589fc024f5",
+  "startedAt": "2026-09-18T05:07:55.422Z",
+  "before": {
+    "projectId": "shadow-current-project",
+    "projectRevision": "ae-revision:2020",
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34"
+  },
+  "execution": {
+    "state": "COMMITTED",
+    "appliedOperations": 9,
+    "planHash": "plan:sha256:a4140c7d35c648f835845a15e33a3a5fa6b0809fab8b1d1a7deee4b1248028f3"
+  },
+  "finishedAt": "2026-09-18T05:07:58.537Z",
+  "cleanup": {
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "fingerprintRestored": true,
+    "itemCountRestored": true
+  }
+}
