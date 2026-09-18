@@ -224,6 +224,10 @@ class StatefulMixedProtocolTransport {
         hostProjectRevision: this.project.hostRevision,
       });
     }
+    if (request.command === "effect.add") {
+      const response = this.applyMutation(request);
+      return { ...response, readback: { propertyIndex: 3, matchName: request.payload.matchName } };
+    }
     return this.applyMutation(request);
   }
 }
@@ -778,4 +782,72 @@ test("current AE host dispatches retained M3 motion controls with revision seque
     "layer.motion.set",
   ]);
   assert.deepEqual(writes.map((request) => request.expectedHostProjectRevision), [20, 21]);
+});
+
+test("current AE host resolves semantic effect binding ids to runtime effect indexes", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-current-effect-binding",
+    () => `req-effect-${++requestCounter}`,
+  );
+
+  await host.readState();
+  await host.apply(operation({
+    id: "OP_EFFECT_ADD",
+    capabilityId: "ae.effect.add",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "effect.add",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      matchName: "ADBE Tile",
+      effectBindingId: "effect.motion-tile",
+    },
+  }));
+  await host.apply(operation({
+    id: "OP_EFFECT_SET",
+    capabilityId: "ae.effect.property.set",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "effect.set_property",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      effectBindingId: "effect.motion-tile",
+      propertyPath: ["ADBE Tile-0006"],
+      value: true,
+    },
+  }));
+
+  const addRequest = transport.requests.find((request) =>
+    request.command === "effect.add");
+  const setRequest = transport.requests.find((request) =>
+    request.command === "effect.set_property");
+  assert.equal(addRequest.payload.effectBindingId, undefined);
+  assert.equal(setRequest.payload.effectBindingId, undefined);
+  assert.equal(setRequest.payload.effectIndex, 3);
+  assert.deepEqual(setRequest.payload.propertyPath, ["ADBE Tile-0006"]);
+  assert.deepEqual(
+    [addRequest.expectedHostProjectRevision, setRequest.expectedHostProjectRevision],
+    [20, 21],
+  );
+
+  await assert.rejects(
+    host.apply(operation({
+      id: "OP_EFFECT_SET_UNBOUND",
+      capabilityId: "ae.effect.property.set",
+      routeId: AE_ADAPTER_ROUTE_ID_V11,
+      command: "effect.set_property",
+      payload: {
+        comp: { stableId: "COMP" },
+        layer: { stableId: "LAYER" },
+        effectBindingId: "effect.unknown",
+        propertyPath: ["ADBE Tile-0006"],
+        value: false,
+      },
+    })),
+    /No runtime effect index is bound/,
+  );
 });

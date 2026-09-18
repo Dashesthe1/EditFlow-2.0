@@ -292,6 +292,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   #temporalEaseCardinalityByTarget = new Map<string, number>();
   #materializedCurveByTarget = new Map<string, NativeAeMaterializedCurveV1>();
   #cameraBaselineByLayer = new Map<string, NativeAeCameraPushBaselineV1>();
+  #effectIndexByBindingId = new Map<string, number>();
 
   constructor(
     transport: CurrentAeCepTransactionalTransportV1,
@@ -314,6 +315,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     this.#temporalEaseCardinalityByTarget.clear();
     this.#materializedCurveByTarget.clear();
     this.#cameraBaselineByLayer.clear();
+    this.#effectIndexByBindingId.clear();
     return structuredClone(observed.observed);
   }
 
@@ -346,6 +348,9 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       ) {
         this.#materializedCurveByTarget.clear();
         this.#cameraBaselineByLayer.clear();
+      }
+      if (command === "effect.remove" || command === "layer.remove" || command === "comp.remove") {
+        this.#effectIndexByBindingId.clear();
       }
     }
     return responseResult(response);
@@ -565,9 +570,37 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         capabilityForCommandV11(parsed.command),
         AE_ADAPTER_ROUTE_ID_V11,
       );
-      const payload = parsed.command === "property.set_keyframes"
+      let payload = parsed.command === "property.set_keyframes"
         ? await this.#materializeLiveCurvePayload(operation, parsed, revision)
         : parsed.payload;
+      let effectBindingId: string | null = null;
+      if (parsed.command === "effect.add" || parsed.command === "effect.set_property") {
+        const candidate = payload["effectBindingId"];
+        if (candidate !== undefined
+          && (typeof candidate !== "string" || candidate.trim().length === 0)) {
+          throw new TypeError("effectBindingId must be a non-empty string when provided.");
+        }
+        effectBindingId = typeof candidate === "string" ? candidate : null;
+        if (effectBindingId !== null) {
+          const materialized = structuredClone(payload) as Record<string, unknown>;
+          delete materialized["effectBindingId"];
+          if (parsed.command === "effect.set_property") {
+            if (materialized["effectIndex"] !== undefined) {
+              throw new TypeError(
+                "effect.set_property cannot provide both effectIndex and effectBindingId.",
+              );
+            }
+            const effectIndex = this.#effectIndexByBindingId.get(effectBindingId);
+            if (effectIndex === undefined) {
+              throw new TypeError(
+                `No runtime effect index is bound for effectBindingId '${effectBindingId}'.`,
+              );
+            }
+            materialized["effectIndex"] = effectIndex;
+          }
+          payload = materialized;
+        }
+      }
       const response = await this.client.executePublicAtKnownHostRevision(
         parsed.command,
         {
@@ -579,6 +612,14 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           readbackProfile: parsed.readbackProfile,
         },
       );
+      if (parsed.command === "effect.add" && effectBindingId !== null
+        && (response.outcome === "APPLIED" || response.outcome === "NO_OP")) {
+        const effectIndex = response.readback?.["propertyIndex"];
+        if (!Number.isInteger(effectIndex) || Number(effectIndex) < 1) {
+          throw new Error("effect.add did not return a valid runtime propertyIndex.");
+        }
+        this.#effectIndexByBindingId.set(effectBindingId, Number(effectIndex));
+      }
       return this.#accept(response, parsed.command);
     }
 

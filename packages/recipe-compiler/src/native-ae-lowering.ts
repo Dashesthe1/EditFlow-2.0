@@ -524,6 +524,43 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   }
 
   for (const operation of compiled.operations) {
+    if (operation.type === "ADD_EFFECT") {
+      emit(
+        "ae.effect.add",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "effect.add",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          matchName: operation.matchName,
+          effectBindingId: operation.effectId,
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_EFFECT_PROPERTY") {
+      if (!Array.isArray(operation.propertyPath) || operation.propertyPath.length === 0) {
+        throw new NativeAeRecipeLoweringError(
+          "NATIVE_EFFECT_PATH_REQUIRED",
+          "Native effect property lowering requires a non-empty stable property path array.",
+        );
+      }
+      emit(
+        "ae.effect.property.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "effect.set_property",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          effectBindingId: operation.effectId,
+          propertyPath: [...operation.propertyPath],
+          value: structuredClone(operation.value),
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
     if (operation.type === "SET_PROPERTY") {
       const transformField = nativeTransformField(operation.propertyPath);
       if (transformField !== null) {
@@ -761,7 +798,8 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   ]);
   for (const operation of compiled.operations) {
     if (operation.type === "PRECOMPOSE" || operation.type === "ADD_KEYFRAME"
-      || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION") continue;
+      || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION"
+      || operation.type === "ADD_EFFECT" || operation.type === "SET_EFFECT_PROPERTY") continue;
     if (operation.type === "SET_PROPERTY" && supportedSetPaths.has(operation.propertyPath)) continue;
     throw new NativeAeRecipeLoweringError(
       "UNSUPPORTED_NATIVE_OPERATION",

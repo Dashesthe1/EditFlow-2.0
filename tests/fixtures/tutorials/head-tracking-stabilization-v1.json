@@ -198,48 +198,44 @@
             ],
             "parameters": [
               {
-                "name": "effectMatchName",
-                "intent": "Select the native Motion Tile implementation without relying on localized display text.",
+                "name": "effectSchemaRef",
+                "intent": "Bind the native Motion Tile effect through a certified, versioned effect schema rather than tutorial-specific property indexes.",
                 "derivedFrom": [
-                  "installedEffectCatalog"
+                  "effectSchemaRegistry"
                 ],
-                "value": "ADBE Tile"
+                "value": "ae.effect-schema.motion-tile.v1"
+              },
+              {
+                "name": "outputWidth",
+                "intent": "Expand horizontal Motion Tile output only enough to cover measured stabilization border exposure.",
+                "derivedFrom": [
+                  "maxStabilizationOffsetX",
+                  "sourceDimensions",
+                  "aspectRatio",
+                  "cropHeadroom",
+                  "edgeObjectSalience"
+                ]
+              },
+              {
+                "name": "outputHeight",
+                "intent": "Expand vertical Motion Tile output only enough to cover measured stabilization border exposure.",
+                "derivedFrom": [
+                  "maxStabilizationOffsetY",
+                  "sourceDimensions",
+                  "aspectRatio",
+                  "cropHeadroom",
+                  "edgeObjectSalience"
+                ]
               },
               {
                 "name": "mirrorEdges",
-                "intent": "Mirror boundary pixels instead of exposing transparent/black borders.",
+                "intent": "Mirror boundary pixels instead of exposing transparent or black borders when edge content can tolerate reflection.",
                 "derivedFrom": [
                   "borderExposureRisk",
-                  "edgeContent"
+                  "edgeContent",
+                  "edgeArtifactTolerance"
                 ],
                 "value": true
-              },
-              {
-                "name": "outputExpansion",
-                "intent": "Expand tile output only enough to cover compensation amplitude.",
-                "derivedFrom": [
-                  "maxStabilizationOffset",
-                  "sourceDimensions",
-                  "aspectRatio",
-                  "cropHeadroom"
-                ],
-                "normalizedRange": {
-                  "min": 0,
-                  "max": 1
-                }
-              },
-              {
-                "name": "edgeArtifactTolerance",
-                "intent": "Limit expansion when mirrored duplicates become perceptually obvious.",
-                "derivedFrom": [
-                  "edgeObjectSalience",
-                  "edgeTexture",
-                  "visualReview"
-                ],
-                "normalizedRange": {
-                  "min": 0,
-                  "max": 1
-                }
               }
             ],
             "target": {
