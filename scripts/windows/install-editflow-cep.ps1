@@ -64,6 +64,8 @@ $HostFiles = @(
   "editflow_host_render_jobs.jsx",
   "editflow_host_render_async.jsx",
   "editflow_host_render_output_path.jsx",
+  "editflow_host_m4_tracking_render_support.jsx",
+  "editflow_host_m4_tracking_render.jsx",
   "editflow_host_m3_masks.jsx",
   "editflow_host_m3_composite.jsx",
   "editflow_host_m3_parenting.jsx",
@@ -85,7 +87,8 @@ $HostFiles = @(
   "editflow_host_current_v17.jsx",
   "editflow_host_current_v18.jsx",
   "editflow_host_current_v19.jsx",
-  "editflow_host_current_v20.jsx"
+  "editflow_host_current_v20.jsx",
+  "editflow_host_current_m4.jsx"
 )
 foreach ($FileName in $HostFiles) {
   $Source = Join-Path $HostSourceRoot $FileName
@@ -96,7 +99,8 @@ foreach ($FileName in $HostFiles) {
 # The checked-in CEP template remains a compatibility-safe source artifact. Promote
 # the installed panel directly from that known template to the transfer-accepted 2.0
 # host only after all required host files have copied successfully. Guard every
-# replacement so source drift fails closed.
+# replacement so source drift fails closed. M4 then wraps that accepted loader without
+# changing the advertised protocol set.
 $BridgePath = Join-Path $TargetRoot "client\bridge.js"
 $BridgeText = [System.IO.File]::ReadAllText($BridgePath)
 $KnownTemplate = 'var KNOWN_PROTOCOLS = ["1.8.0","1.7.0","1.6.0","1.5.0","1.4.0","1.3.0","1.2.0","1.1.0"];'
@@ -106,6 +110,7 @@ if (-not $BridgeText.Contains('editflow_host_current_v18.jsx')) { throw "CEP bri
 if (-not $BridgeText.Contains('EditFlow2_HOST_PROTOCOL_18')) { throw "CEP bridge host-flag token drifted; refusing unverified protocol 2.0 promotion." }
 $BridgeText = $BridgeText.Replace($KnownTemplate, $KnownV20)
 $BridgeText = $BridgeText.Replace('editflow_host_current_v18.jsx', 'editflow_host_current_v20.jsx')
+$BridgeText = $BridgeText.Replace('editflow_host_current_v20.jsx', 'editflow_host_current_m4.jsx')
 $BridgeText = $BridgeText.Replace('EditFlow2_HOST_PROTOCOL_18', 'EditFlow2_HOST_PROTOCOL_20')
 $BridgeText = $BridgeText.Replace('protocol 1.8 host dispatcher', 'protocol 2.0 host dispatcher')
 [System.IO.File]::WriteAllText($BridgePath, $BridgeText, $Utf8NoBom)

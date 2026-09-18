@@ -88,6 +88,8 @@ Exit gate: construct and transfer an object/mask-driven transition whose geometr
 - segmentation -> mask/matte export;
 - manual repair/resume model.
 
+Active status: point tracking has a deterministic local core, trusted semantic readback, dependency-free BMP/TIFF frame decoders, and an additive allow-listed `TRACKING_TIFF_SEQUENCE_V1` route over typed authenticated `render.capture`. A bounded warm-AE acceptance harness now covers real TIFF capture, manifest validation, decoding, tracking, project-state invariants, and Render Queue cleanup. Repository CI is green and direct AE-rendered TIFF pixels have been tracked successfully; the formal authenticated self-hosted AE acceptance artifact is still pending, so `ae.tracking.point` remains fail-closed and unavailable to production planning.
+
 Exit gate: track/isolate a moving real-world object, attach a visible construction, repair drift, and transfer to unrelated footage.
 
 ## Milestone 5 — Interactive AE Adapters (`0.6.0-dev`)
