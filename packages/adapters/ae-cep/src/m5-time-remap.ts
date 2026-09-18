@@ -3,6 +3,7 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
+import { applyM5TimeRemapAcceptedStructuralEvidence } from "./m5-time-remap-proof-maturity.js";
 import {
   AE_TIME_REMAP_ADAPTER_BUILD_V27,
   AE_TIME_REMAP_COMMANDS_V27,
@@ -75,7 +76,7 @@ export class CepEvalScriptTimeRemapTransportV27 {
   }
 }
 
-export const M5_TIME_REMAP_CAPABILITIES_V27: readonly CapabilityRecord[] =
+const M5_TIME_REMAP_DECLARED_CAPABILITIES_V27: readonly CapabilityRecord[] =
   AE_TIME_REMAP_COMMANDS_V27.map((command): CapabilityRecord => ({
     id: asCapabilityId(capabilityForTimeRemapCommandV27(command)),
     domain: "animation",
@@ -106,6 +107,11 @@ export const M5_TIME_REMAP_CAPABILITIES_V27: readonly CapabilityRecord[] =
     riskClass: command === "layer.time_remap.enable" ? "R2_STRUCTURAL" : "R0_READ_ONLY",
     fallbackPolicy: "FORBID",
   }));
+
+export const M5_TIME_REMAP_CAPABILITIES_V27: readonly CapabilityRecord[] =
+  applyM5TimeRemapAcceptedStructuralEvidence(
+    M5_TIME_REMAP_DECLARED_CAPABILITIES_V27,
+  );
 
 export const buildTimeRemapRequestV27 = (input: {
   readonly requestId: string;
