@@ -18,6 +18,8 @@ test("Tutorial 001 sparse visual proof is bounded and uses deterministic proof-o
   assert.match(source, /inLayer\.inPoint = 2\.0/);
   assert.match(source, /addRect\(/);
   assert.match(source, /addRing\(/);
+  assert.match(source, /capturedAtMs: \(new Date\(\)\)\.getTime\(\)/);
+  assert.doesNotMatch(source, /toISOString\s*\(/);
   assert.doesNotMatch(source, /renderQueue\.render\s*\(/);
   assert.doesNotMatch(source, /app\.quit\s*\(/);
 });
