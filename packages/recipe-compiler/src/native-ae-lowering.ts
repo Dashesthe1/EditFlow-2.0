@@ -479,8 +479,19 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     }
   };
 
+  const planCreatedPrecompLayers = new Set(
+    compiled.operations
+      .filter((operation) => operation.type === "PRECOMPOSE")
+      .map((operation) => operation.newLayerId),
+  );
+
   for (const layerId of layerOrder(compiled.operations)) {
-    if (hasSetProperty(compiled.operations, layerId, "TimeRemap.Enabled")) {
+    const enablesTimeRemap = hasSetProperty(
+      compiled.operations,
+      layerId,
+      "TimeRemap.Enabled",
+    );
+    if (enablesTimeRemap) {
       emit(
         "ae.layer.time_remap.enable",
         AE_TIME_REMAP_ROUTE_ID_V27,
@@ -494,6 +505,24 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     }
 
     if (curves.has(curveKey(layerId, "TimeRemap.SourceTime"))) {
+      if (!enablesTimeRemap || !planCreatedPrecompLayers.has(layerId)) {
+        throw new NativeAeRecipeLoweringError(
+          "UNSAFE_TIME_REMAP_KEY_RESET",
+          `Native Time Remap curve lowering for '${layerId}' requires a newly precomposed layer enabled in the same plan before default boundary keys can be reset safely.`,
+        );
+      }
+      emit(
+        "ae.keyframe.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "property.set_keyframes",
+        {
+          comp: { stableId: compiled.compId },
+          layer: { stableId: layerId },
+          propertyPath: ["ADBE Time Remapping"],
+          removeKeyIndices: [2, 1],
+        },
+        "R1_REVERSIBLE",
+      );
       const binding = emitCurve(layerId, "TimeRemap.SourceTime");
       if (hasSetProperty(compiled.operations, layerId, "TimeRemap.Interpolation")
         || hasSetProperty(compiled.operations, layerId, "TimeRemap.TemporalEase")) {

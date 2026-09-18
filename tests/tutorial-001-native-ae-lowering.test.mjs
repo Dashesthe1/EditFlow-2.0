@@ -309,12 +309,13 @@ const lower = (compiled, curveBindings = curveBindingsFor(compiled)) =>
 const findSetKeys = (plan, propertyMatchName) =>
   plan.operations.find((operation) =>
     operation.input.command === "property.set_keyframes"
+    && Array.isArray(operation.input.payload.keyframes)
     && operation.input.payload.propertyPath.at(-1) === propertyMatchName);
 test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async () => {
   const compiled = await compiledAt();
   const plan = lower(compiled);
 
-  assert.equal(plan.operations.length, 46);
+  assert.equal(plan.operations.length, 48);
   assert.deepEqual([...plan.requiredCapabilities].sort(), [
     "ae.keyframe.set",
     "ae.layer.time_remap.enable",
@@ -350,7 +351,7 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
       (routeCounts.get(String(operation.routeId)) ?? 0) + 1,
     );
   }
-  assert.equal(routeCounts.get(AE_ADAPTER_ROUTE_ID_V11), 8);
+  assert.equal(routeCounts.get(AE_ADAPTER_ROUTE_ID_V11), 10);
   assert.equal(routeCounts.get(AE_TIME_REMAP_ROUTE_ID_V27), 2);
   assert.equal(routeCounts.get(AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17), 18);
   assert.equal(routeCounts.get(AE_TEMPORAL_EASE_ROUTE_ID_V18), 18);
@@ -361,14 +362,21 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
   assert.ok(easeOperations.every((operation) =>
     operation.input.payload.ease === undefined
     && operation.input.payload.easeIntent !== undefined));
-  assert.equal(plan.operations.length + easeOperations.length, 64);
+  const easeCardinalityTargets = new Set(easeOperations.map((operation) =>
+    JSON.stringify([
+      operation.input.payload.comp,
+      operation.input.payload.layer,
+      operation.input.payload.propertyPath,
+    ])));
+  assert.equal(easeCardinalityTargets.size, 6);
+  assert.equal(plan.operations.length + easeCardinalityTargets.size, 54);
 
   const frozen = validateAndFreezeExecutionPlan(
     plan,
     observedState,
     registryForTutorial001(),
   );
-  assert.equal(frozen.topologicalOrder.length, 46);
+  assert.equal(frozen.topologicalOrder.length, 48);
   assert.ok(String(frozen.plan.planHash).length > 0);
 
   for (let index = 1; index < plan.operations.length; index += 1) {
@@ -380,8 +388,23 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
   assert.ok(plan.operations.every((operation) =>
     operation.rollbackBoundaryId === plan.rollbackBoundaries[0].id));
 
+  const timeResetOperations = plan.operations.filter((operation) =>
+    operation.input.command === "property.set_keyframes"
+    && operation.input.payload.propertyPath?.at(-1) === "ADBE Time Remapping"
+    && Array.isArray(operation.input.payload.removeKeyIndices));
+  assert.equal(timeResetOperations.length, 2);
+  assert.ok(timeResetOperations.every((operation) =>
+    JSON.stringify(operation.input.payload.removeKeyIndices) === "[2,1]"));
+
   const timeKeys = findSetKeys(plan, "ADBE Time Remapping");
   assert.ok(timeKeys);
+  const firstTimeResetIndex = plan.operations.indexOf(timeResetOperations[0]);
+  const firstTimeSetIndex = plan.operations.indexOf(timeKeys);
+  const firstTimeEnableIndex = plan.operations.findIndex((operation) =>
+    operation.input.command === "layer.time_remap.enable");
+  assert.ok(firstTimeEnableIndex >= 0);
+  assert.ok(firstTimeResetIndex > firstTimeEnableIndex);
+  assert.ok(firstTimeSetIndex > firstTimeResetIndex);
   assert.deepEqual(
     timeKeys.input.payload.keyframes.map((keyframe) => keyframe.time),
     [1.55, 2, 2.45],
@@ -422,9 +445,9 @@ test("Tutorial 001 executes end-to-end through the current mixed-protocol runtim
 
   assert.equal(result.state, "COMMITTED");
   assert.equal(result.recovered, false);
-  assert.equal(result.appliedOperations, 46);
-  assert.equal(transport.mutationCount, 46);
-  assert.equal(runtimeRequests.length, 74);
+  assert.equal(result.appliedOperations, 48);
+  assert.equal(transport.mutationCount, 48);
+  assert.equal(runtimeRequests.length, 64);
   assert.equal(runtimeRequests.filter((request) =>
     request.command === "host.probe").length, 5);
   assert.equal(runtimeRequests.filter((request) =>
@@ -434,7 +457,7 @@ test("Tutorial 001 executes end-to-end through the current mixed-protocol runtim
     request.command === "property.temporal_ease.readback");
   const easeSets = runtimeRequests.filter((request) =>
     request.command === "property.temporal_ease.set");
-  assert.equal(easeReadbacks.length, 18);
+  assert.equal(easeReadbacks.length, 6);
   assert.equal(easeSets.length, 18);
 
   for (const request of easeSets) {
@@ -466,6 +489,22 @@ test("native lowering preserves semantic timing adaptation", async () => {
 test("native lowering fails closed on missing or stale native adaptation evidence", async () => {
   const compiled = await compiledAt();
   const bindings = curveBindingsFor(compiled);
+
+  const unsafeTimeRemap = structuredClone(compiled);
+  unsafeTimeRemap.operations = unsafeTimeRemap.operations.filter((operation) =>
+    operation.type !== "PRECOMPOSE");
+  assert.throws(
+    () => lowerCompiledRecipeToNativeAePlanV1(unsafeTimeRemap, {
+      planId: "tutorial-001-unsafe-time-remap",
+      observedState,
+      curveBindings: bindings,
+    }),
+    (error) => {
+      assert.ok(error instanceof NativeAeRecipeLoweringError);
+      assert.equal(error.code, "UNSAFE_TIME_REMAP_KEY_RESET");
+      return true;
+    },
+  );
 
   assert.throws(
     () => lower(compiled, bindings.slice(1)),

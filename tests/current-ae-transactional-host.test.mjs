@@ -385,3 +385,105 @@ test("current AE host expands temporal-ease intent to live property cardinality"
     { speed: 18, influence: 57 },
   ]);
 });
+
+
+test("current AE host reuses one temporal-ease cardinality probe across keys on the same property", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-ease-cache",
+    () => `req-ease-cache-${++requestCounter}`,
+  );
+  await host.readState();
+
+  const applyEase = async (id, keyIndex) => host.apply(operation({
+    id,
+    capabilityId: "ae.property.temporal_ease.set",
+    routeId: AE_TEMPORAL_EASE_ROUTE_ID_V18,
+    command: "property.temporal_ease.set",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+      keyIndex,
+      easeIntent: {
+        inEase: { speed: 12, influence: 41 },
+        outEase: { speed: 18, influence: 57 },
+      },
+    },
+  }));
+
+  await applyEase("OP_EASE_1", 1);
+  await applyEase("OP_EASE_2", 2);
+  await applyEase("OP_EASE_3", 3);
+
+  const temporalRequests = transport.requests.filter((request) =>
+    request.command.startsWith("property.temporal_ease."));
+  assert.deepEqual(
+    temporalRequests.map((request) => request.command),
+    [
+      "property.temporal_ease.readback",
+      "property.temporal_ease.set",
+      "property.temporal_ease.set",
+      "property.temporal_ease.set",
+    ],
+  );
+});
+
+test("current AE host invalidates temporal-ease cardinality cache after target-changing structure", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-ease-cache-invalidation",
+    () => `req-ease-invalidation-${++requestCounter}`,
+  );
+  await host.readState();
+
+  const easePayload = (keyIndex) => ({
+    comp: { stableId: "COMP" },
+    layer: { stableId: "LAYER" },
+    propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+    keyIndex,
+    easeIntent: {
+      inEase: { speed: 12, influence: 41 },
+      outEase: { speed: 18, influence: 57 },
+    },
+  });
+
+  await host.apply(operation({
+    id: "OP_EASE_BEFORE_STRUCTURE",
+    capabilityId: "ae.property.temporal_ease.set",
+    routeId: AE_TEMPORAL_EASE_ROUTE_ID_V18,
+    command: "property.temporal_ease.set",
+    payload: easePayload(1),
+  }));
+  await host.apply(operation({
+    id: "OP_STRUCTURE_CHANGE",
+    capabilityId: "ae.precompose.layers",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "layers.precompose",
+  }));
+  await host.apply(operation({
+    id: "OP_EASE_AFTER_STRUCTURE",
+    capabilityId: "ae.property.temporal_ease.set",
+    routeId: AE_TEMPORAL_EASE_ROUTE_ID_V18,
+    command: "property.temporal_ease.set",
+    payload: easePayload(2),
+  }));
+
+  const temporalRequests = transport.requests.filter((request) =>
+    request.command.startsWith("property.temporal_ease."));
+  assert.deepEqual(
+    temporalRequests.map((request) => request.command),
+    [
+      "property.temporal_ease.readback",
+      "property.temporal_ease.set",
+      "property.temporal_ease.readback",
+      "property.temporal_ease.set",
+    ],
+  );
+});
