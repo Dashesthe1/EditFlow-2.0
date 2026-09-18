@@ -511,6 +511,10 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
           `Native Time Remap curve lowering for '${layerId}' requires a newly precomposed layer enabled in the same plan before default boundary keys can be reset safely.`,
         );
       }
+      // AE creates two default Time Remap boundary keys when the property is enabled.
+      // Keep those keys present while inserting the semantic curve; removing every
+      // default key first can cause AE to hide the property and reject setValuesAtTimes().
+      const binding = emitCurve(layerId, "TimeRemap.SourceTime");
       emit(
         "ae.keyframe.set",
         AE_ADAPTER_ROUTE_ID_V11,
@@ -519,11 +523,10 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
           comp: { stableId: compiled.compId },
           layer: { stableId: layerId },
           propertyPath: ["ADBE Time Remapping"],
-          removeKeyIndices: [2, 1],
+          removeKeyIndices: [binding.keyframes.length + 2, 1],
         },
         "R1_REVERSIBLE",
       );
-      const binding = emitCurve(layerId, "TimeRemap.SourceTime");
       if (hasSetProperty(compiled.operations, layerId, "TimeRemap.Interpolation")
         || hasSetProperty(compiled.operations, layerId, "TimeRemap.TemporalEase")) {
         emitBezierAndEase(layerId, "TimeRemap.SourceTime", binding);

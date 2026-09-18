@@ -394,7 +394,7 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
     && Array.isArray(operation.input.payload.removeKeyIndices));
   assert.equal(timeResetOperations.length, 2);
   assert.ok(timeResetOperations.every((operation) =>
-    JSON.stringify(operation.input.payload.removeKeyIndices) === "[2,1]"));
+    JSON.stringify(operation.input.payload.removeKeyIndices) === "[5,1]"));
 
   const timeKeys = findSetKeys(plan, "ADBE Time Remapping");
   assert.ok(timeKeys);
@@ -402,9 +402,13 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
   const firstTimeSetIndex = plan.operations.indexOf(timeKeys);
   const firstTimeEnableIndex = plan.operations.findIndex((operation) =>
     operation.input.command === "layer.time_remap.enable");
+  const firstTimeInterpolationIndex = plan.operations.findIndex((operation) =>
+    operation.input.command === "property.temporal_interpolation.set"
+    && operation.input.payload.propertyPath?.at(-1) === "ADBE Time Remapping");
   assert.ok(firstTimeEnableIndex >= 0);
-  assert.ok(firstTimeResetIndex > firstTimeEnableIndex);
-  assert.ok(firstTimeSetIndex > firstTimeResetIndex);
+  assert.ok(firstTimeSetIndex > firstTimeEnableIndex);
+  assert.ok(firstTimeResetIndex > firstTimeSetIndex);
+  assert.ok(firstTimeInterpolationIndex > firstTimeResetIndex);
   assert.deepEqual(
     timeKeys.input.payload.keyframes.map((keyframe) => keyframe.time),
     [1.55, 2, 2.45],
