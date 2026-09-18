@@ -481,6 +481,8 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
         replacementStableId: operation.newLayerId,
         name: operation.newCompName,
         moveAllAttributes: true,
+        preserveSingleLayerTiming: operation.layerIds.length === 1,
+        sourceHandlePolicy: operation.sourceHandlePolicy ?? "PRESERVE_TRIM",
       },
       "R2_STRUCTURAL",
     );

@@ -119,10 +119,12 @@ test("Tutorial 001 compiles into a valid Virtual AE transition structure", async
     context(),
   );
 
-  assert.equal(
-    compiled.operations.filter((operation) => operation.type === "PRECOMPOSE").length,
-    2,
+  const precomposeOperations = compiled.operations.filter(
+    (operation) => operation.type === "PRECOMPOSE",
   );
+  assert.equal(precomposeOperations.length, 2);
+  assert.ok(precomposeOperations.every((operation) =>
+    operation.sourceHandlePolicy === "EXPOSE_AVAILABLE_SOURCE"));
   assert.deepEqual(compiled.skippedOptionalNodeIds, []);
 
   const simulation = simulateVirtualAeV1(project(), compiled.operations);

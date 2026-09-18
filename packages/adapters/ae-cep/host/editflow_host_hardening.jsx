@@ -60,6 +60,58 @@
     }
     return null;
   }
+  function findLayer(comp, ref) {
+    var i, layer;
+    for (i = 1; i <= comp.numLayers; i += 1) {
+      layer = comp.layer(i);
+      if (ref && ref.stableId && getStableId(layer.comment) === ref.stableId) return layer;
+      if (ref && typeof ref.hostId === "number" && hostId(layer) === ref.hostId) return layer;
+    }
+    throw new Error("v1.1 could not resolve layer.");
+  }
+  function timingSnapshot(layer) {
+    return {
+      startTime: layer.startTime,
+      inPoint: layer.inPoint,
+      outPoint: layer.outPoint,
+      stretch: layer.stretch
+    };
+  }
+  function restoreTiming(layer, timing) {
+    layer.stretch = timing.stretch;
+    layer.startTime = timing.startTime;
+    layer.inPoint = timing.inPoint;
+    layer.outPoint = timing.outPoint;
+  }
+  function availableLinearSourceWindow(layer, comp) {
+    if (layer.timeRemapEnabled === true) {
+      throw new Error("EXPOSE_AVAILABLE_SOURCE does not yet support pre-existing Time Remap.");
+    }
+    if (!(layer.stretch > 0)) {
+      throw new Error("EXPOSE_AVAILABLE_SOURCE currently requires positive layer stretch.");
+    }
+    var source = null;
+    try { source = layer.source || null; } catch (_) {}
+    var duration = source ? Number(source.duration) : NaN;
+    if (!isFinite(duration) || duration <= 0) {
+      throw new Error("EXPOSE_AVAILABLE_SOURCE requires a finite positive source duration.");
+    }
+    var windowIn = Math.max(0, layer.startTime);
+    var windowOut = Math.min(comp.duration, layer.startTime + duration * (layer.stretch / 100));
+    if (!(windowOut > windowIn)) {
+      throw new Error("EXPOSE_AVAILABLE_SOURCE resolved an empty source-handle window.");
+    }
+    return { inPoint: windowIn, outPoint: windowOut };
+  }
+  function exposeAvailableSourceWindow(child, window) {
+    if (!child || !(child instanceof CompItem) || child.numLayers !== 1) {
+      throw new Error("EXPOSE_AVAILABLE_SOURCE requires a single-layer precomp child.");
+    }
+    var inner = child.layer(1);
+    inner.inPoint = window.inPoint;
+    inner.outPoint = window.outPoint;
+    return inner;
+  }
   function layerSnapshot(layer) {
     var source = null;
     try { source = layer.source || null; } catch (_) {}
@@ -168,6 +220,39 @@
         return JSON.stringify(failResponse(request, "REPLACEMENT_STABLE_ID_REQUIRED", "Protocol 1.1 precompose requires replacementStableId."));
       }
 
+      var preservedPrecomposeTiming = null;
+      var precomposeSourceHandleWindow = null;
+      if (request.command === "layers.precompose") {
+        var sourceHandlePolicy = request.payload.sourceHandlePolicy || "PRESERVE_TRIM";
+        if (sourceHandlePolicy !== "PRESERVE_TRIM" && sourceHandlePolicy !== "EXPOSE_AVAILABLE_SOURCE") {
+          return JSON.stringify(failResponse(
+            request,
+            "PRECOMPOSE_SOURCE_HANDLE_POLICY_INVALID",
+            "Unsupported precompose sourceHandlePolicy."
+          ));
+        }
+        var requiresSingleLayer = request.payload.preserveSingleLayerTiming === true
+          || sourceHandlePolicy === "EXPOSE_AVAILABLE_SOURCE";
+        if (requiresSingleLayer
+            && (!(request.payload.layers instanceof Array) || request.payload.layers.length !== 1)) {
+          return JSON.stringify(failResponse(
+            request,
+            "PRECOMPOSE_TIMING_REQUIRES_SINGLE_LAYER",
+            "Precompose timing/handle preservation requires exactly one source layer."
+          ));
+        }
+        if (requiresSingleLayer) {
+          var timingParent = findComp(request.payload.comp);
+          var sourceLayer = findLayer(timingParent, request.payload.layers[0]);
+          if (request.payload.preserveSingleLayerTiming === true) {
+            preservedPrecomposeTiming = timingSnapshot(sourceLayer);
+          }
+          if (sourceHandlePolicy === "EXPOSE_AVAILABLE_SOURCE") {
+            precomposeSourceHandleWindow = availableLinearSourceWindow(sourceLayer, timingParent);
+          }
+        }
+      }
+
       var legacyRequest = JSON.parse(JSON.stringify(request));
       legacyRequest.protocolVersion = LEGACY_PROTOCOL;
       var legacyRaw = legacyDispatch(JSON.stringify(legacyRequest));
@@ -180,6 +265,19 @@
         var replacement = findLayerBySource(parent, child);
         if (!replacement) throw new Error("v1.1 precompose replacement layer could not be resolved by child source identity.");
         setStableId(replacement, request.payload.replacementStableId);
+        if (preservedPrecomposeTiming !== null) {
+          restoreTiming(replacement, preservedPrecomposeTiming);
+          response.diagnostics = response.diagnostics || { notes: [] };
+          response.diagnostics.notes = response.diagnostics.notes || [];
+          response.diagnostics.notes.push("Preserved single-layer timing across precompose.");
+        }
+        var exposedSourceLayer = null;
+        if (precomposeSourceHandleWindow !== null) {
+          exposedSourceLayer = exposeAvailableSourceWindow(child, precomposeSourceHandleWindow);
+          response.diagnostics = response.diagnostics || { notes: [] };
+          response.diagnostics.notes = response.diagnostics.notes || [];
+          response.diagnostics.notes.push("Exposed available linear source handles inside precomp.");
+        }
         response.affectedObjects = response.affectedObjects || [];
         response.affectedObjects.push({
           stableId: request.payload.replacementStableId,
@@ -188,6 +286,9 @@
         });
         response.readback = response.readback || {};
         response.readback.replacementLayer = layerSnapshot(replacement);
+        if (exposedSourceLayer !== null) {
+          response.readback.sourceHandleLayer = layerSnapshot(exposedSourceLayer);
+        }
       }
 
       return JSON.stringify(promoteResponse(response, request, started));

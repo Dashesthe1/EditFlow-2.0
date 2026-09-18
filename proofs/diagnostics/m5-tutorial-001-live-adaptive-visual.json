@@ -1,0 +1,117 @@
+{
+  "proof": "M5_TUTORIAL_001_LIVE_ADAPTIVE_VISUAL_V1",
+  "sourceCommit": "4f123da0a77508ec85aa831771cac9a3bd4a0807",
+  "startedAt": "2026-09-18T05:34:24.762Z",
+  "panel": {
+    "sessionId": "05f58351-672b-490c-989b-7bdd90864323",
+    "protocolVersion": "2.7.0",
+    "supportedProtocolVersions": [
+      "2.7.0",
+      "2.6.0",
+      "2.5.0",
+      "2.4.0",
+      "2.3.0",
+      "2.2.0",
+      "2.1.0",
+      "2.0.0",
+      "1.9.0",
+      "1.8.0",
+      "1.7.0",
+      "1.6.0",
+      "1.5.0",
+      "1.4.0",
+      "1.3.0",
+      "1.2.0",
+      "1.1.0"
+    ],
+    "extensionId": "com.editflow2.bridge.panel",
+    "extensionVersion": "0.1.0-dev.12",
+    "registeredAt": "2026-09-18T05:07:42.025Z",
+    "lastSeenAt": "2026-09-18T05:34:24.605Z"
+  },
+  "before": {
+    "hostRevision": 4506,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ]
+  },
+  "visual": {
+    "baseline": {
+      "proof": "M5_TUTORIAL_001_SPARSE_VISUAL_V1",
+      "phase": "baseline",
+      "timesMs": [
+        1800,
+        1950,
+        2000,
+        2050,
+        2200
+      ],
+      "files": [
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_1800ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_1950ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_2000ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_2050ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_2200ms.png"
+      ],
+      "targetLayers": 2,
+      "capturedAtMs": 1789709666176
+    },
+    "edited": {
+      "proof": "M5_TUTORIAL_001_SPARSE_VISUAL_V1",
+      "phase": "edited",
+      "timesMs": [
+        1800,
+        1950,
+        2000,
+        2050,
+        2200
+      ],
+      "files": [
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_1800ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_1950ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_2000ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_2050ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_2200ms.png"
+      ],
+      "targetLayers": 2,
+      "capturedAtMs": 1789709672437
+    }
+  },
+  "execution": {
+    "planOperations": 48,
+    "requiredCapabilities": [
+      "ae.precompose.layers",
+      "ae.layer.time_remap.enable",
+      "ae.keyframe.set",
+      "ae.property.temporal_interpolation.set",
+      "ae.property.temporal_ease.set"
+    ],
+    "replacementLayerIds": [
+      "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer",
+      "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer"
+    ],
+    "resultState": "COMMITTED",
+    "appliedOperations": 48,
+    "hostRevisionAfter": 4942,
+    "targetLayerIds": [
+      "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer",
+      "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer"
+    ]
+  },
+  "finishedAt": "2026-09-18T05:34:34.972Z",
+  "cleanup": {
+    "hostRevision": 4947,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ],
+    "baselineFingerprintRestored": true,
+    "baselineItemCountRestored": true,
+    "baselineStableIdsRestored": true
+  }
+}

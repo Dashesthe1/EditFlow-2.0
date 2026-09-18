@@ -84,7 +84,8 @@ export type VirtualAeOperationV1 =
   | { type: "SET_MATTE"; compId: string; layerId: string; matteLayerId: string }
   | { type: "SET_PARENT"; compId: string; layerId: string; parentLayerId: string | null }
   | { type: "PRECOMPOSE"; compId: string; newCompId: string; newCompName: string;
-      newLayerId: string; layerIds: string[] };
+      newLayerId: string; layerIds: string[];
+      sourceHandlePolicy?: "PRESERVE_TRIM" | "EXPOSE_AVAILABLE_SOURCE" };
 
 export interface VirtualAeSimulationV1 {
   valid: boolean;

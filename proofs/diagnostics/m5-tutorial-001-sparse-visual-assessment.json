@@ -1,0 +1,145 @@
+{
+  "proof": "M5_TUTORIAL_001_SPARSE_VISUAL_ASSESSMENT_V1",
+  "sourceVisualProof": "proofs/diagnostics/m5-tutorial-001-live-adaptive-visual.json",
+  "liveVisualSourceCommit": "4f123da0a77508ec85aa831771cac9a3bd4a0807",
+  "liveVisualStartedAt": "2026-09-18T05:34:24.762Z",
+  "rules": {
+    "anchorToleranceMs": 25,
+    "changeThreshold": 12,
+    "borderWidth": 12,
+    "maxBorderNearBlackRatio": 0.001,
+    "roi": {
+      "center": [
+        0.62,
+        0.44
+      ],
+      "radiusPx": 120
+    },
+    "minRoiLumaStd": 40,
+    "tailTimesMs": [
+      1800,
+      2200
+    ],
+    "minPeakToTailRatio": 1.5
+  },
+  "evaluatorSourceHashes": {
+    "evaluator": "da54fb9b716d35de96708652fc62ab25407191f2acdc4e946ba837dfe77a5c78",
+    "tutorialProfile": "f67c3a7650f9c97ee5b6fb4394b7e9840e4c5863b5ba71c5fe46fe355b259e98"
+  },
+  "frameHashes": {
+    "baseline": [
+      {
+        "timeMs": 1800,
+        "sha256": "1bbbbabfe15471067fbe28a4430e1e6986d4f7badffae94abba8f3541a6bf00d"
+      },
+      {
+        "timeMs": 1950,
+        "sha256": "b6c1b1bd5e6454ccf8bc8d16251b0da37335d7cfbfda414db83d2ec2c44b7913"
+      },
+      {
+        "timeMs": 2000,
+        "sha256": "c1c3ea69a583085b65ab5b25b613fe2d334d07d821f5278bef5290f8b95001a7"
+      },
+      {
+        "timeMs": 2050,
+        "sha256": "903935b2ab4045430739e05e78272bbdfdf7705bc9bc8f92e5de8d3542a4dfa6"
+      },
+      {
+        "timeMs": 2200,
+        "sha256": "c14130edd91e73435d33b400bbd815200fabc3ad39b0ac1b9ade9abd28ddf8ae"
+      }
+    ],
+    "edited": [
+      {
+        "timeMs": 1800,
+        "sha256": "b4d400e94b49866387e28d63095d166d7e467b4af39be5315c06158cfa96c27f"
+      },
+      {
+        "timeMs": 1950,
+        "sha256": "1629f68d4f8a41d1cd67c18a8162fe8de31b7357565a66e29e1d3286e74e0b01"
+      },
+      {
+        "timeMs": 2000,
+        "sha256": "0ceaada49fdc71992ef5d11a51fbbe2b53e5d99cb42017891163ac7fd54a6d0c"
+      },
+      {
+        "timeMs": 2050,
+        "sha256": "185994bebd21712c5291256a8abec75ce7f1a05d4c68a000180c42521772e873"
+      },
+      {
+        "timeMs": 2200,
+        "sha256": "41a55ce40db3624462183a3ff65dd15210987ca89129eef75685e012a793c36f"
+      }
+    ]
+  },
+  "assessment": {
+    "schema": "editflow.sparse-visual-assessment.v1",
+    "passed": true,
+    "anchorMs": 2000,
+    "peak": {
+      "timeMs": 2000,
+      "meanAbsDiff": 18.037525398662552
+    },
+    "metrics": [
+      {
+        "timeMs": 1800,
+        "width": 1080,
+        "height": 1920,
+        "meanAbsDiff": 7.057434413580247,
+        "changedPixelRatio": 0.03917872299382716,
+        "borderNearBlackRatio": 0,
+        "roiLumaStd": 99.97358701796348
+      },
+      {
+        "timeMs": 1950,
+        "width": 1080,
+        "height": 1920,
+        "meanAbsDiff": 15.153950295781893,
+        "changedPixelRatio": 0.0827613811728395,
+        "borderNearBlackRatio": 0,
+        "roiLumaStd": 99.01935669317419
+      },
+      {
+        "timeMs": 2000,
+        "width": 1080,
+        "height": 1920,
+        "meanAbsDiff": 18.037525398662552,
+        "changedPixelRatio": 0.0985228587962963,
+        "borderNearBlackRatio": 0,
+        "roiLumaStd": 87.9641367461573
+      },
+      {
+        "timeMs": 2050,
+        "width": 1080,
+        "height": 1920,
+        "meanAbsDiff": 17.800440618569958,
+        "changedPixelRatio": 0.09752121913580247,
+        "borderNearBlackRatio": 0,
+        "roiLumaStd": 88.2118280311535
+      },
+      {
+        "timeMs": 2200,
+        "width": 1080,
+        "height": 1920,
+        "meanAbsDiff": 9.018429944701646,
+        "changedPixelRatio": 0.05053144290123457,
+        "borderNearBlackRatio": 0,
+        "roiLumaStd": 89.36640810986151
+      }
+    ],
+    "issues": []
+  },
+  "rollback": {
+    "hostRevision": 4947,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ],
+    "baselineFingerprintRestored": true,
+    "baselineItemCountRestored": true,
+    "baselineStableIdsRestored": true
+  },
+  "assessedAt": "2026-09-18T05:41:16.017Z"
+}

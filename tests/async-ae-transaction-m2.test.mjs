@@ -249,6 +249,13 @@ test("current AE host loader layers v1.1 hardening over the green v1.0 dispatche
   assert.match(hardening, /app\.executeCommand\(16\)/);
   assert.match(hardening, /replacementStableId/);
   assert.match(hardening, /findLayerBySource/);
+  assert.match(hardening, /preserveSingleLayerTiming/);
+  assert.match(hardening, /timingSnapshot/);
+  assert.match(hardening, /restoreTiming/);
+  assert.match(hardening, /EXPOSE_AVAILABLE_SOURCE/);
+  assert.match(hardening, /availableLinearSourceWindow/);
+  assert.match(hardening, /exposeAvailableSourceWindow/);
+  assert.match(hardening, /PRECOMPOSE_TIMING_REQUIRES_SINGLE_LAYER/);
   assert.doesNotMatch(hardening, /\beval\s*\(/);
   assert.doesNotMatch(hardening, /new\s+Function\s*\(/);
 });
