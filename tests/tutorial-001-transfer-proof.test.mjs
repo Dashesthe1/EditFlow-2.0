@@ -1,0 +1,81 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+import {
+  TUTORIAL_001_TRANSFER_PROFILE as P,
+} from "../scripts/proofs/tutorial-001-transfer-profile.mjs";
+
+const runnerPath = "scripts/proofs/tutorial-001-transfer.mjs";
+const fixturePath = "scripts/windows/tutorial-001-transfer.jsx";
+
+test("Tutorial 001 transfer profile materially changes every declared transfer dimension", () => {
+  assert.equal(P.comp.width, 1920);
+  assert.equal(P.comp.height, 1080);
+  assert.equal(P.comp.frameRate, 30);
+  assert.equal(P.comp.durationSeconds, 6.4);
+  assert.equal(P.anchor.timeMs, 3200);
+  assert.equal(P.anchor.basis, "MOTION_DRIVEN");
+
+  assert.notDeepEqual([P.comp.width, P.comp.height], [1080, 1920]);
+  assert.notEqual(P.comp.frameRate, 60);
+  assert.notEqual(P.anchor.timeMs, 2000);
+  assert.ok(P.sourceWindows.outgoing.sourceEndSeconds
+    < P.sourceWindows.incoming.sourceStartSeconds);
+  assert.ok(P.recipe.zoomCenter[0] < 0.5);
+  assert.ok(P.recipe.zoomCenter[1] > 0.5);
+  assert.ok(P.sourceTransform.scale[0] > 100);
+});test("Tutorial 001 transfer profile reverses outgoing motion and changes motion scale", () => {
+  const [outgoing, incoming] = P.motion.segments;
+  assert.ok(outgoing.sourceStartX > outgoing.sourceEndX);
+  assert.ok(incoming.sourceStartX < incoming.sourceEndX);
+  assert.equal(outgoing.expectedTrend, "ACCELERATE");
+  assert.equal(incoming.expectedTrend, "DECELERATE");
+  assert.equal(P.motion.timesMs.length, 10);
+  assert.equal(P.motion.referenceMarkers[0].sourceX, 288);
+  assert.equal(P.motion.referenceMarkers[1].sourceX, 1632);
+});
+
+test("Tutorial 001 transfer profile covers the lesson-declared Level-6 axes", () => {
+  assert.deepEqual(P.transferAxes, [
+    "different frame rate",
+    "different shot duration and source-handle length",
+    "different subject scale and off-center subject position",
+    "different source motion speed and direction",
+    "portrait versus landscape aspect ratio",
+    "beat-driven versus motion-driven transition anchor",
+  ]);
+});
+
+test("Tutorial 001 transfer runner reuses the normal semantic compiler and warm transaction path", async () => {
+  const source = await readFile(runnerPath, "utf8");
+  assert.match(source, /compileTutorialDeepLessonV1/);
+  assert.match(source, /compileEditingIrRecipeToVirtualAeV1/);
+  assert.match(source, /lowerCompiledRecipeToNativeAePlanV1/);
+  assert.match(source, /curveBindingMode: "LIVE_ADAPTIVE"/);
+  assert.match(source, /livePlan\.operations\.length === 48/);
+  assert.match(source, /M5_MOCHA_SOURCE|realSourceStableId/);
+  assert.match(source, /kind: "TRANSFER"/);
+  assert.match(source, /learningState = "TRANSFER_VERIFIED"/);
+  assert.match(source, /baselineFingerprintRestored/);
+});test("Tutorial 001 transfer fixture overlays diagnostics on real media without constructing the effect", async () => {
+  const source = await readFile(fixturePath, "utf8");
+  assert.match(source, /REAL_MEDIA_LAYERS_REQUIRED/);
+  assert.match(source, /EF2_T001_TRANSFER_REAL_OUT_LAYER/);
+  assert.match(source, /EF2_T001_TRANSFER_REAL_IN_LAYER/);
+  assert.match(source, /REF_LEFT/);
+  assert.match(source, /REF_RIGHT/);
+  assert.match(source, /MOTION/);
+  assert.match(source, /saveFrameToPng/);
+  assert.doesNotMatch(source, /Time Remap|ADBE Time Remapping|setTemporalEase/);
+  assert.doesNotMatch(source, /ADBE Scale.*setValueAtTime/);
+});
+
+test("Tutorial 001 transfer proof keeps visual and motion gates bounded", () => {
+  assert.deepEqual(P.visual.timesMs, [2800, 3100, 3200, 3300, 3600]);
+  assert.deepEqual(P.visual.rules.tailTimesMs, [2800, 3600]);
+  assert.ok(P.visual.rules.minAnchorToPeakRatio > 0);
+  assert.ok(P.visual.rules.minAnchorToTailRatio > 1);
+  assert.ok(P.motion.rules.minTrendRatio > 1);
+  assert.ok(P.motion.rules.maxPlaybackRate <= 2.5);
+});
