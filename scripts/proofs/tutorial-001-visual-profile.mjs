@@ -1,7 +1,7 @@
 export const TUTORIAL_001_VISUAL_ANCHOR_MS = 2000;
 
 export const TUTORIAL_001_VISUAL_RULES = Object.freeze({
-  anchorToleranceMs: 25,
+  minAnchorToPeakRatio: 0.85,
   changeThreshold: 12,
   borderWidth: 12,
   maxBorderNearBlackRatio: 0.001,
@@ -12,6 +12,7 @@ export const TUTORIAL_001_VISUAL_RULES = Object.freeze({
   minRoiLumaStd: 40,
   tailTimesMs: Object.freeze([1800, 2200]),
   minPeakToTailRatio: 1.5,
+  minAnchorToTailRatio: 1.5,
 });
 
 export const framesFromSparseCaptureV1 = (capture) => {
