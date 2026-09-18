@@ -1,0 +1,54 @@
+{
+  "source": {
+    "sourceId": "reference.001",
+    "title": "Professional reference title",
+    "sourceRef": "external-or-library-reference",
+    "durationSeconds": null,
+    "tags": []
+  },
+  "overallIntent": "What the finished edit is trying to make the viewer feel or understand.",
+  "structure": [
+    {
+      "id": "phase.001",
+      "startSeconds": 0,
+      "endSeconds": 1,
+      "function": "setup/build/climax/release/etc",
+      "energy": null,
+      "observations": [],
+      "audioRelationship": [],
+      "visualHierarchy": []
+    }
+  ],
+  "moments": [
+    {
+      "id": "moment.001",
+      "timeSeconds": 0,
+      "function": "impact/reveal/transition/etc",
+      "observations": [],
+      "principleIds": ["principle.example"]
+    }
+  ],
+  "principles": [
+    {
+      "id": "principle.example",
+      "name": "Example editorial principle",
+      "summary": "Reusable judgment extracted from the finished edit.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [],
+      "tags": [],
+      "whenToApply": [],
+      "whenNotToApply": [],
+      "rationale": [],
+      "positiveSignals": [],
+      "negativeSignals": [],
+      "sourceIds": ["reference.001"],
+      "confidence": 0.5
+    }
+  ],
+  "shotSelectionObservations": [],
+  "pacingObservations": [],
+  "soundObservations": [],
+  "restraintObservations": [],
+  "compositionObservations": [],
+  "effectDensityObservations": []
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@editflow/editor-learning",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./references": "./src/reference-learning.ts",
+    "./practice": "./src/practice.ts",
+    "./validation": "./src/validation.ts"
+  }
+}

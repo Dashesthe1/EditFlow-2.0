@@ -8,5 +8,6 @@ coverage/
 .env.*
 !.env.example
 proofs/artifacts/
+training/generated/
 *.tmp
 __pycache__/

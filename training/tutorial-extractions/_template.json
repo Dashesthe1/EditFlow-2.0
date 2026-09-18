@@ -1,0 +1,56 @@
+{
+  "source": {
+    "sourceId": "tutorial.001",
+    "title": "Tutorial title",
+    "sourceRef": "external-or-library-reference",
+    "durationSeconds": null,
+    "tags": []
+  },
+  "demonstrations": [
+    {
+      "demonstrationId": "demo.tutorial.001.01",
+      "sourceId": "tutorial.001",
+      "title": "Technique demonstration",
+      "objective": "What the editor is trying to accomplish for the viewer",
+      "contextTags": [],
+      "actions": [
+        {
+          "id": "action.001",
+          "timeSeconds": null,
+          "intent": "Why this action is being performed",
+          "action": "What the editor does",
+          "target": null,
+          "parameters": {},
+          "expectedVisualChange": "What should visibly change"
+        }
+      ],
+      "observations": [],
+      "inferredPrinciples": [],
+      "candidateSkillIds": ["skill.example"]
+    }
+  ],
+  "skills": [
+    {
+      "id": "skill.example",
+      "name": "Example skill",
+      "summary": "Reusable editorial technique, not a tutorial recap.",
+      "domains": [],
+      "tags": [],
+      "intents": [],
+      "prerequisites": [],
+      "whenToUse": [],
+      "whenNotToUse": [],
+      "whyItWorks": [],
+      "procedure": [],
+      "parameterGuidance": [],
+      "visualTargets": [],
+      "failureModes": [],
+      "adaptationRules": [],
+      "variants": [],
+      "sourceIds": ["tutorial.001"],
+      "confidence": 0.5,
+      "mastery": "OBSERVED"
+    }
+  ],
+  "edges": []
+}

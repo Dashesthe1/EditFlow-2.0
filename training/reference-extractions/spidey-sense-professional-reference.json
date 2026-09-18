@@ -1,0 +1,402 @@
+{
+  "source": {
+    "sourceId": "reference.spidey_sense_square_edit",
+    "title": "Best spidey sense of all time - Spider-Man Edit",
+    "sourceRef": "Clipto AI Video Downloader Best spidey sense of all time - Spider-Man Edit (The Amazing Spider-man 2).mp4",
+    "durationSeconds": 39.774512,
+    "tags": [
+      "Spider-Man",
+      "action edit",
+      "square format",
+      "professional reference",
+      "source-motion driven"
+    ]
+  },
+  "overallIntent": "Escalate a danger sequence into a readable Spider-Man rescue/payoff while keeping the action understandable and energetic in a square social-edit format.",
+  "structure": [
+    {
+      "id": "phase.threat_setup",
+      "startSeconds": 0,
+      "endSeconds": 6.033333,
+      "function": "threat setup and anticipation",
+      "energy": "medium",
+      "observations": [
+        "The sequence begins on danger/environmental motion before giving the first clear Spider-Man hero shot.",
+        "Detected scene changes occur around 1.20, 2.98, 4.82, and 6.03 seconds, creating a tightening progression of threat imagery."
+      ],
+      "audioRelationship": [
+        "The early visual progression does not cut mechanically at every measured audio-energy peak; picture timing retains its own action logic."
+      ],
+      "visualHierarchy": [
+        "Threat objects and environmental motion are primary before the hero reveal, allowing the viewer to understand what requires intervention."
+      ]
+    },
+    {
+      "id": "phase.hero_intervention",
+      "startSeconds": 6.033333,
+      "endSeconds": 14.916667,
+      "function": "hero reveal and intervention",
+      "energy": "high",
+      "observations": [
+        "Spider-Man becomes the clear visual anchor after the threat is established.",
+        "A comparatively long interval from roughly 6.03 to 11.33 seconds gives the first major hero action room to read instead of forcing constant rapid cutting.",
+        "Subsequent imagery keeps Spider-Man and the moving vehicle/action relationship legible."
+      ],
+      "audioRelationship": [
+        "A measured audio-energy peak near 11.85 seconds falls near the next major scene transition, supporting rather than dictating the action structure."
+      ],
+      "visualHierarchy": [
+        "The red Spider-Man suit provides a strong subject anchor against the environment and vehicle imagery."
+      ]
+    },
+    {
+      "id": "phase.reaction_and_orientation",
+      "startSeconds": 14.916667,
+      "endSeconds": 20.5,
+      "function": "reaction and story orientation",
+      "energy": "medium",
+      "observations": [
+        "The edit introduces reaction/orientation imagery rather than maintaining uninterrupted stunt imagery.",
+        "A bystander/passenger reaction around the detected 17.63-second transition gives the viewer human response information between hero-action shots."
+      ],
+      "audioRelationship": [
+        "Measured audio-energy peaks around 15.95 to 17.20 seconds accompany this section, but visual readability remains prioritized."
+      ],
+      "visualHierarchy": [
+        "Reaction faces and Spider-Man alternate as the primary read, reducing action ambiguity."
+      ]
+    },
+    {
+      "id": "phase.payoff_and_release",
+      "startSeconds": 20.5,
+      "endSeconds": 29.633333,
+      "function": "payoff, aerial release, and aftermath",
+      "energy": "high",
+      "observations": [
+        "Detected transitions around 20.50, 22.88, 26.05, and 28.75 seconds move from close hero/action information into falling/aerial imagery and then a wider environmental release.",
+        "The final wide street view reduces visual intensity after the aerial motion rather than ending on maximum density."
+      ],
+      "audioRelationship": [
+        "Several late scene transitions fall close to measured audio-energy peaks: about 22.88 vs 23.05 seconds, 28.75 vs 28.45 seconds, and 20.50 vs 20.15 seconds.",
+        "The pattern supports selective synchronization at important payoff moments instead of cutting on every detected audio peak."
+      ],
+      "visualHierarchy": [
+        "Close subject/action shots dominate the escalation, while the wider final view restores spatial context for the release."
+      ]
+    },
+    {
+      "id": "phase.outro",
+      "startSeconds": 29.633333,
+      "endSeconds": 39.774512,
+      "function": "branding/outro",
+      "energy": "low",
+      "observations": [
+        "The narrative action edit has effectively resolved before the final branding/outro material."
+      ],
+      "audioRelationship": [
+        "Large repeated audio-energy peaks occur in the later outro range and are not treated as evidence for narrative action-edit timing."
+      ],
+      "visualHierarchy": [
+        "Outro/branding replaces the action narrative as the primary information."
+      ]
+    }
+  ],
+  "moments": [
+    {
+      "id": "moment.hero_reveal",
+      "timeSeconds": 6.033333,
+      "function": "hero reveal",
+      "observations": [
+        "Spider-Man becomes the clear visual anchor only after several seconds of threat setup."
+      ],
+      "principleIds": [
+        "principle.setup_threat_before_hero_payoff",
+        "principle.vary_shot_duration_for_readability"
+      ]
+    },
+    {
+      "id": "moment.reaction_reset",
+      "timeSeconds": 17.633333,
+      "function": "reaction/readability reset",
+      "observations": [
+        "The sequence cuts from action into a human reaction/orientation shot before returning to hero imagery."
+      ],
+      "principleIds": [
+        "principle.alternate_action_with_reaction_orientation"
+      ]
+    },
+    {
+      "id": "moment.late_accent_sync",
+      "timeSeconds": 22.883333,
+      "function": "payoff accent",
+      "observations": [
+        "A detected visual transition around 22.88 seconds lands within roughly 0.17 seconds of a measured audio-energy peak around 23.05 seconds."
+      ],
+      "principleIds": [
+        "principle.selective_audio_accent_sync"
+      ]
+    },
+    {
+      "id": "moment.wide_release",
+      "timeSeconds": 28.87,
+      "function": "release/aftermath",
+      "observations": [
+        "A wide street/environment view follows the aerial/high-motion sequence, restoring spatial context and lowering visual density."
+      ],
+      "principleIds": [
+        "principle.release_after_climax_with_spatial_reset",
+        "principle.source_motion_before_effect_density"
+      ]
+    }
+  ],
+  "principles": [
+    {
+      "id": "principle.setup_threat_before_hero_payoff",
+      "name": "Establish the problem before the hero payoff",
+      "summary": "Delay the strongest subject/hero reveal until the viewer understands the danger or setup that gives the reveal meaning.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [
+        "story structure",
+        "shot selection",
+        "pacing"
+      ],
+      "tags": [
+        "anticipation",
+        "hero reveal",
+        "setup payoff",
+        "action"
+      ],
+      "whenToApply": [
+        "The edit contains a subject whose entrance or intervention becomes stronger when the viewer first understands the threat/context."
+      ],
+      "whenNotToApply": [
+        "The edit's immediate purpose requires identifying the hero/subject from the first frame."
+      ],
+      "rationale": [
+        "Context creates anticipation and makes the intervention feel like a payoff rather than an arbitrary action shot."
+      ],
+      "positiveSignals": [
+        "The viewer can state what is wrong before the hero intervention begins.",
+        "The reveal increases energy because it resolves established anticipation."
+      ],
+      "negativeSignals": [
+        "Too much setup delays the subject without increasing anticipation.",
+        "The threat/context remains unclear when the hero appears."
+      ],
+      "sourceIds": [
+        "reference.spidey_sense_square_edit"
+      ],
+      "confidence": 0.91
+    },
+    {
+      "id": "principle.vary_shot_duration_for_readability",
+      "name": "Vary shot duration around what needs to read",
+      "summary": "Use fast cuts for escalation where appropriate, but allow longer intervals when the viewer needs to read a major action or reveal.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [
+        "pacing",
+        "shot selection"
+      ],
+      "tags": [
+        "variable pacing",
+        "readability",
+        "action"
+      ],
+      "whenToApply": [
+        "A sequence mixes setup, complex action, reactions, and payoff rather than one uniform rhythm."
+      ],
+      "whenNotToApply": [
+        "A deliberately metronomic visual pattern is itself the intended concept."
+      ],
+      "rationale": [
+        "Shot duration should reflect information density and viewer comprehension, not a fixed cutting rate."
+      ],
+      "positiveSignals": [
+        "Important action has enough screen time to be understood.",
+        "Pacing can accelerate without every shot becoming equally short."
+      ],
+      "negativeSignals": [
+        "Complex action is cut away before the viewer understands it.",
+        "Every shot has nearly identical duration despite different information needs."
+      ],
+      "sourceIds": [
+        "reference.spidey_sense_square_edit"
+      ],
+      "confidence": 0.88
+    },
+    {
+      "id": "principle.alternate_action_with_reaction_orientation",
+      "name": "Use reaction/orientation beats inside dense action",
+      "summary": "Interrupt sustained stunt/action imagery with reaction or orientation shots when they improve emotional and spatial comprehension.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [
+        "continuity",
+        "story structure",
+        "shot selection"
+      ],
+      "tags": [
+        "reaction shot",
+        "orientation",
+        "action readability"
+      ],
+      "whenToApply": [
+        "The viewer benefits from seeing who is affected by the action or how characters are responding."
+      ],
+      "whenNotToApply": [
+        "A reaction insert would break a deliberately uninterrupted real-time action beat at the wrong moment."
+      ],
+      "rationale": [
+        "Reaction/orientation shots provide narrative information and give the visual system a brief reset between high-motion moments."
+      ],
+      "positiveSignals": [
+        "The reaction adds emotional or spatial information rather than merely slowing the sequence."
+      ],
+      "negativeSignals": [
+        "Reaction shots feel unrelated to the surrounding action or destroy momentum without adding information."
+      ],
+      "sourceIds": [
+        "reference.spidey_sense_square_edit"
+      ],
+      "confidence": 0.82
+    },
+    {
+      "id": "principle.selective_audio_accent_sync",
+      "name": "Synchronize selected major moments, not every detected beat",
+      "summary": "Use important audio accents to reinforce major picture transitions while allowing shot/action logic to determine many other cuts.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [
+        "sound sync",
+        "pacing",
+        "timing"
+      ],
+      "tags": [
+        "audio accent",
+        "selective sync",
+        "beat",
+        "impact"
+      ],
+      "whenToApply": [
+        "Music or sound contains clear accents that can strengthen selected reveals, impacts, or phase changes."
+      ],
+      "whenNotToApply": [
+        "Forcing a picture cut onto an accent would make the action or continuity less readable."
+      ],
+      "rationale": [
+        "Selective synchronization preserves musical reinforcement without making the edit feel mechanically quantized."
+      ],
+      "positiveSignals": [
+        "Major payoff transitions feel reinforced by sound.",
+        "Some cuts remain motivated by action or story rather than every audio transient."
+      ],
+      "negativeSignals": [
+        "Every beat creates a cut regardless of visual meaning.",
+        "A strong picture moment misses an obvious usable accent without another editorial reason."
+      ],
+      "sourceIds": [
+        "reference.spidey_sense_square_edit"
+      ],
+      "confidence": 0.79
+    },
+    {
+      "id": "principle.release_after_climax_with_spatial_reset",
+      "name": "Give the viewer a spatial release after the climax",
+      "summary": "After a dense close/high-motion climax, use a calmer or wider view when appropriate to restore spatial context and make the preceding peak feel complete.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [
+        "pacing",
+        "composition",
+        "story structure"
+      ],
+      "tags": [
+        "release",
+        "wide shot",
+        "climax",
+        "aftermath"
+      ],
+      "whenToApply": [
+        "A sequence has reached a strong motion/effect peak and benefits from a readable visual exhale."
+      ],
+      "whenNotToApply": [
+        "The concept intentionally hard-cuts at the climax with no aftermath or release."
+      ],
+      "rationale": [
+        "Contrast between dense climax and spatially readable aftermath strengthens the perception of both phases."
+      ],
+      "positiveSignals": [
+        "The viewer regains orientation immediately after the peak.",
+        "The climax feels like it had a destination rather than simply stopping."
+      ],
+      "negativeSignals": [
+        "The edit stays at maximum density until it abruptly ends.",
+        "The release shot is so long that it dissipates all residual energy."
+      ],
+      "sourceIds": [
+        "reference.spidey_sense_square_edit"
+      ],
+      "confidence": 0.89
+    },
+    {
+      "id": "principle.source_motion_before_effect_density",
+      "name": "Let source motion and shot choice carry energy before adding effect density",
+      "summary": "Build action intensity primarily from strong source movement, framing, and cut choice; add treatment only where it contributes a clear additional function.",
+      "origin": "PROFESSIONAL_REFERENCE",
+      "domains": [
+        "effect restraint",
+        "shot selection",
+        "motion"
+      ],
+      "tags": [
+        "restraint",
+        "source motion",
+        "action readability",
+        "effect density"
+      ],
+      "whenToApply": [
+        "The source footage already contains strong movement, camera dynamics, debris, falls, swings, or other high-energy visual information."
+      ],
+      "whenNotToApply": [
+        "The source genuinely lacks the motion/design information required for the intended concept and constructed motion is the core visual idea."
+      ],
+      "rationale": [
+        "Source-native action preserves realism and readability; effects are more valuable when they amplify a chosen moment rather than covering every frame."
+      ],
+      "positiveSignals": [
+        "The edit remains energetic even when effects are mentally removed.",
+        "Viewer attention follows the action/subject rather than a constant treatment layer."
+      ],
+      "negativeSignals": [
+        "Effects are doing all the work while weak shot selection remains underneath.",
+        "Treatment density obscures motion that was already strong in the source."
+      ],
+      "sourceIds": [
+        "reference.spidey_sense_square_edit"
+      ],
+      "confidence": 0.76
+    }
+  ],
+  "shotSelectionObservations": [
+    "Threat/environment shots precede the first clear hero reveal.",
+    "The main action alternates between Spider-Man, affected people, moving vehicles/objects, and wider spatial information rather than staying on one shot type.",
+    "The final action phase moves from closer subject/action imagery into a wider aftermath view."
+  ],
+  "pacingObservations": [
+    "Detected scene transitions are not evenly spaced: major intervals include roughly 1.2, 1.8, 1.8, 1.2, 5.3, 3.6, 2.7, 2.9, 2.4, and 3.2 seconds in the main action section.",
+    "A long first hero-action interval follows the faster threat setup, creating contrast instead of maintaining one cut rate."
+  ],
+  "soundObservations": [
+    "Several later visual transitions are close to measured audio-energy peaks, especially around 20.5/20.15, 22.88/23.05, and 28.75/28.45 seconds.",
+    "Other scene transitions are not close to the strongest measured peaks, so the edit is not well described as cutting mechanically on every audio peak."
+  ],
+  "restraintObservations": [
+    "The main action is strongly driven by source motion and shot selection; visible treatment does not replace subject/action readability across every shot.",
+    "The reference uses contrast between high-motion and more readable/reaction moments rather than holding maximum visual density continuously."
+  ],
+  "compositionObservations": [
+    "The square presentation consistently keeps the principal action/subject within the central viewing area.",
+    "Close subject views are balanced by occasional wider views that restore environment and spatial orientation."
+  ],
+  "effectDensityObservations": [
+    "Effect intensity appears selective rather than uniformly heavy across the whole main sequence.",
+    "The strongest energy comes from fast-moving source material, framing changes, and temporal juxtaposition rather than constant overlays."
+  ]
+}
