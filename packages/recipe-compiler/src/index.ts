@@ -21,6 +21,7 @@ export const VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "TRANSFORM_ANIMATION",
   "MOTION_BLUR",
   "EFFECT_STACK",
+  "STABILIZATION",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
@@ -30,6 +31,7 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "TRANSFORM_ANIMATION",
   "MOTION_BLUR",
   "EFFECT_STACK",
+  "STABILIZATION",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 const effectSchemaRefV1 = (node: EditingIrNodeV1): string | null => {
@@ -44,12 +46,22 @@ const effectSchemaForNodeV1 = (node: EditingIrNodeV1): EffectSchemaV1 | null => 
   return schemaRef === null ? null : getEffectSchemaV1(schemaRef);
 };
 
+const literalParameterValueV1 = (
+  node: EditingIrNodeV1,
+  name: string,
+): unknown => node.parameters.find((parameter) => parameter.name === name)?.value;
+
 const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
   if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
     return node.timing === undefined;
   }
   if (node.kind === "EFFECT_STACK") {
     return node.timing === undefined && effectSchemaForNodeV1(node)?.status === "CERTIFIED";
+  }
+  if (node.kind === "STABILIZATION") {
+    return node.timing === undefined
+      && literalParameterValueV1(node, "stabilizationMode") === "POSITION_XY"
+      && literalParameterValueV1(node, "analysisDirection") === "FORWARD";
   }
   return true;
 };
@@ -618,6 +630,59 @@ const compileEffectStack = (
   return targets;
 };
 
+const compileStabilization = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+): readonly string[] => {
+  if (node.timing !== undefined) {
+    addIssue(issues, node.nodeId, "STABILIZATION_TIMING_UNSUPPORTED",
+      "STABILIZATION currently executes across the selected shot/layer window; explicit sub-window orchestration is not yet certified.");
+    return [];
+  }
+  const values = resolveParameterMap(
+    node,
+    ["stabilizationMode", "analysisDirection", "trackFeaturePolicy", "minimumTrackConfidence"],
+    context,
+    issues,
+  );
+  if (values === null) return [];
+
+  const mode = values["stabilizationMode"];
+  const direction = values["analysisDirection"];
+  const trackFeaturePolicy = values["trackFeaturePolicy"];
+  const minimumTrackConfidence = values["minimumTrackConfidence"];
+  if (mode !== "POSITION_XY"
+    || direction !== "FORWARD"
+    || typeof trackFeaturePolicy !== "string"
+    || trackFeaturePolicy.trim().length === 0
+    || typeof minimumTrackConfidence !== "number"
+    || !Number.isFinite(minimumTrackConfidence)
+    || minimumTrackConfidence < 0
+    || minimumTrackConfidence > 1) {
+    addIssue(issues, node.nodeId, "STABILIZATION_VARIANT_UNPROVEN",
+      "Only proven Forward Position X/Y stabilization with a semantic feature policy and normalized confidence is supported.");
+    return [];
+  }
+
+  for (const layerId of targets) {
+    operations.push({
+      type: "APPLY_STABILIZATION",
+      compId: context.compId,
+      layerId,
+      state: {
+        mode,
+        direction,
+        trackFeaturePolicy,
+        minimumTrackConfidence,
+      },
+    });
+  }
+  return targets;
+};
+
 const compileStaticTransform = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -794,6 +859,8 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
       outputs = compileMotionBlur(node, targets, context, operations, issues);
     } else if (node.kind === "EFFECT_STACK") {
       outputs = compileEffectStack(node, targets, context, operations, issues);
+    } else if (node.kind === "STABILIZATION") {
+      outputs = compileStabilization(node, targets, context, operations, issues);
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;
