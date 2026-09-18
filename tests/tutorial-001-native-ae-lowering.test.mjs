@@ -328,6 +328,9 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
     ["layers.precompose", "layers.precompose"],
   );
 
+  assert.ok(plan.operations.slice(0, 2).every((operation) =>
+    operation.input.payload.preserveSingleLayerTiming === true));
+
   const replacementLayerIds = plan.operations
     .slice(0, 2)
     .map((operation) => operation.input.payload.replacementStableId);

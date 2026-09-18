@@ -60,6 +60,29 @@
     }
     return null;
   }
+  function findLayer(comp, ref) {
+    var i, layer;
+    for (i = 1; i <= comp.numLayers; i += 1) {
+      layer = comp.layer(i);
+      if (ref && ref.stableId && getStableId(layer.comment) === ref.stableId) return layer;
+      if (ref && typeof ref.hostId === "number" && hostId(layer) === ref.hostId) return layer;
+    }
+    throw new Error("v1.1 could not resolve layer.");
+  }
+  function timingSnapshot(layer) {
+    return {
+      startTime: layer.startTime,
+      inPoint: layer.inPoint,
+      outPoint: layer.outPoint,
+      stretch: layer.stretch
+    };
+  }
+  function restoreTiming(layer, timing) {
+    layer.stretch = timing.stretch;
+    layer.startTime = timing.startTime;
+    layer.inPoint = timing.inPoint;
+    layer.outPoint = timing.outPoint;
+  }
   function layerSnapshot(layer) {
     var source = null;
     try { source = layer.source || null; } catch (_) {}
@@ -168,6 +191,19 @@
         return JSON.stringify(failResponse(request, "REPLACEMENT_STABLE_ID_REQUIRED", "Protocol 1.1 precompose requires replacementStableId."));
       }
 
+      var preservedPrecomposeTiming = null;
+      if (request.command === "layers.precompose" && request.payload.preserveSingleLayerTiming === true) {
+        if (!(request.payload.layers instanceof Array) || request.payload.layers.length !== 1) {
+          return JSON.stringify(failResponse(
+            request,
+            "PRECOMPOSE_TIMING_REQUIRES_SINGLE_LAYER",
+            "preserveSingleLayerTiming requires exactly one source layer."
+          ));
+        }
+        var timingParent = findComp(request.payload.comp);
+        preservedPrecomposeTiming = timingSnapshot(findLayer(timingParent, request.payload.layers[0]));
+      }
+
       var legacyRequest = JSON.parse(JSON.stringify(request));
       legacyRequest.protocolVersion = LEGACY_PROTOCOL;
       var legacyRaw = legacyDispatch(JSON.stringify(legacyRequest));
@@ -180,6 +216,12 @@
         var replacement = findLayerBySource(parent, child);
         if (!replacement) throw new Error("v1.1 precompose replacement layer could not be resolved by child source identity.");
         setStableId(replacement, request.payload.replacementStableId);
+        if (preservedPrecomposeTiming !== null) {
+          restoreTiming(replacement, preservedPrecomposeTiming);
+          response.diagnostics = response.diagnostics || { notes: [] };
+          response.diagnostics.notes = response.diagnostics.notes || [];
+          response.diagnostics.notes.push("Preserved single-layer timing across precompose.");
+        }
         response.affectedObjects = response.affectedObjects || [];
         response.affectedObjects.push({
           stableId: request.payload.replacementStableId,
