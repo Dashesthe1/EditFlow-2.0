@@ -530,3 +530,53 @@ test("native lowering fails closed on missing or stale native adaptation evidenc
     },
   );
 });
+
+test("Tutorial 001 can lower to live-adaptive native curves without fixed AE values", async () => {
+  const compiled = await compiledAt();
+  const plan = lowerCompiledRecipeToNativeAePlanV1(compiled, {
+    planId: "tutorial-001-live-adaptive-plan",
+    observedState,
+    curveBindingMode: "LIVE_ADAPTIVE",
+    recipeRefs: ["skill.velocity-zoom-transition"],
+  });
+
+  assert.equal(plan.operations.length, 48);
+  const liveCurveWrites = plan.operations.filter((operation) =>
+    operation.input.command === "property.set_keyframes"
+    && operation.input.payload.liveCurveIntent !== undefined);
+  assert.equal(liveCurveWrites.length, 6);
+  assert.equal(liveCurveWrites.every((operation) =>
+    operation.input.payload.keyframes === undefined), true);
+
+  const retime = liveCurveWrites.find((operation) =>
+    operation.input.payload.propertyPath?.at(-1) === "ADBE Time Remapping");
+  assert.ok(retime);
+  assert.equal(retime.input.payload.liveCurveIntent.kind, "TIME_REMAP_PULSE");
+  assert.deepEqual(
+    retime.input.payload.liveCurveIntent.keyTimesSeconds,
+    [1.55, 2, 2.45],
+  );
+  assert.equal(retime.input.payload.liveCurveIntent.velocityContrast, 0.4);
+  const cameraScale = liveCurveWrites.find((operation) =>
+    operation.input.payload.propertyPath?.at(-1) === "ADBE Scale");
+  assert.ok(cameraScale);
+  assert.equal(cameraScale.input.payload.liveCurveIntent.kind, "CAMERA_PUSH");
+  assert.equal(cameraScale.input.payload.liveCurveIntent.component, "SCALE");
+  assert.equal(cameraScale.input.payload.liveCurveIntent.zoomIntensity, 0.3);
+  assert.deepEqual(cameraScale.input.payload.liveCurveIntent.zoomCenter, [0.62, 0.44]);
+
+  const easeWrites = plan.operations.filter((operation) =>
+    operation.input.command === "property.temporal_ease.set");
+  assert.equal(easeWrites.length, 18);
+  assert.equal(easeWrites.every((operation) =>
+    operation.input.payload.ease === undefined
+    && operation.input.payload.easeIntent === undefined
+    && operation.input.payload.liveCurveEaseIntent !== undefined), true);
+
+  const frozen = validateAndFreezeExecutionPlan(
+    plan,
+    observedState,
+    registryForTutorial001(),
+  );
+  assert.equal(frozen.topologicalOrder.length, 48);
+});

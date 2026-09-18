@@ -36,6 +36,14 @@ import {
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
 import { buildTimeRemapRequestV27 } from "./m5-time-remap.js";
+import {
+  isNativeAeLiveCurveIntentV1,
+  materializeCameraPushV1,
+  materializeTimeRemapPulseV1,
+  type NativeAeCameraPushBaselineV1,
+  type NativeAeMaterializedCurveV1,
+  type NativeAeTimeRemapBaselineV1,
+} from "./native-curve-materialization.js";
 
 export type CurrentAeCepTransactionalTransportV1 =
   AeAdapterTransportV11
@@ -172,10 +180,15 @@ const temporalEaseCardinality = (response: CommonResponse): number => {
   return cardinality;
 };
 
+interface ExactTemporalEaseStateV1 {
+  readonly inEase: readonly TemporalEaseHandleIntentV1[];
+  readonly outEase: readonly TemporalEaseHandleIntentV1[];
+}
+
 const expandEaseIntent = (
   intent: TemporalEaseIntentV1,
   cardinality: number,
-): Readonly<Record<string, unknown>> => ({
+): ExactTemporalEaseStateV1 => ({
   inEase: Array.from(
     { length: cardinality },
     () => structuredClone(intent.inEase),
@@ -237,6 +250,19 @@ const temporalEaseCardinalityInvalidatingCommands = new Set<string>([
   "layer.time_remap.enable",
 ]);
 
+const liveCurveBaselineInvalidatingCommands = new Set<string>([
+  "comp.create",
+  "comp.update_settings",
+  "comp.remove",
+  "media.import",
+  "layer.add_media",
+  "layer.duplicate",
+  "layer.remove",
+  "layer.set_transform",
+  "layers.precompose",
+  "layer.time_remap.enable",
+]);
+
 const isObservedProjectState = (value: unknown): value is ObservedProjectState => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
@@ -256,6 +282,8 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   #lastObserved: ObservedProjectState | null = null;
   #rollbackCounter = 0;
   #temporalEaseCardinalityByTarget = new Map<string, number>();
+  #materializedCurveByTarget = new Map<string, NativeAeMaterializedCurveV1>();
+  #cameraBaselineByLayer = new Map<string, NativeAeCameraPushBaselineV1>();
 
   constructor(
     transport: CurrentAeCepTransactionalTransportV1,
@@ -276,6 +304,8 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     this.#hostRevision = observed.hostRevision;
     this.#lastObserved = structuredClone(observed.observed);
     this.#temporalEaseCardinalityByTarget.clear();
+    this.#materializedCurveByTarget.clear();
+    this.#cameraBaselineByLayer.clear();
     return structuredClone(observed.observed);
   }
 
@@ -302,19 +332,197 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       ) {
         this.#temporalEaseCardinalityByTarget.clear();
       }
+      if (
+        command !== null
+        && liveCurveBaselineInvalidatingCommands.has(command)
+      ) {
+        this.#materializedCurveByTarget.clear();
+        this.#cameraBaselineByLayer.clear();
+      }
     }
     return responseResult(response);
+  }
+
+  async #materializeLiveCurvePayload(
+    operation: ExecutionPlanOperation,
+    parsed: ParsedOperation,
+    revision: number,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const value = parsed.payload["liveCurveIntent"];
+    if (value === undefined) return parsed.payload;
+    if (parsed.payload["keyframes"] !== undefined) {
+      throw new TypeError(
+        "Live curve payload cannot provide both keyframes and liveCurveIntent.",
+      );
+    }
+    if (!isNativeAeLiveCurveIntentV1(value)) {
+      throw new TypeError("liveCurveIntent is not a supported native AE V1 intent.");
+    }
+
+    const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
+    delete targetPayload["liveCurveIntent"];
+    const cacheKey = temporalEaseTargetCacheKey(targetPayload);
+    let materialized: NativeAeMaterializedCurveV1;
+
+    if (value.kind === "TIME_REMAP_PULSE") {
+      const comp = asRecord(targetPayload["comp"]);
+      const layer = asRecord(targetPayload["layer"]);
+      if (comp === null || layer === null) {
+        throw new TypeError("Time Remap live materialization requires comp and layer.");
+      }
+      const response = await this.transport.dispatch(
+        buildTimeRemapRequestV27({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: `${String(operation.operationId)}:time-remap-baseline`,
+          command: "layer.time_remap.readback",
+          expectedHostProjectRevision: null,
+          payload: { comp, layer },
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      this.#accept(response as unknown as CommonResponse);
+      if (response.readback === null) {
+        throw new Error(
+          "TIME_REMAP_READBACK_REQUIRED: live materialization received no readback.",
+        );
+      }
+      const baseline: NativeAeTimeRemapBaselineV1 = {
+        timeRemapEnabled: response.readback.timeRemapEnabled,
+        propertyAvailable: response.readback.propertyAvailable,
+        keys: response.readback.keys,
+      };
+      materialized = materializeTimeRemapPulseV1(value, baseline);
+    } else {
+      const comp = asRecord(targetPayload["comp"]);
+      const layer = asRecord(targetPayload["layer"]);
+      if (comp === null || layer === null) {
+        throw new TypeError("Camera push live materialization requires comp and layer.");
+      }
+      const baselineKey = JSON.stringify([comp, layer]);
+      let baseline = this.#cameraBaselineByLayer.get(baselineKey);
+      if (baseline === undefined) {
+        const layerResponse = await this.client.executePublicAtKnownHostRevision(
+          "readback.object",
+          {
+            transactionId: this.transactionId,
+            operationId: `${String(operation.operationId)}:layer-baseline`,
+            capabilityId: capabilityForCommandV11("readback.object"),
+            payload: { kind: "LAYER", comp, target: layer },
+            expectedHostProjectRevision: revision,
+            readbackProfile: parsed.readbackProfile,
+          },
+        );
+        this.#accept(layerResponse);
+        const compResponse = await this.client.executePublicAtKnownHostRevision(
+          "readback.object",
+          {
+            transactionId: this.transactionId,
+            operationId: `${String(operation.operationId)}:comp-baseline`,
+            capabilityId: capabilityForCommandV11("readback.object"),
+            payload: { kind: "COMPOSITION", target: comp },
+            expectedHostProjectRevision: revision,
+            readbackProfile: parsed.readbackProfile,
+          },
+        );
+        this.#accept(compResponse);
+
+        const layerReadback = asRecord(layerResponse.readback);
+        const layerState = asRecord(layerReadback?.["layer"]);
+        const transform = asRecord(layerState?.["transform"]);
+        const compReadback = asRecord(compResponse.readback);
+        const compState = asRecord(compReadback?.["composition"]);
+        const anchorPoint = transform?.["anchorPoint"];
+        const position = transform?.["position"];
+        const scale = transform?.["scale"];
+        const width = compState?.["width"];
+        const height = compState?.["height"];
+        if (
+          !Array.isArray(anchorPoint)
+          || !Array.isArray(position)
+          || !Array.isArray(scale)
+          || typeof width !== "number"
+          || typeof height !== "number"
+        ) {
+          throw new Error(
+            "CAMERA_PUSH_BASELINE_REQUIRED: live layer/comp readback is incomplete.",
+          );
+        }
+        baseline = {
+          anchorPoint: anchorPoint as readonly number[],
+          position: position as readonly number[],
+          scale: scale as readonly number[],
+          compWidth: width,
+          compHeight: height,
+        };
+        this.#cameraBaselineByLayer.set(baselineKey, baseline);
+      }
+      materialized = materializeCameraPushV1(value, baseline);
+    }
+
+    this.#materializedCurveByTarget.set(cacheKey, materialized);
+    return {
+      ...targetPayload,
+      keyframes: materialized.keyframes.map((keyframe) => ({
+        time: keyframe.time,
+        value: structuredClone(keyframe.value),
+      })),
+    };
   }
 
   async #materializeTemporalEasePayload(
     operation: ExecutionPlanOperation,
     parsed: ParsedOperation,
   ): Promise<Readonly<Record<string, unknown>>> {
-    const intent = parseTemporalEaseIntent(parsed.payload);
-    if (intent === null) return parsed.payload;
-
     const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
-    delete targetPayload["easeIntent"];
+    const liveEase = asRecord(targetPayload["liveCurveEaseIntent"]);
+    let intent = parseTemporalEaseIntent(parsed.payload);
+
+    if (liveEase !== null) {
+      if (intent !== null || targetPayload["ease"] !== undefined) {
+        throw new TypeError(
+          "Live curve ease cannot be combined with exact ease or easeIntent.",
+        );
+      }
+      const keyIndex = targetPayload["keyIndex"];
+      if (
+        typeof keyIndex !== "number"
+        || !Number.isInteger(keyIndex)
+        || liveEase["keyIndex"] !== keyIndex
+      ) {
+        throw new TypeError(
+          "liveCurveEaseIntent keyIndex must match the temporal-ease target key.",
+        );
+      }
+      delete targetPayload["liveCurveEaseIntent"];
+      const curveKey = temporalEaseTargetCacheKey(targetPayload);
+      const curve = this.#materializedCurveByTarget.get(curveKey);
+      if (curve === undefined) {
+        throw new Error(
+          "LIVE_CURVE_EASE_NOT_MATERIALIZED: keyframe intent must execute before ease.",
+        );
+      }
+      const resolved = curve.easeIntentByKey.find(
+        (candidate) => candidate.keyIndex === keyIndex,
+      );
+      if (resolved === undefined) {
+        throw new Error(
+          `LIVE_CURVE_EASE_KEY_MISSING: no materialized ease exists for key ${keyIndex}.`,
+        );
+      }
+      intent = {
+        inEase: resolved.inEase,
+        outEase: resolved.outEase,
+      };
+    } else {
+      if (intent === null) return parsed.payload;
+      delete targetPayload["easeIntent"];
+    }
+
+    if (intent === null) {
+      throw new Error("TEMPORAL_EASE_INTENT_REQUIRED: no temporal-ease intent was materialized.");
+    }
+
     const cacheKey = temporalEaseTargetCacheKey(targetPayload);
     let cardinality = this.#temporalEaseCardinalityByTarget.get(cacheKey);
     if (cardinality === undefined) {
@@ -349,13 +557,16 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         capabilityForCommandV11(parsed.command),
         AE_ADAPTER_ROUTE_ID_V11,
       );
+      const payload = parsed.command === "property.set_keyframes"
+        ? await this.#materializeLiveCurvePayload(operation, parsed, revision)
+        : parsed.payload;
       const response = await this.client.executePublicAtKnownHostRevision(
         parsed.command,
         {
           transactionId: this.transactionId,
           operationId: String(operation.operationId),
           capabilityId: String(operation.capabilityId),
-          payload: parsed.payload,
+          payload,
           expectedHostProjectRevision: revision,
           readbackProfile: parsed.readbackProfile,
         },

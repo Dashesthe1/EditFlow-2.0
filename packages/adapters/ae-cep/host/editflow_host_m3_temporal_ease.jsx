@@ -236,8 +236,15 @@
     }
     return true;
   }
-  function sameEaseState(actual, expected) {
-    return sameEaseArray(actual.inEase, expected.inEase) && sameEaseArray(actual.outEase, expected.outEase);
+  function sameMeaningfulEaseState(property, keyIndex, actual, expected) {
+    var hasDistinctBoundaries = property.numKeys > 1;
+    var incomingMatches = hasDistinctBoundaries && keyIndex === 1
+      ? true
+      : sameEaseArray(actual.inEase, expected.inEase);
+    var outgoingMatches = hasDistinctBoundaries && keyIndex === property.numKeys
+      ? true
+      : sameEaseArray(actual.outEase, expected.outEase);
+    return incomingMatches && outgoingMatches;
   }
   function toKeyframeEaseArray(values) {
     var result = [];
@@ -250,7 +257,7 @@
   }
   function verifyEaseState(property, keyIndex, expected) {
     var actual = easeStateReadback(property, keyIndex);
-    if (!sameEaseState(actual, expected)) fail("READBACK", "TEMPORAL_EASE_READBACK_MISMATCH", "Applied temporal ease did not match structural readback.", { expected: expected, actual: actual });
+    if (!sameMeaningfulEaseState(property, keyIndex, actual, expected)) fail("READBACK", "TEMPORAL_EASE_READBACK_MISMATCH", "Applied temporal ease did not match meaningful structural readback.", { expected: expected, actual: actual, keyIndex: keyIndex, numKeys: property.numKeys });
   }
 
   function requireExpectedRevision(request) {
@@ -321,8 +328,8 @@
     }
 
     var beforeState = easeStateReadback(prepared.property, prepared.keyIndex);
-    if (sameEaseState(beforeState, request.payload.ease)) {
-      return responseFor(request, "NO_OP", null, [], temporalEaseReadback(prepared.layer, prepared.property, prepared.propertyPath, prepared.keyIndex), startedAt, ["Requested temporal ease already matches host state."]);
+    if (sameMeaningfulEaseState(prepared.property, prepared.keyIndex, beforeState, request.payload.ease)) {
+      return responseFor(request, "NO_OP", null, [], temporalEaseReadback(prepared.layer, prepared.property, prepared.propertyPath, prepared.keyIndex), startedAt, ["Requested meaningful temporal ease already matches host state."]);
     }
 
     var mutationStarted = false;

@@ -76,7 +76,29 @@ if (-not (Test-Listening 32146)) {
     -RedirectStandardError (Join-Path $LogRoot "control.err.log") | Out-Null
   $BrokerDeadline = (Get-Date).AddSeconds(5)
   while (-not (Test-Listening 32145) -and (Get-Date) -lt $BrokerDeadline) { Start-Sleep -Milliseconds 100 }
-  if ((Test-Listening 32145) -and (Open-WarmCepBridge)) {
+
+  # A warm CEP panel normally reconnects itself as soon as the broker returns.
+  # Give that path a brief chance to complete before asking AE to execute the
+  # menu bootstrap again. Reopening an already-connected panel can block
+  # app.executeCommand() inside AE and leave the host stuck in script execution.
+  $AutoReconnectDeadline = (Get-Date).AddSeconds(2)
+  $WarmPanelReady = $false
+  while ((Get-Date) -lt $AutoReconnectDeadline) {
+    if (Test-Listening 32146) {
+      try {
+        $candidateHealth = Invoke-RestMethod -Uri "http://127.0.0.1:32146/healthz" -Method Get -TimeoutSec 1
+        if ($candidateHealth.ok -and $candidateHealth.panel -and $candidateHealth.panel.sessionId) {
+          $WarmPanelReady = $true
+          break
+        }
+      } catch {}
+    }
+    Start-Sleep -Milliseconds 100
+  }
+
+  if ($WarmPanelReady) {
+    Write-Host "Reused the CEP panel's automatic reconnect; no AE menu bootstrap was needed."
+  } elseif ((Test-Listening 32145) -and (Open-WarmCepBridge)) {
     Write-Host "Reused the running After Effects process to open/reconnect the EditFlow CEP bridge."
   }
 }

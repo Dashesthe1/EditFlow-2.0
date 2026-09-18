@@ -557,6 +557,7 @@ export {
   lowerCompiledRecipeToNativeAePlanV1,
 } from "./native-ae-lowering.js";
 export type {
+  NativeAeCurveBindingModeV1,
   NativeAeCurveBindingV1,
   NativeAeEaseHandleIntentV1,
   NativeAeKeyEaseIntentV1,
