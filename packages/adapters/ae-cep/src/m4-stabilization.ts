@@ -348,7 +348,7 @@ export const M4_STABILIZATION_GUARDED_CAPABILITY_V1: CapabilityRecord = {
   routes: [{ routeId: M4_STABILIZATION_GUARDED_ROUTE_ID_V1, kind: "GUARDED_UI", available: false, adapterVersion: "0.5.0-dev.1", limitations: ["Requires verified EditGPT vision+cursor control of AE's Tracker panel."] }],
   readbackStrategy: "PRE_POST_PROTOCOL_2_3_STABILIZATION_READBACK",
   visualProofProfile: "M4_NATIVE_POSITION_STABILIZATION_VISUAL_ACTION",
-  rollbackStrategy: "FIXTURE_OR_PROJECT_TRANSACTION_OWNED_CLEANUP", riskClass: "R4_EXTERNAL_UI",
+  rollbackStrategy: "PROTOCOL_2_3_TRUTH_BOUNDED_UNDO_RECOVERY_CHECKPOINT", riskClass: "R4_EXTERNAL_UI",
   limitations: ["Current retained proof covers native Position stabilization on X and Y with Analyze Forward + Apply.", "Rotation/scale stabilization and Analyze Backward are not yet registered."],
   fallbackPolicy: "EXPLICIT_ONLY",
 };
