@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+export * from "./impact-graph.js";
+
 export type ProofStrategy = "INCREMENTAL_FIRST" | "FULL_ACCEPTANCE";
 export type IncrementalProofAction = "REUSE_PASS" | "RUN_DELTA" | "RUN_FULL" | "ESCALATE";
 
