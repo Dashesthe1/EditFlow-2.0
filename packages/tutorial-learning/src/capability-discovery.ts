@@ -53,6 +53,9 @@ const classify = (
   bucket: RequirementBucket,
 ): TutorialCapabilityFindingV0 => {
   const requiredProofMaturity = strongestMaturity(bucket.requirements);
+  const requiredSupportStatus = bucket.requirements.every(
+    (requirement) => requirement.minimumSupportStatus === "PARTIAL",
+  ) ? "PARTIAL" : "FULL";
   const record = registry.get(bucket.capabilityId);
   const preferredKinds = [...new Set(bucket.requirements.flatMap((item) => item.preferredRouteKinds ?? []))];
   if (record === null) {
@@ -60,6 +63,7 @@ const classify = (
       capabilityId: bucket.capabilityId,
       state: "UNREGISTERED",
       requiredProofMaturity,
+      requiredSupportStatus,
       actualProofMaturity: null,
       registryStatus: null,
       bestRouteId: null,
@@ -77,7 +81,9 @@ const classify = (
   if (record.status === "UNAVAILABLE") state = "UNAVAILABLE";
   else if (availableRoutes.length === 0 || record.status === "ADAPTER_REQUIRED") state = "ADAPTER_REQUIRED";
   else if (maturityRank(record.proofMaturity) < maturityRank(requiredProofMaturity)) state = "PROOF_REQUIRED";
-  else if (record.status !== "FULL" || (preferredKinds.length > 0 && preferredRoutes.length === 0)) state = "PARTIAL";
+  else if (preferredKinds.length > 0 && preferredRoutes.length === 0) state = "PARTIAL";
+  else if (record.status === "PARTIAL" && requiredSupportStatus === "PARTIAL") state = "READY";
+  else if (record.status !== "FULL") state = "PARTIAL";
 
   const limitations = [
     ...(record.limitations ?? []),
@@ -90,6 +96,7 @@ const classify = (
     capabilityId: bucket.capabilityId,
     state,
     requiredProofMaturity,
+    requiredSupportStatus,
     actualProofMaturity: record.proofMaturity,
     registryStatus: record.status,
     bestRouteId: bestRoute?.routeId ?? null,

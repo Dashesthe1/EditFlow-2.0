@@ -28,6 +28,7 @@
         "capabilityId": {"type": "string", "minLength": 1},
         "reason": {"type": "string", "minLength": 1},
         "minimumProofMaturity": {"$ref": "#/$defs/proofMaturity"},
+        "minimumSupportStatus": {"enum": ["FULL", "PARTIAL"]},
         "optional": {"type": "boolean"},
         "preferredRouteKinds": {
           "type": "array",

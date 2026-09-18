@@ -97,8 +97,8 @@ test("Tutorial 1 capability map reuses mature primitives and exposes only real n
   );
 
   assert.equal(result.capabilityReport.summary.total, 9);
-  assert.equal(result.capabilityReport.summary.ready, 3);
-  assert.equal(result.capabilityReport.summary.blocked, 3);
+  assert.equal(result.capabilityReport.summary.ready, 6);
+  assert.equal(result.capabilityReport.summary.blocked, 0);
   assert.equal(result.capabilityReport.summary.optionalGaps, 3);
 
   assert.equal(findings.get("ae.precompose.layers").state, "READY");
@@ -108,13 +108,16 @@ test("Tutorial 1 capability map reuses mature primitives and exposes only real n
   );
   assert.equal(findings.get("ae.property.temporal_ease.set").state, "READY");
 
-  assert.equal(findings.get("ae.layer.time_remap.enable").state, "PARTIAL");
+  assert.equal(findings.get("ae.layer.time_remap.enable").state, "READY");
   assert.equal(
     findings.get("ae.layer.time_remap.enable").actualProofMaturity,
     "STRUCTURAL",
   );
-  assert.equal(findings.get("ae.keyframe.set").state, "PARTIAL");
-  assert.equal(findings.get("ae.layer.transform.set").state, "PARTIAL");
+  assert.equal(findings.get("ae.keyframe.set").state, "READY");
+  assert.equal(findings.get("ae.layer.transform.set").state, "READY");
+  assert.equal(findings.get("ae.layer.time_remap.enable").requiredSupportStatus, "PARTIAL");
+  assert.equal(findings.get("ae.keyframe.set").requiredSupportStatus, "PARTIAL");
+  assert.equal(findings.get("ae.layer.transform.set").requiredSupportStatus, "PARTIAL");
 
   assert.equal(findings.get("ae.effect.add").state, "PARTIAL");
   assert.ok(findings.get("ae.effect.add").uses.every((use) => use.optional));
@@ -133,12 +136,8 @@ test("Tutorial 1 capability map reuses mature primitives and exposes only real n
     ),
   );
 
-  assert.deepEqual(result.blockingCapabilityIds, [
-    "ae.keyframe.set",
-    "ae.layer.time_remap.enable",
-    "ae.layer.transform.set",
-  ]);
-  assert.equal(result.readyForReconstruction, false);
+  assert.deepEqual(result.blockingCapabilityIds, []);
+  assert.equal(result.readyForReconstruction, true);
 });
 
 test("optional literal plugin routes do not block the Tutorial 1 proof funnel", async () => {
@@ -146,12 +145,11 @@ test("optional literal plugin routes do not block the Tutorial 1 proof funnel", 
   const plan = result.proofPlans[0];
 
   assert.equal(plan.risk, "HIGH");
-  assert.deepEqual(plan.blockedByCapabilities, [
+  assert.deepEqual(plan.blockedByCapabilities, []);
+  assert.deepEqual(plan.reusableCapabilityProofs, [
     "ae.keyframe.set",
     "ae.layer.time_remap.enable",
     "ae.layer.transform.set",
-  ]);
-  assert.deepEqual(plan.reusableCapabilityProofs, [
     "ae.precompose.layers",
     "ae.property.temporal_ease.set",
     "ae.property.temporal_interpolation.set",
@@ -168,15 +166,14 @@ test("optional literal plugin routes do not block the Tutorial 1 proof funnel", 
     stageContexts: {},
   });
   assert.equal(selection.nextStageId, "skill.velocity-zoom-transition:L0");
-  assert.deepEqual(selection.blockedStageIds, [
+  assert.deepEqual(selection.blockedStageIds, []);
+  assert.deepEqual(selection.plannedRunStageIds, [
+    "skill.velocity-zoom-transition:L0",
+    "skill.velocity-zoom-transition:L1",
     "skill.velocity-zoom-transition:L3",
     "skill.velocity-zoom-transition:L4",
     "skill.velocity-zoom-transition:L5",
     "skill.velocity-zoom-transition:L6",
-  ]);
-  assert.deepEqual(selection.plannedRunStageIds, [
-    "skill.velocity-zoom-transition:L0",
-    "skill.velocity-zoom-transition:L1",
   ]);
 });
 

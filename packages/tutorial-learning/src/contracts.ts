@@ -15,10 +15,13 @@ export const TUTORIAL_SKILL_STATES = [
 ] as const;
 export type TutorialSkillState = (typeof TUTORIAL_SKILL_STATES)[number];
 
+export type TutorialMinimumSupportStatusV0 = "FULL" | "PARTIAL";
+
 export interface TutorialCapabilityRequirementV0 {
   readonly capabilityId: CapabilityId;
   readonly reason: string;
   readonly minimumProofMaturity: ProofMaturity;
+  readonly minimumSupportStatus?: TutorialMinimumSupportStatusV0;
   readonly optional?: boolean;
   readonly preferredRouteKinds?: readonly RouteKind[];
 }
@@ -87,6 +90,7 @@ export interface TutorialCapabilityFindingV0 {
   readonly capabilityId: CapabilityId;
   readonly state: TutorialCapabilityState;
   readonly requiredProofMaturity: ProofMaturity;
+  readonly requiredSupportStatus: TutorialMinimumSupportStatusV0;
   readonly actualProofMaturity: ProofMaturity | null;
   readonly registryStatus: CapabilityStatus | null;
   readonly bestRouteId: RouteId | null;

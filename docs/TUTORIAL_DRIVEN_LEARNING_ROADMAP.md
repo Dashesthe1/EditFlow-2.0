@@ -35,6 +35,9 @@ For every required capability, compare the lesson against the live Capability Re
 - `UNREGISTERED` — the tutorial exposed a capability EditFlow does not yet model.
 
 Only non-ready tutorial requirements enter the development queue. Optional gaps remain non-blocking.
+A requirement defaults to needing `FULL` capability support. It may explicitly set `minimumSupportStatus: PARTIAL`
+only when the tutorial uses a bounded subset already covered by the capability's accepted evidence and limitations.
+Proof maturity remains an independent gate; accepting partial support never promotes the capability globally.
 This replaces broad speculative AE-surface expansion as the default sequencing method.
 
 ## Track T3 — Skill reconstruction

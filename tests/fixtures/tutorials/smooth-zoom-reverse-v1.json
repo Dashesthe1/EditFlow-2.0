@@ -319,7 +319,8 @@
               {
                 "capabilityId": "ae.layer.time_remap.enable",
                 "reason": "Enable the native Time Remap surface idempotently on compatible AV layers.",
-                "minimumProofMaturity": "STRUCTURAL"
+                "minimumProofMaturity": "STRUCTURAL",
+                "minimumSupportStatus": "PARTIAL"
               }
             ]
           },
@@ -329,7 +330,8 @@
               {
                 "capabilityId": "ae.keyframe.set",
                 "reason": "Place and adapt Time Remap key values around the semantic transition anchor.",
-                "minimumProofMaturity": "VISUAL"
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
               },
               {
                 "capabilityId": "ae.property.temporal_interpolation.set",
@@ -349,12 +351,14 @@
               {
                 "capabilityId": "ae.layer.transform.set",
                 "reason": "Provide the native camera-push fallback through subject-aware scale and position.",
-                "minimumProofMaturity": "VISUAL"
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
               },
               {
                 "capabilityId": "ae.keyframe.set",
                 "reason": "Animate the native zoom fallback or the selected zoom-effect property over time.",
-                "minimumProofMaturity": "VISUAL"
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
               },
               {
                 "capabilityId": "ae.property.temporal_interpolation.set",
