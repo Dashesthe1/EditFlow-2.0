@@ -306,6 +306,10 @@ const compilePrecompose = (
     if (sourceWindows.some((value) => value === null)) continue;
     const typedWindows = sourceWindows as LayerWindowV1[];
     const ids = precomposeIds(node.nodeId, sourceLayerIds, ordinal);
+    const sourceHandlePolicy = node.parameters.some((parameter) =>
+      parameter.derivedFrom.includes("sourceHandleAvailability"))
+      ? "EXPOSE_AVAILABLE_SOURCE"
+      : "PRESERVE_TRIM";
     operations.push({
       type: "PRECOMPOSE",
       compId: context.compId,
@@ -313,6 +317,7 @@ const compilePrecompose = (
       newCompName: ids.name,
       newLayerId: ids.layerId,
       layerIds: [...sourceLayerIds],
+      sourceHandlePolicy,
     });
     const nextWindow = {
       inMs: Math.min(...typedWindows.map((value) => value.inMs)),
