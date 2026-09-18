@@ -98,6 +98,7 @@
     var request = null;
     var started = nowMs();
     var beforeRevision = app.project ? app.project.revision : null;
+    var undoOpen = false;
     try { request = JSON.parse(requestJson); } catch (_) { return innerDispatch(requestJson); }
 
     if (!request || request.command !== "property.set_keyframes"
@@ -165,7 +166,11 @@
         index = validated[i];
         try { removedTimes.push(property.keyTime(index)); } catch (_) { removedTimes.push(null); }
       }
+      app.beginUndoGroup("EditFlow 2.0: property.set_keyframes remove");
+      undoOpen = true;
       for (i = 0; i < validated.length; i += 1) property.removeKey(validated[i]);
+      app.endUndoGroup();
+      undoOpen = false;
 
       return JSON.stringify({
         protocolVersion: PROTOCOL,
@@ -199,6 +204,10 @@
         proofArtifactRefs: []
       });
     } catch (error) {
+      if (undoOpen) {
+        try { app.endUndoGroup(); } catch (_) {}
+        undoOpen = false;
+      }
       return JSON.stringify(failResponse(request, "FAILED", "ADAPTER_FAILURE", "KEYFRAME_REMOVE_FAILED",
         asString(error), started, beforeRevision));
     }

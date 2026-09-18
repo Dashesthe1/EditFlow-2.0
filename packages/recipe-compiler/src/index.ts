@@ -550,3 +550,18 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     skippedOptionalNodeIds,
   };
 };
+
+export {
+  NATIVE_AE_RECIPE_LOWERING_PHASE,
+  NativeAeRecipeLoweringError,
+  lowerCompiledRecipeToNativeAePlanV1,
+} from "./native-ae-lowering.js";
+export type {
+  NativeAeCurveBindingV1,
+  NativeAeEaseHandleIntentV1,
+  NativeAeKeyEaseIntentV1,
+  NativeAeKeyEaseV1,
+  NativeAeRecipeLoweringInputV1,
+  NativeAeResolvedKeyframeV1,
+  NativeAeSemanticCurvePathV1,
+} from "./native-ae-lowering.js";

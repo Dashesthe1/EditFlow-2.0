@@ -1,0 +1,75 @@
+{
+  "proof": "M5_TUTORIAL_001_LIVE_STRUCTURAL_V1",
+  "sourceCommit": "aa64231c52a6c3b7bba5a12bdce5bb1c99231dfe",
+  "startedAt": "2026-09-18T04:26:55.971Z",
+  "panel": {
+    "sessionId": "16888f15-36d0-4c3c-b9bf-b027f3af6c59",
+    "protocolVersion": "2.7.0",
+    "supportedProtocolVersions": [
+      "2.7.0",
+      "2.6.0",
+      "2.5.0",
+      "2.4.0",
+      "2.3.0",
+      "2.2.0",
+      "2.1.0",
+      "2.0.0",
+      "1.9.0",
+      "1.8.0",
+      "1.7.0",
+      "1.6.0",
+      "1.5.0",
+      "1.4.0",
+      "1.3.0",
+      "1.2.0",
+      "1.1.0"
+    ],
+    "extensionId": "com.editflow2.bridge.panel",
+    "extensionVersion": "0.1.0-dev.12",
+    "registeredAt": "2026-09-18T04:16:38.447Z",
+    "lastSeenAt": "2026-09-18T04:26:55.781Z"
+  },
+  "before": {
+    "hostRevision": 1423,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ]
+  },
+  "execution": {
+    "planOperations": 48,
+    "requiredCapabilities": [
+      "ae.precompose.layers",
+      "ae.layer.time_remap.enable",
+      "ae.keyframe.set",
+      "ae.property.temporal_interpolation.set",
+      "ae.property.temporal_ease.set"
+    ],
+    "replacementLayerIds": [
+      "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer",
+      "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer"
+    ],
+    "resultState": "COMMITTED",
+    "appliedOperations": 48,
+    "hostRevisionAfter": 1679,
+    "targetLayerIds": [
+      "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer",
+      "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer"
+    ]
+  },
+  "finishedAt": "2026-09-18T04:27:05.350Z",
+  "cleanup": {
+    "hostRevision": 1684,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ],
+    "baselineFingerprintRestored": true,
+    "baselineItemCountRestored": true,
+    "baselineStableIdsRestored": true
+  }
+}

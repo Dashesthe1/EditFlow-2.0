@@ -186,6 +186,57 @@ const expandEaseIntent = (
   ),
 });
 
+const temporalEaseTargetCacheKey = (
+  payload: Readonly<Record<string, unknown>>,
+): string => {
+  const comp = asRecord(payload["comp"]);
+  const layer = asRecord(payload["layer"]);
+  const propertyPath = payload["propertyPath"];
+  if (comp === null || layer === null || !Array.isArray(propertyPath)) {
+    throw new TypeError("Temporal-ease target requires comp, layer and propertyPath.");
+  }
+
+  const objectKey = (
+    value: Readonly<Record<string, unknown>>,
+    label: string,
+  ): string => {
+    const stableId = value["stableId"];
+    if (typeof stableId === "string" && stableId.length > 0) {
+      return `${label}:stable:${stableId}`;
+    }
+    const hostId = value["hostId"];
+    if (typeof hostId === "number" && Number.isInteger(hostId) && hostId > 0) {
+      return `${label}:host:${hostId}`;
+    }
+    throw new TypeError(`Temporal-ease ${label} target requires stableId or hostId.`);
+  };
+
+  for (const segment of propertyPath) {
+    if (typeof segment !== "string" && typeof segment !== "number") {
+      throw new TypeError("Temporal-ease propertyPath contains an invalid segment.");
+    }
+  }
+
+  return [
+    objectKey(comp, "comp"),
+    objectKey(layer, "layer"),
+    `path:${JSON.stringify(propertyPath)}`,
+  ].join("|");
+};
+
+const temporalEaseCardinalityInvalidatingCommands = new Set<string>([
+  "comp.create",
+  "comp.remove",
+  "media.import",
+  "layer.add_media",
+  "layer.duplicate",
+  "layer.remove",
+  "effect.add",
+  "effect.remove",
+  "layers.precompose",
+  "layer.time_remap.enable",
+]);
+
 const isObservedProjectState = (value: unknown): value is ObservedProjectState => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
@@ -204,6 +255,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   #hostRevision: number | null = null;
   #lastObserved: ObservedProjectState | null = null;
   #rollbackCounter = 0;
+  #temporalEaseCardinalityByTarget = new Map<string, number>();
 
   constructor(
     transport: CurrentAeCepTransactionalTransportV1,
@@ -223,6 +275,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     const observed = await this.client.observe(this.projectId);
     this.#hostRevision = observed.hostRevision;
     this.#lastObserved = structuredClone(observed.observed);
+    this.#temporalEaseCardinalityByTarget.clear();
     return structuredClone(observed.observed);
   }
 
@@ -237,11 +290,19 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     return this.#hostRevision;
   }
 
-  #accept(response: CommonResponse): HostApplyResult {
+  #accept(response: CommonResponse, command: string | null = null): HostApplyResult {
     if (typeof response.hostProjectRevision === "number") {
       this.#hostRevision = response.hostProjectRevision;
     }
-    if (response.outcome === "APPLIED") this.#lastObserved = null;
+    if (response.outcome === "APPLIED") {
+      this.#lastObserved = null;
+      if (
+        command !== null
+        && temporalEaseCardinalityInvalidatingCommands.has(command)
+      ) {
+        this.#temporalEaseCardinalityByTarget.clear();
+      }
+    }
     return responseResult(response);
   }
 
@@ -254,19 +315,24 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
 
     const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
     delete targetPayload["easeIntent"];
-    const probe = await this.transport.dispatch(
-      buildTemporalEaseRequestV18({
-        requestId: this.requestIdFactory(),
-        transactionId: this.transactionId,
-        operationId: `${String(operation.operationId)}:ease-cardinality`,
-        command: "property.temporal_ease.readback",
-        expectedHostProjectRevision: null,
-        payload: targetPayload,
-        readbackProfile: parsed.readbackProfile,
-      }),
-    );
-    this.#accept(probe);
-    const cardinality = temporalEaseCardinality(probe);
+    const cacheKey = temporalEaseTargetCacheKey(targetPayload);
+    let cardinality = this.#temporalEaseCardinalityByTarget.get(cacheKey);
+    if (cardinality === undefined) {
+      const probe = await this.transport.dispatch(
+        buildTemporalEaseRequestV18({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: `${String(operation.operationId)}:ease-cardinality`,
+          command: "property.temporal_ease.readback",
+          expectedHostProjectRevision: null,
+          payload: targetPayload,
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      this.#accept(probe);
+      cardinality = temporalEaseCardinality(probe);
+      this.#temporalEaseCardinalityByTarget.set(cacheKey, cardinality);
+    }
     return {
       ...targetPayload,
       ease: expandEaseIntent(intent, cardinality),
@@ -294,7 +360,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           readbackProfile: parsed.readbackProfile,
         },
       );
-      return this.#accept(response);
+      return this.#accept(response, parsed.command);
     }
 
     if (isAeTemporalInterpolationCommandV17(parsed.command)) {
@@ -315,7 +381,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           readbackProfile: parsed.readbackProfile,
         }),
       );
-      return this.#accept(response);
+      return this.#accept(response, parsed.command);
     }
 
     if (isAeTemporalEaseCommandV18(parsed.command)) {
@@ -339,7 +405,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           readbackProfile: parsed.readbackProfile,
         }),
       );
-      return this.#accept(response);
+      return this.#accept(response, parsed.command);
     }
     if (isAeTimeRemapCommandV27(parsed.command)) {
       assertBinding(
@@ -362,7 +428,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           readbackProfile: parsed.readbackProfile,
         }),
       );
-      return this.#accept(response as unknown as CommonResponse);
+      return this.#accept(response as unknown as CommonResponse, parsed.command);
     }
 
     throw new Error(
