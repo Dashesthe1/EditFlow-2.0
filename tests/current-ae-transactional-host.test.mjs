@@ -163,12 +163,26 @@ class StatefulMixedProtocolTransport {
       });
     }
     if (request.command === "property.temporal_ease.readback") {
+      const leaf = request.payload.propertyPath?.at(-1);
+      const cardinality = leaf === "ADBE Scale"
+        ? 3
+        : leaf === "ADBE Position"
+          ? 2
+          : 1;
+      const defaultEase = Array.from(
+        { length: cardinality },
+        () => ({ speed: 0, influence: 33.333 }),
+      );
       return responseFor(request, {
         outcome: "NO_OP",
         readback: {
           temporalEase: {
-            property: { easeCardinality: 3 },
+            property: { easeCardinality: cardinality },
             keyIndex: request.payload.keyIndex,
+            state: {
+              inEase: structuredClone(defaultEase),
+              outEase: structuredClone(defaultEase),
+            },
           },
         },
         hostProjectRevision: this.project.hostRevision,
@@ -591,7 +605,7 @@ test("current AE host materializes a live Time Remap curve and reuses its derive
     request.command === "property.temporal_ease.set");
   assert.ok(easeSet);
   assert.equal(easeSet.payload.liveCurveEaseIntent, undefined);
-  assert.equal(easeSet.payload.ease.inEase.length, 3);
+  assert.equal(easeSet.payload.ease.inEase.length, 1);
   assert.ok(easeSet.payload.ease.inEase[0].speed > 0);
   assert.ok(easeSet.payload.ease.inEase[0].influence > 50);
 });
@@ -648,4 +662,70 @@ test("current AE host materializes camera scale and position from one live basel
   assert.deepEqual(keyWrites[0].payload.keyframes[1].value, [104, 156]);
   assert.notDeepEqual(keyWrites[1].payload.keyframes[1].value, [500, 600]);
   assert.equal(keyWrites.every((request) => request.payload.liveCurveIntent === undefined), true);
+});
+
+test("live adaptive ease preserves unused AE boundary handles", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-live-boundary-ease",
+    () => `req-live-boundary-${++requestCounter}`,
+  );
+  await host.readState();
+
+  await host.apply(operation({
+    id: "OP_LIVE_BOUNDARY_KEYS",
+    capabilityId: "ae.keyframe.set",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "property.set_keyframes",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      propertyPath: ["ADBE Time Remapping"],
+      liveCurveIntent: {
+        schema: NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+        kind: "TIME_REMAP_PULSE",
+        keyTimesSeconds: [1, 1.5, 2],
+        velocityContrast: 0.4,
+      },
+    },
+  }));
+
+  for (const keyIndex of [1, 3]) {
+    await host.apply(operation({
+      id: `OP_LIVE_BOUNDARY_EASE_${keyIndex}`,
+      capabilityId: "ae.property.temporal_ease.set",
+      routeId: AE_TEMPORAL_EASE_ROUTE_ID_V18,
+      command: "property.temporal_ease.set",
+      payload: {
+        comp: { stableId: "COMP" },
+        layer: { stableId: "LAYER" },
+        propertyPath: ["ADBE Time Remapping"],
+        keyIndex,
+        liveCurveEaseIntent: { keyIndex },
+      },
+    }));
+  }
+
+  const easeReadbacks = transport.requests.filter((request) =>
+    request.command === "property.temporal_ease.readback");
+  const easeSets = transport.requests.filter((request) =>
+    request.command === "property.temporal_ease.set");
+  assert.equal(easeReadbacks.length, 2);
+  assert.equal(easeSets.length, 2);
+
+  assert.deepEqual(
+    easeSets[0].payload.ease.inEase,
+    [{ speed: 0, influence: 33.333 }],
+  );
+  assert.ok(easeSets[0].payload.ease.outEase[0].speed > 0);
+  assert.ok(easeSets[0].payload.ease.outEase[0].influence >= 30);
+
+  assert.ok(easeSets[1].payload.ease.inEase[0].speed > 0);
+  assert.deepEqual(
+    easeSets[1].payload.ease.outEase,
+    [{ speed: 0, influence: 33.333 }],
+  );
 });

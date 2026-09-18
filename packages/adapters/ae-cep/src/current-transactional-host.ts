@@ -180,10 +180,38 @@ const temporalEaseCardinality = (response: CommonResponse): number => {
   return cardinality;
 };
 
+interface ExactTemporalEaseStateV1 {
+  readonly inEase: readonly TemporalEaseHandleIntentV1[];
+  readonly outEase: readonly TemporalEaseHandleIntentV1[];
+}
+
+const temporalEaseState = (response: CommonResponse): ExactTemporalEaseStateV1 => {
+  responseResult(response);
+  const readback = asRecord(response.readback);
+  const temporalEase = asRecord(readback?.["temporalEase"]);
+  const state = asRecord(temporalEase?.["state"]);
+  const parseSide = (
+    value: unknown,
+    label: string,
+  ): readonly TemporalEaseHandleIntentV1[] => {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 3) {
+      throw new Error(
+        `TEMPORAL_EASE_STATE_UNAVAILABLE: live AE readback did not expose ${label} ease cardinality 1-3.`,
+      );
+    }
+    return value.map((entry, index) =>
+      parseEaseHandleIntent(entry, `${label} readback ${index + 1}`));
+  };
+  return {
+    inEase: parseSide(state?.["inEase"], "incoming"),
+    outEase: parseSide(state?.["outEase"], "outgoing"),
+  };
+};
+
 const expandEaseIntent = (
   intent: TemporalEaseIntentV1,
   cardinality: number,
-): Readonly<Record<string, unknown>> => ({
+): ExactTemporalEaseStateV1 => ({
   inEase: Array.from(
     { length: cardinality },
     () => structuredClone(intent.inEase),
@@ -472,6 +500,8 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
     const liveEase = asRecord(targetPayload["liveCurveEaseIntent"]);
     let intent = parseTemporalEaseIntent(parsed.payload);
+    let liveKeyIndex: number | null = null;
+    let liveKeyCount: number | null = null;
 
     if (liveEase !== null) {
       if (intent !== null || targetPayload["ease"] !== undefined) {
@@ -509,15 +539,26 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         inEase: resolved.inEase,
         outEase: resolved.outEase,
       };
+      liveKeyIndex = keyIndex;
+      liveKeyCount = curve.easeIntentByKey.length;
     } else {
       if (intent === null) return parsed.payload;
       delete targetPayload["easeIntent"];
     }
 
+    if (intent === null) {
+      throw new Error("TEMPORAL_EASE_INTENT_REQUIRED: no temporal-ease intent was materialized.");
+    }
+
     const cacheKey = temporalEaseTargetCacheKey(targetPayload);
+    const boundaryKey = liveKeyIndex !== null
+      && liveKeyCount !== null
+      && (liveKeyIndex === 1 || liveKeyIndex === liveKeyCount);
     let cardinality = this.#temporalEaseCardinalityByTarget.get(cacheKey);
-    if (cardinality === undefined) {
-      const probe = await this.transport.dispatch(
+    let probe: CommonResponse | null = null;
+
+    if (cardinality === undefined || boundaryKey) {
+      probe = await this.transport.dispatch(
         buildTemporalEaseRequestV18({
           requestId: this.requestIdFactory(),
           transactionId: this.transactionId,
@@ -529,12 +570,41 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         }),
       );
       this.#accept(probe);
-      cardinality = temporalEaseCardinality(probe);
+      const probedCardinality = temporalEaseCardinality(probe);
+      if (cardinality !== undefined && cardinality !== probedCardinality) {
+        throw new Error(
+          "TEMPORAL_EASE_CARDINALITY_CHANGED: live AE property cardinality changed within one curve.",
+        );
+      }
+      cardinality = probedCardinality;
       this.#temporalEaseCardinalityByTarget.set(cacheKey, cardinality);
     }
+
+    const expanded = expandEaseIntent(intent, cardinality);
+    if (boundaryKey) {
+      if (probe === null || liveKeyIndex === null || liveKeyCount === null) {
+        throw new Error(
+          "TEMPORAL_EASE_BOUNDARY_READBACK_REQUIRED: live boundary ease needs exact host state.",
+        );
+      }
+      const current = temporalEaseState(probe);
+      return {
+        ...targetPayload,
+        ease: liveKeyIndex === 1
+          ? {
+              inEase: structuredClone(current.inEase),
+              outEase: structuredClone(expanded.outEase),
+            }
+          : {
+              inEase: structuredClone(expanded.inEase),
+              outEase: structuredClone(current.outEase),
+            },
+      };
+    }
+
     return {
       ...targetPayload,
-      ease: expandEaseIntent(intent, cardinality),
+      ease: expanded,
     };
   }
 

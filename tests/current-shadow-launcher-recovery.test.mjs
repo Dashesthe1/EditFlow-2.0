@@ -9,6 +9,10 @@ test("current Shadow launcher reopens only the CEP bridge in a healthy running A
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /Candidates\.Count -ne 1/);
   assert.match(source, /Test-Listening 32145/);
+  assert.match(source, /AutoReconnectDeadline/);
+  assert.match(source, /127\.0\.0\.1:32146\/healthz/);
+  assert.match(source, /WarmPanelReady/);
+  assert.match(source, /automatic reconnect; no AE menu bootstrap was needed/);
   assert.match(source, /Start-Process -FilePath \$Candidates\[0\]\.Path/);
   assert.doesNotMatch(source, /Stop-Process.*AfterFX/);
 });
