@@ -312,6 +312,63 @@ export class AeCepAdapterClientV11 {
     return await this.dispatchChecked(command, args);
   }
 
+  async dispatchAtKnownHostRevision(
+    command: AeAdapterCommandV11,
+    args: {
+      transactionId: string;
+      operationId: string;
+      capabilityId?: string;
+      payload: Readonly<Record<string, unknown>>;
+      expectedHostProjectRevision: number | null;
+      readbackProfile?: string | null;
+    },
+  ): Promise<AeAdapterResponseV11> {
+    if (!isAeCommandV11(command)) throw new TypeError(`Unsupported AE v1.1 command '${String(command)}'.`);
+    this.filesystemPolicy.assertCommandPayload(command, args.payload);
+    if (isAeMutationCommandV11(command)
+      && (typeof args.expectedHostProjectRevision !== "number"
+        || !Number.isInteger(args.expectedHostProjectRevision)
+        || args.expectedHostProjectRevision < 0)) {
+      throw new TypeError(`Mutating AE v1.1 command '${command}' requires a known non-negative host revision.`);
+    }
+    const request = this.#request(
+      command,
+      args.capabilityId ?? capabilityForCommandV11(command),
+      args.payload,
+      {
+        transactionId: args.transactionId,
+        operationId: args.operationId,
+        expectedHostProjectRevision: isAeMutationCommandV11(command)
+          ? args.expectedHostProjectRevision
+          : null,
+        readbackProfile: args.readbackProfile ?? null,
+      },
+    );
+    return await this.transport.dispatch(request);
+  }
+
+  async executePublicAtKnownHostRevision(
+    command: AeAdapterPublicCommandV11,
+    args: Parameters<AeCepAdapterClientV11["dispatchAtKnownHostRevision"]>[1],
+  ): Promise<AeAdapterResponseV11> {
+    if (!isAePublicCommandV11(command)) throw new TypeError(`Command '${command}' is not public.`);
+    return await this.dispatchAtKnownHostRevision(command, args);
+  }
+
+  async undoLastAtKnownHostRevision(args: {
+    transactionId: string;
+    operationId: string;
+    expectedHostProjectRevision: number;
+  }): Promise<AeAdapterResponseV11> {
+    return await this.dispatchAtKnownHostRevision("transaction.undo_last", {
+      transactionId: args.transactionId,
+      operationId: args.operationId,
+      payload: {},
+      expectedHostProjectRevision: args.expectedHostProjectRevision,
+      capabilityId: "ae.transaction.undo_last",
+    });
+  }
+
   async undoLast(args: { transactionId: string; operationId: string; expectedState: ObservedProjectState }): Promise<AeAdapterResponseV11> {
     return await this.dispatchChecked("transaction.undo_last", {
       transactionId: args.transactionId,
