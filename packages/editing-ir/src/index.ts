@@ -36,6 +36,8 @@ export interface EditingIrTimingV1 {
   readonly anchor: EditingIrTimingAnchorV1;
   readonly offsetMs?: number;
   readonly durationMs?: number;
+  readonly durationParameter?: string;
+  readonly peakPhaseParameter?: string;
   readonly eventRef?: string;
 }
 
@@ -93,6 +95,23 @@ const validateTiming = (node: EditingIrNodeV1, errors: string[]): void => {
   if (node.timing.durationMs !== undefined
     && (!Number.isFinite(node.timing.durationMs) || node.timing.durationMs <= 0)) {
     errors.push(`Node '${node.nodeId}' has an invalid timing duration.`);
+  }
+  if (node.timing.durationMs !== undefined && node.timing.durationParameter !== undefined) {
+    errors.push(`Node '${node.nodeId}' timing cannot mix durationMs with durationParameter.`);
+  }
+  if (node.timing.durationParameter !== undefined) {
+    const ref = node.timing.durationParameter;
+    if (!nonEmpty(ref)) errors.push(`Node '${node.nodeId}' has an empty durationParameter.`);
+    else if (!node.parameters.some((parameter) => parameter.name === ref)) {
+      errors.push(`Node '${node.nodeId}' timing references missing duration parameter '${ref}'.`);
+    }
+  }
+  if (node.timing.peakPhaseParameter !== undefined) {
+    const ref = node.timing.peakPhaseParameter;
+    if (!nonEmpty(ref)) errors.push(`Node '${node.nodeId}' has an empty peakPhaseParameter.`);
+    else if (!node.parameters.some((parameter) => parameter.name === ref)) {
+      errors.push(`Node '${node.nodeId}' timing references missing peak-phase parameter '${ref}'.`);
+    }
   }
   if (node.timing.anchor === "EVENT" && !nonEmpty(node.timing.eventRef ?? "")) {
     errors.push(`Node '${node.nodeId}' EVENT timing requires eventRef.`);

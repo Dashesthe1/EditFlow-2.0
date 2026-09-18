@@ -231,7 +231,8 @@
             "timing": {
               "anchor": "EVENT",
               "eventRef": "transition-anchor",
-              "durationMs": 900
+              "durationParameter": "velocityPulseDuration",
+              "peakPhaseParameter": "temporalPeakPhase"
             },
             "evidenceRefs": [
               "video:00:50-01:14:temporal-graph-shot-a",
@@ -250,6 +251,19 @@
               "shape-temporal-velocity-pulse"
             ],
             "parameters": [
+              {
+                "name": "zoomPulseDuration",
+                "intent": "Scale the spatial push window to the usable shot duration and pacing rather than a fixed tutorial interval.",
+                "derivedFrom": [
+                  "shotDuration",
+                  "frameRate",
+                  "transitionEnergy"
+                ],
+                "normalizedRange": {
+                  "min": 0.08,
+                  "max": 0.45
+                }
+              },
               {
                 "name": "zoomIntensity",
                 "intent": "Create visible impact without exceeding crop safety or making the subject unreadable.",
@@ -291,7 +305,8 @@
             "timing": {
               "anchor": "EVENT",
               "eventRef": "transition-anchor",
-              "durationMs": 750
+              "durationParameter": "zoomPulseDuration",
+              "peakPhaseParameter": "zoomTemporalPhase"
             },
             "evidenceRefs": [
               "video:01:26-01:53:sapphire-warp-zoom-shot-a",
