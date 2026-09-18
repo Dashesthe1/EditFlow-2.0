@@ -39,6 +39,14 @@ import {
   isAeTimeRemapCommandV27,
   type AeTimeRemapTransportV27,
 } from "./protocol-v2_7.js";
+import type { AeStabilizationTransportV23 } from "./protocol-v2_3.js";
+import {
+  GuardedStabilizationControllerV1,
+  M4_STABILIZATION_GUARDED_ROUTE_ID_V1,
+  readStabilizationTruthCountsV1,
+  type StabilizationTruthCountsV1,
+  type StabilizationVisualDriverV1,
+} from "./m4-stabilization.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
 import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
@@ -57,7 +65,15 @@ export type CurrentAeCepTransactionalTransportV1 =
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
   & AeMarkerMotionTransportV20
-  & AeTimeRemapTransportV27;
+  & AeTimeRemapTransportV27
+  & AeStabilizationTransportV23;
+
+interface StabilizationRecoveryCheckpointV1 {
+  readonly compHostId: number;
+  readonly layerHostId: number;
+  readonly baseline: StabilizationTruthCountsV1;
+  readonly phase: "FAILED_OR_IN_FLIGHT" | "SUCCEEDED_AWAITING_CHECKPOINT";
+}
 
 interface ParsedOperation {
   readonly command: string;
@@ -285,6 +301,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   readonly projectId: string;
   readonly transactionId: string;
   readonly requestIdFactory: () => string;
+  readonly stabilizationVisualDriver: StabilizationVisualDriverV1 | null;
 
   #hostRevision: number | null = null;
   #lastObserved: ObservedProjectState | null = null;
@@ -293,6 +310,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   #materializedCurveByTarget = new Map<string, NativeAeMaterializedCurveV1>();
   #cameraBaselineByLayer = new Map<string, NativeAeCameraPushBaselineV1>();
   #effectIndexByBindingId = new Map<string, number>();
+  #stabilizationRecoveryCheckpoint: StabilizationRecoveryCheckpointV1 | null = null;
 
   constructor(
     transport: CurrentAeCepTransactionalTransportV1,
@@ -300,11 +318,13 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     transactionId = "editflow-current-runtime",
     requestIdFactory: () => string = () => randomUUID(),
     filesystemPolicy = new AeFilesystemPolicyV11([]),
+    stabilizationVisualDriver: StabilizationVisualDriverV1 | null = null,
   ) {
     this.transport = transport;
     this.projectId = projectId;
     this.transactionId = transactionId;
     this.requestIdFactory = requestIdFactory;
+    this.stabilizationVisualDriver = stabilizationVisualDriver;
     this.client = new AeCepAdapterClientV11(transport, requestIdFactory, filesystemPolicy);
   }
 
@@ -320,6 +340,9 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   }
 
   async captureRecoverySnapshot(): Promise<unknown> {
+    if (this.#stabilizationRecoveryCheckpoint?.phase === "SUCCEEDED_AWAITING_CHECKPOINT") {
+      this.#stabilizationRecoveryCheckpoint = null;
+    }
     if (this.#lastObserved === null) await this.readState();
     return structuredClone(this.#lastObserved);
   }
