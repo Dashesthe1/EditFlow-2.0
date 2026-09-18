@@ -550,3 +550,5 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     skippedOptionalNodeIds,
   };
 };
+
+export * from "./live-ae.js";
