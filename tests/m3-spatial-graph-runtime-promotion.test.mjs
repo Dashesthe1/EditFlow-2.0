@@ -7,7 +7,7 @@ const previewInstallerPath = "scripts/windows/install-editflow-cep-v19-preview.p
 const configTemplatePath = "packages/adapters/ae-cep/extension/client/runtime-config.js";
 const hostLoaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v19.jsx";
 
-test("standard CEP installer retains accepted spatial Graph Editor protocol 1.9 beneath additive 2.0", async () => {
+test("standard CEP installer retains accepted spatial Graph Editor 1.9 beneath the additive 2.7 transport chain", async () => {
   const source = await readFile(installerPath, "utf8");
 
   for (const file of [
@@ -15,20 +15,21 @@ test("standard CEP installer retains accepted spatial Graph Editor protocol 1.9 
     "editflow_host_m3_spatial_graph_proof_cleanup.jsx",
     "editflow_host_current_v19.jsx",
     "editflow_host_current_v20.jsx",
+    "editflow_host_current_v27.jsx",
   ]) {
     assert.match(source, new RegExp(file.replaceAll(".", "\\.")));
   }
 
   assert.match(source, /\$KnownTemplate = 'var KNOWN_PROTOCOLS = \["1\.8\.0"/);
-  assert.match(source, /\$KnownV20 = 'var KNOWN_PROTOCOLS = \["2\.0\.0","1\.9\.0","1\.8\.0"/);
-  assert.match(source, /BridgeText\.Replace\(\$KnownTemplate, \$KnownV20\)/);
-  assert.match(source, /Replace\('editflow_host_current_v18\.jsx', 'editflow_host_current_v20\.jsx'\)/);
-  assert.match(source, /Replace\('EditFlow2_HOST_PROTOCOL_18', 'EditFlow2_HOST_PROTOCOL_20'\)/);
-  assert.match(source, /supportedProtocolVersions = @\("2\.0\.0", "1\.9\.0", "1\.8\.0"/);
+  assert.match(source, /\$KnownV27 = 'var KNOWN_PROTOCOLS = \["2\.7\.0","2\.6\.0","2\.5\.0"/);
+  assert.match(source, /BridgeText\.Replace\(\$KnownTemplate, \$KnownV27\)/);
+  assert.match(source, /Replace\('editflow_host_current_v18\.jsx', 'editflow_host_current_v27\.jsx'\)/);
+  assert.match(source, /Replace\('EditFlow2_HOST_PROTOCOL_18', 'EditFlow2_HOST_PROTOCOL_27'\)/);
+  assert.match(source, /supportedProtocolVersions = @\("2\.7\.0", "2\.6\.0", "2\.5\.0"/);
   assert.match(source, /\$AcceptedV19Compatibility/);
   assert.match(source, /hostLoader = "editflow_host_current_v19\.jsx"/);
-  assert.match(source, /Panel protocols advertised: 2\.0\.0, 1\.9\.0, 1\.8\.0/);
-  assert.match(source, /refusing unverified protocol 2\.0 promotion/);
+  assert.match(source, /Panel protocols advertised: 2\.7\.0, 2\.6\.0, 2\.5\.0/);
+  assert.match(source, /refusing unverified protocol 2\.7 transport promotion/);
 });
 
 test("checked-in runtime config advertises 2.0 first while retaining accepted 1.9, 1.8 and the 1.1 safe fallback signal", async () => {

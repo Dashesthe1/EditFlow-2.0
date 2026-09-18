@@ -8,20 +8,20 @@ const configPath = "packages/adapters/ae-cep/extension/client/runtime-config.js"
 const loaderPath = "packages/adapters/ae-cep/host/editflow_host_current_v20.jsx";
 const registryPath = "apps/desktop-host/src/ae-runtime-capabilities.ts";
 
-test("standard CEP installer promotes protocol 2.0 as the single accepted marker-motion runtime", async () => {
+test("standard CEP installer retains accepted marker-motion 2.0 beneath the additive 2.7 transport chain", async () => {
   const source = await readFile(installerPath, "utf8");
   for (const token of [
     '"editflow_host_m3_marker_motion.jsx"',
     '"editflow_host_current_v20.jsx"',
-    '$ExtensionVersion = "0.1.0-dev.10"',
-    '$KnownV20 = \'var KNOWN_PROTOCOLS = ["2.0.0","1.9.0","1.8.0"',
-    "editflow_host_current_v20.jsx",
-    "EditFlow2_HOST_PROTOCOL_20",
+    '"editflow_host_current_v27.jsx"',
+    '$ExtensionVersion = "0.1.0-dev.12"',
+    '$KnownV27 = \'var KNOWN_PROTOCOLS = ["2.7.0","2.6.0","2.5.0"',
+    "EditFlow2_HOST_PROTOCOL_27",
     "acceptedV19Compatibility",
-    'supportedProtocolVersions = @("2.0.0", "1.9.0", "1.8.0"',
-    "Panel protocols advertised: 2.0.0, 1.9.0, 1.8.0",
+    'supportedProtocolVersions = @("2.7.0", "2.6.0", "2.5.0"',
+    "Panel protocols advertised: 2.7.0, 2.6.0, 2.5.0",
   ]) assert.ok(source.includes(token), `standard installer missing ${token}`);
-  assert.match(source, /refusing unverified protocol 2\.0 promotion/);
+  assert.match(source, /refusing unverified protocol 2\.7 transport promotion/);
 });
 
 test("checked-in runtime config and desktop registry agree that 2.0 is accepted above 1.9", async () => {

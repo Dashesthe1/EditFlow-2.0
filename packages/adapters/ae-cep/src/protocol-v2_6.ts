@@ -101,6 +101,10 @@ export interface AeRotoBrushResponseV26 {
   };
 }
 
+export interface AeRotoBrushTransportV26 {
+  dispatch(request: AeRotoBrushRequestV26): Promise<AeRotoBrushResponseV26>;
+}
+
 const commandSetV26 = new Set<string>(AE_ROTO_BRUSH_COMMANDS_V26);
 export const isAeRotoBrushCommandV26 = (command: string): command is AeRotoBrushCommandV26 => commandSetV26.has(command);
 export const capabilityForRotoBrushCommandV26 = (command: AeRotoBrushCommandV26): "ae.roto_brush.session.inspect" => {
