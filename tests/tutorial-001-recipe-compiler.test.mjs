@@ -4,7 +4,12 @@ import { readFile } from "node:fs/promises";
 
 import {
   compileTutorialDeepLessonV1,
+  compileTutorialVirtualAeProofV1,
 } from "../.tmp/runtime/packages/tutorial-learning/src/index.js";
+import {
+  replayTeachTraceV1,
+  verifyTeachTraceIntegrityV1,
+} from "../.tmp/runtime/packages/teach-trace/src/index.js";
 import {
   simulateVirtualAeV1,
 } from "../.tmp/runtime/packages/virtual-ae/src/index.js";
@@ -17,10 +22,13 @@ import {
 const fixturePath =
   "tests/fixtures/tutorials/smooth-zoom-reverse-v1.json";
 
-const loadRecipe = async () => {
+const loadLesson = async () => {
   const packet = JSON.parse(await readFile(fixturePath, "utf8"));
-  return compileTutorialDeepLessonV1(packet).skills[0].editingIr;
+  return compileTutorialDeepLessonV1(packet);
 };
+
+const loadRecipe = async () =>
+  (await loadLesson()).skills[0].editingIr;
 
 const project = () => ({
   schema: "editflow.virtual-ae.project.v1",
@@ -199,5 +207,49 @@ test("Recipe compilation fails closed on unsafe adapted parameters", async () =>
         && issue.nodeId === "shape-temporal-velocity-pulse"));
       return true;
     },
+  );
+});
+test("Tutorial 001 successful offline construction emits replayable Teach/Trace evidence", async () => {
+  const lesson = await loadLesson();
+  const proof = compileTutorialVirtualAeProofV1(
+    lesson,
+    "skill.velocity-zoom-transition",
+    project(),
+    context(),
+  );
+
+  assert.equal(proof.schema, "editflow.tutorial-virtual-ae-proof.v1");
+  assert.equal(proof.tutorialId, "tutorial.smooth-zoom-reverse.001");
+  assert.equal(proof.skillId, "skill.velocity-zoom-transition");
+  assert.equal(proof.trace.source.kind, "PROOF");
+  assert.equal(proof.trace.replayable, true);
+  assert.equal(
+    proof.regression.operationCount,
+    proof.compiled.operations.length,
+  );
+
+  const integrity = verifyTeachTraceIntegrityV1(proof.trace);
+  assert.equal(integrity.valid, true, integrity.errors.join("\n"));
+  const replay = replayTeachTraceV1(proof.trace);
+  assert.equal(replay.status, "PASS", replay.errors.join("\n"));
+  assert.ok(
+    proof.regression.requiredEntityKinds.includes("COMPOSITION"),
+  );
+  assert.ok(
+    proof.regression.requiredEntityKinds.includes("LAYER"),
+  );
+  assert.ok(
+    proof.regression.requiredEntityKinds.includes("PROPERTY"),
+  );
+  assert.ok(
+    proof.regression.requiredEntityKinds.includes("KEYFRAME"),
+  );
+  assert.ok(
+    proof.regression.requiredChangePaths.some((path) =>
+      path.includes("TimeRemap.SourceTime")),
+  );
+  assert.ok(
+    proof.regression.requiredChangePaths.some((path) =>
+      path.includes("Transform.CameraPush.Scale")),
   );
 });
