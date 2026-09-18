@@ -22,6 +22,10 @@ test("Tutorial 001 transfer profile materially changes every declared transfer d
   assert.notEqual(P.anchor.timeMs, 2000);
   assert.ok(P.sourceWindows.outgoing.sourceEndSeconds
     < P.sourceWindows.incoming.sourceStartSeconds);
+  assert.ok(P.compileHandleTiming.outgoingOutSeconds
+    > P.targetTiming.outgoingOutSeconds);
+  assert.ok(P.compileHandleTiming.incomingInSeconds
+    < P.targetTiming.incomingInSeconds);
   assert.ok(P.recipe.zoomCenter[0] < 0.5);
   assert.ok(P.recipe.zoomCenter[1] > 0.5);
   assert.ok(P.sourceTransform.scale[0] > 100);
@@ -54,6 +58,8 @@ test("Tutorial 001 transfer runner reuses the normal semantic compiler and warm 
   assert.match(source, /lowerCompiledRecipeToNativeAePlanV1/);
   assert.match(source, /curveBindingMode: "LIVE_ADAPTIVE"/);
   assert.match(source, /livePlan\.operations\.length === 48/);
+  assert.ok(source.indexOf("compileTransferRecipe()") < source.indexOf("getStatus()"),
+    "Level-0 semantic compilation must happen before live AE setup.");
   assert.match(source, /M5_MOCHA_SOURCE|realSourceStableId/);
   assert.match(source, /kind: "TRANSFER"/);
   assert.match(source, /learningState = "TRANSFER_VERIFIED"/);

@@ -28,7 +28,14 @@ export const TUTORIAL_001_TRANSFER_PROFILE = Object.freeze({
     outgoingOutSeconds: 3.2,
     incomingInSeconds: 3.2,
     incomingOutSeconds: 6.4,
-  }),  sourceTransform: Object.freeze({
+  }),
+  compileHandleTiming: Object.freeze({
+    outgoingInSeconds: 0,
+    outgoingOutSeconds: 4.4,
+    incomingInSeconds: 2.0,
+    incomingOutSeconds: 6.4,
+  }),
+  sourceTransform: Object.freeze({
     position: Object.freeze([960, 540]),
     scale: Object.freeze([178, 178]),
   }),
@@ -56,7 +63,8 @@ export const TUTORIAL_001_TRANSFER_PROFILE = Object.freeze({
       tailTimesMs: Object.freeze([2800, 3600]),
       minAnchorToTailRatio: 1.05,
     }),
-  }),  motion: Object.freeze({
+  }),
+  motion: Object.freeze({
     timesMs: Object.freeze([
       2700, 2800, 2900, 3000, 3100,
       3300, 3400, 3500, 3600, 3700,

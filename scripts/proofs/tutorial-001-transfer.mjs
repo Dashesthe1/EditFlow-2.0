@@ -15,6 +15,7 @@ import {
 } from "./tutorial-001-transfer-profile.mjs";
 
 const BASE = process.env.EDITFLOW_SHADOW_CONTROL ?? "http://127.0.0.1:32146";
+const OFFLINE_ONLY = process.env.EDITFLOW_T001_TRANSFER_OFFLINE === "1";
 const FIXTURE = "tests/fixtures/tutorials/smooth-zoom-reverse-v1.json";
 const EVIDENCE = "proofs/diagnostics/m5-tutorial-001-transfer.json";
 const SCRIPT = resolve("scripts/windows/tutorial-001-transfer.jsx");
@@ -206,13 +207,14 @@ const virtualProject = () => ({
     height: P.comp.height,
     durationMs: P.comp.durationSeconds * 1000,
     frameRate: P.comp.frameRate,
-    layers: [      {
+    layers: [
+      {
         layerId: LAYER_OUT,
         name: "Outgoing transfer shot",
         kind: "FOOTAGE",
         sourceRef: SOURCE_OUT,
-        inMs: P.targetTiming.outgoingInSeconds * 1000,
-        outMs: P.targetTiming.outgoingOutSeconds * 1000,
+        inMs: P.compileHandleTiming.outgoingInSeconds * 1000,
+        outMs: P.compileHandleTiming.outgoingOutSeconds * 1000,
         properties: [], effects: [], masks: [],
       },
       {
@@ -220,8 +222,8 @@ const virtualProject = () => ({
         name: "Incoming transfer shot",
         kind: "FOOTAGE",
         sourceRef: SOURCE_IN,
-        inMs: P.targetTiming.incomingInSeconds * 1000,
-        outMs: P.targetTiming.incomingOutSeconds * 1000,
+        inMs: P.compileHandleTiming.incomingInSeconds * 1000,
+        outMs: P.compileHandleTiming.incomingOutSeconds * 1000,
         properties: [], effects: [], masks: [],
       },
     ],
@@ -240,7 +242,8 @@ const recipeContext = () => ({
     [recipeParameterKeyV1("shape-temporal-velocity-pulse", "velocityContrast")]:
       P.recipe.velocityContrast,
     [recipeParameterKeyV1("shape-temporal-velocity-pulse", "temporalPeakPhase")]:
-      P.recipe.temporalPeakPhase,    [recipeParameterKeyV1("couple-zoom-pulse", "zoomPulseDuration")]:
+      P.recipe.temporalPeakPhase,
+    [recipeParameterKeyV1("couple-zoom-pulse", "zoomPulseDuration")]:
       P.recipe.zoomPulseDuration,
     [recipeParameterKeyV1("couple-zoom-pulse", "zoomIntensity")]:
       P.recipe.zoomIntensity,
@@ -250,18 +253,18 @@ const recipeContext = () => ({
       P.recipe.zoomTemporalPhase,
   },
 });
-const compileLivePlan = async (observed) => {
+const compileTransferRecipe = async () => {
   const packet = JSON.parse(await readFile(FIXTURE, "utf8"));
   const recipe = compileTutorialDeepLessonV1(packet).skills[0].editingIr;
-  const compiled = compileEditingIrRecipeToVirtualAeV1(recipe, virtualProject(), recipeContext());
-  return lowerCompiledRecipeToNativeAePlanV1(compiled, {
-    planId: "tutorial-001-transfer-native-plan",
-    observedState: observed,
-    curveBindingMode: "LIVE_ADAPTIVE",
-    creativeObjective: "Transfer velocity-plus-zoom semantics to materially different real media.",
-    recipeRefs: ["skill.velocity-zoom-transition"],
-  });
+  return compileEditingIrRecipeToVirtualAeV1(recipe, virtualProject(), recipeContext());
 };
+const lowerLivePlan = (compiled, observed) => lowerCompiledRecipeToNativeAePlanV1(compiled, {
+  planId: "tutorial-001-transfer-native-plan",
+  observedState: observed,
+  curveBindingMode: "LIVE_ADAPTIVE",
+  creativeObjective: "Transfer velocity-plus-zoom semantics to materially different real media.",
+  recipeRefs: ["skill.velocity-zoom-transition"],
+});
 const cleanupPlan = (observed, ids) => {
   const operations = ids.map((stableId, index) => planOperation(
     "T001X_CLEANUP_" + String(index + 1).padStart(3, "0"),
@@ -270,7 +273,8 @@ const cleanupPlan = (observed, ids) => {
     { comp: { stableId } },
     index === 0 ? [] : ["T001X_CLEANUP_" + String(index).padStart(3, "0")],
     "R3_DESTRUCTIVE",
-  ));  return planEnvelope(
+  ));
+  return planEnvelope(
     "tutorial-001-transfer-cleanup",
     observed,
     ["ae.comp.remove"],
@@ -285,6 +289,17 @@ const findItem = (state, stableId) =>
 const findComp = (state, stableId) => findItem(state, stableId)?.composition ?? null;
 
 const main = async () => {
+  // Level 0: compile the semantic recipe before any live AE mutation.
+  const compiledRecipe = await compileTransferRecipe();
+  if (OFFLINE_ONLY) {
+    console.log(JSON.stringify({
+      ok: true,
+      stage: "LEVEL_0",
+      schema: compiledRecipe.schema,
+      operationCount: compiledRecipe.operations.length,
+    }));
+    return;
+  }
   const status = await getStatus();
   requireThat(status.panel?.protocolVersion === "2.7.0",
     "Tutorial 001 transfer requires warm protocol 2.7.0.");
@@ -312,7 +327,8 @@ const main = async () => {
       itemCount: before.state.project.itemCount,
       stableItemIds: baselineIds,
     },
-  };  let livePlan = null;
+  };
+  let livePlan = null;
   let proofError = null;
   try {
     const setup = await runTransaction(setupPlan(before.state.observed));
@@ -328,7 +344,7 @@ const main = async () => {
     evidence.fixture = prepared;
 
     const afterSetup = await getState();
-    livePlan = await compileLivePlan(afterSetup.state.observed);
+    livePlan = lowerLivePlan(compiledRecipe, afterSetup.state.observed);
     requireThat(livePlan.operations.length === 48,
       "Tutorial 001 transfer native plan must contain 48 operations.");
     const precomposeOps = livePlan.operations.filter((operation) =>
@@ -344,7 +360,8 @@ const main = async () => {
     requireThat(target.width === P.comp.width && target.height === P.comp.height,
       "Transfer target dimensions changed unexpectedly.");
     requireThat(Math.abs(target.frameRate - P.comp.frameRate) < 0.01,
-      "Transfer target frame rate changed unexpectedly.");    const replacementIds = precomposeOps.map((operation) =>
+      "Transfer target frame rate changed unexpectedly.");
+    const replacementIds = precomposeOps.map((operation) =>
       operation.input.payload.replacementStableId);
     const targetLayerIds = (target.layers ?? []).map((layer) => layer.stableId);
     requireThat(replacementIds.every((id) => targetLayerIds.includes(id)),
