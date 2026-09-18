@@ -1,7 +1,7 @@
 {
   "proof": "M5_TUTORIAL_001_LIVE_ADAPTIVE_VISUAL_V1",
-  "sourceCommit": "e3f80b37df87981fde39c0f6fb8ffe6380e76f67",
-  "startedAt": "2026-09-18T05:16:54.056Z",
+  "sourceCommit": "4f123da0a77508ec85aa831771cac9a3bd4a0807",
+  "startedAt": "2026-09-18T05:34:24.762Z",
   "panel": {
     "sessionId": "05f58351-672b-490c-989b-7bdd90864323",
     "protocolVersion": "2.7.0",
@@ -27,10 +27,10 @@
     "extensionId": "com.editflow2.bridge.panel",
     "extensionVersion": "0.1.0-dev.12",
     "registeredAt": "2026-09-18T05:07:42.025Z",
-    "lastSeenAt": "2026-09-18T05:16:53.865Z"
+    "lastSeenAt": "2026-09-18T05:34:24.605Z"
   },
   "before": {
-    "hostRevision": 3081,
+    "hostRevision": 4506,
     "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
     "itemCount": 5,
     "stableItemIds": [
@@ -57,7 +57,7 @@
         "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_2200ms.png"
       ],
       "targetLayers": 2,
-      "capturedAtMs": 1789708615634
+      "capturedAtMs": 1789709666176
     },
     "edited": {
       "proof": "M5_TUTORIAL_001_SPARSE_VISUAL_V1",
@@ -77,7 +77,7 @@
         "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_2200ms.png"
       ],
       "targetLayers": 2,
-      "capturedAtMs": 1789708621940
+      "capturedAtMs": 1789709672437
     }
   },
   "execution": {
@@ -95,15 +95,15 @@
     ],
     "resultState": "COMMITTED",
     "appliedOperations": 48,
-    "hostRevisionAfter": 3477,
+    "hostRevisionAfter": 4942,
     "targetLayerIds": [
       "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer",
       "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer"
     ]
   },
-  "finishedAt": "2026-09-18T05:17:06.087Z",
+  "finishedAt": "2026-09-18T05:34:34.972Z",
   "cleanup": {
-    "hostRevision": 3482,
+    "hostRevision": 4947,
     "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
     "itemCount": 5,
     "stableItemIds": [

@@ -7,6 +7,12 @@ import {
   recipeParameterKeyV1,
 } from "../../.tmp/runtime/packages/recipe-compiler/src/index.js";
 import { AE_ADAPTER_ROUTE_ID_V11 } from "../../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
+import { evaluateSparseVisualProofV1 } from "./sparse-visual-evaluator.mjs";
+import {
+  TUTORIAL_001_VISUAL_ANCHOR_MS,
+  TUTORIAL_001_VISUAL_RULES,
+  framesFromSparseCaptureV1,
+} from "./tutorial-001-visual-profile.mjs";
 
 const BASE = process.env.EDITFLOW_SHADOW_CONTROL ?? "http://127.0.0.1:32146";
 const FIXTURE = "tests/fixtures/tutorials/smooth-zoom-reverse-v1.json";
@@ -257,6 +263,17 @@ const main = async () => {
       requireThat(editedVisual.phase === "edited", "Tutorial 001 edited visual phase mismatch.");
       await waitForVisualFiles(editedVisual);
       evidence.visual.edited = editedVisual;
+      evidence.visual.assessment = await evaluateSparseVisualProofV1({
+        baselineFrames: framesFromSparseCaptureV1(evidence.visual.baseline),
+        editedFrames: framesFromSparseCaptureV1(editedVisual),
+        anchorMs: TUTORIAL_001_VISUAL_ANCHOR_MS,
+        rules: TUTORIAL_001_VISUAL_RULES,
+      });
+      requireThat(
+        evidence.visual.assessment.passed,
+        "Tutorial 001 sparse visual assessment failed: "
+          + evidence.visual.assessment.issues.join(", "),
+      );
     }
 
     evidence.execution = {

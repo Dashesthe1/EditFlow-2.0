@@ -23,8 +23,7 @@ test("Tutorial 001 sparse visual proof is bounded and uses deterministic proof-o
   assert.doesNotMatch(source, /renderQueue\.render\s*\(/);
   assert.doesNotMatch(source, /app\.quit\s*\(/);
 });
-
-test("Tutorial 001 live runner keeps structural mode default and gates sparse visual capture explicitly", async () => {
+test("Tutorial 001 live runner gates capture with semantic sparse visual assessment", async () => {
   const source = await readFile(runnerPath, "utf8");
   assert.match(source, /EDITFLOW_T001_VISUAL === "1"/);
   assert.match(source, /m5-tutorial-001-live-adaptive-structural\.json/);
@@ -35,4 +34,8 @@ test("Tutorial 001 live runner keeps structural mode default and gates sparse vi
   assert.match(source, /waitForVisualFiles/);
   assert.match(source, /stat\(file\)/);
   assert.match(source, /T001_VISUAL_FRAME_COMPLETION_TIMEOUT/);
+  assert.match(source, /evaluateSparseVisualProofV1/);
+  assert.match(source, /TUTORIAL_001_VISUAL_RULES/);
+  assert.match(source, /framesFromSparseCaptureV1/);
+  assert.match(source, /assessment\.passed/);
 });
