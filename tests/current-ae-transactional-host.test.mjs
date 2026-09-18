@@ -598,7 +598,7 @@ test("current AE host materializes a live Time Remap curve and reuses its derive
   assert.equal(setKeys.payload.liveCurveIntent, undefined);
   assert.deepEqual(
     setKeys.payload.keyframes.map((keyframe) => keyframe.value),
-    [1, 1.7, 2],
+    [1, 1.5, 2],
   );
 
   const easeSet = transport.requests.find((request) =>

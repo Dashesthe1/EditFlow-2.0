@@ -103,6 +103,15 @@ export const evaluateSparseVisualProofV1 = async ({
     && Math.abs(peak.timeMs - anchorMs) > rules.anchorToleranceMs) {
     issues.push("VISUAL_PEAK_OUTSIDE_ANCHOR_WINDOW");
   }
+  const anchor = metrics.find((frame) => frame.timeMs === anchorMs) ?? null;
+  if ((rules.minAnchorToPeakRatio !== undefined
+      || rules.minAnchorToTailRatio !== undefined) && anchor === null) {
+    issues.push("ANCHOR_FRAME_MISSING");
+  }
+  if (anchor !== null && rules.minAnchorToPeakRatio !== undefined
+    && anchor.meanAbsDiff < peak.meanAbsDiff * rules.minAnchorToPeakRatio) {
+    issues.push("ANCHOR_VISUAL_STRENGTH_LOW");
+  }
   if (rules.maxBorderNearBlackRatio !== undefined
     && metrics.some((frame) => frame.borderNearBlackRatio > rules.maxBorderNearBlackRatio)) {
     issues.push("BLACK_BORDER_OR_FRAME_EXPOSURE");
@@ -112,20 +121,32 @@ export const evaluateSparseVisualProofV1 = async ({
       && frame.roiLumaStd < rules.minRoiLumaStd)) {
     issues.push("SUBJECT_ROI_READABILITY_LOW");
   }
-  if (Array.isArray(rules.tailTimesMs) && rules.minPeakToTailRatio !== undefined) {
+  if (Array.isArray(rules.tailTimesMs)
+    && (rules.minPeakToTailRatio !== undefined
+      || rules.minAnchorToTailRatio !== undefined)) {
     const tails = rules.tailTimesMs.map((timeMs) =>
       metrics.find((frame) => frame.timeMs === timeMs)).filter(Boolean);
     if (tails.length !== rules.tailTimesMs.length) {
       issues.push("TAIL_FRAME_MISSING");
-    } else if (tails.some((tail) =>
-      peak.meanAbsDiff < tail.meanAbsDiff * rules.minPeakToTailRatio)) {
-      issues.push("VISUAL_PULSE_NOT_CONCENTRATED");
+    } else {
+      if (rules.minPeakToTailRatio !== undefined && tails.some((tail) =>
+        peak.meanAbsDiff < tail.meanAbsDiff * rules.minPeakToTailRatio)) {
+        issues.push("VISUAL_PULSE_NOT_CONCENTRATED");
+      }
+      if (anchor !== null && rules.minAnchorToTailRatio !== undefined
+        && tails.some((tail) =>
+          anchor.meanAbsDiff < tail.meanAbsDiff * rules.minAnchorToTailRatio)) {
+        issues.push("ANCHOR_PULSE_NOT_CONCENTRATED");
+      }
     }
   }
   return {
     schema: "editflow.sparse-visual-assessment.v1",
     passed: issues.length === 0,
     anchorMs,
+    anchor: anchor === null
+      ? null
+      : { timeMs: anchor.timeMs, meanAbsDiff: anchor.meanAbsDiff },
     peak: { timeMs: peak.timeMs, meanAbsDiff: peak.meanAbsDiff },
     metrics,
     issues,

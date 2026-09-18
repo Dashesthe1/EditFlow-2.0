@@ -118,3 +118,60 @@ test("sparse visual evaluator rejects a visual peak displaced from the edit anch
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("sparse visual evaluator can require a strong anchor without conflating it with frame-difference peak time", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "editflow-visual-anchor-strength-"));
+  try {
+    const invertHero = (rgb, x, y) =>
+      x >= 6 && x <= 14 && y >= 6 && y <= 14
+        ? rgb.map((value) => 255 - value)
+        : rgb;
+    const frames = await buildFrames(dir, new Map([[0, invertHero], [100, invertHero]]));
+    const assessment = await evaluateSparseVisualProofV1({
+      baselineFrames: frames.baseline,
+      editedFrames: frames.edited,
+      anchorMs: 100,
+      rules: {
+        ...RULES,
+        anchorToleranceMs: undefined,
+        tailTimesMs: [200],
+        minPeakToTailRatio: 2,
+        minAnchorToPeakRatio: 0.85,
+        minAnchorToTailRatio: 1.5,
+      },
+    });
+    assert.equal(assessment.peak.timeMs, 0);
+    assert.equal(assessment.anchor.timeMs, 100);
+    assert.equal(assessment.passed, true, assessment.issues.join(", "));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("sparse visual evaluator rejects an anchor that is weak relative to a displaced visual peak", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "editflow-visual-anchor-weak-"));
+  try {
+    const invertHero = (rgb, x, y) =>
+      x >= 6 && x <= 14 && y >= 6 && y <= 14
+        ? rgb.map((value) => 255 - value)
+        : rgb;
+    const frames = await buildFrames(dir, new Map([[0, invertHero]]));
+    const assessment = await evaluateSparseVisualProofV1({
+      baselineFrames: frames.baseline,
+      editedFrames: frames.edited,
+      anchorMs: 100,
+      rules: {
+        ...RULES,
+        anchorToleranceMs: undefined,
+        tailTimesMs: [200],
+        minPeakToTailRatio: 2,
+        minAnchorToPeakRatio: 0.85,
+        minAnchorToTailRatio: 1.5,
+      },
+    });
+    assert.equal(assessment.passed, false);
+    assert.ok(assessment.issues.includes("ANCHOR_VISUAL_STRENGTH_LOW"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

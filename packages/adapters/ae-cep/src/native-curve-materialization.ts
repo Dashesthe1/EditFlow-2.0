@@ -172,24 +172,19 @@ export const materializeTimeRemapPulseV1 = (
     );
   }
 
-  const requestedShift = Math.min(leftSpan, rightSpan) * intent.velocityContrast;
-  const safeShift = Math.min(leftSpan, rightSpan) * 0.95;
-  const peakValue = baselinePeakValue + Math.min(requestedShift, safeShift);
-  if (!(startValue < peakValue && peakValue < endValue)) {
-    throw new NativeAeCurveMaterializationError(
-      "TIME_REMAP_MONOTONICITY_LOST",
-      "The requested velocity contrast would create a hold or reversal.",
-    );
-  }
-  const leftSpeed = (peakValue - startValue) / (peakTime - startTime);
-  const rightSpeed = (endValue - peakValue) / (endTime - peakTime);
-  const peakSpeed = (leftSpeed + rightSpeed) / 2;
+  // Keep source-time values on the live baseline and express the pulse in
+  // playback-rate tangents. Shifting the middle source-time value makes one
+  // entire side of the window fast and the other slow; it does not create a
+  // velocity peak at the semantic anchor.
+  const baselineSpeed = (last.value - first.value) / (last.time - first.time);
+  const tailSpeed = baselineSpeed * (1 - intent.velocityContrast);
+  const peakSpeed = baselineSpeed * (1 + intent.velocityContrast);
   const tailInfluence = Math.min(55, 30 + intent.velocityContrast * 20);
   const peakInfluence = Math.min(75, 45 + intent.velocityContrast * 30);
   const values = [
-    { time: startTime, value: startValue, speed: leftSpeed, influence: tailInfluence },
-    { time: peakTime, value: peakValue, speed: peakSpeed, influence: peakInfluence },
-    { time: endTime, value: endValue, speed: rightSpeed, influence: tailInfluence },
+    { time: startTime, value: startValue, speed: tailSpeed, influence: tailInfluence },
+    { time: peakTime, value: baselinePeakValue, speed: peakSpeed, influence: peakInfluence },
+    { time: endTime, value: endValue, speed: tailSpeed, influence: tailInfluence },
   ] as const;
 
   return {

@@ -34,16 +34,45 @@ test("live Time Remap materialization derives source values from the native base
   });
   assert.deepEqual(
     first.keyframes.map((keyframe) => keyframe.value),
-    [1, 1.7, 2],
+    [1, 1.5, 2],
   );
   assert.deepEqual(
     second.keyframes.map((keyframe) => keyframe.value),
-    [2, 3.4, 4],
+    [2, 3, 4],
   );
   assert.notDeepEqual(first.keyframes, second.keyframes);
-  assert.ok(first.easeIntentByKey[0].inEase.speed > first.easeIntentByKey[1].inEase.speed);
+  assert.ok(first.easeIntentByKey[0].inEase.speed < first.easeIntentByKey[1].inEase.speed);
   assert.ok(first.easeIntentByKey[1].inEase.speed > first.easeIntentByKey[2].inEase.speed);
+  assert.equal(first.easeIntentByKey[0].inEase.speed, first.easeIntentByKey[2].inEase.speed);
   assert.ok(first.easeIntentByKey[1].inEase.influence > first.easeIntentByKey[0].inEase.influence);
+});
+
+test("live Time Remap pulse preserves baseline source samples and concentrates playback rate at the anchor", () => {
+  for (const baselineRate of [0.5, 1, 2]) {
+    for (const velocityContrast of [0, 0.2, 0.5, 0.79]) {
+      const curve = materializeTimeRemapPulseV1(timeIntent(velocityContrast), {
+        timeRemapEnabled: true,
+        propertyAvailable: true,
+        keys: [
+          { index: 1, time: 0, value: 0 },
+          { index: 2, time: 3, value: 3 * baselineRate },
+        ],
+      });
+      assert.deepEqual(
+        curve.keyframes.map((keyframe) => keyframe.value),
+        [baselineRate, 1.5 * baselineRate, 2 * baselineRate],
+      );
+      const speeds = curve.easeIntentByKey.map((entry) => entry.inEase.speed);
+      assert.ok(speeds.every((speed) => speed > 0));
+      assert.equal(speeds[0], speeds[2]);
+      if (velocityContrast === 0) {
+        assert.deepEqual(speeds, [baselineRate, baselineRate, baselineRate]);
+      } else {
+        assert.ok(speeds[1] > baselineRate);
+        assert.ok(speeds[0] < baselineRate);
+      }
+    }
+  }
 });
 
 test("live Time Remap materialization fails closed on a pre-authored custom curve", () => {

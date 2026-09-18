@@ -1,9 +1,9 @@
 {
   "proof": "M5_TUTORIAL_001_LIVE_ADAPTIVE_VISUAL_V1",
-  "sourceCommit": "4f123da0a77508ec85aa831771cac9a3bd4a0807",
-  "startedAt": "2026-09-18T05:34:24.762Z",
+  "sourceCommit": "a24e9d6ddc22cfedfcd1efc4bbdc0eca9113255b",
+  "startedAt": "2026-09-18T06:02:49.163Z",
   "panel": {
-    "sessionId": "05f58351-672b-490c-989b-7bdd90864323",
+    "sessionId": "e7716918-1444-4e57-bef9-7dbbdae4a3bf",
     "protocolVersion": "2.7.0",
     "supportedProtocolVersions": [
       "2.7.0",
@@ -26,11 +26,11 @@
     ],
     "extensionId": "com.editflow2.bridge.panel",
     "extensionVersion": "0.1.0-dev.12",
-    "registeredAt": "2026-09-18T05:07:42.025Z",
-    "lastSeenAt": "2026-09-18T05:34:24.605Z"
+    "registeredAt": "2026-09-18T05:56:36.192Z",
+    "lastSeenAt": "2026-09-18T06:02:48.988Z"
   },
   "before": {
-    "hostRevision": 4506,
+    "hostRevision": 5805,
     "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
     "itemCount": 5,
     "stableItemIds": [
@@ -57,7 +57,7 @@
         "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\baseline_2200ms.png"
       ],
       "targetLayers": 2,
-      "capturedAtMs": 1789709666176
+      "capturedAtMs": 1789711370555
     },
     "edited": {
       "proof": "M5_TUTORIAL_001_SPARSE_VISUAL_V1",
@@ -77,7 +77,68 @@
         "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-sparse-visual\\edited_2200ms.png"
       ],
       "targetLayers": 2,
-      "capturedAtMs": 1789709672437
+      "capturedAtMs": 1789711376760
+    },
+    "assessment": {
+      "schema": "editflow.sparse-visual-assessment.v1",
+      "passed": true,
+      "anchorMs": 2000,
+      "anchor": {
+        "timeMs": 2000,
+        "meanAbsDiff": 15.675638342335391
+      },
+      "peak": {
+        "timeMs": 1950,
+        "meanAbsDiff": 17.774607606738684
+      },
+      "metrics": [
+        {
+          "timeMs": 1800,
+          "width": 1080,
+          "height": 1920,
+          "meanAbsDiff": 9.705119116512346,
+          "changedPixelRatio": 0.054384645061728396,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 99.97358701796348
+        },
+        {
+          "timeMs": 1950,
+          "width": 1080,
+          "height": 1920,
+          "meanAbsDiff": 17.774607606738684,
+          "changedPixelRatio": 0.0975805362654321,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 99.01935669317419
+        },
+        {
+          "timeMs": 2000,
+          "width": 1080,
+          "height": 1920,
+          "meanAbsDiff": 15.675638342335391,
+          "changedPixelRatio": 0.08505063657407408,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 87.9641367461573
+        },
+        {
+          "timeMs": 2050,
+          "width": 1080,
+          "height": 1920,
+          "meanAbsDiff": 15.708705311213992,
+          "changedPixelRatio": 0.08577835648148148,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 88.2118280311535
+        },
+        {
+          "timeMs": 2200,
+          "width": 1080,
+          "height": 1920,
+          "meanAbsDiff": 7.96135368441358,
+          "changedPixelRatio": 0.04446855709876543,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 89.36640810986151
+        }
+      ],
+      "issues": []
     }
   },
   "execution": {
@@ -95,15 +156,15 @@
     ],
     "resultState": "COMMITTED",
     "appliedOperations": 48,
-    "hostRevisionAfter": 4942,
+    "hostRevisionAfter": 6241,
     "targetLayerIds": [
       "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer",
       "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer"
     ]
   },
-  "finishedAt": "2026-09-18T05:34:34.972Z",
+  "finishedAt": "2026-09-18T06:03:00.162Z",
   "cleanup": {
-    "hostRevision": 4947,
+    "hostRevision": 6246,
     "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
     "itemCount": 5,
     "stableItemIds": [
