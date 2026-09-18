@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -7,6 +8,7 @@ import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/pa
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { LocalFastRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/local-fast-runtime.js";
 import { CurrentAeTransactionRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
+import { EditGptStabilizationVisualDriverV1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-editgpt-stabilization-visual-driver.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
@@ -42,10 +44,41 @@ const runtime = await LocalFastRuntimeV1.create(client, {
   leaseTtlMs: 120_000,
 });
 const session = runtime.session;
+const activePanel = broker.panelSession ?? panel;
+const stabilizationProtocolAvailable =
+  Array.isArray(activePanel?.supportedProtocolVersions)
+  && activePanel.supportedProtocolVersions.includes("2.3.0");
+const stabilizationPython = process.env.EDITGPT_PYTHON
+  ?? path.join(process.env.USERPROFILE ?? repoRoot, "editgpt", ".venv", "Scripts", "python.exe");
+const stabilizationScript = path.join(
+  repoRoot,
+  "packages",
+  "adapters",
+  "ae-cep",
+  "runtime",
+  "editgpt_stabilization_visual_driver.py",
+);
+const stabilizationVisualDriver =
+  stabilizationProtocolAvailable
+  && existsSync(stabilizationPython)
+  && existsSync(stabilizationScript)
+    ? new EditGptStabilizationVisualDriverV1({
+        executablePath: stabilizationPython,
+        scriptPath: stabilizationScript,
+        workingDirectory: repoRoot,
+        evidenceDirectory: path.join(repoRoot, ".tmp", "current-shadow", "stabilization-visual"),
+        timeoutMs: 120_000,
+        analysisWindowSeconds: 5,
+      })
+    : null;
 const currentTransactionRuntime = new CurrentAeTransactionRuntimeV1(
   broker,
   "shadow-current-project",
   64,
+  {
+    protocolV23Available: stabilizationProtocolAvailable,
+    visualDriver: stabilizationVisualDriver,
+  },
 );
 const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
