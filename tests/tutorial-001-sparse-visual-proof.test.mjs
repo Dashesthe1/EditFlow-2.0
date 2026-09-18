@@ -30,4 +30,7 @@ test("Tutorial 001 live runner keeps structural mode default and gates sparse vi
   assert.match(source, /\/proof-script/);
   assert.match(source, /baseline\.json/);
   assert.match(source, /edited\.json/);
+  assert.match(source, /waitForVisualFiles/);
+  assert.match(source, /stat\(file\)/);
+  assert.match(source, /T001_VISUAL_FRAME_COMPLETION_TIMEOUT/);
 });

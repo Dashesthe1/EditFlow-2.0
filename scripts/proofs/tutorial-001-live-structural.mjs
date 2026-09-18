@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { compileTutorialDeepLessonV1 } from "../../.tmp/runtime/packages/tutorial-learning/src/index.js";
 import {
@@ -52,6 +52,22 @@ const runVisualCapture = async () => {
   });
   requireThat(result.ok === true, "Tutorial 001 sparse visual proof script failed.");
   return result;
+};
+const waitForVisualFiles = async (visual) => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    let complete = true;
+    for (const file of visual.files ?? []) {
+      try {
+        const info = await stat(file);
+        if (info.size < 1) complete = false;
+      } catch {
+        complete = false;
+      }
+    }
+    if (complete) return;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+  }
+  throw new Error("T001_VISUAL_FRAME_COMPLETION_TIMEOUT");
 };
 
 const planOperation = (id, capabilityId, command, payload, dependsOn = [], riskClass = "R2_STRUCTURAL") => ({
@@ -209,6 +225,7 @@ const main = async () => {
         await readFile(`${VISUAL_ARTIFACT_ROOT}/baseline.json`, "utf8"),
       );
       requireThat(baselineVisual.phase === "baseline", "Tutorial 001 baseline visual phase mismatch.");
+      await waitForVisualFiles(baselineVisual);
       evidence.visual = { baseline: baselineVisual };
     }
 
@@ -238,6 +255,7 @@ const main = async () => {
         await readFile(`${VISUAL_ARTIFACT_ROOT}/edited.json`, "utf8"),
       );
       requireThat(editedVisual.phase === "edited", "Tutorial 001 edited visual phase mismatch.");
+      await waitForVisualFiles(editedVisual);
       evidence.visual.edited = editedVisual;
     }
 

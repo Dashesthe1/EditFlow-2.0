@@ -97,7 +97,6 @@
     var file = new File(outputDir.fsName + "/" + prefix + "_" + ms + "ms.png");
     if (file.exists) file.remove();
     comp.saveFrameToPng(ms / 1000.0, file);
-    if (!file.exists || file.length < 1) throw new Error("T001_VISUAL_FRAME_MISSING:" + file.fsName);
     return file.fsName;
   }
   function writeJson(file, value) {
