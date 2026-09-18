@@ -31,6 +31,13 @@ export interface VirtualAeLayerMotionStateV1 {
   frameBlendingType: VirtualAeFrameBlendingModeV1;
 }
 
+export interface VirtualAeStabilizationStateV1 {
+  mode: "POSITION_XY";
+  direction: "FORWARD";
+  trackFeaturePolicy: string;
+  minimumTrackConfidence: number;
+}
+
 export interface VirtualAeKeyframeV1 {
   timeMs: number;
   value: VirtualAeValueV1;
