@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { compileTutorialDeepLessonV1 } from "../../.tmp/runtime/packages/tutorial-learning/src/index.js";
 import {
   compileEditingIrRecipeToVirtualAeV1,
@@ -9,7 +10,12 @@ import { AE_ADAPTER_ROUTE_ID_V11 } from "../../.tmp/runtime/packages/adapters/ae
 
 const BASE = process.env.EDITFLOW_SHADOW_CONTROL ?? "http://127.0.0.1:32146";
 const FIXTURE = "tests/fixtures/tutorials/smooth-zoom-reverse-v1.json";
-const EVIDENCE = "proofs/diagnostics/m5-tutorial-001-live-adaptive-structural.json";
+const VISUAL_MODE = process.env.EDITFLOW_T001_VISUAL === "1";
+const EVIDENCE = VISUAL_MODE
+  ? "proofs/diagnostics/m5-tutorial-001-live-adaptive-visual.json"
+  : "proofs/diagnostics/m5-tutorial-001-live-adaptive-structural.json";
+const VISUAL_SCRIPT = resolve("scripts/windows/tutorial-001-sparse-visual.jsx");
+const VISUAL_ARTIFACT_ROOT = "proofs/artifacts/tutorial-001-sparse-visual";
 const COMP = "EF2_T001_LIVE_TRANSITION";
 const SOURCE_OUT = "EF2_T001_LIVE_SOURCE_OUT";
 const SOURCE_IN = "EF2_T001_LIVE_SOURCE_IN";
@@ -38,6 +44,15 @@ const runTransaction = async (plan) => jsonRequest("/run-transaction", {
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ plan }),
 });
+const runVisualCapture = async () => {
+  const result = await jsonRequest("/proof-script", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ scriptPath: VISUAL_SCRIPT }),
+  });
+  requireThat(result.ok === true, "Tutorial 001 sparse visual proof script failed.");
+  return result;
+};
 
 const planOperation = (id, capabilityId, command, payload, dependsOn = [], riskClass = "R2_STRUCTURAL") => ({
   operationId: id,
@@ -168,7 +183,9 @@ const main = async () => {
   const before = await getState();
   const baselineIds = [...stableItemIds(before)].sort();
   const evidence = {
-    proof: "M5_TUTORIAL_001_LIVE_ADAPTIVE_STRUCTURAL_V1",
+    proof: VISUAL_MODE
+      ? "M5_TUTORIAL_001_LIVE_ADAPTIVE_VISUAL_V1"
+      : "M5_TUTORIAL_001_LIVE_ADAPTIVE_STRUCTURAL_V1",
     sourceCommit: process.env.EDITFLOW_SOURCE_COMMIT ?? null,
     startedAt: new Date().toISOString(),
     panel: status.panel,
@@ -185,6 +202,15 @@ const main = async () => {
   try {
     const setup = await runTransaction(setupPlan(before.state.observed));
     requireThat(setup.result?.state === "COMMITTED", "Tutorial 001 live setup did not commit.");
+
+    if (VISUAL_MODE) {
+      await runVisualCapture();
+      const baselineVisual = JSON.parse(
+        await readFile(`${VISUAL_ARTIFACT_ROOT}/baseline.json`, "utf8"),
+      );
+      requireThat(baselineVisual.phase === "baseline", "Tutorial 001 baseline visual phase mismatch.");
+      evidence.visual = { baseline: baselineVisual };
+    }
 
     const afterSetup = await getState();
     livePlan = await compileLivePlan(afterSetup.state.observed);
@@ -205,6 +231,16 @@ const main = async () => {
     requireThat(replacementIds.every((id) => targetLayerIds.includes(id)), "Precompose replacement layers are missing.");
     requireThat(!targetLayerIds.includes(LAYER_OUT) && !targetLayerIds.includes(LAYER_IN),
       "Original shot-layer identities survived precompose unexpectedly.");
+
+    if (VISUAL_MODE) {
+      await runVisualCapture();
+      const editedVisual = JSON.parse(
+        await readFile(`${VISUAL_ARTIFACT_ROOT}/edited.json`, "utf8"),
+      );
+      requireThat(editedVisual.phase === "edited", "Tutorial 001 edited visual phase mismatch.");
+      evidence.visual.edited = editedVisual;
+    }
+
     evidence.execution = {
       planOperations: livePlan.operations.length,
       requiredCapabilities: livePlan.requiredCapabilities,
