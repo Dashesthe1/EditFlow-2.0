@@ -1,0 +1,26 @@
+{
+  "schema": "editflow.tutorial-skill-proof-manifest.v1",
+  "tutorialId": "tutorial.smooth-zoom-reverse.001",
+  "skillId": "skill.velocity-zoom-transition",
+  "state": "TRANSFER_VERIFIED",
+  "proofs": [
+    {
+      "skillId": "skill.velocity-zoom-transition",
+      "kind": "RECONSTRUCTION",
+      "passed": true,
+      "evidenceRefs": [
+        "proofs/diagnostics/m5-tutorial-001-live-adaptive-visual.json",
+        "proofs/diagnostics/m5-tutorial-001-live-adaptive-short-motion.json"
+      ]
+    },
+    {
+      "skillId": "skill.velocity-zoom-transition",
+      "kind": "TRANSFER",
+      "passed": true,
+      "evidenceRefs": [
+        "proofs/diagnostics/m5-tutorial-001-transfer.json"
+      ]
+    }
+  ],
+  "transferSourceCommit": "148c960c55cc96025f45f98b2e62f5ac8f5ba1f8"
+}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { deriveTutorialSkillStateV0 } from "../.tmp/runtime/packages/tutorial-learning/src/index.js";
 import {
   TUTORIAL_001_TRANSFER_PROFILE as P,
 } from "../scripts/proofs/tutorial-001-transfer-profile.mjs";
@@ -85,4 +86,26 @@ test("Tutorial 001 transfer proof keeps visual and motion gates bounded", () => 
   assert.ok(P.visual.rules.maxBorderTransparentRatio <= 0.001);
   assert.ok(P.motion.rules.minTrendRatio > 1);
   assert.ok(P.motion.rules.maxPlaybackRate <= 2.5);
+});
+
+test("Tutorial 001 retained proof manifest promotes through the canonical learning-state contract", async () => {
+  const manifest = JSON.parse(await readFile(
+    "proofs/diagnostics/m5-tutorial-001-skill-proofs.json",
+    "utf8",
+  ));
+  assert.equal(manifest.tutorialId, "tutorial.smooth-zoom-reverse.001");
+  assert.equal(manifest.skillId, "skill.velocity-zoom-transition");
+  assert.equal(
+    deriveTutorialSkillStateV0(manifest.skillId, manifest.proofs),
+    "TRANSFER_VERIFIED",
+  );
+  assert.equal(manifest.state, "TRANSFER_VERIFIED");
+  assert.deepEqual(manifest.proofs.map((proof) => proof.kind), [
+    "RECONSTRUCTION",
+    "TRANSFER",
+  ]);
+  assert.ok(manifest.proofs.every((proof) => proof.passed));
+  assert.ok(manifest.proofs[1].evidenceRefs.includes(
+    "proofs/diagnostics/m5-tutorial-001-transfer.json",
+  ));
 });
