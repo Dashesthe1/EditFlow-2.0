@@ -22,6 +22,9 @@ import {
   M3_TEMPORAL_EASE_CAPABILITIES_V18,
 } from "../../../packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import {
+  M3_MARKER_MOTION_CAPABILITIES_V20,
+} from "../../../packages/adapters/ae-cep/src/m3-marker-motion.js";
+import {
   M5_TIME_REMAP_CAPABILITIES_V27,
 } from "../../../packages/adapters/ae-cep/src/m5-time-remap.js";
 import {
@@ -51,6 +54,7 @@ export const createCurrentAeTransactionRegistryV1 = (
     ...applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
     ...M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
     ...M3_TEMPORAL_EASE_CAPABILITIES_V18,
+    ...M3_MARKER_MOTION_CAPABILITIES_V20,
     ...M5_TIME_REMAP_CAPABILITIES_V27,
     ...(stabilization?.protocolV23Available
       ? [

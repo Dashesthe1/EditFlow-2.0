@@ -278,6 +278,21 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
   );
 });
 
+test("Tutorial 002 live proof waits for asynchronous AE frame persistence", async () => {
+  const [source, capture] = await Promise.all([
+    readFile("scripts/proofs/tutorial-002-live-stabilization.mjs", "utf8"),
+    readFile("scripts/windows/tutorial-002-live-readback.jsx", "utf8"),
+  ]);
+
+  assert.match(source, /waitForCompletePng/);
+  assert.match(source, /PNG_IEND/);
+  assert.match(source, /T002_VISUAL_FRAME_COMPLETION_TIMEOUT/);
+  assert.match(source, /await waitForCompletePng\(readback\.finalFrame\)/);
+  assert.match(source, /readUInt32BE\(16\)/);
+  assert.match(source, /readUInt32BE\(20\)/);
+  assert.match(capture, /png\.exists\s*&&\s*!png\.remove\(\)/);
+});
+
 test("Motion Tile effect schema certification is backed by retained real-AE evidence", async () => {
   const proof = JSON.parse(await readFile(
     "proofs/diagnostics/m5-motion-tile-effect-schema-proof.json",

@@ -1,0 +1,740 @@
+{
+  "proof": "M5_TUTORIAL_002_LIVE_STABILIZATION_V1",
+  "sourceCommit": "00d772656385ed573d09702431c7fbfee7b3e3fe+dirty",
+  "startedAt": "2026-09-18T13:16:35.642Z",
+  "before": {
+    "hostRevision": 2382,
+    "projectFingerprint": "project:sha256:ac77c163c15fc162bd48d98886fbcfeffe517fbf1f6f0396ee26e390cc8f9047",
+    "itemCount": 4,
+    "stableIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ]
+  },
+  "preflightRecovery": null,
+  "execution": {
+    "httpStatus": 200,
+    "state": "COMMITTED",
+    "appliedOperations": 9,
+    "committedGroups": 2,
+    "error": null,
+    "responseBody": {
+      "ok": true,
+      "result": {
+        "transactionId": "195c2577-3518-469d-af9b-84dfc420edb3",
+        "planHash": "plan:sha256:a4008c27059f1af165810ac8ce1293ba0faf74a8c8da93e75aa6e210ced7e8d6",
+        "state": "COMMITTED",
+        "recovered": false,
+        "committedGroups": 2,
+        "appliedOperations": 9,
+        "finalState": {
+          "projectId": "shadow-current-project",
+          "projectRevision": "ae-revision:2446",
+          "projectFingerprint": "project:sha256:c367c06e2bdb4b3982ccc63c596b1bbf2484560179b73a57b0646e58b0d1d92a",
+          "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34"
+        }
+      },
+      "status": {
+        "ok": true,
+        "service": "EditFlow Current Shadow Control",
+        "repoRoot": "C:\\Users\\Shadow\\EditFlow-2.0-stabilization-orchestration",
+        "executionMode": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
+        "adapterBuild": "0.1.0-dev.3",
+        "hostRevision": 2415,
+        "localRuntime": {
+          "version": "1.0.0",
+          "architecture": "MCP_TO_LOCAL_RUNTIME_TO_AE",
+          "execution": "PERSISTENT_WARM_CEP_BATCHED_ROUTINE",
+          "maxBatchActions": 64,
+          "totalBudgetMs": 30000,
+          "actionBudgetMs": 1000,
+          "hostRevision": 2415
+        },
+        "currentTransactionRuntime": {
+          "phase": "M5_CURRENT_AE_TRANSACTION_RUNTIME_V1",
+          "projectId": "shadow-current-project",
+          "maxOperations": 64,
+          "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34",
+          "stabilization": {
+            "protocolV23Available": true,
+            "guardedVisualAvailable": true
+          },
+          "recoveryLedgerEntries": 26
+        },
+        "panel": {
+          "sessionId": "3ae6fd1b-1a2f-42a1-adad-fed38cb22a63",
+          "protocolVersion": "2.7.0",
+          "supportedProtocolVersions": [
+            "2.7.0",
+            "2.6.0",
+            "2.5.0",
+            "2.4.0",
+            "2.3.0",
+            "2.2.0",
+            "2.1.0",
+            "2.0.0",
+            "1.9.0",
+            "1.8.0",
+            "1.7.0",
+            "1.6.0",
+            "1.5.0",
+            "1.4.0",
+            "1.3.0",
+            "1.2.0",
+            "1.1.0"
+          ],
+          "extensionId": "com.editflow2.bridge.panel",
+          "extensionVersion": "0.1.0-dev.12",
+          "registeredAt": "2026-09-18T12:38:54.983Z",
+          "lastSeenAt": "2026-09-18T13:18:25.745Z"
+        },
+        "controlPlane": {
+          "version": "0.5.0-dev",
+          "phase": "M4_TRACKING_ISOLATION_IN_PROGRESS",
+          "adobeWritesEnabled": true,
+          "runtimeMode": "SIMULATED_PLUS_AE_ADAPTER_AND_CEP_BRIDGE",
+          "capabilityRegistry": "READY",
+          "runtimeCapabilityComposition": "M2_BASE_PLUS_ACCEPTED_M3",
+          "acceptedM3HostProtocols": "1.2.0_THROUGH_2.0.0_REGISTERED",
+          "transactionEngine": "SYNC_AND_ASYNC_READY",
+          "executionPlanValidation": "READY",
+          "restartRecovery": "COMMITTED_BOUNDARY_RESUME",
+          "aeAdapterProtocol": "1.1.0",
+          "hostOperationAtomicity": "FAILED_MUTATION_SELF_ROLLBACK",
+          "precomposeReplacementIdentity": "REQUIRED",
+          "cepRuntimeBridge": "REAL_AE_PROVEN",
+          "cepBrokerBinding": "127.0.0.1_AUTHENTICATED",
+          "defaultExecutionRunner": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
+          "editorBrain": "V0_LOCAL_EXPLAINABLE_POLICY",
+          "editorBrainDecisionBudgetMs": 50,
+          "editorBrainKnowledgeMode": "PRECOMPILED_REFERENCE_TUTORIAL_EVIDENCE",
+          "editorBrainFailureMode": "FAIL_CLOSED_AND_ESCALATE",
+          "ordinaryIntentBudgetMs": 2000,
+          "routineMicroActionBudgetMs": 1000,
+          "localRuntime": "PERSISTENT_BATCH_RUNTIME_V1",
+          "mcpCommandGranularity": "COARSE_GRAINED_BATCHES",
+          "routineBatchMaxActions": 64,
+          "slowReasoningPolicy": "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE",
+          "realAeAcceptance": "P1_P5_ACCEPTED",
+          "humanParityCore": "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",
+          "m3ExitGate": "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED",
+          "m3MaskHostProtocol": "1.2.0_BROKER_GATED",
+          "m3LatestHostProtocol": "2.0.0_TRANSFER_ACCEPTED",
+          "trackingIsolation": "POINT_TRACKING_NEXT"
+        },
+        "errorTriage": {
+          "enabled": true,
+          "mode": "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP",
+          "onlineLookupBudgetMs": 10000
+        }
+      }
+    },
+    "requiredCapabilities": [
+      "ae.stabilization.position.guarded_visual",
+      "ae.effect.add",
+      "ae.effect.property.set",
+      "ae.layer.transform.set",
+      "ae.comp.motion.set",
+      "ae.layer.motion.set"
+    ]
+  },
+  "readback": {
+    "proof": "M5_TUTORIAL_002_LIVE_READBACK_V1",
+    "ok": true,
+    "structural": {
+      "trackerMaxKeyCount": 59,
+      "anchorKeyCount": 59,
+      "tile": {
+        "outputWidth": 121,
+        "outputHeight": 117,
+        "mirrorEdges": 1
+      },
+      "position": [
+        540,
+        518.400024414062,
+        0
+      ],
+      "scale": [
+        112,
+        112,
+        100
+      ],
+      "compMotionBlur": true,
+      "layerMotionBlur": true
+    },
+    "finalFrame": "C:\\Users\\Shadow\\EditFlow-2.0-stabilization-orchestration\\proofs\\artifacts\\tutorial-002-live\\final-5000ms.png",
+    "response": {
+      "protocolVersion": "2.3.0",
+      "requestId": "T002_LIVE_READBACK",
+      "transactionId": "T002_LIVE_READBACK",
+      "operationId": "T002_LIVE_READBACK",
+      "capabilityId": "ae.stabilization.readback",
+      "command": "stabilization.readback",
+      "outcome": "NO_OP",
+      "error": null,
+      "affectedObjects": [],
+      "readback": {
+        "comp": {
+          "stableId": "T002_STAB_COMP",
+          "hostId": 785,
+          "name": "EF2_T002_STABILIZE_RECON",
+          "width": 1080,
+          "height": 1080
+        },
+        "layer": {
+          "stableId": "T002_STAB_LAYER",
+          "hostId": 797,
+          "name": "EF2_M5_MOCHA_SOURCE",
+          "index": 1
+        },
+        "trackers": [
+          {
+            "trackerIndex": 1,
+            "name": "Tracker 1",
+            "matchName": "ADBE MTracker",
+            "pointIndex": 1,
+            "pointName": "Track Point 1",
+            "featureCenterKeyCount": 59,
+            "confidenceKeyCount": 59,
+            "attachPointKeyCount": 59
+          }
+        ],
+        "transform": {
+          "anchorPoint": {
+            "name": "Anchor Point",
+            "matchName": "ADBE Anchor Point",
+            "keyCount": 59,
+            "samples": [
+              {
+                "time": 5,
+                "value": [
+                  540,
+                  540,
+                  0
+                ]
+              },
+              {
+                "time": 5.01666666666667,
+                "value": [
+                  540,
+                  540.09765625,
+                  0
+                ]
+              },
+              {
+                "time": 5.03336588541667,
+                "value": [
+                  540,
+                  540.21875,
+                  0
+                ]
+              },
+              {
+                "time": 5.05003255208333,
+                "value": [
+                  540,
+                  540.21875,
+                  0
+                ]
+              },
+              {
+                "time": 5.06673177083333,
+                "value": [
+                  540,
+                  540.21875,
+                  0
+                ]
+              },
+              {
+                "time": 5.0833984375,
+                "value": [
+                  540,
+                  540.23046875,
+                  0
+                ]
+              },
+              {
+                "time": 5.10006510416667,
+                "value": [
+                  540,
+                  540.2265625,
+                  0
+                ]
+              },
+              {
+                "time": 5.11676432291667,
+                "value": [
+                  540,
+                  540.23046875,
+                  0
+                ]
+              },
+              {
+                "time": 5.13343098958333,
+                "value": [
+                  540,
+                  540.23046875,
+                  0
+                ]
+              },
+              {
+                "time": 5.15013020833333,
+                "value": [
+                  540,
+                  540.23046875,
+                  0
+                ]
+              },
+              {
+                "time": 5.166796875,
+                "value": [
+                  540,
+                  540.31640625,
+                  0
+                ]
+              },
+              {
+                "time": 5.18349609375,
+                "value": [
+                  540,
+                  540.31640625,
+                  0
+                ]
+              },
+              {
+                "time": 5.20016276041667,
+                "value": [
+                  540,
+                  540.31640625,
+                  0
+                ]
+              },
+              {
+                "time": 5.21682942708333,
+                "value": [
+                  540,
+                  540.31640625,
+                  0
+                ]
+              },
+              {
+                "time": 5.23352864583333,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.2501953125,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.26689453125,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.28356119791667,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.30022786458333,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.31692708333333,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.33359375,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.35029296875,
+                "value": [
+                  540,
+                  540.32421875,
+                  0
+                ]
+              },
+              {
+                "time": 5.36695963541667,
+                "value": [
+                  540,
+                  540.33203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.38362630208333,
+                "value": [
+                  540,
+                  540.328125,
+                  0
+                ]
+              },
+              {
+                "time": 5.40032552083333,
+                "value": [
+                  540,
+                  540.328125,
+                  0
+                ]
+              },
+              {
+                "time": 5.4169921875,
+                "value": [
+                  540,
+                  540.328125,
+                  0
+                ]
+              },
+              {
+                "time": 5.43369140625,
+                "value": [
+                  540,
+                  540.33203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.45035807291667,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.46702473958333,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.48372395833333,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.500390625,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.51708984375,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.53375651041667,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.55045572916667,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.56712239583333,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.5837890625,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.60048828125,
+                "value": [
+                  540,
+                  540.33984375,
+                  0
+                ]
+              },
+              {
+                "time": 5.61715494791667,
+                "value": [
+                  540,
+                  540.3359375,
+                  0
+                ]
+              },
+              {
+                "time": 5.63385416666667,
+                "value": [
+                  540,
+                  540.33984375,
+                  0
+                ]
+              },
+              {
+                "time": 5.65052083333333,
+                "value": [
+                  540,
+                  540.33984375,
+                  0
+                ]
+              },
+              {
+                "time": 5.6671875,
+                "value": [
+                  540,
+                  540.34765625,
+                  0
+                ]
+              },
+              {
+                "time": 5.68388671875,
+                "value": [
+                  540,
+                  540.34765625,
+                  0
+                ]
+              },
+              {
+                "time": 5.70055338541667,
+                "value": [
+                  540,
+                  540.34765625,
+                  0
+                ]
+              },
+              {
+                "time": 5.71725260416667,
+                "value": [
+                  540,
+                  540.35546875,
+                  0
+                ]
+              },
+              {
+                "time": 5.73391927083333,
+                "value": [
+                  540,
+                  540.34375,
+                  0
+                ]
+              },
+              {
+                "time": 5.7505859375,
+                "value": [
+                  540,
+                  540.3515625,
+                  0
+                ]
+              },
+              {
+                "time": 5.76728515625,
+                "value": [
+                  540,
+                  540.3515625,
+                  0
+                ]
+              },
+              {
+                "time": 5.78395182291667,
+                "value": [
+                  540,
+                  540.33203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.80065104166667,
+                "value": [
+                  540,
+                  540.3203125,
+                  0
+                ]
+              },
+              {
+                "time": 5.81731770833333,
+                "value": [
+                  540,
+                  540.31640625,
+                  0
+                ]
+              },
+              {
+                "time": 5.833984375,
+                "value": [
+                  540,
+                  540.3046875,
+                  0
+                ]
+              },
+              {
+                "time": 5.85068359375,
+                "value": [
+                  540.02734375,
+                  540.30078125,
+                  0
+                ]
+              },
+              {
+                "time": 5.86735026041667,
+                "value": [
+                  540.05859375,
+                  540.27734375,
+                  0
+                ]
+              },
+              {
+                "time": 5.88404947916667,
+                "value": [
+                  540.0625,
+                  540.2734375,
+                  0
+                ]
+              },
+              {
+                "time": 5.90071614583333,
+                "value": [
+                  540.07421875,
+                  540.2578125,
+                  0
+                ]
+              },
+              {
+                "time": 5.91741536458333,
+                "value": [
+                  540.07421875,
+                  540.25390625,
+                  0
+                ]
+              },
+              {
+                "time": 5.93408203125,
+                "value": [
+                  540.07421875,
+                  540.2578125,
+                  0
+                ]
+              },
+              {
+                "time": 5.95074869791667,
+                "value": [
+                  540.07421875,
+                  540.25390625,
+                  0
+                ]
+              },
+              {
+                "time": 5.96744791666667,
+                "value": [
+                  540.07421875,
+                  540.2578125,
+                  0
+                ]
+              }
+            ]
+          },
+          "position": {
+            "name": "Position",
+            "matchName": "ADBE Position",
+            "keyCount": 0,
+            "samples": []
+          },
+          "scale": {
+            "name": "Scale",
+            "matchName": "ADBE Scale",
+            "keyCount": 0,
+            "samples": []
+          },
+          "rotation": {
+            "name": "Rotation",
+            "matchName": "ADBE Rotate Z",
+            "keyCount": 0,
+            "samples": []
+          }
+        }
+      },
+      "hostProjectRevision": 2446,
+      "diagnostics": {
+        "adapterProtocolVersion": "2.3.0",
+        "adapterBuild": "0.5.0-dev.1",
+        "command": "stabilization.readback",
+        "durationMs": 2,
+        "notes": [
+          "Read-only native stabilization tracker and transform-keyframe readback.",
+          "Protocol 2.3 never starts analysis or applies stabilization."
+        ]
+      }
+    }
+  },
+  "finalFrame": {
+    "path": "C:\\Users\\Shadow\\EditFlow-2.0-stabilization-orchestration\\proofs\\artifacts\\tutorial-002-live\\final-5000ms.png",
+    "bytes": 858674,
+    "width": 1080,
+    "height": 1080
+  },
+  "cleanupTransaction": {
+    "httpStatus": 200,
+    "state": "COMMITTED",
+    "error": null
+  },
+  "finishedAt": "2026-09-18T13:18:27.491Z",
+  "cleanup": {
+    "hostRevision": 2447,
+    "projectFingerprint": "project:sha256:ac77c163c15fc162bd48d98886fbcfeffe517fbf1f6f0396ee26e390cc8f9047",
+    "itemCount": 4,
+    "stableIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ],
+    "baselineFingerprintRestored": true,
+    "baselineItemCountRestored": true,
+    "baselineStableIdsRestored": true,
+    "tempCompRemoved": true
+  }
+}

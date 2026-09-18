@@ -20,6 +20,9 @@ import {
   AE_TEMPORAL_EASE_ROUTE_ID_V18,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
 import {
+  AE_MARKER_MOTION_ROUTE_ID_V20,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
 import {
@@ -246,6 +249,8 @@ test("current AE transaction runtime uses only proof-backed current routes", asy
     ["ae.keyframe.set", AE_ADAPTER_ROUTE_ID_V11],
     ["ae.property.temporal_interpolation.set", AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17],
     ["ae.property.temporal_ease.set", AE_TEMPORAL_EASE_ROUTE_ID_V18],
+    ["ae.comp.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
+    ["ae.layer.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
     ["ae.layer.time_remap.enable", AE_TIME_REMAP_ROUTE_ID_V27],
   ]) {
     assert.equal(String(registry.assertRouteAvailable(capabilityId, routeId).routeId), routeId);
