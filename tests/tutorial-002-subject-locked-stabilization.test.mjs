@@ -118,17 +118,17 @@ test("Tutorial 002 reuses retained AE capability evidence without requesting re-
   );
 });
 
-test("Tutorial 002 stops before reconstruction only on genuinely unsupported compiler primitives", async () => {
+test("Tutorial 002 clears compiler blockers only for the retained proven stabilization variant", async () => {
   const result = await learn();
   const skill = result.lesson.skills[0];
   const support = inspectRecipeCompilerSupportV1(skill.editingIr);
 
-  assert.deepEqual(support.virtualAeBlockedPrimitiveKinds, ["STABILIZATION"]);
-  assert.deepEqual(support.nativeAeBlockedPrimitiveKinds, ["STABILIZATION"]);
+  assert.deepEqual(support.virtualAeBlockedPrimitiveKinds, []);
+  assert.deepEqual(support.nativeAeBlockedPrimitiveKinds, []);
   assert.deepEqual(result.virtualAeBlockedPrimitiveKinds, support.virtualAeBlockedPrimitiveKinds);
   assert.deepEqual(result.nativeAeBlockedPrimitiveKinds, support.nativeAeBlockedPrimitiveKinds);
   assert.deepEqual(result.compilerBlockedPrimitiveKinds, support.blockedPrimitiveKinds);
-  assert.equal(result.readyForReconstruction, false);
+  assert.equal(result.readyForReconstruction, true);
 
   assert.ok(result.proofPlans[0].stages.find((stage) => stage.level === 0).required);
   assert.ok(result.proofPlans[0].stages.find((stage) => stage.level === 1).required);
@@ -142,10 +142,6 @@ test("Tutorial 002 stops before reconstruction only on genuinely unsupported com
 test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing compile through Virtual AE and native AE", async () => {
   const result = await learn();
   const recipe = structuredClone(result.lesson.skills[0].editingIr);
-  recipe.nodes = recipe.nodes.map((node) =>
-    node.kind === "STABILIZATION"
-      ? { ...node, optional: true }
-      : node);
 
   const project = {
     schema: "editflow.virtual-ae.project.v1",
@@ -170,6 +166,7 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
       }],
     }],
   };  const parameters = {
+    [recipeParameterKeyV1("stabilize-hero-head", "minimumTrackConfidence")]: 0.75,
     [recipeParameterKeyV1("fill-stabilization-edges", "outputWidth")]: 121,
     [recipeParameterKeyV1("fill-stabilization-edges", "outputHeight")]: 117,
     [recipeParameterKeyV1("reframe-locked-subject", "position")]: [320, 176],
@@ -190,10 +187,11 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
     parameterValues: parameters,
   });
 
-  assert.deepEqual(compiled.skippedOptionalNodeIds, ["stabilize-hero-head"]);
+  assert.deepEqual(compiled.skippedOptionalNodeIds, []);
   assert.deepEqual(
     compiled.operations.map((operation) => operation.type),
     [
+      "APPLY_STABILIZATION",
       "ADD_EFFECT",
       "SET_EFFECT_PROPERTY",
       "SET_EFFECT_PROPERTY",
@@ -207,6 +205,12 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
 
   const simulation = simulateVirtualAeV1(project, compiled.operations);
   assert.equal(simulation.valid, true);
+  assert.deepEqual(simulation.project.compositions[0].layers[0].stabilization, {
+    mode: "POSITION_XY",
+    direction: "FORWARD",
+    trackFeaturePolicy: "PERSISTENT_HIGH_CONTRAST_HEAD_FEATURE",
+    minimumTrackConfidence: 0.75,
+  });
   const simulatedEffect = simulation.project.compositions[0].layers[0].effects[0];
   assert.equal(simulatedEffect.matchName, "ADBE Tile");
   assert.deepEqual(
@@ -241,6 +245,7 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
   assert.deepEqual(
     plan.operations.map((operation) => operation.input.command),
     [
+      "stabilization.position.guarded_visual",
       "effect.add",
       "effect.set_property",
       "effect.set_property",
@@ -254,6 +259,7 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
   assert.deepEqual(
     plan.operations.map((operation) => String(operation.capabilityId)),
     [
+      "ae.stabilization.position.guarded_visual",
       "ae.effect.add",
       "ae.effect.property.set",
       "ae.effect.property.set",
@@ -264,6 +270,27 @@ test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing c
       "ae.layer.motion.set",
     ],
   );
+  const stabilizationBoundaryId = plan.operations[0].rollbackBoundaryId;
+  assert.notEqual(stabilizationBoundaryId, plan.operations[1].rollbackBoundaryId);
+  assert.equal(
+    plan.rollbackBoundaries.find((boundary) => boundary.id === stabilizationBoundaryId)?.strategy,
+    "RECOVERY_CHECKPOINT",
+  );
+});
+
+test("Tutorial 002 live proof waits for asynchronous AE frame persistence", async () => {
+  const [source, capture] = await Promise.all([
+    readFile("scripts/proofs/tutorial-002-live-stabilization.mjs", "utf8"),
+    readFile("scripts/windows/tutorial-002-live-readback.jsx", "utf8"),
+  ]);
+
+  assert.match(source, /waitForCompletePng/);
+  assert.match(source, /PNG_IEND/);
+  assert.match(source, /T002_VISUAL_FRAME_COMPLETION_TIMEOUT/);
+  assert.match(source, /await waitForCompletePng\(readback\.finalFrame\)/);
+  assert.match(source, /readUInt32BE\(16\)/);
+  assert.match(source, /readUInt32BE\(20\)/);
+  assert.match(capture, /png\.exists\s*&&\s*!png\.remove\(\)/);
 });
 
 test("Motion Tile effect schema certification is backed by retained real-AE evidence", async () => {

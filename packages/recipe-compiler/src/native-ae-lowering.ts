@@ -15,6 +15,7 @@ import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../../adapters/ae-cep/sr
 import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../../adapters/ae-cep/src/protocol-v1_8.js";
 import { AE_MARKER_MOTION_ROUTE_ID_V20 } from "../../adapters/ae-cep/src/protocol-v2_0.js";
 import { AE_TIME_REMAP_ROUTE_ID_V27 } from "../../adapters/ae-cep/src/protocol-v2_7.js";
+import { M4_STABILIZATION_GUARDED_ROUTE_ID_V1 } from "../../adapters/ae-cep/src/m4-stabilization.js";
 import {
   NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
   type NativeAeLiveCurveIntentV1,
@@ -476,6 +477,11 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   }
 
   const rollbackBoundaryId = asRollbackBoundaryId(`${compiled.recipeId}:native-ae-v1`);
+  const rollbackBoundaries: Array<ExecutionPlan["rollbackBoundaries"][number]> = [{
+    id: rollbackBoundaryId,
+    strategy: "RESTORE_SNAPSHOT",
+    notes: "Undo all routine recipe operations back to the transaction-group boundary.",
+  }];
   const operations: ExecutionPlanOperation[] = [];
   let previousOperationId: ReturnType<typeof asOperationId> | null = null;
   let operationCounter = 0;
@@ -486,6 +492,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     command: string,
     payload: Readonly<Record<string, unknown>>,
     riskClass: ExecutionPlanOperation["riskClass"],
+    boundaryId = rollbackBoundaryId,
   ): void => {
     const operationId = asOperationId(
       `${compiled.recipeId}:native:${String(++operationCounter).padStart(3, "0")}:${command}`,
@@ -498,7 +505,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       idempotency: "CHECK_THEN_APPLY",
       riskClass,
       input: { command, payload, readbackProfile: NATIVE_AE_RECIPE_LOWERING_PHASE },
-      rollbackBoundaryId,
+      rollbackBoundaryId: boundaryId,
     });
     previousOperationId = operationId;
   };
@@ -524,6 +531,32 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   }
 
   for (const operation of compiled.operations) {
+    if (operation.type === "APPLY_STABILIZATION") {
+      const stabilizationBoundaryId = asRollbackBoundaryId(
+        `${compiled.recipeId}:stabilization:${operationCounter + 1}`,
+      );
+      rollbackBoundaries.push({
+        id: stabilizationBoundaryId,
+        strategy: "RECOVERY_CHECKPOINT",
+        notes: "Guarded native stabilization is isolated so semantic protocol-2.3 truth can drive bounded recovery without undoing unrelated work.",
+      });
+      emit(
+        "ae.stabilization.position.guarded_visual",
+        String(M4_STABILIZATION_GUARDED_ROUTE_ID_V1),
+        "stabilization.position.guarded_visual",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          direction: operation.state.direction,
+          mode: operation.state.mode,
+          trackFeaturePolicy: operation.state.trackFeaturePolicy,
+          minimumTrackConfidence: operation.state.minimumTrackConfidence,
+        },
+        "R4_EXTERNAL_UI",
+        stabilizationBoundaryId,
+      );
+      continue;
+    }
     if (operation.type === "ADD_EFFECT") {
       emit(
         "ae.effect.add",
@@ -799,7 +832,8 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   for (const operation of compiled.operations) {
     if (operation.type === "PRECOMPOSE" || operation.type === "ADD_KEYFRAME"
       || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION"
-      || operation.type === "ADD_EFFECT" || operation.type === "SET_EFFECT_PROPERTY") continue;
+      || operation.type === "ADD_EFFECT" || operation.type === "SET_EFFECT_PROPERTY"
+      || operation.type === "APPLY_STABILIZATION") continue;
     if (operation.type === "SET_PROPERTY" && supportedSetPaths.has(operation.propertyPath)) continue;
     throw new NativeAeRecipeLoweringError(
       "UNSUPPORTED_NATIVE_OPERATION",
@@ -839,11 +873,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       }],
       visual: [],
     },
-    rollbackBoundaries: [{
-      id: rollbackBoundaryId,
-      strategy: "RESTORE_SNAPSHOT",
-      notes: "Undo all applied recipe operations back to the transaction-group boundary.",
-    }],
+    rollbackBoundaries,
     planHash: null,
   };
 };

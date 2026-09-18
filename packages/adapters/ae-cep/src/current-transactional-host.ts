@@ -39,6 +39,14 @@ import {
   isAeTimeRemapCommandV27,
   type AeTimeRemapTransportV27,
 } from "./protocol-v2_7.js";
+import type { AeStabilizationTransportV23 } from "./protocol-v2_3.js";
+import {
+  GuardedStabilizationControllerV1,
+  M4_STABILIZATION_GUARDED_ROUTE_ID_V1,
+  readStabilizationTruthCountsV1,
+  type StabilizationTruthCountsV1,
+  type StabilizationVisualDriverV1,
+} from "./m4-stabilization.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
 import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
@@ -57,7 +65,15 @@ export type CurrentAeCepTransactionalTransportV1 =
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
   & AeMarkerMotionTransportV20
-  & AeTimeRemapTransportV27;
+  & AeTimeRemapTransportV27
+  & AeStabilizationTransportV23;
+
+interface StabilizationRecoveryCheckpointV1 {
+  readonly compHostId: number;
+  readonly layerHostId: number;
+  readonly baseline: StabilizationTruthCountsV1;
+  readonly phase: "FAILED_OR_IN_FLIGHT" | "SUCCEEDED_AWAITING_CHECKPOINT";
+}
 
 interface ParsedOperation {
   readonly command: string;
@@ -258,6 +274,8 @@ const temporalEaseCardinalityInvalidatingCommands = new Set<string>([
   "layer.time_remap.enable",
 ]);
 
+export const GUARDED_STABILIZATION_RECOVERY_UNDO_LIMIT_V1 = 8 as const;
+
 const liveCurveBaselineInvalidatingCommands = new Set<string>([
   "comp.create",
   "comp.update_settings",
@@ -285,6 +303,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   readonly projectId: string;
   readonly transactionId: string;
   readonly requestIdFactory: () => string;
+  readonly stabilizationVisualDriver: StabilizationVisualDriverV1 | null;
 
   #hostRevision: number | null = null;
   #lastObserved: ObservedProjectState | null = null;
@@ -293,6 +312,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   #materializedCurveByTarget = new Map<string, NativeAeMaterializedCurveV1>();
   #cameraBaselineByLayer = new Map<string, NativeAeCameraPushBaselineV1>();
   #effectIndexByBindingId = new Map<string, number>();
+  #stabilizationRecoveryCheckpoint: StabilizationRecoveryCheckpointV1 | null = null;
 
   constructor(
     transport: CurrentAeCepTransactionalTransportV1,
@@ -300,11 +320,13 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     transactionId = "editflow-current-runtime",
     requestIdFactory: () => string = () => randomUUID(),
     filesystemPolicy = new AeFilesystemPolicyV11([]),
+    stabilizationVisualDriver: StabilizationVisualDriverV1 | null = null,
   ) {
     this.transport = transport;
     this.projectId = projectId;
     this.transactionId = transactionId;
     this.requestIdFactory = requestIdFactory;
+    this.stabilizationVisualDriver = stabilizationVisualDriver;
     this.client = new AeCepAdapterClientV11(transport, requestIdFactory, filesystemPolicy);
   }
 
@@ -320,6 +342,9 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   }
 
   async captureRecoverySnapshot(): Promise<unknown> {
+    if (this.#stabilizationRecoveryCheckpoint?.phase === "SUCCEEDED_AWAITING_CHECKPOINT") {
+      this.#stabilizationRecoveryCheckpoint = null;
+    }
     if (this.#lastObserved === null) await this.readState();
     return structuredClone(this.#lastObserved);
   }
@@ -560,9 +585,144 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     };
   }
 
+  async #resolveStabilizationTarget(
+    operation: ExecutionPlanOperation,
+    parsed: ParsedOperation,
+    revision: number,
+  ): Promise<{
+    readonly compHostId: number;
+    readonly layerHostId: number;
+    readonly expectedCompName: string;
+    readonly expectedLayerName: string;
+  }> {
+    const comp = asRecord(parsed.payload["comp"]);
+    const layer = asRecord(parsed.payload["layer"]);
+    if (comp === null || layer === null) {
+      throw new TypeError("Guarded stabilization requires semantic comp and layer bindings.");
+    }
+    const compResponse = await this.client.executePublicAtKnownHostRevision(
+      "readback.object",
+      {
+        transactionId: this.transactionId,
+        operationId: `${String(operation.operationId)}:stabilization-comp-target`,
+        capabilityId: capabilityForCommandV11("readback.object"),
+        payload: { kind: "COMPOSITION", target: comp },
+        expectedHostProjectRevision: revision,
+        readbackProfile: parsed.readbackProfile,
+      },
+    );
+    this.#accept(compResponse);
+    const layerResponse = await this.client.executePublicAtKnownHostRevision(
+      "readback.object",
+      {
+        transactionId: this.transactionId,
+        operationId: `${String(operation.operationId)}:stabilization-layer-target`,
+        capabilityId: capabilityForCommandV11("readback.object"),
+        payload: { kind: "LAYER", comp, target: layer },
+        expectedHostProjectRevision: revision,
+        readbackProfile: parsed.readbackProfile,
+      },
+    );
+    this.#accept(layerResponse);
+
+    const compState = asRecord(asRecord(compResponse.readback)?.["composition"]);
+    const layerState = asRecord(asRecord(layerResponse.readback)?.["layer"]);
+    const compHostId = compState?.["hostId"];
+    const layerHostId = layerState?.["hostId"];
+    const expectedCompName = compState?.["name"];
+    const expectedLayerName = layerState?.["name"];
+    if (!Number.isInteger(compHostId) || Number(compHostId) <= 0
+      || !Number.isInteger(layerHostId) || Number(layerHostId) <= 0
+      || typeof expectedCompName !== "string" || expectedCompName.trim().length === 0
+      || typeof expectedLayerName !== "string" || expectedLayerName.trim().length === 0) {
+      throw new Error("STABILIZATION_TARGET_BINDING_REQUIRED: exact AE comp/layer identity could not be materialized.");
+    }
+    return {
+      compHostId: Number(compHostId),
+      layerHostId: Number(layerHostId),
+      expectedCompName,
+      expectedLayerName,
+    };
+  }
+
   async apply(operation: ExecutionPlanOperation): Promise<HostApplyResult> {
+    if (this.#stabilizationRecoveryCheckpoint !== null) {
+      throw new Error(
+        "GUARDED_STABILIZATION_CHECKPOINT_REQUIRED: guarded stabilization must be isolated in its own rollback boundary.",
+      );
+    }
     const parsed = parseOperation(operation);
     const revision = await this.#knownHostRevision();
+
+    if (parsed.command === "stabilization.position.guarded_visual") {
+      assertBinding(
+        operation,
+        "ae.stabilization.position.guarded_visual",
+        String(M4_STABILIZATION_GUARDED_ROUTE_ID_V1),
+      );
+      const direction = parsed.payload["direction"];
+      const mode = parsed.payload["mode"];
+      const trackFeaturePolicy = parsed.payload["trackFeaturePolicy"];
+      const minimumTrackConfidence = parsed.payload["minimumTrackConfidence"];
+      if (direction !== "FORWARD" || mode !== "POSITION_XY"
+        || typeof trackFeaturePolicy !== "string" || trackFeaturePolicy.trim().length === 0
+        || typeof minimumTrackConfidence !== "number"
+        || !Number.isFinite(minimumTrackConfidence)
+        || minimumTrackConfidence < 0 || minimumTrackConfidence > 1) {
+        throw new TypeError(
+          "Guarded stabilization requires proven Forward Position X/Y semantics and normalized confidence.",
+        );
+      }
+
+      const target = await this.#resolveStabilizationTarget(operation, parsed, revision);
+      const result = await new GuardedStabilizationControllerV1(
+        this.transport,
+        this.stabilizationVisualDriver,
+      ).run({ ...target, direction });
+      const baseline = {
+        trackerKeyCount: result.baselineTrackerKeyCount,
+        anchorKeyCount: result.baselineAnchorKeyCount,
+      };
+      const finalTruth = {
+        trackerKeyCount: result.finalTrackerKeyCount,
+        anchorKeyCount: result.finalAnchorKeyCount,
+      };
+      const truthChanged = baseline.trackerKeyCount !== finalTruth.trackerKeyCount
+        || baseline.anchorKeyCount !== finalTruth.anchorKeyCount;
+      if (result.route !== "LOCAL") {
+        if (truthChanged) {
+          this.#stabilizationRecoveryCheckpoint = {
+            compHostId: target.compHostId,
+            layerHostId: target.layerHostId,
+            baseline,
+            phase: "FAILED_OR_IN_FLIGHT",
+          };
+        }
+        throw new Error(
+          `STABILIZATION_${result.escalationReason ?? "ESCALATED"}: guarded native stabilization did not satisfy its proof contract.`,
+        );
+      }
+
+      this.#stabilizationRecoveryCheckpoint = {
+        compHostId: target.compHostId,
+        layerHostId: target.layerHostId,
+        baseline,
+        phase: "SUCCEEDED_AWAITING_CHECKPOINT",
+      };
+      this.#lastObserved = null;
+      return {
+        outcome: "APPLIED",
+        readback: {
+          direction,
+          mode,
+          trackFeaturePolicy,
+          minimumTrackConfidence,
+          baseline,
+          final: finalTruth,
+          visualEvidenceId: result.visualEvidenceId,
+        },
+      };
+    }
 
     if (isAePublicCommandV11(parsed.command)) {
       assertBinding(
@@ -723,6 +883,53 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     }
     if (!Number.isInteger(appliedOperationCount) || appliedOperationCount < 0) {
       throw new TypeError("appliedOperationCount must be a non-negative integer.");
+    }
+
+    const stabilization = this.#stabilizationRecoveryCheckpoint;
+    if (stabilization !== null) {
+      await this.readState();
+      let truth = await readStabilizationTruthCountsV1(
+        this.transport,
+        stabilization,
+        `RECOVERY_${this.#rollbackCounter}_PRE`,
+      );
+      let attempts = 0;
+      const restoredTruth = (): boolean =>
+        truth.trackerKeyCount === stabilization.baseline.trackerKeyCount
+        && truth.anchorKeyCount === stabilization.baseline.anchorKeyCount;
+
+      while (!restoredTruth() && attempts < GUARDED_STABILIZATION_RECOVERY_UNDO_LIMIT_V1) {
+        const revision = await this.#knownHostRevision();
+        const response = await this.client.undoLastAtKnownHostRevision({
+          transactionId: this.transactionId,
+          operationId: `rollback:stabilization:${++this.#rollbackCounter}`,
+          expectedHostProjectRevision: revision,
+        });
+        this.#accept(response);
+        attempts += 1;
+        truth = await readStabilizationTruthCountsV1(
+          this.transport,
+          stabilization,
+          `RECOVERY_${this.#rollbackCounter}_POST`,
+        );
+      }
+      if (!restoredTruth()) {
+        throw new Error(
+          `STABILIZATION_RECOVERY_EXHAUSTED: semantic tracker/Anchor Point truth did not return to baseline after ${attempts} bounded undo attempts.`,
+        );
+      }
+      this.#stabilizationRecoveryCheckpoint = null;
+      const restored = await this.readState();
+      if (
+        restored.projectId !== snapshot.projectId
+        || restored.projectFingerprint !== snapshot.projectFingerprint
+        || restored.environmentFingerprint !== snapshot.environmentFingerprint
+      ) {
+        throw new Error(
+          "Guarded stabilization recovery restored semantic tracking truth but not the pre-group project structure/environment.",
+        );
+      }
+      return;
     }
 
     for (let index = 0; index < appliedOperationCount; index += 1) {

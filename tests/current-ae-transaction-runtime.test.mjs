@@ -20,8 +20,14 @@ import {
   AE_TEMPORAL_EASE_ROUTE_ID_V18,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
 import {
+  AE_MARKER_MOTION_ROUTE_ID_V20,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
+import {
+  M4_STABILIZATION_GUARDED_ROUTE_ID_V1,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-stabilization.js";
 
 const environmentProbe = {
   adapterProtocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
@@ -243,10 +249,46 @@ test("current AE transaction runtime uses only proof-backed current routes", asy
     ["ae.keyframe.set", AE_ADAPTER_ROUTE_ID_V11],
     ["ae.property.temporal_interpolation.set", AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17],
     ["ae.property.temporal_ease.set", AE_TEMPORAL_EASE_ROUTE_ID_V18],
+    ["ae.comp.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
+    ["ae.layer.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
     ["ae.layer.time_remap.enable", AE_TIME_REMAP_ROUTE_ID_V27],
   ]) {
     assert.equal(String(registry.assertRouteAvailable(capabilityId, routeId).routeId), routeId);
   }
+
+  assert.throws(
+    () => registry.assertRouteAvailable(
+      "ae.stabilization.position.guarded_visual",
+      String(M4_STABILIZATION_GUARDED_ROUTE_ID_V1),
+    ),
+  );
+
+  const verifiedDriver = {
+    driverId: "TEST_VERIFIED_STABILIZATION_DRIVER",
+    verifiedVision: true,
+    verifiedCursorControl: true,
+    supportedDirections: ["FORWARD"],
+    async stabilize() { return { status: "REFUSED" }; },
+  };
+  const stabilizationRegistry = createCurrentAeTransactionRegistryV1(
+    observed.environmentFingerprint,
+    undefined,
+    { protocolV23Available: true, visualDriver: verifiedDriver },
+  );
+  assert.equal(
+    String(stabilizationRegistry.assertRouteAvailable(
+      "ae.stabilization.position.guarded_visual",
+      String(M4_STABILIZATION_GUARDED_ROUTE_ID_V1),
+    ).routeId),
+    String(M4_STABILIZATION_GUARDED_ROUTE_ID_V1),
+  );
+  assert.equal(
+    stabilizationRegistry.assertRouteAvailable(
+      "ae.stabilization.readback",
+      "ae-cep.stabilization.v2_3",
+    ).kind,
+    "HOST_ADAPTER",
+  );
 });
 
 test("current AE transaction runtime rejects oversized plans before contacting AE", async () => {
@@ -271,5 +313,7 @@ test("current Shadow daemon exposes typed mixed-protocol transaction execution",
   assert.match(source, /CurrentAeTransactionRuntimeV1/);
   assert.match(source, /url\.pathname === "\/run-transaction"/);
   assert.match(source, /currentTransactionRuntime\.execute\(body\.plan\)/);
+  assert.match(source, /EditGptStabilizationVisualDriverV1/);
+  assert.match(source, /supportedProtocolVersions.*2\.3\.0/s);
   assert.match(source, /result\.state === "COMMITTED"/);
 });

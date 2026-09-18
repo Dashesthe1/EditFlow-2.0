@@ -31,6 +31,13 @@ export interface VirtualAeLayerMotionStateV1 {
   frameBlendingType: VirtualAeFrameBlendingModeV1;
 }
 
+export interface VirtualAeStabilizationStateV1 {
+  mode: "POSITION_XY";
+  direction: "FORWARD";
+  trackFeaturePolicy: string;
+  minimumTrackConfidence: number;
+}
+
 export interface VirtualAeKeyframeV1 {
   timeMs: number;
   value: VirtualAeValueV1;
@@ -71,6 +78,7 @@ export interface VirtualAeLayerV1 {
   matteLayerId?: string;
   parentLayerId?: string;
   motion?: VirtualAeLayerMotionStateV1;
+  stabilization?: VirtualAeStabilizationStateV1;
 }
 export interface VirtualAeCompositionV1 {
   compId: string;
@@ -99,6 +107,7 @@ export type VirtualAeOperationV1 =
   | { type: "SET_PROPERTY"; compId: string; layerId: string; propertyPath: string; value: VirtualAeValueV1 }
   | { type: "SET_COMP_MOTION"; compId: string; state: VirtualAeCompMotionStateV1 }
   | { type: "SET_LAYER_MOTION"; compId: string; layerId: string; state: VirtualAeLayerMotionStateV1 }
+  | { type: "APPLY_STABILIZATION"; compId: string; layerId: string; state: VirtualAeStabilizationStateV1 }
   | { type: "ADD_KEYFRAME"; compId: string; layerId: string; propertyPath: string;
       timeMs: number; value: VirtualAeValueV1 }
   | { type: "SET_EXPRESSION"; compId: string; layerId: string; propertyPath: string; expression: string }
@@ -381,6 +390,20 @@ export const simulateVirtualAeV1 = (
         continue;
       }
       layer.motion = structuredClone(operation.state);
+      continue;
+    }
+
+    if (operation.type === "APPLY_STABILIZATION") {
+      if (operation.state.mode !== "POSITION_XY"
+        || operation.state.direction !== "FORWARD"
+        || !nonEmpty(operation.state.trackFeaturePolicy)
+        || !Number.isFinite(operation.state.minimumTrackConfidence)
+        || operation.state.minimumTrackConfidence < 0
+        || operation.state.minimumTrackConfidence > 1) {
+        fail(errors, index, "stabilization requires proven Position X/Y Forward semantics and confidence within [0, 1]");
+        continue;
+      }
+      layer.stabilization = structuredClone(operation.state);
       continue;
     }
 

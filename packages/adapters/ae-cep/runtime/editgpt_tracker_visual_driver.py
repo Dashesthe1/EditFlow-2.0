@@ -25,6 +25,18 @@ def structured(result) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def tool_result_detail(result) -> str:
+    details = [
+        str(getattr(block, "text", "")).strip()
+        for block in getattr(result, "content", [])
+        if getattr(block, "type", None) == "text" and str(getattr(block, "text", "")).strip()
+    ]
+    payload = structured(result)
+    if payload:
+        details.append(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    return " | ".join(details) or "no MCP error detail"
+
+
 def frame_parts(result) -> tuple[dict, np.ndarray, bytes]:
     metadata = None
     jpeg = None
@@ -78,13 +90,98 @@ def verify_visible(qwen: LocalQwenVLClient, image: np.ndarray, statement: str, s
     }
 
 
+def classify_tracker_panel_content(qwen: LocalQwenVLClient, image: np.ndarray, source: str) -> tuple[bool, dict]:
+    observation = qwen.observe(
+        image,
+        prompt=(
+            "Inspect the visible Adobe After Effects panel content, not merely a tab or heading. "
+            "Classify TRACKER only when the frontmost visible panel content contains at least two literal "
+            "Tracker-specific controls from: Track Camera, Warp Stabilizer, Track Motion, Stabilize Motion, "
+            "Motion Source, Current Track. Classify PREVIEW when the visible content instead contains Preview "
+            "controls such as Shortcut, Spacebar, Include, or Cache Before Playback. Otherwise use AMBIGUOUS. "
+            "Return only JSON: {\"state\": \"TRACKER|PREVIEW|AMBIGUOUS\", "
+            "\"confidence\": 0_to_1, \"visible_controls\": [\"literal labels\"], "
+            "\"reason\": \"brief visible evidence\"}."
+        ),
+        source=source,
+        max_tokens=260,
+        max_width=image.shape[1],
+        jpeg_quality=92,
+    )
+    payload = parse_json_text(observation.text)
+    state = str(payload.get("state", "AMBIGUOUS")).strip().upper()
+    confidence = float(payload.get("confidence", 0.0) or 0.0)
+    controls = payload.get("visible_controls")
+    controls = controls if isinstance(controls, list) else []
+    normalized = [str(value).strip().lower() for value in controls]
+    tracker_markers = (
+        "track camera", "warp stabilizer", "track motion",
+        "stabilize motion", "motion source", "current track",
+    )
+    tracker_hits = sorted({
+        marker
+        for marker in tracker_markers
+        if any(marker in value for value in normalized)
+    })
+    preview_markers = ("shortcut", "spacebar", "cache before playback")
+    preview_hits = sorted({
+        marker
+        for marker in preview_markers
+        if any(marker in value for value in normalized)
+    })
+    verified = state == "TRACKER" and confidence >= 0.85 and len(tracker_hits) >= 2
+    return verified, {
+        "state": state,
+        "confidence": confidence,
+        "visibleControls": controls,
+        "trackerHits": tracker_hits,
+        "previewHits": preview_hits,
+        "contentGate": "TRACKER_CONTENT_VERIFIED" if verified else "TRACKER_CONTENT_REJECTED",
+        "payload": payload,
+        "semantic": observation.as_dict(),
+    }
+
+
 def target_inside_bounds(target, bounds: tuple[int, int, int, int]) -> bool:
     x1, y1, x2, y2 = bounds
     return x1 <= target.x <= x2 and y1 <= target.y <= y2
 
 
+def resolve_tracker_menu_action(checked: bool, unchecked: bool) -> str:
+    # Safety is asymmetric: positive checked evidence can only preserve state.
+    # A toggle is authorized only when unchecked is true and checked is false.
+    if checked:
+        return "PRESERVE_ENABLED"
+    if unchecked:
+        return "ENABLE"
+    return "AMBIGUOUS"
+
+
+def validate_menu_item_below(anchor: SemanticPointerTarget, target: SemanticPointerTarget) -> str | None:
+    if anchor.bbox_pixels is None or target.bbox_pixels is None:
+        return "menu-neighbor validation requires bounded anchor and target"
+    dx = abs(int(target.x) - int(anchor.x))
+    dy = int(target.y) - int(anchor.y)
+    vertical_gap = int(target.bbox_pixels[1]) - int(anchor.bbox_pixels[3])
+    if dx > 120:
+        return f"menu target is too far horizontally from its anchor (dx={dx})"
+    if not 10 <= dy <= 50:
+        return f"menu target is not immediately below its anchor (dy={dy})"
+    if not -8 <= vertical_gap <= 20:
+        return f"menu target bounding box is not adjacent below its anchor (gap={vertical_gap})"
+    return None
+
+
 def locate_tracker_panel_signature(qwen: LocalQwenVLClient, image: np.ndarray, source: str) -> tuple[bool, dict]:
     try:
+        content_ok, content_evidence = classify_tracker_panel_content(
+            qwen, image, source + "_content",
+        )
+        if not content_ok:
+            return False, {
+                "reason": "frontmost panel content is not verified Tracker content",
+                "content": content_evidence,
+            }
         title, title_obs = choose_pointer_target(
             image,
             instruction="Point to the literal Tracker panel title text in Adobe After Effects. Do not point to a layer name containing TRACK or to Track Motion.",
@@ -99,12 +196,31 @@ def locate_tracker_panel_signature(qwen: LocalQwenVLClient, image: np.ndarray, s
             return False, {"reason": "Tracker panel anchors require bounding boxes"}
         dy = motion.y - title.y
         dx = abs(motion.x - title.x)
-        geometry_ok = 12 <= dy <= 150 and dx <= 220
         h, w = image.shape[:2]
+        max_dy = max(150, int(round(h * 0.45)))
+        max_dx = max(220, int(round(w * 0.20)))
+        geometry_ok = 12 <= dy <= max_dy and dx <= max_dx
         tx1, ty1, tx2, ty2 = title.bbox_pixels
         mx1, my1, mx2, my2 = motion.bbox_pixels
-        bounds = (max(0, min(tx1, mx1) - 28), max(0, ty1 - 18), min(w - 1, max(tx2, mx2) + 240), min(h - 1, max(my2 + 250, ty2 + 280)))
-        return geometry_ok, {"title": title.__dict__, "titleSemantic": title_obs.as_dict(), "trackMotion": motion.__dict__, "trackMotionSemantic": motion_obs.as_dict(), "dx": dx, "dy": dy, "geometryOk": geometry_ok, "bounds": list(bounds)}
+        bounds = (
+            max(0, min(tx1, mx1) - 28),
+            max(0, min(ty1, my1) - 18),
+            min(w - 1, max(tx2, mx2) + 240),
+            min(h - 1, max(my2 + 250, ty2 + 280)),
+        )
+        return geometry_ok, {
+            "content": content_evidence,
+            "title": title.__dict__,
+            "titleSemantic": title_obs.as_dict(),
+            "trackMotion": motion.__dict__,
+            "trackMotionSemantic": motion_obs.as_dict(),
+            "dx": dx,
+            "dy": dy,
+            "maxDx": max_dx,
+            "maxDy": max_dy,
+            "geometryOk": geometry_ok,
+            "bounds": list(bounds),
+        }
     except Exception as exc:
         return False, {"reason": f"{type(exc).__name__}: {exc}"}
 
@@ -155,11 +271,12 @@ def target_patch_change(a: np.ndarray, b: np.ndarray, bbox: tuple[int, int, int,
     if aa.size == 0:
         return 1.0
     return float((np.abs(bb - aa).mean(axis=2) >= 15).mean())
-async def capture(eyes, hands, output: Path, name: str) -> tuple[dict, np.ndarray]:
-    focused = await hands.call_tool("hands_focus_after_effects", {})
-    if focused.is_error:
-        raise RuntimeError("After Effects could not be focused")
-    await asyncio.sleep(0.12)
+async def capture(eyes, hands, output: Path, name: str, focus: bool = True) -> tuple[dict, np.ndarray]:
+    if focus:
+        focused = await hands.call_tool("hands_focus_after_effects", {})
+        if focused.is_error:
+            raise RuntimeError("After Effects could not be focused")
+        await asyncio.sleep(0.12)
     result = await eyes.call_tool("eyes_latest_frame", {"max_width": 1280, "jpeg_quality": 92})
     if result.is_error:
         raise RuntimeError("Eyes capture failed")
@@ -169,27 +286,94 @@ async def capture(eyes, hands, output: Path, name: str) -> tuple[dict, np.ndarra
     return meta, image
 
 
-async def guarded_click_target(eyes, hands, qwen, output: Path, instruction: str, evidence_name: str, bounds: tuple[int, int, int, int] | None = None) -> dict:
-    ground_meta, ground_image = await capture(eyes, hands, output, f"{evidence_name}_ground")
+async def guarded_click_target(eyes, hands, qwen, output: Path, instruction: str, evidence_name: str, bounds: tuple[int, int, int, int] | None = None, target_validator=None, preserve_transient: bool = False, ground_bounds: tuple[int, int, int, int] | None = None) -> dict:
+    if preserve_transient:
+        ground_meta, ground_image = await capture(
+            eyes, hands, output, f"{evidence_name}_ground", focus=False,
+        )
+    else:
+        focused = await hands.call_tool("hands_focus_after_effects", {})
+        if focused.is_error:
+            raise RuntimeError("After Effects could not be focused before guarded grounding")
+        neutral = await hands.call_tool("hands_move", {"x": 2, "y": 2})
+        if neutral.is_error:
+            raise RuntimeError("Hands could not park the cursor before guarded grounding")
+        await asyncio.sleep(0.12)
+        ground_meta, ground_image = await capture(
+            eyes, hands, output, f"{evidence_name}_ground", focus=False,
+        )
+    semantic_image = ground_image
+    semantic_offset_x = semantic_offset_y = 0
+    if ground_bounds is not None:
+        gx1, gy1, gx2, gy2 = map(int, ground_bounds)
+        h, w = ground_image.shape[:2]
+        gx1, gy1 = max(0, gx1), max(0, gy1)
+        gx2, gy2 = min(w, gx2), min(h, gy2)
+        if gx2 <= gx1 or gy2 <= gy1:
+            raise RuntimeError(f"semantic grounding crop is empty for {evidence_name}")
+        semantic_image = ground_image[gy1:gy2, gx1:gx2]
+        semantic_offset_x, semantic_offset_y = gx1, gy1
     target, observation = choose_pointer_target(
-        ground_image,
+        semantic_image,
         instruction=instruction,
         client=qwen,
         min_confidence=0.60,
     )
+    if ground_bounds is not None:
+        target = offset_pointer_target(target, semantic_offset_x, semantic_offset_y)
     if bounds is not None and not target_inside_bounds(target, bounds):
         raise RuntimeError(f"semantic target escaped verified Tracker panel bounds for {evidence_name}")
+    if target_validator is not None:
+        validation_error = target_validator(target)
+        if validation_error:
+            raise RuntimeError(str(validation_error))
+    if not preserve_transient:
+        refocused = await hands.call_tool("hands_focus_after_effects", {})
+        if refocused.is_error:
+            raise RuntimeError("After Effects could not be re-focused for guarded freshness verification")
+        await asyncio.sleep(0.10)
     latest = await eyes.call_tool("eyes_latest_frame", {"max_width": 1280, "jpeg_quality": 92})
     if latest.is_error:
         raise RuntimeError("freshness capture failed")
-    action_meta, action_image, _ = frame_parts(latest)
+    action_meta, action_image, action_jpeg = frame_parts(latest)
     if ground_meta.get("geometry") != action_meta.get("geometry"):
         raise RuntimeError("Eyes geometry changed between grounding and action")
     if target.bbox_pixels is None:
         raise RuntimeError("semantic target has no bounding box for freshness verification")
     changed = target_patch_change(ground_image, action_image, target.bbox_pixels)
+    focus_recoveries: list[dict] = []
+    while changed > 0.12 and not preserve_transient and len(focus_recoveries) < 2:
+        attempt = len(focus_recoveries) + 1
+        output.mkdir(parents=True, exist_ok=True)
+        (output / f"{evidence_name}_focus_recovery_{attempt}_before.jpg").write_bytes(action_jpeg)
+        recovered = await hands.call_tool("hands_focus_after_effects", {})
+        if recovered.is_error:
+            raise RuntimeError("After Effects could not be re-focused after visual target occlusion")
+        parked = await hands.call_tool("hands_move", {"x": 2, "y": 2})
+        if parked.is_error:
+            raise RuntimeError("Hands could not park the cursor during visual target recovery")
+        await asyncio.sleep(0.20)
+        refreshed = await eyes.call_tool("eyes_latest_frame", {"max_width": 1280, "jpeg_quality": 92})
+        if refreshed.is_error:
+            raise RuntimeError("freshness recovery capture failed")
+        action_meta, action_image, action_jpeg = frame_parts(refreshed)
+        if ground_meta.get("geometry") != action_meta.get("geometry"):
+            raise RuntimeError("Eyes geometry changed during guarded focus recovery")
+        changed = target_patch_change(ground_image, action_image, target.bbox_pixels)
+        focus_recoveries.append({
+            "attempt": attempt,
+            "action_frame_id": action_meta.get("frame_id"),
+            "target_patch_changed_fraction": changed,
+        })
     if changed > 0.12:
-        raise RuntimeError(f"visual target changed before action ({changed:.3f})")
+        output.mkdir(parents=True, exist_ok=True)
+        (output / f"{evidence_name}_freshness_changed.jpg").write_bytes(action_jpeg)
+        raise RuntimeError(
+            f"visual target changed before action ({changed:.3f}); "
+            f"target={target.target!r} bbox={list(target.bbox_pixels)} "
+            f"ground_frame={ground_meta.get('frame_id')} action_frame={action_meta.get('frame_id')} "
+            f"focus_recovery_attempts={len(focus_recoveries)}"
+        )
     status = structured(await hands.call_tool("hands_status", {}))
     transform = CoordinateTransform.from_status(action_meta, status)
     screen_x, screen_y = transform.encoded_to_screen(target.x, target.y)
@@ -204,9 +388,31 @@ async def guarded_click_target(eyes, hands, qwen, output: Path, instruction: str
         "semantic": observation.as_dict(),
         "screen": {"x": screen_x, "y": screen_y},
         "target_patch_changed_fraction": changed,
+        "focus_recoveries": focus_recoveries,
         "ground_frame_id": ground_meta.get("frame_id"),
         "action_frame_id": action_meta.get("frame_id"),
     }
+
+
+async def activate_tracker_panel_tab(eyes, hands, qwen, output: Path, evidence_prefix: str) -> tuple[np.ndarray, dict]:
+    def validate_tab(target):
+        if target.bbox_pixels is None:
+            return "Tracker panel tab requires a bounded visual target"
+        if int(target.y) <= 58:
+            return f"Tracker panel tab target is too close to the application menu bar (y={int(target.y)})"
+        return None
+
+    click = await guarded_click_target(
+        eyes, hands, qwen, output,
+        "Point to the Tracker PANEL TAB labeled Tracker in the Adobe After Effects workspace. "
+        "The Tracker tab may be beside Preview or another panel tab. Point to the tab label itself. "
+        "Do not point to the top Window menu, a Window-menu Tracker item, Track Motion, a timeline layer, "
+        "or any layer/viewer tab whose name merely contains the word track.",
+        f"{evidence_prefix}_tracker_panel_tab",
+        target_validator=validate_tab,
+    )
+    _meta, image = await capture(eyes, hands, output, f"{evidence_prefix}_tracker_panel_active")
+    return image, click
 
 
 def validate_request(value: dict) -> dict:
@@ -251,6 +457,143 @@ async def verify_target_binding(qwen, image: np.ndarray, request: dict, source: 
     return verify_visible(qwen, image, statement, source)
 
 
+async def ensure_timeline_layer_selected(
+    eyes, hands, qwen, output: Path, image: np.ndarray, expected_layer_name: str, proof: dict,
+    evidence_prefix: str = "tracker", require_visible_selection: bool = True,
+) -> np.ndarray:
+    layer = literal_label(expected_layer_name)
+    frame_h, frame_w = image.shape[:2]
+    timeline_header, timeline_header_observation = choose_pointer_target(
+        image,
+        instruction=(
+            "Point to the literal Source Name COLUMN HEADER inside the Adobe After Effects Timeline panel. "
+            "Do not point to a layer row, Project panel column, viewer tab, or Tracker control."
+        ),
+        client=qwen,
+        min_confidence=0.70,
+    )
+    if timeline_header.bbox_pixels is None:
+        raise RuntimeError("Timeline Source Name header requires a bounded visual target")
+    hx1, hy1, hx2, hy2 = map(int, timeline_header.bbox_pixels)
+    timeline_ground_bounds = (
+        max(0, hx1 - 240),
+        max(0, hy2 - 2),
+        min(frame_w, hx2 + 720),
+        frame_h,
+    )
+    proof[f"{evidence_prefix}TimelineSourceNameHeader"] = {
+        "target": timeline_header.__dict__,
+        "semantic": timeline_header_observation.as_dict(),
+        "groundBounds": list(timeline_ground_bounds),
+    }
+
+    def validate_timeline_layer_target(target):
+        if target.bbox_pixels is None:
+            return "Timeline layer row requires a bounded visual target"
+        if int(target.x) < 0 or int(target.y) < 0:
+            return "Timeline layer row escaped the captured AE frame"
+        if int(target.y) < timeline_ground_bounds[1]:
+            return "Timeline layer row is above the verified Timeline Source Name header"
+        max_header_dx = max(360, int(round(frame_w * 0.40)))
+        if abs(int(target.x) - int(timeline_header.x)) > max_header_dx:
+            return "Timeline layer row is not horizontally related to the verified Source Name column"
+        return None
+
+    def ground_exact_row(frame: np.ndarray, source: str) -> tuple[SemanticPointerTarget, dict]:
+        gx1, gy1, gx2, gy2 = timeline_ground_bounds
+        semantic_image = frame[gy1:gy2, gx1:gx2]
+        if semantic_image.size == 0:
+            raise RuntimeError("Timeline layer-row grounding crop is empty")
+        target_local, observation = choose_pointer_target(
+            semantic_image,
+            instruction=(
+                f"Point to the exact TIMELINE LAYER ROW whose layer name is {layer}. "
+                "This crop begins immediately below the verified Source Name column header. "
+                "Point to the layer-name text/row only. The visible label may be truncated by After Effects; "
+                "do not point to another layer row."
+            ),
+            client=qwen,
+            min_confidence=0.70,
+        )
+        target = offset_pointer_target(target_local, gx1, gy1)
+        validation_error = validate_timeline_layer_target(target)
+        if validation_error:
+            raise RuntimeError(validation_error)
+        return target, {
+            "target": target.__dict__,
+            "semantic": observation.as_dict(),
+            "source": source,
+            "sourceNameHeader": timeline_header.__dict__,
+            "groundBounds": list(timeline_ground_bounds),
+        }
+
+    def verify_grounded_row_selected(
+        frame: np.ndarray, target: SemanticPointerTarget, source: str,
+    ) -> tuple[bool, dict]:
+        if target.bbox_pixels is None:
+            return False, {"reason": "grounded Timeline row has no bounding box"}
+        x1, y1, x2, y2 = map(int, target.bbox_pixels)
+        h, w = frame.shape[:2]
+        row_height = max(1, y2 - y1)
+        crop_bounds = (
+            max(0, x1 - 36),
+            max(0, y1 - max(6, row_height // 2)),
+            min(w, x2 + 96),
+            min(h, y2 + max(6, row_height // 2)),
+        )
+        cx1, cy1, cx2, cy2 = crop_bounds
+        crop = frame[cy1:cy2, cx1:cx2]
+        if crop.size == 0:
+            return False, {"reason": "grounded Timeline row crop is empty", "cropBounds": list(crop_bounds)}
+        selected, evidence = verify_visible(
+            qwen,
+            crop,
+            "The centered Adobe After Effects Timeline layer row is visibly selected/highlighted. "
+            "Judge only the row's selection/highlight state; do not require the full layer name to be readable, "
+            "because After Effects may truncate the label.",
+            source,
+        )
+        return selected, {"selected": selected, "cropBounds": list(crop_bounds), "evidence": evidence}
+
+    grounded, grounded_evidence = ground_exact_row(image, f"{evidence_prefix}_timeline_layer_ground_pre")
+    proof[f"{evidence_prefix}TimelineLayerGroundPre"] = grounded_evidence
+    selected, pre_evidence = verify_grounded_row_selected(
+        image, grounded, f"{evidence_prefix}_timeline_layer_selected_pre",
+    )
+    proof[f"{evidence_prefix}TimelineLayerSelectedPre"] = pre_evidence
+    if selected:
+        proof[f"{evidence_prefix}TimelineLayerSelectionPath"] = "ALREADY_SELECTED_GROUNDED_ROW"
+        return image
+
+    click = await guarded_click_target(
+        eyes, hands, qwen, output,
+        f"Point to the exact TIMELINE LAYER ROW whose layer name is {layer}. "
+        "Point to the layer-name text/row inside the Timeline panel only. "
+        "The visible label may be truncated by After Effects; use the row/context to ground it. "
+        "Do not point to the Layer viewer tab, Project panel item, Tracker Motion Source, "
+        "composition viewer, or another layer row.",
+        f"{evidence_prefix}_timeline_layer_row",
+        target_validator=validate_timeline_layer_target,
+        ground_bounds=timeline_ground_bounds,
+    )
+    proof[f"{evidence_prefix}TimelineLayerSelectionClick"] = click
+    _meta, post = await capture(eyes, hands, output, f"{evidence_prefix}_timeline_layer_selected")
+    click_target = SemanticPointerTarget(**click["target"])
+    selected_after, post_evidence = verify_grounded_row_selected(
+        post, click_target, f"{evidence_prefix}_timeline_layer_selected_post",
+    )
+    proof[f"{evidence_prefix}TimelineLayerSelectedPost"] = post_evidence
+    if not selected_after:
+        if require_visible_selection:
+            raise RuntimeError("exact tracking target Timeline layer did not become visibly selected")
+        proof[f"{evidence_prefix}TimelineLayerSelectionVisibility"] = "UNOBSERVED_AFTER_GROUNDED_CLICK"
+        proof[f"{evidence_prefix}TimelineLayerSelectionPath"] = "GUARDED_TIMELINE_ROW_CLICK_HIGHLIGHT_UNOBSERVED"
+        return post
+    proof[f"{evidence_prefix}TimelineLayerSelectionVisibility"] = "VISIBLY_SELECTED"
+    proof[f"{evidence_prefix}TimelineLayerSelectionPath"] = "GUARDED_TIMELINE_ROW_CLICK"
+    return post
+
+
 async def ensure_tracker_panel(eyes, hands, qwen, output: Path, request: dict, proof: dict) -> np.ndarray:
     _meta, image = await capture(eyes, hands, output, "pre_action_target")
     bound, binding_evidence = await verify_target_binding(qwen, image, request, "m4_tracker_target_binding_pre")
@@ -261,12 +604,34 @@ async def ensure_tracker_panel(eyes, hands, qwen, output: Path, request: dict, p
     proof["tracker_panel_initial"] = panel_evidence
     if not panel_open:
         proof["window_menu"] = await guarded_click_target(eyes, hands, qwen, output, "Point to the Window menu label in the top Adobe After Effects menu bar. Do not choose a dropdown item.", "window_menu")
-        _menu_meta, menu_image = await capture(eyes, hands, output, "window_menu_open")
+        _menu_meta, menu_image = await capture(eyes, hands, output, "window_menu_open", focus=False)
         menu_ok, menu_evidence = verify_visible(qwen, menu_image, "The Window menu dropdown is open and visibly contains a Tracker item.", "m4_tracker_window_menu")
         proof["window_menu_verified"] = menu_evidence
         if not menu_ok:
             raise RuntimeError("Window menu did not expose Tracker")
-        proof["tracker_menu_item"] = await guarded_click_target(eyes, hands, qwen, output, "Point to the Tracker item in the currently open Window menu dropdown.", "tracker_menu_item")
+        # After Effects defines Window > Panel as an open-or-bring-to-front action, even when
+        # that panel is already open beneath another panel. Avoid two unreliable checkmark
+        # classification calls; select Tracker once, then require a Tracker-content proof.
+        tools_anchor, tools_observation = choose_pointer_target(
+            menu_image,
+            instruction="Point to the Tools item in the currently open Adobe After Effects Window menu. Do not point to Tracker or another menu item.",
+            client=qwen,
+            min_confidence=0.60,
+        )
+        proof["tracker_menu_tools_anchor"] = {
+            "target": tools_anchor.__dict__,
+            "semantic": tools_observation.as_dict(),
+        }
+        proof["tracker_menu_item"] = await guarded_click_target(
+            eyes, hands, qwen, output,
+            "Point to the Tracker menu item in the currently open Adobe After Effects Window menu. "
+            "It is the bottom visible item, immediately below Tools. Selecting Tracker is the canonical "
+            "open-or-bring-to-front action. Do not point to Tools, Preview, Progress, Properties, or the Tracker panel itself.",
+            "tracker_menu_item",
+            target_validator=lambda target: validate_menu_item_below(tools_anchor, target),
+            preserve_transient=True,
+        )
+        proof["tracker_menu_action"] = "WINDOW_MENU_SELECT_TRACKER_OPEN_OR_FRONT"
         _panel_meta, image = await capture(eyes, hands, output, "tracker_panel_open")
     panel_ok, panel_evidence = locate_tracker_panel_signature(qwen, image, "m4_tracker_panel_ready")
     proof["tracker_panel_ready"] = panel_evidence
@@ -291,13 +656,13 @@ async def ensure_current_tracker(eyes, hands, qwen, output: Path, request: dict,
     proof["current_track_before"] = evidence
     if not selected:
         proof["current_track_dropdown"] = await guarded_click_target(eyes, hands, qwen, output, "Point to the Current Track dropdown inside the verified Tracker panel. Do not point to Parent & Link or another dropdown.", "current_track_dropdown", bounds)
-        _drop_meta, drop_image = await capture(eyes, hands, output, "current_track_dropdown_open")
+        _drop_meta, drop_image = await capture(eyes, hands, output, "current_track_dropdown_open", focus=False)
         panel_ok, drop_panel = locate_tracker_panel_signature(qwen, drop_image, "m4_tracker_panel_dropdown_open")
         proof["tracker_panel_dropdown_open"] = drop_panel
         if not panel_ok:
             raise RuntimeError("Tracker panel signature disappeared with Current Track dropdown open")
         drop_bounds = tuple(drop_panel["bounds"])
-        proof["current_track_item"] = await guarded_click_target(eyes, hands, qwen, output, f"Point to the tracker item exactly {label} in the open Current Track dropdown inside the Tracker panel.", "current_track_item", drop_bounds)
+        proof["current_track_item"] = await guarded_click_target(eyes, hands, qwen, output, f"Point to the tracker item exactly {label} in the open Current Track dropdown inside the Tracker panel.", "current_track_item", drop_bounds, preserve_transient=True)
         _meta, image = await capture(eyes, hands, output, "tracker_selection_after")
         panel_ok, panel_after = locate_tracker_panel_signature(qwen, image, "m4_tracker_panel_after_current_track")
         proof["tracker_panel_after_current_track"] = panel_after
@@ -339,20 +704,59 @@ async def reveal_analyze_row(eyes, hands, qwen, output: Path, image: np.ndarray,
         bound, binding_evidence = await verify_target_binding(qwen, current, request, f"m4_tracker_target_binding_before_reveal_scroll_{attempt + 1}")
         if not bound:
             raise RuntimeError("typed target binding changed before bounded Tracker-panel scroll")
-        meta, _fresh = await capture(eyes, hands, output, f"analyze_reveal_pre_scroll_{attempt + 1}")
+        meta, fresh = await capture(eyes, hands, output, f"analyze_reveal_pre_scroll_{attempt + 1}")
+        scroll_target, scroll_observation = choose_pointer_target(
+            fresh,
+            instruction=(
+                "Point to an empty safe background area inside the visible Tracker panel body where mouse-wheel scrolling "
+                "will scroll the Tracker panel contents. Do not point to any button, dropdown, checkbox, text field, label, "
+                "timeline, layer panel, or scrollbar thumb."
+            ),
+            client=qwen,
+            min_confidence=0.60,
+        )
+        if not target_inside_bounds(scroll_target, verified_bounds):
+            raise RuntimeError("semantic Tracker scroll target escaped verified panel bounds")
         status = structured(await hands.call_tool("hands_status", {}))
         transform = CoordinateTransform.from_status(meta, status)
-        scroll_x = int(x1 + min(58, max(28, (x2 - x1) * 0.22)))
-        scroll_y = int(y1 + min(118, max(76, (y2 - y1) * 0.46)))
-        sx, sy = transform.encoded_to_screen(scroll_x, scroll_y)
-        scrolled = await hands.call_tool("hands_scroll", {"scroll_x": 0, "scroll_y": 360, "x": sx, "y": sy})
-        if scrolled.is_error:
-            raise RuntimeError("could not scroll inside verified Tracker panel to reveal Analyze row")
-        await asyncio.sleep(0.30)
-        _meta, current = await capture(eyes, hands, output, f"analyze_reveal_after_scroll_{attempt + 1}")
+        sx, sy = transform.encoded_to_screen(scroll_target.x, scroll_target.y)
+        before_crop = fresh[y1:y2, x1:x2].astype(np.int16)
+
+        async def scroll_once(delta: int, suffix: str):
+            scrolled = await hands.call_tool("hands_scroll", {"scroll_x": 0, "scroll_y": delta, "x": sx, "y": sy})
+            if scrolled.is_error:
+                raise RuntimeError("could not scroll inside verified Tracker panel to reveal Analyze row")
+            await asyncio.sleep(0.30)
+            _meta, after = await capture(eyes, hands, output, f"analyze_reveal_after_scroll_{attempt + 1}{suffix}")
+            after_crop = after[y1:y2, x1:x2].astype(np.int16)
+            if before_crop.shape != after_crop.shape or before_crop.size == 0:
+                changed_fraction = 1.0
+            else:
+                changed_fraction = float((np.abs(after_crop - before_crop).mean(axis=2) >= 15).mean())
+            return after, changed_fraction
+
+        current, changed_fraction = await scroll_once(360, "")
+        scroll_direction = 360
+        opposite_changed_fraction = None
+        if changed_fraction < 0.005:
+            current, opposite_changed_fraction = await scroll_once(-360, "_opposite")
+            scroll_direction = -360
+            if opposite_changed_fraction < 0.005:
+                attempts[-1]["bindingBeforeScroll"] = binding_evidence
+                attempts[-1]["scrollTarget"] = scroll_target.__dict__
+                attempts[-1]["scrollTargetSemantic"] = scroll_observation.as_dict()
+                attempts[-1]["scrollChangedFraction"] = changed_fraction
+                attempts[-1]["oppositeScrollChangedFraction"] = opposite_changed_fraction
+                proof["analyzeRowReveal"] = {"scrollAttempts": attempt + 1, "attempts": attempts, "bounds": list(verified_bounds)}
+                raise RuntimeError("Tracker-panel wheel scrolling produced no visible movement at a semantically grounded safe target")
         rebound, rebound_evidence = await verify_target_binding(qwen, current, request, f"m4_tracker_target_binding_after_reveal_scroll_{attempt + 1}")
         attempts[-1]["bindingBeforeScroll"] = binding_evidence
         attempts[-1]["bindingAfterScroll"] = rebound_evidence
+        attempts[-1]["scrollTarget"] = scroll_target.__dict__
+        attempts[-1]["scrollTargetSemantic"] = scroll_observation.as_dict()
+        attempts[-1]["scrollDirection"] = scroll_direction
+        attempts[-1]["scrollChangedFraction"] = changed_fraction
+        attempts[-1]["oppositeScrollChangedFraction"] = opposite_changed_fraction
         if not rebound:
             raise RuntimeError("typed target binding changed during bounded Tracker-panel scroll")
     proof["analyzeRowReveal"] = {"scrollAttempts": 3, "attempts": attempts, "bounds": list(verified_bounds) if verified_bounds else None}
@@ -372,7 +776,10 @@ def detect_analyze_row_cv(panel_image: np.ndarray) -> dict:
     gray = cv2.cvtColor(panel_image, cv2.COLOR_BGR2GRAY)
     height, width = gray.shape
     y_start, y_end = int(height * 0.54), int(height * 0.84)
-    x_start = int(width * 0.38)
+    # Narrow Tracker layouts place the first Analyze control at roughly 30% of
+    # the panel width; starting at 38% clips that control and destroys the
+    # required 2-1-1-2 signature even while the full row is visibly present.
+    x_start = int(width * 0.30)
     roi = gray[y_start:y_end, x_start:width]
     mask = ((roi >= 130) & (roi <= 245)).astype(np.uint8) * 255
     count, _labels, stats, centers = cv2.connectedComponentsWithStats(mask, 8)

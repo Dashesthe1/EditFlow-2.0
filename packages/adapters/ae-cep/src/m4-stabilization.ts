@@ -338,14 +338,17 @@ export interface StabilizationRunV1 {
   readonly finalAnchorKeyCount: number;
   readonly visualEvidenceId: string | null;
 }
+export const M4_STABILIZATION_GUARDED_ROUTE_ID_V1 =
+  asRouteId("ae.m4.stabilization.position.guarded_visual.v1");
+
 export const M4_STABILIZATION_GUARDED_CAPABILITY_V1: CapabilityRecord = {
   id: asCapabilityId("ae.stabilization.position.guarded_visual"), domain: "tracking",
   description: "Guarded native AE Stabilize Motion position workflow with protocol 2.3 tracker/Anchor Point truth.",
   status: "ADAPTER_REQUIRED", proofMaturity: "STRUCTURAL",
-  routes: [{ routeId: asRouteId("ae.m4.stabilization.position.guarded_visual.v1"), kind: "GUARDED_UI", available: false, adapterVersion: "0.5.0-dev.1", limitations: ["Requires verified EditGPT vision+cursor control of AE's Tracker panel."] }],
+  routes: [{ routeId: M4_STABILIZATION_GUARDED_ROUTE_ID_V1, kind: "GUARDED_UI", available: false, adapterVersion: "0.5.0-dev.1", limitations: ["Requires verified EditGPT vision+cursor control of AE's Tracker panel."] }],
   readbackStrategy: "PRE_POST_PROTOCOL_2_3_STABILIZATION_READBACK",
   visualProofProfile: "M4_NATIVE_POSITION_STABILIZATION_VISUAL_ACTION",
-  rollbackStrategy: "FIXTURE_OR_PROJECT_TRANSACTION_OWNED_CLEANUP", riskClass: "R4_EXTERNAL_UI",
+  rollbackStrategy: "PROTOCOL_2_3_TRUTH_BOUNDED_UNDO_RECOVERY_CHECKPOINT", riskClass: "R4_EXTERNAL_UI",
   limitations: ["Current retained proof covers native Position stabilization on X and Y with Analyze Forward + Apply.", "Rotation/scale stabilization and Analyze Backward are not yet registered."],
   fallbackPolicy: "EXPLICIT_ONLY",
 };
@@ -357,6 +360,18 @@ export const capabilityForStabilizationDriverV1 = (driver: StabilizationVisualDr
 
 const trackerKeyCount = (readback: AeStabilizationReadbackV23 | null): number =>
   readback?.trackers.reduce((max, tracker) => Math.max(max, tracker.featureCenterKeyCount, tracker.confidenceKeyCount, tracker.attachPointKeyCount), 0) ?? -1;
+
+export interface StabilizationTruthCountsV1 {
+  readonly trackerKeyCount: number;
+  readonly anchorKeyCount: number;
+}
+export const stabilizationTruthCountsV1 = (
+  readback: AeStabilizationReadbackV23 | null,
+): StabilizationTruthCountsV1 => ({
+  trackerKeyCount: trackerKeyCount(readback),
+  anchorKeyCount: readback?.transform.anchorPoint.keyCount ?? -1,
+});
+
 const readTruth = async (transport: AeStabilizationTransportV23, input: { compHostId: number; layerHostId: number }, suffix: string): Promise<AeStabilizationReadbackV23 | null> => {
   const request = buildStabilizationRequestV23({
     requestId: `M4_STABILIZE_${suffix}`, transactionId: `M4_STABILIZE_${suffix}`, operationId: `M4_STABILIZE_${suffix}`,
@@ -366,6 +381,20 @@ const readTruth = async (transport: AeStabilizationTransportV23, input: { compHo
   const response = await transport.dispatch(request);
   return response.readback ?? null;
 };
+export const readStabilizationTruthCountsV1 = async (
+  transport: AeStabilizationTransportV23,
+  input: { readonly compHostId: number; readonly layerHostId: number },
+  suffix: string,
+): Promise<StabilizationTruthCountsV1> => {
+  const truth = await readTruth(transport, input, suffix);
+  if (truth === null
+    || truth.comp.hostId !== input.compHostId
+    || truth.layer.hostId !== input.layerHostId) {
+    return { trackerKeyCount: -1, anchorKeyCount: -1 };
+  }
+  return stabilizationTruthCountsV1(truth);
+};
+
 export class GuardedStabilizationControllerV1 {
   readonly transport: AeStabilizationTransportV23;
   readonly visualDriver: StabilizationVisualDriverV1 | null;
@@ -376,12 +405,23 @@ export class GuardedStabilizationControllerV1 {
     const driver = this.visualDriver;
     if (!driver || !driver.verifiedVision || !driver.verifiedCursorControl) return this.#escalate(input.direction, "VISUAL_DRIVER_UNAVAILABLE", before, before, null);
     if (!driver.supportedDirections.includes(input.direction)) return this.#escalate(input.direction, "ANALYSIS_DIRECTION_UNPROVEN", before, before, null);
-    const action = await driver.stabilize({
-      direction: input.direction, compHostId: input.compHostId, layerHostId: input.layerHostId,
-      expectedCompName: input.expectedCompName, expectedLayerName: input.expectedLayerName,
-      expectedControl: input.direction === "FORWARD" ? "STABILIZE_ANALYZE_APPLY_FORWARD" : "STABILIZE_ANALYZE_APPLY_BACKWARD",
-    });
-    if (action.status !== "COMPLETED") return this.#escalate(input.direction, "VISUAL_ACTION_REFUSED", before, before, action.visualEvidenceId ?? null);
+    let action: StabilizationVisualResultV1;
+    try {
+      action = await driver.stabilize({
+        direction: input.direction, compHostId: input.compHostId, layerHostId: input.layerHostId,
+        expectedCompName: input.expectedCompName, expectedLayerName: input.expectedLayerName,
+        expectedControl: input.direction === "FORWARD" ? "STABILIZE_ANALYZE_APPLY_FORWARD" : "STABILIZE_ANALYZE_APPLY_BACKWARD",
+      });
+    } catch {
+      let afterFailure: AeStabilizationReadbackV23 | null = null;
+      try { afterFailure = await readTruth(this.transport, input, "AFTER_REFUSAL"); } catch {}
+      return this.#escalate(input.direction, "VISUAL_ACTION_REFUSED", before, afterFailure, null);
+    }
+    if (action.status !== "COMPLETED") {
+      let afterRefusal: AeStabilizationReadbackV23 | null = null;
+      try { afterRefusal = await readTruth(this.transport, input, "AFTER_REFUSAL"); } catch {}
+      return this.#escalate(input.direction, "VISUAL_ACTION_REFUSED", before, afterRefusal, action.visualEvidenceId ?? null);
+    }
     const after = await readTruth(this.transport, input, "AFTER");
     const beforeTracker = trackerKeyCount(before), afterTracker = trackerKeyCount(after);
     const beforeAnchor = before.transform.anchorPoint.keyCount, afterAnchor = after?.transform.anchorPoint.keyCount ?? -1;
