@@ -10,6 +10,7 @@ import {
   recipeParameterKeyV1,
 } from "../.tmp/runtime/packages/recipe-compiler/src/index.js";
 import { simulateVirtualAeV1 } from "../.tmp/runtime/packages/virtual-ae/src/index.js";
+import { MOTION_TILE_EFFECT_SCHEMA_V1 } from "../.tmp/runtime/packages/recipe-compiler/src/effect-schemas.js";
 import { CapabilityRegistry } from "../.tmp/runtime/packages/capability-registry/src/index.js";
 import { AE_CEP_PUBLIC_CAPABILITIES_V11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
 import { applyM2AcceptedProofEvidence } from "../.tmp/runtime/packages/adapters/ae-cep/src/m2-proof-maturity.js";
@@ -77,8 +78,8 @@ test("Tutorial 002 distinguishes subject tracking from inverse stabilization", a
     /track feature.*persistence.*local contrast/i.test(rule)));
   assert.equal(
     skill.editingIr.nodes.find((node) => node.nodeId === "fill-stabilization-edges")
-      .parameters.find((parameter) => parameter.name === "effectMatchName").value,
-    "ADBE Tile",
+      .parameters.find((parameter) => parameter.name === "effectSchemaRef").value,
+    "ae.effect-schema.motion-tile.v1",
   );
 });
 
@@ -122,14 +123,8 @@ test("Tutorial 002 stops before reconstruction only on genuinely unsupported com
   const skill = result.lesson.skills[0];
   const support = inspectRecipeCompilerSupportV1(skill.editingIr);
 
-  assert.deepEqual(support.virtualAeBlockedPrimitiveKinds, [
-    "EFFECT_STACK",
-    "STABILIZATION",
-  ]);
-  assert.deepEqual(support.nativeAeBlockedPrimitiveKinds, [
-    "EFFECT_STACK",
-    "STABILIZATION",
-  ]);
+  assert.deepEqual(support.virtualAeBlockedPrimitiveKinds, ["STABILIZATION"]);
+  assert.deepEqual(support.nativeAeBlockedPrimitiveKinds, ["STABILIZATION"]);
   assert.deepEqual(result.virtualAeBlockedPrimitiveKinds, support.virtualAeBlockedPrimitiveKinds);
   assert.deepEqual(result.nativeAeBlockedPrimitiveKinds, support.nativeAeBlockedPrimitiveKinds);
   assert.deepEqual(result.compilerBlockedPrimitiveKinds, support.blockedPrimitiveKinds);
@@ -144,11 +139,11 @@ test("Tutorial 002 stops before reconstruction only on genuinely unsupported com
 });
 
 
-test("Tutorial 002 static reframe and motion smoothing compile through Virtual AE and native AE", async () => {
+test("Tutorial 002 certified Motion Tile, static reframe, and motion smoothing compile through Virtual AE and native AE", async () => {
   const result = await learn();
   const recipe = structuredClone(result.lesson.skills[0].editingIr);
   recipe.nodes = recipe.nodes.map((node) =>
-    node.kind === "STABILIZATION" || node.kind === "EFFECT_STACK"
+    node.kind === "STABILIZATION"
       ? { ...node, optional: true }
       : node);
 
@@ -175,6 +170,8 @@ test("Tutorial 002 static reframe and motion smoothing compile through Virtual A
       }],
     }],
   };  const parameters = {
+    [recipeParameterKeyV1("fill-stabilization-edges", "outputWidth")]: 121,
+    [recipeParameterKeyV1("fill-stabilization-edges", "outputHeight")]: 117,
     [recipeParameterKeyV1("reframe-locked-subject", "position")]: [320, 176],
     [recipeParameterKeyV1("reframe-locked-subject", "scale")]: [118, 118],
     [recipeParameterKeyV1("smooth-residual-locked-motion", "motionBlurEnabled")]: true,
@@ -193,17 +190,33 @@ test("Tutorial 002 static reframe and motion smoothing compile through Virtual A
     parameterValues: parameters,
   });
 
-  assert.deepEqual(compiled.skippedOptionalNodeIds, [
-    "stabilize-hero-head",
-    "fill-stabilization-edges",
-  ]);
+  assert.deepEqual(compiled.skippedOptionalNodeIds, ["stabilize-hero-head"]);
   assert.deepEqual(
     compiled.operations.map((operation) => operation.type),
-    ["SET_PROPERTY", "SET_PROPERTY", "SET_COMP_MOTION", "SET_LAYER_MOTION"],
+    [
+      "ADD_EFFECT",
+      "SET_EFFECT_PROPERTY",
+      "SET_EFFECT_PROPERTY",
+      "SET_EFFECT_PROPERTY",
+      "SET_PROPERTY",
+      "SET_PROPERTY",
+      "SET_COMP_MOTION",
+      "SET_LAYER_MOTION",
+    ],
   );
 
   const simulation = simulateVirtualAeV1(project, compiled.operations);
   assert.equal(simulation.valid, true);
+  const simulatedEffect = simulation.project.compositions[0].layers[0].effects[0];
+  assert.equal(simulatedEffect.matchName, "ADBE Tile");
+  assert.deepEqual(
+    simulatedEffect.properties.map((property) => [property.path, property.value]),
+    [
+      [JSON.stringify(["ADBE Tile-0004"]), 121],
+      [JSON.stringify(["ADBE Tile-0005"]), 117],
+      [JSON.stringify(["ADBE Tile-0006"]), true],
+    ],
+  );
   assert.deepEqual(simulation.project.compositions[0].motion, {
     motionBlur: true,
     frameBlending: true,
@@ -228,6 +241,10 @@ test("Tutorial 002 static reframe and motion smoothing compile through Virtual A
   assert.deepEqual(
     plan.operations.map((operation) => operation.input.command),
     [
+      "effect.add",
+      "effect.set_property",
+      "effect.set_property",
+      "effect.set_property",
       "layer.set_transform",
       "layer.set_transform",
       "comp.motion.set",
@@ -237,10 +254,51 @@ test("Tutorial 002 static reframe and motion smoothing compile through Virtual A
   assert.deepEqual(
     plan.operations.map((operation) => String(operation.capabilityId)),
     [
+      "ae.effect.add",
+      "ae.effect.property.set",
+      "ae.effect.property.set",
+      "ae.effect.property.set",
       "ae.layer.transform.set",
       "ae.layer.transform.set",
       "ae.comp.motion.set",
       "ae.layer.motion.set",
     ],
   );
+});
+
+test("Motion Tile effect schema certification is backed by retained real-AE evidence", async () => {
+  const proof = JSON.parse(await readFile(
+    "proofs/diagnostics/m5-motion-tile-effect-schema-proof.json",
+    "utf8",
+  ));
+
+  assert.equal(MOTION_TILE_EFFECT_SCHEMA_V1.status, "CERTIFIED");
+  assert.equal(
+    MOTION_TILE_EFFECT_SCHEMA_V1.proofRef,
+    "proofs/diagnostics/m5-motion-tile-effect-schema-proof.json",
+  );
+  assert.equal(proof.passed, true);
+  assert.equal(proof.aeVersion, "25.6.6x4");
+  assert.equal(proof.effectMatchName, "ADBE Tile");
+  assert.deepEqual(
+    [
+      proof.properties.outputWidth.matchName,
+      proof.properties.outputHeight.matchName,
+      proof.properties.mirrorEdges.matchName,
+    ],
+    ["ADBE Tile-0004", "ADBE Tile-0005", "ADBE Tile-0006"],
+  );
+  assert.deepEqual(
+    [
+      proof.properties.outputWidth.value,
+      proof.properties.outputHeight.value,
+      proof.properties.mirrorEdges.value,
+    ],
+    [121, 117, 1],
+  );
+  assert.equal(proof.cleanup.itemCountRestored, true);
+  assert.equal(proof.cleanup.filePathRestored, true);
+  assert.equal(proof.cleanup.activeItemRestored, true);
+  assert.equal(proof.controlContext.afterEffectsPidBefore, proof.controlContext.afterEffectsPidAfter);
+  assert.equal(proof.controlContext.semanticProjectStateRestored, true);
 });

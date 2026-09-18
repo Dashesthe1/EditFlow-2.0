@@ -42,6 +42,10 @@ export interface VirtualAePropertyV1 {
   keyframes: VirtualAeKeyframeV1[];
   expression?: string;
 }
+export type VirtualAeEffectPropertyPathV1 =
+  | string
+  | readonly (string | number)[];
+
 export interface VirtualAeEffectV1 {
   effectId: string;
   matchName: string;
@@ -101,7 +105,7 @@ export type VirtualAeOperationV1 =
   | { type: "ADD_EFFECT"; compId: string; layerId: string; effectId: string; matchName: string;
       insertAfterEffectId?: string }
   | { type: "SET_EFFECT_PROPERTY"; compId: string; layerId: string; effectId: string;
-      propertyPath: string; value: VirtualAeValueV1 }
+      propertyPath: VirtualAeEffectPropertyPathV1; value: VirtualAeValueV1 }
   | { type: "ADD_MASK"; compId: string; layerId: string; maskId: string;
       mode?: VirtualAeMaskV1["mode"]; closed?: boolean }
   | { type: "SET_MATTE"; compId: string; layerId: string; matteLayerId: string }
@@ -121,6 +125,13 @@ export const createEmptyVirtualAeProjectV1 = (): VirtualAeProjectV1 => ({
 });
 
 const nonEmpty = (value: string): boolean => value.trim().length > 0;
+const effectPropertyPathKey = (path: VirtualAeEffectPropertyPathV1): string | null => {
+  if (typeof path === "string") return nonEmpty(path) ? path : null;
+  if (path.length === 0 || path.some((segment) =>
+    (typeof segment === "string" && !nonEmpty(segment))
+    || (typeof segment === "number" && (!Number.isInteger(segment) || segment < 1)))) return null;
+  return JSON.stringify(path);
+};
 const finitePositive = (value: number): boolean => Number.isFinite(value) && value > 0;
 const validFrameBlendingMode = (value: string): value is VirtualAeFrameBlendingModeV1 =>
   value === "NO_FRAME_BLEND" || value === "FRAME_MIX" || value === "PIXEL_MOTION";
@@ -438,15 +449,16 @@ export const simulateVirtualAeV1 = (
 
     if (operation.type === "SET_EFFECT_PROPERTY") {
       const effect = layer.effects.find((candidate) => candidate.effectId === operation.effectId);
-      if (!effect || !nonEmpty(operation.propertyPath)) {
+      const propertyKey = effectPropertyPathKey(operation.propertyPath);
+      if (!effect || propertyKey === null) {
         fail(errors, index, effect
-          ? "SET_EFFECT_PROPERTY requires propertyPath"
+          ? "SET_EFFECT_PROPERTY requires a valid propertyPath"
           : "effect '" + operation.effectId + "' does not exist");
         continue;
       }
-      let property = effect.properties.find((candidate) => candidate.path === operation.propertyPath);
+      let property = effect.properties.find((candidate) => candidate.path === propertyKey);
       if (!property) {
-        property = { path: operation.propertyPath, keyframes: [] };
+        property = { path: propertyKey, keyframes: [] };
         effect.properties.push(property);
       }
       property.value = structuredClone(operation.value);

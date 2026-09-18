@@ -4,6 +4,7 @@ import {
   type EditingIrPrimitiveKindV1,
   type EditingIrRecipeV1,
 } from "../../editing-ir/src/index.js";
+import { getEffectSchemaV1, type EffectSchemaV1 } from "./effect-schemas.js";
 import type {
   VirtualAeLayerV1,
   VirtualAeOperationV1,
@@ -19,6 +20,7 @@ export const VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "CAMERA_PUSH",
   "TRANSFORM_ANIMATION",
   "MOTION_BLUR",
+  "EFFECT_STACK",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
@@ -27,11 +29,27 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "CAMERA_PUSH",
   "TRANSFORM_ANIMATION",
   "MOTION_BLUR",
+  "EFFECT_STACK",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
+
+const effectSchemaRefV1 = (node: EditingIrNodeV1): string | null => {
+  const parameter = node.parameters.find((candidate) => candidate.name === "effectSchemaRef");
+  return typeof parameter?.value === "string" && parameter.value.trim().length > 0
+    ? parameter.value
+    : null;
+};
+
+const effectSchemaForNodeV1 = (node: EditingIrNodeV1): EffectSchemaV1 | null => {
+  const schemaRef = effectSchemaRefV1(node);
+  return schemaRef === null ? null : getEffectSchemaV1(schemaRef);
+};
 
 const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
   if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
     return node.timing === undefined;
+  }
+  if (node.kind === "EFFECT_STACK") {
+    return node.timing === undefined && effectSchemaForNodeV1(node)?.status === "CERTIFIED";
   }
   return true;
 };
@@ -542,6 +560,64 @@ const compileCameraPush = (
   return uniqueStrings(outputs);
 };
 
+const compileEffectStack = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+): readonly string[] => {
+  if (node.timing !== undefined) {
+    addIssue(issues, node.nodeId, "EFFECT_TIMING_UNSUPPORTED",
+      "EFFECT_STACK currently supports static adapted effect state only.");
+    return [];
+  }
+  const schema = effectSchemaForNodeV1(node);
+  if (schema === null) {
+    addIssue(issues, node.nodeId, "EFFECT_SCHEMA_REQUIRED",
+      "EFFECT_STACK requires a known literal effectSchemaRef.");
+    return [];
+  }
+  if (schema.status !== "CERTIFIED") {
+    addIssue(issues, node.nodeId, "EFFECT_SCHEMA_PROOF_REQUIRED",
+      `Effect schema '${schema.schemaId}' is not certified yet.`);
+    return [];
+  }
+  const values = new Map<string, unknown>();
+  for (const binding of schema.propertyBindings) {
+    const value = resolveParameter(
+      node,
+      binding.semanticParameter,
+      context,
+      issues,
+    );
+    if (value !== null) values.set(binding.semanticParameter, value);
+  }
+  if (values.size !== schema.propertyBindings.length) return [];
+
+  for (const layerId of targets) {
+    const effectId = `${node.nodeId}:${layerId}`;
+    operations.push({
+      type: "ADD_EFFECT",
+      compId: context.compId,
+      layerId,
+      effectId,
+      matchName: schema.effectMatchName,
+    });
+    for (const binding of schema.propertyBindings) {
+      operations.push({
+        type: "SET_EFFECT_PROPERTY",
+        compId: context.compId,
+        layerId,
+        effectId,
+        propertyPath: [...binding.propertyPath],
+        value: structuredClone(values.get(binding.semanticParameter)),
+      });
+    }
+  }
+  return targets;
+};
+
 const compileStaticTransform = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -703,7 +779,10 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     nodeTargetLayerIds[node.nodeId] = [...targets];
 
     let outputs: readonly string[];
-    if (node.kind === "PRECOMPOSE") {
+    if (node.optional === true && !supportedNodeVariantV1(node)) {
+      skippedOptionalNodeIds.push(node.nodeId);
+      outputs = targets;
+    } else if (node.kind === "PRECOMPOSE") {
       outputs = compilePrecompose(node, targets, context, windows, operations, issues);
     } else if (node.kind === "TIME_REMAP") {
       outputs = compileTimeRemap(node, targets, context, windows, operations, issues);
@@ -713,6 +792,8 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
       outputs = compileStaticTransform(node, targets, context, operations, issues);
     } else if (node.kind === "MOTION_BLUR") {
       outputs = compileMotionBlur(node, targets, context, operations, issues);
+    } else if (node.kind === "EFFECT_STACK") {
+      outputs = compileEffectStack(node, targets, context, operations, issues);
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;
