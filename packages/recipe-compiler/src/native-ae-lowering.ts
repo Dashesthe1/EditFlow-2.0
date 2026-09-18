@@ -14,6 +14,10 @@ import { AE_ADAPTER_ROUTE_ID_V11 } from "../../adapters/ae-cep/src/protocol-v1_1
 import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../../adapters/ae-cep/src/protocol-v1_7.js";
 import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../../adapters/ae-cep/src/protocol-v1_8.js";
 import { AE_TIME_REMAP_ROUTE_ID_V27 } from "../../adapters/ae-cep/src/protocol-v2_7.js";
+import {
+  NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+  type NativeAeLiveCurveIntentV1,
+} from "../../adapters/ae-cep/src/native-curve-materialization.js";
 import type { CompiledVirtualAeRecipeV1 } from "./index.js";
 
 export const NATIVE_AE_RECIPE_LOWERING_PHASE = "M5_RECIPE_NATIVE_AE_LOWERING_V1" as const;
@@ -52,11 +56,14 @@ export interface NativeAeCurveBindingV1 {
   readonly easeIntentByKey?: readonly NativeAeKeyEaseIntentV1[];
 }
 
+export type NativeAeCurveBindingModeV1 = "EXACT" | "LIVE_ADAPTIVE";
+
 export interface NativeAeRecipeLoweringInputV1 {
   readonly planId: string;
   readonly planRevision?: number;
   readonly observedState: ObservedProjectState;
-  readonly curveBindings: readonly NativeAeCurveBindingV1[];
+  readonly curveBindings?: readonly NativeAeCurveBindingV1[];
+  readonly curveBindingMode?: NativeAeCurveBindingModeV1;
   readonly bindings?: readonly ExecutionPlanBinding[];
   readonly creativeObjective?: string;
   readonly recipeRefs?: readonly string[];
@@ -207,6 +214,77 @@ const semanticCurves = (
   return result;
 };
 
+const asRecord = (value: unknown): Readonly<Record<string, unknown>> | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : null;
+
+const liveCurveIntent = (
+  semanticPath: NativeAeSemanticCurvePathV1,
+  semantic: readonly Extract<VirtualAeOperationV1, { readonly type: "ADD_KEYFRAME" }>[],
+): NativeAeLiveCurveIntentV1 => {
+  if (semantic.length !== 3) {
+    throw new NativeAeRecipeLoweringError(
+      "LIVE_ADAPTIVE_CURVE_SHAPE_UNSUPPORTED",
+      "Live-adaptive V1 requires exactly three semantic keyframes per curve.",
+    );
+  }
+  const times = semantic.map((operation) => operation.timeMs / 1000);
+  if (!(times[0]! < times[1]! && times[1]! < times[2]!)) {
+    throw new NativeAeRecipeLoweringError(
+      "LIVE_ADAPTIVE_TIME_ORDER_INVALID",
+      "Live-adaptive curve times must be strictly increasing.",
+    );
+  }
+  const value = asRecord(semantic[0]!.value);
+  const parameters = asRecord(value?.["parameters"]);
+  if (parameters === null) {
+    throw new NativeAeRecipeLoweringError(
+      "LIVE_ADAPTIVE_PARAMETERS_REQUIRED",
+      `Semantic curve '${semanticPath}' is missing adapted parameters.`,
+    );
+  }
+  const keyTimesSeconds = [times[0]!, times[1]!, times[2]!] as const;
+
+  if (semanticPath === "TimeRemap.SourceTime") {
+    const velocityContrast = parameters["velocityContrast"];
+    if (!finite(velocityContrast)) {
+      throw new NativeAeRecipeLoweringError(
+        "LIVE_ADAPTIVE_PARAMETERS_REQUIRED",
+        "Time Remap live adaptation requires finite velocityContrast.",
+      );
+    }
+    return {
+      schema: NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+      kind: "TIME_REMAP_PULSE",
+      keyTimesSeconds,
+      velocityContrast,
+    };
+  }
+
+  const zoomIntensity = parameters["zoomIntensity"];
+  const zoomCenter = parameters["zoomCenter"];
+  if (
+    !finite(zoomIntensity)
+    || !Array.isArray(zoomCenter)
+    || zoomCenter.length !== 2
+    || zoomCenter.some((item) => !finite(item))
+  ) {
+    throw new NativeAeRecipeLoweringError(
+      "LIVE_ADAPTIVE_PARAMETERS_REQUIRED",
+      "Camera-push live adaptation requires finite zoomIntensity and zoomCenter.",
+    );
+  }
+  return {
+    schema: NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+    kind: "CAMERA_PUSH",
+    component: semanticPath === "Transform.CameraPush.Scale" ? "SCALE" : "POSITION",
+    keyTimesSeconds,
+    zoomIntensity,
+    zoomCenter: [zoomCenter[0] as number, zoomCenter[1] as number],
+  };
+};
+
 const resolvedBindings = (
   bindings: readonly NativeAeCurveBindingV1[],
 ): Map<string, NativeAeCurveBindingV1> => {
@@ -344,7 +422,14 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   input: NativeAeRecipeLoweringInputV1,
 ): ExecutionPlan => {
   const curves = semanticCurves(compiled.operations);
-  const bindings = resolvedBindings(input.curveBindings);
+  const bindingMode = input.curveBindingMode ?? "EXACT";
+  const bindings = resolvedBindings(input.curveBindings ?? []);
+  if (bindingMode === "LIVE_ADAPTIVE" && bindings.size > 0) {
+    throw new NativeAeRecipeLoweringError(
+      "LIVE_ADAPTIVE_BINDING_CONFLICT",
+      "LIVE_ADAPTIVE lowering cannot also receive exact curveBindings.",
+    );
+  }
 
   for (const key of bindings.keys()) {
     if (!curves.has(key)) {
@@ -401,11 +486,33 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     );
   }
 
+  type EmittedCurve = Readonly<{
+    keyCount: number;
+    exactBinding: NativeAeCurveBindingV1 | null;
+  }>;
+
   const emitCurve = (
     layerId: string,
     semanticPath: NativeAeSemanticCurvePathV1,
-  ): NativeAeCurveBindingV1 => {
-    const binding = requireBinding(layerId, semanticPath, curves, bindings);
+  ): EmittedCurve => {
+    const semantic = curves.get(curveKey(layerId, semanticPath));
+    if (semantic === undefined) {
+      throw new NativeAeRecipeLoweringError(
+        "SEMANTIC_CURVE_MISSING",
+        `Semantic curve '${semanticPath}' is missing for '${layerId}'.`,
+      );
+    }
+    const exactBinding = bindingMode === "EXACT"
+      ? requireBinding(layerId, semanticPath, curves, bindings)
+      : null;
+    const curvePayload = exactBinding === null
+      ? { liveCurveIntent: liveCurveIntent(semanticPath, semantic) }
+      : {
+          keyframes: exactBinding.keyframes.map((keyframe) => ({
+            time: keyframe.timeMs / 1000,
+            value: structuredClone(keyframe.value),
+          })),
+        };
     emit(
       "ae.keyframe.set",
       AE_ADAPTER_ROUTE_ID_V11,
@@ -414,23 +521,20 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
         comp: { stableId: compiled.compId },
         layer: { stableId: layerId },
         propertyPath: nativePropertyPath(semanticPath),
-        keyframes: binding.keyframes.map((keyframe) => ({
-          time: keyframe.timeMs / 1000,
-          value: structuredClone(keyframe.value),
-        })),
+        ...curvePayload,
       },
       "R1_REVERSIBLE",
     );
-    return binding;
+    return { keyCount: semantic.length, exactBinding };
   };
 
   const emitBezierAndEase = (
     layerId: string,
     semanticPath: NativeAeSemanticCurvePathV1,
-    binding: NativeAeCurveBindingV1,
+    curve: EmittedCurve,
   ): void => {
     const propertyPath = nativePropertyPath(semanticPath);
-    for (let keyIndex = 1; keyIndex <= binding.keyframes.length; keyIndex += 1) {
+    for (let keyIndex = 1; keyIndex <= curve.keyCount; keyIndex += 1) {
       emit(
         "ae.property.temporal_interpolation.set",
         AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
@@ -449,20 +553,24 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
         },
         "R1_REVERSIBLE",
       );
-      const easeBinding = easeForKey(binding, keyIndex);
-      const easePayload = easeBinding.mode === "EXACT"
-        ? {
-            ease: {
-              inEase: structuredClone(easeBinding.ease.inEase),
-              outEase: structuredClone(easeBinding.ease.outEase),
-            },
-          }
-        : {
-            easeIntent: {
-              inEase: structuredClone(easeBinding.ease.inEase),
-              outEase: structuredClone(easeBinding.ease.outEase),
-            },
-          };
+      const easePayload = curve.exactBinding === null
+        ? { liveCurveEaseIntent: { keyIndex } }
+        : (() => {
+            const easeBinding = easeForKey(curve.exactBinding, keyIndex);
+            return easeBinding.mode === "EXACT"
+              ? {
+                  ease: {
+                    inEase: structuredClone(easeBinding.ease.inEase),
+                    outEase: structuredClone(easeBinding.ease.outEase),
+                  },
+                }
+              : {
+                  easeIntent: {
+                    inEase: structuredClone(easeBinding.ease.inEase),
+                    outEase: structuredClone(easeBinding.ease.outEase),
+                  },
+                };
+          })();
       emit(
         "ae.property.temporal_ease.set",
         AE_TEMPORAL_EASE_ROUTE_ID_V18,
@@ -514,7 +622,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       // AE creates two default Time Remap boundary keys when the property is enabled.
       // Keep those keys present while inserting the semantic curve; removing every
       // default key first can cause AE to hide the property and reject setValuesAtTimes().
-      const binding = emitCurve(layerId, "TimeRemap.SourceTime");
+      const curve = emitCurve(layerId, "TimeRemap.SourceTime");
       emit(
         "ae.keyframe.set",
         AE_ADAPTER_ROUTE_ID_V11,
@@ -523,13 +631,13 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
           comp: { stableId: compiled.compId },
           layer: { stableId: layerId },
           propertyPath: ["ADBE Time Remapping"],
-          removeKeyIndices: [binding.keyframes.length + 2, 1],
+          removeKeyIndices: [curve.keyCount + 2, 1],
         },
         "R1_REVERSIBLE",
       );
       if (hasSetProperty(compiled.operations, layerId, "TimeRemap.Interpolation")
         || hasSetProperty(compiled.operations, layerId, "TimeRemap.TemporalEase")) {
-        emitBezierAndEase(layerId, "TimeRemap.SourceTime", binding);
+        emitBezierAndEase(layerId, "TimeRemap.SourceTime", curve);
       }
     }
 
@@ -540,19 +648,19 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       layerId,
       "Transform.CameraPush.Policy",
     );
-    let scaleBinding: NativeAeCurveBindingV1 | null = null;
-    let centerBinding: NativeAeCurveBindingV1 | null = null;
-    if (curves.has(cameraScaleKey)) scaleBinding = emitCurve(layerId, "Transform.CameraPush.Scale");
-    if (curves.has(cameraCenterKey)) centerBinding = emitCurve(layerId, "Transform.CameraPush.Center");
+    let scaleCurve: EmittedCurve | null = null;
+    let centerCurve: EmittedCurve | null = null;
+    if (curves.has(cameraScaleKey)) scaleCurve = emitCurve(layerId, "Transform.CameraPush.Scale");
+    if (curves.has(cameraCenterKey)) centerCurve = emitCurve(layerId, "Transform.CameraPush.Center");
     if (hasCameraPolicy) {
-      if (scaleBinding === null || centerBinding === null) {
+      if (scaleCurve === null || centerCurve === null) {
         throw new NativeAeRecipeLoweringError(
           "CAMERA_PUSH_CURVE_INCOMPLETE",
           `Camera push policy for '${layerId}' requires both Scale and Center curves.`,
         );
       }
-      emitBezierAndEase(layerId, "Transform.CameraPush.Scale", scaleBinding);
-      emitBezierAndEase(layerId, "Transform.CameraPush.Center", centerBinding);
+      emitBezierAndEase(layerId, "Transform.CameraPush.Scale", scaleCurve);
+      emitBezierAndEase(layerId, "Transform.CameraPush.Center", centerCurve);
     }
   }
 

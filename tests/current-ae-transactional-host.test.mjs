@@ -17,6 +17,9 @@ import {
 import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
+import {
+  NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/native-curve-materialization.js";
 
 const environmentProbe = {
   adapterProtocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
@@ -116,6 +119,46 @@ class StatefulMixedProtocolTransport {
     if (request.command === "project.inspect") {
       return responseFor(request, {
         projectSnapshot: structuredClone(this.project),
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
+    if (request.command === "readback.object") {
+      if (request.payload.kind === "LAYER") {
+        return responseFor(request, {
+          readback: {
+            layer: {
+              stableId: "LAYER",
+              transform: {
+                anchorPoint: [100, 200],
+                position: [500, 600],
+                scale: [80, 120],
+              },
+            },
+          },
+          hostProjectRevision: this.project.hostRevision,
+        });
+      }
+      return responseFor(request, {
+        readback: {
+          composition: {
+            stableId: "COMP",
+            width: 1080,
+            height: 1920,
+          },
+        },
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
+    if (request.command === "layer.time_remap.readback") {
+      return responseFor(request, {
+        readback: {
+          timeRemapEnabled: true,
+          propertyAvailable: true,
+          keys: [
+            { index: 1, time: 0, value: 0 },
+            { index: 2, time: 3, value: 3 },
+          ],
+        },
         hostProjectRevision: this.project.hostRevision,
       });
     }
@@ -486,4 +529,123 @@ test("current AE host invalidates temporal-ease cardinality cache after target-c
       "property.temporal_ease.set",
     ],
   );
+});
+
+test("current AE host materializes a live Time Remap curve and reuses its derived ease", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-live-retime",
+    () => `req-live-retime-${++requestCounter}`,
+  );
+  await host.readState();
+
+  await host.apply(operation({
+    id: "OP_LIVE_RETIME_KEYS",
+    capabilityId: "ae.keyframe.set",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "property.set_keyframes",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      propertyPath: ["ADBE Time Remapping"],
+      liveCurveIntent: {
+        schema: NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+        kind: "TIME_REMAP_PULSE",
+        keyTimesSeconds: [1, 1.5, 2],
+        velocityContrast: 0.4,
+      },
+    },
+  }));
+  await host.apply(operation({
+    id: "OP_LIVE_RETIME_EASE",
+    capabilityId: "ae.property.temporal_ease.set",
+    routeId: AE_TEMPORAL_EASE_ROUTE_ID_V18,
+    command: "property.temporal_ease.set",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      propertyPath: ["ADBE Time Remapping"],
+      keyIndex: 2,
+      liveCurveEaseIntent: { keyIndex: 2 },
+    },
+  }));
+
+  const remapReadbacks = transport.requests.filter((request) =>
+    request.command === "layer.time_remap.readback");
+  assert.equal(remapReadbacks.length, 1);
+
+  const setKeys = transport.requests.find((request) =>
+    request.command === "property.set_keyframes"
+    && request.payload.propertyPath?.at(-1) === "ADBE Time Remapping");
+  assert.ok(setKeys);
+  assert.equal(setKeys.payload.liveCurveIntent, undefined);
+  assert.deepEqual(
+    setKeys.payload.keyframes.map((keyframe) => keyframe.value),
+    [1, 1.7, 2],
+  );
+
+  const easeSet = transport.requests.find((request) =>
+    request.command === "property.temporal_ease.set");
+  assert.ok(easeSet);
+  assert.equal(easeSet.payload.liveCurveEaseIntent, undefined);
+  assert.equal(easeSet.payload.ease.inEase.length, 3);
+  assert.ok(easeSet.payload.ease.inEase[0].speed > 0);
+  assert.ok(easeSet.payload.ease.inEase[0].influence > 50);
+});
+
+test("current AE host materializes camera scale and position from one live baseline", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-live-camera",
+    () => `req-live-camera-${++requestCounter}`,
+  );
+  await host.readState();
+
+  const applyCurve = async (id, component, propertyPath) => host.apply(operation({
+    id,
+    capabilityId: "ae.keyframe.set",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "property.set_keyframes",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      propertyPath,
+      liveCurveIntent: {
+        schema: NATIVE_AE_LIVE_CURVE_INTENT_SCHEMA_V1,
+        kind: "CAMERA_PUSH",
+        component,
+        keyTimesSeconds: [1.8, 2, 2.2],
+        zoomIntensity: 0.3,
+        zoomCenter: [0.62, 0.44],
+      },
+    },
+  }));
+  await applyCurve(
+    "OP_LIVE_CAMERA_SCALE",
+    "SCALE",
+    ["ADBE Transform Group", "ADBE Scale"],
+  );
+  await applyCurve(
+    "OP_LIVE_CAMERA_POSITION",
+    "POSITION",
+    ["ADBE Transform Group", "ADBE Position"],
+  );
+
+  const readbacks = transport.requests.filter((request) =>
+    request.command === "readback.object");
+  assert.equal(readbacks.filter((request) => request.payload.kind === "LAYER").length, 1);
+  assert.equal(readbacks.filter((request) => request.payload.kind === "COMPOSITION").length, 1);
+
+  const keyWrites = transport.requests.filter((request) =>
+    request.command === "property.set_keyframes");
+  assert.equal(keyWrites.length, 2);
+  assert.deepEqual(keyWrites[0].payload.keyframes[1].value, [104, 156]);
+  assert.notDeepEqual(keyWrites[1].payload.keyframes[1].value, [500, 600]);
+  assert.equal(keyWrites.every((request) => request.payload.liveCurveIntent === undefined), true);
 });

@@ -9,7 +9,7 @@ import { AE_ADAPTER_ROUTE_ID_V11 } from "../../.tmp/runtime/packages/adapters/ae
 
 const BASE = process.env.EDITFLOW_SHADOW_CONTROL ?? "http://127.0.0.1:32146";
 const FIXTURE = "tests/fixtures/tutorials/smooth-zoom-reverse-v1.json";
-const EVIDENCE = "proofs/diagnostics/m5-tutorial-001-live-structural.json";
+const EVIDENCE = "proofs/diagnostics/m5-tutorial-001-live-adaptive-structural.json";
 const COMP = "EF2_T001_LIVE_TRANSITION";
 const SOURCE_OUT = "EF2_T001_LIVE_SOURCE_OUT";
 const SOURCE_IN = "EF2_T001_LIVE_SOURCE_IN";
@@ -130,48 +130,6 @@ const recipeContext = () => ({
   },
 });
 
-const supportedCurvePaths = new Set([
-  "TimeRemap.SourceTime",
-  "Transform.CameraPush.Scale",
-  "Transform.CameraPush.Center",
-]);
-const easeHandleIntent = () => ({ speed: 0, influence: 33.333 });
-const nativeValueFor = (path, operation, ordinal) => {
-  if (path === "TimeRemap.SourceTime") return [0.8, 1.15, 1.45][ordinal];
-  if (path === "Transform.CameraPush.Scale") {
-    const peak = 100 * (1 + operation.value.parameters.zoomIntensity);
-    return operation.value.phase === "PEAK" ? [peak, peak] : [100, 100];
-  }
-  const center = operation.value.parameters.zoomCenter;
-  return operation.value.phase === "PEAK"
-    ? [center[0] * WIDTH, center[1] * HEIGHT]
-    : [WIDTH / 2, HEIGHT / 2];
-};
-
-const curveBindingsFor = (compiled) => {
-  const groups = new Map();
-  for (const operation of compiled.operations) {
-    if (operation.type !== "ADD_KEYFRAME" || !supportedCurvePaths.has(operation.propertyPath)) continue;
-    const key = operation.layerId + "\u0000" + operation.propertyPath;
-    const group = groups.get(key) ?? [];
-    group.push(operation);
-    groups.set(key, group);
-  }
-  return [...groups.values()].map((operations) => ({
-    layerId: operations[0].layerId,
-    semanticPropertyPath: operations[0].propertyPath,
-    keyframes: operations.map((operation, ordinal) => ({
-      timeMs: operation.timeMs,
-      value: nativeValueFor(operation.propertyPath, operation, ordinal),
-    })),
-    easeIntentByKey: operations.map((operation, ordinal) => ({
-      keyIndex: ordinal + 1,
-      inEase: easeHandleIntent(),
-      outEase: easeHandleIntent(),
-    })),
-  }));
-};
-
 const compileLivePlan = async (observed) => {
   const packet = JSON.parse(await readFile(FIXTURE, "utf8"));
   const recipe = compileTutorialDeepLessonV1(packet).skills[0].editingIr;
@@ -179,8 +137,8 @@ const compileLivePlan = async (observed) => {
   return lowerCompiledRecipeToNativeAePlanV1(compiled, {
     planId: "tutorial-001-live-native-plan",
     observedState: observed,
-    curveBindings: curveBindingsFor(compiled),
-    creativeObjective: "Reconstruct Tutorial 001 through proven native AE primitives.",
+    curveBindingMode: "LIVE_ADAPTIVE",
+    creativeObjective: "Reconstruct Tutorial 001 through live-adapted native AE primitives.",
     recipeRefs: ["skill.velocity-zoom-transition"],
   });
 };
@@ -210,7 +168,7 @@ const main = async () => {
   const before = await getState();
   const baselineIds = [...stableItemIds(before)].sort();
   const evidence = {
-    proof: "M5_TUTORIAL_001_LIVE_STRUCTURAL_V1",
+    proof: "M5_TUTORIAL_001_LIVE_ADAPTIVE_STRUCTURAL_V1",
     sourceCommit: process.env.EDITFLOW_SOURCE_COMMIT ?? null,
     startedAt: new Date().toISOString(),
     panel: status.panel,
