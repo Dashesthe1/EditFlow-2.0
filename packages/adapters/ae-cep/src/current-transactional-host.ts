@@ -96,6 +96,96 @@ const responseResult = (response: CommonResponse): HostApplyResult => {
     : { outcome: response.outcome, readback: response.readback };
 };
 
+const asRecord = (value: unknown): Readonly<Record<string, unknown>> | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : null;
+
+interface TemporalEaseHandleIntentV1 {
+  readonly speed: number;
+  readonly influence: number;
+}
+
+interface TemporalEaseIntentV1 {
+  readonly inEase: TemporalEaseHandleIntentV1;
+  readonly outEase: TemporalEaseHandleIntentV1;
+}
+
+const parseEaseHandleIntent = (
+  value: unknown,
+  label: string,
+): TemporalEaseHandleIntentV1 => {
+  const record = asRecord(value);
+  const speed = record?.["speed"];
+  const influence = record?.["influence"];
+  if (
+    typeof speed !== "number"
+    || !Number.isFinite(speed)
+    || typeof influence !== "number"
+    || !Number.isFinite(influence)
+    || influence <= 0
+    || influence > 100
+  ) {
+    throw new TypeError(
+      `Live temporal-ease ${label} intent requires finite speed and influence in (0, 100].`,
+    );
+  }
+  return { speed, influence };
+};
+
+const parseTemporalEaseIntent = (
+  payload: Readonly<Record<string, unknown>>,
+): TemporalEaseIntentV1 | null => {
+  const value = payload["easeIntent"];
+  if (value === undefined) return null;
+  if (payload["ease"] !== undefined) {
+    throw new TypeError(
+      "Temporal-ease payload cannot provide both exact ease and easeIntent.",
+    );
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    throw new TypeError("Temporal-ease easeIntent must be an object.");
+  }
+  return {
+    inEase: parseEaseHandleIntent(record["inEase"], "incoming"),
+    outEase: parseEaseHandleIntent(record["outEase"], "outgoing"),
+  };
+};
+
+const temporalEaseCardinality = (response: CommonResponse): number => {
+  responseResult(response);
+  const readback = asRecord(response.readback);
+  const temporalEase = asRecord(readback?.["temporalEase"]);
+  const property = asRecord(temporalEase?.["property"]);
+  const cardinality = property?.["easeCardinality"];
+  if (
+    typeof cardinality !== "number"
+    || !Number.isInteger(cardinality)
+    || cardinality < 1
+    || cardinality > 3
+  ) {
+    throw new Error(
+      "TEMPORAL_EASE_CARDINALITY_UNAVAILABLE: live AE readback did not expose cardinality 1-3.",
+    );
+  }
+  return cardinality;
+};
+
+const expandEaseIntent = (
+  intent: TemporalEaseIntentV1,
+  cardinality: number,
+): Readonly<Record<string, unknown>> => ({
+  inEase: Array.from(
+    { length: cardinality },
+    () => structuredClone(intent.inEase),
+  ),
+  outEase: Array.from(
+    { length: cardinality },
+    () => structuredClone(intent.outEase),
+  ),
+});
+
 const isObservedProjectState = (value: unknown): value is ObservedProjectState => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
@@ -155,6 +245,34 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     return responseResult(response);
   }
 
+  async #materializeTemporalEasePayload(
+    operation: ExecutionPlanOperation,
+    parsed: ParsedOperation,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const intent = parseTemporalEaseIntent(parsed.payload);
+    if (intent === null) return parsed.payload;
+
+    const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
+    delete targetPayload["easeIntent"];
+    const probe = await this.transport.dispatch(
+      buildTemporalEaseRequestV18({
+        requestId: this.requestIdFactory(),
+        transactionId: this.transactionId,
+        operationId: `${String(operation.operationId)}:ease-cardinality`,
+        command: "property.temporal_ease.readback",
+        expectedHostProjectRevision: null,
+        payload: targetPayload,
+        readbackProfile: parsed.readbackProfile,
+      }),
+    );
+    this.#accept(probe);
+    const cardinality = temporalEaseCardinality(probe);
+    return {
+      ...targetPayload,
+      ease: expandEaseIntent(intent, cardinality),
+    };
+  }
+
   async apply(operation: ExecutionPlanOperation): Promise<HostApplyResult> {
     const parsed = parseOperation(operation);
     const revision = await this.#knownHostRevision();
@@ -206,6 +324,9 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         capabilityForTemporalEaseCommandV18(parsed.command),
         AE_TEMPORAL_EASE_ROUTE_ID_V18,
       );
+      const payload = parsed.command === "property.temporal_ease.set"
+        ? await this.#materializeTemporalEasePayload(operation, parsed)
+        : parsed.payload;
       const response = await this.transport.dispatch(
         buildTemporalEaseRequestV18({
           requestId: this.requestIdFactory(),
@@ -214,7 +335,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           command: parsed.command,
           expectedHostProjectRevision:
             parsed.command === "property.temporal_ease.set" ? revision : null,
-          payload: parsed.payload,
+          payload,
           readbackProfile: parsed.readbackProfile,
         }),
       );

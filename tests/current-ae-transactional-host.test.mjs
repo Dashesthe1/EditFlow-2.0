@@ -119,6 +119,18 @@ class StatefulMixedProtocolTransport {
         hostProjectRevision: this.project.hostRevision,
       });
     }
+    if (request.command === "property.temporal_ease.readback") {
+      return responseFor(request, {
+        outcome: "NO_OP",
+        readback: {
+          temporalEase: {
+            property: { easeCardinality: 3 },
+            keyIndex: request.payload.keyIndex,
+          },
+        },
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
     if (
       request.expectedHostProjectRevision !== null
       && request.expectedHostProjectRevision !== undefined
@@ -315,4 +327,61 @@ test("current AE host carries host-revision stale-state protection between strea
     /HOST_REVISION_MISMATCH: stale revision/,
   );
   assert.equal(transport.project.items.length, 0);
+});
+
+
+test("current AE host expands temporal-ease intent to live property cardinality", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-live-ease",
+    () => `req-live-ease-${++requestCounter}`,
+  );
+  await host.readState();
+  const beforeMutationCount = transport.mutationCounter;
+
+  const result = await host.apply(operation({
+    id: "OP_LIVE_EASE",
+    capabilityId: "ae.property.temporal_ease.set",
+    routeId: AE_TEMPORAL_EASE_ROUTE_ID_V18,
+    command: "property.temporal_ease.set",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+      keyIndex: 2,
+      easeIntent: {
+        inEase: { speed: 12, influence: 41 },
+        outEase: { speed: 18, influence: 57 },
+      },
+    },
+  }));
+
+  assert.equal(result.outcome, "APPLIED");
+  assert.equal(transport.mutationCounter, beforeMutationCount + 1);
+
+  const temporalRequests = transport.requests.filter((request) =>
+    request.command.startsWith("property.temporal_ease."));
+  assert.deepEqual(
+    temporalRequests.map((request) => request.command),
+    ["property.temporal_ease.readback", "property.temporal_ease.set"],
+  );
+
+  const [probe, set] = temporalRequests;
+  assert.equal(probe.payload.easeIntent, undefined);
+  assert.equal(set.payload.easeIntent, undefined);
+  assert.equal(set.payload.ease.inEase.length, 3);
+  assert.equal(set.payload.ease.outEase.length, 3);
+  assert.deepEqual(set.payload.ease.inEase, [
+    { speed: 12, influence: 41 },
+    { speed: 12, influence: 41 },
+    { speed: 12, influence: 41 },
+  ]);
+  assert.deepEqual(set.payload.ease.outEase, [
+    { speed: 18, influence: 57 },
+    { speed: 18, influence: 57 },
+    { speed: 18, influence: 57 },
+  ]);
 });
