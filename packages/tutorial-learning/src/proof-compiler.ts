@@ -88,12 +88,14 @@ export const compileTutorialProofPlanV1 = (
   targetState: TutorialSkillState = "TRANSFER_VERIFIED",
 ): TutorialProofPlanV1 => {
   const findings = findingsForSkill(report, skill.analysis.skillId);
-  const blocked = findings
-    .filter((finding) => ["UNREGISTERED", "ADAPTER_REQUIRED", "UNAVAILABLE"].includes(finding.state))
+  const requiredFindings = findings.filter((finding) =>
+    finding.uses.some((use) => !use.optional));
+  const blocked = requiredFindings
+    .filter((finding) => ["UNREGISTERED", "ADAPTER_REQUIRED", "UNAVAILABLE", "PARTIAL"].includes(finding.state))
     .map((finding) => String(finding.capabilityId));
-  const proofNeeded = findings
-    .filter((finding) => finding.state === "PROOF_REQUIRED" || finding.state === "PARTIAL");
-  const reusable = findings
+  const proofNeeded = requiredFindings
+    .filter((finding) => finding.state === "PROOF_REQUIRED");
+  const reusable = requiredFindings
     .filter((finding) => finding.state === "READY")
     .map((finding) => String(finding.capabilityId));
   const reconstruct = stateRank[targetState] >= stateRank.RECONSTRUCTED;
@@ -198,7 +200,7 @@ export const compileTutorialProofPlanV1 = (
   return {
     schema: "editflow.tutorial-proof-plan.v1",
     skillId: skill.analysis.skillId,
-    risk: riskFor(skill, findings),
+    risk: riskFor(skill, requiredFindings),
     targetState,
     blockedByCapabilities: [...new Set(blocked)].sort(),
     reusableCapabilityProofs: [...new Set(reusable)].sort(),

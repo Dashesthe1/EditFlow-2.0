@@ -47,6 +47,13 @@ export interface EditingIrParameterV1 {
   readonly normalizedRange?: Readonly<{ min: number; max: number }>;
 }
 
+export type EditingIrTargetModeV1 = "EACH" | "GROUP";
+
+export interface EditingIrTargetSpecV1 {
+  readonly roles: readonly string[];
+  readonly mode: EditingIrTargetModeV1;
+}
+
 export interface EditingIrNodeV1 {
   readonly nodeId: string;
   readonly kind: EditingIrPrimitiveKindV1;
@@ -54,6 +61,7 @@ export interface EditingIrNodeV1 {
   readonly dependsOn: readonly string[];
   readonly capabilityIds: readonly CapabilityId[];
   readonly parameters: readonly EditingIrParameterV1[];
+  readonly target?: EditingIrTargetSpecV1;
   readonly timing?: EditingIrTimingV1;
   readonly optional?: boolean;
 }
@@ -107,6 +115,23 @@ const validateParameters = (node: EditingIrNodeV1, errors: string[]): void => {
   }
 };
 
+const validateTarget = (node: EditingIrNodeV1, errors: string[]): void => {
+  if (!node.target) return;
+  if (node.target.roles.length === 0) {
+    errors.push(`Node '${node.nodeId}' target must declare at least one semantic role.`);
+    return;
+  }
+  const roles = new Set<string>();
+  for (const role of node.target.roles) {
+    if (!nonEmpty(role)) errors.push(`Node '${node.nodeId}' target has an empty semantic role.`);
+    if (roles.has(role)) errors.push(`Node '${node.nodeId}' duplicates target role '${role}'.`);
+    roles.add(role);
+  }
+  if (node.target.mode !== "EACH" && node.target.mode !== "GROUP") {
+    errors.push(`Node '${node.nodeId}' target has invalid application mode '${String(node.target.mode)}'.`);
+  }
+};
+
 const topologicalOrder = (
   nodes: ReadonlyMap<string, EditingIrNodeV1>,
   errors: string[],
@@ -154,6 +179,7 @@ export const validateEditingIrRecipeV1 = (recipe: EditingIrRecipeV1): EditingIrV
     }
     validateTiming(node, errors);
     validateParameters(node, errors);
+    validateTarget(node, errors);
   }
 
   for (const node of recipe.nodes) {
