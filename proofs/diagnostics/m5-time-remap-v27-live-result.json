@@ -1,0 +1,462 @@
+{
+    "proofId":  "M5_TIME_REMAP_V27_LIVE",
+    "classification":  "PASS",
+    "ok":  true,
+    "mutationStarted":  true,
+    "cleanupComplete":  true,
+    "beforeAfterFxPids":  [
+                              4184
+                          ],
+    "afterAfterFxPids":  [
+                             4184
+                         ],
+    "message":  "Protocol 2.7 native Time Remap enable/readback, idempotency, stale-revision refusal, induced rollback, cleanup, and warm-AE PID survival passed.",
+    "hostResult":  {
+                       "proof":  "M5_TIME_REMAP_V27_LIVE",
+                       "ok":  true,
+                       "mutationStarted":  true,
+                       "cleanupComplete":  true,
+                       "checks":  {
+                                      "initialDisabled":  true,
+                                      "unsupportedRejectedWithoutMutation":  true,
+                                      "applied":  true,
+                                      "independentReadback":  true,
+                                      "idempotent":  true,
+                                      "staleRejected":  true,
+                                      "rollbackStartedDisabled":  true,
+                                      "rollbackFailedAsInjected":  true,
+                                      "rollbackRestoredExact":  true,
+                                      "itemCountRestored":  true
+                                  },
+                       "initial":  {
+                                       "protocolVersion":  "2.7.0",
+                                       "requestId":  "M5_TIME_REMAP_INITIAL",
+                                       "transactionId":  "M5_TIME_REMAP_TX_INITIAL",
+                                       "operationId":  "M5_TIME_REMAP_OP_INITIAL",
+                                       "capabilityId":  "ae.layer.time_remap.readback",
+                                       "command":  "layer.time_remap.readback",
+                                       "outcome":  "NO_OP",
+                                       "error":  null,
+                                       "affectedObjects":  [
+
+                                                           ],
+                                       "readback":  {
+                                                        "layer":  {
+                                                                      "stableId":  null,
+                                                                      "hostId":  100,
+                                                                      "name":  "TIME_REMAP_SUCCESS",
+                                                                      "index":  3
+                                                                  },
+                                                        "canSetTimeRemapEnabled":  true,
+                                                        "timeRemapEnabled":  false,
+                                                        "propertyAvailable":  true,
+                                                        "propertyMatchName":  "ADBE Time Remapping",
+                                                        "numKeys":  0,
+                                                        "keys":  [
+
+                                                                 ]
+                                                    },
+                                       "hostProjectRevision":  341,
+                                       "diagnostics":  {
+                                                           "adapterProtocolVersion":  "2.7.0",
+                                                           "adapterBuild":  "0.7.0-dev.1",
+                                                           "command":  "layer.time_remap.readback",
+                                                           "durationMs":  0,
+                                                           "notes":  [
+                                                                         "Read-only native Time Remap availability and key-structure readback."
+                                                                     ]
+                                                       }
+                                   },
+                       "unsupported":  {
+                                           "protocolVersion":  "2.7.0",
+                                           "requestId":  "M5_TIME_REMAP_UNSUPPORTED",
+                                           "transactionId":  "M5_TIME_REMAP_TX_UNSUPPORTED",
+                                           "operationId":  "M5_TIME_REMAP_OP_UNSUPPORTED",
+                                           "capabilityId":  "ae.layer.time_remap.enable",
+                                           "command":  "layer.time_remap.enable",
+                                           "outcome":  "REJECTED",
+                                           "error":  {
+                                                         "category":  "VALIDATION",
+                                                         "code":  "TIME_REMAP_NOT_SUPPORTED",
+                                                         "message":  "The target layer does not allow native Time Remapping.",
+                                                         "details":  {
+                                                                         "actual":  {
+                                                                                        "layer":  {
+                                                                                                      "stableId":  null,
+                                                                                                      "hostId":  102,
+                                                                                                      "name":  "TIME_REMAP_UNSUPPORTED",
+                                                                                                      "index":  1
+                                                                                                  },
+                                                                                        "canSetTimeRemapEnabled":  false,
+                                                                                        "timeRemapEnabled":  false,
+                                                                                        "propertyAvailable":  false,
+                                                                                        "propertyMatchName":  null,
+                                                                                        "numKeys":  0,
+                                                                                        "keys":  [
+
+                                                                                                 ]
+                                                                                    }
+                                                                     }
+                                                     },
+                                           "affectedObjects":  [
+
+                                                               ],
+                                           "readback":  {
+                                                            "layer":  {
+                                                                          "stableId":  null,
+                                                                          "hostId":  102,
+                                                                          "name":  "TIME_REMAP_UNSUPPORTED",
+                                                                          "index":  1
+                                                                      },
+                                                            "canSetTimeRemapEnabled":  false,
+                                                            "timeRemapEnabled":  false,
+                                                            "propertyAvailable":  false,
+                                                            "propertyMatchName":  null,
+                                                            "numKeys":  0,
+                                                            "keys":  [
+
+                                                                     ]
+                                                        },
+                                           "hostProjectRevision":  341,
+                                           "diagnostics":  {
+                                                               "adapterProtocolVersion":  "2.7.0",
+                                                               "adapterBuild":  "0.7.0-dev.1",
+                                                               "command":  "layer.time_remap.enable",
+                                                               "durationMs":  2,
+                                                               "notes":  [
+                                                                             "Protocol 2.7 Time Remap command failed closed before host mutation."
+                                                                         ]
+                                                           }
+                                       },
+                       "applied":  {
+                                       "protocolVersion":  "2.7.0",
+                                       "requestId":  "M5_TIME_REMAP_APPLY",
+                                       "transactionId":  "M5_TIME_REMAP_TX_APPLY",
+                                       "operationId":  "M5_TIME_REMAP_OP_APPLY",
+                                       "capabilityId":  "ae.layer.time_remap.enable",
+                                       "command":  "layer.time_remap.enable",
+                                       "outcome":  "APPLIED",
+                                       "error":  null,
+                                       "affectedObjects":  [
+                                                               {
+                                                                   "kind":  "LAYER",
+                                                                   "stableId":  null,
+                                                                   "hostId":  100
+                                                               }
+                                                           ],
+                                       "readback":  {
+                                                        "layer":  {
+                                                                      "stableId":  null,
+                                                                      "hostId":  100,
+                                                                      "name":  "TIME_REMAP_SUCCESS",
+                                                                      "index":  3
+                                                                  },
+                                                        "canSetTimeRemapEnabled":  true,
+                                                        "timeRemapEnabled":  true,
+                                                        "propertyAvailable":  true,
+                                                        "propertyMatchName":  "ADBE Time Remapping",
+                                                        "numKeys":  2,
+                                                        "keys":  [
+                                                                     {
+                                                                         "index":  1,
+                                                                         "time":  0,
+                                                                         "value":  0
+                                                                     },
+                                                                     {
+                                                                         "index":  2,
+                                                                         "time":  2,
+                                                                         "value":  2
+                                                                     }
+                                                                 ]
+                                                    },
+                                       "hostProjectRevision":  344,
+                                       "diagnostics":  {
+                                                           "adapterProtocolVersion":  "2.7.0",
+                                                           "adapterBuild":  "0.7.0-dev.1",
+                                                           "command":  "layer.time_remap.enable",
+                                                           "durationMs":  4,
+                                                           "notes":  [
+                                                                         "Native Time Remapping enabled and generated key structure read back exactly."
+                                                                     ]
+                                                       }
+                                   },
+                       "verify":  {
+                                      "protocolVersion":  "2.7.0",
+                                      "requestId":  "M5_TIME_REMAP_VERIFY",
+                                      "transactionId":  "M5_TIME_REMAP_TX_VERIFY",
+                                      "operationId":  "M5_TIME_REMAP_OP_VERIFY",
+                                      "capabilityId":  "ae.layer.time_remap.readback",
+                                      "command":  "layer.time_remap.readback",
+                                      "outcome":  "NO_OP",
+                                      "error":  null,
+                                      "affectedObjects":  [
+
+                                                          ],
+                                      "readback":  {
+                                                       "layer":  {
+                                                                     "stableId":  null,
+                                                                     "hostId":  100,
+                                                                     "name":  "TIME_REMAP_SUCCESS",
+                                                                     "index":  3
+                                                                 },
+                                                       "canSetTimeRemapEnabled":  true,
+                                                       "timeRemapEnabled":  true,
+                                                       "propertyAvailable":  true,
+                                                       "propertyMatchName":  "ADBE Time Remapping",
+                                                       "numKeys":  2,
+                                                       "keys":  [
+                                                                    {
+                                                                        "index":  1,
+                                                                        "time":  0,
+                                                                        "value":  0
+                                                                    },
+                                                                    {
+                                                                        "index":  2,
+                                                                        "time":  2,
+                                                                        "value":  2
+                                                                    }
+                                                                ]
+                                                   },
+                                      "hostProjectRevision":  344,
+                                      "diagnostics":  {
+                                                          "adapterProtocolVersion":  "2.7.0",
+                                                          "adapterBuild":  "0.7.0-dev.1",
+                                                          "command":  "layer.time_remap.readback",
+                                                          "durationMs":  0,
+                                                          "notes":  [
+                                                                        "Read-only native Time Remap availability and key-structure readback."
+                                                                    ]
+                                                      }
+                                  },
+                       "idempotent":  {
+                                          "protocolVersion":  "2.7.0",
+                                          "requestId":  "M5_TIME_REMAP_IDEMPOTENT",
+                                          "transactionId":  "M5_TIME_REMAP_TX_IDEMPOTENT",
+                                          "operationId":  "M5_TIME_REMAP_OP_IDEMPOTENT",
+                                          "capabilityId":  "ae.layer.time_remap.enable",
+                                          "command":  "layer.time_remap.enable",
+                                          "outcome":  "NO_OP",
+                                          "error":  null,
+                                          "affectedObjects":  [
+
+                                                              ],
+                                          "readback":  {
+                                                           "layer":  {
+                                                                         "stableId":  null,
+                                                                         "hostId":  100,
+                                                                         "name":  "TIME_REMAP_SUCCESS",
+                                                                         "index":  3
+                                                                     },
+                                                           "canSetTimeRemapEnabled":  true,
+                                                           "timeRemapEnabled":  true,
+                                                           "propertyAvailable":  true,
+                                                           "propertyMatchName":  "ADBE Time Remapping",
+                                                           "numKeys":  2,
+                                                           "keys":  [
+                                                                        {
+                                                                            "index":  1,
+                                                                            "time":  0,
+                                                                            "value":  0
+                                                                        },
+                                                                        {
+                                                                            "index":  2,
+                                                                            "time":  2,
+                                                                            "value":  2
+                                                                        }
+                                                                    ]
+                                                       },
+                                          "hostProjectRevision":  344,
+                                          "diagnostics":  {
+                                                              "adapterProtocolVersion":  "2.7.0",
+                                                              "adapterBuild":  "0.7.0-dev.1",
+                                                              "command":  "layer.time_remap.enable",
+                                                              "durationMs":  0,
+                                                              "notes":  [
+                                                                            "Native Time Remap was already enabled; existing curve state was preserved."
+                                                                        ]
+                                                          }
+                                      },
+                       "stale":  {
+                                     "protocolVersion":  "2.7.0",
+                                     "requestId":  "M5_TIME_REMAP_STALE",
+                                     "transactionId":  "M5_TIME_REMAP_TX_STALE",
+                                     "operationId":  "M5_TIME_REMAP_OP_STALE",
+                                     "capabilityId":  "ae.layer.time_remap.enable",
+                                     "command":  "layer.time_remap.enable",
+                                     "outcome":  "REJECTED",
+                                     "error":  {
+                                                   "category":  "CONFLICT",
+                                                   "code":  "HOST_REVISION_CONFLICT",
+                                                   "message":  "Host project revision does not match expected revision.",
+                                                   "details":  {
+                                                                   "expectedHostProjectRevision":  341,
+                                                                   "actualHostProjectRevision":  344
+                                                               }
+                                               },
+                                     "affectedObjects":  [
+
+                                                         ],
+                                     "readback":  {
+                                                      "layer":  {
+                                                                    "stableId":  null,
+                                                                    "hostId":  100,
+                                                                    "name":  "TIME_REMAP_SUCCESS",
+                                                                    "index":  3
+                                                                },
+                                                      "canSetTimeRemapEnabled":  true,
+                                                      "timeRemapEnabled":  true,
+                                                      "propertyAvailable":  true,
+                                                      "propertyMatchName":  "ADBE Time Remapping",
+                                                      "numKeys":  2,
+                                                      "keys":  [
+                                                                   {
+                                                                       "index":  1,
+                                                                       "time":  0,
+                                                                       "value":  0
+                                                                   },
+                                                                   {
+                                                                       "index":  2,
+                                                                       "time":  2,
+                                                                       "value":  2
+                                                                   }
+                                                               ]
+                                                  },
+                                     "hostProjectRevision":  344,
+                                     "diagnostics":  {
+                                                         "adapterProtocolVersion":  "2.7.0",
+                                                         "adapterBuild":  "0.7.0-dev.1",
+                                                         "command":  "layer.time_remap.enable",
+                                                         "durationMs":  1,
+                                                         "notes":  [
+                                                                       "Protocol 2.7 Time Remap command failed closed before host mutation."
+                                                                   ]
+                                                     }
+                                 },
+                       "rollbackInitial":  {
+                                               "protocolVersion":  "2.7.0",
+                                               "requestId":  "M5_TIME_REMAP_ROLLBACK_INITIAL",
+                                               "transactionId":  "M5_TIME_REMAP_TX_ROLLBACK_INITIAL",
+                                               "operationId":  "M5_TIME_REMAP_OP_ROLLBACK_INITIAL",
+                                               "capabilityId":  "ae.layer.time_remap.readback",
+                                               "command":  "layer.time_remap.readback",
+                                               "outcome":  "NO_OP",
+                                               "error":  null,
+                                               "affectedObjects":  [
+
+                                                                   ],
+                                               "readback":  {
+                                                                "layer":  {
+                                                                              "stableId":  null,
+                                                                              "hostId":  101,
+                                                                              "name":  "TIME_REMAP_ROLLBACK",
+                                                                              "index":  2
+                                                                          },
+                                                                "canSetTimeRemapEnabled":  true,
+                                                                "timeRemapEnabled":  false,
+                                                                "propertyAvailable":  true,
+                                                                "propertyMatchName":  "ADBE Time Remapping",
+                                                                "numKeys":  0,
+                                                                "keys":  [
+
+                                                                         ]
+                                                            },
+                                               "hostProjectRevision":  344,
+                                               "diagnostics":  {
+                                                                   "adapterProtocolVersion":  "2.7.0",
+                                                                   "adapterBuild":  "0.7.0-dev.1",
+                                                                   "command":  "layer.time_remap.readback",
+                                                                   "durationMs":  0,
+                                                                   "notes":  [
+                                                                                 "Read-only native Time Remap availability and key-structure readback."
+                                                                             ]
+                                                               }
+                                           },
+                       "rollback":  {
+                                        "protocolVersion":  "2.7.0",
+                                        "requestId":  "M5_TIME_REMAP_ROLLBACK",
+                                        "transactionId":  "M5_TIME_REMAP_TX_ROLLBACK",
+                                        "operationId":  "M5_TIME_REMAP_OP_ROLLBACK",
+                                        "capabilityId":  "ae.layer.time_remap.enable",
+                                        "command":  "layer.time_remap.enable",
+                                        "outcome":  "FAILED",
+                                        "error":  {
+                                                      "category":  "PROOF_INJECTION",
+                                                      "code":  "M5_TIME_REMAP_P4_INDUCED_FAILURE",
+                                                      "message":  "Induced failure after Time Remap activation for rollback proof.",
+                                                      "details":  null
+                                                  },
+                                        "affectedObjects":  [
+
+                                                            ],
+                                        "readback":  {
+                                                         "layer":  {
+                                                                       "stableId":  null,
+                                                                       "hostId":  101,
+                                                                       "name":  "TIME_REMAP_ROLLBACK",
+                                                                       "index":  2
+                                                                   },
+                                                         "canSetTimeRemapEnabled":  true,
+                                                         "timeRemapEnabled":  false,
+                                                         "propertyAvailable":  true,
+                                                         "propertyMatchName":  "ADBE Time Remapping",
+                                                         "numKeys":  0,
+                                                         "keys":  [
+
+                                                                  ]
+                                                     },
+                                        "hostProjectRevision":  349,
+                                        "diagnostics":  {
+                                                            "adapterProtocolVersion":  "2.7.0",
+                                                            "adapterBuild":  "0.7.0-dev.1",
+                                                            "command":  "layer.time_remap.enable",
+                                                            "durationMs":  33,
+                                                            "notes":  [
+                                                                          "Time Remap activation failed and exact baseline state was restored through AE Undo."
+                                                                      ]
+                                                        }
+                                    },
+                       "rollbackVerify":  {
+                                              "protocolVersion":  "2.7.0",
+                                              "requestId":  "M5_TIME_REMAP_ROLLBACK_VERIFY",
+                                              "transactionId":  "M5_TIME_REMAP_TX_ROLLBACK_VERIFY",
+                                              "operationId":  "M5_TIME_REMAP_OP_ROLLBACK_VERIFY",
+                                              "capabilityId":  "ae.layer.time_remap.readback",
+                                              "command":  "layer.time_remap.readback",
+                                              "outcome":  "NO_OP",
+                                              "error":  null,
+                                              "affectedObjects":  [
+
+                                                                  ],
+                                              "readback":  {
+                                                               "layer":  {
+                                                                             "stableId":  null,
+                                                                             "hostId":  101,
+                                                                             "name":  "TIME_REMAP_ROLLBACK",
+                                                                             "index":  2
+                                                                         },
+                                                               "canSetTimeRemapEnabled":  true,
+                                                               "timeRemapEnabled":  false,
+                                                               "propertyAvailable":  true,
+                                                               "propertyMatchName":  "ADBE Time Remapping",
+                                                               "numKeys":  0,
+                                                               "keys":  [
+
+                                                                        ]
+                                                           },
+                                              "hostProjectRevision":  349,
+                                              "diagnostics":  {
+                                                                  "adapterProtocolVersion":  "2.7.0",
+                                                                  "adapterBuild":  "0.7.0-dev.1",
+                                                                  "command":  "layer.time_remap.readback",
+                                                                  "durationMs":  0,
+                                                                  "notes":  [
+                                                                                "Read-only native Time Remap availability and key-structure readback."
+                                                                            ]
+                                                              }
+                                          },
+                       "after":  {
+                                     "itemCount":  5,
+                                     "baselineItemCount":  5
+                                 }
+                   }
+}

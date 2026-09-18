@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
@@ -17,6 +18,12 @@ import {
   M5_TIME_REMAP_CAPABILITIES_V27,
   buildTimeRemapRequestV27,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m5-time-remap.js";
+import {
+  M5_TIME_REMAP_V27_ACCEPTANCE_RESULT,
+  M5_TIME_REMAP_V27_ACCEPTANCE_RESULT_SHA256,
+  M5_TIME_REMAP_V27_ACCEPTED_AE_VERSION,
+  M5_TIME_REMAP_V27_ACCEPTED_SOURCE_COMMIT,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/m5-time-remap-proof-maturity.js";
 
 test("protocol 2.7 exposes only native Time Remap enable and readback", () => {
   assert.equal(AE_TIME_REMAP_PROTOCOL_VERSION_V27, "2.7.0");
@@ -40,7 +47,7 @@ test("protocol 2.7 exposes only native Time Remap enable and readback", () => {
   );
 });
 
-test("Time Remap capabilities stay declared until real-AE proof is accepted", () => {
+test("Time Remap capabilities are structural-only after retained real-AE proof", () => {
   assert.equal(M5_TIME_REMAP_CAPABILITIES_V27.length, 2);
   const byId = new Map(M5_TIME_REMAP_CAPABILITIES_V27.map((item) => [String(item.id), item]));
   const enable = byId.get("ae.layer.time_remap.enable");
@@ -48,11 +55,11 @@ test("Time Remap capabilities stay declared until real-AE proof is accepted", ()
   assert.ok(enable);
   assert.ok(readback);
   assert.equal(enable.status, "PARTIAL");
-  assert.equal(enable.proofMaturity, "DECLARED");
+  assert.equal(enable.proofMaturity, "STRUCTURAL");
   assert.equal(enable.riskClass, "R2_STRUCTURAL");
   assert.equal(enable.rollbackStrategy, "AE_TRANSACTION_UNDO_PLUS_EXACT_BASELINE_READBACK");
   assert.equal(readback.status, "PARTIAL");
-  assert.equal(readback.proofMaturity, "DECLARED");
+  assert.equal(readback.proofMaturity, "STRUCTURAL");
   assert.equal(readback.riskClass, "R0_READ_ONLY");
   assert.equal(enable.routes[0].routeId, AE_TIME_REMAP_ROUTE_ID_V27);
   assert.equal(enable.fallbackPolicy, "FORBID");
@@ -202,4 +209,36 @@ test("Time Remap live proof is warm-process-safe and disposable-project-state on
   assert.match(proof, /solidSource\.remove\(\)/);
   assert.match(proof, /itemCountRestored/);
   assert.doesNotMatch(proof, /app\.project\.save|app\.project\.close|app\.quit\s*\(/);
+});
+
+test("retained Time Remap proof authority is source- and digest-bound", async () => {
+  const resultBytes = await readFile(M5_TIME_REMAP_V27_ACCEPTANCE_RESULT);
+  const digest = createHash("sha256").update(resultBytes).digest("hex");
+  assert.equal(digest, M5_TIME_REMAP_V27_ACCEPTANCE_RESULT_SHA256);
+  assert.equal(
+    M5_TIME_REMAP_V27_ACCEPTED_SOURCE_COMMIT,
+    "e6bfa2b5e540767d60a2b13e883b2acbef374cab",
+  );
+  assert.equal(M5_TIME_REMAP_V27_ACCEPTED_AE_VERSION, "25.6.6");
+
+  const authority = JSON.parse(await readFile(
+    "proofs/diagnostics/m5-time-remap-v27-live-acceptance.json",
+    "utf8",
+  ));
+  assert.equal(authority.status, "PASS");
+  assert.equal(authority.promotionMaturity, "STRUCTURAL");
+  assert.equal(authority.sourceCommit, M5_TIME_REMAP_V27_ACCEPTED_SOURCE_COMMIT);
+  assert.equal(
+    authority.authoritativeEvidence.resultSha256,
+    M5_TIME_REMAP_V27_ACCEPTANCE_RESULT_SHA256,
+  );
+  assert.equal(authority.checks.unsupportedRejectedWithoutMutation, true);
+  assert.equal(authority.checks.rollbackRestoredExact, true);
+  assert.equal(authority.checks.itemCountRestored, true);
+
+  const runtimeSource = await readFile(
+    "apps/desktop-host/src/ae-runtime-capabilities.ts",
+    "utf8",
+  );
+  assert.doesNotMatch(runtimeSource, /M5_TIME_REMAP_CAPABILITIES_V27/);
 });
