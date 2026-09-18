@@ -664,7 +664,7 @@ test("current AE host materializes camera scale and position from one live basel
   assert.equal(keyWrites.every((request) => request.payload.liveCurveIntent === undefined), true);
 });
 
-test("live adaptive ease preserves unused AE boundary handles", async () => {
+test("live adaptive ease authors legal boundary state and reuses one cardinality probe", async () => {
   const transport = new StatefulMixedProtocolTransport();
   let requestCounter = 0;
   const host = new AeCepCurrentTransactionalHostV1(
@@ -713,19 +713,17 @@ test("live adaptive ease preserves unused AE boundary handles", async () => {
     request.command === "property.temporal_ease.readback");
   const easeSets = transport.requests.filter((request) =>
     request.command === "property.temporal_ease.set");
-  assert.equal(easeReadbacks.length, 2);
+  assert.equal(easeReadbacks.length, 1);
   assert.equal(easeSets.length, 2);
 
-  assert.deepEqual(
-    easeSets[0].payload.ease.inEase,
-    [{ speed: 0, influence: 33.333 }],
-  );
+  for (const request of easeSets) {
+    for (const side of ["inEase", "outEase"]) {
+      assert.equal(request.payload.ease[side].length, 1);
+      assert.ok(Number.isFinite(request.payload.ease[side][0].speed));
+      assert.ok(request.payload.ease[side][0].influence >= 0.1);
+      assert.ok(request.payload.ease[side][0].influence <= 100);
+    }
+  }
   assert.ok(easeSets[0].payload.ease.outEase[0].speed > 0);
-  assert.ok(easeSets[0].payload.ease.outEase[0].influence >= 30);
-
   assert.ok(easeSets[1].payload.ease.inEase[0].speed > 0);
-  assert.deepEqual(
-    easeSets[1].payload.ease.outEase,
-    [{ speed: 0, influence: 33.333 }],
-  );
 });

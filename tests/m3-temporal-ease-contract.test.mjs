@@ -161,6 +161,14 @@ test("host exposes only item-10 temporal ease APIs with live per-key cardinality
   assert.match(source, /EXPECTED_HOST_REVISION_REQUIRED/);
   assert.match(source, /HOST_REVISION_CONFLICT/);
   assert.match(source, /TEMPORAL_EASE_READBACK_MISMATCH/);
+  assert.match(source, /function sameMeaningfulEaseState\(property, keyIndex, actual, expected\)/);
+  assert.match(source, /property\.numKeys > 1/);
+  assert.match(source, /keyIndex === 1/);
+  assert.match(source, /keyIndex === property\.numKeys/);
+  assert.match(source, /sameEaseArray\(actual\.inEase, expected\.inEase\)/);
+  assert.match(source, /sameEaseArray\(actual\.outEase, expected\.outEase\)/);
+  assert.match(source, /sameMeaningfulEaseState\(prepared\.property, prepared\.keyIndex, beforeState, request\.payload\.ease\)/);
+  assert.doesNotMatch(source, /\bsameEaseState\s*\(/);
   assert.match(source, /app\.beginUndoGroup/);
   assert.match(source, /app\.executeCommand\(16\)/);
   for (const forbiddenCall of [
