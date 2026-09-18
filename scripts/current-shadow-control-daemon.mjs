@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { LocalFastRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/local-fast-runtime.js";
+import { CurrentAeTransactionRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
@@ -41,6 +42,11 @@ const runtime = await LocalFastRuntimeV1.create(client, {
   leaseTtlMs: 120_000,
 });
 const session = runtime.session;
+const currentTransactionRuntime = new CurrentAeTransactionRuntimeV1(
+  broker,
+  "shadow-current-project",
+  64,
+);
 const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
@@ -98,6 +104,7 @@ const statusPayload = () => ({
   adapterBuild: session.adapterBuild,
   hostRevision: session.runner.hostRevision,
   localRuntime: runtime.status(),
+  currentTransactionRuntime: currentTransactionRuntime.status(),
   panel: broker.panelSession ?? panel,
   controlPlane: getMcpServerStatus(),
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
@@ -172,6 +179,13 @@ const server = createServer(async (req, res) => {
       });
       const ok = response?.outcome === "APPLIED";
       sendJson(res, ok ? 200 : 502, { ok, scriptPath, response });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/run-transaction") {
+      const body = await readJson(req);
+      const result = await currentTransactionRuntime.execute(body.plan);
+      const ok = result.state === "COMMITTED";
+      sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
       return;
     }
     if (req.method === "POST" && url.pathname === "/run") {
