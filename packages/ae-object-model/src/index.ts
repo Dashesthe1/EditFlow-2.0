@@ -147,3 +147,5 @@ export const toAeEnvironmentFingerprintInput = (environment: AeEnvironmentProbe)
   hostBuild: environment.hostBuild,
   os: environment.os,
 });
+
+export * from "./knowledge.js";
