@@ -18,10 +18,19 @@ import { applyM2AcceptedProofEvidence } from "../.tmp/runtime/packages/adapters/
 import { M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
 import { M3_TEMPORAL_EASE_CAPABILITIES_V18 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import { M5_TIME_REMAP_CAPABILITIES_V27 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m5-time-remap.js";
-import { AE_ADAPTER_ROUTE_ID_V11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
+import {
+  AE_ADAPTER_PROTOCOL_VERSION_V11,
+  AE_ADAPTER_ROUTE_ID_V11,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
 import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
 import { AE_TIME_REMAP_ROUTE_ID_V27 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
+import {
+  AeCepCurrentTransactionalHostV1,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/current-transactional-host.js";
+import {
+  CurrentAeTransactionRuntimeV1,
+} from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
 
 const fixturePath = "tests/fixtures/tutorials/smooth-zoom-reverse-v1.json";
 
@@ -125,6 +134,112 @@ const registryForTutorial001 = () => {
   return registry;
 };
 
+const integrationResponseFor = (request, overrides = {}) => ({
+  protocolVersion: request.protocolVersion,
+  requestId: request.requestId,
+  transactionId: request.transactionId,
+  operationId: request.operationId,
+  capabilityId: request.capabilityId,
+  command: request.command,
+  outcome: "NO_OP",
+  error: null,
+  affectedObjects: [],
+  readback: null,
+  projectSnapshot: null,
+  environmentProbe: null,
+  hostProjectRevision: null,
+  diagnostics: {
+    adapterProtocolVersion: request.protocolVersion,
+    adapterBuild: "tutorial-001-mixed-runtime",
+    command: request.command,
+    notes: [],
+  },
+  proofArtifactRefs: [],
+  ...overrides,
+});
+
+class Tutorial001MixedTransport {
+  constructor() {
+    this.requests = [];
+    this.hostRevision = 500;
+    this.mutationCount = 0;
+    this.project = {
+      hostRevision: this.hostRevision,
+      filePath: "C:/EditFlow/tutorial-001-offline-runtime.aep",
+      activeItemHostId: null,
+      itemCount: 0,
+      items: [],
+    };
+  }
+
+  easeCardinality(request) {
+    const propertyPath = request.payload.propertyPath;
+    const leaf = Array.isArray(propertyPath) ? propertyPath.at(-1) : null;
+    if (leaf === "ADBE Scale") return 3;
+    if (leaf === "ADBE Position") return 2;
+    return 1;
+  }
+
+  async dispatch(request) {
+    this.requests.push(structuredClone(request));
+    if (request.command === "host.probe") {
+      return integrationResponseFor(request, {
+        environmentProbe: {
+          adapterProtocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
+          adapterBuild: "tutorial-001-mixed-runtime",
+          hostName: "Adobe After Effects",
+          hostVersion: "25.6.6",
+          hostBuild: "4",
+          os: "Windows test",
+          projectOpen: true,
+        },
+        hostProjectRevision: this.hostRevision,
+      });
+    }
+    if (request.command === "project.inspect") {
+      this.project.hostRevision = this.hostRevision;
+      return integrationResponseFor(request, {
+        projectSnapshot: structuredClone(this.project),
+        hostProjectRevision: this.hostRevision,
+      });
+    }
+    if (request.command === "property.temporal_ease.readback") {
+      return integrationResponseFor(request, {
+        outcome: "NO_OP",
+        readback: {
+          temporalEase: {
+            property: { easeCardinality: this.easeCardinality(request) },
+            keyIndex: request.payload.keyIndex,
+          },
+        },
+        hostProjectRevision: this.hostRevision,
+      });
+    }
+    if (
+      request.expectedHostProjectRevision !== null
+      && request.expectedHostProjectRevision !== undefined
+      && request.expectedHostProjectRevision !== this.hostRevision
+    ) {
+      return integrationResponseFor(request, {
+        outcome: "REJECTED",
+        error: {
+          code: "HOST_REVISION_MISMATCH",
+          message: "stale revision",
+        },
+        hostProjectRevision: this.hostRevision,
+      });
+    }
+
+    this.mutationCount += 1;
+    this.hostRevision += 1;
+    this.project.hostRevision = this.hostRevision;
+    return integrationResponseFor(request, {
+      outcome: "APPLIED",
+      hostProjectRevision: this.hostRevision,
+    });
+  }
+}
+
 const compiledAt = async (anchorMs = 2000) => {
   const recipe = await loadRecipe();
   return compileEditingIrRecipeToVirtualAeV1(recipe, project(), context(anchorMs));
@@ -152,8 +267,7 @@ const nativeValueFor = (path, operation, ordinal) => {
     : [540, 960];
 };
 
-const easeArray = (count) =>
-  Array.from({ length: count }, () => ({ speed: 0, influence: 33.333 }));
+const easeHandleIntent = () => ({ speed: 0, influence: 33.333 });
 
 const curveBindingsFor = (compiled) => {
   const groups = new Map();
@@ -167,7 +281,6 @@ const curveBindingsFor = (compiled) => {
   }
   return [...groups.values()].map((operations) => {
     const { layerId, propertyPath } = operations[0];
-    const easeCount = propertyPath === "TimeRemap.SourceTime" ? 1 : 2;
     return {
       layerId,
       semanticPropertyPath: propertyPath,
@@ -175,10 +288,10 @@ const curveBindingsFor = (compiled) => {
         timeMs: operation.timeMs,
         value: nativeValueFor(propertyPath, operation, ordinal),
       })),
-      easeByKey: operations.map((operation, ordinal) => ({
+      easeIntentByKey: operations.map((operation, ordinal) => ({
         keyIndex: ordinal + 1,
-        inEase: easeArray(easeCount),
-        outEase: easeArray(easeCount),
+        inEase: easeHandleIntent(),
+        outEase: easeHandleIntent(),
       })),
     };
   });
@@ -242,6 +355,14 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
   assert.equal(routeCounts.get(AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17), 18);
   assert.equal(routeCounts.get(AE_TEMPORAL_EASE_ROUTE_ID_V18), 18);
 
+  const easeOperations = plan.operations.filter((operation) =>
+    operation.input.command === "property.temporal_ease.set");
+  assert.equal(easeOperations.length, 18);
+  assert.ok(easeOperations.every((operation) =>
+    operation.input.payload.ease === undefined
+    && operation.input.payload.easeIntent !== undefined));
+  assert.equal(plan.operations.length + easeOperations.length, 64);
+
   const frozen = validateAndFreezeExecutionPlan(
     plan,
     observedState,
@@ -271,6 +392,64 @@ test("Tutorial 001 lowers to one mixed-protocol native AE execution plan", async
   );
 });
 
+test("Tutorial 001 executes end-to-end through the current mixed-protocol runtime", async () => {
+  const transport = new Tutorial001MixedTransport();
+  const projectId = "tutorial-001-runtime-project";
+  let observerRequest = 0;
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    projectId,
+    "tutorial-001-observe",
+    () => `tutorial-001-observe-${++observerRequest}`,
+  );
+  const liveObserved = await observer.readState();
+  const compiled = await compiledAt();
+  const plan = lowerCompiledRecipeToNativeAePlanV1(compiled, {
+    planId: "tutorial-001-runtime-plan",
+    observedState: liveObserved,
+    curveBindings: curveBindingsFor(compiled),
+    recipeRefs: ["skill.velocity-zoom-transition"],
+  });
+
+  const beforeRuntimeRequests = transport.requests.length;
+  const runtime = new CurrentAeTransactionRuntimeV1(
+    transport,
+    projectId,
+    64,
+  );
+  const result = await runtime.execute(plan);
+  const runtimeRequests = transport.requests.slice(beforeRuntimeRequests);
+
+  assert.equal(result.state, "COMMITTED");
+  assert.equal(result.recovered, false);
+  assert.equal(result.appliedOperations, 46);
+  assert.equal(transport.mutationCount, 46);
+  assert.equal(runtimeRequests.length, 74);
+  assert.equal(runtimeRequests.filter((request) =>
+    request.command === "host.probe").length, 5);
+  assert.equal(runtimeRequests.filter((request) =>
+    request.command === "project.inspect").length, 5);
+
+  const easeReadbacks = runtimeRequests.filter((request) =>
+    request.command === "property.temporal_ease.readback");
+  const easeSets = runtimeRequests.filter((request) =>
+    request.command === "property.temporal_ease.set");
+  assert.equal(easeReadbacks.length, 18);
+  assert.equal(easeSets.length, 18);
+
+  for (const request of easeSets) {
+    const leaf = request.payload.propertyPath.at(-1);
+    const expectedCardinality = leaf === "ADBE Scale"
+      ? 3
+      : leaf === "ADBE Position"
+        ? 2
+        : 1;
+    assert.equal(request.payload.ease.inEase.length, expectedCardinality);
+    assert.equal(request.payload.ease.outEase.length, expectedCardinality);
+    assert.equal(request.payload.easeIntent, undefined);
+  }
+});
+
 test("native lowering preserves semantic timing adaptation", async () => {
   const baseline = lower(await compiledAt(2000));
   const shifted = lower(await compiledAt(2200));
@@ -298,10 +477,7 @@ test("native lowering fails closed on missing or stale native adaptation evidenc
   );
 
   const bad = structuredClone(bindings);
-  bad[0].easeByKey[0].outEase = [
-    ...bad[0].easeByKey[0].outEase,
-    { speed: 0, influence: 33.333 },
-  ];
+  bad[0].easeIntentByKey[0].outEase.influence = 0;
   assert.throws(
     () => lower(compiled, bad),
     (error) => {

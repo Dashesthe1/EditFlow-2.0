@@ -33,11 +33,23 @@ export interface NativeAeKeyEaseV1 {
   readonly outEase: readonly { readonly speed: number; readonly influence: number }[];
 }
 
+export interface NativeAeEaseHandleIntentV1 {
+  readonly speed: number;
+  readonly influence: number;
+}
+
+export interface NativeAeKeyEaseIntentV1 {
+  readonly keyIndex: number;
+  readonly inEase: NativeAeEaseHandleIntentV1;
+  readonly outEase: NativeAeEaseHandleIntentV1;
+}
+
 export interface NativeAeCurveBindingV1 {
   readonly layerId: string;
   readonly semanticPropertyPath: NativeAeSemanticCurvePathV1;
   readonly keyframes: readonly NativeAeResolvedKeyframeV1[];
   readonly easeByKey?: readonly NativeAeKeyEaseV1[];
+  readonly easeIntentByKey?: readonly NativeAeKeyEaseIntentV1[];
 }
 
 export interface NativeAeRecipeLoweringInputV1 {
@@ -114,25 +126,45 @@ const validateResolvedValue = (
   }
 };
 
-const validateEase = (ease: NativeAeKeyEaseV1): void => {
-  if (!Number.isInteger(ease.keyIndex) || ease.keyIndex < 1) {
-    throw new NativeAeRecipeLoweringError("INVALID_NATIVE_EASE", "Ease keyIndex must be a positive integer.");
+const validateEaseHandle = (
+  value: NativeAeEaseHandleIntentV1,
+  label: string,
+): void => {
+  if (
+    !finite(value.speed)
+    || !finite(value.influence)
+    || value.influence < 0.1
+    || value.influence > 100
+  ) {
+    throw new NativeAeRecipeLoweringError(
+      "INVALID_NATIVE_EASE",
+      `${label} ease requires finite speed and influence from 0.1 through 100.`,
+    );
   }
+};
+
+const validateEaseKeyIndex = (keyIndex: number): void => {
+  if (!Number.isInteger(keyIndex) || keyIndex < 1) {
+    throw new NativeAeRecipeLoweringError(
+      "INVALID_NATIVE_EASE",
+      "Ease keyIndex must be a positive integer.",
+    );
+  }
+};
+
+const validateEase = (ease: NativeAeKeyEaseV1): void => {
+  validateEaseKeyIndex(ease.keyIndex);
   const validateSide = (
-    values: readonly { readonly speed: number; readonly influence: number }[],
+    values: readonly NativeAeEaseHandleIntentV1[],
     label: string,
   ): void => {
     if (values.length < 1 || values.length > 3) {
-      throw new NativeAeRecipeLoweringError("INVALID_NATIVE_EASE", `${label} ease cardinality must be 1-3.`);
+      throw new NativeAeRecipeLoweringError(
+        "INVALID_NATIVE_EASE",
+        `${label} ease cardinality must be 1-3.`,
+      );
     }
-    for (const entry of values) {
-      if (!finite(entry.speed) || !finite(entry.influence) || entry.influence < 0.1 || entry.influence > 100) {
-        throw new NativeAeRecipeLoweringError(
-          "INVALID_NATIVE_EASE",
-          `${label} ease requires finite speed and influence from 0.1 through 100.`,
-        );
-      }
-    }
+    for (const entry of values) validateEaseHandle(entry, label);
   };
   validateSide(ease.inEase, "Incoming");
   validateSide(ease.outEase, "Outgoing");
@@ -142,6 +174,12 @@ const validateEase = (ease: NativeAeKeyEaseV1): void => {
       "Incoming and outgoing ease cardinality must match.",
     );
   }
+};
+
+const validateEaseIntent = (ease: NativeAeKeyEaseIntentV1): void => {
+  validateEaseKeyIndex(ease.keyIndex);
+  validateEaseHandle(ease.inEase, "Incoming intent");
+  validateEaseHandle(ease.outEase, "Outgoing intent");
 };
 
 const isSupportedSemanticPath = (value: string): value is NativeAeSemanticCurvePathV1 =>
@@ -196,21 +234,28 @@ const resolvedBindings = (
       validateResolvedValue(binding.semanticPropertyPath, keyframe.value);
     }
     const easeKeyIndices = new Set<number>();
-    for (const ease of binding.easeByKey ?? []) {
-      validateEase(ease);
-      if (ease.keyIndex > binding.keyframes.length) {
+    const registerEaseKey = (keyIndex: number): void => {
+      if (keyIndex > binding.keyframes.length) {
         throw new NativeAeRecipeLoweringError(
           "INVALID_NATIVE_EASE",
           "Ease keyIndex cannot exceed the native keyframe count.",
         );
       }
-      if (easeKeyIndices.has(ease.keyIndex)) {
+      if (easeKeyIndices.has(keyIndex)) {
         throw new NativeAeRecipeLoweringError(
           "DUPLICATE_NATIVE_EASE",
-          `Duplicate native ease binding for key ${ease.keyIndex}.`,
+          `Duplicate native ease binding for key ${keyIndex}.`,
         );
       }
-      easeKeyIndices.add(ease.keyIndex);
+      easeKeyIndices.add(keyIndex);
+    };
+    for (const ease of binding.easeByKey ?? []) {
+      validateEase(ease);
+      registerEaseKey(ease.keyIndex);
+    }
+    for (const ease of binding.easeIntentByKey ?? []) {
+      validateEaseIntent(ease);
+      registerEaseKey(ease.keyIndex);
     }
     result.set(key, binding);
   }
@@ -252,18 +297,28 @@ const requireBinding = (
   return binding;
 };
 
+type NativeAeEaseBindingV1 =
+  | { readonly mode: "EXACT"; readonly ease: NativeAeKeyEaseV1 }
+  | { readonly mode: "LIVE_CARDINALITY"; readonly ease: NativeAeKeyEaseIntentV1 };
+
 const easeForKey = (
   binding: NativeAeCurveBindingV1,
   keyIndex: number,
-): NativeAeKeyEaseV1 => {
-  const ease = binding.easeByKey?.find((candidate) => candidate.keyIndex === keyIndex);
-  if (ease === undefined) {
-    throw new NativeAeRecipeLoweringError(
-      "NATIVE_EASE_REQUIRED",
-      `Adapted native ease required for '${binding.layerId}' / '${binding.semanticPropertyPath}' key ${keyIndex}.`,
-    );
-  }
-  return ease;
+): NativeAeEaseBindingV1 => {
+  const exact = binding.easeByKey?.find(
+    (candidate) => candidate.keyIndex === keyIndex,
+  );
+  if (exact !== undefined) return { mode: "EXACT", ease: exact };
+
+  const intent = binding.easeIntentByKey?.find(
+    (candidate) => candidate.keyIndex === keyIndex,
+  );
+  if (intent !== undefined) return { mode: "LIVE_CARDINALITY", ease: intent };
+
+  throw new NativeAeRecipeLoweringError(
+    "NATIVE_EASE_REQUIRED",
+    `Adapted native ease required for '${binding.layerId}' / '${binding.semanticPropertyPath}' key ${keyIndex}.`,
+  );
 };
 
 const hasSetProperty = (
@@ -394,7 +449,20 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
         },
         "R1_REVERSIBLE",
       );
-      const ease = easeForKey(binding, keyIndex);
+      const easeBinding = easeForKey(binding, keyIndex);
+      const easePayload = easeBinding.mode === "EXACT"
+        ? {
+            ease: {
+              inEase: structuredClone(easeBinding.ease.inEase),
+              outEase: structuredClone(easeBinding.ease.outEase),
+            },
+          }
+        : {
+            easeIntent: {
+              inEase: structuredClone(easeBinding.ease.inEase),
+              outEase: structuredClone(easeBinding.ease.outEase),
+            },
+          };
       emit(
         "ae.property.temporal_ease.set",
         AE_TEMPORAL_EASE_ROUTE_ID_V18,
@@ -404,10 +472,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
           layer: { stableId: layerId },
           propertyPath,
           keyIndex,
-          ease: {
-            inEase: structuredClone(ease.inEase),
-            outEase: structuredClone(ease.outEase),
-          },
+          ...easePayload,
         },
         "R1_REVERSIBLE",
       );

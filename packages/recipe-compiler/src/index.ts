@@ -558,6 +558,8 @@ export {
 } from "./native-ae-lowering.js";
 export type {
   NativeAeCurveBindingV1,
+  NativeAeEaseHandleIntentV1,
+  NativeAeKeyEaseIntentV1,
   NativeAeKeyEaseV1,
   NativeAeRecipeLoweringInputV1,
   NativeAeResolvedKeyframeV1,
