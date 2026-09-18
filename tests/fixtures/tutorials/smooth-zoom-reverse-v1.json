@@ -1,0 +1,508 @@
+{
+  "schema": "editflow.tutorial-analysis.v1",
+  "tutorialId": "tutorial.smooth-zoom-reverse.001",
+  "title": "Smooth Zoom + Reverse Effect Tutorial | After Effects",
+  "sourceRef": "gdrive://18VN6VBc8Bsig2D5itq3_zfG4PTuc6vSq",
+  "durationMs": 212902,
+  "evidenceRefs": [
+    "video:00:25-00:31:precompose",
+    "video:00:35-00:39:enable-time-remap-shot-a",
+    "video:00:50-01:14:temporal-graph-shot-a",
+    "video:01:26-01:53:sapphire-warp-zoom-shot-a",
+    "video:02:33-03:05:time-remap-and-graph-shot-b",
+    "video:03:08-03:24:warp-zoom-shot-b",
+    "video:03:25-03:33:final-preview"
+  ],
+  "skills": [
+    {
+      "skillId": "skill.velocity-zoom-transition",
+      "name": "Motion-coupled velocity and zoom transition",
+      "what": {
+        "objective": "Create one transition gesture in which source-time velocity shaping and a camera-like zoom pulse reinforce the same cut or action accent across adjacent shots.",
+        "components": [
+          {
+            "componentId": "temporal-velocity-pulse",
+            "visibleResult": "Playback energy compresses toward the transition and releases around it instead of remaining at uniform source speed.",
+            "role": "Increase transition pressure and make the cut feel motivated by motion rather than by a decorative overlay.",
+            "interactions": [
+              "The temporal pulse must remain legible enough that the subject action can still be understood.",
+              "Its strongest change should share a transition anchor with the zoom pulse."
+            ]
+          },
+          {
+            "componentId": "zoom-push-pull",
+            "visibleResult": "The frame pushes toward or through the subject around the transition and then recovers instead of holding a permanent crop.",
+            "role": "Direct viewer attention and convert the timing accent into a spatially visible impact.",
+            "interactions": [
+              "Zoom amount is bounded by subject readability and crop headroom.",
+              "Zoom phase is coordinated with the retiming curve rather than animated independently."
+            ]
+          },
+          {
+            "componentId": "two-shot-handoff",
+            "visibleResult": "The outgoing and incoming shots feel like two halves of one energy gesture rather than two unrelated effects.",
+            "role": "Carry momentum through the edit point while preserving continuity.",
+            "interactions": [
+              "Each shot uses its own source motion and framing to derive values.",
+              "The two sides share semantic timing intent but do not copy literal keyframe values blindly."
+            ]
+          },
+          {
+            "componentId": "graph-shaped-easing",
+            "visibleResult": "Acceleration and zoom intensity concentrate around the transition with restrained tails instead of linear mechanical movement.",
+            "role": "Give the gesture a professional rise, peak, and recovery.",
+            "interactions": [
+              "Temporal interpolation and numeric ease/influence control the perceived sharpness of the pulse.",
+              "Overly broad handles make the transition mushy; overly narrow handles make it snap or stutter."
+            ]
+          }
+        ]
+      },
+      "whenWhy": {
+        "creativeIntent": "Increase energy at a meaningful cut or action accent by making time and apparent camera motion behave as one coordinated gesture.",
+        "attentionGoal": "Hold attention on the hero subject while carrying the eye through the cut instead of forcing the viewer to reacquire the subject after the transition.",
+        "emotionalPurpose": "Create a brief surge of momentum and impact without making the entire sequence feel continuously accelerated.",
+        "pacingRole": "Use as a localized transition accent: build pressure into the edit point, peak near the handoff, then recover quickly enough that the next shot can breathe.",
+        "musicRelationship": "When music is present, the shared transition anchor may be aligned to a strong beat or transient, but the tutorial principle is still valid for a motion-driven cut without music.",
+        "dialogueRelationship": "No dialogue is demonstrated; on speaking footage reduce or omit retiming and zoom when they would compete with word intelligibility, facial readability, or conversational continuity.",
+        "motionConditions": [
+          "The source contains enough readable action or camera motion for a velocity change to feel motivated.",
+          "The incoming and outgoing shots have motion that can tolerate a short acceleration/deceleration gesture.",
+          "Source handles are sufficient to retime the intended window without unintended freezes or out-of-range sampling."
+        ],
+        "compositionConditions": [
+          "The hero subject can be identified so zoom centering and crop safety can be evaluated.",
+          "There is enough framing margin to support a visible push without cutting off important subject regions.",
+          "Adjacent shots have a coherent visual handoff or a deliberate contrast that the transition can emphasize."
+        ],
+        "continuityConstraints": [
+          "Do not let the zoom center jump away from the viewer's current point of attention at the cut.",
+          "Do not create an unintended temporal freeze, duplicate-frame plateau, or source-time discontinuity.",
+          "The incoming shot must recover to a readable baseline rather than remain trapped in the transition treatment."
+        ],
+        "useWhen": [
+          "An action cut, movement handoff, or musical transient benefits from a short increase in transition pressure.",
+          "The subject remains recognizable under modest retiming and reframing.",
+          "The edit needs a stronger sense of momentum than a plain cut but does not justify a more destructive transition."
+        ],
+        "avoidWhen": [
+          "Dialogue, facial nuance, or documentary continuity is more important than impact.",
+          "The shot is already unstable, tightly cropped, or moving so aggressively that extra velocity and zoom would reduce comprehension.",
+          "Available source handles are too short to shape time cleanly.",
+          "A plain cut communicates the moment more clearly than an added transition gesture."
+        ],
+        "restraintRule": "Use the smallest temporal contrast and zoom displacement that clearly communicates the accent; if the viewer notices the mechanism more than the subject or story beat, reduce it."
+      },
+      "how": {
+        "topology": [
+          "Treat each transition-side hero shot as its own controllable timing unit, precomposing when necessary before retiming.",
+          "Enable native Time Remapping to expose a source-time animation surface before editing retime values.",
+          "Shape the temporal keyframes with Bezier interpolation and numeric speed/influence so the velocity pulse is concentrated near the transition anchor.",
+          "Apply a camera-like zoom pulse after or alongside the retiming; the tutorial uses Sapphire S_WarpTransform, while the semantic construction permits a native transform fallback.",
+          "Instantiate the same semantic gesture on both sides of the cut using shot-specific values rather than copying tutorial constants."
+        ],
+        "timingModel": "Choose a shared transition anchor, allocate a short pre-anchor buildup and post-anchor recovery from shot duration and frame rate, then place the strongest temporal and spatial change near that anchor with enough handles to avoid a visible freeze or discontinuity.",
+        "easingModel": "Use shaped Bezier temporal interpolation with concentrated speed/influence near the accent and restrained tails; the zoom curve should peak in the same neighborhood and return smoothly instead of remaining linear or holding at maximum scale.",
+        "adaptationRules": [
+          "Derive pulse duration from shot duration, frame rate, source-handle availability, and desired pacing rather than fixed tutorial keyframe spacing.",
+          "Derive temporal contrast from source subject velocity, camera velocity, and transition energy so already-fast footage receives less additional warping.",
+          "Derive zoom intensity from subject scale, crop headroom, aspect ratio, and source camera motion.",
+          "Center or compensate the zoom toward the hero subject when the subject is off-axis instead of assuming frame-center motion.",
+          "Keep the temporal peak and zoom peak within a bounded phase offset around the selected transition anchor.",
+          "If Sapphire S_WarpTransform is unavailable, preserve the semantic camera-push intent using native transform animation rather than blocking the skill.",
+          "If source-time reversal is not explicitly required by the selected edit, prefer a monotonic remap pulse; do not infer negative playback solely from the tutorial title."
+        ],
+        "mechanisms": [
+          {
+            "mechanismId": "precompose-transition-shots",
+            "primitive": "PRECOMPOSE",
+            "startMs": 25000,
+            "endMs": 31000,
+            "intent": "Create isolated timing units for the transition-side shots so retiming and zoom construction can be controlled without coupling unrelated layers.",
+            "construction": "Precompose the relevant hero layer or declared layer set while preserving the intended shot span and transition handles.",
+            "observableResult": "The transition-side shot becomes a dedicated precomp layer that can receive timing animation without changing unrelated scene layers.",
+            "dependsOn": [],
+            "target": {
+              "roles": [
+                "transition.outgoing_shot",
+                "transition.incoming_shot"
+              ],
+              "mode": "EACH"
+            },
+            "parameters": [
+              {
+                "name": "precomposeSpan",
+                "intent": "Preserve the useful shot and handle range needed by the transition.",
+                "derivedFrom": [
+                  "shotInPoint",
+                  "shotOutPoint",
+                  "sourceHandleAvailability",
+                  "transitionAnchor"
+                ]
+              }
+            ],
+            "evidenceRefs": [
+              "video:00:25-00:31:precompose"
+            ]
+          },
+          {
+            "mechanismId": "activate-time-remap-surface",
+            "primitive": "TIME_REMAP",
+            "startMs": 35000,
+            "endMs": 158000,
+            "intent": "Expose native source-time keyframes on each transition-side shot before shaping playback velocity.",
+            "construction": "Enable native After Effects Time Remapping on a remappable AV layer and preserve any pre-existing authored remap state rather than destructively disabling or replacing it.",
+            "observableResult": "The shot has a usable Time Remap property with native key structure available for subsequent value and easing edits.",
+            "dependsOn": [
+              "precompose-transition-shots"
+            ],
+            "parameters": [
+              {
+                "name": "activationPolicy",
+                "intent": "Enable Time Remap only on compatible layers and preserve already-enabled curves.",
+                "derivedFrom": [
+                  "layerType",
+                  "canSetTimeRemapEnabled",
+                  "existingTimeRemapState"
+                ],
+                "value": "enable-idempotently"
+              }
+            ],
+            "evidenceRefs": [
+              "video:00:35-00:39:enable-time-remap-shot-a",
+              "video:02:33-02:39:enable-time-remap-shot-b"
+            ]
+          },
+          {
+            "mechanismId": "shape-temporal-velocity-pulse",
+            "primitive": "TIME_REMAP",
+            "startMs": 50000,
+            "endMs": 185000,
+            "intent": "Concentrate playback-speed change around the transition while preserving readable action and clean source-time sampling.",
+            "construction": "Place or adapt Time Remap keys around the semantic transition anchor, use Bezier interpolation, and shape numeric temporal ease/influence to create a controlled acceleration-and-recovery pulse.",
+            "observableResult": "The shot moves through a localized speed gesture with a clear center impulse and smooth tails instead of linear timing or a frozen plateau.",
+            "dependsOn": [
+              "activate-time-remap-surface"
+            ],
+            "parameters": [
+              {
+                "name": "velocityPulseDuration",
+                "intent": "Keep the retime gesture short enough to feel like an accent while retaining readable source motion.",
+                "derivedFrom": [
+                  "shotDuration",
+                  "frameRate",
+                  "sourceHandleAvailability",
+                  "transitionEnergy"
+                ],
+                "normalizedRange": {
+                  "min": 0.08,
+                  "max": 0.65
+                }
+              },
+              {
+                "name": "velocityContrast",
+                "intent": "Increase transition pressure without destroying motion continuity.",
+                "derivedFrom": [
+                  "subjectVelocity",
+                  "cameraVelocity",
+                  "transitionEnergy",
+                  "motionReadability"
+                ],
+                "normalizedRange": {
+                  "min": 0.05,
+                  "max": 0.8
+                }
+              },
+              {
+                "name": "temporalPeakPhase",
+                "intent": "Place the strongest velocity change close to the selected transition anchor.",
+                "derivedFrom": [
+                  "transitionAnchor",
+                  "cutTiming",
+                  "beatTiming",
+                  "sourceMotionPhase"
+                ],
+                "normalizedRange": {
+                  "min": 0.35,
+                  "max": 0.65
+                }
+              }
+            ],
+            "timing": {
+              "anchor": "EVENT",
+              "eventRef": "transition-anchor",
+              "durationParameter": "velocityPulseDuration",
+              "peakPhaseParameter": "temporalPeakPhase"
+            },
+            "evidenceRefs": [
+              "video:00:50-01:14:temporal-graph-shot-a",
+              "video:02:39-03:05:temporal-graph-shot-b"
+            ]
+          },
+          {
+            "mechanismId": "couple-zoom-pulse",
+            "primitive": "CAMERA_PUSH",
+            "startMs": 86000,
+            "endMs": 204000,
+            "intent": "Translate the same transition pressure into a subject-aware spatial push that peaks near the retiming pulse and recovers cleanly.",
+            "construction": "Animate a camera-like zoom around the shared transition anchor. The tutorial demonstrates Sapphire S_WarpTransform, but compile to native scale/position animation when that plugin route is unavailable.",
+            "observableResult": "The viewer experiences one coordinated velocity-and-zoom handoff across the cut, with the subject remaining readable and the framing returning to a stable baseline.",
+            "dependsOn": [
+              "shape-temporal-velocity-pulse"
+            ],
+            "parameters": [
+              {
+                "name": "zoomPulseDuration",
+                "intent": "Scale the spatial push window to the usable shot duration and pacing rather than a fixed tutorial interval.",
+                "derivedFrom": [
+                  "shotDuration",
+                  "frameRate",
+                  "transitionEnergy"
+                ],
+                "normalizedRange": {
+                  "min": 0.08,
+                  "max": 0.45
+                }
+              },
+              {
+                "name": "zoomIntensity",
+                "intent": "Create visible impact without exceeding crop safety or making the subject unreadable.",
+                "derivedFrom": [
+                  "subjectScale",
+                  "cropHeadroom",
+                  "aspectRatio",
+                  "sourceCameraMotion",
+                  "transitionEnergy"
+                ],
+                "normalizedRange": {
+                  "min": 0.05,
+                  "max": 0.55
+                }
+              },
+              {
+                "name": "zoomCenter",
+                "intent": "Keep the push centered on the current point of visual attention rather than blindly using frame center.",
+                "derivedFrom": [
+                  "heroSubjectCentroid",
+                  "compositionSafeRegion",
+                  "motionDirection"
+                ]
+              },
+              {
+                "name": "zoomTemporalPhase",
+                "intent": "Keep the zoom peak synchronized with the temporal velocity peak.",
+                "derivedFrom": [
+                  "transitionAnchor",
+                  "temporalPeakPhase",
+                  "sourceMotionPhase"
+                ],
+                "normalizedRange": {
+                  "min": 0.35,
+                  "max": 0.65
+                }
+              }
+            ],
+            "timing": {
+              "anchor": "EVENT",
+              "eventRef": "transition-anchor",
+              "durationParameter": "zoomPulseDuration",
+              "peakPhaseParameter": "zoomTemporalPhase"
+            },
+            "evidenceRefs": [
+              "video:01:26-01:53:sapphire-warp-zoom-shot-a",
+              "video:03:08-03:24:warp-zoom-shot-b",
+              "video:03:25-03:33:final-preview"
+            ]
+          }
+        ]
+      },
+      "access": {
+        "bindings": [
+          {
+            "mechanismId": "precompose-transition-shots",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.precompose.layers",
+                "reason": "Create a reusable timing unit for each transition-side shot before retiming.",
+                "minimumProofMaturity": "TRANSFER"
+              }
+            ]
+          },
+          {
+            "mechanismId": "activate-time-remap-surface",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.layer.time_remap.enable",
+                "reason": "Enable the native Time Remap surface idempotently on compatible AV layers.",
+                "minimumProofMaturity": "STRUCTURAL",
+                "minimumSupportStatus": "PARTIAL"
+              }
+            ]
+          },
+          {
+            "mechanismId": "shape-temporal-velocity-pulse",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.keyframe.set",
+                "reason": "Place and adapt Time Remap key values around the semantic transition anchor.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
+              },
+              {
+                "capabilityId": "ae.property.temporal_interpolation.set",
+                "reason": "Apply exact Bezier temporal interpolation to the retime keys.",
+                "minimumProofMaturity": "TRANSFER"
+              },
+              {
+                "capabilityId": "ae.property.temporal_ease.set",
+                "reason": "Apply numeric Graph Editor speed/influence handles to shape the velocity pulse.",
+                "minimumProofMaturity": "TRANSFER"
+              }
+            ]
+          },
+          {
+            "mechanismId": "couple-zoom-pulse",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.layer.transform.set",
+                "reason": "Provide the native camera-push fallback through subject-aware scale and position.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
+              },
+              {
+                "capabilityId": "ae.keyframe.set",
+                "reason": "Animate the native zoom fallback or the selected zoom-effect property over time.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
+              },
+              {
+                "capabilityId": "ae.property.temporal_interpolation.set",
+                "reason": "Use Bezier interpolation for the zoom pulse rather than linear motion.",
+                "minimumProofMaturity": "TRANSFER"
+              },
+              {
+                "capabilityId": "ae.property.temporal_ease.set",
+                "reason": "Shape the zoom pulse with exact temporal speed/influence handles.",
+                "minimumProofMaturity": "TRANSFER"
+              },
+              {
+                "capabilityId": "ae.effect.add",
+                "reason": "Optional literal tutorial route: add Sapphire S_WarpTransform when the plugin is installed and selected.",
+                "minimumProofMaturity": "VISUAL",
+                "optional": true
+              },
+              {
+                "capabilityId": "ae.effect.property.set",
+                "reason": "Optional literal tutorial route: set the selected Sapphire warp-transform zoom parameter.",
+                "minimumProofMaturity": "VISUAL",
+                "optional": true
+              },
+              {
+                "capabilityId": "ae.plugin.sapphire.s_warp_transform",
+                "reason": "Optional plugin-specific route shown by the tutorial; native transform is the semantic fallback.",
+                "minimumProofMaturity": "DECLARED",
+                "optional": true
+              }
+            ]
+          }
+        ]
+      },
+      "proof": {
+        "validationCriteria": [
+          "The hero subject remains readable through the temporal and zoom peaks.",
+          "The temporal velocity peak and zoom peak are visibly perceived as one transition gesture rather than two unrelated animations.",
+          "The zoom does not expose black edges or crop critical subject regions.",
+          "Playback does not contain an unintended freeze, duplicate-frame plateau, or source-time discontinuity.",
+          "The incoming shot returns to a stable readable baseline after the handoff.",
+          "A native-transform fallback preserves the professional principle when Sapphire S_WarpTransform is unavailable."
+        ],
+        "invariants": [
+          "All generated operations target the intended transition-side shot identities.",
+          "Native Time Remap is enabled before Time Remap keys or temporal ease are authored.",
+          "Source-time samples remain inside valid media handles unless an intentional hold is explicitly selected.",
+          "Temporal and zoom peaks remain within a bounded phase offset of the shared transition anchor.",
+          "Zoom intensity remains bounded by crop headroom and subject safe-region constraints.",
+          "Optional plugin absence must not block the native semantic fallback."
+        ],
+        "failureModes": [
+          {
+            "condition": "The retime creates a visible freeze, stutter, or duplicate-frame plateau.",
+            "diagnosis": "The remap keys are too compressed, source handles are insufficient, or the temporal curve contains an unintended flat or discontinuous region.",
+            "repairStrategy": "Expand the temporal window, reduce velocity contrast, or move the anchor to a source region with sufficient handles before changing the zoom."
+          },
+          {
+            "condition": "The subject is cropped or leaves the viewer's point of attention during the zoom.",
+            "diagnosis": "Zoom intensity or center was derived from frame center instead of subject scale and crop headroom.",
+            "repairStrategy": "Reduce zoom intensity and compensate position toward the hero subject before weakening the timing accent."
+          },
+          {
+            "condition": "The transition feels mushy and slow rather than punchy.",
+            "diagnosis": "The temporal and zoom pulses are too broad or their ease handles distribute acceleration too evenly.",
+            "repairStrategy": "Narrow the pulse and concentrate the Bezier influence around the transition anchor while preserving smooth tails."
+          },
+          {
+            "condition": "The speed change and zoom feel like separate effects.",
+            "diagnosis": "Their peak phases are misaligned or one component is much stronger than the other.",
+            "repairStrategy": "Re-anchor both mechanisms to the same semantic event and rebalance intensity before adding more effects."
+          },
+          {
+            "condition": "The Sapphire effect route is unavailable.",
+            "diagnosis": "The tutorial's literal plugin implementation is not installed or not exposed in the current environment.",
+            "repairStrategy": "Compile the same camera-push intent through native transform scale/position animation and retain the same timing/easing model."
+          }
+        ],
+        "transferAxes": [
+          "different frame rate",
+          "different shot duration and source-handle length",
+          "different subject scale and off-center subject position",
+          "different source motion speed and direction",
+          "portrait versus landscape aspect ratio",
+          "beat-driven versus motion-driven transition anchor"
+        ],
+        "robustnessAxes": [
+          "very short transition handles",
+          "high source camera motion",
+          "already-enabled Time Remap with existing authored keys",
+          "Sapphire unavailable with native fallback selected",
+          "nested precompositions",
+          "transition between visually dissimilar shots"
+        ]
+      },
+      "scenePrerequisites": [
+        "Two adjacent shots or a defined edit point provide a meaningful transition anchor.",
+        "At least one hero subject or framing target can be identified for crop and attention checks.",
+        "Transition-side layers support the required timing operations or have a safe precomposition route.",
+        "Source media provides enough handles around the selected transition window for the intended retime."
+      ],
+      "knowledgeDelta": {
+        "newConcepts": [
+          "Time Remap activation is a distinct reusable AE capability from setting Time Remap key values.",
+          "A professional zoom transition is better represented as a shared temporal-spatial gesture than as an isolated scale effect."
+        ],
+        "reinforcedConcepts": [
+          "Precomposition isolates timing topology before complex temporal edits.",
+          "Graph Editor interpolation and numeric ease/influence are reusable primitives rather than tutorial-specific mouse movements."
+        ],
+        "newCombinations": [
+          "Native Time Remap velocity shaping plus subject-aware camera push across both sides of a cut."
+        ],
+        "refinements": [
+          "Sapphire S_WarpTransform is a literal implementation route, not the semantic identity of the skill; native scale/position can preserve the professional intent.",
+          "Tutorial constants should become functions of shot duration, frame rate, source motion, subject scale, crop headroom, and transition energy."
+        ],
+        "contradictions": [
+          "The tutorial title calls the result a reverse effect, but the strongest visible construction evidence proves Time Remapping and shaped velocity; a persistent negative-playback segment is not established strongly enough to hardcode REVERSE_TIME without reconstruction evidence."
+        ]
+      },
+      "compatibleTechniques": [
+        "BEAT_ACCENT",
+        "MOTION_MATCHED_TRANSITION",
+        "MOTION_BLUR"
+      ],
+      "conflictingTechniques": [
+        "AGGRESSIVE_SHAKE_AT_SAME_ANCHOR",
+        "DIALOGUE_CRITICAL_STABILITY"
+      ]
+    }
+  ]
+}

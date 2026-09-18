@@ -36,6 +36,8 @@ export interface EditingIrTimingV1 {
   readonly anchor: EditingIrTimingAnchorV1;
   readonly offsetMs?: number;
   readonly durationMs?: number;
+  readonly durationParameter?: string;
+  readonly peakPhaseParameter?: string;
   readonly eventRef?: string;
 }
 
@@ -47,6 +49,13 @@ export interface EditingIrParameterV1 {
   readonly normalizedRange?: Readonly<{ min: number; max: number }>;
 }
 
+export type EditingIrTargetModeV1 = "EACH" | "GROUP";
+
+export interface EditingIrTargetSpecV1 {
+  readonly roles: readonly string[];
+  readonly mode: EditingIrTargetModeV1;
+}
+
 export interface EditingIrNodeV1 {
   readonly nodeId: string;
   readonly kind: EditingIrPrimitiveKindV1;
@@ -54,6 +63,7 @@ export interface EditingIrNodeV1 {
   readonly dependsOn: readonly string[];
   readonly capabilityIds: readonly CapabilityId[];
   readonly parameters: readonly EditingIrParameterV1[];
+  readonly target?: EditingIrTargetSpecV1;
   readonly timing?: EditingIrTimingV1;
   readonly optional?: boolean;
 }
@@ -86,6 +96,23 @@ const validateTiming = (node: EditingIrNodeV1, errors: string[]): void => {
     && (!Number.isFinite(node.timing.durationMs) || node.timing.durationMs <= 0)) {
     errors.push(`Node '${node.nodeId}' has an invalid timing duration.`);
   }
+  if (node.timing.durationMs !== undefined && node.timing.durationParameter !== undefined) {
+    errors.push(`Node '${node.nodeId}' timing cannot mix durationMs with durationParameter.`);
+  }
+  if (node.timing.durationParameter !== undefined) {
+    const ref = node.timing.durationParameter;
+    if (!nonEmpty(ref)) errors.push(`Node '${node.nodeId}' has an empty durationParameter.`);
+    else if (!node.parameters.some((parameter) => parameter.name === ref)) {
+      errors.push(`Node '${node.nodeId}' timing references missing duration parameter '${ref}'.`);
+    }
+  }
+  if (node.timing.peakPhaseParameter !== undefined) {
+    const ref = node.timing.peakPhaseParameter;
+    if (!nonEmpty(ref)) errors.push(`Node '${node.nodeId}' has an empty peakPhaseParameter.`);
+    else if (!node.parameters.some((parameter) => parameter.name === ref)) {
+      errors.push(`Node '${node.nodeId}' timing references missing peak-phase parameter '${ref}'.`);
+    }
+  }
   if (node.timing.anchor === "EVENT" && !nonEmpty(node.timing.eventRef ?? "")) {
     errors.push(`Node '${node.nodeId}' EVENT timing requires eventRef.`);
   }
@@ -104,6 +131,23 @@ const validateParameters = (node: EditingIrNodeV1, errors: string[]): void => {
         || parameter.normalizedRange.min > parameter.normalizedRange.max)) {
       errors.push(`Node '${node.nodeId}' parameter '${parameter.name}' has an invalid normalizedRange.`);
     }
+  }
+};
+
+const validateTarget = (node: EditingIrNodeV1, errors: string[]): void => {
+  if (!node.target) return;
+  if (node.target.roles.length === 0) {
+    errors.push(`Node '${node.nodeId}' target must declare at least one semantic role.`);
+    return;
+  }
+  const roles = new Set<string>();
+  for (const role of node.target.roles) {
+    if (!nonEmpty(role)) errors.push(`Node '${node.nodeId}' target has an empty semantic role.`);
+    if (roles.has(role)) errors.push(`Node '${node.nodeId}' duplicates target role '${role}'.`);
+    roles.add(role);
+  }
+  if (node.target.mode !== "EACH" && node.target.mode !== "GROUP") {
+    errors.push(`Node '${node.nodeId}' target has invalid application mode '${String(node.target.mode)}'.`);
   }
 };
 
@@ -154,6 +198,7 @@ export const validateEditingIrRecipeV1 = (recipe: EditingIrRecipeV1): EditingIrV
     }
     validateTiming(node, errors);
     validateParameters(node, errors);
+    validateTarget(node, errors);
   }
 
   for (const node of recipe.nodes) {

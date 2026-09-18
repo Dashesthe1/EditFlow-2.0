@@ -3,6 +3,7 @@ import {
   type EditingIrParameterV1,
   type EditingIrPrimitiveKindV1,
   type EditingIrRecipeV1,
+  type EditingIrTargetSpecV1,
   type EditingIrTimingV1,
 } from "../../editing-ir/src/index.js";
 import type {
@@ -50,6 +51,7 @@ export interface TutorialMechanismV1 {
   readonly observableResult: string;
   readonly dependsOn: readonly string[];
   readonly parameters: readonly EditingIrParameterV1[];
+  readonly target?: EditingIrTargetSpecV1;
   readonly timing?: EditingIrTimingV1;
   readonly evidenceRefs?: readonly string[];
 }
@@ -293,7 +295,12 @@ export const compileEditingIrFromTutorialSkillV1 = (
         capabilityIds: unique(binding.capabilityRequirements.map((requirement) => requirement.capabilityId)),
         parameters: structuredClone(mechanism.parameters),
       };
-      return mechanism.timing === undefined ? base : { ...base, timing: structuredClone(mechanism.timing) };
+      const targeted = mechanism.target === undefined
+        ? base
+        : { ...base, target: structuredClone(mechanism.target) };
+      return mechanism.timing === undefined
+        ? targeted
+        : { ...targeted, timing: structuredClone(mechanism.timing) };
     }),
     outputs: terminalMechanismIds(skill),
     validationCriteria: structuredClone(skill.proof.validationCriteria),

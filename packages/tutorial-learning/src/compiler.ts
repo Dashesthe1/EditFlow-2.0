@@ -36,10 +36,12 @@ const mergeRequirements = (
     );
     const reasons = [...new Set(values.map((item) => item.reason.trim()).filter(Boolean))];
     const preferredRouteKinds = [...new Set(values.flatMap((item) => item.preferredRouteKinds ?? []))];
+    const partialSupportAccepted = values.every((item) => item.minimumSupportStatus === "PARTIAL");
     const base = {
       capabilityId: first.capabilityId,
       reason: reasons.join(" | "),
       minimumProofMaturity: strongest.minimumProofMaturity,
+      ...(partialSupportAccepted ? { minimumSupportStatus: "PARTIAL" as const } : {}),
       optional: values.every((item) => item.optional === true),
     };
     return preferredRouteKinds.length > 0 ? { ...base, preferredRouteKinds } : base;

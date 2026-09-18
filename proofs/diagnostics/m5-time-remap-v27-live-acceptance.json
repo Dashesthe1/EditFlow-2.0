@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "proof": "M5_TIME_REMAP_V27_LIVE",
+  "status": "PASS",
+  "sourceCommit": "e6bfa2b5e540767d60a2b13e883b2acbef374cab",
+  "protocolVersion": "2.7.0",
+  "adapterBuild": "0.7.0-dev.1",
+  "promotionMaturity": "STRUCTURAL",
+  "environment": {
+    "afterEffectsVersion": "25.6.6",
+    "existingProcessReused": true,
+    "beforeAfterEffectsPids": [4184],
+    "afterAfterEffectsPids": [4184]
+  },
+  "authoritativeEvidence": {
+    "resultPath": "proofs/diagnostics/m5-time-remap-v27-live-result.json",
+    "resultSha256": "3b6e55b51bc97bd7144aa767ad840228faa917e838ad7b871053925066b83a45"
+  },
+  "checks": {
+    "initialDisabled": true,
+    "unsupportedRejectedWithoutMutation": true,
+    "applied": true,
+    "independentReadback": true,
+    "idempotent": true,
+    "staleRejected": true,
+    "rollbackStartedDisabled": true,
+    "rollbackFailedAsInjected": true,
+    "rollbackRestoredExact": true,
+    "itemCountRestored": true
+  },
+  "limitations": [
+    "This evidence supports STRUCTURAL maturity only; no viewer-visible tutorial reconstruction or transfer proof is claimed.",
+    "Protocol 2.7 V1 is enable-only and deliberately does not disable or destroy an existing Time Remap curve.",
+    "The capability is not promoted into the production accepted-runtime registry by this evidence alone.",
+    "Third-party zoom effects such as Sapphire S_WarpTransform are outside this protocol and require separate environment discovery/proof."
+  ]
+}

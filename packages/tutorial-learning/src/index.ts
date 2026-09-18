@@ -6,3 +6,4 @@ export * from "./deep-analysis.js";
 export * from "./proof-compiler.js";
 export * from "./proof-selector.js";
 export * from "./deep-pipeline.js";
+export * from "./virtual-ae-proof.js";
