@@ -23,11 +23,11 @@ const writePng = async (path, mutate = (rgb) => rgb) => {
   for (let y = 0; y < HEIGHT; y += 1) {
     for (let x = 0; x < WIDTH; x += 1) {
       const offset = (y * WIDTH + x) * 4;
-      const [r, g, b] = mutate(baseRgb(x, y), x, y);
+      const [r, g, b, a = 255] = mutate(baseRgb(x, y), x, y);
       image.data[offset] = r;
       image.data[offset + 1] = g;
       image.data[offset + 2] = b;
-      image.data[offset + 3] = 255;
+      image.data[offset + 3] = a;
     }
   }
   await writeFile(path, PNG.sync.write(image));
@@ -171,6 +171,48 @@ test("sparse visual evaluator rejects an anchor that is weak relative to a displ
     });
     assert.equal(assessment.passed, false);
     assert.ok(assessment.issues.includes("ANCHOR_VISUAL_STRENGTH_LOW"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("sparse visual evaluator distinguishes transparent exposure from opaque dark content", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "editflow-visual-alpha-"));
+  try {
+    const border = (_rgb, x, y, alpha) =>
+      x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1
+        ? [0, 0, 0, alpha]
+        : baseRgb(x, y);
+    const rules = {
+      ...RULES,
+      maxBorderNearBlackRatio: undefined,
+      maxBorderTransparentRatio: 0.01,
+    };
+
+    const opaque = await buildFrames(dir, new Map([
+      [100, (rgb, x, y) => border(rgb, x, y, 255)],
+    ]));
+    const opaqueAssessment = await evaluateSparseVisualProofV1({
+      baselineFrames: opaque.baseline,
+      editedFrames: opaque.edited,
+      anchorMs: 100,
+      rules,
+    });
+    assert.equal(opaqueAssessment.passed, true, opaqueAssessment.issues.join(", "));
+    assert.equal(opaqueAssessment.metrics[1].borderTransparentRatio, 0);
+
+    const transparent = await buildFrames(dir, new Map([
+      [100, (rgb, x, y) => border(rgb, x, y, 0)],
+    ]));
+    const transparentAssessment = await evaluateSparseVisualProofV1({
+      baselineFrames: transparent.baseline,
+      editedFrames: transparent.edited,
+      anchorMs: 100,
+      rules,
+    });
+    assert.equal(transparentAssessment.passed, false);
+    assert.ok(transparentAssessment.issues.includes("TRANSPARENT_BORDER_OR_FRAME_EXPOSURE"));
+    assert.ok(transparentAssessment.metrics[1].borderTransparentRatio > 0.01);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

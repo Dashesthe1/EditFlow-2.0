@@ -27,7 +27,7 @@ const frameMetrics = (baseline, edited, options) => {
   const { width, height } = edited;
   const threshold = options.changeThreshold ?? 12;
   const borderWidth = options.borderWidth ?? 12;
-  let absSum = 0, changed = 0, borderNearBlack = 0, borderCount = 0;
+  let absSum = 0, changed = 0, borderNearBlack = 0, borderTransparent = 0, borderCount = 0;
   let roiCount = 0, roiLumaSum = 0, roiLumaSqSum = 0;
   const pixelCount = width * height;
   for (let y = 0; y < height; y += 1) {
@@ -44,6 +44,7 @@ const frameMetrics = (baseline, edited, options) => {
         borderCount += 1;
         if (edited.data[offset] < 12 && edited.data[offset + 1] < 12
           && edited.data[offset + 2] < 12) borderNearBlack += 1;
+        if (edited.data[offset + 3] < 250) borderTransparent += 1;
       }
       if (inRoi(x, y, width, height, options.roi)) {
         const luma = edited.data[offset] * 0.2126
@@ -65,6 +66,7 @@ const frameMetrics = (baseline, edited, options) => {
     meanAbsDiff: absSum / (pixelCount * 3),
     changedPixelRatio: changed / pixelCount,
     borderNearBlackRatio: borderCount ? borderNearBlack / borderCount : 0,
+    borderTransparentRatio: borderCount ? borderTransparent / borderCount : 0,
     roiLumaStd: roiVariance === null ? null : Math.sqrt(roiVariance),
   };
 };
@@ -115,6 +117,10 @@ export const evaluateSparseVisualProofV1 = async ({
   if (rules.maxBorderNearBlackRatio !== undefined
     && metrics.some((frame) => frame.borderNearBlackRatio > rules.maxBorderNearBlackRatio)) {
     issues.push("BLACK_BORDER_OR_FRAME_EXPOSURE");
+  }
+  if (rules.maxBorderTransparentRatio !== undefined
+    && metrics.some((frame) => frame.borderTransparentRatio > rules.maxBorderTransparentRatio)) {
+    issues.push("TRANSPARENT_BORDER_OR_FRAME_EXPOSURE");
   }
   if (rules.minRoiLumaStd !== undefined
     && metrics.some((frame) => frame.roiLumaStd !== null

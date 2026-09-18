@@ -1,0 +1,363 @@
+{
+  "proof": "M5_TUTORIAL_001_TRANSFER_V1",
+  "skillId": "skill.velocity-zoom-transition",
+  "sourceCommit": "15aae5438f0b8fe2e09240b0873557811709cace",
+  "startedAt": "2026-09-18T06:13:42.118Z",
+  "panel": {
+    "sessionId": "e7716918-1444-4e57-bef9-7dbbdae4a3bf",
+    "protocolVersion": "2.7.0",
+    "supportedProtocolVersions": [
+      "2.7.0",
+      "2.6.0",
+      "2.5.0",
+      "2.4.0",
+      "2.3.0",
+      "2.2.0",
+      "2.1.0",
+      "2.0.0",
+      "1.9.0",
+      "1.8.0",
+      "1.7.0",
+      "1.6.0",
+      "1.5.0",
+      "1.4.0",
+      "1.3.0",
+      "1.2.0",
+      "1.1.0"
+    ],
+    "extensionId": "com.editflow2.bridge.panel",
+    "extensionVersion": "0.1.0-dev.12",
+    "registeredAt": "2026-09-18T05:56:36.192Z",
+    "lastSeenAt": "2026-09-18T06:13:41.967Z"
+  },
+  "transferProfile": {
+    "id": "real-media-landscape-motion-v1",
+    "realSourceStableId": "M5_MOCHA_SOURCE",
+    "comp": {
+      "width": 1920,
+      "height": 1080,
+      "durationSeconds": 6.4,
+      "frameRate": 30
+    },
+    "anchor": {
+      "timeMs": 3200,
+      "basis": "MOTION_DRIVEN"
+    },
+    "sourceWindows": {
+      "outgoing": {
+        "sourceStartSeconds": 6,
+        "sourceEndSeconds": 12.4,
+        "layerStartTimeSeconds": -6
+      },
+      "incoming": {
+        "sourceStartSeconds": 20,
+        "sourceEndSeconds": 26.4,
+        "layerStartTimeSeconds": -20
+      }
+    },
+    "targetTiming": {
+      "outgoingInSeconds": 0,
+      "outgoingOutSeconds": 3.2,
+      "incomingInSeconds": 3.2,
+      "incomingOutSeconds": 6.4
+    },
+    "compileHandleTiming": {
+      "outgoingInSeconds": 0,
+      "outgoingOutSeconds": 4.4,
+      "incomingInSeconds": 2,
+      "incomingOutSeconds": 6.4
+    },
+    "sourceTransform": {
+      "position": [
+        960,
+        540
+      ],
+      "scale": [
+        178,
+        178
+      ]
+    },
+    "recipe": {
+      "velocityPulseDuration": 0.42,
+      "velocityContrast": 0.28,
+      "temporalPeakPhase": 0.5,
+      "zoomPulseDuration": 0.34,
+      "zoomIntensity": 0.18,
+      "zoomCenter": [
+        0.35,
+        0.58
+      ],
+      "zoomTemporalPhase": 0.5
+    },
+    "visual": {
+      "timesMs": [
+        2800,
+        3100,
+        3200,
+        3300,
+        3600
+      ],
+      "rules": {
+        "minAnchorToPeakRatio": 0.45,
+        "changeThreshold": 12,
+        "borderWidth": 12,
+        "maxBorderNearBlackRatio": 0.001,
+        "roi": {
+          "center": [
+            0.35,
+            0.58
+          ],
+          "radiusPx": 100
+        },
+        "minRoiLumaStd": 15,
+        "tailTimesMs": [
+          2800,
+          3600
+        ],
+        "minAnchorToTailRatio": 1.05
+      }
+    },
+    "motion": {
+      "timesMs": [
+        2700,
+        2800,
+        2900,
+        3000,
+        3100,
+        3300,
+        3400,
+        3500,
+        3600,
+        3700
+      ],
+      "referenceMarkers": [
+        {
+          "id": "ref-left",
+          "rgb": [
+            0,
+            255,
+            0
+          ],
+          "sourceX": 288
+        },
+        {
+          "id": "ref-right",
+          "rgb": [
+            255,
+            0,
+            255
+          ],
+          "sourceX": 1632
+        }
+      ],
+      "movingMarker": {
+        "id": "motion",
+        "rgb": [
+          255,
+          128,
+          0
+        ]
+      },
+      "segments": [
+        {
+          "id": "outgoing",
+          "startTimeMs": 2700,
+          "endTimeMs": 3100,
+          "sourceStartX": 1248,
+          "sourceEndX": 96,
+          "expectedTrend": "ACCELERATE"
+        },
+        {
+          "id": "incoming",
+          "startTimeMs": 3300,
+          "endTimeMs": 3700,
+          "sourceStartX": 96,
+          "sourceEndX": 1248,
+          "expectedTrend": "DECELERATE"
+        }
+      ],
+      "rules": {
+        "colorTolerance": 8,
+        "minMarkerPixels": 80,
+        "minPlaybackRate": 0.12,
+        "maxPlaybackRate": 2.5,
+        "minTrendRatio": 1.06,
+        "sourceTimeToleranceSeconds": 0.1
+      }
+    },
+    "transferAxes": [
+      "different frame rate",
+      "different shot duration and source-handle length",
+      "different subject scale and off-center subject position",
+      "different source motion speed and direction",
+      "portrait versus landscape aspect ratio",
+      "beat-driven versus motion-driven transition anchor"
+    ]
+  },
+  "realMedia": {
+    "sourceStableId": "M5_MOCHA_SOURCE",
+    "sourceName": "EF2_M5_MOCHA_SOURCE",
+    "sourceWindows": {
+      "outgoing": {
+        "sourceStartSeconds": 6,
+        "sourceEndSeconds": 12.4,
+        "layerStartTimeSeconds": -6
+      },
+      "incoming": {
+        "sourceStartSeconds": 20,
+        "sourceEndSeconds": 26.4,
+        "layerStartTimeSeconds": -20
+      }
+    }
+  },
+  "before": {
+    "hostRevision": 6489,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ]
+  },
+  "visual": {
+    "baseline": {
+      "proof": "M5_TUTORIAL_001_TRANSFER_VISUAL_V1",
+      "phase": "baseline",
+      "timesMs": [
+        2800,
+        3100,
+        3200,
+        3300,
+        3600
+      ],
+      "files": [
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\baseline_2800ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\baseline_3100ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\baseline_3200ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\baseline_3300ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\baseline_3600ms.png"
+      ],
+      "targetLayers": 2,
+      "capturedAtMs": 1789712024271
+    },
+    "edited": {
+      "proof": "M5_TUTORIAL_001_TRANSFER_VISUAL_V1",
+      "phase": "edited",
+      "timesMs": [
+        2800,
+        3100,
+        3200,
+        3300,
+        3600
+      ],
+      "files": [
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\edited_2800ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\edited_3100ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\edited_3200ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\edited_3300ms.png",
+        "C:\\Users\\Shadow\\EditFlow-2.0-recipe-native-lowering\\proofs\\artifacts\\tutorial-001-transfer\\edited_3600ms.png"
+      ],
+      "targetLayers": 2,
+      "capturedAtMs": 1789712031797
+    },
+    "assessment": {
+      "schema": "editflow.sparse-visual-assessment.v1",
+      "passed": false,
+      "anchorMs": 3200,
+      "anchor": {
+        "timeMs": 3200,
+        "meanAbsDiff": 22.963717528292182
+      },
+      "peak": {
+        "timeMs": 3300,
+        "meanAbsDiff": 62.745492058899174
+      },
+      "metrics": [
+        {
+          "timeMs": 2800,
+          "width": 1920,
+          "height": 1080,
+          "meanAbsDiff": 24.9389536715535,
+          "changedPixelRatio": 0.5209500385802469,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 43.41879006017119
+        },
+        {
+          "timeMs": 3100,
+          "width": 1920,
+          "height": 1080,
+          "meanAbsDiff": 29.689242701903293,
+          "changedPixelRatio": 0.6231206597222222,
+          "borderNearBlackRatio": 0,
+          "roiLumaStd": 31.701698936382037
+        },
+        {
+          "timeMs": 3200,
+          "width": 1920,
+          "height": 1080,
+          "meanAbsDiff": 22.963717528292182,
+          "changedPixelRatio": 0.4873533950617284,
+          "borderNearBlackRatio": 0.03459621415770609,
+          "roiLumaStd": 44.72822852332231
+        },
+        {
+          "timeMs": 3300,
+          "width": 1920,
+          "height": 1080,
+          "meanAbsDiff": 62.745492058899174,
+          "changedPixelRatio": 0.9576268325617284,
+          "borderNearBlackRatio": 0.4416022625448029,
+          "roiLumaStd": 71.09777924115444
+        },
+        {
+          "timeMs": 3600,
+          "width": 1920,
+          "height": 1080,
+          "meanAbsDiff": 59.2339168595679,
+          "changedPixelRatio": 0.961947337962963,
+          "borderNearBlackRatio": 0.48024473566308246,
+          "roiLumaStd": 60.52860730072429
+        }
+      ],
+      "issues": [
+        "ANCHOR_VISUAL_STRENGTH_LOW",
+        "BLACK_BORDER_OR_FRAME_EXPOSURE",
+        "ANCHOR_PULSE_NOT_CONCENTRATED"
+      ]
+    }
+  },
+  "fixture": {
+    "proof": "M5_TUTORIAL_001_TRANSFER_V1",
+    "phase": "prepared",
+    "realMediaLayers": [
+      "EF2_T001_TRANSFER_REAL_OUT_LAYER",
+      "EF2_T001_TRANSFER_REAL_IN_LAYER"
+    ],
+    "sourceComps": [
+      "EF2_T001_TRANSFER_SOURCE_OUT",
+      "EF2_T001_TRANSFER_SOURCE_IN"
+    ],
+    "targetLayers": [
+      "EF2_T001_TRANSFER_LAYER_OUT",
+      "EF2_T001_TRANSFER_LAYER_IN"
+    ],
+    "preparedAtMs": 1789712024275
+  },
+  "error": {
+    "message": "Transfer sparse visual assessment failed: ANCHOR_VISUAL_STRENGTH_LOW, BLACK_BORDER_OR_FRAME_EXPOSURE, ANCHOR_PULSE_NOT_CONCENTRATED",
+    "stack": "Error: Transfer sparse visual assessment failed: ANCHOR_VISUAL_STRENGTH_LOW, BLACK_BORDER_OR_FRAME_EXPOSURE, ANCHOR_PULSE_NOT_CONCENTRATED\n    at requireThat (file:///C:/Users/Shadow/EditFlow-2.0-recipe-native-lowering/scripts/proofs/tutorial-001-transfer.mjs:32:25)\n    at main (file:///C:/Users/Shadow/EditFlow-2.0-recipe-native-lowering/scripts/proofs/tutorial-001-transfer.mjs:389:5)\n    at async file:///C:/Users/Shadow/EditFlow-2.0-recipe-native-lowering/scripts/proofs/tutorial-001-transfer.mjs:492:1"
+  },
+  "finishedAt": "2026-09-18T06:14:02.219Z",
+  "cleanup": {
+    "hostRevision": 6940,
+    "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
+    "itemCount": 5,
+    "stableItemIds": [
+      "M5_MOCHA_COMP",
+      "M5_MOCHA_SOURCE"
+    ],
+    "baselineFingerprintRestored": true,
+    "baselineItemCountRestored": true,
+    "baselineStableIdsRestored": true
+  }
+}
