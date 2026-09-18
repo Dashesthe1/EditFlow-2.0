@@ -133,7 +133,7 @@
     timesMs: times,
     files: files,
     targetLayers: target.numLayers,
-    capturedAt: (new Date()).toISOString()
+    capturedAtMs: (new Date()).getTime()
   };
   writeJson(new File(outputDir.fsName + "/" + phase + ".json"), result);
 }());
