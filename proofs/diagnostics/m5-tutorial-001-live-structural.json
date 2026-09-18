@@ -1,7 +1,7 @@
 {
   "proof": "M5_TUTORIAL_001_LIVE_STRUCTURAL_V1",
-  "sourceCommit": "199e707988d1ddcaed45cd1e0b6a4d3d4350b622",
-  "startedAt": "2026-09-18T04:23:10.141Z",
+  "sourceCommit": "aa64231c52a6c3b7bba5a12bdce5bb1c99231dfe",
+  "startedAt": "2026-09-18T04:26:55.971Z",
   "panel": {
     "sessionId": "16888f15-36d0-4c3c-b9bf-b027f3af6c59",
     "protocolVersion": "2.7.0",
@@ -27,10 +27,10 @@
     "extensionId": "com.editflow2.bridge.panel",
     "extensionVersion": "0.1.0-dev.12",
     "registeredAt": "2026-09-18T04:16:38.447Z",
-    "lastSeenAt": "2026-09-18T04:23:09.982Z"
+    "lastSeenAt": "2026-09-18T04:26:55.781Z"
   },
   "before": {
-    "hostRevision": 757,
+    "hostRevision": 1423,
     "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
     "itemCount": 5,
     "stableItemIds": [
@@ -53,15 +53,15 @@
     ],
     "resultState": "COMMITTED",
     "appliedOperations": 48,
-    "hostRevisionAfter": 1013,
+    "hostRevisionAfter": 1679,
     "targetLayerIds": [
       "precompose-transition-shots::1::EF2_T001_LIVE_LAYER_IN::layer",
       "precompose-transition-shots::0::EF2_T001_LIVE_LAYER_OUT::layer"
     ]
   },
-  "finishedAt": "2026-09-18T04:23:18.667Z",
+  "finishedAt": "2026-09-18T04:27:05.350Z",
   "cleanup": {
-    "hostRevision": 1018,
+    "hostRevision": 1684,
     "projectFingerprint": "project:sha256:1dba736983d9c5755b97c762c86667ebbbf60b5992d047504cf22734057a4803",
     "itemCount": 5,
     "stableItemIds": [
