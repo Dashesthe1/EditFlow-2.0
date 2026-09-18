@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+
+import {
+  sha256RepositoryTextHex,
+} from "../.tmp/runtime/packages/fingerprints/src/index.js";
 
 import {
   AE_TIME_REMAP_ADAPTER_BUILD_V27,
@@ -212,9 +215,15 @@ test("Time Remap live proof is warm-process-safe and disposable-project-state on
 });
 
 test("retained Time Remap proof authority is source- and digest-bound", async () => {
-  const resultBytes = await readFile(M5_TIME_REMAP_V27_ACCEPTANCE_RESULT);
-  const digest = createHash("sha256").update(resultBytes).digest("hex");
+  const resultText = await readFile(M5_TIME_REMAP_V27_ACCEPTANCE_RESULT, "utf8");
+  const digest = sha256RepositoryTextHex(resultText);
   assert.equal(digest, M5_TIME_REMAP_V27_ACCEPTANCE_RESULT_SHA256);
+  assert.equal(
+    sha256RepositoryTextHex(
+      resultText.replace(/\r\n|\r|\n/g, "\r\n"),
+    ),
+    M5_TIME_REMAP_V27_ACCEPTANCE_RESULT_SHA256,
+  );
   assert.equal(
     M5_TIME_REMAP_V27_ACCEPTED_SOURCE_COMMIT,
     "e6bfa2b5e540767d60a2b13e883b2acbef374cab",

@@ -40,6 +40,14 @@ export const canonicalStringify = (value: unknown): string => JSON.stringify(nor
 export const sha256Hex = (value: unknown): string =>
   createHash("sha256").update(canonicalStringify(value)).digest("hex");
 
+const normalizeRepositoryText = (value: string): string =>
+  value.replace(/\r\n|\r|\n/g, "\n");
+
+export const sha256RepositoryTextHex = (value: string): string =>
+  createHash("sha256")
+    .update(normalizeRepositoryText(value), "utf8")
+    .digest("hex");
+
 export const computeProjectFingerprint = (value: unknown): ProjectFingerprint =>
   asProjectFingerprint(`project:sha256:${sha256Hex(value)}`);
 
