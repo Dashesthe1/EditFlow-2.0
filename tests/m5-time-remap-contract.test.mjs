@@ -27,6 +27,11 @@ import {
   M5_TIME_REMAP_V27_ACCEPTED_AE_VERSION,
   M5_TIME_REMAP_V27_ACCEPTED_SOURCE_COMMIT,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m5-time-remap-proof-maturity.js";
+import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
+
+const brokerToken = "m5timeremapwarmbrokertoken0123456789abcdef0123456789";
+const brokerHeaders = { "Content-Type": "application/json", "X-EditFlow-Token": brokerToken };
+const warmProtocols = ["2.7.0", "2.6.0", "2.5.0", "2.4.0", "2.3.0", "2.2.0", "2.1.0", "2.0.0", "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0"];
 
 test("protocol 2.7 exposes only native Time Remap enable and readback", () => {
   assert.equal(AE_TIME_REMAP_PROTOCOL_VERSION_V27, "2.7.0");
@@ -93,6 +98,116 @@ test("request builder revision-gates enable but keeps readback read-only", () =>
   });
   assert.equal(readback.capabilityId, "ae.layer.time_remap.readback");
   assert.equal(readback.expectedHostProjectRevision, null);
+});
+
+test("generic loopback broker negotiates 2.7 and transports typed Time Remap traffic", async () => {
+  const broker = new LoopbackCepBroker({
+    port: 0,
+    token: brokerToken,
+    commandTimeoutMs: 2000,
+    commandLeaseMs: 50,
+    supportedProtocolVersions: warmProtocols,
+  });
+  const port = await broker.start();
+  try {
+    assert.deepEqual([...broker.options.supportedProtocolVersions], warmProtocols);
+    const registrationResponse = await fetch(`http://127.0.0.1:${port}/v1/register`, {
+      method: "POST",
+      headers: brokerHeaders,
+      body: JSON.stringify({
+        protocolVersion: "1.1.0",
+        supportedProtocolVersions: warmProtocols,
+        extensionId: "com.editflow2.bridge.panel",
+        extensionVersion: "0.1.0-dev.12",
+      }),
+    });
+    const registration = await registrationResponse.json();
+    assert.equal(registrationResponse.status, 200);
+    assert.equal(registration.protocolVersion, "2.7.0");
+
+    const request = buildTimeRemapRequestV27({
+      requestId: "REQ_WARM_V27",
+      transactionId: "TX_WARM_V27",
+      operationId: "OP_WARM_V27",
+      command: "layer.time_remap.readback",
+      payload: { comp: { stableId: "COMP" }, layer: { stableId: "LAYER" } },
+    });
+    const dispatched = broker.dispatch(request);
+    const nextResponse = await fetch(`http://127.0.0.1:${port}/v1/next?sessionId=${encodeURIComponent(registration.sessionId)}`, {
+      headers: brokerHeaders,
+    });
+    const leased = await nextResponse.json();
+    assert.equal(nextResponse.status, 200);
+    assert.equal(leased.protocolVersion, "2.7.0");
+    assert.equal(leased.command, "layer.time_remap.readback");
+
+    const response = {
+      protocolVersion: "2.7.0",
+      requestId: request.requestId,
+      transactionId: request.transactionId,
+      operationId: request.operationId,
+      capabilityId: request.capabilityId,
+      command: request.command,
+      outcome: "NO_OP",
+      error: null,
+      affectedObjects: [],
+      readback: {
+        layer: { stableId: "LAYER", hostId: 2, name: "Clip", index: 1 },
+        canSetTimeRemapEnabled: true,
+        timeRemapEnabled: true,
+        propertyAvailable: true,
+        propertyMatchName: "ADBE Time Remapping",
+        numKeys: 2,
+        keys: [{ index: 1, time: 0, value: 0 }, { index: 2, time: 1, value: 1 }],
+      },
+      hostProjectRevision: 7,
+      diagnostics: {
+        adapterProtocolVersion: "2.7.0",
+        adapterBuild: "0.7.0-dev.1",
+        command: request.command,
+        notes: [],
+      },
+    };
+    const accepted = await fetch(`http://127.0.0.1:${port}/v1/response`, {
+      method: "POST",
+      headers: brokerHeaders,
+      body: JSON.stringify({ sessionId: registration.sessionId, response }),
+    });
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(await dispatched, response);
+  } finally {
+    await broker.stop();
+  }
+});
+
+test("standard CEP installer carries the retained additive host chain through 2.7", async () => {
+  const source = await readFile("scripts/windows/install-editflow-cep.ps1", "utf8");
+  for (const file of [
+    "editflow_host_m4_point_tracking.jsx",
+    "editflow_host_m4_face_tracking.jsx",
+    "editflow_host_m4_stabilization.jsx",
+    "editflow_host_m4_repair_resume.jsx",
+    "editflow_host_m4_media_sequence.jsx",
+    "editflow_host_m5_roto_brush.jsx",
+    "editflow_host_m5_time_remap.jsx",
+    "editflow_host_current_v21.jsx",
+    "editflow_host_current_v22.jsx",
+    "editflow_host_current_v23.jsx",
+    "editflow_host_current_v24.jsx",
+    "editflow_host_current_v25.jsx",
+    "editflow_host_current_v26.jsx",
+    "editflow_host_current_v27.jsx",
+  ]) assert.ok(source.includes(`"${file}"`), `installer missing ${file}`);
+
+  assert.match(source, /\$ExtensionVersion = "0\.1\.0-dev\.12"/);
+  assert.match(source, /\$KnownV27 = 'var KNOWN_PROTOCOLS = \["2\.7\.0","2\.6\.0","2\.5\.0"/);
+  assert.match(source, /Replace\('editflow_host_current_v18\.jsx', 'editflow_host_current_v27\.jsx'\)/);
+  assert.match(source, /Replace\('EditFlow2_HOST_PROTOCOL_18', 'EditFlow2_HOST_PROTOCOL_27'\)/);
+  assert.match(source, /supportedProtocolVersions = @\("2\.7\.0", "2\.6\.0", "2\.5\.0", "2\.4\.0", "2\.3\.0", "2\.2\.0", "2\.1\.0", "2\.0\.0"/);
+  assert.match(source, /Panel protocols advertised: 2\.7\.0, 2\.6\.0, 2\.5\.0, 2\.4\.0, 2\.3\.0, 2\.2\.0, 2\.1\.0, 2\.0\.0/);
+  assert.match(source, /Reopen the EditFlow CEP panel after updating installed extension files/);
+  assert.match(source, /Restart After Effects only if the panel cannot reload safely/);
+  assert.doesNotMatch(source, /Restart After Effects after updating installed extension files/);
 });
 
 test("Time Remap transport serializes hostile stable IDs as data", async () => {
