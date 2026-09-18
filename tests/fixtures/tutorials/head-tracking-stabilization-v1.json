@@ -1,0 +1,562 @@
+{
+  "schema": "editflow.tutorial-analysis.v1",
+  "tutorialId": "tutorial.subject-locked-stabilization.002",
+  "title": "Head tracking tutorial on After Effects",
+  "sourceRef": "gdrive://1BCmo2cOqyJ0XVYri2jlKXWXh9wg1hgnU",
+  "durationMs": 79922,
+  "evidenceRefs": [
+    "video:00:00-00:06:subject-locked-preview",
+    "video:00:16-00:18:stabilize-motion-selected",
+    "video:00:18-00:34:single-point-head-feature-analysis",
+    "video:00:36-00:40:apply-position-xy",
+    "video:00:46-00:56:motion-tile-mirror-edges",
+    "video:00:58-01:08:post-stabilization-reframe",
+    "video:01:10-01:14:motion-blur-frame-blending"
+  ],
+  "skills": [
+    {
+      "skillId": "skill.subject-locked-stabilization",
+      "name": "Subject-locked head stabilization",
+      "what": {
+        "objective": "Hold a hero subject's head in a stable viewer-space region while allowing the surrounding shot motion to become the visible movement, then repair stabilization edge exposure and residual harshness.",
+        "components": [
+          {
+            "componentId": "persistent-head-feature-track",
+            "visibleResult": "A stable high-contrast facial/head feature is tracked across the shot.",
+            "role": "Provide reliable motion evidence for subject locking.",
+            "interactions": [
+              "Drives inverse stabilization and determines whether the edit remains credible."
+            ]
+          },
+          {
+            "componentId": "inverse-position-compensation",
+            "visibleResult": "The hero head remains approximately locked while the background moves around it.",
+            "role": "Create the defining subject-locked visual gesture.",
+            "interactions": [
+              "Depends on track quality and creates border exposure that later edge treatment must handle."
+            ]
+          },
+          {
+            "componentId": "stabilization-edge-fill",
+            "visibleResult": "Compensating motion does not reveal distracting black edges.",
+            "role": "Preserve frame coverage after inverse motion.",
+            "interactions": [
+              "Should be no stronger than required; excessive tiling can create repeated-edge artifacts."
+            ]
+          },
+          {
+            "componentId": "subject-aware-reframe",
+            "visibleResult": "Scale and position are adjusted so the locked head remains compositionally intentional rather than merely mathematically stationary.",
+            "role": "Restore visual hierarchy and crop safety after stabilization.",
+            "interactions": [
+              "Balances edge coverage against facial readability and aspect-ratio constraints."
+            ]
+          },
+          {
+            "componentId": "temporal-smoothing",
+            "visibleResult": "Residual micro-jitter and hard frame cadence are softened without visibly smearing the face.",
+            "role": "Polish the locked motion.",
+            "interactions": [
+              "Motion blur and frame blending are finishing tools, not substitutes for a bad track."
+            ]
+          }
+        ]
+      },
+      "whenWhy": {
+        "creativeIntent": "Turn subject motion and camera movement into a stylized subject-lock where the hero face becomes the visual anchor.",
+        "attentionGoal": "Keep viewer attention fixed on the hero head while environmental motion supplies energy.",
+        "emotionalPurpose": "Create a controlled, dominant, edit-forward feeling in which the subject appears visually anchored despite motion.",
+        "pacingRole": "Works best as a short emphasis passage or transition-supporting shot; the locked anchor can make surrounding motion feel more energetic without adding shake.",
+        "musicRelationship": "Can support a musical accent or energetic section, but the lock itself is driven by subject motion continuity rather than requiring a beat.",
+        "dialogueRelationship": "Avoid aggressive locking or smoothing when facial articulation and natural camera continuity are more important than stylized emphasis.",
+        "motionConditions": [
+          "A persistent high-contrast feature near the hero head remains trackable for the intended window.",
+          "Subject/camera motion is large enough that stabilizing around the head produces a meaningful environmental-motion effect.",
+          "Occlusion, strong profile rotation, motion blur, or feature deformation do not invalidate the chosen point."
+        ],
+        "compositionConditions": [
+          "The hero head can remain inside a safe composition region after compensation.",
+          "Enough crop headroom exists to hide stabilization borders without destroying subject readability.",
+          "Mirrored/tiled edge content will not create obvious duplicate objects or seams."
+        ],
+        "continuityConstraints": [
+          "Do not erase intentional camera motion when continuity depends on the original move.",
+          "Do not let subject-locking create an implausible jump at shot boundaries.",
+          "If track confidence collapses, repair or shorten the window rather than hiding drift with blur."
+        ],
+        "useWhen": [
+          "A hero face/head is the dominant attention target and a stylized locked-subject look fits the edit.",
+          "The shot contains useful relative motion that becomes visually interesting when the subject is stabilized.",
+          "A short energetic passage benefits from stronger subject anchoring than ordinary reframing."
+        ],
+        "avoidWhen": [
+          "The track feature is frequently occluded, deforming, low-contrast, or leaving frame.",
+          "Natural handheld/camera motion is narratively important and should remain visible.",
+          "The required scale or edge fill would crop important anatomy or reveal obvious repeated-edge artifacts.",
+          "Face detail would be degraded by the motion blur/frame blending needed to hide residual errors."
+        ],
+        "restraintRule": "Use the smallest stabilization window, crop/scale compensation, edge fill, and temporal smoothing that creates a convincing lock; if the subject already reads clearly, no effect can be better than forcing the technique."
+      },
+      "how": {
+        "topology": [
+          "One hero AV layer is selected as the stabilization target.",
+          "Native Stabilize Motion uses one track point for Position-only stabilization.",
+          "The track feature is placed on a persistent high-contrast head/face detail and analyzed forward.",
+          "Apply uses X and Y dimensions, producing inverse position compensation around the tracked feature.",
+          "Motion Tile is added after stabilization when compensation exposes borders; mirrored edges are enabled and output coverage is expanded only as needed.",
+          "Layer transform position/scale is then reframed around the hero head and crop-safe region.",
+          "Layer/composition motion blur and frame blending are enabled only when visual review shows they improve residual cadence without smearing the face."
+        ],
+        "timingModel": "Tracking and stabilization span only the useful subject-lock window; reframe and edge coverage are derived from the maximum compensation over that same window rather than copied from tutorial constants.",
+        "easingModel": "Native stabilization compensation follows measured motion rather than an authored ease curve; any reframe adjustment should avoid adding competing animated drift unless intentionally designed.",
+        "adaptationRules": [
+          "Choose a track feature for persistence and local contrast, not because it occupies the tutorial's literal sunglasses/nose coordinates.",
+          "Shorten or repair the tracked window when confidence drops, occlusion appears, or the feature changes shape materially.",
+          "Derive border coverage from measured compensation amplitude, aspect ratio, and crop headroom before choosing scale or mirrored edge expansion.",
+          "Prefer crop/scale compensation when it is visually cheap; use mirrored Motion Tile only when edge exposure remains and duplicate-edge artifacts are unlikely.",
+          "Reframe toward the semantic hero-head safe region rather than blindly centering the source layer.",
+          "Enable motion blur/frame blending only after track and reframe quality pass; reduce or disable them if facial detail smears.",
+          "The literal Motion Tile implementation uses the stable first-party match name ADBE Tile; property values remain adaptive rather than copied."
+        ],
+        "mechanisms": [
+          {
+            "mechanismId": "stabilize-hero-head",
+            "primitive": "STABILIZATION",
+            "startMs": 16000,
+            "endMs": 40000,
+            "intent": "Measure persistent hero-head motion and apply inverse X/Y position compensation so the head becomes the viewer-space anchor.",
+            "construction": "Use native Stabilize Motion in Position mode with one persistent high-contrast head/face feature, Analyze Forward, then Apply X and Y. Verify tracker sample growth plus Anchor Point compensation readback rather than trusting UI completion alone.",
+            "observableResult": "The selected head feature remains approximately fixed while the environment moves around it.",
+            "dependsOn": [],
+            "parameters": [
+              {
+                "name": "stabilizationMode",
+                "intent": "Restrict the tutorial technique to position locking unless rotation/scale evidence explicitly requires more.",
+                "derivedFrom": [
+                  "subjectMotion",
+                  "cameraMotion",
+                  "trackGeometry"
+                ],
+                "value": "POSITION_XY"
+              },
+              {
+                "name": "analysisDirection",
+                "intent": "Analyze in the proven direction for the selected shot window.",
+                "derivedFrom": [
+                  "shotWindow",
+                  "editDirection"
+                ],
+                "value": "FORWARD"
+              },
+              {
+                "name": "trackFeaturePolicy",
+                "intent": "Choose a persistent high-contrast feature near the hero head rather than a fixed coordinate.",
+                "derivedFrom": [
+                  "heroHeadRegion",
+                  "localContrast",
+                  "occlusionRisk",
+                  "featurePersistence"
+                ],
+                "value": "PERSISTENT_HIGH_CONTRAST_HEAD_FEATURE"
+              },
+              {
+                "name": "minimumTrackConfidence",
+                "intent": "Fail closed or repair instead of accepting visible drift.",
+                "derivedFrom": [
+                  "featureConfidence",
+                  "driftRisk",
+                  "occlusion"
+                ],
+                "normalizedRange": {
+                  "min": 0.55,
+                  "max": 0.95
+                }
+              }
+            ],
+            "target": {
+              "roles": [
+                "hero_shot"
+              ],
+              "mode": "EACH"
+            },
+            "evidenceRefs": [
+              "video:00:16-00:18:stabilize-motion-selected",
+              "video:00:18-00:34:single-point-head-feature-analysis",
+              "video:00:36-00:40:apply-position-xy"
+            ]
+          },
+          {
+            "mechanismId": "fill-stabilization-edges",
+            "primitive": "EFFECT_STACK",
+            "startMs": 46000,
+            "endMs": 56000,
+            "intent": "Prevent stabilization compensation from revealing black frame edges while minimizing repeated-edge artifacts.",
+            "construction": "Add first-party Motion Tile (matchName ADBE Tile). Use stable property paths for output coverage and Mirror Edges; expand only enough to cover measured border exposure.",
+            "observableResult": "No black borders appear during the lock and mirrored edge content does not become a visible pattern.",
+            "dependsOn": [
+              "stabilize-hero-head"
+            ],
+            "parameters": [
+              {
+                "name": "effectMatchName",
+                "intent": "Select the native Motion Tile implementation without relying on localized display text.",
+                "derivedFrom": [
+                  "installedEffectCatalog"
+                ],
+                "value": "ADBE Tile"
+              },
+              {
+                "name": "mirrorEdges",
+                "intent": "Mirror boundary pixels instead of exposing transparent/black borders.",
+                "derivedFrom": [
+                  "borderExposureRisk",
+                  "edgeContent"
+                ],
+                "value": true
+              },
+              {
+                "name": "outputExpansion",
+                "intent": "Expand tile output only enough to cover compensation amplitude.",
+                "derivedFrom": [
+                  "maxStabilizationOffset",
+                  "sourceDimensions",
+                  "aspectRatio",
+                  "cropHeadroom"
+                ],
+                "normalizedRange": {
+                  "min": 0,
+                  "max": 1
+                }
+              },
+              {
+                "name": "edgeArtifactTolerance",
+                "intent": "Limit expansion when mirrored duplicates become perceptually obvious.",
+                "derivedFrom": [
+                  "edgeObjectSalience",
+                  "edgeTexture",
+                  "visualReview"
+                ],
+                "normalizedRange": {
+                  "min": 0,
+                  "max": 1
+                }
+              }
+            ],
+            "target": {
+              "roles": [
+                "hero_shot"
+              ],
+              "mode": "EACH"
+            },
+            "evidenceRefs": [
+              "video:00:46-00:56:motion-tile-mirror-edges"
+            ]
+          },
+          {
+            "mechanismId": "reframe-locked-subject",
+            "primitive": "TRANSFORM_ANIMATION",
+            "startMs": 58000,
+            "endMs": 68000,
+            "intent": "Restore intentional composition after stabilization by placing the hero head inside a crop-safe attention region.",
+            "construction": "Adjust native layer Position and Scale after stabilization using hero-head location, crop headroom, edge exposure, and aspect ratio; do not copy tutorial coordinates.",
+            "observableResult": "The locked head sits in an intentional frame position with sufficient coverage and readable facial scale.",
+            "dependsOn": [
+              "fill-stabilization-edges"
+            ],
+            "parameters": [
+              {
+                "name": "position",
+                "intent": "Place the hero head in a semantic safe region appropriate to the shot.",
+                "derivedFrom": [
+                  "heroHeadCentroid",
+                  "compositionSafeRegion",
+                  "gazeDirection",
+                  "aspectRatio",
+                  "currentLayerTransform"
+                ]
+              },
+              {
+                "name": "scale",
+                "intent": "Use an adapted native scale vector that preserves coverage and subject hierarchy without copying tutorial percentages.",
+                "derivedFrom": [
+                  "borderExposureRisk",
+                  "cropHeadroom",
+                  "subjectScale",
+                  "aspectRatio",
+                  "currentLayerTransform"
+                ]
+              }
+            ],
+            "target": {
+              "roles": [
+                "hero_shot"
+              ],
+              "mode": "EACH"
+            },
+            "evidenceRefs": [
+              "video:00:58-01:08:post-stabilization-reframe"
+            ]
+          },
+          {
+            "mechanismId": "smooth-residual-locked-motion",
+            "primitive": "MOTION_BLUR",
+            "startMs": 70000,
+            "endMs": 74000,
+            "intent": "Polish residual motion cadence after a good lock without using blur to conceal tracking failure.",
+            "construction": "Enable the already-proven composition/layer motion controls and choose frame blending only when visual review benefits. The tutorial visibly enables motion blur and frame blending after the structural work.",
+            "observableResult": "Micro-jitter feels smoother while facial details remain legible.",
+            "dependsOn": [
+              "reframe-locked-subject"
+            ],
+            "parameters": [
+              {
+                "name": "motionBlurEnabled",
+                "intent": "Enable layer motion blur only when residual motion benefits.",
+                "derivedFrom": [
+                  "residualJitter",
+                  "subjectDetail",
+                  "motionMagnitude"
+                ],
+                "value": true
+              },
+              {
+                "name": "frameBlendingType",
+                "intent": "Choose a concrete AE frame-blending mode from cadence and artifact risk.",
+                "derivedFrom": [
+                  "frameRate",
+                  "residualCadence",
+                  "occlusion",
+                  "faceDetail"
+                ]
+              },
+              {
+                "name": "compMotionBlurEnabled",
+                "intent": "Enable composition motion-blur rendering when the layer uses motion blur.",
+                "derivedFrom": [
+                  "motionBlurEnabled",
+                  "currentCompMotionState"
+                ]
+              },
+              {
+                "name": "compFrameBlendingEnabled",
+                "intent": "Enable composition frame blending only when the selected layer mode requires it.",
+                "derivedFrom": [
+                  "frameBlendingType",
+                  "currentCompMotionState"
+                ]
+              },
+              {
+                "name": "shutterAngle",
+                "intent": "Preserve or adapt the composition shutter angle for readable facial motion.",
+                "derivedFrom": [
+                  "currentCompMotionState",
+                  "motionMagnitude",
+                  "subjectDetail"
+                ]
+              },
+              {
+                "name": "shutterPhase",
+                "intent": "Preserve or adapt shutter phase without introducing temporal bias.",
+                "derivedFrom": [
+                  "currentCompMotionState",
+                  "shutterAngle"
+                ]
+              },
+              {
+                "name": "samplesPerFrame",
+                "intent": "Use enough samples for smooth motion without unnecessary render cost.",
+                "derivedFrom": [
+                  "currentCompMotionState",
+                  "motionMagnitude",
+                  "renderBudget"
+                ]
+              },
+              {
+                "name": "adaptiveSampleLimit",
+                "intent": "Bound adaptive sampling according to motion complexity and render budget.",
+                "derivedFrom": [
+                  "currentCompMotionState",
+                  "motionComplexity",
+                  "renderBudget"
+                ]
+              }
+            ],
+            "target": {
+              "roles": [
+                "hero_shot"
+              ],
+              "mode": "EACH"
+            },
+            "evidenceRefs": [
+              "video:01:10-01:14:motion-blur-frame-blending"
+            ]
+          }
+        ]
+      },
+      "access": {
+        "bindings": [
+          {
+            "mechanismId": "stabilize-hero-head",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.stabilization.position.guarded_visual",
+                "reason": "Execute the retained native position Stabilize Motion Analyze Forward + Apply workflow with verified visual target binding.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL",
+                "preferredRouteKinds": [
+                  "GUARDED_UI"
+                ]
+              },
+              {
+                "capabilityId": "ae.stabilization.readback",
+                "reason": "Verify tracker samples and compensation keyframes before/after the guarded stabilization action.",
+                "minimumProofMaturity": "STRUCTURAL",
+                "minimumSupportStatus": "PARTIAL"
+              }
+            ]
+          },
+          {
+            "mechanismId": "fill-stabilization-edges",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.effect.add",
+                "reason": "Add native Motion Tile using stable matchName ADBE Tile.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
+              },
+              {
+                "capabilityId": "ae.effect.property.set",
+                "reason": "Set Motion Tile output coverage and Mirror Edges through stable effect property paths.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
+              }
+            ]
+          },
+          {
+            "mechanismId": "reframe-locked-subject",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.layer.transform.set",
+                "reason": "Apply subject-aware position and scale compensation after stabilization.",
+                "minimumProofMaturity": "VISUAL",
+                "minimumSupportStatus": "PARTIAL"
+              }
+            ]
+          },
+          {
+            "mechanismId": "smooth-residual-locked-motion",
+            "capabilityRequirements": [
+              {
+                "capabilityId": "ae.comp.motion.set",
+                "reason": "Enable composition motion rendering controls when needed.",
+                "minimumProofMaturity": "TRANSFER"
+              },
+              {
+                "capabilityId": "ae.layer.motion.set",
+                "reason": "Enable layer motion blur and select frame blending mode.",
+                "minimumProofMaturity": "TRANSFER"
+              }
+            ]
+          }
+        ]
+      },
+      "proof": {
+        "validationCriteria": [
+          "The hero head remains perceptually locked through the intended window without obvious drift.",
+          "No black/transparent borders appear after stabilization compensation.",
+          "Motion Tile or crop compensation does not create distracting repeated-edge patterns.",
+          "The post-lock reframe preserves face readability and intentional composition.",
+          "Motion blur/frame blending improve cadence without smearing the hero face or hiding track errors.",
+          "The technique remains recognizably subject-locked when transferred to footage with a different head position, motion direction, frame rate, and aspect ratio."
+        ],
+        "invariants": [
+          "Position stabilization uses a semantically bound hero-head feature and refuses unresolved/low-confidence identity.",
+          "The retained tutorial route is Position X/Y only; rotation/scale stabilization is not silently assumed.",
+          "Stabilization truth is verified from tracker and compensation-key growth, not only UI completion.",
+          "Edge-fill strength is derived from measured exposure and crop headroom rather than fixed tutorial percentages.",
+          "Reframe does not move the hero head outside the declared safe region.",
+          "Temporal smoothing is downstream of structural lock quality and cannot convert a failed track into a pass."
+        ],
+        "failureModes": [
+          {
+            "condition": "The head slowly drifts or suddenly jumps while the background appears stable.",
+            "diagnosis": "The chosen feature lost persistence, analysis drifted, or an occlusion/deformation invalidated the point.",
+            "repairStrategy": "Repair/reseed the track around the failure or shorten the stabilization window; do not increase blur first."
+          },
+          {
+            "condition": "Black borders or transparent wedges appear during larger compensation.",
+            "diagnosis": "Scale/crop coverage and edge-fill output are insufficient for the measured stabilization offset.",
+            "repairStrategy": "Increase crop-safe scale or adaptive Motion Tile output only as much as necessary, then recheck edge artifacts."
+          },
+          {
+            "condition": "Repeated faces/objects or mirrored seams appear at frame edges.",
+            "diagnosis": "Motion Tile expansion is too aggressive for salient edge content.",
+            "repairStrategy": "Prefer additional crop/scale, reduce tile expansion, shorten the lock window, or choose a different shot/feature."
+          },
+          {
+            "condition": "The head is technically stable but composition feels awkward.",
+            "diagnosis": "Inverse motion was applied without a semantic reframe around hero position, gaze, and aspect ratio.",
+            "repairStrategy": "Recompute target head safe region and scale/position compensation before altering the track."
+          },
+          {
+            "condition": "The face looks smeared or rubbery.",
+            "diagnosis": "Motion blur or frame blending is too strong for facial detail or occlusion.",
+            "repairStrategy": "Reduce/disable temporal smoothing and preserve the clean stabilized result."
+          }
+        ],
+        "transferAxes": [
+          "different hero-head screen position",
+          "different subject/camera motion direction and amplitude",
+          "different frame rate",
+          "portrait versus landscape aspect ratio",
+          "different facial feature selected for tracking",
+          "different border exposure and crop headroom"
+        ],
+        "robustnessAxes": [
+          "temporary occlusion requiring repair/resume",
+          "high motion blur or low local contrast",
+          "feature leaving frame near the lock boundary",
+          "edge content that makes mirror tiling visibly repetitive",
+          "existing transform animation before stabilization",
+          "very short stabilization window"
+        ]
+      },
+      "scenePrerequisites": [
+        "A hero subject/head can be semantically identified with enough confidence to bind the stabilization target.",
+        "At least one persistent high-contrast head/face feature can be tracked for the intended window.",
+        "The shot has enough crop headroom or safe edge-fill content to absorb inverse-motion border exposure.",
+        "The stylized subject-lock fits the narrative/continuity role of the shot."
+      ],
+      "knowledgeDelta": {
+        "newConcepts": [
+          "Subject-locked stabilization is a distinct semantic primitive from tracking: tracking measures motion; stabilization applies inverse motion to make a chosen feature the viewer-space anchor.",
+          "Stabilization requires an explicit edge-coverage policy because successful inverse motion can create new border defects."
+        ],
+        "reinforcedConcepts": [
+          "Professional tracking target selection is semantic and confidence-driven rather than coordinate memorization.",
+          "Motion blur and frame blending are finishing primitives and should not mask structural failure."
+        ],
+        "newCombinations": [
+          "Guarded native position stabilization + adaptive Motion Tile edge coverage + subject-aware reframe + selective temporal smoothing."
+        ],
+        "refinements": [
+          "The existing M4 stabilization capability is directly reusable; no tutorial-specific tracking adapter is needed.",
+          "Native Motion Tile can use generic effect-add/property-set access rather than a dedicated tutorial function."
+        ],
+        "contradictions": [
+          "The tutorial calls the result head tracking, but the visible AE construction is native position stabilization around a tracked head feature, not an attachment-follow recipe such as text or graphics parented to tracking data."
+        ]
+      },
+      "compatibleTechniques": [
+        "CAMERA_PUSH",
+        "SUBJECT_ISOLATION",
+        "MOTION_MATCHED_TRANSITION",
+        "BEAT_ACCENT"
+      ],
+      "conflictingTechniques": [
+        "AGGRESSIVE_SHAKE_AT_SAME_WINDOW",
+        "DIALOGUE_FACE_DETAIL_PRIORITY"
+      ]
+    }
+  ]
+}

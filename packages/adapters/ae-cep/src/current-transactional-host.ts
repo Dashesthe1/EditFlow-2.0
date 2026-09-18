@@ -28,6 +28,12 @@ import {
   type AeTemporalEaseTransportV18,
 } from "./protocol-v1_8.js";
 import {
+  AE_MARKER_MOTION_ROUTE_ID_V20,
+  capabilityForMarkerMotionCommandV20,
+  isAeMarkerMotionCommandV20,
+  type AeMarkerMotionTransportV20,
+} from "./protocol-v2_0.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
   capabilityForTimeRemapCommandV27,
   isAeTimeRemapCommandV27,
@@ -35,6 +41,7 @@ import {
 } from "./protocol-v2_7.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
+import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
 import { buildTimeRemapRequestV27 } from "./m5-time-remap.js";
 import {
   isNativeAeLiveCurveIntentV1,
@@ -49,6 +56,7 @@ export type CurrentAeCepTransactionalTransportV1 =
   AeAdapterTransportV11
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
+  & AeMarkerMotionTransportV20
   & AeTimeRemapTransportV27;
 
 interface ParsedOperation {
@@ -617,6 +625,28 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         }),
       );
       return this.#accept(response, parsed.command);
+    }
+    if (isAeMarkerMotionCommandV20(parsed.command)) {
+      assertBinding(
+        operation,
+        capabilityForMarkerMotionCommandV20(parsed.command),
+        AE_MARKER_MOTION_ROUTE_ID_V20,
+      );
+      const response = await this.transport.dispatch(
+        buildMarkerMotionRequestV20({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: String(operation.operationId),
+          command: parsed.command,
+          expectedHostProjectRevision:
+            parsed.command === "comp.motion.set" || parsed.command === "layer.motion.set"
+              ? revision
+              : null,
+          payload: parsed.payload,
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      return this.#accept(response as unknown as CommonResponse, parsed.command);
     }
     if (isAeTimeRemapCommandV27(parsed.command)) {
       assertBinding(

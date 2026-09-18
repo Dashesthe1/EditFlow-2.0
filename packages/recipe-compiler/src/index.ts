@@ -1,15 +1,88 @@
 import {
   validateEditingIrRecipeV1,
   type EditingIrNodeV1,
+  type EditingIrPrimitiveKindV1,
   type EditingIrRecipeV1,
 } from "../../editing-ir/src/index.js";
 import type {
   VirtualAeLayerV1,
   VirtualAeOperationV1,
   VirtualAeProjectV1,
+  VirtualAeFrameBlendingModeV1,
 } from "../../virtual-ae/src/index.js";
 
 export const RECIPE_COMPILER_PHASE = "M5_TUTORIAL_VIRTUAL_AE_FOUNDATION" as const;
+
+export const VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
+  "PRECOMPOSE",
+  "TIME_REMAP",
+  "CAMERA_PUSH",
+  "TRANSFORM_ANIMATION",
+  "MOTION_BLUR",
+] as const satisfies readonly EditingIrPrimitiveKindV1[];
+
+export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
+  "PRECOMPOSE",
+  "TIME_REMAP",
+  "CAMERA_PUSH",
+  "TRANSFORM_ANIMATION",
+  "MOTION_BLUR",
+] as const satisfies readonly EditingIrPrimitiveKindV1[];
+
+const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
+  if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
+    return node.timing === undefined;
+  }
+  return true;
+};
+
+const blockedKinds = (
+  recipe: EditingIrRecipeV1,
+  supportedKinds: readonly EditingIrPrimitiveKindV1[],
+): readonly EditingIrPrimitiveKindV1[] => {
+  const supported = new Set<EditingIrPrimitiveKindV1>(supportedKinds);
+  return [...new Set(
+    recipe.nodes
+      .filter((node) => node.optional !== true
+        && (!supported.has(node.kind) || !supportedNodeVariantV1(node)))
+      .map((node) => node.kind),
+  )].sort();
+};
+
+export const unsupportedVirtualAePrimitiveKindsV1 = (
+  recipe: EditingIrRecipeV1,
+): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
+  recipe,
+  VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
+);
+
+export const unsupportedNativeAePrimitiveKindsV1 = (
+  recipe: EditingIrRecipeV1,
+): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
+  recipe,
+  NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
+);
+
+export interface RecipeCompilerSupportReportV1 {
+  readonly virtualAeBlockedPrimitiveKinds: readonly EditingIrPrimitiveKindV1[];
+  readonly nativeAeBlockedPrimitiveKinds: readonly EditingIrPrimitiveKindV1[];
+  readonly blockedPrimitiveKinds: readonly EditingIrPrimitiveKindV1[];
+}
+
+export const inspectRecipeCompilerSupportV1 = (
+  recipe: EditingIrRecipeV1,
+): RecipeCompilerSupportReportV1 => {
+  const virtualAeBlockedPrimitiveKinds = unsupportedVirtualAePrimitiveKindsV1(recipe);
+  const nativeAeBlockedPrimitiveKinds = unsupportedNativeAePrimitiveKindsV1(recipe);
+  return {
+    virtualAeBlockedPrimitiveKinds,
+    nativeAeBlockedPrimitiveKinds,
+    blockedPrimitiveKinds: [...new Set([
+      ...virtualAeBlockedPrimitiveKinds,
+      ...nativeAeBlockedPrimitiveKinds,
+    ])].sort(),
+  };
+};
 
 export interface RecipeRoleBindingV1 {
   readonly role: string;
@@ -469,6 +542,123 @@ const compileCameraPush = (
   return uniqueStrings(outputs);
 };
 
+const compileStaticTransform = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+): readonly string[] => {
+  if (node.timing !== undefined) {
+    addIssue(issues, node.nodeId, "TRANSFORM_TIMING_UNSUPPORTED",
+      "TRANSFORM_ANIMATION currently supports adapted static transform state only.");
+    return [];
+  }
+  const propertyMap = [
+    ["position", "Transform.Position"],
+    ["scale", "Transform.Scale"],
+    ["anchorPoint", "Transform.AnchorPoint"],
+    ["rotation", "Transform.Rotation"],
+    ["opacity", "Transform.Opacity"],
+  ] as const;
+  const declared = propertyMap.filter(([name]) =>
+    node.parameters.some((parameter) => parameter.name === name));
+  if (declared.length === 0) {
+    addIssue(issues, node.nodeId, "TRANSFORM_PARAMETER_REQUIRED",
+      "Static transform requires at least one of position, scale, anchorPoint, rotation, or opacity.");
+    return [];
+  }
+  const values = new Map<string, unknown>();
+  for (const [name] of declared) {
+    const value = resolveParameter(node, name, context, issues);
+    if (value !== null) values.set(name, value);
+  }
+  if (values.size !== declared.length) return [];
+  for (const layerId of targets) {
+    for (const [name, propertyPath] of declared) {
+      operations.push({
+        type: "SET_PROPERTY",
+        compId: context.compId,
+        layerId,
+        propertyPath,
+        value: structuredClone(values.get(name)),
+      });
+    }
+  }
+  return targets;
+};
+
+const compileMotionBlur = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+): readonly string[] => {
+  if (node.timing !== undefined) {
+    addIssue(issues, node.nodeId, "MOTION_TIMING_UNSUPPORTED",
+      "MOTION_BLUR currently supports adapted composition/layer motion state only.");
+    return [];
+  }
+  const names = [
+    "motionBlurEnabled",
+    "frameBlendingType",
+    "compMotionBlurEnabled",
+    "compFrameBlendingEnabled",
+    "shutterAngle",
+    "shutterPhase",
+    "samplesPerFrame",
+    "adaptiveSampleLimit",
+  ] as const;
+  const values = resolveParameterMap(node, names, context, issues);
+  if (values === null) return [];
+  const motionBlurEnabled = values["motionBlurEnabled"];
+  const frameBlendingType = values["frameBlendingType"];
+  const compMotionBlurEnabled = values["compMotionBlurEnabled"];
+  const compFrameBlendingEnabled = values["compFrameBlendingEnabled"];
+  const shutterAngle = values["shutterAngle"];
+  const shutterPhase = values["shutterPhase"];
+  const samplesPerFrame = values["samplesPerFrame"];
+  const adaptiveSampleLimit = values["adaptiveSampleLimit"];
+  if (typeof motionBlurEnabled !== "boolean"
+    || typeof compMotionBlurEnabled !== "boolean"
+    || typeof compFrameBlendingEnabled !== "boolean"
+    || typeof frameBlendingType !== "string"
+    || !["NO_FRAME_BLEND", "FRAME_MIX", "PIXEL_MOTION"].includes(frameBlendingType)
+    || typeof shutterAngle !== "number"
+    || typeof shutterPhase !== "number"
+    || typeof samplesPerFrame !== "number"
+    || typeof adaptiveSampleLimit !== "number") {
+    addIssue(issues, node.nodeId, "MOTION_PARAMETER_INVALID",
+      "Motion state requires booleans, a valid frame-blending mode, and numeric shutter/sample settings.");
+    return [];
+  }
+  operations.push({
+    type: "SET_COMP_MOTION",
+    compId: context.compId,
+    state: {
+      motionBlur: compMotionBlurEnabled,
+      frameBlending: compFrameBlendingEnabled,
+      shutterAngle,
+      shutterPhase,
+      samplesPerFrame,
+      adaptiveSampleLimit,
+    },
+  });
+  for (const layerId of targets) {
+    operations.push({
+      type: "SET_LAYER_MOTION",
+      compId: context.compId,
+      layerId,
+      state: {
+        motionBlur: motionBlurEnabled,
+        frameBlendingType: frameBlendingType as VirtualAeFrameBlendingModeV1,
+      },
+    });
+  }
+  return targets;
+};
+
 const layerWindowsForComp = (
   layers: readonly VirtualAeLayerV1[],
 ): Map<string, LayerWindowV1> =>
@@ -519,6 +709,10 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
       outputs = compileTimeRemap(node, targets, context, windows, operations, issues);
     } else if (node.kind === "CAMERA_PUSH") {
       outputs = compileCameraPush(node, targets, context, windows, operations, issues);
+    } else if (node.kind === "TRANSFORM_ANIMATION") {
+      outputs = compileStaticTransform(node, targets, context, operations, issues);
+    } else if (node.kind === "MOTION_BLUR") {
+      outputs = compileMotionBlur(node, targets, context, operations, issues);
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;

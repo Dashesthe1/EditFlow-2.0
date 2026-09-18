@@ -1,4 +1,5 @@
 import type { CapabilityRegistry } from "../../capability-registry/src/index.js";
+import { inspectRecipeCompilerSupportV1 } from "../../recipe-compiler/src/index.js";
 import type {
   TutorialCapabilityDiscoveryReportV0,
   TutorialSkillState,
@@ -28,6 +29,9 @@ export interface TutorialDeepLearningResultV1 {
   readonly proofPlans: readonly TutorialProofPlanV1[];
   readonly targetState: TutorialSkillState;
   readonly blockingCapabilityIds: readonly string[];
+  readonly virtualAeBlockedPrimitiveKinds: readonly string[];
+  readonly nativeAeBlockedPrimitiveKinds: readonly string[];
+  readonly compilerBlockedPrimitiveKinds: readonly string[];
   readonly readyForReconstruction: boolean;
 }
 
@@ -87,6 +91,17 @@ export const learnDeepFromTutorialUploadV1 = async (
       .filter((task) => task.blocking)
       .map((task) => String(task.capabilityId)),
   )].sort();
+  const compilerSupport = lesson.skills.map((skill) =>
+    inspectRecipeCompilerSupportV1(skill.editingIr));
+  const virtualAeBlockedPrimitiveKinds = [...new Set(
+    compilerSupport.flatMap((support) => support.virtualAeBlockedPrimitiveKinds),
+  )].sort();
+  const nativeAeBlockedPrimitiveKinds = [...new Set(
+    compilerSupport.flatMap((support) => support.nativeAeBlockedPrimitiveKinds),
+  )].sort();
+  const compilerBlockedPrimitiveKinds = [...new Set(
+    compilerSupport.flatMap((support) => support.blockedPrimitiveKinds),
+  )].sort();
 
   return {
     schema: "editflow.tutorial-deep-learning-result.v1",
@@ -96,6 +111,10 @@ export const learnDeepFromTutorialUploadV1 = async (
     proofPlans,
     targetState,
     blockingCapabilityIds,
-    readyForReconstruction: blockingCapabilityIds.length === 0,
+    virtualAeBlockedPrimitiveKinds,
+    nativeAeBlockedPrimitiveKinds,
+    compilerBlockedPrimitiveKinds,
+    readyForReconstruction:
+      blockingCapabilityIds.length === 0 && compilerBlockedPrimitiveKinds.length === 0,
   };
 };

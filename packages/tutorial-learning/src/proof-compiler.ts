@@ -48,11 +48,13 @@ const temporalKinds = new Set([
   "MOTION_BLUR",
   "BEAT_SYNC",
   "AUDIO_SYNC",
+  "STABILIZATION",
 ]);
 
 const highRiskKinds = new Set([
   "SUBJECT_ISOLATION",
   "TRACKING",
+  "STABILIZATION",
   "TIME_REMAP",
   "MASK_ANIMATION",
   "MATTE_RELATION",

@@ -3,6 +3,7 @@ import type { CapabilityId } from "../../core-contracts/src/index.js";
 export const EDITING_IR_PRIMITIVE_KINDS = [
   "SUBJECT_ISOLATION",
   "TRACKING",
+  "STABILIZATION",
   "LAYER_DUPLICATION",
   "TEMPORAL_DUPLICATION",
   "OPACITY_SHAPING",

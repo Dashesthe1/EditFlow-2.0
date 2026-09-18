@@ -12,6 +12,25 @@ export type VirtualAeLayerKindV1 = (typeof VIRTUAL_AE_LAYER_KINDS)[number];
 
 export type VirtualAeValueV1 = unknown;
 
+export type VirtualAeFrameBlendingModeV1 =
+  | "NO_FRAME_BLEND"
+  | "FRAME_MIX"
+  | "PIXEL_MOTION";
+
+export interface VirtualAeCompMotionStateV1 {
+  motionBlur: boolean;
+  frameBlending: boolean;
+  shutterAngle: number;
+  shutterPhase: number;
+  samplesPerFrame: number;
+  adaptiveSampleLimit: number;
+}
+
+export interface VirtualAeLayerMotionStateV1 {
+  motionBlur: boolean;
+  frameBlendingType: VirtualAeFrameBlendingModeV1;
+}
+
 export interface VirtualAeKeyframeV1 {
   timeMs: number;
   value: VirtualAeValueV1;
@@ -47,6 +66,7 @@ export interface VirtualAeLayerV1 {
   masks: VirtualAeMaskV1[];
   matteLayerId?: string;
   parentLayerId?: string;
+  motion?: VirtualAeLayerMotionStateV1;
 }
 export interface VirtualAeCompositionV1 {
   compId: string;
@@ -56,6 +76,7 @@ export interface VirtualAeCompositionV1 {
   durationMs: number;
   frameRate: number;
   layers: VirtualAeLayerV1[];
+  motion?: VirtualAeCompMotionStateV1;
 }
 
 export interface VirtualAeProjectV1 {
@@ -72,6 +93,8 @@ export type VirtualAeOperationV1 =
   | { type: "DUPLICATE_LAYER"; compId: string; sourceLayerId: string; layerId: string;
       name?: string; offsetMs?: number }
   | { type: "SET_PROPERTY"; compId: string; layerId: string; propertyPath: string; value: VirtualAeValueV1 }
+  | { type: "SET_COMP_MOTION"; compId: string; state: VirtualAeCompMotionStateV1 }
+  | { type: "SET_LAYER_MOTION"; compId: string; layerId: string; state: VirtualAeLayerMotionStateV1 }
   | { type: "ADD_KEYFRAME"; compId: string; layerId: string; propertyPath: string;
       timeMs: number; value: VirtualAeValueV1 }
   | { type: "SET_EXPRESSION"; compId: string; layerId: string; propertyPath: string; expression: string }
@@ -99,6 +122,25 @@ export const createEmptyVirtualAeProjectV1 = (): VirtualAeProjectV1 => ({
 
 const nonEmpty = (value: string): boolean => value.trim().length > 0;
 const finitePositive = (value: number): boolean => Number.isFinite(value) && value > 0;
+const validFrameBlendingMode = (value: string): value is VirtualAeFrameBlendingModeV1 =>
+  value === "NO_FRAME_BLEND" || value === "FRAME_MIX" || value === "PIXEL_MOTION";
+
+const validateCompMotion = (state: VirtualAeCompMotionStateV1): string | null => {
+  if (!Number.isInteger(state.shutterAngle) || state.shutterAngle < 0 || state.shutterAngle > 720) {
+    return "composition motion shutterAngle must be an integer from 0 through 720";
+  }
+  if (!Number.isInteger(state.shutterPhase) || state.shutterPhase < -360 || state.shutterPhase > 360) {
+    return "composition motion shutterPhase must be an integer from -360 through 360";
+  }
+  if (!Number.isInteger(state.samplesPerFrame) || state.samplesPerFrame < 2 || state.samplesPerFrame > 64) {
+    return "composition motion samplesPerFrame must be an integer from 2 through 64";
+  }
+  if (!Number.isInteger(state.adaptiveSampleLimit)
+    || state.adaptiveSampleLimit < 16 || state.adaptiveSampleLimit > 256) {
+    return "composition motion adaptiveSampleLimit must be an integer from 16 through 256";
+  }
+  return null;
+};
 
 const findComp = (project: VirtualAeProjectV1, compId: string): VirtualAeCompositionV1 | undefined =>
   project.compositions.find((comp) => comp.compId === compId);
@@ -238,6 +280,16 @@ export const simulateVirtualAeV1 = (
       continue;
     }
 
+    if (operation.type === "SET_COMP_MOTION") {
+      const motionError = validateCompMotion(operation.state);
+      if (motionError) {
+        fail(errors, index, motionError);
+        continue;
+      }
+      comp.motion = structuredClone(operation.state);
+      continue;
+    }
+
     if (operation.type === "DUPLICATE_LAYER") {
       const source = findLayer(comp, operation.sourceLayerId);
       if (!source || findLayer(comp, operation.layerId)) {
@@ -309,6 +361,15 @@ export const simulateVirtualAeV1 = (
     const layer = findLayer(comp, operation.layerId);
     if (!layer) {
       fail(errors, index, "layer '" + operation.layerId + "' does not exist");
+      continue;
+    }
+
+    if (operation.type === "SET_LAYER_MOTION") {
+      if (!validFrameBlendingMode(operation.state.frameBlendingType)) {
+        fail(errors, index, "layer motion has an invalid frameBlendingType");
+        continue;
+      }
+      layer.motion = structuredClone(operation.state);
       continue;
     }
 
