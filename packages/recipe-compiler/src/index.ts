@@ -4,7 +4,11 @@ import {
   type EditingIrPrimitiveKindV1,
   type EditingIrRecipeV1,
 } from "../../editing-ir/src/index.js";
-import { getEffectSchemaV1, type EffectSchemaV1 } from "./effect-schemas.js";
+import {
+  getEffectSchemaV1,
+  type EffectSchemaPropertyBindingV1,
+  type EffectSchemaV1,
+} from "./effect-schemas.js";
 import type {
   VirtualAeLayerV1,
   VirtualAeOperationV1,
@@ -66,15 +70,30 @@ const literalParameterValueV1 = (
   name: string,
 ): unknown => node.parameters.find((parameter) => parameter.name === name)?.value;
 
+export interface RecipeCompilerSupportOptionsV1 {
+  readonly proofOnlyEffectSchemaRefs?: readonly string[];
+}
+
+const effectSchemaExecutableV1 = (
+  node: EditingIrNodeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
+): boolean => {
+  const schema = effectSchemaForNodeV1(node);
+  if (schema === null) return false;
+  if (schema.status === "CERTIFIED") return true;
+  return (options.proofOnlyEffectSchemaRefs ?? []).includes(schema.schemaId);
+};
+
 const supportedNodeVariantV1 = (
   node: EditingIrNodeV1,
   target: "VIRTUAL" | "NATIVE" = "VIRTUAL",
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): boolean => {
   if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
     return node.timing === undefined;
   }
   if (node.kind === "EFFECT_STACK") {
-    return node.timing === undefined && effectSchemaForNodeV1(node)?.status === "CERTIFIED";
+    return node.timing === undefined && effectSchemaExecutableV1(node, options);
   }
   if (node.kind === "STABILIZATION") {
     return node.timing === undefined
@@ -104,30 +123,35 @@ const blockedKinds = (
   recipe: EditingIrRecipeV1,
   supportedKinds: readonly EditingIrPrimitiveKindV1[],
   target: "VIRTUAL" | "NATIVE",
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): readonly EditingIrPrimitiveKindV1[] => {
   const supported = new Set<EditingIrPrimitiveKindV1>(supportedKinds);
   return [...new Set(
     recipe.nodes
       .filter((node) => node.optional !== true
-        && (!supported.has(node.kind) || !supportedNodeVariantV1(node, target)))
+        && (!supported.has(node.kind) || !supportedNodeVariantV1(node, target, options)))
       .map((node) => node.kind),
   )].sort();
 };
 
 export const unsupportedVirtualAePrimitiveKindsV1 = (
   recipe: EditingIrRecipeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
   "VIRTUAL",
+  options,
 );
 
 export const unsupportedNativeAePrimitiveKindsV1 = (
   recipe: EditingIrRecipeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
   "NATIVE",
+  options,
 );
 
 export interface RecipeCompilerSupportReportV1 {
@@ -138,9 +162,10 @@ export interface RecipeCompilerSupportReportV1 {
 
 export const inspectRecipeCompilerSupportV1 = (
   recipe: EditingIrRecipeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): RecipeCompilerSupportReportV1 => {
-  const virtualAeBlockedPrimitiveKinds = unsupportedVirtualAePrimitiveKindsV1(recipe);
-  const nativeAeBlockedPrimitiveKinds = unsupportedNativeAePrimitiveKindsV1(recipe);
+  const virtualAeBlockedPrimitiveKinds = unsupportedVirtualAePrimitiveKindsV1(recipe, options);
+  const nativeAeBlockedPrimitiveKinds = unsupportedNativeAePrimitiveKindsV1(recipe, options);
   return {
     virtualAeBlockedPrimitiveKinds,
     nativeAeBlockedPrimitiveKinds,
@@ -160,6 +185,8 @@ export interface RecipeCompilerContextV1 {
   readonly eventTimesMs: Readonly<Record<string, number>>;
   readonly roleBindings: readonly RecipeRoleBindingV1[];
   readonly parameterValues: Readonly<Record<string, unknown>>;
+  /** Exact developer-proof allowlist. PROOF_REQUIRED effect schemas remain blocked everywhere else. */
+  readonly proofOnlyEffectSchemaRefs?: readonly string[];
 }
 export interface RecipeCompileIssueV1 {
   readonly nodeId: string;
@@ -610,12 +637,44 @@ const compileCameraPush = (
   return uniqueStrings(outputs);
 };
 
+const adaptEffectSchemaValueV1 = (
+  node: EditingIrNodeV1,
+  binding: EffectSchemaPropertyBindingV1,
+  value: unknown,
+  frameRate: number,
+  issues: RecipeCompileIssueV1[],
+): unknown | null => {
+  const adapter = binding.valueAdapter ?? "IDENTITY";
+  if (adapter === "IDENTITY") return structuredClone(value);
+  if (adapter === "NEGATIVE_FRAMES_TO_SECONDS") {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0
+      || !Number.isFinite(frameRate) || frameRate <= 0) {
+      addIssue(
+        issues,
+        node.nodeId,
+        "EFFECT_ADAPTATION_INVALID",
+        `Effect parameter '${binding.semanticParameter}' requires positive finite frame spacing and frame rate.`,
+      );
+      return null;
+    }
+    return -(value / frameRate);
+  }
+  addIssue(
+    issues,
+    node.nodeId,
+    "EFFECT_ADAPTATION_UNSUPPORTED",
+    `Effect parameter '${binding.semanticParameter}' uses unsupported value adapter '${String(adapter)}'.`,
+  );
+  return null;
+};
+
 const compileEffectStack = (
   node: EditingIrNodeV1,
   targets: readonly string[],
   context: RecipeCompilerContextV1,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
+  frameRate: number,
 ): readonly string[] => {
   if (node.timing !== undefined) {
     addIssue(issues, node.nodeId, "EFFECT_TIMING_UNSUPPORTED",
@@ -628,9 +687,9 @@ const compileEffectStack = (
       "EFFECT_STACK requires a known literal effectSchemaRef.");
     return [];
   }
-  if (schema.status !== "CERTIFIED") {
+  if (!effectSchemaExecutableV1(node, context)) {
     addIssue(issues, node.nodeId, "EFFECT_SCHEMA_PROOF_REQUIRED",
-      `Effect schema '${schema.schemaId}' is not certified yet.`);
+      `Effect schema '${schema.schemaId}' is not certified and is not explicitly allowlisted for this proof run.`);
     return [];
   }
   const values = new Map<string, unknown>();
@@ -641,7 +700,10 @@ const compileEffectStack = (
       context,
       issues,
     );
-    if (value !== null) values.set(binding.semanticParameter, value);
+    if (value !== null) {
+      const adapted = adaptEffectSchemaValueV1(node, binding, value, frameRate, issues);
+      if (adapted !== null) values.set(binding.semanticParameter, adapted);
+    }
   }
   if (values.size !== schema.propertyBindings.length) return [];
 
@@ -1279,7 +1341,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     nodeTargetLayerIds[node.nodeId] = [...targets];
 
     let outputs: readonly string[];
-    if (node.optional === true && !supportedNodeVariantV1(node)) {
+    if (node.optional === true && !supportedNodeVariantV1(node, "VIRTUAL", context)) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;
     } else if (node.kind === "PRECOMPOSE") {
@@ -1293,7 +1355,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     } else if (node.kind === "MOTION_BLUR") {
       outputs = compileMotionBlur(node, targets, context, operations, issues);
     } else if (node.kind === "EFFECT_STACK") {
-      outputs = compileEffectStack(node, targets, context, operations, issues);
+      outputs = compileEffectStack(node, targets, context, operations, issues, comp.frameRate);
     } else if (node.kind === "STABILIZATION") {
       outputs = compileStabilization(node, targets, context, operations, issues);
     } else if (node.kind === "LAYER_DUPLICATION" || node.kind === "TEMPORAL_DUPLICATION") {

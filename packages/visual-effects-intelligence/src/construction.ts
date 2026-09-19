@@ -219,6 +219,12 @@ export const validateConstructionGraphV1 = (
 };
 
 const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
+  const synthesisStrategy = node.parameters["synthesisStrategy"];
+  if (synthesisStrategy === "NATIVE_ECHO_HYBRID"
+    || synthesisStrategy === "TIME_DISPLACEMENT_HYBRID"
+    || synthesisStrategy === "TURBULENT_DISPLACE_HYBRID") {
+    return "EFFECT_STACK";
+  }
   switch (node.kind) {
     case "BASE_TIMING": return "TIME_REMAP";
     case "TEMPORAL_DUPLICATES":
@@ -325,7 +331,7 @@ export const compileConstructionThroughNativeAeV1 = (
   if (compilation.recipe === null) {
     return { compiled: false, plan: null, issues: compilation.capabilityGaps };
   }
-  const support = inspectRecipeCompilerSupportV1(compilation.recipe);
+  const support = inspectRecipeCompilerSupportV1(compilation.recipe, context);
   if (support.nativeAeBlockedPrimitiveKinds.length > 0) {
     return {
       compiled: false,

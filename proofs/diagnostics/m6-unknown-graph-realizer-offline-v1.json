@@ -13,22 +13,33 @@
     "nativeAeLowering": true,
     "semanticEventAnchoring": true,
     "boundedDuplicateVisibility": true,
-    "ambiguousEventFailsClosed": true
+    "ambiguousEventFailsClosed": true,
+    "nativeHypothesisUsesEffectStack": true,
+    "proofRequiredSchemaAllowlist": true,
+    "fpsAdaptiveEffectBinding": true,
+    "nativeEchoProofPlan": true
   },
+  "proofRequiredEffectSchemas": [
+    "ae.effect-schema.m6.echo.v1"
+  ],
   "nativeOperations": [
     "layer.duplicate",
     "layer.time_remap.enable",
-    "property.set_expression"
+    "property.set_expression",
+    "effect.add",
+    "effect.set_property"
   ],
   "focusedProof": {
-    "testsPassed": 39,
+    "testsPassed": 46,
     "testsFailed": 0,
     "transferFixtureDurationMs": 9000,
-    "semanticEventMs": 1500
+    "semanticEventMs": 1500,
+    "echoFpsTransferVariants": [30, 60],
+    "productionSchemaGateVerified": true
   },
   "fullRepositoryCheck": {
     "schemaFixturesPassed": 35,
-    "testsPassed": 1009,
+    "testsPassed": 1010,
     "testsFailed": 1,
     "unrelatedFailure": "M5 retained Roto Brush evidence digest mismatch"
   },
@@ -40,6 +51,7 @@
       "reset Documents Adobe After Effects 2025 folder by rename",
       "reset AppData Roaming Adobe After Effects 25.6 preferences by rename"
     ],
+    "originalPreferenceFoldersRestored": true,
     "cepProcessObserved": false,
     "bridgePortObserved": false
   },
@@ -47,6 +59,6 @@
     "offlineStructuralProof": "PASS",
     "realAeRenderedProof": "BLOCKED",
     "m6_8Complete": false,
-    "nextRequiredProof": "Execute the synthesized UNKNOWN construction in repaired live AE, render a bounded window, compare against reference evidence, and retain the result."
+    "nextRequiredProof": "Execute the layered UNKNOWN and proof-required native Echo constructions in repaired live AE, render bounded windows, compare against reference evidence, and retain the results before any adaptive effect schema can be certified."
   }
 }

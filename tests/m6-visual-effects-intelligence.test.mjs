@@ -1162,6 +1162,120 @@ test("M6.8 searches genuinely different construction hypotheses and can select a
     && proposal.proofRequirement === "REAL_AE_RENDER"));
 });
 
+test("M6.8 native Echo proof path is effect-realized, FPS-adaptive, and production-blocked", () => {
+  const unknown = evidence({
+    temporalStateCountPeak: 3,
+    temporalPersistence: 0.55,
+    overlapDensityPeak: 0.05,
+    motionEnergyPeak: 0.08,
+    accelerationPeak: 0.01,
+    recoveryFrames: 4,
+  });
+  const result = synthesizeUnknownEffectV1({
+    evidence: unknown,
+    availableCapabilities: ["ae.effect.echo"],
+  });
+  assert.equal(result.selected?.strategy, "NATIVE_ECHO_HYBRID");
+
+  const compilation = compileConstructionGraphV1(
+    result.selected.graph,
+    ["ae.effect.echo"],
+  );
+  assert.notEqual(compilation.recipe, null);
+  const echoNode = compilation.recipe.nodes.find((node) =>
+    node.parameters.some((parameter) =>
+      parameter.name === "synthesisStrategy" && parameter.value === "NATIVE_ECHO_HYBRID"));
+  assert.equal(echoNode?.kind, "EFFECT_STACK");
+  assert.equal(
+    echoNode?.parameters.find((parameter) => parameter.name === "effectSchemaRef")?.value,
+    "ae.effect-schema.m6.echo.v1",
+  );
+  assert.ok(!compilation.recipe.nodes.some((node) =>
+    node.kind === "TEMPORAL_DUPLICATION"
+    && node.capabilityIds.includes("ae.effect.echo")));
+
+  const normalSupport = inspectRecipeCompilerSupportV1(compilation.recipe);
+  assert.ok(normalSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+  const proofSupport = inspectRecipeCompilerSupportV1(compilation.recipe, {
+    proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.echo.v1"],
+  });
+  assert.ok(!proofSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+
+  const projectForRate = (frameRate) => ({
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "M6 Echo proof fixture",
+      width: 1080,
+      height: 1080,
+      durationMs: 3000,
+      frameRate,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "FOOTAGE",
+        inMs: 0,
+        outMs: 3000,
+        properties: [],
+        effects: [],
+        masks: [],
+      }],
+    }],
+  });
+  const baseContext = {
+    compId: "comp",
+    eventTimesMs: { transition: 1500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+  };
+  assert.throws(() => compileEditingIrRecipeToVirtualAeV1(
+    compilation.recipe,
+    projectForRate(30),
+    baseContext,
+  ), /EFFECT_SCHEMA_PROOF_REQUIRED/);
+
+  const compileAt = (frameRate) => compileEditingIrRecipeToVirtualAeV1(
+    compilation.recipe,
+    projectForRate(frameRate),
+    {
+      ...baseContext,
+      proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.echo.v1"],
+    },
+  );
+  const at30 = compileAt(30);
+  const at60 = compileAt(60);
+  const echoTimeValue = (compiled) => compiled.operations.find((operation) =>
+    operation.type === "SET_EFFECT_PROPERTY"
+    && operation.propertyPath[0] === "ADBE Echo-0001")?.value;
+  const echoTime30 = echoTimeValue(at30);
+  const echoTime60 = echoTimeValue(at60);
+  assert.equal(typeof echoTime30, "number");
+  assert.equal(typeof echoTime60, "number");
+  assert.ok(echoTime30 < 0);
+  assert.ok(Math.abs(echoTime60 - echoTime30 / 2) < 1e-12);
+
+  const plan = lowerCompiledRecipeToNativeAePlanV1(at30, {
+    planId: "m6-native-echo-proof-plan",
+    observedState: {
+      projectId: "m6-project",
+      projectRevision: "ae-revision:32326",
+      projectFingerprint: "project:sha256:m6-native-echo-proof",
+      environmentFingerprint: "environment:sha256:ae-25.6.6",
+    },
+    creativeObjective: "Materialize one proof-required native Echo hypothesis without production promotion.",
+  });
+  const commands = plan.operations.map((operation) => operation.input.command);
+  assert.ok(commands.includes("effect.add"));
+  assert.ok(commands.includes("effect.set_property"));
+  assert.ok(!commands.includes("layer.duplicate"));
+  assert.equal(
+    plan.operations.find((operation) => operation.input.command === "effect.add")
+      ?.input.payload.matchName,
+    "ADBE Echo",
+  );
+});
+
 test("M6.8 UNKNOWN construction graph lowers through Recipe Compiler to concrete native AE operations", () => {
   const reference = shutterReference();
   const synthesis = synthesizeUnknownEffectV1({
