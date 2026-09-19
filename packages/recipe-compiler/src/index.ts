@@ -22,6 +22,16 @@ export const VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "MOTION_BLUR",
   "EFFECT_STACK",
   "STABILIZATION",
+  "LAYER_DUPLICATION",
+  "TEMPORAL_DUPLICATION",
+  "SUBJECT_ISOLATION",
+  "OPACITY_SHAPING",
+  "DIRECTIONAL_OFFSET",
+  "BLUR",
+  "COLOR_TREATMENT",
+  "DISTORTION",
+  "MATTE_RELATION",
+  "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
@@ -729,6 +739,77 @@ const compileStaticTransform = (
   return targets;
 };
 
+const compileM6TemporalDuplication = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+): readonly string[] => {
+  const countParameter = node.parameters.find((parameter) =>
+    parameter.name === "temporalStateCountPeak" || parameter.name === "stateCount");
+  const resolved = countParameter === undefined
+    ? 2
+    : resolveParameter(node, countParameter.name, context, issues);
+  if (typeof resolved !== "number" || !Number.isFinite(resolved)) {
+    addIssue(issues, node.nodeId, "TEMPORAL_STATE_COUNT_INVALID",
+      "M6 temporal duplication requires a finite temporal state count.");
+    return [];
+  }
+  const count = Math.max(2, Math.min(8, Math.round(resolved)));
+  const outputs: string[] = [...targets];
+  for (const sourceLayerId of targets) {
+    for (let state = 1; state < count; state += 1) {
+      const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
+      operations.push({
+        type: "DUPLICATE_LAYER",
+        compId: context.compId,
+        sourceLayerId,
+        layerId,
+        name: `${sourceLayerId} temporal state ${state}`,
+      });
+      operations.push({
+        type: "SET_PROPERTY",
+        compId: context.compId,
+        layerId,
+        propertyPath: "M6.TemporalState",
+        value: semanticValue(node, "TEMPORAL_DUPLICATION", `STATE_${state}`, {
+          state,
+          stateCount: count,
+        }),
+      });
+      outputs.push(layerId);
+    }
+  }
+  return uniqueStrings(outputs);
+};
+
+const compileM6SemanticVisualState = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+): readonly string[] => {
+  const parameters = resolveParameterMap(
+    node,
+    node.parameters.map((parameter) => parameter.name),
+    context,
+    issues,
+  );
+  if (parameters === null) return [];
+  for (const layerId of targets) {
+    operations.push({
+      type: "SET_PROPERTY",
+      compId: context.compId,
+      layerId,
+      propertyPath: `M6.${node.kind}`,
+      value: semanticValue(node, node.kind, "ADAPTED", parameters),
+    });
+  }
+  return targets;
+};
+
 const compileMotionBlur = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -861,6 +942,19 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
       outputs = compileEffectStack(node, targets, context, operations, issues);
     } else if (node.kind === "STABILIZATION") {
       outputs = compileStabilization(node, targets, context, operations, issues);
+    } else if (node.kind === "LAYER_DUPLICATION" || node.kind === "TEMPORAL_DUPLICATION") {
+      outputs = compileM6TemporalDuplication(node, targets, context, operations, issues);
+    } else if ([
+      "SUBJECT_ISOLATION",
+      "OPACITY_SHAPING",
+      "DIRECTIONAL_OFFSET",
+      "BLUR",
+      "COLOR_TREATMENT",
+      "DISTORTION",
+      "MATTE_RELATION",
+      "MOTION_SHAPING",
+    ].includes(node.kind)) {
+      outputs = compileM6SemanticVisualState(node, targets, context, operations, issues);
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;

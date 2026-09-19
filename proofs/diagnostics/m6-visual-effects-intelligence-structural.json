@@ -1,0 +1,48 @@
+{
+  "schema": "editflow.m6-structural-acceptance.v1",
+  "milestone": "M6_PROFESSIONAL_EFFECTS_TRANSITIONS_INTELLIGENCE",
+  "baseline": {
+    "ref": "m5-tutorial-002-stabilization-orchestration-v1",
+    "commit": "1e0d7c7621f7b52dc26bd85b56cdb35150359958"
+  },
+  "executedAt": "2026-09-19T12:44:07.000Z",
+  "command": "npm run check",
+  "result": "PASS",
+  "schemaFixtures": {
+    "passed": 35,
+    "failed": 0
+  },
+  "repositoryTests": {
+    "passed": 970,
+    "failed": 0
+  },
+  "m6Tests": {
+    "passed": 12,
+    "failed": 0,
+    "coverage": [
+      "M6.0 baseline impact lock",
+      "M6.1 dense evidence and cache",
+      "M6.2 Tutorial 001/002 action-to-pixel causality",
+      "M6.3 shutter versus flash/zoom distinction",
+      "M6.4 three-family construction coverage",
+      "M6.5 semantic diagnostic comparator",
+      "M6.6 anti-simplification and capability-gap refusal",
+      "M6.7 bounded semantic correction convergence",
+      "M6.8 three unknown-effect syntheses",
+      "M6.9 24-case benchmark enforcement",
+      "M6.10 fast-path and difficult-reference Brain routing"
+    ]
+  },
+  "claim": "STRUCTURAL",
+  "liveAeExecuted": false,
+  "professionalFidelityCertified": false,
+  "pendingProofs": [
+    "real dense microwave/shutter reference evidence",
+    "three real-AE compound reconstructions",
+    "direct A/B rejection of the previous weak EditFlow result",
+    "bounded real-AE rendered correction",
+    "three reference-only unknown-effect reconstructions",
+    "20-30 rendered benchmark cases with held-out and transfer variants",
+    "normal edit request full-loop production proof"
+  ]
+}
