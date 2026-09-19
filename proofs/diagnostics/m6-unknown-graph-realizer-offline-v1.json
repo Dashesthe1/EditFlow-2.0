@@ -2,7 +2,7 @@
   "schema": "editflow.m6-unknown-graph-realizer-proof.v1",
   "milestone": "M6.8_UNKNOWN_EFFECT_SYNTHESIS",
   "branch": "m6-unknown-graph-realizer-v1",
-  "baseCommit": "8c7eaad",
+  "baseCommit": "fb2524e",
   "claim": "OFFLINE_NATIVE_PLAN_READY",
   "professionalFidelityCertified": false,
   "liveAeExecuted": false,
@@ -19,7 +19,8 @@
     "fpsAdaptiveEffectBinding": true,
     "nativeEchoProofPlan": true,
     "nativeHypothesisRequiresMaterializedEffectSchema": true,
-    "unmaterializedNativeHypothesesFailClosed": true
+    "unmaterializedNativeHypothesesFailClosed": true,
+    "foundationNativeMaterializationReconciled": true
   },
   "proofRequiredEffectSchemas": [
     "ae.effect-schema.m6.echo.v1"
@@ -44,7 +45,7 @@
   },
   "fullRepositoryCheck": {
     "schemaFixturesPassed": 35,
-    "testsPassed": 1010,
+    "testsPassed": 1012,
     "testsFailed": 1,
     "unrelatedFailure": "M5 retained Roto Brush evidence digest mismatch"
   },
@@ -72,7 +73,7 @@
   ],
   "latestImpactValidation": {
     "typecheck": "PASS",
-    "m6TestsPassed": 54,
+    "m6TestsPassed": 55,
     "m6TestsFailed": 0,
     "diffCheck": "PASS",
     "claimBoundary": "Structural/native-plan validation only; no new live-AE fidelity claim."
