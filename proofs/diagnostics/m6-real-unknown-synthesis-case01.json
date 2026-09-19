@@ -1,0 +1,426 @@
+{
+  "schema": "editflow.m6.real-pixel-unknown-synthesis-proof.v1",
+  "generatedAt": "2026-09-19T17:07:46.681Z",
+  "result": "PASS",
+  "learnedSkillAccess": "DISABLED_BY_PROOF",
+  "reference": {
+    "evidencePath": "proofs/diagnostics/m6-v6r-ref05-evidence-current.json",
+    "sourceId": "m6-v6r-ref05",
+    "contentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+    "analyzerFingerprint": "0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1"
+  },
+  "synthesis": {
+    "status": "READY_FOR_PROOF",
+    "selectedCandidateId": "adaptive:layered-primitives",
+    "selectedStrategy": "LAYERED_PRIMITIVES",
+    "selectedGraphId": "construction:anatomy:unknown:4824b8f94c33",
+    "selectedFamily": "UNKNOWN",
+    "definingInvariantIds": [
+      "unknown.fragmentation-states",
+      "unknown.fragmentation-overlap",
+      "unknown.fragmentation-separation",
+      "unknown.fragmentation-coordination",
+      "unknown.acceleration",
+      "unknown.recovery"
+    ],
+    "optionalInvariantIds": [
+      "unknown.persistence",
+      "unknown.scale",
+      "unknown.blur",
+      "unknown.distortion",
+      "unknown.chroma"
+    ],
+    "candidateStrategies": [
+      {
+        "candidateId": "adaptive:layered-primitives",
+        "strategy": "LAYERED_PRIMITIVES",
+        "capabilityGaps": [],
+        "adaptiveCapabilityProposals": []
+      },
+      {
+        "candidateId": "adaptive:turbulent-displace-hybrid",
+        "strategy": "TURBULENT_DISPLACE_HYBRID",
+        "capabilityGaps": [],
+        "adaptiveCapabilityProposals": []
+      },
+      {
+        "candidateId": "adaptive:native-echo-hybrid",
+        "strategy": "NATIVE_ECHO_HYBRID",
+        "capabilityGaps": [
+          "ae.effect.echo"
+        ],
+        "adaptiveCapabilityProposals": [
+          {
+            "capabilityId": "ae.effect.echo",
+            "nativeEffect": "Echo",
+            "invariantIds": [
+              "unknown.fragmentation-states"
+            ],
+            "proofRequirement": "REAL_AE_RENDER",
+            "rationale": "Native Echo can combine multiple source times and control temporal spacing/intensity when a temporal-state hypothesis needs an alternate implementation."
+          }
+        ]
+      },
+      {
+        "candidateId": "adaptive:time-displacement-hybrid",
+        "strategy": "TIME_DISPLACEMENT_HYBRID",
+        "capabilityGaps": [
+          "ae.effect.time-displacement"
+        ],
+        "adaptiveCapabilityProposals": [
+          {
+            "capabilityId": "ae.effect.time-displacement",
+            "nativeEffect": "Time Displacement",
+            "invariantIds": [
+              "unknown.fragmentation-states",
+              "unknown.fragmentation-separation"
+            ],
+            "proofRequirement": "REAL_AE_RENDER",
+            "rationale": "Native Time Displacement can create spatially varying temporal offsets from a map when layer-wide offsets cannot reproduce the observed temporal field."
+          }
+        ]
+      }
+    ]
+  },
+  "reconstruction": {
+    "evidencePath": "proofs/diagnostics/m6-auto-correction-v2/round-2-01-SHUTTER_05-evidence.json",
+    "sourceId": "M6_auto_r2-01",
+    "comparison": {
+      "schema": "editflow.semantic-fidelity-comparison.v1",
+      "family": "UNKNOWN",
+      "alignment": "SEMANTIC",
+      "metrics": [
+        {
+          "invariantId": "unknown.fragmentation-states",
+          "dimension": "TEMPORAL",
+          "metric": "fragmentationTemporalStateCountPeak",
+          "referenceValue": 2,
+          "renderValue": 2,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "fragmentationTemporalStateCountPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.fragmentation-overlap",
+          "dimension": "COMPOSITING",
+          "metric": "fragmentationOverlapDensityPeak",
+          "referenceValue": 0.0550251256281407,
+          "renderValue": 0.05804020100502513,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "fragmentationOverlapDensityPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.fragmentation-separation",
+          "dimension": "SPATIAL",
+          "metric": "fragmentationStateSeparationPeak",
+          "referenceValue": 0.021695137988629595,
+          "renderValue": 0.019641855032959652,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "fragmentationStateSeparationPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.fragmentation-coordination",
+          "dimension": "COMPOSITING",
+          "metric": "fragmentationCoherencePeak",
+          "referenceValue": 0.27512562814070346,
+          "renderValue": 0.29020100502512564,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1.2,
+          "diagnosis": "fragmentationCoherencePeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.acceleration",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "accelerationPeak",
+          "referenceValue": 0.07006638912336575,
+          "renderValue": 0.08479489879174004,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "accelerationPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.recovery",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "recoveryFrames",
+          "referenceValue": 6,
+          "renderValue": 1,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "recoveryFrames preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.persistence",
+          "dimension": "TEMPORAL",
+          "metric": "temporalPersistence",
+          "referenceValue": 0.6666666666666666,
+          "renderValue": 0.2926829268292683,
+          "normalizedError": 0.2809756097560976,
+          "passed": false,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "temporalPersistence is under-driven: reference 0.667, render 0.293. Observed temporalPersistence is a material part of the unknown reference behavior."
+        },
+        {
+          "invariantId": "unknown.scale",
+          "dimension": "SPATIAL",
+          "metric": "scaleRange",
+          "referenceValue": 0.14332227894233118,
+          "renderValue": 0.04034569167963742,
+          "normalizedError": 0.4384967195792961,
+          "passed": false,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "scaleRange is under-driven: reference 0.143, render 0.040. Observed scaleRange is a material part of the unknown reference behavior."
+        },
+        {
+          "invariantId": "unknown.blur",
+          "dimension": "OPTICAL",
+          "metric": "blurPeak",
+          "referenceValue": 0.9997532681688431,
+          "renderValue": 0.969125665109791,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "blurPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.distortion",
+          "dimension": "DISTORTION",
+          "metric": "distortionPeak",
+          "referenceValue": 0.470343197894998,
+          "renderValue": 0.50503526311069,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "distortionPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.chroma",
+          "dimension": "OPTICAL",
+          "metric": "chromaticSeparationPeak",
+          "referenceValue": 0.19507298474945534,
+          "renderValue": 0.047895455095618496,
+          "normalizedError": 0.47447417715408585,
+          "passed": false,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "chromaticSeparationPeak is under-driven: reference 0.195, render 0.048. Observed chromaticSeparationPeak is a material part of the unknown reference behavior."
+        }
+      ],
+      "definingCoverage": 1,
+      "weightedFidelity": 0.959934680990286,
+      "passed": true,
+      "diagnoses": [
+        "temporalPersistence is under-driven: reference 0.667, render 0.293. Observed temporalPersistence is a material part of the unknown reference behavior.",
+        "scaleRange is under-driven: reference 0.143, render 0.040. Observed scaleRange is a material part of the unknown reference behavior.",
+        "chromaticSeparationPeak is under-driven: reference 0.195, render 0.048. Observed chromaticSeparationPeak is a material part of the unknown reference behavior."
+      ],
+      "referenceEvidenceKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "renderEvidenceKey": "759494183f6097314a02d2eba4cd4625ef8526d1040d93c299377861b6398daf"
+    },
+    "gate": {
+      "schema": "editflow.professional-fidelity-gate.v1",
+      "outcome": "PASS",
+      "certified": true,
+      "missingDefiningInvariantIds": [],
+      "underDrivenInvariantIds": [],
+      "weakerSubstitutionDetected": false,
+      "reasons": [
+        "Every defining invariant is covered by construction and passes rendered semantic comparison."
+      ]
+    }
+  },
+  "degradedControl": {
+    "evidencePath": "proofs/diagnostics/m6-auto-correction-v2/round-0-01-SHUTTER_05-evidence.json",
+    "sourceId": "M6_auto_r0-01",
+    "comparison": {
+      "schema": "editflow.semantic-fidelity-comparison.v1",
+      "family": "UNKNOWN",
+      "alignment": "SEMANTIC",
+      "metrics": [
+        {
+          "invariantId": "unknown.fragmentation-states",
+          "dimension": "TEMPORAL",
+          "metric": "fragmentationTemporalStateCountPeak",
+          "referenceValue": 2,
+          "renderValue": 2,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "fragmentationTemporalStateCountPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.fragmentation-overlap",
+          "dimension": "COMPOSITING",
+          "metric": "fragmentationOverlapDensityPeak",
+          "referenceValue": 0.0550251256281407,
+          "renderValue": 0.02864321608040201,
+          "normalizedError": 0.19945205479452055,
+          "passed": false,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "fragmentationOverlapDensityPeak is under-driven: reference 0.055, render 0.029. Visible temporal states must overlap at approximately the observed event-local density."
+        },
+        {
+          "invariantId": "unknown.fragmentation-separation",
+          "dimension": "SPATIAL",
+          "metric": "fragmentationStateSeparationPeak",
+          "referenceValue": 0.021695137988629595,
+          "renderValue": 0.020030840419244383,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "fragmentationStateSeparationPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.fragmentation-coordination",
+          "dimension": "COMPOSITING",
+          "metric": "fragmentationCoherencePeak",
+          "referenceValue": 0.27512562814070346,
+          "renderValue": 0.031825795644891124,
+          "normalizedError": 0.6343226788432268,
+          "passed": false,
+          "defining": true,
+          "weight": 1.2,
+          "diagnosis": "fragmentationCoherencePeak is under-driven: reference 0.275, render 0.032. Temporal states, overlap, and separation must occur as one coordinated high-frequency event."
+        },
+        {
+          "invariantId": "unknown.acceleration",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "accelerationPeak",
+          "referenceValue": 0.07006638912336575,
+          "renderValue": 0.08144398630780941,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "accelerationPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.recovery",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "recoveryFrames",
+          "referenceValue": 6,
+          "renderValue": 1,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "recoveryFrames preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.persistence",
+          "dimension": "TEMPORAL",
+          "metric": "temporalPersistence",
+          "referenceValue": 0.6666666666666666,
+          "renderValue": 0.2926829268292683,
+          "normalizedError": 0.2809756097560976,
+          "passed": false,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "temporalPersistence is under-driven: reference 0.667, render 0.293. Observed temporalPersistence is a material part of the unknown reference behavior."
+        },
+        {
+          "invariantId": "unknown.scale",
+          "dimension": "SPATIAL",
+          "metric": "scaleRange",
+          "referenceValue": 0.14332227894233118,
+          "renderValue": 0.03831330878853079,
+          "normalizedError": 0.4526772287513865,
+          "passed": false,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "scaleRange is under-driven: reference 0.143, render 0.038. Observed scaleRange is a material part of the unknown reference behavior."
+        },
+        {
+          "invariantId": "unknown.blur",
+          "dimension": "OPTICAL",
+          "metric": "blurPeak",
+          "referenceValue": 0.9997532681688431,
+          "renderValue": 0.9691968487319742,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "blurPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.distortion",
+          "dimension": "DISTORTION",
+          "metric": "distortionPeak",
+          "referenceValue": 0.470343197894998,
+          "renderValue": 0.5061202407885645,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "distortionPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.chroma",
+          "dimension": "OPTICAL",
+          "metric": "chromaticSeparationPeak",
+          "referenceValue": 0.19507298474945534,
+          "renderValue": 0.04826782256112321,
+          "normalizedError": 0.47256531485835085,
+          "passed": false,
+          "defining": false,
+          "weight": 0.25,
+          "diagnosis": "chromaticSeparationPeak is under-driven: reference 0.195, render 0.048. Observed chromaticSeparationPeak is a material part of the unknown reference behavior."
+        }
+      ],
+      "definingCoverage": 0.6666666666666666,
+      "weightedFidelity": 0.8305780123828387,
+      "passed": false,
+      "diagnoses": [
+        "fragmentationOverlapDensityPeak is under-driven: reference 0.055, render 0.029. Visible temporal states must overlap at approximately the observed event-local density.",
+        "fragmentationCoherencePeak is under-driven: reference 0.275, render 0.032. Temporal states, overlap, and separation must occur as one coordinated high-frequency event.",
+        "temporalPersistence is under-driven: reference 0.667, render 0.293. Observed temporalPersistence is a material part of the unknown reference behavior.",
+        "scaleRange is under-driven: reference 0.143, render 0.038. Observed scaleRange is a material part of the unknown reference behavior.",
+        "chromaticSeparationPeak is under-driven: reference 0.195, render 0.048. Observed chromaticSeparationPeak is a material part of the unknown reference behavior."
+      ],
+      "referenceEvidenceKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "renderEvidenceKey": "eee276c771679326657cc45befa4e66d727e0405f14bf7d4d1907e29ba9a8d4d"
+    },
+    "gate": {
+      "schema": "editflow.professional-fidelity-gate.v1",
+      "outcome": "CORRECTION_REQUIRED",
+      "certified": false,
+      "missingDefiningInvariantIds": [],
+      "underDrivenInvariantIds": [
+        "unknown.fragmentation-overlap",
+        "unknown.fragmentation-coordination"
+      ],
+      "weakerSubstitutionDetected": true,
+      "reasons": [
+        "Defining behavior failed rendered comparison: unknown.fragmentation-overlap, unknown.fragmentation-coordination.",
+        "Optional decoration is present while defining behavior is absent or materially under-driven."
+      ]
+    }
+  },
+  "evidenceBoundary": [
+    "The learned effect-family identity is intentionally withheld; construction begins from dense observed behavior.",
+    "The selected graph remains family UNKNOWN and is compiled only from available proof-backed primitives.",
+    "Certification comes from analyzer-matched rendered pixels, not candidate selection or AE command success.",
+    "The reconstruction render is retained from the shutter correction actuator path; this proof does not yet establish a generic UNKNOWN graph-to-AE materializer.",
+    "This is one real reference-only unknown-synthesis case; M6.8 still requires two additional substantially different real rendered cases."
+  ]
+}

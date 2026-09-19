@@ -1,0 +1,202 @@
+{
+  "schema": "editflow.m6.local-actuator-sensitivity-proof.v1",
+  "generatedAt": "2026-09-19T15:28:30.044Z",
+  "result": "MEASURED",
+  "tag": "SHUTTER_05",
+  "sourceSearchPlan": "proofs/diagnostics/m6-v5-density-two-sided-plan.json",
+  "fidelityPrefix": "proofs/diagnostics/m6-v5-density-controller2-",
+  "retainedAttemptId": "v5-density:up",
+  "retained": {
+    "ordinal": 1,
+    "physicalState": {
+      "motionImpulsePx": 190,
+      "duplicateSpreadPx": 96,
+      "duplicateOpacityPct": 80,
+      "postCutFrames": 1.25,
+      "copyCount": 2,
+      "fragmentBandCount": 4
+    },
+    "weightedFidelity": 0.9304731422543485,
+    "definingCoverage": 0.8333333333333334,
+    "residualInvariantIds": [
+      "shutter.overlap"
+    ],
+    "metricValues": {
+      "temporalStateCountPeak": 3,
+      "fragmentationCoherencePeak": 0.28643216080402006,
+      "overlapDensityPeak": 0.05728643216080402,
+      "stateSeparationPeak": 0.08249579113843054,
+      "accelerationPeak": 0.0958207931111739,
+      "recoveryFrames": 1,
+      "blurPeak": 0.968372413103774,
+      "exposurePeak": 0.5529028527771297
+    }
+  },
+  "attempts": [
+    {
+      "attemptId": "v5-density:up",
+      "ordinal": 1,
+      "physicalState": {
+        "motionImpulsePx": 190,
+        "duplicateSpreadPx": 96,
+        "duplicateOpacityPct": 80,
+        "postCutFrames": 1.25,
+        "copyCount": 2,
+        "fragmentBandCount": 4
+      },
+      "weightedFidelity": 0.9304731422543485,
+      "definingCoverage": 0.8333333333333334,
+      "residualInvariantIds": [
+        "shutter.overlap"
+      ],
+      "metricValues": {
+        "temporalStateCountPeak": 3,
+        "fragmentationCoherencePeak": 0.28643216080402006,
+        "overlapDensityPeak": 0.05728643216080402,
+        "stateSeparationPeak": 0.08249579113843054,
+        "accelerationPeak": 0.0958207931111739,
+        "recoveryFrames": 1,
+        "blurPeak": 0.968372413103774,
+        "exposurePeak": 0.5529028527771297
+      }
+    },
+    {
+      "attemptId": "v5-density:down",
+      "ordinal": 2,
+      "physicalState": {
+        "motionImpulsePx": 190,
+        "duplicateSpreadPx": 96,
+        "duplicateOpacityPct": 80,
+        "postCutFrames": 1.25,
+        "copyCount": 2,
+        "fragmentBandCount": 2
+      },
+      "weightedFidelity": 0.9239999520504429,
+      "definingCoverage": 0.8333333333333334,
+      "residualInvariantIds": [
+        "shutter.overlap"
+      ],
+      "metricValues": {
+        "temporalStateCountPeak": 3,
+        "fragmentationCoherencePeak": 0.2185929648241206,
+        "overlapDensityPeak": 0.043718592964824124,
+        "stateSeparationPeak": 0.08249579113843054,
+        "accelerationPeak": 0.10965672744637638,
+        "recoveryFrames": 1,
+        "blurPeak": 0.9689652118127465,
+        "exposurePeak": 0.5526593187236115
+      }
+    }
+  ],
+  "metricResponses": [
+    {
+      "control": "TEMPORAL_FRAGMENT_DENSITY",
+      "metric": "overlapDensityPeak",
+      "probeCount": 2,
+      "metricSpan": 0.013567839195979897,
+      "requiredDelta": 0.24648241206030147,
+      "responseRatio": 0.055045871559633024,
+      "responsive": true
+    }
+  ],
+  "exhaustedControls": [],
+  "nextCandidates": [
+    {
+      "candidateId": "probe:temporal_fragment_density:up:1",
+      "values": {
+        "TEMPORAL_COPY_COUNT": 2,
+        "TEMPORAL_FRAGMENT_DENSITY": 5,
+        "DUPLICATE_OPACITY": 80,
+        "DUPLICATE_SPREAD": 96,
+        "MOTION_IMPULSE": 190,
+        "RECOVERY_DURATION": 1.25
+      },
+      "changedControls": [
+        "TEMPORAL_FRAGMENT_DENSITY"
+      ],
+      "rationale": "Follow measured positive local sensitivity for TEMPORAL_FRAGMENT_DENSITY while holding all other actuators at the retained-best state."
+    },
+    {
+      "candidateId": "probe:duplicate_spread:down:2",
+      "values": {
+        "TEMPORAL_COPY_COUNT": 2,
+        "TEMPORAL_FRAGMENT_DENSITY": 4,
+        "DUPLICATE_OPACITY": 80,
+        "DUPLICATE_SPREAD": 85.33333333333333,
+        "MOTION_IMPULSE": 190,
+        "RECOVERY_DURATION": 1.25
+      },
+      "changedControls": [
+        "DUPLICATE_SPREAD"
+      ],
+      "rationale": "Isolate DUPLICATE_SPREAD in a bounded rendered probe; physical response is not yet proven monotonic."
+    },
+    {
+      "candidateId": "probe:duplicate_spread:up:3",
+      "values": {
+        "TEMPORAL_COPY_COUNT": 2,
+        "TEMPORAL_FRAGMENT_DENSITY": 4,
+        "DUPLICATE_OPACITY": 80,
+        "DUPLICATE_SPREAD": 106.66666666666667,
+        "MOTION_IMPULSE": 190,
+        "RECOVERY_DURATION": 1.25
+      },
+      "changedControls": [
+        "DUPLICATE_SPREAD"
+      ],
+      "rationale": "Isolate DUPLICATE_SPREAD in a bounded rendered probe; physical response is not yet proven monotonic."
+    },
+    {
+      "candidateId": "probe:duplicate_opacity:up:4",
+      "values": {
+        "TEMPORAL_COPY_COUNT": 2,
+        "TEMPORAL_FRAGMENT_DENSITY": 4,
+        "DUPLICATE_OPACITY": 84.26666666666667,
+        "DUPLICATE_SPREAD": 96,
+        "MOTION_IMPULSE": 190,
+        "RECOVERY_DURATION": 1.25
+      },
+      "changedControls": [
+        "DUPLICATE_OPACITY"
+      ],
+      "rationale": "Isolate DUPLICATE_OPACITY in a bounded rendered probe; physical response is not yet proven monotonic."
+    },
+    {
+      "candidateId": "probe:duplicate_opacity:down:5",
+      "values": {
+        "TEMPORAL_COPY_COUNT": 2,
+        "TEMPORAL_FRAGMENT_DENSITY": 4,
+        "DUPLICATE_OPACITY": 75.73333333333333,
+        "DUPLICATE_SPREAD": 96,
+        "MOTION_IMPULSE": 190,
+        "RECOVERY_DURATION": 1.25
+      },
+      "changedControls": [
+        "DUPLICATE_OPACITY"
+      ],
+      "rationale": "Isolate DUPLICATE_OPACITY in a bounded rendered probe; physical response is not yet proven monotonic."
+    },
+    {
+      "candidateId": "probe:coupled:6",
+      "values": {
+        "TEMPORAL_COPY_COUNT": 2,
+        "TEMPORAL_FRAGMENT_DENSITY": 5,
+        "DUPLICATE_OPACITY": 80,
+        "DUPLICATE_SPREAD": 90.66666666666666,
+        "MOTION_IMPULSE": 190,
+        "RECOVERY_DURATION": 1.25
+      },
+      "changedControls": [
+        "TEMPORAL_FRAGMENT_DENSITY",
+        "DUPLICATE_SPREAD"
+      ],
+      "rationale": "Test a conservative coupled interaction only after isolated actuator probes are available."
+    }
+  ],
+  "conclusion": "NO_NON_RESPONSIVE_PAIR_PROVEN",
+  "evidenceBoundary": [
+    "Only clean rendered one-control counterfactual pairs are allowed to establish metric response.",
+    "A non-responsive pair requires the observed metric span to remain below five percent of the retained reference deficit.",
+    "This proof does not weaken the fidelity threshold; it stops futile rerenders and preserves the unresolved visual deficit."
+  ]
+}
