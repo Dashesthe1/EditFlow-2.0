@@ -31,6 +31,7 @@ const attempt = (
   weightedFidelity,
   certified = false,
   metricValues = undefined,
+  residualInvariantIds = undefined,
 ) => ({
   attemptId,
   values,
@@ -38,7 +39,7 @@ const attempt = (
   definingCoverage,
   weightedFidelity,
   certified,
-  residualInvariantIds: certified ? [] : ["shutter.overlap"],
+  residualInvariantIds: residualInvariantIds ?? (certified ? [] : ["shutter.overlap"]),
 });
 
 test("M6.7 actuator retention is lexicographic and never replaces better defining coverage with decoration", () => {
@@ -162,9 +163,43 @@ test("M6.7 stops rendering actuator/metric pairs that clean probes prove non-res
     item.control === "TEMPORAL_FRAGMENT_DENSITY" && item.metric === "overlapDensityPeak");
   assert.ok(densityResponse);
   assert.equal(densityResponse.responsive, true);
+  assert.equal(densityResponse.safeResponsive, true);
+  assert.ok(densityResponse.safeImprovingProbeCount >= 1);
   assert.ok(!plan.exhaustedControls.includes("TEMPORAL_FRAGMENT_DENSITY"));
   assert.ok(plan.candidates.some((candidate) =>
     candidate.changedControls.includes("TEMPORAL_FRAGMENT_DENSITY")));
+});
+
+test("M6.7 rejects a target-responsive actuator when every improving probe sacrifices retained defining behavior", () => {
+  const values = { DUPLICATE_OPACITY: 80 };
+  const metric = (overlap) => ({ overlapDensityPeak: overlap, stateSeparationPeak: 0.02 });
+  const plan = planBoundedActuatorSearchV1({
+    attempts: [
+      attempt("best", values, 0.833, 0.94, false, metric(0.10), ["shutter.overlap"]),
+      attempt("unsafe-up", { DUPLICATE_OPACITY: 84 }, 0.667, 0.90, false, metric(0.22),
+        ["shutter.overlap", "shutter.coordination"]),
+      attempt("unsafe-down", { DUPLICATE_OPACITY: 76 }, 0.667, 0.89, false, metric(0.18),
+        ["shutter.overlap", "shutter.coordination"]),
+    ],
+    instructions: [instruction("DUPLICATE_OPACITY")],
+    dimensions: [
+      { control: "DUPLICATE_OPACITY", minimum: 20, maximum: 100, minimumStep: 4 },
+    ],
+    maxCandidates: 2,
+  });
+
+  const response = plan.metricResponses.find((item) =>
+    item.control === "DUPLICATE_OPACITY" && item.metric === "overlapDensityPeak");
+  assert.ok(response);
+  assert.equal(response.responsive, true, "the actuator really does move the requested viewer-visible metric");
+  assert.equal(response.testedDirectionCount, 2);
+  assert.equal(response.safeImprovingProbeCount, 0);
+  assert.equal(response.collateralRegressionProbeCount, 2);
+  assert.equal(response.safeResponsive, false,
+    "raw responsiveness cannot pass M6 anti-simplification when it breaks another defining invariant");
+  assert.ok(plan.exhaustedControls.includes("DUPLICATE_OPACITY"));
+  assert.deepEqual(plan.candidates, []);
+  assert.deepEqual(plan.synthesisRequiredInvariantIds, ["shutter.overlap"]);
 });
 
 test("M6.7 escalates a defining invariant to synthesis when every mapped actuator is causally exhausted", () => {

@@ -24,7 +24,16 @@ export interface ActuatorMetricResponseV1 {
   readonly metricSpan: number;
   readonly requiredDelta: number;
   readonly responseRatio: number;
+  /** Number of +/- actuator directions rendered relative to the retained-best value. */
+  readonly testedDirectionCount: number;
+  /** Rendered probes that moved the target metric toward reference without sacrificing retained defining behavior. */
+  readonly safeImprovingProbeCount: number;
+  /** Target-improving probes that introduced a new defining residual or reduced defining coverage. */
+  readonly collateralRegressionProbeCount: number;
+  /** Raw causal response, irrespective of collateral damage. */
   readonly responsive: boolean;
+  /** True only when rendered evidence demonstrates target progress without anti-simplification regression. */
+  readonly safeResponsive: boolean;
 }
 
 export interface ActuatorSearchDimensionV1 {
@@ -202,6 +211,27 @@ const metricResponseEvidence = (
   const metricSpan = Math.max(...samples) - Math.min(...samples);
   const requiredDelta = Math.abs(reference - retainedMetric);
   const responseRatio = requiredDelta <= EPSILON ? 1 : metricSpan / requiredDelta;
+  const retainedControl = controlValue(retained.values, instruction.control);
+  const retainedResiduals = new Set(retained.residualInvariantIds);
+  const testedDirections = new Set<-1 | 1>();
+  let safeImprovingProbeCount = 0;
+  let collateralRegressionProbeCount = 0;
+  const retainedError = Math.abs(reference - retainedMetric);
+  for (const attempt of attempts) {
+    if (!participants.has(attempt.attemptId) || attempt.attemptId === retained.attemptId) continue;
+    const candidateMetric = metricValue(attempt, metric);
+    const candidateControl = controlValue(attempt.values, instruction.control);
+    if (candidateMetric === null || candidateControl === null || retainedControl === null) continue;
+    if (candidateControl > retainedControl + EPSILON) testedDirections.add(1);
+    if (candidateControl < retainedControl - EPSILON) testedDirections.add(-1);
+    if (Math.abs(reference - candidateMetric) + EPSILON >= retainedError) continue;
+    const addedResidual = attempt.residualInvariantIds.some((invariantId) =>
+      invariantId !== instruction.invariantId && !retainedResiduals.has(invariantId));
+    const coverageRegression = attempt.definingCoverage + EPSILON < retained.definingCoverage;
+    if (addedResidual || coverageRegression) collateralRegressionProbeCount += 1;
+    else safeImprovingProbeCount += 1;
+  }
+  const responsive = responseRatio >= 0.05;
   return {
     control: instruction.control,
     metric,
@@ -209,7 +239,11 @@ const metricResponseEvidence = (
     metricSpan,
     requiredDelta,
     responseRatio,
-    responsive: responseRatio >= 0.05,
+    testedDirectionCount: testedDirections.size,
+    safeImprovingProbeCount,
+    collateralRegressionProbeCount,
+    responsive,
+    safeResponsive: responsive && safeImprovingProbeCount > 0,
   };
 };
 
@@ -281,9 +315,13 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
     const allTargetMetricsAssessed = targetMetrics.size > 0
       && [...targetMetrics].every((metric) =>
         controlResponses.some((response) => response.metric === metric));
-    const allTargetMetricsUnresponsive = allTargetMetricsAssessed
-      && controlResponses.every((response) => !response.responsive);
-    if (allTargetMetricsUnresponsive) {
+    const allTargetMetricsExhausted = allTargetMetricsAssessed
+      && controlResponses.every((response) =>
+        !response.responsive
+        || (response.testedDirectionCount >= 2
+          && response.safeImprovingProbeCount === 0
+          && response.collateralRegressionProbeCount > 0));
+    if (allTargetMetricsExhausted) {
       exhausted.add(dimension.control);
       continue;
     }
