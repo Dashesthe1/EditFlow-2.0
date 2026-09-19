@@ -74,12 +74,17 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     evidenceMetrics: [item.metric],
     evidenceRefs: evidence.evidenceRefs,
   }));
+  const observedMetrics: Record<string, number> = {};
+  for (const item of invariants) {
+    if (typeof item.target === "number") observedMetrics[item.metric] = item.target;
+  }
   return {
     schema: "editflow.effect-anatomy.v1",
     anatomyId: `anatomy:unknown:${evidence.contentKey.slice(0, 12)}`,
     family: "UNKNOWN",
     components,
     dna,
+    observedMetrics,
     confidence: Math.min(1, invariants.length / 4),
     evidenceRefs: evidence.evidenceRefs,
   };

@@ -36,6 +36,10 @@ const templateFor = (invariant: EffectInvariantV1): NodeTemplateV1 => {
     return { kind: "TEMPORAL_DUPLICATES", dimension: "TEMPORAL",
       capabilities: ["ae.layer.duplicate", "ae.layer.time.offset"] };
   }
+  if (invariant.metric === "fragmentationCoherencePeak") {
+    return { kind: "TEMPORAL_DUPLICATES", dimension: "COMPOSITING",
+      capabilities: ["ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set", "ae.layer.transform.set"] };
+  }
   if (invariant.metric === "subjectSeparationPeak" || invariant.metric === "maskCoveragePeak") {
     return { kind: "SUBJECT_ISOLATION", dimension: "ISOLATION",
       capabilities: ["ae.subject.isolate", "ae.layer.matte.set"] };
@@ -76,9 +80,14 @@ const templateFor = (invariant: EffectInvariantV1): NodeTemplateV1 => {
     capabilities: ["ae.layer.transform.set", "ae.keyframe.temporal_ease.set"] };
 };
 
-const parameterValue = (invariant: EffectInvariantV1): number | readonly number[] => {
+const parameterValue = (
+  invariant: EffectInvariantV1,
+  observed: EffectAnatomyV1["observedMetrics"][string] | undefined,
+): number | readonly number[] => {
+  if (typeof observed === "number" && Number.isFinite(observed)) return observed;
+  if (observed !== undefined && typeof observed !== "number") return [observed.x, observed.y];
   if (typeof invariant.target === "number") return invariant.target;
-  if (Array.isArray(invariant.target)) return invariant.target;
+  if (Array.isArray(invariant.target)) return (invariant.target[0] + invariant.target[1]) / 2;
   const target = invariant.target as Readonly<{ x: number; y: number }>;
   return [target.x, target.y];
 };
@@ -103,7 +112,7 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
     const nodeId = `node:${index + 1}:${group.template.kind.toLowerCase()}`;
     const parameters: Record<string, number | string | boolean | readonly number[]> = {};
     for (const item of group.invariants) {
-      parameters[item.metric] = parameterValue(item);
+      parameters[item.metric] = parameterValue(item, anatomy.observedMetrics[item.metric]);
       coverage[item.invariantId] = [nodeId];
     }
     const dependencies = previousRequired === null ? [] : [previousRequired];

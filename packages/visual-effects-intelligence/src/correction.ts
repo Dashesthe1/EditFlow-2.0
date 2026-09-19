@@ -24,10 +24,13 @@ const patchValue = (
   const reference = numeric(comparison.referenceValue);
   const render = numeric(comparison.renderValue);
   if (reference === null || render === null) return prior;
-  if (invariant.comparator === "MAX") return Math.max(0, prior * Math.max(0.5, 1 - comparison.normalizedError * 0.6));
-  if (invariant.comparator === "PHASE") return prior + (reference - render) * 0.65;
-  const ratio = render <= 1e-6 ? 1.75 : Math.min(1.75, Math.max(0.6, reference / render));
-  return prior * (1 + ((ratio - 1) * 0.65));
+  const proposed = prior + ((reference - render) * 0.8);
+  if (invariant.comparator === "PHASE") return proposed;
+  const lower = Math.max(0, prior * 0.35);
+  const upper = prior <= 1e-6
+    ? Math.max(0.001, Math.abs(reference) * 0.8)
+    : prior * 2.25;
+  return Math.min(upper, Math.max(lower, proposed));
 };
 
 export const proposeSemanticPatchesV1 = (

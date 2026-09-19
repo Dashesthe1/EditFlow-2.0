@@ -132,22 +132,53 @@ target for heavily reused core techniques.
 ## Current evidence boundary
 
 The deterministic implementation and synthetic degraded-case tests pass locally. They
-prove contracts, causal bookkeeping, dense-evidence behavior, construction coverage,
-diagnostic discrimination, bounded correction logic, synthesis fail-closed behavior,
-benchmark enforcement, and Brain routing.
+prove contracts, causal bookkeeping, construction coverage, bounded correction logic,
+synthesis fail-closed behavior, benchmark enforcement, and Brain routing.
 
-They do **not** promote M6 to professional-fidelity acceptance. The following retained
-evidence must still be produced through the normal warm-AE proof path:
+M6 now has retained **real-pixel** evidence for the professional
+microwave/shutter transition and multiple local Adobe After Effects reconstructions.
+`scripts/proofs/m6-dense-video-probe.py` decodes every frame and measures dense optical
+flow, robust affine motion, motion-compensated residual, optical structure and
+within-frame temporal fragmentation. `scripts/proofs/m6-dense-video-evidence.mjs`
+lowers those measurements through the existing `DenseEffectEvidenceV1` schema.
 
-1. a real previously weak microwave/shutter reference and every-frame evidence;
-2. real AE reconstructions for three substantially different compound effects;
-3. direct A/B proof that the comparator rejects the previously weak EditFlow result;
-4. a bounded real-AE correction sequence that improves the rendered pixels;
-5. three reference-only unknown-effect reconstructions;
-6. 20-30 rendered benchmark cases with held-out and transfer variants;
-7. a normal edit request invoking the full loop without developer intervention.
+The current v5 analyzer classifies the bounded professional reference as
+`SHUTTER_FRAGMENTATION`. Its defining reference measurements include
+`overlapDensityPeak=0.3038` and `stateSeparationPeak=0.0217`. The best retained
+density-based reconstruction materially improves the earlier weak result, but a replay
+through the **current** comparator still fails closed: defining coverage is 4/6 because
+simultaneous overlap remains under-driven and within-frame state separation is
+materially over-driven relative to the professional reference.
 
-Until those gates pass, M6 remains structurally implemented but not certified at
+This replay also demonstrates M6 proof invalidation discipline. An older comparison of
+the same rendered evidence had passed displacement and reported 5/6 defining
+invariants. After the reference-relative displacement contract was tightened, the same
+pixels correctly re-evaluate to 4/6. Historical comparator results therefore cannot be
+treated as current authority without matching analyzer/comparator provenance.
+
+The M6.7 actuator controller now retains the best rendered state lexicographically,
+learns one-factor control-to-metric response, stops spending renders on controls proven
+non-responsive, and emits `synthesisRequiredInvariantIds` when every mapped actuator
+for a defining invariant is exhausted. This makes the M6.7 -> M6.8 boundary explicit:
+the system must synthesize a new construction instead of continuing parameter
+thrashing. Real probes already show duplicate opacity and duplicate spread have
+negligible leverage on the remaining overlap deficit; fragmentation density is
+responsive but weak, while Time Displacement, Echo, band-overlap and Wide Time
+variants have not produced a faithful solution without regressions.
+
+The retained evidence does **not** promote M6 to professional-fidelity acceptance.
+The following evidence remains open:
+
+1. a reference-faithful shutter reconstruction that passes every current defining
+   invariant under the frozen v5 evidence/comparator contract;
+2. real AE reconstructions for at least three substantially different compound effects;
+3. a bounded local correction sequence that reaches certification or terminates in an
+   explicit synthesis/capability-gap outcome;
+4. three reference-only unknown-effect reconstructions with real rendered proof;
+5. 20-30 rendered benchmark cases with held-out and transfer variants;
+6. a normal edit request invoking the full loop without developer intervention.
+
+Until those gates pass, M6 remains partially evidenced but not certified at
 `PROFESSIONAL_FIDELITY_VERIFIED` or `ROBUST`.
 
 ## Verification
@@ -158,8 +189,10 @@ Run:
 npm run check
 ```
 
-The M6 suite is `tests/m6-visual-effects-intelligence.test.mjs`. It deliberately tests
-the flash/zoom anti-substitution failure, real capability-gap refusal, bounded correction
-convergence, three unknown syntheses, all benchmark requirements, and fast-path versus
-high-risk Brain routing. The retained structural result is
+The core M6 suites are `tests/m6-visual-effects-intelligence.test.mjs`,
+`tests/m6-real-pixel-evidence.test.mjs`, and `tests/m6-actuator-search.test.mjs`.
+Together they cover flash/zoom anti-substitution, real-pixel degraded-result rejection,
+reference-relative fidelity, bounded local correction, causal actuator response,
+synthesis escalation, unknown-effect synthesis, benchmark requirements, and fast-path
+versus high-risk Brain routing. The retained structural result is
 `proofs/diagnostics/m6-visual-effects-intelligence-structural.json`.

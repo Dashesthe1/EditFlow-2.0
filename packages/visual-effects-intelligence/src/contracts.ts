@@ -48,6 +48,8 @@ export interface DenseFrameSemanticObservationV1 {
   readonly distortionStrength?: number;
   readonly subjectSeparation?: number;
   readonly overlapDensity?: number;
+  /** Within-frame separation between simultaneously visible temporal image states. */
+  readonly stateSeparation?: number;
   readonly temporalStateCount?: number;
   readonly occlusion?: number;
   readonly maskCoverage?: number;
@@ -74,6 +76,7 @@ export interface DenseFrameMetricsV1 {
   readonly alphaCoverage: number;
   readonly visualDensity: number;
   readonly frameDifference: number;
+  readonly structuralDifference: number;
   readonly motionEnergy: number;
   readonly motionDirection: NormalizedPointV1;
   readonly subjectMotion: NormalizedPointV1;
@@ -87,6 +90,8 @@ export interface DenseFrameMetricsV1 {
   readonly distortionStrength: number;
   readonly subjectSeparation: number;
   readonly overlapDensity: number;
+  /** Within-frame temporal-copy separation; unlike displacementMagnitude this is not inter-frame camera motion. */
+  readonly stateSeparation: number;
   readonly temporalStateCount: number;
   readonly occlusion: number;
   readonly maskCoverage: number;
@@ -108,6 +113,16 @@ export interface DenseEvidenceSummaryV1 {
   readonly exposurePeak: number;
   readonly subjectSeparationPeak: number;
   readonly overlapDensityPeak: number;
+  /** Peak within-frame separation of simultaneously visible temporal states. */
+  readonly stateSeparationPeak?: number;
+  /**
+   * Highest locally coordinated shutter/fragmentation evidence. Unlike the
+   * independent summary maxima, this requires temporal states, visible overlap,
+   * and spatial separation to occur inside the same short visual event.
+   * Optional for backward compatibility with retained pre-M6.1 evidence.
+   */
+  readonly fragmentationCoherencePeak?: number;
+  readonly fragmentationCoherencePhase?: number;
   readonly occlusionPeak: number;
   readonly accelerationPeak: number;
   readonly recoveryFrames: number;
@@ -120,6 +135,11 @@ export interface DenseEffectEvidenceV1 {
   readonly sourceId: string;
   readonly sourceKind: "REFERENCE" | "RENDER";
   readonly range: Readonly<{ startMs: number; endMs: number }>;
+  /**
+   * Fingerprint of the measurement implementation, not the source footage.
+   * Real reference/render evidence is comparable only when this matches.
+   */
+  readonly analyzerFingerprint: string;
   readonly settingsFingerprint: string;
   readonly contentKey: string;
   readonly frames: readonly DenseFrameMetricsV1[];
@@ -133,6 +153,40 @@ export interface DenseEvidenceSettingsV1 {
   readonly edgeThreshold?: number;
   readonly recoveryEnergyRatio?: number;
   readonly requireEveryFrame?: boolean;
+}
+
+export interface DenseEffectWindowV1 {
+  readonly windowId: string;
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly anchorIndex: number;
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly anchorMs: number;
+  readonly peakEnergy: number;
+  readonly evidence: DenseEffectEvidenceV1;
+}
+
+export interface DenseEffectSequenceV1 {
+  readonly schema: "editflow.dense-effect-sequence.v1";
+  readonly sourceId: string;
+  readonly windows: readonly DenseEffectWindowV1[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface SemanticWindowPairV1 {
+  readonly referenceWindowId: string;
+  readonly renderWindowId: string;
+  readonly referenceIndex: number;
+  readonly renderIndex: number;
+  readonly semanticCost: number;
+}
+
+export interface SemanticEffectSequenceAlignmentV1 {
+  readonly schema: "editflow.semantic-effect-sequence-alignment.v1";
+  readonly pairs: readonly SemanticWindowPairV1[];
+  readonly unmatchedReferenceWindowIds: readonly string[];
+  readonly unmatchedRenderWindowIds: readonly string[];
 }
 
 export interface TutorialActionObservationV1 {
@@ -213,6 +267,8 @@ export interface EffectAnatomyV1 {
   readonly family: EffectFamilyV1;
   readonly components: readonly EffectAnatomyComponentV1[];
   readonly dna: TransitionDnaV1;
+  /** Measured reference values keyed by semantic metric. Family DNA defines acceptable behavior; these values define what reconstruction should actually target. */
+  readonly observedMetrics: Readonly<Record<string, number | NormalizedPointV1>>;
   readonly confidence: number;
   readonly evidenceRefs: readonly string[];
 }
@@ -309,6 +365,57 @@ export interface SemanticPatchV1 {
   readonly previousValue: number;
   readonly nextValue: number;
   readonly rationale: string;
+}
+
+export const CONSTRUCTION_CONTROL_KINDS_V1 = [
+  "TEMPORAL_COPY_COUNT",
+  "TEMPORAL_FRAGMENT_DENSITY",
+  "TEMPORAL_BAND_MIX",
+  "TEMPORAL_PERSISTENCE",
+  "DUPLICATE_OPACITY",
+  "DUPLICATE_SPREAD",
+  "SPATIAL_SEPARATION",
+  "SPATIAL_DIRECTION",
+  "MOTION_IMPULSE",
+  "RECOVERY_DURATION",
+  "BLUR_STRENGTH",
+  "EXPOSURE_STRENGTH",
+  "DISTORTION_STRENGTH",
+  "SUBJECT_ISOLATION",
+  "OCCLUSION_COVERAGE",
+  "CHROMATIC_SEPARATION",
+  "SCALE_PULSE",
+  "ROTATION_PULSE",
+  "COORDINATED_DIMENSION_COUNT",
+] as const;
+export type ConstructionControlKindV1 = (typeof CONSTRUCTION_CONTROL_KINDS_V1)[number];
+
+export interface ConstructionControlInstructionV1 {
+  readonly instructionId: string;
+  readonly invariantId: string;
+  readonly nodeId: string;
+  readonly metric: string;
+  /** Viewer-visible deficit this control was introduced to correct. */
+  readonly deficitMetric?: string;
+  /** Reference/render values for the viewer-visible deficit when metric is a coupled actuator-safety metric. */
+  readonly deficitReferenceValue?: number | NormalizedPointV1;
+  readonly deficitRenderValue?: number | NormalizedPointV1;
+  readonly control: ConstructionControlKindV1;
+  readonly direction: "INCREASE" | "DECREASE" | "SET";
+  readonly referenceValue: number | NormalizedPointV1;
+  readonly renderValue: number | NormalizedPointV1;
+  readonly multiplier: number;
+  readonly normalizedError: number;
+  readonly defining: boolean;
+  readonly rationale: string;
+}
+
+export interface ConstructionActuationPlanV1 {
+  readonly schema: "editflow.construction-actuation-plan.v1";
+  readonly family: EffectFamilyV1;
+  readonly comparisonKey: string;
+  readonly instructions: readonly ConstructionControlInstructionV1[];
+  readonly unresolvedInvariantIds: readonly string[];
 }
 
 export interface CorrectionPassV1 {

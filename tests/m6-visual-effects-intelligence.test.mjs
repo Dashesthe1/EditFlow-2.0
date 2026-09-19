@@ -3,20 +3,25 @@ import test from "node:test";
 
 import {
   DenseEvidenceCacheV1,
+  alignDenseEffectSequencesV1,
   analyzeDenseEffectEvidenceV1,
+  detectDenseEffectWindowsV1,
   assessM6BaselineLockV1,
   buildConstructionGraphV1,
   canonicalTransitionDnaV1,
+  classifyEffectFamilyV1,
   compareSemanticVisualFidelityV1,
   compileConstructionGraphV1,
   compileConstructionThroughVirtualAeV1,
   createCanonicalProfessionalBenchmarkV1,
+  deriveConstructionActuationPlanV1,
   deriveEffectAnatomyV1,
   distinguishShutterFromFlashZoomV1,
   evaluateProfessionalBenchmarkV1,
   evaluateProfessionalFidelityGateV1,
   learnTutorialActionPixelConsequencesV1,
   runAutomaticVisualCorrectionLoopV1,
+  summarizeDenseEffectFramesV1,
   synthesizeUnknownEffectV1,
   SynthesizedEffectMemoryV1,
   validateConstructionGraphV1,
@@ -56,6 +61,7 @@ const summaryDefaults = {
   exposurePeak: 0.5,
   subjectSeparationPeak: 0,
   overlapDensityPeak: 0,
+  stateSeparationPeak: 0,
   occlusionPeak: 0,
   accelerationPeak: 0.01,
   recoveryFrames: 4,
@@ -73,6 +79,7 @@ const frameDefaults = {
   alphaCoverage: 1,
   visualDensity: 0.3,
   frameDifference: 0.1,
+  structuralDifference: 0.1,
   motionEnergy: 0.1,
   motionDirection: { x: 1, y: 0 },
   subjectMotion: { x: 0, y: 0 },
@@ -86,6 +93,7 @@ const frameDefaults = {
   distortionStrength: 0.04,
   subjectSeparation: 0,
   overlapDensity: 0,
+  stateSeparation: 0,
   temporalStateCount: 1,
   occlusion: 0,
   maskCoverage: 0,
@@ -106,6 +114,7 @@ const evidence = (overrides = {}, frameOverrides = {}) => {
     exposure: index === 3 ? summary.exposurePeak : 0.45,
     subjectSeparation: index === 3 ? summary.subjectSeparationPeak : 0,
     overlapDensity: index === 3 ? summary.overlapDensityPeak : 0,
+    stateSeparation: index === 3 ? summary.stateSeparationPeak : 0,
     temporalStateCount: index === 3 ? summary.temporalStateCountPeak : 1,
     occlusion: index === 3 ? summary.occlusionPeak : 0,
     ...frameOverrides,
@@ -115,6 +124,7 @@ const evidence = (overrides = {}, frameOverrides = {}) => {
     sourceId: `fixture-${evidenceSerial}`,
     sourceKind: "REFERENCE",
     range: { startMs: 0, endMs: (summary.frameCount - 1) * summary.frameIntervalMs },
+    analyzerFingerprint: "fixture-analyzer-v1",
     settingsFingerprint: "settings",
     contentKey: `evidence-${evidenceSerial}`,
     frames,
@@ -128,6 +138,7 @@ const shutterReference = () => evidence({
   temporalPersistence: 0.55,
   motionEnergyPeak: 0.5,
   displacementPeak: 0.16,
+  stateSeparationPeak: 0.08,
   blurPeak: 0.35,
   exposurePeak: 0.7,
   subjectSeparationPeak: 0.42,
@@ -217,6 +228,85 @@ test("M6.1 analyzes every frame, combines semantic motion/isolation evidence, an
   assert.deepEqual(second, first);
 });
 
+test("M6.1 analyzer provenance invalidates dense-evidence cache entries", () => {
+  const frames = Array.from({ length: 4 }, (_, index) => rgbaFrame(index, {}));
+  const cache = new DenseEvidenceCacheV1();
+  const first = analyzeDenseEffectEvidenceV1({
+    sourceId: "reference:provenance",
+    sourceKind: "REFERENCE",
+    frames,
+    settings: { expectedFps: 30, requireEveryFrame: true },
+    analyzerFingerprint: "analyzer-a",
+    evidenceRefs: ["fixture:analyzer-a"],
+    cache,
+  });
+  const second = analyzeDenseEffectEvidenceV1({
+    sourceId: "reference:provenance",
+    sourceKind: "REFERENCE",
+    frames,
+    settings: { expectedFps: 30, requireEveryFrame: true },
+    analyzerFingerprint: "analyzer-b",
+    evidenceRefs: ["fixture:analyzer-b"],
+    cache,
+  });
+  assert.notEqual(first.contentKey, second.contentKey);
+  assert.equal(cache.size, 2);
+});
+
+test("M6.5 refuses reference/render comparison across analyzer implementations", () => {
+  const reference = shutterReference();
+  const render = { ...reference, sourceKind: "RENDER", analyzerFingerprint: "different-analyzer" };
+  const dna = canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION", reference.evidenceRefs);
+  assert.throws(
+    () => compareSemanticVisualFidelityV1({ reference, render, dna }),
+    /different analyzer implementations/i,
+  );
+});
+
+test("M6.1 does not let exposure-only flashes masquerade as motion energy", () => {
+  const liftedFrame = (index, lift) => {
+    const width = 8;
+    const height = 8;
+    const rgba = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const pixel = y * width + x;
+        const offset = pixel * 4;
+        const base = x < 4 ? 45 : 105;
+        const value = base + lift;
+        rgba[offset] = value;
+        rgba[offset + 1] = value;
+        rgba[offset + 2] = value;
+        rgba[offset + 3] = 255;
+      }
+    }
+    return {
+      timeMs: index * (1000 / 30),
+      width,
+      height,
+      rgba,
+      semantic: { displacement: { x: 0, y: 0 } },
+    };
+  };
+  const result = analyzeDenseEffectEvidenceV1({
+    sourceId: "reference:flash-only",
+    sourceKind: "REFERENCE",
+    frames: [
+      liftedFrame(0, 0),
+      liftedFrame(1, 0),
+      liftedFrame(2, 80),
+      liftedFrame(3, 80),
+      liftedFrame(4, 0),
+    ],
+    settings: { expectedFps: 30, requireEveryFrame: true },
+    evidenceRefs: ["fixture:flash-only"],
+  });
+  assert.ok(result.frames[2].frameDifference > 0.25);
+  assert.ok(result.frames[2].structuralDifference < 0.02);
+  assert.ok(result.frames[2].motionEnergy < 0.02);
+  assert.ok(result.summary.accelerationPeak < 0.03);
+});
+
 test("M6.1 refuses sparse or missing-frame evidence when dense proof is required", () => {
   const frames = [0, 1, 3].map((index) => rgbaFrame(index, {}));
   assert.throws(() => analyzeDenseEffectEvidenceV1({
@@ -278,6 +368,149 @@ test("M6.3 Transition DNA rejects a flash/zoom substitute for shutter fragmentat
   assert.ok(anatomy.dna.definingInvariants.every((item) => item.defining));
 });
 
+test("M6.1/M6.3 refuses uncoordinated maxima masquerading as shutter fragmentation", () => {
+  const interval = 1000 / 60;
+  const frames = Array.from({ length: 13 }, (_, index) => ({
+    ...frameDefaults,
+    timeMs: index * interval,
+    frameDifference: [1, 6, 11].includes(index) ? 0.03 : 0.005,
+    motionEnergy: index === 6 ? 0.12 : 0.02,
+    temporalStateCount: index === 1 ? 2 : 1,
+    displacementMagnitude: index === 6 ? 0.06 : 0.005,
+    overlapDensity: index === 11 ? 0.32 : 0,
+  }));
+  const summary = summarizeDenseEffectFramesV1(frames, interval, 0.25);
+  const uncoordinated = {
+    schema: "editflow.dense-effect-evidence.v1",
+    sourceId: "reference:uncoordinated-fragmentation",
+    sourceKind: "REFERENCE",
+    range: { startMs: 0, endMs: frames.at(-1).timeMs },
+    analyzerFingerprint: "fixture-analyzer-v1",
+    settingsFingerprint: "coordination-regression",
+    contentKey: "coordination-regression",
+    frames,
+    summary,
+    evidenceRefs: ["regression:uncoordinated-fragmentation"],
+  };
+
+  assert.equal(summary.temporalStateCountPeak, 2);
+  assert.equal(summary.overlapDensityPeak, 0.32);
+  assert.equal(summary.displacementPeak, 0.06);
+  assert.ok(summary.accelerationPeak >= 0.03);
+  assert.ok(summary.fragmentationCoherencePeak < 0.08);
+  const rejected = distinguishShutterFromFlashZoomV1(uncoordinated);
+  assert.equal(rejected.shutter, false);
+  assert.ok(rejected.reasons.includes("MISSING_COORDINATED_FRAGMENTATION"));
+  assert.notEqual(classifyEffectFamilyV1(uncoordinated), "SHUTTER_FRAGMENTATION");
+  assert.notEqual(classifyEffectFamilyV1(uncoordinated), "FREEZE_FRAGMENTATION");
+});
+
+test("M6.1/M6.3 inter-frame motion cannot substitute for within-frame state separation", () => {
+  const interval = 1000 / 60;
+  const movingFrames = Array.from({ length: 9 }, (_, index) => ({
+    ...frameDefaults,
+    timeMs: index * interval,
+    temporalStateCount: index === 4 ? 2 : 1,
+    overlapDensity: index === 4 ? 0.3 : 0,
+    displacementMagnitude: index === 4 ? 0.12 : 0.005,
+    stateSeparation: 0,
+  }));
+  const layeredFrames = movingFrames.map((frame, index) => ({
+    ...frame,
+    stateSeparation: index === 4 ? 0.03 : 0,
+  }));
+  const moving = summarizeDenseEffectFramesV1(movingFrames, interval, 0.25);
+  const layered = summarizeDenseEffectFramesV1(layeredFrames, interval, 0.25);
+  assert.ok(moving.displacementPeak >= 0.12);
+  assert.equal(moving.stateSeparationPeak, 0);
+  assert.equal(moving.fragmentationCoherencePeak, 0);
+  assert.equal(layered.stateSeparationPeak, 0.03);
+  assert.ok((layered.fragmentationCoherencePeak ?? 0) >= 0.08);
+});
+
+test("M6.1/M6.3 coordination gate matches the v5 analyzer's bounded ~100 ms event semantics", () => {
+  const professionalLike = evidence({
+    temporalStateCountPeak: 2,
+    temporalPersistence: 0.65,
+    overlapDensityPeak: 0.30,
+    displacementPeak: 0.024,
+    stateSeparationPeak: 0.024,
+    fragmentationCoherencePeak: 0.09,
+    accelerationPeak: 0.025,
+    recoveryFrames: 2,
+  });
+  assert.equal(distinguishShutterFromFlashZoomV1(professionalLike).shutter, true);
+  assert.equal(classifyEffectFamilyV1(professionalLike), "SHUTTER_FRAGMENTATION");
+
+  const tooDispersed = evidence({
+    temporalStateCountPeak: 2,
+    temporalPersistence: 0.65,
+    overlapDensityPeak: 0.30,
+    displacementPeak: 0.024,
+    stateSeparationPeak: 0.024,
+    fragmentationCoherencePeak: 0.07,
+    accelerationPeak: 0.025,
+    recoveryFrames: 2,
+  });
+  assert.equal(distinguishShutterFromFlashZoomV1(tooDispersed).shutter, false);
+  assert.ok(distinguishShutterFromFlashZoomV1(tooDispersed).reasons.includes(
+    "MISSING_COORDINATED_FRAGMENTATION",
+  ));
+  assert.notEqual(classifyEffectFamilyV1(tooDispersed), "SHUTTER_FRAGMENTATION");
+
+  const dna = canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION");
+  assert.equal(
+    dna.definingInvariants.find((item) => item.invariantId === "shutter.coordination")?.target,
+    0.08,
+  );
+});
+
+test("M6.3 shutter recovery tolerance matches the observed family contract", () => {
+  const observed = evidence({
+    temporalStateCountPeak: 2,
+    overlapDensityPeak: 0.31,
+    displacementPeak: 0.049,
+    stateSeparationPeak: 0.03,
+    accelerationPeak: 0.071,
+    recoveryFrames: 6,
+  });
+  assert.equal(distinguishShutterFromFlashZoomV1(observed).shutter, true);
+  assert.equal(classifyEffectFamilyV1(observed), "SHUTTER_FRAGMENTATION");
+
+  const tooSlow = evidence({
+    temporalStateCountPeak: 2,
+    overlapDensityPeak: 0.31,
+    displacementPeak: 0.049,
+    stateSeparationPeak: 0.03,
+    accelerationPeak: 0.071,
+    recoveryFrames: 7,
+  });
+  assert.equal(distinguishShutterFromFlashZoomV1(tooSlow).shutter, false);
+  assert.ok(distinguishShutterFromFlashZoomV1(tooSlow).reasons.includes(
+    "RECOVERY_TOO_LONG_FOR_SHUTTER",
+  ));
+});
+
+test("M6.3 family classification cannot select a family whose defining DNA the reference fails", () => {
+  const falseEcho = evidence({
+    temporalStateCountPeak: 2,
+    temporalPersistence: 0.7,
+    overlapDensityPeak: 0.02,
+    motionEnergyPeak: 0.62,
+    accelerationPeak: 0.3,
+    recoveryFrames: 2,
+  });
+  assert.equal(classifyEffectFamilyV1(falseEcho), "VELOCITY_TRANSITION");
+
+  const realEcho = evidence({
+    temporalStateCountPeak: 2,
+    temporalPersistence: 0.7,
+    overlapDensityPeak: 0.24,
+    displacementPeak: 0.02,
+  });
+  assert.equal(classifyEffectFamilyV1(realEcho), "TEMPORAL_ECHO");
+});
+
 test("M6.4 reconstructs complete construction graphs for three compound families", () => {
   const fixtures = [
     shutterReference(),
@@ -288,6 +521,18 @@ test("M6.4 reconstructs complete construction graphs for three compound families
   for (let index = 0; index < fixtures.length; index += 1) {
     const anatomy = deriveEffectAnatomyV1(fixtures[index], families[index]);
     const graph = buildConstructionGraphV1(anatomy);
+    if (families[index] === "SHUTTER_FRAGMENTATION") {
+      assert.equal(anatomy.observedMetrics.overlapDensityPeak, fixtures[index].summary.overlapDensityPeak);
+      assert.equal(anatomy.observedMetrics.stateSeparationPeak, fixtures[index].summary.stateSeparationPeak);
+      assert.equal(
+        graph.nodes.find((node) => node.parameters.overlapDensityPeak !== undefined)?.parameters.overlapDensityPeak,
+        fixtures[index].summary.overlapDensityPeak,
+      );
+      assert.equal(
+        graph.nodes.find((node) => node.parameters.stateSeparationPeak !== undefined)?.parameters.stateSeparationPeak,
+        fixtures[index].summary.stateSeparationPeak,
+      );
+    }
     const validation = validateConstructionGraphV1(graph);
     const compilation = compileConstructionGraphV1(graph, ALL_CAPABILITIES);
     assert.equal(validation.valid, true, validation.errors.join(", "));
@@ -365,6 +610,97 @@ test("M6.6 passes faithful behavior and refuses genuine capability gaps", () => 
   assert.equal(gap.certified, false);
 });
 
+test("M6.7 maps visual deficits to construction controls before touching AE parameters", () => {
+  const reference = shutterReference();
+  const anatomy = deriveEffectAnatomyV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render: degradedFlashZoom(),
+    dna: anatomy.dna,
+  });
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  assert.deepEqual(plan.unresolvedInvariantIds, []);
+  assert.ok(plan.instructions.every((instruction) => instruction.defining));
+
+  const overlap = plan.instructions.filter((instruction) =>
+    instruction.invariantId === "shutter.overlap");
+  assert.deepEqual(overlap.map((instruction) => instruction.control).sort(),
+    ["DUPLICATE_OPACITY", "DUPLICATE_SPREAD", "TEMPORAL_BAND_MIX", "TEMPORAL_FRAGMENT_DENSITY"]);
+  assert.ok(overlap.every((instruction) =>
+    instruction.direction === "INCREASE" && instruction.multiplier > 1));
+
+  const recovery = plan.instructions.find((instruction) =>
+    instruction.invariantId === "shutter.recovery");
+  assert.equal(recovery?.control, "RECOVERY_DURATION");
+  assert.equal(recovery?.direction, "DECREASE");
+  assert.ok((recovery?.multiplier ?? 1) < 1);
+});
+
+test("M6.5 shutter RANGE fidelity is reference-relative inside the broader family envelope", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 4,
+    overlapDensityPeak: 0.32,
+    stateSeparationPeak: 0.022,
+    accelerationPeak: 0.08,
+    recoveryFrames: 3,
+  });
+  const familyValidButUnfaithful = evidence({
+    ...reference.summary,
+    stateSeparationPeak: 0.06,
+  });
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render: familyValidButUnfaithful,
+    dna: canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION"),
+  });
+  const displacement = comparison.metrics.find((item) => item.invariantId === "shutter.displacement");
+  assert.equal(displacement?.passed, false);
+  assert.match(displacement?.diagnosis ?? "", /over-driven/);
+});
+
+test("M6.5 shutter fidelity rejects materially over-driven within-frame separation", () => {
+  const reference = shutterReference();
+  const overSeparated = evidence({
+    ...reference.summary,
+    stateSeparationPeak: 0.2,
+  });
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render: overSeparated,
+    dna: canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION"),
+  });
+  const displacement = comparison.metrics.find((item) => item.invariantId === "shutter.displacement");
+  assert.equal(displacement?.passed, false);
+  assert.match(displacement?.diagnosis ?? "", /over-driven/);
+});
+
+test("M6.7 overlap correction cannot over-drive already excessive state separation", () => {
+  const reference = shutterReference();
+  const anatomy = deriveEffectAnatomyV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const render = evidence({
+    temporalStateCountPeak: 4,
+    temporalPersistence: 0.55,
+    motionEnergyPeak: 0.5,
+    displacementPeak: 0.24,
+    stateSeparationPeak: 0.12,
+    blurPeak: 0.35,
+    exposurePeak: 0.7,
+    overlapDensityPeak: 0.08,
+    accelerationPeak: 0.09,
+    recoveryFrames: 3,
+  });
+  const comparison = compareSemanticVisualFidelityV1({ reference, render, dna: anatomy.dna });
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  const opacity = plan.instructions.find((item) => item.control === "DUPLICATE_OPACITY");
+  const spread = plan.instructions.find((item) => item.control === "DUPLICATE_SPREAD");
+  assert.equal(opacity?.direction, "INCREASE");
+  assert.equal(spread?.metric, "stateSeparationPeak");
+  assert.equal(spread?.direction, "DECREASE");
+  assert.ok((spread?.multiplier ?? 1) < 1);
+});
+
 test("M6.7 bounded local correction improves an under-driven shutter until fidelity passes", async () => {
   const reference = shutterReference();
   const anatomy = deriveEffectAnatomyV1(reference);
@@ -387,6 +723,7 @@ test("M6.7 bounded local correction improves an under-driven shutter until fidel
       temporalPersistence: 0.5,
       motionEnergyPeak: 0.45,
       displacementPeak: parameters.displacementPeak ?? 0,
+      stateSeparationPeak: parameters.stateSeparationPeak ?? 0,
       blurPeak: parameters.blurPeak ?? 0.3,
       exposurePeak: parameters.exposurePeak ?? 0.7,
       overlapDensityPeak: parameters.overlapDensityPeak ?? 0,
@@ -488,4 +825,80 @@ test("M6.10 keeps proven low-risk work on fast path and routes difficult referen
   assert.equal(difficult.status, "COMPLETED");
   assert.equal(difficult.correction.status, "PASSED");
   assert.ok(applied >= 2);
+});
+
+test("M6.1 aligns dense transitions by semantic behavior and normalized editorial time", () => {
+  const makeSequence = (sourceId, peakIndices, phaseShift = 0) => {
+    const frameIntervalMs = 1000 / 60;
+    const frames = Array.from({ length: 128 }, (_, index) => {
+      const peak = peakIndices.findIndex((candidate) => candidate === index);
+      const strength = peak < 0 ? 0 : 0.36 + peak * 0.09;
+      return {
+        ...frameDefaults,
+        timeMs: index * frameIntervalMs,
+        frameDifference: peak < 0 ? 0.008 : strength,
+        motionEnergy: peak < 0 ? 0.01 : strength,
+        displacementMagnitude: peak < 0 ? 0.006 : 0.05 + peak * 0.018,
+        motionDirection: { x: peak % 2 === 0 ? 1 : 0, y: peak % 2 === 0 ? 0 : 1 },
+        scale: peak < 0 ? 1 : 1.04 + peak * 0.025,
+        rotationDegrees: peak < 0 ? 0 : peak * 1.7,
+        distortionStrength: peak < 0 ? 0.02 : 0.16 + peak * 0.08,
+        overlapDensity: peak < 0 ? 0.01 : 0.2 + peak * 0.06,
+        temporalStateCount: peak < 0 ? 1 : 2 + (peak % 2),
+      };
+    });
+    return {
+      schema: "editflow.dense-effect-evidence.v1",
+      sourceId,
+      sourceKind: sourceId.startsWith("reference") ? "REFERENCE" : "RENDER",
+      range: { startMs: phaseShift, endMs: phaseShift + (frames.length - 1) * frameIntervalMs },
+      analyzerFingerprint: "fixture-analyzer-v1",
+      settingsFingerprint: "sequence-fixture",
+      contentKey: sourceId,
+      frames: frames.map((frame) => ({ ...frame, timeMs: frame.timeMs + phaseShift })),
+      summary: { ...summaryDefaults, frameCount: frames.length, frameIntervalMs },
+      evidenceRefs: [`fixture:${sourceId}`],
+    };
+  };
+
+  const reference = detectDenseEffectWindowsV1(
+    makeSequence("reference:sequence", [15, 44, 77, 108]),
+  );
+  const render = detectDenseEffectWindowsV1(
+    makeSequence("render:sequence", [17, 46, 62, 80, 111], 83),
+  );
+  const alignment = alignDenseEffectSequencesV1(reference, render);
+  assert.equal(reference.windows.length, 4);
+  assert.equal(render.windows.length, 5);
+  assert.equal(alignment.pairs.length, 4);
+  assert.deepEqual(alignment.unmatchedReferenceWindowIds, []);
+  assert.deepEqual(alignment.unmatchedRenderWindowIds, ["effect-03"]);
+  assert.deepEqual(
+    alignment.pairs.map((pair) => [pair.referenceIndex, pair.renderIndex]),
+    [[0, 0], [1, 1], [2, 3], [3, 4]],
+  );
+  assert.ok(alignment.pairs.every((pair) => pair.semanticCost < 0.25));
+});
+
+test("M6.3/M6.5 treats the observed professional reference as the fidelity authority", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 2,
+    temporalPersistence: 0.5,
+    motionEnergyPeak: 0.46,
+    displacementPeak: 0.055,
+    stateSeparationPeak: 0.028,
+    blurPeak: 0.31,
+    exposurePeak: 0.64,
+    overlapDensityPeak: 0.22,
+    accelerationPeak: 0.035,
+    recoveryFrames: 4,
+  });
+  assert.equal(distinguishShutterFromFlashZoomV1(reference).shutter, true);
+  assert.equal(classifyEffectFamilyV1(reference), "SHUTTER_FRAGMENTATION");
+
+  const dna = canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION", reference.evidenceRefs);
+  const self = compareSemanticVisualFidelityV1({ reference, render: reference, dna });
+  assert.equal(self.definingCoverage, 1);
+  assert.equal(self.weightedFidelity, 1);
+  assert.equal(self.passed, true);
 });

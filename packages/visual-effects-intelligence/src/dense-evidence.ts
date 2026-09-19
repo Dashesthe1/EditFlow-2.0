@@ -146,10 +146,12 @@ const digestInput = (
   sourceKind: "REFERENCE" | "RENDER",
   frames: readonly DenseFrameInputV1[],
   settings: DenseEvidenceSettingsV1,
+  analyzerFingerprint: string,
 ): string => {
   const hash = createHash("sha256");
   hash.update(sourceId);
   hash.update(sourceKind);
+  hash.update(analyzerFingerprint);
   hash.update(JSON.stringify(settings));
   for (const frame of frames) {
     hash.update(`${frame.timeMs}:${frame.width}:${frame.height}:`);
@@ -173,7 +175,65 @@ const peakIndex = (
   return best;
 };
 
-const summaryFor = (
+/**
+ * Measures whether the defining shutter ingredients occur as one coordinated
+ * high-frequency event instead of being assembled from unrelated maxima found
+ * at distant moments in the same window. The neighborhood is approximately
+ * 100 ms wide, which permits anticipation -> separation -> overlap/convergence
+ * while remaining local enough to reject content-only edge repetition later in
+ * the shot.
+ */
+export const measureFragmentationCoherenceV1 = (
+  frames: readonly DenseFrameMetricsV1[],
+  interval: number,
+): Readonly<{ peak: number; phase: number }> => {
+  if (frames.length === 0) return { peak: 0, phase: 0 };
+  const safeInterval = Math.max(1, interval);
+  const radius = Math.max(2, Math.round(50 / safeInterval));
+  let bestPeak = 0;
+  let bestIndex = 0;
+  for (let center = 0; center < frames.length; center += 1) {
+    const start = Math.max(0, center - radius);
+    const end = Math.min(frames.length - 1, center + radius);
+    const local = frames.slice(start, end + 1);
+    const stateScores = local.map((frame) => clamp01(frame.temporalStateCount - 1));
+    const overlapScores = local.map((frame) => clamp01(frame.overlapDensity / 0.20));
+    // Fragmentation requires within-frame separation of simultaneous image states.
+    // Inter-frame optical-flow displacement is a camera/content motion quantity and
+    // is not a valid substitute. Retained pre-v3 evidence falls back only so older
+    // structural fixtures remain readable; professional proof must use v3 evidence.
+    const separationScores = local.map((frame) => clamp01(
+      ((frame.stateSeparation ?? frame.displacementMagnitude) / 0.015),
+    ));
+    const componentPeak = (scores: readonly number[]): Readonly<{ score: number; index: number }> => {
+      let index = 0;
+      for (let candidate = 1; candidate < scores.length; candidate += 1) {
+        if ((scores[candidate] ?? 0) > (scores[index] ?? 0)) index = candidate;
+      }
+      return { score: scores[index] ?? 0, index };
+    };
+    const statePeak = componentPeak(stateScores);
+    const overlapPeak = componentPeak(overlapScores);
+    const separationPeak = componentPeak(separationScores);
+    const baseScore = Math.min(statePeak.score, overlapPeak.score, separationPeak.score);
+    const componentSpanFrames = Math.max(statePeak.index, overlapPeak.index, separationPeak.index)
+      - Math.min(statePeak.index, overlapPeak.index, separationPeak.index);
+    // A shutter event may develop over neighboring frames, but unrelated maxima
+    // spread across the full analysis neighborhood must not be combined into a
+    // false defining event. Give full credit inside one frame, then decay to
+    // zero by ~75 ms of peak-to-peak separation.
+    const componentSpanMs = componentSpanFrames * safeInterval;
+    const coordination = clamp01(1 - (Math.max(0, componentSpanMs - safeInterval) / 75));
+    const score = baseScore * coordination;
+    if (score > bestPeak) {
+      bestPeak = score;
+      bestIndex = center;
+    }
+  }
+  return { peak: bestPeak, phase: phase(bestIndex, frames.length) };
+};
+
+export const summarizeDenseEffectFramesV1 = (
   frames: readonly DenseFrameMetricsV1[],
   interval: number,
   recoveryEnergyRatio: number,
@@ -200,6 +260,7 @@ const summaryFor = (
     accelerationPeak = Math.max(accelerationPeak, Math.abs((c - b) - (b - a)));
   }
   const displacementPeakIndex = peakIndex(frames, (frame) => frame.displacementMagnitude);
+  const fragmentation = measureFragmentationCoherenceV1(frames, interval);
   const active = frames.filter((frame) => frame.frameDifference >= 0.025).length;
   return {
     frameCount: frames.length,
@@ -217,6 +278,9 @@ const summaryFor = (
     exposurePeak: max((frame) => frame.exposure),
     subjectSeparationPeak: max((frame) => frame.subjectSeparation),
     overlapDensityPeak: max((frame) => frame.overlapDensity),
+    stateSeparationPeak: max((frame) => frame.stateSeparation ?? 0),
+    fragmentationCoherencePeak: fragmentation.peak,
+    fragmentationCoherencePhase: fragmentation.phase,
     occlusionPeak: max((frame) => frame.occlusion),
     accelerationPeak,
     recoveryFrames,
@@ -245,6 +309,11 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
   readonly sourceKind: "REFERENCE" | "RENDER";
   readonly frames: readonly DenseFrameInputV1[];
   readonly settings: DenseEvidenceSettingsV1;
+  /**
+   * Composite fingerprint for the upstream probe + this dense measurement implementation.
+   * Production evidence should always supply it; synthetic/unit evidence receives a stable default.
+   */
+  readonly analyzerFingerprint?: string;
   readonly evidenceRefs: readonly string[];
   readonly cache?: DenseEvidenceCacheV1;
 }): DenseEffectEvidenceV1 => {
@@ -265,7 +334,15 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
     throw new TypeError("Dense evidence must contain every important frame in the requested range.");
   }
 
-  const contentKey = digestInput(input.sourceId, input.sourceKind, frames, input.settings);
+  const analyzerFingerprint = input.analyzerFingerprint?.trim()
+    || "editflow:dense-evidence:synthetic-core-v1";
+  const contentKey = digestInput(
+    input.sourceId,
+    input.sourceKind,
+    frames,
+    input.settings,
+    analyzerFingerprint,
+  );
   const cached = input.cache?.get(contentKey);
   if (cached !== null && cached !== undefined) return cached;
   const edgeThreshold = input.settings.edgeThreshold ?? 32;
@@ -291,6 +368,17 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
       ? subtract(backgroundNow, backgroundBefore) : { x: 0, y: 0 };
     const displacement = semantic?.displacement ?? centroidMotion;
     const difference = frameDifference(frames[index - 1], frame);
+    const exposureDelta = previous === undefined
+      ? 0 : Math.abs(current.lumaMean - previous.lumaMean);
+    const contrastDelta = previous === undefined
+      ? 0 : Math.abs(current.lumaStd - previous.lumaStd);
+    // Raw frame difference is retained as temporal/change evidence, but motion
+    // must not be satisfiable by a flash alone. Discount global exposure and
+    // contrast shifts before using pixel change as motion energy.
+    const structuralDifference = clamp01(Math.max(
+      0,
+      difference - exposureDelta - (contrastDelta * 0.25),
+    ));
     const separation = semantic?.subjectSeparation
       ?? clamp01(magnitude(subtract(subjectMotion, backgroundMotion)) * 4);
     const blur = semantic?.blurStrength ?? clamp01(1 - current.sharpness);
@@ -307,7 +395,8 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
       alphaCoverage: current.alphaCoverage,
       visualDensity: clamp01((current.edgeDensity + current.lumaStd + current.chromaticSeparation) / 3),
       frameDifference: difference,
-      motionEnergy: clamp01(Math.max(difference, magnitude(displacement))),
+      structuralDifference,
+      motionEnergy: clamp01(Math.max(structuralDifference, magnitude(displacement))),
       motionDirection: point(displacement),
       subjectMotion,
       backgroundMotion,
@@ -320,6 +409,7 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
       distortionStrength: clamp01(distortion),
       subjectSeparation: clamp01(separation),
       overlapDensity: clamp01(semantic?.overlapDensity ?? 0),
+      stateSeparation: clamp01(semantic?.stateSeparation ?? 0),
       temporalStateCount: Math.max(1, Math.round(semantic?.temporalStateCount ?? 1)),
       occlusion: clamp01(semantic?.occlusion ?? 0),
       maskCoverage: clamp01(semantic?.maskCoverage
@@ -333,10 +423,11 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
     sourceId: input.sourceId,
     sourceKind: input.sourceKind,
     range: { startMs: frames[0]?.timeMs ?? 0, endMs: frames.at(-1)?.timeMs ?? 0 },
+    analyzerFingerprint,
     settingsFingerprint,
     contentKey,
     frames: metrics,
-    summary: summaryFor(metrics, interval, input.settings.recoveryEnergyRatio ?? 0.25),
+    summary: summarizeDenseEffectFramesV1(metrics, interval, input.settings.recoveryEnergyRatio ?? 0.25),
     evidenceRefs: [...new Set(input.evidenceRefs)],
   };
   input.cache?.set(result);

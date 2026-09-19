@@ -4,9 +4,21 @@ import type {
   EffectAnatomyV1,
   EffectFamilyV1,
   EffectInvariantV1,
+  NormalizedPointV1,
   TransitionDnaV1,
   VisualDimensionV1,
 } from "./contracts.js";
+import { measureFragmentationCoherenceV1 } from "./dense-evidence.js";
+
+// Probe v2's fragmentation-coherence score includes a temporal coordination
+// decay: component peaks receive full credit within one frame and fall toward
+// zero as their peak-to-peak span approaches ~90 ms. A 0.75 family gate would
+// therefore require near-simultaneous peaks (~35 ms) and rejects the retained
+// professional microwave/shutter reference itself. The family-level floor is
+// intentionally lower: it proves that states + overlap + residual displacement
+// occur within one high-frequency event; render fidelity remains reference-
+// relative and can demand the professional reference's stronger observed value.
+const SHUTTER_COORDINATION_MIN_V2 = 0.08;
 
 const invariant = (
   id: string,
@@ -32,13 +44,15 @@ const invariant = (
 
 const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, readonly EffectInvariantV1[]>> = {
   SHUTTER_FRAGMENTATION: [
-    invariant("shutter.states", "TEMPORAL", "temporalStateCountPeak", "MIN", 3, 0, true,
+    invariant("shutter.states", "TEMPORAL", "temporalStateCountPeak", "MIN", 2, 0, true,
       "Multiple simultaneously readable temporal image states define shutter fragmentation."),
+    invariant("shutter.coordination", "COMPOSITING", "fragmentationCoherencePeak", "MIN", SHUTTER_COORDINATION_MIN_V2, 0.02, true,
+      "Temporal states, overlap, and spatial separation must occur as one bounded high-frequency event rather than unrelated peaks in the same window.", 1.2),
     invariant("shutter.overlap", "COMPOSITING", "overlapDensityPeak", "MIN", 0.24, 0.04, true,
       "Temporal states must visibly overlap rather than behave as a single flash."),
-    invariant("shutter.displacement", "SPATIAL", "displacementPeak", "MIN", 0.08, 0.02, true,
-      "States require visible spatial separation before convergence."),
-    invariant("shutter.acceleration", "MOTION_STRUCTURE", "accelerationPeak", "MIN", 0.04, 0.015, true,
+    invariant("shutter.displacement", "SPATIAL", "stateSeparationPeak", "RANGE", [0.015, 0.08], 0.005, true,
+      "States require visible within-frame spatial separation before convergence, but materially excessive separation stops matching the reference shutter geometry; camera/content motion cannot substitute."),
+    invariant("shutter.acceleration", "MOTION_STRUCTURE", "accelerationPeak", "MIN", 0.02, 0.0075, true,
       "High-frequency acceleration and convergence create the shutter cadence."),
     invariant("shutter.recovery", "MOTION_STRUCTURE", "recoveryFrames", "MAX", 5, 1, true,
       "The transition must resolve quickly after the cut."),
@@ -81,8 +95,9 @@ const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, read
   ],
   FREEZE_FRAGMENTATION: [
     invariant("freeze.states", "TEMPORAL", "temporalStateCountPeak", "MIN", 2, 0, true, "Freeze fragmentation needs multiple held states."),
+    invariant("freeze.coordination", "COMPOSITING", "fragmentationCoherencePeak", "MIN", 0.65, 0.1, true, "Held states, overlap, and spatial placement must belong to the same local fragmentation event."),
     invariant("freeze.overlap", "COMPOSITING", "overlapDensityPeak", "MIN", 0.22, 0.05, true, "Held fragments must coexist visibly."),
-    invariant("freeze.motion", "SPATIAL", "displacementPeak", "MIN", 0.05, 0.02, true, "Fragments need differentiated spatial placement."),
+    invariant("freeze.motion", "SPATIAL", "stateSeparationPeak", "MIN", 0.05, 0.02, true, "Held fragments need differentiated within-frame spatial placement."),
   ],
   CAMERA_MOTION_MATCH: [
     invariant("camera.direction", "SPATIAL", "displacementDirection", "DIRECTION", { x: 1, y: 0 }, 0.28, true, "Outgoing and incoming camera motion must align semantically."),
@@ -112,21 +127,46 @@ const maxFrame = (evidence: DenseEffectEvidenceV1, key: keyof DenseEffectEvidenc
   return values.length === 0 ? 0 : Math.max(...values);
 };
 
+const stateSeparation = (evidence: DenseEffectEvidenceV1): number => {
+  const retained = evidence.summary.stateSeparationPeak;
+  if (typeof retained === "number" && Number.isFinite(retained)) return retained;
+  return maxFrame(evidence, "stateSeparation");
+};
+
+const fragmentationCoherence = (evidence: DenseEffectEvidenceV1): number => {
+  const retained = evidence.summary.fragmentationCoherencePeak;
+  if (typeof retained === "number" && Number.isFinite(retained)) return retained;
+  return measureFragmentationCoherenceV1(
+    evidence.frames,
+    evidence.summary.frameIntervalMs,
+  ).peak;
+};
+
 export const classifyEffectFamilyV1 = (evidence: DenseEffectEvidenceV1): EffectFamilyV1 => {
   const s = evidence.summary;
   const chroma = maxFrame(evidence, "chromaticSeparation");
   const mask = maxFrame(evidence, "maskCoverage");
-  if (s.temporalStateCountPeak >= 3 && s.overlapDensityPeak >= 0.2
-    && s.displacementPeak >= 0.05 && s.recoveryFrames <= 7) return "SHUTTER_FRAGMENTATION";
-  if (s.temporalStateCountPeak >= 2 && s.temporalPersistence >= 0.42) return "TEMPORAL_ECHO";
-  if (s.occlusionPeak >= 0.65) return "OCCLUSION_TRANSITION";
+  // Classification is proof-gated by the same defining thresholds used by
+  // Transition DNA. A family must not be selected if its own contract would
+  // immediately reject the reference that triggered the selection.
+  if (s.temporalStateCountPeak >= 2 && s.overlapDensityPeak >= 0.2
+    && stateSeparation(evidence) >= 0.015 && fragmentationCoherence(evidence) >= SHUTTER_COORDINATION_MIN_V2
+    && s.accelerationPeak >= 0.02 && s.recoveryFrames <= 6) return "SHUTTER_FRAGMENTATION";
+  if (s.temporalStateCountPeak >= 2 && s.overlapDensityPeak >= 0.22
+    && stateSeparation(evidence) >= 0.05 && fragmentationCoherence(evidence) >= 0.65) return "FREEZE_FRAGMENTATION";
+  if (s.temporalStateCountPeak >= 2 && s.temporalPersistence >= 0.42
+    && s.overlapDensityPeak >= 0.18) return "TEMPORAL_ECHO";
+  if (s.occlusionPeak >= 0.65 && s.motionEnergyPeak >= 0.12) return "OCCLUSION_TRANSITION";
   if (s.subjectSeparationPeak >= 0.3 && mask >= 0.06) return "SUBJECT_ISOLATED_TRANSITION";
-  if (s.distortionPeak >= 0.35 && s.displacementPeak >= 0.12) return "WHIP_SMEAR";
+  if (s.displacementPeak >= 0.18 && s.blurPeak >= 0.42
+    && s.recoveryFrames <= 7) return "WHIP_SMEAR";
   if (s.distortionPeak >= 0.35) return "DISPLACEMENT_WARP";
-  if (chroma >= 0.18) return "CHROMATIC_GLITCH";
-  if (s.scaleRange >= 0.12) return "ZOOM_IMPACT";
+  if (chroma >= 0.18 && s.temporalPersistence <= 0.55) return "CHROMATIC_GLITCH";
+  if (s.scaleRange >= 0.12 && s.motionEnergyPeak >= 0.12
+    && s.recoveryFrames <= 9) return "ZOOM_IMPACT";
   if (mask >= 0.12) return "MASK_REVEAL";
-  if (s.motionEnergyPeak >= 0.28 && s.accelerationPeak >= 0.05) return "VELOCITY_TRANSITION";
+  if (s.motionEnergyPeak >= 0.28 && s.accelerationPeak >= 0.05
+    && s.recoveryFrames <= 8) return "VELOCITY_TRANSITION";
   return "UNKNOWN";
 };
 
@@ -151,7 +191,7 @@ export const canonicalTransitionDnaV1 = (
 const dimensionsForEvidence = (evidence: DenseEffectEvidenceV1): readonly VisualDimensionV1[] => {
   const s = evidence.summary;
   const dimensions: VisualDimensionV1[] = [];
-  if (s.displacementPeak > 0.025 || s.scaleRange > 0.025 || s.rotationRange > 2) dimensions.push("SPATIAL");
+  if (s.displacementPeak > 0.025 || (s.stateSeparationPeak ?? 0) > 0.015 || s.scaleRange > 0.025 || s.rotationRange > 2) dimensions.push("SPATIAL");
   if (s.temporalStateCountPeak > 1 || s.temporalPersistence > 0.2) dimensions.push("TEMPORAL");
   if (s.subjectSeparationPeak > 0.12 || maxFrame(evidence, "maskCoverage") > 0.05) dimensions.push("ISOLATION");
   if (s.blurPeak > 0.12 || s.exposurePeak > 0.55 || maxFrame(evidence, "chromaticSeparation") > 0.08) dimensions.push("OPTICAL");
@@ -159,6 +199,22 @@ const dimensionsForEvidence = (evidence: DenseEffectEvidenceV1): readonly Visual
   if (s.overlapDensityPeak > 0.1 || s.occlusionPeak > 0.1) dimensions.push("COMPOSITING");
   if (s.motionEnergyPeak > 0.08 || s.accelerationPeak > 0.02) dimensions.push("MOTION_STRUCTURE");
   return dimensions;
+};
+
+const observedMetricValue = (
+  evidence: DenseEffectEvidenceV1,
+  metric: string,
+): number | NormalizedPointV1 | null => {
+  const summary = evidence.summary as unknown as Readonly<Record<string, unknown>>;
+  const value = summary[metric];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (metric === "displacementDirection") return evidence.summary.displacementDirection;
+  if (metric === "maskCoveragePeak") return maxFrame(evidence, "maskCoverage");
+  if (metric === "chromaticSeparationPeak") return maxFrame(evidence, "chromaticSeparation");
+  if (metric === "stateSeparationPeak") return stateSeparation(evidence);
+  if (metric === "fragmentationCoherencePeak") return fragmentationCoherence(evidence);
+  if (metric === "activeDimensionCount") return dimensionsForEvidence(evidence).length;
+  return null;
 };
 
 export const deriveEffectAnatomyV1 = (
@@ -171,8 +227,14 @@ export const deriveEffectAnatomyV1 = (
   }
   const dna = canonicalTransitionDnaV1(family, evidence.evidenceRefs);
   const activeDimensions = new Set(dimensionsForEvidence(evidence));
+  const allInvariants = [...dna.definingInvariants, ...dna.optionalInvariants];
+  const observedMetrics: Record<string, number | NormalizedPointV1> = {};
+  for (const item of allInvariants) {
+    const observed = observedMetricValue(evidence, item.metric);
+    if (observed !== null) observedMetrics[item.metric] = observed;
+  }
   const components: EffectAnatomyComponentV1[] = [];
-  for (const item of [...dna.definingInvariants, ...dna.optionalInvariants]) {
+  for (const item of allInvariants) {
     if (!item.defining && !activeDimensions.has(item.dimension)) continue;
     components.push({
       componentId: `component:${item.invariantId}`,
@@ -190,6 +252,7 @@ export const deriveEffectAnatomyV1 = (
     family,
     components,
     dna,
+    observedMetrics,
     confidence: dna.definingInvariants.length === 0 ? 0 : definingActive / dna.definingInvariants.length,
     evidenceRefs: evidence.evidenceRefs,
   };
@@ -200,9 +263,11 @@ export const distinguishShutterFromFlashZoomV1 = (
 ): Readonly<{ shutter: boolean; reasons: readonly string[] }> => {
   const s = evidence.summary;
   const reasons: string[] = [];
-  if (s.temporalStateCountPeak < 3) reasons.push("MISSING_MULTIPLE_TEMPORAL_STATES");
+  if (s.temporalStateCountPeak < 2) reasons.push("MISSING_MULTIPLE_TEMPORAL_STATES");
   if (s.overlapDensityPeak < 0.2) reasons.push("MISSING_OVERLAPPING_FRAGMENTATION");
-  if (s.displacementPeak < 0.05) reasons.push("MISSING_SPATIAL_STATE_SEPARATION");
-  if (s.accelerationPeak < 0.03) reasons.push("MISSING_HIGH_FREQUENCY_CONVERGENCE");
+  if (stateSeparation(evidence) < 0.015) reasons.push("MISSING_SPATIAL_STATE_SEPARATION");
+  if (fragmentationCoherence(evidence) < SHUTTER_COORDINATION_MIN_V2) reasons.push("MISSING_COORDINATED_FRAGMENTATION");
+  if (s.accelerationPeak < 0.02) reasons.push("MISSING_HIGH_FREQUENCY_CONVERGENCE");
+  if (s.recoveryFrames > 6) reasons.push("RECOVERY_TOO_LONG_FOR_SHUTTER");
   return { shutter: reasons.length === 0, reasons };
 };
