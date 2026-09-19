@@ -8,7 +8,7 @@ import type {
   TransitionDnaV1,
   VisualDimensionV1,
 } from "./contracts.js";
-import { measureFragmentationCoherenceV1 } from "./dense-evidence.js";
+import { resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
 
 // Probe v2's fragmentation-coherence score includes a temporal coordination
 // decay: component peaks receive full credit within one frame and fall toward
@@ -19,6 +19,17 @@ import { measureFragmentationCoherenceV1 } from "./dense-evidence.js";
 // occur within one high-frequency event; render fidelity remains reference-
 // relative and can demand the professional reference's stronger observed value.
 const SHUTTER_COORDINATION_MIN_V2 = 0.08;
+// v6 measures overlap inside the coherent fragmentation event rather than using
+// an unrelated global autocorrelation maximum elsewhere in the shot. The real
+// professional microwave/shutter reference measures ~0.055 on this event-local
+// scale; fidelity remains reference-relative above this family floor.
+const SHUTTER_EVENT_OVERLAP_MIN_V6 = 0.04;
+
+const shutterEventOverlapMinimum = (evidence: DenseEffectEvidenceV1): number => {
+  const legacyProbe = evidence.evidenceRefs.some((ref) =>
+    /^probe-algorithm:editflow\.m6\.dense-video-probe\.v[1-5]$/.test(ref));
+  return legacyProbe ? 0.20 : SHUTTER_EVENT_OVERLAP_MIN_V6;
+};
 
 const invariant = (
   id: string,
@@ -48,10 +59,10 @@ const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, read
       "Multiple simultaneously readable temporal image states define shutter fragmentation."),
     invariant("shutter.coordination", "COMPOSITING", "fragmentationCoherencePeak", "MIN", SHUTTER_COORDINATION_MIN_V2, 0.02, true,
       "Temporal states, overlap, and spatial separation must occur as one bounded high-frequency event rather than unrelated peaks in the same window.", 1.2),
-    invariant("shutter.overlap", "COMPOSITING", "overlapDensityPeak", "MIN", 0.24, 0.04, true,
-      "Temporal states must visibly overlap rather than behave as a single flash."),
-    invariant("shutter.displacement", "SPATIAL", "stateSeparationPeak", "RANGE", [0.015, 0.08], 0.005, true,
-      "States require visible within-frame spatial separation before convergence, but materially excessive separation stops matching the reference shutter geometry; camera/content motion cannot substitute."),
+    invariant("shutter.overlap", "COMPOSITING", "overlapDensityPeak", "MIN", 0.24, 0.01, true,
+      "Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."),
+    invariant("shutter.displacement", "SPATIAL", "fragmentationStateSeparationPeak", "RANGE", [0.015, 0.08], 0.005, true,
+      "States require visible within-frame spatial separation during the coordinated fragmentation event before convergence; unrelated source-texture echoes or camera/content motion cannot substitute."),
     invariant("shutter.acceleration", "MOTION_STRUCTURE", "accelerationPeak", "MIN", 0.02, 0.0075, true,
       "High-frequency acceleration and convergence create the shutter cadence."),
     invariant("shutter.recovery", "MOTION_STRUCTURE", "recoveryFrames", "MAX", 5, 1, true,
@@ -133,14 +144,8 @@ const stateSeparation = (evidence: DenseEffectEvidenceV1): number => {
   return maxFrame(evidence, "stateSeparation");
 };
 
-const fragmentationCoherence = (evidence: DenseEffectEvidenceV1): number => {
-  const retained = evidence.summary.fragmentationCoherencePeak;
-  if (typeof retained === "number" && Number.isFinite(retained)) return retained;
-  return measureFragmentationCoherenceV1(
-    evidence.frames,
-    evidence.summary.frameIntervalMs,
-  ).peak;
-};
+const fragmentationCoherence = (evidence: DenseEffectEvidenceV1): number =>
+  resolveFragmentationEventMetricsV1(evidence).peak;
 
 export const classifyEffectFamilyV1 = (evidence: DenseEffectEvidenceV1): EffectFamilyV1 => {
   const s = evidence.summary;
@@ -149,8 +154,11 @@ export const classifyEffectFamilyV1 = (evidence: DenseEffectEvidenceV1): EffectF
   // Classification is proof-gated by the same defining thresholds used by
   // Transition DNA. A family must not be selected if its own contract would
   // immediately reject the reference that triggered the selection.
-  if (s.temporalStateCountPeak >= 2 && s.overlapDensityPeak >= 0.2
-    && stateSeparation(evidence) >= 0.015 && fragmentationCoherence(evidence) >= SHUTTER_COORDINATION_MIN_V2
+  const fragmentation = resolveFragmentationEventMetricsV1(evidence);
+  if (fragmentation.temporalStateCountPeak >= 2
+    && fragmentation.overlapDensityPeak >= shutterEventOverlapMinimum(evidence)
+    && fragmentation.stateSeparationPeak >= 0.015
+    && fragmentation.peak >= SHUTTER_COORDINATION_MIN_V2
     && s.accelerationPeak >= 0.02 && s.recoveryFrames <= 6) return "SHUTTER_FRAGMENTATION";
   if (s.temporalStateCountPeak >= 2 && s.overlapDensityPeak >= 0.22
     && stateSeparation(evidence) >= 0.05 && fragmentationCoherence(evidence) >= 0.65) return "FREEZE_FRAGMENTATION";
@@ -204,7 +212,13 @@ const dimensionsForEvidence = (evidence: DenseEffectEvidenceV1): readonly Visual
 const observedMetricValue = (
   evidence: DenseEffectEvidenceV1,
   metric: string,
+  family: EffectFamilyV1,
 ): number | NormalizedPointV1 | null => {
+  const fragmentation = resolveFragmentationEventMetricsV1(evidence);
+  if (family === "SHUTTER_FRAGMENTATION") {
+    if (metric === "temporalStateCountPeak") return fragmentation.temporalStateCountPeak;
+    if (metric === "overlapDensityPeak") return fragmentation.overlapDensityPeak;
+  }
   const summary = evidence.summary as unknown as Readonly<Record<string, unknown>>;
   const value = summary[metric];
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -212,7 +226,8 @@ const observedMetricValue = (
   if (metric === "maskCoveragePeak") return maxFrame(evidence, "maskCoverage");
   if (metric === "chromaticSeparationPeak") return maxFrame(evidence, "chromaticSeparation");
   if (metric === "stateSeparationPeak") return stateSeparation(evidence);
-  if (metric === "fragmentationCoherencePeak") return fragmentationCoherence(evidence);
+  if (metric === "fragmentationCoherencePeak") return fragmentation.peak;
+  if (metric === "fragmentationStateSeparationPeak") return fragmentation.stateSeparationPeak;
   if (metric === "activeDimensionCount") return dimensionsForEvidence(evidence).length;
   return null;
 };
@@ -230,7 +245,7 @@ export const deriveEffectAnatomyV1 = (
   const allInvariants = [...dna.definingInvariants, ...dna.optionalInvariants];
   const observedMetrics: Record<string, number | NormalizedPointV1> = {};
   for (const item of allInvariants) {
-    const observed = observedMetricValue(evidence, item.metric);
+    const observed = observedMetricValue(evidence, item.metric, family);
     if (observed !== null) observedMetrics[item.metric] = observed;
   }
   const components: EffectAnatomyComponentV1[] = [];
@@ -262,11 +277,12 @@ export const distinguishShutterFromFlashZoomV1 = (
   evidence: DenseEffectEvidenceV1,
 ): Readonly<{ shutter: boolean; reasons: readonly string[] }> => {
   const s = evidence.summary;
+  const fragmentation = resolveFragmentationEventMetricsV1(evidence);
   const reasons: string[] = [];
-  if (s.temporalStateCountPeak < 2) reasons.push("MISSING_MULTIPLE_TEMPORAL_STATES");
-  if (s.overlapDensityPeak < 0.2) reasons.push("MISSING_OVERLAPPING_FRAGMENTATION");
-  if (stateSeparation(evidence) < 0.015) reasons.push("MISSING_SPATIAL_STATE_SEPARATION");
-  if (fragmentationCoherence(evidence) < SHUTTER_COORDINATION_MIN_V2) reasons.push("MISSING_COORDINATED_FRAGMENTATION");
+  if (fragmentation.temporalStateCountPeak < 2) reasons.push("MISSING_MULTIPLE_TEMPORAL_STATES");
+  if (fragmentation.overlapDensityPeak < shutterEventOverlapMinimum(evidence)) reasons.push("MISSING_OVERLAPPING_FRAGMENTATION");
+  if (fragmentation.stateSeparationPeak < 0.015) reasons.push("MISSING_SPATIAL_STATE_SEPARATION");
+  if (fragmentation.peak < SHUTTER_COORDINATION_MIN_V2) reasons.push("MISSING_COORDINATED_FRAGMENTATION");
   if (s.accelerationPeak < 0.02) reasons.push("MISSING_HIGH_FREQUENCY_CONVERGENCE");
   if (s.recoveryFrames > 6) reasons.push("RECOVERY_TOO_LONG_FOR_SHUTTER");
   return { shutter: reasons.length === 0, reasons };

@@ -20,6 +20,7 @@ const CONTROL_BY_METRIC: Readonly<Record<string, readonly ConstructionControlKin
   fragmentationCoherencePeak: ["TEMPORAL_BAND_MIX", "TEMPORAL_COPY_COUNT", "DUPLICATE_OPACITY", "DUPLICATE_SPREAD", "TEMPORAL_FRAGMENT_DENSITY"],
   displacementPeak: ["SPATIAL_SEPARATION"],
   stateSeparationPeak: ["SPATIAL_SEPARATION"],
+  fragmentationStateSeparationPeak: ["SPATIAL_SEPARATION"],
   displacementDirection: ["SPATIAL_DIRECTION"],
   motionEnergyPeak: ["MOTION_IMPULSE"],
   accelerationPeak: ["MOTION_IMPULSE"],
@@ -79,7 +80,8 @@ export const deriveConstructionActuationPlanV1 = (input: {
     }
     for (const control of controls) {
       const coupledMetric = control === "DUPLICATE_SPREAD"
-        ? input.comparison.metrics.find((metric) => metric.metric === "stateSeparationPeak")
+        ? input.comparison.metrics.find((metric) =>
+          metric.metric === "fragmentationStateSeparationPeak" || metric.metric === "stateSeparationPeak")
         : undefined;
       const controlReference = coupledMetric?.referenceValue ?? failure.referenceValue;
       const controlRender = coupledMetric?.renderValue ?? failure.renderValue;

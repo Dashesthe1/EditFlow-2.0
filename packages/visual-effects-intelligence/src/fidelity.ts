@@ -8,7 +8,7 @@ import type {
   NormalizedPointV1,
   TransitionDnaV1,
 } from "./contracts.js";
-import { measureFragmentationCoherenceV1 } from "./dense-evidence.js";
+import { resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -51,8 +51,17 @@ const activeDimensionCount = (evidence: DenseEffectEvidenceV1): number => {
 
 const metricValue = (
   evidence: DenseEffectEvidenceV1,
+  invariantId: string,
   metric: string,
 ): number | NormalizedPointV1 => {
+  const fragmentation = resolveFragmentationEventMetricsV1(evidence);
+  if (invariantId.startsWith("shutter.")) {
+    if (metric === "temporalStateCountPeak") return fragmentation.temporalStateCountPeak;
+    if (metric === "overlapDensityPeak") return fragmentation.overlapDensityPeak;
+  }
+  if (metric === "fragmentationStateSeparationPeak") {
+    return fragmentation.stateSeparationPeak;
+  }
   const summary = evidence.summary as unknown as Readonly<Record<string, unknown>>;
   const summaryValue = summary[metric];
   if (typeof summaryValue === "number") return summaryValue;
@@ -60,12 +69,8 @@ const metricValue = (
   if (metric === "maskCoveragePeak") return maxFrameMetric(evidence, "maskCoverage");
   if (metric === "chromaticSeparationPeak") return maxFrameMetric(evidence, "chromaticSeparation");
   if (metric === "stateSeparationPeak") return maxFrameMetric(evidence, "stateSeparation");
-  if (metric === "fragmentationCoherencePeak") {
-    return measureFragmentationCoherenceV1(evidence.frames, evidence.summary.frameIntervalMs).peak;
-  }
-  if (metric === "fragmentationCoherencePhase") {
-    return measureFragmentationCoherenceV1(evidence.frames, evidence.summary.frameIntervalMs).phase;
-  }
+  if (metric === "fragmentationCoherencePeak") return fragmentation.peak;
+  if (metric === "fragmentationCoherencePhase") return fragmentation.phase;
   if (metric === "activeDimensionCount") return activeDimensionCount(evidence);
   return maxFrameMetric(evidence, metric);
 };
@@ -172,8 +177,8 @@ export const compareSemanticVisualFidelityV1 = (input: {
   const invariants = [...input.dna.definingInvariants, ...input.dna.optionalInvariants];
   const metrics = invariants.map((item) => compareInvariant(
     item,
-    metricValue(input.reference, item.metric),
-    metricValue(input.render, item.metric),
+    metricValue(input.reference, item.invariantId, item.metric),
+    metricValue(input.render, item.invariantId, item.metric),
   ));
   const defining = metrics.filter((metric) => metric.defining);
   const definingCoverage = defining.length === 0

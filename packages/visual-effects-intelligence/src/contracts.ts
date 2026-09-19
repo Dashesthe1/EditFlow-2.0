@@ -123,6 +123,10 @@ export interface DenseEvidenceSummaryV1 {
    */
   readonly fragmentationCoherencePeak?: number;
   readonly fragmentationCoherencePhase?: number;
+  /** Event-local shutter metrics captured from the winning coherent fragmentation neighborhood. */
+  readonly fragmentationTemporalStateCountPeak?: number;
+  readonly fragmentationOverlapDensityPeak?: number;
+  readonly fragmentationStateSeparationPeak?: number;
   readonly occlusionPeak: number;
   readonly accelerationPeak: number;
   readonly recoveryFrames: number;

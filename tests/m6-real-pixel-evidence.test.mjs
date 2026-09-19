@@ -67,7 +67,7 @@ test("M6.5 v5 real-pixel comparator rejects weak AE shutter while preserving cau
     `expected under-driven defining deficit for ${metric}`);
   }
   assert.ok(weakComparison.metrics.some((item) =>
-    item.metric === "stateSeparationPeak" && !item.passed && item.renderValue > item.referenceValue),
+    item.metric === "fragmentationStateSeparationPeak" && !item.passed && item.renderValue > item.referenceValue),
   "family-valid separation must still fail when it is materially over-driven relative to the professional reference");
   assert.ok(improvedComparison.diagnoses.some((diagnosis) =>
     diagnosis.includes("overlapDensityPeak is under-driven")));

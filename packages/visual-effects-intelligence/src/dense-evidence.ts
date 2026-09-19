@@ -186,12 +186,31 @@ const peakIndex = (
 export const measureFragmentationCoherenceV1 = (
   frames: readonly DenseFrameMetricsV1[],
   interval: number,
-): Readonly<{ peak: number; phase: number }> => {
-  if (frames.length === 0) return { peak: 0, phase: 0 };
+): Readonly<{
+  peak: number;
+  phase: number;
+  temporalStateCountPeak: number;
+  overlapDensityPeak: number;
+  stateSeparationPeak: number;
+}> => {
+  if (frames.length === 0) {
+    return {
+      peak: 0,
+      phase: 0,
+      temporalStateCountPeak: 0,
+      overlapDensityPeak: 0,
+      stateSeparationPeak: 0,
+    };
+  }
   const safeInterval = Math.max(1, interval);
   const radius = Math.max(2, Math.round(50 / safeInterval));
+  const motionAnchorIndex = peakIndex(frames, (frame) => frame.motionEnergy);
+  const motionPeak = frames[motionAnchorIndex]?.motionEnergy ?? 0;
   let bestPeak = 0;
   let bestIndex = 0;
+  let bestTemporalStateCount = 0;
+  let bestOverlapDensity = 0;
+  let bestStateSeparation = 0;
   for (let center = 0; center < frames.length; center += 1) {
     const start = Math.max(0, center - radius);
     const end = Math.min(frames.length - 1, center + radius);
@@ -224,13 +243,95 @@ export const measureFragmentationCoherenceV1 = (
     // zero by ~75 ms of peak-to-peak separation.
     const componentSpanMs = componentSpanFrames * safeInterval;
     const coordination = clamp01(1 - (Math.max(0, componentSpanMs - safeInterval) / 75));
-    const score = baseScore * coordination;
+    // Shutter fragmentation must be part of the transition impulse, not an
+    // unrelated repeated texture discovered later in the analysis window.
+    // Preserve full credit within ~100 ms of the motion-energy anchor, then
+    // decay to zero by ~250 ms. When there is no material motion anchor, do
+    // not manufacture one.
+    const motionDistanceMs = Math.abs(center - motionAnchorIndex) * safeInterval;
+    const motionCoordination = motionPeak < 0.02
+      ? 1
+      : clamp01(1 - (Math.max(0, motionDistanceMs - 100) / 150));
+    const score = baseScore * coordination * motionCoordination;
     if (score > bestPeak) {
       bestPeak = score;
       bestIndex = center;
+      bestTemporalStateCount = local[statePeak.index]?.temporalStateCount ?? 0;
+      bestOverlapDensity = local[overlapPeak.index]?.overlapDensity ?? 0;
+      bestStateSeparation = local[separationPeak.index]?.stateSeparation
+        ?? local[separationPeak.index]?.displacementMagnitude
+        ?? 0;
     }
   }
-  return { peak: bestPeak, phase: phase(bestIndex, frames.length) };
+  return {
+    peak: bestPeak,
+    phase: phase(bestIndex, frames.length),
+    temporalStateCountPeak: bestTemporalStateCount,
+    overlapDensityPeak: bestOverlapDensity,
+    stateSeparationPeak: bestStateSeparation,
+  };
+};
+
+/**
+ * Resolves the causal fragmentation event while preserving retained pre-v6
+ * analyzer evidence. New/synthetic evidence is derived from the coordinated
+ * event; v1-v5 real-pixel evidence keeps its historical global semantics and
+ * therefore remains inspectable without being silently reinterpreted.
+ */
+export const resolveFragmentationEventMetricsV1 = (
+  evidence: DenseEffectEvidenceV1,
+): ReturnType<typeof measureFragmentationCoherenceV1> => {
+  const summary = evidence.summary;
+  if (
+    typeof summary.fragmentationCoherencePeak === "number"
+    && typeof summary.fragmentationCoherencePhase === "number"
+    && typeof summary.fragmentationTemporalStateCountPeak === "number"
+    && typeof summary.fragmentationOverlapDensityPeak === "number"
+    && typeof summary.fragmentationStateSeparationPeak === "number"
+  ) {
+    return {
+      peak: summary.fragmentationCoherencePeak,
+      phase: summary.fragmentationCoherencePhase,
+      temporalStateCountPeak: summary.fragmentationTemporalStateCountPeak,
+      overlapDensityPeak: summary.fragmentationOverlapDensityPeak,
+      stateSeparationPeak: summary.fragmentationStateSeparationPeak,
+    };
+  }
+
+  const probeAlgorithm = evidence.evidenceRefs.find((ref) =>
+    ref.startsWith("probe-algorithm:editflow.m6.dense-video-probe.v"));
+  // Hand-authored fixtures and retained semantic evidence may already declare a
+  // coherence score without the v6 event tuple. Preserve that declared event
+  // instead of silently recomputing different semantics from fixture frames.
+  if (
+    probeAlgorithm === undefined
+    && typeof summary.fragmentationCoherencePeak === "number"
+  ) {
+    return {
+      peak: summary.fragmentationCoherencePeak,
+      phase: summary.fragmentationCoherencePhase ?? 0,
+      temporalStateCountPeak: summary.temporalStateCountPeak,
+      overlapDensityPeak: summary.overlapDensityPeak,
+      stateSeparationPeak: summary.stateSeparationPeak
+        ?? Math.max(...evidence.frames.map((frame) => frame.stateSeparation ?? 0)),
+    };
+  }
+
+  const legacyRealPixel = probeAlgorithm !== undefined
+    && /dense-video-probe\.v[1-5]$/.test(probeAlgorithm);
+  if (legacyRealPixel) {
+    return {
+      peak: summary.fragmentationCoherencePeak
+        ?? measureFragmentationCoherenceV1(evidence.frames, summary.frameIntervalMs).peak,
+      phase: summary.fragmentationCoherencePhase ?? 0,
+      temporalStateCountPeak: summary.temporalStateCountPeak,
+      overlapDensityPeak: summary.overlapDensityPeak,
+      stateSeparationPeak: summary.stateSeparationPeak
+        ?? Math.max(...evidence.frames.map((frame) => frame.stateSeparation ?? 0)),
+    };
+  }
+
+  return measureFragmentationCoherenceV1(evidence.frames, summary.frameIntervalMs);
 };
 
 export const summarizeDenseEffectFramesV1 = (
@@ -281,6 +382,9 @@ export const summarizeDenseEffectFramesV1 = (
     stateSeparationPeak: max((frame) => frame.stateSeparation ?? 0),
     fragmentationCoherencePeak: fragmentation.peak,
     fragmentationCoherencePhase: fragmentation.phase,
+    fragmentationTemporalStateCountPeak: fragmentation.temporalStateCountPeak,
+    fragmentationOverlapDensityPeak: fragmentation.overlapDensityPeak,
+    fragmentationStateSeparationPeak: fragmentation.stateSeparationPeak,
     occlusionPeak: max((frame) => frame.occlusion),
     accelerationPeak,
     recoveryFrames,

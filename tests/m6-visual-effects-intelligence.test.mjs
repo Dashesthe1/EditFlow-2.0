@@ -16,6 +16,7 @@ import {
   createCanonicalProfessionalBenchmarkV1,
   deriveConstructionActuationPlanV1,
   deriveEffectAnatomyV1,
+  deriveProfessionalFidelityLevelV1,
   distinguishShutterFromFlashZoomV1,
   evaluateProfessionalBenchmarkV1,
   evaluateProfessionalFidelityGateV1,
@@ -523,13 +524,13 @@ test("M6.4 reconstructs complete construction graphs for three compound families
     const graph = buildConstructionGraphV1(anatomy);
     if (families[index] === "SHUTTER_FRAGMENTATION") {
       assert.equal(anatomy.observedMetrics.overlapDensityPeak, fixtures[index].summary.overlapDensityPeak);
-      assert.equal(anatomy.observedMetrics.stateSeparationPeak, fixtures[index].summary.stateSeparationPeak);
+      assert.equal(anatomy.observedMetrics.fragmentationStateSeparationPeak, fixtures[index].summary.stateSeparationPeak);
       assert.equal(
         graph.nodes.find((node) => node.parameters.overlapDensityPeak !== undefined)?.parameters.overlapDensityPeak,
         fixtures[index].summary.overlapDensityPeak,
       );
       assert.equal(
-        graph.nodes.find((node) => node.parameters.stateSeparationPeak !== undefined)?.parameters.stateSeparationPeak,
+        graph.nodes.find((node) => node.parameters.fragmentationStateSeparationPeak !== undefined)?.parameters.fragmentationStateSeparationPeak,
         fixtures[index].summary.stateSeparationPeak,
       );
     }
@@ -696,7 +697,7 @@ test("M6.7 overlap correction cannot over-drive already excessive state separati
   const opacity = plan.instructions.find((item) => item.control === "DUPLICATE_OPACITY");
   const spread = plan.instructions.find((item) => item.control === "DUPLICATE_SPREAD");
   assert.equal(opacity?.direction, "INCREASE");
-  assert.equal(spread?.metric, "stateSeparationPeak");
+  assert.equal(spread?.metric, "fragmentationStateSeparationPeak");
   assert.equal(spread?.direction, "DECREASE");
   assert.ok((spread?.multiplier ?? 1) < 1);
 });
@@ -723,7 +724,9 @@ test("M6.7 bounded local correction improves an under-driven shutter until fidel
       temporalPersistence: 0.5,
       motionEnergyPeak: 0.45,
       displacementPeak: parameters.displacementPeak ?? 0,
-      stateSeparationPeak: parameters.stateSeparationPeak ?? 0,
+      stateSeparationPeak: parameters.fragmentationStateSeparationPeak
+        ?? parameters.stateSeparationPeak
+        ?? 0,
       blurPeak: parameters.blurPeak ?? 0.3,
       exposurePeak: parameters.exposurePeak ?? 0.7,
       overlapDensityPeak: parameters.overlapDensityPeak ?? 0,
@@ -779,6 +782,15 @@ test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded r
   const completeEvidence = cases.map((item) => ({
     caseId: item.caseId,
     achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
+    maturityProof: {
+      functionallyPresent: true,
+      structuralCoverageComplete: true,
+      visuallyRecognizable: true,
+      referenceFaithful: true,
+      transferVariantCount: 1,
+      professionalCasePassCount: 2,
+      robustnessAxesPassed: [],
+    },
     directAbReferenceRef: `proof:a-b:${item.caseId}`,
     comparisonEvidenceRef: `proof:comparison:${item.caseId}`,
     transferPassed: true,
@@ -791,6 +803,32 @@ test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded r
   const failed = evaluateProfessionalBenchmarkV1(cases, degraded);
   assert.equal(failed.passed, false);
   assert.ok(failed.failures.some((item) => /DEGRADED_CASE_NOT_REJECTED/.test(item)));
+
+  assert.equal(deriveProfessionalFidelityLevelV1({
+    functionallyPresent: true,
+    structuralCoverageComplete: true,
+    visuallyRecognizable: true,
+    referenceFaithful: true,
+    transferVariantCount: 1,
+    professionalCasePassCount: 1,
+    robustnessAxesPassed: [],
+  }), "TRANSFER_VERIFIED");
+  assert.equal(deriveProfessionalFidelityLevelV1({
+    functionallyPresent: true,
+    structuralCoverageComplete: true,
+    visuallyRecognizable: true,
+    referenceFaithful: true,
+    transferVariantCount: 3,
+    professionalCasePassCount: 4,
+    robustnessAxesPassed: ["subject", "aspect-ratio", "frame-rate", "motion-direction", "duration", "intensity"],
+  }), "ROBUST");
+
+  const selfAssertedWithoutProof = completeEvidence.map((item, index) => index === 0
+    ? { ...item, maturityProof: { ...item.maturityProof, professionalCasePassCount: 1 } } : item);
+  const maturityFailed = evaluateProfessionalBenchmarkV1(cases, selfAssertedWithoutProof);
+  assert.equal(maturityFailed.passed, false);
+  assert.ok(maturityFailed.failures.some((item) => /MATURITY_ASSERTION_MISMATCH/.test(item)));
+  assert.ok(maturityFailed.failures.some((item) => /MATURITY_TRANSFER_VERIFIED/.test(item)));
 });
 
 test("M6.10 keeps proven low-risk work on fast path and routes difficult references through fidelity", async () => {

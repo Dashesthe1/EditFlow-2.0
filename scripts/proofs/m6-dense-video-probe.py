@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v5"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v6"
 
 
 def analyzer_fingerprint():
@@ -133,13 +133,10 @@ def motion_compensated_residual(previous, current, matrix):
     return mean, p90, active
 
 
-def edge_echo_metrics(gray):
+def edge_echo_surface(gray):
     edges = cv2.Canny(gray, 60, 150).astype(np.float32) / 255.0
-    # Strong motion blur can make a valid professional shutter frame very
-    # edge-sparse. Reject only effectively blank frames; autocorrelation pair
-    # strength below provides the real duplicate-state noise gate.
     if float(edges.mean()) < 0.0001:
-        return 1, 0.0, 0.0, 0.0
+        return None
     edges -= float(edges.mean())
     height, width = edges.shape
     padded = np.zeros((height * 2, width * 2), dtype=np.float32)
@@ -150,18 +147,31 @@ def edge_echo_metrics(gray):
     cy, cx = np.array(autocorr.shape) // 2
     center = float(autocorr[cy, cx])
     if center <= 1e-6:
-        return 1, 0.0, 0.0, 0.0
+        return None
     autocorr /= center
     yy, xx = np.ogrid[:autocorr.shape[0], :autocorr.shape[1]]
     radius = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
     search = (radius >= 5) & (radius <= min(height, width) * 0.28)
-    values = np.where(search, autocorr, 0.0).astype(np.float32)
+    return {
+        "values": np.where(search, autocorr, 0.0).astype(np.float32),
+        "search": search,
+        "cy": int(cy),
+        "cx": int(cx),
+        "height": height,
+        "width": width,
+        "minPairRadius": max(8.0, min(height, width) * 0.025),
+    }
+
+
+def edge_echo_metrics(surface, temporal_baseline):
+    if surface is None:
+        return 1, 0.0, 0.0, 0.0
+    values = surface["values"]
+    search = surface["search"]
+    cy, cx = surface["cy"], surface["cx"]
+    min_pair_radius = surface["minPairRadius"]
     maxima = values == cv2.dilate(values, np.ones((7, 7), np.uint8))
-    # A temporal duplicate produces a symmetric off-center autocorrelation
-    # pair. Ignore the near-origin texture lobe and count each +/- pair once.
-    pair_mask = maxima & (values >= 0.16)
-    pair_coords = np.argwhere(pair_mask)
-    min_pair_radius = max(8.0, min(height, width) * 0.025)
+    pair_coords = np.argwhere(maxima & (values >= 0.16))
     pairs = []
     for py, px in pair_coords:
         dy = float(py - cy)
@@ -179,9 +189,31 @@ def edge_echo_metrics(gray):
     state_count = 1 + min(4, len(strong_pairs))
     echo_strength = clamp01(strongest_pair)
     overlap_density = clamp01(float(np.mean(values[search] >= 0.16)) * 12.0)
-    if strong_pairs:
-        echo_offset_pixels = max(pair[1] for pair in strong_pairs)
-        state_separation = clamp01(echo_offset_pixels / max(math.hypot(width, height), 1.0))
+
+    residual = values if temporal_baseline is None else np.maximum(
+        values - temporal_baseline, 0.0
+    )
+    residual_peak = float(np.max(residual[search])) if np.any(search) else 0.0
+    residual_threshold = max(0.025, residual_peak * 0.55)
+    residual_maxima = residual == cv2.dilate(
+        residual.astype(np.float32), np.ones((7, 7), np.uint8)
+    )
+    residual_pairs = []
+    for py, px in np.argwhere(residual_maxima & (residual >= residual_threshold)):
+        dy = float(py - cy)
+        dx = float(px - cx)
+        pair_radius = math.hypot(dx, dy)
+        if pair_radius < min_pair_radius:
+            continue
+        if dy < 0.0 or (abs(dy) < 0.5 and dx <= 0.0):
+            continue
+        residual_pairs.append((float(residual[py, px]), pair_radius))
+    residual_pairs.sort(reverse=True)
+    if residual_peak >= 0.035 and residual_pairs:
+        echo_offset_pixels = residual_pairs[0][1]
+        state_separation = clamp01(
+            echo_offset_pixels / max(math.hypot(surface["width"], surface["height"]), 1.0)
+        )
     else:
         state_separation = 0.0
     return state_count, echo_strength, overlap_density, state_separation
@@ -216,6 +248,15 @@ def read_window(video_path, start_seconds, end_seconds, longest):
 
 def analyze_frames(frames, fps):
     grays = [gray_u8(frame) for _index, frame in frames]
+    echo_surfaces = [edge_echo_surface(gray) for gray in grays]
+    echo_values = [
+        surface["values"] for surface in echo_surfaces if surface is not None
+    ]
+    temporal_echo_baseline = (
+        np.median(np.stack(echo_values, axis=0), axis=0).astype(np.float32)
+        if echo_values
+        else None
+    )
     sharpness = np.array(
         [float(cv2.Laplacian(gray, cv2.CV_64F).var()) for gray in grays],
         dtype=np.float64,
@@ -225,7 +266,9 @@ def analyze_frames(frames, fps):
     cumulative_rotation = 0.0
     output = []
     for offset, ((source_index, frame), gray) in enumerate(zip(frames, grays)):
-        state_count, echo_strength, overlap_density, state_separation = edge_echo_metrics(gray)
+        state_count, echo_strength, overlap_density, state_separation = edge_echo_metrics(
+            echo_surfaces[offset], temporal_echo_baseline
+        )
         semantic = {
             "displacement": {"x": 0.0, "y": 0.0},
             "scale": cumulative_scale,

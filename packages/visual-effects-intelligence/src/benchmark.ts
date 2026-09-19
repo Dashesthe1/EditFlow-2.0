@@ -63,9 +63,51 @@ const maturityRank: Readonly<Record<ProfessionalFidelityLevelV1, number>> = {
   ROBUST: 7,
 };
 
+export interface ProfessionalMaturityProofV1 {
+  readonly functionallyPresent: boolean;
+  readonly structuralCoverageComplete: boolean;
+  readonly visuallyRecognizable: boolean;
+  readonly referenceFaithful: boolean;
+  readonly transferVariantCount: number;
+  readonly professionalCasePassCount: number;
+  readonly robustnessAxesPassed: readonly string[];
+}
+
+const ROBUSTNESS_AXES_V1 = [
+  "subject",
+  "aspect-ratio",
+  "frame-rate",
+  "motion-direction",
+  "duration",
+  "intensity",
+] as const;
+
+/**
+ * Derives maturity from retained proof facts instead of trusting a caller-supplied
+ * label. M6 governance treats each level as cumulative: later levels cannot be
+ * asserted when an earlier visual proof gate is absent.
+ */
+export const deriveProfessionalFidelityLevelV1 = (
+  proof: ProfessionalMaturityProofV1,
+): ProfessionalFidelityLevelV1 => {
+  if (!proof.functionallyPresent) {
+    throw new TypeError("Professional maturity cannot be assigned before the effect is functionally present.");
+  }
+  if (!proof.structuralCoverageComplete) return "FUNCTIONALLY_PRESENT";
+  if (!proof.visuallyRecognizable) return "STRUCTURAL";
+  if (!proof.referenceFaithful) return "VISUALLY_RECOGNIZABLE";
+  if (proof.transferVariantCount < 1) return "REFERENCE_FAITHFUL";
+  if (proof.professionalCasePassCount < 2) return "TRANSFER_VERIFIED";
+  const robustAxes = new Set(proof.robustnessAxesPassed);
+  const robust = ROBUSTNESS_AXES_V1.every((axis) => robustAxes.has(axis));
+  return robust ? "ROBUST" : "PROFESSIONAL_FIDELITY_VERIFIED";
+};
+
 export interface BenchmarkCaseEvidenceV1 {
   readonly caseId: string;
-  readonly achievedLevel: ProfessionalFidelityLevelV1;
+  /** Optional assertion retained only for audit; the evaluator derives authority from maturityProof. */
+  readonly achievedLevel?: ProfessionalFidelityLevelV1;
+  readonly maturityProof: ProfessionalMaturityProofV1;
   readonly directAbReferenceRef: string;
   readonly comparisonEvidenceRef: string;
   readonly transferPassed: boolean;
@@ -90,8 +132,18 @@ export const evaluateProfessionalBenchmarkV1 = (
     if (proof.directAbReferenceRef.trim().length === 0 || proof.comparisonEvidenceRef.trim().length === 0) {
       failures.push(`${item.caseId}:MISSING_DIRECT_AB_OR_MACHINE_COMPARISON`);
     }
-    if (maturityRank[proof.achievedLevel] < maturityRank[item.expectedLevel]) {
-      failures.push(`${item.caseId}:MATURITY_${proof.achievedLevel}`);
+    let derivedLevel: ProfessionalFidelityLevelV1;
+    try {
+      derivedLevel = deriveProfessionalFidelityLevelV1(proof.maturityProof);
+    } catch {
+      failures.push(`${item.caseId}:FUNCTIONALLY_ABSENT`);
+      continue;
+    }
+    if (proof.achievedLevel !== undefined && proof.achievedLevel !== derivedLevel) {
+      failures.push(`${item.caseId}:MATURITY_ASSERTION_MISMATCH_${proof.achievedLevel}_VS_${derivedLevel}`);
+    }
+    if (maturityRank[derivedLevel] < maturityRank[item.expectedLevel]) {
+      failures.push(`${item.caseId}:MATURITY_${derivedLevel}`);
     }
     if (!proof.transferPassed) failures.push(`${item.caseId}:TRANSFER_FAILED`);
     if (!proof.degradedCaseRejected) failures.push(`${item.caseId}:DEGRADED_CASE_NOT_REJECTED`);
