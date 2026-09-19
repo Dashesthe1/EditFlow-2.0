@@ -661,7 +661,7 @@ test("M6.8 materializes measured UNKNOWN directional displacement without a name
     displacementDirection: { x: 0.6, y: -0.8 },
     motionPeakPhase: 0.35,
     motionEnergyPeak: 0.12,
-    accelerationPeak: 0.01,
+    accelerationPeak: 0.05,
   });
   const anatomy = decomposeUnknownEffectV1(reference);
   assert.ok(anatomy.dna.definingInvariants.some((item) =>
@@ -732,12 +732,16 @@ test("M6.8 materializes measured UNKNOWN directional displacement without a name
   );
   assert.equal(result.compiled, true, result.issues.join(", "));
   assert.notEqual(result.plan, null);
-  const expressionOperation = result.plan.operations.find((operation) =>
+  const expressionOperations = result.plan.operations.filter((operation) =>
     operation.input.command === "property.set_expression"
       && JSON.stringify(operation.input).includes("ADBE Position"));
-  assert.ok(expressionOperation);
-  const expression = expressionOperation.input.payload.expression;
+  assert.equal(expressionOperations.length, 1);
+  const expression = expressionOperations[0].input.payload.expression;
+  assert.match(expression, /var base=value;/);
+  assert.match(expression, /var d0=\(function\(\)/);
+  assert.match(expression, /var d1=\(function\(\)/);
   assert.match(expression, /var center=0\.35;/);
+  assert.match(expression, /var center=\(inPoint\+outPoint\)\/2;/);
   assert.doesNotMatch(expression, /center=first\+span/);
   assert.match(expression, /Math\.max\(thisComp\.width,thisComp\.height\)/);
   assert.equal(result.plan.operations.some((operation) =>

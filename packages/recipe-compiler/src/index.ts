@@ -826,12 +826,72 @@ const compileM6TemporalDuplication = (
   return uniqueStrings(outputs);
 };
 
+interface M6PositionExpressionComponentV1 {
+  readonly componentId: string;
+  readonly deltaExpression: string;
+  readonly standaloneExpression: string;
+}
+
+type M6PositionExpressionRegistryV1 =
+  Map<string, readonly M6PositionExpressionComponentV1[]>;
+
+const registerM6PositionExpressionV1 = (
+  compId: string,
+  layerId: string,
+  component: M6PositionExpressionComponentV1,
+  registry: M6PositionExpressionRegistryV1,
+  operations: VirtualAeOperationV1[],
+): void => {
+  const key = `${compId}\u0000${layerId}`;
+  const existing = registry.get(key) ?? [];
+  const next = [...existing, component];
+  registry.set(key, next);
+
+  const priorOperationIndex = operations.findIndex((operation) =>
+    operation.type === "SET_EXPRESSION"
+      && operation.compId === compId
+      && operation.layerId === layerId
+      && operation.propertyPath === "Transform.Position");
+  if (priorOperationIndex >= 0) operations.splice(priorOperationIndex, 1);
+
+  if (next.length === 1) {
+    operations.push({
+      type: "SET_EXPRESSION",
+      compId,
+      layerId,
+      propertyPath: "Transform.Position",
+      expression: component.standaloneExpression,
+    });
+    return;
+  }
+
+  const declarations = next.map((item, index) =>
+    `var d${index}=${item.deltaExpression};`);
+  const xSum = next.map((_, index) => `d${index}[0]`).join("+");
+  const ySum = next.map((_, index) => `d${index}[1]`).join("+");
+  const expression = [
+    "var base=value;",
+    ...declarations,
+    `var dx=${xSum};`,
+    `var dy=${ySum};`,
+    "base.length>2?[base[0]+dx,base[1]+dy,base[2]]:base+[dx,dy];",
+  ].join("");
+  operations.push({
+    type: "SET_EXPRESSION",
+    compId,
+    layerId,
+    propertyPath: "Transform.Position",
+    expression,
+  });
+};
+
 const compileM6SemanticVisualState = (
   node: EditingIrNodeV1,
   targets: readonly string[],
   context: RecipeCompilerContextV1,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
+  positionExpressionRegistry: M6PositionExpressionRegistryV1,
 ): readonly string[] => {
   const parameters = resolveParameterMap(
     node,
@@ -892,14 +952,29 @@ const compileM6SemanticVisualState = (
         `var dy=${normalizedY}*amplitude*envelope;`,
         "value.length>2?[value[0]+dx,value[1]+dy,value[2]]:value+[dx,dy];",
       ].join("");
+      const deltaExpression = [
+        "(function(){",
+        "var span=Math.max(thisComp.frameDuration,Math.abs(outPoint-inPoint));",
+        `var center=${peakTimeSeconds};`,
+        "var width=Math.max(thisComp.frameDuration*2,span*0.12);",
+        "var u=(time-center)/width;",
+        "var envelope=Math.exp(-4*u*u);",
+        `var amplitude=${displacementRaw}*Math.max(thisComp.width,thisComp.height);`,
+        `return [${normalizedX}*amplitude*envelope,${normalizedY}*amplitude*envelope];`,
+        "})()",
+      ].join("");
       for (const layerId of targets) {
-        operations.push({
-          type: "SET_EXPRESSION",
-          compId: context.compId,
+        registerM6PositionExpressionV1(
+          context.compId,
           layerId,
-          propertyPath: "Transform.Position",
-          expression,
-        });
+          {
+            componentId: `${node.nodeId}:directional`,
+            deltaExpression,
+            standaloneExpression: expression,
+          },
+          positionExpressionRegistry,
+          operations,
+        );
       }
       return targets;
     }
@@ -926,14 +1001,28 @@ const compileM6SemanticVisualState = (
       "var envelope=Math.exp(-4*phase*phase);",
       "value+[0,-amplitude*phase*envelope];",
     ].join("");
+    const deltaExpression = [
+      "(function(){",
+      "var center=(inPoint+outPoint)/2;",
+      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
+      "var phase=(time-center)/recovery;",
+      `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
+      "var envelope=Math.exp(-4*phase*phase);",
+      "return [0,-amplitude*phase*envelope];",
+      "})()",
+    ].join("");
     for (const layerId of targets) {
-      operations.push({
-        type: "SET_EXPRESSION",
-        compId: context.compId,
+      registerM6PositionExpressionV1(
+        context.compId,
         layerId,
-        propertyPath: "Transform.Position",
-        expression,
-      });
+        {
+          componentId: `${node.nodeId}:motion-shaping`,
+          deltaExpression,
+          standaloneExpression: expression,
+        },
+        positionExpressionRegistry,
+        operations,
+      );
     }
     return targets;
   }
@@ -1052,6 +1141,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
   const roleBindings = collectRoleBindings(context.roleBindings, issues);
   const windows = layerWindowsForComp(comp.layers);
   const operations: VirtualAeOperationV1[] = [];
+  const positionExpressionRegistry: M6PositionExpressionRegistryV1 = new Map();
   const nodeOutputs = new Map<string, readonly string[]>();
   const nodeTargetLayerIds: Record<string, readonly string[]> = {};
   const skippedOptionalNodeIds: string[] = [];
@@ -1102,7 +1192,14 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
       "MATTE_RELATION",
       "MOTION_SHAPING",
     ].includes(node.kind)) {
-      outputs = compileM6SemanticVisualState(node, targets, context, operations, issues);
+      outputs = compileM6SemanticVisualState(
+        node,
+        targets,
+        context,
+        operations,
+        issues,
+        positionExpressionRegistry,
+      );
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;
