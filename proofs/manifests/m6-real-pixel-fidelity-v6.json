@@ -1,0 +1,99 @@
+{
+  "schema": "editflow.m6.real-pixel-fidelity-manifest.v6",
+  "status": "SINGLE_CASE_PROFESSIONAL_FIDELITY_VERIFIED",
+  "generatedAt": "2026-09-19T16:32:51.079Z",
+  "reference": {
+    "sourceId": "m6-v6r-ref05",
+    "contentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+    "analyzerFingerprint": "0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1",
+    "evidence": "proofs/diagnostics/m6-v6-event-ref05-evidence.json",
+    "eventMetrics": {
+      "temporalStateCountPeak": 2,
+      "fragmentationCoherencePeak": 0.27512562814070346,
+      "overlapDensityPeak": 0.0550251256281407,
+      "stateSeparationPeak": 0.021695137988629595,
+      "accelerationPeak": 0.07006638912336575,
+      "recoveryFrames": 6
+    }
+  },
+  "certifiedRealAeCandidate": {
+    "candidateId": "v6-joint:28-1",
+    "evidence": "proofs/diagnostics/m6-v6-event-joint-01-evidence.json",
+    "fidelity": "proofs/diagnostics/m6-v6-event-joint-01-fidelity.json",
+    "physicalState": {
+      "motionImpulsePx": 190,
+      "duplicateSpreadPx": 28,
+      "duplicateOpacityPct": 80,
+      "postCutFrames": 1.25,
+      "copyCount": 2,
+      "fragmentBandCount": 5,
+      "overlapCopyCount": 1,
+      "overlapSpreadPx": 8,
+      "overlapOpacityPct": 65
+    },
+    "definingCoverage": 1,
+    "weightedFidelity": 1,
+    "eventMetrics": {
+      "temporalStateCountPeak": 2,
+      "fragmentationCoherencePeak": 0.29020100502512564,
+      "overlapDensityPeak": 0.05804020100502513,
+      "stateSeparationPeak": 0.019641855032959652,
+      "accelerationPeak": 0.08479489879174004,
+      "recoveryFrames": 1
+    }
+  },
+  "retainedNegativeControls": [
+    {
+      "fidelity": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
+      "residualInvariantIds": [
+        "shutter.coordination",
+        "shutter.overlap"
+      ]
+    },
+    {
+      "fidelity": "proofs/diagnostics/m6-v6-event-joint-04-fidelity.json",
+      "residualInvariantIds": [
+        "shutter.overlap",
+        "shutter.displacement"
+      ]
+    }
+  ],
+  "directAbEvidence": {
+    "path": "proofs/diagnostics/m6-v6-shutter-reference-vs-certified-ae.jpg",
+    "sha256": "19531f6829a4b63ea47bb7d1cde7489b3aac12494aa94bc98a7680b5d5768edf",
+    "sampleCount": 8,
+    "note": "Professional reference on top; certified real AE render on bottom around the shutter event."
+  },
+  "proofGovernance": {
+    "supersedesActiveGate": "proofs/manifests/m6-real-pixel-fidelity-v5.json",
+    "preservesLegacyEvidence": true,
+    "rule": "Only analyzer-matched reference/render evidence may certify fidelity; global scene maxima cannot substitute for event-local defining behavior."
+  },
+  "milestones": {
+    "M6.1": "PASS_INCREMENT_DENSE_EVENT_LOCAL_REAL_PIXEL_V6",
+    "M6.3": "PASS_INCREMENT_CAUSAL_SHUTTER_DNA",
+    "M6.5": "PASS_INCREMENT_REAL_REFERENCE_VS_RENDER_CERTIFICATION",
+    "M6.6": "PASS_INCREMENT_REAL_NEGATIVE_CONTROLS_REJECTED",
+    "M6.7": "PARTIAL_REAL_RENDER_CLOSURE_AUTOMATIC_AE_LOOP_STILL_OPEN"
+  },
+  "verification": {
+    "command": "npm run check",
+    "schemas": "PASS_35_FIXTURES",
+    "typecheck": "PASS",
+    "tests": {
+      "passed": 999,
+      "failed": 0
+    }
+  },
+  "certification": {
+    "singleCaseProfessionalFidelityVerified": true,
+    "fullM6ProfessionalBenchmarkVerified": false,
+    "transferVerifiedForThisConstruction": false,
+    "robust": false,
+    "openGates": [
+      "Drive the real AE render/diagnose/patch/rerender loop automatically rather than by an externally selected probe bank.",
+      "Verify transfer on materially different footage.",
+      "Expand real professional evidence across the M6.9 canonical and held-out benchmark families."
+    ]
+  }
+}

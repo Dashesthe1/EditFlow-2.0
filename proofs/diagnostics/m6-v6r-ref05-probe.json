@@ -1,0 +1,1586 @@
+{
+  "analysis": {
+    "algorithmId": "editflow.m6.dense-video-probe.v6",
+    "algorithms": [
+      "Farneback dense optical flow",
+      "pyramidal Lucas-Kanade feature tracking",
+      "RANSAC estimateAffinePartial2D",
+      "motion-compensated residual",
+      "edge autocorrelation echo detector",
+      "Laplacian sharpness proxy"
+    ],
+    "analyzerFingerprint": "a9d12e91312d5cdb7179224d7c817342f99d52be726a1b7f3b20f18a4652287b",
+    "dependencies": {
+      "numpy": "2.5.3",
+      "opencv": "5.0.0"
+    },
+    "frameCount": 43,
+    "longestEdge": 360
+  },
+  "frames": [
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 1.0,
+        "flowMeanPixels": 0.0,
+        "flowP90Pixels": 0.0,
+        "flowResidualP90Pixels": 0.0,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0000.png",
+      "semantic": {
+        "blurStrength": 0.951523405992788,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.0,
+        "scale": 1.0,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 569,
+      "timeMs": 9507.694776501841
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9863013698630136,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7052788489706361,
+        "flowMeanPixels": 0.2632852792739868,
+        "flowP90Pixels": 0.6977068185806274,
+        "flowResidualP90Pixels": 0.6424816215047887,
+        "motionCompensatedResidualCoverage": 0.0015200617283950618,
+        "motionCompensatedResidualMean": 0.012159434761558945,
+        "motionCompensatedResidualP90": 0.03529411764705882,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0001.png",
+      "semantic": {
+        "blurStrength": 0.9557003459334028,
+        "cameraMotion": {
+          "x": 5.415358140857684e-06,
+          "y": 0.00019323411915037368
+        },
+        "displacement": {
+          "x": 5.415358140857684e-06,
+          "y": 0.00019323411915037368
+        },
+        "distortionStrength": 0.08238026739490519,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.11551869625815518,
+        "scale": 1.001493701690466,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 570,
+      "timeMs": 9524.404257655622
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.974025974025974,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.6899753690797921,
+        "flowMeanPixels": 0.3298339247703552,
+        "flowP90Pixels": 0.8775291442871094,
+        "flowResidualP90Pixels": 0.8070615635370718,
+        "motionCompensatedResidualCoverage": 0.0018981481481481482,
+        "motionCompensatedResidualMean": 0.0137239167271847,
+        "motionCompensatedResidualP90": 0.0392156862745098,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0002.png",
+      "semantic": {
+        "blurStrength": 0.9587951955399808,
+        "cameraMotion": {
+          "x": 5.216802108205027e-06,
+          "y": 0.00022611535257763333
+        },
+        "displacement": {
+          "x": 5.216802108205027e-06,
+          "y": 0.00022611535257763333
+        },
+        "distortionStrength": 0.09259501679965766,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.2158709955694944,
+        "scale": 1.0034274011922772,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 571,
+      "timeMs": 9541.113738809405
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9880952380952381,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7170213642241912,
+        "flowMeanPixels": 0.43416857719421387,
+        "flowP90Pixels": 1.1317346096038818,
+        "flowResidualP90Pixels": 1.0393630284225999,
+        "motionCompensatedResidualCoverage": 0.01662037037037037,
+        "motionCompensatedResidualMean": 0.025469559428709754,
+        "motionCompensatedResidualP90": 0.07058823529411765,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0003.png",
+      "semantic": {
+        "blurStrength": 0.94722991086997,
+        "cameraMotion": {
+          "x": 2.5848023344426314e-07,
+          "y": 0.00030556908912128875
+        },
+        "displacement": {
+          "x": 2.5848023344426314e-07,
+          "y": 0.00030556908912128875
+        },
+        "distortionStrength": 0.1660749774199365,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0007537688442211056,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.3396611195122201,
+        "scale": 1.0044505024094412,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 572,
+      "timeMs": 9557.823219963186
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.990990990990991,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.893549146057084,
+        "flowMeanPixels": 0.41420668363571167,
+        "flowP90Pixels": 1.1460561752319336,
+        "flowResidualP90Pixels": 0.9593305343110162,
+        "motionCompensatedResidualCoverage": 0.0036805555555555554,
+        "motionCompensatedResidualMean": 0.008770697167755992,
+        "motionCompensatedResidualP90": 0.023529411764705882,
+        "stateSeparationNormalized": 0.19064745111667228
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0004.png",
+      "semantic": {
+        "blurStrength": 0.944199339529305,
+        "cameraMotion": {
+          "x": 1.9148483665453064e-06,
+          "y": 0.0005471288743946288
+        },
+        "displacement": {
+          "x": 1.9148483665453064e-06,
+          "y": 0.0005471288743946288
+        },
+        "distortionStrength": 0.059643759058291224,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.4535932899454534,
+        "scale": 1.0067556157740294,
+        "stateSeparation": 0.19064745111667228,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 573,
+      "timeMs": 9574.532701116968
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9824561403508771,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8992045986167362,
+        "flowMeanPixels": 0.6273539066314697,
+        "flowP90Pixels": 1.611486792564392,
+        "flowResidualP90Pixels": 1.3174917132832815,
+        "motionCompensatedResidualCoverage": 0.004945987654320988,
+        "motionCompensatedResidualMean": 0.010431190994916484,
+        "motionCompensatedResidualP90": 0.023529411764705882,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0005.png",
+      "semantic": {
+        "blurStrength": 0.9460678192558587,
+        "cameraMotion": {
+          "x": 8.176793926395476e-07,
+          "y": 0.0008746582600805495
+        },
+        "displacement": {
+          "x": 8.176793926395476e-07,
+          "y": 0.0008746582600805495
+        },
+        "distortionStrength": 0.06573942923021854,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.6103302295042864,
+        "scale": 1.0101499425476168,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 574,
+      "timeMs": 9591.24218227075
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9259259259259259,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8772458621701981,
+        "flowMeanPixels": 0.7351745963096619,
+        "flowP90Pixels": 2.113009214401245,
+        "flowResidualP90Pixels": 1.8666798959892597,
+        "motionCompensatedResidualCoverage": 0.008209876543209876,
+        "motionCompensatedResidualMean": 0.02296565601549262,
+        "motionCompensatedResidualP90": 0.06274509803921569,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0006.png",
+      "semantic": {
+        "blurStrength": 0.9556728593266409,
+        "cameraMotion": {
+          "x": 3.204451584477081e-07,
+          "y": 0.0007166551219092475
+        },
+        "displacement": {
+          "x": 3.204451584477081e-07,
+          "y": 0.0007166551219092475
+        },
+        "distortionStrength": 0.15396022846507262,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.8015006279750786,
+        "scale": 1.0132652417184338,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 575,
+      "timeMs": 9607.951663424532
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9591836734693877,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8923486358169336,
+        "flowMeanPixels": 0.7143164873123169,
+        "flowP90Pixels": 2.1476855278015137,
+        "flowResidualP90Pixels": 1.929389209838142,
+        "motionCompensatedResidualCoverage": 0.005733024691358024,
+        "motionCompensatedResidualMean": 0.007975671750181554,
+        "motionCompensatedResidualP90": 0.0196078431372549,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0007.png",
+      "semantic": {
+        "blurStrength": 0.95542202523589,
+        "cameraMotion": {
+          "x": -1.2307940172225548e-07,
+          "y": 0.0006278163856930203
+        },
+        "displacement": {
+          "x": -1.2307940172225548e-07,
+          "y": 0.0006278163856930203
+        },
+        "distortionStrength": 0.057961627541131794,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 1.0145551908622472,
+        "scale": 1.0187760027625814,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 576,
+      "timeMs": 9624.661144578313
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9896907216494846,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8504164794034104,
+        "flowMeanPixels": 0.7381752729415894,
+        "flowP90Pixels": 2.258073091506958,
+        "flowResidualP90Pixels": 2.070629114060993,
+        "motionCompensatedResidualCoverage": 0.007091049382716049,
+        "motionCompensatedResidualMean": 0.011650357056402808,
+        "motionCompensatedResidualP90": 0.03137254901960784,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0008.png",
+      "semantic": {
+        "blurStrength": 0.9503865841539064,
+        "cameraMotion": {
+          "x": 3.643004391859803e-06,
+          "y": 0.0005567472842004564
+        },
+        "displacement": {
+          "x": 3.643004391859803e-06,
+          "y": 0.0005567472842004564
+        },
+        "distortionStrength": 0.08408372462844121,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 1.2511345240941687,
+        "scale": 1.0233602892049742,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 577,
+      "timeMs": 9641.370625732096
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.953125,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7637303770634727,
+        "flowMeanPixels": 0.835786759853363,
+        "flowP90Pixels": 2.3226261138916016,
+        "flowResidualP90Pixels": 2.135139208995299,
+        "motionCompensatedResidualCoverage": 0.011921296296296296,
+        "motionCompensatedResidualMean": 0.021969347615589444,
+        "motionCompensatedResidualP90": 0.058823529411764705,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0009.png",
+      "semantic": {
+        "blurStrength": 0.9467714485015213,
+        "cameraMotion": {
+          "x": 9.816031282146772e-06,
+          "y": 0.0005886524501774046
+        },
+        "displacement": {
+          "x": 9.816031282146772e-06,
+          "y": 0.0005886524501774046
+        },
+        "distortionStrength": 0.14766080389936742,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 1.4660505848904246,
+        "scale": 1.0246252497497765,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 578,
+      "timeMs": 9658.080106885876
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.7560975609756098,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7498042252447817,
+        "flowMeanPixels": 0.9769206643104553,
+        "flowP90Pixels": 2.8530821800231934,
+        "flowResidualP90Pixels": 2.668279892500851,
+        "motionCompensatedResidualCoverage": 0.05918981481481481,
+        "motionCompensatedResidualMean": 0.03170872670055677,
+        "motionCompensatedResidualP90": 0.09019607843137255,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0010.png",
+      "semantic": {
+        "blurStrength": 0.956465529919343,
+        "cameraMotion": {
+          "x": 2.0124058614278003e-06,
+          "y": 0.0005880881514814165
+        },
+        "displacement": {
+          "x": 2.0124058614278003e-06,
+          "y": 0.0005880881514814165
+        },
+        "distortionStrength": 0.21809844393601666,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 1.725517539728894,
+        "scale": 1.0356742471413007,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 579,
+      "timeMs": 9674.789588039659
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.7475728155339806,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.859043873176667,
+        "flowMeanPixels": 1.0532289743423462,
+        "flowP90Pixels": 3.4195828437805176,
+        "flowResidualP90Pixels": 3.2621827416770732,
+        "motionCompensatedResidualCoverage": 0.015131172839506173,
+        "motionCompensatedResidualMean": 0.015964808763011377,
+        "motionCompensatedResidualP90": 0.03529411764705882,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0011.png",
+      "semantic": {
+        "blurStrength": 0.9561163282423943,
+        "cameraMotion": {
+          "x": 1.4872577998580205e-06,
+          "y": 0.00047191720869806076
+        },
+        "displacement": {
+          "x": 1.4872577998580205e-06,
+          "y": 0.00047191720869806076
+        },
+        "distortionStrength": 0.10694990188802284,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 1.9049432285693417,
+        "scale": 1.0512463220161983,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 580,
+      "timeMs": 9691.49906919344
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.7184466019417476,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.786165184011019,
+        "flowMeanPixels": 0.9883818030357361,
+        "flowP90Pixels": 3.3670287132263184,
+        "flowResidualP90Pixels": 3.2724008511882454,
+        "motionCompensatedResidualCoverage": 0.01476851851851852,
+        "motionCompensatedResidualMean": 0.01648317598644396,
+        "motionCompensatedResidualP90": 0.0392156862745098,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0012.png",
+      "semantic": {
+        "blurStrength": 0.9605630616748407,
+        "cameraMotion": {
+          "x": 4.044212012862166e-06,
+          "y": 0.00027683865692880417
+        },
+        "displacement": {
+          "x": 4.044212012862166e-06,
+          "y": 0.00027683865692880417
+        },
+        "distortionStrength": 0.11374439009041121,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.2588110900017204,
+        "scale": 1.067912338075973,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 581,
+      "timeMs": 9708.208550347223
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.5569620253164557,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.6868075913623707,
+        "flowMeanPixels": 1.1906038522720337,
+        "flowP90Pixels": 3.9639768600463867,
+        "flowResidualP90Pixels": 3.92368310082315,
+        "motionCompensatedResidualCoverage": 0.01972993827160494,
+        "motionCompensatedResidualMean": 0.016809852335996127,
+        "motionCompensatedResidualP90": 0.0392156862745098,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0013.png",
+      "semantic": {
+        "blurStrength": 0.9620610463819574,
+        "cameraMotion": {
+          "x": 7.4260117900040415e-06,
+          "y": 0.0001293228007853031
+        },
+        "displacement": {
+          "x": 7.4260117900040415e-06,
+          "y": 0.0001293228007853031
+        },
+        "distortionStrength": 0.118366130789197,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.0894742235306314,
+        "scale": 1.0803336539340833,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 582,
+      "timeMs": 9724.918031501003
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.5111111111111111,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7084688442155497,
+        "flowMeanPixels": 1.3801069259643555,
+        "flowP90Pixels": 5.003868103027344,
+        "flowResidualP90Pixels": 4.971648463619195,
+        "motionCompensatedResidualCoverage": 0.035833333333333335,
+        "motionCompensatedResidualMean": 0.025470255386105062,
+        "motionCompensatedResidualP90": 0.07058823529411765,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0014.png",
+      "semantic": {
+        "blurStrength": 0.9554549939697411,
+        "cameraMotion": {
+          "x": 1.515195375153174e-06,
+          "y": 0.00010234120612343153
+        },
+        "displacement": {
+          "x": 1.515195375153174e-06,
+          "y": 0.00010234120612343153
+        },
+        "distortionStrength": 0.1892478618575903,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 583,
+      "timeMs": 9741.627512654786
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7937513057375799,
+        "flowMeanPixels": 2.027923822402954,
+        "flowP90Pixels": 7.0893073081970215,
+        "flowResidualP90Pixels": 7.055127105088827,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0015.png",
+      "semantic": {
+        "blurStrength": 0.9608459063092254,
+        "cameraMotion": {
+          "x": 2.276687365439203e-05,
+          "y": 9.552367652455965e-05
+        },
+        "displacement": {
+          "x": 2.276687365439203e-05,
+          "y": 9.552367652455965e-05
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 584,
+      "timeMs": 9758.336993808567
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.5123105010108888,
+        "flowMeanPixels": 3.806272268295288,
+        "flowP90Pixels": 12.425048828125,
+        "flowResidualP90Pixels": 12.417783980260287,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0016.png",
+      "semantic": {
+        "blurStrength": 0.9992970667037184,
+        "cameraMotion": {
+          "x": 2.718152374857002e-05,
+          "y": 3.662605174920625e-06
+        },
+        "displacement": {
+          "x": 2.718152374857002e-05,
+          "y": 3.662605174920625e-06
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 585,
+      "timeMs": 9775.04647496235
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.10039659722370405,
+        "flowMeanPixels": 0.19692984223365784,
+        "flowP90Pixels": 0.2061004936695099,
+        "flowResidualP90Pixels": 0.2060594503307387,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0017.png",
+      "semantic": {
+        "blurStrength": 0.9997532681688431,
+        "cameraMotion": {
+          "x": -3.0070550565142186e-07,
+          "y": -6.737888422018538e-07
+        },
+        "displacement": {
+          "x": -3.0070550565142186e-07,
+          "y": -6.737888422018538e-07
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 586,
+      "timeMs": 9791.75595611613
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.5158814191818237,
+        "flowCoherence": 0.7391945796324888,
+        "flowMeanPixels": 0.4018268287181854,
+        "flowP90Pixels": 0.5869079828262329,
+        "flowResidualP90Pixels": 0.5869578984892136,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.021695137988629595
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0018.png",
+      "semantic": {
+        "blurStrength": 0.9996200368971128,
+        "cameraMotion": {
+          "x": -5.97289625956263e-07,
+          "y": -8.219600001919187e-07
+        },
+        "displacement": {
+          "x": -5.97289625956263e-07,
+          "y": -8.219600001919187e-07
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0550251256281407,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.021695137988629595,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 587,
+      "timeMs": 9808.465437269913
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.9162045221290225,
+        "flowMeanPixels": 3.8251118659973145,
+        "flowP90Pixels": 14.083677291870117,
+        "flowResidualP90Pixels": 14.010601976408982,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0019.png",
+      "semantic": {
+        "blurStrength": 0.9979700585706149,
+        "cameraMotion": {
+          "x": 0.00021673480255736245,
+          "y": 4.972555001990663e-06
+        },
+        "displacement": {
+          "x": 0.00021673480255736245,
+          "y": 4.972555001990663e-06
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.011306532663316583,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 588,
+      "timeMs": 9825.174918423694
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.9913060500703818,
+        "flowMeanPixels": 8.993154525756836,
+        "flowP90Pixels": 23.046876907348633,
+        "flowResidualP90Pixels": 20.219220119915434,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0020.png",
+      "semantic": {
+        "blurStrength": 0.9948751047477121,
+        "cameraMotion": {
+          "x": -0.0005812114311589135,
+          "y": -0.007901706960466173
+        },
+        "displacement": {
+          "x": -0.0005812114311589135,
+          "y": -0.007901706960466173
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.004522613065326633,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 589,
+      "timeMs": 9841.884399577477
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.9841359871808004,
+        "flowMeanPixels": 7.904236793518066,
+        "flowP90Pixels": 17.050493240356445,
+        "flowResidualP90Pixels": 10.263057284330834,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0021.png",
+      "semantic": {
+        "blurStrength": 0.9713134223476257,
+        "cameraMotion": {
+          "x": -0.002608385019832187,
+          "y": -0.018945316473642986
+        },
+        "displacement": {
+          "x": -0.002608385019832187,
+          "y": -0.018945316473642986
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.024874371859296484,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 590,
+      "timeMs": 9858.593880731258
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.9562687581417694,
+        "flowMeanPixels": 4.673994541168213,
+        "flowP90Pixels": 9.525895118713379,
+        "flowResidualP90Pixels": 5.824772458329005,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0022.png",
+      "semantic": {
+        "blurStrength": 0.9608828824396789,
+        "cameraMotion": {
+          "x": -0.0015126811133490668,
+          "y": -0.010647671752505833
+        },
+        "displacement": {
+          "x": -0.0015126811133490668,
+          "y": -0.010647671752505833
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.06482412060301507,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 2.6146702364596233,
+        "scale": 1.09727114129669,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 591,
+      "timeMs": 9875.30336188504
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.715203426124197,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8912510052168175,
+        "flowMeanPixels": 2.1737661361694336,
+        "flowP90Pixels": 4.543356418609619,
+        "flowResidualP90Pixels": 3.7579731849044675,
+        "motionCompensatedResidualCoverage": 0.19626543209876543,
+        "motionCompensatedResidualMean": 0.09295878721859115,
+        "motionCompensatedResidualP90": 0.1607843137254902,
+        "stateSeparationNormalized": 0.037934723010410176
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0023.png",
+      "semantic": {
+        "blurStrength": 0.5462721360819423,
+        "cameraMotion": {
+          "x": -0.001235554532872306,
+          "y": -0.0020275975267092386
+        },
+        "displacement": {
+          "x": -0.001235554532872306,
+          "y": -0.0020275975267092386
+        },
+        "distortionStrength": 0.470343197894998,
+        "occlusion": 0.0,
+        "overlapDensity": 0.3037688442211055,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 3.029271537760513,
+        "scale": 1.106171866147974,
+        "stateSeparation": 0.037934723010410176,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 592,
+      "timeMs": 9892.012843038821
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9577464788732394,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8977133065604102,
+        "flowMeanPixels": 1.4615235328674316,
+        "flowP90Pixels": 2.7100844383239746,
+        "flowResidualP90Pixels": 2.298582582212776,
+        "motionCompensatedResidualCoverage": 0.11013888888888888,
+        "motionCompensatedResidualMean": 0.0692930283224401,
+        "motionCompensatedResidualP90": 0.11764705882352941,
+        "stateSeparationNormalized": 0.03339115355603141
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0024.png",
+      "semantic": {
+        "blurStrength": 0.17533294015541423,
+        "cameraMotion": {
+          "x": -0.0012143775820732117,
+          "y": -8.338402039953507e-08
+        },
+        "displacement": {
+          "x": -0.0012143775820732117,
+          "y": -8.338402039953507e-08
+        },
+        "distortionStrength": 0.3445536780851302,
+        "occlusion": 0.0,
+        "overlapDensity": 0.27738693467336684,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 3.3598383907131866,
+        "scale": 1.1139382175625618,
+        "stateSeparation": 0.03339115355603141,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 593,
+      "timeMs": 9908.722324192604
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.988,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8775320783158336,
+        "flowMeanPixels": 1.050540566444397,
+        "flowP90Pixels": 2.128662347793579,
+        "flowResidualP90Pixels": 1.7669921609348205,
+        "motionCompensatedResidualCoverage": 0.09679012345679013,
+        "motionCompensatedResidualMean": 0.03498653473735173,
+        "motionCompensatedResidualP90": 0.10588235294117647,
+        "stateSeparationNormalized": 0.03356401659331825
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0025.png",
+      "semantic": {
+        "blurStrength": 0.13574193006234248,
+        "cameraMotion": {
+          "x": -0.0011302322149276734,
+          "y": 1.4529450305013194e-06
+        },
+        "displacement": {
+          "x": -0.0011302322149276734,
+          "y": 1.4529450305013194e-06
+        },
+        "distortionStrength": 0.24261507864812853,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2826633165829146,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 3.609529910290005,
+        "scale": 1.1195948296521823,
+        "stateSeparation": 0.03356401659331825,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 594,
+      "timeMs": 9925.431805346385
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.974,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8551692923871524,
+        "flowMeanPixels": 0.7779090404510498,
+        "flowP90Pixels": 1.6110726594924927,
+        "flowResidualP90Pixels": 1.4177177410579385,
+        "motionCompensatedResidualCoverage": 0.09491512345679012,
+        "motionCompensatedResidualMean": 0.03209008109416606,
+        "motionCompensatedResidualP90": 0.10588235294117647,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0026.png",
+      "semantic": {
+        "blurStrength": 0.02389978955097627,
+        "cameraMotion": {
+          "x": -0.0006201599207189348,
+          "y": 1.5069232580976354e-06
+        },
+        "displacement": {
+          "x": -0.0006201599207189348,
+          "y": 1.5069232580976354e-06
+        },
+        "distortionStrength": 0.2336054706479001,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2909547738693467,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 3.8085786023585793,
+        "scale": 1.1242250297116636,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 595,
+      "timeMs": 9942.141286500168
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.996,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8365346891050689,
+        "flowMeanPixels": 0.6775791645050049,
+        "flowP90Pixels": 1.392722725868225,
+        "flowResidualP90Pixels": 1.2336920924082717,
+        "motionCompensatedResidualCoverage": 0.07603395061728395,
+        "motionCompensatedResidualMean": 0.02625708061002179,
+        "motionCompensatedResidualP90": 0.08627450980392157,
+        "stateSeparationNormalized": 0.04325669861777065
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0027.png",
+      "semantic": {
+        "blurStrength": 0.02340448573242171,
+        "cameraMotion": {
+          "x": -0.0005300012727578481,
+          "y": 1.2353719082764453e-06
+        },
+        "displacement": {
+          "x": -0.0005300012727578481,
+          "y": 1.2353719082764453e-06
+        },
+        "distortionStrength": 0.19107090755986003,
+        "occlusion": 0.0,
+        "overlapDensity": 0.29170854271356783,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 3.987343738189356,
+        "scale": 1.1283138835476076,
+        "stateSeparation": 0.04325669861777065,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 596,
+      "timeMs": 9958.850767653948
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.996,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8258526851068206,
+        "flowMeanPixels": 0.5018600225448608,
+        "flowP90Pixels": 1.1168224811553955,
+        "flowResidualP90Pixels": 0.9788167491969806,
+        "motionCompensatedResidualCoverage": 0.07074845679012345,
+        "motionCompensatedResidualMean": 0.0280979786976519,
+        "motionCompensatedResidualP90": 0.08235294117647059,
+        "stateSeparationNormalized": 0.03356401659331825
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0028.png",
+      "semantic": {
+        "blurStrength": 0.007271527357511354,
+        "cameraMotion": {
+          "x": -0.0004420947283506393,
+          "y": 1.9397224403089946e-06
+        },
+        "displacement": {
+          "x": -0.0004420947283506393,
+          "y": 1.9397224403089946e-06
+        },
+        "distortionStrength": 0.18849699952889132,
+        "occlusion": 0.0,
+        "overlapDensity": 0.27361809045226126,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.120510420516652,
+        "scale": 1.1313981825908375,
+        "stateSeparation": 0.03356401659331825,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 597,
+      "timeMs": 9975.560248807731
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.99,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8350697034349165,
+        "flowMeanPixels": 0.430917352437973,
+        "flowP90Pixels": 1.0149378776550293,
+        "flowResidualP90Pixels": 0.9306555833496736,
+        "motionCompensatedResidualCoverage": 0.07006172839506172,
+        "motionCompensatedResidualMean": 0.02600302590171871,
+        "motionCompensatedResidualP90": 0.08627450980392157,
+        "stateSeparationNormalized": 0.03356401659331825
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0029.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": -0.00026530627575185563,
+          "y": 4.436959797102544e-06
+        },
+        "displacement": {
+          "x": -0.00026530627575185563,
+          "y": 4.436959797102544e-06
+        },
+        "distortionStrength": 0.18867551650574574,
+        "occlusion": 0.0,
+        "overlapDensity": 0.27361809045226126,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.237762526137405,
+        "scale": 1.1345109811970853,
+        "stateSeparation": 0.03356401659331825,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 598,
+      "timeMs": 9992.269729961512
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.966,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8167164967648699,
+        "flowMeanPixels": 0.3472544848918915,
+        "flowP90Pixels": 0.8240607380867004,
+        "flowResidualP90Pixels": 0.7693270035912473,
+        "motionCompensatedResidualCoverage": 0.06200617283950617,
+        "motionCompensatedResidualMean": 0.0276268760590656,
+        "motionCompensatedResidualP90": 0.08627450980392157,
+        "stateSeparationNormalized": 0.03356401659331825
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0030.png",
+      "semantic": {
+        "blurStrength": 0.12157033966574982,
+        "cameraMotion": {
+          "x": -0.00017569586634635925,
+          "y": 1.6168784996908572e-06
+        },
+        "displacement": {
+          "x": -0.00017569586634635925,
+          "y": 1.6168784996908572e-06
+        },
+        "distortionStrength": 0.1916221191104918,
+        "occlusion": 0.0,
+        "overlapDensity": 0.27964824120603016,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.3299667097179135,
+        "scale": 1.1369238181452885,
+        "stateSeparation": 0.03356401659331825,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 599,
+      "timeMs": 10008.979211115295
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.5541918536117912,
+        "flowMeanPixels": 0.37142547965049744,
+        "flowP90Pixels": 0.9270923733711243,
+        "flowResidualP90Pixels": 0.9152100160570494,
+        "motionCompensatedResidualCoverage": 0.07756944444444444,
+        "motionCompensatedResidualMean": 0.031335360687484874,
+        "motionCompensatedResidualP90": 0.09411764705882353,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0031.png",
+      "semantic": {
+        "blurStrength": 0.3239245575024442,
+        "cameraMotion": {
+          "x": -4.849074822333124e-05,
+          "y": 2.1168642787314538e-07
+        },
+        "displacement": {
+          "x": -4.849074822333124e-05,
+          "y": 2.1168642787314538e-07
+        },
+        "distortionStrength": 0.21236249827034817,
+        "occlusion": 0.0,
+        "overlapDensity": 0.24798994974874372,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.376701398840122,
+        "scale": 1.1386717909564688,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 600,
+      "timeMs": 10025.688692269077
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.986,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.5148177645020832,
+        "flowMeanPixels": 0.28357306122779846,
+        "flowP90Pixels": 0.698462188243866,
+        "flowResidualP90Pixels": 0.6976993586954262,
+        "motionCompensatedResidualCoverage": 0.04013888888888889,
+        "motionCompensatedResidualMean": 0.018006808278867102,
+        "motionCompensatedResidualP90": 0.054901960784313725,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0032.png",
+      "semantic": {
+        "blurStrength": 0.3643274109123241,
+        "cameraMotion": {
+          "x": -3.7291527001394167e-06,
+          "y": 1.4344866738408906e-07
+        },
+        "displacement": {
+          "x": -3.7291527001394167e-06,
+          "y": 1.4344866738408906e-07
+        },
+        "distortionStrength": 0.1241903178653456,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2600502512562814,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.445932121845395,
+        "scale": 1.1405494687449897,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 601,
+      "timeMs": 10042.398173422858
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.996,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.7473472412471702,
+        "flowMeanPixels": 0.2409343123435974,
+        "flowP90Pixels": 0.6171575784683228,
+        "flowResidualP90Pixels": 0.6110001692173245,
+        "motionCompensatedResidualCoverage": 0.037160493827160496,
+        "motionCompensatedResidualMean": 0.01654426894214476,
+        "motionCompensatedResidualP90": 0.054901960784313725,
+        "stateSeparationNormalized": 0.05432668671002207
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0033.png",
+      "semantic": {
+        "blurStrength": 0.3059229781717234,
+        "cameraMotion": {
+          "x": -2.348546145690812e-05,
+          "y": 6.680684843255828e-07
+        },
+        "displacement": {
+          "x": -2.348546145690812e-05,
+          "y": 6.680684843255828e-07
+        },
+        "distortionStrength": 0.12016934358385077,
+        "occlusion": 0.0,
+        "overlapDensity": 0.24949748743718594,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.470407105633136,
+        "scale": 1.1427465276529807,
+        "stateSeparation": 0.05432668671002207,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 602,
+      "timeMs": 10059.107654576641
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.697476656061971,
+        "flowMeanPixels": 0.054982248693704605,
+        "flowP90Pixels": 0.16349081695079803,
+        "flowResidualP90Pixels": 0.1624897692263061,
+        "motionCompensatedResidualCoverage": 0.0016203703703703703,
+        "motionCompensatedResidualMean": 0.004861716291454854,
+        "motionCompensatedResidualP90": 0.01568627450980392,
+        "stateSeparationNormalized": 0.02735793833832251
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0034.png",
+      "semantic": {
+        "blurStrength": 0.3118240488262852,
+        "cameraMotion": {
+          "x": -5.0756187799076235e-06,
+          "y": 1.3917535600032555e-07
+        },
+        "displacement": {
+          "x": -5.0756187799076235e-06,
+          "y": 1.3917535600032555e-07
+        },
+        "distortionStrength": 0.034586383560661786,
+        "occlusion": 0.0,
+        "overlapDensity": 0.24120603015075376,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.4719808660815215,
+        "scale": 1.1433222789423312,
+        "stateSeparation": 0.02735793833832251,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 603,
+      "timeMs": 10075.817135730422
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.998,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.66309026343124,
+        "flowMeanPixels": 0.1448352336883545,
+        "flowP90Pixels": 0.42944908142089844,
+        "flowResidualP90Pixels": 0.4273572832837789,
+        "motionCompensatedResidualCoverage": 0.0278858024691358,
+        "motionCompensatedResidualMean": 0.01613468288549988,
+        "motionCompensatedResidualP90": 0.058823529411764705,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0035.png",
+      "semantic": {
+        "blurStrength": 0.2123975058365778,
+        "cameraMotion": {
+          "x": 7.801041809014149e-06,
+          "y": -3.291656361802274e-08
+        },
+        "displacement": {
+          "x": 7.801041809014149e-06,
+          "y": -3.291656361802274e-08
+        },
+        "distortionStrength": 0.12359440704333213,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2675879396984925,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.466355758996904,
+        "scale": 1.1420291573010157,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 604,
+      "timeMs": 10092.526616884204
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.9537223340040242,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.6804243802211063,
+        "flowMeanPixels": 0.24457021057605743,
+        "flowP90Pixels": 0.6520959138870239,
+        "flowResidualP90Pixels": 0.6465300049381597,
+        "motionCompensatedResidualCoverage": 0.08337191358024691,
+        "motionCompensatedResidualMean": 0.029647573226821593,
+        "motionCompensatedResidualP90": 0.09803921568627451,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0036.png",
+      "semantic": {
+        "blurStrength": 0.17507888979739317,
+        "cameraMotion": {
+          "x": 2.418535037173165e-05,
+          "y": -5.710431044766058e-07
+        },
+        "displacement": {
+          "x": 2.418535037173165e-05,
+          "y": -5.710431044766058e-07
+        },
+        "distortionStrength": 0.2122187922945923,
+        "occlusion": 0.0,
+        "overlapDensity": 0.271356783919598,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.453287909101433,
+        "scale": 1.1404562453743654,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 605,
+      "timeMs": 10109.236098037985
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.986,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.48739119265928593,
+        "flowMeanPixels": 0.26811036467552185,
+        "flowP90Pixels": 0.6539498567581177,
+        "flowResidualP90Pixels": 0.652538925740618,
+        "motionCompensatedResidualCoverage": 0.05774691358024692,
+        "motionCompensatedResidualMean": 0.023006263616557734,
+        "motionCompensatedResidualP90": 0.07058823529411765,
+        "stateSeparationNormalized": 0.02735793833832251
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0037.png",
+      "semantic": {
+        "blurStrength": 0.09632733877156308,
+        "cameraMotion": {
+          "x": 6.183893290451831e-06,
+          "y": -1.7592610674910246e-07
+        },
+        "displacement": {
+          "x": 6.183893290451831e-06,
+          "y": -1.7592610674910246e-07
+        },
+        "distortionStrength": 0.1578836845863314,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2728643216080402,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.403673891875171,
+        "scale": 1.138515026306189,
+        "stateSeparation": 0.02735793833832251,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 606,
+      "timeMs": 10125.945579191768
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.994,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.5832474857293304,
+        "flowMeanPixels": 0.33234190940856934,
+        "flowP90Pixels": 0.78331458568573,
+        "flowResidualP90Pixels": 0.7756655752881877,
+        "motionCompensatedResidualCoverage": 0.06719135802469135,
+        "motionCompensatedResidualMean": 0.024452281529895908,
+        "motionCompensatedResidualP90": 0.0784313725490196,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0038.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 3.779566743307644e-05,
+          "y": -9.397222634611858e-07
+        },
+        "displacement": {
+          "x": 3.779566743307644e-05,
+          "y": -9.397222634611858e-07
+        },
+        "distortionStrength": 0.17306005047553796,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2909547738693467,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.347343184967875,
+        "scale": 1.1360265032287478,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 607,
+      "timeMs": 10142.655060345549
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.998,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8384547047995903,
+        "flowMeanPixels": 0.33090728521347046,
+        "flowP90Pixels": 0.7728011608123779,
+        "flowResidualP90Pixels": 0.7085536771211558,
+        "motionCompensatedResidualCoverage": 0.0451929012345679,
+        "motionCompensatedResidualMean": 0.01811710239651416,
+        "motionCompensatedResidualP90": 0.058823529411764705,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0039.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 0.0002016537098420991,
+          "y": -1.244110899278894e-06
+        },
+        "displacement": {
+          "x": 0.0002016537098420991,
+          "y": -1.244110899278894e-06
+        },
+        "distortionStrength": 0.13000917951082985,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2864321608040201,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.258311691510856,
+        "scale": 1.133624508041935,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 608,
+      "timeMs": 10159.364541499332
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8339644171775579,
+        "flowMeanPixels": 0.41061294078826904,
+        "flowP90Pixels": 0.9643456339836121,
+        "flowResidualP90Pixels": 0.8998565968238639,
+        "motionCompensatedResidualCoverage": 0.0576466049382716,
+        "motionCompensatedResidualMean": 0.021184973372064875,
+        "motionCompensatedResidualP90": 0.07058823529411765,
+        "stateSeparationNormalized": 0.03356401659331825
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0040.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 0.00020651821460988788,
+          "y": -1.4031881518248054e-06
+        },
+        "displacement": {
+          "x": 0.00020651821460988788,
+          "y": -1.4031881518248054e-06
+        },
+        "distortionStrength": 0.15496992135230042,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2984924623115578,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.146467307832111,
+        "scale": 1.130709271873541,
+        "stateSeparation": 0.03356401659331825,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 609,
+      "timeMs": 10176.074022653112
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.994,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.8241358447347751,
+        "flowMeanPixels": 0.46381187438964844,
+        "flowP90Pixels": 1.0347867012023926,
+        "flowResidualP90Pixels": 0.9152982799170162,
+        "motionCompensatedResidualCoverage": 0.06333333333333334,
+        "motionCompensatedResidualMean": 0.02400178528201404,
+        "motionCompensatedResidualP90": 0.07450980392156863,
+        "stateSeparationNormalized": 0.02735793833832251
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0041.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 0.00039783517519632975,
+          "y": -1.8303040026997527e-06
+        },
+        "displacement": {
+          "x": 0.00039783517519632975,
+          "y": -1.8303040026997527e-06
+        },
+        "distortionStrength": 0.16731145700484398,
+        "occlusion": 0.0,
+        "overlapDensity": 0.3007537688442211,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.013973013410184,
+        "scale": 1.127693516096282,
+        "stateSeparation": 0.02735793833832251,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 610,
+      "timeMs": 10192.783503806895
+    },
+    {
+      "diagnostics": {
+        "affineInlierRatio": 0.998,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.837077444736733,
+        "flowMeanPixels": 0.5806849002838135,
+        "flowP90Pixels": 1.3058722019195557,
+        "flowResidualP90Pixels": 1.1539776913477602,
+        "motionCompensatedResidualCoverage": 0.07175154320987655,
+        "motionCompensatedResidualMean": 0.024767489711934154,
+        "motionCompensatedResidualP90": 0.0784313725490196,
+        "stateSeparationNormalized": 0.02919971672448422
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\diagnostics\\m6-v6r-ref05-probe-frames\\frame-0042.png",
+      "semantic": {
+        "blurStrength": 0.009215151904042096,
+        "cameraMotion": {
+          "x": 0.0004900854494836595,
+          "y": -1.424248006919192e-06
+        },
+        "displacement": {
+          "x": 0.0004900854494836595,
+          "y": -1.424248006919192e-06
+        },
+        "distortionStrength": 0.17604577563468604,
+        "occlusion": 0.0,
+        "overlapDensity": 0.2841708542713568,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 3.855520850273163,
+        "scale": 1.1239051836615048,
+        "stateSeparation": 0.02919971672448422,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 611,
+      "timeMs": 10209.492984960676
+    }
+  ],
+  "range": {
+    "endFrame": 611,
+    "requestedEndSeconds": 10.209492985,
+    "requestedStartSeconds": 9.5076947765,
+    "startFrame": 569
+  },
+  "schema": "editflow.dense-video-probe.v1",
+  "sourceId": "m6-v6r-ref05",
+  "sourceKind": "REFERENCE",
+  "sourceVideoSha256": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+  "video": {
+    "fps": 59.846262777206206,
+    "frameCount": 996,
+    "height": 1080,
+    "width": 1080
+  }
+}

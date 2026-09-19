@@ -1,0 +1,1926 @@
+{
+  "schema": "editflow.m6.real-rendered-correction-proof.v1",
+  "executedAt": "2026-09-19T13:51:47.635Z",
+  "claim": "REAL_RENDERED_BOUNDED_CORRECTION",
+  "result": "OPEN",
+  "reference": {
+    "sourceId": "reference:microwave:full",
+    "contentKey": "ab26cee689787aeb23ae89da13ec5e4122b293a6782a11d350b9dcd140b8c493",
+    "shutterWindowCount": 2,
+    "evidenceRefs": [
+      "video:sha256:c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+      "probe-json:sha256:588084d4e31616c6551d80e51a87d5ece8a1468fb7a04c04fd81efbb2ecab3f7",
+      "algorithm:opencv-farneback-affine-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "bounded": true,
+  "passes": [
+    {
+      "ordinal": 1,
+      "label": "pass1",
+      "evidencePath": "proofs/diagnostics/m6-shutter-pass1-evidence.json",
+      "renderSourceId": "render:live-ae:m6-shutter-pass1",
+      "renderEvidenceKey": "a9c91a49fc3a3d109e4d58e69139bca4c86a671a137d67e0afe740f6fcb6ca78",
+      "alignment": {
+        "schema": "editflow.semantic-effect-sequence-alignment.v1",
+        "pairs": [
+          {
+            "referenceWindowId": "effect-01",
+            "renderWindowId": "effect-01",
+            "referenceIndex": 0,
+            "renderIndex": 0,
+            "semanticCost": 0.17839825461964792
+          },
+          {
+            "referenceWindowId": "effect-02",
+            "renderWindowId": "effect-02",
+            "referenceIndex": 1,
+            "renderIndex": 1,
+            "semanticCost": 0.19853235699561325
+          },
+          {
+            "referenceWindowId": "effect-03",
+            "renderWindowId": "effect-03",
+            "referenceIndex": 2,
+            "renderIndex": 2,
+            "semanticCost": 0.27776625762306
+          },
+          {
+            "referenceWindowId": "effect-04",
+            "renderWindowId": "effect-04",
+            "referenceIndex": 3,
+            "renderIndex": 3,
+            "semanticCost": 0.1896889692649611
+          },
+          {
+            "referenceWindowId": "effect-05",
+            "renderWindowId": "effect-05",
+            "referenceIndex": 4,
+            "renderIndex": 4,
+            "semanticCost": 0.4752720803774622
+          },
+          {
+            "referenceWindowId": "effect-06",
+            "renderWindowId": "effect-06",
+            "referenceIndex": 5,
+            "renderIndex": 5,
+            "semanticCost": 0.4781896907917118
+          },
+          {
+            "referenceWindowId": "effect-07",
+            "renderWindowId": "effect-07",
+            "referenceIndex": 6,
+            "renderIndex": 6,
+            "semanticCost": 0.21812602601756476
+          },
+          {
+            "referenceWindowId": "effect-08",
+            "renderWindowId": "effect-08",
+            "referenceIndex": 7,
+            "renderIndex": 7,
+            "semanticCost": 0.2715154255898942
+          },
+          {
+            "referenceWindowId": "effect-09",
+            "renderWindowId": "effect-09",
+            "referenceIndex": 8,
+            "renderIndex": 8,
+            "semanticCost": 0.20833939575870997
+          }
+        ],
+        "unmatchedReferenceWindowIds": [],
+        "unmatchedRenderWindowIds": []
+      },
+      "cases": [
+        {
+          "referenceIndex": 4,
+          "renderIndex": 4,
+          "referenceWindowId": "effect-05",
+          "renderWindowId": "effect-05",
+          "semanticAlignmentCost": 0.4752720803774622,
+          "renderFamily": "UNKNOWN",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 3,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.07575757575757576,
+                "normalizedError": 0.4326923076923077,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.315, render 0.076. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.0034266553849517526,
+                "normalizedError": 0.4370850544302523,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak is under-driven: reference 0.049, render 0.003. States require visible spatial separation before convergence."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.07074785581704073,
+                "renderValue": 0.01661268131854996,
+                "normalizedError": 0.3531641071878881,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak is under-driven: reference 0.071, render 0.017. High-frequency acceleration and convergence create the shutter cadence."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 6,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9992812820683589,
+                "renderValue": 0.9947854696796221,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5829346640280847,
+                "renderValue": 0.5769613892035935,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak preserves the defining reference behavior."
+              }
+            ],
+            "definingCoverage": 0.4,
+            "weightedFidelity": 0.7854488650332547,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.315, render 0.076. Temporal states must visibly overlap rather than behave as a single flash.",
+              "displacementPeak is under-driven: reference 0.049, render 0.003. States require visible spatial separation before convergence.",
+              "accelerationPeak is under-driven: reference 0.071, render 0.017. High-frequency acceleration and convergence create the shutter cadence."
+            ],
+            "referenceEvidenceKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164",
+            "renderEvidenceKey": "5fa1261a168863445731c677872abb50cfebdd2e9686b66b233a857cb8bfda79"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap",
+              "shutter.displacement",
+              "shutter.acceleration"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap, shutter.displacement, shutter.acceleration.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164->5fa1261a168863445731c677872abb50cfebdd2e9686b66b233a857cb8bfda79",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.07575757575757576,
+                "multiplier": 4,
+                "normalizedError": 0.4326923076923077,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.076. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "INCREASE",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.0034266553849517526,
+                "multiplier": 4,
+                "normalizedError": 0.4326923076923077,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.076. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.07575757575757576,
+                "multiplier": 4,
+                "normalizedError": 0.4326923076923077,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.076. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.displacement:spatial_separation",
+                "invariantId": "shutter.displacement",
+                "nodeId": "node:3:transform_motion",
+                "metric": "displacementPeak",
+                "control": "SPATIAL_SEPARATION",
+                "direction": "INCREASE",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.0034266553849517526,
+                "multiplier": 4,
+                "normalizedError": 0.4370850544302523,
+                "defining": true,
+                "rationale": "displacementPeak is under-driven: reference 0.049, render 0.003. States require visible spatial separation before convergence."
+              },
+              {
+                "instructionId": "actuate:shutter.acceleration:motion_impulse",
+                "invariantId": "shutter.acceleration",
+                "nodeId": "node:4:recovery",
+                "metric": "accelerationPeak",
+                "control": "MOTION_IMPULSE",
+                "direction": "INCREASE",
+                "referenceValue": 0.07074785581704073,
+                "renderValue": 0.01661268131854996,
+                "multiplier": 4,
+                "normalizedError": 0.3531641071878881,
+                "defining": true,
+                "rationale": "accelerationPeak is under-driven: reference 0.071, render 0.017. High-frequency acceleration and convergence create the shutter cadence."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        },
+        {
+          "referenceIndex": 7,
+          "renderIndex": 7,
+          "referenceWindowId": "effect-08",
+          "renderWindowId": "effect-08",
+          "semanticAlignmentCost": 0.2715154255898942,
+          "renderFamily": "TEMPORAL_ECHO",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2515151515151515,
+                "normalizedError": 0.10791366906474813,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.421, render 0.252. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.008122299779387507,
+                "normalizedError": 0.40115321054200015,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak is under-driven: reference 0.042, render 0.008. States require visible spatial separation before convergence."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.05131510357906573,
+                "renderValue": 0.06703117156914845,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 4,
+                "renderValue": 1,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9993397626146491,
+                "renderValue": 0.9972137997798816,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5257723783830917,
+                "renderValue": 0.5377074465988865,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak preserves the defining reference behavior."
+              }
+            ],
+            "definingCoverage": 0.6,
+            "weightedFidelity": 0.9106900211216231,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.421, render 0.252. Temporal states must visibly overlap rather than behave as a single flash.",
+              "displacementPeak is under-driven: reference 0.042, render 0.008. States require visible spatial separation before convergence."
+            ],
+            "referenceEvidenceKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0",
+            "renderEvidenceKey": "105ad5012246b806538c28c3f6c07dfe3399ce1185bbb0fa89112917da0e2aac"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap",
+              "shutter.displacement"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap, shutter.displacement.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0->105ad5012246b806538c28c3f6c07dfe3399ce1185bbb0fa89112917da0e2aac",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2515151515151515,
+                "multiplier": 1.6746987951807226,
+                "normalizedError": 0.10791366906474813,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.252. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "INCREASE",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.008122299779387507,
+                "multiplier": 4,
+                "normalizedError": 0.10791366906474813,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.252. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2515151515151515,
+                "multiplier": 1.6746987951807226,
+                "normalizedError": 0.10791366906474813,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.252. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.displacement:spatial_separation",
+                "invariantId": "shutter.displacement",
+                "nodeId": "node:3:transform_motion",
+                "metric": "displacementPeak",
+                "control": "SPATIAL_SEPARATION",
+                "direction": "INCREASE",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.008122299779387507,
+                "multiplier": 4,
+                "normalizedError": 0.40115321054200015,
+                "defining": true,
+                "rationale": "displacementPeak is under-driven: reference 0.042, render 0.008. States require visible spatial separation before convergence."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        }
+      ],
+      "averageWeightedFidelity": 0.8480694430774389,
+      "averageDefiningCoverage": 0.5,
+      "certifiedCases": 0,
+      "targetCases": 2,
+      "allTargetCasesCertified": false
+    },
+    {
+      "ordinal": 2,
+      "label": "pass2",
+      "evidencePath": "proofs/diagnostics/m6-shutter-pass2-evidence.json",
+      "renderSourceId": "render:live-ae:m6-shutter-pass2",
+      "renderEvidenceKey": "6245c9816f3aaf439c6189cf5f55210b0403604ac86ab4306479d335033c7e55",
+      "alignment": {
+        "schema": "editflow.semantic-effect-sequence-alignment.v1",
+        "pairs": [
+          {
+            "referenceWindowId": "effect-01",
+            "renderWindowId": "effect-01",
+            "referenceIndex": 0,
+            "renderIndex": 0,
+            "semanticCost": 0.17839811424804694
+          },
+          {
+            "referenceWindowId": "effect-02",
+            "renderWindowId": "effect-02",
+            "referenceIndex": 1,
+            "renderIndex": 1,
+            "semanticCost": 0.1985214740359038
+          },
+          {
+            "referenceWindowId": "effect-03",
+            "renderWindowId": "effect-03",
+            "referenceIndex": 2,
+            "renderIndex": 2,
+            "semanticCost": 0.277766091850665
+          },
+          {
+            "referenceWindowId": "effect-04",
+            "renderWindowId": "effect-04",
+            "referenceIndex": 3,
+            "renderIndex": 3,
+            "semanticCost": 0.18710282154939864
+          },
+          {
+            "referenceWindowId": "effect-05",
+            "renderWindowId": "effect-05",
+            "referenceIndex": 4,
+            "renderIndex": 4,
+            "semanticCost": 0.2536457782067372
+          },
+          {
+            "referenceWindowId": "effect-06",
+            "renderWindowId": "effect-07",
+            "referenceIndex": 5,
+            "renderIndex": 6,
+            "semanticCost": 0.4034727972316044
+          },
+          {
+            "referenceWindowId": "effect-07",
+            "renderWindowId": "effect-08",
+            "referenceIndex": 6,
+            "renderIndex": 7,
+            "semanticCost": 0.18477398507060125
+          },
+          {
+            "referenceWindowId": "effect-08",
+            "renderWindowId": "effect-09",
+            "referenceIndex": 7,
+            "renderIndex": 8,
+            "semanticCost": 0.2197810517674836
+          },
+          {
+            "referenceWindowId": "effect-09",
+            "renderWindowId": "effect-10",
+            "referenceIndex": 8,
+            "renderIndex": 9,
+            "semanticCost": 0.2166749645641829
+          }
+        ],
+        "unmatchedReferenceWindowIds": [],
+        "unmatchedRenderWindowIds": [
+          "effect-06"
+        ]
+      },
+      "cases": [
+        {
+          "referenceIndex": 4,
+          "renderIndex": 4,
+          "referenceWindowId": "effect-05",
+          "renderWindowId": "effect-05",
+          "semanticAlignmentCost": 0.2536457782067372,
+          "renderFamily": "DISPLACEMENT_WARP",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.08484848484848485,
+                "normalizedError": 0.40384615384615385,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.052229829772071905,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.07074785581704073,
+                "renderValue": 0.06862437249120999,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 6,
+                "renderValue": 1,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9992812820683589,
+                "renderValue": 0.9958782138727774,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5829346640280847,
+                "renderValue": 0.5540313412249369,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak preserves the defining reference behavior."
+              }
+            ],
+            "definingCoverage": 0.8,
+            "weightedFidelity": 0.9291497975708503,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+            ],
+            "referenceEvidenceKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164",
+            "renderEvidenceKey": "1c45639649d965ad90e984a182d53f937234ba4ee03d7a8f299bcf0e892e1a02"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164->1c45639649d965ad90e984a182d53f937234ba4ee03d7a8f299bcf0e892e1a02",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.08484848484848485,
+                "multiplier": 3.714285714285714,
+                "normalizedError": 0.40384615384615385,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "DECREASE",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.052229829772071905,
+                "multiplier": 0.945002405533198,
+                "normalizedError": 0.40384615384615385,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.08484848484848485,
+                "multiplier": 3.714285714285714,
+                "normalizedError": 0.40384615384615385,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        },
+        {
+          "referenceIndex": 7,
+          "renderIndex": 8,
+          "referenceWindowId": "effect-08",
+          "renderWindowId": "effect-09",
+          "semanticAlignmentCost": 0.2197810517674836,
+          "renderFamily": "TEMPORAL_ECHO",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2,
+                "normalizedError": 0.23021582733812943,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.421, render 0.200. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.038294108986696725,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.05131510357906573,
+                "renderValue": 0.046628627888448904,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 4,
+                "renderValue": 1,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9993397626146491,
+                "renderValue": 0.9980784681443755,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5257723783830917,
+                "renderValue": 0.5437603053741037,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak preserves the defining reference behavior."
+              }
+            ],
+            "definingCoverage": 0.8,
+            "weightedFidelity": 0.9596112583617316,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.421, render 0.200. Temporal states must visibly overlap rather than behave as a single flash."
+            ],
+            "referenceEvidenceKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0",
+            "renderEvidenceKey": "24274e2aec6d59c3d671174d3de3908ccaea8fde1a72591dcdd18a5c01dbb261"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0->24274e2aec6d59c3d671174d3de3908ccaea8fde1a72591dcdd18a5c01dbb261",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2,
+                "multiplier": 2.1060606060606055,
+                "normalizedError": 0.23021582733812943,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.200. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "INCREASE",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.038294108986696725,
+                "multiplier": 1.0986795157833,
+                "normalizedError": 0.23021582733812943,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.200. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2,
+                "multiplier": 2.1060606060606055,
+                "normalizedError": 0.23021582733812943,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.200. Temporal states must visibly overlap rather than behave as a single flash."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        }
+      ],
+      "averageWeightedFidelity": 0.9443805279662909,
+      "averageDefiningCoverage": 0.8,
+      "certifiedCases": 0,
+      "targetCases": 2,
+      "allTargetCasesCertified": false
+    },
+    {
+      "ordinal": 3,
+      "label": "pass3",
+      "evidencePath": "proofs/diagnostics/m6-shutter-pass3-evidence.json",
+      "renderSourceId": "render:live-ae:m6-shutter-pass3",
+      "renderEvidenceKey": "d798df6666095d68f7a459c82985e84f4a8bc5269cb718f2ef429c74aa9e3987",
+      "alignment": {
+        "schema": "editflow.semantic-effect-sequence-alignment.v1",
+        "pairs": [
+          {
+            "referenceWindowId": "effect-01",
+            "renderWindowId": "effect-01",
+            "referenceIndex": 0,
+            "renderIndex": 0,
+            "semanticCost": 0.1783984749676536
+          },
+          {
+            "referenceWindowId": "effect-02",
+            "renderWindowId": "effect-02",
+            "referenceIndex": 1,
+            "renderIndex": 1,
+            "semanticCost": 0.19854944049719303
+          },
+          {
+            "referenceWindowId": "effect-03",
+            "renderWindowId": "effect-03",
+            "referenceIndex": 2,
+            "renderIndex": 2,
+            "semanticCost": 0.2777665178439052
+          },
+          {
+            "referenceWindowId": "effect-04",
+            "renderWindowId": "effect-04",
+            "referenceIndex": 3,
+            "renderIndex": 3,
+            "semanticCost": 0.18931600290880768
+          },
+          {
+            "referenceWindowId": "effect-05",
+            "renderWindowId": "effect-05",
+            "referenceIndex": 4,
+            "renderIndex": 4,
+            "semanticCost": 0.26102883842037866
+          },
+          {
+            "referenceWindowId": "effect-06",
+            "renderWindowId": "effect-07",
+            "referenceIndex": 5,
+            "renderIndex": 6,
+            "semanticCost": 0.4013236336692587
+          },
+          {
+            "referenceWindowId": "effect-07",
+            "renderWindowId": "effect-08",
+            "referenceIndex": 6,
+            "renderIndex": 7,
+            "semanticCost": 0.3232273705135992
+          },
+          {
+            "referenceWindowId": "effect-08",
+            "renderWindowId": "effect-09",
+            "referenceIndex": 7,
+            "renderIndex": 8,
+            "semanticCost": 0.27029076352254544
+          },
+          {
+            "referenceWindowId": "effect-09",
+            "renderWindowId": "effect-10",
+            "referenceIndex": 8,
+            "renderIndex": 9,
+            "semanticCost": 0.19904858344230988
+          }
+        ],
+        "unmatchedReferenceWindowIds": [],
+        "unmatchedRenderWindowIds": [
+          "effect-06"
+        ]
+      },
+      "cases": [
+        {
+          "referenceIndex": 4,
+          "renderIndex": 4,
+          "referenceWindowId": "effect-05",
+          "renderWindowId": "effect-05",
+          "semanticAlignmentCost": 0.26102883842037866,
+          "renderFamily": "UNKNOWN",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.08484848484848485,
+                "normalizedError": 0.40384615384615385,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.0515051417954758,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.07074785581704073,
+                "renderValue": 0.05749086633081728,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 6,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9992812820683589,
+                "renderValue": 0.9960846975588911,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5829346640280847,
+                "renderValue": 0.5381875400872498,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak preserves the defining reference behavior."
+              }
+            ],
+            "definingCoverage": 0.8,
+            "weightedFidelity": 0.9291497975708503,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+            ],
+            "referenceEvidenceKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164",
+            "renderEvidenceKey": "0a42b9533023b79a342c4f96cc310f84f9c16ea95f30c842f60b33a5420fef5d"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164->0a42b9533023b79a342c4f96cc310f84f9c16ea95f30c842f60b33a5420fef5d",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.08484848484848485,
+                "multiplier": 3.714285714285714,
+                "normalizedError": 0.40384615384615385,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "DECREASE",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.0515051417954758,
+                "multiplier": 0.9582987844435549,
+                "normalizedError": 0.40384615384615385,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.08484848484848485,
+                "multiplier": 3.714285714285714,
+                "normalizedError": 0.40384615384615385,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.085. Temporal states must visibly overlap rather than behave as a single flash."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        },
+        {
+          "referenceIndex": 7,
+          "renderIndex": 8,
+          "referenceWindowId": "effect-08",
+          "renderWindowId": "effect-09",
+          "semanticAlignmentCost": 0.27029076352254544,
+          "renderFamily": "UNKNOWN",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2787878787878788,
+                "normalizedError": 0.04316546762589917,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.421, render 0.279. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.03178628285918984,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.05131510357906573,
+                "renderValue": 0.06703060594853598,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 4,
+                "renderValue": 1,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9993397626146491,
+                "renderValue": 0.5990712539234895,
+                "normalizedError": 0.150499921843123,
+                "passed": false,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak is under-driven: reference 0.999, render 0.599. Directional blur can reinforce, but cannot replace, temporal fragmentation."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5257723783830917,
+                "renderValue": 0.33899384212055866,
+                "normalizedError": 0.20308890434851126,
+                "passed": false,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak is under-driven: reference 0.526, render 0.339. An exposure accent is optional decoration rather than defining behavior."
+              }
+            ],
+            "definingCoverage": 0.8,
+            "weightedFidelity": 0.9707155163521105,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.421, render 0.279. Temporal states must visibly overlap rather than behave as a single flash.",
+              "blurPeak is under-driven: reference 0.999, render 0.599. Directional blur can reinforce, but cannot replace, temporal fragmentation.",
+              "exposurePeak is under-driven: reference 0.526, render 0.339. An exposure accent is optional decoration rather than defining behavior."
+            ],
+            "referenceEvidenceKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0",
+            "renderEvidenceKey": "1cc2d53cf38c642b81195d316fac56ad1783442680e9d9d09cce71f469c55dbd"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap"
+            ],
+            "weakerSubstitutionDetected": false,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0->1cc2d53cf38c642b81195d316fac56ad1783442680e9d9d09cce71f469c55dbd",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2787878787878788,
+                "multiplier": 1.510869565217391,
+                "normalizedError": 0.04316546762589917,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.279. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "INCREASE",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.03178628285918984,
+                "multiplier": 1.3236197923876782,
+                "normalizedError": 0.04316546762589917,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.279. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.2787878787878788,
+                "multiplier": 1.510869565217391,
+                "normalizedError": 0.04316546762589917,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.279. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.blur:blur_strength",
+                "invariantId": "shutter.blur",
+                "nodeId": "node:5:optical_treatment",
+                "metric": "blurPeak",
+                "control": "BLUR_STRENGTH",
+                "direction": "INCREASE",
+                "referenceValue": 0.9993397626146491,
+                "renderValue": 0.5990712539234895,
+                "multiplier": 1.6681484148499637,
+                "normalizedError": 0.150499921843123,
+                "defining": false,
+                "rationale": "blurPeak is under-driven: reference 0.999, render 0.599. Directional blur can reinforce, but cannot replace, temporal fragmentation."
+              },
+              {
+                "instructionId": "actuate:shutter.exposure:exposure_strength",
+                "invariantId": "shutter.exposure",
+                "nodeId": "node:6:exposure_accent",
+                "metric": "exposurePeak",
+                "control": "EXPOSURE_STRENGTH",
+                "direction": "INCREASE",
+                "referenceValue": 0.5257723783830917,
+                "renderValue": 0.33899384212055866,
+                "multiplier": 1.5509791419636103,
+                "normalizedError": 0.20308890434851126,
+                "defining": false,
+                "rationale": "exposurePeak is under-driven: reference 0.526, render 0.339. An exposure accent is optional decoration rather than defining behavior."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        }
+      ],
+      "averageWeightedFidelity": 0.9499326569614803,
+      "averageDefiningCoverage": 0.8,
+      "certifiedCases": 0,
+      "targetCases": 2,
+      "allTargetCasesCertified": false
+    },
+    {
+      "ordinal": 4,
+      "label": "pass4",
+      "evidencePath": "proofs/diagnostics/m6-shutter-pass4-evidence.json",
+      "renderSourceId": "render:live-ae:m6-shutter-pass4",
+      "renderEvidenceKey": "bbb1ac123d69726b52a63d1711e7f7e736cd7782fea82e5408cbcc97c5143aa2",
+      "alignment": {
+        "schema": "editflow.semantic-effect-sequence-alignment.v1",
+        "pairs": [
+          {
+            "referenceWindowId": "effect-01",
+            "renderWindowId": "effect-01",
+            "referenceIndex": 0,
+            "renderIndex": 0,
+            "semanticCost": 0.17839911764843935
+          },
+          {
+            "referenceWindowId": "effect-02",
+            "renderWindowId": "effect-02",
+            "referenceIndex": 1,
+            "renderIndex": 1,
+            "semanticCost": 0.1985992673072286
+          },
+          {
+            "referenceWindowId": "effect-03",
+            "renderWindowId": "effect-03",
+            "referenceIndex": 2,
+            "renderIndex": 2,
+            "semanticCost": 0.27776727682031055
+          },
+          {
+            "referenceWindowId": "effect-04",
+            "renderWindowId": "effect-04",
+            "referenceIndex": 3,
+            "renderIndex": 3,
+            "semanticCost": 0.1888706634322739
+          },
+          {
+            "referenceWindowId": "effect-05",
+            "renderWindowId": "effect-05",
+            "referenceIndex": 4,
+            "renderIndex": 4,
+            "semanticCost": 0.3272349194857164
+          },
+          {
+            "referenceWindowId": "effect-06",
+            "renderWindowId": "effect-07",
+            "referenceIndex": 5,
+            "renderIndex": 6,
+            "semanticCost": 0.2898186895501177
+          },
+          {
+            "referenceWindowId": "effect-07",
+            "renderWindowId": "effect-08",
+            "referenceIndex": 6,
+            "renderIndex": 7,
+            "semanticCost": 0.1751829448972177
+          },
+          {
+            "referenceWindowId": "effect-08",
+            "renderWindowId": "effect-09",
+            "referenceIndex": 7,
+            "renderIndex": 8,
+            "semanticCost": 0.29253978662637303
+          },
+          {
+            "referenceWindowId": "effect-09",
+            "renderWindowId": "effect-10",
+            "referenceIndex": 8,
+            "renderIndex": 9,
+            "semanticCost": 0.21419240989619834
+          }
+        ],
+        "unmatchedReferenceWindowIds": [],
+        "unmatchedRenderWindowIds": [
+          "effect-06"
+        ]
+      },
+      "cases": [
+        {
+          "referenceIndex": 4,
+          "renderIndex": 4,
+          "referenceWindowId": "effect-05",
+          "renderWindowId": "effect-05",
+          "semanticAlignmentCost": 0.3272349194857164,
+          "renderFamily": "UNKNOWN",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.15757575757575756,
+                "normalizedError": 0.17307692307692316,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.315, render 0.158. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.021112964311891195,
+                "normalizedError": 0.07875298131214557,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak is under-driven: reference 0.049, render 0.021. States require visible spatial separation before convergence."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.07074785581704073,
+                "renderValue": 0.16637501759503748,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 6,
+                "renderValue": 1,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9992812820683589,
+                "renderValue": 0.9962605208988768,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5829346640280847,
+                "renderValue": 0.4496042675140209,
+                "normalizedError": 0.05214260595852084,
+                "passed": false,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak is under-driven: reference 0.583, render 0.450. An exposure accent is optional decoration rather than defining behavior."
+              }
+            ],
+            "definingCoverage": 0.6,
+            "weightedFidelity": 0.9526175760570963,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.315, render 0.158. Temporal states must visibly overlap rather than behave as a single flash.",
+              "displacementPeak is under-driven: reference 0.049, render 0.021. States require visible spatial separation before convergence.",
+              "exposurePeak is under-driven: reference 0.583, render 0.450. An exposure accent is optional decoration rather than defining behavior."
+            ],
+            "referenceEvidenceKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164",
+            "renderEvidenceKey": "fb64a4df0d9e04bae78649f7a92bbe82e8bf9c3a93e7f3c679b8a5890b1ede24"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap",
+              "shutter.displacement"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap, shutter.displacement.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "377716b7683b433badce3b531a5ca89ac2f81d3cf8c7fe37318c9c03159cc164->fb64a4df0d9e04bae78649f7a92bbe82e8bf9c3a93e7f3c679b8a5890b1ede24",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.15757575757575756,
+                "multiplier": 2,
+                "normalizedError": 0.17307692307692316,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.158. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "INCREASE",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.021112964311891195,
+                "multiplier": 2.3377728511291274,
+                "normalizedError": 0.17307692307692316,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.158. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.3151515151515151,
+                "renderValue": 0.15757575757575756,
+                "multiplier": 2,
+                "normalizedError": 0.17307692307692316,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.315, render 0.158. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.displacement:spatial_separation",
+                "invariantId": "shutter.displacement",
+                "nodeId": "node:3:transform_motion",
+                "metric": "displacementPeak",
+                "control": "SPATIAL_SEPARATION",
+                "direction": "INCREASE",
+                "referenceValue": 0.04935731477519739,
+                "renderValue": 0.021112964311891195,
+                "multiplier": 2.3377728511291274,
+                "normalizedError": 0.07875298131214557,
+                "defining": true,
+                "rationale": "displacementPeak is under-driven: reference 0.049, render 0.021. States require visible spatial separation before convergence."
+              },
+              {
+                "instructionId": "actuate:shutter.exposure:exposure_strength",
+                "invariantId": "shutter.exposure",
+                "nodeId": "node:6:exposure_accent",
+                "metric": "exposurePeak",
+                "control": "EXPOSURE_STRENGTH",
+                "direction": "INCREASE",
+                "referenceValue": 0.5829346640280847,
+                "renderValue": 0.4496042675140209,
+                "multiplier": 1.296550558230424,
+                "normalizedError": 0.05214260595852084,
+                "defining": false,
+                "rationale": "exposurePeak is under-driven: reference 0.583, render 0.450. An exposure accent is optional decoration rather than defining behavior."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        },
+        {
+          "referenceIndex": 7,
+          "renderIndex": 8,
+          "referenceWindowId": "effect-08",
+          "renderWindowId": "effect-09",
+          "semanticAlignmentCost": 0.29253978662637303,
+          "renderFamily": "TEMPORAL_ECHO",
+          "comparison": {
+            "schema": "editflow.semantic-fidelity-comparison.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "alignment": "SEMANTIC",
+            "metrics": [
+              {
+                "invariantId": "shutter.states",
+                "dimension": "TEMPORAL",
+                "metric": "temporalStateCountPeak",
+                "referenceValue": 2,
+                "renderValue": 2,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.overlap",
+                "dimension": "COMPOSITING",
+                "metric": "overlapDensityPeak",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.1909090909090909,
+                "normalizedError": 0.2517985611510791,
+                "passed": false,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "overlapDensityPeak is under-driven: reference 0.421, render 0.191. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "invariantId": "shutter.displacement",
+                "dimension": "SPATIAL",
+                "metric": "displacementPeak",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.032614405952755124,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "displacementPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.acceleration",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "accelerationPeak",
+                "referenceValue": 0.05131510357906573,
+                "renderValue": 0.13445317157935752,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "accelerationPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.recovery",
+                "dimension": "MOTION_STRUCTURE",
+                "metric": "recoveryFrames",
+                "referenceValue": 4,
+                "renderValue": 1,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": true,
+                "weight": 1,
+                "diagnosis": "recoveryFrames preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.blur",
+                "dimension": "OPTICAL",
+                "metric": "blurPeak",
+                "referenceValue": 0.9993397626146491,
+                "renderValue": 0.9982610485581528,
+                "normalizedError": 0,
+                "passed": true,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "blurPeak preserves the defining reference behavior."
+              },
+              {
+                "invariantId": "shutter.exposure",
+                "dimension": "OPTICAL",
+                "metric": "exposurePeak",
+                "referenceValue": 0.5257723783830917,
+                "renderValue": 0.4420370983539095,
+                "normalizedError": 0.007104367180088986,
+                "passed": false,
+                "defining": false,
+                "weight": 0.35,
+                "diagnosis": "exposurePeak is under-driven: reference 0.526, render 0.442. An exposure accent is optional decoration rather than defining behavior."
+              }
+            ],
+            "definingCoverage": 0.8,
+            "weightedFidelity": 0.9553885807606824,
+            "passed": false,
+            "diagnoses": [
+              "overlapDensityPeak is under-driven: reference 0.421, render 0.191. Temporal states must visibly overlap rather than behave as a single flash.",
+              "exposurePeak is under-driven: reference 0.526, render 0.442. An exposure accent is optional decoration rather than defining behavior."
+            ],
+            "referenceEvidenceKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0",
+            "renderEvidenceKey": "1a42ae36841f6146c9fc70123f17631f1b12f0b79829c49d87f8ba2ee46eb01a"
+          },
+          "gate": {
+            "schema": "editflow.professional-fidelity-gate.v1",
+            "outcome": "CORRECTION_REQUIRED",
+            "certified": false,
+            "missingDefiningInvariantIds": [],
+            "underDrivenInvariantIds": [
+              "shutter.overlap"
+            ],
+            "weakerSubstitutionDetected": true,
+            "reasons": [
+              "Defining behavior failed rendered comparison: shutter.overlap.",
+              "Optional decoration is present while defining behavior is absent or materially under-driven."
+            ]
+          },
+          "actuationPlan": {
+            "schema": "editflow.construction-actuation-plan.v1",
+            "family": "SHUTTER_FRAGMENTATION",
+            "comparisonKey": "0068d8542fbe63ea25fd321c7295e9954af3934e8407e3b6767a4bb8d9ab6df0->1a42ae36841f6146c9fc70123f17631f1b12f0b79829c49d87f8ba2ee46eb01a",
+            "instructions": [
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "DUPLICATE_OPACITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.1909090909090909,
+                "multiplier": 2.206349206349206,
+                "normalizedError": 0.2517985611510791,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.191. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:duplicate_spread",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "displacementPeak",
+                "control": "DUPLICATE_SPREAD",
+                "direction": "INCREASE",
+                "referenceValue": 0.04207295311885688,
+                "renderValue": 0.032614405952755124,
+                "multiplier": 1.290011327503659,
+                "normalizedError": 0.2517985611510791,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.191. Temporal states must visibly overlap rather than behave as a single flash. Duplicate spread is constrained by the reference displacement envelope so overlap correction cannot over-drive base motion."
+              },
+              {
+                "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+                "invariantId": "shutter.overlap",
+                "nodeId": "node:2:temporal_duplicates",
+                "metric": "overlapDensityPeak",
+                "control": "TEMPORAL_FRAGMENT_DENSITY",
+                "direction": "INCREASE",
+                "referenceValue": 0.42121212121212115,
+                "renderValue": 0.1909090909090909,
+                "multiplier": 2.206349206349206,
+                "normalizedError": 0.2517985611510791,
+                "defining": true,
+                "rationale": "overlapDensityPeak is under-driven: reference 0.421, render 0.191. Temporal states must visibly overlap rather than behave as a single flash."
+              },
+              {
+                "instructionId": "actuate:shutter.exposure:exposure_strength",
+                "invariantId": "shutter.exposure",
+                "nodeId": "node:6:exposure_accent",
+                "metric": "exposurePeak",
+                "control": "EXPOSURE_STRENGTH",
+                "direction": "INCREASE",
+                "referenceValue": 0.5257723783830917,
+                "renderValue": 0.4420370983539095,
+                "multiplier": 1.189430435456666,
+                "normalizedError": 0.007104367180088986,
+                "defining": false,
+                "rationale": "exposurePeak is under-driven: reference 0.526, render 0.442. An exposure accent is optional decoration rather than defining behavior."
+              }
+            ],
+            "unresolvedInvariantIds": []
+          },
+          "result": "CORRECTION_REQUIRED"
+        }
+      ],
+      "averageWeightedFidelity": 0.9540030784088893,
+      "averageDefiningCoverage": 0.7,
+      "certifiedCases": 0,
+      "targetCases": 2,
+      "allTargetCasesCertified": false
+    }
+  ],
+  "retention": [
+    {
+      "label": "pass1",
+      "ordinal": 1,
+      "adopted": true,
+      "retainedBestLabel": "pass1",
+      "reason": "INITIAL_STATE"
+    },
+    {
+      "label": "pass2",
+      "ordinal": 2,
+      "adopted": true,
+      "retainedBestLabel": "pass2",
+      "reason": "FIDELITY_IMPROVED"
+    },
+    {
+      "label": "pass3",
+      "ordinal": 3,
+      "adopted": true,
+      "retainedBestLabel": "pass3",
+      "reason": "FIDELITY_IMPROVED"
+    },
+    {
+      "label": "pass4",
+      "ordinal": 4,
+      "adopted": false,
+      "retainedBestLabel": "pass3",
+      "reason": "REGRESSION_ROLLBACK"
+    }
+  ],
+  "retainedBestPassLabel": "pass3",
+  "latestAttemptLabel": "pass4",
+  "trend": {
+    "weightedImprovement": 0.1018632138840414,
+    "coverageImprovement": 0.30000000000000004,
+    "firstAverageWeightedFidelity": 0.8480694430774389,
+    "retainedBestAverageWeightedFidelity": 0.9499326569614803,
+    "latestAverageWeightedFidelity": 0.9540030784088893,
+    "firstAverageDefiningCoverage": 0.5,
+    "retainedBestAverageDefiningCoverage": 0.8,
+    "latestAverageDefiningCoverage": 0.7,
+    "latestWeightedDeltaFromRetainedBest": 0.0040704214474089895,
+    "latestCoverageDeltaFromRetainedBest": -0.10000000000000009
+  },
+  "finalGate": {
+    "semantics": "RETAINED_BEST_STATE",
+    "certified": false,
+    "retainedBestPassLabel": "pass3",
+    "residualInvariantIds": [
+      "shutter.overlap"
+    ],
+    "unresolvedActuationIds": []
+  },
+  "latestAttemptGate": {
+    "passLabel": "pass4",
+    "certified": false,
+    "residualInvariantIds": [
+      "shutter.overlap",
+      "shutter.displacement"
+    ]
+  },
+  "evidenceBoundary": [
+    "The retained passes demonstrate measured correction attempts, regression detection, rollback, and diagnostic-to-actuation planning.",
+    "A regressing attempt is retained as evidence but does not replace the best proven state.",
+    "M6.7 remains open until one retained rendered state certifies every targeted defining invariant."
+  ]
+}

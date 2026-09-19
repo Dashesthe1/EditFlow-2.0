@@ -22,6 +22,16 @@ export const VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "MOTION_BLUR",
   "EFFECT_STACK",
   "STABILIZATION",
+  "LAYER_DUPLICATION",
+  "TEMPORAL_DUPLICATION",
+  "SUBJECT_ISOLATION",
+  "OPACITY_SHAPING",
+  "DIRECTIONAL_OFFSET",
+  "BLUR",
+  "COLOR_TREATMENT",
+  "DISTORTION",
+  "MATTE_RELATION",
+  "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
@@ -32,6 +42,10 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "MOTION_BLUR",
   "EFFECT_STACK",
   "STABILIZATION",
+  "LAYER_DUPLICATION",
+  "TEMPORAL_DUPLICATION",
+  "DIRECTIONAL_OFFSET",
+  "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 const effectSchemaRefV1 = (node: EditingIrNodeV1): string | null => {
@@ -51,7 +65,10 @@ const literalParameterValueV1 = (
   name: string,
 ): unknown => node.parameters.find((parameter) => parameter.name === name)?.value;
 
-const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
+const supportedNodeVariantV1 = (
+  node: EditingIrNodeV1,
+  target: "VIRTUAL" | "NATIVE" = "VIRTUAL",
+): boolean => {
   if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
     return node.timing === undefined;
   }
@@ -63,18 +80,35 @@ const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
       && literalParameterValueV1(node, "stabilizationMode") === "POSITION_XY"
       && literalParameterValueV1(node, "analysisDirection") === "FORWARD";
   }
+  if (node.kind === "DIRECTIONAL_OFFSET" && target === "NATIVE") {
+    const displacement = literalParameterValueV1(node, "displacementPeak");
+    const direction = literalParameterValueV1(node, "displacementDirection");
+    const phase = literalParameterValueV1(node, "motionPeakPhase");
+    return typeof displacement === "number"
+      && Number.isFinite(displacement)
+      && displacement > 0
+      && Array.isArray(direction)
+      && direction.length === 2
+      && direction.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+      && Math.hypot(direction[0], direction[1]) > 1e-6
+      && typeof phase === "number"
+      && Number.isFinite(phase)
+      && phase >= 0
+      && phase <= 1;
+  }
   return true;
 };
 
 const blockedKinds = (
   recipe: EditingIrRecipeV1,
   supportedKinds: readonly EditingIrPrimitiveKindV1[],
+  target: "VIRTUAL" | "NATIVE",
 ): readonly EditingIrPrimitiveKindV1[] => {
   const supported = new Set<EditingIrPrimitiveKindV1>(supportedKinds);
   return [...new Set(
     recipe.nodes
       .filter((node) => node.optional !== true
-        && (!supported.has(node.kind) || !supportedNodeVariantV1(node)))
+        && (!supported.has(node.kind) || !supportedNodeVariantV1(node, target)))
       .map((node) => node.kind),
   )].sort();
 };
@@ -84,6 +118,7 @@ export const unsupportedVirtualAePrimitiveKindsV1 = (
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
+  "VIRTUAL",
 );
 
 export const unsupportedNativeAePrimitiveKindsV1 = (
@@ -91,6 +126,7 @@ export const unsupportedNativeAePrimitiveKindsV1 = (
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
+  "NATIVE",
 );
 
 export interface RecipeCompilerSupportReportV1 {
@@ -303,6 +339,7 @@ const semanticValue = (
   kind,
   nodeId: node.nodeId,
   phase,
+  optional: node.optional === true,
   parameters: structuredClone(parameters),
 });
 
@@ -729,6 +766,278 @@ const compileStaticTransform = (
   return targets;
 };
 
+const compileM6TemporalDuplication = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+  frameRate: number,
+  width: number,
+  height: number,
+): readonly string[] => {
+  const parameters = resolveParameterMap(
+    node,
+    node.parameters.map((parameter) => parameter.name),
+    context,
+    issues,
+  );
+  if (parameters === null) return [];
+  const countParameter = node.parameters.find((parameter) =>
+    parameter.name === "temporalStateCountPeak"
+      || parameter.name === "fragmentationTemporalStateCountPeak"
+      || parameter.name === "stateCount");
+  const resolved = countParameter === undefined ? 2 : parameters[countParameter.name];
+  if (typeof resolved !== "number" || !Number.isFinite(resolved)) {
+    addIssue(issues, node.nodeId, "TEMPORAL_STATE_COUNT_INVALID",
+      "M6 temporal duplication requires a finite temporal state count.");
+    return [];
+  }
+  const count = Math.max(2, Math.min(8, Math.round(resolved)));
+  const frameDurationMs = 1000 / frameRate;
+  const compLongestEdgePx = Math.max(width, height);
+  const outputs: string[] = [...targets];
+  for (const sourceLayerId of targets) {
+    for (let state = 1; state < count; state += 1) {
+      const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
+      operations.push({
+        type: "DUPLICATE_LAYER",
+        compId: context.compId,
+        sourceLayerId,
+        layerId,
+        name: `${sourceLayerId} temporal state ${state}`,
+      });
+      operations.push({
+        type: "SET_PROPERTY",
+        compId: context.compId,
+        layerId,
+        propertyPath: "M6.TemporalState",
+        value: semanticValue(node, "TEMPORAL_DUPLICATION", `STATE_${state}`, {
+          ...parameters,
+          state,
+          stateCount: count,
+          sourceTimeOffsetMs: state * frameDurationMs,
+          compLongestEdgePx,
+        }),
+      });
+      outputs.push(layerId);
+    }
+  }
+  return uniqueStrings(outputs);
+};
+
+interface M6PositionExpressionComponentV1 {
+  readonly componentId: string;
+  readonly deltaExpression: string;
+  readonly standaloneExpression: string;
+}
+
+type M6PositionExpressionRegistryV1 =
+  Map<string, readonly M6PositionExpressionComponentV1[]>;
+
+const registerM6PositionExpressionV1 = (
+  compId: string,
+  layerId: string,
+  component: M6PositionExpressionComponentV1,
+  registry: M6PositionExpressionRegistryV1,
+  operations: VirtualAeOperationV1[],
+): void => {
+  const key = `${compId}\u0000${layerId}`;
+  const existing = registry.get(key) ?? [];
+  const next = [...existing, component];
+  registry.set(key, next);
+
+  const priorOperationIndex = operations.findIndex((operation) =>
+    operation.type === "SET_EXPRESSION"
+      && operation.compId === compId
+      && operation.layerId === layerId
+      && operation.propertyPath === "Transform.Position");
+  if (priorOperationIndex >= 0) operations.splice(priorOperationIndex, 1);
+
+  if (next.length === 1) {
+    operations.push({
+      type: "SET_EXPRESSION",
+      compId,
+      layerId,
+      propertyPath: "Transform.Position",
+      expression: component.standaloneExpression,
+    });
+    return;
+  }
+
+  const declarations = next.map((item, index) =>
+    `var d${index}=${item.deltaExpression};`);
+  const xSum = next.map((_, index) => `d${index}[0]`).join("+");
+  const ySum = next.map((_, index) => `d${index}[1]`).join("+");
+  const expression = [
+    "var base=value;",
+    ...declarations,
+    `var dx=${xSum};`,
+    `var dy=${ySum};`,
+    "base.length>2?[base[0]+dx,base[1]+dy,base[2]]:base+[dx,dy];",
+  ].join("");
+  operations.push({
+    type: "SET_EXPRESSION",
+    compId,
+    layerId,
+    propertyPath: "Transform.Position",
+    expression,
+  });
+};
+
+const compileM6SemanticVisualState = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+  positionExpressionRegistry: M6PositionExpressionRegistryV1,
+): readonly string[] => {
+  const parameters = resolveParameterMap(
+    node,
+    node.parameters.map((parameter) => parameter.name),
+    context,
+    issues,
+  );
+  if (parameters === null) return [];
+  if (node.kind === "DIRECTIONAL_OFFSET") {
+    const displacementRaw = parameters["displacementPeak"];
+    const directionRaw = parameters["displacementDirection"];
+    const phaseRaw = parameters["motionPeakPhase"];
+    const hasMeasuredDirectionalTuple = displacementRaw !== undefined
+      && directionRaw !== undefined
+      && phaseRaw !== undefined;
+    if (hasMeasuredDirectionalTuple) {
+      const validDirection = Array.isArray(directionRaw)
+        && directionRaw.length === 2
+        && directionRaw.every((entry) => typeof entry === "number" && Number.isFinite(entry));
+      if (typeof displacementRaw !== "number"
+        || !Number.isFinite(displacementRaw)
+        || displacementRaw <= 0
+        || !validDirection
+        || typeof phaseRaw !== "number"
+        || !Number.isFinite(phaseRaw)
+        || phaseRaw < 0
+        || phaseRaw > 1) {
+        addIssue(issues, node.nodeId, "M6_DIRECTIONAL_OFFSET_PARAMETERS_INVALID",
+          "M6 directional offset requires positive displacementPeak, a finite non-zero 2D displacementDirection, and normalized motionPeakPhase evidence.");
+        return [];
+      }
+      const directionX = directionRaw[0] as number;
+      const directionY = directionRaw[1] as number;
+      const directionMagnitude = Math.hypot(directionX, directionY);
+      if (directionMagnitude <= 1e-6) {
+        addIssue(issues, node.nodeId, "M6_DIRECTIONAL_OFFSET_PARAMETERS_INVALID",
+          "M6 directional offset requires a non-zero displacementDirection vector.");
+        return [];
+      }
+      const eventBindings = Object.entries(context.eventTimesMs).filter(([, value]) =>
+        typeof value === "number" && Number.isFinite(value));
+      if (eventBindings.length !== 1) {
+        addIssue(issues, node.nodeId, "M6_DIRECTIONAL_OFFSET_EVENT_ANCHOR_REQUIRED",
+          "Measured M6 directional motion requires exactly one finite semantic event binding so every temporal state shares the same comp-time peak.");
+        return [];
+      }
+      const peakTimeSeconds = (eventBindings[0]![1] as number) / 1000;
+      const normalizedX = directionX / directionMagnitude;
+      const normalizedY = directionY / directionMagnitude;
+      const expression = [
+        "var span=Math.max(thisComp.frameDuration,Math.abs(outPoint-inPoint));",
+        `var center=${peakTimeSeconds};`,
+        "var width=Math.max(thisComp.frameDuration*2,span*0.12);",
+        "var u=(time-center)/width;",
+        "var envelope=Math.exp(-4*u*u);",
+        `var amplitude=${displacementRaw}*Math.max(thisComp.width,thisComp.height);`,
+        `var dx=${normalizedX}*amplitude*envelope;`,
+        `var dy=${normalizedY}*amplitude*envelope;`,
+        "value.length>2?[value[0]+dx,value[1]+dy,value[2]]:value+[dx,dy];",
+      ].join("");
+      const deltaExpression = [
+        "(function(){",
+        "var span=Math.max(thisComp.frameDuration,Math.abs(outPoint-inPoint));",
+        `var center=${peakTimeSeconds};`,
+        "var width=Math.max(thisComp.frameDuration*2,span*0.12);",
+        "var u=(time-center)/width;",
+        "var envelope=Math.exp(-4*u*u);",
+        `var amplitude=${displacementRaw}*Math.max(thisComp.width,thisComp.height);`,
+        `return [${normalizedX}*amplitude*envelope,${normalizedY}*amplitude*envelope];`,
+        "})()",
+      ].join("");
+      for (const layerId of targets) {
+        registerM6PositionExpressionV1(
+          context.compId,
+          layerId,
+          {
+            componentId: `${node.nodeId}:directional`,
+            deltaExpression,
+            standaloneExpression: expression,
+          },
+          positionExpressionRegistry,
+          operations,
+        );
+      }
+      return targets;
+    }
+  }
+  if (node.kind === "MOTION_SHAPING") {
+    const accelerationRaw = parameters["accelerationPeak"];
+    const recoveryRaw = parameters["recoveryFrames"];
+    const hasAcceleration = typeof accelerationRaw === "number" && Number.isFinite(accelerationRaw);
+    const hasRecovery = typeof recoveryRaw === "number" && Number.isFinite(recoveryRaw) && recoveryRaw > 0;
+    if (!hasAcceleration && !hasRecovery) {
+      addIssue(issues, node.nodeId, "M6_MOTION_SHAPING_PARAMETERS_INVALID",
+        "M6 motion shaping requires observed accelerationPeak or recoveryFrames evidence.");
+      return [];
+    }
+    const acceleration = hasAcceleration ? accelerationRaw : 0.02;
+    const recoveryFrames = hasRecovery
+      ? recoveryRaw
+      : Math.max(2, Math.min(12, Math.round(0.5 / Math.max(acceleration, 0.02))));
+    const expression = [
+      "var center=(inPoint+outPoint)/2;",
+      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
+      "var phase=(time-center)/recovery;",
+      `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
+      "var envelope=Math.exp(-4*phase*phase);",
+      "value+[0,-amplitude*phase*envelope];",
+    ].join("");
+    const deltaExpression = [
+      "(function(){",
+      "var center=(inPoint+outPoint)/2;",
+      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
+      "var phase=(time-center)/recovery;",
+      `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
+      "var envelope=Math.exp(-4*phase*phase);",
+      "return [0,-amplitude*phase*envelope];",
+      "})()",
+    ].join("");
+    for (const layerId of targets) {
+      registerM6PositionExpressionV1(
+        context.compId,
+        layerId,
+        {
+          componentId: `${node.nodeId}:motion-shaping`,
+          deltaExpression,
+          standaloneExpression: expression,
+        },
+        positionExpressionRegistry,
+        operations,
+      );
+    }
+    return targets;
+  }
+  for (const layerId of targets) {
+    operations.push({
+      type: "SET_PROPERTY",
+      compId: context.compId,
+      layerId,
+      propertyPath: `M6.${node.kind}`,
+      value: semanticValue(node, node.kind, "ADAPTED", parameters),
+    });
+  }
+  return targets;
+};
+
 const compileMotionBlur = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -832,6 +1141,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
   const roleBindings = collectRoleBindings(context.roleBindings, issues);
   const windows = layerWindowsForComp(comp.layers);
   const operations: VirtualAeOperationV1[] = [];
+  const positionExpressionRegistry: M6PositionExpressionRegistryV1 = new Map();
   const nodeOutputs = new Map<string, readonly string[]>();
   const nodeTargetLayerIds: Record<string, readonly string[]> = {};
   const skippedOptionalNodeIds: string[] = [];
@@ -861,6 +1171,35 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
       outputs = compileEffectStack(node, targets, context, operations, issues);
     } else if (node.kind === "STABILIZATION") {
       outputs = compileStabilization(node, targets, context, operations, issues);
+    } else if (node.kind === "LAYER_DUPLICATION" || node.kind === "TEMPORAL_DUPLICATION") {
+      outputs = compileM6TemporalDuplication(
+        node,
+        targets,
+        context,
+        operations,
+        issues,
+        comp.frameRate,
+        comp.width,
+        comp.height,
+      );
+    } else if ([
+      "SUBJECT_ISOLATION",
+      "OPACITY_SHAPING",
+      "DIRECTIONAL_OFFSET",
+      "BLUR",
+      "COLOR_TREATMENT",
+      "DISTORTION",
+      "MATTE_RELATION",
+      "MOTION_SHAPING",
+    ].includes(node.kind)) {
+      outputs = compileM6SemanticVisualState(
+        node,
+        targets,
+        context,
+        operations,
+        issues,
+        positionExpressionRegistry,
+      );
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;

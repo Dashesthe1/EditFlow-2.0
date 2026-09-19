@@ -1,0 +1,79 @@
+{
+  "schema": "editflow.m6.real-pixel-fidelity-manifest.v5",
+  "status": "PARTIAL_MILESTONE_EVIDENCE",
+  "generatedAt": "2026-09-19T16:12:00Z",
+  "reference": {
+    "sourceId": "m6-v5-cal:ref05",
+    "contentKey": "b66d5c6356976bdff3041da19b7d113c7e294fed689a142b03c0c6bbc041e936",
+    "analyzerFingerprint": "90a170c867ebe3d51a9fcde740837b71414f1a44b0de180f7098daf8ea47f46c",
+    "evidence": "proofs/diagnostics/m6-v5-cal-ref05-evidence.json",
+    "classifiedFamily": "SHUTTER_FRAGMENTATION",
+    "definingReferenceMetrics": {
+      "overlapDensityPeak": 0.3037688442211055,
+      "stateSeparationPeak": 0.021695137988629595
+    }
+  },
+  "currentReplay": {
+    "sourceId": "m6-v5-baseline-replay-01-SHUTTER_05",
+    "contentKey": "ea8134fb15b747529bf9e551d6cfc158c31b3f9fccb24e3d299f291d44b20aa6",
+    "analyzerFingerprint": "90a170c867ebe3d51a9fcde740837b71414f1a44b0de180f7098daf8ea47f46c",
+    "evidence": "proofs/diagnostics/m6-v5-baseline-replay-01-SHUTTER_05-evidence.json",
+    "comparison": "proofs/diagnostics/m6-current-baseline-replay-fidelity.json",
+    "certified": false,
+    "definingCoverage": 0.6666666666666666,
+    "weightedFidelity": 0.8171923136860023,
+    "residualInvariantIds": [
+      "shutter.overlap",
+      "shutter.displacement"
+    ],
+    "measuredDefiningValues": {
+      "temporalStateCountPeak": 4,
+      "fragmentationCoherencePeak": 0.6180904522613064,
+      "overlapDensityPeak": 0.1236180904522613,
+      "stateSeparationPeak": 0.08249579113843054,
+      "accelerationPeak": 0.09738488445236307,
+      "recoveryFrames": 1
+    }
+  },
+  "proofGovernance": {
+    "historicalResultSuperseded": "proofs/diagnostics/m6-v5-baseline-replay-01-SHUTTER_05-fidelity.json",
+    "reason": "The current reference-relative comparator rejects displacement that an older comparator accepted. Identical rendered pixels must be re-evaluated when analyzer/comparator authority changes.",
+    "rule": "No historical fidelity result remains authoritative unless its analyzer and comparator provenance match the active gate."
+  },
+  "actuatorEvidence": {
+    "duplicateOpacity": "NON_RESPONSIVE_FOR_OVERLAP",
+    "duplicateSpread": "NON_RESPONSIVE_FOR_OVERLAP",
+    "temporalFragmentDensity": "RESPONSIVE_BUT_WEAK",
+    "timeDisplacement": "TESTED_NO_FAITHFUL_PASS",
+    "wideTime": "TESTED_NO_FAITHFUL_PASS",
+    "echo": "TESTED_WITH_REGRESSIONS",
+    "bandOverlap": "TESTED_WITH_REGRESSIONS"
+  },
+  "milestones": {
+    "M6.1": "PASS_INCREMENT_REAL_PIXEL_V5",
+    "M6.3": "PASS_INCREMENT_SHUTTER_DNA_DISTINGUISHABLE",
+    "M6.5": "PASS_INCREMENT_CURRENT_COMPARATOR_REJECTS_DEGRADED_RENDER",
+    "M6.6": "PASS_INCREMENT_FAIL_CLOSED",
+    "M6.7": "PASS_INCREMENT_CAUSAL_ACTUATOR_SEARCH_AND_BOUNDED_RETENTION",
+    "M6.8": "PASS_INCREMENT_SYNTHESIS_ESCALATION_CONTRACT"
+  },
+  "currentOpenGate": {
+    "milestone": "M6.7_TO_M6.8",
+    "requirement": "Produce a new construction that increases simultaneous overlap toward the professional reference without over-driving within-frame displacement, then rerun the frozen real-pixel gate.",
+    "fallback": "If available primitives cannot produce the defining behavior, record an explicit capability gap; do not certify a substitute."
+  },
+  "verification": {
+    "command": "npm run check",
+    "schemas": "PASS_35_FIXTURES",
+    "typecheck": "PASS",
+    "tests": {
+      "passed": 997,
+      "failed": 0
+    }
+  },
+  "certification": {
+    "professionalFidelityVerified": false,
+    "robust": false,
+    "reason": "Current shutter replay fails two defining invariants and benchmark/transfer gates remain open."
+  }
+}

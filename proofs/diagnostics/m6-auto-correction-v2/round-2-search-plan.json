@@ -1,0 +1,68 @@
+{
+  "schema": "editflow.m6.ae-shutter-search-plan.v1",
+  "generatedAt": "2026-09-19T16:52:41.116Z",
+  "round": 2,
+  "combinedCandidates": [
+    {
+      "candidateId": "auto:r2:refine:duplicate_spread:28.000:1:1",
+      "control": "DUPLICATE_SPREAD",
+      "relationToComparatorRequest": "BOUNDED_RENDERED_SEARCH",
+      "changedTags": [
+        "SHUTTER_05"
+      ],
+      "rationale": "Bisect a rendered DUPLICATE_SPREAD interval after coarse probes moved the target metric but caused collateral defining regressions; test the unresolved non-linear region before declaring the actuator exhausted.",
+      "cases": [
+        {
+          "tag": "SHUTTER_05",
+          "cutSeconds": 9.792,
+          "outgoingLayer": "MICRO_M04",
+          "incomingLayer": "MICRO_M05",
+          "physicalState": {
+            "motionImpulsePx": 190,
+            "duplicateSpreadPx": 28,
+            "duplicateOpacityPct": 80,
+            "postCutFrames": 1.25,
+            "copyCount": 2,
+            "fragmentBandCount": 5,
+            "overlapCopyCount": 1,
+            "overlapSpreadPx": 8,
+            "overlapOpacityPct": 65
+          }
+        }
+      ]
+    },
+    {
+      "candidateId": "auto:r2:refine:duplicate_spread:44.000:2:2",
+      "control": "DUPLICATE_SPREAD",
+      "relationToComparatorRequest": "BOUNDED_RENDERED_SEARCH",
+      "changedTags": [
+        "SHUTTER_05"
+      ],
+      "rationale": "Bisect a rendered DUPLICATE_SPREAD interval after coarse probes moved the target metric but caused collateral defining regressions; test the unresolved non-linear region before declaring the actuator exhausted.",
+      "cases": [
+        {
+          "tag": "SHUTTER_05",
+          "cutSeconds": 9.792,
+          "outgoingLayer": "MICRO_M04",
+          "incomingLayer": "MICRO_M05",
+          "physicalState": {
+            "motionImpulsePx": 190,
+            "duplicateSpreadPx": 44,
+            "duplicateOpacityPct": 80,
+            "postCutFrames": 1.25,
+            "copyCount": 2,
+            "fragmentBandCount": 5,
+            "overlapCopyCount": 1,
+            "overlapSpreadPx": 8,
+            "overlapOpacityPct": 65
+          }
+        }
+      ]
+    }
+  ],
+  "guardrails": [
+    "Every candidate is generated from retained rendered evidence.",
+    "Rendered pixels and defining-invariant coverage are authoritative.",
+    "Only one active physical actuator dimension is explored per correction round."
+  ]
+}

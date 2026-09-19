@@ -205,3 +205,28 @@ and implement or prove only the missing capabilities that block literal reconstr
 Previously accepted lower-milestone capabilities and proof gates remain authoritative and reusable.
 Broad capability-audit work is still required for the eventual release contract, but it no longer blocks tutorial-led learning progress.
 See `docs/TUTORIAL_DRIVEN_LEARNING_ROADMAP.md`.
+
+## M6 visual-effects intelligence sequencing revision — 2026-09-19
+
+The master M6 authority is the Professional Effects & Transitions Intelligence roadmap.
+M6 now prioritizes the viewer-visible effects/transition quality gap before broad speculative
+surface completion. The earlier Full Creative Construction inventory remains required as a
+capability source, but missing items are implemented or declared only when dense reference
+evidence and construction hypotheses require them.
+
+The ordered M6 gates are:
+
+1. lock the retained M5 baseline;
+2. dense effect evidence;
+3. tutorial action -> pixel causal learning;
+4. Effect Anatomy and Transition DNA;
+5. layer/construction reconstruction;
+6. semantic visual fidelity comparison;
+7. anti-simplification gating;
+8. bounded automatic visual correction;
+9. unknown-effect synthesis;
+10. 20-30 case professional benchmark and robustness;
+11. normal EditFlow Brain integration.
+
+Rendered pixels, defining-component coverage, transfer, and degraded-case rejection are
+the authorities. See `docs/M6_PROFESSIONAL_EFFECTS_INTELLIGENCE_CONTRACT.md`.

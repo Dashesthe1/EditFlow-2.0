@@ -1,0 +1,321 @@
+{
+  "schema": "editflow.m6.local-shutter-fidelity-proof.v1",
+  "executedAt": "2026-09-19T16:28:54.929Z",
+  "tag": "v6-event-joint-04",
+  "result": "REJECTED",
+  "reference": {
+    "sourceId": "m6-v6r-ref05",
+    "contentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+    "analyzerFingerprint": "0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1",
+    "settingsFingerprint": "79eb795b4fbea6551bf031538aa632e00e55f2c3cc11b3b66f90f65ab700b6fe",
+    "range": {
+      "startMs": 9507.694776501841,
+      "endMs": 10209.492984960676
+    },
+    "summary": {
+      "frameCount": 43,
+      "frameIntervalMs": 16.70948115378178,
+      "temporalStateCountPeak": 2,
+      "temporalPersistence": 0.6666666666666666,
+      "motionEnergyPeak": 0.09769646589331762,
+      "displacementPeak": 0.019124034320670242,
+      "displacementDirection": {
+        "x": -0.002608385019832187,
+        "y": -0.018945316473642986
+      },
+      "scaleRange": 0.14332227894233118,
+      "rotationRange": 4.4719808660815215,
+      "blurPeak": 0.9997532681688431,
+      "blurPeakPhase": 0.40476190476190477,
+      "distortionPeak": 0.470343197894998,
+      "exposurePeak": 0.5829299450313319,
+      "subjectSeparationPeak": 0,
+      "overlapDensityPeak": 0.3037688442211055,
+      "stateSeparationPeak": 0.19064745111667228,
+      "fragmentationCoherencePeak": 0.27512562814070346,
+      "fragmentationCoherencePhase": 0.35714285714285715,
+      "fragmentationTemporalStateCountPeak": 2,
+      "fragmentationOverlapDensityPeak": 0.0550251256281407,
+      "fragmentationStateSeparationPeak": 0.021695137988629595,
+      "occlusionPeak": 0,
+      "accelerationPeak": 0.07006638912336575,
+      "recoveryFrames": 6,
+      "opticalPeakPhase": 0.40476190476190477,
+      "motionPeakPhase": 0.47619047619047616
+    },
+    "shutterContract": {
+      "shutter": true,
+      "reasons": []
+    }
+  },
+  "render": {
+    "sourceId": "m6-v6r-joint-04",
+    "contentKey": "97e0f063954be4b714fa3f9d26f2345fe1b020bbd5e664c945e6a5625bec364b",
+    "analyzerFingerprint": "0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1",
+    "settingsFingerprint": "037f569a6893b59aaa06ac946fa6968839cf45f436aea77b5ca614d4a4f64a2d",
+    "range": {
+      "startMs": 0,
+      "endMs": 683.3333333333334
+    },
+    "summary": {
+      "frameCount": 42,
+      "frameIntervalMs": 16.666666666666668,
+      "temporalStateCountPeak": 3,
+      "temporalPersistence": 0.2926829268292683,
+      "motionEnergyPeak": 0.035590510453954435,
+      "displacementPeak": 0.0007127179052554851,
+      "displacementDirection": {
+        "x": -0.0007118602593739827,
+        "y": 0.00003495402116742399
+      },
+      "scaleRange": 0.04063271542118585,
+      "rotationRange": 2.3523107528233083,
+      "blurPeak": 0.9683354188736523,
+      "blurPeakPhase": 0.5609756097560976,
+      "distortionPeak": 0.5949792441452281,
+      "exposurePeak": 0.58494678393778,
+      "subjectSeparationPeak": 0,
+      "overlapDensityPeak": 0.043718592964824124,
+      "stateSeparationPeak": 0.18467522376216292,
+      "fragmentationCoherencePeak": 0.20351758793969849,
+      "fragmentationCoherencePhase": 0.5365853658536586,
+      "fragmentationTemporalStateCountPeak": 2,
+      "fragmentationOverlapDensityPeak": 0.0407035175879397,
+      "fragmentationStateSeparationPeak": 0.039283710065919304,
+      "occlusionPeak": 0,
+      "accelerationPeak": 0.0711218403126456,
+      "recoveryFrames": 1,
+      "opticalPeakPhase": 0.5121951219512195,
+      "motionPeakPhase": 0.4878048780487805
+    },
+    "classifiedFamily": "SHUTTER_FRAGMENTATION",
+    "shutterContract": {
+      "shutter": true,
+      "reasons": []
+    }
+  },
+  "comparison": {
+    "schema": "editflow.semantic-fidelity-comparison.v1",
+    "family": "SHUTTER_FRAGMENTATION",
+    "alignment": "FRAME_ALIGNED",
+    "metrics": [
+      {
+        "invariantId": "shutter.states",
+        "dimension": "TEMPORAL",
+        "metric": "temporalStateCountPeak",
+        "referenceValue": 2,
+        "renderValue": 2,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.coordination",
+        "dimension": "COMPOSITING",
+        "metric": "fragmentationCoherencePeak",
+        "referenceValue": 0.27512562814070346,
+        "renderValue": 0.20351758793969849,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1.2,
+        "diagnosis": "fragmentationCoherencePeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.overlap",
+        "dimension": "COMPOSITING",
+        "metric": "overlapDensityPeak",
+        "referenceValue": 0.0550251256281407,
+        "renderValue": 0.0407035175879397,
+        "normalizedError": 0.07853881278538803,
+        "passed": false,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "overlapDensityPeak is under-driven: reference 0.055, render 0.041. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."
+      },
+      {
+        "invariantId": "shutter.displacement",
+        "dimension": "SPATIAL",
+        "metric": "fragmentationStateSeparationPeak",
+        "referenceValue": 0.021695137988629595,
+        "renderValue": 0.039283710065919304,
+        "normalizedError": 0.33024853697115775,
+        "passed": false,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "fragmentationStateSeparationPeak is over-driven: reference 0.022, render 0.039. States require visible within-frame spatial separation during the coordinated fragmentation event before convergence; unrelated source-texture echoes or camera/content motion cannot substitute."
+      },
+      {
+        "invariantId": "shutter.acceleration",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "accelerationPeak",
+        "referenceValue": 0.07006638912336575,
+        "renderValue": 0.0711218403126456,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "accelerationPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.recovery",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "recoveryFrames",
+        "referenceValue": 6,
+        "renderValue": 1,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "recoveryFrames preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.blur",
+        "dimension": "OPTICAL",
+        "metric": "blurPeak",
+        "referenceValue": 0.9997532681688431,
+        "renderValue": 0.9683354188736523,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "blurPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.exposure",
+        "dimension": "OPTICAL",
+        "metric": "exposurePeak",
+        "referenceValue": 0.5829299450313319,
+        "renderValue": 0.58494678393778,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "exposurePeak preserves the defining reference behavior."
+      }
+    ],
+    "definingCoverage": 0.6666666666666666,
+    "weightedFidelity": 0.9407554565570223,
+    "passed": false,
+    "diagnoses": [
+      "overlapDensityPeak is under-driven: reference 0.055, render 0.041. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum.",
+      "fragmentationStateSeparationPeak is over-driven: reference 0.022, render 0.039. States require visible within-frame spatial separation during the coordinated fragmentation event before convergence; unrelated source-texture echoes or camera/content motion cannot substitute."
+    ],
+    "referenceEvidenceKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+    "renderEvidenceKey": "97e0f063954be4b714fa3f9d26f2345fe1b020bbd5e664c945e6a5625bec364b"
+  },
+  "gate": {
+    "schema": "editflow.professional-fidelity-gate.v1",
+    "outcome": "CORRECTION_REQUIRED",
+    "certified": false,
+    "missingDefiningInvariantIds": [],
+    "underDrivenInvariantIds": [
+      "shutter.overlap",
+      "shutter.displacement"
+    ],
+    "weakerSubstitutionDetected": true,
+    "reasons": [
+      "Defining behavior failed rendered comparison: shutter.overlap, shutter.displacement.",
+      "Optional decoration is present while defining behavior is absent or materially under-driven."
+    ]
+  },
+  "actuationPlan": {
+    "schema": "editflow.construction-actuation-plan.v1",
+    "family": "SHUTTER_FRAGMENTATION",
+    "comparisonKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344->97e0f063954be4b714fa3f9d26f2345fe1b020bbd5e664c945e6a5625bec364b",
+    "instructions": [
+      {
+        "instructionId": "actuate:shutter.overlap:temporal_band_mix",
+        "invariantId": "shutter.overlap",
+        "nodeId": "node:2:temporal_duplicates",
+        "metric": "overlapDensityPeak",
+        "deficitMetric": "overlapDensityPeak",
+        "deficitReferenceValue": 0.0550251256281407,
+        "deficitRenderValue": 0.0407035175879397,
+        "control": "TEMPORAL_BAND_MIX",
+        "direction": "INCREASE",
+        "referenceValue": 0.0550251256281407,
+        "renderValue": 0.0407035175879397,
+        "multiplier": 1.3518518518518519,
+        "normalizedError": 0.07853881278538803,
+        "defining": true,
+        "rationale": "overlapDensityPeak is under-driven: reference 0.055, render 0.041. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."
+      },
+      {
+        "instructionId": "actuate:shutter.overlap:duplicate_opacity",
+        "invariantId": "shutter.overlap",
+        "nodeId": "node:2:temporal_duplicates",
+        "metric": "overlapDensityPeak",
+        "deficitMetric": "overlapDensityPeak",
+        "deficitReferenceValue": 0.0550251256281407,
+        "deficitRenderValue": 0.0407035175879397,
+        "control": "DUPLICATE_OPACITY",
+        "direction": "INCREASE",
+        "referenceValue": 0.0550251256281407,
+        "renderValue": 0.0407035175879397,
+        "multiplier": 1.3518518518518519,
+        "normalizedError": 0.07853881278538803,
+        "defining": true,
+        "rationale": "overlapDensityPeak is under-driven: reference 0.055, render 0.041. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."
+      },
+      {
+        "instructionId": "actuate:shutter.overlap:duplicate_spread",
+        "invariantId": "shutter.overlap",
+        "nodeId": "node:2:temporal_duplicates",
+        "metric": "fragmentationStateSeparationPeak",
+        "deficitMetric": "overlapDensityPeak",
+        "deficitReferenceValue": 0.0550251256281407,
+        "deficitRenderValue": 0.0407035175879397,
+        "control": "DUPLICATE_SPREAD",
+        "direction": "DECREASE",
+        "referenceValue": 0.021695137988629595,
+        "renderValue": 0.039283710065919304,
+        "multiplier": 0.552268050859363,
+        "normalizedError": 0.07853881278538803,
+        "defining": true,
+        "rationale": "overlapDensityPeak is under-driven: reference 0.055, render 0.041. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum. Duplicate spread is constrained by the reference within-frame state-separation envelope so overlap correction cannot over-drive fragment spacing."
+      },
+      {
+        "instructionId": "actuate:shutter.overlap:temporal_fragment_density",
+        "invariantId": "shutter.overlap",
+        "nodeId": "node:2:temporal_duplicates",
+        "metric": "overlapDensityPeak",
+        "deficitMetric": "overlapDensityPeak",
+        "deficitReferenceValue": 0.0550251256281407,
+        "deficitRenderValue": 0.0407035175879397,
+        "control": "TEMPORAL_FRAGMENT_DENSITY",
+        "direction": "INCREASE",
+        "referenceValue": 0.0550251256281407,
+        "renderValue": 0.0407035175879397,
+        "multiplier": 1.3518518518518519,
+        "normalizedError": 0.07853881278538803,
+        "defining": true,
+        "rationale": "overlapDensityPeak is under-driven: reference 0.055, render 0.041. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."
+      },
+      {
+        "instructionId": "actuate:shutter.displacement:spatial_separation",
+        "invariantId": "shutter.displacement",
+        "nodeId": "node:3:transform_motion",
+        "metric": "fragmentationStateSeparationPeak",
+        "deficitMetric": "fragmentationStateSeparationPeak",
+        "deficitReferenceValue": 0.021695137988629595,
+        "deficitRenderValue": 0.039283710065919304,
+        "control": "SPATIAL_SEPARATION",
+        "direction": "DECREASE",
+        "referenceValue": 0.021695137988629595,
+        "renderValue": 0.039283710065919304,
+        "multiplier": 0.552268050859363,
+        "normalizedError": 0.33024853697115775,
+        "defining": true,
+        "rationale": "fragmentationStateSeparationPeak is over-driven: reference 0.022, render 0.039. States require visible within-frame spatial separation during the coordinated fragmentation event before convergence; unrelated source-texture echoes or camera/content motion cannot substitute."
+      }
+    ],
+    "unresolvedInvariantIds": []
+  },
+  "evidenceBoundary": [
+    "This proof compares one pre-isolated transition cut only; it does not use sequence-event detection or cross-cut H.264 context.",
+    "Certification remains fail-closed on every defining Transition DNA invariant and the compiled capability graph."
+  ]
+}

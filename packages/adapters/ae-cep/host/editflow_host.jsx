@@ -348,7 +348,15 @@
     var comp = findComp(payload.comp);
     var layer = findLayer(comp, payload.layer);
     var timing = payload.timing || {};
+    if (timing.startTime !== undefined && timing.startTimeOffset !== undefined) {
+      throw new Error("layer.set_timing cannot mix startTime and startTimeOffset.");
+    }
     if (timing.startTime !== undefined) layer.startTime = timing.startTime;
+    if (timing.startTimeOffset !== undefined) {
+      var offset = Number(timing.startTimeOffset);
+      if (!isFinite(offset)) throw new Error("layer.set_timing startTimeOffset must be finite.");
+      layer.startTime = layer.startTime + offset;
+    }
     if (timing.inPoint !== undefined) layer.inPoint = timing.inPoint;
     if (timing.outPoint !== undefined) layer.outPoint = timing.outPoint;
     if (timing.stretch !== undefined) layer.stretch = timing.stretch;

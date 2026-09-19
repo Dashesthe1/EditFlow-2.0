@@ -60,7 +60,18 @@ All M# development testing uses the Incremental Proof Engine through `scripts/wi
 
 ## Current phase
 
-**M5 — Interactive AE Adapters: in progress.**
+**M6 — Professional Effects & Transitions Intelligence: implementation foundation active on the retained M5 stack.**
+
+The M6 visual-intelligence package now implements dense frame evidence, action-to-pixel
+causal learning, Effect Anatomy/Transition DNA, construction graphs, semantic fidelity
+comparison, anti-simplification, bounded correction, unknown-effect synthesis, the
+24-case professional benchmark contract, and normal Editor Brain routing. This is a
+structural implementation claim, not a rendered professional-fidelity claim. Real-AE
+reconstruction, A/B, correction, held-out, and transfer evidence must pass before M6 is
+promoted. See `docs/M6_PROFESSIONAL_EFFECTS_INTELLIGENCE_CONTRACT.md`.
+
+**M5 — Interactive AE Adapters: in progress.** Its retained work remains active wherever
+M6 construction exposes a capability gap.
 
 M4 — Tracking & Isolation is accepted. Commit `a55c0ac` closes the M4 exit gate with bounded live-AE isolation, evidence-backed semantic attachment, visible drift repair/resume, transfer across materially different retained SAM 3.1 fixtures, warm-process reuse, and exact project-baseline restoration.
 
