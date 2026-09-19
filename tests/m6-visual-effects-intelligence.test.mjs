@@ -1162,6 +1162,30 @@ test("M6.8 searches genuinely different construction hypotheses and can select a
     && proposal.proofRequirement === "REAL_AE_RENDER"));
 });
 
+test("M6.8 native hybrids fail closed until a concrete effect schema is materialized", () => {
+  const time = synthesizeUnknownEffectV1({
+    evidence: evidence({ temporalStateCountPeak: 3, temporalPersistence: 0.55 }),
+    availableCapabilities: ["ae.effect.time-displacement"],
+  });
+  assert.equal(time.status, "CAPABILITY_GAP");
+  assert.equal(time.selected, null);
+  const timeCandidate = time.candidates.find((item) => item.strategy === "TIME_DISPLACEMENT_HYBRID");
+  assert.deepEqual(timeCandidate?.capabilityGaps, [
+    "PROOF_REQUIRED_NATIVE_EFFECT_SCHEMA:ae.effect.time-displacement",
+  ]);
+
+  const turbulent = synthesizeUnknownEffectV1({
+    evidence: evidence({ distortionPeak: 0.4 }),
+    availableCapabilities: ["ae.effect.turbulent-displace"],
+  });
+  assert.equal(turbulent.status, "CAPABILITY_GAP");
+  assert.equal(turbulent.selected, null);
+  const turbulentCandidate = turbulent.candidates.find((item) => item.strategy === "TURBULENT_DISPLACE_HYBRID");
+  assert.deepEqual(turbulentCandidate?.capabilityGaps, [
+    "PROOF_REQUIRED_NATIVE_EFFECT_SCHEMA:ae.effect.turbulent-displace",
+  ]);
+});
+
 test("M6.8 native Echo proof path is effect-realized, FPS-adaptive, and production-blocked", () => {
   const unknown = evidence({
     temporalStateCountPeak: 3,

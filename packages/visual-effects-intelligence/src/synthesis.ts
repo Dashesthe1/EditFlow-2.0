@@ -421,6 +421,25 @@ const adaptiveCapabilityProposals = (
     }));
 };
 
+const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
+  Partial<Record<UnknownEffectSynthesisStrategyV1, string>>
+> = Object.freeze({
+  NATIVE_ECHO_HYBRID: "ae.effect-schema.m6.echo.v1",
+});
+
+const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
+  [...new Set(graph.nodes.flatMap((node) => {
+    const strategy = node.parameters["synthesisStrategy"];
+    if (strategy !== "NATIVE_ECHO_HYBRID"
+      && strategy !== "TIME_DISPLACEMENT_HYBRID"
+      && strategy !== "TURBULENT_DISPLACE_HYBRID") return [];
+    const capability = node.capabilityCandidates[0] ?? String(strategy);
+    const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
+    const actualSchemaRef = node.parameters["effectSchemaRef"];
+    if (expectedSchemaRef !== undefined && actualSchemaRef === expectedSchemaRef) return [];
+    return [`PROOF_REQUIRED_NATIVE_EFFECT_SCHEMA:${capability}`];
+  }))].sort();
+
 const candidate = (
   id: string,
   strategy: UnknownEffectSynthesisStrategyV1,
@@ -433,7 +452,11 @@ const candidate = (
   const covered = definingCount - graph.missingInvariantIds.length;
   const definingCoverage = definingCount === 0 ? 0 : covered / definingCount;
   const complexity = graph.nodes.length + complexityPenalty;
-  const gapPenalty = compilation.capabilityGaps.length * 0.22;
+  const capabilityGaps = [...new Set([
+    ...compilation.capabilityGaps,
+    ...nativeRealizationGaps(graph),
+  ])].sort();
+  const gapPenalty = capabilityGaps.length * 0.22;
   const proposals = adaptiveCapabilityProposals(graph, compilation.capabilityGaps);
   return {
     candidateId: id,
@@ -441,7 +464,7 @@ const candidate = (
     graph,
     definingCoverage,
     complexity,
-    capabilityGaps: compilation.capabilityGaps,
+    capabilityGaps,
     adaptiveCapabilityProposals: proposals,
     score: definingCoverage - gapPenalty - complexity * 0.01 - proposals.length * 0.03,
   };

@@ -17,7 +17,9 @@
     "nativeHypothesisUsesEffectStack": true,
     "proofRequiredSchemaAllowlist": true,
     "fpsAdaptiveEffectBinding": true,
-    "nativeEchoProofPlan": true
+    "nativeEchoProofPlan": true,
+    "nativeHypothesisRequiresMaterializedEffectSchema": true,
+    "unmaterializedNativeHypothesesFailClosed": true
   },
   "proofRequiredEffectSchemas": [
     "ae.effect-schema.m6.echo.v1"
@@ -34,7 +36,10 @@
     "testsFailed": 0,
     "transferFixtureDurationMs": 9000,
     "semanticEventMs": 1500,
-    "echoFpsTransferVariants": [30, 60],
+    "echoFpsTransferVariants": [
+      30,
+      60
+    ],
     "productionSchemaGateVerified": true
   },
   "fullRepositoryCheck": {
@@ -60,5 +65,16 @@
     "realAeRenderedProof": "BLOCKED",
     "m6_8Complete": false,
     "nextRequiredProof": "Execute the layered UNKNOWN and proof-required native Echo constructions in repaired live AE, render bounded windows, compare against reference evidence, and retain the results before any adaptive effect schema can be certified."
+  },
+  "unmaterializedNativeSchemaGaps": [
+    "ae.effect.time-displacement",
+    "ae.effect.turbulent-displace"
+  ],
+  "latestImpactValidation": {
+    "typecheck": "PASS",
+    "m6TestsPassed": 54,
+    "m6TestsFailed": 0,
+    "diffCheck": "PASS",
+    "claimBoundary": "Structural/native-plan validation only; no new live-AE fidelity claim."
   }
 }
