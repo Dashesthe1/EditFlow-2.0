@@ -12,6 +12,7 @@ import {
   classifyEffectFamilyV1,
   compareSemanticVisualFidelityV1,
   compileConstructionGraphV1,
+  compileConstructionThroughNativeAeV1,
   compileConstructionThroughVirtualAeV1,
   createCanonicalProfessionalBenchmarkV1,
   decomposeUnknownEffectV1,
@@ -575,6 +576,83 @@ test("M6.4 reconstructs complete construction graphs for three compound families
     assert.equal(virtual.compiled, true, virtual.issues.join(", "));
     assert.equal(virtual.simulation.valid, true);
   }
+});
+
+test("M6.4/M6.8 lowers UNKNOWN construction through the generic native AE plan path", () => {
+  const reference = shutterReference();
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: ALL_CAPABILITIES,
+  });
+  assert.equal(synthesis.status, "READY_FOR_PROOF");
+  assert.notEqual(synthesis.selected, null);
+  assert.equal(synthesis.selected.graph.family, "UNKNOWN");
+
+  const compilation = compileConstructionGraphV1(
+    synthesis.selected.graph,
+    ALL_CAPABILITIES,
+  );
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "M6 native construction fixture",
+      width: 1080,
+      height: 1080,
+      durationMs: 1000,
+      frameRate: 30,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "FOOTAGE",
+        inMs: 0,
+        outMs: 1000,
+        properties: [],
+        effects: [],
+        masks: [],
+      }],
+    }],
+  };
+  const result = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-unknown-native-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+      creativeObjective: "Materialize UNKNOWN M6 behavior through the generic native AE path.",
+    },
+  );
+  assert.equal(result.compiled, true, result.issues.join(", "));
+  assert.notEqual(result.plan, null);
+  const temporalNodes = synthesis.selected.graph.nodes.filter((node) =>
+    node.kind === "TEMPORAL_DUPLICATES");
+  assert.equal(temporalNodes.length, 1, "coordinated temporal evidence must materialize once");
+  assert.ok(temporalNodes[0].capabilityCandidates.includes("ae.layer.opacity.set"));
+  assert.ok(temporalNodes[0].capabilityCandidates.includes("ae.layer.transform.set"));
+  const stateCount = Math.max(2, Math.round(
+    temporalNodes[0].parameters.fragmentationTemporalStateCountPeak
+      ?? temporalNodes[0].parameters.temporalStateCountPeak
+      ?? 2,
+  ));
+  const commands = result.plan.operations.map((operation) => operation.input.command);
+  assert.equal(commands.filter((command) => command === "layer.duplicate").length, stateCount - 1);
+  assert.ok(commands.includes("layer.set_timing"));
+  assert.ok(commands.includes("property.set_expression"));
+  assert.equal(result.plan.operations.some((operation) =>
+    JSON.stringify(operation.input).includes("M6.TemporalState")), false);
 });
 
 test("M6.5-M6.6 comparator diagnoses degradation and anti-simplification fails closed", () => {

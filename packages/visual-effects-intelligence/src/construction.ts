@@ -4,10 +4,14 @@ import type {
   EditingIrRecipeV1,
 } from "../../editing-ir/src/index.js";
 import { assertValidEditingIrRecipeV1 } from "../../editing-ir/src/index.js";
-import { asCapabilityId } from "../../core-contracts/src/index.js";
+import { asCapabilityId, type ExecutionPlan } from "../../core-contracts/src/index.js";
 import {
   compileEditingIrRecipeToVirtualAeV1,
+  inspectRecipeCompilerSupportV1,
+  lowerCompiledRecipeToNativeAePlanV1,
+  NativeAeRecipeLoweringError,
   RecipeCompileError,
+  type NativeAeRecipeLoweringInputV1,
   type RecipeCompilerContextV1,
 } from "../../recipe-compiler/src/index.js";
 import {
@@ -100,7 +104,10 @@ const parameterValue = (
   return [target.x, target.y];
 };
 
-const nodeKey = (template: NodeTemplateV1): string => `${template.kind}:${template.dimension}`;
+const nodeKey = (template: NodeTemplateV1): string =>
+  template.kind === "TEMPORAL_DUPLICATES"
+    ? template.kind
+    : `${template.kind}:${template.dimension}`;
 
 export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): ConstructionGraphV1 => {
   const invariants = [...anatomy.dna.definingInvariants, ...anatomy.dna.optionalInvariants];
@@ -109,8 +116,23 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
     const template = templateFor(item);
     const key = nodeKey(template);
     const existing = grouped.get(key);
-    if (existing === undefined) grouped.set(key, { template, invariants: [item] });
-    else existing.invariants.push(item);
+    if (existing === undefined) {
+      grouped.set(key, {
+        template: template.kind === "TEMPORAL_DUPLICATES"
+          ? { ...template, dimension: "TEMPORAL" }
+          : template,
+        invariants: [item],
+      });
+    } else {
+      existing.invariants.push(item);
+      existing.template = {
+        ...existing.template,
+        capabilities: [...new Set([
+          ...existing.template.capabilities,
+          ...template.capabilities,
+        ])],
+      };
+    }
   }
   const nodes: ConstructionNodeV1[] = [];
   const coverage: Record<string, string[]> = {};
@@ -261,6 +283,51 @@ export const compileConstructionThroughVirtualAeV1 = (
   } catch (error) {
     if (error instanceof RecipeCompileError) {
       return { compiled: false, simulation: null, issues: error.issues.map((issue) => `${issue.code}:${issue.message}`) };
+    }
+    throw error;
+  }
+};
+
+export interface NativeAeConstructionResultV1 {
+  readonly compiled: boolean;
+  readonly plan: ExecutionPlan | null;
+  readonly issues: readonly string[];
+}
+
+export const compileConstructionThroughNativeAeV1 = (
+  compilation: ConstructionCompilationV1,
+  project: VirtualAeProjectV1,
+  context: RecipeCompilerContextV1,
+  nativeInput: NativeAeRecipeLoweringInputV1,
+): NativeAeConstructionResultV1 => {
+  if (compilation.recipe === null) {
+    return { compiled: false, plan: null, issues: compilation.capabilityGaps };
+  }
+  const support = inspectRecipeCompilerSupportV1(compilation.recipe);
+  if (support.nativeAeBlockedPrimitiveKinds.length > 0) {
+    return {
+      compiled: false,
+      plan: null,
+      issues: support.nativeAeBlockedPrimitiveKinds.map((kind) =>
+        `UNSUPPORTED_NATIVE_M6_PRIMITIVE:${kind}`),
+    };
+  }
+  try {
+    const virtual = compileEditingIrRecipeToVirtualAeV1(compilation.recipe, project, context);
+    const simulation = simulateVirtualAeV1(project, virtual.operations);
+    if (!simulation.valid) return { compiled: false, plan: null, issues: simulation.errors };
+    const plan = lowerCompiledRecipeToNativeAePlanV1(virtual, nativeInput);
+    return { compiled: true, plan, issues: [] };
+  } catch (error) {
+    if (error instanceof RecipeCompileError) {
+      return {
+        compiled: false,
+        plan: null,
+        issues: error.issues.map((issue) => `${issue.code}:${issue.message}`),
+      };
+    }
+    if (error instanceof NativeAeRecipeLoweringError) {
+      return { compiled: false, plan: null, issues: [`${error.code}:${error.message}`] };
     }
     throw error;
   }

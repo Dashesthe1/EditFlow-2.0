@@ -42,6 +42,9 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "MOTION_BLUR",
   "EFFECT_STACK",
   "STABILIZATION",
+  "LAYER_DUPLICATION",
+  "TEMPORAL_DUPLICATION",
+  "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
 const effectSchemaRefV1 = (node: EditingIrNodeV1): string | null => {
@@ -313,6 +316,7 @@ const semanticValue = (
   kind,
   nodeId: node.nodeId,
   phase,
+  optional: node.optional === true,
   parameters: structuredClone(parameters),
 });
 
@@ -745,18 +749,30 @@ const compileM6TemporalDuplication = (
   context: RecipeCompilerContextV1,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
+  frameRate: number,
+  width: number,
+  height: number,
 ): readonly string[] => {
+  const parameters = resolveParameterMap(
+    node,
+    node.parameters.map((parameter) => parameter.name),
+    context,
+    issues,
+  );
+  if (parameters === null) return [];
   const countParameter = node.parameters.find((parameter) =>
-    parameter.name === "temporalStateCountPeak" || parameter.name === "stateCount");
-  const resolved = countParameter === undefined
-    ? 2
-    : resolveParameter(node, countParameter.name, context, issues);
+    parameter.name === "temporalStateCountPeak"
+      || parameter.name === "fragmentationTemporalStateCountPeak"
+      || parameter.name === "stateCount");
+  const resolved = countParameter === undefined ? 2 : parameters[countParameter.name];
   if (typeof resolved !== "number" || !Number.isFinite(resolved)) {
     addIssue(issues, node.nodeId, "TEMPORAL_STATE_COUNT_INVALID",
       "M6 temporal duplication requires a finite temporal state count.");
     return [];
   }
   const count = Math.max(2, Math.min(8, Math.round(resolved)));
+  const frameDurationMs = 1000 / frameRate;
+  const compLongestEdgePx = Math.max(width, height);
   const outputs: string[] = [...targets];
   for (const sourceLayerId of targets) {
     for (let state = 1; state < count; state += 1) {
@@ -774,8 +790,11 @@ const compileM6TemporalDuplication = (
         layerId,
         propertyPath: "M6.TemporalState",
         value: semanticValue(node, "TEMPORAL_DUPLICATION", `STATE_${state}`, {
+          ...parameters,
           state,
           stateCount: count,
+          sourceTimeOffsetMs: state * frameDurationMs,
+          compLongestEdgePx,
         }),
       });
       outputs.push(layerId);
@@ -798,6 +817,39 @@ const compileM6SemanticVisualState = (
     issues,
   );
   if (parameters === null) return [];
+  if (node.kind === "MOTION_SHAPING") {
+    const accelerationRaw = parameters["accelerationPeak"];
+    const recoveryRaw = parameters["recoveryFrames"];
+    const hasAcceleration = typeof accelerationRaw === "number" && Number.isFinite(accelerationRaw);
+    const hasRecovery = typeof recoveryRaw === "number" && Number.isFinite(recoveryRaw) && recoveryRaw > 0;
+    if (!hasAcceleration && !hasRecovery) {
+      addIssue(issues, node.nodeId, "M6_MOTION_SHAPING_PARAMETERS_INVALID",
+        "M6 motion shaping requires observed accelerationPeak or recoveryFrames evidence.");
+      return [];
+    }
+    const acceleration = hasAcceleration ? accelerationRaw : 0.02;
+    const recoveryFrames = hasRecovery
+      ? recoveryRaw
+      : Math.max(2, Math.min(12, Math.round(0.5 / Math.max(acceleration, 0.02))));
+    const expression = [
+      "var center=(inPoint+outPoint)/2;",
+      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
+      "var phase=(time-center)/recovery;",
+      `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
+      "var envelope=Math.exp(-4*phase*phase);",
+      "value+[0,-amplitude*phase*envelope];",
+    ].join("");
+    for (const layerId of targets) {
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "Transform.Position",
+        expression,
+      });
+    }
+    return targets;
+  }
   for (const layerId of targets) {
     operations.push({
       type: "SET_PROPERTY",
@@ -943,7 +995,16 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     } else if (node.kind === "STABILIZATION") {
       outputs = compileStabilization(node, targets, context, operations, issues);
     } else if (node.kind === "LAYER_DUPLICATION" || node.kind === "TEMPORAL_DUPLICATION") {
-      outputs = compileM6TemporalDuplication(node, targets, context, operations, issues);
+      outputs = compileM6TemporalDuplication(
+        node,
+        targets,
+        context,
+        operations,
+        issues,
+        comp.frameRate,
+        comp.width,
+        comp.height,
+      );
     } else if ([
       "SUBJECT_ISOLATION",
       "OPACITY_SHAPING",

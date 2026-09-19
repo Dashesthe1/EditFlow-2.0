@@ -100,6 +100,30 @@ const curveKey = (layerId: string, propertyPath: string): string =>
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+interface M6SemanticStateV1 {
+  readonly optional: boolean;
+  readonly parameters: Readonly<Record<string, unknown>>;
+}
+
+const m6SemanticState = (value: unknown): M6SemanticStateV1 | null => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const parameters = candidate["parameters"];
+  if (parameters === null || typeof parameters !== "object" || Array.isArray(parameters)) return null;
+  return {
+    optional: candidate["optional"] === true,
+    parameters: parameters as Readonly<Record<string, unknown>>,
+  };
+};
+
+const m6OpacityFactor = (parameters: Readonly<Record<string, unknown>>): number | null => {
+  const overlap = parameters["fragmentationOverlapDensityPeak"];
+  const coherence = parameters["fragmentationCoherencePeak"];
+  const signals = [overlap, coherence].filter(finite);
+  if (signals.length === 0) return null;
+  return Math.max(0.2, Math.min(1, Math.sqrt(Math.max(...signals))));
+};
+
 const finiteVector = (value: unknown, positive = false): value is readonly number[] =>
   Array.isArray(value)
   && (value.length === 2 || value.length === 3)
@@ -511,6 +535,21 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   };
 
   for (const operation of compiled.operations) {
+    if (operation.type !== "DUPLICATE_LAYER") continue;
+    emit(
+      "ae.layer.duplicate",
+      AE_ADAPTER_ROUTE_ID_V11,
+      "layer.duplicate",
+      {
+        comp: { stableId: operation.compId },
+        layer: { stableId: operation.sourceLayerId },
+        stableId: operation.layerId,
+      },
+      "R2_STRUCTURAL",
+    );
+  }
+
+  for (const operation of compiled.operations) {
     if (operation.type !== "PRECOMPOSE") continue;
     emit(
       "ae.precompose.layers",
@@ -594,7 +633,104 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       );
       continue;
     }
+    if (operation.type === "SET_EXPRESSION") {
+      if (operation.propertyPath !== "Transform.Position") {
+        throw new NativeAeRecipeLoweringError(
+          "UNSUPPORTED_NATIVE_EXPRESSION_PATH",
+          `Native M6 expression lowering does not support '${operation.propertyPath}'.`,
+        );
+      }
+      emit(
+        "ae.expression.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "property.set_expression",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          propertyPath: ["ADBE Transform Group", "ADBE Position"],
+          expression: operation.expression,
+          enabled: true,
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
     if (operation.type === "SET_PROPERTY") {
+      if (operation.propertyPath === "M6.TemporalState") {
+        const semantic = m6SemanticState(operation.value);
+        if (semantic === null) {
+          throw new NativeAeRecipeLoweringError(
+            "INVALID_M6_TEMPORAL_STATE",
+            "M6.TemporalState requires structured semantic parameters.",
+          );
+        }
+        const parameters = semantic.parameters;
+        const timeOffsetMs = parameters["sourceTimeOffsetMs"];
+        if (!finite(timeOffsetMs)) {
+          throw new NativeAeRecipeLoweringError(
+            "M6_TEMPORAL_OFFSET_REQUIRED",
+            "M6 temporal duplication requires a finite sourceTimeOffsetMs.",
+          );
+        }
+        if (timeOffsetMs !== 0) {
+          emit(
+            "ae.layer.timing.set",
+            AE_ADAPTER_ROUTE_ID_V11,
+            "layer.set_timing",
+            {
+              comp: { stableId: operation.compId },
+              layer: { stableId: operation.layerId },
+              timing: { startTimeOffset: timeOffsetMs / 1000 },
+            },
+            "R1_REVERSIBLE",
+          );
+        }
+        const opacityFactor = m6OpacityFactor(parameters);
+        if (opacityFactor !== null) {
+          emit(
+            "ae.expression.set",
+            AE_ADAPTER_ROUTE_ID_V11,
+            "property.set_expression",
+            {
+              comp: { stableId: operation.compId },
+              layer: { stableId: operation.layerId },
+              propertyPath: ["ADBE Transform Group", "ADBE Opacity"],
+              expression: `value*${opacityFactor}`,
+              enabled: true,
+            },
+            "R1_REVERSIBLE",
+          );
+        }
+        const separation = parameters["fragmentationStateSeparationPeak"]
+          ?? parameters["stateSeparationPeak"];
+        const longestEdge = parameters["compLongestEdgePx"];
+        const stateIndex = parameters["state"];
+        if (finite(separation) && finite(longestEdge) && finite(stateIndex)) {
+          const spreadPx = separation * longestEdge * (Math.round(stateIndex) % 2 === 0 ? -1 : 1);
+          emit(
+            "ae.expression.set",
+            AE_ADAPTER_ROUTE_ID_V11,
+            "property.set_expression",
+            {
+              comp: { stableId: operation.compId },
+              layer: { stableId: operation.layerId },
+              propertyPath: ["ADBE Transform Group", "ADBE Anchor Point"],
+              expression: `value+[0,${-spreadPx}]`,
+              enabled: true,
+            },
+            "R1_REVERSIBLE",
+          );
+        }
+        continue;
+      }
+      if (operation.propertyPath.startsWith("M6.")) {
+        const semantic = m6SemanticState(operation.value);
+        if (semantic?.optional === true) continue;
+        throw new NativeAeRecipeLoweringError(
+          "UNSUPPORTED_REQUIRED_M6_SEMANTIC_STATE",
+          `Required M6 semantic state '${operation.propertyPath}' has no proven native realization.`,
+        );
+      }
       const transformField = nativeTransformField(operation.propertyPath);
       if (transformField !== null) {
         validateStaticTransformValue(operation.propertyPath, operation.value);
@@ -833,8 +969,12 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     if (operation.type === "PRECOMPOSE" || operation.type === "ADD_KEYFRAME"
       || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION"
       || operation.type === "ADD_EFFECT" || operation.type === "SET_EFFECT_PROPERTY"
-      || operation.type === "APPLY_STABILIZATION") continue;
+      || operation.type === "APPLY_STABILIZATION" || operation.type === "DUPLICATE_LAYER"
+      || operation.type === "SET_EXPRESSION") continue;
     if (operation.type === "SET_PROPERTY" && supportedSetPaths.has(operation.propertyPath)) continue;
+    if (operation.type === "SET_PROPERTY" && operation.propertyPath === "M6.TemporalState") continue;
+    if (operation.type === "SET_PROPERTY" && operation.propertyPath.startsWith("M6.")
+      && m6SemanticState(operation.value)?.optional === true) continue;
     throw new NativeAeRecipeLoweringError(
       "UNSUPPORTED_NATIVE_OPERATION",
       `Native AE lowering does not yet support Virtual AE operation '${operation.type}'.`,
