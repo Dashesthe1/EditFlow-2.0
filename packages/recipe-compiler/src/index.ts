@@ -44,6 +44,7 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "STABILIZATION",
   "LAYER_DUPLICATION",
   "TEMPORAL_DUPLICATION",
+  "OPACITY_SHAPING",
   "DIRECTIONAL_OFFSET",
   "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
@@ -766,6 +767,55 @@ const compileStaticTransform = (
   return targets;
 };
 
+const resolveM6EffectEventSeconds = (
+  node: EditingIrNodeV1,
+  context: RecipeCompilerContextV1,
+  issues: RecipeCompileIssueV1[],
+): number | null => {
+  const explicitDefinition = node.parameters.find((parameter) => parameter.name === "effectEventRef");
+  let eventRef: string | null = null;
+  if (explicitDefinition !== undefined) {
+    const resolved = resolveParameter(node, "effectEventRef", context, issues);
+    if (resolved === null) return null;
+    if (typeof resolved !== "string" || resolved.trim().length === 0) {
+      return addIssue(
+        issues,
+        node.nodeId,
+        "M6_EVENT_REF_INVALID",
+        "M6 effect realization requires effectEventRef to resolve to a non-empty semantic event name.",
+      );
+    }
+    eventRef = resolved.trim();
+  } else if (typeof context.eventTimesMs["transition"] === "number"
+    && Number.isFinite(context.eventTimesMs["transition"])) {
+    eventRef = "transition";
+  } else {
+    const finiteEvents = Object.entries(context.eventTimesMs)
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value));
+    if (finiteEvents.length === 1) eventRef = finiteEvents[0]![0];
+    else {
+      return addIssue(
+        issues,
+        node.nodeId,
+        finiteEvents.length === 0 ? "M6_EVENT_UNRESOLVED" : "M6_EVENT_REF_AMBIGUOUS",
+        finiteEvents.length === 0
+          ? "M6 effect realization requires a finite semantic event time."
+          : "M6 effect realization has multiple semantic event times; bind effectEventRef explicitly.",
+      );
+    }
+  }
+  const eventMs = context.eventTimesMs[eventRef];
+  if (typeof eventMs !== "number" || !Number.isFinite(eventMs)) {
+    return addIssue(
+      issues,
+      node.nodeId,
+      "M6_EVENT_UNRESOLVED",
+      `M6 semantic event '${eventRef}' has no finite time binding.`,
+    );
+  }
+  return eventMs / 1000;
+};
+
 const compileM6TemporalDuplication = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -773,8 +823,6 @@ const compileM6TemporalDuplication = (
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
   frameRate: number,
-  width: number,
-  height: number,
 ): readonly string[] => {
   const parameters = resolveParameterMap(
     node,
@@ -783,6 +831,13 @@ const compileM6TemporalDuplication = (
     issues,
   );
   if (parameters === null) return [];
+  const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+  if (eventSeconds === null) return [];
+  const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
+  const eventWindowFrames = typeof rawRecoveryFrames === "number"
+    && Number.isFinite(rawRecoveryFrames) && rawRecoveryFrames > 0
+    ? Math.max(2, Math.min(6, rawRecoveryFrames))
+    : 3;
   const countParameter = node.parameters.find((parameter) =>
     parameter.name === "temporalStateCountPeak"
       || parameter.name === "fragmentationTemporalStateCountPeak"
@@ -794,12 +849,11 @@ const compileM6TemporalDuplication = (
     return [];
   }
   const count = Math.max(2, Math.min(8, Math.round(resolved)));
-  const frameDurationMs = 1000 / frameRate;
-  const compLongestEdgePx = Math.max(width, height);
   const outputs: string[] = [...targets];
   for (const sourceLayerId of targets) {
     for (let state = 1; state < count; state += 1) {
       const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
+      const sourceTimeOffsetSeconds = state / frameRate;
       operations.push({
         type: "DUPLICATE_LAYER",
         compId: context.compId,
@@ -811,14 +865,32 @@ const compileM6TemporalDuplication = (
         type: "SET_PROPERTY",
         compId: context.compId,
         layerId,
-        propertyPath: "M6.TemporalState",
-        value: semanticValue(node, "TEMPORAL_DUPLICATION", `STATE_${state}`, {
-          ...parameters,
-          state,
-          stateCount: count,
-          sourceTimeOffsetMs: state * frameDurationMs,
-          compLongestEdgePx,
-        }),
+        propertyPath: "TimeRemap.Enabled",
+        value: true,
+      });
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "TimeRemap.SourceTime",
+        expression: `Math.max(0,value-${sourceTimeOffsetSeconds});`,
+      });
+      const statePeakOpacity = Math.max(42, 78 - (state - 1) * 11);
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "Transform.Opacity",
+        expression: [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)*thisComp.frameRate;",
+          `var pre=${eventWindowFrames};`,
+          `var peak=${statePeakOpacity};`,
+          "if(f<=-pre||f>=1){0}",
+          "else if(f<-1){linear(f,-pre,-1,0,peak)}",
+          "else if(f<0){linear(f,-1,0,peak,peak*0.4)}",
+          "else{linear(f,0,1,peak*0.4,0)}",
+        ].join(""),
       });
       outputs.push(layerId);
     }
@@ -900,6 +972,50 @@ const compileM6SemanticVisualState = (
     issues,
   );
   if (parameters === null) return [];
+  if (node.kind === "OPACITY_SHAPING") {
+    const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+    if (eventSeconds === null) return [];
+    const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
+    const eventWindowFrames = typeof rawRecoveryFrames === "number"
+      && Number.isFinite(rawRecoveryFrames) && rawRecoveryFrames > 0
+      ? Math.max(2, Math.min(6, rawRecoveryFrames))
+      : 3;
+    const overlap = parameters["fragmentationOverlapDensityPeak"] ?? parameters["overlapDensityPeak"];
+    const coherence = parameters["fragmentationCoherencePeak"];
+    const driver = typeof coherence === "number" && Number.isFinite(coherence)
+      ? coherence
+      : (typeof overlap === "number" && Number.isFinite(overlap) ? overlap * 4.6 : null);
+    if (driver === null) {
+      addIssue(issues, node.nodeId, "M6_OPACITY_SHAPING_PARAMETERS_INVALID",
+        "M6 opacity shaping requires fragmentation coherence or overlap-density evidence.");
+      return [];
+    }
+    const peakOpacity = Math.max(35, Math.min(90, 45 + driver * 130));
+    targets.forEach((layerId, index) => {
+      if (targets.length > 1 && index === 0) return;
+      const stateScale = Math.max(0.45, 1 - index * 0.18);
+      const peak = peakOpacity * stateScale;
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "Transform.Opacity",
+        expression: [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)*thisComp.frameRate;",
+          `var peak=${peak};`,
+          `var pre=${eventWindowFrames};`,
+          "var shaped=0;",
+          "if(f<=-pre||f>=1){shaped=0;}",
+          "else if(f<-1){shaped=linear(f,-pre,-1,0,peak);}",
+          "else if(f<0){shaped=linear(f,-1,0,peak,peak*0.34);}",
+          "else{shaped=linear(f,0,1,peak*0.34,0);}",
+          "Math.min(value,shaped);",
+        ].join(""),
+      });
+    });
+    return targets;
+  }
   if (node.kind === "DIRECTIONAL_OFFSET") {
     const displacementRaw = parameters["displacementPeak"];
     const directionRaw = parameters["displacementDirection"];
@@ -989,26 +1105,35 @@ const compileM6SemanticVisualState = (
         "M6 motion shaping requires observed accelerationPeak or recoveryFrames evidence.");
       return [];
     }
+    const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+    if (eventSeconds === null) return [];
     const acceleration = hasAcceleration ? accelerationRaw : 0.02;
     const recoveryFrames = hasRecovery
       ? recoveryRaw
       : Math.max(2, Math.min(12, Math.round(0.5 / Math.max(acceleration, 0.02))));
+    const preFrames = Math.max(2, Math.min(6, recoveryFrames));
     const expression = [
-      "var center=(inPoint+outPoint)/2;",
-      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
-      "var phase=(time-center)/recovery;",
+      `var event=${eventSeconds};`,
+      "var f=(time-event)*thisComp.frameRate;",
       `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
-      "var envelope=Math.exp(-4*phase*phase);",
-      "value+[0,-amplitude*phase*envelope];",
+      `var pre=${preFrames};`,
+      "var impulse=0;",
+      "if(f<=-pre||f>=0){impulse=0;}",
+      "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
+      "else{impulse=linear(f,-1,0,-amplitude,0);}",
+      "value+[0,impulse];",
     ].join("");
     const deltaExpression = [
       "(function(){",
-      "var center=(inPoint+outPoint)/2;",
-      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
-      "var phase=(time-center)/recovery;",
+      `var event=${eventSeconds};`,
+      "var f=(time-event)*thisComp.frameRate;",
       `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
-      "var envelope=Math.exp(-4*phase*phase);",
-      "return [0,-amplitude*phase*envelope];",
+      `var pre=${preFrames};`,
+      "var impulse=0;",
+      "if(f<=-pre||f>=0){impulse=0;}",
+      "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
+      "else{impulse=linear(f,-1,0,-amplitude,0);}",
+      "return [0,impulse];",
       "})()",
     ].join("");
     for (const layerId of targets) {
@@ -1179,8 +1304,6 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
         operations,
         issues,
         comp.frameRate,
-        comp.width,
-        comp.height,
       );
     } else if ([
       "SUBJECT_ISOLATION",

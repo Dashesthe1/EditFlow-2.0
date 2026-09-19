@@ -155,6 +155,15 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
       parameters[item.metric] = parameterValue(item, anatomy.observedMetrics[item.metric]);
       coverage[item.invariantId] = [nodeId];
     }
+    const effectEventPhase = anatomy.observedMetrics["effectEventPhase"];
+    if (typeof effectEventPhase === "number" && Number.isFinite(effectEventPhase)) {
+      parameters.effectEventPhase = Math.max(0, Math.min(1, effectEventPhase));
+    }
+    const effectRecoveryFrames = anatomy.observedMetrics["recoveryFrames"];
+    if (typeof effectRecoveryFrames === "number" && Number.isFinite(effectRecoveryFrames)
+      && effectRecoveryFrames > 0) {
+      parameters.effectRecoveryFrames = effectRecoveryFrames;
+    }
     const dependencies = previousRequired === null ? [] : [previousRequired];
     nodes.push({
       nodeId,
@@ -212,7 +221,10 @@ export const validateConstructionGraphV1 = (
 const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
   switch (node.kind) {
     case "BASE_TIMING": return "TIME_REMAP";
-    case "TEMPORAL_DUPLICATES": return "TEMPORAL_DUPLICATION";
+    case "TEMPORAL_DUPLICATES":
+      if (node.dimension === "COMPOSITING") return "OPACITY_SHAPING";
+      if (node.dimension === "SPATIAL") return "DIRECTIONAL_OFFSET";
+      return "TEMPORAL_DUPLICATION";
     case "SUBJECT_ISOLATION": return "SUBJECT_ISOLATION";
     case "CAMERA_MOTION": return "DIRECTIONAL_OFFSET";
     case "TRANSFORM_MOTION": return "DIRECTIONAL_OFFSET";

@@ -87,6 +87,11 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     && fragmentation.overlapDensityPeak >= 0.015
     && fragmentation.stateSeparationPeak >= 0.005
     && fragmentation.peak >= 0.04;
+  observedMetrics.effectEventPhase = coherentFragmentation
+    ? fragmentation.phase
+    : (s.accelerationPeak > 0.025 || s.displacementPeak > 0.04 || s.scaleRange > 0.04
+      ? s.motionPeakPhase
+      : s.opticalPeakPhase);
 
   if (coherentFragmentation) {
     add(defining, invariant(

@@ -443,6 +443,32 @@ const nativeTransformField = (propertyPath: string): string | null => {
   return null;
 };
 
+const nativeExpressionPropertyPath = (
+  propertyPath: string,
+): readonly (string | number)[] => {
+  if (propertyPath === "TimeRemap.SourceTime") return ["ADBE Time Remapping"];
+  if (propertyPath === "Transform.Position") {
+    return ["ADBE Transform Group", "ADBE Position"];
+  }
+  if (propertyPath === "Transform.Scale") {
+    return ["ADBE Transform Group", "ADBE Scale"];
+  }
+  if (propertyPath === "Transform.Opacity") {
+    return ["ADBE Transform Group", "ADBE Opacity"];
+  }
+  throw new NativeAeRecipeLoweringError(
+    "UNSUPPORTED_EXPRESSION_PATH",
+    `Native AE expression lowering does not support semantic path '${propertyPath}'.`,
+  );
+};
+
+const isOptionalM6SemanticState = (
+  operation: VirtualAeOperationV1,
+): boolean => {
+  if (operation.type !== "SET_PROPERTY" || !operation.propertyPath.startsWith("M6.")) return false;
+  return asRecord(operation.value)?.["optional"] === true;
+};
+
 const validateStaticTransformValue = (propertyPath: string, value: unknown): void => {
   if (propertyPath === "Transform.Position" || propertyPath === "Transform.AnchorPoint") {
     if (!finiteVector(value)) {
@@ -471,7 +497,9 @@ const validateStaticTransformValue = (propertyPath: string, value: unknown): voi
 const layerOrder = (operations: readonly VirtualAeOperationV1[]): readonly string[] => {
   const ordered: string[] = [];
   for (const operation of operations) {
-    if (operation.type !== "ADD_KEYFRAME" && operation.type !== "SET_PROPERTY") continue;
+    if (operation.type !== "ADD_KEYFRAME"
+      && operation.type !== "SET_PROPERTY"
+      && operation.type !== "SET_EXPRESSION") continue;
     if (!ordered.includes(operation.layerId)) ordered.push(operation.layerId);
   }
   return ordered;
@@ -628,28 +656,6 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
           effectBindingId: operation.effectId,
           propertyPath: [...operation.propertyPath],
           value: structuredClone(operation.value),
-        },
-        "R1_REVERSIBLE",
-      );
-      continue;
-    }
-    if (operation.type === "SET_EXPRESSION") {
-      if (operation.propertyPath !== "Transform.Position") {
-        throw new NativeAeRecipeLoweringError(
-          "UNSUPPORTED_NATIVE_EXPRESSION_PATH",
-          `Native M6 expression lowering does not support '${operation.propertyPath}'.`,
-        );
-      }
-      emit(
-        "ae.expression.set",
-        AE_ADAPTER_ROUTE_ID_V11,
-        "property.set_expression",
-        {
-          comp: { stableId: operation.compId },
-          layer: { stableId: operation.layerId },
-          propertyPath: ["ADBE Transform Group", "ADBE Position"],
-          expression: operation.expression,
-          enabled: true,
         },
         "R1_REVERSIBLE",
       );
@@ -902,6 +908,31 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       );
     }
 
+    const layerExpressions = compiled.operations.filter((operation) =>
+      operation.type === "SET_EXPRESSION" && operation.layerId === layerId);
+    for (const expressionOperation of layerExpressions) {
+      if (expressionOperation.type !== "SET_EXPRESSION") continue;
+      if (expressionOperation.propertyPath === "TimeRemap.SourceTime" && !enablesTimeRemap) {
+        throw new NativeAeRecipeLoweringError(
+          "TIME_REMAP_EXPRESSION_REQUIRES_ENABLE",
+          `Time Remap expression lowering for '${layerId}' requires TimeRemap.Enabled in the same compiled recipe.`,
+        );
+      }
+      emit(
+        "ae.expression.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "property.set_expression",
+        {
+          comp: { stableId: expressionOperation.compId },
+          layer: { stableId: expressionOperation.layerId },
+          propertyPath: nativeExpressionPropertyPath(expressionOperation.propertyPath),
+          expression: expressionOperation.expression,
+          enabled: true,
+        },
+        "R1_REVERSIBLE",
+      );
+    }
+
     if (curves.has(curveKey(layerId, "TimeRemap.SourceTime"))) {
       if (!enablesTimeRemap || !planCreatedPrecompLayers.has(layerId)) {
         throw new NativeAeRecipeLoweringError(
@@ -966,15 +997,13 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     "Transform.Opacity",
   ]);
   for (const operation of compiled.operations) {
-    if (operation.type === "PRECOMPOSE" || operation.type === "ADD_KEYFRAME"
+    if (operation.type === "PRECOMPOSE" || operation.type === "DUPLICATE_LAYER"
+      || operation.type === "ADD_KEYFRAME" || operation.type === "SET_EXPRESSION"
       || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION"
       || operation.type === "ADD_EFFECT" || operation.type === "SET_EFFECT_PROPERTY"
-      || operation.type === "APPLY_STABILIZATION" || operation.type === "DUPLICATE_LAYER"
-      || operation.type === "SET_EXPRESSION") continue;
+      || operation.type === "APPLY_STABILIZATION") continue;
     if (operation.type === "SET_PROPERTY" && supportedSetPaths.has(operation.propertyPath)) continue;
-    if (operation.type === "SET_PROPERTY" && operation.propertyPath === "M6.TemporalState") continue;
-    if (operation.type === "SET_PROPERTY" && operation.propertyPath.startsWith("M6.")
-      && m6SemanticState(operation.value)?.optional === true) continue;
+    if (isOptionalM6SemanticState(operation)) continue;
     throw new NativeAeRecipeLoweringError(
       "UNSUPPORTED_NATIVE_OPERATION",
       `Native AE lowering does not yet support Virtual AE operation '${operation.type}'.`,
