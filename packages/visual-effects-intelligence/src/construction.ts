@@ -4,10 +4,14 @@ import type {
   EditingIrRecipeV1,
 } from "../../editing-ir/src/index.js";
 import { assertValidEditingIrRecipeV1 } from "../../editing-ir/src/index.js";
-import { asCapabilityId } from "../../core-contracts/src/index.js";
+import { asCapabilityId, type ExecutionPlan } from "../../core-contracts/src/index.js";
 import {
   compileEditingIrRecipeToVirtualAeV1,
+  inspectRecipeCompilerSupportV1,
+  lowerCompiledRecipeToNativeAePlanV1,
+  NativeAeRecipeLoweringError,
   RecipeCompileError,
+  type NativeAeRecipeLoweringInputV1,
   type RecipeCompilerContextV1,
 } from "../../recipe-compiler/src/index.js";
 import {
@@ -123,6 +127,15 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
       parameters[item.metric] = parameterValue(item, anatomy.observedMetrics[item.metric]);
       coverage[item.invariantId] = [nodeId];
     }
+    const effectEventPhase = anatomy.observedMetrics["effectEventPhase"];
+    if (typeof effectEventPhase === "number" && Number.isFinite(effectEventPhase)) {
+      parameters.effectEventPhase = Math.max(0, Math.min(1, effectEventPhase));
+    }
+    const effectRecoveryFrames = anatomy.observedMetrics["recoveryFrames"];
+    if (typeof effectRecoveryFrames === "number" && Number.isFinite(effectRecoveryFrames)
+      && effectRecoveryFrames > 0) {
+      parameters.effectRecoveryFrames = effectRecoveryFrames;
+    }
     const dependencies = previousRequired === null ? [] : [previousRequired];
     nodes.push({
       nodeId,
@@ -180,7 +193,10 @@ export const validateConstructionGraphV1 = (
 const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
   switch (node.kind) {
     case "BASE_TIMING": return "TIME_REMAP";
-    case "TEMPORAL_DUPLICATES": return "TEMPORAL_DUPLICATION";
+    case "TEMPORAL_DUPLICATES":
+      if (node.dimension === "COMPOSITING") return "OPACITY_SHAPING";
+      if (node.dimension === "SPATIAL") return "DIRECTIONAL_OFFSET";
+      return "TEMPORAL_DUPLICATION";
     case "SUBJECT_ISOLATION": return "SUBJECT_ISOLATION";
     case "CAMERA_MOTION": return "DIRECTIONAL_OFFSET";
     case "TRANSFORM_MOTION": return "DIRECTIONAL_OFFSET";
@@ -261,6 +277,51 @@ export const compileConstructionThroughVirtualAeV1 = (
   } catch (error) {
     if (error instanceof RecipeCompileError) {
       return { compiled: false, simulation: null, issues: error.issues.map((issue) => `${issue.code}:${issue.message}`) };
+    }
+    throw error;
+  }
+};
+
+export interface NativeAeConstructionResultV1 {
+  readonly compiled: boolean;
+  readonly plan: ExecutionPlan | null;
+  readonly issues: readonly string[];
+}
+
+export const compileConstructionThroughNativeAeV1 = (
+  compilation: ConstructionCompilationV1,
+  project: VirtualAeProjectV1,
+  context: RecipeCompilerContextV1,
+  nativeInput: NativeAeRecipeLoweringInputV1,
+): NativeAeConstructionResultV1 => {
+  if (compilation.recipe === null) {
+    return { compiled: false, plan: null, issues: compilation.capabilityGaps };
+  }
+  const support = inspectRecipeCompilerSupportV1(compilation.recipe);
+  if (support.nativeAeBlockedPrimitiveKinds.length > 0) {
+    return {
+      compiled: false,
+      plan: null,
+      issues: support.nativeAeBlockedPrimitiveKinds.map((kind) =>
+        `UNSUPPORTED_NATIVE_M6_PRIMITIVE:${kind}`),
+    };
+  }
+  try {
+    const virtual = compileEditingIrRecipeToVirtualAeV1(compilation.recipe, project, context);
+    const simulation = simulateVirtualAeV1(project, virtual.operations);
+    if (!simulation.valid) return { compiled: false, plan: null, issues: simulation.errors };
+    const plan = lowerCompiledRecipeToNativeAePlanV1(virtual, nativeInput);
+    return { compiled: true, plan, issues: [] };
+  } catch (error) {
+    if (error instanceof RecipeCompileError) {
+      return {
+        compiled: false,
+        plan: null,
+        issues: error.issues.map((issue) => `${issue.code}:${issue.message}`),
+      };
+    }
+    if (error instanceof NativeAeRecipeLoweringError) {
+      return { compiled: false, plan: null, issues: [`${error.code}:${error.message}`] };
     }
     throw error;
   }

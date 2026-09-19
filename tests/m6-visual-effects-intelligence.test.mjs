@@ -30,6 +30,11 @@ import {
   VisualCorrectionMemoryV1,
   VisualEffectsBrainV1,
 } from "../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
+import {
+  compileEditingIrRecipeToVirtualAeV1,
+  inspectRecipeCompilerSupportV1,
+  lowerCompiledRecipeToNativeAePlanV1,
+} from "../.tmp/runtime/packages/recipe-compiler/src/index.js";
 
 const ALL_CAPABILITIES = [
   "ae.layer.duplicate",
@@ -898,6 +903,101 @@ test("M6.8 searches genuinely different construction hypotheses and can select a
   assert.ok(timeDisplacement?.adaptiveCapabilityProposals.some((proposal) =>
     proposal.capabilityId === "ae.effect.time-displacement"
     && proposal.proofRequirement === "REAL_AE_RENDER"));
+});
+
+test("M6.8 UNKNOWN construction graph lowers through Recipe Compiler to concrete native AE operations", () => {
+  const reference = shutterReference();
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: ALL_CAPABILITIES,
+  });
+  assert.equal(synthesis.status, "READY_FOR_PROOF");
+  assert.equal(synthesis.selected?.strategy, "LAYERED_PRIMITIVES");
+  assert.equal(synthesis.selected?.graph.family, "UNKNOWN");
+
+  const compilation = compileConstructionGraphV1(synthesis.selected.graph, ALL_CAPABILITIES);
+  assert.notEqual(compilation.recipe, null);
+  assert.deepEqual(inspectRecipeCompilerSupportV1(compilation.recipe).nativeAeBlockedPrimitiveKinds, []);
+
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "M6 UNKNOWN realizer fixture",
+      width: 1080,
+      height: 1080,
+      durationMs: 9000,
+      frameRate: 30,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "FOOTAGE",
+        inMs: 0,
+        outMs: 9000,
+        properties: [],
+        effects: [],
+        masks: [],
+      }],
+    }],
+  };
+  const compiled = compileEditingIrRecipeToVirtualAeV1(compilation.recipe, project, {
+    compId: "comp",
+    eventTimesMs: { transition: 1500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+  });
+
+  const requestedStateCount = Math.max(
+    2,
+    Math.round(reference.summary.fragmentationTemporalStateCountPeak
+      ?? reference.summary.temporalStateCountPeak),
+  );
+  assert.equal(compiled.operations.filter((operation) =>
+    operation.type === "DUPLICATE_LAYER").length, requestedStateCount - 1);
+  const expressionPaths = compiled.operations
+    .filter((operation) => operation.type === "SET_EXPRESSION")
+    .map((operation) => operation.propertyPath);
+  assert.ok(expressionPaths.includes("TimeRemap.SourceTime"));
+  assert.ok(expressionPaths.includes("Transform.Opacity"));
+  assert.ok(expressionPaths.includes("Transform.Position"));
+  const eventAnchoredExpressions = compiled.operations.filter((operation) =>
+    operation.type === "SET_EXPRESSION"
+    && ["Transform.Opacity", "Transform.Position", "Transform.Scale"].includes(operation.propertyPath));
+  assert.ok(eventAnchoredExpressions.length >= 2);
+  assert.ok(eventAnchoredExpressions.every((operation) =>
+    operation.expression.includes("var event=1.5;")
+    && !operation.expression.includes("inPoint+(outPoint-inPoint)")));
+  assert.ok(!compiled.operations.some((operation) =>
+    operation.type === "SET_PROPERTY"
+    && operation.propertyPath === "M6.TEMPORAL_DUPLICATION"));
+  assert.throws(() => compileEditingIrRecipeToVirtualAeV1(compilation.recipe, project, {
+    compId: "comp",
+    eventTimesMs: { beat: 1200, cut: 1500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+  }), /M6_EVENT_REF_AMBIGUOUS/);
+
+  const plan = lowerCompiledRecipeToNativeAePlanV1(compiled, {
+    planId: "m6-unknown-realizer-plan",
+    observedState: {
+      projectId: "m6-project",
+      projectRevision: "ae-revision:32326",
+      projectFingerprint: "project:sha256:m6-unknown-realizer",
+      environmentFingerprint: "environment:sha256:ae-25.6.6",
+    },
+    creativeObjective: "Materialize an UNKNOWN effect graph using retained native AE primitives.",
+  });
+  const commands = plan.operations.map((operation) => operation.input.command);
+  assert.equal(
+    commands.filter((command) => command === "layer.duplicate").length,
+    requestedStateCount - 1,
+  );
+  assert.ok(commands.includes("layer.time_remap.enable"));
+  assert.ok(commands.filter((command) => command === "property.set_expression").length >= 3);
+  assert.ok(plan.requiredCapabilities.includes("ae.layer.duplicate"));
+  assert.ok(plan.requiredCapabilities.includes("ae.layer.time_remap.enable"));
+  assert.ok(plan.requiredCapabilities.includes("ae.expression.set"));
 });
 
 test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded rejection, and A/B evidence", () => {

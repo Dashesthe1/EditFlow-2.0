@@ -1,0 +1,52 @@
+{
+  "schema": "editflow.m6-unknown-graph-realizer-proof.v1",
+  "milestone": "M6.8_UNKNOWN_EFFECT_SYNTHESIS",
+  "branch": "m6-unknown-graph-realizer-v1",
+  "baseCommit": "8c7eaad",
+  "claim": "OFFLINE_NATIVE_PLAN_READY",
+  "professionalFidelityCertified": false,
+  "liveAeExecuted": false,
+  "implementation": {
+    "unknownBehaviorDecomposition": true,
+    "constructionGraphToEditingIr": true,
+    "virtualAeSimulation": true,
+    "nativeAeLowering": true,
+    "semanticEventAnchoring": true,
+    "boundedDuplicateVisibility": true,
+    "ambiguousEventFailsClosed": true
+  },
+  "nativeOperations": [
+    "layer.duplicate",
+    "layer.time_remap.enable",
+    "property.set_expression"
+  ],
+  "focusedProof": {
+    "testsPassed": 39,
+    "testsFailed": 0,
+    "transferFixtureDurationMs": 9000,
+    "semanticEventMs": 1500
+  },
+  "fullRepositoryCheck": {
+    "schemaFixturesPassed": 35,
+    "testsPassed": 1009,
+    "testsFailed": 1,
+    "unrelatedFailure": "M5 retained Roto Brush evidence digest mismatch"
+  },
+  "liveAeBlocker": {
+    "code": "AE_CEP_SUITE_UNAVAILABLE",
+    "phase": "CEggApp::AcquirePluginSuites",
+    "message": "After Effects 25.6.6 cannot load the Common Extensibility Platform suite.",
+    "reversibleRecoveryAttempts": [
+      "reset Documents Adobe After Effects 2025 folder by rename",
+      "reset AppData Roaming Adobe After Effects 25.6 preferences by rename"
+    ],
+    "cepProcessObserved": false,
+    "bridgePortObserved": false
+  },
+  "gate": {
+    "offlineStructuralProof": "PASS",
+    "realAeRenderedProof": "BLOCKED",
+    "m6_8Complete": false,
+    "nextRequiredProof": "Execute the synthesized UNKNOWN construction in repaired live AE, render a bounded window, compare against reference evidence, and retain the result."
+  }
+}
