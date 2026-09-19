@@ -5,6 +5,7 @@ export * from "./sequence.js";
 export * from "./causal-learning.js";
 export * from "./anatomy.js";
 export * from "./construction.js";
+export * from "./context.js";
 export * from "./fidelity.js";
 export * from "./actuation.js";
 export * from "./actuator-search.js";
