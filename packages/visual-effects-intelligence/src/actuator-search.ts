@@ -219,6 +219,13 @@ const metricResponseEvidence = (
   const retainedError = Math.abs(reference - retainedMetric);
   for (const attempt of attempts) {
     if (!participants.has(attempt.attemptId) || attempt.attemptId === retained.attemptId) continue;
+    // Pairwise one-factor evidence may prove that an actuator is responsive even
+    // after the retained best moves to a different baseline. It must NOT prove
+    // that a direction is safe/exhausted relative to that new baseline unless
+    // this render differs from the retained vector in exactly that actuator.
+    // Otherwise collateral changes (for example density + spread) are causally
+    // confounded and can incorrectly exhaust a useful correction path.
+    if (changedControlCount(retained.values, attempt.values) !== 1) continue;
     const candidateMetric = metricValue(attempt, metric);
     const candidateControl = controlValue(attempt.values, instruction.control);
     if (candidateMetric === null || candidateControl === null || retainedControl === null) continue;
@@ -268,6 +275,75 @@ const candidateStep = (
   (dimension.maximum - dimension.minimum) * 0.08 * trustScale,
 );
 
+
+const cohortKeyWithoutControl = (
+  values: ActuatorControlVectorV1,
+  control: ConstructionControlKindV1,
+): string => Object.entries(values)
+  .filter((entry): entry is [ConstructionControlKindV1, number] =>
+    entry[0] !== control
+    && typeof entry[1] === "number"
+    && Number.isFinite(entry[1]))
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([key, value]) => `${key}:${value.toFixed(6)}`)
+  .join("|");
+
+const nonlinearIntervalRefinements = (
+  attempts: readonly ActuatorAttemptEvidenceV1[],
+  dimension: ActuatorSearchDimensionV1,
+  seen: Set<string>,
+  limit: number,
+): ActuatorSearchCandidateV1[] => {
+  const cohorts = new Map<string, ActuatorAttemptEvidenceV1[]>();
+  for (const attempt of attempts) {
+    if (controlValue(attempt.values, dimension.control) === null) continue;
+    const key = cohortKeyWithoutControl(attempt.values, dimension.control);
+    const bucket = cohorts.get(key) ?? [];
+    bucket.push(attempt);
+    cohorts.set(key, bucket);
+  }
+
+  const output: ActuatorSearchCandidateV1[] = [];
+  for (const cohort of cohorts.values()) {
+    if (output.length >= limit) break;
+    const distinct = [...new Map(cohort.map((attempt) => [
+      controlValue(attempt.values, dimension.control)!.toFixed(9),
+      attempt,
+    ])).values()].sort((left, right) =>
+      controlValue(left.values, dimension.control)!
+      - controlValue(right.values, dimension.control)!);
+    if (distinct.length < 3) continue;
+
+    for (let index = 0; index < distinct.length - 1; index += 1) {
+      if (output.length >= limit) break;
+      const left = distinct[index]!;
+      const right = distinct[index + 1]!;
+      const leftValue = controlValue(left.values, dimension.control)!;
+      const rightValue = controlValue(right.values, dimension.control)!;
+      const gap = rightValue - leftValue;
+      // Do not spend a render when bisection cannot move at least one declared
+      // actuator step away from both already-rendered endpoints.
+      if (gap + EPSILON < dimension.minimumStep * 2) continue;
+      const midpoint = clampDimension(leftValue + (gap / 2), dimension);
+      if (
+        Math.abs(midpoint - leftValue) + EPSILON < dimension.minimumStep
+        || Math.abs(rightValue - midpoint) + EPSILON < dimension.minimumStep
+      ) continue;
+      const values = { ...left.values, [dimension.control]: midpoint };
+      const key = vectorKey(values);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push({
+        candidateId: `refine:${dimension.control.toLowerCase()}:${midpoint.toFixed(3)}:${output.length + 1}`,
+        values,
+        changedControls: [dimension.control],
+        rationale: `Bisect a rendered ${dimension.control} interval after coarse probes moved the target metric but caused collateral defining regressions; test the unresolved non-linear region before declaring the actuator exhausted.`,
+      });
+    }
+  }
+  return output;
+};
+
 export const planBoundedActuatorSearchV1 = (input: Readonly<{
   attempts: readonly ActuatorAttemptEvidenceV1[];
   instructions: readonly ConstructionControlInstructionV1[];
@@ -281,6 +357,21 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
   // This makes the loop increasingly conservative instead of repeating larger
   // blind multipliers after a regression.
   const trustScale = Math.max(0.25, 1 / (1 + (regressions.length * 0.5)));
+  // A certified retained render is the bounded correction loop's stop rule.
+  // Continuing to probe after all defining invariants pass wastes AE renders
+  // and risks replacing a proven professional-fidelity state with decoration.
+  if (retained.certified) {
+    return {
+      schema: "editflow.bounded-actuator-search-plan.v1",
+      retainedBestAttemptId: retained.attemptId,
+      regressingAttemptIds: regressions.map((attempt) => attempt.attemptId),
+      trustScale,
+      candidates: [],
+      exhaustedControls: [],
+      metricResponses: [],
+      synthesisRequiredInvariantIds: [],
+    };
+  }
   const seen = new Set(input.attempts.map((attempt) => vectorKey(attempt.values)));
   const candidates: ActuatorSearchCandidateV1[] = [];
   const exhausted = new Set<ConstructionControlKindV1>();
@@ -321,6 +412,26 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
         || (response.testedDirectionCount >= 2
           && response.safeImprovingProbeCount === 0
           && response.collateralRegressionProbeCount > 0));
+    const nonlinearCollateral = controlResponses.some((response) =>
+      response.responsive
+      && response.safeImprovingProbeCount === 0
+      && response.collateralRegressionProbeCount > 0);
+    const refinements = nonlinearCollateral
+      ? nonlinearIntervalRefinements(
+          input.attempts,
+          dimension,
+          seen,
+          maxCandidates - candidates.length,
+        )
+      : [];
+    if (refinements.length > 0) {
+      candidates.push(...refinements);
+      // A three-or-more-point one-factor cohort can expose a narrow fidelity
+      // basin even after the retained best moves to one end of the interval.
+      // Refine the rendered intervals before extrapolating or declaring the
+      // actuator exhausted; black-box visual response is not assumed monotonic.
+      continue;
+    }
     if (allTargetMetricsExhausted) {
       exhausted.add(dimension.control);
       continue;

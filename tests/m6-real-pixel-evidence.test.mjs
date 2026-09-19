@@ -73,6 +73,32 @@ test("M6.5 v5 real-pixel comparator rejects weak AE shutter while preserving cau
     diagnosis.includes("overlapDensityPeak is under-driven")));
 });
 
+
+test("M6.5/M6.7 v6 real AE event-local shutter proof certifies fidelity and rejects regressions", async () => {
+  const reference = await readJson("proofs/diagnostics/m6-v6-event-ref05-evidence.json");
+  const certified = await readJson("proofs/diagnostics/m6-v6-event-joint-01-evidence.json");
+  const incoherent = await readJson("proofs/diagnostics/m6-v6-event-joint-03-evidence.json");
+  const overWide = await readJson("proofs/diagnostics/m6-v6-event-joint-04-evidence.json");
+  assert.equal(reference.analyzerFingerprint, certified.analyzerFingerprint);
+  assert.ok(reference.summary.overlapDensityPeak > reference.summary.fragmentationOverlapDensityPeak * 4,
+    "global texture overlap must not replace the coherent shutter-event measurement");
+  assert.equal(classifyEffectFamilyV1(reference), "SHUTTER_FRAGMENTATION");
+  assert.equal(classifyEffectFamilyV1(certified), "SHUTTER_FRAGMENTATION");
+  const dna = canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION", reference.evidenceRefs);
+  const pass = compareSemanticVisualFidelityV1({ reference, render: certified, dna });
+  const coordinationFail = compareSemanticVisualFidelityV1({ reference, render: incoherent, dna });
+  const spreadFail = compareSemanticVisualFidelityV1({ reference, render: overWide, dna });
+  assert.equal(pass.passed, true);
+  assert.equal(pass.definingCoverage, 1);
+  assert.ok(pass.metrics.every((metric) => metric.passed));
+  assert.equal(coordinationFail.passed, false);
+  assert.ok(coordinationFail.metrics.some((metric) =>
+    metric.invariantId === "shutter.coordination" && !metric.passed));
+  assert.equal(spreadFail.passed, false);
+  assert.ok(spreadFail.metrics.some((metric) =>
+    metric.invariantId === "shutter.displacement" && !metric.passed));
+});
+
 test("M6 retained v5 manifest invalidates stale comparator authority and remains uncertified", async () => {
   const manifest = await readJson("proofs/manifests/m6-real-pixel-fidelity-v5.json");
   assert.equal(manifest.schema, "editflow.m6.real-pixel-fidelity-manifest.v5");
@@ -118,4 +144,48 @@ test("M6.7 retained real correction attempts improve but remain fail-closed", as
       .map((instruction) => instruction.control) ?? []));
   assert.ok(overlapControls.has("DUPLICATE_OPACITY"));
   assert.ok(overlapControls.has("DUPLICATE_SPREAD"));
+});
+
+test("M6.7 autonomous real-AE correction closes the bounded correction gate", async () => {
+  const proof = await readJson("proofs/diagnostics/m6-auto-correction-proof-v2.json");
+  assert.equal(proof.schema, "editflow.m6.real-ae-automatic-correction-proof.v1");
+  assert.equal(proof.status, "PASSED");
+  assert.ok(proof.bounded.actualRounds <= proof.bounded.maxCorrectionRounds);
+  assert.ok(proof.bounded.renderedAttempts <=
+    proof.bounded.maxCorrectionRounds * proof.bounded.maxCandidatesPerRound);
+  assert.equal(proof.governance.hardcodedCertifiedCandidate, false);
+
+  const attempts = proof.rounds.flatMap((round) => round.candidates);
+  const certified = attempts.find((attempt) => attempt.certified);
+  assert.ok(certified, "automatic search must discover a rendered certified state");
+  assert.equal(certified.definingCoverage, 1);
+  assert.equal(certified.weightedFidelity, 1);
+  assert.deepEqual(certified.residualInvariantIds, []);
+  assert.equal(certified.physicalState.duplicateSpreadPx, 28);
+  assert.ok(certified.renderVideoSha256?.length > 0);
+});
+
+test("M6.8 retained real-pixel unknown synthesis is behavior-driven and rejects a degraded control", async () => {
+  const proof = await readJson("proofs/diagnostics/m6-real-unknown-synthesis-case01.json");
+  assert.equal(proof.schema, "editflow.m6.real-pixel-unknown-synthesis-proof.v1");
+  assert.equal(proof.result, "PASS");
+  assert.equal(proof.learnedSkillAccess, "DISABLED_BY_PROOF");
+  assert.equal(proof.synthesis.status, "READY_FOR_PROOF");
+  assert.equal(proof.synthesis.selectedFamily, "UNKNOWN");
+  assert.equal(proof.synthesis.selectedStrategy, "LAYERED_PRIMITIVES");
+  assert.ok(proof.synthesis.definingInvariantIds.includes(
+    "unknown.fragmentation-coordination"));
+  assert.ok(proof.synthesis.definingInvariantIds.includes(
+    "unknown.fragmentation-separation"));
+
+  assert.equal(proof.reconstruction.gate.certified, true);
+  assert.equal(proof.reconstruction.comparison.definingCoverage, 1);
+  assert.ok(proof.reconstruction.comparison.weightedFidelity > 0.95);
+  assert.equal(proof.degradedControl.gate.certified, false);
+  assert.ok(proof.degradedControl.comparison.definingCoverage < 1);
+  assert.ok(proof.synthesis.candidateStrategies.some((candidate) =>
+    candidate.strategy === "TIME_DISPLACEMENT_HYBRID"
+    && candidate.adaptiveCapabilityProposals.some((proposal) =>
+      proposal.capabilityId === "ae.effect.time-displacement"
+      && proposal.proofRequirement === "REAL_AE_RENDER")));
 });

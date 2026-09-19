@@ -1,0 +1,39 @@
+{
+  "schema": "editflow.m6.ae-shutter-search-plan.v1",
+  "generatedAt": "2026-09-19T16:52:21.350Z",
+  "round": 0,
+  "combinedCandidates": [
+    {
+      "candidateId": "auto:seed:v6-joint:36-1",
+      "control": "SEED",
+      "relationToComparatorRequest": "INITIAL_UNDER_DRIVEN_STATE",
+      "changedTags": [
+        "SHUTTER_05"
+      ],
+      "cases": [
+        {
+          "tag": "SHUTTER_05",
+          "cutSeconds": 9.792,
+          "outgoingLayer": "MICRO_M04",
+          "incomingLayer": "MICRO_M05",
+          "physicalState": {
+            "motionImpulsePx": 190,
+            "duplicateSpreadPx": 36,
+            "duplicateOpacityPct": 80,
+            "postCutFrames": 1.25,
+            "copyCount": 2,
+            "fragmentBandCount": 5,
+            "overlapCopyCount": 1,
+            "overlapSpreadPx": 8,
+            "overlapOpacityPct": 65
+          }
+        }
+      ]
+    }
+  ],
+  "guardrails": [
+    "Every candidate is generated from retained rendered evidence.",
+    "Rendered pixels and defining-invariant coverage are authoritative.",
+    "Only one active physical actuator dimension is explored per correction round."
+  ]
+}

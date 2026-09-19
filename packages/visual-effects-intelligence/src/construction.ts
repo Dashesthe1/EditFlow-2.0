@@ -32,12 +32,18 @@ interface NodeTemplateV1 {
 }
 
 const templateFor = (invariant: EffectInvariantV1): NodeTemplateV1 => {
-  if (invariant.metric === "temporalStateCountPeak" || invariant.metric === "temporalPersistence") {
+  if (invariant.metric === "temporalStateCountPeak"
+    || invariant.metric === "fragmentationTemporalStateCountPeak"
+    || invariant.metric === "temporalPersistence") {
     return { kind: "TEMPORAL_DUPLICATES", dimension: "TEMPORAL",
       capabilities: ["ae.layer.duplicate", "ae.layer.time.offset"] };
   }
   if (invariant.metric === "fragmentationCoherencePeak") {
     return { kind: "TEMPORAL_DUPLICATES", dimension: "COMPOSITING",
+      capabilities: ["ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set", "ae.layer.transform.set"] };
+  }
+  if (invariant.metric === "fragmentationStateSeparationPeak" || invariant.metric === "stateSeparationPeak") {
+    return { kind: "TEMPORAL_DUPLICATES", dimension: "SPATIAL",
       capabilities: ["ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set", "ae.layer.transform.set"] };
   }
   if (invariant.metric === "subjectSeparationPeak" || invariant.metric === "maskCoveragePeak") {
@@ -68,7 +74,9 @@ const templateFor = (invariant: EffectInvariantV1): NodeTemplateV1 => {
     return { kind: "RECOVERY", dimension: "MOTION_STRUCTURE",
       capabilities: ["ae.keyframe.temporal_ease.set", "ae.layer.transform.set"] };
   }
-  if (invariant.metric === "activeDimensionCount" || invariant.metric === "overlapDensityPeak") {
+  if (invariant.metric === "activeDimensionCount"
+    || invariant.metric === "overlapDensityPeak"
+    || invariant.metric === "fragmentationOverlapDensityPeak") {
     return { kind: "TEMPORAL_DUPLICATES", dimension: "COMPOSITING",
       capabilities: ["ae.layer.duplicate", "ae.layer.opacity.set"] };
   }

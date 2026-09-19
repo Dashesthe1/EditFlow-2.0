@@ -59,6 +59,12 @@ const metricValue = (
     if (metric === "temporalStateCountPeak") return fragmentation.temporalStateCountPeak;
     if (metric === "overlapDensityPeak") return fragmentation.overlapDensityPeak;
   }
+  if (metric === "fragmentationTemporalStateCountPeak") {
+    return fragmentation.temporalStateCountPeak;
+  }
+  if (metric === "fragmentationOverlapDensityPeak") {
+    return fragmentation.overlapDensityPeak;
+  }
   if (metric === "fragmentationStateSeparationPeak") {
     return fragmentation.stateSeparationPeak;
   }

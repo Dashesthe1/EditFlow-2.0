@@ -14,6 +14,7 @@ import {
   compileConstructionGraphV1,
   compileConstructionThroughVirtualAeV1,
   createCanonicalProfessionalBenchmarkV1,
+  decomposeUnknownEffectV1,
   deriveConstructionActuationPlanV1,
   deriveEffectAnatomyV1,
   deriveProfessionalFidelityLevelV1,
@@ -702,6 +703,24 @@ test("M6.7 overlap correction cannot over-drive already excessive state separati
   assert.ok((spread?.multiplier ?? 1) < 1);
 });
 
+test("M6.7 maps temporal-state separation deficits to both semantic separation and the duplicate-spread construction actuator", () => {
+  const reference = shutterReference();
+  const anatomy = deriveEffectAnatomyV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const overSeparated = evidence({
+    ...reference.summary,
+    stateSeparationPeak: 0.12,
+  });
+  const comparison = compareSemanticVisualFidelityV1({ reference, render: overSeparated, dna: anatomy.dna });
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  const separation = plan.instructions.filter((item) => item.invariantId === "shutter.displacement");
+  assert.ok(separation.some((item) => item.control === "SPATIAL_SEPARATION"));
+  const spread = separation.find((item) => item.control === "DUPLICATE_SPREAD");
+  assert.ok(spread, "state-separation diagnosis must reach the physical temporal-duplicate spread actuator");
+  assert.equal(spread.direction, "DECREASE");
+  assert.equal(spread.metric, "fragmentationStateSeparationPeak");
+});
+
 test("M6.7 bounded local correction improves an under-driven shutter until fidelity passes", async () => {
   const reference = shutterReference();
   const anatomy = deriveEffectAnatomyV1(reference);
@@ -772,6 +791,113 @@ test("M6.8 synthesizes three deliberately unlearned effects from observed primit
   }
   const restored = new SynthesizedEffectMemoryV1(memory.snapshot());
   assert.notEqual(restored.recall(unknowns[0].contentKey), null);
+});
+
+test("M6.8 unknown decomposition protects coherent event-local DNA from unrelated global maxima", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 4,
+    temporalPersistence: 0.66,
+    scaleRange: 0.14,
+    blurPeak: 0.99,
+    distortionPeak: 0.47,
+    overlapDensityPeak: 0.30,
+    stateSeparationPeak: 0.19,
+    fragmentationCoherencePeak: 0.275,
+    fragmentationCoherencePhase: 0.35,
+    fragmentationTemporalStateCountPeak: 2,
+    fragmentationOverlapDensityPeak: 0.055,
+    fragmentationStateSeparationPeak: 0.0217,
+    accelerationPeak: 0.07,
+    recoveryFrames: 6,
+  });
+  const anatomy = decomposeUnknownEffectV1(reference);
+  assert.equal(anatomy.family, "UNKNOWN");
+  assert.equal(anatomy.observedMetrics.fragmentationOverlapDensityPeak, 0.055);
+  assert.equal(anatomy.observedMetrics.fragmentationStateSeparationPeak, 0.0217);
+  assert.ok(anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.fragmentation-coordination"));
+  assert.ok(anatomy.dna.optionalInvariants.some((item) =>
+    item.invariantId === "unknown.scale"),
+  "large source/global scale behavior is secondary when a coherent temporal event is the causal core");
+
+  const faithful = evidence({
+    temporalStateCountPeak: 3,
+    temporalPersistence: 0.29,
+    scaleRange: 0.04,
+    blurPeak: 0.97,
+    distortionPeak: 0.50,
+    overlapDensityPeak: 0.058,
+    stateSeparationPeak: 0.18,
+    fragmentationCoherencePeak: 0.29,
+    fragmentationCoherencePhase: 0.54,
+    fragmentationTemporalStateCountPeak: 2,
+    fragmentationOverlapDensityPeak: 0.058,
+    fragmentationStateSeparationPeak: 0.0196,
+    accelerationPeak: 0.085,
+    recoveryFrames: 1,
+  });
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render: { ...faithful, sourceKind: "RENDER" },
+    dna: anatomy.dna,
+  });
+  assert.equal(comparison.definingCoverage, 1);
+  assert.equal(comparison.passed, true);
+
+  const globallyDecoratedButEventMissing = evidence({
+    temporalStateCountPeak: 4,
+    temporalPersistence: 0.66,
+    scaleRange: 0.14,
+    blurPeak: 0.99,
+    distortionPeak: 0.47,
+    overlapDensityPeak: 0.30,
+    stateSeparationPeak: 0.19,
+    fragmentationCoherencePeak: 0.01,
+    fragmentationCoherencePhase: 0.35,
+    fragmentationTemporalStateCountPeak: 1,
+    fragmentationOverlapDensityPeak: 0.005,
+    fragmentationStateSeparationPeak: 0.001,
+    accelerationPeak: 0.07,
+    recoveryFrames: 6,
+  });
+  const rejected = compareSemanticVisualFidelityV1({
+    reference,
+    render: { ...globallyDecoratedButEventMissing, sourceKind: "RENDER" },
+    dna: anatomy.dna,
+  });
+  assert.equal(rejected.passed, false);
+  assert.ok(rejected.metrics.some((item) =>
+    item.invariantId === "unknown.fragmentation-coordination" && !item.passed));
+  assert.ok(rejected.metrics.some((item) =>
+    item.invariantId === "unknown.fragmentation-overlap" && !item.passed));
+});
+
+test("M6.8 searches genuinely different construction hypotheses and can select a native-effect alternative", () => {
+  const unknown = evidence({
+    temporalStateCountPeak: 3,
+    temporalPersistence: 0.55,
+    overlapDensityPeak: 0.05,
+    motionEnergyPeak: 0.08,
+    accelerationPeak: 0.01,
+  });
+  const result = synthesizeUnknownEffectV1({
+    evidence: unknown,
+    availableCapabilities: ["ae.effect.echo"],
+  });
+  assert.equal(result.status, "READY_FOR_PROOF");
+  assert.equal(result.selected?.strategy, "NATIVE_ECHO_HYBRID");
+  const strategies = new Set(result.candidates.map((item) => item.strategy));
+  assert.ok(strategies.has("LAYERED_PRIMITIVES"));
+  assert.ok(strategies.has("NATIVE_ECHO_HYBRID"));
+  assert.ok(strategies.has("TIME_DISPLACEMENT_HYBRID"));
+
+  const layered = result.candidates.find((item) => item.strategy === "LAYERED_PRIMITIVES");
+  assert.ok(layered?.capabilityGaps.includes("ae.layer.duplicate"));
+  const timeDisplacement = result.candidates.find((item) =>
+    item.strategy === "TIME_DISPLACEMENT_HYBRID");
+  assert.ok(timeDisplacement?.adaptiveCapabilityProposals.some((proposal) =>
+    proposal.capabilityId === "ae.effect.time-displacement"
+    && proposal.proofRequirement === "REAL_AE_RENDER"));
 });
 
 test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded rejection, and A/B evidence", () => {

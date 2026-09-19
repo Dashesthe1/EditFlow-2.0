@@ -1,6 +1,6 @@
 # M6 Professional Effects & Transitions Intelligence Contract
 
-Status: **implementation foundation complete; rendered professional-fidelity acceptance pending**
+Status: **implementation foundation complete; one real AE shutter case is professional-fidelity verified, M6.7 automatic local correction is real-AE proof-closed for that case, and M6.8 has its first behavior-only real-pixel synthesis proof (1/3); transfer/benchmark/system-integration gates remain open**
 
 Authority: `EditFlow_2.0_M6_Professional_Effects_Transitions_Roadmap_No_Hours.pdf`
 
@@ -94,11 +94,20 @@ Successful patches are available to Experience Memory through
 
 ### M6.8 Unknown Effect Synthesis
 
-`synthesizeUnknownEffectV1()` starts from observed behavior, creates dynamic DNA,
-searches construction primitives/capabilities, ranks multiple candidates, and refuses
-activation when full defining coverage has a capability gap. Successful candidates keep
-source provenance and can be retained only after proof through
-`SynthesizedEffectMemoryV1`.
+`synthesizeUnknownEffectV1()` starts from observed behavior and creates dynamic DNA
+without borrowing a learned family label. Coherent temporal fragmentation is measured
+from one event-local tuple (state count + overlap + within-frame separation + coherence)
+so unrelated global source-texture maxima cannot become the effect identity. Defining
+behavior is separated from secondary styling before construction search.
+
+The synthesizer now produces genuinely different construction hypotheses rather than
+three score variants of one graph: proof-backed layered primitives, native Echo hybrid,
+Time Displacement hybrid, and Turbulent Displace hybrid when the observed anatomy makes
+those strategies relevant. Missing native bindings become explicit
+`AdaptiveCapabilityProposalV1` entries with a required `REAL_AE_RENDER` proof; they
+are never treated as usable merely because After Effects documents the effect.
+Successful candidates keep source provenance and can be retained only after rendered
+proof through `SynthesizedEffectMemoryV1`.
 
 ### M6.9 Professional Benchmark
 
@@ -142,44 +151,76 @@ flow, robust affine motion, motion-compensated residual, optical structure and
 within-frame temporal fragmentation. `scripts/proofs/m6-dense-video-evidence.mjs`
 lowers those measurements through the existing `DenseEffectEvidenceV1` schema.
 
-The current v5 analyzer classifies the bounded professional reference as
-`SHUTTER_FRAGMENTATION`. Its defining reference measurements include
-`overlapDensityPeak=0.3038` and `stateSeparationPeak=0.0217`. The best retained
-density-based reconstruction materially improves the earlier weak result, but a replay
-through the **current** comparator still fails closed: defining coverage is 4/6 because
-simultaneous overlap remains under-driven and within-frame state separation is
-materially over-driven relative to the professional reference.
+The v6 dense analyzer now separates global scene autocorrelation from the **coherent
+fragmentation event**. This fixes a causal measurement failure found during real AE
+correction: changing duplicate spacing in AE changed the layer geometry, but the old
+global `stateSeparationPeak` stayed pinned to an unrelated repeated source-texture
+lobe. v6 retains global diagnostics, while shutter DNA resolves event-local state count,
+overlap, state separation, and coherence around the same transition impulse.
 
-This replay also demonstrates M6 proof invalidation discipline. An older comparison of
-the same rendered evidence had passed displacement and reported 5/6 defining
-invariants. After the reference-relative displacement contract was tightened, the same
-pixels correctly re-evaluate to 4/6. Historical comparator results therefore cannot be
-treated as current authority without matching analyzer/comparator provenance.
+For the professional microwave/shutter reference, the event-local defining values are
+`temporalStateCount=2`, `overlapDensity=0.0550`,
+`stateSeparation=0.02170`, and `fragmentationCoherence=0.2751`. A real AE local
+render, candidate `v6-joint:28-1`, now passes all six defining shutter invariants plus
+the optional blur/exposure checks under analyzer-matched evidence. Its corresponding
+values are 2 states, 0.0580 overlap, 0.01964 state separation, and 0.2902 coherence.
+The retained proof is `proofs/manifests/m6-real-pixel-fidelity-v6.json`, with an
+8-frame direct A/B sheet at
+`proofs/diagnostics/m6-v6-shutter-reference-vs-certified-ae.jpg`.
 
-The M6.7 actuator controller now retains the best rendered state lexicographically,
-learns one-factor control-to-metric response, stops spending renders on controls proven
-non-responsive, and emits `synthesisRequiredInvariantIds` when every mapped actuator
-for a defining invariant is exhausted. This makes the M6.7 -> M6.8 boundary explicit:
-the system must synthesize a new construction instead of continuing parameter
-thrashing. Real probes already show duplicate opacity and duplicate spread have
-negligible leverage on the remaining overlap deficit; fragmentation density is
-responsive but weak, while Time Displacement, Echo, band-overlap and Wide Time
-variants have not produced a faithful solution without regressions.
+The v6 gate is discriminative rather than permissive. Two real rendered negative
+controls remain retained: candidate 03 fails coordination + overlap and classifies away
+from shutter, while candidate 04 fails overlap + state-separation fidelity. The same
+test suite also keeps the v5 evidence historical instead of silently reinterpreting it.
+This is the required no-reproof/provenance behavior: old evidence remains inspectable,
+but only analyzer-matched v6 reference/render evidence can certify the active gate.
 
-The retained evidence does **not** promote M6 to professional-fidelity acceptance.
-The following evidence remains open:
+The M6.7 actuator controller retains the best rendered state lexicographically, learns
+one-factor control-to-metric response, stops renders for proven non-responsive controls,
+couples overlap correction to the state-separation envelope, and emits
+`synthesisRequiredInvariantIds` when every mapped actuator for a defining invariant
+is exhausted. It now also refines unresolved three-point one-factor intervals when the
+rendered response is non-monotonic, including when the retained best has moved to an
+interval endpoint.
 
-1. a reference-faithful shutter reconstruction that passes every current defining
-   invariant under the frozen v5 evidence/comparator contract;
+`scripts/proofs/m6-run-real-ae-auto-correction.mjs` now closes the first real AE
+automatic correction proof. Starting only from the deliberately degraded
+`v6-joint:36-1` physical state plus professional reference evidence, it rendered the
+seed, diagnosed the defining deficits, generated bounded spread counter-probes at 52
+and 20, retained the 52 state at 5/6 defining coverage, recognized the remaining
+semantic `SPATIAL_SEPARATION` deficit as the shutter adapter's physical
+`DUPLICATE_SPREAD` degree of freedom, bisected the unresolved rendered intervals at
+28 and 44, and independently certified 28 at 6/6 defining coverage and weighted
+fidelity 1.0. The controller was not given the previously known certified candidate.
+The retained proof is
+`proofs/diagnostics/m6-auto-correction-proof-v2.json`; it records five real AE renders
+across three bounded rounds, analyzer-matched evidence provenance, retained-best
+selection, candidate generation history, and the explicit single-case scope.
+
+M6.8 now also has one retained behavior-only real-pixel synthesis proof at
+`proofs/diagnostics/m6-real-unknown-synthesis-case01.json`. The learned family identity
+is explicitly disabled, the selected graph remains family `UNKNOWN`, the defining
+event-local DNA reaches coverage 1.0 and weighted fidelity 0.9599, and the degraded
+seed control is rejected. This proves that unknown-effect perception, DNA construction,
+candidate synthesis, and semantic certification can work from rendered behavior for
+one case. The certified render is intentionally reused from the proven shutter
+correction actuator path, so this does **not** yet prove a generic UNKNOWN
+construction-graph -> real-AE materializer.
+
+The shutter case **is** `PROFESSIONAL_FIDELITY_VERIFIED` for the retained shutter
+construction, and its bounded M6.7 local AE correction loop is automatic; it does
+**not** certify M6 as a whole. The following evidence remains open:
+
+1. transfer the shutter construction to materially different footage;
 2. real AE reconstructions for at least three substantially different compound effects;
-3. a bounded local correction sequence that reaches certification or terminates in an
-   explicit synthesis/capability-gap outcome;
-4. three reference-only unknown-effect reconstructions with real rendered proof;
-5. 20-30 rendered benchmark cases with held-out and transfer variants;
-6. a normal edit request invoking the full loop without developer intervention.
+3. two additional substantially different reference-only unknown-effect reconstructions, plus direct generic UNKNOWN graph-to-AE realization provenance;
+4. 20-30 rendered benchmark cases with held-out and transfer variants;
+5. a normal edit request invoking perception -> synthesis -> construction -> comparison
+   -> correction -> fidelity without developer intervention.
 
-Until those gates pass, M6 remains partially evidenced but not certified at
-`PROFESSIONAL_FIDELITY_VERIFIED` or `ROBUST`.
+M6 therefore has its first real professional-fidelity-verified effect case, while
+`TRANSFER_VERIFIED`, benchmark-wide `PROFESSIONAL_FIDELITY_VERIFIED`, and
+`ROBUST` remain open release gates.
 
 ## Verification
 
@@ -190,9 +231,10 @@ npm run check
 ```
 
 The core M6 suites are `tests/m6-visual-effects-intelligence.test.mjs`,
-`tests/m6-real-pixel-evidence.test.mjs`, and `tests/m6-actuator-search.test.mjs`.
-Together they cover flash/zoom anti-substitution, real-pixel degraded-result rejection,
-reference-relative fidelity, bounded local correction, causal actuator response,
-synthesis escalation, unknown-effect synthesis, benchmark requirements, and fast-path
-versus high-risk Brain routing. The retained structural result is
+`tests/m6-real-pixel-evidence.test.mjs`, `tests/m6-actuator-search.test.mjs`, and
+`tests/m6-real-ae-auto-correction.test.mjs`. Together they cover flash/zoom
+anti-substitution, real-pixel degraded-result rejection, reference-relative fidelity,
+bounded local correction, causal actuator response, non-monotonic interval refinement,
+retained real-AE automatic correction evidence, synthesis escalation, unknown-effect
+synthesis, benchmark requirements, and fast-path versus high-risk Brain routing. The retained structural result is
 `proofs/diagnostics/m6-visual-effects-intelligence-structural.json`.

@@ -437,12 +437,28 @@ export interface CorrectionLoopResultV1 {
   readonly learnedPatches: readonly SemanticPatchV1[];
 }
 
+export type UnknownEffectSynthesisStrategyV1 =
+  | "LAYERED_PRIMITIVES"
+  | "NATIVE_ECHO_HYBRID"
+  | "TIME_DISPLACEMENT_HYBRID"
+  | "TURBULENT_DISPLACE_HYBRID";
+
+export interface AdaptiveCapabilityProposalV1 {
+  readonly capabilityId: string;
+  readonly nativeEffect: string;
+  readonly invariantIds: readonly string[];
+  readonly proofRequirement: "REAL_AE_RENDER";
+  readonly rationale: string;
+}
+
 export interface SynthesisCandidateV1 {
   readonly candidateId: string;
+  readonly strategy: UnknownEffectSynthesisStrategyV1;
   readonly graph: ConstructionGraphV1;
   readonly definingCoverage: number;
   readonly complexity: number;
   readonly capabilityGaps: readonly string[];
+  readonly adaptiveCapabilityProposals: readonly AdaptiveCapabilityProposalV1[];
   readonly score: number;
 }
 

@@ -30,6 +30,7 @@ if (passArgs.length < 2 || passArgs.length > 5) {
 }
 const referencePath = required("--reference-evidence");
 const outputPath = required("--output");
+const preisolated = argv.includes("--preisolated");
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const capabilities = [
   "ae.layer.duplicate",
@@ -48,7 +49,14 @@ const capabilities = [
 ];
 
 const referenceEvidence = await load(referencePath);
-const referenceSequence = detectDenseEffectWindowsV1(referenceEvidence);
+const referenceSequence = preisolated
+  ? {
+      windows: [{
+        windowId: "preisolated-01",
+        evidence: referenceEvidence,
+      }],
+    }
+  : detectDenseEffectWindowsV1(referenceEvidence);
 const shutterReferences = referenceSequence.windows
   .map((window, index) => ({ window, index }))
   .filter(({ window }) => classifyEffectFamilyV1(window.evidence) === "SHUTTER_FRAGMENTATION");
@@ -58,8 +66,28 @@ if (shutterReferences.length === 0) {
 }
 const comparePass = async (label, evidencePath, ordinal) => {
   const renderEvidence = await load(evidencePath);
-  const renderSequence = detectDenseEffectWindowsV1(renderEvidence);
-  const alignment = alignDenseEffectSequencesV1(referenceSequence, renderSequence);
+  const renderSequence = preisolated
+    ? {
+        windows: [{
+          windowId: "preisolated-01",
+          evidence: renderEvidence,
+        }],
+      }
+    : detectDenseEffectWindowsV1(renderEvidence);
+  const alignment = preisolated
+    ? {
+        schema: "editflow.preisolated-effect-alignment.v1",
+        pairs: [{
+          referenceWindowId: "preisolated-01",
+          renderWindowId: "preisolated-01",
+          referenceIndex: 0,
+          renderIndex: 0,
+          semanticCost: 0,
+        }],
+        unmatchedReferenceWindowIds: [],
+        unmatchedRenderWindowIds: [],
+      }
+    : alignDenseEffectSequencesV1(referenceSequence, renderSequence);
   const byReference = new Map(alignment.pairs.map((pair) => [pair.referenceIndex, pair]));
   const cases = [];
 
@@ -84,7 +112,7 @@ const comparePass = async (label, evidencePath, ordinal) => {
       reference: referenceWindow.evidence,
       render: renderWindow.evidence,
       dna,
-      alignment: "SEMANTIC",
+      alignment: preisolated ? "FRAME_ALIGNED" : "SEMANTIC",
     });
     const gate = evaluateProfessionalFidelityGateV1({
       comparison,
@@ -233,11 +261,17 @@ const result = {
   evidenceBoundary: closed
     ? [
       "Every targeted shutter reference window is certified by the rendered professional-fidelity gate.",
+      preisolated
+        ? "All passes use the same pre-isolated local transition window; no second event detector is allowed to redefine the correction target."
+        : "Full-sequence evidence uses semantic event alignment before comparison.",
       "This proof closes the bounded rendered-correction gate for these cases only.",
     ]
     : [
       "The retained passes demonstrate measured correction attempts, regression detection, rollback, and diagnostic-to-actuation planning.",
       "A regressing attempt is retained as evidence but does not replace the best proven state.",
+      preisolated
+        ? "All passes use the same pre-isolated local transition window so local correction metrics remain causally comparable."
+        : "Full-sequence evidence uses semantic event alignment before comparison.",
       "M6.7 remains open until one retained rendered state certifies every targeted defining invariant.",
     ],
 };
