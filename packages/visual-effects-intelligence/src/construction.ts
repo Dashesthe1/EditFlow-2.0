@@ -35,7 +35,10 @@ interface NodeTemplateV1 {
   readonly capabilities: readonly string[];
 }
 
-const templateFor = (invariant: EffectInvariantV1): NodeTemplateV1 => {
+const templateFor = (
+  invariant: EffectInvariantV1,
+  family: EffectAnatomyV1["family"],
+): NodeTemplateV1 => {
   if (invariant.metric === "temporalStateCountPeak"
     || invariant.metric === "fragmentationTemporalStateCountPeak"
     || invariant.metric === "temporalPersistence") {
@@ -84,6 +87,13 @@ const templateFor = (invariant: EffectInvariantV1): NodeTemplateV1 => {
     return { kind: "TEMPORAL_DUPLICATES", dimension: "COMPOSITING",
       capabilities: ["ae.layer.duplicate", "ae.layer.opacity.set"] };
   }
+  if (family === "UNKNOWN"
+    && (invariant.metric === "displacementPeak"
+      || invariant.metric === "displacementDirection"
+      || invariant.metric === "motionPeakPhase")) {
+    return { kind: "CAMERA_MOTION", dimension: "SPATIAL",
+      capabilities: ["ae.layer.transform.set", "ae.keyframe.spatial.set"] };
+  }
   if (invariant.metric === "displacementDirection") {
     return { kind: "CAMERA_MOTION", dimension: "SPATIAL",
       capabilities: ["ae.layer.transform.set", "ae.keyframe.spatial.set"] };
@@ -113,7 +123,7 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
   const invariants = [...anatomy.dna.definingInvariants, ...anatomy.dna.optionalInvariants];
   const grouped = new Map<string, { template: NodeTemplateV1; invariants: EffectInvariantV1[] }>();
   for (const item of invariants) {
-    const template = templateFor(item);
+    const template = templateFor(item, anatomy.family);
     const key = nodeKey(template);
     const existing = grouped.get(key);
     if (existing === undefined) {

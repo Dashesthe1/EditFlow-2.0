@@ -44,6 +44,7 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "STABILIZATION",
   "LAYER_DUPLICATION",
   "TEMPORAL_DUPLICATION",
+  "DIRECTIONAL_OFFSET",
   "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
@@ -64,7 +65,10 @@ const literalParameterValueV1 = (
   name: string,
 ): unknown => node.parameters.find((parameter) => parameter.name === name)?.value;
 
-const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
+const supportedNodeVariantV1 = (
+  node: EditingIrNodeV1,
+  target: "VIRTUAL" | "NATIVE" = "VIRTUAL",
+): boolean => {
   if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
     return node.timing === undefined;
   }
@@ -76,18 +80,35 @@ const supportedNodeVariantV1 = (node: EditingIrNodeV1): boolean => {
       && literalParameterValueV1(node, "stabilizationMode") === "POSITION_XY"
       && literalParameterValueV1(node, "analysisDirection") === "FORWARD";
   }
+  if (node.kind === "DIRECTIONAL_OFFSET" && target === "NATIVE") {
+    const displacement = literalParameterValueV1(node, "displacementPeak");
+    const direction = literalParameterValueV1(node, "displacementDirection");
+    const phase = literalParameterValueV1(node, "motionPeakPhase");
+    return typeof displacement === "number"
+      && Number.isFinite(displacement)
+      && displacement > 0
+      && Array.isArray(direction)
+      && direction.length === 2
+      && direction.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+      && Math.hypot(direction[0], direction[1]) > 1e-6
+      && typeof phase === "number"
+      && Number.isFinite(phase)
+      && phase >= 0
+      && phase <= 1;
+  }
   return true;
 };
 
 const blockedKinds = (
   recipe: EditingIrRecipeV1,
   supportedKinds: readonly EditingIrPrimitiveKindV1[],
+  target: "VIRTUAL" | "NATIVE",
 ): readonly EditingIrPrimitiveKindV1[] => {
   const supported = new Set<EditingIrPrimitiveKindV1>(supportedKinds);
   return [...new Set(
     recipe.nodes
       .filter((node) => node.optional !== true
-        && (!supported.has(node.kind) || !supportedNodeVariantV1(node)))
+        && (!supported.has(node.kind) || !supportedNodeVariantV1(node, target)))
       .map((node) => node.kind),
   )].sort();
 };
@@ -97,6 +118,7 @@ export const unsupportedVirtualAePrimitiveKindsV1 = (
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
+  "VIRTUAL",
 );
 
 export const unsupportedNativeAePrimitiveKindsV1 = (
@@ -104,6 +126,7 @@ export const unsupportedNativeAePrimitiveKindsV1 = (
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
+  "NATIVE",
 );
 
 export interface RecipeCompilerSupportReportV1 {
@@ -817,6 +840,70 @@ const compileM6SemanticVisualState = (
     issues,
   );
   if (parameters === null) return [];
+  if (node.kind === "DIRECTIONAL_OFFSET") {
+    const displacementRaw = parameters["displacementPeak"];
+    const directionRaw = parameters["displacementDirection"];
+    const phaseRaw = parameters["motionPeakPhase"];
+    const hasMeasuredDirectionalTuple = displacementRaw !== undefined
+      && directionRaw !== undefined
+      && phaseRaw !== undefined;
+    if (hasMeasuredDirectionalTuple) {
+      const validDirection = Array.isArray(directionRaw)
+        && directionRaw.length === 2
+        && directionRaw.every((entry) => typeof entry === "number" && Number.isFinite(entry));
+      if (typeof displacementRaw !== "number"
+        || !Number.isFinite(displacementRaw)
+        || displacementRaw <= 0
+        || !validDirection
+        || typeof phaseRaw !== "number"
+        || !Number.isFinite(phaseRaw)
+        || phaseRaw < 0
+        || phaseRaw > 1) {
+        addIssue(issues, node.nodeId, "M6_DIRECTIONAL_OFFSET_PARAMETERS_INVALID",
+          "M6 directional offset requires positive displacementPeak, a finite non-zero 2D displacementDirection, and normalized motionPeakPhase evidence.");
+        return [];
+      }
+      const directionX = directionRaw[0] as number;
+      const directionY = directionRaw[1] as number;
+      const directionMagnitude = Math.hypot(directionX, directionY);
+      if (directionMagnitude <= 1e-6) {
+        addIssue(issues, node.nodeId, "M6_DIRECTIONAL_OFFSET_PARAMETERS_INVALID",
+          "M6 directional offset requires a non-zero displacementDirection vector.");
+        return [];
+      }
+      const eventBindings = Object.entries(context.eventTimesMs).filter(([, value]) =>
+        typeof value === "number" && Number.isFinite(value));
+      if (eventBindings.length !== 1) {
+        addIssue(issues, node.nodeId, "M6_DIRECTIONAL_OFFSET_EVENT_ANCHOR_REQUIRED",
+          "Measured M6 directional motion requires exactly one finite semantic event binding so every temporal state shares the same comp-time peak.");
+        return [];
+      }
+      const peakTimeSeconds = (eventBindings[0]![1] as number) / 1000;
+      const normalizedX = directionX / directionMagnitude;
+      const normalizedY = directionY / directionMagnitude;
+      const expression = [
+        "var span=Math.max(thisComp.frameDuration,Math.abs(outPoint-inPoint));",
+        `var center=${peakTimeSeconds};`,
+        "var width=Math.max(thisComp.frameDuration*2,span*0.12);",
+        "var u=(time-center)/width;",
+        "var envelope=Math.exp(-4*u*u);",
+        `var amplitude=${displacementRaw}*Math.max(thisComp.width,thisComp.height);`,
+        `var dx=${normalizedX}*amplitude*envelope;`,
+        `var dy=${normalizedY}*amplitude*envelope;`,
+        "value.length>2?[value[0]+dx,value[1]+dy,value[2]]:value+[dx,dy];",
+      ].join("");
+      for (const layerId of targets) {
+        operations.push({
+          type: "SET_EXPRESSION",
+          compId: context.compId,
+          layerId,
+          propertyPath: "Transform.Position",
+          expression,
+        });
+      }
+      return targets;
+    }
+  }
   if (node.kind === "MOTION_SHAPING") {
     const accelerationRaw = parameters["accelerationPeak"];
     const recoveryRaw = parameters["recoveryFrames"];

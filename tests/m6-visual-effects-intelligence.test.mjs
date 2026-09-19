@@ -655,6 +655,180 @@ test("M6.4/M6.8 lowers UNKNOWN construction through the generic native AE plan p
     JSON.stringify(operation.input).includes("M6.TemporalState")), false);
 });
 
+test("M6.8 materializes measured UNKNOWN directional displacement without a named-effect fallback", () => {
+  const reference = evidence({
+    displacementPeak: 0.11,
+    displacementDirection: { x: 0.6, y: -0.8 },
+    motionPeakPhase: 0.35,
+    motionEnergyPeak: 0.12,
+    accelerationPeak: 0.01,
+  });
+  const anatomy = decomposeUnknownEffectV1(reference);
+  assert.ok(anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.displacement-direction"));
+  assert.ok(anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.motion-peak-phase"));
+  assert.deepEqual(anatomy.observedMetrics.displacementDirection, { x: 0.6, y: -0.8 });
+
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: ALL_CAPABILITIES,
+  });
+  assert.equal(synthesis.status, "READY_FOR_PROOF");
+  assert.notEqual(synthesis.selected, null);
+  const cameraNodes = synthesis.selected.graph.nodes.filter((node) =>
+    node.kind === "CAMERA_MOTION");
+  assert.equal(cameraNodes.length, 1);
+  assert.equal(cameraNodes[0].parameters.displacementPeak, 0.11);
+  assert.deepEqual(cameraNodes[0].parameters.displacementDirection, [0.6, -0.8]);
+  assert.equal(cameraNodes[0].parameters.motionPeakPhase, 0.35);
+
+  const compilation = compileConstructionGraphV1(
+    synthesis.selected.graph,
+    ALL_CAPABILITIES,
+  );
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "M6 directional construction fixture",
+      width: 1920,
+      height: 1080,
+      durationMs: 1000,
+      frameRate: 30,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "FOOTAGE",
+        inMs: 0,
+        outMs: 1000,
+        properties: [],
+        effects: [],
+        masks: [],
+      }],
+    }],
+  };
+  const result = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 350 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-unknown-directional-native-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+      creativeObjective: "Materialize observed UNKNOWN displacement direction and phase.",
+    },
+  );
+  assert.equal(result.compiled, true, result.issues.join(", "));
+  assert.notEqual(result.plan, null);
+  const expressionOperation = result.plan.operations.find((operation) =>
+    operation.input.command === "property.set_expression"
+      && JSON.stringify(operation.input).includes("ADBE Position"));
+  assert.ok(expressionOperation);
+  const expression = expressionOperation.input.payload.expression;
+  assert.match(expression, /var center=0\.35;/);
+  assert.doesNotMatch(expression, /center=first\+span/);
+  assert.match(expression, /Math\.max\(thisComp\.width,thisComp\.height\)/);
+  assert.equal(result.plan.operations.some((operation) =>
+    JSON.stringify(operation.input).includes("M6.DIRECTIONAL_OFFSET")), false);
+
+  const ambiguousEventResult = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 350, recovery: 600 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-unknown-directional-ambiguous-event-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+    },
+  );
+  assert.equal(ambiguousEventResult.compiled, false);
+  assert.ok(ambiguousEventResult.issues.some((issue) =>
+    issue.startsWith("M6_DIRECTIONAL_OFFSET_EVENT_ANCHOR_REQUIRED:")));
+});
+
+test("M6.8 keeps unproven scale-only directional materialization fail-closed", () => {
+  const reference = evidence({
+    scaleRange: 0.08,
+    displacementPeak: 0.02,
+    accelerationPeak: 0.01,
+  });
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: ALL_CAPABILITIES,
+  });
+  assert.equal(synthesis.status, "READY_FOR_PROOF");
+  assert.notEqual(synthesis.selected, null);
+  const compilation = compileConstructionGraphV1(
+    synthesis.selected.graph,
+    ALL_CAPABILITIES,
+  );
+  const result = compileConstructionThroughNativeAeV1(
+    compilation,
+    {
+      schema: "editflow.virtual-ae.project.v1",
+      activeCompId: "comp",
+      compositions: [{
+        compId: "comp",
+        name: "M6 scale-only native fixture",
+        width: 1080,
+        height: 1080,
+        durationMs: 1000,
+        frameRate: 30,
+        layers: [{
+          layerId: "hero",
+          name: "Hero",
+          kind: "FOOTAGE",
+          inMs: 0,
+          outMs: 1000,
+          properties: [],
+          effects: [],
+          masks: [],
+        }],
+      }],
+    },
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-scale-only-native-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+    },
+  );
+  assert.equal(result.compiled, false);
+  assert.ok(result.issues.includes("UNSUPPORTED_NATIVE_M6_PRIMITIVE:DIRECTIONAL_OFFSET"));
+});
+
 test("M6.5-M6.6 comparator diagnoses degradation and anti-simplification fails closed", () => {
   const reference = shutterReference();
   const render = degradedFlashZoom();

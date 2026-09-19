@@ -5,6 +5,7 @@ import type {
   EffectAnatomyComponentV1,
   EffectAnatomyV1,
   EffectInvariantV1,
+  NormalizedPointV1,
   SynthesisCandidateV1,
   TransitionDnaV1,
   UnknownEffectSynthesisStrategyV1,
@@ -72,11 +73,11 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
   const fragmentation = resolveFragmentationEventMetricsV1(evidence);
   const defining: EffectInvariantV1[] = [];
   const optional: EffectInvariantV1[] = [];
-  const observedMetrics: Record<string, number> = {};
+  const observedMetrics: Record<string, number | NormalizedPointV1> = {};
   const add = (
     target: EffectInvariantV1[],
     item: EffectInvariantV1,
-    observedValue: number,
+    observedValue: number | NormalizedPointV1,
   ): void => {
     target.push(item);
     observedMetrics[item.metric] = observedValue;
@@ -185,6 +186,34 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     if (s.displacementPeak > 0.04) {
       add(defining, rangeInvariant("unknown.displacement", "SPATIAL", "displacementPeak",
         s.displacementPeak), s.displacementPeak);
+      const directionMagnitude = Math.hypot(
+        s.displacementDirection.x,
+        s.displacementDirection.y,
+      );
+      if (directionMagnitude > 1e-6) {
+        add(defining, invariant(
+          "unknown.displacement-direction",
+          "SPATIAL",
+          "displacementDirection",
+          "DIRECTION",
+          s.displacementDirection,
+          0.1,
+          true,
+          0.8,
+          "The synthesized spatial impulse must preserve the observed displacement direction, not only its magnitude.",
+        ), s.displacementDirection);
+      }
+      add(defining, invariant(
+        "unknown.motion-peak-phase",
+        "MOTION_STRUCTURE",
+        "motionPeakPhase",
+        "PHASE",
+        s.motionPeakPhase,
+        0.12,
+        true,
+        0.65,
+        "The displacement impulse must peak at approximately the observed phase of the effect window.",
+      ), s.motionPeakPhase);
     }
     if (s.scaleRange > 0.04) {
       add(defining, rangeInvariant("unknown.scale", "SPATIAL", "scaleRange",
