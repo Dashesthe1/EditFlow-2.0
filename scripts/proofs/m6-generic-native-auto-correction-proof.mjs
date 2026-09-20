@@ -67,13 +67,18 @@ const physicalParameterForNodeControl = (node, control) => {
     if (control === "TEMPORAL_PERSISTENCE") return "timeDisplacementStrengthScale";
   }
   if (node?.parameters?.synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
-      || node?.parameters?.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID") {
+      || node?.parameters?.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"
+      || node?.parameters?.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID"
+      || node?.parameters?.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID") {
     if (control === "DISTORTION_SIZE") return "distortionSizeScale";
     if (control === "DISTORTION_COMPLEXITY") return "distortionComplexityScale";
     if (control === "DISTORTION_EVOLUTION") return "distortionEvolutionScale";
-    if (node.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID") {
+    if (node.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"
+        || node.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID"
+        || node.parameters.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID") {
       if (control === "MOTION_IMPULSE") return "eventEvolutionSweepScale";
-      if (control === "MOTION_IMPULSE_SHARPNESS" || control === "MOTION_IMPULSE_PHASE") return undefined;
+      if (control === "MOTION_IMPULSE_SHARPNESS") return "eventEvolutionSharpnessScale";
+      if (control === "MOTION_IMPULSE_PHASE") return undefined;
     }
   }
   return PHYSICAL_PARAMETER_BY_CONTROL[control];
@@ -306,7 +311,21 @@ const MOTION_SHAPING_CONTROLS = new Set([
   "MOTION_IMPULSE_SHARPNESS",
   "MOTION_IMPULSE_PHASE",
 ]);
+const ADVANCED_WARP_MOTION_CONTROLS = new Set([
+  "MOTION_IMPULSE",
+  "MOTION_IMPULSE_SHARPNESS",
+  "MOTION_IMPULSE_PHASE",
+]);
 const controlTargetNode = (valueGraph, control, preferredNodeId) => {
+  if (ADVANCED_WARP_MOTION_CONTROLS.has(control)) {
+    // Successor warp hypotheses own their event-shaping acceleration controls.
+    // Plain evolving-warp graphs keep the retained independent RECOVERY actuator.
+    const advancedWarp = valueGraph.nodes.find((candidate) =>
+      candidate.parameters.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID")
+      ?? valueGraph.nodes.find((candidate) =>
+        candidate.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID");
+    if (advancedWarp !== undefined) return advancedWarp;
+  }
   if (typeof preferredNodeId === "string") {
     const preferred = valueGraph.nodes.find((candidate) => candidate.nodeId === preferredNodeId);
     if (preferred !== undefined) return preferred;
@@ -355,6 +374,12 @@ const strategyKeyFromSet = (strategies) => {
   // Prefer the most structurally advanced explicit strategy. A v3 graph also
   // contains its retained v2 Echo/Turbulent interventions, so checking those
   // first would incorrectly collapse the evolving graph back to compound v2.
+  if (strategies.has("COMPOUND_DUAL_WARP_HYBRID")) {
+    return "COMPOUND_DUAL_WARP_HYBRID";
+  }
+  if (strategies.has("COMPOUND_COMPOSITE_WARP_HYBRID")) {
+    return "COMPOUND_COMPOSITE_WARP_HYBRID";
+  }
   if (strategies.has("COMPOUND_EVOLVING_WARP_HYBRID")
       && strategies.has("TIME_DISPLACEMENT_HYBRID")) {
     return "COMPOUND_TEMPORAL_WARP_HYBRID";
@@ -469,7 +494,10 @@ const applySearchCandidateToGraph = (baseGraph, actuationPlan, candidate) => {
 const transferRetainedPhysicalScales = (sourceGraph, targetGraph) => ({
   ...targetGraph,
   nodes: targetGraph.nodes.map((node) => {
-    const sourceNode = sourceGraph.nodes.find((candidate) => candidate.nodeId === node.nodeId);
+    const inheritedSourceNodeId = typeof node.parameters.inheritsPhysicalParametersFromNodeId === "string"
+      ? node.parameters.inheritsPhysicalParametersFromNodeId
+      : node.nodeId;
+    const sourceNode = sourceGraph.nodes.find((candidate) => candidate.nodeId === inheritedSourceNodeId);
     if (sourceNode === undefined) return node;
     const parameters = { ...node.parameters };
     for (const parameter of [
@@ -478,6 +506,7 @@ const transferRetainedPhysicalScales = (sourceGraph, targetGraph) => ({
       "distortionComplexityScale",
       "distortionEvolutionScale",
       "eventEvolutionSweepScale",
+      "eventEvolutionSharpnessScale",
     ]) {
       const value = sourceNode.parameters[parameter];
       if (typeof value === "number" && Number.isFinite(value)) parameters[parameter] = value;

@@ -654,6 +654,11 @@ const evolvingTurbulentProofParameters = (
     eventAmountPulseScale: Math.max(1.2, Math.min(2.25, 1.15 + distortion * 1.8)),
     eventEvolutionSweepDegrees: Math.max(180, Math.min(720, 180 + distortion * 720)),
     eventEvolutionSweepScale: 1,
+    // Keep v3's prior linear sweep as the exact default while exposing an
+    // independent timing-shape actuator. Values > 1 concentrate more of the
+    // same total Evolution travel near the end of the event; they do not add
+    // deformation magnitude or change the reference-derived sweep distance.
+    eventEvolutionSharpnessScale: 1,
   };
 };
 
@@ -1245,6 +1250,137 @@ const compoundTemporalWarpGraph = (
   return evolving === null ? null : timeDisplacementAugmentedGraph(evolving);
 };
 
+const compoundCompositeWarpGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const evolving = compoundEvolvingWarpGraph(base);
+  if (evolving === null) return null;
+  const warpIndex = evolving.nodes.findIndex((node) =>
+    node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID");
+  if (warpIndex < 0) return null;
+  const warp = evolving.nodes[warpIndex];
+  if (warp === undefined || warp.dependsOn.length === 0) return null;
+
+  // The v3 per-state warp is already proven to respond in real AE, but its
+  // deformation plateau remains far below the active reference. Test a new
+  // causal topology before adding more scalar strength: flatten the already
+  // reconstructed fragmented states, then deform their composite once. This
+  // also reduces native operation count because one effect replaces the same
+  // effect repeated across every temporal state.
+  const boundaryId = `${warp.nodeId}:composite-precompose`;
+  const boundary: ConstructionNodeV1 = {
+    nodeId: boundaryId,
+    kind: "PRECOMPOSE_BOUNDARY",
+    dimension: "COMPOSITING",
+    dependsOn: [...warp.dependsOn],
+    requiredInvariantIds: [...warp.requiredInvariantIds],
+    capabilityCandidates: ["ae.precompose.layers"],
+    parameters: {
+      causalBoundary: "COMPOSITE_WARP_INPUT",
+      groupTargets: true,
+    },
+    optional: false,
+  };
+  const compositeWarp: ConstructionNodeV1 = {
+    ...warp,
+    dependsOn: [boundaryId],
+    parameters: {
+      ...warp.parameters,
+      synthesisStrategy: "COMPOUND_COMPOSITE_WARP_HYBRID",
+      // Preserve the causal lineage for escalation ranking. The composite graph
+      // is not an unrelated replacement for v3; it retains the evolving warp's
+      // construction and inserts one grouped precompose boundary before the
+      // same event-local deformation stage.
+      extendsSynthesisStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+      // Unlike the per-state v3 hypothesis, the grouped replacement already is
+      // the complete reconstructed visual. Apply the event-gated deformation to
+      // that composite itself instead of mixing a warped accent over an untouched
+      // copy, which dilutes both deformation magnitude and motion acceleration.
+      eventLocalEffectApplication: "IN_PLACE",
+      eventLocalEffectRecoveryBounded: true,
+    },
+  };
+  const targeted = new Set(warp.requiredInvariantIds);
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(evolving.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      targeted.has(invariantId)
+        ? [warp.nodeId, boundaryId, ...nodeIds.filter((nodeId) =>
+          nodeId !== warp.nodeId && nodeId !== boundaryId)]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...evolving,
+    graphId: `${evolving.graphId}:composite_warp`,
+    nodes: [
+      ...evolving.nodes.slice(0, warpIndex),
+      boundary,
+      compositeWarp,
+      ...evolving.nodes.slice(warpIndex + 1),
+    ],
+    invariantCoverage,
+  };
+};
+
+const compoundDualWarpGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const evolving = compoundEvolvingWarpGraph(base);
+  if (evolving === null) return null;
+  const warp = evolving.nodes.find((node) =>
+    node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID");
+  if (warp === undefined) return null;
+
+  // Real-AE evidence shows that moving the retained per-state warp behind a
+  // grouped precompose reduces measured deformation. Preserve that proven
+  // per-state stage and add one macro deformation on the primary visual only.
+  // The first dual-warp proof also showed that the macro stage can resolve the
+  // acceleration deficit while its Amount control is a poor distortion
+  // actuator. Keep distortion ownership on the retained per-state warp and
+  // assign the additive stage only the acceleration invariants it was created
+  // to address. One additional v3 Turbulent Displace costs five native
+  // operations, keeping the active 91-operation retained plan within the
+  // 96-operation correction transaction ceiling without dropping a temporal
+  // state.
+  const accelerationInvariantIds = warp.requiredInvariantIds.filter((invariantId) =>
+    invariantId.toLowerCase().includes("acceleration"));
+  const augmentId = `${warp.nodeId}:primary-warp-augmentation`;
+  const augment: ConstructionNodeV1 = {
+    ...warp,
+    nodeId: augmentId,
+    dependsOn: [warp.nodeId],
+    requiredInvariantIds: accelerationInvariantIds.length > 0
+      ? accelerationInvariantIds
+      : warp.requiredInvariantIds,
+    parameters: {
+      ...warp.parameters,
+      synthesisStrategy: "COMPOUND_DUAL_WARP_HYBRID",
+      extendsSynthesisStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+      inheritsPhysicalParametersFromNodeId: warp.nodeId,
+      eventLocalEffectApplication: "IN_PLACE",
+      eventLocalEffectTargetScope: "PRIMARY",
+      eventLocalEffectRecoveryBounded: true,
+    },
+  };
+  const targeted = new Set(augment.requiredInvariantIds);
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(evolving.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      targeted.has(invariantId)
+        ? [augmentId, ...nodeIds.filter((nodeId) => nodeId !== augmentId)]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...evolving,
+    graphId: `${evolving.graphId}:dual_warp`,
+    nodes: [...evolving.nodes, augment],
+    outputs: evolving.outputs.map((output) => output === warp.nodeId ? augmentId : output),
+    invariantCoverage,
+  };
+};
+
 const strategyGraph = (
   base: ConstructionGraphV1,
   strategy: UnknownEffectSynthesisStrategyV1,
@@ -1255,6 +1391,8 @@ const strategyGraph = (
   if (strategy === "COMPOUND_EVOLVING_WARP_HYBRID") return compoundEvolvingWarpGraph(base);
   if (strategy === "COMPOUND_TEMPORAL_WARP_HYBRID") return compoundTemporalWarpGraph(base);
   if (strategy === "OPTICAL_PROFILE_HYBRID") return opticalProfileGraph(base);
+  if (strategy === "COMPOUND_COMPOSITE_WARP_HYBRID") return compoundCompositeWarpGraph(base);
+  if (strategy === "COMPOUND_DUAL_WARP_HYBRID") return compoundDualWarpGraph(base);
   if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
   if (strategy === "TIME_DISPLACEMENT_HYBRID") return timeDisplacementAugmentedGraph(base);
   let changed = false;
@@ -1317,6 +1455,8 @@ const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
   TURBULENT_DISPLACE_HYBRID: "ae.effect-schema.m6.turbulent-displace.v2",
   COMPOUND_EVOLVING_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
   OPTICAL_PROFILE_HYBRID: "ae.effect-schema.m6.directional-blur.v1",
+  COMPOUND_COMPOSITE_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
+  COMPOUND_DUAL_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
 });
 
 const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
@@ -1327,7 +1467,9 @@ const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
       && strategy !== "TIME_DISPLACEMENT_HYBRID"
       && strategy !== "TURBULENT_DISPLACE_HYBRID"
       && strategy !== "COMPOUND_EVOLVING_WARP_HYBRID"
-      && strategy !== "OPTICAL_PROFILE_HYBRID") return [];
+      && strategy !== "OPTICAL_PROFILE_HYBRID"
+      && strategy !== "COMPOUND_COMPOSITE_WARP_HYBRID"
+      && strategy !== "COMPOUND_DUAL_WARP_HYBRID") return [];
     const capability = node.capabilityCandidates[0] ?? String(strategy);
     const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
     const actualSchemaRef = node.parameters["effectSchemaRef"];
@@ -1383,6 +1525,8 @@ export const synthesizeUnknownEffectV1 = (input: {
     { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
     { strategy: "OPTICAL_PROFILE_HYBRID", id: "adaptive:optical-profile-hybrid", complexityPenalty: 1.75 },
     { strategy: "COMPOUND_TEMPORAL_WARP_HYBRID", id: "adaptive:compound-temporal-warp-hybrid", complexityPenalty: 2 },
+    { strategy: "COMPOUND_DUAL_WARP_HYBRID", id: "adaptive:compound-dual-warp-hybrid", complexityPenalty: 1.75 },
+    { strategy: "COMPOUND_COMPOSITE_WARP_HYBRID", id: "adaptive:compound-composite-warp-hybrid", complexityPenalty: 2 },
     { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
     { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },
     { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },
@@ -1424,10 +1568,14 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
   const excluded = new Set(input.excludedStrategies ?? []);
   if (required.size === 0) return null;
   const interventionStrategies = (graph: ConstructionGraphV1): ReadonlySet<string> =>
-    new Set(graph.nodes.flatMap((node) =>
-      typeof node.parameters["synthesisStrategy"] === "string"
-        ? [node.parameters["synthesisStrategy"] as string]
-        : []));
+    new Set(graph.nodes.flatMap((node) => {
+      const strategy = node.parameters["synthesisStrategy"];
+      const extendsStrategy = node.parameters["extendsSynthesisStrategy"];
+      return [
+        ...(typeof strategy === "string" ? [strategy] : []),
+        ...(typeof extendsStrategy === "string" ? [extendsStrategy] : []),
+      ];
+    }));
   const currentCandidate = input.currentStrategy === null || input.currentStrategy === undefined
     ? undefined
     : input.synthesis.candidates.find((candidate) => candidate.strategy === input.currentStrategy);
@@ -1450,14 +1598,14 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
       return !isInterventionSubset;
     })
     .map((candidate) => {
-      const interventionStrategies = new Set(candidate.graph.nodes.flatMap((node) =>
-        typeof node.parameters["synthesisStrategy"] === "string"
-          ? [node.parameters["synthesisStrategy"]]
-          : []));
-      const interventionInvariantIds = new Set(candidate.graph.nodes.flatMap((node) =>
-        typeof node.parameters["synthesisStrategy"] === "string"
+      const candidateInterventions = interventionStrategies(candidate.graph);
+      const interventionInvariantIds = new Set(candidate.graph.nodes.flatMap((node) => {
+        const strategy = node.parameters["synthesisStrategy"];
+        const extendsStrategy = node.parameters["extendsSynthesisStrategy"];
+        return typeof strategy === "string" || typeof extendsStrategy === "string"
           ? node.requiredInvariantIds
-          : []));
+          : [];
+      }));
       const targetedInvariantCount = [...required]
         .filter((invariantId) => interventionInvariantIds.has(invariantId)).length;
       const collateralInvariantCount = [...interventionInvariantIds]
@@ -1465,10 +1613,11 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
       // Escalation should be monotonic when possible: if the current rendered
       // strategy already solved defining behavior, prefer a candidate that
       // preserves that intervention and layers the new synthesis on top.
-      // Otherwise a targeted fix can regress already-proven behavior.
+      // Explicit lineage counts as preservation because the successor graph is
+      // required to retain the parent's causal construction.
       const preservesCurrentStrategy = input.currentStrategy !== null
         && input.currentStrategy !== undefined
-        && interventionStrategies.has(input.currentStrategy);
+        && candidateInterventions.has(input.currentStrategy);
       return { candidate, targetedInvariantCount, collateralInvariantCount, preservesCurrentStrategy };
     })
     .filter((entry) => entry.targetedInvariantCount > 0)

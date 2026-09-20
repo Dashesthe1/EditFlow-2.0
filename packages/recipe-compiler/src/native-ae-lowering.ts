@@ -612,14 +612,33 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   const orderedPostPrecomposeOperations = new Set(
     compiled.operations.filter(isOrderedPostPrecomposeOperation),
   );
-  const orderedPostPrecomposeSourceLayerIds = new Set(
-    [...orderedPostPrecomposeOperations].flatMap((operation) =>
-      operation.type === "PRECOMPOSE" ? operation.layerIds : []),
+  const isPrecomposeSourceCausalOperation = (operation: VirtualAeOperationV1): boolean => {
+    if (operation.type === "DUPLICATE_LAYER") {
+      return precomposeSourceLayerIds.has(operation.layerId);
+    }
+    if (operation.type === "SET_PROPERTY"
+      && operation.propertyPath === "TimeRemap.Enabled") {
+      return precomposeSourceLayerIds.has(operation.layerId);
+    }
+    if (operation.type === "ADD_EFFECT"
+      || operation.type === "SET_EFFECT_PROPERTY"
+      || operation.type === "SET_EFFECT_EXPRESSION"
+      || operation.type === "SET_EXPRESSION"
+      || operation.type === "SET_BLEND_MODE") {
+      return precomposeSourceLayerIds.has(operation.layerId);
+    }
+    return false;
+  };
+  const causalPrecomposeOperations = new Set(
+    compiled.operations.filter((operation) =>
+      operation.type === "PRECOMPOSE"
+      || orderedPostPrecomposeOperations.has(operation)
+      || isPrecomposeSourceCausalOperation(operation)),
   );
 
   for (const operation of compiled.operations) {
     if (operation.type !== "DUPLICATE_LAYER"
-      || orderedPostPrecomposeOperations.has(operation)) continue;
+      || causalPrecomposeOperations.has(operation)) continue;
     emit(
       "ae.layer.duplicate",
       AE_ADAPTER_ROUTE_ID_V11,
@@ -633,65 +652,13 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     );
   }
 
-  // Preserve the causal recipe order when an expression is intentionally baked
-  // inside a precomp before a downstream effect (for example M6 Echo trailing
-  // transform motion). Precompose moves the source layer out of the parent comp,
-  // so emitting these expressions after the structural mutation would target an
-  // object that no longer exists in that parent composition.
-  const precomposeSourceExpressions = compiled.operations.filter((operation) =>
-    operation.type === "SET_EXPRESSION"
-      && precomposeSourceLayerIds.has(operation.layerId)
-      && !orderedPostPrecomposeSourceLayerIds.has(operation.layerId));
-  for (const expressionOperation of precomposeSourceExpressions) {
-    if (expressionOperation.type !== "SET_EXPRESSION") continue;
-    if (expressionOperation.propertyPath === "TimeRemap.SourceTime") {
-      throw new NativeAeRecipeLoweringError(
-        "PRECOMPOSE_SOURCE_TIME_REMAP_ORDER_UNSUPPORTED",
-        `Time Remap expression on precompose source '${expressionOperation.layerId}' requires an explicit pre-structural enable phase.`,
-      );
-    }
-    emit(
-      "ae.expression.set",
-      AE_ADAPTER_ROUTE_ID_V11,
-      "property.set_expression",
-      {
-        comp: { stableId: expressionOperation.compId },
-        layer: { stableId: expressionOperation.layerId },
-        propertyPath: nativeExpressionPropertyPath(expressionOperation.propertyPath),
-        expression: expressionOperation.expression,
-        enabled: true,
-      },
-      "R1_REVERSIBLE",
-    );
-  }
-
+  // Preserve the compiled causal order across every precompose boundary.
+  // This includes expressions/effects intentionally baked into a source layer,
+  // the precompose mutation itself, and descendants created from replacement
+  // layers. Interleaving these operations is required for nested M6 constructions
+  // such as fragment -> configure temporal states -> group precompose -> warp.
   for (const operation of compiled.operations) {
-    if (operation.type !== "PRECOMPOSE"
-      || orderedPostPrecomposeOperations.has(operation)) continue;
-    emit(
-      "ae.precompose.layers",
-      AE_ADAPTER_ROUTE_ID_V11,
-      "layers.precompose",
-      {
-        comp: { stableId: operation.compId },
-        layers: operation.layerIds.map((stableId) => ({ stableId })),
-        stableId: operation.newCompId,
-        replacementStableId: operation.newLayerId,
-        name: operation.newCompName,
-        moveAllAttributes: true,
-        preserveSingleLayerTiming: operation.layerIds.length === 1,
-        sourceHandlePolicy: operation.sourceHandlePolicy ?? "PRESERVE_TRIM",
-      },
-      "R2_STRUCTURAL",
-    );
-  }
-
-  // Operations that consume a layer created by PRECOMPOSE must retain their
-  // virtual recipe order. In particular, downstream event-local duplicates
-  // cannot be front-loaded before the replacement layer exists, and duplicating
-  // before an upstream effect would copy a visually weaker pre-effect state.
-  for (const operation of compiled.operations) {
-    if (!orderedPostPrecomposeOperations.has(operation)) continue;
+    if (!causalPrecomposeOperations.has(operation)) continue;
     if (operation.type === "PRECOMPOSE") {
       emit(
         "ae.precompose.layers",
@@ -853,7 +820,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   }
 
   for (const operation of compiled.operations) {
-    if (orderedPostPrecomposeOperations.has(operation)) continue;
+    if (causalPrecomposeOperations.has(operation)) continue;
     if (operation.type === "APPLY_STABILIZATION") {
       const stabilizationBoundaryId = asRollbackBoundaryId(
         `${compiled.recipeId}:stabilization:${operationCounter + 1}`,
@@ -1188,12 +1155,12 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       layerId,
       "TimeRemap.Enabled",
     );
-    const orderedTimeRemapEnable = compiled.operations.some((operation) =>
+    const causalTimeRemapEnable = compiled.operations.some((operation) =>
       operation.type === "SET_PROPERTY"
       && operation.layerId === layerId
       && operation.propertyPath === "TimeRemap.Enabled"
-      && orderedPostPrecomposeOperations.has(operation));
-    if (enablesTimeRemap && !orderedTimeRemapEnable) {
+      && causalPrecomposeOperations.has(operation));
+    if (enablesTimeRemap && !causalTimeRemapEnable) {
       emit(
         "ae.layer.time_remap.enable",
         AE_TIME_REMAP_ROUTE_ID_V27,
@@ -1209,8 +1176,7 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     const layerExpressions = compiled.operations.filter((operation) =>
       operation.type === "SET_EXPRESSION"
       && operation.layerId === layerId
-      && !precomposeSourceLayerIds.has(operation.layerId)
-      && !orderedPostPrecomposeOperations.has(operation));
+      && !causalPrecomposeOperations.has(operation));
     for (const expressionOperation of layerExpressions) {
       if (expressionOperation.type !== "SET_EXPRESSION") continue;
       if (expressionOperation.propertyPath === "TimeRemap.SourceTime" && !enablesTimeRemap) {

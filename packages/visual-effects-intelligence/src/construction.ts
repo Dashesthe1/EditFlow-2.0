@@ -273,7 +273,9 @@ const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
     || synthesisStrategy === "LAYERED_ECHO_AUGMENTED"
     || synthesisStrategy === "TIME_DISPLACEMENT_HYBRID"
     || synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
-    || synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID") {
+    || synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"
+    || synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID"
+    || synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID") {
     return "EFFECT_STACK";
   }
   switch (node.kind) {

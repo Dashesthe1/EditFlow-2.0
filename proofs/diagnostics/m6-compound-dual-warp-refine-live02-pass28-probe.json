@@ -1,0 +1,1149 @@
+{
+  "analysis": {
+    "algorithmId": "editflow.m6.dense-video-probe.v10",
+    "algorithms": [
+      "Farneback dense optical flow",
+      "pyramidal Lucas-Kanade feature tracking",
+      "RANSAC estimateAffinePartial2D",
+      "dense-flow affine fallback",
+      "motion-compensated residual",
+      "edge autocorrelation echo detector",
+      "Laplacian sharpness proxy"
+    ],
+    "analyzerFingerprint": "98c6deb276161e82fd0fcfd6d564031c7428d9fbeaedfb7e1f0c12cd0f4aa575",
+    "dependencies": {
+      "numpy": "2.5.3",
+      "opencv": "5.0.0"
+    },
+    "frameCount": 30,
+    "longestEdge": 360
+  },
+  "frames": [
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.0,
+        "edgeEchoStrength": 0.21924319863319397,
+        "flowCoherence": 1.0,
+        "flowMeanPixels": 0.0,
+        "flowP90Pixels": 0.0,
+        "flowResidualP90Pixels": 0.0,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0000.png",
+      "semantic": {
+        "blurStrength": 0.005434535730747481,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 0.0,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.0,
+        "scale": 1.0,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 0,
+      "timeMs": 0.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.21893000602722168,
+        "flowCoherence": 0.9688862931677992,
+        "flowMeanPixels": 0.39740699529647827,
+        "flowP90Pixels": 2.9052946864180763e-16,
+        "flowResidualP90Pixels": 2.905294715777934e-16,
+        "motionCompensatedResidualCoverage": 0.0005555555555555556,
+        "motionCompensatedResidualMean": 0.000516952614379085,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0001.png",
+      "semantic": {
+        "blurStrength": 0.005434535730747481,
+        "cameraMotion": {
+          "x": 8.758115402030107e-48,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 8.758115402030107e-48,
+          "y": 0.0
+        },
+        "distortionStrength": 0.0012406862745098063,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 4.3557463455891946e-05,
+        "scale": 0.9999992010201612,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 1,
+      "timeMs": 33.333333333333336
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.21861682832241058,
+        "flowCoherence": 0.9684324784641856,
+        "flowMeanPixels": 0.41925445199012756,
+        "flowP90Pixels": 1.2923516254273026e-15,
+        "flowResidualP90Pixels": 1.2923517053075973e-15,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0002.png",
+      "semantic": {
+        "blurStrength": 0.005434535730747481,
+        "cameraMotion": {
+          "x": 7.006492321624086e-47,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 7.006492321624086e-47,
+          "y": 0.0
+        },
+        "distortionStrength": 1.0559832484755903e-17,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.00017174543978511073,
+        "scale": 0.9999983837430887,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 2,
+      "timeMs": 66.66666666666667
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.21795569360256195,
+        "flowCoherence": 0.9684339038279318,
+        "flowMeanPixels": 0.41925638914108276,
+        "flowP90Pixels": 7.186039589070312e-16,
+        "flowResidualP90Pixels": 7.18603962093552e-16,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0003.png",
+      "semantic": {
+        "blurStrength": 0.005434535730747481,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 5.87172782101422e-18,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.00020951546690063305,
+        "scale": 0.9999951262123989,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 3,
+      "timeMs": 100.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.21795569360256195,
+        "flowCoherence": 0.9684330583564653,
+        "flowMeanPixels": 0.4192546010017395,
+        "flowP90Pixels": 6.290170427846473e-16,
+        "flowResidualP90Pixels": 6.290170480303814e-16,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0004.png",
+      "semantic": {
+        "blurStrength": 0.005434535730747481,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 5.139711295289794e-18,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.00017540902959984565,
+        "scale": 0.999994875933607,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 4,
+      "timeMs": 133.33333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.21795569360256195,
+        "flowCoherence": 0.9684337721603172,
+        "flowMeanPixels": 0.4192555844783783,
+        "flowP90Pixels": 5.847828117571004e-16,
+        "flowResidualP90Pixels": 5.847828234385644e-16,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0005.png",
+      "semantic": {
+        "blurStrength": 0.005434535730747481,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 4.778272532246974e-18,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.00013581350059752107,
+        "scale": 0.9999947665407972,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 5,
+      "timeMs": 166.66666666666666
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.209873765707016,
+        "flowCoherence": 0.9647870602397018,
+        "flowMeanPixels": 0.42222243547439575,
+        "flowP90Pixels": 7.725488403396974e-16,
+        "flowResidualP90Pixels": 7.725488159767867e-16,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 1.2935729847494554e-06,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08443388015894071
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0006.png",
+      "semantic": {
+        "blurStrength": 0.005002301556342514,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 3.1045751634050055e-06,
+        "occlusion": 0.0,
+        "overlapDensity": 0.10606060606060605,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.0007733408127986827,
+        "scale": 0.9999901992074308,
+        "stateSeparation": 0.08443388015894071,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 6,
+      "timeMs": 200.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.12904788553714752,
+        "flowCoherence": 0.8657662251911957,
+        "flowMeanPixels": 0.482774943113327,
+        "flowP90Pixels": 9.629006847509253e-14,
+        "flowResidualP90Pixels": 9.629006879437755e-14,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 8.91884531590414e-06,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08715755371245493
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0007.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 2.1405228758956723e-05,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.0007188574137316568,
+        "scale": 1.0001192537196124,
+        "stateSeparation": 0.08715755371245493,
+        "temporalStateCount": 3
+      },
+      "sourceFrameIndex": 7,
+      "timeMs": 233.33333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.12904790043830872,
+        "flowCoherence": 0.7994274685261133,
+        "flowMeanPixels": 0.5379947423934937,
+        "flowP90Pixels": 1.1114939806218527e-13,
+        "flowResidualP90Pixels": 1.1114939896501986e-13,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08715755371245493
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0008.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 9.08204035350075e-16,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.0007117890318861556,
+        "scale": 1.0001192737512763,
+        "stateSeparation": 0.08715755371245493,
+        "temporalStateCount": 3
+      },
+      "sourceFrameIndex": 8,
+      "timeMs": 266.6666666666667
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.12904787063598633,
+        "flowCoherence": 0.8033245206035086,
+        "flowMeanPixels": 0.5360727310180664,
+        "flowP90Pixels": 1.162107926165265e-13,
+        "flowResidualP90Pixels": 1.1621079408456068e-13,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08715755371245493
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0009.png",
+      "semantic": {
+        "blurStrength": 0.0,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 9.495607994430128e-16,
+        "occlusion": 0.0,
+        "overlapDensity": 0.11212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.0006973860259978985,
+        "scale": 1.0001178329573042,
+        "stateSeparation": 0.08715755371245493,
+        "temporalStateCount": 3
+      },
+      "sourceFrameIndex": 9,
+      "timeMs": 300.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.10967238247394562,
+        "flowCoherence": 0.9017756710409992,
+        "flowMeanPixels": 0.9060107469558716,
+        "flowP90Pixels": 2.1670687198638916,
+        "flowResidualP90Pixels": 2.1670686511195854,
+        "motionCompensatedResidualCoverage": 0.07284722222222222,
+        "motionCompensatedResidualMean": 0.04265815631808279,
+        "motionCompensatedResidualP90": 0.047058823529411764,
+        "stateSeparationNormalized": 0.07898653305191228
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0010.png",
+      "semantic": {
+        "blurStrength": 0.6406929600530971,
+        "cameraMotion": {
+          "x": 2.87675063976102e-21,
+          "y": 7.584594237947897e-22
+        },
+        "displacement": {
+          "x": 2.87675063976102e-21,
+          "y": 7.584594237947897e-22
+        },
+        "distortionStrength": 0.18596909082568758,
+        "occlusion": 0.0,
+        "overlapDensity": 0.6757575757575758,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.30492535034631285,
+        "scale": 0.9630781695030797,
+        "stateSeparation": 0.07898653305191228,
+        "temporalStateCount": 4
+      },
+      "sourceFrameIndex": 10,
+      "timeMs": 333.3333333333333
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.47058823529411764,
+        "edgeEchoStrength": 0.10506334900856018,
+        "flowCoherence": 0.899517936763763,
+        "flowMeanPixels": 0.6829153299331665,
+        "flowP90Pixels": 2.1747517585754395,
+        "flowResidualP90Pixels": 2.174751774640361,
+        "motionCompensatedResidualCoverage": 0.052222222222222225,
+        "motionCompensatedResidualMean": 0.026171772875816995,
+        "motionCompensatedResidualP90": 0.027450980392156862,
+        "stateSeparationNormalized": 0.02946103396446216
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0011.png",
+      "semantic": {
+        "blurStrength": 0.6285462605217732,
+        "cameraMotion": {
+          "x": 4.963207622665777e-10,
+          "y": -5.5019722111637745e-11
+        },
+        "displacement": {
+          "x": 4.963207622665777e-10,
+          "y": -5.5019722111637745e-11
+        },
+        "distortionStrength": 0.11901356913311857,
+        "occlusion": 0.0,
+        "overlapDensity": 1.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.11505034471988201,
+        "scale": 0.9635429943047441,
+        "stateSeparation": 0.02946103396446216,
+        "temporalStateCount": 4
+      },
+      "sourceFrameIndex": 11,
+      "timeMs": 366.6666666666667
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.5161290322580645,
+        "edgeEchoStrength": 0.1437350958585739,
+        "flowCoherence": 0.5774940981798125,
+        "flowMeanPixels": 0.6078556180000305,
+        "flowP90Pixels": 2.3098855018615723,
+        "flowResidualP90Pixels": 2.309869355050634,
+        "motionCompensatedResidualCoverage": 0.03326388888888889,
+        "motionCompensatedResidualMean": 0.014900531045751635,
+        "motionCompensatedResidualP90": 0.027450980392156862,
+        "stateSeparationNormalized": 0.049999999999999996
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0012.png",
+      "semantic": {
+        "blurStrength": 0.5553264997727749,
+        "cameraMotion": {
+          "x": 1.088439773866412e-08,
+          "y": -4.5208895850616195e-07
+        },
+        "displacement": {
+          "x": 1.088439773866412e-08,
+          "y": -4.5208895850616195e-07
+        },
+        "distortionStrength": 0.09306663728209658,
+        "occlusion": 0.0,
+        "overlapDensity": 1.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.01954471613882404,
+        "scale": 0.9763725228223078,
+        "stateSeparation": 0.049999999999999996,
+        "temporalStateCount": 5
+      },
+      "sourceFrameIndex": 12,
+      "timeMs": 400.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 1.0,
+        "affineInlierRatio": 0.7873263888888888,
+        "edgeEchoStrength": 0.12658564746379852,
+        "flowCoherence": 0.33528657578358245,
+        "flowMeanPixels": 2.0577070713043213,
+        "flowP90Pixels": 7.131509304046631,
+        "flowResidualP90Pixels": 7.13150455113116,
+        "motionCompensatedResidualCoverage": 0.10461805555555556,
+        "motionCompensatedResidualMean": 0.05426239106753813,
+        "motionCompensatedResidualP90": 0.11372549019607843,
+        "stateSeparationNormalized": 0.049101723274103594
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0013.png",
+      "semantic": {
+        "blurStrength": 0.21758138016816408,
+        "cameraMotion": {
+          "x": 1.7297119825343545e-08,
+          "y": 3.472551961072901e-24
+        },
+        "displacement": {
+          "x": 1.7297119825343545e-08,
+          "y": 3.472551961072901e-24
+        },
+        "distortionStrength": 0.34771709586464794,
+        "occlusion": 0.0,
+        "overlapDensity": 0.393939393939394,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.052042686163952946,
+        "scale": 0.9761709656584128,
+        "stateSeparation": 0.049101723274103594,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 13,
+      "timeMs": 433.3333333333333
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 1.0,
+        "affineInlierRatio": 0.7881944444444444,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.431924663184514,
+        "flowMeanPixels": 2.2953457832336426,
+        "flowP90Pixels": 8.468255043029785,
+        "flowResidualP90Pixels": 8.468199822896425,
+        "motionCompensatedResidualCoverage": 0.0798611111111111,
+        "motionCompensatedResidualMean": 0.04591789215686275,
+        "motionCompensatedResidualP90": 0.07058823529411765,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0014.png",
+      "semantic": {
+        "blurStrength": 0.029751813755623413,
+        "cameraMotion": {
+          "x": -5.321284334058874e-07,
+          "y": 9.955711746898836e-15
+        },
+        "displacement": {
+          "x": -5.321284334058874e-07,
+          "y": 9.955711746898836e-15
+        },
+        "distortionStrength": 0.2782203062987256,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.052923565589264594,
+        "scale": 0.9759248659801124,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 14,
+      "timeMs": 466.6666666666667
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 1.0,
+        "affineInlierRatio": 0.6935763888888888,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.5847094104140835,
+        "flowMeanPixels": 2.528045415878296,
+        "flowP90Pixels": 8.461215019226074,
+        "flowResidualP90Pixels": 8.460399278484912,
+        "motionCompensatedResidualCoverage": 0.14335069444444445,
+        "motionCompensatedResidualMean": 0.06514828431372549,
+        "motionCompensatedResidualP90": 0.21176470588235294,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0015.png",
+      "semantic": {
+        "blurStrength": 0.05105983020249438,
+        "cameraMotion": {
+          "x": -8.616858394816518e-06,
+          "y": -1.3599169647528066e-05
+        },
+        "displacement": {
+          "x": -8.616858394816518e-06,
+          "y": -1.3599169647528066e-05
+        },
+        "distortionStrength": 0.5219565678891757,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.07102120708260987,
+        "scale": 0.9761496260782122,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 15,
+      "timeMs": 500.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 1.0,
+        "affineInlierRatio": 0.671875,
+        "edgeEchoStrength": 0.13545769453048706,
+        "flowCoherence": 0.7788818925102609,
+        "flowMeanPixels": 3.5858161449432373,
+        "flowP90Pixels": 13.278374671936035,
+        "flowResidualP90Pixels": 13.276279318188525,
+        "motionCompensatedResidualCoverage": 0.1356423611111111,
+        "motionCompensatedResidualMean": 0.057901279956427014,
+        "motionCompensatedResidualP90": 0.1843137254901961,
+        "stateSeparationNormalized": 0.0243612768567048
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0016.png",
+      "semantic": {
+        "blurStrength": 0.7040011042381387,
+        "cameraMotion": {
+          "x": 1.3902515638619661e-05,
+          "y": 2.778257346815533e-05
+        },
+        "displacement": {
+          "x": 1.3902515638619661e-05,
+          "y": 2.778257346815533e-05
+        },
+        "distortionStrength": 0.5054830401857529,
+        "occlusion": 0.0,
+        "overlapDensity": 1.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.07110793039337625,
+        "scale": 0.9759517129496574,
+        "stateSeparation": 0.0243612768567048,
+        "temporalStateCount": 5
+      },
+      "sourceFrameIndex": 16,
+      "timeMs": 533.3333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 1.0,
+        "affineInlierRatio": 0.8246527777777778,
+        "edgeEchoStrength": 0.0,
+        "flowCoherence": 0.4053316717577935,
+        "flowMeanPixels": 1.2847089767456055,
+        "flowP90Pixels": 5.570542335510254,
+        "flowResidualP90Pixels": 5.5704879153289415,
+        "motionCompensatedResidualCoverage": 0.094375,
+        "motionCompensatedResidualMean": 0.04150394880174292,
+        "motionCompensatedResidualP90": 0.09019607843137255,
+        "stateSeparationNormalized": 0.0
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0017.png",
+      "semantic": {
+        "blurStrength": 0.04530069276201387,
+        "cameraMotion": {
+          "x": -4.4672654122992874e-20,
+          "y": -5.531616302000152e-07
+        },
+        "displacement": {
+          "x": -4.4672654122992874e-20,
+          "y": -5.531616302000152e-07
+        },
+        "distortionStrength": 0.2714005587735605,
+        "occlusion": 0.0,
+        "overlapDensity": 0.0,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.07267786703837317,
+        "scale": 0.9760079314444453,
+        "stateSeparation": 0.0,
+        "temporalStateCount": 1
+      },
+      "sourceFrameIndex": 17,
+      "timeMs": 566.6666666666666
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 1.0,
+        "affineInlierRatio": 0.8910590277777778,
+        "edgeEchoStrength": 0.08156687766313553,
+        "flowCoherence": 0.11519646104418454,
+        "flowMeanPixels": 0.6112962961196899,
+        "flowP90Pixels": 2.677793264389038,
+        "flowResidualP90Pixels": 2.6777924715418417,
+        "motionCompensatedResidualCoverage": 0.021388888888888888,
+        "motionCompensatedResidualMean": 0.011413671023965141,
+        "motionCompensatedResidualP90": 0.011764705882352941,
+        "stateSeparationNormalized": 0.1367815733681126
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0018.png",
+      "semantic": {
+        "blurStrength": 0.44019979205185866,
+        "cameraMotion": {
+          "x": 5.356190404688453e-20,
+          "y": 1.1962115170010494e-08
+        },
+        "displacement": {
+          "x": 5.356190404688453e-20,
+          "y": 1.1962115170010494e-08
+        },
+        "distortionStrength": 0.06574369630242441,
+        "occlusion": 0.0,
+        "overlapDensity": 0.9545454545454546,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": 0.0568823333176765,
+        "scale": 0.9759765689793801,
+        "stateSeparation": 0.1367815733681126,
+        "temporalStateCount": 5
+      },
+      "sourceFrameIndex": 18,
+      "timeMs": 600.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.45,
+        "edgeEchoStrength": 0.0829344317317009,
+        "flowCoherence": 0.5829108267486344,
+        "flowMeanPixels": 0.41388726234436035,
+        "flowP90Pixels": 1.478676438331604,
+        "flowResidualP90Pixels": 1.4786730135804989,
+        "motionCompensatedResidualCoverage": 0.01954861111111111,
+        "motionCompensatedResidualMean": 0.015921364379084965,
+        "motionCompensatedResidualP90": 0.0196078431372549,
+        "stateSeparationNormalized": 0.047566913668687726
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0019.png",
+      "semantic": {
+        "blurStrength": 0.6495455457397399,
+        "cameraMotion": {
+          "x": 2.5050738372556224e-09,
+          "y": 5.767820362557864e-08
+        },
+        "displacement": {
+          "x": 2.5050738372556224e-09,
+          "y": 5.767820362557864e-08
+        },
+        "distortionStrength": 0.0777445226461139,
+        "occlusion": 0.0,
+        "overlapDensity": 0.6393939393939394,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.2016906008051133,
+        "scale": 0.9695858736700942,
+        "stateSeparation": 0.047566913668687726,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 19,
+      "timeMs": 633.3333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.631578947368421,
+        "edgeEchoStrength": 0.060044266283512115,
+        "flowCoherence": 0.8910697125200533,
+        "flowMeanPixels": 0.5918977856636047,
+        "flowP90Pixels": 1.331585168838501,
+        "flowResidualP90Pixels": 1.3315854544492964,
+        "motionCompensatedResidualCoverage": 0.016197916666666666,
+        "motionCompensatedResidualMean": 0.01386499183006536,
+        "motionCompensatedResidualP90": 0.023529411764705882,
+        "stateSeparationNormalized": 0.04565708852892052
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0020.png",
+      "semantic": {
+        "blurStrength": 0.590130306031068,
+        "cameraMotion": {
+          "x": 3.679814675194848e-10,
+          "y": 3.521659992758133e-08
+        },
+        "displacement": {
+          "x": 3.679814675194848e-10,
+          "y": 3.521659992758133e-08
+        },
+        "distortionStrength": 0.07709756912232837,
+        "occlusion": 0.0,
+        "overlapDensity": 0.9636363636363636,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -1.2388215206178845,
+        "scale": 0.9573402783591862,
+        "stateSeparation": 0.04565708852892052,
+        "temporalStateCount": 5
+      },
+      "sourceFrameIndex": 20,
+      "timeMs": 666.6666666666666
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.6428571428571429,
+        "edgeEchoStrength": 0.10769809782505035,
+        "flowCoherence": 0.8828844960166228,
+        "flowMeanPixels": 0.5871990323066711,
+        "flowP90Pixels": 1.214032769203186,
+        "flowResidualP90Pixels": 1.2140287537458396,
+        "motionCompensatedResidualCoverage": 0.023680555555555555,
+        "motionCompensatedResidualMean": 0.01860498366013072,
+        "motionCompensatedResidualP90": 0.023529411764705882,
+        "stateSeparationNormalized": 0.05745595655474007
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0021.png",
+      "semantic": {
+        "blurStrength": 0.5204727765988054,
+        "cameraMotion": {
+          "x": 1.434523824173084e-08,
+          "y": 1.2999355819779298e-18
+        },
+        "displacement": {
+          "x": 1.434523824173084e-08,
+          "y": 1.2999355819779298e-18
+        },
+        "distortionStrength": 0.08751299128425205,
+        "occlusion": 0.0,
+        "overlapDensity": 0.3151515151515151,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -1.9537759786817301,
+        "scale": 0.9141025947136044,
+        "stateSeparation": 0.05745595655474007,
+        "temporalStateCount": 4
+      },
+      "sourceFrameIndex": 21,
+      "timeMs": 700.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.46153846153846156,
+        "edgeEchoStrength": 0.05961521714925766,
+        "flowCoherence": 0.8576589257238464,
+        "flowMeanPixels": 0.5947957634925842,
+        "flowP90Pixels": 1.140093445777893,
+        "flowResidualP90Pixels": 1.1400934482791536,
+        "motionCompensatedResidualCoverage": 0.03027777777777778,
+        "motionCompensatedResidualMean": 0.019182529956427014,
+        "motionCompensatedResidualP90": 0.0196078431372549,
+        "stateSeparationNormalized": 0.05745595655474007
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0022.png",
+      "semantic": {
+        "blurStrength": 0.41921980460491126,
+        "cameraMotion": {
+          "x": 2.591660741381345e-21,
+          "y": 6.840377512103609e-14
+        },
+        "displacement": {
+          "x": 2.591660741381345e-21,
+          "y": 6.840377512103609e-14
+        },
+        "distortionStrength": 0.08280477940841997,
+        "occlusion": 0.0,
+        "overlapDensity": 0.5212121212121212,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.3339404114012443,
+        "scale": 0.836600850623365,
+        "stateSeparation": 0.05745595655474007,
+        "temporalStateCount": 3
+      },
+      "sourceFrameIndex": 22,
+      "timeMs": 733.3333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.5714285714285714,
+        "edgeEchoStrength": 0.12096597254276276,
+        "flowCoherence": 0.8552311023180115,
+        "flowMeanPixels": 0.5979000329971313,
+        "flowP90Pixels": 0.687674880027771,
+        "flowResidualP90Pixels": 0.6876747934803124,
+        "motionCompensatedResidualCoverage": 0.02440972222222222,
+        "motionCompensatedResidualMean": 0.010973379629629628,
+        "motionCompensatedResidualP90": 0.0196078431372549,
+        "stateSeparationNormalized": 0.08715755371245493
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0023.png",
+      "semantic": {
+        "blurStrength": 0.2371615339813774,
+        "cameraMotion": {
+          "x": 1.1161439772422454e-09,
+          "y": -1.0748248093136706e-22
+        },
+        "displacement": {
+          "x": 1.1161439772422454e-09,
+          "y": -1.0748248093136706e-22
+        },
+        "distortionStrength": 0.059406096448529996,
+        "occlusion": 0.0,
+        "overlapDensity": 0.10303030303030303,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.35166375809917894,
+        "scale": 0.8439303731287183,
+        "stateSeparation": 0.08715755371245493,
+        "temporalStateCount": 3
+      },
+      "sourceFrameIndex": 23,
+      "timeMs": 766.6666666666666
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.16136881709098816,
+        "flowCoherence": 0.9569658377261132,
+        "flowMeanPixels": 0.5263441205024719,
+        "flowP90Pixels": 0.026713263243436813,
+        "flowResidualP90Pixels": 0.0267132631713425,
+        "motionCompensatedResidualCoverage": 0.01423611111111111,
+        "motionCompensatedResidualMean": 0.011532339324618737,
+        "motionCompensatedResidualP90": 0.01568627450980392,
+        "stateSeparationNormalized": 0.08988122726596914
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0024.png",
+      "semantic": {
+        "blurStrength": 0.00033164808554309033,
+        "cameraMotion": {
+          "x": 1.6259331101809597e-35,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 1.6259331101809597e-35,
+          "y": 0.0
+        },
+        "distortionStrength": 0.04985667331809401,
+        "occlusion": 0.0,
+        "overlapDensity": 0.09090909090909091,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.35047869562992223,
+        "scale": 0.8495141105022651,
+        "stateSeparation": 0.08988122726596914,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 24,
+      "timeMs": 800.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.16136880218982697,
+        "flowCoherence": 0.9973426140609568,
+        "flowMeanPixels": 0.42257750034332275,
+        "flowP90Pixels": 1.527992142535961e-11,
+        "flowResidualP90Pixels": 1.527992207749187e-11,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 6.127450980392157e-07,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08988122726596914
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0025.png",
+      "semantic": {
+        "blurStrength": 0.0003347364316168555,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 1.4705883601466767e-06,
+        "occlusion": 0.0,
+        "overlapDensity": 0.09090909090909091,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.3504613505341564,
+        "scale": 0.8495124192746405,
+        "stateSeparation": 0.08988122726596914,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 25,
+      "timeMs": 833.3333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.16136881709098816,
+        "flowCoherence": 0.9973427105692229,
+        "flowMeanPixels": 0.4225592017173767,
+        "flowP90Pixels": 4.133698591757273e-12,
+        "flowResidualP90Pixels": 4.1336983385908944e-12,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08988122726596914
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0026.png",
+      "semantic": {
+        "blurStrength": 0.0003347364316168555,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 3.377653452907702e-14,
+        "occlusion": 0.0,
+        "overlapDensity": 0.09090909090909091,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.35045293265145133,
+        "scale": 0.8495126599976084,
+        "stateSeparation": 0.08988122726596914,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 26,
+      "timeMs": 866.6666666666666
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.16136880218982697,
+        "flowCoherence": 0.9972571743126625,
+        "flowMeanPixels": 0.42207247018814087,
+        "flowP90Pixels": 2.3317426114943807e-11,
+        "flowResidualP90Pixels": 2.3317426904613497e-11,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 6.808278867102397e-07,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08988122726596914
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0027.png",
+      "semantic": {
+        "blurStrength": 0.00033782477769039865,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 1.6339871186317523e-06,
+        "occlusion": 0.0,
+        "overlapDensity": 0.09090909090909091,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.3504987840973492,
+        "scale": 0.8495124885883535,
+        "stateSeparation": 0.08988122726596914,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 27,
+      "timeMs": 900.0
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.16209955513477325,
+        "flowCoherence": 0.997147940945767,
+        "flowMeanPixels": 0.42181116342544556,
+        "flowP90Pixels": 2.4965791586839536e-11,
+        "flowResidualP90Pixels": 2.4965792350900484e-11,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 0.0,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08988122726596914
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0028.png",
+      "semantic": {
+        "blurStrength": 0.00033782477769039865,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 2.039960051060255e-13,
+        "occlusion": 0.0,
+        "overlapDensity": 0.09090909090909091,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.35050874944654264,
+        "scale": 0.8495118643387041,
+        "stateSeparation": 0.08988122726596914,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 28,
+      "timeMs": 933.3333333333334
+    },
+    {
+      "diagnostics": {
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 1.0,
+        "edgeEchoStrength": 0.16241270303726196,
+        "flowCoherence": 0.9967560231406042,
+        "flowMeanPixels": 0.4210388958454132,
+        "flowP90Pixels": 1.457876527832802e-11,
+        "flowResidualP90Pixels": 1.457876486349699e-11,
+        "motionCompensatedResidualCoverage": 0.0,
+        "motionCompensatedResidualMean": 1.0893246187363834e-06,
+        "motionCompensatedResidualP90": 0.0,
+        "stateSeparationNormalized": 0.08988122726596914
+      },
+      "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-compound-dual-warp-refine-live02-pass28-probe-frames\\frame-0029.png",
+      "semantic": {
+        "blurStrength": 0.0002952593122395042,
+        "cameraMotion": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "displacement": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "distortionStrength": 2.614379204090709e-06,
+        "occlusion": 0.0,
+        "overlapDensity": 0.09090909090909091,
+        "perspectiveEnergy": 0.0,
+        "rotationDegrees": -0.3505049070365211,
+        "scale": 0.849511414251662,
+        "stateSeparation": 0.08988122726596914,
+        "temporalStateCount": 2
+      },
+      "sourceFrameIndex": 29,
+      "timeMs": 966.6666666666666
+    }
+  ],
+  "range": {
+    "endFrame": 29,
+    "requestedEndSeconds": 1.0,
+    "requestedStartSeconds": 0.0,
+    "startFrame": 0
+  },
+  "schema": "editflow.dense-video-probe.v1",
+  "sourceId": "m6-compound-dual-warp-refine-live02-pass28",
+  "sourceKind": "RENDER",
+  "sourceVideoSha256": "92688dda7a816ac8af6fb57a1d273ce5d937c89d2fb220d58d701b453f993c1e",
+  "video": {
+    "fps": 30.0,
+    "frameCount": 30,
+    "height": 180,
+    "width": 320
+  }
+}

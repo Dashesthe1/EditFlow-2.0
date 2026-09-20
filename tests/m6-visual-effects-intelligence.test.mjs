@@ -2296,6 +2296,8 @@ test("M6.8 evolving compound warp adds event-local effect-property expressions w
   assert.equal(dynamicTurbulent?.parameters.effectSchemaRef,
     "ae.effect-schema.m6.turbulent-displace.v3");
   assert.equal(dynamicTurbulent?.parameters.eventDynamicDistortion, true);
+  assert.equal(dynamicTurbulent?.parameters.eventEvolutionSharpnessScale, 1,
+    "retained v3 behavior must remain linear until correction explicitly actuates sweep shape");
   assert.ok(dynamicTurbulent?.requiredInvariantIds.includes("unknown.distortion"));
   assert.ok(dynamicTurbulent?.requiredInvariantIds.includes("unknown.acceleration"));
   const evolvingRecovery = evolving.graph.nodes.find((node) =>
@@ -2378,6 +2380,8 @@ test("M6.8 evolving compound warp adds event-local effect-property expressions w
   assert.ok(dynamicExpressions.some((operation) =>
     operation.propertyPath[0] === "ADBE Turbulent Displace-0006"
     && operation.expression.includes("var base=")
+    && operation.expression.includes("var sharp=1;")
+    && operation.expression.includes("Math.pow(u,sharp)")
     && operation.expression.includes("base+(")));
 
   const plan = lowerCompiledRecipeToNativeAePlanV1(compiled, {
@@ -4168,5 +4172,484 @@ test("M6 live correction never treats the degraded seed as causal actuator evide
   assert.match(
     controller,
     /source: "real-ae-materialized-seed",[\s\S]{0,80}causalActuationState: true/,
+  );
+  assert.match(
+    controller,
+    /inheritsPhysicalParametersFromNodeId/,
+  );
+  assert.match(
+    controller,
+    /return "COMPOUND_DUAL_WARP_HYBRID";/,
+  );
+  assert.match(
+    controller,
+    /const ADVANCED_WARP_MOTION_CONTROLS = new Set\(\[/,
+  );
+  assert.doesNotMatch(
+    controller,
+    /const ADVANCED_WARP_MOTION_CONTROLS = new Set\(\[[\s\S]{0,180}"DISTORTION_STRENGTH"/,
+  );
+});
+
+test("M6.8 evolving warp can sharpen Evolution timing without increasing deformation magnitude", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 5,
+    temporalPersistence: 0.66,
+    overlapDensityPeak: 0.9,
+    scaleRange: 0.14,
+    blurPeak: 0.9,
+    distortionPeak: 0.42,
+    accelerationPeak: 0.07,
+    recoveryFrames: 4,
+  });
+  const capabilities = [
+    ...ALL_CAPABILITIES,
+    "ae.effect.echo",
+    "ae.effect.turbulent-displace",
+  ];
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: capabilities,
+  });
+  const evolving = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  assert.ok(evolving);
+  const dynamicTurbulent = evolving.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  assert.ok(dynamicTurbulent);
+
+  const actuation = applyConstructionActuationPlanV1(evolving.graph, {
+    schema: "editflow.construction-actuation-plan.v1",
+    family: "UNKNOWN",
+    comparisonKey: "fixture:reference->fixture:render",
+    instructions: [{
+      instructionId: "actuate:unknown.acceleration:motion_impulse_sharpness",
+      invariantId: "unknown.acceleration",
+      nodeId: dynamicTurbulent.nodeId,
+      metric: "accelerationPeak",
+      deficitMetric: "accelerationPeak",
+      deficitReferenceValue: 0.07,
+      deficitRenderValue: 0.052,
+      control: "MOTION_IMPULSE_SHARPNESS",
+      direction: "INCREASE",
+      referenceValue: 0.07,
+      renderValue: 0.052,
+      multiplier: 1.5,
+      normalizedError: 0.25,
+      defining: true,
+      rationale: "Concentrate the existing Evolution travel in time without increasing its total sweep or Amount.",
+    }],
+    unresolvedInvariantIds: [],
+  });
+  assert.deepEqual(actuation.unsupportedInstructionIds, []);
+  assert.deepEqual(actuation.appliedInstructionIds,
+    ["actuate:unknown.acceleration:motion_impulse_sharpness"]);
+  const sharpenedNode = actuation.graph.nodes.find((node) =>
+    node.nodeId === dynamicTurbulent.nodeId);
+  assert.equal(sharpenedNode?.parameters.eventEvolutionSharpnessScale, 1.5);
+  assert.equal(sharpenedNode?.parameters.eventEvolutionSweepScale, 1,
+    "sharpness actuation must not change total Evolution sweep distance");
+  assert.equal(sharpenedNode?.parameters.distortionStrengthScale, undefined,
+    "sharpness actuation must not silently increase Turbulent Displace Amount");
+
+  const compilation = compileConstructionGraphV1(actuation.graph, capabilities);
+  assert.notEqual(compilation.recipe, null);
+  const compiled = compileEditingIrRecipeToVirtualAeV1(
+    compilation.recipe,
+    {
+      schema: "editflow.virtual-ae.project.v1",
+      activeCompId: "comp",
+      compositions: [{
+        compId: "comp",
+        name: "Sharp evolving warp proof",
+        width: 640,
+        height: 360,
+        durationMs: 1000,
+        frameRate: 30,
+        layers: [{
+          layerId: "hero",
+          name: "Hero",
+          kind: "PRECOMP",
+          sourceRef: "source",
+          inMs: 0,
+          outMs: 1000,
+          properties: [], effects: [], masks: [],
+        }],
+      }],
+    },
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+      proofOnlyEffectSchemaRefs: [
+        "ae.effect-schema.m6.echo.v1",
+        "ae.effect-schema.m6.turbulent-displace.v2",
+        "ae.effect-schema.m6.turbulent-displace.v3",
+      ],
+    },
+  );
+  const evolutionExpression = compiled.operations.find((operation) =>
+    operation.type === "SET_EFFECT_EXPRESSION"
+    && operation.effectId.startsWith(dynamicTurbulent.nodeId)
+    && operation.propertyPath[0] === "ADBE Turbulent Displace-0006")?.expression;
+  assert.equal(typeof evolutionExpression, "string");
+  assert.match(evolutionExpression, /var sharp=1\.5;/);
+  assert.match(evolutionExpression, /Math\.pow\(u,sharp\)/);
+});
+
+
+test("M6.8 composite warp flattens fragmented states before deformation and reduces the native operation budget", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 5,
+    temporalPersistence: 0.66,
+    overlapDensityPeak: 0.9,
+    scaleRange: 0.14,
+    blurPeak: 0.9,
+    distortionPeak: 1,
+    accelerationPeak: 0.07,
+    recoveryFrames: 4,
+  });
+  const capabilities = [
+    ...ALL_CAPABILITIES,
+    "ae.effect.echo",
+    "ae.effect.turbulent-displace",
+    "ae.precompose.layers",
+  ];
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: capabilities,
+  });
+  const evolving = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  const composite = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_COMPOSITE_WARP_HYBRID");
+  const dual = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_DUAL_WARP_HYBRID");
+  assert.ok(evolving);
+  assert.ok(composite);
+  assert.ok(dual);
+  assert.deepEqual(composite.capabilityGaps, []);
+  const boundary = composite.graph.nodes.find((node) =>
+    node.parameters.causalBoundary === "COMPOSITE_WARP_INPUT");
+  const warp = composite.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID");
+  assert.ok(boundary);
+  assert.ok(warp);
+  assert.equal(boundary.parameters.groupTargets, true);
+  assert.deepEqual(warp.dependsOn, [boundary.nodeId]);
+  assert.equal(warp.parameters.effectSchemaRef, "ae.effect-schema.m6.turbulent-displace.v3");
+  assert.equal(warp.parameters.extendsSynthesisStrategy, "COMPOUND_EVOLVING_WARP_HYBRID");
+  assert.equal(warp.parameters.eventLocalEffectApplication, "IN_PLACE");
+  assert.equal(warp.parameters.eventLocalEffectRecoveryBounded, true);
+
+  const escalation = selectSynthesisEscalationCandidateV1({
+    synthesis,
+    currentStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+    requiredInvariantIds: ["unknown.distortion", "unknown.acceleration"],
+  });
+  assert.equal(escalation?.strategy, "COMPOUND_DUAL_WARP_HYBRID",
+    "after the composite topology regressed in real AE, escalation must prefer the additive dual-warp successor that preserves the retained evolving construction");
+
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "Composite warp proof",
+      width: 640,
+      height: 360,
+      durationMs: 1000,
+      frameRate: 30,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "PRECOMP",
+        sourceRef: "source",
+        inMs: 0,
+        outMs: 1000,
+        properties: [], effects: [], masks: [],
+      }],
+    }],
+  };
+  const context = {
+    compId: "comp",
+    eventTimesMs: { transition: 500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+    proofOnlyEffectSchemaRefs: [
+      "ae.effect-schema.m6.echo.v1",
+      "ae.effect-schema.m6.turbulent-displace.v2",
+      "ae.effect-schema.m6.turbulent-displace.v3",
+    ],
+  };
+  const evolvingCompilation = compileConstructionGraphV1(evolving.graph, capabilities);
+  const compositeCompilation = compileConstructionGraphV1(composite.graph, capabilities);
+  assert.notEqual(evolvingCompilation.recipe, null);
+  assert.notEqual(compositeCompilation.recipe, null);
+  const evolvingCompiled = compileEditingIrRecipeToVirtualAeV1(
+    evolvingCompilation.recipe,
+    project,
+    context,
+  );
+  const compositeCompiled = compileEditingIrRecipeToVirtualAeV1(
+    compositeCompilation.recipe,
+    project,
+    context,
+  );
+  const groupedPrecompose = compositeCompiled.operations.find((operation) =>
+    operation.type === "PRECOMPOSE"
+    && operation.newCompId.startsWith(boundary.nodeId));
+  assert.ok(groupedPrecompose);
+  assert.ok(groupedPrecompose.layerIds.length > 1,
+    "composite warp must flatten multiple fragmented states into one causal input");
+  assert.ok(compositeCompiled.operations.length < evolvingCompiled.operations.length,
+    "composite deformation must cost fewer virtual AE operations than per-state v3 deformation");
+  const directCompositeEffect = compositeCompiled.operations.find((operation) =>
+    operation.type === "ADD_EFFECT"
+    && operation.layerId === groupedPrecompose.newLayerId
+    && operation.matchName === "ADBE Turbulent Displace");
+  assert.ok(directCompositeEffect,
+    "composite warp must deform the grouped replacement itself");
+  assert.equal(compositeCompiled.operations.some((operation) =>
+    operation.type === "DUPLICATE_LAYER"
+    && operation.sourceLayerId === groupedPrecompose.newLayerId), false,
+  "in-place composite deformation must not dilute the warp with an untouched accent source");
+  const inPlaceAmountExpression = compositeCompiled.operations.find((operation) =>
+    operation.type === "SET_EFFECT_EXPRESSION"
+    && operation.layerId === groupedPrecompose.newLayerId
+    && operation.expression.includes("base*("));
+  assert.ok(inPlaceAmountExpression);
+  assert.ok(inPlaceAmountExpression.expression.includes("*active;"),
+    "in-place deformation must resolve to zero outside the bounded event window");
+
+  const native = lowerCompiledRecipeToNativeAePlanV1(compositeCompiled, {
+    planId: "m6-composite-warp-proof-plan",
+    observedState: {
+      projectId: "m6-project",
+      projectRevision: "ae-revision:composite-warp",
+      projectFingerprint: "project:sha256:composite-warp",
+      environmentFingerprint: "environment:sha256:ae-25.6.6",
+    },
+    creativeObjective: "Deform the reconstructed fragmented composite as one event-local visual system.",
+  });
+  const nativePrecomposeIndexes = native.operations
+    .map((operation, index) => operation.input.command === "layers.precompose" ? index : -1)
+    .filter((index) => index >= 0);
+  assert.equal(nativePrecomposeIndexes.length, 2);
+  const groupedNativePrecomposeIndex = native.operations.findIndex((operation) =>
+    operation.input.command === "layers.precompose"
+    && operation.input.payload.replacementStableId === groupedPrecompose.newLayerId);
+  const firstStateDuplicateIndex = native.operations.findIndex((operation) =>
+    operation.input.command === "layer.duplicate"
+    && groupedPrecompose.layerIds.includes(operation.input.payload.stableId));
+  const lastStateRemapIndex = native.operations.reduce((latest, operation, index) =>
+    operation.input.command === "property.set_expression"
+      && groupedPrecompose.layerIds.includes(operation.input.payload.layer?.stableId)
+      && Array.isArray(operation.input.payload.propertyPath)
+      && operation.input.payload.propertyPath.includes("ADBE Time Remapping")
+      ? index
+      : latest, -1);
+  const directCompositeEffectIndex = native.operations.findIndex((operation) =>
+    operation.input.command === "effect.add"
+    && operation.input.payload.layer?.stableId === groupedPrecompose.newLayerId
+    && operation.input.payload.matchName === "ADBE Turbulent Displace");
+  const compositeAccentDuplicateIndex = native.operations.findIndex((operation) =>
+    operation.input.command === "layer.duplicate"
+    && operation.input.payload.layer?.stableId === groupedPrecompose.newLayerId);
+  assert.ok(nativePrecomposeIndexes[0] < firstStateDuplicateIndex);
+  assert.ok(firstStateDuplicateIndex < lastStateRemapIndex);
+  assert.ok(lastStateRemapIndex < groupedNativePrecomposeIndex,
+    "all temporal state remap behavior must exist before those states are grouped");
+  assert.equal(compositeAccentDuplicateIndex, -1);
+  assert.ok(groupedNativePrecomposeIndex < directCompositeEffectIndex,
+    "in-place composite warp must execute only after the grouped replacement layer exists");
+  assert.ok(native.operations.length <= 96);
+
+  const retainedDualWarp = dual.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  const dualAugment = dual.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID");
+  assert.ok(retainedDualWarp);
+  assert.ok(dualAugment);
+  assert.deepEqual(dualAugment.dependsOn, [retainedDualWarp.nodeId],
+    "dual warp must preserve the proven per-state v3 stage and add deformation after it");
+  assert.equal(dualAugment.parameters.extendsSynthesisStrategy,
+    "COMPOUND_EVOLVING_WARP_HYBRID");
+  assert.equal(dualAugment.parameters.inheritsPhysicalParametersFromNodeId,
+    retainedDualWarp.nodeId);
+  assert.equal(dualAugment.parameters.eventLocalEffectApplication, "IN_PLACE");
+  assert.equal(dualAugment.parameters.eventLocalEffectTargetScope, "PRIMARY");
+  assert.equal(dualAugment.parameters.eventLocalEffectRecoveryBounded, true);
+  assert.ok(dualAugment.requiredInvariantIds.every((invariantId) =>
+    invariantId.includes("acceleration")),
+  "the additive macro stage must own motion acceleration rather than stealing distortion correction from the retained per-state warp");
+  assert.equal(
+    dual.graph.invariantCoverage["unknown.distortion"]?.[0],
+    retainedDualWarp.nodeId,
+    "distortion correction must remain causally owned by the proven per-state warp",
+  );
+  assert.equal(
+    dual.graph.invariantCoverage["unknown.acceleration"]?.[0],
+    dualAugment.nodeId,
+    "acceleration correction must route to the additive macro warp",
+  );
+  const dualActuation = applyConstructionActuationPlanV1(dual.graph, {
+    schema: "editflow.construction-actuation-plan.v1",
+    family: "UNKNOWN",
+    comparisonKey: "fixture:dual-reference->fixture:dual-render",
+    instructions: [{
+      instructionId: "actuate:unknown.acceleration:dual-sharpness",
+      invariantId: "unknown.acceleration",
+      nodeId: dualAugment.nodeId,
+      metric: "accelerationPeak",
+      deficitMetric: "accelerationPeak",
+      deficitReferenceValue: 0.07,
+      deficitRenderValue: 0.03,
+      control: "MOTION_IMPULSE_SHARPNESS",
+      direction: "INCREASE",
+      referenceValue: 0.07,
+      renderValue: 0.03,
+      multiplier: 1.25,
+      normalizedError: 0.4,
+      defining: true,
+      rationale: "Sharpen only the additive macro deformation stage.",
+    }],
+    unresolvedInvariantIds: [],
+  });
+  assert.deepEqual(dualActuation.unsupportedInstructionIds, []);
+  assert.equal(
+    dualActuation.graph.nodes.find((node) => node.nodeId === dualAugment.nodeId)
+      ?.parameters.eventEvolutionSharpnessScale,
+    1.25,
+  );
+
+  const dualCompilation = compileConstructionGraphV1(dual.graph, capabilities);
+  assert.notEqual(dualCompilation.recipe, null);
+  const dualCompiled = compileEditingIrRecipeToVirtualAeV1(
+    dualCompilation.recipe,
+    project,
+    context,
+  );
+  const dualAugmentEffects = dualCompiled.operations.filter((operation) =>
+    operation.type === "ADD_EFFECT"
+    && operation.effectId.startsWith(dualAugment.nodeId)
+    && operation.matchName === "ADBE Turbulent Displace");
+  assert.equal(dualAugmentEffects.length, 1,
+    "PRIMARY in-place augmentation must add exactly one macro Turbulent Displace");
+  const dualNative = lowerCompiledRecipeToNativeAePlanV1(dualCompiled, {
+    planId: "m6-dual-warp-proof-plan",
+    observedState: {
+      projectId: "m6-project",
+      projectRevision: "ae-revision:dual-warp",
+      projectFingerprint: "project:sha256:dual-warp",
+      environmentFingerprint: "environment:sha256:ae-25.6.6",
+    },
+    creativeObjective: "Preserve per-state deformation and add one bounded macro warp.",
+  });
+  assert.ok(dualNative.operations.length <= 96,
+    "dual warp must remain inside the bounded live-correction transaction ceiling");
+});
+
+
+test("M6.8 unmaterialized native hybrids fail closed while materialized Turbulent Displace stays proof-gated", () => {
+  const time = synthesizeUnknownEffectV1({
+    evidence: evidence({ temporalStateCountPeak: 3, temporalPersistence: 0.55 }),
+    availableCapabilities: ["ae.effect.time-displacement"],
+  });
+  assert.equal(time.status, "CAPABILITY_GAP");
+  assert.equal(time.selected, null);
+  const timeCandidate = time.candidates.find((item) => item.strategy === "TIME_DISPLACEMENT_HYBRID");
+  assert.deepEqual(timeCandidate?.capabilityGaps, [
+    "PROOF_REQUIRED_NATIVE_EFFECT_SCHEMA:ae.effect.time-displacement",
+  ]);
+
+  const turbulent = synthesizeUnknownEffectV1({
+    evidence: evidence({ distortionPeak: 0.4 }),
+    availableCapabilities: ["ae.effect.turbulent-displace"],
+  });
+  assert.equal(turbulent.status, "READY_FOR_PROOF");
+  assert.equal(turbulent.selected?.strategy, "TURBULENT_DISPLACE_HYBRID");
+  const turbulentCandidate = turbulent.candidates.find((item) => item.strategy === "TURBULENT_DISPLACE_HYBRID");
+  assert.deepEqual(turbulentCandidate?.capabilityGaps, []);
+  const compilation = compileConstructionGraphV1(
+    turbulent.selected.graph,
+    ["ae.effect.turbulent-displace"],
+  );
+  assert.notEqual(compilation.recipe, null);
+  const turbulentNode = compilation.recipe.nodes.find((node) =>
+    node.parameters.some((parameter) =>
+      parameter.name === "synthesisStrategy"
+      && parameter.value === "TURBULENT_DISPLACE_HYBRID"));
+  assert.equal(turbulentNode?.kind, "EFFECT_STACK");
+  assert.equal(
+    turbulentNode?.parameters.find((parameter) => parameter.name === "effectSchemaRef")?.value,
+    "ae.effect-schema.m6.turbulent-displace.v2",
+  );
+  assert.equal(
+    turbulentNode?.parameters.find((parameter) => parameter.name === "eventLocalEffect")?.value,
+    true,
+  );
+  const normalSupport = inspectRecipeCompilerSupportV1(compilation.recipe);
+  assert.ok(normalSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+  const proofSupport = inspectRecipeCompilerSupportV1(compilation.recipe, {
+    proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.turbulent-displace.v2"],
+  });
+  assert.ok(!proofSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+});
+
+
+test("M6 live correction maps advanced-warp acceleration to consumed actuators and preserves tuning across escalation", () => {
+  const controller = readFileSync(
+    new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    controller,
+    /control === "MOTION_IMPULSE"\) return "eventEvolutionSweepScale"/,
+  );
+  assert.match(
+    controller,
+    /control === "MOTION_IMPULSE_SHARPNESS"\) return "eventEvolutionSharpnessScale"/,
+  );
+  assert.match(
+    controller,
+    /"distortionEvolutionScale",\s*"eventEvolutionSweepScale",\s*"eventEvolutionSharpnessScale",/,
+  );
+  assert.doesNotMatch(
+    controller,
+    /COMPOUND_EVOLVING_WARP_HYBRID"[\s\S]{0,700}control === "MOTION_IMPULSE"\) return "motionImpulseScale"/,
+  );
+  assert.match(
+    controller,
+    /const targetNode = controlTargetNode\(nextGraph, control, instruction\.nodeId\);/,
+  );
+  assert.match(
+    controller,
+    /node\.nodeId === targetNode\.nodeId/,
+  );
+  assert.match(
+    controller,
+    /candidate\.parameters\.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID"/,
+  );
+  assert.match(
+    controller,
+    /candidate\.parameters\.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"/,
+  );
+  assert.match(
+    controller,
+    /inheritsPhysicalParametersFromNodeId/,
+  );
+  assert.match(
+    controller,
+    /return "COMPOUND_DUAL_WARP_HYBRID";/,
+  );
+  assert.match(
+    controller,
+    /const ADVANCED_WARP_MOTION_CONTROLS = new Set\(\[/,
+  );
+  assert.doesNotMatch(
+    controller,
+    /const ADVANCED_WARP_MOTION_CONTROLS = new Set\(\[[\s\S]{0,180}"DISTORTION_STRENGTH"/,
   );
 });

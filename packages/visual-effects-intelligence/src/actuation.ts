@@ -223,17 +223,22 @@ const physicalParameterForControl = (
     if (control === "TEMPORAL_PERSISTENCE") return "timeDisplacementStrengthScale";
   }
   if (node.parameters["synthesisStrategy"] === "TURBULENT_DISPLACE_HYBRID"
-    || node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID") {
+    || node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID"
+    || node.parameters["synthesisStrategy"] === "COMPOUND_COMPOSITE_WARP_HYBRID"
+    || node.parameters["synthesisStrategy"] === "COMPOUND_DUAL_WARP_HYBRID") {
     if (control === "DISTORTION_SIZE") return "distortionSizeScale";
     if (control === "DISTORTION_COMPLEXITY") return "distortionComplexityScale";
     if (control === "DISTORTION_EVOLUTION") return "distortionEvolutionScale";
-    if (node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID") {
+    if (node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID"
+      || node.parameters["synthesisStrategy"] === "COMPOUND_COMPOSITE_WARP_HYBRID"
+      || node.parameters["synthesisStrategy"] === "COMPOUND_DUAL_WARP_HYBRID") {
       // Acceleration on the evolving-warp node is produced by the temporal
       // deformation sweep itself. Route the primary acceleration actuator to a
       // compiler-consumed parameter; do not report generic motion knobs as
       // applied when this EFFECT_STACK cannot consume them.
       if (control === "MOTION_IMPULSE") return "eventEvolutionSweepScale";
-      if (control === "MOTION_IMPULSE_SHARPNESS" || control === "MOTION_IMPULSE_PHASE") return undefined;
+      if (control === "MOTION_IMPULSE_SHARPNESS") return "eventEvolutionSharpnessScale";
+      if (control === "MOTION_IMPULSE_PHASE") return undefined;
     }
   }
   return PHYSICAL_SCALE_PARAMETER_BY_CONTROL[control];
@@ -258,6 +263,7 @@ const PHYSICAL_SCALE_LIMITS: Readonly<Record<string, readonly [number, number]>>
   distortionEvolutionScale: [0.25, 4],
   eventEvolutionSweepScale: [0.25, 4],
   timeDisplacementStrengthScale: [0.25, 4],
+  eventEvolutionSharpnessScale: [0.5, 2],
   chromaticSeparationScale: [0.25, 4],
   scalePulseScale: [0.25, 4],
   numberOfEchoes: [1, 12],

@@ -768,6 +768,22 @@ const compileEffectStack = (
   if (values.size !== schema.propertyBindings.length) return [];
 
   const eventLocalEffect = literalParameterValueV1(node, "eventLocalEffect") === true;
+  const eventLocalEffectApplication = literalParameterValueV1(node, "eventLocalEffectApplication");
+  if (eventLocalEffectApplication !== undefined
+    && eventLocalEffectApplication !== "IN_PLACE"
+    && eventLocalEffectApplication !== "ACCENT_DUPLICATE") {
+    addIssue(issues, node.nodeId, "M6_EVENT_EFFECT_APPLICATION_UNSUPPORTED",
+      "Event-local effect application must be IN_PLACE or ACCENT_DUPLICATE when explicitly provided.");
+    return [];
+  }
+  const eventLocalEffectTargetScope = literalParameterValueV1(node, "eventLocalEffectTargetScope");
+  if (eventLocalEffectTargetScope !== undefined
+    && eventLocalEffectTargetScope !== "ALL"
+    && eventLocalEffectTargetScope !== "PRIMARY") {
+    addIssue(issues, node.nodeId, "M6_EVENT_EFFECT_TARGET_SCOPE_UNSUPPORTED",
+      "Event-local effect target scope must be ALL or PRIMARY when explicitly provided.");
+    return [];
+  }
   const dynamicTimeDisplacement = schema.schemaId === "ae.effect-schema.m6.time-displacement.v1"
     && literalParameterValueV1(node, "eventDynamicTimeDisplacement") === true;
   const requiresEventParameters = eventLocalEffect || dynamicTimeDisplacement;
@@ -795,6 +811,20 @@ const compileEffectStack = (
   const dynamicTurbulentV3 = schema.schemaId === "ae.effect-schema.m6.turbulent-displace.v3"
     && eventLocalEffect
     && eventParameters?.["eventDynamicDistortion"] === true;
+  const provenDynamicEventGate = dynamicDirectionalBlur || dynamicTurbulentV3;
+  const eventLocalInPlace = eventLocalEffect
+    && (eventLocalEffectApplication === "IN_PLACE"
+      || (eventLocalEffectApplication === undefined && provenDynamicEventGate));
+  if (eventLocalEffectApplication === "IN_PLACE" && !provenDynamicEventGate) {
+    addIssue(issues, node.nodeId, "M6_IN_PLACE_EVENT_EFFECT_REQUIRES_DYNAMIC_GATE",
+      "In-place event effects require a proven dynamic property gate so the source remains unchanged outside the event window.");
+    return [];
+  }
+  if (eventLocalEffectTargetScope !== undefined && !eventLocalInPlace) {
+    addIssue(issues, node.nodeId, "M6_EVENT_EFFECT_TARGET_SCOPE_REQUIRES_IN_PLACE",
+      "Event-local effect target scope is supported only for dynamically gated in-place effects.");
+    return [];
+  }
   const dynamicBlurEventSeconds = dynamicDirectionalBlur
     ? (() => {
         const baseEventSeconds = resolveM6EffectEventSeconds(node, context, issues);
@@ -807,15 +837,16 @@ const compileEffectStack = (
             );
       })()
     : null;
-  // Dynamic Directional Blur already resolves to zero outside its measured
-  // optical envelope. Apply it directly to the retained construction so an
-  // optical timing correction cannot manufacture a second visible image state
-  // that changes persistence, overlap, or downstream distortion. Static
-  // event-local effects still use bounded duplicate isolation.
-  const effectTargets = dynamicDirectionalBlur || dynamicTurbulentV3
-    ? targets
-    : eventLocalEffect
-      ? m6EventEffectTargetsV1(
+  // Proven dynamic effects already resolve to neutral values outside their
+  // measured envelope. Keep them on the retained construction unless a strategy
+  // explicitly requests an accent duplicate. Static event-local effects continue
+  // to use bounded duplicate isolation.
+  const effectTargets = eventLocalEffect
+    ? eventLocalInPlace
+      ? eventLocalEffectTargetScope === "PRIMARY"
+        ? targets.slice(0, 1)
+        : targets
+      : m6EventEffectTargetsV1(
           node,
           targets,
           context,
@@ -825,7 +856,7 @@ const compileEffectStack = (
           frameRate,
           "effect-stack",
         )
-      : targets;
+    : targets;
   let dynamicAmountExpression: string | null = null;
   let dynamicEvolutionExpression: string | null = null;
   let dynamicTimeDisplacementExpression: string | null = null;
@@ -891,16 +922,19 @@ const compileEffectStack = (
     const pulseScale = eventParameters?.["eventAmountPulseScale"];
     const evolutionSweep = eventParameters?.["eventEvolutionSweepDegrees"];
     const evolutionSweepScale = eventParameters?.["eventEvolutionSweepScale"] ?? 1;
+    const evolutionSharpnessScale = eventParameters?.["eventEvolutionSharpnessScale"] ?? 1;
     const amountBase = values.get("distortionAmount");
     const evolutionBase = values.get("distortionEvolution");
     if (eventSeconds === null
       || typeof pulseScale !== "number" || !Number.isFinite(pulseScale) || pulseScale < 1
       || typeof evolutionSweep !== "number" || !Number.isFinite(evolutionSweep) || evolutionSweep <= 0
       || typeof evolutionSweepScale !== "number" || !Number.isFinite(evolutionSweepScale) || evolutionSweepScale <= 0
+      || typeof evolutionSharpnessScale !== "number" || !Number.isFinite(evolutionSharpnessScale)
+      || evolutionSharpnessScale < 0.5 || evolutionSharpnessScale > 2
       || typeof amountBase !== "number" || !Number.isFinite(amountBase)
       || typeof evolutionBase !== "number" || !Number.isFinite(evolutionBase)) {
       addIssue(issues, node.nodeId, "M6_DYNAMIC_TURBULENT_PARAMETERS_INVALID",
-        "Dynamic Turbulent Displace requires finite adapted Amount/Evolution bases, eventAmountPulseScale >= 1, and positive eventEvolutionSweepDegrees/eventEvolutionSweepScale values.");
+        "Dynamic Turbulent Displace requires finite adapted Amount/Evolution bases, eventAmountPulseScale >= 1, positive eventEvolutionSweepDegrees/eventEvolutionSweepScale values, and eventEvolutionSharpnessScale in [0.5, 2].");
       return [];
     }
     const recoveryWindowFrames = resolveM6RecoveryWindowFrames(eventParameters ?? {}, frameRate);
@@ -908,9 +942,13 @@ const compileEffectStack = (
     const preFrames = persistenceWindowFrames === null
       ? Math.max(2, Math.min(6, recoveryWindowFrames))
       : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
-    const postFrames = persistenceWindowFrames === null
-      ? 1
-      : Math.max(1, persistenceWindowFrames - preFrames);
+    const recoveryBounded = eventLocalInPlace
+      && eventParameters?.["eventLocalEffectRecoveryBounded"] === true;
+    const postFrames = recoveryBounded
+      ? Math.max(1, recoveryWindowFrames)
+      : persistenceWindowFrames === null
+        ? 1
+        : Math.max(1, persistenceWindowFrames - preFrames);
     const eventEnvelope = [
       `var event=${eventSeconds};`,
       "var f=(time-event)/thisComp.frameDuration;",
@@ -924,16 +962,20 @@ const compileEffectStack = (
       eventEnvelope,
       `var base=${amountBase};`,
       "var envelope=Math.sin(Math.PI*u)*active;",
-      // v3 is a true event-local actuator on the retained layer: Amount is zero
-      // outside the event and rises to the requested reference-adapted peak.
-      // This avoids manufacturing a duplicated visible image state merely to
-      // localize the warp.
-      `base*${pulseScale}*envelope;`,
+      // Preserve the retained v3 pulse profile for existing constructions. New
+      // explicit IN_PLACE compound strategies keep the adapted base deformation
+      // active throughout the bounded event and pulse above it without leaking
+      // outside the event window.
+      eventLocalEffectApplication === "IN_PLACE"
+        ? `base*(1+(${pulseScale}-1)*envelope)*active;`
+        : `base*${pulseScale}*envelope;`,
     ].join("");
     dynamicEvolutionExpression = [
       eventEnvelope,
       `var base=${evolutionBase};`,
-      `base+(${evolutionSweep * evolutionSweepScale})*u*active;`,
+      `var sharp=${evolutionSharpnessScale};`,
+      "var shapedU=Math.pow(u,sharp);",
+      `base+(${evolutionSweep * evolutionSweepScale})*shapedU*active;`,
     ].join("");
   }
 
@@ -981,7 +1023,9 @@ const compileEffectStack = (
     }
   }
   return eventLocalEffect
-    ? uniqueStrings([...targets, ...effectTargets])
+    ? eventLocalInPlace
+      ? targets
+      : uniqueStrings([...targets, ...effectTargets])
     : targets;
 };
 
@@ -1377,6 +1421,7 @@ const compileM6TemporalDuplication = (
           "else{linear(f,0,post,peak*0.4,0)}",
         ].join(""),
       });
+      windows.set(layerId, { ...sourceWindow });
       outputs.push(layerId);
     }
   }
