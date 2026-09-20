@@ -1,0 +1,226 @@
+{
+  "schema": "editflow.m6.dense-fragmentation-consolidation-proof.v1",
+  "createdAt": "2026-09-20T20:21:19.023Z",
+  "branch": "m6-consolidation-1307-v1",
+  "baseCommit": "87efa1bf5018f4acbe52b8501fa3af848cbf4043",
+  "probeAlgorithmId": "editflow.m6.dense-video-probe.v16",
+  "analyzerConsistency": {
+    "reference": "bec648b5ffc2bf283508ef9f0373a07da7ff09a54c3f850dce21d5ee4dfd8342",
+    "control": "bec648b5ffc2bf283508ef9f0373a07da7ff09a54c3f850dce21d5ee4dfd8342",
+    "transfer": "bec648b5ffc2bf283508ef9f0373a07da7ff09a54c3f850dce21d5ee4dfd8342",
+    "allEqual": true
+  },
+  "reference": {
+    "sourceId": "m6-persistence-v2-ref-v11",
+    "sourceKind": "REFERENCE",
+    "sourceVideoSha256": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+    "probeAlgorithmId": "editflow.m6.dense-video-probe.v16",
+    "probeAnalyzerFingerprint": "bec648b5ffc2bf283508ef9f0373a07da7ff09a54c3f850dce21d5ee4dfd8342",
+    "measurementAnalyzerFingerprint": "790298ee1eb2c8a3414e8dcf6c2a3a3c73b6446bb737df41122692b4f1b806f6",
+    "summary": {
+      "frameCount": 43,
+      "temporalStateCountPeak": 2,
+      "overlapDensityPeak": 0.02562814070351759,
+      "stateSeparationPeak": 0.021695137988629595,
+      "fragmentationCoherencePeak": 0.12814070351758794,
+      "fragmentationTemporalStateCountPeak": 2,
+      "fragmentationOverlapDensityPeak": 0.02562814070351759,
+      "fragmentationStateSeparationPeak": 0.021695137988629595,
+      "recoveryFrames": 6
+    }
+  },
+  "degradedControl": {
+    "sourceId": "m6-shutter-transfer-16x9-control-v14",
+    "sourceKind": "RENDER",
+    "sourceVideoSha256": "2ac1e19fbd0bdd38c69a749883907caccb41d3b127051a185e319bdbab4e6138",
+    "probeAlgorithmId": "editflow.m6.dense-video-probe.v16",
+    "probeAnalyzerFingerprint": "bec648b5ffc2bf283508ef9f0373a07da7ff09a54c3f850dce21d5ee4dfd8342",
+    "measurementAnalyzerFingerprint": "790298ee1eb2c8a3414e8dcf6c2a3a3c73b6446bb737df41122692b4f1b806f6",
+    "summary": {
+      "frameCount": 43,
+      "temporalStateCountPeak": 1,
+      "overlapDensityPeak": 0,
+      "stateSeparationPeak": 0,
+      "fragmentationCoherencePeak": 0,
+      "fragmentationTemporalStateCountPeak": 0,
+      "fragmentationOverlapDensityPeak": 0,
+      "fragmentationStateSeparationPeak": 0,
+      "recoveryFrames": 13
+    },
+    "comparison": {
+      "passed": false,
+      "definingCoverage": 0.14285714285714285,
+      "weightedFidelity": 0.3720380496162794,
+      "failedMetrics": [
+        {
+          "invariantId": "shutter.states",
+          "defining": true,
+          "metric": "temporalStateCountPeak",
+          "referenceValue": 2,
+          "renderValue": 0,
+          "normalizedError": 1,
+          "diagnosis": "temporalStateCountPeak is under-driven: reference 2.000, render 0.000. Multiple simultaneously readable temporal image states define shutter fragmentation."
+        },
+        {
+          "invariantId": "shutter.coordination",
+          "defining": true,
+          "metric": "fragmentationCoherencePeak",
+          "referenceValue": 0.12814070351758794,
+          "renderValue": 0,
+          "normalizedError": 0.643921568627451,
+          "diagnosis": "fragmentationCoherencePeak is under-driven: reference 0.128, render 0.000. Temporal states, overlap, and spatial separation must occur as one bounded high-frequency event rather than unrelated peaks in the same window."
+        },
+        {
+          "invariantId": "shutter.event-locality",
+          "defining": true,
+          "metric": "fragmentationEventLocalization",
+          "referenceValue": 1,
+          "renderValue": 0,
+          "normalizedError": 0.95,
+          "diagnosis": "fragmentationEventLocalization is under-driven: reference 1.000, render 0.000. The coordinated fragmentation tuple must be materially concentrated around the transition event rather than persist as source texture throughout the window."
+        },
+        {
+          "invariantId": "shutter.overlap",
+          "defining": true,
+          "metric": "overlapDensityPeak",
+          "referenceValue": 0.02562814070351759,
+          "renderValue": 0,
+          "normalizedError": 0.6098039215686275,
+          "diagnosis": "overlapDensityPeak is under-driven: reference 0.026, render 0.000. Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."
+        },
+        {
+          "invariantId": "shutter.displacement",
+          "defining": true,
+          "metric": "fragmentationStateSeparationPeak",
+          "referenceValue": 0.021695137988629595,
+          "renderValue": 0,
+          "normalizedError": 0.5695336161207871,
+          "diagnosis": "fragmentationStateSeparationPeak is under-driven: reference 0.022, render 0.000. States require visible within-frame spatial separation during the coordinated fragmentation event before convergence; unrelated source-texture echoes or camera/content motion cannot substitute."
+        },
+        {
+          "invariantId": "shutter.recovery",
+          "defining": true,
+          "metric": "recoveryFrames",
+          "referenceValue": 6,
+          "renderValue": 12.96669026839469,
+          "normalizedError": 0.9944483780657816,
+          "diagnosis": "recoveryFrames is over-driven: reference 6.000, render 12.967. The transition must resolve quickly after the cut."
+        }
+      ]
+    }
+  },
+  "correctedTransfer": {
+    "sourceId": "m6-shutter-transfer-16x9-corrected03-v14",
+    "sourceKind": "RENDER",
+    "sourceVideoSha256": "19b1550e20d61a910e6e2c6f044cd01a127e8da27a0b91cfa415e11a011fdc8c",
+    "probeAlgorithmId": "editflow.m6.dense-video-probe.v16",
+    "probeAnalyzerFingerprint": "bec648b5ffc2bf283508ef9f0373a07da7ff09a54c3f850dce21d5ee4dfd8342",
+    "measurementAnalyzerFingerprint": "790298ee1eb2c8a3414e8dcf6c2a3a3c73b6446bb737df41122692b4f1b806f6",
+    "summary": {
+      "frameCount": 43,
+      "temporalStateCountPeak": 5,
+      "overlapDensityPeak": 0.7271268057784912,
+      "stateSeparationPeak": 0.08143279274805704,
+      "fragmentationCoherencePeak": 1,
+      "fragmentationTemporalStateCountPeak": 3,
+      "fragmentationOverlapDensityPeak": 0.20947030497592295,
+      "fragmentationStateSeparationPeak": 0.06522725628569367,
+      "recoveryFrames": 1
+    },
+    "comparison": {
+      "passed": false,
+      "definingCoverage": 0.8571428571428571,
+      "weightedFidelity": 0.8736085099519669,
+      "failedMetrics": [
+        {
+          "invariantId": "shutter.displacement",
+          "defining": true,
+          "metric": "fragmentationStateSeparationPeak",
+          "referenceValue": 0.021695137988629595,
+          "renderValue": 0.06522725628569367,
+          "normalizedError": 1,
+          "diagnosis": "fragmentationStateSeparationPeak is over-driven: reference 0.022, render 0.065. States require visible within-frame spatial separation during the coordinated fragmentation event before convergence; unrelated source-texture echoes or camera/content motion cannot substitute."
+        },
+        {
+          "invariantId": "shutter.exposure",
+          "defining": false,
+          "metric": "exposurePeak",
+          "referenceValue": 0.4851657315279981,
+          "renderValue": 0.37221456504414036,
+          "normalizedError": 0.06791734111162415,
+          "diagnosis": "exposurePeak is under-driven: reference 0.485, render 0.372. An exposure accent is optional decoration rather than defining behavior."
+        }
+      ]
+    },
+    "correctionPlan": {
+      "unresolvedInvariantIds": [],
+      "instructions": [
+        {
+          "invariantId": "shutter.displacement",
+          "control": "SPATIAL_SEPARATION",
+          "direction": "DECREASE",
+          "multiplier": 0.5767221784546003,
+          "metric": "fragmentationStateSeparationPeak"
+        },
+        {
+          "invariantId": "shutter.displacement",
+          "control": "DUPLICATE_SPREAD",
+          "direction": "DECREASE",
+          "multiplier": 0.5767221784546003,
+          "metric": "fragmentationStateSeparationPeak"
+        },
+        {
+          "invariantId": "shutter.exposure",
+          "control": "EXPOSURE_STRENGTH",
+          "direction": "INCREASE",
+          "multiplier": 1.141690473642838,
+          "metric": "exposurePeak"
+        }
+      ]
+    }
+  },
+  "assertions": {
+    "professionalReferenceFragmentationDetected": true,
+    "degradedControlFragmentationRejected": true,
+    "correctedTransferFragmentationDetected": true,
+    "degradedControlComparatorRejected": true,
+    "correctedTransferNotOvercertified": true,
+    "correctedTransferFailureIsDefiningSeparation": true,
+    "correctionTargetsPhysicalDuplicateSpread": true
+  },
+  "liveAe": {
+    "warmHealth": {
+      "proofId": "m6.1307.warm-health",
+      "classification": "PASS",
+      "ok": true,
+      "message": "Warm AE session is healthy and remained on the same process without mutation or shutdown.",
+      "lifecycle": "REUSE_AE",
+      "mutationStarted": false,
+      "cleanupComplete": true,
+      "aePid": 7452,
+      "stablePid": true,
+      "startedAt": "2026-09-20T20:18:48.6205575Z",
+      "completedAt": "2026-09-20T20:18:50.7258509Z"
+    },
+    "controlServiceRepoRoot": "C:\\Users\\Shadow\\EditFlow-2.0",
+    "executionMode": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
+    "hostRevision": 33504,
+    "mutationLeaseHeld": false,
+    "environment": {
+      "hostName": "Adobe After Effects",
+      "hostVersion": "25.6.6x4",
+      "hostBuild": "4",
+      "os": "Windows/64 10.0  ",
+      "projectOpen": true
+    },
+    "project": {
+      "filePath": null,
+      "itemCount": 330,
+      "projectFingerprint": "project:sha256:b91f04bb97d920602753d78f1fb4cdf41c69738b1f327a2bb0bad5732cf8fe3c"
+    }
+  },
+  "notes": [
+    "Retained v11/v14 frame windows were remeasured with the isolated v16 analyzer; newer concurrently generated v16 probes were not used as inputs.",
+    "Live AE evidence is read-only: warm health and /state observation; no mutation lease was acquired and no project write was issued."
+  ]
+}

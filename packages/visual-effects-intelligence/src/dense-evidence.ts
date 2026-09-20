@@ -354,6 +354,25 @@ export const measureFragmentationCoherenceV1 = (
   };
 };
 
+const fragmentationProminenceMinimumsV1 = (
+  evidence: DenseEffectEvidenceV1,
+): Readonly<{ near: number; delta: number }> => {
+  const probeAlgorithm = evidence.evidenceRefs.find((ref) =>
+    ref.startsWith("probe-algorithm:editflow.m6.dense-video-probe.v"));
+  const versionMatch = probeAlgorithm?.match(/dense-video-probe\.v(\d+)$/);
+  const version = versionMatch === null || versionMatch === undefined
+    ? null
+    : Number(versionMatch[1]);
+  // Probe v10 introduced temporal-baseline subtraction. The retained
+  // professional shutter reference remains cleanly event-local (far mean 0)
+  // but its normalized near-event tuple scale is ~0.01165 instead of the
+  // pre-v10 ~0.02+ scale. Keep locality causal by requiring positive near/far
+  // separation, while calibrating the absolute floor to the analyzer version.
+  return version !== null && Number.isFinite(version) && version >= 10
+    ? { near: 0.01, delta: 0.0075 }
+    : { near: 0.02, delta: 0.015 };
+};
+
 /**
  * Measures whether a modern real-pixel fragmentation tuple is actually local
  * to the selected effect event. Repeated source texture can make the
@@ -408,12 +427,13 @@ export const measureFragmentationEventProminenceV1 = (
   const nearMean = mean(near);
   const farMean = mean(far);
   const delta = nearMean - farMean;
+  const minimums = fragmentationProminenceMinimumsV1(evidence);
   return {
     applicable: true,
     nearMean,
     farMean,
     delta,
-    localized: nearMean >= 0.02 && delta >= 0.015,
+    localized: nearMean >= minimums.near && delta >= minimums.delta,
   };
 };
 
@@ -428,8 +448,9 @@ export const scoreFragmentationEventLocalizationV1 = (
 ): number => {
   const prominence = measureFragmentationEventProminenceV1(evidence, eventPhase);
   if (!prominence.applicable) return 1;
-  const nearScore = clamp01(prominence.nearMean / 0.02);
-  const deltaScore = clamp01(prominence.delta / 0.015);
+  const minimums = fragmentationProminenceMinimumsV1(evidence);
+  const nearScore = clamp01(prominence.nearMean / minimums.near);
+  const deltaScore = clamp01(prominence.delta / minimums.delta);
   return Math.min(nearScore, deltaScore);
 };
 

@@ -598,6 +598,51 @@ test("M6.1/M6.3 rejects persistent autocorrelation as non-local shutter evidence
   ));
 });
 
+test("M6.3 calibrates v10+ baseline-subtracted shutter scale without weakening locality", () => {
+  const interval = 1000 / 60;
+  const frames = Array.from({ length: 43 }, (_, index) => ({
+    ...frameDefaults,
+    timeMs: index * interval,
+    temporalStateCount: [15, 16].includes(index) ? 2 : 1,
+    overlapDensity: [15, 16].includes(index) ? 0.026 : 0,
+    stateSeparation: [15, 16].includes(index) ? 0.022 : 0,
+    displacementMagnitude: index === 16 ? 0.019 : 0.002,
+    motionEnergy: index === 16 ? 0.09 : 0.01,
+  }));
+  const summary = {
+    ...summarizeDenseEffectFramesV1(frames, interval, 0.25),
+    fragmentationCoherencePeak: 0.128,
+    fragmentationCoherencePhase: 15 / 42,
+    fragmentationTemporalStateCountPeak: 2,
+    fragmentationOverlapDensityPeak: 0.0256,
+    fragmentationStateSeparationPeak: 0.0217,
+    accelerationPeak: 0.07,
+    recoveryFrames: 6,
+  };
+  const currentScale = {
+    schema: "editflow.dense-effect-evidence.v1",
+    sourceId: "reference:v10-baseline-subtracted-shutter",
+    sourceKind: "REFERENCE",
+    range: { startMs: 0, endMs: frames.at(-1).timeMs },
+    analyzerFingerprint: "fixture-analyzer-v10",
+    settingsFingerprint: "v10-fragmentation-scale-regression",
+    contentKey: "v10-fragmentation-scale-regression",
+    frames,
+    summary,
+    evidenceRefs: ["probe-algorithm:editflow.m6.dense-video-probe.v10"],
+  };
+  const legacyScale = {
+    ...currentScale,
+    sourceId: "reference:v9-low-overlap-control",
+    evidenceRefs: ["probe-algorithm:editflow.m6.dense-video-probe.v9"],
+  };
+
+  assert.equal(distinguishShutterFromFlashZoomV1(currentScale).shutter, true);
+  const legacyRejected = distinguishShutterFromFlashZoomV1(legacyScale);
+  assert.equal(legacyRejected.shutter, false);
+  assert.ok(legacyRejected.reasons.includes("MISSING_OVERLAPPING_FRAGMENTATION"));
+});
+
 test("M6.1/M6.3 inter-frame motion cannot substitute for within-frame state separation", () => {
   const interval = 1000 / 60;
   const movingFrames = Array.from({ length: 9 }, (_, index) => ({
@@ -2481,6 +2526,38 @@ test("M6.8 compound temporal warp preserves evolving warp and adds new temporal-
   });
   assert.ok(plan.operations.length <= 96,
     `compound temporal warp must remain within the bounded correction transaction ceiling (got ${plan.operations.length})`);
+  const temporalFieldVirtualPrecompose = temporalFieldPrecomposes[0];
+  const temporalFieldSourceIds = new Set(temporalFieldVirtualPrecompose.layerIds);
+  const timeRemappedTemporalFieldSources = [...temporalFieldSourceIds].filter((layerId) =>
+    compiled.operations.some((operation) =>
+      operation.type === "SET_PROPERTY"
+      && operation.layerId === layerId
+      && operation.propertyPath === "TimeRemap.Enabled")
+    && compiled.operations.some((operation) =>
+      operation.type === "SET_EXPRESSION"
+      && operation.layerId === layerId
+      && operation.propertyPath === "TimeRemap.SourceTime"));
+  assert.ok(timeRemappedTemporalFieldSources.length > 0,
+    "temporal-field grouping must consume at least one explicitly time-remapped synthesized state");
+  const nativeTemporalFieldPrecomposeIndex = plan.operations.findIndex((operation) =>
+    operation.input.command === "layers.precompose"
+    && operation.input.payload.replacementStableId === temporalFieldVirtualPrecompose.newLayerId);
+  assert.ok(nativeTemporalFieldPrecomposeIndex >= 0);
+  for (const layerId of timeRemappedTemporalFieldSources) {
+    const enableIndex = plan.operations.findIndex((operation) =>
+      operation.input.command === "layer.time_remap.enable"
+      && operation.input.payload.layer?.stableId === layerId);
+    const remapExpressionIndex = plan.operations.findIndex((operation) =>
+      operation.input.command === "property.set_expression"
+      && operation.input.payload.layer?.stableId === layerId
+      && Array.isArray(operation.input.payload.propertyPath)
+      && operation.input.payload.propertyPath.includes("ADBE Time Remapping"));
+    assert.ok(enableIndex >= 0 && enableIndex < nativeTemporalFieldPrecomposeIndex,
+      `Time Remap must be enabled on '${layerId}' before temporal-field precompose consumes it.`);
+    assert.ok(remapExpressionIndex > enableIndex
+      && remapExpressionIndex < nativeTemporalFieldPrecomposeIndex,
+      `Time Remap expression must be installed on '${layerId}' before temporal-field precompose consumes it.`);
+  }
 });
 
 test("M6.8 materialized Time Displacement is proof-gated and FPS-adaptive", () => {
@@ -3295,6 +3372,7 @@ test("M6.7 blur-duration actuation drives native Directional Blur Length over th
             // analysis-frame later than its optical peak, so lowering must
             // preserve the measured pre-event blur lead.
             effectEventPhase: 9 / 11,
+            eventDynamicDirectionalBlurProfile: true,
             blurAttackDurationScale: 1.25,
             blurRecoveryDurationScale: 0.75,
           },
@@ -3383,6 +3461,138 @@ test("M6.7 blur-duration actuation drives native Directional Blur Length over th
     && operation.input.payload.layer?.stableId === blurLayerId
     && operation.input.payload.propertyPath?.includes("ADBE Opacity")), false,
     "native Blur Length already provides the bounded event envelope; no opacity support layer is required");
+});
+
+test("M6.7 blur-duration scalars cannot silently switch optical construction topology", () => {
+  const reference = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 8 / 11,
+    opticalPeakPhase: 8 / 11,
+  });
+  const anatomy = decomposeUnknownEffectV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const blurNode = graph.nodes.find((node) => node.kind === "OPTICAL_TREATMENT");
+  assert.ok(blurNode);
+  const scalarOnlyGraph = {
+    ...graph,
+    nodes: graph.nodes.map((node) => node.nodeId === blurNode.nodeId
+      ? {
+          ...node,
+          parameters: {
+            ...node.parameters,
+            blurAttackDurationScale: 1.25,
+          },
+        }
+      : node),
+  };
+  const compilation = compileConstructionGraphV1(scalarOnlyGraph, ALL_CAPABILITIES);
+  const result = compileConstructionThroughNativeAeV1(
+    compilation,
+    {
+      schema: "editflow.virtual-ae.project.v1",
+      activeCompId: "comp",
+      compositions: [{
+        compId: "comp",
+        name: "M6 scalar blur topology guard",
+        width: 640,
+        height: 360,
+        durationMs: 1000,
+        frameRate: 30,
+        layers: [{
+          layerId: "hero",
+          name: "Hero",
+          kind: "FOOTAGE",
+          inMs: 0,
+          outMs: 1000,
+          properties: [],
+          effects: [],
+          masks: [],
+        }],
+      }],
+    },
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-scalar-blur-topology-guard",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      creativeObjective: "Keep scalar blur timing search inside the retained construction topology.",
+    },
+  );
+  assert.equal(result.compiled, true, result.issues.join(", "));
+  assert.ok(result.plan);
+  assert.equal(result.plan.operations.some((operation) =>
+    operation.input.command === "property.set_expression"
+    && operation.input.payload.propertyPath?.includes("ADBE Motion Blur-0002")), false,
+    "a scalar duration multiplier alone must not opt into direct dynamic Blur Length");
+  assert.ok(result.plan.operations.some((operation) =>
+    operation.input.command === "layer.duplicate"
+    && String(operation.input.payload.stableId ?? "").endsWith("effect-stack-accent")),
+    "without explicit structural synthesis the retained event-local effect topology must remain intact");
+});
+
+test("M6.8 optical-profile synthesis targets stalled blur timing while preserving compound warp", () => {
+  const referenceBase = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 8 / 11,
+    opticalPeakPhase: 8 / 11,
+    distortionPeak: 0.42,
+    accelerationPeak: 0.08,
+    recoveryFrames: 4,
+  });
+  const blurProfile = [0.02, 0.05, 0.28, 0.3, 0.32, 0.34, 0.37, 0.42, 0.5, 0.25, 0.1, 0.03];
+  const reference = {
+    ...referenceBase,
+    frames: referenceBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: blurProfile[index] ?? 0,
+      distortionStrength: index === 8 ? 0.42 : 0.04,
+    })),
+  };
+  const capabilities = [
+    ...ALL_CAPABILITIES,
+    "ae.effect.echo",
+    "ae.effect.turbulent-displace",
+  ];
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: capabilities,
+  });
+  const evolving = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  const opticalProfile = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "OPTICAL_PROFILE_HYBRID");
+  assert.ok(evolving, "fixture must expose the retained evolving-warp intervention");
+  assert.ok(opticalProfile, "blur temporal anatomy must synthesize an optical-profile intervention");
+  assert.deepEqual(opticalProfile.capabilityGaps, []);
+  const profiledBlur = opticalProfile.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "OPTICAL_PROFILE_HYBRID");
+  const preservedWarp = opticalProfile.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  assert.ok(profiledBlur?.requiredInvariantIds.includes("unknown.blur-attack"));
+  assert.equal(profiledBlur?.parameters.eventDynamicDirectionalBlurProfile, true);
+  assert.equal(profiledBlur?.parameters.blurAttackDurationScale, 1);
+  assert.ok(preservedWarp,
+    "optical escalation must layer on top of the retained evolving-warp construction");
+
+  const escalation = selectSynthesisEscalationCandidateV1({
+    synthesis,
+    currentStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+    requiredInvariantIds: ["unknown.blur-attack"],
+  });
+  assert.equal(escalation?.strategy, "OPTICAL_PROFILE_HYBRID");
 });
 
 test("M6.7 zero blur strength remains a true identity calibration point", () => {

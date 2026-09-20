@@ -23,16 +23,29 @@ import {
 // occur within one high-frequency event; render fidelity remains reference-
 // relative and can demand the professional reference's stronger observed value.
 const SHUTTER_COORDINATION_MIN_V2 = 0.08;
-// v6 measures overlap inside the coherent fragmentation event rather than using
-// an unrelated global autocorrelation maximum elsewhere in the shot. The real
-// professional microwave/shutter reference measures ~0.055 on this event-local
-// scale; fidelity remains reference-relative above this family floor.
-const SHUTTER_EVENT_OVERLAP_MIN_V6 = 0.04;
+// v6-v9 measure overlap inside the coherent fragmentation event rather than
+// using an unrelated global autocorrelation maximum elsewhere in the shot.
+// v10 introduced temporal-baseline subtraction to suppress repeated source
+// texture. That is a stricter measurement scale: the retained professional
+// microwave/shutter reference measures ~0.0256 under v10+ while remaining
+// event-local and visually multi-state. Family recognition therefore uses an
+// analyzer-calibrated floor; fidelity remains reference-relative and must still
+// match the professional reference rather than this recognition minimum.
+const SHUTTER_EVENT_OVERLAP_MIN_V6_TO_V9 = 0.04;
+const SHUTTER_EVENT_OVERLAP_MIN_V10_PLUS = 0.02;
 
 const shutterEventOverlapMinimum = (evidence: DenseEffectEvidenceV1): number => {
-  const legacyProbe = evidence.evidenceRefs.some((ref) =>
-    /^probe-algorithm:editflow\.m6\.dense-video-probe\.v[1-5]$/.test(ref));
-  return legacyProbe ? 0.20 : SHUTTER_EVENT_OVERLAP_MIN_V6;
+  const probeAlgorithm = evidence.evidenceRefs.find((ref) =>
+    ref.startsWith("probe-algorithm:editflow.m6.dense-video-probe.v"));
+  const versionMatch = probeAlgorithm?.match(/dense-video-probe\.v(\d+)$/);
+  const version = versionMatch === null || versionMatch === undefined
+    ? null
+    : Number(versionMatch[1]);
+  if (version !== null && Number.isFinite(version)) {
+    if (version <= 5) return 0.20;
+    if (version >= 10) return SHUTTER_EVENT_OVERLAP_MIN_V10_PLUS;
+  }
+  return SHUTTER_EVENT_OVERLAP_MIN_V6_TO_V9;
 };
 
 const invariant = (

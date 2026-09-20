@@ -157,6 +157,24 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     chroma: eventLocalMetricContrast(evidence, "chromaticSeparation", fragmentation.phase),
     exposure: eventLocalMetricContrast(evidence, "exposure", fragmentation.phase),
   } : null;
+  // Optical energy can intentionally lead or lag the main fragmentation peak.
+  // Judge blur both at the compound event center and at its independently
+  // measured optical peak, but only treat the latter as coordinated when it is
+  // close enough to the event to be part of the same transition. The tolerance
+  // adapts to the observed recovery span and is capped so unrelated shot blur
+  // elsewhere in the analysis window cannot become defining compound anatomy.
+  const blurPeakContrast = coherentFragmentation && Number.isFinite(s.blurPeakPhase)
+    ? eventLocalMetricContrast(evidence, "blurStrength", s.blurPeakPhase)
+    : null;
+  const recoveryPhaseSpan = analysisDurationMs > 0
+    && Number.isFinite(s.recoveryFrames)
+    && Number.isFinite(s.frameIntervalMs)
+    ? (s.recoveryFrames * s.frameIntervalMs) / analysisDurationMs
+    : 0;
+  const blurCoordinationPhaseTolerance = Math.max(
+    0.12,
+    Math.min(0.25, recoveryPhaseSpan * 1.5),
+  );
   const blurTemporalProfile = s.blurPeak > 0.15
     ? measureHalfPeakTemporalProfileV1(evidence, "blurStrength")
     : null;
@@ -282,8 +300,12 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
       ), s.scaleRange);
     }
     if (s.blurPeak > 0.15) {
+      const blurThreshold = Math.max(0.08, s.blurPeak * 0.2);
+      const independentlyPhasedBlur = blurPeakContrast !== null
+        && Math.abs(s.blurPeakPhase - fragmentation.phase) <= blurCoordinationPhaseTolerance
+        && blurPeakContrast.delta >= blurThreshold;
       const eventCoordinated = coordinated !== null
-        && coordinated.blur.delta >= Math.max(0.08, s.blurPeak * 0.2);
+        && (coordinated.blur.delta >= blurThreshold || independentlyPhasedBlur);
       add(eventCoordinated ? defining : optional, rangeInvariant(
         "unknown.blur",
         "OPTICAL",
@@ -1166,6 +1188,56 @@ const compoundEvolvingWarpGraph = (
   };
 };
 
+const opticalProfileGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  // Optical timing is a structural intervention, not a scalar tweak. Preserve
+  // the richest already-proven compound construction when it is available, then
+  // opt the existing Directional Blur node into a direct event-envelope profile.
+  // This prevents BLUR_ATTACK/RECOVERY search from silently changing layer
+  // topology while still giving synthesis an explicit mechanism for the temporal
+  // blur shape seen in professional references.
+  const foundation = compoundEvolvingWarpGraph(base)
+    ?? compoundNativeHybridGraph(base)
+    ?? base;
+  const optical = foundation.nodes.find((node) =>
+    node.kind === "OPTICAL_TREATMENT"
+    && !node.optional
+    && node.requiredInvariantIds.some((invariantId) => {
+      const normalized = invariantId.toLowerCase();
+      return normalized.includes("blur-attack") || normalized.includes("blur-recovery");
+    }));
+  if (optical === undefined) return null;
+
+  const hasAttack = optical.requiredInvariantIds.some((invariantId) =>
+    invariantId.toLowerCase().includes("blur-attack"));
+  const hasRecovery = optical.requiredInvariantIds.some((invariantId) =>
+    invariantId.toLowerCase().includes("blur-recovery"));
+  const profiled: ConstructionNodeV1 = {
+    ...optical,
+    capabilityCandidates: ["ae.effect.directional-blur"],
+    parameters: {
+      ...optical.parameters,
+      synthesisStrategy: "OPTICAL_PROFILE_HYBRID",
+      effectSchemaRef: "ae.effect-schema.m6.directional-blur.v1",
+      eventLocalEffect: true,
+      eventDynamicDirectionalBlurProfile: true,
+      ...(hasAttack
+        ? { blurAttackDurationScale: finiteNodeParameter(optical, "blurAttackDurationScale") ?? 1 }
+        : {}),
+      ...(hasRecovery
+        ? { blurRecoveryDurationScale: finiteNodeParameter(optical, "blurRecoveryDurationScale") ?? 1 }
+        : {}),
+    },
+  };
+  return {
+    ...foundation,
+    graphId: `${foundation.graphId}:optical_profile`,
+    nodes: foundation.nodes.map((node) =>
+      node.nodeId === optical.nodeId ? profiled : node),
+  };
+};
+
 const compoundTemporalWarpGraph = (
   base: ConstructionGraphV1,
 ): ConstructionGraphV1 | null => {
@@ -1182,6 +1254,7 @@ const strategyGraph = (
   if (strategy === "COMPOUND_NATIVE_HYBRID") return compoundNativeHybridGraph(base);
   if (strategy === "COMPOUND_EVOLVING_WARP_HYBRID") return compoundEvolvingWarpGraph(base);
   if (strategy === "COMPOUND_TEMPORAL_WARP_HYBRID") return compoundTemporalWarpGraph(base);
+  if (strategy === "OPTICAL_PROFILE_HYBRID") return opticalProfileGraph(base);
   if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
   if (strategy === "TIME_DISPLACEMENT_HYBRID") return timeDisplacementAugmentedGraph(base);
   let changed = false;
@@ -1243,6 +1316,7 @@ const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
   TIME_DISPLACEMENT_HYBRID: "ae.effect-schema.m6.time-displacement.v1",
   TURBULENT_DISPLACE_HYBRID: "ae.effect-schema.m6.turbulent-displace.v2",
   COMPOUND_EVOLVING_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
+  OPTICAL_PROFILE_HYBRID: "ae.effect-schema.m6.directional-blur.v1",
 });
 
 const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
@@ -1252,7 +1326,8 @@ const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
       && strategy !== "LAYERED_ECHO_AUGMENTED"
       && strategy !== "TIME_DISPLACEMENT_HYBRID"
       && strategy !== "TURBULENT_DISPLACE_HYBRID"
-      && strategy !== "COMPOUND_EVOLVING_WARP_HYBRID") return [];
+      && strategy !== "COMPOUND_EVOLVING_WARP_HYBRID"
+      && strategy !== "OPTICAL_PROFILE_HYBRID") return [];
     const capability = node.capabilityCandidates[0] ?? String(strategy);
     const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
     const actualSchemaRef = node.parameters["effectSchemaRef"];
@@ -1306,6 +1381,7 @@ export const synthesizeUnknownEffectV1 = (input: {
     { strategy: "LAYERED_ECHO_AUGMENTED", id: "adaptive:layered-echo-augmented", complexityPenalty: 0.5 },
     { strategy: "COMPOUND_NATIVE_HYBRID", id: "adaptive:compound-native-hybrid", complexityPenalty: 1 },
     { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
+    { strategy: "OPTICAL_PROFILE_HYBRID", id: "adaptive:optical-profile-hybrid", complexityPenalty: 1.75 },
     { strategy: "COMPOUND_TEMPORAL_WARP_HYBRID", id: "adaptive:compound-temporal-warp-hybrid", complexityPenalty: 2 },
     { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
     { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },

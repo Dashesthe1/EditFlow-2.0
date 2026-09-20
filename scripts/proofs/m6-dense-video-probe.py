@@ -9,7 +9,12 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v12"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v16"
+ECHO_ANALYSIS_LONGEST = 360
+TEMPORAL_ECHO_MOTION_COVERAGE_MIN = 0.04
+TEMPORAL_ECHO_MOTION_P90_MIN = 0.03
+TEMPORAL_ECHO_PERSISTENT_OCCUPANCY_MAX = 0.35
+TEMPORAL_ECHO_CORROBORATION_RADIUS = 1
 
 
 def analyzer_fingerprint():
@@ -234,6 +239,18 @@ def persistent_shot_boundary_metrics(previous, current, following):
 
 
 def edge_echo_surface(gray):
+    # Keep autocorrelation on one physical sampling scale. State separation is
+    # normalized later, but Canny peaks, dilation windows, and baseline
+    # envelopes are pixel-domain operations; arbitrary source resolution made
+    # the same shutter construction appear/disappear across analysis sizes.
+    height, width = gray.shape
+    scale = min(1.0, float(ECHO_ANALYSIS_LONGEST) / max(width, height))
+    if scale < 1.0:
+        gray = cv2.resize(
+            gray,
+            (max(2, round(width * scale)), max(2, round(height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
     edges = cv2.Canny(gray, 60, 150).astype(np.float32) / 255.0
     if float(edges.mean()) < 0.0001:
         return None
@@ -316,21 +333,32 @@ def edge_echo_metrics(surface, temporal_baseline):
             continue
         residual_pairs.append((float(residual[py, px]), pair_radius))
     residual_pairs.sort(reverse=True)
+    strong_pairs = []
     if residual_peak >= 0.035 and residual_pairs:
         strongest_residual = residual_pairs[0][0]
         strong_threshold = max(0.035, strongest_residual * 0.65)
         strong_pairs = [pair for pair in residual_pairs if pair[0] >= strong_threshold]
+
+    if strong_pairs:
         state_count = 1 + min(4, len(strong_pairs))
         echo_strength = clamp01(residual_peak)
         overlap_threshold = max(0.02, residual_peak * 0.35)
         overlap_density = clamp01(
             float(np.mean(residual[search] >= overlap_threshold)) * 12.0
         )
-        echo_offset_pixels = residual_pairs[0][1]
+        # The nearest reliable strong residual is the visible spacing between
+        # simultaneous states. A farther, slightly stronger autocorrelation
+        # harmonic often comes from band periodicity or source structure and
+        # must not become the construction actuator for duplicate spread.
+        echo_offset_pixels = min(strong_pairs, key=lambda pair: pair[1])[1]
         state_separation = clamp01(
             echo_offset_pixels / max(math.hypot(surface["width"], surface["height"]), 1.0)
         )
     else:
+        # A global residual can exceed the event threshold while every valid
+        # off-center pair remains below the reliability floor. That is not
+        # multi-state evidence; fail closed instead of emitting a state or
+        # attempting to actuate separation from an empty candidate set.
         state_count = 1
         echo_strength = 0.0
         overlap_density = 0.0
@@ -430,12 +458,30 @@ def analyze_frames(frames, fps):
             segment_starts.append(dominant_offset)
     segment_ends = segment_starts[1:] + [len(frames)]
     temporal_echo_baselines = [None] * len(frames)
+    temporal_echo_baseline_ranges = [None] * len(frames)
+    # Do not learn the echo baseline from the transition itself. Around a
+    # detected appearance-regime boundary, reserve ~150 ms on each adjacent
+    # segment as an effect guard. This keeps stable shot texture available for
+    # normalization while preventing the defining shutter/fragmentation frames
+    # from subtracting themselves out of the baseline.
+    transition_guard_frames = max(2, int(round(max(float(fps), 1.0) * 0.15)))
     for start, end in zip(segment_starts, segment_ends):
+        baseline_start = start + (transition_guard_frames if start > 0 else 0)
+        baseline_end = end - (transition_guard_frames if end < len(frames) else 0)
+        # Very short segments cannot afford the guard. Fall back to the full
+        # segment rather than manufacturing a baseline from fewer than 3 frames.
+        if baseline_end - baseline_start < 3:
+            baseline_start, baseline_end = start, end
         echo_values = [
             echo_surfaces[index]["values"]
-            for index in range(start, end)
+            for index in range(baseline_start, baseline_end)
             if echo_surfaces[index] is not None
         ]
+        # Use the guarded temporal median as the same-shot texture baseline.
+        # A max/union baseline can erase legitimate short-lived temporal copies.
+        # Resolution is normalized before autocorrelation, and repeated source
+        # texture is rejected later by independent motion-compensated residual
+        # evidence plus event-local occupancy/anchor gates.
         baseline = (
             np.median(np.stack(echo_values, axis=0), axis=0).astype(np.float32)
             if echo_values
@@ -443,6 +489,11 @@ def analyze_frames(frames, fps):
         )
         for index in range(start, end):
             temporal_echo_baselines[index] = baseline
+            temporal_echo_baseline_ranges[index] = {
+                "start": baseline_start,
+                "end": baseline_end,
+                "guardFrames": transition_guard_frames,
+            }
 
     sharpness = np.array(
         [float(cv2.Laplacian(gray, cv2.CV_64F).var()) for gray in grays],
@@ -470,8 +521,20 @@ def analyze_frames(frames, fps):
             "cameraMotion": {"x": 0.0, "y": 0.0},
             "shotBoundaryDiscontinuity": False,
         }
+        baseline_range = temporal_echo_baseline_ranges[offset] or {
+            "start": 0,
+            "end": len(frames),
+            "guardFrames": 0,
+        }
         diagnostics = {
             "edgeEchoStrength": echo_strength,
+            "temporalEchoRawStateCount": float(state_count),
+            "temporalEchoRawOverlapDensity": overlap_density,
+            "temporalEchoRawStateSeparation": state_separation,
+            "temporalEchoMotionCorroborated": 0.0,
+            "temporalEchoBaselineStartOffset": float(baseline_range["start"]),
+            "temporalEchoBaselineEndOffset": float(baseline_range["end"]),
+            "temporalEchoBaselineGuardFrames": float(baseline_range["guardFrames"]),
             "stateSeparationNormalized": state_separation,
             "flowMeanPixels": 0.0,
             "flowP90Pixels": 0.0,
@@ -575,6 +638,21 @@ def analyze_frames(frames, fps):
             diagnostics["flowP90Pixels"] = p90_mag
             diagnostics["flowCoherence"] = coherence
             diagnostics["flowResidualP90Pixels"] = flow_residual
+
+        # Mark independent motion corroboration now; final promotion to
+        # semantic multi-state evidence happens after the full shot segment is
+        # available so persistent transforming texture can be rejected.
+        if semantic["temporalStateCount"] >= 2:
+            echo_corroborated = (
+                not semantic["shotBoundaryDiscontinuity"]
+                and diagnostics["motionCompensatedResidualCoverage"]
+                    >= TEMPORAL_ECHO_MOTION_COVERAGE_MIN
+                and diagnostics["motionCompensatedResidualP90"]
+                    >= TEMPORAL_ECHO_MOTION_P90_MIN
+            )
+            diagnostics["temporalEchoMotionCorroborated"] = (
+                1.0 if echo_corroborated else 0.0
+            )
         output.append(
             {
                 "sourceFrameIndex": source_index,
@@ -584,6 +662,62 @@ def analyze_frames(frames, fps):
                 "diagnostics": diagnostics,
             }
         )
+
+    # Promote raw echo evidence only when it belongs to a short, independently
+    # corroborated event. A held copy may survive one frame beyond the residual
+    # impulse, but a repeated pattern that remains corroborated through much of
+    # the shot is source texture, not temporal fragmentation.
+    transition_anchor_offset = (
+        segment_starts[1] if len(segment_starts) > 1 else None
+    )
+    for start, end in zip(segment_starts, segment_ends):
+        segment_length = max(1, end - start)
+        corroborated_offsets = [
+            index
+            for index in range(start, end)
+            if output[index]["diagnostics"]["temporalEchoRawStateCount"] >= 2
+            and output[index]["diagnostics"]["temporalEchoMotionCorroborated"] > 0.5
+        ]
+        corroborated_occupancy = len(corroborated_offsets) / segment_length
+        persistent_texture = (
+            corroborated_occupancy > TEMPORAL_ECHO_PERSISTENT_OCCUPANCY_MAX
+        )
+        for index in range(start, end):
+            item = output[index]
+            diagnostics = item["diagnostics"]
+            semantic = item["semantic"]
+            raw_echo = diagnostics["temporalEchoRawStateCount"] >= 2
+            neighbor_corroborated = any(
+                abs(index - candidate) <= TEMPORAL_ECHO_CORROBORATION_RADIUS
+                for candidate in corroborated_offsets
+            )
+            within_transition_anchor = (
+                transition_anchor_offset is None
+                or abs(index - transition_anchor_offset) <= transition_guard_frames
+            )
+            promoted = (
+                raw_echo
+                and neighbor_corroborated
+                and not persistent_texture
+                and within_transition_anchor
+            )
+            diagnostics["temporalEchoCorroboratedOccupancy"] = corroborated_occupancy
+            diagnostics["temporalEchoTransitionAnchorOffset"] = (
+                -1.0 if transition_anchor_offset is None
+                else float(transition_anchor_offset)
+            )
+            diagnostics["temporalEchoWithinTransitionAnchor"] = (
+                1.0 if within_transition_anchor else 0.0
+            )
+            diagnostics["temporalEchoPersistentSourceTexture"] = (
+                1.0 if persistent_texture else 0.0
+            )
+            diagnostics["temporalEchoPromoted"] = 1.0 if promoted else 0.0
+            if raw_echo and not promoted:
+                semantic["temporalStateCount"] = 1
+                semantic["overlapDensity"] = 0.0
+                semantic["stateSeparation"] = 0.0
+                diagnostics["stateSeparationNormalized"] = 0.0
     return output
 
 

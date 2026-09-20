@@ -782,6 +782,10 @@ const compileEffectStack = (
   if (requiresEventParameters && eventParameters === null) return [];
   const dynamicDirectionalBlur = schema.schemaId === "ae.effect-schema.m6.directional-blur.v1"
     && eventLocalEffect
+    // Switching from a bounded accent layer to a direct animated Blur Length
+    // changes construction topology. Only an explicit synthesis strategy may
+    // make that structural change; scalar duration correction alone must not.
+    && eventParameters?.["eventDynamicDirectionalBlurProfile"] === true
     && (
       (typeof eventParameters?.["blurAttackDurationScale"] === "number"
         && Number.isFinite(eventParameters["blurAttackDurationScale"]))
