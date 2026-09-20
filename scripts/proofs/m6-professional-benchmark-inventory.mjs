@@ -173,6 +173,7 @@ const kinds = [
   "SEMANTIC_COMPARISON",
   "DIRECT_AB",
   "TRANSFER_PROOF",
+  "PROFESSIONAL_CASE_PROOF",
   "DEGRADED_CONTROL",
 ];
 const artifactCoverage = Object.fromEntries(

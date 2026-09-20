@@ -120,6 +120,7 @@ export type BenchmarkArtifactKindV1 =
   | "SEMANTIC_COMPARISON"
   | "DIRECT_AB"
   | "TRANSFER_PROOF"
+  | "PROFESSIONAL_CASE_PROOF"
   | "DEGRADED_CONTROL";
 
 export interface BenchmarkArtifactBindingV1 {
@@ -139,6 +140,8 @@ export interface BenchmarkArtifactBindingV1 {
 export interface RetainedBenchmarkCaseEvidenceV1 extends BenchmarkCaseEvidenceV1 {
   readonly renderEvidenceRef: string;
   readonly transferEvidenceRefs: readonly string[];
+  /** Additional independent professional cases beyond the canonical comparison. */
+  readonly professionalCaseEvidenceRefs?: readonly string[];
   readonly degradedControlEvidenceRef: string;
 }
 
@@ -305,6 +308,39 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
         failures.push(`${item.caseId}:DEGRADED_CONTROL_CONTENT_BINDING_MISMATCH`);
       } else if (renderKey !== undefined && degraded.renderContentKey === renderKey) {
         failures.push(`${item.caseId}:DEGRADED_CONTROL_REUSES_CERTIFIED_RENDER`);
+      }
+    }
+
+    const professionalCaseRefs = proof.professionalCaseEvidenceRefs ?? [];
+    const requiredAdditionalProfessionalCases = Math.max(
+      0, proof.maturityProof.professionalCasePassCount - 1,
+    );
+    if (professionalCaseRefs.length < requiredAdditionalProfessionalCases) {
+      failures.push(`${item.caseId}:INSUFFICIENT_PROFESSIONAL_CASE_ARTIFACTS`);
+    }
+    const canonicalReferenceSource = reference?.baselineSourceContentKey;
+    const professionalReferenceSources = new Set<string>();
+    for (const professionalCaseRef of professionalCaseRefs) {
+      const professionalCase = requireArtifact(
+        professionalCaseRef, "PROFESSIONAL_CASE_PROOF", "PROFESSIONAL_CASE",
+      );
+      if (professionalCase === null) continue;
+      if (!isSha256V1(professionalCase.referenceContentKey)
+        || !isSha256V1(professionalCase.renderContentKey)) {
+        failures.push(`${item.caseId}:PROFESSIONAL_CASE_CONTENT_BINDING_INVALID`);
+      }
+      const sourceKey = professionalCase.baselineSourceContentKey;
+      if (!isSha256V1(sourceKey)) {
+        failures.push(`${item.caseId}:PROFESSIONAL_CASE_SOURCE_IDENTITY_MISSING`);
+      } else if (isSha256V1(canonicalReferenceSource) && sourceKey === canonicalReferenceSource) {
+        failures.push(`${item.caseId}:PROFESSIONAL_CASE_SOURCE_NOT_INDEPENDENT`);
+      } else if (professionalReferenceSources.has(sourceKey)) {
+        failures.push(`${item.caseId}:PROFESSIONAL_CASE_SOURCE_REUSED`);
+      } else {
+        professionalReferenceSources.add(sourceKey);
+      }
+      if (referenceKey !== undefined && professionalCase.referenceContentKey === referenceKey) {
+        failures.push(`${item.caseId}:PROFESSIONAL_CASE_REUSES_CANONICAL_REFERENCE`);
       }
     }
 

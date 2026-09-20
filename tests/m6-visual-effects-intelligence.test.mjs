@@ -3768,6 +3768,7 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
     comparisonEvidenceRef: `artifact:comparison:${item.caseId}`,
     renderEvidenceRef: `artifact:render:${item.caseId}`,
     transferEvidenceRefs: [`artifact:transfer:${item.caseId}`],
+    professionalCaseEvidenceRefs: [`artifact:professional-case:${item.caseId}`],
     degradedControlEvidenceRef: `artifact:degraded:${item.caseId}`,
     transferPassed: true,
     degradedCaseRejected: true,
@@ -3785,6 +3786,7 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
         family: item.family,
         sha256: hex(1000 + index * 10),
         contentKey: referenceKey,
+        baselineSourceContentKey: hex(500 + index),
       },
       {
         ref: proof.renderEvidenceRef,
@@ -3822,6 +3824,16 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
         renderContentKey: degradedKey,
       },
       {
+        ref: proof.professionalCaseEvidenceRefs[0],
+        kind: "PROFESSIONAL_CASE_PROOF",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1006 + index * 10),
+        referenceContentKey: hex(800 + index),
+        renderContentKey: hex(900 + index),
+        baselineSourceContentKey: hex(700 + index),
+      },
+      {
         ref: proof.transferEvidenceRefs[0],
         kind: "TRANSFER_PROOF",
         caseId: item.caseId,
@@ -3843,6 +3855,28 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
   assert.equal(placeholdersOnly.passed, false);
   assert.ok(placeholdersOnly.failures.some((item) => /MISSING_REFERENCE_ARTIFACT/.test(item)));
   assert.ok(placeholdersOnly.failures.some((item) => /MISSING_TRANSFER_ARTIFACT/.test(item)));
+
+  const missingProfessionalCase = retainedEvidence.map((proof, index) => index === 0
+    ? { ...proof, professionalCaseEvidenceRefs: [] } : proof);
+  const missingProfessionalCaseResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, missingProfessionalCase, artifacts,
+  );
+  assert.equal(missingProfessionalCaseResult.passed, false);
+  assert.ok(missingProfessionalCaseResult.failures.some(
+    (item) => /INSUFFICIENT_PROFESSIONAL_CASE_ARTIFACTS/.test(item),
+  ));
+
+  const reusedProfessionalSource = artifacts.map((artifact) =>
+    artifact.kind === "PROFESSIONAL_CASE_PROOF" && artifact.caseId === cases[0].caseId
+      ? { ...artifact, baselineSourceContentKey: hex(500) }
+      : artifact);
+  const reusedProfessionalSourceResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, retainedEvidence, reusedProfessionalSource,
+  );
+  assert.equal(reusedProfessionalSourceResult.passed, false);
+  assert.ok(reusedProfessionalSourceResult.failures.some(
+    (item) => /PROFESSIONAL_CASE_SOURCE_NOT_INDEPENDENT/.test(item),
+  ));
 
   const mismatchedComparison = artifacts.map((artifact) =>
     artifact.kind === "SEMANTIC_COMPARISON" && artifact.caseId === cases[0].caseId
