@@ -3832,6 +3832,11 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
         referenceContentKey: hex(800 + index),
         renderContentKey: hex(900 + index),
         baselineSourceContentKey: hex(700 + index),
+        certified: true,
+        renderedOutputVerified: true,
+        degradedControlRejected: true,
+        definingCoverage: 1,
+        weightedFidelity: 0.95,
       },
       {
         ref: proof.transferEvidenceRefs[0],
@@ -3876,6 +3881,39 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
   assert.equal(reusedProfessionalSourceResult.passed, false);
   assert.ok(reusedProfessionalSourceResult.failures.some(
     (item) => /PROFESSIONAL_CASE_SOURCE_NOT_INDEPENDENT/.test(item),
+  ));
+
+  const uncertifiedProfessionalCase = artifacts.map((artifact) =>
+    artifact.kind === "PROFESSIONAL_CASE_PROOF" && artifact.caseId === cases[0].caseId
+      ? { ...artifact, certified: false }
+      : artifact);
+  const uncertifiedProfessionalCaseResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, retainedEvidence, uncertifiedProfessionalCase,
+  );
+  assert.equal(uncertifiedProfessionalCaseResult.passed, false);
+  assert.ok(uncertifiedProfessionalCaseResult.failures.some(
+    (item) => /PROFESSIONAL_CASE_NOT_CERTIFIED/.test(item),
+  ));
+
+  const heldOutShutterCase = cases.find(
+    (item) => item.sourceKind === "HELD_OUT" && item.family === "SHUTTER_FRAGMENTATION",
+  );
+  assert.ok(heldOutShutterCase);
+  const canonicalShutterSource = artifacts.find(
+    (artifact) => artifact.kind === "REFERENCE_DENSE_EVIDENCE"
+      && artifact.caseId === "m6:shutter_fragmentation:canonical",
+  )?.baselineSourceContentKey;
+  assert.ok(canonicalShutterSource);
+  const heldOutReusesCanonical = artifacts.map((artifact) =>
+    artifact.kind === "REFERENCE_DENSE_EVIDENCE" && artifact.caseId === heldOutShutterCase.caseId
+      ? { ...artifact, baselineSourceContentKey: canonicalShutterSource }
+      : artifact);
+  const heldOutReuseResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, retainedEvidence, heldOutReusesCanonical,
+  );
+  assert.equal(heldOutReuseResult.passed, false);
+  assert.ok(heldOutReuseResult.failures.some(
+    (item) => /HELD_OUT_REFERENCE_SOURCE_NOT_INDEPENDENT/.test(item),
   ));
 
   const mismatchedComparison = artifacts.map((artifact) =>
