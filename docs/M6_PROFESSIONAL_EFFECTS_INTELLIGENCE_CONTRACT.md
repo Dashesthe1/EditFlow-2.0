@@ -188,10 +188,22 @@ therefore retains its content-addressed v11/v6 case proofs under the no-reproof 
 while new M6.9 transfer and benchmark renders must use analyzer-compatible evidence for
 their own certification.
 
+The native Echo hypothesis now also has refreshed active-v10 live-AE evidence at
+`proofs/diagnostics/m6-native-echo-live-proof.json`. The proof commits the real
+`ADBE Echo` effect, verifies its compiled property values by AE readback, and compares
+the same rendered construction with Echo enabled versus disabled. The direct A/B changes
+11 of 15 frames, with mean normalized RGB delta 0.02844 and a peak changed-pixel ratio
+of 0.9029. Active-v10 semantic comparison improves weighted fidelity from 0.7974 for the
+Echo-off control to 0.8378 with Echo enabled, but both remain at 3-of-7 defining
+coverage. This is intentionally **capability/schema consequence evidence**, not
+professional-reference certification: `ae.effect-schema.m6.echo.v1` remains
+`PROOF_REQUIRED` until materially different transfer evidence and anti-simplification
+calibration are retained under analyzer-matched evidence.
+
 The v6 material below is retained as historical, analyzer-bound professional-fidelity
 provenance. It supports the canonical shutter benchmark's retained reference-faithful
-case, but it does not by itself satisfy transfer, the 24-case professional benchmark,
-or robustness.
+case, but it does not certify the active-v10 Echo gate and does not by itself satisfy
+transfer, the 24-case professional benchmark, or robustness.
 
 ### Historical v6 evidence (superseded for active certification)
 

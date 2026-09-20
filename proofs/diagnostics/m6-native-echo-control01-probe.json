@@ -1,15 +1,16 @@
 {
   "analysis": {
-    "algorithmId": "editflow.m6.dense-video-probe.v7",
+    "algorithmId": "editflow.m6.dense-video-probe.v10",
     "algorithms": [
       "Farneback dense optical flow",
       "pyramidal Lucas-Kanade feature tracking",
       "RANSAC estimateAffinePartial2D",
+      "dense-flow affine fallback",
       "motion-compensated residual",
       "edge autocorrelation echo detector",
       "Laplacian sharpness proxy"
     ],
-    "analyzerFingerprint": "3a1b15d5ba7b2e4e857bcefbf4f996b34411d8fba2f2515f486c3a6c5056fa8f",
+    "analyzerFingerprint": "98c6deb276161e82fd0fcfd6d564031c7428d9fbeaedfb7e1f0c12cd0f4aa575",
     "dependencies": {
       "numpy": "2.5.3",
       "opencv": "5.0.0"
@@ -20,8 +21,9 @@
   "frames": [
     {
       "diagnostics": {
+        "affineFallbackUsed": 0.0,
         "affineInlierRatio": 0.0,
-        "edgeEchoStrength": 0.0,
+        "edgeEchoStrength": 0.27487367391586304,
         "flowCoherence": 1.0,
         "flowMeanPixels": 0.0,
         "flowP90Pixels": 0.0,
@@ -29,7 +31,7 @@
         "motionCompensatedResidualCoverage": 0.0,
         "motionCompensatedResidualMean": 0.0,
         "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0000.png",
       "semantic": {
@@ -44,20 +46,21 @@
         },
         "distortionStrength": 0.0,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.21818181818181817,
         "perspectiveEnergy": 0.0,
         "rotationDegrees": 0.0,
         "scale": 1.0,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 3
       },
       "sourceFrameIndex": 0,
       "timeMs": 0.0
     },
     {
       "diagnostics": {
+        "affineFallbackUsed": 0.0,
         "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
+        "edgeEchoStrength": 0.2795540690422058,
         "flowCoherence": 0.6723368913013775,
         "flowMeanPixels": 0.00042579389992170036,
         "flowP90Pixels": 2.2188411094248295e-05,
@@ -65,7 +68,7 @@
         "motionCompensatedResidualCoverage": 0.0,
         "motionCompensatedResidualMean": 7.148692810457516e-06,
         "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0001.png",
       "semantic": {
@@ -80,20 +83,21 @@
         },
         "distortionStrength": 1.7338164696138992e-05,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.21818181818181817,
         "perspectiveEnergy": 0.0,
         "rotationDegrees": 0.00021195223126040683,
         "scale": 0.9999975146849889,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 3
       },
       "sourceFrameIndex": 1,
       "timeMs": 33.333333333333336
     },
     {
       "diagnostics": {
+        "affineFallbackUsed": 0.0,
         "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
+        "edgeEchoStrength": 0.2795540690422058,
         "flowCoherence": 0.5815694986416429,
         "flowMeanPixels": 6.130176916485652e-05,
         "flowP90Pixels": 4.113385330128949e-06,
@@ -101,7 +105,7 @@
         "motionCompensatedResidualCoverage": 0.0,
         "motionCompensatedResidualMean": 0.0,
         "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0002.png",
       "semantic": {
@@ -116,20 +120,21 @@
         },
         "distortionStrength": 3.355416256582739e-08,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.21818181818181817,
         "perspectiveEnergy": 0.0,
         "rotationDegrees": 0.00021195223126040683,
         "scale": 0.9999975146849889,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 3
       },
       "sourceFrameIndex": 2,
       "timeMs": 66.66666666666667
     },
     {
       "diagnostics": {
+        "affineFallbackUsed": 0.0,
         "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
+        "edgeEchoStrength": 0.2795540690422058,
         "flowCoherence": 0.5815694986416429,
         "flowMeanPixels": 6.130176916485652e-05,
         "flowP90Pixels": 4.113385330128949e-06,
@@ -137,7 +142,7 @@
         "motionCompensatedResidualCoverage": 0.0,
         "motionCompensatedResidualMean": 0.0,
         "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0003.png",
       "semantic": {
@@ -152,334 +157,343 @@
         },
         "distortionStrength": 3.355416256582739e-08,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.21818181818181817,
         "perspectiveEnergy": 0.0,
         "rotationDegrees": 0.00021195223126040683,
         "scale": 0.9999975146849889,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 3
       },
       "sourceFrameIndex": 3,
       "timeMs": 100.0
     },
     {
       "diagnostics": {
+        "affineFallbackUsed": 0.0,
         "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.5815694986416429,
-        "flowMeanPixels": 6.130176916485652e-05,
-        "flowP90Pixels": 4.113385330128949e-06,
-        "flowResidualP90Pixels": 4.1064836279093445e-06,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "edgeEchoStrength": 0.1581919938325882,
+        "flowCoherence": 0.559381963274056,
+        "flowMeanPixels": 0.7149354815483093,
+        "flowP90Pixels": 0.8817418217658997,
+        "flowResidualP90Pixels": 0.8817418193491495,
+        "motionCompensatedResidualCoverage": 0.009739583333333333,
+        "motionCompensatedResidualMean": 0.011364515250544664,
+        "motionCompensatedResidualP90": 0.0392156862745098,
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0004.png",
       "semantic": {
-        "blurStrength": 0.0,
+        "blurStrength": 0.1915870261413165,
         "cameraMotion": {
-          "x": -2.460570636131365e-11,
-          "y": 1.7989623769186183e-22
+          "x": 6.617914549700288e-11,
+          "y": -8.706404424568209e-13
         },
         "displacement": {
-          "x": -2.460570636131365e-11,
-          "y": 1.7989623769186183e-22
+          "x": 6.617914549700288e-11,
+          "y": -8.706404424568209e-13
         },
-        "distortionStrength": 3.355416256582739e-08,
+        "distortionStrength": 0.08938152800878726,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.1272727272727273,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.00021195223126040683,
-        "scale": 0.9999975146849889,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": 0.0027102961582923316,
+        "scale": 0.9997467148138437,
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 3
       },
       "sourceFrameIndex": 4,
       "timeMs": 133.33333333333334
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.999110030613665,
-        "flowMeanPixels": 1.7482844591140747,
-        "flowP90Pixels": 2.998546838760376,
-        "flowResidualP90Pixels": 2.7323212616671366,
-        "motionCompensatedResidualCoverage": 0.0008854166666666666,
-        "motionCompensatedResidualMean": 0.00047773692810457516,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.9122807017543859,
+        "edgeEchoStrength": 0.035843152552843094,
+        "flowCoherence": 0.24325476302438798,
+        "flowMeanPixels": 2.7099764347076416,
+        "flowP90Pixels": 3.642298460006714,
+        "flowResidualP90Pixels": 3.642315745762486,
+        "motionCompensatedResidualCoverage": 0.09423611111111112,
+        "motionCompensatedResidualMean": 0.02579125816993464,
+        "motionCompensatedResidualP90": 0.08627450980392157,
+        "stateSeparationNormalized": 0.07478951671249802
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0005.png",
       "semantic": {
-        "blurStrength": 0.0003460719382502031,
+        "blurStrength": 0.43819872547370975,
         "cameraMotion": {
-          "x": 2.181214787720041e-20,
-          "y": 0.01517956256866455
+          "x": -2.708218715952171e-09,
+          "y": -2.1742663294490842e-07
         },
         "displacement": {
-          "x": 2.181214787720041e-20,
-          "y": 0.01517956256866455
+          "x": -2.708218715952171e-09,
+          "y": -2.1742663294490842e-07
         },
-        "distortionStrength": 0.023472422107773113,
+        "distortionStrength": 0.21244477054417837,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.34545454545454546,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.000563710437589185,
-        "scale": 0.9999986295127605,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": -0.042548809490913345,
+        "scale": 1.0236193542185474,
+        "stateSeparation": 0.07478951671249802,
+        "temporalStateCount": 2
       },
       "sourceFrameIndex": 5,
       "timeMs": 166.66666666666666
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.9990759013197866,
-        "flowMeanPixels": 1.759181261062622,
-        "flowP90Pixels": 2.997952461242676,
-        "flowResidualP90Pixels": 2.7378096574288273,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 1.6748366013071894e-05,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.8,
+        "edgeEchoStrength": 0.06400635838508606,
+        "flowCoherence": 0.6725423504582472,
+        "flowMeanPixels": 5.644351005554199,
+        "flowP90Pixels": 10.169442176818848,
+        "flowResidualP90Pixels": 7.6941339664652375,
+        "motionCompensatedResidualCoverage": 0.10088541666666667,
+        "motionCompensatedResidualMean": 0.028602124183006537,
+        "motionCompensatedResidualP90": 0.10980392156862745,
+        "stateSeparationNormalized": 0.031054656517093514
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0006.png",
       "semantic": {
-        "blurStrength": 0.00018913951250709715,
+        "blurStrength": 0.4142011649907107,
         "cameraMotion": {
-          "x": 1.2275559258326241e-14,
-          "y": -0.015210053655836317
+          "x": -1.9251306184742135e-07,
+          "y": 0.022055217954847547
         },
         "displacement": {
-          "x": 1.2275559258326241e-14,
-          "y": -0.015210053655836317
+          "x": -1.9251306184742135e-07,
+          "y": 0.022055217954847547
         },
-        "distortionStrength": 0.02241089535391551,
+        "distortionStrength": 0.2852395158402645,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.8090909090909091,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0007600986781633404,
-        "scale": 1.000002679834488,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": -0.009773059629133461,
+        "scale": 1.070827193977041,
+        "stateSeparation": 0.031054656517093514,
+        "temporalStateCount": 5
       },
       "sourceFrameIndex": 6,
       "timeMs": 200.0
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.9990705032606331,
-        "flowMeanPixels": 1.7249817848205566,
-        "flowP90Pixels": 2.997889757156372,
-        "flowResidualP90Pixels": 2.721405506124017,
-        "motionCompensatedResidualCoverage": 0.0009375,
-        "motionCompensatedResidualMean": 0.00048236655773420476,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.5862068965517241,
+        "edgeEchoStrength": 0.08345182985067368,
+        "flowCoherence": 0.8680177078798759,
+        "flowMeanPixels": 7.006010055541992,
+        "flowP90Pixels": 13.075054168701172,
+        "flowResidualP90Pixels": 8.473096670668927,
+        "motionCompensatedResidualCoverage": 0.11434027777777778,
+        "motionCompensatedResidualMean": 0.03307972494553377,
+        "motionCompensatedResidualP90": 0.1411764705882353,
+        "stateSeparationNormalized": 0.09260490081948336
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0007.png",
       "semantic": {
-        "blurStrength": 0.00041692270968662903,
+        "blurStrength": 0.10887841152894662,
         "cameraMotion": {
-          "x": -2.5959854390535687e-25,
-          "y": -0.015118919478522407
+          "x": 8.381764018849935e-07,
+          "y": -0.03389895757039388
         },
         "displacement": {
-          "x": -2.5959854390535687e-25,
-          "y": -0.015118919478522407
+          "x": 8.381764018849935e-07,
+          "y": -0.03389895757039388
         },
-        "distortionStrength": 0.02339434035481596,
+        "distortionStrength": 0.34627224664762135,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 1.0,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009247351387117375,
-        "scale": 1.000004517699073,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": -0.02106688897275444,
+        "scale": 1.1211025888566317,
+        "stateSeparation": 0.09260490081948336,
+        "temporalStateCount": 5
       },
       "sourceFrameIndex": 7,
       "timeMs": 233.33333333333334
     },
     {
       "diagnostics": {
+        "affineFallbackUsed": 0.0,
         "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.999134689259175,
-        "flowMeanPixels": 1.7362487316131592,
-        "flowP90Pixels": 2.9977543354034424,
-        "flowResidualP90Pixels": 2.721269607518796,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 8.510348583877996e-06,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "edgeEchoStrength": 0.05478430539369583,
+        "flowCoherence": 0.6827656494790098,
+        "flowMeanPixels": 3.108034372329712,
+        "flowP90Pixels": 6.630467891693115,
+        "flowResidualP90Pixels": 6.106498357872418,
+        "motionCompensatedResidualCoverage": 0.0075,
+        "motionCompensatedResidualMean": 0.009277777777777777,
+        "motionCompensatedResidualP90": 0.03137254901960784,
+        "stateSeparationNormalized": 0.1367815733681126
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0008.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.08126267908883222,
         "cameraMotion": {
-          "x": 2.0373352233533595e-26,
-          "y": 0.015118164486355251
+          "x": -6.509136874228716e-05,
+          "y": 0.005887128247155084
         },
         "displacement": {
-          "x": 2.0373352233533595e-26,
-          "y": 0.015118164486355251
+          "x": -6.509136874228716e-05,
+          "y": 0.005887128247155084
         },
-        "distortionStrength": 0.022255975022544176,
+        "distortionStrength": 0.11608455953986292,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 1.0,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": 0.03512018151164619,
+        "scale": 1.0711394043615845,
+        "stateSeparation": 0.1367815733681126,
+        "temporalStateCount": 5
       },
       "sourceFrameIndex": 8,
       "timeMs": 266.6666666666667
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.543103938735568,
-        "flowMeanPixels": 5.825285552418791e-05,
-        "flowP90Pixels": 3.972800186602399e-06,
-        "flowResidualP90Pixels": 3.971594865818615e-06,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.6666666666666666,
+        "edgeEchoStrength": 0.05037073791027069,
+        "flowCoherence": 0.2907643231017311,
+        "flowMeanPixels": 3.923612356185913,
+        "flowP90Pixels": 8.154117584228516,
+        "flowResidualP90Pixels": 8.043472372127141,
+        "motionCompensatedResidualCoverage": 0.06652777777777778,
+        "motionCompensatedResidualMean": 0.019111043028322443,
+        "motionCompensatedResidualP90": 0.06666666666666667,
+        "stateSeparationNormalized": 0.11714962914285562
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0009.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.3447040733817808,
         "cameraMotion": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": -0.000533864926546812,
+          "y": 2.424682800968488e-05
         },
         "displacement": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": -0.000533864926546812,
+          "y": 2.424682800968488e-05
         },
-        "distortionStrength": 3.245198370390901e-08,
+        "distortionStrength": 0.20492321553646206,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 1.0,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": 0.0301920384733233,
+        "scale": 0.9972862537246789,
+        "stateSeparation": 0.11714962914285562,
+        "temporalStateCount": 5
       },
       "sourceFrameIndex": 9,
       "timeMs": 300.0
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.543103938735568,
-        "flowMeanPixels": 5.825285552418791e-05,
-        "flowP90Pixels": 3.972800186602399e-06,
-        "flowResidualP90Pixels": 3.971594865818615e-06,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.65625,
+        "edgeEchoStrength": 0.06307268142700195,
+        "flowCoherence": 0.3873481314811043,
+        "flowMeanPixels": 0.706126868724823,
+        "flowP90Pixels": 1.6624548435211182,
+        "flowResidualP90Pixels": 1.6608261849512864,
+        "motionCompensatedResidualCoverage": 0.06564236111111112,
+        "motionCompensatedResidualMean": 0.015771105664488017,
+        "motionCompensatedResidualP90": 0.050980392156862744,
+        "stateSeparationNormalized": 0.13599288687978908
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0010.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.45951970334056635,
         "cameraMotion": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": 8.745185908765052e-10,
+          "y": 1.6017511693967714e-05
         },
         "displacement": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": 8.745185908765052e-10,
+          "y": 1.6017511693967714e-05
         },
-        "distortionStrength": 3.245198370390901e-08,
+        "distortionStrength": 0.12279384768518625,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 1.0,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": 0.022517833695264722,
+        "scale": 0.9973227281188647,
+        "stateSeparation": 0.13599288687978908,
+        "temporalStateCount": 5
       },
       "sourceFrameIndex": 10,
       "timeMs": 333.3333333333333
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.543103938735568,
-        "flowMeanPixels": 5.825285552418791e-05,
-        "flowP90Pixels": 3.972800186602399e-06,
-        "flowResidualP90Pixels": 3.971594865818615e-06,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.72,
+        "edgeEchoStrength": 0.05025549605488777,
+        "flowCoherence": 0.31421938802895116,
+        "flowMeanPixels": 0.8373056650161743,
+        "flowP90Pixels": 2.1860499382019043,
+        "flowResidualP90Pixels": 2.187116894073408,
+        "motionCompensatedResidualCoverage": 0.06842013888888888,
+        "motionCompensatedResidualMean": 0.01749217047930283,
+        "motionCompensatedResidualP90": 0.054901960784313725,
+        "stateSeparationNormalized": 0.0443381931399993
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0011.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.463808789745227,
         "cameraMotion": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": -1.6589837142921836e-13,
+          "y": 1.621334684184856e-05
         },
         "displacement": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": -1.6589837142921836e-13,
+          "y": 1.621334684184856e-05
         },
-        "distortionStrength": 3.245198370390901e-08,
+        "distortionStrength": 0.13671493157686168,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.593939393939394,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": -0.013950325548614098,
+        "scale": 0.9971943087218538,
+        "stateSeparation": 0.0443381931399993,
+        "temporalStateCount": 5
       },
       "sourceFrameIndex": 11,
       "timeMs": 366.6666666666667
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.8095238095238095,
         "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.543103938735568,
-        "flowMeanPixels": 5.825285552418791e-05,
-        "flowP90Pixels": 3.972800186602399e-06,
-        "flowResidualP90Pixels": 3.971594865818615e-06,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
+        "flowCoherence": 0.269190115756567,
+        "flowMeanPixels": 1.0423295497894287,
+        "flowP90Pixels": 2.059013605117798,
+        "flowResidualP90Pixels": 2.058194397695499,
+        "motionCompensatedResidualCoverage": 0.06616319444444445,
+        "motionCompensatedResidualMean": 0.015977736928104575,
+        "motionCompensatedResidualP90": 0.054901960784313725,
         "stateSeparationNormalized": 0.0
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0012.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.36479135376366445,
         "cameraMotion": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": 2.8383743190246583e-18,
+          "y": 4.7721725422889e-06
         },
         "displacement": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": 2.8383743190246583e-18,
+          "y": 4.7721725422889e-06
         },
-        "distortionStrength": 3.245198370390901e-08,
+        "distortionStrength": 0.13202686267247324,
         "occlusion": 0.0,
         "overlapDensity": 0.0,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
+        "rotationDegrees": 0.009124631146380194,
+        "scale": 0.9971107159831196,
         "stateSeparation": 0.0,
         "temporalStateCount": 1
       },
@@ -488,72 +502,74 @@
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.543103938735568,
-        "flowMeanPixels": 5.825285552418791e-05,
-        "flowP90Pixels": 3.972800186602399e-06,
-        "flowResidualP90Pixels": 3.971594865818615e-06,
-        "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.7959183673469388,
+        "edgeEchoStrength": 0.12917183339595795,
+        "flowCoherence": 0.5283441535056789,
+        "flowMeanPixels": 1.1502999067306519,
+        "flowP90Pixels": 2.0251572132110596,
+        "flowResidualP90Pixels": 2.024805364585422,
+        "motionCompensatedResidualCoverage": 0.07027777777777777,
+        "motionCompensatedResidualMean": 0.016485770697167754,
+        "motionCompensatedResidualP90": 0.054901960784313725,
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0013.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.14362541530080164,
         "cameraMotion": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": -1.0498045099893716e-09,
+          "y": 1.3458128604624006e-05
         },
         "displacement": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": -1.0498045099893716e-09,
+          "y": 1.3458128604624006e-05
         },
-        "distortionStrength": 3.245198370390901e-08,
+        "distortionStrength": 0.1329733212388469,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.11515151515151514,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": 0.011253339386112518,
+        "scale": 0.9974391950107084,
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 2
       },
       "sourceFrameIndex": 13,
       "timeMs": 433.3333333333333
     },
     {
       "diagnostics": {
-        "affineInlierRatio": 1.0,
-        "edgeEchoStrength": 0.0,
-        "flowCoherence": 0.543103938735568,
-        "flowMeanPixels": 5.825285552418791e-05,
-        "flowP90Pixels": 3.972800186602399e-06,
-        "flowResidualP90Pixels": 3.971594865818615e-06,
+        "affineFallbackUsed": 0.0,
+        "affineInlierRatio": 0.9655172413793104,
+        "edgeEchoStrength": 0.12476499378681183,
+        "flowCoherence": 0.7997019845554012,
+        "flowMeanPixels": 0.9412645697593689,
+        "flowP90Pixels": 0.7194733619689941,
+        "flowResidualP90Pixels": 0.7194734370845729,
         "motionCompensatedResidualCoverage": 0.0,
-        "motionCompensatedResidualMean": 0.0,
-        "motionCompensatedResidualP90": 0.0,
-        "stateSeparationNormalized": 0.0
+        "motionCompensatedResidualMean": 0.007527845860566449,
+        "motionCompensatedResidualP90": 0.023529411764705882,
+        "stateSeparationNormalized": 0.10894694214056866
       },
       "pngPath": "C:\\Users\\Shadow\\EditFlow-2.0\\proofs\\diagnostics\\m6-native-echo-control01-probe-frames\\frame-0014.png",
       "semantic": {
-        "blurStrength": 0.00019040849965179518,
+        "blurStrength": 0.011246610067020102,
         "cameraMotion": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": 1.3927620834408571e-09,
+          "y": 5.6688194878991753e-11
         },
         "displacement": {
-          "x": -5.754830639803643e-12,
-          "y": 1.0750610799565183e-21
+          "x": 1.3927620834408571e-09,
+          "y": 5.6688194878991753e-11
         },
-        "distortionStrength": 3.245198370390901e-08,
+        "distortionStrength": 0.056886838855077386,
         "occlusion": 0.0,
-        "overlapDensity": 0.0,
+        "overlapDensity": 0.2515151515151515,
         "perspectiveEnergy": 0.0,
-        "rotationDegrees": 0.0009549341286164289,
-        "scale": 1.0000067032101208,
-        "stateSeparation": 0.0,
-        "temporalStateCount": 1
+        "rotationDegrees": 0.009557693371577254,
+        "scale": 0.9974705882643894,
+        "stateSeparation": 0.10894694214056866,
+        "temporalStateCount": 4
       },
       "sourceFrameIndex": 14,
       "timeMs": 466.6666666666667
@@ -568,7 +584,7 @@
   "schema": "editflow.dense-video-probe.v1",
   "sourceId": "m6-native-echo-control01",
   "sourceKind": "RENDER",
-  "sourceVideoSha256": "b977398868bb48c989aeb4404d3e25d10963b5dcdb5bf6dcff643f360fdc5bef",
+  "sourceVideoSha256": "c839cb0a693742d73ad4e89ba65e7b180637ee92410efe411907093ecaf071e2",
   "video": {
     "fps": 30.0,
     "frameCount": 15,

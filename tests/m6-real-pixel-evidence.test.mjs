@@ -224,3 +224,39 @@ test("M6.8 retained live-AE UNKNOWN graph materialization is event-local and sou
   assert.ok(proof.nativePlan.commands.includes("layer.time_remap.enable"));
   assert.ok(proof.nativePlan.commands.includes("property.set_expression"));
 });
+
+
+test("M6.8 retained native Echo proof is active-analyzer, causal, and still fail-closed for professional fidelity", async () => {
+  const proof = await readJson("proofs/diagnostics/m6-native-echo-live-proof.json");
+  const reference = await readJson("proofs/diagnostics/m6-native-echo-reference-current-evidence.json");
+  const candidate = await readJson("proofs/diagnostics/m6-native-echo-case01-evidence.json");
+  const control = await readJson("proofs/diagnostics/m6-native-echo-control01-evidence.json");
+
+  assert.equal(proof.schema, "editflow.m6.native-echo-live-proof.v1");
+  assert.equal(proof.status, "PASS");
+  assert.equal(proof.schemaStatus, "PROOF_REQUIRED");
+  assert.equal(proof.transaction.state, "COMMITTED");
+  assert.equal(proof.referenceWindow.refreshedWithCurrentAnalyzer, true);
+  assert.equal(
+    proof.sourceVideoSha256,
+    "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+  );
+
+  assert.equal(reference.analyzerFingerprint, candidate.analyzerFingerprint);
+  assert.equal(reference.analyzerFingerprint, control.analyzerFingerprint);
+  assert.equal(proof.renderEvidence.referenceAnalyzerFingerprint, reference.analyzerFingerprint);
+  assert.equal(proof.renderEvidence.renderAnalyzerFingerprint, candidate.analyzerFingerprint);
+
+  const renderedAb = proof.renderEvidence.renderedAb;
+  assert.ok(renderedAb.frameCount > 0);
+  assert.ok(renderedAb.changedFrames >= Math.max(3, Math.floor(renderedAb.frameCount * 0.5)));
+  assert.ok(renderedAb.meanFrameDelta >= 0.002);
+  assert.ok(renderedAb.maxChangedPixelRatio >= 0.01);
+
+  assert.equal(proof.renderEvidence.referenceComparisonStatus, "COMPLETED");
+  assert.ok(proof.renderEvidence.candidateWeightedFidelity
+    > proof.renderEvidence.controlWeightedFidelity);
+  assert.ok(proof.renderEvidence.candidateDefiningCoverage < 1,
+    "causal native Echo pixels must not be mistaken for professional-fidelity certification");
+  assert.ok(proof.evidenceBoundary.some((line) => line.includes("remains PROOF_REQUIRED")));
+});

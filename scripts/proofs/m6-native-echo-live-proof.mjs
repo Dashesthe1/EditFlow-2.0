@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PNG } from "pngjs";
 
 import {
   compareSemanticVisualFidelityV1,
@@ -53,6 +54,44 @@ const run = (command, args) => {
   return result.stdout.trim();
 };
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
+const measureRenderedAb = async (candidateProbe, controlProbe) => {
+  const frameCount = Math.min(candidateProbe.frames.length, controlProbe.frames.length);
+  let changedFrames = 0;
+  let summedMeanFrameDelta = 0;
+  let maxMeanFrameDelta = 0;
+  let maxChangedPixelRatio = 0;
+  for (let index = 0; index < frameCount; index += 1) {
+    const candidateFrame = PNG.sync.read(await readFile(candidateProbe.frames[index].pngPath));
+    const controlFrame = PNG.sync.read(await readFile(controlProbe.frames[index].pngPath));
+    if (candidateFrame.width !== controlFrame.width || candidateFrame.height !== controlFrame.height) {
+      throw new Error("Native Echo A/B render dimensions do not match.");
+    }
+    let normalizedAbsoluteDelta = 0;
+    let changedPixels = 0;
+    const pixelCount = candidateFrame.width * candidateFrame.height;
+    for (let offset = 0; offset < candidateFrame.data.length; offset += 4) {
+      let channelDelta = 0;
+      for (let channel = 0; channel < 3; channel += 1) {
+        channelDelta += Math.abs(candidateFrame.data[offset + channel] - controlFrame.data[offset + channel]);
+      }
+      normalizedAbsoluteDelta += channelDelta / (3 * 255);
+      if (channelDelta > 12) changedPixels += 1;
+    }
+    const meanFrameDelta = normalizedAbsoluteDelta / pixelCount;
+    const changedPixelRatio = changedPixels / pixelCount;
+    if (meanFrameDelta > 1e-6) changedFrames += 1;
+    summedMeanFrameDelta += meanFrameDelta;
+    maxMeanFrameDelta = Math.max(maxMeanFrameDelta, meanFrameDelta);
+    maxChangedPixelRatio = Math.max(maxChangedPixelRatio, changedPixelRatio);
+  }
+  return {
+    frameCount,
+    changedFrames,
+    meanFrameDelta: frameCount === 0 ? 0 : summedMeanFrameDelta / frameCount,
+    maxMeanFrameDelta,
+    maxChangedPixelRatio,
+  };
+};
 const project = {
   schema: "editflow.virtual-ae.project.v1",
   activeCompId: "m6-proof-comp",
@@ -223,15 +262,24 @@ try {
   }
   const candidateSummary = candidate.value.summary;
   const controlSummary = control.value.summary;
-  const temporalImprovements = {
-    stateCount: candidateSummary.temporalStateCountPeak > controlSummary.temporalStateCountPeak,
+  const temporalDiagnostics = {
+    globalStateCount: candidateSummary.temporalStateCountPeak > controlSummary.temporalStateCountPeak,
+    fragmentationStateCount:
+      candidateSummary.fragmentationTemporalStateCountPeak > controlSummary.fragmentationTemporalStateCountPeak,
+    fragmentationOverlap:
+      candidateSummary.fragmentationOverlapDensityPeak > controlSummary.fragmentationOverlapDensityPeak + 0.002,
     persistence: candidateSummary.temporalPersistence > controlSummary.temporalPersistence + 0.01,
-    overlap: candidateSummary.overlapDensityPeak > controlSummary.overlapDensityPeak + 0.002,
+    globalOverlap: candidateSummary.overlapDensityPeak > controlSummary.overlapDensityPeak + 0.002,
   };
-  const visualConsequenceDetected = Object.values(temporalImprovements).some(Boolean)
-    && candidate.value.contentKey !== control.value.contentKey;
+  const renderedAb = await measureRenderedAb(candidate.probeValue, control.probeValue);
+  const minimumChangedFrames = Math.max(3, Math.floor(renderedAb.frameCount * 0.5));
+  const visualConsequenceDetected = candidate.value.contentKey !== control.value.contentKey
+    && renderedAb.changedFrames >= minimumChangedFrames
+    && renderedAb.meanFrameDelta >= 0.002
+    && renderedAb.maxChangedPixelRatio >= 0.01;
   if (!visualConsequenceDetected) {
-    throw new Error("Native Echo rendered, but dense evidence did not detect a temporal pixel consequence versus Echo-off control.");
+    throw new Error("Native Echo rendered, but direct A/B pixels did not prove a material causal consequence versus Echo-off control: "
+      + JSON.stringify({ renderedAb, minimumChangedFrames }));
   }
   artifact = {
     schema: "editflow.m6.native-echo-live-proof.v1",
@@ -260,16 +308,23 @@ try {
       controlVideo: path.relative(ROOT, controlVideo).replaceAll("\\", "/"),
       candidateEvidence: path.relative(ROOT, candidate.evidence).replaceAll("\\", "/"),
       controlEvidence: path.relative(ROOT, control.evidence).replaceAll("\\", "/"),
-      temporalImprovements,
+      temporalDiagnostics,
+      renderedAb,
       candidateSummary: {
         temporalStateCountPeak: candidateSummary.temporalStateCountPeak,
         temporalPersistence: candidateSummary.temporalPersistence,
         overlapDensityPeak: candidateSummary.overlapDensityPeak,
+        fragmentationTemporalStateCountPeak: candidateSummary.fragmentationTemporalStateCountPeak,
+        fragmentationOverlapDensityPeak: candidateSummary.fragmentationOverlapDensityPeak,
+        fragmentationStateSeparationPeak: candidateSummary.fragmentationStateSeparationPeak,
       },
       controlSummary: {
         temporalStateCountPeak: controlSummary.temporalStateCountPeak,
         temporalPersistence: controlSummary.temporalPersistence,
         overlapDensityPeak: controlSummary.overlapDensityPeak,
+        fragmentationTemporalStateCountPeak: controlSummary.fragmentationTemporalStateCountPeak,
+        fragmentationOverlapDensityPeak: controlSummary.fragmentationOverlapDensityPeak,
+        fragmentationStateSeparationPeak: controlSummary.fragmentationStateSeparationPeak,
       },
       referenceComparisonStatus,
       referenceAnalyzerFingerprint: reference.analyzerFingerprint,
@@ -280,9 +335,10 @@ try {
       controlDefiningCoverage: controlComparison?.definingCoverage ?? null,
     },
     evidenceBoundary: [
-      "This proves the proof-only native Echo schema executes in real AE and produces a dense-evidence-visible temporal consequence.",
-      "It does not promote Echo to CERTIFIED and does not by itself certify full professional fidelity for the compound reference.",
-      "Promotion still requires retained rendered transfer evidence and anti-simplification calibration.",
+      "This active-analyzer proof confirms native ADBE Echo property mapping in live AE and a direct causal rendered-pixel consequence versus an Echo-off control.",
+      "The professional-reference comparator remains a separate stricter gate; pixel change alone does not make Echo a defining component or certify professional fidelity.",
+      `Current reference comparison: candidate defining coverage ${candidateComparison?.definingCoverage ?? "unavailable"} at fidelity ${candidateComparison?.weightedFidelity ?? "unavailable"}; Echo-off control coverage ${controlComparison?.definingCoverage ?? "unavailable"} at fidelity ${controlComparison?.weightedFidelity ?? "unavailable"}.`,
+      "The Echo schema remains PROOF_REQUIRED. Promotion requires materially different transfer evidence plus anti-simplification calibration under analyzer-matched retained evidence.",
     ],
     readback,
   };
@@ -292,10 +348,13 @@ try {
     ok: true,
     output: OUTPUT_PATH,
     transactionState: artifact.transaction.state,
-    temporalImprovements,
+    temporalDiagnostics,
+    renderedAb,
     referenceComparisonStatus,
     candidateWeightedFidelity: candidateComparison?.weightedFidelity ?? null,
     controlWeightedFidelity: controlComparison?.weightedFidelity ?? null,
+    candidateDefiningCoverage: candidateComparison?.definingCoverage ?? null,
+    controlDefiningCoverage: controlComparison?.definingCoverage ?? null,
   }));
 } finally {
   await runProofScript("m6-generic-native-proof-cleanup.jsx").catch(() => {});
