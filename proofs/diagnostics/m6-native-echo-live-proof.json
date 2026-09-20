@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.native-echo-live-proof.v1",
-  "generatedAt": "2026-09-20T05:12:02.354Z",
+  "generatedAt": "2026-09-20T12:18:09.141Z",
   "status": "PASS",
   "schemaStatus": "PROOF_REQUIRED",
   "sourceEvidence": "proofs/diagnostics/m6-native-echo-reference-current-evidence.json",
@@ -11,12 +11,24 @@
     "refreshedWithCurrentAnalyzer": true
   },
   "strategy": "NATIVE_ECHO_HYBRID",
-  "graphId": "construction:anatomy:unknown:78c2279b4e72:native_echo_hybrid",
+  "graphId": "construction:anatomy:unknown:2bc06fe83ae9:native_echo_hybrid",
   "nativePlan": {
-    "operationCount": 7,
+    "operationCount": 19,
     "commands": [
       "property.set_expression",
       "layers.precompose",
+      "layer.duplicate",
+      "property.set_expression",
+      "effect.add",
+      "effect.set_property",
+      "effect.set_property",
+      "effect.set_property",
+      "effect.set_property",
+      "property.set_expression",
+      "property.set_expression",
+      "effect.add",
+      "effect.set_property",
+      "effect.set_property",
       "effect.add",
       "effect.set_property",
       "effect.set_property",
@@ -26,25 +38,26 @@
     "requiredCapabilities": [
       "ae.expression.set",
       "ae.precompose.layers",
+      "ae.layer.duplicate",
       "ae.effect.add",
       "ae.effect.property.set"
     ]
   },
   "transaction": {
     "state": "COMMITTED",
-    "transactionId": "a428f75f-feaf-4ac1-8623-7297a827f2de"
+    "transactionId": "67ed8ac8-6827-4634-9e4e-82566f9f81c1"
   },
   "expectedEchoProperties": {
-    "echoTime": -0.05,
+    "echoTime": -0.041666666666666664,
     "numberOfEchoes": 4,
-    "startingIntensity": 0.9833333333333333,
-    "decay": 0.9333333333333332
+    "startingIntensity": 0.9430232558139535,
+    "decay": 0.8627906976744185
   },
   "readbackEchoProperties": {
-    "ADBE Echo-0001": -0.05000000074506,
+    "ADBE Echo-0001": -0.04166666790843,
     "ADBE Echo-0002": 4,
-    "ADBE Echo-0003": 0.98333334922791,
-    "ADBE Echo-0004": 0.93333333730698,
+    "ADBE Echo-0003": 0.94302326440811,
+    "ADBE Echo-0004": 0.8627907037735,
     "ADBE Echo-0005": 1
   },
   "renderEvidence": {
@@ -52,33 +65,49 @@
     "controlVideo": "proofs/diagnostics/m6-native-echo-control01.mp4",
     "candidateEvidence": "proofs/diagnostics/m6-native-echo-case01-evidence.json",
     "controlEvidence": "proofs/diagnostics/m6-native-echo-control01-evidence.json",
-    "temporalImprovements": {
-      "stateCount": true,
-      "persistence": true,
-      "overlap": true
+    "temporalDiagnostics": {
+      "globalStateCount": false,
+      "fragmentationStateCount": true,
+      "fragmentationOverlap": true,
+      "persistence": false,
+      "globalOverlap": false
+    },
+    "renderedAb": {
+      "frameCount": 15,
+      "changedFrames": 11,
+      "meanFrameDelta": 0.028439005386101144,
+      "maxMeanFrameDelta": 0.08353397331151322,
+      "maxChangedPixelRatio": 0.9028645833333333
     },
     "candidateSummary": {
       "temporalStateCountPeak": 5,
-      "temporalPersistence": 0.07142857142857142,
-      "overlapDensityPeak": 1
+      "temporalPersistence": 0.7333333333333333,
+      "overlapDensityPeak": 0.9757575757575757,
+      "fragmentationTemporalStateCountPeak": 5,
+      "fragmentationOverlapDensityPeak": 0.3060606060606061,
+      "fragmentationStateSeparationPeak": 0.09260490081948336
     },
     "controlSummary": {
-      "temporalStateCountPeak": 1,
-      "temporalPersistence": 0,
-      "overlapDensityPeak": 0
+      "temporalStateCountPeak": 5,
+      "temporalPersistence": 0.8,
+      "overlapDensityPeak": 1,
+      "fragmentationTemporalStateCountPeak": 3,
+      "fragmentationOverlapDensityPeak": 0.21818181818181817,
+      "fragmentationStateSeparationPeak": 0.10894694214056866
     },
     "referenceComparisonStatus": "COMPLETED",
-    "referenceAnalyzerFingerprint": "116cb76bb4fadc139e9d9e2d1fe7382720c4fdbd4b22c1a9e0b62cb585939b7f",
-    "renderAnalyzerFingerprint": "116cb76bb4fadc139e9d9e2d1fe7382720c4fdbd4b22c1a9e0b62cb585939b7f",
-    "candidateWeightedFidelity": 0.7170941764864492,
-    "controlWeightedFidelity": 0.3626499513691541,
-    "candidateDefiningCoverage": 0.6666666666666666,
-    "controlDefiningCoverage": 0.16666666666666666
+    "referenceAnalyzerFingerprint": "c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80",
+    "renderAnalyzerFingerprint": "c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80",
+    "candidateWeightedFidelity": 0.8378466848066886,
+    "controlWeightedFidelity": 0.7973824639786814,
+    "candidateDefiningCoverage": 0.42857142857142855,
+    "controlDefiningCoverage": 0.42857142857142855
   },
   "evidenceBoundary": [
-    "This proves the proof-only native Echo schema executes in real AE and produces a dense-evidence-visible temporal consequence.",
-    "It does not promote Echo to CERTIFIED and does not by itself certify full professional fidelity for the compound reference.",
-    "Promotion still requires retained rendered transfer evidence and anti-simplification calibration."
+    "This active-analyzer proof confirms native ADBE Echo property mapping in live AE and a direct causal rendered-pixel consequence versus an Echo-off control.",
+    "The professional-reference comparator remains a separate stricter gate; pixel change alone does not make Echo a defining component or certify professional fidelity.",
+    "Current reference comparison: candidate defining coverage 0.42857142857142855 at fidelity 0.8378466848066886; Echo-off control coverage 0.42857142857142855 at fidelity 0.7973824639786814.",
+    "The Echo schema remains PROOF_REQUIRED. Promotion requires materially different transfer evidence plus anti-simplification calibration under analyzer-matched retained evidence."
   ],
-  "readback": "OUTER_LAYER\tnode:1:temporal_duplicates:echo-history-precompose 1\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates:echo-history-precompose::0::m6-proof-hero::layer]]\r\nINNER_COMP\tnode:1:temporal_duplicates:echo-history-precompose 1\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates:echo-history-precompose::0::m6-proof-hero::comp]]\r\nINNER_LAYER\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-hero]]\r\nINNER_POSITION_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var amplitude=0.07006638912336575*thisComp.height*0.5;var impulse=0;if(f<=-4||f>=0){impulse=0;}else if(f<-3){impulse=0;}else if(f<-2){impulse=linear(f,-3,-2,0,amplitude);}else if(f<-1){impulse=linear(f,-2,-1,amplitude,-amplitude);}else{impulse=linear(f,-1,0,-amplitude,0);}value+[0,impulse];\r\nINNER_TIMING\t0\t0\t1\t100\r\nPOS_AT\t0.35\t320\t180\r\nPOS_AT\t0.4\t320\t180\r\nPOS_AT\t0.43333333333333\t320\t192.611950042206\r\nPOS_AT\t0.46666666666667\t320\t167.388049957794\r\nPOS_AT\t0.5\t320\t180\r\nPOS_AT\t0.55\t320\t180\r\nEFFECT\t1\tEcho\tADBE Echo\t1\r\nEFFECT_PROP\t1\t1\tADBE Echo-0001\t-0.05000000074506\r\nEFFECT_PROP\t1\t2\tADBE Echo-0002\t4\r\nEFFECT_PROP\t1\t3\tADBE Echo-0003\t0.98333334922791\r\nEFFECT_PROP\t1\t4\tADBE Echo-0004\t0.93333333730698\r\nEFFECT_PROP\t1\t5\tADBE Echo-0005\t1\r\n"
+  "readback": "OUTER_LAYER\tnode:1:temporal_duplicates:echo-history-precompose 1\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::effect-stack-accent]]\r\nINNER_COMP\tnode:1:temporal_duplicates:echo-history-precompose 1\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates:echo-history-precompose::0::m6-proof-hero::comp]]\r\nINNER_LAYER\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-hero]]\r\nINNER_POSITION_EXPR\tvar event=0.5;var f=((time-event)/thisComp.frameDuration)+0;var amplitude=0.07006638912336575*thisComp.height*0.5*1;var pre=3.00770660768072;var q=pre/4;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-3*q){impulse=0;}else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}else{impulse=linear(f,-q,0,-amplitude,0);}value+[0,impulse];\r\nINNER_TIMING\t0\t0\t1\t100\r\nPOS_AT\t0.35\t320\t180\r\nPOS_AT\t0.4\t320\t180\r\nPOS_AT\t0.43333333333333\t320\t184.290157844002\r\nPOS_AT\t0.46666666666667\t320\t175.709842155998\r\nPOS_AT\t0.5\t320\t180\r\nPOS_AT\t0.55\t320\t180\r\nEFFECT\t1\tEcho\tADBE Echo\t1\r\nEFFECT_PROP\t1\t1\tADBE Echo-0001\t-0.04166666790843\r\nEFFECT_PROP\t1\t2\tADBE Echo-0002\t4\r\nEFFECT_PROP\t1\t3\tADBE Echo-0003\t0.94302326440811\r\nEFFECT_PROP\t1\t4\tADBE Echo-0004\t0.8627907037735\r\nEFFECT_PROP\t1\t5\tADBE Echo-0005\t1\r\n"
 }
