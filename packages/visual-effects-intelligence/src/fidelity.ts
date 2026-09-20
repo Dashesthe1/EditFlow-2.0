@@ -9,10 +9,10 @@ import type {
   TransitionDnaV1,
 } from "./contracts.js";
 import {
-  measureHalfPeakTemporalProfileV1,
   resolveFragmentationEventMetricsV1,
   scoreFragmentationEventLocalizationV1,
 } from "./dense-evidence.js";
+import { measureHalfPeakTemporalProfileV1 } from "./temporal-profile.js";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 

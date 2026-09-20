@@ -6,9 +6,9 @@
     "startMs": 18789.893374854313,
     "endMs": 19524.78698240417
   },
-  "analyzerFingerprint": "ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+  "analyzerFingerprint": "c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80",
   "settingsFingerprint": "a0910a75d36a7c2a3993b093f937ada942fafdbd26c5fe4c5f4b29278272e191",
-  "contentKey": "2e878ffb4e29da92e4d240b02883764f86191f76969865ee9f73ad9a29daa3e8",
+  "contentKey": "cd5dd72b0813fc5c44a81387e942fc350172e8678b8526effe518537369facb0",
   "frames": [
     {
       "timeMs": 18789.893374854313,
@@ -1802,7 +1802,7 @@
     "probe-json:sha256:0ffc13564b3f8d68cd5c0fc0dd85c04e36d5cb44d6c53ece193d280bc68e7d6b",
     "probe-algorithm:editflow.m6.dense-video-probe.v10",
     "probe-analyzer:sha256:98c6deb276161e82fd0fcfd6d564031c7428d9fbeaedfb7e1f0c12cd0f4aa575",
-    "measurement-system:sha256:ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+    "measurement-system:sha256:c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80",
     "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation"
   ]
 }

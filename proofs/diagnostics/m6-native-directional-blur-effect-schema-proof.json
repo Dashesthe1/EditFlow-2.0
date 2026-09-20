@@ -5,7 +5,7 @@
   "proposedSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
   "candidateId": "adaptive:layered-primitives",
   "graphId": "construction:anatomy:unknown:cd5dd72b0813",
-  "analyzerFingerprint": "ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+  "analyzerFingerprint": "c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80",
   "expected": {
     "blurDirectionDegrees": 0,
     "blurLengthPixels": 21.935786593201318

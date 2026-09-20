@@ -1,6 +1,7 @@
 export * from "./contracts.js";
 export * from "./baseline.js";
 export * from "./dense-evidence.js";
+export * from "./temporal-profile.js";
 export * from "./sequence.js";
 export * from "./causal-learning.js";
 export * from "./anatomy.js";

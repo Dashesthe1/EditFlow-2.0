@@ -17,9 +17,9 @@ import type {
 import { buildConstructionGraphV1, compileConstructionGraphV1 } from "./construction.js";
 import {
   measureFragmentationEventProminenceV1,
-  measureHalfPeakTemporalProfileV1,
   resolveFragmentationEventMetricsV1,
 } from "./dense-evidence.js";
+import { measureHalfPeakTemporalProfileV1 } from "./temporal-profile.js";
 
 const invariant = (
   id: string,
