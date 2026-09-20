@@ -1,0 +1,14 @@
+COMP	__EF2_M6_GENERIC_NATIVE_CORR01_PROOF__	2
+LAYER	1	M6 Generic Hero 2	[[EDITFLOW2_STABLE:node:1:optical_treatment::effect-stack-accent]]	0	0	1
+TIME_REMAP	0	
+POSITION_EXPR	
+OPACITY_EXPR	var event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=5.006042817679627;var post=4.004834254143571;if(f<=-pre||f>=post){0}else if(f<0){linear(f,-pre,0,0,100)}else{linear(f,0,post,100,0)}
+ANCHOR_EXPR	
+EFFECT	1	Directional Blur	ADBE Motion Blur	1
+EFFECT_PROP	1	1	ADBE Motion Blur-0001	TYPE=6417
+EFFECT_PROP	1	2	ADBE Motion Blur-0002	TYPE=6417
+LAYER	2	M6 Generic Hero	[[EDITFLOW2_STABLE:m6-proof-corr01-hero]]	0	0	1
+TIME_REMAP	0	
+POSITION_EXPR	
+OPACITY_EXPR	
+ANCHOR_EXPR	

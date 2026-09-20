@@ -109,13 +109,33 @@ are never treated as usable merely because After Effects documents the effect.
 Successful candidates keep source provenance and can be retained only after rendered
 proof through `SynthesizedEffectMemoryV1`.
 
+The retained M6.8 release gate is now machine-checkable through
+`evaluateUnknownEffectSynthesisMilestoneV1()` and
+`proofs/manifests/m6-unknown-effect-synthesis-v1.json`. It requires at least three
+distinct reference content identities, family `UNKNOWN`, behavior-first provenance,
+no nearest-named-effect fallback, rendered certification, complete defining coverage,
+a rejected degraded/under-driven state, at least one committed real-AE case, and at
+least one bounded automatic-correction case. The current retained manifest passes with
+three distinct unknown cases, three rendered proofs, two committed real-AE cases, one
+bounded automatic-correction case, and zero gate failures.
+
 ### M6.9 Professional Benchmark
 
 `createCanonicalProfessionalBenchmarkV1()` declares 24 cases spanning all fourteen
 families, tutorial-based references, reference-only cases, ten held-out cases, and the
-required transfer axes. A case passes only with direct A/B evidence, machine comparison,
-transfer, degraded-case rejection, and the expected maturity. This commit defines and
-tests the benchmark contract; it does not fabricate the missing rendered case evidence.
+required transfer axes. A case passes only with content-addressed direct A/B evidence,
+machine comparison, materially different transfer evidence, degraded-case rejection,
+and the expected cumulative maturity. `evaluateRetainedProfessionalBenchmarkV1()`
+fails closed when any artifact digest, case/family binding, content-key relationship,
+transfer-source identity, or transfer axis is missing.
+
+The retained readiness manifest is
+`proofs/manifests/m6-professional-benchmark-readiness-v1.json`. It is deliberately
+`IN_PROGRESS`: one of 24 cases, canonical shutter fragmentation, is currently bound to
+retained reference evidence, a certified real-AE render, semantic comparison, direct
+A/B evidence, and a rejected degraded control. It has no accepted transfer artifact
+yet, so the benchmark cannot promote that case beyond `REFERENCE_FAITHFUL` and cannot
+claim benchmark-wide Level 6.
 
 ### M6.10 EditFlow Brain Integration
 
@@ -151,25 +171,27 @@ flow, robust affine motion, motion-compensated residual, optical structure and
 within-frame temporal fragmentation. `scripts/proofs/m6-dense-video-evidence.mjs`
 lowers those measurements through the existing `DenseEffectEvidenceV1` schema.
 
-### Active v10 evidence boundary (September 2026)
+### Active v12 evidence boundary (September 2026)
 
-The active analyzer is `editflow.m6.dense-video-probe.v10`. Reference and render
-evidence must share analyzer fingerprint
-`c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80`;
-mismatched evidence fails closed. The reference window is bound to source-video SHA-256
-`c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae`.
+The active dense probe is `editflow.m6.dense-video-probe.v12`. It improves persistent
+shot-boundary and temporal-baseline handling used by dense reference analysis. Reference
+and render evidence may certify one another only when their analyzer fingerprints
+match; analyzer drift invalidates comparison, not the underlying historical proof. A
+retained v11 UNKNOWN correction proof was intentionally not reinterpreted under v12:
+a live rerun reached the analyzer-compatibility guard and failed closed rather than
+mixing evidence generations.
 
-The current best real-AE UNKNOWN compound checkpoint is
-`proofs/diagnostics/m6-compound-evolving-warp-live04.json`. It improves the
-retained state from 0.8919 weighted fidelity / 4-of-7 defining coverage to 0.9846 /
-5-of-7. Persistence and scale pass. Distortion and acceleration remain under-driven,
-so the proof status is `SYNTHESIS_REJECTED` and it is not professional-fidelity
-certified. The live controller now routes evolving-warp motion probes to the consumed
-event-evolution sweep actuator and preserves the retained physical scale across
-synthesis candidates.
+The current v12 shutter reference is retained at
+`proofs/diagnostics/m6-m69-shutter-reference-v12-evidence.json`. It is new perception
+evidence, not a replacement certification for older analyzer-matched renders. M6.8
+therefore retains its content-addressed v11/v6 case proofs under the no-reproof rule,
+while new M6.9 transfer and benchmark renders must use analyzer-compatible evidence for
+their own certification.
 
-The v6 material below is retained as historical provenance only. It does not certify
-the active v10 gate and must not be represented as current completion evidence.
+The v6 material below is retained as historical, analyzer-bound professional-fidelity
+provenance. It supports the canonical shutter benchmark's retained reference-faithful
+case, but it does not by itself satisfy transfer, the 24-case professional benchmark,
+or robustness.
 
 ### Historical v6 evidence (superseded for active certification)
 
@@ -219,36 +241,38 @@ The retained proof is
 across three bounded rounds, analyzer-matched evidence provenance, retained-best
 selection, candidate generation history, and the explicit single-case scope.
 
-M6.8 now also has one retained behavior-only real-pixel synthesis proof at
-`proofs/diagnostics/m6-real-unknown-synthesis-case01.json`. The learned family identity
-is explicitly disabled, the selected graph remains family `UNKNOWN`, the defining
-event-local DNA reaches coverage 1.0 and weighted fidelity 0.9599, and the degraded
-seed control is rejected. This proves that unknown-effect perception, DNA construction,
-candidate synthesis, and semantic certification can work from rendered behavior for
-one case. The certified render is intentionally reused from the proven shutter
-correction actuator path. A separate retained live-AE structural proof now exists at
-`proofs/diagnostics/m6-generic-native-materializer-case01.json`: the same behavior-only
-`UNKNOWN` graph compiles through Editing IR / Virtual AE / native AE, commits six native
-operations, creates the required temporal duplicate, realizes its prior-frame state with
-an event-local one-frame Time Remap source offset, and retains bounded event-local
-visibility without shifting the whole layer. This closes direct generic UNKNOWN
-graph-to-real-AE materialization provenance for this one case, but it is structural
-readback evidence rather than an additional rendered-fidelity certification.
+M6.8 now has three retained behavior-first unknown-effect cases bound by
+`proofs/manifests/m6-unknown-effect-synthesis-v1.json`. Case 01 disables learned-skill
+identity and reconstructs fragmentation from rendered behavior; case 02 reconstructs a
+reference-only optical effect through an `UNKNOWN` construction with committed native
+AE proof; case 03 records a bounded live-AE correction sequence whose deliberately
+under-driven states are rejected until the final rendered pass reaches defining
+coverage 1.0 and weighted fidelity 1.0. The milestone evaluator requires the three
+reference content identities to be distinct and refuses named-effect fallback. M6.8 is
+therefore closed at its roadmap proof gate rather than merely implemented.
 
-The shutter case **was** `PROFESSIONAL_FIDELITY_VERIFIED` under its retained v6
-analyzer contract, and its bounded M6.7 local AE correction loop was automatic. That
-historical result does **not** certify the active v10 gate or M6 as a whole. The following evidence remains open:
+The canonical shutter case is `REFERENCE_FAITHFUL` in the M6.9 cumulative maturity
+model: its retained analyzer-matched v6 render has defining coverage 1.0, weighted
+fidelity 1.0, rejected rendered negative controls, and direct A/B evidence. It is not
+`TRANSFER_VERIFIED` because materially different footage has not yet been accepted for
+the shutter construction. The benchmark readiness manifest consequently remains
+`IN_PROGRESS`.
 
-1. transfer the shutter construction to materially different footage;
-2. real AE reconstructions for at least three substantially different compound effects;
-3. two additional substantially different reference-only unknown-effect reconstructions, plus rendered-fidelity proof for generic UNKNOWN graph-to-AE realization beyond the retained structural case;
-4. 20-30 rendered benchmark cases with held-out and transfer variants;
-5. a normal edit request invoking perception -> synthesis -> construction -> comparison
-   -> correction -> fidelity without developer intervention.
+The following release evidence remains open:
 
-M6 therefore retains a historical v6 professional-fidelity proof, while the active
-v10 gate, `TRANSFER_VERIFIED`, benchmark-wide `PROFESSIONAL_FIDELITY_VERIFIED`, and
-`ROBUST` remain open release gates.
+1. transfer the canonical shutter construction across its required subject and
+   aspect-ratio axes with analyzer-compatible rendered evidence;
+2. populate the remaining 23 canonical/held-out M6.9 cases with retained reference,
+   render, semantic-comparison, direct-A/B, degraded-control, and transfer artifacts;
+3. progress important effects through at least two professional case passes for
+   benchmark-wide `PROFESSIONAL_FIDELITY_VERIFIED`, then cover all six robustness axes
+   for heavily reused Level-7 techniques;
+4. make a normal edit request invoke perception -> synthesis -> construction ->
+   comparison -> correction -> fidelity without bespoke developer intervention.
+
+M6 therefore closes M6.8 while `TRANSFER_VERIFIED`, M6.9 benchmark-wide
+`PROFESSIONAL_FIDELITY_VERIFIED`, `ROBUST`, and the M6.10 normal-production
+integration gate remain open.
 
 ## Verification
 

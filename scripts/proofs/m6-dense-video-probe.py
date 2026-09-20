@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v10"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v12"
 
 
 def analyzer_fingerprint():
@@ -177,6 +177,62 @@ def motion_compensated_residual(previous, current, matrix):
     return mean, p90, active
 
 
+def normalized_frame_mae(previous, current):
+    return float(np.mean(cv2.absdiff(previous, current)) / 255.0)
+
+
+def color_histogram_distance(previous, current):
+    hist_previous = cv2.calcHist(
+        [previous], [0, 1], None, [32, 32], [0, 256, 0, 256]
+    )
+    hist_current = cv2.calcHist(
+        [current], [0, 1], None, [32, 32], [0, 256, 0, 256]
+    )
+    cv2.normalize(hist_previous, hist_previous)
+    cv2.normalize(hist_current, hist_current)
+    return float(cv2.compareHist(
+        hist_previous, hist_current, cv2.HISTCMP_BHATTACHARYYA
+    ))
+
+
+def persistent_shot_boundary_metrics(previous, current, following):
+    enter_mae = normalized_frame_mae(previous, current)
+    hold_mae = normalized_frame_mae(current, following)
+    bridge_mae = normalized_frame_mae(previous, following)
+    enter_hist = color_histogram_distance(previous, current)
+    hold_hist = color_histogram_distance(current, following)
+    bridge_hist = color_histogram_distance(previous, following)
+    persistent_regime_jump = (
+        enter_mae >= 0.075
+        and bridge_mae >= enter_mae * 0.70
+    )
+    persistent_regime_histogram_change = (
+        enter_hist >= 0.10
+        and bridge_hist >= enter_hist * 0.65
+    )
+    persistent_jump = (
+        persistent_regime_jump
+        and hold_mae <= max(0.0125, enter_mae * 0.22)
+    )
+    persistent_histogram_change = (
+        persistent_regime_histogram_change
+        and hold_hist <= 0.08
+        and hold_hist <= enter_hist * 0.45
+    )
+    return {
+        "candidate": bool(persistent_jump and persistent_histogram_change),
+        "baselineSegmentCandidate": bool(
+            persistent_regime_jump and persistent_regime_histogram_change
+        ),
+        "entryFrameMae": enter_mae,
+        "holdFrameMae": hold_mae,
+        "bridgeFrameMae": bridge_mae,
+        "entryHistogramDistance": enter_hist,
+        "holdHistogramDistance": hold_hist,
+        "bridgeHistogramDistance": bridge_hist,
+    }
+
+
 def edge_echo_surface(gray):
     edges = cv2.Canny(gray, 60, 150).astype(np.float32) / 255.0
     if float(edges.mean()) < 0.0001:
@@ -337,14 +393,57 @@ def read_cached_window(probe_path, longest):
 def analyze_frames(frames, fps):
     grays = [gray_u8(frame) for _index, frame in frames]
     echo_surfaces = [edge_echo_surface(gray) for gray in grays]
-    echo_values = [
-        surface["values"] for surface in echo_surfaces if surface is not None
+
+    # Edge autocorrelation must be normalized against the local shot, not the
+    # entire transition window. A whole-window median mixes unrelated pre/post
+    # cut textures and can make the destination shot look like a persistent
+    # multi-state echo. Persistent RGB continuity gives us conservative segment
+    # starts before any semantic echo evidence is derived.
+    boundary_metrics_by_offset = [None] * len(frames)
+    for offset in range(1, max(1, len(frames) - 1)):
+        if offset + 1 >= len(frames):
+            break
+        boundary_metrics_by_offset[offset] = persistent_shot_boundary_metrics(
+            frames[offset - 1][1], frames[offset][1], frames[offset + 1][1]
+        )
+    # A stylized transition can evolve for several frames, so the strict
+    # hard-cut detector may intentionally remain false. For echo normalization,
+    # choose the strongest persistent appearance-regime onset instead. This
+    # suppresses destination-shot texture without isolating the effect frames
+    # into their own baseline (which would erase the transient we need to see).
+    regime_candidates = [
+        (offset, metrics)
+        for offset, metrics in enumerate(boundary_metrics_by_offset)
+        if metrics is not None and metrics["baselineSegmentCandidate"]
     ]
-    temporal_echo_baseline = (
-        np.median(np.stack(echo_values, axis=0), axis=0).astype(np.float32)
-        if echo_values
-        else None
-    )
+    segment_starts = [0]
+    if regime_candidates:
+        dominant_offset, _metrics = max(
+            regime_candidates,
+            key=lambda item: (
+                item[1]["entryFrameMae"]
+                * max(item[1]["entryHistogramDistance"], 1e-6)
+                * max(item[1]["bridgeFrameMae"], 1e-6)
+            ),
+        )
+        if dominant_offset >= 3 and len(frames) - dominant_offset >= 3:
+            segment_starts.append(dominant_offset)
+    segment_ends = segment_starts[1:] + [len(frames)]
+    temporal_echo_baselines = [None] * len(frames)
+    for start, end in zip(segment_starts, segment_ends):
+        echo_values = [
+            echo_surfaces[index]["values"]
+            for index in range(start, end)
+            if echo_surfaces[index] is not None
+        ]
+        baseline = (
+            np.median(np.stack(echo_values, axis=0), axis=0).astype(np.float32)
+            if echo_values
+            else None
+        )
+        for index in range(start, end):
+            temporal_echo_baselines[index] = baseline
+
     sharpness = np.array(
         [float(cv2.Laplacian(gray, cv2.CV_64F).var()) for gray in grays],
         dtype=np.float64,
@@ -355,7 +454,7 @@ def analyze_frames(frames, fps):
     output = []
     for offset, ((source_index, frame), gray) in enumerate(zip(frames, grays)):
         state_count, echo_strength, overlap_density, state_separation = edge_echo_metrics(
-            echo_surfaces[offset], temporal_echo_baseline
+            echo_surfaces[offset], temporal_echo_baselines[offset]
         )
         semantic = {
             "displacement": {"x": 0.0, "y": 0.0},
@@ -369,6 +468,7 @@ def analyze_frames(frames, fps):
             "occlusion": 0.0,
             "perspectiveEnergy": 0.0,
             "cameraMotion": {"x": 0.0, "y": 0.0},
+            "shotBoundaryDiscontinuity": False,
         }
         diagnostics = {
             "edgeEchoStrength": echo_strength,
@@ -382,9 +482,34 @@ def analyze_frames(frames, fps):
             "motionCompensatedResidualMean": 0.0,
             "motionCompensatedResidualP90": 0.0,
             "motionCompensatedResidualCoverage": 0.0,
+            "shotBoundaryDiscontinuity": 0.0,
+            "entryFrameMae": 0.0,
+            "holdFrameMae": 0.0,
+            "bridgeFrameMae": 0.0,
+            "entryHistogramDistance": 0.0,
+            "holdHistogramDistance": 0.0,
+            "bridgeHistogramDistance": 0.0,
         }
         if offset > 0:
             previous = grays[offset - 1]
+            boundary_metrics = {
+                "candidate": False,
+                "entryFrameMae": 0.0,
+                "holdFrameMae": 0.0,
+                "bridgeFrameMae": 0.0,
+                "entryHistogramDistance": 0.0,
+                "holdHistogramDistance": 0.0,
+                "bridgeHistogramDistance": 0.0,
+            }
+            retained_boundary_metrics = boundary_metrics_by_offset[offset]
+            if retained_boundary_metrics is not None:
+                boundary_metrics = retained_boundary_metrics
+                for key in (
+                    "entryFrameMae", "holdFrameMae", "bridgeFrameMae",
+                    "entryHistogramDistance", "holdHistogramDistance",
+                    "bridgeHistogramDistance",
+                ):
+                    diagnostics[key] = float(boundary_metrics[key])
             flow = farneback_flow(previous, gray)
             median, mean_mag, p90_mag, coherence, flow_residual = flow_stats(flow)
             height, width = gray.shape
@@ -401,32 +526,51 @@ def analyze_frames(frames, fps):
                     diagnostics["affineFallbackUsed"] = 1.0
             if affine is not None:
                 matrix, step_scale, step_rotation, tx, ty, inlier_ratio = affine
-                cumulative_scale *= step_scale
-                cumulative_rotation += step_rotation
-                semantic["scale"] = float(cumulative_scale)
-                semantic["rotationDegrees"] = float(cumulative_rotation)
                 residual_mean, residual_p90, active = motion_compensated_residual(
                     previous, gray, matrix
                 )
-                nonrigid = clamp01(
-                    residual_mean * 2.4
-                    + residual_p90 * 1.4
-                    + (flow_residual / diagonal) * 3.0
-                )
-                semantic["distortionStrength"] = nonrigid
-                # Residual coverage is recorded diagnostically, not mislabeled as
-                # foreground occlusion. Occlusion requires a matte/depth cue.
                 diagnostics["affineInlierRatio"] = inlier_ratio
                 diagnostics["motionCompensatedResidualMean"] = residual_mean
                 diagnostics["motionCompensatedResidualP90"] = residual_p90
                 diagnostics["motionCompensatedResidualCoverage"] = active
-            else:
-                # Untrackable deformation is evidence, not zero distortion. Use
-                # translation-removed flow residual as a conservative lower bound.
-                semantic["distortionStrength"] = clamp01(
-                    (flow_residual / diagonal) * 3.0
+                shot_boundary = bool(
+                    boundary_metrics["candidate"]
+                    and (
+                        diagnostics["affineFallbackUsed"] > 0.0
+                        or inlier_ratio < 0.45
+                    )
                 )
+                if shot_boundary:
+                    semantic["shotBoundaryDiscontinuity"] = True
+                    diagnostics["shotBoundaryDiscontinuity"] = 1.0
+                    semantic["displacement"] = {"x": 0.0, "y": 0.0}
+                    semantic["cameraMotion"] = {"x": 0.0, "y": 0.0}
+                    semantic["distortionStrength"] = 0.0
+                else:
+                    cumulative_scale *= step_scale
+                    cumulative_rotation += step_rotation
+                    semantic["scale"] = float(cumulative_scale)
+                    semantic["rotationDegrees"] = float(cumulative_rotation)
+                    semantic["distortionStrength"] = clamp01(
+                        residual_mean * 2.4
+                        + residual_p90 * 1.4
+                        + (flow_residual / diagonal) * 3.0
+                    )
+            else:
                 diagnostics["affineFallbackUsed"] = 2.0
+                shot_boundary = bool(boundary_metrics["candidate"])
+                if shot_boundary:
+                    semantic["shotBoundaryDiscontinuity"] = True
+                    diagnostics["shotBoundaryDiscontinuity"] = 1.0
+                    semantic["displacement"] = {"x": 0.0, "y": 0.0}
+                    semantic["cameraMotion"] = {"x": 0.0, "y": 0.0}
+                    semantic["distortionStrength"] = 0.0
+                else:
+                    # Untrackable deformation remains evidence when the appearance
+                    # change does not persist as a new shot.
+                    semantic["distortionStrength"] = clamp01(
+                        (flow_residual / diagonal) * 3.0
+                    )
             diagnostics["flowMeanPixels"] = mean_mag
             diagnostics["flowP90Pixels"] = p90_mag
             diagnostics["flowCoherence"] = coherence
@@ -551,6 +695,7 @@ def main():
                 "RANSAC estimateAffinePartial2D",
                 "dense-flow affine fallback",
                 "motion-compensated residual",
+                "persistent shot-boundary rejection",
                 "edge autocorrelation echo detector",
                 "Laplacian sharpness proxy",
             ],

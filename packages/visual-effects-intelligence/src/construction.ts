@@ -179,6 +179,10 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
         parameters.blurDirectionDegrees = directionDegrees;
         parameters.blurLengthPixels = Math.max(2, Math.min(64, blurPeak * 48));
         parameters.eventLocalEffect = true;
+        const blurPeakPhase = anatomy.observedMetrics["blurPeakPhase"];
+        if (typeof blurPeakPhase === "number" && Number.isFinite(blurPeakPhase)) {
+          parameters.blurPeakPhase = Math.max(0, Math.min(1, blurPeakPhase));
+        }
       }
     }
     const effectEventPhase = anatomy.observedMetrics["effectEventPhase"];

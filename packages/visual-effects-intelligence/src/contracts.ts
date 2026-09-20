@@ -54,6 +54,8 @@ export interface DenseFrameSemanticObservationV1 {
   readonly occlusion?: number;
   readonly maskCoverage?: number;
   readonly cameraMotion?: NormalizedPointV1;
+  /** True when this frame begins a persistent shot boundary rather than within-shot motion. */
+  readonly shotBoundaryDiscontinuity?: boolean;
 }
 
 export interface DenseFrameInputV1 {
@@ -387,6 +389,8 @@ export const CONSTRUCTION_CONTROL_KINDS_V1 = [
   "MOTION_IMPULSE_PHASE",
   "RECOVERY_DURATION",
   "BLUR_STRENGTH",
+  "BLUR_ATTACK_DURATION",
+  "BLUR_RECOVERY_DURATION",
   "EXPOSURE_STRENGTH",
   "DISTORTION_STRENGTH",
   "DISTORTION_SIZE",
@@ -449,6 +453,7 @@ export type UnknownEffectSynthesisStrategyV1 =
   | "LAYERED_ECHO_AUGMENTED"
   | "COMPOUND_NATIVE_HYBRID"
   | "COMPOUND_EVOLVING_WARP_HYBRID"
+  | "COMPOUND_TEMPORAL_WARP_HYBRID"
   | "NATIVE_ECHO_HYBRID"
   | "TIME_DISPLACEMENT_HYBRID"
   | "TURBULENT_DISPLACE_HYBRID";

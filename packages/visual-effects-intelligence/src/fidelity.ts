@@ -98,10 +98,26 @@ const metricValuesForComparison = (
   reference: DenseEffectEvidenceV1,
   render: DenseEffectEvidenceV1,
   invariant: EffectInvariantV1,
+  alignment: "FRAME" | "SEMANTIC",
 ): Readonly<{
   referenceValue: number | NormalizedPointV1;
   renderValue: number | NormalizedPointV1;
 }> => {
+  if (invariant.metric === "blurHalfPeakAttackMs"
+    || invariant.metric === "blurHalfPeakRecoveryMs") {
+    const referenceProfile = measureHalfPeakTemporalProfileV1(reference, "blurStrength");
+    const preferredRenderPhase = alignment === "SEMANTIC" && reference.frames.length > 1
+      ? referenceProfile.peakIndex / (reference.frames.length - 1)
+      : undefined;
+    const renderProfile = measureHalfPeakTemporalProfileV1(
+      render,
+      "blurStrength",
+      preferredRenderPhase,
+    );
+    return invariant.metric === "blurHalfPeakAttackMs"
+      ? { referenceValue: referenceProfile.attackMs, renderValue: renderProfile.attackMs }
+      : { referenceValue: referenceProfile.recoveryMs, renderValue: renderProfile.recoveryMs };
+  }
   const referenceValue = metricValue(reference, invariant.invariantId, invariant.metric);
   let renderValue = metricValue(render, invariant.invariantId, invariant.metric);
   if (invariant.metric === "recoveryFrames"
@@ -219,7 +235,7 @@ export const compareSemanticVisualFidelityV1 = (input: {
   }
   const invariants = [...input.dna.definingInvariants, ...input.dna.optionalInvariants];
   const metrics = invariants.map((item) => {
-    const values = metricValuesForComparison(input.reference, input.render, item);
+    const values = metricValuesForComparison(input.reference, input.render, item, alignment);
     return compareInvariant(item, values.referenceValue, values.renderValue);
   });
   const defining = metrics.filter((metric) => metric.defining);

@@ -129,6 +129,11 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     : (s.accelerationPeak > 0.025 || s.displacementPeak > 0.04 || s.scaleRange > 0.04
       ? s.motionPeakPhase
       : s.opticalPeakPhase);
+  // Preserve optical timing independently from the main transition event. A
+  // professional blur accent can lead or lag fragmentation/camera motion; using
+  // one shared event center collapses that causal timing relationship.
+  if (Number.isFinite(s.blurPeakPhase)) observedMetrics.blurPeakPhase = s.blurPeakPhase;
+  if (Number.isFinite(s.opticalPeakPhase)) observedMetrics.opticalPeakPhase = s.opticalPeakPhase;
   const analysisDurationMs = evidence.range.endMs - evidence.range.startMs;
   if (Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
     observedMetrics.effectAnalysisDurationMs = analysisDurationMs;
@@ -538,6 +543,46 @@ const echoProofParameters = (
   };
 };
 
+const timeDisplacementProofParameters = (
+  node: ConstructionGraphV1["nodes"][number],
+): Readonly<Record<string, number | string | boolean>> => {
+  const persistence = Math.max(0, Math.min(1,
+    finiteNodeParameter(node, "temporalPersistence") ?? 0.5));
+  const frameIntervalMs = Math.max(1,
+    finiteNodeParameter(node, "referenceFrameIntervalMs") ?? (1000 / 30));
+  const sourceFrameRate = 1000 / frameIntervalMs;
+  const stateCount = Math.max(2, Math.min(8, Math.round(
+    finiteNodeParameter(node, "fragmentationTemporalStateCountPeak")
+      ?? finiteNodeParameter(node, "temporalStateCountPeak")
+      ?? 2,
+  )));
+  const frameSeconds = frameIntervalMs / 1000;
+  // The layered construction already realizes the observed persistence window.
+  // Time Displacement is an auxiliary spatial-temporal field, so bind its reach
+  // to the cadence covered by the observed temporal states rather than to the
+  // full analysis-window persistence duration. This prevents the field from
+  // smearing many extra frames and erasing retained scale/blur behavior.
+  const cadenceSpanSeconds = frameSeconds * Math.max(1, stateCount - 1);
+  const cadenceWeight = 0.5 + (persistence * 0.5);
+  return {
+    effectSchemaRef: "ae.effect-schema.m6.time-displacement.v1",
+    // The realized temporal states are grouped into one causal precomp before
+    // this node so the field augments the defining fragmentation construction.
+    // Keep the native effect directly animated instead of creating another
+    // independent accent-layer family.
+    eventLocalEffect: false,
+    eventDynamicTimeDisplacement: true,
+    // Self-luminance is the map. Live AE proof confirms the native effect defaults
+    // its layer selector to the affected layer, avoiding brittle layer-index literals.
+    maxDisplacementSeconds: Math.max(
+      frameSeconds,
+      Math.min(0.15, cadenceSpanSeconds * cadenceWeight),
+    ),
+    timeResolutionFps: Math.max(1, Math.min(120, sourceFrameRate)),
+    timeDisplacementStrengthScale: 1,
+  };
+};
+
 const directionalBlurProofParameters = (
   node: ConstructionGraphV1["nodes"][number],
 ): Readonly<Record<string, number | string | boolean>> => {
@@ -817,12 +862,176 @@ const layeredEchoAugmentedGraph = (
   };
 };
 
+const timeDisplacementAugmentedGraph = (
+  input: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const hasLayeredHistory = input.nodes.some((node) =>
+    node.parameters["causalBoundary"] === "LAYERED_TRANSFORM_HISTORY");
+  const layered = hasLayeredHistory ? input : layeredPrimitiveHistoryGraph(input);
+  const temporal = layered.nodes.find((node) =>
+    node.kind === "TEMPORAL_DUPLICATES"
+    && node.dimension === "TEMPORAL"
+    && node.parameters["synthesisStrategy"] !== "LAYERED_ECHO_AUGMENTED"
+    && node.parameters["synthesisStrategy"] !== "TIME_DISPLACEMENT_HYBRID");
+  if (temporal === undefined) return null;
+
+  const temporalTail = layered.nodes.find((node) =>
+    node.parameters["synthesisStrategy"] === "LAYERED_ECHO_AUGMENTED") ?? temporal;
+  const temporalFieldInvariantIds = temporal.requiredInvariantIds.filter((invariantId) => {
+    const normalized = invariantId.toLowerCase();
+    return normalized.includes("persistence") || normalized.includes("temporal");
+  });
+  if (temporalFieldInvariantIds.length === 0) return null;
+
+  // Collapsing the temporal-state stack changes the application domain of later
+  // scale and blur nodes from per-state to post-composite. Treat those invariants
+  // as explicit structural targets of this escalation so the selector can choose
+  // it when scalar scale/blur actuators have exhausted without a safe improvement.
+  const descendants = new Set<string>([temporalTail.nodeId]);
+  let discoveredDescendant = true;
+  while (discoveredDescendant) {
+    discoveredDescendant = false;
+    for (const node of layered.nodes) {
+      if (descendants.has(node.nodeId)
+        || !node.dependsOn.some((dependency) => descendants.has(dependency))) continue;
+      descendants.add(node.nodeId);
+      discoveredDescendant = true;
+    }
+  }
+  const postCompositeInvariantIds = [...new Set(layered.nodes
+    .filter((node) => descendants.has(node.nodeId) && node.nodeId !== temporalTail.nodeId)
+    .flatMap((node) => node.requiredInvariantIds)
+    .filter((invariantId) => {
+      const normalized = invariantId.toLowerCase();
+      return normalized.includes("scale") || normalized.includes("blur");
+    }))];
+  const boundaryInvariantIds = [...new Set([
+    ...temporalFieldInvariantIds,
+    ...postCompositeInvariantIds,
+  ])];
+
+  const boundaryId = `${temporal.nodeId}:time-field-precompose`;
+  const nodeId = `${temporal.nodeId}:time-displacement-augmentation`;
+  const boundary: ConstructionNodeV1 = {
+    nodeId: boundaryId,
+    kind: "PRECOMPOSE_BOUNDARY",
+    dimension: "COMPOSITING",
+    dependsOn: [temporalTail.nodeId],
+    requiredInvariantIds: boundaryInvariantIds,
+    capabilityCandidates: ["ae.precompose.layers"],
+    parameters: {
+      causalBoundary: "TEMPORAL_FIELD_COMPOSITE",
+      // Group the realized temporal states into one bounded field so native
+      // Time Displacement can reshape their timing without multiplying the
+      // downstream effect stack beyond the correction transaction ceiling.
+      groupTargets: true,
+      synthesisStrategy: "COMPOUND_TEMPORAL_WARP_HYBRID",
+    },
+    optional: false,
+  };
+  const timeDisplacementNode: ConstructionNodeV1 = {
+    nodeId,
+    kind: "TEMPORAL_DUPLICATES",
+    dimension: "TEMPORAL",
+    dependsOn: [boundaryId],
+    requiredInvariantIds: [...temporalFieldInvariantIds],
+    capabilityCandidates: ["ae.effect.time-displacement"],
+    parameters: {
+      ...temporal.parameters,
+      synthesisStrategy: "TIME_DISPLACEMENT_HYBRID",
+      ...timeDisplacementProofParameters(temporal),
+    },
+    optional: false,
+  };
+
+  const scaleSource = layered.nodes.find((node) =>
+    node.requiredInvariantIds.some((invariantId) =>
+      invariantId.toLowerCase().includes("scale")));
+  const scaleInvariantIds = scaleSource?.requiredInvariantIds.filter((invariantId) =>
+    invariantId.toLowerCase().includes("scale")) ?? [];
+  const scaleRange = scaleSource === undefined
+    ? null
+    : finiteNodeParameter(scaleSource, "scaleRange");
+  const postCompositeScaleNode = scaleSource === undefined
+      || scaleInvariantIds.length === 0
+      || scaleRange === null
+    ? null
+    : {
+        ...scaleSource,
+        nodeId: `${scaleSource.nodeId}:post-composite-scale`,
+        dependsOn: [nodeId],
+        requiredInvariantIds: [...scaleInvariantIds],
+        parameters: {
+          ...scaleSource.parameters,
+          synthesisStrategy: "COMPOUND_TEMPORAL_WARP_HYBRID",
+          // Add only the reference-relative deficit-sized share as a new global
+          // pulse. The retained pre-temporal scale motion remains untouched.
+          scaleRange: scaleRange * 0.35,
+          scalePulseScale: 1,
+          postCompositeScaleFraction: 0.35,
+        },
+      } satisfies ConstructionNodeV1;
+  const postCompositeTailId = postCompositeScaleNode?.nodeId ?? nodeId;
+
+  const nodes = layered.nodes.map((node): ConstructionNodeV1 => {
+    if (node.nodeId === temporalTail.nodeId) return node;
+    if (!node.dependsOn.includes(temporalTail.nodeId)) return node;
+    return {
+      ...node,
+      dependsOn: node.dependsOn.map((dependency) =>
+        dependency === temporalTail.nodeId ? postCompositeTailId : dependency),
+    };
+  });
+  const temporalFieldSet = new Set(temporalFieldInvariantIds);
+  const persistenceFieldSet = new Set(temporalFieldInvariantIds.filter((invariantId) =>
+    invariantId.toLowerCase().includes("persistence")));
+  const boundaryInvariantSet = new Set(boundaryInvariantIds);
+  const scaleInvariantSet = new Set(scaleInvariantIds);
+  const scaleNodeId = postCompositeScaleNode?.nodeId;
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(layered.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      persistenceFieldSet.has(invariantId)
+        // Live-AE bounded search proved Time Displacement strength does not move
+        // temporalPersistence for the layered-field construction. Preserve the
+        // original layered visibility-window actuator as the correction owner;
+        // Time Displacement remains retained construction/provenance.
+        ? [...nodeIds.filter((coveredNodeId) =>
+            coveredNodeId !== boundaryId && coveredNodeId !== nodeId), nodeId, boundaryId]
+        : temporalFieldSet.has(invariantId)
+          ? [nodeId, boundaryId, ...nodeIds.filter((coveredNodeId) =>
+              coveredNodeId !== boundaryId && coveredNodeId !== nodeId)]
+        : scaleNodeId !== undefined && scaleInvariantSet.has(invariantId)
+          ? [scaleNodeId, ...nodeIds.filter((coveredNodeId) => coveredNodeId !== scaleNodeId)]
+          : boundaryInvariantSet.has(invariantId)
+            ? [...nodeIds.filter((coveredNodeId) => coveredNodeId !== boundaryId), boundaryId]
+            : nodeIds,
+    ]),
+  );
+  return {
+    ...layered,
+    graphId: `${layered.graphId}:time_displacement_augmented`,
+    nodes: [
+      ...nodes,
+      boundary,
+      timeDisplacementNode,
+      ...(postCompositeScaleNode === null ? [] : [postCompositeScaleNode]),
+    ],
+    outputs: layered.outputs.map((output) =>
+      output === temporalTail.nodeId ? postCompositeTailId : output),
+    invariantCoverage,
+  };
+};
+
 const compoundNativeHybridGraph = (
   base: ConstructionGraphV1,
 ): ConstructionGraphV1 | null => {
+  // Echo is one useful compound layer, not a prerequisite for compound warp
+  // synthesis. References with no temporal/persistence anatomy must still be
+  // able to preserve their layered base and add a stronger distortion system.
   const echoAugmented = layeredEchoAugmentedGraph(base);
-  if (echoAugmented === null) return null;
-  const distortion = echoAugmented.nodes.find((node) =>
+  const layered = echoAugmented ?? layeredPrimitiveHistoryGraph(base);
+  const distortion = layered.nodes.find((node) =>
     node.kind === "DISTORTION" && !node.optional);
   if (distortion === undefined) return null;
 
@@ -845,8 +1054,12 @@ const compoundNativeHybridGraph = (
     optional: false,
   };
   const distortionInvariantIds = new Set(distortion.requiredInvariantIds);
-  const compoundNodes = echoAugmented.nodes.map((node): ConstructionNodeV1 => {
-    if (node.kind !== "RECOVERY"
+  const compoundNodes = layered.nodes.map((node): ConstructionNodeV1 => {
+    // Shutter convergence is a temporal-compound intervention. Do not inject it
+    // into distortion-only references merely because they also contain recovery
+    // or acceleration anatomy; that would manufacture unrelated fragmentation.
+    if (echoAugmented === null
+      || node.kind !== "RECOVERY"
       || !node.requiredInvariantIds.some((invariantId) =>
         invariantId.toLowerCase().includes("acceleration"))) return node;
     // A compound fragmented transition needs a zero-net convergence pulse, not
@@ -867,7 +1080,7 @@ const compoundNativeHybridGraph = (
     };
   });
   const invariantCoverage = Object.fromEntries(
-    Object.entries(echoAugmented.invariantCoverage).map(([invariantId, nodeIds]) => [
+    Object.entries(layered.invariantCoverage).map(([invariantId, nodeIds]) => [
       invariantId,
       distortionInvariantIds.has(invariantId)
         ? [turbulentNodeId, ...nodeIds.filter((nodeId) => nodeId !== turbulentNodeId)]
@@ -875,10 +1088,10 @@ const compoundNativeHybridGraph = (
     ]),
   );
   return {
-    ...echoAugmented,
+    ...layered,
     graphId: `${base.graphId}:compound_native_hybrid`,
     nodes: [...compoundNodes, turbulentNode],
-    outputs: echoAugmented.outputs.map((output) =>
+    outputs: layered.outputs.map((output) =>
       output === distortion.nodeId ? turbulentNodeId : output),
     invariantCoverage,
   };
@@ -953,6 +1166,13 @@ const compoundEvolvingWarpGraph = (
   };
 };
 
+const compoundTemporalWarpGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const evolving = compoundEvolvingWarpGraph(base);
+  return evolving === null ? null : timeDisplacementAugmentedGraph(evolving);
+};
+
 const strategyGraph = (
   base: ConstructionGraphV1,
   strategy: UnknownEffectSynthesisStrategyV1,
@@ -961,19 +1181,11 @@ const strategyGraph = (
   if (strategy === "LAYERED_ECHO_AUGMENTED") return layeredEchoAugmentedGraph(base);
   if (strategy === "COMPOUND_NATIVE_HYBRID") return compoundNativeHybridGraph(base);
   if (strategy === "COMPOUND_EVOLVING_WARP_HYBRID") return compoundEvolvingWarpGraph(base);
+  if (strategy === "COMPOUND_TEMPORAL_WARP_HYBRID") return compoundTemporalWarpGraph(base);
   if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
+  if (strategy === "TIME_DISPLACEMENT_HYBRID") return timeDisplacementAugmentedGraph(base);
   let changed = false;
   const nodes = base.nodes.map((node) => {
-    if (strategy === "TIME_DISPLACEMENT_HYBRID"
-      && node.kind === "TEMPORAL_DUPLICATES"
-      && (node.dimension === "TEMPORAL" || node.dimension === "SPATIAL")) {
-      changed = true;
-      return {
-        ...node,
-        capabilityCandidates: ["ae.effect.time-displacement"],
-        parameters: { ...node.parameters, synthesisStrategy: "TIME_DISPLACEMENT_HYBRID" },
-      };
-    }
     if (strategy === "TURBULENT_DISPLACE_HYBRID"
       && node.kind === "OPTICAL_TREATMENT"
       && node.dimension === "OPTICAL") {
@@ -1028,6 +1240,7 @@ const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
 > = Object.freeze({
   NATIVE_ECHO_HYBRID: "ae.effect-schema.m6.echo.v1",
   LAYERED_ECHO_AUGMENTED: "ae.effect-schema.m6.echo.v1",
+  TIME_DISPLACEMENT_HYBRID: "ae.effect-schema.m6.time-displacement.v1",
   TURBULENT_DISPLACE_HYBRID: "ae.effect-schema.m6.turbulent-displace.v2",
   COMPOUND_EVOLVING_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
 });
@@ -1093,6 +1306,7 @@ export const synthesizeUnknownEffectV1 = (input: {
     { strategy: "LAYERED_ECHO_AUGMENTED", id: "adaptive:layered-echo-augmented", complexityPenalty: 0.5 },
     { strategy: "COMPOUND_NATIVE_HYBRID", id: "adaptive:compound-native-hybrid", complexityPenalty: 1 },
     { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
+    { strategy: "COMPOUND_TEMPORAL_WARP_HYBRID", id: "adaptive:compound-temporal-warp-hybrid", complexityPenalty: 2 },
     { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
     { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },
     { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },
@@ -1128,8 +1342,10 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
   synthesis: UnknownEffectSynthesisV1;
   currentStrategy?: UnknownEffectSynthesisStrategyV1 | null;
   requiredInvariantIds: readonly string[];
+  excludedStrategies?: readonly UnknownEffectSynthesisStrategyV1[];
 }>): SynthesisCandidateV1 | null => {
   const required = new Set(input.requiredInvariantIds);
+  const excluded = new Set(input.excludedStrategies ?? []);
   if (required.size === 0) return null;
   const interventionStrategies = (graph: ConstructionGraphV1): ReadonlySet<string> =>
     new Set(graph.nodes.flatMap((node) =>
@@ -1145,6 +1361,7 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
   const ranked = input.synthesis.candidates
     .filter((candidate) => {
       if (candidate.strategy === input.currentStrategy
+        || excluded.has(candidate.strategy)
         || candidate.definingCoverage !== 1
         || candidate.capabilityGaps.length > 0) return false;
       const candidateInterventions = interventionStrategies(candidate.graph);

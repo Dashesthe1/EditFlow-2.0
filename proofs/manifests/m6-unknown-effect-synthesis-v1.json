@@ -1,0 +1,88 @@
+{
+  "schema": "editflow.m6.unknown-effect-synthesis-milestone-manifest.v1",
+  "generatedAt": "2026-09-20T18:39:03.248Z",
+  "milestone": "M6.8",
+  "status": "PASS",
+  "governance": {
+    "rule": "Unknown effects must be reconstructed from observed visual behavior, not nearest-known effect identity.",
+    "minimumDistinctUnknownCases": 3,
+    "fidelityAuthority": "RENDERED_SEMANTIC_COMPARISON",
+    "degradedBehaviorMustFail": true,
+    "noReproofPolicy": "Each retained case remains bound to its own analyzer/content identity."
+  },
+  "cases": [
+    {
+      "caseId": "m6.8:unknown-case01-fragmentation",
+      "proofRef": "proofs/diagnostics/m6-real-unknown-synthesis-case01.json",
+      "proofSha256": "66f270baf5827b32f11bd2401d04d92f97d0449e2d08d57a71643a888016f90e",
+      "referenceContentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "family": "UNKNOWN",
+      "provenance": "LEARNED_SKILL_DISABLED",
+      "behaviorFirst": true,
+      "namedEffectFallbackUsed": false,
+      "finalCertified": true,
+      "finalDefiningCoverage": 1,
+      "finalWeightedFidelity": 0.959934680990286,
+      "degradedOrUnderDrivenRejected": true,
+      "renderedOutputVerified": true,
+      "realAeTransactionCommitted": false,
+      "automaticCorrectionObserved": false,
+      "analyzerFingerprint": "0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1"
+    },
+    {
+      "caseId": "m6.8:unknown-case02-directional-blur",
+      "proofRef": "proofs/diagnostics/m6-unknown-case02-professional-proof.json",
+      "proofSha256": "5b58201dab5115d405e1f3738ae256156f84cf94e602e73af74e688e5d0f6f53",
+      "referenceContentKey": "cd5dd72b0813fc5c44a81387e942fc350172e8678b8526effe518537369facb0",
+      "family": "UNKNOWN",
+      "provenance": "UNKNOWN_DECOMPOSITION_DIRECT",
+      "behaviorFirst": true,
+      "namedEffectFallbackUsed": false,
+      "finalCertified": true,
+      "finalDefiningCoverage": 1,
+      "finalWeightedFidelity": 1,
+      "degradedOrUnderDrivenRejected": true,
+      "renderedOutputVerified": true,
+      "realAeTransactionCommitted": true,
+      "automaticCorrectionObserved": false,
+      "analyzerFingerprint": "c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80"
+    },
+    {
+      "caseId": "m6.8:unknown-case03-optical-auto-correction",
+      "proofRef": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema.json",
+      "proofSha256": "83840f290c4fd1722a99b748b8afdbeef207909d3a0ad8be035722175740441c",
+      "referenceContentKey": "37971e08327eac9c6d785c57934b2d59575b4add0dc4a866fc153d146adcac2c",
+      "family": "UNKNOWN",
+      "provenance": "UNKNOWN_DECOMPOSITION_DIRECT",
+      "behaviorFirst": true,
+      "namedEffectFallbackUsed": false,
+      "finalCertified": true,
+      "finalDefiningCoverage": 1,
+      "finalWeightedFidelity": 1,
+      "degradedOrUnderDrivenRejected": true,
+      "renderedOutputVerified": true,
+      "realAeTransactionCommitted": true,
+      "automaticCorrectionObserved": true,
+      "analyzerFingerprint": "579a1997b8e68d228b759d25a0032adaf91a24cda465a3490c012a93492ec526"
+    }
+  ],
+  "gate": {
+    "schema": "editflow.m6.unknown-effect-synthesis-milestone-result.v1",
+    "milestone": "M6.8",
+    "passed": true,
+    "caseCount": 3,
+    "distinctReferenceCount": 3,
+    "renderedCaseCount": 3,
+    "realAeCaseCount": 2,
+    "automaticCorrectionCaseCount": 1,
+    "failures": []
+  },
+  "proofSources": {
+    "evaluator": "packages/visual-effects-intelligence/src/milestones.ts",
+    "evaluatorSha256": "53c82b87213aecc97ab094718f99db7bee9a8879b2047cb420b85a1412014fcf",
+    "normalizer": "scripts/proofs/m6-unknown-synthesis-milestone-proof.mjs",
+    "normalizerSha256": "77c9b7327c997d36355e2db7635ea76737f34fbaf551ff286da4fc15611606fe",
+    "case03ReferenceRef": "proofs/diagnostics/m6-unknown-case03-reference-v11-evidence.json",
+    "case03ReferenceSha256": "d0dcc622e6e6907151dcbbc08075ad554a315af69cfc67bf9321990b19699fa9"
+  }
+}

@@ -483,8 +483,9 @@ const compilePrecompose = (
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
 ): readonly string[] => {
-  const groups = node.target?.mode === "GROUP"
-    ? [targets]
+  const groupDependencyTargets = literalParameterValueV1(node, "groupTargets") === true;
+  const groups = node.target?.mode === "GROUP" || groupDependencyTargets
+    ? [uniqueStrings(targets)]
     : targets.map((target) => [target]);
   const outputs: string[] = [];
   for (const [ordinal, sourceLayerIds] of groups.entries()) {
@@ -705,6 +706,19 @@ const adaptEffectSchemaValueV1 = (
     }
     return -(value / frameRate);
   }
+  if (adapter === "CLAMP_TO_FRAME_RATE") {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0
+      || !Number.isFinite(frameRate) || frameRate <= 0) {
+      addIssue(
+        issues,
+        node.nodeId,
+        "EFFECT_ADAPTATION_INVALID",
+        `Effect parameter '${binding.semanticParameter}' requires positive finite source and target frame rates.`,
+      );
+      return null;
+    }
+    return Math.max(1, Math.min(value, frameRate));
+  }
   addIssue(
     issues,
     node.nodeId,
@@ -754,7 +768,10 @@ const compileEffectStack = (
   if (values.size !== schema.propertyBindings.length) return [];
 
   const eventLocalEffect = literalParameterValueV1(node, "eventLocalEffect") === true;
-  const eventParameters = eventLocalEffect
+  const dynamicTimeDisplacement = schema.schemaId === "ae.effect-schema.m6.time-displacement.v1"
+    && literalParameterValueV1(node, "eventDynamicTimeDisplacement") === true;
+  const requiresEventParameters = eventLocalEffect || dynamicTimeDisplacement;
+  const eventParameters = requiresEventParameters
     ? resolveParameterMap(
         node,
         node.parameters.map((parameter) => parameter.name),
@@ -762,25 +779,109 @@ const compileEffectStack = (
         issues,
       )
     : null;
-  if (eventLocalEffect && eventParameters === null) return [];
-  const effectTargets = eventLocalEffect
-    ? m6EventEffectTargetsV1(
-        node,
-        targets,
-        context,
-        eventParameters ?? {},
-        operations,
-        issues,
-        frameRate,
-        "effect-stack",
-      )
-    : targets;
-
+  if (requiresEventParameters && eventParameters === null) return [];
+  const dynamicDirectionalBlur = schema.schemaId === "ae.effect-schema.m6.directional-blur.v1"
+    && eventLocalEffect
+    && (
+      (typeof eventParameters?.["blurAttackDurationScale"] === "number"
+        && Number.isFinite(eventParameters["blurAttackDurationScale"]))
+      || (typeof eventParameters?.["blurRecoveryDurationScale"] === "number"
+        && Number.isFinite(eventParameters["blurRecoveryDurationScale"]))
+    );
   const dynamicTurbulentV3 = schema.schemaId === "ae.effect-schema.m6.turbulent-displace.v3"
     && eventLocalEffect
     && eventParameters?.["eventDynamicDistortion"] === true;
+  const dynamicBlurEventSeconds = dynamicDirectionalBlur
+    ? (() => {
+        const baseEventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+        return baseEventSeconds === null
+          ? null
+          : resolveM6PhaseAdjustedEventSeconds(
+              baseEventSeconds,
+              eventParameters ?? {},
+              "blurPeakPhase",
+            );
+      })()
+    : null;
+  // Dynamic Directional Blur already resolves to zero outside its measured
+  // optical envelope. Apply it directly to the retained construction so an
+  // optical timing correction cannot manufacture a second visible image state
+  // that changes persistence, overlap, or downstream distortion. Static
+  // event-local effects still use bounded duplicate isolation.
+  const effectTargets = dynamicDirectionalBlur || dynamicTurbulentV3
+    ? targets
+    : eventLocalEffect
+      ? m6EventEffectTargetsV1(
+          node,
+          targets,
+          context,
+          eventParameters ?? {},
+          operations,
+          issues,
+          frameRate,
+          "effect-stack",
+        )
+      : targets;
   let dynamicAmountExpression: string | null = null;
   let dynamicEvolutionExpression: string | null = null;
+  let dynamicTimeDisplacementExpression: string | null = null;
+  let dynamicBlurLengthExpression: string | null = null;
+  if (dynamicDirectionalBlur) {
+    const blurLengthBase = values.get("blurLengthPixels");
+    if (dynamicBlurEventSeconds === null
+      || typeof blurLengthBase !== "number"
+      || !Number.isFinite(blurLengthBase)
+      || blurLengthBase < 0) {
+      addIssue(issues, node.nodeId, "M6_DYNAMIC_DIRECTIONAL_BLUR_PARAMETERS_INVALID",
+        "Dynamic Directional Blur requires a non-negative adapted Blur Length and a resolvable event.");
+      return [];
+    }
+    const { preFrames, postFrames } = resolveM6EventEnvelopeFrames(
+      eventParameters ?? {},
+      frameRate,
+    );
+    dynamicBlurLengthExpression = [
+      `var event=${dynamicBlurEventSeconds};`,
+      "var f=(time-event)/thisComp.frameDuration;",
+      `var pre=${preFrames};`,
+      `var post=${postFrames};`,
+      `var peak=${blurLengthBase};`,
+      "if(f<=-pre||f>=post){0}",
+      "else if(f<0){linear(f,-pre,0,0,peak)}",
+      "else{linear(f,0,post,peak,0)}",
+    ].join("");
+  }
+  if (dynamicTimeDisplacement) {
+    const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+    const maxDisplacementBase = values.get("maxDisplacementSeconds");
+    if (eventSeconds === null
+      || typeof maxDisplacementBase !== "number"
+      || !Number.isFinite(maxDisplacementBase)
+      || maxDisplacementBase <= 0) {
+      addIssue(issues, node.nodeId, "M6_DYNAMIC_TIME_DISPLACEMENT_PARAMETERS_INVALID",
+        "Dynamic Time Displacement requires a positive adapted Max Displacement Time and a resolvable event.");
+      return [];
+    }
+    const recoveryWindowFrames = resolveM6RecoveryWindowFrames(eventParameters ?? {}, frameRate);
+    const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(eventParameters ?? {}, frameRate);
+    const preFrames = persistenceWindowFrames === null
+      ? Math.max(2, Math.min(6, recoveryWindowFrames))
+      : Math.max(2, Math.ceil(persistenceWindowFrames * 0.7));
+    const postFrames = persistenceWindowFrames === null
+      ? 1
+      : Math.max(1, persistenceWindowFrames - preFrames);
+    dynamicTimeDisplacementExpression = [
+      `var event=${eventSeconds};`,
+      "var f=(time-event)/thisComp.frameDuration;",
+      `var pre=${preFrames};`,
+      `var post=${postFrames};`,
+      "var span=Math.max(1,pre+post);",
+      "var u=Math.max(0,Math.min(1,(f+pre)/span));",
+      "var active=(f>-pre&&f<post)?1:0;",
+      `var peak=${maxDisplacementBase};`,
+      "peak*Math.sin(Math.PI*u)*active;",
+    ].join("");
+  }
   if (dynamicTurbulentV3) {
     const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
     const pulseScale = eventParameters?.["eventAmountPulseScale"];
@@ -819,7 +920,11 @@ const compileEffectStack = (
       eventEnvelope,
       `var base=${amountBase};`,
       "var envelope=Math.sin(Math.PI*u)*active;",
-      `base*(1+(${pulseScale}-1)*envelope);`,
+      // v3 is a true event-local actuator on the retained layer: Amount is zero
+      // outside the event and rises to the requested reference-adapted peak.
+      // This avoids manufacturing a duplicated visible image state merely to
+      // localize the warp.
+      `base*${pulseScale}*envelope;`,
     ].join("");
     dynamicEvolutionExpression = [
       eventEnvelope,
@@ -842,7 +947,11 @@ const compileEffectStack = (
         ? dynamicAmountExpression
         : binding.semanticParameter === "distortionEvolution"
           ? dynamicEvolutionExpression
-          : null;
+          : binding.semanticParameter === "maxDisplacementSeconds"
+            ? dynamicTimeDisplacementExpression
+            : binding.semanticParameter === "blurLengthPixels"
+              ? dynamicBlurLengthExpression
+              : null;
       if (expression === null) {
         operations.push({
           type: "SET_EFFECT_PROPERTY",
@@ -1020,6 +1129,21 @@ const resolveM6EffectEventSeconds = (
   return eventMs / 1000;
 };
 
+const resolveM6PhaseAdjustedEventSeconds = (
+  baseEventSeconds: number,
+  parameters: Readonly<Record<string, unknown>>,
+  peakPhaseParameter: string,
+): number => {
+  const peakPhase = parameters[peakPhaseParameter];
+  const effectEventPhase = parameters["effectEventPhase"];
+  const analysisDurationMs = parameters["effectAnalysisDurationMs"];
+  if (typeof peakPhase !== "number" || !Number.isFinite(peakPhase)
+    || typeof effectEventPhase !== "number" || !Number.isFinite(effectEventPhase)
+    || typeof analysisDurationMs !== "number" || !Number.isFinite(analysisDurationMs)
+    || analysisDurationMs <= 0) return baseEventSeconds;
+  return baseEventSeconds + (peakPhase - effectEventPhase) * (analysisDurationMs / 1000);
+};
+
 const resolveM6RecoveryWindowFrames = (
   parameters: Readonly<Record<string, unknown>>,
   frameRate: number,
@@ -1064,6 +1188,52 @@ const resolveM6TemporalPersistenceWindowFrames = (
   ));
 };
 
+const resolveM6EventEnvelopeFrames = (
+  parameters: Readonly<Record<string, unknown>>,
+  frameRate: number,
+): Readonly<{ preFrames: number; postFrames: number }> => {
+  const recoveryWindowFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
+  const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(parameters, frameRate);
+  let preFrames = persistenceWindowFrames === null
+    ? Math.max(2, Math.min(6, recoveryWindowFrames))
+    : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
+  let postFrames = persistenceWindowFrames === null
+    ? 1
+    : Math.max(1, persistenceWindowFrames - preFrames);
+
+  const recoveryScaleRaw = parameters["recoveryDurationScale"];
+  const recoveryScale = typeof recoveryScaleRaw === "number" && Number.isFinite(recoveryScaleRaw)
+    ? Math.max(0.25, Math.min(2, recoveryScaleRaw))
+    : 1;
+  const blurAttackScaleRaw = parameters["blurAttackDurationScale"];
+  const blurAttackScale = typeof blurAttackScaleRaw === "number" && Number.isFinite(blurAttackScaleRaw)
+    ? Math.max(0.25, Math.min(4, blurAttackScaleRaw))
+    : recoveryScale;
+  const blurAttackMs = parameters["blurHalfPeakAttackMs"];
+  if (typeof blurAttackMs === "number" && Number.isFinite(blurAttackMs) && blurAttackMs > 0) {
+    preFrames = Math.max(preFrames, 2 * (blurAttackMs / 1000) * frameRate * blurAttackScale);
+  }
+  const blurRecoveryScaleRaw = parameters["blurRecoveryDurationScale"];
+  const blurRecoveryScale = typeof blurRecoveryScaleRaw === "number" && Number.isFinite(blurRecoveryScaleRaw)
+    ? Math.max(0.25, Math.min(4, blurRecoveryScaleRaw))
+    : recoveryScale;
+  const blurRecoveryMs = parameters["blurHalfPeakRecoveryMs"];
+  if (typeof blurRecoveryMs === "number" && Number.isFinite(blurRecoveryMs) && blurRecoveryMs > 0) {
+    postFrames = Math.max(postFrames, 2 * (blurRecoveryMs / 1000) * frameRate * blurRecoveryScale);
+  }
+  const analysisDurationMs = parameters["effectAnalysisDurationMs"];
+  if (typeof analysisDurationMs === "number" && Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
+    const analysisFrames = Math.max(2, (analysisDurationMs / 1000) * frameRate);
+    const totalFrames = preFrames + postFrames;
+    if (totalFrames > analysisFrames) {
+      const scale = analysisFrames / totalFrames;
+      preFrames = Math.max(0.5, preFrames * scale);
+      postFrames = Math.max(0.5, postFrames * scale);
+    }
+  }
+  return { preFrames, postFrames };
+};
+
 const resolveM6ReferenceFrameSeconds = (
   parameters: Readonly<Record<string, unknown>>,
   frameRate: number,
@@ -1078,6 +1248,7 @@ const compileM6TemporalDuplication = (
   node: EditingIrNodeV1,
   targets: readonly string[],
   context: RecipeCompilerContextV1,
+  windows: Map<string, LayerWindowV1>,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
   frameRate: number,
@@ -1141,8 +1312,11 @@ const compileM6TemporalDuplication = (
     ? Math.max(1, Math.min(8,
       1 + eventWindowFrames * persistenceTarget * temporalPersistenceScale))
     : Math.max(1, persistenceWindowFrames - preFrames);
-  const outputs: string[] = [...targets];
+  const outputs: string[] = [];
   for (const sourceLayerId of targets) {
+    const sourceWindow = layerWindow(sourceLayerId, windows, node, issues);
+    if (sourceWindow === null) continue;
+    outputs.push(sourceLayerId);
     for (let state = 1; state < count; state += 1) {
       const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
       const sourceTimeOffsetSeconds = state * duplicateSpreadScale * referenceFrameSeconds;
@@ -1153,6 +1327,12 @@ const compileM6TemporalDuplication = (
         layerId,
         name: `${sourceLayerId} temporal state ${state}`,
       });
+      // Downstream recipe nodes may legally consume synthesized temporal states
+      // in the same transaction (for example, grouping them into a precompose
+      // before Time Displacement). Track generated layer windows immediately so
+      // dependency outputs remain first-class compile targets instead of being
+      // rejected as if they had to pre-exist in the input Virtual AE project.
+      windows.set(layerId, { ...sourceWindow });
       operations.push({
         type: "SET_PROPERTY",
         compId: context.compId,
@@ -1273,41 +1453,10 @@ const m6EventEffectTargetsV1 = (
   if (sourceLayerId === undefined) return [];
   const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
   if (eventSeconds === null) return [];
-  const recoveryWindowFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
-  const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(parameters, frameRate);
-  let preFrames = persistenceWindowFrames === null
-    ? Math.max(2, Math.min(6, recoveryWindowFrames))
-    : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
-  let postFrames = persistenceWindowFrames === null
-    ? 1
-    : Math.max(1, persistenceWindowFrames - preFrames);
-
   // Optical profile durations are measured relative to the visual peak rather
-  // than the arbitrary start of an analysis window. For a linear accent envelope,
-  // the half-peak point occurs halfway between the peak and the zero boundary, so
-  // double the measured half-peak attack/recovery duration to preserve that shape.
-  const recoveryScaleRaw = parameters["recoveryDurationScale"];
-  const recoveryScale = typeof recoveryScaleRaw === "number" && Number.isFinite(recoveryScaleRaw)
-    ? Math.max(0.25, Math.min(2, recoveryScaleRaw))
-    : 1;
-  const blurAttackMs = parameters["blurHalfPeakAttackMs"];
-  if (typeof blurAttackMs === "number" && Number.isFinite(blurAttackMs) && blurAttackMs > 0) {
-    preFrames = Math.max(preFrames, 2 * (blurAttackMs / 1000) * frameRate * recoveryScale);
-  }
-  const blurRecoveryMs = parameters["blurHalfPeakRecoveryMs"];
-  if (typeof blurRecoveryMs === "number" && Number.isFinite(blurRecoveryMs) && blurRecoveryMs > 0) {
-    postFrames = Math.max(postFrames, 2 * (blurRecoveryMs / 1000) * frameRate * recoveryScale);
-  }
-  const analysisDurationMs = parameters["effectAnalysisDurationMs"];
-  if (typeof analysisDurationMs === "number" && Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
-    const analysisFrames = Math.max(2, (analysisDurationMs / 1000) * frameRate);
-    const totalFrames = preFrames + postFrames;
-    if (totalFrames > analysisFrames) {
-      const scale = analysisFrames / totalFrames;
-      preFrames = Math.max(0.5, preFrames * scale);
-      postFrames = Math.max(0.5, postFrames * scale);
-    }
-  }
+  // than the arbitrary start of an analysis window. Reuse the exact same
+  // reference-adapted envelope for layer visibility and native effect actuation.
+  const { preFrames, postFrames } = resolveM6EventEnvelopeFrames(parameters, frameRate);
   const layerId = `${node.nodeId}::${suffix}-accent`;
   operations.push({
     type: "DUPLICATE_LAYER",
@@ -1511,7 +1660,7 @@ const compileM6SemanticVisualState = (
     }
     const blurScaleRaw = parameters["blurStrengthScale"];
     const blurStrengthScale = typeof blurScaleRaw === "number" && Number.isFinite(blurScaleRaw)
-      ? Math.max(0.25, Math.min(4, blurScaleRaw))
+      ? Math.max(0, Math.min(4, blurScaleRaw))
       : 1;
     const directionRaw = parameters["blurDirectionVector"];
     const directionDegrees = Array.isArray(directionRaw)
@@ -1520,9 +1669,37 @@ const compileM6SemanticVisualState = (
       && Math.hypot(Number(directionRaw[0]), Number(directionRaw[1])) > 1e-6
       ? Math.atan2(Number(directionRaw[1]), Number(directionRaw[0])) * 180 / Math.PI
       : 0;
-    const blurLength = Math.max(0.5, Math.min(160, blurRaw * 80 * blurStrengthScale));
+    // Zero is a meaningful calibration point: it must render as no Directional
+    // Blur so the fidelity controller can bracket weak optical references instead
+    // of being trapped behind an artificial 0.5 px floor.
+    const blurLength = Math.max(0, Math.min(160, blurRaw * 80 * blurStrengthScale));
     const effectTargets = m6EventEffectTargetsV1(
       node, targets, context, parameters, operations, issues, frameRate, "directional-blur");
+    const dynamicAttackScale = parameters["blurAttackDurationScale"];
+    const dynamicRecoveryScale = parameters["blurRecoveryDurationScale"];
+    const dynamicBlurProfile = (
+      typeof dynamicAttackScale === "number" && Number.isFinite(dynamicAttackScale)
+    ) || (
+      typeof dynamicRecoveryScale === "number" && Number.isFinite(dynamicRecoveryScale)
+    );
+    const blurEventSeconds = dynamicBlurProfile
+      ? resolveM6EffectEventSeconds(node, context, issues)
+      : null;
+    const blurEnvelope = dynamicBlurProfile
+      ? resolveM6EventEnvelopeFrames(parameters, frameRate)
+      : null;
+    const blurLengthExpression = blurEventSeconds !== null && blurEnvelope !== null
+      ? [
+          `var event=${blurEventSeconds};`,
+          "var f=(time-event)/thisComp.frameDuration;",
+          `var pre=${blurEnvelope.preFrames};`,
+          `var post=${blurEnvelope.postFrames};`,
+          `var peak=${blurLength};`,
+          "if(f<=-pre||f>=post){0}",
+          "else if(f<0){linear(f,-pre,0,0,peak)}",
+          "else{linear(f,0,post,peak,0)}",
+        ].join("")
+      : null;
     for (const layerId of effectTargets) {
       const effectId = `${node.nodeId}:${layerId}:directional-blur`;
       operations.push({
@@ -1540,14 +1717,25 @@ const compileM6SemanticVisualState = (
         propertyPath: ["ADBE Motion Blur-0001"],
         value: directionDegrees,
       });
-      operations.push({
-        type: "SET_EFFECT_PROPERTY",
-        compId: context.compId,
-        layerId,
-        effectId,
-        propertyPath: ["ADBE Motion Blur-0002"],
-        value: blurLength,
-      });
+      if (blurLengthExpression === null) {
+        operations.push({
+          type: "SET_EFFECT_PROPERTY",
+          compId: context.compId,
+          layerId,
+          effectId,
+          propertyPath: ["ADBE Motion Blur-0002"],
+          value: blurLength,
+        });
+      } else {
+        operations.push({
+          type: "SET_EFFECT_EXPRESSION",
+          compId: context.compId,
+          layerId,
+          effectId,
+          propertyPath: ["ADBE Motion Blur-0002"],
+          expression: blurLengthExpression,
+        });
+      }
     }
     return targets.length > 1 ? targets : [...targets, ...effectTargets];
   }
@@ -1986,6 +2174,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
         node,
         targets,
         context,
+        windows,
         operations,
         issues,
         comp.frameRate,

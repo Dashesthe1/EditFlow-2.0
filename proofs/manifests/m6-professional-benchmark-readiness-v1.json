@@ -1,0 +1,164 @@
+{
+  "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
+  "generatedAt": "2026-09-20T18:45:52.309Z",
+  "milestone": "M6.9",
+  "status": "IN_PROGRESS",
+  "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
+  "canonicalCaseCount": 24,
+  "casesWithRetainedEvidence": 1,
+  "artifactCoverage": {
+    "REFERENCE_DENSE_EVIDENCE": 1,
+    "RENDER_DENSE_EVIDENCE": 1,
+    "SEMANTIC_COMPARISON": 1,
+    "DIRECT_AB": 1,
+    "TRANSFER_PROOF": 0,
+    "DEGRADED_CONTROL": 1
+  },
+  "retainedCases": [
+    {
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "achievedLevel": "REFERENCE_FAITHFUL",
+      "maturityProof": {
+        "functionallyPresent": true,
+        "structuralCoverageComplete": true,
+        "visuallyRecognizable": true,
+        "referenceFaithful": true,
+        "transferVariantCount": 0,
+        "professionalCasePassCount": 1,
+        "robustnessAxesPassed": []
+      },
+      "directAbReferenceRef": "proofs/diagnostics/m6-v6-shutter-reference-vs-certified-ae.jpg",
+      "comparisonEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-01-fidelity.json",
+      "renderEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-01-evidence.json",
+      "transferEvidenceRefs": [],
+      "degradedControlEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
+      "transferPassed": false,
+      "degradedCaseRejected": true
+    }
+  ],
+  "artifacts": [
+    {
+      "ref": "proofs/m6/references/shutter_fragmentation-canonical.json",
+      "kind": "REFERENCE_DENSE_EVIDENCE",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "abd7c901dd0c3c5a0096f284c20b0a4b442255a793747efc6e24976267063b79",
+      "contentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-v6-event-joint-01-evidence.json",
+      "kind": "RENDER_DENSE_EVIDENCE",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "41576acdba52c5708cf4c1b43c4963b89bc5838447a164d708687612116c5b6f",
+      "contentKey": "6b7c6c0bd2fbadc2f79c50e6a1d32898701b5aa45483619a1494ead1149bd2fc"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-v6-event-joint-01-fidelity.json",
+      "kind": "SEMANTIC_COMPARISON",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "cef306a6b8034fb8e4f201ea6a3031dd4cda2aa0886d773441945284446e6273",
+      "referenceContentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "renderContentKey": "6b7c6c0bd2fbadc2f79c50e6a1d32898701b5aa45483619a1494ead1149bd2fc"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-v6-shutter-reference-vs-certified-ae.jpg",
+      "kind": "DIRECT_AB",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "19531f6829a4b63ea47bb7d1cde7489b3aac12494aa94bc98a7680b5d5768edf",
+      "referenceContentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "renderContentKey": "6b7c6c0bd2fbadc2f79c50e6a1d32898701b5aa45483619a1494ead1149bd2fc"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
+      "kind": "DEGRADED_CONTROL",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "a51d6739b72e169ba87dd0629fbf7b38da0812bc2cf541ee481312b880a455df",
+      "referenceContentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "renderContentKey": "b01d7ae1cc8f97e9208b43aca651b3c1746c4b72b809ffef591c464e446dd238"
+    }
+  ],
+  "result": {
+    "schema": "editflow.professional-benchmark-result.v1",
+    "passed": false,
+    "total": 24,
+    "passedCases": 0,
+    "familyCoverage": [
+      "SHUTTER_FRAGMENTATION",
+      "TEMPORAL_ECHO",
+      "VELOCITY_TRANSITION",
+      "SUBJECT_ISOLATED_TRANSITION",
+      "WHIP_SMEAR",
+      "DISPLACEMENT_WARP",
+      "ZOOM_IMPACT",
+      "OCCLUSION_TRANSITION",
+      "FREEZE_FRAGMENTATION",
+      "CAMERA_MOTION_MATCH",
+      "CHROMATIC_GLITCH",
+      "REVERSE_TEMPORAL",
+      "MASK_REVEAL",
+      "COMPOUND_LAYERED"
+    ],
+    "heldOutCases": 10,
+    "transferAxes": [
+      "aspect-ratio",
+      "duration",
+      "frame-rate",
+      "intensity",
+      "motion-direction",
+      "subject"
+    ],
+    "failures": [
+      "m6:shutter_fragmentation:canonical:MATURITY_REFERENCE_FAITHFUL",
+      "m6:shutter_fragmentation:canonical:TRANSFER_FAILED",
+      "m6:temporal_echo:canonical:MISSING_EVIDENCE",
+      "m6:velocity_transition:canonical:MISSING_EVIDENCE",
+      "m6:subject_isolated_transition:canonical:MISSING_EVIDENCE",
+      "m6:whip_smear:canonical:MISSING_EVIDENCE",
+      "m6:displacement_warp:canonical:MISSING_EVIDENCE",
+      "m6:zoom_impact:canonical:MISSING_EVIDENCE",
+      "m6:occlusion_transition:canonical:MISSING_EVIDENCE",
+      "m6:freeze_fragmentation:canonical:MISSING_EVIDENCE",
+      "m6:camera_motion_match:canonical:MISSING_EVIDENCE",
+      "m6:chromatic_glitch:canonical:MISSING_EVIDENCE",
+      "m6:reverse_temporal:canonical:MISSING_EVIDENCE",
+      "m6:mask_reveal:canonical:MISSING_EVIDENCE",
+      "m6:compound_layered:canonical:MISSING_EVIDENCE",
+      "m6:shutter_fragmentation:held-out:MISSING_EVIDENCE",
+      "m6:temporal_echo:held-out:MISSING_EVIDENCE",
+      "m6:velocity_transition:held-out:MISSING_EVIDENCE",
+      "m6:subject_isolated_transition:held-out:MISSING_EVIDENCE",
+      "m6:whip_smear:held-out:MISSING_EVIDENCE",
+      "m6:displacement_warp:held-out:MISSING_EVIDENCE",
+      "m6:zoom_impact:held-out:MISSING_EVIDENCE",
+      "m6:occlusion_transition:held-out:MISSING_EVIDENCE",
+      "m6:freeze_fragmentation:held-out:MISSING_EVIDENCE",
+      "m6:camera_motion_match:held-out:MISSING_EVIDENCE",
+      "m6:shutter_fragmentation:canonical:INSUFFICIENT_TRANSFER_ARTIFACTS",
+      "m6:shutter_fragmentation:canonical:TRANSFER_AXIS_UNPROVEN_SUBJECT",
+      "m6:shutter_fragmentation:canonical:TRANSFER_AXIS_UNPROVEN_ASPECT_RATIO"
+    ]
+  },
+  "sourceManifests": [
+    {
+      "ref": "proofs/manifests/m6-real-pixel-fidelity-v6.json",
+      "sha256": "822b70c6ccb5547f514ac5eb731ec89e1c40926676229b1df92caf484507118b",
+      "status": "SINGLE_CASE_PROFESSIONAL_FIDELITY_VERIFIED"
+    }
+  ],
+  "proofSources": {
+    "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
+    "evaluatorSha256": "470fe3a2b8e2aa80a4ade3b07b5302c7728ac598661bc4fc7cd0de252956eda2",
+    "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
+    "generatorSha256": "55bdbf64ae8985363d80ed0f5939039549095619e66bb969f8b03c4846f57318"
+  },
+  "nextRequiredForShutterCanonical": [
+    "materially different transfer proof for axis: subject",
+    "materially different transfer proof for axis: aspect-ratio",
+    "second professional case pass required for Level 6 maturity"
+  ],
+  "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."
+}

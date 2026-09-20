@@ -13,13 +13,15 @@ export interface HalfPeakTemporalProfileV1 {
 }
 
 /**
- * Measures the contiguous half-peak lobe around a visual metric's strongest
- * frame. Durations are peak-relative, so they remain meaningful when reference
- * and render windows are semantically aligned but start at different times.
+ * Measures the contiguous half-peak lobe around a visual metric. By default the
+ * strongest lobe wins. When semantic comparison supplies a preferred phase, the
+ * nearest local peak with at least half of the global peak energy is selected so
+ * a stronger unrelated source lobe cannot steal an effect-local timing metric.
  */
 export const measureHalfPeakTemporalProfileV1 = (
   evidence: DenseEffectEvidenceV1,
   metric: string,
+  preferredPeakPhase?: number,
 ): HalfPeakTemporalProfileV1 => {
   const samples = evidence.frames.map((frame) => {
     const value = (frame as unknown as Readonly<Record<string, unknown>>)[metric];
@@ -42,6 +44,32 @@ export const measureHalfPeakTemporalProfileV1 = (
   let peakIndex = 0;
   for (let index = 1; index < samples.length; index += 1) {
     if ((samples[index] ?? 0) > (samples[peakIndex] ?? 0)) peakIndex = index;
+  }
+  const globalPeakIndex = peakIndex;
+  const globalPeakValue = samples[globalPeakIndex] ?? 0;
+  if (typeof preferredPeakPhase === "number" && Number.isFinite(preferredPeakPhase)
+    && samples.length > 1 && globalPeakValue > 1e-9) {
+    const preferred = Math.min(1, Math.max(0, preferredPeakPhase));
+    const minimumSemanticPeak = globalPeakValue * 0.5;
+    let bestIndex = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let bestValue = -1;
+    for (let index = 0; index < samples.length; index += 1) {
+      const value = samples[index] ?? 0;
+      const previous = index === 0 ? Number.NEGATIVE_INFINITY : samples[index - 1] ?? 0;
+      const next = index + 1 === samples.length ? Number.NEGATIVE_INFINITY : samples[index + 1] ?? 0;
+      const localPeak = value >= previous && value >= next && (value > previous || value > next);
+      if (!localPeak || value + 1e-9 < minimumSemanticPeak) continue;
+      const candidatePhase = index / (samples.length - 1);
+      const distance = Math.abs(candidatePhase - preferred);
+      if (distance < bestDistance - 1e-9
+        || (Math.abs(distance - bestDistance) <= 1e-9 && value > bestValue)) {
+        bestIndex = index;
+        bestDistance = distance;
+        bestValue = value;
+      }
+    }
+    if (bestIndex >= 0) peakIndex = bestIndex;
   }
   const peakValue = samples[peakIndex] ?? 0;
   if (peakValue <= 1e-9) {

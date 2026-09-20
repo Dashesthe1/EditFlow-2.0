@@ -29,8 +29,8 @@ const CONTROL_BY_METRIC: Readonly<Record<string, readonly ConstructionControlKin
   accelerationPeak: ["MOTION_IMPULSE", "MOTION_IMPULSE_SHARPNESS", "MOTION_IMPULSE_PHASE"],
   recoveryFrames: ["RECOVERY_DURATION"],
   blurPeak: ["BLUR_STRENGTH"],
-  blurHalfPeakAttackMs: ["RECOVERY_DURATION"],
-  blurHalfPeakRecoveryMs: ["RECOVERY_DURATION"],
+  blurHalfPeakAttackMs: ["BLUR_ATTACK_DURATION"],
+  blurHalfPeakRecoveryMs: ["BLUR_RECOVERY_DURATION"],
   exposurePeak: ["EXPOSURE_STRENGTH"],
   distortionPeak: ["DISTORTION_STRENGTH", "DISTORTION_SIZE", "DISTORTION_COMPLEXITY", "DISTORTION_EVOLUTION"],
   subjectSeparationPeak: ["SUBJECT_ISOLATION"],
@@ -77,8 +77,25 @@ export const deriveConstructionActuationPlanV1 = (input: {
   const unresolved = new Set<string>();
 
   for (const failure of input.comparison.metrics.filter((metric) => !metric.passed)) {
-    const nodeId = input.graph.invariantCoverage[failure.invariantId]?.[0];
+    const coveredNodeIds = input.graph.invariantCoverage[failure.invariantId] ?? [];
+    let nodeId = coveredNodeIds[0];
     let controls = CONTROL_BY_METRIC[failure.metric] ?? [];
+    if (failure.metric === "temporalPersistence"
+      && correctionDirection(failure.referenceValue, failure.renderValue) === "DECREASE") {
+      const echoNodeId = coveredNodeIds.find((coveredNodeId) => {
+        const node = input.graph.nodes.find((candidate) => candidate.nodeId === coveredNodeId);
+        return node?.parameters["synthesisStrategy"] === "LAYERED_ECHO_AUGMENTED"
+          || node?.parameters["synthesisStrategy"] === "NATIVE_ECHO_HYBRID";
+      });
+      if (echoNodeId !== undefined) {
+        // A retained Echo can dominate a visually over-long temporal tail even
+        // after the explicit duplicate window shrinks. Reduce Echo decay when
+        // rendered persistence exceeds the reference; keep the base temporal
+        // window as the INCREASE actuator for under-driven persistence.
+        nodeId = echoNodeId;
+        controls = ["TEMPORAL_BAND_MIX"];
+      }
+    }
     if (nodeId !== undefined
       && (failure.metric === "temporalStateCountPeak"
         || failure.metric === "fragmentationTemporalStateCountPeak")
@@ -170,6 +187,8 @@ const PHYSICAL_SCALE_PARAMETER_BY_CONTROL: Readonly<Partial<Record<
   MOTION_IMPULSE_PHASE: "motionImpulsePhaseScale",
   RECOVERY_DURATION: "recoveryDurationScale",
   BLUR_STRENGTH: "blurStrengthScale",
+  BLUR_ATTACK_DURATION: "blurAttackDurationScale",
+  BLUR_RECOVERY_DURATION: "blurRecoveryDurationScale",
   EXPOSURE_STRENGTH: "exposureStrengthScale",
   DISTORTION_STRENGTH: "distortionStrengthScale",
   CHROMATIC_SEPARATION: "chromaticSeparationScale",
@@ -200,6 +219,9 @@ const physicalParameterForControl = (
         break;
     }
   }
+  if (node.parameters["synthesisStrategy"] === "TIME_DISPLACEMENT_HYBRID") {
+    if (control === "TEMPORAL_PERSISTENCE") return "timeDisplacementStrengthScale";
+  }
   if (node.parameters["synthesisStrategy"] === "TURBULENT_DISPLACE_HYBRID"
     || node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID") {
     if (control === "DISTORTION_SIZE") return "distortionSizeScale";
@@ -226,13 +248,16 @@ const PHYSICAL_SCALE_LIMITS: Readonly<Record<string, readonly [number, number]>>
   motionImpulseSharpnessScale: [0.5, 2],
   motionImpulsePhaseScale: [0.5, 1.5],
   recoveryDurationScale: [0.25, 2],
-  blurStrengthScale: [0.25, 4],
+  blurStrengthScale: [0, 4],
+  blurAttackDurationScale: [0.25, 4],
+  blurRecoveryDurationScale: [0.25, 4],
   exposureStrengthScale: [0.25, 4],
   distortionStrengthScale: [0.25, 4],
   distortionSizeScale: [0.25, 4],
   distortionComplexityScale: [0.5, 2],
   distortionEvolutionScale: [0.25, 4],
   eventEvolutionSweepScale: [0.25, 4],
+  timeDisplacementStrengthScale: [0.25, 4],
   chromaticSeparationScale: [0.25, 4],
   scalePulseScale: [0.25, 4],
   numberOfEchoes: [1, 12],

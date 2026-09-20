@@ -12,5 +12,6 @@ export * from "./actuation.js";
 export * from "./actuator-search.js";
 export * from "./correction.js";
 export * from "./synthesis.js";
+export * from "./milestones.js";
 export * from "./benchmark.js";
 export * from "./brain.js";

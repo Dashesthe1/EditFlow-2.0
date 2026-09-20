@@ -47,6 +47,8 @@ const PHYSICAL_PARAMETER_BY_CONTROL = Object.freeze({
   MOTION_IMPULSE_PHASE: "motionImpulsePhaseScale",
   RECOVERY_DURATION: "recoveryDurationScale",
   BLUR_STRENGTH: "blurStrengthScale",
+  BLUR_ATTACK_DURATION: "blurAttackDurationScale",
+  BLUR_RECOVERY_DURATION: "blurRecoveryDurationScale",
   EXPOSURE_STRENGTH: "exposureStrengthScale",
   DISTORTION_STRENGTH: "distortionStrengthScale",
   CHROMATIC_SEPARATION: "chromaticSeparationScale",
@@ -60,6 +62,9 @@ const physicalParameterForNodeControl = (node, control) => {
     if (control === "TEMPORAL_BAND_MIX") return "decay";
     if (control === "DUPLICATE_OPACITY") return "startingIntensity";
     if (control === "DUPLICATE_SPREAD") return undefined;
+  }
+  if (node?.parameters?.synthesisStrategy === "TIME_DISPLACEMENT_HYBRID") {
+    if (control === "TEMPORAL_PERSISTENCE") return "timeDisplacementStrengthScale";
   }
   if (node?.parameters?.synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
       || node?.parameters?.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID") {
@@ -84,7 +89,9 @@ const SEARCH_DIMENSIONS = Object.freeze([
   { control: "MOTION_IMPULSE_SHARPNESS", minimum: 0.5, maximum: 2, minimumStep: 0.125 },
   { control: "MOTION_IMPULSE_PHASE", minimum: 0.5, maximum: 1.5, minimumStep: 0.125 },
   { control: "RECOVERY_DURATION", minimum: 0.25, maximum: 2, minimumStep: 0.125 },
-  { control: "BLUR_STRENGTH", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
+  { control: "BLUR_STRENGTH", minimum: 0, maximum: 4, minimumStep: 0.03125 },
+  { control: "BLUR_ATTACK_DURATION", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
+  { control: "BLUR_RECOVERY_DURATION", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "EXPOSURE_STRENGTH", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "DISTORTION_STRENGTH", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "DISTORTION_SIZE", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
@@ -98,7 +105,7 @@ const CAPABILITIES = [
   "ae.layer.transform.set", "ae.keyframe.temporal_ease.set",
   "ae.keyframe.spatial.set", "ae.effect.directional-blur",
   "ae.effect.displacement-map", "ae.effect.turbulent-displace",
-  "ae.effect.echo", "ae.precompose.layers",
+  "ae.effect.echo", "ae.effect.time-displacement", "ae.precompose.layers",
   "ae.effect.exposure", "ae.effect.channel-shift",
   "ae.layer.blend_mode.set",
   "ae.subject.isolate", "ae.layer.matte.set", "ae.layer.order.set",
@@ -317,9 +324,18 @@ const controlTargetNode = (valueGraph, control, preferredNodeId) => {
     return typeof value === "number" && Number.isFinite(value);
   });
 };
-const controlVectorFromGraph = (valueGraph, controls = SEARCH_CONTROLS) => Object.fromEntries(
+const preferredInstructionForControl = (instructions, control) =>
+  instructions
+    .filter((instruction) => instruction.defining && instruction.control === control)
+    .sort((left, right) => right.normalizedError - left.normalizedError)[0];
+const controlVectorFromGraph = (
+  valueGraph,
+  controls = SEARCH_CONTROLS,
+  instructions = [],
+) => Object.fromEntries(
   controls.map((control) => {
-    const node = controlTargetNode(valueGraph, control);
+    const instruction = preferredInstructionForControl(instructions, control);
+    const node = controlTargetNode(valueGraph, control, instruction?.nodeId);
     const parameter = node === undefined ? undefined : physicalParameterForNodeControl(node, control);
     const raw = parameter === undefined ? undefined : node?.parameters[parameter];
     return [control, typeof raw === "number" && Number.isFinite(raw) ? raw : 1];
@@ -339,6 +355,10 @@ const strategyKeyFromSet = (strategies) => {
   // Prefer the most structurally advanced explicit strategy. A v3 graph also
   // contains its retained v2 Echo/Turbulent interventions, so checking those
   // first would incorrectly collapse the evolving graph back to compound v2.
+  if (strategies.has("COMPOUND_EVOLVING_WARP_HYBRID")
+      && strategies.has("TIME_DISPLACEMENT_HYBRID")) {
+    return "COMPOUND_TEMPORAL_WARP_HYBRID";
+  }
   if (strategies.has("COMPOUND_EVOLVING_WARP_HYBRID")) {
     return "COMPOUND_EVOLVING_WARP_HYBRID";
   }
@@ -361,9 +381,13 @@ const recordedStrategyKey = (graphParameters) => strategyKeyFromSet(new Set(
       ? [entry.parameters.synthesisStrategy]
       : []),
 ));
-const attemptEvidenceFromState = (state, controls = SEARCH_CONTROLS) => ({
+const attemptEvidenceFromState = (
+  state,
+  controls = SEARCH_CONTROLS,
+  instructions = [],
+) => ({
   attemptId: state.attemptId,
-  values: controlVectorFromGraph(state.graph, controls),
+  values: controlVectorFromGraph(state.graph, controls, instructions),
   weightedFidelity: state.comparison.weightedFidelity,
   definingCoverage: state.comparison.definingCoverage,
   certified: state.gate.certified,
@@ -411,6 +435,9 @@ const searchDimensionsForPlan = (actuationPlan, valueGraph) => {
     }
     if (parameter === "decay") {
       return [{ ...dimension, minimum: 0.05, maximum: 0.98, minimumStep: 0.05 }];
+    }
+    if (parameter === "timeDisplacementStrengthScale") {
+      return [{ ...dimension, minimum: 0.25, maximum: 4, minimumStep: 0.25 }];
     }
     return [dimension];
   });
@@ -503,17 +530,14 @@ let compilation = compileConstructionGraphV1(graph, CAPABILITIES);
 let gate = evaluateProfessionalFidelityGateV1({
   comparison, compilation, synthesisPossible: true,
 });
-const renderedStates = [{
-  attemptId: "seed",
-  graph,
-  compilation,
-  render,
-  comparison,
-  gate,
-}];
+// The retained seed video is the deliberately degraded control, not a render of
+// the synthesized graph. Keep it in the proof ledger, but never feed it to the
+// causal actuator search as though control value 1.0 produced those pixels.
+const renderedStates = [];
 const passes = [{
   iteration: 0,
   source: "retained-real-ae-seed",
+  causalActuationState: false,
   strategy: graphStrategyKey(graph),
   weightedFidelity: comparison.weightedFidelity,
   definingCoverage: comparison.definingCoverage,
@@ -600,13 +624,67 @@ if (resumeProofArg.length > 0) {
   passes.splice(0, passes.length, ...previous.passes);
   resumedFromProof = path.relative(ROOT, resumePath).replaceAll("\\", "/");
 }
+
+if (resumedFromProof === null) {
+  // Establish the first causal point by actually materializing the synthesized
+  // graph at its neutral physical controls. The degraded seed is evidence that
+  // the reference behavior is absent, but it cannot establish actuator response.
+  const materializedPass = await executePass(graph, 1);
+  const materializedGraph = materializedPass.graph;
+  const materializedCompilation = materializedPass.compilation;
+  const materializedRender = materializedPass.measured.value;
+  if (materializedRender.analyzerFingerprint !== reference.analyzerFingerprint) {
+    throw new Error("Materialized seed analyzer is incompatible with the reference.");
+  }
+  const materializedComparison = compareSemanticVisualFidelityV1({
+    reference, render: materializedRender, dna: anatomy.dna, alignment: "SEMANTIC",
+  });
+  const materializedGate = evaluateProfessionalFidelityGateV1({
+    comparison: materializedComparison,
+    compilation: materializedCompilation,
+    synthesisPossible: true,
+  });
+  renderedStates.push({
+    attemptId: "materialized-seed",
+    graph: materializedGraph,
+    compilation: materializedCompilation,
+    render: materializedRender,
+    comparison: materializedComparison,
+    gate: materializedGate,
+  });
+  passes.push({
+    iteration: 1,
+    source: "real-ae-materialized-seed",
+    causalActuationState: true,
+    operationCount: materializedPass.native.plan.operations.length,
+    transactionState: materializedPass.transaction.result.state,
+    budgetBackoff: materializedPass.budgetBackoff,
+    readback: path.relative(ROOT, materializedPass.readback).replaceAll("\\", "/"),
+    video: path.relative(ROOT, materializedPass.video).replaceAll("\\", "/"),
+    evidence: path.relative(ROOT, materializedPass.measured.evidence).replaceAll("\\", "/"),
+    weightedFidelity: materializedComparison.weightedFidelity,
+    definingCoverage: materializedComparison.definingCoverage,
+    gate: materializedGate,
+    summary: materializedRender.summary,
+    graphParameters: materializedGraph.nodes.map((node) => ({ nodeId: node.nodeId, parameters: node.parameters })),
+  });
+  ({ graph, compilation, render, comparison, gate } = {
+    graph: materializedGraph,
+    compilation: materializedCompilation,
+    render: materializedRender,
+    comparison: materializedComparison,
+    gate: materializedGate,
+  });
+  await checkpointPasses("IN_PROGRESS");
+}
 const maxPassesRaw = Number(cliValue("--max-passes", "2"));
 const MAX_CORRECTION_PASSES = Number.isFinite(maxPassesRaw)
   ? Math.max(1, Math.min(5, Math.round(maxPassesRaw)))
   : 2;
 const BLIND_CORRECTION_PASSES = resumedFromProof === null ? MAX_CORRECTION_PASSES : 0;
 let status = gate.certified ? "PASSED" : "ITERATION_LIMIT";
-for (let iteration = 1; iteration <= BLIND_CORRECTION_PASSES && !gate.certified; iteration += 1) {
+for (let correctionPass = 1; correctionPass <= BLIND_CORRECTION_PASSES && !gate.certified; correctionPass += 1) {
+  const iteration = Math.max(...passes.map((item) => item.iteration)) + 1;
   const acceptedState = { graph, compilation, render, comparison, gate };
   const actuationPlan = deriveConstructionActuationPlanV1({ graph, comparison });
   const application = applyConstructionActuationPlanV1(graph, actuationPlan);
@@ -701,7 +779,7 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
   const activeControls = dimensions.map((dimension) => dimension.control);
   const attempts = renderedStates
     .filter((state) => graphStrategyKey(state.graph) === activeStrategyKey)
-    .map((state) => attemptEvidenceFromState(state, activeControls));
+    .map((state) => attemptEvidenceFromState(state, activeControls, actuationPlan.instructions));
   const searchPlan = planBoundedActuatorSearchV1({
     attempts,
     instructions: actuationPlan.instructions,
@@ -712,6 +790,37 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
   const retainedState = renderedStates.find((item) => item.attemptId === retainedAttempt.attemptId);
   if (retainedState !== undefined) {
     ({ graph, compilation, render, comparison, gate } = retainedState);
+  }
+  const hasRetainedScalarAuthority = searchPlan.metricResponses.some((response) =>
+    response.retainedImprovingProbeCount > 0);
+  if (searchPlan.structuralEscalationInvariantIds.length > 0
+    && !hasRetainedScalarAuthority) {
+    const previouslyRenderedStrategies = [...new Set(renderedStates
+      .map((state) => graphStrategyKey(state.graph))
+      .filter((strategy) => strategy !== activeStrategyKey))];
+    const structuralCandidate = selectSynthesisEscalationCandidateV1({
+      synthesis,
+      currentStrategy: activeStrategyKey,
+      requiredInvariantIds: searchPlan.structuralEscalationInvariantIds,
+      // Unchanged synthesis candidates that already lost rendered comparison are
+      // retained as negative evidence. Do not spend another real-AE pass proving
+      // the same construction worse again; only a changed graph may re-enter.
+      excludedStrategies: previouslyRenderedStrategies,
+    });
+    if (structuralCandidate !== null) {
+      status = "STRUCTURAL_ESCALATION_READY";
+      passes.push({
+        iteration: nextRenderIteration,
+        source: "bounded-actuator-structural-escalation-ready",
+        actuationPlan,
+        searchPlan,
+        selectedStructuralStrategy: structuralCandidate.strategy,
+        weightedFidelity: comparison.weightedFidelity,
+        definingCoverage: comparison.definingCoverage,
+        gate,
+      });
+      break;
+    }
   }
   if (searchPlan.candidates.length === 0) {
     status = searchPlan.synthesisRequiredInvariantIds.length > 0
@@ -782,7 +891,7 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
   await checkpointPasses("IN_PROGRESS");
   const updatedAttempts = renderedStates
     .filter((state) => graphStrategyKey(state.graph) === activeStrategyKey)
-    .map((state) => attemptEvidenceFromState(state, activeControls));
+    .map((state) => attemptEvidenceFromState(state, activeControls, actuationPlan.instructions));
   const bestAttempt = selectRetainedBestActuatorAttemptV1(updatedAttempts);
   const bestState = renderedStates.find((item) => item.attemptId === bestAttempt.attemptId);
   if (bestState === undefined) throw new Error("Bounded actuator search lost its retained-best render.");
@@ -799,7 +908,11 @@ if (!gate.certified) {
   const escalationSearchPlan = planBoundedActuatorSearchV1({
     attempts: renderedStates
       .filter((state) => graphStrategyKey(state.graph) === activeStrategyKey)
-      .map((state) => attemptEvidenceFromState(state, escalationControls)),
+      .map((state) => attemptEvidenceFromState(
+        state,
+        escalationControls,
+        escalationActuationPlan.instructions,
+      )),
     instructions: escalationActuationPlan.instructions,
     dimensions: escalationDimensions,
     maxCandidates: 6,
@@ -810,10 +923,14 @@ if (!gate.certified) {
     ...hardRequiredInvariantIds,
     ...structuralEscalationInvariantIds,
   ])];
+  const previouslyRenderedStrategies = [...new Set(renderedStates
+    .map((state) => graphStrategyKey(state.graph))
+    .filter((strategy) => strategy !== activeStrategyKey))];
   const alternate = selectSynthesisEscalationCandidateV1({
     synthesis,
     currentStrategy: activeStrategyKey,
     requiredInvariantIds,
+    excludedStrategies: previouslyRenderedStrategies,
   });
   synthesisEscalation = {
     requiredInvariantIds,

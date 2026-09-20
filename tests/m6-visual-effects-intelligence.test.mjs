@@ -23,7 +23,9 @@ import {
   deriveProfessionalFidelityLevelV1,
   distinguishShutterFromFlashZoomV1,
   evaluateProfessionalBenchmarkV1,
+  evaluateRetainedProfessionalBenchmarkV1,
   evaluateProfessionalFidelityGateV1,
+  evaluateUnknownEffectSynthesisMilestoneV1,
   learnTutorialActionPixelConsequencesV1,
   measureHalfPeakTemporalProfileV1,
   runAutomaticVisualCorrectionLoopV1,
@@ -48,6 +50,7 @@ const ALL_CAPABILITIES = [
   "ae.subject.isolate",
   "ae.layer.matte.set",
   "ae.effect.displacement-map",
+  "ae.effect.time-displacement",
   "ae.effect.directional-blur",
   "ae.effect.exposure",
   "ae.effect.channel-shift",
@@ -358,6 +361,51 @@ test("M6.1 does not let exposure-only flashes masquerade as motion energy", () =
   assert.ok(result.frames[2].structuralDifference < 0.02);
   assert.ok(result.frames[2].motionEnergy < 0.02);
   assert.ok(result.summary.accelerationPeak < 0.03);
+});
+
+test("M6.1 shot boundaries retain raw change evidence without masquerading as effect motion or distortion", () => {
+  const solidFrame = (index, value, semantic = {}) => {
+    const width = 8;
+    const height = 8;
+    const rgba = new Uint8Array(width * height * 4);
+    for (let pixel = 0; pixel < width * height; pixel += 1) {
+      const offset = pixel * 4;
+      rgba[offset] = value;
+      rgba[offset + 1] = value;
+      rgba[offset + 2] = value;
+      rgba[offset + 3] = 255;
+    }
+    return {
+      timeMs: index * (1000 / 30),
+      width,
+      height,
+      rgba,
+      semantic,
+    };
+  };
+  const result = analyzeDenseEffectEvidenceV1({
+    sourceId: "reference:shot-boundary",
+    sourceKind: "REFERENCE",
+    frames: [
+      solidFrame(0, 25, { displacement: { x: 0, y: 0 } }),
+      solidFrame(1, 25, { displacement: { x: 0, y: 0 } }),
+      solidFrame(2, 220, {
+        shotBoundaryDiscontinuity: true,
+        displacement: { x: 0.5, y: 0.25 },
+        distortionStrength: 0.95,
+      }),
+      solidFrame(3, 220, { displacement: { x: 0, y: 0 } }),
+      solidFrame(4, 220, { displacement: { x: 0, y: 0 } }),
+    ],
+    settings: { expectedFps: 30, requireEveryFrame: true },
+    evidenceRefs: ["fixture:shot-boundary"],
+  });
+  assert.ok(result.frames[2].frameDifference > 0.5,
+    "the discontinuity remains observable as raw temporal change");
+  assert.equal(result.frames[2].structuralDifference, 0);
+  assert.equal(result.frames[2].motionEnergy, 0);
+  assert.equal(result.frames[2].displacementMagnitude, 0);
+  assert.equal(result.frames[2].distortionStrength, 0);
 });
 
 test("M6.1 temporal persistence measures visible multi-state occupancy instead of generic frame change", () => {
@@ -1393,7 +1441,7 @@ test("M6.3/M6.5 preserves peak-aligned blur recovery across semantic windows", (
   const actuation = deriveConstructionActuationPlanV1({ graph, comparison });
   assert.ok(actuation.instructions.some((item) =>
     item.invariantId === "unknown.blur-recovery"
-    && item.control === "RECOVERY_DURATION"));
+    && item.control === "BLUR_RECOVERY_DURATION"));
 });
 
 test("M6.8 rejects uncorroborated global temporal-state texture as unknown effect identity", () => {
@@ -1663,6 +1711,48 @@ test("M6.8 escalation selects an alternate construction that directly targets ex
     requiredInvariantIds: ["unknown.subject-separation"],
   });
   assert.equal(unrelated, null);
+
+  const noReproof = selectSynthesisEscalationCandidateV1({
+    synthesis: result,
+    currentStrategy: result.selected?.strategy,
+    requiredInvariantIds: ["unknown.persistence", "unknown.acceleration"],
+    excludedStrategies: ["LAYERED_ECHO_AUGMENTED"],
+  });
+  assert.notEqual(noReproof?.strategy, "LAYERED_ECHO_AUGMENTED",
+    "an unchanged synthesis strategy with retained losing render evidence must not be selected for re-proof");
+
+  const distortionMotionOnly = synthesizeUnknownEffectV1({
+    evidence: evidence({
+      temporalStateCountPeak: 1,
+      temporalPersistence: 0,
+      overlapDensityPeak: 0,
+      blurPeak: 0.33,
+      distortionPeak: 0.9,
+      motionEnergyPeak: 0.08,
+      accelerationPeak: 0.04,
+    }),
+    availableCapabilities: [
+      ...ALL_CAPABILITIES,
+      "ae.effect.turbulent-displace",
+    ],
+  });
+  const distortionOnlyCompound = distortionMotionOnly.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_NATIVE_HYBRID");
+  assert.ok(distortionOnlyCompound,
+    "compound distortion synthesis must not require unrelated temporal/persistence anatomy");
+  const distortionOnlyRecovery = distortionOnlyCompound.graph.nodes.find((node) =>
+    node.kind === "RECOVERY");
+  assert.notEqual(distortionOnlyRecovery?.parameters.synthesisStrategy, "COMPOUND_NATIVE_HYBRID");
+  assert.notEqual(distortionOnlyRecovery?.parameters.motionProfile, "SHUTTER_CONVERGENCE",
+    "distortion-only synthesis must not manufacture shutter convergence or fragmentation");
+  const postTurbulentDistortion = selectSynthesisEscalationCandidateV1({
+    synthesis: distortionMotionOnly,
+    currentStrategy: distortionMotionOnly.selected?.strategy,
+    requiredInvariantIds: ["unknown.blur", "unknown.distortion"],
+    excludedStrategies: ["TURBULENT_DISPLACE_HYBRID"],
+  });
+  assert.equal(postTurbulentDistortion?.strategy, "COMPOUND_NATIVE_HYBRID",
+    "after a Turbulent-only loss, distortion synthesis must layer new machinery instead of reporting no candidate");
 });
 
 test("M6.8 layered Echo augmentation preserves layered fragmentation while targeting persistence", () => {
@@ -2229,9 +2319,17 @@ test("M6.8 evolving compound warp adds event-local effect-property expressions w
     operation.type === "SET_EFFECT_EXPRESSION"
     && operation.effectId.startsWith(dynamicTurbulent.nodeId));
   assert.ok(dynamicExpressions.length >= 2);
-  assert.ok(dynamicExpressions.some((operation) =>
-    operation.propertyPath[0] === "ADBE Turbulent Displace-0002"
-    && operation.expression.includes("Math.sin(Math.PI*u)")));
+  const amountExpression = dynamicExpressions.find((operation) =>
+    operation.propertyPath[0] === "ADBE Turbulent Displace-0002");
+  assert.ok(amountExpression);
+  assert.match(amountExpression.expression, /Math\.sin\(Math\.PI\*u\)/);
+  assert.match(amountExpression.expression, /base\*[0-9.]+\*envelope/);
+  assert.doesNotMatch(amountExpression.expression, /1\+\(/,
+    "dynamic v3 Amount must be zero outside its event instead of relying on a duplicate layer for localization");
+  assert.equal(compiled.operations.some((operation) =>
+    operation.type === "DUPLICATE_LAYER"
+    && operation.layerId.startsWith(dynamicTurbulent.nodeId)), false,
+    "dynamic v3 warp must actuate the retained layer directly and must not create a new visible temporal state");
   assert.ok(dynamicExpressions.some((operation) =>
     operation.propertyPath[0] === "ADBE Turbulent Displace-0006"
     && operation.expression.includes("var base=")
@@ -2259,17 +2357,199 @@ test("M6.8 evolving compound warp adds event-local effect-property expressions w
     && operation.input.payload.propertyPath.length === 1));
 });
 
-test("M6.8 unmaterialized native hybrids fail closed while materialized Turbulent Displace stays proof-gated", () => {
-  const time = synthesizeUnknownEffectV1({
-    evidence: evidence({ temporalStateCountPeak: 3, temporalPersistence: 0.55 }),
-    availableCapabilities: ["ae.effect.time-displacement"],
+test("M6.8 compound temporal warp preserves evolving warp and adds new temporal-field machinery", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 5,
+    temporalPersistence: 0.66,
+    overlapDensityPeak: 0.9,
+    scaleRange: 0.14,
+    blurPeak: 0.9,
+    distortionPeak: 0.42,
+    accelerationPeak: 0.07,
+    recoveryFrames: 4,
   });
-  assert.equal(time.status, "CAPABILITY_GAP");
-  assert.equal(time.selected, null);
+  const capabilities = [
+    ...ALL_CAPABILITIES,
+    "ae.effect.echo",
+    "ae.effect.turbulent-displace",
+  ];
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: capabilities,
+  });
+  const temporalWarp = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_TEMPORAL_WARP_HYBRID");
+  assert.ok(temporalWarp);
+  assert.deepEqual(temporalWarp.capabilityGaps, []);
+
+  const evolvingNode = temporalWarp.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID");
+  const timeNode = temporalWarp.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "TIME_DISPLACEMENT_HYBRID");
+  assert.equal(evolvingNode?.parameters.effectSchemaRef,
+    "ae.effect-schema.m6.turbulent-displace.v3");
+  assert.equal(timeNode?.parameters.effectSchemaRef,
+    "ae.effect-schema.m6.time-displacement.v1");
+  assert.ok(timeNode?.requiredInvariantIds.includes("unknown.persistence"));
+  const persistenceCoverage = temporalWarp.graph.invariantCoverage["unknown.persistence"] ?? [];
+  assert.notEqual(
+    persistenceCoverage[0],
+    timeNode?.nodeId,
+    "live-AE non-response evidence keeps layered persistence as the correction owner",
+  );
+  assert.ok(persistenceCoverage.includes(timeNode?.nodeId ?? "missing"),
+    "Time Displacement remains retained as secondary construction/provenance coverage");
+
+  const persistenceEscalation = selectSynthesisEscalationCandidateV1({
+    synthesis,
+    currentStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+    requiredInvariantIds: ["unknown.persistence", "unknown.distortion"],
+  });
+  assert.equal(persistenceEscalation?.strategy, "COMPOUND_TEMPORAL_WARP_HYBRID");
+  const temporalBoundary = temporalWarp.graph.nodes.find((node) =>
+    node.parameters.causalBoundary === "TEMPORAL_FIELD_COMPOSITE");
+  const postCompositeScale = temporalWarp.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_TEMPORAL_WARP_HYBRID"
+    && node.requiredInvariantIds.includes("unknown.scale"));
+  assert.ok(temporalBoundary?.requiredInvariantIds.includes("unknown.blur"));
+  assert.ok(postCompositeScale);
+  const postCompositeEscalation = selectSynthesisEscalationCandidateV1({
+    synthesis,
+    currentStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+    requiredInvariantIds: ["unknown.scale", "unknown.blur"],
+  });
+  assert.equal(postCompositeEscalation?.strategy, "COMPOUND_TEMPORAL_WARP_HYBRID");
+
+  const compilation = compileConstructionGraphV1(temporalWarp.graph, capabilities);
+  assert.notEqual(compilation.recipe, null);
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp", name: "Compound temporal warp proof", width: 640, height: 360,
+      durationMs: 1000, frameRate: 30,
+      layers: [{
+        layerId: "hero", name: "Hero", kind: "PRECOMP", sourceRef: "source",
+        inMs: 0, outMs: 1000, properties: [], effects: [], masks: [],
+      }],
+    }],
+  };
+  const compiled = compileEditingIrRecipeToVirtualAeV1(compilation.recipe, project, {
+    compId: "comp",
+    eventTimesMs: { transition: 500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+    proofOnlyEffectSchemaRefs: [
+      "ae.effect-schema.m6.echo.v1",
+      "ae.effect-schema.m6.turbulent-displace.v2",
+      "ae.effect-schema.m6.turbulent-displace.v3",
+      "ae.effect-schema.m6.time-displacement.v1",
+    ],
+  });
+  assert.ok(compiled.operations.some((operation) =>
+    operation.type === "ADD_EFFECT" && operation.matchName === "ADBE Time Displacement"));
+  const temporalFieldPrecomposes = compiled.operations
+    .filter((operation) => operation.type === "PRECOMPOSE"
+      && operation.newLayerId.includes("time-field-precompose"));
+  assert.equal(temporalFieldPrecomposes.length, 1);
+  assert.ok((temporalFieldPrecomposes[0]?.layerIds.length ?? 0) > 1,
+    "the temporal-field boundary must group the realized temporal states within the bounded transaction budget");
+  assert.ok(temporalFieldPrecomposes.every((operation) => !operation.layerIds.includes("hero")),
+    "the temporal-field boundary must inherit temporal outputs instead of retargeting the original hero layer");
+  const simulated = compileConstructionThroughVirtualAeV1(compilation, project, {
+    compId: "comp",
+    eventTimesMs: { transition: 500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+    proofOnlyEffectSchemaRefs: [
+      "ae.effect-schema.m6.echo.v1",
+      "ae.effect-schema.m6.turbulent-displace.v2",
+      "ae.effect-schema.m6.turbulent-displace.v3",
+      "ae.effect-schema.m6.time-displacement.v1",
+    ],
+  });
+  assert.equal(simulated.compiled, true, simulated.issues.join(", "));
+  const plan = lowerCompiledRecipeToNativeAePlanV1(compiled, {
+    planId: "m6-compound-temporal-warp-proof-plan",
+    observedState: {
+      projectId: "m6-project",
+      projectRevision: "ae-revision:compound-temporal-warp",
+      projectFingerprint: "project:sha256:compound-temporal-warp",
+      environmentFingerprint: "environment:sha256:ae-25.6.6",
+    },
+    creativeObjective: "Preserve proven evolving deformation while adding a spatial temporal field.",
+  });
+  assert.ok(plan.operations.length <= 96,
+    `compound temporal warp must remain within the bounded correction transaction ceiling (got ${plan.operations.length})`);
+});
+
+test("M6.8 materialized Time Displacement is proof-gated and FPS-adaptive", () => {
+  const time = synthesizeUnknownEffectV1({
+    evidence: evidence({
+      frameIntervalMs: 1000 / 60,
+      temporalStateCountPeak: 3,
+      temporalPersistence: 0.55,
+    }),
+    availableCapabilities: ALL_CAPABILITIES,
+  });
   const timeCandidate = time.candidates.find((item) => item.strategy === "TIME_DISPLACEMENT_HYBRID");
-  assert.deepEqual(timeCandidate?.capabilityGaps, [
-    "PROOF_REQUIRED_NATIVE_EFFECT_SCHEMA:ae.effect.time-displacement",
-  ]);
+  assert.ok(timeCandidate);
+  assert.deepEqual(timeCandidate.capabilityGaps, []);
+  const timeNode = timeCandidate.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "TIME_DISPLACEMENT_HYBRID");
+  assert.equal(timeNode?.parameters.effectSchemaRef, "ae.effect-schema.m6.time-displacement.v1");
+  assert.equal(timeNode?.parameters.eventLocalEffect, false);
+  assert.equal(timeNode?.parameters.eventDynamicTimeDisplacement, true);
+  const maxDisplacementSeconds = Number(timeNode?.parameters.maxDisplacementSeconds);
+  assert.ok(maxDisplacementSeconds > (1 / 60));
+  assert.ok(maxDisplacementSeconds < (2 / 60),
+    "auxiliary Time Displacement must stay inside the observed three-state cadence span rather than smearing the full analysis window");
+
+  const timeCompilation = compileConstructionGraphV1(timeCandidate.graph, ALL_CAPABILITIES);
+  assert.notEqual(timeCompilation.recipe, null);
+  const timeNormalSupport = inspectRecipeCompilerSupportV1(timeCompilation.recipe);
+  assert.ok(timeNormalSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+  const timeProofSupport = inspectRecipeCompilerSupportV1(timeCompilation.recipe, {
+    proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.time-displacement.v1"],
+  });
+  assert.ok(!timeProofSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp", name: "Time displacement proof", width: 640, height: 360,
+      durationMs: 1000, frameRate: 30,
+      layers: [{
+        layerId: "hero", name: "Hero", kind: "PRECOMP", sourceRef: "source",
+        inMs: 0, outMs: 1000, properties: [], effects: [], masks: [],
+      }],
+    }],
+  };
+  const compiled = compileEditingIrRecipeToVirtualAeV1(timeCompilation.recipe, project, {
+    compId: "comp",
+    eventTimesMs: { transition: 500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+    proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.time-displacement.v1"],
+  });
+  const add = compiled.operations.find((operation) =>
+    operation.type === "ADD_EFFECT" && operation.matchName === "ADBE Time Displacement");
+  assert.ok(add);
+  const properties = compiled.operations.filter((operation) =>
+    operation.type === "SET_EFFECT_PROPERTY" && operation.effectId === add.effectId);
+  const expressions = compiled.operations.filter((operation) =>
+    operation.type === "SET_EFFECT_EXPRESSION" && operation.effectId === add.effectId);
+  assert.ok(expressions.some((operation) =>
+    operation.propertyPath[0] === "ADBE Time Displacement-0002"
+    && operation.expression.includes("Math.sin(Math.PI*u)")));
+  assert.ok(properties.some((operation) =>
+    operation.propertyPath[0] === "ADBE Time Displacement-0003"
+    && operation.value === 30),
+    "Time Resolution must clamp to the target composition FPS rather than copying a literal 60fps reference value");
+  assert.ok(!properties.some((operation) =>
+    operation.propertyPath[0] === "ADBE Time Displacement-0001"),
+    "Live AE proved the layer selector defaults to the affected layer; avoid brittle layer-index literals");
 
   const turbulent = synthesizeUnknownEffectV1({
     evidence: evidence({ distortionPeak: 0.4 }),
@@ -2936,6 +3216,213 @@ test("M6.7 temporal persistence scales from reference analysis duration instead 
   assert.notEqual(boosted, baseline);
 });
 
+test("M6.7 blur attack deficits use a dedicated optical-duration actuator", () => {
+  const referenceBase = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 8 / 11,
+    opticalPeakPhase: 8 / 11,
+  });
+  const referenceBlur = [0.02, 0.05, 0.28, 0.3, 0.32, 0.34, 0.37, 0.42, 0.5, 0.25, 0.1, 0.03];
+  const reference = {
+    ...referenceBase,
+    frames: referenceBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: referenceBlur[index] ?? 0,
+    })),
+  };
+  const anatomy = decomposeUnknownEffectV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const degradedBase = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 8 / 11,
+    opticalPeakPhase: 8 / 11,
+  });
+  const render = {
+    ...degradedBase,
+    analyzerFingerprint: reference.analyzerFingerprint,
+    frames: degradedBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: index === 7 ? 0.3 : index === 8 ? 0.5 : index > 8 ? 0.1 : 0.03,
+    })),
+  };
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render,
+    dna: anatomy.dna,
+  });
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  const attack = plan.instructions.find((item) =>
+    item.metric === "blurHalfPeakAttackMs");
+  assert.equal(attack?.control, "BLUR_ATTACK_DURATION");
+  assert.equal(attack?.direction, "INCREASE");
+  const applied = applyConstructionActuationPlanV1(graph, plan);
+  const optical = applied.graph.nodes.find((node) => node.nodeId === attack?.nodeId);
+  assert.ok(Number(optical?.parameters.blurAttackDurationScale ?? 1) > 1);
+});
+
+test("M6.7 blur-duration actuation drives native Directional Blur Length over the event envelope", () => {
+  const referenceBase = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 8 / 11,
+    opticalPeakPhase: 8 / 11,
+  });
+  const referenceBlur = [0.02, 0.05, 0.28, 0.3, 0.32, 0.34, 0.37, 0.42, 0.5, 0.25, 0.1, 0.03];
+  const reference = {
+    ...referenceBase,
+    frames: referenceBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: referenceBlur[index] ?? 0,
+    })),
+  };
+  const anatomy = decomposeUnknownEffectV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const blurNode = graph.nodes.find((node) => node.kind === "OPTICAL_TREATMENT");
+  assert.ok(blurNode);
+  const tunedGraph = {
+    ...graph,
+    nodes: graph.nodes.map((node) => node.nodeId === blurNode.nodeId
+      ? {
+          ...node,
+          parameters: {
+            ...node.parameters,
+            // Simulate a compound reference whose main semantic event is one
+            // analysis-frame later than its optical peak, so lowering must
+            // preserve the measured pre-event blur lead.
+            effectEventPhase: 9 / 11,
+            blurAttackDurationScale: 1.25,
+            blurRecoveryDurationScale: 0.75,
+          },
+        }
+      : node),
+  };
+  const compilation = compileConstructionGraphV1(tunedGraph, ALL_CAPABILITIES);
+  const result = compileConstructionThroughNativeAeV1(
+    compilation,
+    {
+      schema: "editflow.virtual-ae.project.v1",
+      activeCompId: "comp",
+      compositions: [{
+        compId: "comp",
+        name: "M6 dynamic blur fixture",
+        width: 640,
+        height: 360,
+        durationMs: 1000,
+        frameRate: 30,
+        layers: [{
+          layerId: "hero",
+          name: "Hero",
+          kind: "FOOTAGE",
+          inMs: 0,
+          outMs: 1000,
+          properties: [],
+          effects: [],
+          masks: [],
+        }],
+      }],
+    },
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-dynamic-blur-native-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      creativeObjective: "Drive measured blur attack and recovery on the native Blur Length property.",
+    },
+  );
+  assert.equal(result.compiled, true, result.issues.join(", "));
+  assert.ok(result.plan);
+  const blurLengthExpression = result.plan.operations.find((operation) =>
+    operation.input.command === "property.set_expression"
+    && operation.input.payload.propertyPath?.includes("ADBE Motion Blur-0002"));
+  assert.ok(blurLengthExpression,
+    "duration correction must actuate native Blur Length, not only layer opacity");
+  assert.match(blurLengthExpression.input.payload.expression, /var pre=/);
+  assert.match(blurLengthExpression.input.payload.expression, /var post=/);
+  assert.match(blurLengthExpression.input.payload.expression, /linear\(f,-pre,0,0,peak\)/);
+  const blurEventMatch = blurLengthExpression.input.payload.expression.match(/var event=([0-9.]+);/);
+  assert.ok(blurEventMatch);
+  const tunedBlurNode = tunedGraph.nodes.find((node) => node.nodeId === blurNode.nodeId);
+  assert.ok(tunedBlurNode);
+  const expectedBlurEventSeconds = 0.5 + (
+    Number(tunedBlurNode.parameters.blurPeakPhase ?? tunedBlurNode.parameters.effectEventPhase ?? 0)
+    - Number(tunedBlurNode.parameters.effectEventPhase ?? 0)
+  ) * (Number(tunedBlurNode.parameters.effectAnalysisDurationMs ?? 0) / 1000);
+  assert.ok(Math.abs(Number(blurEventMatch[1]) - expectedBlurEventSeconds) < 1e-9,
+    "blur timing must preserve the measured peak phase relative to the main semantic event");
+  assert.equal(result.plan.operations.some((operation) =>
+    operation.input.command === "effect.set_property"
+    && operation.input.payload.propertyPath?.includes("ADBE Motion Blur-0002")), false,
+    "the dynamic profile replaces the static Blur Length write for corrected optical timing");
+  const blurAdd = result.plan.operations.find((operation) =>
+    operation.input.command === "effect.add"
+    && operation.input.payload.matchName === "ADBE Motion Blur");
+  const blurLayerId = blurAdd?.input.payload.layer?.stableId;
+  assert.equal(blurLayerId, "hero",
+    "dynamic blur should animate the retained construction instead of creating a visible accent duplicate");
+  assert.equal(result.plan.operations.some((operation) =>
+    operation.input.command === "layer.duplicate"
+    && String(operation.input.payload.stableId ?? "").endsWith("effect-stack-accent")), false,
+    "optical timing correction must not alter temporal overlap by manufacturing another image state");
+  assert.equal(result.plan.operations.some((operation) =>
+    operation.input.command === "property.set_expression"
+    && operation.input.payload.effectBindingId === undefined
+    && operation.input.payload.layer?.stableId === blurLayerId
+    && operation.input.payload.propertyPath?.includes("ADBE Opacity")), false,
+    "native Blur Length already provides the bounded event envelope; no opacity support layer is required");
+});
+
+test("M6.7 zero blur strength remains a true identity calibration point", () => {
+  const compiler = readFileSync(
+    new URL("../packages/recipe-compiler/src/index.ts", import.meta.url),
+    "utf8",
+  );
+  const schemas = readFileSync(
+    new URL("../packages/recipe-compiler/src/effect-schemas.ts", import.meta.url),
+    "utf8",
+  );
+  const controller = readFileSync(
+    new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    compiler,
+    /const blurLength = Math\.max\(0, Math\.min\(160, blurRaw \* 80 \* blurStrengthScale\)\);/,
+  );
+  assert.doesNotMatch(
+    compiler,
+    /const blurLength = Math\.max\(0\.5,/,
+    "a nonzero blur floor prevents rendered actuator bracketing for weak optical references",
+  );
+  assert.match(
+    compiler,
+    /Dynamic Directional Blur requires a non-negative adapted Blur Length/,
+  );
+  assert.match(
+    schemas,
+    /semanticParameter: "blurLengthPixels"[\s\S]{0,260}scaleRange: Object\.freeze\(\[0, 4\] as const\)/,
+    "the certified Directional Blur schema must preserve zero instead of clamping it to 0.25",
+  );
+  assert.match(
+    controller,
+    /control: "BLUR_STRENGTH", minimum: 0, maximum: 4, minimumStep: 0\.03125/,
+    "rendered blur search needs sub-quarter-scale resolution because small Blur Length changes are visually strong",
+  );
+});
+
 test("M6.7 recovery deficits actuate construction duration without rewriting reference evidence", () => {
   const reference = shutterReference();
   const anatomy = deriveEffectAnatomyV1(reference);
@@ -2955,6 +3442,44 @@ test("M6.7 recovery deficits actuate construction duration without rewriting ref
   assert.ok(Number(recoveryNode?.parameters.recoveryDurationScale ?? 1) < 1);
   assert.ok(applied.appliedInstructionIds.includes(recoveryInstruction?.instructionId ?? "missing"));
   assert.equal(recoveryNode?.parameters.recoveryFrames, graph.nodes.find((node) => node.kind === "RECOVERY")?.parameters.recoveryFrames);
+});
+
+test("M6.8 milestone gate requires three distinct behavior-first rendered UNKNOWN proofs", () => {
+  const digest = (char) => char.repeat(64);
+  const proofCase = (index) => ({
+    caseId: `m6.8:case-${index}`,
+    proofRef: `proofs/case-${index}.json`,
+    proofSha256: digest(String(index)),
+    referenceContentKey: digest(String(index + 3)),
+    family: "UNKNOWN",
+    provenance: index === 1 ? "LEARNED_SKILL_DISABLED" : "UNKNOWN_DECOMPOSITION_DIRECT",
+    behaviorFirst: true,
+    namedEffectFallbackUsed: false,
+    finalCertified: true,
+    finalDefiningCoverage: 1,
+    finalWeightedFidelity: 0.96,
+    degradedOrUnderDrivenRejected: true,
+    renderedOutputVerified: true,
+    realAeTransactionCommitted: index === 2,
+    automaticCorrectionObserved: index === 3,
+  });
+  const passed = evaluateUnknownEffectSynthesisMilestoneV1([
+    proofCase(1), proofCase(2), proofCase(3),
+  ]);
+  assert.equal(passed.passed, true, passed.failures.join(", "));
+  assert.equal(passed.distinctReferenceCount, 3);
+  assert.equal(passed.realAeCaseCount, 1);
+  assert.equal(passed.automaticCorrectionCaseCount, 1);
+
+  const duplicate = { ...proofCase(3), referenceContentKey: proofCase(2).referenceContentKey };
+  const rejected = evaluateUnknownEffectSynthesisMilestoneV1([
+    proofCase(1),
+    { ...proofCase(2), namedEffectFallbackUsed: true },
+    duplicate,
+  ]);
+  assert.equal(rejected.passed, false);
+  assert.ok(rejected.failures.includes("m6.8:case-2:NAMED_EFFECT_FALLBACK_USED"));
+  assert.ok(rejected.failures.includes("M6.8:REFERENCES_NOT_DISTINCT"));
 });
 
 test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded rejection, and A/B evidence", () => {
@@ -3012,6 +3537,120 @@ test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded r
   assert.equal(maturityFailed.passed, false);
   assert.ok(maturityFailed.failures.some((item) => /MATURITY_ASSERTION_MISMATCH/.test(item)));
   assert.ok(maturityFailed.failures.some((item) => /MATURITY_TRANSFER_VERIFIED/.test(item)));
+});
+
+test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, and degraded-control bindings", () => {
+  const cases = createCanonicalProfessionalBenchmarkV1();
+  const hex = (seed) => seed.toString(16).padStart(64, "0");
+  const retainedEvidence = cases.map((item) => ({
+    caseId: item.caseId,
+    achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
+    maturityProof: {
+      functionallyPresent: true,
+      structuralCoverageComplete: true,
+      visuallyRecognizable: true,
+      referenceFaithful: true,
+      transferVariantCount: 1,
+      professionalCasePassCount: 2,
+      robustnessAxesPassed: [],
+    },
+    directAbReferenceRef: `artifact:direct-ab:${item.caseId}`,
+    comparisonEvidenceRef: `artifact:comparison:${item.caseId}`,
+    renderEvidenceRef: `artifact:render:${item.caseId}`,
+    transferEvidenceRefs: [`artifact:transfer:${item.caseId}`],
+    degradedControlEvidenceRef: `artifact:degraded:${item.caseId}`,
+    transferPassed: true,
+    degradedCaseRejected: true,
+  }));
+  const artifacts = cases.flatMap((item, index) => {
+    const proof = retainedEvidence[index];
+    const referenceKey = hex(100 + index);
+    const renderKey = hex(200 + index);
+    const degradedKey = hex(300 + index);
+    return [
+      {
+        ref: item.referenceEvidenceRef,
+        kind: "REFERENCE_DENSE_EVIDENCE",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1000 + index * 10),
+        contentKey: referenceKey,
+      },
+      {
+        ref: proof.renderEvidenceRef,
+        kind: "RENDER_DENSE_EVIDENCE",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1001 + index * 10),
+        contentKey: renderKey,
+      },
+      {
+        ref: proof.comparisonEvidenceRef,
+        kind: "SEMANTIC_COMPARISON",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1002 + index * 10),
+        referenceContentKey: referenceKey,
+        renderContentKey: renderKey,
+      },
+      {
+        ref: proof.directAbReferenceRef,
+        kind: "DIRECT_AB",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1003 + index * 10),
+        referenceContentKey: referenceKey,
+        renderContentKey: renderKey,
+      },
+      {
+        ref: proof.degradedControlEvidenceRef,
+        kind: "DEGRADED_CONTROL",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1004 + index * 10),
+        referenceContentKey: referenceKey,
+        renderContentKey: degradedKey,
+      },
+      {
+        ref: proof.transferEvidenceRefs[0],
+        kind: "TRANSFER_PROOF",
+        caseId: item.caseId,
+        family: item.family,
+        sha256: hex(1005 + index * 10),
+        referenceContentKey: referenceKey,
+        renderContentKey: hex(400 + index),
+        baselineSourceContentKey: hex(500 + index),
+        transferSourceContentKey: hex(600 + index),
+        transferAxes: item.transferAxes,
+      },
+    ];
+  });
+
+  const passed = evaluateRetainedProfessionalBenchmarkV1(cases, retainedEvidence, artifacts);
+  assert.equal(passed.passed, true, passed.failures.join(", "));
+
+  const placeholdersOnly = evaluateRetainedProfessionalBenchmarkV1(cases, retainedEvidence, []);
+  assert.equal(placeholdersOnly.passed, false);
+  assert.ok(placeholdersOnly.failures.some((item) => /MISSING_REFERENCE_ARTIFACT/.test(item)));
+  assert.ok(placeholdersOnly.failures.some((item) => /MISSING_TRANSFER_ARTIFACT/.test(item)));
+
+  const mismatchedComparison = artifacts.map((artifact) =>
+    artifact.kind === "SEMANTIC_COMPARISON" && artifact.caseId === cases[0].caseId
+      ? { ...artifact, referenceContentKey: hex(9999) }
+      : artifact);
+  const mismatchResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, retainedEvidence, mismatchedComparison,
+  );
+  assert.equal(mismatchResult.passed, false);
+  assert.ok(mismatchResult.failures.some((item) => /COMPARISON_CONTENT_BINDING_MISMATCH/.test(item)));
+
+  const reusedSource = artifacts.map((artifact) =>
+    artifact.kind === "TRANSFER_PROOF" && artifact.caseId === cases[0].caseId
+      ? { ...artifact, transferSourceContentKey: artifact.baselineSourceContentKey }
+      : artifact);
+  const sourceResult = evaluateRetainedProfessionalBenchmarkV1(cases, retainedEvidence, reusedSource);
+  assert.equal(sourceResult.passed, false);
+  assert.ok(sourceResult.failures.some((item) => /TRANSFER_SOURCE_NOT_MATERIALLY_DIFFERENT/.test(item)));
 });
 
 test("M6.10 keeps proven low-risk work on fast path and routes difficult references through fidelity", async () => {
@@ -3152,5 +3791,73 @@ test("M6 live correction keeps evolving-warp acceleration on the dedicated motio
     controller,
     /"distortionEvolutionScale",\s*"eventEvolutionSweepScale",/,
     "evolving-warp deformation tuning remains transferable without owning acceleration",
+  );
+});
+
+test("M6 live correction search reads the same physical actuator it writes", () => {
+  const controller = readFileSync(
+    new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    controller,
+    /controlTargetNode\(valueGraph, control, instruction\?\.nodeId\)/,
+    "semantic controls shared by Echo and Time Displacement must bind to the actuation instruction node",
+  );
+  assert.match(
+    controller,
+    /controlVectorFromGraph\(state\.graph, controls, instructions\)/,
+  );
+  assert.equal(
+    controller.match(/attemptEvidenceFromState\(state, activeControls, actuationPlan\.instructions\)/g)?.length,
+    2,
+    "both bounded-search snapshots must preserve physical-node identity",
+  );
+  assert.match(
+    controller,
+    /parameter === "timeDisplacementStrengthScale"[\s\S]{0,140}minimum: 0\.25, maximum: 4, minimumStep: 0\.25/,
+  );
+  assert.match(
+    controller,
+    /const hasRetainedScalarAuthority = searchPlan\.metricResponses\.some\([\s\S]{0,140}retainedImprovingProbeCount > 0/,
+    "render-proven local correction authority must outrank premature structural escalation",
+  );
+  assert.match(
+    controller,
+    /structuralEscalationInvariantIds\.length > 0[\s\S]{0,80}!hasRetainedScalarAuthority/,
+  );
+  assert.equal(
+    controller.match(/excludedStrategies: previouslyRenderedStrategies/g)?.length,
+    2,
+    "both bounded and final synthesis selection must retain rejected strategies as negative evidence",
+  );
+});
+
+test("M6 live correction never treats the degraded seed as causal actuator evidence", () => {
+  const controller = readFileSync(
+    new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    controller,
+    /const renderedStates = \[\];/,
+    "the deliberately degraded seed must stay outside rendered actuator states",
+  );
+  assert.match(
+    controller,
+    /source: "retained-real-ae-seed",[\s\S]{0,80}causalActuationState: false/,
+  );
+  assert.match(
+    controller,
+    /const materializedPass = await executePass\(graph, 1\);/,
+    "the synthesized graph must be rendered at neutral controls before correction/search",
+  );
+  assert.match(
+    controller,
+    /attemptId: "materialized-seed"[\s\S]{0,220}renderedStates\.push|renderedStates\.push\([\s\S]{0,220}attemptId: "materialized-seed"/,
+  );
+  assert.match(
+    controller,
+    /source: "real-ae-materialized-seed",[\s\S]{0,80}causalActuationState: true/,
   );
 });

@@ -586,6 +586,13 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     }
   }
   const isOrderedPostPrecomposeOperation = (operation: VirtualAeOperationV1): boolean => {
+    if (operation.type === "PRECOMPOSE") {
+      // A later precompose may consume layers synthesized from an earlier
+      // precompose (for example M6 temporal states -> temporal-field composite).
+      // Such structural operations must stay in compiled recipe order instead
+      // of being front-loaded with root precomposes.
+      return operation.layerIds.some((layerId) => postPrecomposeLayerIds.has(layerId));
+    }
     if (operation.type === "DUPLICATE_LAYER") {
       return postPrecomposeLayerIds.has(operation.sourceLayerId);
     }
@@ -604,6 +611,10 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   };
   const orderedPostPrecomposeOperations = new Set(
     compiled.operations.filter(isOrderedPostPrecomposeOperation),
+  );
+  const orderedPostPrecomposeSourceLayerIds = new Set(
+    [...orderedPostPrecomposeOperations].flatMap((operation) =>
+      operation.type === "PRECOMPOSE" ? operation.layerIds : []),
   );
 
   for (const operation of compiled.operations) {
@@ -628,7 +639,9 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   // so emitting these expressions after the structural mutation would target an
   // object that no longer exists in that parent composition.
   const precomposeSourceExpressions = compiled.operations.filter((operation) =>
-    operation.type === "SET_EXPRESSION" && precomposeSourceLayerIds.has(operation.layerId));
+    operation.type === "SET_EXPRESSION"
+      && precomposeSourceLayerIds.has(operation.layerId)
+      && !orderedPostPrecomposeSourceLayerIds.has(operation.layerId));
   for (const expressionOperation of precomposeSourceExpressions) {
     if (expressionOperation.type !== "SET_EXPRESSION") continue;
     if (expressionOperation.propertyPath === "TimeRemap.SourceTime") {
@@ -653,7 +666,8 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   }
 
   for (const operation of compiled.operations) {
-    if (operation.type !== "PRECOMPOSE") continue;
+    if (operation.type !== "PRECOMPOSE"
+      || orderedPostPrecomposeOperations.has(operation)) continue;
     emit(
       "ae.precompose.layers",
       AE_ADAPTER_ROUTE_ID_V11,
@@ -678,6 +692,25 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
   // before an upstream effect would copy a visually weaker pre-effect state.
   for (const operation of compiled.operations) {
     if (!orderedPostPrecomposeOperations.has(operation)) continue;
+    if (operation.type === "PRECOMPOSE") {
+      emit(
+        "ae.precompose.layers",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "layers.precompose",
+        {
+          comp: { stableId: operation.compId },
+          layers: operation.layerIds.map((stableId) => ({ stableId })),
+          stableId: operation.newCompId,
+          replacementStableId: operation.newLayerId,
+          name: operation.newCompName,
+          moveAllAttributes: true,
+          preserveSingleLayerTiming: operation.layerIds.length === 1,
+          sourceHandlePolicy: operation.sourceHandlePolicy ?? "PRESERVE_TRIM",
+        },
+        "R2_STRUCTURAL",
+      );
+      continue;
+    }
     if (operation.type === "DUPLICATE_LAYER") {
       emit(
         "ae.layer.duplicate",

@@ -644,6 +644,7 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
     if (current === undefined) continue;
     const previous = stats[index - 1];
     const semantic = frame.semantic;
+    const shotBoundaryDiscontinuity = semantic?.shotBoundaryDiscontinuity === true;
     const centroidMotion = previous === undefined
       ? { x: 0, y: 0 }
       : subtract(current.centroid, previous.centroid);
@@ -651,13 +652,19 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
     const subjectBefore = frames[index - 1]?.semantic?.subjectCentroid ?? previous?.subjectCentroid;
     const backgroundNow = semantic?.backgroundCentroid ?? current.backgroundCentroid;
     const backgroundBefore = frames[index - 1]?.semantic?.backgroundCentroid ?? previous?.backgroundCentroid;
-    const subjectMotion = subjectNow !== undefined && subjectNow !== null
-      && subjectBefore !== undefined && subjectBefore !== null
-      ? subtract(subjectNow, subjectBefore) : { x: 0, y: 0 };
-    const backgroundMotion = backgroundNow !== undefined && backgroundNow !== null
-      && backgroundBefore !== undefined && backgroundBefore !== null
-      ? subtract(backgroundNow, backgroundBefore) : { x: 0, y: 0 };
-    const displacement = semantic?.displacement ?? centroidMotion;
+    const subjectMotion = shotBoundaryDiscontinuity
+      ? { x: 0, y: 0 }
+      : subjectNow !== undefined && subjectNow !== null
+        && subjectBefore !== undefined && subjectBefore !== null
+        ? subtract(subjectNow, subjectBefore) : { x: 0, y: 0 };
+    const backgroundMotion = shotBoundaryDiscontinuity
+      ? { x: 0, y: 0 }
+      : backgroundNow !== undefined && backgroundNow !== null
+        && backgroundBefore !== undefined && backgroundBefore !== null
+        ? subtract(backgroundNow, backgroundBefore) : { x: 0, y: 0 };
+    const displacement = shotBoundaryDiscontinuity
+      ? { x: 0, y: 0 }
+      : semantic?.displacement ?? centroidMotion;
     const difference = frameDifference(frames[index - 1], frame);
     const exposureDelta = previous === undefined
       ? 0 : Math.abs(current.lumaMean - previous.lumaMean);
@@ -666,15 +673,19 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
     // Raw frame difference is retained as temporal/change evidence, but motion
     // must not be satisfiable by a flash alone. Discount global exposure and
     // contrast shifts before using pixel change as motion energy.
-    const structuralDifference = clamp01(Math.max(
-      0,
-      difference - exposureDelta - (contrastDelta * 0.25),
-    ));
+    const structuralDifference = shotBoundaryDiscontinuity
+      ? 0
+      : clamp01(Math.max(
+          0,
+          difference - exposureDelta - (contrastDelta * 0.25),
+        ));
     const separation = semantic?.subjectSeparation
       ?? clamp01(magnitude(subtract(subjectMotion, backgroundMotion)) * 4);
     const blur = semantic?.blurStrength ?? clamp01(1 - current.sharpness);
-    const distortion = semantic?.distortionStrength
-      ?? clamp01(Math.abs((current.edgeDensity - (previous?.edgeDensity ?? current.edgeDensity))) * 4);
+    const distortion = shotBoundaryDiscontinuity
+      ? 0
+      : semantic?.distortionStrength
+        ?? clamp01(Math.abs((current.edgeDensity - (previous?.edgeDensity ?? current.edgeDensity))) * 4);
     metrics.push({
       timeMs: frame.timeMs,
       lumaMean: current.lumaMean,

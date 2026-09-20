@@ -712,8 +712,21 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
           && response.testedDirectionCount >= 2
           && response.safeImprovingProbeCount === 0
           && response.collateralRegressionProbeCount > 0;
+        // One clean one-factor pair can also justify structural comparison
+        // when its entire rendered metric span is <=2% of the unresolved
+        // reference delta. This is intentionally weaker than hard exhaustion:
+        // scalar probing may continue, but M6.8 may compare a richer synthesis
+        // immediately. The alternate is still retained only by rendered proof.
+        const decisiveNonresponsePair = !response.responsive
+          && response.probeCount >= 2
+          && response.causalCohortCount >= 1
+          && response.testedControlSpan + EPSILON >= dimension.minimumStep
+          && response.responseRatio <= 0.02;
         const provenDead = !response.responsive && replicated;
-        return insufficientAuthority || unsafeLocalResponse || provenDead;
+        return insufficientAuthority
+          || unsafeLocalResponse
+          || decisiveNonresponsePair
+          || provenDead;
       });
       if (structurallyWeak) observedWeakControl = true;
       return structurallyWeak;

@@ -3,6 +3,7 @@ export type EffectSchemaStatusV1 = "PROOF_REQUIRED" | "CERTIFIED";
 export type EffectSchemaValueAdapterV1 =
   | "IDENTITY"
   | "NEGATIVE_FRAMES_TO_SECONDS"
+  | "CLAMP_TO_FRAME_RATE"
   | "MULTIPLY_BY_PARAMETER";
 
 export interface EffectSchemaPropertyBindingV1 {
@@ -59,6 +60,26 @@ export const M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Object.freeze({
   ]),
 });
 
+export const M6_TIME_DISPLACEMENT_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Object.freeze({
+  schemaId: "ae.effect-schema.m6.time-displacement.v1",
+  effectMatchName: "ADBE Time Displacement",
+  status: "PROOF_REQUIRED",
+  propertyBindings: Object.freeze([
+    Object.freeze({
+      semanticParameter: "maxDisplacementSeconds",
+      propertyPath: Object.freeze(["ADBE Time Displacement-0002"]),
+      valueAdapter: "MULTIPLY_BY_PARAMETER" as const,
+      scaleParameter: "timeDisplacementStrengthScale",
+      scaleRange: Object.freeze([0.25, 4] as const),
+    }),
+    Object.freeze({
+      semanticParameter: "timeResolutionFps",
+      propertyPath: Object.freeze(["ADBE Time Displacement-0003"]),
+      valueAdapter: "CLAMP_TO_FRAME_RATE" as const,
+    }),
+  ]),
+});
+
 export const M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Object.freeze({
   schemaId: "ae.effect-schema.m6.directional-blur.v1",
   effectMatchName: "ADBE Motion Blur",
@@ -71,7 +92,8 @@ export const M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Obj
       propertyPath: Object.freeze(["ADBE Motion Blur-0002"]),
       valueAdapter: "MULTIPLY_BY_PARAMETER" as const,
       scaleParameter: "blurStrengthScale",
-      scaleRange: Object.freeze([0.25, 4] as const),
+      // Zero is an identity calibration point used by rendered bounded search.
+      scaleRange: Object.freeze([0, 4] as const),
     }),
   ]),
 });
@@ -134,6 +156,7 @@ export const M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V3: EffectSchemaV1 = O
 const schemas = new Map<string, EffectSchemaV1>([
   [MOTION_TILE_EFFECT_SCHEMA_V1.schemaId, MOTION_TILE_EFFECT_SCHEMA_V1],
   [M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1],
+  [M6_TIME_DISPLACEMENT_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_TIME_DISPLACEMENT_EFFECT_SCHEMA_PROPOSAL_V1],
   [M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1],
   [M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V1],
   [M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V2.schemaId, M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V2],

@@ -114,6 +114,34 @@ export interface BenchmarkCaseEvidenceV1 {
   readonly degradedCaseRejected: boolean;
 }
 
+export type BenchmarkArtifactKindV1 =
+  | "REFERENCE_DENSE_EVIDENCE"
+  | "RENDER_DENSE_EVIDENCE"
+  | "SEMANTIC_COMPARISON"
+  | "DIRECT_AB"
+  | "TRANSFER_PROOF"
+  | "DEGRADED_CONTROL";
+
+export interface BenchmarkArtifactBindingV1 {
+  readonly ref: string;
+  readonly kind: BenchmarkArtifactKindV1;
+  readonly caseId: string;
+  readonly family: EffectFamilyV1;
+  readonly sha256: string;
+  readonly contentKey?: string;
+  readonly referenceContentKey?: string;
+  readonly renderContentKey?: string;
+  readonly baselineSourceContentKey?: string;
+  readonly transferSourceContentKey?: string;
+  readonly transferAxes?: readonly string[];
+}
+
+export interface RetainedBenchmarkCaseEvidenceV1 extends BenchmarkCaseEvidenceV1 {
+  readonly renderEvidenceRef: string;
+  readonly transferEvidenceRefs: readonly string[];
+  readonly degradedControlEvidenceRef: string;
+}
+
 export const evaluateProfessionalBenchmarkV1 = (
   cases: readonly ProfessionalBenchmarkCaseV1[],
   evidence: readonly BenchmarkCaseEvidenceV1[],
@@ -163,4 +191,158 @@ export const evaluateProfessionalBenchmarkV1 = (
     transferAxes,
     failures,
   };
+};
+
+const SHA256_PATTERN_V1 = /^[a-f0-9]{64}$/i;
+
+const isSha256V1 = (value: string | undefined): value is string =>
+  typeof value === "string" && SHA256_PATTERN_V1.test(value);
+
+const withRetainedFailuresV1 = (
+  cases: readonly ProfessionalBenchmarkCaseV1[],
+  base: ProfessionalBenchmarkResultV1,
+  failures: readonly string[],
+): ProfessionalBenchmarkResultV1 => {
+  const uniqueFailures = [...new Set(failures)];
+  const passedCaseIds = new Set(cases.map((item) => item.caseId));
+  for (const failure of uniqueFailures) {
+    passedCaseIds.delete(failure.split(":").slice(0, -1).join(":"));
+  }
+  return {
+    ...base,
+    passed: base.passed && uniqueFailures.length === 0,
+    passedCases: passedCaseIds.size,
+    failures: uniqueFailures,
+  };
+};
+
+/**
+ * Evaluates the M6.9 benchmark against retained, content-addressed proof artifacts.
+ * The structural evaluator intentionally remains useful for unit-level contracts;
+ * this retained evaluator is the authority for milestone/release claims.
+ */
+export const evaluateRetainedProfessionalBenchmarkV1 = (
+  cases: readonly ProfessionalBenchmarkCaseV1[],
+  evidence: readonly RetainedBenchmarkCaseEvidenceV1[],
+  artifacts: readonly BenchmarkArtifactBindingV1[],
+): ProfessionalBenchmarkResultV1 => {
+  const base = evaluateProfessionalBenchmarkV1(cases, evidence);
+  const failures = [...base.failures];
+  const artifactByRef = new Map<string, BenchmarkArtifactBindingV1>();
+  const duplicateRefs = new Set<string>();
+  for (const artifact of artifacts) {
+    if (artifactByRef.has(artifact.ref)) {
+      duplicateRefs.add(artifact.ref);
+    } else {
+      artifactByRef.set(artifact.ref, artifact);
+    }
+  }
+  const evidenceByCase = new Map(evidence.map((item) => [item.caseId, item] as const));
+
+  for (const item of cases) {
+    const proof = evidenceByCase.get(item.caseId);
+    if (proof === undefined) continue;
+    const requireArtifact = (
+      ref: string,
+      kind: BenchmarkArtifactKindV1,
+      label: string,
+    ): BenchmarkArtifactBindingV1 | null => {
+      const artifact = artifactByRef.get(ref);
+      if (artifact === undefined) {
+        failures.push(`${item.caseId}:MISSING_${label}_ARTIFACT`);
+        return null;
+      }
+      let valid = true;
+      if (duplicateRefs.has(ref)) {
+        failures.push(`${item.caseId}:DUPLICATE_${label}_ARTIFACT_REF`);
+        valid = false;
+      }
+      if (artifact.kind !== kind) {
+        failures.push(`${item.caseId}:${label}_ARTIFACT_KIND_MISMATCH`);
+        valid = false;
+      }
+      if (artifact.caseId !== item.caseId || artifact.family !== item.family) {
+        failures.push(`${item.caseId}:${label}_ARTIFACT_CASE_BINDING_MISMATCH`);
+        valid = false;
+      }
+      if (!isSha256V1(artifact.sha256)) {
+        failures.push(`${item.caseId}:${label}_ARTIFACT_DIGEST_INVALID`);
+        valid = false;
+      }
+      return valid ? artifact : null;
+    };
+
+    const reference = requireArtifact(
+      item.referenceEvidenceRef, "REFERENCE_DENSE_EVIDENCE", "REFERENCE",
+    );
+    const render = requireArtifact(proof.renderEvidenceRef, "RENDER_DENSE_EVIDENCE", "RENDER");
+    const comparison = requireArtifact(
+      proof.comparisonEvidenceRef, "SEMANTIC_COMPARISON", "COMPARISON",
+    );
+    const directAb = requireArtifact(proof.directAbReferenceRef, "DIRECT_AB", "DIRECT_AB");
+    const degraded = requireArtifact(
+      proof.degradedControlEvidenceRef, "DEGRADED_CONTROL", "DEGRADED_CONTROL",
+    );
+    const referenceKey = reference?.contentKey;
+    const renderKey = render?.contentKey;
+    if (reference !== null && !isSha256V1(referenceKey)) {
+      failures.push(`${item.caseId}:REFERENCE_CONTENT_KEY_INVALID`);
+    }
+    if (render !== null && !isSha256V1(renderKey)) {
+      failures.push(`${item.caseId}:RENDER_CONTENT_KEY_INVALID`);
+    }
+    if (comparison !== null && referenceKey !== undefined && renderKey !== undefined
+      && (comparison.referenceContentKey !== referenceKey || comparison.renderContentKey !== renderKey)) {
+      failures.push(`${item.caseId}:COMPARISON_CONTENT_BINDING_MISMATCH`);
+    }
+
+    if (directAb !== null && referenceKey !== undefined && renderKey !== undefined
+      && (directAb.referenceContentKey !== referenceKey || directAb.renderContentKey !== renderKey)) {
+      failures.push(`${item.caseId}:DIRECT_AB_CONTENT_BINDING_MISMATCH`);
+    }
+    if (degraded !== null && referenceKey !== undefined) {
+      if (degraded.referenceContentKey !== referenceKey || !isSha256V1(degraded.renderContentKey)) {
+        failures.push(`${item.caseId}:DEGRADED_CONTROL_CONTENT_BINDING_MISMATCH`);
+      } else if (renderKey !== undefined && degraded.renderContentKey === renderKey) {
+        failures.push(`${item.caseId}:DEGRADED_CONTROL_REUSES_CERTIFIED_RENDER`);
+      }
+    }
+
+    const expectedTransferVariants = Math.max(1, proof.maturityProof.transferVariantCount);
+    if (proof.transferEvidenceRefs.length < expectedTransferVariants) {
+      failures.push(`${item.caseId}:INSUFFICIENT_TRANSFER_ARTIFACTS`);
+    }
+    const coveredTransferAxes = new Set<string>();
+    for (const transferRef of proof.transferEvidenceRefs) {
+      const transfer = requireArtifact(transferRef, "TRANSFER_PROOF", "TRANSFER");
+      if (transfer === null) continue;
+      if (referenceKey !== undefined && transfer.referenceContentKey !== referenceKey) {
+        failures.push(`${item.caseId}:TRANSFER_REFERENCE_BINDING_MISMATCH`);
+      }
+
+      if (!isSha256V1(transfer.renderContentKey)) {
+        failures.push(`${item.caseId}:TRANSFER_RENDER_CONTENT_KEY_INVALID`);
+      }
+      if (!isSha256V1(transfer.baselineSourceContentKey)
+        || !isSha256V1(transfer.transferSourceContentKey)) {
+        failures.push(`${item.caseId}:TRANSFER_SOURCE_IDENTITY_MISSING`);
+      } else if (transfer.baselineSourceContentKey === transfer.transferSourceContentKey) {
+        failures.push(`${item.caseId}:TRANSFER_SOURCE_NOT_MATERIALLY_DIFFERENT`);
+      }
+      if (transfer.transferAxes === undefined || transfer.transferAxes.length === 0) {
+        failures.push(`${item.caseId}:TRANSFER_AXES_MISSING`);
+      } else {
+        for (const axis of transfer.transferAxes) {
+          if (item.transferAxes.includes(axis)) coveredTransferAxes.add(axis);
+        }
+      }
+    }
+    for (const axis of item.transferAxes) {
+      if (!coveredTransferAxes.has(axis)) {
+        failures.push(`${item.caseId}:TRANSFER_AXIS_UNPROVEN_${axis.toUpperCase().replace(/-/g, "_")}`);
+      }
+    }
+  }
+
+  return withRetainedFailuresV1(cases, base, failures);
 };

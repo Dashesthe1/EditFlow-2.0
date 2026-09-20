@@ -652,6 +652,43 @@ test("M6.7 marks repeated weak but responsive actuator authority for structural 
   assert.ok(plan.metricResponses.every((response) => response.safeResponsive === false));
 });
 
+test("M6.7 compares richer synthesis after a decisive clean nonresponse pair", () => {
+  const distortionInstruction = {
+    ...instruction("DISTORTION_STRENGTH", "INCREASE"),
+    invariantId: "unknown.distortion",
+    metric: "distortionPeak",
+    deficitMetric: "distortionPeak",
+    deficitReferenceValue: 1,
+    deficitRenderValue: 0.01,
+    referenceValue: 1,
+    renderValue: 0.01,
+    normalizedError: 0.72,
+  };
+  const plan = planBoundedActuatorSearchV1({
+    attempts: [
+      attempt("retained", { DISTORTION_STRENGTH: 1 }, 0.2, 0.64, false,
+        { distortionPeak: 0.01 }, ["unknown.distortion"]),
+      attempt("clean-pair", { DISTORTION_STRENGTH: 1.25 }, 0.2, 0.63, false,
+        { distortionPeak: 0.011 }, ["unknown.distortion"]),
+    ],
+    instructions: [distortionInstruction],
+    dimensions: [
+      { control: "DISTORTION_STRENGTH", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
+    ],
+    maxCandidates: 2,
+  });
+
+  const response = plan.metricResponses.find((item) => item.control === "DISTORTION_STRENGTH");
+  assert.ok(response);
+  assert.equal(response.probeCount, 2);
+  assert.equal(response.causalCohortCount, 1);
+  assert.ok(response.responseRatio < 0.02);
+  assert.deepEqual(plan.synthesisRequiredInvariantIds, [],
+    "a clean pair should not falsely hard-exhaust the scalar actuator");
+  assert.deepEqual(plan.structuralEscalationInvariantIds, ["unknown.distortion"],
+    "near-zero rendered authority should permit immediate richer-synthesis comparison");
+});
+
 test("M6.7 retains historical one-factor plateau evidence after retained best moves baseline", () => {
   const distortionInstruction = {
     ...instruction("DISTORTION_SIZE"),

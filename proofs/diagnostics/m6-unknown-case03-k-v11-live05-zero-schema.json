@@ -1,0 +1,948 @@
+{
+  "schema": "editflow.m6.generic-native-auto-correction-proof.v1",
+  "generatedAt": "2026-09-20T18:26:38.225Z",
+  "sourceEvidence": ".tmp/c3p-k-evidence-v11.json",
+  "seedEvidence": ".tmp/m6-native-directional-blur-baseline-evidence-v11.json",
+  "seedStrategy": "LAYERED_PRIMITIVES",
+  "resumedFromProof": null,
+  "family": "UNKNOWN",
+  "strategy": "LAYERED_PRIMITIVES",
+  "status": "PASSED",
+  "certified": true,
+  "finalWeightedFidelity": 1,
+  "finalDefiningCoverage": 1,
+  "residualInvariantIds": [],
+  "renderedAttemptCount": 8,
+  "synthesisEscalation": null,
+  "passes": [
+    {
+      "iteration": 0,
+      "source": "retained-real-ae-seed",
+      "causalActuationState": false,
+      "strategy": "LAYERED_PRIMITIVES",
+      "weightedFidelity": 0.5559196636577042,
+      "definingCoverage": 0,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur",
+          "unknown.blur-attack",
+          "unknown.blur-recovery"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur, unknown.blur-attack, unknown.blur-recovery."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 2,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.00014740188048734115,
+        "rotationRange": 0.001560053979505077,
+        "blurPeak": 0.009379286473947812,
+        "blurPeakPhase": 0,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.00002697054465694798,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.09393939393939393,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 0.46969696969696967,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.09393939393939393,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.1724137931034483,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "source": "real-ae-materialized-seed",
+      "causalActuationState": true,
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass01-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass01.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass01-evidence.json",
+      "weightedFidelity": 0.8372743267960772,
+      "definingCoverage": 0.6666666666666666,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 3,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0034395209504072266,
+        "rotationRange": 0.006586931797280878,
+        "blurPeak": 0.5705700729489658,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0018498366013884684,
+        "exposurePeak": 0.0004321348451293996,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.11818181818181817,
+        "stateSeparationPeak": 0.09532857437299758,
+        "fragmentationCoherencePeak": 0.5909090909090908,
+        "fragmentationCoherencePhase": 0.5517241379310345,
+        "fragmentationTemporalStateCountPeak": 3,
+        "fragmentationOverlapDensityPeak": 0.11818181818181817,
+        "fragmentationStateSeparationPeak": 0.07898653305191228,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "source": "real-ae-local-rerender",
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass02-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass02.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass02-evidence.json",
+      "actuationPlan": {
+        "schema": "editflow.construction-actuation-plan.v1",
+        "family": "UNKNOWN",
+        "comparisonKey": "37971e08327eac9c6d785c57934b2d59575b4add0dc4a866fc153d146adcac2c->4382119b16ccb652348cb0aa90acb4f388ee79671f377011020ddd7d9e315181",
+        "instructions": [
+          {
+            "instructionId": "actuate:unknown.blur:blur_strength",
+            "invariantId": "unknown.blur",
+            "nodeId": "node:1:optical_treatment",
+            "metric": "blurPeak",
+            "deficitMetric": "blurPeak",
+            "deficitReferenceValue": 0.3300615303542864,
+            "deficitRenderValue": 0.5705700729489658,
+            "control": "BLUR_STRENGTH",
+            "direction": "DECREASE",
+            "referenceValue": 0.3300615303542864,
+            "renderValue": 0.5705700729489658,
+            "multiplier": 0.7605766007520804,
+            "normalizedError": 0.3986778993496112,
+            "defining": true,
+            "rationale": "blurPeak is over-driven: reference 0.330, render 0.571. Observed blurPeak is a material part of the unknown reference behavior."
+          }
+        ],
+        "unresolvedInvariantIds": []
+      },
+      "appliedInstructionIds": [
+        "actuate:unknown.blur:blur_strength"
+      ],
+      "unsupportedInstructionIds": [],
+      "weightedFidelity": 0.852896308099402,
+      "definingCoverage": 0.6666666666666666,
+      "improved": true,
+      "accepted": true,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 3,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0026704430502766385,
+        "rotationRange": 0.002630047302541144,
+        "blurPeak": 0.5579373460614192,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0014521241831531478,
+        "exposurePeak": 0.00036791104313357387,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.11515151515151514,
+        "stateSeparationPeak": 0.09532857437299758,
+        "fragmentationCoherencePeak": 0.5757575757575757,
+        "fragmentationCoherencePhase": 0.41379310344827586,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.11515151515151514,
+        "fragmentationStateSeparationPeak": 0.08715755371245493,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.7605766007520804
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "source": "real-ae-local-rerender",
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass03-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass03.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass03-evidence.json",
+      "actuationPlan": {
+        "schema": "editflow.construction-actuation-plan.v1",
+        "family": "UNKNOWN",
+        "comparisonKey": "37971e08327eac9c6d785c57934b2d59575b4add0dc4a866fc153d146adcac2c->f208ba9b22c4abf7ec8100925437d8098f5edcb1ef2fb3ad04881e30ac01f7d6",
+        "instructions": [
+          {
+            "instructionId": "actuate:unknown.blur:blur_strength",
+            "invariantId": "unknown.blur",
+            "nodeId": "node:1:optical_treatment",
+            "metric": "blurPeak",
+            "deficitMetric": "blurPeak",
+            "deficitReferenceValue": 0.3300615303542864,
+            "deficitRenderValue": 0.5579373460614192,
+            "control": "BLUR_STRENGTH",
+            "direction": "DECREASE",
+            "referenceValue": 0.3300615303542864,
+            "renderValue": 0.5579373460614192,
+            "multiplier": 0.7691388318794794,
+            "normalizedError": 0.36040404515646524,
+            "defining": true,
+            "rationale": "blurPeak is over-driven: reference 0.330, render 0.558. Observed blurPeak is a material part of the unknown reference behavior."
+          }
+        ],
+        "unresolvedInvariantIds": []
+      },
+      "appliedInstructionIds": [
+        "actuate:unknown.blur:blur_strength"
+      ],
+      "unsupportedInstructionIds": [],
+      "weightedFidelity": 0.8652202328766603,
+      "definingCoverage": 0.6666666666666666,
+      "improved": true,
+      "accepted": true,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 2,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0021564176307566907,
+        "rotationRange": 0.0027250951102698365,
+        "blurPeak": 0.5479715950551344,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.00032378529183118464,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.07878787878787878,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 0.39393939393939387,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.07878787878787878,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.5849889982573203
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:blur_strength:down:1",
+      "changedControls": [
+        "BLUR_STRENGTH"
+      ],
+      "candidateRationale": "Follow measured positive local sensitivity for BLUR_STRENGTH while holding all other actuators at the retained-best state.",
+      "searchPlan": {
+        "retainedBestAttemptId": "blind-3",
+        "regressingAttemptIds": [
+          "materialized-seed",
+          "blind-2"
+        ],
+        "trustScale": 0.5,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "BLUR_STRENGTH",
+            "metric": "blurPeak",
+            "probeCount": 3,
+            "metricSpan": 0.022598477893831403,
+            "requiredDelta": 0.21791006470084795,
+            "responseRatio": 0.10370552606119926,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.4150110017426797,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": []
+      },
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass04-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass04.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass04-evidence.json",
+      "weightedFidelity": 0.8781372488079466,
+      "definingCoverage": 0.6666666666666666,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 4,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0023470991823149046,
+        "rotationRange": 0.005277930600164695,
+        "blurPeak": 0.5375262404427013,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.000274379007576649,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.07878787878787878,
+        "stateSeparationPeak": 0.09407522717459958,
+        "fragmentationCoherencePeak": 0.39393939393939387,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.07878787878787878,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.4249889982573203
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:blur_strength:down:1",
+      "changedControls": [
+        "BLUR_STRENGTH"
+      ],
+      "candidateRationale": "Follow measured positive local sensitivity for BLUR_STRENGTH while holding all other actuators at the retained-best state.",
+      "searchPlan": {
+        "retainedBestAttemptId": "search-1",
+        "regressingAttemptIds": [
+          "materialized-seed",
+          "blind-2",
+          "blind-3"
+        ],
+        "trustScale": 0.4,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "BLUR_STRENGTH",
+            "metric": "blurPeak",
+            "probeCount": 4,
+            "metricSpan": 0.033043832506264526,
+            "requiredDelta": 0.20746471008841483,
+            "responseRatio": 0.1592744736788358,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.5750110017426797,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": [
+          "unknown.blur"
+        ]
+      },
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass05-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass05.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass05-evidence.json",
+      "weightedFidelity": 0.8972812256843413,
+      "definingCoverage": 0.6666666666666666,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 2,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0013272421406242962,
+        "rotationRange": 0.0029983441088319044,
+        "blurPeak": 0.522045449195721,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.00018760296788767957,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.08484848484848485,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 0.42424242424242425,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.08484848484848485,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.2969889982573203
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 6,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:blur_strength:down:1",
+      "changedControls": [
+        "BLUR_STRENGTH"
+      ],
+      "candidateRationale": "Follow measured positive local sensitivity for BLUR_STRENGTH while holding all other actuators at the retained-best state.",
+      "searchPlan": {
+        "retainedBestAttemptId": "search-2",
+        "regressingAttemptIds": [
+          "materialized-seed",
+          "blind-2",
+          "blind-3",
+          "search-1"
+        ],
+        "trustScale": 0.3333333333333333,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "BLUR_STRENGTH",
+            "metric": "blurPeak",
+            "probeCount": 5,
+            "metricSpan": 0.04852462375324473,
+            "requiredDelta": 0.19198391884143462,
+            "responseRatio": 0.2527535850193927,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.7030110017426797,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": [
+          "unknown.blur"
+        ]
+      },
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass06-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass06.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass06-evidence.json",
+      "weightedFidelity": 0.9051958336276931,
+      "definingCoverage": 0.6666666666666666,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 4,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0008001440295981599,
+        "rotationRange": 0.004741174478326202,
+        "blurPeak": 0.5156452955513757,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.0002363927780495699,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.07878787878787878,
+        "stateSeparationPeak": 0.09407522717459958,
+        "fragmentationCoherencePeak": 0.39393939393939387,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.07878787878787878,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.19032233159065362
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 7,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:blur_strength:down:1",
+      "changedControls": [
+        "BLUR_STRENGTH"
+      ],
+      "candidateRationale": "Follow measured positive local sensitivity for BLUR_STRENGTH while holding all other actuators at the retained-best state.",
+      "searchPlan": {
+        "retainedBestAttemptId": "search-3",
+        "regressingAttemptIds": [
+          "materialized-seed",
+          "blind-2",
+          "blind-3",
+          "search-1",
+          "search-2"
+        ],
+        "trustScale": 0.2857142857142857,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "BLUR_STRENGTH",
+            "metric": "blurPeak",
+            "probeCount": 6,
+            "metricSpan": 0.05492477739759005,
+            "requiredDelta": 0.1855837651970893,
+            "responseRatio": 0.29595680063533647,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.8096776684093464,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": [
+          "unknown.blur"
+        ]
+      },
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass07-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass07.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass07-evidence.json",
+      "weightedFidelity": 0.9260886520720444,
+      "definingCoverage": 0.6666666666666666,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.blur"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.blur."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0010275812452257282,
+        "rotationRange": 0.003584430390289282,
+        "blurPeak": 0.4987503022599413,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.0001442071176055278,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.07878787878787878,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 0.39393939393939387,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.07878787878787878,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.09889376016208219
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 8,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:blur_strength:down:1",
+      "changedControls": [
+        "BLUR_STRENGTH"
+      ],
+      "candidateRationale": "Follow measured positive local sensitivity for BLUR_STRENGTH while holding all other actuators at the retained-best state.",
+      "searchPlan": {
+        "retainedBestAttemptId": "search-4",
+        "regressingAttemptIds": [
+          "materialized-seed",
+          "blind-2",
+          "blind-3",
+          "search-1",
+          "search-2",
+          "search-3"
+        ],
+        "trustScale": 0.25,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "BLUR_STRENGTH",
+            "metric": "blurPeak",
+            "probeCount": 7,
+            "metricSpan": 0.07181977068902445,
+            "requiredDelta": 0.1686887719056549,
+            "responseRatio": 0.4257531184659532,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.9011062398379178,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": [
+          "unknown.blur"
+        ]
+      },
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass08-readback.txt",
+      "video": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass08.mp4",
+      "evidence": "proofs/diagnostics/m6-unknown-case03-k-v11-live05-zero-schema-pass08-evidence.json",
+      "weightedFidelity": 1,
+      "definingCoverage": 1,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "PASS",
+        "certified": true,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Every defining invariant is covered by construction and passes rendered semantic comparison."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.0005614044600288359,
+        "rotationRange": 0.0023891540819108315,
+        "blurPeak": 0.30863401285257475,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.0001229947689083281,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.07878787878787878,
+        "stateSeparationPeak": 0.09407522717459958,
+        "fragmentationCoherencePeak": 0.39393939393939387,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.07878787878787878,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.3300615303542864,
+            "blurHalfPeakAttackMs": 83.43404696132711,
+            "blurHalfPeakRecoveryMs": 66.74723756905951,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 15.842953457005748,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.5476190476190477,
+            "effectEventPhase": 0.5238095238095238,
+            "referenceFrameIntervalMs": 16.68680939226518,
+            "effectAnalysisDurationMs": 700.8459944751376,
+            "effectRecoveryDurationMs": 16.68680939226518,
+            "blurStrengthScale": 0.01889376016208219
+          }
+        }
+      ]
+    }
+  ]
+}
