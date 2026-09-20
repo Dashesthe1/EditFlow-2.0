@@ -483,7 +483,9 @@ const compilePrecompose = (
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
 ): readonly string[] => {
-  const groups = node.target?.mode === "GROUP"
+  const groupInheritedTargets = node.parameters.some((parameter) =>
+    parameter.name === "groupTargets" && parameter.value === true);
+  const groups = node.target?.mode === "GROUP" || groupInheritedTargets
     ? [targets]
     : targets.map((target) => [target]);
   const outputs: string[] = [];
@@ -754,6 +756,28 @@ const compileEffectStack = (
   if (values.size !== schema.propertyBindings.length) return [];
 
   const eventLocalEffect = literalParameterValueV1(node, "eventLocalEffect") === true;
+  const eventLocalEffectApplication = literalParameterValueV1(node, "eventLocalEffectApplication");
+  if (eventLocalEffectApplication !== undefined
+    && eventLocalEffectApplication !== "IN_PLACE"
+    && eventLocalEffectApplication !== "ACCENT_DUPLICATE") {
+    addIssue(issues, node.nodeId, "M6_EVENT_EFFECT_APPLICATION_UNSUPPORTED",
+      "Event-local effect application must be IN_PLACE or ACCENT_DUPLICATE when explicitly provided.");
+    return [];
+  }
+  const eventLocalInPlace = eventLocalEffect && eventLocalEffectApplication === "IN_PLACE";
+  const eventLocalEffectTargetScope = literalParameterValueV1(node, "eventLocalEffectTargetScope");
+  if (eventLocalEffectTargetScope !== undefined
+    && eventLocalEffectTargetScope !== "ALL"
+    && eventLocalEffectTargetScope !== "PRIMARY") {
+    addIssue(issues, node.nodeId, "M6_EVENT_EFFECT_TARGET_SCOPE_UNSUPPORTED",
+      "Event-local effect target scope must be ALL or PRIMARY when explicitly provided.");
+    return [];
+  }
+  if (eventLocalEffectTargetScope !== undefined && !eventLocalInPlace) {
+    addIssue(issues, node.nodeId, "M6_EVENT_EFFECT_TARGET_SCOPE_REQUIRES_IN_PLACE",
+      "Event-local effect target scope is supported only for dynamically gated in-place effects.");
+    return [];
+  }
   const eventParameters = eventLocalEffect
     ? resolveParameterMap(
         node,
@@ -763,22 +787,31 @@ const compileEffectStack = (
       )
     : null;
   if (eventLocalEffect && eventParameters === null) return [];
-  const effectTargets = eventLocalEffect
-    ? m6EventEffectTargetsV1(
-        node,
-        targets,
-        context,
-        eventParameters ?? {},
-        operations,
-        issues,
-        frameRate,
-        "effect-stack",
-      )
-    : targets;
 
   const dynamicTurbulentV3 = schema.schemaId === "ae.effect-schema.m6.turbulent-displace.v3"
     && eventLocalEffect
     && eventParameters?.["eventDynamicDistortion"] === true;
+  if (eventLocalInPlace && !dynamicTurbulentV3) {
+    addIssue(issues, node.nodeId, "M6_IN_PLACE_EVENT_EFFECT_REQUIRES_DYNAMIC_GATE",
+      "In-place event effects require a proven dynamic property gate so the source remains unchanged outside the event window.");
+    return [];
+  }
+  const effectTargets = eventLocalEffect
+    ? eventLocalInPlace
+      ? eventLocalEffectTargetScope === "PRIMARY"
+        ? targets.slice(0, 1)
+        : targets
+      : m6EventEffectTargetsV1(
+          node,
+          targets,
+          context,
+          eventParameters ?? {},
+          operations,
+          issues,
+          frameRate,
+          "effect-stack",
+        )
+    : targets;
   let dynamicAmountExpression: string | null = null;
   let dynamicEvolutionExpression: string | null = null;
   if (dynamicTurbulentV3) {
@@ -786,16 +819,19 @@ const compileEffectStack = (
     const pulseScale = eventParameters?.["eventAmountPulseScale"];
     const evolutionSweep = eventParameters?.["eventEvolutionSweepDegrees"];
     const evolutionSweepScale = eventParameters?.["eventEvolutionSweepScale"] ?? 1;
+    const evolutionSharpnessScale = eventParameters?.["eventEvolutionSharpnessScale"] ?? 1;
     const amountBase = values.get("distortionAmount");
     const evolutionBase = values.get("distortionEvolution");
     if (eventSeconds === null
       || typeof pulseScale !== "number" || !Number.isFinite(pulseScale) || pulseScale < 1
       || typeof evolutionSweep !== "number" || !Number.isFinite(evolutionSweep) || evolutionSweep <= 0
       || typeof evolutionSweepScale !== "number" || !Number.isFinite(evolutionSweepScale) || evolutionSweepScale <= 0
+      || typeof evolutionSharpnessScale !== "number" || !Number.isFinite(evolutionSharpnessScale)
+      || evolutionSharpnessScale < 0.5 || evolutionSharpnessScale > 2
       || typeof amountBase !== "number" || !Number.isFinite(amountBase)
       || typeof evolutionBase !== "number" || !Number.isFinite(evolutionBase)) {
       addIssue(issues, node.nodeId, "M6_DYNAMIC_TURBULENT_PARAMETERS_INVALID",
-        "Dynamic Turbulent Displace requires finite adapted Amount/Evolution bases, eventAmountPulseScale >= 1, and positive eventEvolutionSweepDegrees/eventEvolutionSweepScale values.");
+        "Dynamic Turbulent Displace requires finite adapted Amount/Evolution bases, eventAmountPulseScale >= 1, positive eventEvolutionSweepDegrees/eventEvolutionSweepScale values, and eventEvolutionSharpnessScale in [0.5, 2].");
       return [];
     }
     const recoveryWindowFrames = resolveM6RecoveryWindowFrames(eventParameters ?? {}, frameRate);
@@ -803,9 +839,13 @@ const compileEffectStack = (
     const preFrames = persistenceWindowFrames === null
       ? Math.max(2, Math.min(6, recoveryWindowFrames))
       : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
-    const postFrames = persistenceWindowFrames === null
-      ? 1
-      : Math.max(1, persistenceWindowFrames - preFrames);
+    const recoveryBounded = eventLocalInPlace
+      && eventParameters?.["eventLocalEffectRecoveryBounded"] === true;
+    const postFrames = recoveryBounded
+      ? Math.max(1, recoveryWindowFrames)
+      : persistenceWindowFrames === null
+        ? 1
+        : Math.max(1, persistenceWindowFrames - preFrames);
     const eventEnvelope = [
       `var event=${eventSeconds};`,
       "var f=(time-event)/thisComp.frameDuration;",
@@ -819,12 +859,16 @@ const compileEffectStack = (
       eventEnvelope,
       `var base=${amountBase};`,
       "var envelope=Math.sin(Math.PI*u)*active;",
-      `base*(1+(${pulseScale}-1)*envelope);`,
+      eventLocalInPlace
+        ? `base*(1+(${pulseScale}-1)*envelope)*active;`
+        : `base*(1+(${pulseScale}-1)*envelope);`,
     ].join("");
     dynamicEvolutionExpression = [
       eventEnvelope,
       `var base=${evolutionBase};`,
-      `base+(${evolutionSweep * evolutionSweepScale})*u*active;`,
+      `var sharp=${evolutionSharpnessScale};`,
+      "var shapedU=Math.pow(u,sharp);",
+      `base+(${evolutionSweep * evolutionSweepScale})*shapedU*active;`,
     ].join("");
   }
 
@@ -868,7 +912,9 @@ const compileEffectStack = (
     }
   }
   return eventLocalEffect
-    ? uniqueStrings([...targets, ...effectTargets])
+    ? eventLocalInPlace
+      ? targets
+      : uniqueStrings([...targets, ...effectTargets])
     : targets;
 };
 
@@ -1078,6 +1124,7 @@ const compileM6TemporalDuplication = (
   node: EditingIrNodeV1,
   targets: readonly string[],
   context: RecipeCompilerContextV1,
+  windows: Map<string, LayerWindowV1>,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
   frameRate: number,
@@ -1143,6 +1190,8 @@ const compileM6TemporalDuplication = (
     : Math.max(1, persistenceWindowFrames - preFrames);
   const outputs: string[] = [...targets];
   for (const sourceLayerId of targets) {
+    const sourceWindow = layerWindow(sourceLayerId, windows, node, issues);
+    if (sourceWindow === null) continue;
     for (let state = 1; state < count; state += 1) {
       const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
       const sourceTimeOffsetSeconds = state * duplicateSpreadScale * referenceFrameSeconds;
@@ -1193,6 +1242,7 @@ const compileM6TemporalDuplication = (
           "else{linear(f,0,post,peak*0.4,0)}",
         ].join(""),
       });
+      windows.set(layerId, { ...sourceWindow });
       outputs.push(layerId);
     }
   }
@@ -1959,6 +2009,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
         node,
         targets,
         context,
+        windows,
         operations,
         issues,
         comp.frameRate,
