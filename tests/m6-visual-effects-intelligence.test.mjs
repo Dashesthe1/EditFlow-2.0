@@ -2163,6 +2163,20 @@ test("M6.8 evolving compound warp adds event-local effect-property expressions w
   assert.equal(dynamicTurbulent?.parameters.eventDynamicDistortion, true);
   assert.ok(dynamicTurbulent?.requiredInvariantIds.includes("unknown.distortion"));
   assert.ok(dynamicTurbulent?.requiredInvariantIds.includes("unknown.acceleration"));
+  const evolvingRecovery = evolving.graph.nodes.find((node) =>
+    node.kind === "RECOVERY"
+    && node.requiredInvariantIds.includes("unknown.acceleration"));
+  assert.ok(evolvingRecovery);
+  assert.equal(
+    evolving.graph.invariantCoverage["unknown.distortion"]?.[0],
+    dynamicTurbulent?.nodeId,
+    "dynamic Turbulent Displace must remain the primary distortion actuator",
+  );
+  assert.equal(
+    evolving.graph.invariantCoverage["unknown.acceleration"]?.[0],
+    evolvingRecovery?.nodeId,
+    "evolving warp may contribute acceleration but must not displace the dedicated motion-shaping actuator",
+  );
 
   const escalation = selectSynthesisEscalationCandidateV1({
     synthesis,
@@ -3111,22 +3125,20 @@ test("M6.3/M6.5 treats the observed professional reference as the fidelity autho
 });
 
 
-test("M6 live correction maps evolving-warp acceleration to the consumed sweep actuator", () => {
+test("M6 live correction keeps evolving-warp acceleration on the dedicated motion-shaping actuator", () => {
   const controller = readFileSync(
     new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
     "utf8",
   );
-  assert.match(
-    controller,
-    /control === "MOTION_IMPULSE"\) return "eventEvolutionSweepScale"/,
-  );
-  assert.match(
-    controller,
-    /"distortionEvolutionScale",\s*"eventEvolutionSweepScale",/,
-  );
   assert.doesNotMatch(
     controller,
-    /COMPOUND_EVOLVING_WARP_HYBRID"[\s\S]{0,700}control === "MOTION_IMPULSE"\) return "motionImpulseScale"/,
+    /EVOLVING_WARP_MOTION_CONTROLS/,
+    "live correction must not force acceleration controls onto Turbulent Displace",
+  );
+  assert.match(
+    controller,
+    /candidate\.kind === "RECOVERY"[\s\S]{0,220}includes\("acceleration"\)/,
+    "motion controls without an explicit preferred node must fall back to RECOVERY",
   );
   assert.match(
     controller,
@@ -3138,6 +3150,7 @@ test("M6 live correction maps evolving-warp acceleration to the consumed sweep a
   );
   assert.match(
     controller,
-    /candidate\.parameters\.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"/,
+    /"distortionEvolutionScale",\s*"eventEvolutionSweepScale",/,
+    "evolving-warp deformation tuning remains transferable without owning acceleration",
   );
 });

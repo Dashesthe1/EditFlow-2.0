@@ -904,6 +904,7 @@ const compoundEvolvingWarpGraph = (
       invariantId.toLowerCase().includes("acceleration")));
   if (turbulent === undefined || recovery === undefined) return null;
 
+  const distortionInvariantIds = new Set(turbulent.requiredInvariantIds);
   const accelerationInvariantIds = recovery.requiredInvariantIds.filter((invariantId) =>
     invariantId.toLowerCase().includes("acceleration"));
   const requiredInvariantIds = [...new Set([
@@ -925,14 +926,23 @@ const compoundEvolvingWarpGraph = (
       ...evolvingTurbulentProofParameters(turbulent),
     },
   };
-  const targeted = new Set(requiredInvariantIds);
+  const accelerationTargets = new Set(accelerationInvariantIds);
   const invariantCoverage = Object.fromEntries(
-    Object.entries(compound.invariantCoverage).map(([invariantId, nodeIds]) => [
-      invariantId,
-      targeted.has(invariantId)
-        ? [turbulent.nodeId, ...nodeIds.filter((nodeId) => nodeId !== turbulent.nodeId)]
-        : nodeIds,
-    ]),
+    Object.entries(compound.invariantCoverage).map(([invariantId, nodeIds]) => {
+      if (distortionInvariantIds.has(invariantId)) {
+        return [
+          invariantId,
+          [turbulent.nodeId, ...nodeIds.filter((nodeId) => nodeId !== turbulent.nodeId)],
+        ];
+      }
+      if (accelerationTargets.has(invariantId)) {
+        return [
+          invariantId,
+          nodeIds.includes(turbulent.nodeId) ? nodeIds : [...nodeIds, turbulent.nodeId],
+        ];
+      }
+      return [invariantId, nodeIds];
+    }),
   );
   return {
     ...compound,

@@ -294,20 +294,22 @@ if (searchControlFilter.size > 0 && SEARCH_CONTROLS.length !== searchControlFilt
   const unknown = [...searchControlFilter].filter((control) => !known.has(control));
   throw new Error(`Unknown --search-controls value(s): ${unknown.join(", ")}`);
 }
-const EVOLVING_WARP_MOTION_CONTROLS = new Set([
+const MOTION_SHAPING_CONTROLS = new Set([
   "MOTION_IMPULSE",
   "MOTION_IMPULSE_SHARPNESS",
   "MOTION_IMPULSE_PHASE",
 ]);
 const controlTargetNode = (valueGraph, control, preferredNodeId) => {
-  if (EVOLVING_WARP_MOTION_CONTROLS.has(control)) {
-    const evolvingWarp = valueGraph.nodes.find((candidate) =>
-      candidate.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID");
-    if (evolvingWarp !== undefined) return evolvingWarp;
-  }
   if (typeof preferredNodeId === "string") {
     const preferred = valueGraph.nodes.find((candidate) => candidate.nodeId === preferredNodeId);
     if (preferred !== undefined) return preferred;
+  }
+  if (MOTION_SHAPING_CONTROLS.has(control)) {
+    const recovery = valueGraph.nodes.find((candidate) =>
+      candidate.kind === "RECOVERY"
+      && candidate.requiredInvariantIds.some((invariantId) =>
+        invariantId.toLowerCase().includes("acceleration")));
+    if (recovery !== undefined) return recovery;
   }
   return valueGraph.nodes.find((candidate) => {
     const parameter = physicalParameterForNodeControl(candidate, control);
