@@ -1,0 +1,137 @@
+{
+  "schema": "editflow.m6.native-echo-effect-schema-proof.v1",
+  "generatedAt": "2026-09-20T12:10:03.453Z",
+  "result": "PASS",
+  "proposedSchemaRef": "ae.effect-schema.m6.echo.v1",
+  "candidateId": "adaptive:native-echo-hybrid",
+  "graphId": "construction:anatomy:unknown:4824b8f94c33:native_echo_hybrid",
+  "analyzerFingerprint": "3418db165e43e5def44ca5af1d46e5863b1fe69d74e7f23e99bf5fcfda0a93b2",
+  "expected": {
+    "echoTime": -0.2,
+    "numberOfEchoes": 1,
+    "startingIntensity": 0.7833333333333333,
+    "decay": 0.6666666666666666
+  },
+  "observed": {
+    "echoTime": -0.20000000298023,
+    "numberOfEchoes": 1,
+    "startingIntensity": 0.78333336114883,
+    "decay": 0.66666668653488
+  },
+  "transaction": {
+    "transactionId": "243a3ec6-cdc2-4e4f-a2e8-740e60da6c94",
+    "planHash": "plan:sha256:dc1f01697b0905bbd4e06a0fb4ac80f93bcc23bed81e3f85e31da2c6c318482b",
+    "state": "COMMITTED",
+    "recovered": false,
+    "committedGroups": 1,
+    "appliedOperations": 6,
+    "finalState": {
+      "projectId": "shadow-current-project",
+      "projectRevision": "ae-revision:70141",
+      "projectFingerprint": "project:sha256:27829497f2d72da5ac2cfe70a9ff7a7536df6ae3ca7e3d293b7637d5dda4c5ff",
+      "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34"
+    }
+  },
+  "nativePlan": {
+    "operationCount": 6,
+    "commands": [
+      "effect.add",
+      "effect.set_property",
+      "effect.set_property",
+      "effect.set_property",
+      "effect.set_property",
+      "property.set_expression"
+    ],
+    "requiredCapabilities": [
+      "ae.effect.add",
+      "ae.effect.property.set",
+      "ae.expression.set"
+    ]
+  },
+  "renders": {
+    "baseline": {
+      "sha256": "cce4ef6831f78f70d305b40ba090aca96996d83972e93c0ff19a6e89708659fe",
+      "evidence": "proofs/diagnostics/m6-native-echo-baseline-evidence.json",
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.06896551724137931,
+        "motionEnergyPeak": 0.02391333370485081,
+        "displacementPeak": 0,
+        "displacementDirection": {
+          "x": 0,
+          "y": 0
+        },
+        "scaleRange": 0.01546670654604676,
+        "rotationRange": 0.18265556535901542,
+        "blurPeak": 0.7775112863026348,
+        "blurPeakPhase": 1,
+        "distortionPeak": 0.07812936742100057,
+        "exposurePeak": 0.02783061002178649,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 1,
+        "stateSeparationPeak": 0.1334600041221966,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 5,
+        "fragmentationOverlapDensityPeak": 1,
+        "fragmentationStateSeparationPeak": 0.1334600041221966,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.024664726084443877,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 1,
+        "motionPeakPhase": 0.034482758620689655
+      }
+    },
+    "effected": {
+      "sha256": "44e8e17665f89287dab2032bdbff66f8878a6364c44b86b64bfe48469266e10e",
+      "evidence": "proofs/diagnostics/m6-native-echo-effected-evidence.json",
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.018993041383304782,
+        "displacementPeak": 0,
+        "displacementDirection": {
+          "x": 0,
+          "y": 0
+        },
+        "scaleRange": 0.006530910223776609,
+        "rotationRange": 0.11193861029208302,
+        "blurPeak": 0.7033513530859326,
+        "blurPeakPhase": 1,
+        "distortionPeak": 0.09295109863578345,
+        "exposurePeak": 0.02821330337690632,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 1,
+        "stateSeparationPeak": 0.1307646990903505,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.2413793103448276,
+        "fragmentationTemporalStateCountPeak": 5,
+        "fragmentationOverlapDensityPeak": 1,
+        "fragmentationStateSeparationPeak": 0.12801265701516817,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.03517737676948479,
+        "recoveryFrames": 22,
+        "opticalPeakPhase": 1,
+        "motionPeakPhase": 0.2413793103448276
+      }
+    }
+  },
+  "renderedAb": {
+    "frameCount": 30,
+    "changedFrames": 30,
+    "meanFrameDelta": 0.007405235566448785,
+    "maxMeanFrameDelta": 0.010798474945533787,
+    "maxChangedPixelRatio": 0.0403125
+  },
+  "evidenceBoundary": [
+    "This proof certifies the native ADBE Echo schema mapping and causal rendered consequence on a controlled moving precomp.",
+    "The A/B holds the synthesized construction constant and toggles only the Echo effect before rendering.",
+    "It does not certify professional-reference fidelity for a second unknown-effect benchmark case.",
+    "Production professional-fidelity acceptance remains governed by reference anatomy, comparator diagnostics, transfer, and benchmark gates."
+  ],
+  "readback": "COMP\t__EF2_M6_GENERIC_NATIVE_PROOF__\t1\r\nLAYER\t1\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-hero]]\t0\t0\t1\r\nTIME_REMAP\t0\t\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var amplitude=0.07006638912336575*Math.max(thisComp.width,thisComp.height)*0.5;var pre=6;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}else{impulse=linear(f,-1,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\t\r\nANCHOR_EXPR\t\r\nEFFECT\t1\tEcho\tADBE Echo\t1\r\nEFFECT_PROP\t1\t1\tADBE Echo-0001\t-0.20000000298023\r\nEFFECT_PROP\t1\t2\tADBE Echo-0002\t1\r\nEFFECT_PROP\t1\t3\tADBE Echo-0003\t0.78333336114883\r\nEFFECT_PROP\t1\t4\tADBE Echo-0004\t0.66666668653488\r\nEFFECT_PROP\t1\t5\tADBE Echo-0005\t1\r\n"
+}

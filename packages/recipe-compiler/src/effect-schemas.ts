@@ -45,7 +45,8 @@ export const MOTION_TILE_EFFECT_SCHEMA_V1: EffectSchemaV1 = Object.freeze({
 export const M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Object.freeze({
   schemaId: "ae.effect-schema.m6.echo.v1",
   effectMatchName: "ADBE Echo",
-  status: "PROOF_REQUIRED",
+  status: "CERTIFIED",
+  proofRef: "proofs/diagnostics/m6-native-echo-effect-schema-proof.json",
   propertyBindings: Object.freeze([
     Object.freeze({
       semanticParameter: "echoSpacingFrames",
@@ -55,6 +56,23 @@ export const M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Object.freeze({
     Object.freeze({ semanticParameter: "numberOfEchoes", propertyPath: Object.freeze(["ADBE Echo-0002"]) }),
     Object.freeze({ semanticParameter: "startingIntensity", propertyPath: Object.freeze(["ADBE Echo-0003"]) }),
     Object.freeze({ semanticParameter: "decay", propertyPath: Object.freeze(["ADBE Echo-0004"]) }),
+  ]),
+});
+
+export const M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1: EffectSchemaV1 = Object.freeze({
+  schemaId: "ae.effect-schema.m6.directional-blur.v1",
+  effectMatchName: "ADBE Motion Blur",
+  status: "CERTIFIED",
+  proofRef: "proofs/diagnostics/m6-native-directional-blur-effect-schema-proof.json",
+  propertyBindings: Object.freeze([
+    Object.freeze({ semanticParameter: "blurDirectionDegrees", propertyPath: Object.freeze(["ADBE Motion Blur-0001"]) }),
+    Object.freeze({
+      semanticParameter: "blurLengthPixels",
+      propertyPath: Object.freeze(["ADBE Motion Blur-0002"]),
+      valueAdapter: "MULTIPLY_BY_PARAMETER" as const,
+      scaleParameter: "blurStrengthScale",
+      scaleRange: Object.freeze([0.25, 4] as const),
+    }),
   ]),
 });
 
@@ -116,6 +134,7 @@ export const M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V3: EffectSchemaV1 = O
 const schemas = new Map<string, EffectSchemaV1>([
   [MOTION_TILE_EFFECT_SCHEMA_V1.schemaId, MOTION_TILE_EFFECT_SCHEMA_V1],
   [M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_ECHO_EFFECT_SCHEMA_PROPOSAL_V1],
+  [M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_DIRECTIONAL_BLUR_EFFECT_SCHEMA_PROPOSAL_V1],
   [M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V1.schemaId, M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V1],
   [M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V2.schemaId, M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V2],
   [M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V3.schemaId, M6_TURBULENT_DISPLACE_EFFECT_SCHEMA_PROPOSAL_V3],

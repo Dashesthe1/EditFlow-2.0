@@ -15,7 +15,11 @@ import type {
   VisualDimensionV1,
 } from "./contracts.js";
 import { buildConstructionGraphV1, compileConstructionGraphV1 } from "./construction.js";
-import { measureFragmentationEventProminenceV1, resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
+import {
+  measureFragmentationEventProminenceV1,
+  measureHalfPeakTemporalProfileV1,
+  resolveFragmentationEventMetricsV1,
+} from "./dense-evidence.js";
 
 const invariant = (
   id: string,
@@ -148,6 +152,39 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     chroma: eventLocalMetricContrast(evidence, "chromaticSeparation", fragmentation.phase),
     exposure: eventLocalMetricContrast(evidence, "exposure", fragmentation.phase),
   } : null;
+  const blurTemporalProfile = s.blurPeak > 0.15
+    ? measureHalfPeakTemporalProfileV1(evidence, "blurStrength")
+    : null;
+  const addDefiningBlurTemporalProfile = (): void => {
+    if (blurTemporalProfile === null) return;
+    const minimumMeaningfulDurationMs = Math.max(20, s.frameIntervalMs * 1.5);
+    const toleranceFor = (durationMs: number): number =>
+      Math.max(s.frameIntervalMs, durationMs * 0.12);
+    if (blurTemporalProfile.attackMs >= minimumMeaningfulDurationMs) {
+      add(defining, rangeInvariant(
+        "unknown.blur-attack",
+        "OPTICAL",
+        "blurHalfPeakAttackMs",
+        blurTemporalProfile.attackMs,
+        true,
+        0.65,
+        toleranceFor(blurTemporalProfile.attackMs),
+        "The blur build-up duration around the optical peak is part of the reference behavior.",
+      ), blurTemporalProfile.attackMs);
+    }
+    if (blurTemporalProfile.recoveryMs >= minimumMeaningfulDurationMs) {
+      add(defining, rangeInvariant(
+        "unknown.blur-recovery",
+        "OPTICAL",
+        "blurHalfPeakRecoveryMs",
+        blurTemporalProfile.recoveryMs,
+        true,
+        0.8,
+        toleranceFor(blurTemporalProfile.recoveryMs),
+        "The post-peak blur persistence/recovery duration is part of the reference behavior.",
+      ), blurTemporalProfile.recoveryMs);
+    }
+  };
 
   if (coherentFragmentation) {
     add(defining, invariant(
@@ -254,6 +291,7 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
           ? "Optical blur rises with the fragmentation event and must survive synthesis."
           : undefined,
       ), s.blurPeak);
+      if (eventCoordinated) addDefiningBlurTemporalProfile();
     }
     if (s.distortionPeak > 0.15) {
       const eventCoordinated = coordinated !== null
@@ -285,9 +323,19 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
       ), s.exposurePeak);
     }
   } else {
-    if (s.temporalStateCountPeak > 1) {
-      add(defining, rangeInvariant("unknown.temporal-states", "TEMPORAL", "temporalStateCountPeak",
-        s.temporalStateCountPeak, true, 1, 0), s.temporalStateCountPeak);
+    const corroboratedGlobalTemporalStates = s.temporalStateCountPeak > 1
+      && (s.temporalPersistence > 0.2 || s.overlapDensityPeak >= 0.12);
+    if (corroboratedGlobalTemporalStates) {
+      add(defining, rangeInvariant(
+        "unknown.temporal-states",
+        "TEMPORAL",
+        "temporalStateCountPeak",
+        s.temporalStateCountPeak,
+        true,
+        1,
+        0,
+        "A global temporal-state peak is defining only when persistence or overlap independently corroborates repeated source times.",
+      ), s.temporalStateCountPeak);
     }
     if (s.temporalPersistence > 0.2) {
       add(defining, rangeInvariant("unknown.persistence", "TEMPORAL", "temporalPersistence",
@@ -332,6 +380,7 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     if (s.blurPeak > 0.15) {
       add(defining, rangeInvariant("unknown.blur", "OPTICAL", "blurPeak",
         s.blurPeak), s.blurPeak);
+      addDefiningBlurTemporalProfile();
     }
     if (s.distortionPeak > 0.15) {
       add(defining, rangeInvariant("unknown.distortion", "DISTORTION", "distortionPeak",
@@ -486,6 +535,19 @@ const echoProofParameters = (
     numberOfEchoes,
     startingIntensity: Math.max(0.35, Math.min(1, startingIntensity)),
     decay: Math.max(0.1, Math.min(0.95, decay)),
+  };
+};
+
+const directionalBlurProofParameters = (
+  node: ConstructionGraphV1["nodes"][number],
+): Readonly<Record<string, number | string | boolean>> => {
+  const blurPeak = Math.max(0, Math.min(1,
+    finiteNodeParameter(node, "blurPeak") ?? 0.2));
+  return {
+    effectSchemaRef: "ae.effect-schema.m6.directional-blur.v1",
+    blurDirectionDegrees: 0,
+    blurLengthPixels: Math.max(2, Math.min(64, blurPeak * 48)),
+    eventLocalEffect: true,
   };
 };
 
@@ -900,6 +962,18 @@ const strategyGraph = (
         ...node,
         capabilityCandidates: ["ae.effect.time-displacement"],
         parameters: { ...node.parameters, synthesisStrategy: "TIME_DISPLACEMENT_HYBRID" },
+      };
+    }
+    if (strategy === "TURBULENT_DISPLACE_HYBRID"
+      && node.kind === "OPTICAL_TREATMENT"
+      && node.dimension === "OPTICAL") {
+      return {
+        ...node,
+        capabilityCandidates: ["ae.effect.directional-blur"],
+        parameters: {
+          ...node.parameters,
+          ...directionalBlurProofParameters(node),
+        },
       };
     }
     if (strategy === "TURBULENT_DISPLACE_HYBRID" && node.kind === "DISTORTION") {

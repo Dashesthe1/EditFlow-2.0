@@ -25,6 +25,7 @@ import {
   evaluateProfessionalBenchmarkV1,
   evaluateProfessionalFidelityGateV1,
   learnTutorialActionPixelConsequencesV1,
+  measureHalfPeakTemporalProfileV1,
   runAutomaticVisualCorrectionLoopV1,
   selectSynthesisEscalationCandidateV1,
   summarizeDenseEffectFramesV1,
@@ -1336,6 +1337,96 @@ test("M6.8 unknown decomposition protects coherent event-local DNA from unrelate
     item.invariantId === "unknown.fragmentation-overlap" && !item.passed));
 });
 
+test("M6.3/M6.5 preserves peak-aligned blur recovery across semantic windows", () => {
+  const referenceBase = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 2 / 11,
+    opticalPeakPhase: 2 / 11,
+  });
+  const referenceBlur = [0.05, 0.3, 0.5, 0.4, 0.32, 0.26, 0.1, 0.05, 0.03, 0.02, 0.01, 0];
+  const reference = {
+    ...referenceBase,
+    frames: referenceBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: referenceBlur[index] ?? 0,
+    })),
+  };
+  const profile = measureHalfPeakTemporalProfileV1(reference, "blurStrength");
+  assert.equal(profile.peakIndex, 2);
+  assert.equal(profile.attackMs, 20);
+  assert.equal(profile.recoveryMs, 60);
+
+  const anatomy = decomposeUnknownEffectV1(reference);
+  assert.ok(anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.blur"));
+  assert.ok(anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.blur-recovery"));
+  const graph = buildConstructionGraphV1(anatomy);
+  const optical = graph.nodes.find((node) => node.kind === "OPTICAL_TREATMENT");
+  assert.equal(optical?.parameters.blurHalfPeakRecoveryMs, 60);
+
+  const degradedBase = evidence({
+    frameCount: 12,
+    frameIntervalMs: 20,
+    blurPeak: 0.5,
+    blurPeakPhase: 2 / 11,
+    opticalPeakPhase: 2 / 11,
+  });
+  const degraded = {
+    ...degradedBase,
+    analyzerFingerprint: reference.analyzerFingerprint,
+    frames: degradedBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: index === 2 ? 0.5 : 0.05,
+    })),
+  };
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render: degraded,
+    dna: anatomy.dna,
+  });
+  assert.equal(comparison.passed, false);
+  assert.ok(comparison.metrics.some((item) =>
+    item.invariantId === "unknown.blur-recovery" && !item.passed));
+  const actuation = deriveConstructionActuationPlanV1({ graph, comparison });
+  assert.ok(actuation.instructions.some((item) =>
+    item.invariantId === "unknown.blur-recovery"
+    && item.control === "RECOVERY_DURATION"));
+});
+
+test("M6.8 rejects uncorroborated global temporal-state texture as unknown effect identity", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 5,
+    temporalPersistence: 0,
+    overlapDensityPeak: 0.072,
+    stateSeparationPeak: 0,
+    fragmentationCoherencePeak: 0,
+    fragmentationTemporalStateCountPeak: 0,
+    fragmentationOverlapDensityPeak: 0,
+    fragmentationStateSeparationPeak: 0,
+    blurPeak: 0.457,
+    distortionPeak: 0.078,
+    motionEnergyPeak: 0.003,
+    recoveryFrames: 1,
+  });
+  const anatomy = decomposeUnknownEffectV1(reference);
+  assert.ok(!anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.temporal-states"));
+  assert.ok(anatomy.dna.definingInvariants.some((item) =>
+    item.invariantId === "unknown.blur"));
+
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: ALL_CAPABILITIES,
+  });
+  assert.equal(synthesis.status, "READY_FOR_PROOF");
+  assert.notEqual(synthesis.selected, null);
+  assert.equal(synthesis.selected.graph.nodes.some((node) =>
+    node.kind === "TEMPORAL_DUPLICATES"), false);
+});
+
 test("M6.8 keeps event-coordinated compound systems defining alongside fragmentation", () => {
   const seed = evidence({
     frameCount: 9,
@@ -2200,7 +2291,7 @@ test("M6.8 unmaterialized native hybrids fail closed while materialized Turbulen
   assert.ok(!proofSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
 });
 
-test("M6.8 native Echo proof path is effect-realized, FPS-adaptive, and production-blocked", () => {
+test("M6.8 native Echo schema is live-AE proven, FPS-adaptive, and production-enabled", () => {
   const unknown = evidence({
     temporalStateCountPeak: 3,
     temporalPersistence: 0.55,
@@ -2242,7 +2333,7 @@ test("M6.8 native Echo proof path is effect-realized, FPS-adaptive, and producti
     && node.capabilityIds.includes("ae.effect.echo")));
 
   const normalSupport = inspectRecipeCompilerSupportV1(compilation.recipe);
-  assert.ok(normalSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+  assert.ok(!normalSupport.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
   const proofSupport = inspectRecipeCompilerSupportV1(compilation.recipe, {
     proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.echo.v1"],
   });
@@ -2276,19 +2367,19 @@ test("M6.8 native Echo proof path is effect-realized, FPS-adaptive, and producti
     roleBindings: [{ role: "hero", layerIds: ["hero"] }],
     parameterValues: {},
   };
-  assert.throws(() => compileEditingIrRecipeToVirtualAeV1(
+  const production30 = compileEditingIrRecipeToVirtualAeV1(
     compilation.recipe,
     projectForRate(30),
     baseContext,
-  ), /EFFECT_SCHEMA_PROOF_REQUIRED/);
+  );
+  assert.ok(production30.operations.some((operation) =>
+    operation.type === "SET_EFFECT_PROPERTY"
+    && operation.propertyPath[0] === "ADBE Echo-0001"));
 
   const compileAt = (frameRate) => compileEditingIrRecipeToVirtualAeV1(
     compilation.recipe,
     projectForRate(frameRate),
-    {
-      ...baseContext,
-      proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.echo.v1"],
-    },
+    baseContext,
   );
   const at30 = compileAt(30);
   const at60 = compileAt(60);
@@ -2327,7 +2418,7 @@ test("M6.8 native Echo proof path is effect-realized, FPS-adaptive, and producti
       projectFingerprint: "project:sha256:m6-native-echo-proof",
       environmentFingerprint: "environment:sha256:ae-25.6.6",
     },
-    creativeObjective: "Materialize one proof-required native Echo hypothesis without production promotion.",
+    creativeObjective: "Materialize the live-AE-certified native Echo synthesis path.",
   });
   const commands = plan.operations.map((operation) => operation.input.command);
   assert.ok(commands.includes("effect.add"));

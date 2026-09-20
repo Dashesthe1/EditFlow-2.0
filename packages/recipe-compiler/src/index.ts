@@ -1275,12 +1275,39 @@ const m6EventEffectTargetsV1 = (
   if (eventSeconds === null) return [];
   const recoveryWindowFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
   const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(parameters, frameRate);
-  const preFrames = persistenceWindowFrames === null
+  let preFrames = persistenceWindowFrames === null
     ? Math.max(2, Math.min(6, recoveryWindowFrames))
     : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
-  const postFrames = persistenceWindowFrames === null
+  let postFrames = persistenceWindowFrames === null
     ? 1
     : Math.max(1, persistenceWindowFrames - preFrames);
+
+  // Optical profile durations are measured relative to the visual peak rather
+  // than the arbitrary start of an analysis window. For a linear accent envelope,
+  // the half-peak point occurs halfway between the peak and the zero boundary, so
+  // double the measured half-peak attack/recovery duration to preserve that shape.
+  const recoveryScaleRaw = parameters["recoveryDurationScale"];
+  const recoveryScale = typeof recoveryScaleRaw === "number" && Number.isFinite(recoveryScaleRaw)
+    ? Math.max(0.25, Math.min(2, recoveryScaleRaw))
+    : 1;
+  const blurAttackMs = parameters["blurHalfPeakAttackMs"];
+  if (typeof blurAttackMs === "number" && Number.isFinite(blurAttackMs) && blurAttackMs > 0) {
+    preFrames = Math.max(preFrames, 2 * (blurAttackMs / 1000) * frameRate * recoveryScale);
+  }
+  const blurRecoveryMs = parameters["blurHalfPeakRecoveryMs"];
+  if (typeof blurRecoveryMs === "number" && Number.isFinite(blurRecoveryMs) && blurRecoveryMs > 0) {
+    postFrames = Math.max(postFrames, 2 * (blurRecoveryMs / 1000) * frameRate * recoveryScale);
+  }
+  const analysisDurationMs = parameters["effectAnalysisDurationMs"];
+  if (typeof analysisDurationMs === "number" && Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
+    const analysisFrames = Math.max(2, (analysisDurationMs / 1000) * frameRate);
+    const totalFrames = preFrames + postFrames;
+    if (totalFrames > analysisFrames) {
+      const scale = analysisFrames / totalFrames;
+      preFrames = Math.max(0.5, preFrames * scale);
+      postFrames = Math.max(0.5, postFrames * scale);
+    }
+  }
   const layerId = `${node.nodeId}::${suffix}-accent`;
   operations.push({
     type: "DUPLICATE_LAYER",

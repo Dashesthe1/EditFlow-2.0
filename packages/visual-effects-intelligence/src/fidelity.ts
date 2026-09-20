@@ -9,6 +9,7 @@ import type {
   TransitionDnaV1,
 } from "./contracts.js";
 import {
+  measureHalfPeakTemporalProfileV1,
   resolveFragmentationEventMetricsV1,
   scoreFragmentationEventLocalizationV1,
 } from "./dense-evidence.js";
@@ -83,6 +84,12 @@ const metricValue = (
     return scoreFragmentationEventLocalizationV1(evidence, fragmentation.phase);
   }
   if (metric === "fragmentationCoherencePhase") return fragmentation.phase;
+  if (metric === "blurHalfPeakAttackMs") {
+    return measureHalfPeakTemporalProfileV1(evidence, "blurStrength").attackMs;
+  }
+  if (metric === "blurHalfPeakRecoveryMs") {
+    return measureHalfPeakTemporalProfileV1(evidence, "blurStrength").recoveryMs;
+  }
   if (metric === "activeDimensionCount") return activeDimensionCount(evidence);
   return maxFrameMetric(evidence, metric);
 };

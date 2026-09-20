@@ -62,7 +62,9 @@ const templateFor = (
     return { kind: "DISTORTION", dimension: "DISTORTION",
       capabilities: ["ae.effect.displacement-map"] };
   }
-  if (invariant.metric === "blurPeak") {
+  if (invariant.metric === "blurPeak"
+    || invariant.metric === "blurHalfPeakAttackMs"
+    || invariant.metric === "blurHalfPeakRecoveryMs") {
     return { kind: "OPTICAL_TREATMENT", dimension: "OPTICAL",
       capabilities: ["ae.effect.directional-blur"] };
   }
@@ -164,8 +166,19 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
     }
     if (group.template.kind === "OPTICAL_TREATMENT") {
       const displacementDirection = anatomy.observedMetrics["displacementDirection"];
+      let directionDegrees = 0;
       if (displacementDirection !== undefined && typeof displacementDirection !== "number") {
         parameters.blurDirectionVector = [displacementDirection.x, displacementDirection.y];
+        if (Math.hypot(displacementDirection.x, displacementDirection.y) > 1e-6) {
+          directionDegrees = Math.atan2(displacementDirection.y, displacementDirection.x) * 180 / Math.PI;
+        }
+      }
+      const blurPeak = parameters.blurPeak;
+      if (typeof blurPeak === "number" && Number.isFinite(blurPeak) && blurPeak > 0) {
+        parameters.effectSchemaRef = "ae.effect-schema.m6.directional-blur.v1";
+        parameters.blurDirectionDegrees = directionDegrees;
+        parameters.blurLengthPixels = Math.max(2, Math.min(64, blurPeak * 48));
+        parameters.eventLocalEffect = true;
       }
     }
     const effectEventPhase = anatomy.observedMetrics["effectEventPhase"];
@@ -250,6 +263,7 @@ export const validateConstructionGraphV1 = (
 };
 
 const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
+  if (typeof node.parameters["effectSchemaRef"] === "string") return "EFFECT_STACK";
   const synthesisStrategy = node.parameters["synthesisStrategy"];
   if (synthesisStrategy === "NATIVE_ECHO_HYBRID"
     || synthesisStrategy === "LAYERED_ECHO_AUGMENTED"

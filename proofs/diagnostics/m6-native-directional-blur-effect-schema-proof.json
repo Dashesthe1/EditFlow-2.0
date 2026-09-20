@@ -1,0 +1,152 @@
+{
+  "schema": "editflow.m6.native-directional-blur-effect-schema-proof.v1",
+  "generatedAt": "2026-09-20T12:44:36.761Z",
+  "result": "PASS",
+  "proposedSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+  "candidateId": "adaptive:layered-primitives",
+  "graphId": "construction:anatomy:unknown:cd5dd72b0813",
+  "analyzerFingerprint": "ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+  "expected": {
+    "blurDirectionDegrees": 0,
+    "blurLengthPixels": 21.935786593201318
+  },
+  "observed": {
+    "blurDirectionDegrees": 0,
+    "blurLengthPixels": 21.9357872009277
+  },
+  "transaction": {
+    "transactionId": "a5305168-f350-4588-9a25-e52ee07ec467",
+    "planHash": "plan:sha256:666f50ae649ea87b0c558ee8ab9f7ccdb8ea32ee1d31d84306987ef6a125ed32",
+    "state": "COMMITTED",
+    "recovered": false,
+    "committedGroups": 1,
+    "appliedOperations": 5,
+    "finalState": {
+      "projectId": "shadow-current-project",
+      "projectRevision": "ae-revision:72022",
+      "projectFingerprint": "project:sha256:f3322988a336670bd5ceb85c3351caaa0e0542fe06febb0432ae13d07d7428b7",
+      "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34"
+    }
+  },
+  "nativePlan": {
+    "operationCount": 5,
+    "commands": [
+      "layer.duplicate",
+      "effect.add",
+      "effect.set_property",
+      "effect.set_property",
+      "property.set_expression"
+    ],
+    "requiredCapabilities": [
+      "ae.layer.duplicate",
+      "ae.effect.add",
+      "ae.effect.property.set",
+      "ae.expression.set"
+    ]
+  },
+  "renders": {
+    "baseline": {
+      "sha256": "3ff08a9c93282bea227a68a6e791a9fbf0e4ac0dce6246e0f9894c9521b99525",
+      "evidence": "proofs/diagnostics/m6-native-directional-blur-baseline-evidence.json",
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 2,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.00014740188048734115,
+        "rotationRange": 0.001560053979505077,
+        "blurPeak": 0.009379286473947812,
+        "blurPeakPhase": 0,
+        "distortionPeak": 0.0012406862745098063,
+        "exposurePeak": 0.00002697054465694798,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.09393939393939393,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 0.46969696969696967,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.09393939393939393,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.1724137931034483,
+        "motionPeakPhase": 0.034482758620689655
+      }
+    },
+    "effected": {
+      "sha256": "958e2162384e2431b3565e0f31c97deaa17bfa55879ddd32f326d261af9cd2e7",
+      "evidence": "proofs/diagnostics/m6-native-directional-blur-effected-evidence.json",
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 4,
+        "temporalPersistence": 0.03333333333333333,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.005647383444291165,
+        "rotationRange": 0.008986707078592305,
+        "blurPeak": 0.5910521053436508,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.004646241830340746,
+        "exposurePeak": 0.0002577299591701489,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.2,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.8275862068965517,
+        "fragmentationTemporalStateCountPeak": 4,
+        "fragmentationOverlapDensityPeak": 0.2,
+        "fragmentationStateSeparationPeak": 0.07353918594488384,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.034482758620689655
+      }
+    }
+  },
+  "renderedAb": {
+    "frameCount": 30,
+    "changedFrames": 16,
+    "meanFrameDelta": 0.0011833401416122117,
+    "meanChangedFrameDelta": 0.002218762765522897,
+    "maxMeanFrameDelta": 0.0038474945533769414,
+    "maxChangedPixelRatio": 0.021944444444444444,
+    "changedFrameTimesMs": [
+      466.6666666666667,
+      500,
+      533.3333333333334,
+      566.6666666666666,
+      600,
+      633.3333333333334,
+      666.6666666666666,
+      700,
+      733.3333333333334,
+      766.6666666666666,
+      800,
+      833.3333333333334,
+      866.6666666666666,
+      900,
+      933.3333333333334,
+      966.6666666666666
+    ]
+  },
+  "evidenceBoundary": [
+    "This proof certifies the native ADBE Motion Blur (Directional Blur) schema mapping and causal rendered consequence on a controlled moving precomp.",
+    "The A/B holds the synthesized optical construction constant and toggles only the Directional Blur effect before rendering.",
+    "It does not certify professional-reference fidelity for the second unknown-effect benchmark case.",
+    "Production professional-fidelity acceptance remains governed by reference anatomy, comparator diagnostics, transfer, and benchmark gates."
+  ],
+  "readback": "COMP\t__EF2_M6_GENERIC_NATIVE_PROOF__\t2\r\nLAYER\t1\tM6 Generic Hero 2\t[[EDITFLOW2_STABLE:node:1:optical_treatment::effect-stack-accent]]\t0\t0\t1\t5212\r\nTIME_REMAP\t0\t\r\nPOSITION_EXPR\t\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=2;var post=17.03616999320104;if(f<=-pre||f>=post){0}else if(f<0){linear(f,-pre,0,0,100)}else{linear(f,0,post,100,0)}\r\nSCALE_EXPR\t\r\nANCHOR_EXPR\t\r\nSAMPLE\t0.400\tPOS=320,180,0\tSCALE=100,100,100\tOPACITY=0\r\nSAMPLE\t0.500\tPOS=320,180,0\tSCALE=100,100,100\tOPACITY=100\r\nSAMPLE\t0.533\tPOS=320,180,0\tSCALE=100,100,100\tOPACITY=94.1301360552337\r\nEFFECT\t1\tDirectional Blur\tADBE Motion Blur\t1\r\nEFFECT_PROP\t1\t1\tADBE Motion Blur-0001\t0\r\nEFFECT_PROP\t1\t2\tADBE Motion Blur-0002\t21.9357872009277\r\nLAYER\t2\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-hero]]\t0\t0\t1\t5212\r\nTIME_REMAP\t0\t\r\nPOSITION_EXPR\t\r\nOPACITY_EXPR\t\r\nSCALE_EXPR\t\r\nANCHOR_EXPR\t\r\nSAMPLE\t0.400\tPOS=320,180,0\tSCALE=100,100,100\tOPACITY=100\r\nSAMPLE\t0.500\tPOS=320,180,0\tSCALE=100,100,100\tOPACITY=100\r\nSAMPLE\t0.533\tPOS=320,180,0\tSCALE=100,100,100\tOPACITY=100\r\n"
+}

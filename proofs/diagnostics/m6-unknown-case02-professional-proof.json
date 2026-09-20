@@ -1,0 +1,264 @@
+{
+  "schema": "editflow.m6.unknown-case-professional-proof.v1",
+  "generatedAt": "2026-09-20T12:46:44.302Z",
+  "result": "PASS",
+  "caseId": "m6-unknown-case02-directional-blur",
+  "evidenceClass": "REFERENCE_ONLY_UNKNOWN_EFFECT_RECONSTRUCTION",
+  "reference": {
+    "contentKey": "2e878ffb4e29da92e4d240b02883764f86191f76969865ee9f73ad9a29daa3e8",
+    "analyzerFingerprint": "ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+    "sourceVideoRef": "video:sha256:1a6d30d4200f211b00f42123e9ec1d61b4424ad86aa641a8d2b1eaf1c0421038",
+    "range": {
+      "startMs": 18789.893374854313,
+      "endMs": 19524.78698240417
+    },
+    "evidenceRefs": [
+      "video:sha256:1a6d30d4200f211b00f42123e9ec1d61b4424ad86aa641a8d2b1eaf1c0421038",
+      "probe-json:sha256:0ffc13564b3f8d68cd5c0fc0dd85c04e36d5cb44d6c53ece193d280bc68e7d6b",
+      "probe-algorithm:editflow.m6.dense-video-probe.v10",
+      "probe-analyzer:sha256:98c6deb276161e82fd0fcfd6d564031c7428d9fbeaedfb7e1f0c12cd0f4aa575",
+      "measurement-system:sha256:ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+      "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation"
+    ],
+    "blurProfile": {
+      "metric": "blurStrength",
+      "peakValue": 0.45699555402502745,
+      "peakIndex": 0,
+      "peakTimeMs": 18789.893374854313,
+      "threshold": 0.22849777701251373,
+      "firstHalfPeakIndex": 0,
+      "lastHalfPeakIndex": 17,
+      "attackMs": 0,
+      "recoveryMs": 283.93616655335063
+    }
+  },
+  "reconstruction": {
+    "candidateId": "adaptive:layered-primitives",
+    "strategy": "LAYERED_PRIMITIVES",
+    "graph": {
+      "schema": "editflow.effect-construction-graph.v1",
+      "graphId": "construction:anatomy:unknown:2e878ffb4e29",
+      "family": "UNKNOWN",
+      "nodes": [
+        {
+          "nodeId": "node:1:optical_treatment",
+          "kind": "OPTICAL_TREATMENT",
+          "dimension": "OPTICAL",
+          "dependsOn": [],
+          "requiredInvariantIds": [
+            "unknown.blur",
+            "unknown.blur-recovery"
+          ],
+          "capabilityCandidates": [
+            "ae.effect.directional-blur"
+          ],
+          "parameters": {
+            "blurPeak": 0.45699555402502745,
+            "blurHalfPeakRecoveryMs": 283.93616655335063,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 21.935786593201318,
+            "eventLocalEffect": true,
+            "effectEventPhase": 0.11363636363636363,
+            "referenceFrameIntervalMs": 16.70212744431493,
+            "effectAnalysisDurationMs": 734.8936075498568,
+            "effectRecoveryDurationMs": 16.70212744431493
+          },
+          "optional": false
+        }
+      ],
+      "outputs": [
+        "node:1:optical_treatment"
+      ],
+      "invariantCoverage": {
+        "unknown.blur": [
+          "node:1:optical_treatment"
+        ],
+        "unknown.blur-recovery": [
+          "node:1:optical_treatment"
+        ]
+      },
+      "missingInvariantIds": [],
+      "evidenceRefs": [
+        "video:sha256:1a6d30d4200f211b00f42123e9ec1d61b4424ad86aa641a8d2b1eaf1c0421038",
+        "probe-json:sha256:0ffc13564b3f8d68cd5c0fc0dd85c04e36d5cb44d6c53ece193d280bc68e7d6b",
+        "probe-algorithm:editflow.m6.dense-video-probe.v10",
+        "probe-analyzer:sha256:98c6deb276161e82fd0fcfd6d564031c7428d9fbeaedfb7e1f0c12cd0f4aa575",
+        "measurement-system:sha256:ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+        "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation"
+      ]
+    },
+    "definingCoverageComplete": true,
+    "capabilityGaps": []
+  },
+  "nativeSchemaProof": {
+    "path": "proofs/diagnostics/m6-native-directional-blur-effect-schema-proof.json",
+    "result": "PASS",
+    "transactionState": "COMMITTED",
+    "expected": {
+      "blurDirectionDegrees": 0,
+      "blurLengthPixels": 21.935786593201318
+    },
+    "observed": {
+      "blurDirectionDegrees": 0,
+      "blurLengthPixels": 21.9357872009277
+    },
+    "renderedAb": {
+      "frameCount": 30,
+      "changedFrames": 16,
+      "meanFrameDelta": 0.0011833401416122117,
+      "meanChangedFrameDelta": 0.002218762765522897,
+      "maxMeanFrameDelta": 0.0038474945533769414,
+      "maxChangedPixelRatio": 0.021944444444444444,
+      "changedFrameTimesMs": [
+        466.6666666666667,
+        500,
+        533.3333333333334,
+        566.6666666666666,
+        600,
+        633.3333333333334,
+        666.6666666666666,
+        700,
+        733.3333333333334,
+        766.6666666666666,
+        800,
+        833.3333333333334,
+        866.6666666666666,
+        900,
+        933.3333333333334,
+        966.6666666666666
+      ]
+    }
+  },
+  "degradedControl": {
+    "renderEvidenceKey": "a0867a8f07c9f6b8d572002258e24b585b93d0b369153846a36fcdc2c50ca890",
+    "comparison": {
+      "schema": "editflow.semantic-fidelity-comparison.v1",
+      "family": "UNKNOWN",
+      "alignment": "SEMANTIC",
+      "metrics": [
+        {
+          "invariantId": "unknown.blur",
+          "dimension": "OPTICAL",
+          "metric": "blurPeak",
+          "referenceValue": 0.45699555402502745,
+          "renderValue": 0.009379286473947812,
+          "normalizedError": 0.6994761975442891,
+          "passed": false,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "blurPeak is under-driven: reference 0.457, render 0.009. Observed blurPeak is a material part of the unknown reference behavior."
+        },
+        {
+          "invariantId": "unknown.blur-recovery",
+          "dimension": "OPTICAL",
+          "metric": "blurHalfPeakRecoveryMs",
+          "referenceValue": 283.93616655335063,
+          "renderValue": 200,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 0.8,
+          "diagnosis": "blurHalfPeakRecoveryMs preserves the defining reference behavior."
+        }
+      ],
+      "definingCoverage": 0.5,
+      "weightedFidelity": 0.6114021124753949,
+      "passed": false,
+      "diagnoses": [
+        "blurPeak is under-driven: reference 0.457, render 0.009. Observed blurPeak is a material part of the unknown reference behavior."
+      ],
+      "referenceEvidenceKey": "2e878ffb4e29da92e4d240b02883764f86191f76969865ee9f73ad9a29daa3e8",
+      "renderEvidenceKey": "a0867a8f07c9f6b8d572002258e24b585b93d0b369153846a36fcdc2c50ca890"
+    },
+    "gate": {
+      "schema": "editflow.professional-fidelity-gate.v1",
+      "outcome": "CORRECTION_REQUIRED",
+      "certified": false,
+      "missingDefiningInvariantIds": [],
+      "underDrivenInvariantIds": [
+        "unknown.blur"
+      ],
+      "weakerSubstitutionDetected": false,
+      "reasons": [
+        "Defining behavior failed rendered comparison: unknown.blur."
+      ]
+    }
+  },
+  "reconstructedRender": {
+    "renderEvidenceKey": "37fb3332c624d3b79b27aeb056682abea67c9f6cef251eb4185a7aca48624820",
+    "analyzerFingerprint": "ee8fac20451245d45e16e05c205b71a82b2f3e8499330269e2516c3a259584b6",
+    "blurProfile": {
+      "metric": "blurStrength",
+      "peakValue": 0.5910521053436508,
+      "peakIndex": 15,
+      "peakTimeMs": 500,
+      "threshold": 0.2955260526718254,
+      "firstHalfPeakIndex": 14,
+      "lastHalfPeakIndex": 26,
+      "attackMs": 33.333333333333314,
+      "recoveryMs": 366.66666666666663
+    },
+    "comparison": {
+      "schema": "editflow.semantic-fidelity-comparison.v1",
+      "family": "UNKNOWN",
+      "alignment": "SEMANTIC",
+      "metrics": [
+        {
+          "invariantId": "unknown.blur",
+          "dimension": "OPTICAL",
+          "metric": "blurPeak",
+          "referenceValue": 0.45699555402502745,
+          "renderValue": 0.5910521053436508,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "blurPeak preserves the defining reference behavior."
+        },
+        {
+          "invariantId": "unknown.blur-recovery",
+          "dimension": "OPTICAL",
+          "metric": "blurHalfPeakRecoveryMs",
+          "referenceValue": 283.93616655335063,
+          "renderValue": 366.66666666666663,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 0.8,
+          "diagnosis": "blurHalfPeakRecoveryMs preserves the defining reference behavior."
+        }
+      ],
+      "definingCoverage": 1,
+      "weightedFidelity": 1,
+      "passed": true,
+      "diagnoses": [],
+      "referenceEvidenceKey": "2e878ffb4e29da92e4d240b02883764f86191f76969865ee9f73ad9a29daa3e8",
+      "renderEvidenceKey": "37fb3332c624d3b79b27aeb056682abea67c9f6cef251eb4185a7aca48624820"
+    },
+    "gate": {
+      "schema": "editflow.professional-fidelity-gate.v1",
+      "outcome": "PASS",
+      "certified": true,
+      "missingDefiningInvariantIds": [],
+      "underDrivenInvariantIds": [],
+      "weakerSubstitutionDetected": false,
+      "reasons": [
+        "Every defining invariant is covered by construction and passes rendered semantic comparison."
+      ]
+    }
+  },
+  "boundary": {
+    "established": [
+      "The current analyzer decomposes this held professional reference as an unknown optical blur construction without a learned transition-name fallback.",
+      "The certified native Directional Blur mapping is exercised through the normal layered-primitives construction path in live After Effects.",
+      "A deliberately degraded no-effect control is rejected while the reconstructed live render passes the defining semantic fidelity contract."
+    ],
+    "notEstablished": [
+      "Transfer verification on materially different footage.",
+      "Professional Fidelity Level 6 across multiple professional cases.",
+      "Robustness across subject, aspect ratio, FPS, motion, duration, and intensity.",
+      "Completion of the M6.8 three-unknown-effect proof gate or the M6.9 benchmark gate."
+    ]
+  }
+}

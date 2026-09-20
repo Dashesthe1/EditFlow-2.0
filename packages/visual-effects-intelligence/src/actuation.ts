@@ -29,6 +29,8 @@ const CONTROL_BY_METRIC: Readonly<Record<string, readonly ConstructionControlKin
   accelerationPeak: ["MOTION_IMPULSE", "MOTION_IMPULSE_SHARPNESS", "MOTION_IMPULSE_PHASE"],
   recoveryFrames: ["RECOVERY_DURATION"],
   blurPeak: ["BLUR_STRENGTH"],
+  blurHalfPeakAttackMs: ["RECOVERY_DURATION"],
+  blurHalfPeakRecoveryMs: ["RECOVERY_DURATION"],
   exposurePeak: ["EXPOSURE_STRENGTH"],
   distortionPeak: ["DISTORTION_STRENGTH", "DISTORTION_SIZE", "DISTORTION_COMPLEXITY", "DISTORTION_EVOLUTION"],
   subjectSeparationPeak: ["SUBJECT_ISOLATION"],
