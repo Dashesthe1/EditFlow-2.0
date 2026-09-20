@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   compileConstructionGraphV1,
   compileConstructionThroughNativeAeV1,
@@ -7,10 +8,10 @@ import {
 } from "../../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
 
 const CONTROL = "http://127.0.0.1:32146";
-const ROOT = "C:/Users/Shadow/EditFlow-2.0-m6";
-const EVIDENCE_PATH = path.resolve("proofs/diagnostics/m6-v6r-ref05-evidence-current.json");
-const OUTPUT_PATH = path.resolve("proofs/diagnostics/m6-generic-native-materializer-case01.json");
-const WINDOWS = (name) => ROOT + "/scripts/windows/" + name;
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const EVIDENCE_PATH = path.join(ROOT, "proofs", "diagnostics", "m6-v6r-ref05-evidence-current.json");
+const OUTPUT_PATH = path.join(ROOT, "proofs", "diagnostics", "m6-generic-native-materializer-case01.json");
+const WINDOWS = (name) => path.join(ROOT, "scripts", "windows", name);
 const CAPABILITIES = [
   "ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set",
   "ae.layer.transform.set", "ae.keyframe.temporal_ease.set",
@@ -41,7 +42,8 @@ const project = {
     name: "__EF2_M6_GENERIC_NATIVE_PROOF__",
     width: 640, height: 360, durationMs: 1000, frameRate: 30,
     layers: [{
-      layerId: "m6-proof-hero", name: "M6 Generic Hero", kind: "TEXT",
+      layerId: "m6-proof-hero", name: "M6 Generic Hero", kind: "PRECOMP",
+      sourceRef: "m6-proof-source-comp",
       inMs: 0, outMs: 1000, properties: [], effects: [], masks: [],
     }],
   }],
@@ -55,7 +57,7 @@ const context = {
 
 let artifact = null;
 try {
-  await runProofScript("m6-reload-current-host.jsx");
+  await request("/healthz");
   await runProofScript("m6-generic-native-proof-setup.jsx");
   const live = await request("/state");
   const evidence = JSON.parse(await readFile(EVIDENCE_PATH, "utf8"));
@@ -105,23 +107,43 @@ try {
     body: JSON.stringify({ plan: native.plan }),
   });
   await runProofScript("m6-generic-native-proof-readback.jsx");
-  const readback = await readFile(path.resolve(".tmp/m6-generic-native-readback.txt"), "utf8");
+  const readback = await readFile(path.join(ROOT, ".tmp", "m6-generic-native-readback.txt"), "utf8");
   const commands = native.plan.operations.map((operation) => operation.input.command);
   const duplicateCount = commands.filter((command) => command === "layer.duplicate").length;
   const compLine = readback.split(/\r?\n/).find((line) => line.startsWith("COMP\t"));
   const actualLayerCount = Number(compLine?.split("\t")[2]);
   const layerLines = readback.split(/\r?\n/).filter((line) => line.startsWith("LAYER\t"));
+  const lines = readback.split(/\r?\n/);
   const startTimes = layerLines
     .map((line) => Number(line.split("\t")[4]))
     .filter((value) => Number.isFinite(value))
     .sort((a, b) => a - b);
   const frameSeconds = 1 / project.compositions[0].frameRate;
-  const expectedStartTimes = Array.from(
-    { length: expectedTemporalStateCount },
-    (_, state) => state * frameSeconds,
+  const globalLayerOffsetsAbsent = startTimes.length === expectedTemporalStateCount
+    && startTimes.every((value) => Math.abs(value) < 0.0001);
+  const timeRemapLines = lines.filter((line) => line.startsWith("TIME_REMAP\t"));
+  const timeRemapEnabledCount = timeRemapLines
+    .filter((line) => line.split("\t")[1] === "1").length;
+  const timeRemapExpressions = timeRemapLines
+    .map((line) => line.split("\t").slice(2).join("\t"))
+    .filter((value) => value.length > 0);
+  const temporalOffsetsSeconds = timeRemapExpressions
+    .map((expression) => expression.match(/Math\.max\(0,value-([0-9.eE+-]+)\)/))
+    .map((match) => match === null ? Number.NaN : Number(match[1]))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  const expectedTemporalOffsetsSeconds = Array.from(
+    { length: expectedTemporalStateCount - 1 },
+    (_, state) => (state + 1) * frameSeconds,
   );
-  const startTimesMatch = startTimes.length === expectedStartTimes.length
-    && startTimes.every((value, index) => Math.abs(value - expectedStartTimes[index]) < 0.0001);
+  const temporalOffsetsMatch = temporalOffsetsSeconds.length === expectedTemporalOffsetsSeconds.length
+    && temporalOffsetsSeconds.every((value, index) =>
+      Math.abs(value - expectedTemporalOffsetsSeconds[index]) < 0.0001);
+  const eventLocalOpacityExpressions = lines
+    .filter((line) => line.startsWith("OPACITY_EXPR\t"))
+    .map((line) => line.slice("OPACITY_EXPR\t".length))
+    .filter((value) => value.includes("var event=0.5;") && value.includes("thisComp.frameRate"));
+  const eventLocalVisibilityMatch = eventLocalOpacityExpressions.length === expectedTemporalStateCount - 1;
   const recursiveStableId = /::state-\d+.*::state-\d+/.test(readback);
   artifact = {
     schema: "editflow.m6.generic-native-materializer-proof.v1",
@@ -146,8 +168,14 @@ try {
       actualLayerCount,
       duplicateCount,
       startTimes,
-      expectedStartTimes,
-      startTimesMatch,
+      globalLayerOffsetsAbsent,
+      timeRemapEnabledCount,
+      timeRemapExpressions,
+      temporalOffsetsSeconds,
+      expectedTemporalOffsetsSeconds,
+      temporalOffsetsMatch,
+      eventLocalOpacityExpressions,
+      eventLocalVisibilityMatch,
       recursiveStableId,
     },
     readback,
@@ -160,7 +188,12 @@ try {
   if (actualLayerCount !== expectedTemporalStateCount) {
     throw new Error(`AE readback contains ${actualLayerCount} layers; expected ${expectedTemporalStateCount}.`);
   }
-  if (!startTimesMatch) throw new Error("AE readback temporal offsets do not match the synthesized state cadence.");
+  if (!globalLayerOffsetsAbsent) throw new Error("Temporal materializer regressed to whole-layer startTime offsets.");
+  if (timeRemapEnabledCount !== expectedTemporalStateCount - 1) {
+    throw new Error(`Expected Time Remap only on ${expectedTemporalStateCount - 1} synthesized temporal duplicates; observed ${timeRemapEnabledCount}.`);
+  }
+  if (!temporalOffsetsMatch) throw new Error("Event-local Time Remap offsets do not match the synthesized frame cadence.");
+  if (!eventLocalVisibilityMatch) throw new Error("Temporal duplicates are missing bounded event-local opacity realization.");
   if (recursiveStableId) throw new Error("Recursive temporal-state duplication reappeared in AE readback.");
   await mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
   await writeFile(OUTPUT_PATH, JSON.stringify(artifact, null, 2) + "\n", "utf8");

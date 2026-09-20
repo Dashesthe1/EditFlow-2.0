@@ -87,6 +87,11 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
     && fragmentation.overlapDensityPeak >= 0.015
     && fragmentation.stateSeparationPeak >= 0.005
     && fragmentation.peak >= 0.04;
+  observedMetrics.effectEventPhase = coherentFragmentation
+    ? fragmentation.phase
+    : (s.accelerationPeak > 0.025 || s.displacementPeak > 0.04 || s.scaleRange > 0.04
+      ? s.motionPeakPhase
+      : s.opticalPeakPhase);
 
   if (coherentFragmentation) {
     add(defining, invariant(
@@ -324,6 +329,34 @@ const PROPOSABLE_NATIVE_EFFECTS: Readonly<Record<string, Readonly<{
   },
 };
 
+const finiteNodeParameter = (
+  node: ConstructionGraphV1["nodes"][number],
+  name: string,
+): number | null => {
+  const value = node.parameters[name];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+const echoProofParameters = (
+  node: ConstructionGraphV1["nodes"][number],
+): Readonly<Record<string, number | string>> => {
+  const measuredStates = finiteNodeParameter(node, "temporalStateCountPeak")
+    ?? finiteNodeParameter(node, "fragmentationTemporalStateCountPeak")
+    ?? 2;
+  const stateCount = Math.max(2, Math.min(12, Math.round(measuredStates)));
+  const recoveryFrames = finiteNodeParameter(node, "effectRecoveryFrames")
+    ?? finiteNodeParameter(node, "recoveryFrames")
+    ?? stateCount;
+  const persistence = finiteNodeParameter(node, "temporalPersistence") ?? 0.5;
+  return {
+    effectSchemaRef: "ae.effect-schema.m6.echo.v1",
+    echoSpacingFrames: Math.max(1, Math.min(6, recoveryFrames / Math.max(1, stateCount - 1))),
+    numberOfEchoes: stateCount,
+    startingIntensity: Math.max(0.35, Math.min(1, 0.35 + persistence * 0.65)),
+    decay: Math.max(0.1, Math.min(0.95, persistence)),
+  };
+};
+
 const strategyGraph = (
   base: ConstructionGraphV1,
   strategy: UnknownEffectSynthesisStrategyV1,
@@ -338,7 +371,11 @@ const strategyGraph = (
       return {
         ...node,
         capabilityCandidates: ["ae.effect.echo"],
-        parameters: { ...node.parameters, synthesisStrategy: "NATIVE_ECHO_HYBRID" },
+        parameters: {
+          ...node.parameters,
+          synthesisStrategy: "NATIVE_ECHO_HYBRID",
+          ...echoProofParameters(node),
+        },
       };
     }
     if (strategy === "TIME_DISPLACEMENT_HYBRID"
@@ -384,6 +421,25 @@ const adaptiveCapabilityProposals = (
     }));
 };
 
+const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
+  Partial<Record<UnknownEffectSynthesisStrategyV1, string>>
+> = Object.freeze({
+  NATIVE_ECHO_HYBRID: "ae.effect-schema.m6.echo.v1",
+});
+
+const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
+  [...new Set(graph.nodes.flatMap((node) => {
+    const strategy = node.parameters["synthesisStrategy"];
+    if (strategy !== "NATIVE_ECHO_HYBRID"
+      && strategy !== "TIME_DISPLACEMENT_HYBRID"
+      && strategy !== "TURBULENT_DISPLACE_HYBRID") return [];
+    const capability = node.capabilityCandidates[0] ?? String(strategy);
+    const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
+    const actualSchemaRef = node.parameters["effectSchemaRef"];
+    if (expectedSchemaRef !== undefined && actualSchemaRef === expectedSchemaRef) return [];
+    return [`PROOF_REQUIRED_NATIVE_EFFECT_SCHEMA:${capability}`];
+  }))].sort();
+
 const candidate = (
   id: string,
   strategy: UnknownEffectSynthesisStrategyV1,
@@ -396,7 +452,11 @@ const candidate = (
   const covered = definingCount - graph.missingInvariantIds.length;
   const definingCoverage = definingCount === 0 ? 0 : covered / definingCount;
   const complexity = graph.nodes.length + complexityPenalty;
-  const gapPenalty = compilation.capabilityGaps.length * 0.22;
+  const capabilityGaps = [...new Set([
+    ...compilation.capabilityGaps,
+    ...nativeRealizationGaps(graph),
+  ])].sort();
+  const gapPenalty = capabilityGaps.length * 0.22;
   const proposals = adaptiveCapabilityProposals(graph, compilation.capabilityGaps);
   return {
     candidateId: id,
@@ -404,7 +464,7 @@ const candidate = (
     graph,
     definingCoverage,
     complexity,
-    capabilityGaps: compilation.capabilityGaps,
+    capabilityGaps,
     adaptiveCapabilityProposals: proposals,
     score: definingCoverage - gapPenalty - complexity * 0.01 - proposals.length * 0.03,
   };

@@ -204,8 +204,14 @@ event-local DNA reaches coverage 1.0 and weighted fidelity 0.9599, and the degra
 seed control is rejected. This proves that unknown-effect perception, DNA construction,
 candidate synthesis, and semantic certification can work from rendered behavior for
 one case. The certified render is intentionally reused from the proven shutter
-correction actuator path, so this does **not** yet prove a generic UNKNOWN
-construction-graph -> real-AE materializer.
+correction actuator path. A separate retained live-AE structural proof now exists at
+`proofs/diagnostics/m6-generic-native-materializer-case01.json`: the same behavior-only
+`UNKNOWN` graph compiles through Editing IR / Virtual AE / native AE, commits six native
+operations, creates the required temporal duplicate, realizes its prior-frame state with
+an event-local one-frame Time Remap source offset, and retains bounded event-local
+visibility without shifting the whole layer. This closes direct generic UNKNOWN
+graph-to-real-AE materialization provenance for this one case, but it is structural
+readback evidence rather than an additional rendered-fidelity certification.
 
 The shutter case **is** `PROFESSIONAL_FIDELITY_VERIFIED` for the retained shutter
 construction, and its bounded M6.7 local AE correction loop is automatic; it does
@@ -213,7 +219,7 @@ construction, and its bounded M6.7 local AE correction loop is automatic; it doe
 
 1. transfer the shutter construction to materially different footage;
 2. real AE reconstructions for at least three substantially different compound effects;
-3. two additional substantially different reference-only unknown-effect reconstructions, plus direct generic UNKNOWN graph-to-AE realization provenance;
+3. two additional substantially different reference-only unknown-effect reconstructions, plus rendered-fidelity proof for generic UNKNOWN graph-to-AE realization beyond the retained structural case;
 4. 20-30 rendered benchmark cases with held-out and transfer variants;
 5. a normal edit request invoking perception -> synthesis -> construction -> comparison
    -> correction -> fidelity without developer intervention.

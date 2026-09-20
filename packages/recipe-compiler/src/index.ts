@@ -4,7 +4,11 @@ import {
   type EditingIrPrimitiveKindV1,
   type EditingIrRecipeV1,
 } from "../../editing-ir/src/index.js";
-import { getEffectSchemaV1, type EffectSchemaV1 } from "./effect-schemas.js";
+import {
+  getEffectSchemaV1,
+  type EffectSchemaPropertyBindingV1,
+  type EffectSchemaV1,
+} from "./effect-schemas.js";
 import type {
   VirtualAeLayerV1,
   VirtualAeOperationV1,
@@ -44,6 +48,7 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "STABILIZATION",
   "LAYER_DUPLICATION",
   "TEMPORAL_DUPLICATION",
+  "OPACITY_SHAPING",
   "DIRECTIONAL_OFFSET",
   "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
@@ -65,15 +70,30 @@ const literalParameterValueV1 = (
   name: string,
 ): unknown => node.parameters.find((parameter) => parameter.name === name)?.value;
 
+export interface RecipeCompilerSupportOptionsV1 {
+  readonly proofOnlyEffectSchemaRefs?: readonly string[];
+}
+
+const effectSchemaExecutableV1 = (
+  node: EditingIrNodeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
+): boolean => {
+  const schema = effectSchemaForNodeV1(node);
+  if (schema === null) return false;
+  if (schema.status === "CERTIFIED") return true;
+  return (options.proofOnlyEffectSchemaRefs ?? []).includes(schema.schemaId);
+};
+
 const supportedNodeVariantV1 = (
   node: EditingIrNodeV1,
   target: "VIRTUAL" | "NATIVE" = "VIRTUAL",
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): boolean => {
   if (node.kind === "TRANSFORM_ANIMATION" || node.kind === "MOTION_BLUR") {
     return node.timing === undefined;
   }
   if (node.kind === "EFFECT_STACK") {
-    return node.timing === undefined && effectSchemaForNodeV1(node)?.status === "CERTIFIED";
+    return node.timing === undefined && effectSchemaExecutableV1(node, options);
   }
   if (node.kind === "STABILIZATION") {
     return node.timing === undefined
@@ -103,30 +123,35 @@ const blockedKinds = (
   recipe: EditingIrRecipeV1,
   supportedKinds: readonly EditingIrPrimitiveKindV1[],
   target: "VIRTUAL" | "NATIVE",
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): readonly EditingIrPrimitiveKindV1[] => {
   const supported = new Set<EditingIrPrimitiveKindV1>(supportedKinds);
   return [...new Set(
     recipe.nodes
       .filter((node) => node.optional !== true
-        && (!supported.has(node.kind) || !supportedNodeVariantV1(node, target)))
+        && (!supported.has(node.kind) || !supportedNodeVariantV1(node, target, options)))
       .map((node) => node.kind),
   )].sort();
 };
 
 export const unsupportedVirtualAePrimitiveKindsV1 = (
   recipe: EditingIrRecipeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   VIRTUAL_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
   "VIRTUAL",
+  options,
 );
 
 export const unsupportedNativeAePrimitiveKindsV1 = (
   recipe: EditingIrRecipeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): readonly EditingIrPrimitiveKindV1[] => blockedKinds(
   recipe,
   NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1,
   "NATIVE",
+  options,
 );
 
 export interface RecipeCompilerSupportReportV1 {
@@ -137,9 +162,10 @@ export interface RecipeCompilerSupportReportV1 {
 
 export const inspectRecipeCompilerSupportV1 = (
   recipe: EditingIrRecipeV1,
+  options: RecipeCompilerSupportOptionsV1 = {},
 ): RecipeCompilerSupportReportV1 => {
-  const virtualAeBlockedPrimitiveKinds = unsupportedVirtualAePrimitiveKindsV1(recipe);
-  const nativeAeBlockedPrimitiveKinds = unsupportedNativeAePrimitiveKindsV1(recipe);
+  const virtualAeBlockedPrimitiveKinds = unsupportedVirtualAePrimitiveKindsV1(recipe, options);
+  const nativeAeBlockedPrimitiveKinds = unsupportedNativeAePrimitiveKindsV1(recipe, options);
   return {
     virtualAeBlockedPrimitiveKinds,
     nativeAeBlockedPrimitiveKinds,
@@ -159,6 +185,8 @@ export interface RecipeCompilerContextV1 {
   readonly eventTimesMs: Readonly<Record<string, number>>;
   readonly roleBindings: readonly RecipeRoleBindingV1[];
   readonly parameterValues: Readonly<Record<string, unknown>>;
+  /** Exact developer-proof allowlist. PROOF_REQUIRED effect schemas remain blocked everywhere else. */
+  readonly proofOnlyEffectSchemaRefs?: readonly string[];
 }
 export interface RecipeCompileIssueV1 {
   readonly nodeId: string;
@@ -609,12 +637,44 @@ const compileCameraPush = (
   return uniqueStrings(outputs);
 };
 
+const adaptEffectSchemaValueV1 = (
+  node: EditingIrNodeV1,
+  binding: EffectSchemaPropertyBindingV1,
+  value: unknown,
+  frameRate: number,
+  issues: RecipeCompileIssueV1[],
+): unknown | null => {
+  const adapter = binding.valueAdapter ?? "IDENTITY";
+  if (adapter === "IDENTITY") return structuredClone(value);
+  if (adapter === "NEGATIVE_FRAMES_TO_SECONDS") {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0
+      || !Number.isFinite(frameRate) || frameRate <= 0) {
+      addIssue(
+        issues,
+        node.nodeId,
+        "EFFECT_ADAPTATION_INVALID",
+        `Effect parameter '${binding.semanticParameter}' requires positive finite frame spacing and frame rate.`,
+      );
+      return null;
+    }
+    return -(value / frameRate);
+  }
+  addIssue(
+    issues,
+    node.nodeId,
+    "EFFECT_ADAPTATION_UNSUPPORTED",
+    `Effect parameter '${binding.semanticParameter}' uses unsupported value adapter '${String(adapter)}'.`,
+  );
+  return null;
+};
+
 const compileEffectStack = (
   node: EditingIrNodeV1,
   targets: readonly string[],
   context: RecipeCompilerContextV1,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
+  frameRate: number,
 ): readonly string[] => {
   if (node.timing !== undefined) {
     addIssue(issues, node.nodeId, "EFFECT_TIMING_UNSUPPORTED",
@@ -627,9 +687,9 @@ const compileEffectStack = (
       "EFFECT_STACK requires a known literal effectSchemaRef.");
     return [];
   }
-  if (schema.status !== "CERTIFIED") {
+  if (!effectSchemaExecutableV1(node, context)) {
     addIssue(issues, node.nodeId, "EFFECT_SCHEMA_PROOF_REQUIRED",
-      `Effect schema '${schema.schemaId}' is not certified yet.`);
+      `Effect schema '${schema.schemaId}' is not certified and is not explicitly allowlisted for this proof run.`);
     return [];
   }
   const values = new Map<string, unknown>();
@@ -640,7 +700,10 @@ const compileEffectStack = (
       context,
       issues,
     );
-    if (value !== null) values.set(binding.semanticParameter, value);
+    if (value !== null) {
+      const adapted = adaptEffectSchemaValueV1(node, binding, value, frameRate, issues);
+      if (adapted !== null) values.set(binding.semanticParameter, adapted);
+    }
   }
   if (values.size !== schema.propertyBindings.length) return [];
 
@@ -766,6 +829,55 @@ const compileStaticTransform = (
   return targets;
 };
 
+const resolveM6EffectEventSeconds = (
+  node: EditingIrNodeV1,
+  context: RecipeCompilerContextV1,
+  issues: RecipeCompileIssueV1[],
+): number | null => {
+  const explicitDefinition = node.parameters.find((parameter) => parameter.name === "effectEventRef");
+  let eventRef: string | null = null;
+  if (explicitDefinition !== undefined) {
+    const resolved = resolveParameter(node, "effectEventRef", context, issues);
+    if (resolved === null) return null;
+    if (typeof resolved !== "string" || resolved.trim().length === 0) {
+      return addIssue(
+        issues,
+        node.nodeId,
+        "M6_EVENT_REF_INVALID",
+        "M6 effect realization requires effectEventRef to resolve to a non-empty semantic event name.",
+      );
+    }
+    eventRef = resolved.trim();
+  } else if (typeof context.eventTimesMs["transition"] === "number"
+    && Number.isFinite(context.eventTimesMs["transition"])) {
+    eventRef = "transition";
+  } else {
+    const finiteEvents = Object.entries(context.eventTimesMs)
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value));
+    if (finiteEvents.length === 1) eventRef = finiteEvents[0]![0];
+    else {
+      return addIssue(
+        issues,
+        node.nodeId,
+        finiteEvents.length === 0 ? "M6_EVENT_UNRESOLVED" : "M6_EVENT_REF_AMBIGUOUS",
+        finiteEvents.length === 0
+          ? "M6 effect realization requires a finite semantic event time."
+          : "M6 effect realization has multiple semantic event times; bind effectEventRef explicitly.",
+      );
+    }
+  }
+  const eventMs = context.eventTimesMs[eventRef];
+  if (typeof eventMs !== "number" || !Number.isFinite(eventMs)) {
+    return addIssue(
+      issues,
+      node.nodeId,
+      "M6_EVENT_UNRESOLVED",
+      `M6 semantic event '${eventRef}' has no finite time binding.`,
+    );
+  }
+  return eventMs / 1000;
+};
+
 const compileM6TemporalDuplication = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -773,8 +885,6 @@ const compileM6TemporalDuplication = (
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
   frameRate: number,
-  width: number,
-  height: number,
 ): readonly string[] => {
   const parameters = resolveParameterMap(
     node,
@@ -783,6 +893,13 @@ const compileM6TemporalDuplication = (
     issues,
   );
   if (parameters === null) return [];
+  const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+  if (eventSeconds === null) return [];
+  const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
+  const eventWindowFrames = typeof rawRecoveryFrames === "number"
+    && Number.isFinite(rawRecoveryFrames) && rawRecoveryFrames > 0
+    ? Math.max(2, Math.min(6, rawRecoveryFrames))
+    : 3;
   const countParameter = node.parameters.find((parameter) =>
     parameter.name === "temporalStateCountPeak"
       || parameter.name === "fragmentationTemporalStateCountPeak"
@@ -794,12 +911,11 @@ const compileM6TemporalDuplication = (
     return [];
   }
   const count = Math.max(2, Math.min(8, Math.round(resolved)));
-  const frameDurationMs = 1000 / frameRate;
-  const compLongestEdgePx = Math.max(width, height);
   const outputs: string[] = [...targets];
   for (const sourceLayerId of targets) {
     for (let state = 1; state < count; state += 1) {
       const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
+      const sourceTimeOffsetSeconds = state / frameRate;
       operations.push({
         type: "DUPLICATE_LAYER",
         compId: context.compId,
@@ -811,14 +927,32 @@ const compileM6TemporalDuplication = (
         type: "SET_PROPERTY",
         compId: context.compId,
         layerId,
-        propertyPath: "M6.TemporalState",
-        value: semanticValue(node, "TEMPORAL_DUPLICATION", `STATE_${state}`, {
-          ...parameters,
-          state,
-          stateCount: count,
-          sourceTimeOffsetMs: state * frameDurationMs,
-          compLongestEdgePx,
-        }),
+        propertyPath: "TimeRemap.Enabled",
+        value: true,
+      });
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "TimeRemap.SourceTime",
+        expression: `Math.max(0,value-${sourceTimeOffsetSeconds});`,
+      });
+      const statePeakOpacity = Math.max(42, 78 - (state - 1) * 11);
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "Transform.Opacity",
+        expression: [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)*thisComp.frameRate;",
+          `var pre=${eventWindowFrames};`,
+          `var peak=${statePeakOpacity};`,
+          "if(f<=-pre||f>=1){0}",
+          "else if(f<-1){linear(f,-pre,-1,0,peak)}",
+          "else if(f<0){linear(f,-1,0,peak,peak*0.4)}",
+          "else{linear(f,0,1,peak*0.4,0)}",
+        ].join(""),
       });
       outputs.push(layerId);
     }
@@ -900,6 +1034,50 @@ const compileM6SemanticVisualState = (
     issues,
   );
   if (parameters === null) return [];
+  if (node.kind === "OPACITY_SHAPING") {
+    const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+    if (eventSeconds === null) return [];
+    const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
+    const eventWindowFrames = typeof rawRecoveryFrames === "number"
+      && Number.isFinite(rawRecoveryFrames) && rawRecoveryFrames > 0
+      ? Math.max(2, Math.min(6, rawRecoveryFrames))
+      : 3;
+    const overlap = parameters["fragmentationOverlapDensityPeak"] ?? parameters["overlapDensityPeak"];
+    const coherence = parameters["fragmentationCoherencePeak"];
+    const driver = typeof coherence === "number" && Number.isFinite(coherence)
+      ? coherence
+      : (typeof overlap === "number" && Number.isFinite(overlap) ? overlap * 4.6 : null);
+    if (driver === null) {
+      addIssue(issues, node.nodeId, "M6_OPACITY_SHAPING_PARAMETERS_INVALID",
+        "M6 opacity shaping requires fragmentation coherence or overlap-density evidence.");
+      return [];
+    }
+    const peakOpacity = Math.max(35, Math.min(90, 45 + driver * 130));
+    targets.forEach((layerId, index) => {
+      if (targets.length > 1 && index === 0) return;
+      const stateScale = Math.max(0.45, 1 - index * 0.18);
+      const peak = peakOpacity * stateScale;
+      operations.push({
+        type: "SET_EXPRESSION",
+        compId: context.compId,
+        layerId,
+        propertyPath: "Transform.Opacity",
+        expression: [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)*thisComp.frameRate;",
+          `var peak=${peak};`,
+          `var pre=${eventWindowFrames};`,
+          "var shaped=0;",
+          "if(f<=-pre||f>=1){shaped=0;}",
+          "else if(f<-1){shaped=linear(f,-pre,-1,0,peak);}",
+          "else if(f<0){shaped=linear(f,-1,0,peak,peak*0.34);}",
+          "else{shaped=linear(f,0,1,peak*0.34,0);}",
+          "Math.min(value,shaped);",
+        ].join(""),
+      });
+    });
+    return targets;
+  }
   if (node.kind === "DIRECTIONAL_OFFSET") {
     const displacementRaw = parameters["displacementPeak"];
     const directionRaw = parameters["displacementDirection"];
@@ -989,26 +1167,35 @@ const compileM6SemanticVisualState = (
         "M6 motion shaping requires observed accelerationPeak or recoveryFrames evidence.");
       return [];
     }
+    const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+    if (eventSeconds === null) return [];
     const acceleration = hasAcceleration ? accelerationRaw : 0.02;
     const recoveryFrames = hasRecovery
       ? recoveryRaw
       : Math.max(2, Math.min(12, Math.round(0.5 / Math.max(acceleration, 0.02))));
+    const preFrames = Math.max(2, Math.min(6, recoveryFrames));
     const expression = [
-      "var center=(inPoint+outPoint)/2;",
-      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
-      "var phase=(time-center)/recovery;",
+      `var event=${eventSeconds};`,
+      "var f=(time-event)*thisComp.frameRate;",
       `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
-      "var envelope=Math.exp(-4*phase*phase);",
-      "value+[0,-amplitude*phase*envelope];",
+      `var pre=${preFrames};`,
+      "var impulse=0;",
+      "if(f<=-pre||f>=0){impulse=0;}",
+      "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
+      "else{impulse=linear(f,-1,0,-amplitude,0);}",
+      "value+[0,impulse];",
     ].join("");
     const deltaExpression = [
       "(function(){",
-      "var center=(inPoint+outPoint)/2;",
-      `var recovery=Math.max(1,${recoveryFrames})/thisComp.frameRate;`,
-      "var phase=(time-center)/recovery;",
+      `var event=${eventSeconds};`,
+      "var f=(time-event)*thisComp.frameRate;",
       `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
-      "var envelope=Math.exp(-4*phase*phase);",
-      "return [0,-amplitude*phase*envelope];",
+      `var pre=${preFrames};`,
+      "var impulse=0;",
+      "if(f<=-pre||f>=0){impulse=0;}",
+      "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
+      "else{impulse=linear(f,-1,0,-amplitude,0);}",
+      "return [0,impulse];",
       "})()",
     ].join("");
     for (const layerId of targets) {
@@ -1154,7 +1341,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     nodeTargetLayerIds[node.nodeId] = [...targets];
 
     let outputs: readonly string[];
-    if (node.optional === true && !supportedNodeVariantV1(node)) {
+    if (node.optional === true && !supportedNodeVariantV1(node, "VIRTUAL", context)) {
       skippedOptionalNodeIds.push(node.nodeId);
       outputs = targets;
     } else if (node.kind === "PRECOMPOSE") {
@@ -1168,7 +1355,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     } else if (node.kind === "MOTION_BLUR") {
       outputs = compileMotionBlur(node, targets, context, operations, issues);
     } else if (node.kind === "EFFECT_STACK") {
-      outputs = compileEffectStack(node, targets, context, operations, issues);
+      outputs = compileEffectStack(node, targets, context, operations, issues, comp.frameRate);
     } else if (node.kind === "STABILIZATION") {
       outputs = compileStabilization(node, targets, context, operations, issues);
     } else if (node.kind === "LAYER_DUPLICATION" || node.kind === "TEMPORAL_DUPLICATION") {
@@ -1179,8 +1366,6 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
         operations,
         issues,
         comp.frameRate,
-        comp.width,
-        comp.height,
       );
     } else if ([
       "SUBJECT_ISOLATION",

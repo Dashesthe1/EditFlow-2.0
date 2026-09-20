@@ -1,0 +1,85 @@
+{
+  "schema": "editflow.m6-unknown-graph-realizer-proof.v1",
+  "milestone": "M6.8_UNKNOWN_EFFECT_SYNTHESIS",
+  "branch": "m6-unknown-graph-realizer-v1",
+  "baseCommit": "51e48d1",
+  "claim": "OFFLINE_NATIVE_PLAN_READY",
+  "professionalFidelityCertified": false,
+  "liveAeExecuted": false,
+  "implementation": {
+    "unknownBehaviorDecomposition": true,
+    "constructionGraphToEditingIr": true,
+    "virtualAeSimulation": true,
+    "nativeAeLowering": true,
+    "semanticEventAnchoring": true,
+    "boundedDuplicateVisibility": true,
+    "ambiguousEventFailsClosed": true,
+    "nativeHypothesisUsesEffectStack": true,
+    "proofRequiredSchemaAllowlist": true,
+    "fpsAdaptiveEffectBinding": true,
+    "nativeEchoProofPlan": true,
+    "nativeHypothesisRequiresMaterializedEffectSchema": true,
+    "unmaterializedNativeHypothesesFailClosed": true,
+    "foundationNativeMaterializationReconciled": true,
+    "measuredDirectionalSynthesis": true,
+    "composedPositionEffects": true,
+    "eventAnchoredMotionShaping": true,
+    "targetWindowMotionPhaseContext": true
+  },
+  "proofRequiredEffectSchemas": [
+    "ae.effect-schema.m6.echo.v1"
+  ],
+  "nativeOperations": [
+    "layer.duplicate",
+    "layer.time_remap.enable",
+    "property.set_expression",
+    "effect.add",
+    "effect.set_property"
+  ],
+  "focusedProof": {
+    "testsPassed": 59,
+    "testsFailed": 0,
+    "transferFixtureDurationMs": 9000,
+    "semanticEventMs": 1500,
+    "echoFpsTransferVariants": [
+      30,
+      60
+    ],
+    "productionSchemaGateVerified": true
+  },
+  "fullRepositoryCheck": {
+    "schemaFixturesPassed": 35,
+    "testsPassed": 1016,
+    "testsFailed": 1,
+    "unrelatedFailure": "M5 retained Roto Brush evidence digest mismatch"
+  },
+  "liveAeBlocker": {
+    "code": "AE_CEP_SUITE_UNAVAILABLE",
+    "phase": "CEggApp::AcquirePluginSuites",
+    "message": "After Effects 25.6.6 cannot load the Common Extensibility Platform suite.",
+    "reversibleRecoveryAttempts": [
+      "reset Documents Adobe After Effects 2025 folder by rename",
+      "reset AppData Roaming Adobe After Effects 25.6 preferences by rename"
+    ],
+    "originalPreferenceFoldersRestored": true,
+    "cepProcessObserved": false,
+    "bridgePortObserved": false
+  },
+  "gate": {
+    "offlineStructuralProof": "PASS",
+    "realAeRenderedProof": "BLOCKED",
+    "m6_8Complete": false,
+    "nextRequiredProof": "Execute the layered UNKNOWN and proof-required native Echo constructions in repaired live AE, render bounded windows, compare against reference evidence, and retain the results before any adaptive effect schema can be certified."
+  },
+  "unmaterializedNativeSchemaGaps": [
+    "ae.effect.time-displacement",
+    "ae.effect.turbulent-displace"
+  ],
+  "latestImpactValidation": {
+    "typecheck": "PASS",
+    "m6TestsPassed": 59,
+    "m6TestsFailed": 0,
+    "diffCheck": "PASS",
+    "claimBoundary": "Structural/native-plan validation only; no new live-AE fidelity claim."
+  }
+}
