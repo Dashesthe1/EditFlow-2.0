@@ -76,7 +76,7 @@ def test_analyzer_suppresses_cross_shot_motion_and_distortion():
     analyzed = PROBE.analyze_frames(frames, 30.0)
     boundary = analyzed[2]
 
-    assert PROBE.PROBE_ALGORITHM_ID == "editflow.m6.dense-video-probe.v16"
+    assert PROBE.PROBE_ALGORITHM_ID == "editflow.m6.dense-video-probe.v17"
     assert boundary["semantic"]["shotBoundaryDiscontinuity"] is True
     assert boundary["diagnostics"]["shotBoundaryDiscontinuity"] == 1.0
     assert boundary["semantic"]["distortionStrength"] == 0.0
@@ -298,6 +298,29 @@ def test_echo_separation_uses_nearest_strong_pair_not_distant_harmonic():
     assert abs(separation - expected) < 1e-6
 
 
+def test_echo_separation_keeps_near_reliable_copy_below_relative_peak_gate():
+    values = np.zeros((100, 100), dtype=np.float32)
+    values[60, 50] = 0.041
+    values[75, 50] = 0.075
+    surface = {
+        "values": values,
+        "search": np.ones((100, 100), dtype=bool),
+        "cy": 50,
+        "cx": 50,
+        "height": 100,
+        "width": 100,
+        "minPairRadius": 8.0,
+    }
+
+    states, _strength, _overlap, separation = PROBE.edge_echo_metrics(
+        surface, np.zeros_like(values)
+    )
+
+    assert states == 2
+    expected = 10.0 / np.hypot(100.0, 100.0)
+    assert abs(separation - expected) < 1e-6
+
+
 if __name__ == "__main__":
     test_persistent_scene_change_is_a_shot_boundary()
     test_transient_warp_is_not_a_shot_boundary()
@@ -309,4 +332,5 @@ if __name__ == "__main__":
     test_echo_metrics_are_resolution_normalized()
     test_transition_anchor_rejects_early_source_echo_but_keeps_near_cut_fragment()
     test_echo_separation_uses_nearest_strong_pair_not_distant_harmonic()
+    test_echo_separation_keeps_near_reliable_copy_below_relative_peak_gate()
     print("m6_dense_video_probe_test: PASS")

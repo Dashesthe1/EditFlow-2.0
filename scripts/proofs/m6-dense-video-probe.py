@@ -9,8 +9,9 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v16"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v17"
 ECHO_ANALYSIS_LONGEST = 360
+ECHO_SPATIAL_PAIR_MIN = 0.035
 TEMPORAL_ECHO_MOTION_COVERAGE_MIN = 0.04
 TEMPORAL_ECHO_MOTION_P90_MIN = 0.03
 TEMPORAL_ECHO_PERSISTENT_OCCUPANCY_MAX = 0.35
@@ -333,6 +334,22 @@ def edge_echo_metrics(surface, temporal_baseline):
             continue
         residual_pairs.append((float(residual[py, px]), pair_radius))
     residual_pairs.sort(reverse=True)
+    # Event existence remains amplitude-relative so weak texture cannot become
+    # a temporal state. Spatial actuation is different: once the event is
+    # proven, measure the nearest independently reliable copy rather than the
+    # strongest harmonic. This keeps duplicate-spread measurement causal when
+    # band/source periodicity produces a farther, higher autocorrelation peak.
+    separation_pairs = []
+    for py, px in np.argwhere(residual_maxima & (residual >= ECHO_SPATIAL_PAIR_MIN)):
+        dy = float(py - cy)
+        dx = float(px - cx)
+        pair_radius = math.hypot(dx, dy)
+        if pair_radius < min_pair_radius:
+            continue
+        if dy < 0.0 or (abs(dy) < 0.5 and dx <= 0.0):
+            continue
+        separation_pairs.append((float(residual[py, px]), pair_radius))
+    separation_pairs.sort(reverse=True)
     strong_pairs = []
     if residual_peak >= 0.035 and residual_pairs:
         strongest_residual = residual_pairs[0][0]
@@ -350,7 +367,8 @@ def edge_echo_metrics(surface, temporal_baseline):
         # simultaneous states. A farther, slightly stronger autocorrelation
         # harmonic often comes from band periodicity or source structure and
         # must not become the construction actuator for duplicate spread.
-        echo_offset_pixels = min(strong_pairs, key=lambda pair: pair[1])[1]
+        spatial_pairs = separation_pairs if separation_pairs else strong_pairs
+        echo_offset_pixels = min(spatial_pairs, key=lambda pair: pair[1])[1]
         state_separation = clamp01(
             echo_offset_pixels / max(math.hypot(surface["width"], surface["height"]), 1.0)
         )

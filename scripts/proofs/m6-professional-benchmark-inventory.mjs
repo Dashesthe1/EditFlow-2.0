@@ -11,11 +11,18 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const OUT = path.join(ROOT, "proofs", "manifests", "m6-professional-benchmark-readiness-v1.json");
 const V6 = path.join(ROOT, "proofs", "manifests", "m6-real-pixel-fidelity-v6.json");
+const TRANSFER_V17 = path.join(
+  ROOT, "proofs", "diagnostics", "m6-shutter-measurement-v17-proof.json",
+);
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const relative = (file) => path.relative(ROOT, file).replaceAll("\\", "/");
 const sha256File = async (file) => createHash("sha256")
   .update(await readFile(file))
   .digest("hex");
+const sourceVideoKey = (evidence) => {
+  const ref = evidence.evidenceRefs?.find((item) => item.startsWith("video:sha256:"));
+  return typeof ref === "string" ? ref.slice("video:sha256:".length) : null;
+};
 
 const cases = createCanonicalProfessionalBenchmarkV1();
 const shutter = cases.find((item) => item.caseId === "m6:shutter_fragmentation:canonical");
@@ -40,6 +47,25 @@ const render = await load(renderSource);
 const comparison = await load(comparisonSource);
 const degradedComparison = await load(degradedComparisonSource);
 const degradedRender = await load(degradedEvidenceSource);
+const transferProof = await load(TRANSFER_V17);
+const transferReferenceSource = path.resolve(ROOT, transferProof.reference.evidenceRef);
+const transferRenderSource = path.resolve(ROOT, transferProof.corrected09.evidenceRef);
+const transferReference = await load(transferReferenceSource);
+const transferRender = await load(transferRenderSource);
+const canonicalReferenceSourceKey = sourceVideoKey(reference);
+const transferReferenceSourceKey = sourceVideoKey(transferReference);
+if (canonicalReferenceSourceKey === null
+  || transferReferenceSourceKey !== canonicalReferenceSourceKey
+  || transferProof.transferIdentity?.baselineSourceContentKey !== canonicalReferenceSourceKey
+  || transferProof.assertions?.analyzerMatched !== true
+  || transferProof.assertions?.corrected09FidelityPasses !== true
+  || transferProof.assertions?.corrected09DefiningCoverageComplete !== true
+  || transferProof.assertions?.degradedControlRejected !== true
+  || transferReference.analyzerFingerprint !== transferRender.analyzerFingerprint
+  || await sha256File(transferReferenceSource) !== transferProof.reference.evidenceSha256
+  || await sha256File(transferRenderSource) !== transferProof.corrected09.evidenceSha256) {
+  throw new Error("M6 v17 shutter transfer proof lost its source/analyzer/content binding.");
+}
 if (comparison.comparison.referenceEvidenceKey !== reference.contentKey
   || comparison.comparison.renderEvidenceKey !== render.contentKey
   || comparison.gate.certified !== true) {
@@ -59,24 +85,25 @@ const renderRef = relative(renderSource);
 const comparisonRef = relative(comparisonSource);
 const directAbRef = relative(directAbSource);
 const degradedRef = relative(degradedComparisonSource);
+const transferRef = relative(TRANSFER_V17);
 const evidence = [{
   caseId: shutter.caseId,
-  achievedLevel: "REFERENCE_FAITHFUL",
+  achievedLevel: "TRANSFER_VERIFIED",
   maturityProof: {
     functionallyPresent: true,
     structuralCoverageComplete: true,
     visuallyRecognizable: true,
     referenceFaithful: true,
-    transferVariantCount: 0,
+    transferVariantCount: 1,
     professionalCasePassCount: 1,
-    robustnessAxesPassed: [],
+    robustnessAxesPassed: [...shutter.transferAxes],
   },
   directAbReferenceRef: directAbRef,
   comparisonEvidenceRef: comparisonRef,
   renderEvidenceRef: renderRef,
-  transferEvidenceRefs: [],
+  transferEvidenceRefs: [transferRef],
   degradedControlEvidenceRef: degradedRef,
-  transferPassed: false,
+  transferPassed: true,
   degradedCaseRejected: true,
 }];
 
@@ -88,6 +115,7 @@ const artifacts = [
     family: shutter.family,
     sha256: await sha256File(referencePath),
     contentKey: reference.contentKey,
+    baselineSourceContentKey: canonicalReferenceSourceKey,
   },
   {
     ref: renderRef,
@@ -124,6 +152,18 @@ const artifacts = [
     referenceContentKey: reference.contentKey,
     renderContentKey: degradedRender.contentKey,
   },
+  {
+    ref: transferRef,
+    kind: "TRANSFER_PROOF",
+    caseId: shutter.caseId,
+    family: shutter.family,
+    sha256: await sha256File(TRANSFER_V17),
+    referenceContentKey: transferReference.contentKey,
+    renderContentKey: transferRender.contentKey,
+    baselineSourceContentKey: transferProof.transferIdentity.baselineSourceContentKey,
+    transferSourceContentKey: transferProof.transferIdentity.transferSourceContentKey,
+    transferAxes: transferProof.transferIdentity.transferAxes,
+  },
 ];
 
 const result = evaluateRetainedProfessionalBenchmarkV1(cases, evidence, artifacts);
@@ -155,6 +195,11 @@ const manifest = {
     sha256: await sha256File(V6),
     status: v6.status,
   }],
+  supplementalProofs: [{
+    ref: transferRef,
+    sha256: await sha256File(TRANSFER_V17),
+    status: "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO",
+  }],
   proofSources: {
     evaluator: "packages/visual-effects-intelligence/src/benchmark.ts",
     evaluatorSha256: await sha256File(path.join(
@@ -164,7 +209,6 @@ const manifest = {
     generatorSha256: await sha256File(fileURLToPath(import.meta.url)),
   },
   nextRequiredForShutterCanonical: [
-    ...shutter.transferAxes.map((axis) => `materially different transfer proof for axis: ${axis}`),
     "second professional case pass required for Level 6 maturity",
   ],
   noOverclaim: result.passed

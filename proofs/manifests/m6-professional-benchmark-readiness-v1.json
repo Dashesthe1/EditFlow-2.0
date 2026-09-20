@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-20T18:45:52.309Z",
+  "generatedAt": "2026-09-20T20:38:15.201Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -11,28 +11,33 @@
     "RENDER_DENSE_EVIDENCE": 1,
     "SEMANTIC_COMPARISON": 1,
     "DIRECT_AB": 1,
-    "TRANSFER_PROOF": 0,
+    "TRANSFER_PROOF": 1,
     "DEGRADED_CONTROL": 1
   },
   "retainedCases": [
     {
       "caseId": "m6:shutter_fragmentation:canonical",
-      "achievedLevel": "REFERENCE_FAITHFUL",
+      "achievedLevel": "TRANSFER_VERIFIED",
       "maturityProof": {
         "functionallyPresent": true,
         "structuralCoverageComplete": true,
         "visuallyRecognizable": true,
         "referenceFaithful": true,
-        "transferVariantCount": 0,
+        "transferVariantCount": 1,
         "professionalCasePassCount": 1,
-        "robustnessAxesPassed": []
+        "robustnessAxesPassed": [
+          "subject",
+          "aspect-ratio"
+        ]
       },
       "directAbReferenceRef": "proofs/diagnostics/m6-v6-shutter-reference-vs-certified-ae.jpg",
       "comparisonEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-01-fidelity.json",
       "renderEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-01-evidence.json",
-      "transferEvidenceRefs": [],
+      "transferEvidenceRefs": [
+        "proofs/diagnostics/m6-shutter-measurement-v17-proof.json"
+      ],
       "degradedControlEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
-      "transferPassed": false,
+      "transferPassed": true,
       "degradedCaseRejected": true
     }
   ],
@@ -43,7 +48,8 @@
       "caseId": "m6:shutter_fragmentation:canonical",
       "family": "SHUTTER_FRAGMENTATION",
       "sha256": "abd7c901dd0c3c5a0096f284c20b0a4b442255a793747efc6e24976267063b79",
-      "contentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344"
+      "contentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+      "baselineSourceContentKey": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae"
     },
     {
       "ref": "proofs/diagnostics/m6-v6-event-joint-01-evidence.json",
@@ -79,6 +85,21 @@
       "sha256": "a51d6739b72e169ba87dd0629fbf7b38da0812bc2cf541ee481312b880a455df",
       "referenceContentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
       "renderContentKey": "b01d7ae1cc8f97e9208b43aca651b3c1746c4b72b809ffef591c464e446dd238"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-shutter-measurement-v17-proof.json",
+      "kind": "TRANSFER_PROOF",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "e4cf2fdedfbe90f3e8e3bfce6526be5643b78a812abc1f435079aa0ec9d2194f",
+      "referenceContentKey": "97aec03fbe078a983fe899d3c5496c0311276962f7e60d03f14c41e496fa3b6c",
+      "renderContentKey": "c6025176d7e5345911141840c72ba2fc04c02518dfedcdc355169b912b871091",
+      "baselineSourceContentKey": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+      "transferSourceContentKey": "3dea801bad6a239ba8f2bb2934209170f00a65b645d77317b751434477e5e063",
+      "transferAxes": [
+        "subject",
+        "aspect-ratio"
+      ]
     }
   ],
   "result": {
@@ -112,8 +133,7 @@
       "subject"
     ],
     "failures": [
-      "m6:shutter_fragmentation:canonical:MATURITY_REFERENCE_FAITHFUL",
-      "m6:shutter_fragmentation:canonical:TRANSFER_FAILED",
+      "m6:shutter_fragmentation:canonical:MATURITY_TRANSFER_VERIFIED",
       "m6:temporal_echo:canonical:MISSING_EVIDENCE",
       "m6:velocity_transition:canonical:MISSING_EVIDENCE",
       "m6:subject_isolated_transition:canonical:MISSING_EVIDENCE",
@@ -136,10 +156,7 @@
       "m6:zoom_impact:held-out:MISSING_EVIDENCE",
       "m6:occlusion_transition:held-out:MISSING_EVIDENCE",
       "m6:freeze_fragmentation:held-out:MISSING_EVIDENCE",
-      "m6:camera_motion_match:held-out:MISSING_EVIDENCE",
-      "m6:shutter_fragmentation:canonical:INSUFFICIENT_TRANSFER_ARTIFACTS",
-      "m6:shutter_fragmentation:canonical:TRANSFER_AXIS_UNPROVEN_SUBJECT",
-      "m6:shutter_fragmentation:canonical:TRANSFER_AXIS_UNPROVEN_ASPECT_RATIO"
+      "m6:camera_motion_match:held-out:MISSING_EVIDENCE"
     ]
   },
   "sourceManifests": [
@@ -149,15 +166,20 @@
       "status": "SINGLE_CASE_PROFESSIONAL_FIDELITY_VERIFIED"
     }
   ],
+  "supplementalProofs": [
+    {
+      "ref": "proofs/diagnostics/m6-shutter-measurement-v17-proof.json",
+      "sha256": "e4cf2fdedfbe90f3e8e3bfce6526be5643b78a812abc1f435079aa0ec9d2194f",
+      "status": "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO"
+    }
+  ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
-    "evaluatorSha256": "470fe3a2b8e2aa80a4ade3b07b5302c7728ac598661bc4fc7cd0de252956eda2",
+    "evaluatorSha256": "65573bc2a606661ae1bb5821b1f3484e90b1511e8b7231af4922eaeb4cb1f304",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "55bdbf64ae8985363d80ed0f5939039549095619e66bb969f8b03c4846f57318"
+    "generatorSha256": "e86585e5ce343c2a2d5a4718d4685291e490e87b58a645db9c9708fcfc240e06"
   },
   "nextRequiredForShutterCanonical": [
-    "materially different transfer proof for axis: subject",
-    "materially different transfer proof for axis: aspect-ratio",
     "second professional case pass required for Level 6 maturity"
   ],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

@@ -3854,6 +3854,33 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
   assert.equal(mismatchResult.passed, false);
   assert.ok(mismatchResult.failures.some((item) => /COMPARISON_CONTENT_BINDING_MISMATCH/.test(item)));
 
+  const crossAnalyzerTransfer = artifacts.map((artifact) => {
+    if (artifact.caseId !== cases[0].caseId) return artifact;
+    if (artifact.kind === "REFERENCE_DENSE_EVIDENCE") {
+      return { ...artifact, baselineSourceContentKey: hex(500) };
+    }
+    if (artifact.kind === "TRANSFER_PROOF") {
+      return { ...artifact, referenceContentKey: hex(7000) };
+    }
+    return artifact;
+  });
+  const crossAnalyzerResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, retainedEvidence, crossAnalyzerTransfer,
+  );
+  assert.equal(crossAnalyzerResult.passed, true, crossAnalyzerResult.failures.join(", "));
+
+  const crossAnalyzerWrongSource = crossAnalyzerTransfer.map((artifact) =>
+    artifact.kind === "REFERENCE_DENSE_EVIDENCE" && artifact.caseId === cases[0].caseId
+      ? { ...artifact, baselineSourceContentKey: hex(9000) }
+      : artifact);
+  const crossAnalyzerWrongSourceResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, retainedEvidence, crossAnalyzerWrongSource,
+  );
+  assert.equal(crossAnalyzerWrongSourceResult.passed, false);
+  assert.ok(crossAnalyzerWrongSourceResult.failures.some(
+    (item) => /TRANSFER_REFERENCE_BINDING_MISMATCH/.test(item),
+  ));
+
   const reusedSource = artifacts.map((artifact) =>
     artifact.kind === "TRANSFER_PROOF" && artifact.caseId === cases[0].caseId
       ? { ...artifact, transferSourceContentKey: artifact.baselineSourceContentKey }
