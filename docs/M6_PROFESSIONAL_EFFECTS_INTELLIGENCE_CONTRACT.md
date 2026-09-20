@@ -188,6 +188,16 @@ therefore retains its content-addressed v11/v6 case proofs under the no-reproof 
 while new M6.9 transfer and benchmark renders must use analyzer-compatible evidence for
 their own certification.
 
+The bounded actuator search now spends at most one render on a residual interaction
+before structural escalation when clean one-factor history contains a target-metric
+improvement plus an invariant-preserving companion. It never couples two collateral
+regressions or two blind directions, and retained-best selection remains authoritative.
+`proofs/diagnostics/m6-residual-interaction-live02.json` exercises that path in live
+AE with a distortion-strength plus event-evolution-sweep candidate. The candidate
+reached 0.8933 weighted fidelity / 4-of-7 defining coverage and introduced a scale
+residual, so it was correctly rejected; the 0.9846 / 5-of-7 checkpoint remains retained.
+This is diagnostic search evidence, not professional-fidelity certification.
+
 The native Echo hypothesis now also has refreshed active-v10 live-AE evidence at
 `proofs/diagnostics/m6-native-echo-live-proof.json`. The proof commits the real
 `ADBE Echo` effect, verifies its compiled property values by AE readback, and compares

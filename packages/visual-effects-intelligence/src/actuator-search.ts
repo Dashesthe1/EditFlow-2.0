@@ -432,6 +432,124 @@ const nonlinearIntervalRefinements = (
   return output;
 };
 
+interface ResidualInteractionLegV1 {
+  readonly invariantId: string;
+  readonly control: ConstructionControlKindV1;
+  readonly dimension: ActuatorSearchDimensionV1;
+  readonly targetAttempt: ActuatorAttemptEvidenceV1;
+  readonly improvementRatio: number;
+  readonly coveragePreserved: boolean;
+  readonly newResidualInvariantIds: readonly string[];
+}
+
+const residualAwareInteractionCandidate = (
+  retained: ActuatorAttemptEvidenceV1,
+  attempts: readonly ActuatorAttemptEvidenceV1[],
+  instructions: readonly ConstructionControlInstructionV1[],
+  dimensions: readonly ActuatorSearchDimensionV1[],
+  seen: ReadonlySet<string>,
+): ActuatorSearchCandidateV1 | null => {
+  const retainedResiduals = new Set(retained.residualInvariantIds);
+  if (retainedResiduals.size < 2) return null;
+
+  const bestLegs = new Map<string, ResidualInteractionLegV1>();
+  for (const instruction of instructions) {
+    if (!instruction.defining || !retainedResiduals.has(instruction.invariantId)) continue;
+    const dimension = dimensions.find((item) => item.control === instruction.control);
+    if (dimension === undefined) continue;
+    const base = controlValue(retained.values, instruction.control);
+    const metric = deficitMetric(instruction);
+    const retainedMetric = metricValue(retained, metric);
+    const reference = instruction.deficitReferenceValue ?? instruction.referenceValue;
+    if (base === null || retainedMetric === null
+      || typeof reference !== "number" || !Number.isFinite(reference)) continue;
+    const retainedError = Math.abs(reference - retainedMetric);
+    if (retainedError <= EPSILON) continue;
+
+    let best: ResidualInteractionLegV1 | null = null;
+    for (const attempt of attempts) {
+      if (attempt.attemptId === retained.attemptId
+        || singleChangedControl(retained.values, attempt.values) !== instruction.control) continue;
+      const target = controlValue(attempt.values, instruction.control);
+      const candidateMetric = metricValue(attempt, metric);
+      if (target === null || candidateMetric === null || Math.abs(target - base) <= EPSILON) continue;
+      const improvement = retainedError - Math.abs(reference - candidateMetric);
+      const newResidualInvariantIds = attempt.residualInvariantIds.filter((invariantId) =>
+        !retainedResiduals.has(invariantId));
+      const coverageLoss = retained.definingCoverage - attempt.definingCoverage;
+      // A single collateral leg may participate in one interaction probe, but
+      // only when its loss is bounded to one defining invariant. The paired leg
+      // below must preserve the retained invariant set.
+      if (coverageLoss > 0.2 + EPSILON || newResidualInvariantIds.length > 1) continue;
+      const leg: ResidualInteractionLegV1 = {
+        invariantId: instruction.invariantId,
+        control: instruction.control,
+        dimension,
+        targetAttempt: attempt,
+        improvementRatio: improvement / retainedError,
+        coveragePreserved: coverageLoss <= EPSILON,
+        newResidualInvariantIds,
+      };
+      if (best === null
+        || leg.improvementRatio > best.improvementRatio + EPSILON
+        || (Math.abs(leg.improvementRatio - best.improvementRatio) <= EPSILON
+          && compareAttempt(attempt, best.targetAttempt) > 0)) {
+        best = leg;
+      }
+    }
+    if (best === null) continue;
+    const key = `${best.invariantId}::${best.control}`;
+    const prior = bestLegs.get(key);
+    if (prior === undefined || best.improvementRatio > prior.improvementRatio + EPSILON) {
+      bestLegs.set(key, best);
+    }
+  }
+
+  const legs = [...bestLegs.values()].sort((left, right) =>
+    right.improvementRatio - left.improvementRatio
+    || left.invariantId.localeCompare(right.invariantId)
+    || left.control.localeCompare(right.control));
+  for (let leftIndex = 0; leftIndex < legs.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < legs.length; rightIndex += 1) {
+      const pair = [legs[leftIndex]!, legs[rightIndex]!] as const;
+      if (pair[0].invariantId === pair[1].invariantId
+        || pair[0].control === pair[1].control) continue;
+      const safeLegs = pair.filter((leg) =>
+        leg.coveragePreserved && leg.newResidualInvariantIds.length === 0);
+      const improvingLegs = pair.filter((leg) => leg.improvementRatio > EPSILON);
+      // Never couple two collateral regressions or two blind directions. One
+      // metric-improving leg and one invariant-preserving leg are the minimum
+      // authority for a retained-best-protected interaction render.
+      if (safeLegs.length === 0 || improvingLegs.length === 0) continue;
+      const values: Partial<Record<ConstructionControlKindV1, number>> = { ...retained.values };
+      const changed: ConstructionControlKindV1[] = [];
+      for (const leg of pair) {
+        const base = controlValue(retained.values, leg.control);
+        const target = controlValue(leg.targetAttempt.values, leg.control);
+        if (base === null || target === null) continue;
+        let next = clampDimension(base + ((target - base) * 0.5), leg.dimension);
+        if (Math.abs(next - base) + EPSILON < leg.dimension.minimumStep) {
+          next = clampDimension(target, leg.dimension);
+        }
+        if (Math.abs(next - base) <= EPSILON) continue;
+        values[leg.control] = next;
+        changed.push(leg.control);
+      }
+      if (changed.length !== 2) continue;
+      const key = vectorKey(values);
+      if (seen.has(key)) continue;
+      return {
+        candidateId: `probe:residual-interaction:${changed
+          .map((control) => control.toLowerCase()).join("+")}`,
+        values,
+        changedControls: changed,
+        rationale: `Test one retained-best-protected interaction between ${pair[0].invariantId} and ${pair[1].invariantId}; rendered one-factor evidence includes a target-metric improvement and an invariant-preserving companion, with at most one bounded collateral leg.`,
+      };
+    }
+  }
+  return null;
+};
+
 export const planBoundedActuatorSearchV1 = (input: Readonly<{
   attempts: readonly ActuatorAttemptEvidenceV1[];
   instructions: readonly ConstructionControlInstructionV1[];
@@ -653,6 +771,26 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
           rationale: "Test a conservative coupled interaction only after isolated actuator probes are available.",
         });
       }
+    }
+  }
+
+  // When exhausted scalar probes leave multiple defining residuals, spend at
+  // most one bounded render on their interaction before structural escalation.
+  // At least one clean one-factor leg must improve its target metric and at
+  // least one must preserve the retained invariant set; never couple two
+  // collateral regressions or two blind directions.
+  if (candidates.length < maxCandidates
+    && !candidates.some((candidate) => candidate.changedControls.length > 1)) {
+    const interaction = residualAwareInteractionCandidate(
+      retained,
+      input.attempts,
+      input.instructions,
+      input.dimensions,
+      new Set([...seen, ...candidates.map((candidate) => vectorKey(candidate.values))]),
+    );
+    if (interaction !== null) {
+      seen.add(vectorKey(interaction.values));
+      candidates.push(interaction);
     }
   }
 

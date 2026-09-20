@@ -785,3 +785,133 @@ test("M6.7 actuator search never repeats already-rendered control vectors", () =
     assert.ok(!seen.has(candidate.values.DUPLICATE_OPACITY.toFixed(3)));
   }
 });
+
+test("M6.7 uses complementary one-factor evidence for one bounded residual interaction probe", () => {
+  const residualInstruction = (invariantId, control, metric, reference, render) => ({
+    ...instruction(control),
+    instructionId: `instruction:${invariantId}:${control.toLowerCase()}`,
+    invariantId,
+    metric,
+    deficitMetric: metric,
+    deficitReferenceValue: reference,
+    deficitRenderValue: render,
+    referenceValue: reference,
+    renderValue: render,
+    normalizedError: Math.abs(reference - render) / Math.max(Math.abs(reference), 1e-9),
+  });
+  const base = {
+    DISTORTION_STRENGTH: 1,
+    MOTION_IMPULSE_SHARPNESS: 1,
+  };
+  const residuals = ["unknown.distortion", "unknown.acceleration"];
+  const plan = planBoundedActuatorSearchV1({
+    attempts: [
+      attempt("retained", base, 5 / 7, 0.985, false, {
+        distortionPeak: 0.2,
+        accelerationPeak: 0.03,
+      }, residuals),
+      attempt("distortion-up", { ...base, DISTORTION_STRENGTH: 1.5 },
+        4 / 7, 0.965, false, {
+          distortionPeak: 0.35,
+          accelerationPeak: 0.02,
+        }, [...residuals, "unknown.scale"]),
+      attempt("distortion-down", { ...base, DISTORTION_STRENGTH: 0.5 },
+        5 / 7, 0.955, false, {
+          distortionPeak: 0.12,
+          accelerationPeak: 0.035,
+        }, residuals),
+      attempt("acceleration-up", { ...base, MOTION_IMPULSE_SHARPNESS: 1.5 },
+        5 / 7, 0.96, false, {
+          distortionPeak: 0.16,
+          accelerationPeak: 0.055,
+        }, residuals),
+      attempt("acceleration-down", { ...base, MOTION_IMPULSE_SHARPNESS: 0.5 },
+        5 / 7, 0.95, false, {
+          distortionPeak: 0.22,
+          accelerationPeak: 0.015,
+        }, residuals),
+    ],
+    instructions: [
+      residualInstruction("unknown.distortion", "DISTORTION_STRENGTH",
+        "distortionPeak", 0.47, 0.2),
+      residualInstruction("unknown.acceleration", "MOTION_IMPULSE_SHARPNESS",
+        "accelerationPeak", 0.07, 0.03),
+    ],
+    dimensions: [
+      { control: "DISTORTION_STRENGTH", minimum: 0.5, maximum: 1.5, minimumStep: 0.5 },
+      { control: "MOTION_IMPULSE_SHARPNESS", minimum: 0.5, maximum: 1.5, minimumStep: 0.5 },
+    ],
+    maxCandidates: 2,
+  });
+
+  assert.equal(plan.candidates.length, 1);
+  const [candidate] = plan.candidates;
+  assert.ok(candidate.candidateId.startsWith("probe:residual-interaction:"));
+  assert.deepEqual([...candidate.changedControls].sort(),
+    ["DISTORTION_STRENGTH", "MOTION_IMPULSE_SHARPNESS"].sort());
+  assert.equal(candidate.values.DISTORTION_STRENGTH, 1.5);
+  assert.equal(candidate.values.MOTION_IMPULSE_SHARPNESS, 1.5);
+  assert.deepEqual(plan.synthesisRequiredInvariantIds, [],
+    "one evidence-backed interaction must be rendered before hard synthesis escalation");
+});
+
+test("M6.7 refuses residual interaction when both one-factor legs introduce new defining failures", () => {
+  const residualInstruction = (invariantId, control, metric, reference, render) => ({
+    ...instruction(control),
+    invariantId,
+    metric,
+    deficitMetric: metric,
+    deficitReferenceValue: reference,
+    deficitRenderValue: render,
+    referenceValue: reference,
+    renderValue: render,
+  });
+  const base = {
+    DISTORTION_STRENGTH: 1,
+    MOTION_IMPULSE_SHARPNESS: 1,
+  };
+  const residuals = ["unknown.distortion", "unknown.acceleration"];
+  const plan = planBoundedActuatorSearchV1({
+    attempts: [
+      attempt("retained", base, 5 / 7, 0.985, false, {
+        distortionPeak: 0.2,
+        accelerationPeak: 0.03,
+      }, residuals),
+      attempt("distortion-up", { ...base, DISTORTION_STRENGTH: 1.5 },
+        5 / 7, 0.965, false, {
+          distortionPeak: 0.35,
+          accelerationPeak: 0.02,
+        }, [...residuals, "unknown.scale"]),
+      attempt("distortion-down", { ...base, DISTORTION_STRENGTH: 0.5 },
+        5 / 7, 0.955, false, {
+          distortionPeak: 0.12,
+          accelerationPeak: 0.035,
+        }, residuals),
+      attempt("acceleration-up", { ...base, MOTION_IMPULSE_SHARPNESS: 1.5 },
+        5 / 7, 0.96, false, {
+          distortionPeak: 0.16,
+          accelerationPeak: 0.055,
+        }, [...residuals, "unknown.blur"]),
+      attempt("acceleration-down", { ...base, MOTION_IMPULSE_SHARPNESS: 0.5 },
+        5 / 7, 0.95, false, {
+          distortionPeak: 0.22,
+          accelerationPeak: 0.015,
+        }, [...residuals, "unknown.blur"]),
+    ],
+    instructions: [
+      residualInstruction("unknown.distortion", "DISTORTION_STRENGTH",
+        "distortionPeak", 0.47, 0.2),
+      residualInstruction("unknown.acceleration", "MOTION_IMPULSE_SHARPNESS",
+        "accelerationPeak", 0.07, 0.03),
+    ],
+    dimensions: [
+      { control: "DISTORTION_STRENGTH", minimum: 0.5, maximum: 1.5, minimumStep: 0.5 },
+      { control: "MOTION_IMPULSE_SHARPNESS", minimum: 0.5, maximum: 1.5, minimumStep: 0.5 },
+    ],
+    maxCandidates: 2,
+  });
+
+  assert.ok(plan.candidates.every((candidate) =>
+    candidate.changedControls.length === 1),
+  "unsafe evidence must never authorize a coupled render");
+});
