@@ -8,7 +8,10 @@ import type {
   NormalizedPointV1,
   TransitionDnaV1,
 } from "./contracts.js";
-import { resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
+import {
+  resolveFragmentationEventMetricsV1,
+  scoreFragmentationEventLocalizationV1,
+} from "./dense-evidence.js";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -76,9 +79,36 @@ const metricValue = (
   if (metric === "chromaticSeparationPeak") return maxFrameMetric(evidence, "chromaticSeparation");
   if (metric === "stateSeparationPeak") return maxFrameMetric(evidence, "stateSeparation");
   if (metric === "fragmentationCoherencePeak") return fragmentation.peak;
+  if (metric === "fragmentationEventLocalization") {
+    return scoreFragmentationEventLocalizationV1(evidence, fragmentation.phase);
+  }
   if (metric === "fragmentationCoherencePhase") return fragmentation.phase;
   if (metric === "activeDimensionCount") return activeDimensionCount(evidence);
   return maxFrameMetric(evidence, metric);
+};
+
+const metricValuesForComparison = (
+  reference: DenseEffectEvidenceV1,
+  render: DenseEffectEvidenceV1,
+  invariant: EffectInvariantV1,
+): Readonly<{
+  referenceValue: number | NormalizedPointV1;
+  renderValue: number | NormalizedPointV1;
+}> => {
+  const referenceValue = metricValue(reference, invariant.invariantId, invariant.metric);
+  let renderValue = metricValue(render, invariant.invariantId, invariant.metric);
+  if (invariant.metric === "recoveryFrames"
+    && typeof referenceValue === "number" && typeof renderValue === "number") {
+    const referenceInterval = reference.summary.frameIntervalMs;
+    const renderInterval = render.summary.frameIntervalMs;
+    if (Number.isFinite(referenceInterval) && referenceInterval > 0
+      && Number.isFinite(renderInterval) && renderInterval > 0) {
+      // Recovery is a duration, not a literal frame count. Express the render in
+      // reference-frame equivalents so semantic comparison remains stable across FPS.
+      renderValue *= renderInterval / referenceInterval;
+    }
+  }
+  return { referenceValue, renderValue };
 };
 
 const scalar = (value: number | NormalizedPointV1): number =>
@@ -181,11 +211,10 @@ export const compareSemanticVisualFidelityV1 = (input: {
     throw new TypeError("Frame-aligned fidelity comparison requires equal frame counts.");
   }
   const invariants = [...input.dna.definingInvariants, ...input.dna.optionalInvariants];
-  const metrics = invariants.map((item) => compareInvariant(
-    item,
-    metricValue(input.reference, item.invariantId, item.metric),
-    metricValue(input.render, item.invariantId, item.metric),
-  ));
+  const metrics = invariants.map((item) => {
+    const values = metricValuesForComparison(input.reference, input.render, item);
+    return compareInvariant(item, values.referenceValue, values.renderValue);
+  });
   const defining = metrics.filter((metric) => metric.defining);
   const definingCoverage = defining.length === 0
     ? 0 : defining.filter((metric) => metric.passed).length / defining.length;

@@ -259,9 +259,28 @@
       var response = JSON.parse(legacyRaw);
 
       if (request.command === "layers.precompose" && response.outcome !== "FAILED" && response.outcome !== "REJECTED") {
-        var child = findItem({ stableId: request.payload.stableId });
+        var createdChildHostId = null;
+        var affected = response.affectedObjects instanceof Array ? response.affectedObjects : [];
+        var affectedIndex;
+        for (affectedIndex = 0; affectedIndex < affected.length; affectedIndex += 1) {
+          var affectedObject = affected[affectedIndex];
+          if (affectedObject
+              && affectedObject.kind === "COMPOSITION"
+              && affectedObject.stableId === request.payload.stableId
+              && typeof affectedObject.hostId === "number") {
+            createdChildHostId = affectedObject.hostId;
+            break;
+          }
+        }
+        // The stable id is intentionally deterministic and may be reused by repeated
+        // proof/correction passes. Prefer the legacy operation's returned AE host id
+        // so a stale same-stable-id precomp cannot be mistaken for the child that was
+        // just created by this operation.
+        var child = createdChildHostId === null
+          ? findItem({ stableId: request.payload.stableId })
+          : findItem({ hostId: createdChildHostId });
         var parent = findComp(request.payload.comp);
-        if (!child || !(child instanceof CompItem)) throw new Error("v1.1 precompose child stable identity was not found after legacy operation.");
+        if (!child || !(child instanceof CompItem)) throw new Error("v1.1 precompose child identity was not found after legacy operation.");
         var replacement = findLayerBySource(parent, child);
         if (!replacement) throw new Error("v1.1 precompose replacement layer could not be resolved by child source identity.");
         setStableId(replacement, request.payload.replacementStableId);

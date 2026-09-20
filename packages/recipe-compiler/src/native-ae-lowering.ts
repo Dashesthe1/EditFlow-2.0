@@ -11,6 +11,7 @@ import {
 } from "../../core-contracts/src/index.js";
 import type { VirtualAeOperationV1 } from "../../virtual-ae/src/index.js";
 import { AE_ADAPTER_ROUTE_ID_V11 } from "../../adapters/ae-cep/src/protocol-v1_1.js";
+import { AE_COMPOSITE_ROUTE_ID_V13, isAeBlendModeV13 } from "../../adapters/ae-cep/src/protocol-v1_3.js";
 import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../../adapters/ae-cep/src/protocol-v1_7.js";
 import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../../adapters/ae-cep/src/protocol-v1_8.js";
 import { AE_MARKER_MOTION_ROUTE_ID_V20 } from "../../adapters/ae-cep/src/protocol-v2_0.js";
@@ -562,8 +563,52 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     previousOperationId = operationId;
   };
 
+  const precomposeSourceLayerIds = new Set(
+    compiled.operations
+      .filter((operation) => operation.type === "PRECOMPOSE")
+      .flatMap((operation) => operation.layerIds),
+  );
+  const planCreatedPrecompLayers = new Set(
+    compiled.operations
+      .filter((operation) => operation.type === "PRECOMPOSE")
+      .map((operation) => operation.newLayerId),
+  );
+  const postPrecomposeLayerIds = new Set(planCreatedPrecompLayers);
+  let discoveredPostPrecomposeLayer = true;
+  while (discoveredPostPrecomposeLayer) {
+    discoveredPostPrecomposeLayer = false;
+    for (const operation of compiled.operations) {
+      if (operation.type !== "DUPLICATE_LAYER"
+        || !postPrecomposeLayerIds.has(operation.sourceLayerId)
+        || postPrecomposeLayerIds.has(operation.layerId)) continue;
+      postPrecomposeLayerIds.add(operation.layerId);
+      discoveredPostPrecomposeLayer = true;
+    }
+  }
+  const isOrderedPostPrecomposeOperation = (operation: VirtualAeOperationV1): boolean => {
+    if (operation.type === "DUPLICATE_LAYER") {
+      return postPrecomposeLayerIds.has(operation.sourceLayerId);
+    }
+    if (operation.type === "SET_PROPERTY"
+      && operation.propertyPath === "TimeRemap.Enabled") {
+      return postPrecomposeLayerIds.has(operation.layerId);
+    }
+    if (operation.type === "ADD_EFFECT"
+      || operation.type === "SET_EFFECT_PROPERTY"
+      || operation.type === "SET_EFFECT_EXPRESSION"
+      || operation.type === "SET_EXPRESSION"
+      || operation.type === "SET_BLEND_MODE") {
+      return postPrecomposeLayerIds.has(operation.layerId);
+    }
+    return false;
+  };
+  const orderedPostPrecomposeOperations = new Set(
+    compiled.operations.filter(isOrderedPostPrecomposeOperation),
+  );
+
   for (const operation of compiled.operations) {
-    if (operation.type !== "DUPLICATE_LAYER") continue;
+    if (operation.type !== "DUPLICATE_LAYER"
+      || orderedPostPrecomposeOperations.has(operation)) continue;
     emit(
       "ae.layer.duplicate",
       AE_ADAPTER_ROUTE_ID_V11,
@@ -574,6 +619,36 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
         stableId: operation.layerId,
       },
       "R2_STRUCTURAL",
+    );
+  }
+
+  // Preserve the causal recipe order when an expression is intentionally baked
+  // inside a precomp before a downstream effect (for example M6 Echo trailing
+  // transform motion). Precompose moves the source layer out of the parent comp,
+  // so emitting these expressions after the structural mutation would target an
+  // object that no longer exists in that parent composition.
+  const precomposeSourceExpressions = compiled.operations.filter((operation) =>
+    operation.type === "SET_EXPRESSION" && precomposeSourceLayerIds.has(operation.layerId));
+  for (const expressionOperation of precomposeSourceExpressions) {
+    if (expressionOperation.type !== "SET_EXPRESSION") continue;
+    if (expressionOperation.propertyPath === "TimeRemap.SourceTime") {
+      throw new NativeAeRecipeLoweringError(
+        "PRECOMPOSE_SOURCE_TIME_REMAP_ORDER_UNSUPPORTED",
+        `Time Remap expression on precompose source '${expressionOperation.layerId}' requires an explicit pre-structural enable phase.`,
+      );
+    }
+    emit(
+      "ae.expression.set",
+      AE_ADAPTER_ROUTE_ID_V11,
+      "property.set_expression",
+      {
+        comp: { stableId: expressionOperation.compId },
+        layer: { stableId: expressionOperation.layerId },
+        propertyPath: nativeExpressionPropertyPath(expressionOperation.propertyPath),
+        expression: expressionOperation.expression,
+        enabled: true,
+      },
+      "R1_REVERSIBLE",
     );
   }
 
@@ -597,7 +672,155 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     );
   }
 
+  // Operations that consume a layer created by PRECOMPOSE must retain their
+  // virtual recipe order. In particular, downstream event-local duplicates
+  // cannot be front-loaded before the replacement layer exists, and duplicating
+  // before an upstream effect would copy a visually weaker pre-effect state.
   for (const operation of compiled.operations) {
+    if (!orderedPostPrecomposeOperations.has(operation)) continue;
+    if (operation.type === "DUPLICATE_LAYER") {
+      emit(
+        "ae.layer.duplicate",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "layer.duplicate",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.sourceLayerId },
+          stableId: operation.layerId,
+        },
+        "R2_STRUCTURAL",
+      );
+      continue;
+    }
+    if (operation.type === "ADD_EFFECT") {
+      emit(
+        "ae.effect.add",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "effect.add",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          matchName: operation.matchName,
+          effectBindingId: operation.effectId,
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_EFFECT_PROPERTY") {
+      if (!Array.isArray(operation.propertyPath) || operation.propertyPath.length === 0) {
+        throw new NativeAeRecipeLoweringError(
+          "NATIVE_EFFECT_PATH_REQUIRED",
+          "Native effect property lowering requires a non-empty stable property path array.",
+        );
+      }
+      emit(
+        "ae.effect.property.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "effect.set_property",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          effectBindingId: operation.effectId,
+          propertyPath: [...operation.propertyPath],
+          value: structuredClone(operation.value),
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_EFFECT_EXPRESSION") {
+      if (!Array.isArray(operation.propertyPath) || operation.propertyPath.length === 0) {
+        throw new NativeAeRecipeLoweringError(
+          "NATIVE_EFFECT_EXPRESSION_PATH_REQUIRED",
+          "Native effect expression lowering requires a non-empty stable property path array.",
+        );
+      }
+      emit(
+        "ae.expression.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "property.set_expression",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          effectBindingId: operation.effectId,
+          propertyPath: [...operation.propertyPath],
+          expression: operation.expression,
+          enabled: true,
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_PROPERTY") {
+      if (operation.propertyPath !== "TimeRemap.Enabled") {
+        throw new NativeAeRecipeLoweringError(
+          "POST_PRECOMPOSE_SET_PROPERTY_UNSUPPORTED",
+          `Ordered post-precompose property '${operation.propertyPath}' is not supported.`,
+        );
+      }
+      // Recipe compilation may carry semantic activation evidence rather than
+      // a literal boolean. The native lowering contract has always treated the
+      // presence of TimeRemap.Enabled as the typed enable command (see the
+      // ordinary non-precompose path below); preserve that contract here too.
+      emit(
+        "ae.layer.time_remap.enable",
+        AE_TIME_REMAP_ROUTE_ID_V27,
+        "layer.time_remap.enable",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_EXPRESSION") {
+      if (operation.propertyPath === "TimeRemap.SourceTime"
+        && !hasSetProperty(compiled.operations, operation.layerId, "TimeRemap.Enabled")) {
+        throw new NativeAeRecipeLoweringError(
+          "TIME_REMAP_EXPRESSION_REQUIRES_ENABLE",
+          `Time Remap expression lowering for '${operation.layerId}' requires TimeRemap.Enabled in the same compiled recipe.`,
+        );
+      }
+      emit(
+        "ae.expression.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "property.set_expression",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          propertyPath: nativeExpressionPropertyPath(operation.propertyPath),
+          expression: operation.expression,
+          enabled: true,
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_BLEND_MODE") {
+      if (!isAeBlendModeV13(operation.blendMode)) {
+        throw new NativeAeRecipeLoweringError(
+          "INVALID_NATIVE_BLEND_MODE",
+          `Native AE blend-mode lowering does not support '${operation.blendMode}'.`,
+        );
+      }
+      emit(
+        "ae.layer.blend_mode.set",
+        AE_COMPOSITE_ROUTE_ID_V13,
+        "layer.set_blend_mode",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          blendMode: operation.blendMode,
+        },
+        "R1_REVERSIBLE",
+      );
+    }
+  }
+
+  for (const operation of compiled.operations) {
+    if (orderedPostPrecomposeOperations.has(operation)) continue;
     if (operation.type === "APPLY_STABILIZATION") {
       const stabilizationBoundaryId = asRollbackBoundaryId(
         `${compiled.recipeId}:stabilization:${operationCounter + 1}`,
@@ -656,6 +879,49 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
           effectBindingId: operation.effectId,
           propertyPath: [...operation.propertyPath],
           value: structuredClone(operation.value),
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_EFFECT_EXPRESSION") {
+      if (!Array.isArray(operation.propertyPath) || operation.propertyPath.length === 0) {
+        throw new NativeAeRecipeLoweringError(
+          "NATIVE_EFFECT_EXPRESSION_PATH_REQUIRED",
+          "Native effect expression lowering requires a non-empty stable property path array.",
+        );
+      }
+      emit(
+        "ae.expression.set",
+        AE_ADAPTER_ROUTE_ID_V11,
+        "property.set_expression",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          effectBindingId: operation.effectId,
+          propertyPath: [...operation.propertyPath],
+          expression: operation.expression,
+          enabled: true,
+        },
+        "R1_REVERSIBLE",
+      );
+      continue;
+    }
+    if (operation.type === "SET_BLEND_MODE") {
+      if (!isAeBlendModeV13(operation.blendMode)) {
+        throw new NativeAeRecipeLoweringError(
+          "INVALID_NATIVE_BLEND_MODE",
+          `Native AE blend-mode lowering does not support '${operation.blendMode}'.`,
+        );
+      }
+      emit(
+        "ae.layer.blend_mode.set",
+        AE_COMPOSITE_ROUTE_ID_V13,
+        "layer.set_blend_mode",
+        {
+          comp: { stableId: operation.compId },
+          layer: { stableId: operation.layerId },
+          blendMode: operation.blendMode,
         },
         "R1_REVERSIBLE",
       );
@@ -883,19 +1149,18 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     }
   };
 
-  const planCreatedPrecompLayers = new Set(
-    compiled.operations
-      .filter((operation) => operation.type === "PRECOMPOSE")
-      .map((operation) => operation.newLayerId),
-  );
-
   for (const layerId of layerOrder(compiled.operations)) {
     const enablesTimeRemap = hasSetProperty(
       compiled.operations,
       layerId,
       "TimeRemap.Enabled",
     );
-    if (enablesTimeRemap) {
+    const orderedTimeRemapEnable = compiled.operations.some((operation) =>
+      operation.type === "SET_PROPERTY"
+      && operation.layerId === layerId
+      && operation.propertyPath === "TimeRemap.Enabled"
+      && orderedPostPrecomposeOperations.has(operation));
+    if (enablesTimeRemap && !orderedTimeRemapEnable) {
       emit(
         "ae.layer.time_remap.enable",
         AE_TIME_REMAP_ROUTE_ID_V27,
@@ -909,7 +1174,10 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
     }
 
     const layerExpressions = compiled.operations.filter((operation) =>
-      operation.type === "SET_EXPRESSION" && operation.layerId === layerId);
+      operation.type === "SET_EXPRESSION"
+      && operation.layerId === layerId
+      && !precomposeSourceLayerIds.has(operation.layerId)
+      && !orderedPostPrecomposeOperations.has(operation));
     for (const expressionOperation of layerExpressions) {
       if (expressionOperation.type !== "SET_EXPRESSION") continue;
       if (expressionOperation.propertyPath === "TimeRemap.SourceTime" && !enablesTimeRemap) {
@@ -1001,7 +1269,8 @@ export const lowerCompiledRecipeToNativeAePlanV1 = (
       || operation.type === "ADD_KEYFRAME" || operation.type === "SET_EXPRESSION"
       || operation.type === "SET_COMP_MOTION" || operation.type === "SET_LAYER_MOTION"
       || operation.type === "ADD_EFFECT" || operation.type === "SET_EFFECT_PROPERTY"
-      || operation.type === "APPLY_STABILIZATION") continue;
+      || operation.type === "SET_EFFECT_EXPRESSION"
+      || operation.type === "SET_BLEND_MODE" || operation.type === "APPLY_STABILIZATION") continue;
     if (operation.type === "SET_PROPERTY" && supportedSetPaths.has(operation.propertyPath)) continue;
     if (isOptionalM6SemanticState(operation)) continue;
     throw new NativeAeRecipeLoweringError(

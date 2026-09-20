@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -84,6 +85,43 @@ const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFI
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
+const MUTATION_LEASE_HEADER = "x-editflow-mutation-lease";
+const DEFAULT_MUTATION_LEASE_TTL_MS = 120_000;
+const MAX_MUTATION_LEASE_TTL_MS = 180_000;
+const LEASE_GUARDED_MUTATION_PATHS = new Set([
+  "/proof-script",
+  "/run-transaction",
+  "/run-correction-transaction",
+  "/run",
+  "/run-batch",
+]);
+let mutationLease = null;
+const activeMutationLease = () => {
+  if (mutationLease !== null && mutationLease.expiresAt <= Date.now()) mutationLease = null;
+  return mutationLease;
+};
+const mutationLeaseStatus = () => {
+  const lease = activeMutationLease();
+  return lease === null
+    ? { held: false }
+    : { held: true, owner: lease.owner, expiresAt: lease.expiresAt };
+};
+const requestMutationLeaseToken = (req) => {
+  const raw = req.headers[MUTATION_LEASE_HEADER];
+  if (Array.isArray(raw)) return raw[0] ?? null;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+};
+const admitLeasedMutation = (req, res) => {
+  const lease = activeMutationLease();
+  if (lease === null || requestMutationLeaseToken(req) === lease.token) return true;
+  sendJson(res, 423, {
+    ok: false,
+    error: "MUTATION_LEASE_HELD",
+    lease: { owner: lease.owner, expiresAt: lease.expiresAt },
+  });
+  return false;
+};
+
 const proofScriptRoot = path.resolve(repoRoot, "scripts", "windows");
 const resolveProofScript = async (value) => {
   if (typeof value !== "string" || value.length === 0) throw new Error("PROOF_SCRIPT_PATH_REQUIRED");
@@ -138,6 +176,7 @@ const statusPayload = () => ({
   hostRevision: session.runner.hostRevision,
   localRuntime: runtime.status(),
   currentTransactionRuntime: currentTransactionRuntime.status(),
+  mutationLease: mutationLeaseStatus(),
   panel: broker.panelSession ?? panel,
   controlPlane: getMcpServerStatus(),
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
@@ -147,6 +186,59 @@ const server = createServer(async (req, res) => {
   const requestPath = req.url ?? "/";
   try {
     const url = new URL(requestPath, "http://127.0.0.1");
+    if (req.method === "GET" && url.pathname === "/mutation-lease") {
+      sendJson(res, 200, { ok: true, lease: mutationLeaseStatus() });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/mutation-lease/acquire") {
+      const body = await readJson(req);
+      const current = activeMutationLease();
+      if (current !== null) {
+        sendJson(res, 423, {
+          ok: false,
+          error: "MUTATION_LEASE_HELD",
+          lease: { owner: current.owner, expiresAt: current.expiresAt },
+        });
+        return;
+      }
+      const owner = typeof body.owner === "string" && body.owner.trim().length > 0
+        ? body.owner.trim()
+        : "anonymous-proof";
+      const requestedTtl = Number(body.ttlMs ?? DEFAULT_MUTATION_LEASE_TTL_MS);
+      const ttlMs = Math.max(
+        5_000,
+        Math.min(MAX_MUTATION_LEASE_TTL_MS, Number.isFinite(requestedTtl) ? requestedTtl : DEFAULT_MUTATION_LEASE_TTL_MS),
+      );
+      mutationLease = {
+        token: randomUUID(),
+        owner,
+        acquiredAt: Date.now(),
+        expiresAt: Date.now() + ttlMs,
+      };
+      sendJson(res, 200, { ok: true, lease: { ...mutationLease } });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/mutation-lease/release") {
+      const body = await readJson(req);
+      const current = activeMutationLease();
+      if (current === null) {
+        sendJson(res, 200, { ok: true, released: false, lease: { held: false } });
+        return;
+      }
+      const token = typeof body.token === "string" ? body.token : requestMutationLeaseToken(req);
+      if (token !== current.token) {
+        sendJson(res, 409, { ok: false, error: "MUTATION_LEASE_TOKEN_MISMATCH" });
+        return;
+      }
+      mutationLease = null;
+      sendJson(res, 200, { ok: true, released: true, lease: { held: false } });
+      return;
+    }
+    if (
+      req.method === "POST"
+      && LEASE_GUARDED_MUTATION_PATHS.has(url.pathname)
+      && !admitLeasedMutation(req, res)
+    ) return;
     if (req.method === "GET" && url.pathname === "/healthz") {
       sendJson(res, 200, statusPayload());
       return;
@@ -217,6 +309,13 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/run-transaction") {
       const body = await readJson(req);
       const result = await currentTransactionRuntime.execute(body.plan);
+      const ok = result.state === "COMMITTED";
+      sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/run-correction-transaction") {
+      const body = await readJson(req);
+      const result = await currentTransactionRuntime.executeCorrection(body.plan);
       const ok = result.state === "COMMITTED";
       sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
       return;

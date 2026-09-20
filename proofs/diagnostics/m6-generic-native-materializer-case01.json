@@ -1,25 +1,53 @@
 {
   "schema": "editflow.m6.generic-native-materializer-proof.v1",
-  "generatedAt": "2026-09-20T04:40:18.949Z",
-  "sourceEvidence": "proofs/diagnostics/m6-v6r-ref05-evidence-current.json",
+  "generatedAt": "2026-09-20T05:56:36.884Z",
+  "sourceEvidence": "proofs/diagnostics/m6-v7r-ref05-evidence-refresh.json",
   "evidenceRefs": [
     "video:sha256:c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
-    "probe-json:sha256:5c4fb6f426dd25f2b5b1ade7fc3adff77acb86e6097aa816ed971dc7e9b91e5e",
-    "probe-algorithm:editflow.m6.dense-video-probe.v6",
-    "probe-analyzer:sha256:a9d12e91312d5cdb7179224d7c817342f99d52be726a1b7f3b20f18a4652287b",
-    "measurement-system:sha256:0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1",
+    "probe-json:sha256:fa60533d692bcadbdb3df3e653dfa2be0e7d3a18cd505fed0a62a7e30378d32b",
+    "probe-algorithm:editflow.m6.dense-video-probe.v8",
+    "probe-analyzer:sha256:6a713a7b4b55d4ee985902aa355c8be9101f77d87364e034e9f997cdeaebd26d",
+    "measurement-system:sha256:bf0dfbacdde9c1c2f1bca624e076e6604d283cf0e9d2bbffd2a95da422210fe5",
     "algorithm:opencv-farneback-affine-motion-comp-edge-autocorrelation"
   ],
   "family": "UNKNOWN",
   "strategy": "LAYERED_PRIMITIVES",
-  "graphId": "construction:anatomy:unknown:4824b8f94c33",
+  "graphId": "construction:anatomy:unknown:fa3f5c36a7a1",
   "definingCoverage": true,
   "capabilityGaps": [],
   "nativePlan": {
-    "operationCount": 6,
+    "operationCount": 34,
     "commands": [
       "layer.duplicate",
+      "layer.duplicate",
+      "layer.duplicate",
+      "layer.duplicate",
+      "effect.add",
+      "effect.set_property",
+      "effect.add",
+      "effect.set_property",
+      "effect.add",
+      "effect.set_property",
+      "effect.add",
+      "effect.set_property",
       "layer.time_remap.enable",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "layer.time_remap.enable",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "layer.time_remap.enable",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "layer.time_remap.enable",
+      "property.set_expression",
+      "property.set_expression",
       "property.set_expression",
       "property.set_expression",
       "property.set_expression",
@@ -27,54 +55,506 @@
     ],
     "requiredCapabilities": [
       "ae.layer.duplicate",
+      "ae.effect.add",
+      "ae.effect.property.set",
       "ae.layer.time_remap.enable",
       "ae.expression.set"
     ],
     "containsOpaqueM6Placeholder": false,
-    "expectedTemporalStateCount": 2,
-    "expectedDuplicateCount": 1
+    "expectedTemporalStateCount": 5,
+    "expectedDuplicateCount": 4,
+    "expectedChromaDuplicateCount": 0
   },
   "transaction": {
     "state": "COMMITTED",
     "result": {
-      "transactionId": "19be2706-06d8-47ac-997b-b2f5c34b160a",
-      "planHash": "plan:sha256:fa5e087cff4b166b321b73242615f17aefc900acc7eb359aa839d8224cbe324e",
+      "transactionId": "e89da8c6-13f6-4591-867f-9d67790d5cbb",
+      "planHash": "plan:sha256:1a63661ca7db099c7510495d11ab9fa2c2f3aa02afe297cb574c8cec4167cff1",
       "state": "COMMITTED",
       "recovered": false,
       "committedGroups": 1,
-      "appliedOperations": 6,
+      "appliedOperations": 34,
       "finalState": {
         "projectId": "shadow-current-project",
-        "projectRevision": "ae-revision:1024",
-        "projectFingerprint": "project:sha256:16df99bb0a18f11cfe86c50b4ea48523b1cfc9e123842a5de7b81ddc62e34ff1",
+        "projectRevision": "ae-revision:10703",
+        "projectFingerprint": "project:sha256:5220b6c86a4dfa4bea307569d085761fba2d888ad30580470ee3ee04d32d8cdf",
         "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34"
       }
     }
   },
   "readbackVerification": {
-    "actualLayerCount": 2,
-    "duplicateCount": 1,
+    "actualLayerCount": 5,
+    "duplicateCount": 4,
     "startTimes": [
+      0,
+      0,
+      0,
       0,
       0
     ],
     "globalLayerOffsetsAbsent": true,
-    "timeRemapEnabledCount": 1,
+    "timeRemapEnabledCount": 4,
     "timeRemapExpressions": [
-      "Math.max(0,value-0.03333333333333333);"
+      "Math.max(0,value-0.01670948115378178);",
+      "Math.max(0,value-0.03341896230756356);",
+      "Math.max(0,value-0.050128443461345346);",
+      "Math.max(0,value-0.06683792461512712);"
     ],
     "temporalOffsetsSeconds": [
-      0.03333333333333333
+      0.016709481154,
+      0.033418962308,
+      0.050128443461,
+      0.066837924615
     ],
     "expectedTemporalOffsetsSeconds": [
-      0.03333333333333333
+      0.01670948115378178,
+      0.03341896230756356,
+      0.050128443461345346,
+      0.06683792461512712
     ],
     "temporalOffsetsMatch": true,
     "eventLocalOpacityExpressions": [
-      "var event=0.5;var f=(time-event)*thisComp.frameRate;var pre=6;var peak=78;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}"
+      "var event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=98;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}",
+      "var event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=92;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}",
+      "var event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=86;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}",
+      "var event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=80;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}"
     ],
     "eventLocalVisibilityMatch": true,
     "recursiveStableId": false
   },
-  "readback": "COMP\t__EF2_M6_GENERIC_NATIVE_PROOF__\t2\r\nLAYER\t1\tM6 Generic Hero 2\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::m6-proof-hero::state-1]]\t0\t0\t1\r\nTIME_REMAP\t1\tMath.max(0,value-0.03333333333333333);\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var amplitude=0.07006638912336575*Math.max(thisComp.width,thisComp.height)*0.5;var pre=6;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}else{impulse=linear(f,-1,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var pre=6;var peak=78;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}\r\nANCHOR_EXPR\t\r\nLAYER\t2\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-hero]]\t0\t0\t1\r\nTIME_REMAP\t0\t\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var amplitude=0.07006638912336575*Math.max(thisComp.width,thisComp.height)*0.5;var pre=6;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}else{impulse=linear(f,-1,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\t\r\nANCHOR_EXPR\t\r\n"
+  "readback": "COMP\t__EF2_M6_GENERIC_NATIVE_CASE01_PROOF__\t5\r\nLAYER\t1\tM6 Generic Hero 2\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::m6-proof-case01-hero::state-1]]\t0\t0\t1\r\nTIME_REMAP\t1\tMath.max(0,value-0.01670948115378178);\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var amplitude=0.07006638912336575*thisComp.height*0.5*1;var pre=3.00770660768072;var q=pre/4;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-3*q){impulse=0;}else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}else{impulse=linear(f,-q,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=98;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}\r\nANCHOR_EXPR\t\r\nEFFECT\t1\tExposure\tADBE Exposure2\t1\r\nEFFECT_PROP\t1\t1\tADBE Exposure2-0001\t1\r\nEFFECT_PROP\t1\t2\tADBE Exposure2-0002\t<NO_VALUE>\r\nEFFECT_PROP\t1\t3\tADBE Exposure2-0003\t0.87439489364624\r\nEFFECT_PROP\t1\t4\tADBE Exposure2-0004\t0\r\nEFFECT_PROP\t1\t5\tADBE Exposure2-0005\t1\r\nEFFECT_PROP\t1\t6\tADBE Exposure2-0006\t<NO_VALUE>\r\nEFFECT_PROP\t1\t7\tADBE Exposure2-0007\t<NO_VALUE>\r\nEFFECT_PROP\t1\t8\tADBE Exposure2-0008\t0\r\nEFFECT_PROP\t1\t9\tADBE Exposure2-0009\t0\r\nEFFECT_PROP\t1\t10\tADBE Exposure2-0010\t1\r\nEFFECT_PROP\t1\t11\tADBE Exposure2-0011\t<NO_VALUE>\r\nEFFECT_PROP\t1\t12\tADBE Exposure2-0012\t<NO_VALUE>\r\nEFFECT_PROP\t1\t13\tADBE Exposure2-0013\t0\r\nEFFECT_PROP\t1\t14\tADBE Exposure2-0014\t0\r\nEFFECT_PROP\t1\t15\tADBE Exposure2-0015\t1\r\nEFFECT_PROP\t1\t16\tADBE Exposure2-0016\t<NO_VALUE>\r\nEFFECT_PROP\t1\t17\tADBE Exposure2-0017\t<NO_VALUE>\r\nEFFECT_PROP\t1\t18\tADBE Exposure2-0018\t0\r\nEFFECT_PROP\t1\t19\tADBE Exposure2-0019\t0\r\nEFFECT_PROP\t1\t20\tADBE Exposure2-0020\t1\r\nEFFECT_PROP\t1\t21\tADBE Exposure2-0021\t<NO_VALUE>\r\nEFFECT_PROP\t1\t22\tADBE Exposure2-0022\t0\r\nLAYER\t2\tM6 Generic Hero 3\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::m6-proof-case01-hero::state-2]]\t0\t0\t1\r\nTIME_REMAP\t1\tMath.max(0,value-0.03341896230756356);\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var amplitude=0.07006638912336575*thisComp.height*0.5*1;var pre=3.00770660768072;var q=pre/4;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-3*q){impulse=0;}else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}else{impulse=linear(f,-q,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=92;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}\r\nANCHOR_EXPR\t\r\nEFFECT\t1\tExposure\tADBE Exposure2\t1\r\nEFFECT_PROP\t1\t1\tADBE Exposure2-0001\t1\r\nEFFECT_PROP\t1\t2\tADBE Exposure2-0002\t<NO_VALUE>\r\nEFFECT_PROP\t1\t3\tADBE Exposure2-0003\t0.87439489364624\r\nEFFECT_PROP\t1\t4\tADBE Exposure2-0004\t0\r\nEFFECT_PROP\t1\t5\tADBE Exposure2-0005\t1\r\nEFFECT_PROP\t1\t6\tADBE Exposure2-0006\t<NO_VALUE>\r\nEFFECT_PROP\t1\t7\tADBE Exposure2-0007\t<NO_VALUE>\r\nEFFECT_PROP\t1\t8\tADBE Exposure2-0008\t0\r\nEFFECT_PROP\t1\t9\tADBE Exposure2-0009\t0\r\nEFFECT_PROP\t1\t10\tADBE Exposure2-0010\t1\r\nEFFECT_PROP\t1\t11\tADBE Exposure2-0011\t<NO_VALUE>\r\nEFFECT_PROP\t1\t12\tADBE Exposure2-0012\t<NO_VALUE>\r\nEFFECT_PROP\t1\t13\tADBE Exposure2-0013\t0\r\nEFFECT_PROP\t1\t14\tADBE Exposure2-0014\t0\r\nEFFECT_PROP\t1\t15\tADBE Exposure2-0015\t1\r\nEFFECT_PROP\t1\t16\tADBE Exposure2-0016\t<NO_VALUE>\r\nEFFECT_PROP\t1\t17\tADBE Exposure2-0017\t<NO_VALUE>\r\nEFFECT_PROP\t1\t18\tADBE Exposure2-0018\t0\r\nEFFECT_PROP\t1\t19\tADBE Exposure2-0019\t0\r\nEFFECT_PROP\t1\t20\tADBE Exposure2-0020\t1\r\nEFFECT_PROP\t1\t21\tADBE Exposure2-0021\t<NO_VALUE>\r\nEFFECT_PROP\t1\t22\tADBE Exposure2-0022\t0\r\nLAYER\t3\tM6 Generic Hero 4\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::m6-proof-case01-hero::state-3]]\t0\t0\t1\r\nTIME_REMAP\t1\tMath.max(0,value-0.050128443461345346);\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var amplitude=0.07006638912336575*thisComp.height*0.5*1;var pre=3.00770660768072;var q=pre/4;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-3*q){impulse=0;}else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}else{impulse=linear(f,-q,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=86;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}\r\nANCHOR_EXPR\t\r\nEFFECT\t1\tExposure\tADBE Exposure2\t1\r\nEFFECT_PROP\t1\t1\tADBE Exposure2-0001\t1\r\nEFFECT_PROP\t1\t2\tADBE Exposure2-0002\t<NO_VALUE>\r\nEFFECT_PROP\t1\t3\tADBE Exposure2-0003\t0.87439489364624\r\nEFFECT_PROP\t1\t4\tADBE Exposure2-0004\t0\r\nEFFECT_PROP\t1\t5\tADBE Exposure2-0005\t1\r\nEFFECT_PROP\t1\t6\tADBE Exposure2-0006\t<NO_VALUE>\r\nEFFECT_PROP\t1\t7\tADBE Exposure2-0007\t<NO_VALUE>\r\nEFFECT_PROP\t1\t8\tADBE Exposure2-0008\t0\r\nEFFECT_PROP\t1\t9\tADBE Exposure2-0009\t0\r\nEFFECT_PROP\t1\t10\tADBE Exposure2-0010\t1\r\nEFFECT_PROP\t1\t11\tADBE Exposure2-0011\t<NO_VALUE>\r\nEFFECT_PROP\t1\t12\tADBE Exposure2-0012\t<NO_VALUE>\r\nEFFECT_PROP\t1\t13\tADBE Exposure2-0013\t0\r\nEFFECT_PROP\t1\t14\tADBE Exposure2-0014\t0\r\nEFFECT_PROP\t1\t15\tADBE Exposure2-0015\t1\r\nEFFECT_PROP\t1\t16\tADBE Exposure2-0016\t<NO_VALUE>\r\nEFFECT_PROP\t1\t17\tADBE Exposure2-0017\t<NO_VALUE>\r\nEFFECT_PROP\t1\t18\tADBE Exposure2-0018\t0\r\nEFFECT_PROP\t1\t19\tADBE Exposure2-0019\t0\r\nEFFECT_PROP\t1\t20\tADBE Exposure2-0020\t1\r\nEFFECT_PROP\t1\t21\tADBE Exposure2-0021\t<NO_VALUE>\r\nEFFECT_PROP\t1\t22\tADBE Exposure2-0022\t0\r\nLAYER\t4\tM6 Generic Hero 5\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::m6-proof-case01-hero::state-4]]\t0\t0\t1\r\nTIME_REMAP\t1\tMath.max(0,value-0.06683792461512712);\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var amplitude=0.07006638912336575*thisComp.height*0.5*1;var pre=3.00770660768072;var q=pre/4;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-3*q){impulse=0;}else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}else{impulse=linear(f,-q,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var pre=3.00770660768072;var peak=80;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}\r\nANCHOR_EXPR\t\r\nEFFECT\t1\tExposure\tADBE Exposure2\t1\r\nEFFECT_PROP\t1\t1\tADBE Exposure2-0001\t1\r\nEFFECT_PROP\t1\t2\tADBE Exposure2-0002\t<NO_VALUE>\r\nEFFECT_PROP\t1\t3\tADBE Exposure2-0003\t0.87439489364624\r\nEFFECT_PROP\t1\t4\tADBE Exposure2-0004\t0\r\nEFFECT_PROP\t1\t5\tADBE Exposure2-0005\t1\r\nEFFECT_PROP\t1\t6\tADBE Exposure2-0006\t<NO_VALUE>\r\nEFFECT_PROP\t1\t7\tADBE Exposure2-0007\t<NO_VALUE>\r\nEFFECT_PROP\t1\t8\tADBE Exposure2-0008\t0\r\nEFFECT_PROP\t1\t9\tADBE Exposure2-0009\t0\r\nEFFECT_PROP\t1\t10\tADBE Exposure2-0010\t1\r\nEFFECT_PROP\t1\t11\tADBE Exposure2-0011\t<NO_VALUE>\r\nEFFECT_PROP\t1\t12\tADBE Exposure2-0012\t<NO_VALUE>\r\nEFFECT_PROP\t1\t13\tADBE Exposure2-0013\t0\r\nEFFECT_PROP\t1\t14\tADBE Exposure2-0014\t0\r\nEFFECT_PROP\t1\t15\tADBE Exposure2-0015\t1\r\nEFFECT_PROP\t1\t16\tADBE Exposure2-0016\t<NO_VALUE>\r\nEFFECT_PROP\t1\t17\tADBE Exposure2-0017\t<NO_VALUE>\r\nEFFECT_PROP\t1\t18\tADBE Exposure2-0018\t0\r\nEFFECT_PROP\t1\t19\tADBE Exposure2-0019\t0\r\nEFFECT_PROP\t1\t20\tADBE Exposure2-0020\t1\r\nEFFECT_PROP\t1\t21\tADBE Exposure2-0021\t<NO_VALUE>\r\nEFFECT_PROP\t1\t22\tADBE Exposure2-0022\t0\r\nLAYER\t5\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-case01-hero]]\t0\t0\t1\r\nTIME_REMAP\t0\t\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)/thisComp.frameDuration;var amplitude=0.07006638912336575*thisComp.height*0.5*1;var pre=3.00770660768072;var q=pre/4;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-3*q){impulse=0;}else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}else{impulse=linear(f,-q,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\t\r\nANCHOR_EXPR\t\r\n",
+  "status": "RENDERED_FIDELITY_GAP",
+  "renderedFidelity": {
+    "visibleConsequence": true,
+    "semanticImprovement": true,
+    "candidate": {
+      "video": "proofs/diagnostics/m6-generic-native-materializer-case01.mp4",
+      "videoSha256": "7f4a34b09b22fb62a4a341d19ca94e5cd587fdb4c8b517040f88d395a0e44138",
+      "probe": "proofs/diagnostics/m6-generic-native-materializer-case01-probe.json",
+      "evidence": "proofs/diagnostics/m6-generic-native-materializer-case01-evidence.json",
+      "contentKey": "83353ab5e4ee3db3911fb6ab9e2f91a43efb53bfb8349199e3c550e22f89fef7",
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.01048182178416572,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.13759711390424967,
+        "rotationRange": 0.008297309546413415,
+        "blurPeak": 0.339076405963455,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.011311928221928245,
+        "exposurePeak": 0.04050742102396514,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 1,
+        "stateSeparationPeak": 0.09536747605769089,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.4827586206896552,
+        "fragmentationTemporalStateCountPeak": 3,
+        "fragmentationOverlapDensityPeak": 0.48787878787878786,
+        "fragmentationStateSeparationPeak": 0.0886763862799986,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.011312545196085821,
+        "recoveryFrames": 13,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.5517241379310345
+      },
+      "comparison": {
+        "schema": "editflow.semantic-fidelity-comparison.v1",
+        "family": "UNKNOWN",
+        "alignment": "SEMANTIC",
+        "metrics": [
+          {
+            "invariantId": "unknown.fragmentation-states",
+            "dimension": "TEMPORAL",
+            "metric": "fragmentationTemporalStateCountPeak",
+            "referenceValue": 5,
+            "renderValue": 3,
+            "normalizedError": 0.4,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "fragmentationTemporalStateCountPeak is under-driven: reference 5.000, render 3.000. Multiple temporal image states must participate in the same bounded event."
+          },
+          {
+            "invariantId": "unknown.fragmentation-overlap",
+            "dimension": "COMPOSITING",
+            "metric": "fragmentationOverlapDensityPeak",
+            "referenceValue": 1,
+            "renderValue": 0.48787878787878786,
+            "normalizedError": 0.23212121212121223,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "fragmentationOverlapDensityPeak is under-driven: reference 1.000, render 0.488. Visible temporal states must overlap at approximately the observed event-local density."
+          },
+          {
+            "invariantId": "unknown.fragmentation-separation",
+            "dimension": "SPATIAL",
+            "metric": "fragmentationStateSeparationPeak",
+            "referenceValue": 0.037934723010410176,
+            "renderValue": 0.0886763862799986,
+            "normalizedError": 1,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "fragmentationStateSeparationPeak is over-driven: reference 0.038, render 0.089. Simultaneous temporal states must retain the observed within-frame spatial separation."
+          },
+          {
+            "invariantId": "unknown.fragmentation-coordination",
+            "dimension": "COMPOSITING",
+            "metric": "fragmentationCoherencePeak",
+            "referenceValue": 1,
+            "renderValue": 1,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1.2,
+            "diagnosis": "fragmentationCoherencePeak preserves the defining reference behavior."
+          },
+          {
+            "invariantId": "unknown.acceleration",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "accelerationPeak",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.011312545196085821,
+            "normalizedError": 0.5885453376772729,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "accelerationPeak is under-driven: reference 0.070, render 0.011. The event requires the observed high-frequency motion impulse rather than a static layered composite."
+          },
+          {
+            "invariantId": "unknown.recovery",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "recoveryFrames",
+            "referenceValue": 6,
+            "renderValue": 25.93338053678937,
+            "normalizedError": 1,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "recoveryFrames is over-driven: reference 6.000, render 25.933. The synthesized effect must converge at least as quickly as the observed reference event."
+          },
+          {
+            "invariantId": "unknown.scale",
+            "dimension": "SPATIAL",
+            "metric": "scaleRange",
+            "referenceValue": 0.14332227894233118,
+            "renderValue": 0.13759711390424967,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleRange preserves the defining reference behavior."
+          },
+          {
+            "invariantId": "unknown.exposure",
+            "dimension": "OPTICAL",
+            "metric": "exposurePeak",
+            "referenceValue": 0.5829299450313319,
+            "renderValue": 0.04050742102396514,
+            "normalizedError": 0.6305106533482545,
+            "passed": false,
+            "defining": true,
+            "weight": 0.8,
+            "diagnosis": "exposurePeak is under-driven: reference 0.583, render 0.041. Exposure energy is event-local and participates in the compound transition."
+          },
+          {
+            "invariantId": "unknown.persistence",
+            "dimension": "TEMPORAL",
+            "metric": "temporalPersistence",
+            "referenceValue": 0.6666666666666666,
+            "renderValue": 0,
+            "normalizedError": 0.72,
+            "passed": false,
+            "defining": false,
+            "weight": 0.25,
+            "diagnosis": "temporalPersistence is under-driven: reference 0.667, render 0.000. Observed temporalPersistence is a material part of the unknown reference behavior."
+          },
+          {
+            "invariantId": "unknown.blur",
+            "dimension": "OPTICAL",
+            "metric": "blurPeak",
+            "referenceValue": 0.9997532681688431,
+            "renderValue": 0.339076405963455,
+            "normalizedError": 0.38083991244708776,
+            "passed": false,
+            "defining": false,
+            "weight": 0.25,
+            "diagnosis": "blurPeak is under-driven: reference 1.000, render 0.339. Observed blurPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "invariantId": "unknown.distortion",
+            "dimension": "DISTORTION",
+            "metric": "distortionPeak",
+            "referenceValue": 0.470343197894998,
+            "renderValue": 0.011311928221928245,
+            "normalizedError": 0.6959496293928471,
+            "passed": false,
+            "defining": false,
+            "weight": 0.25,
+            "diagnosis": "distortionPeak is under-driven: reference 0.470, render 0.011. Observed distortionPeak is a material part of the unknown reference behavior."
+          }
+        ],
+        "definingCoverage": 0.25,
+        "weightedFidelity": 0.5229402905214775,
+        "passed": false,
+        "diagnoses": [
+          "fragmentationTemporalStateCountPeak is under-driven: reference 5.000, render 3.000. Multiple temporal image states must participate in the same bounded event.",
+          "fragmentationOverlapDensityPeak is under-driven: reference 1.000, render 0.488. Visible temporal states must overlap at approximately the observed event-local density.",
+          "fragmentationStateSeparationPeak is over-driven: reference 0.038, render 0.089. Simultaneous temporal states must retain the observed within-frame spatial separation.",
+          "accelerationPeak is under-driven: reference 0.070, render 0.011. The event requires the observed high-frequency motion impulse rather than a static layered composite.",
+          "recoveryFrames is over-driven: reference 6.000, render 25.933. The synthesized effect must converge at least as quickly as the observed reference event.",
+          "exposurePeak is under-driven: reference 0.583, render 0.041. Exposure energy is event-local and participates in the compound transition.",
+          "temporalPersistence is under-driven: reference 0.667, render 0.000. Observed temporalPersistence is a material part of the unknown reference behavior.",
+          "blurPeak is under-driven: reference 1.000, render 0.339. Observed blurPeak is a material part of the unknown reference behavior.",
+          "distortionPeak is under-driven: reference 0.470, render 0.011. Observed distortionPeak is a material part of the unknown reference behavior."
+        ],
+        "referenceEvidenceKey": "fa3f5c36a7a12c22692969aafc055f6c4a9c0c237c4e6b2ef786dc34555ab022",
+        "renderEvidenceKey": "83353ab5e4ee3db3911fb6ab9e2f91a43efb53bfb8349199e3c550e22f89fef7"
+      },
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.fragmentation-states",
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.acceleration",
+          "unknown.recovery",
+          "unknown.exposure"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.fragmentation-states, unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.acceleration, unknown.recovery, unknown.exposure."
+        ]
+      }
+    },
+    "control": {
+      "video": "proofs/diagnostics/m6-generic-native-materializer-control01.mp4",
+      "videoSha256": "1f8a6a0fb00f82937294cb960742aa2ef0cd2a124b699c104dcef92ad48d3291",
+      "probe": "proofs/diagnostics/m6-generic-native-materializer-control01-probe.json",
+      "evidence": "proofs/diagnostics/m6-generic-native-materializer-control01-evidence.json",
+      "contentKey": "bfd07ed9930780b01269435d013a8424c653a371ca20a42fada7f1cfb8890031",
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 2,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0,
+        "rotationRange": 0,
+        "blurPeak": 0.009379286473947812,
+        "blurPeakPhase": 0,
+        "distortionPeak": 0,
+        "exposurePeak": 0.03227886710239652,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.09393939393939393,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 0.46969696969696967,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.09393939393939393,
+        "fragmentationStateSeparationPeak": 0.08443388015894071,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "comparison": {
+        "schema": "editflow.semantic-fidelity-comparison.v1",
+        "family": "UNKNOWN",
+        "alignment": "SEMANTIC",
+        "metrics": [
+          {
+            "invariantId": "unknown.fragmentation-states",
+            "dimension": "TEMPORAL",
+            "metric": "fragmentationTemporalStateCountPeak",
+            "referenceValue": 5,
+            "renderValue": 2,
+            "normalizedError": 0.6,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "fragmentationTemporalStateCountPeak is under-driven: reference 5.000, render 2.000. Multiple temporal image states must participate in the same bounded event."
+          },
+          {
+            "invariantId": "unknown.fragmentation-overlap",
+            "dimension": "COMPOSITING",
+            "metric": "fragmentationOverlapDensityPeak",
+            "referenceValue": 1,
+            "renderValue": 0.09393939393939393,
+            "normalizedError": 0.6260606060606062,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "fragmentationOverlapDensityPeak is under-driven: reference 1.000, render 0.094. Visible temporal states must overlap at approximately the observed event-local density."
+          },
+          {
+            "invariantId": "unknown.fragmentation-separation",
+            "dimension": "SPATIAL",
+            "metric": "fragmentationStateSeparationPeak",
+            "referenceValue": 0.037934723010410176,
+            "renderValue": 0.08443388015894071,
+            "normalizedError": 0.8957676729515087,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "fragmentationStateSeparationPeak is over-driven: reference 0.038, render 0.084. Simultaneous temporal states must retain the observed within-frame spatial separation."
+          },
+          {
+            "invariantId": "unknown.fragmentation-coordination",
+            "dimension": "COMPOSITING",
+            "metric": "fragmentationCoherencePeak",
+            "referenceValue": 1,
+            "renderValue": 0.46969696969696967,
+            "normalizedError": 0.28030303030303033,
+            "passed": false,
+            "defining": true,
+            "weight": 1.2,
+            "diagnosis": "fragmentationCoherencePeak is under-driven: reference 1.000, render 0.470. Temporal states, overlap, and separation must occur as one coordinated high-frequency event."
+          },
+          {
+            "invariantId": "unknown.acceleration",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "accelerationPeak",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.009336601307189543,
+            "normalizedError": 0.6167463612153524,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "accelerationPeak is under-driven: reference 0.070, render 0.009. The event requires the observed high-frequency motion impulse rather than a static layered composite."
+          },
+          {
+            "invariantId": "unknown.recovery",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "recoveryFrames",
+            "referenceValue": 6,
+            "renderValue": 55.856511925392496,
+            "normalizedError": 1,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "recoveryFrames is over-driven: reference 6.000, render 55.857. The synthesized effect must converge at least as quickly as the observed reference event."
+          },
+          {
+            "invariantId": "unknown.scale",
+            "dimension": "SPATIAL",
+            "metric": "scaleRange",
+            "referenceValue": 0.14332227894233118,
+            "renderValue": 0,
+            "normalizedError": 0.7200000000000001,
+            "passed": false,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleRange is under-driven: reference 0.143, render 0.000. Scale excursion is coordinated with the fragmentation event and is defining, not decorative."
+          },
+          {
+            "invariantId": "unknown.exposure",
+            "dimension": "OPTICAL",
+            "metric": "exposurePeak",
+            "referenceValue": 0.5829299450313319,
+            "renderValue": 0.03227886710239652,
+            "normalizedError": 0.6446265072200715,
+            "passed": false,
+            "defining": true,
+            "weight": 0.8,
+            "diagnosis": "exposurePeak is under-driven: reference 0.583, render 0.032. Exposure energy is event-local and participates in the compound transition."
+          },
+          {
+            "invariantId": "unknown.persistence",
+            "dimension": "TEMPORAL",
+            "metric": "temporalPersistence",
+            "referenceValue": 0.6666666666666666,
+            "renderValue": 0,
+            "normalizedError": 0.72,
+            "passed": false,
+            "defining": false,
+            "weight": 0.25,
+            "diagnosis": "temporalPersistence is under-driven: reference 0.667, render 0.000. Observed temporalPersistence is a material part of the unknown reference behavior."
+          },
+          {
+            "invariantId": "unknown.blur",
+            "dimension": "OPTICAL",
+            "metric": "blurPeak",
+            "referenceValue": 0.9997532681688431,
+            "renderValue": 0.009379286473947812,
+            "normalizedError": 0.7106183987864055,
+            "passed": false,
+            "defining": false,
+            "weight": 0.25,
+            "diagnosis": "blurPeak is under-driven: reference 1.000, render 0.009. Observed blurPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "invariantId": "unknown.distortion",
+            "dimension": "DISTORTION",
+            "metric": "distortionPeak",
+            "referenceValue": 0.470343197894998,
+            "renderValue": 0,
+            "normalizedError": 0.7200000000000001,
+            "passed": false,
+            "defining": false,
+            "weight": 0.25,
+            "diagnosis": "distortionPeak is under-driven: reference 0.470, render 0.000. Observed distortionPeak is a material part of the unknown reference behavior."
+          }
+        ],
+        "definingCoverage": 0,
+        "weightedFidelity": 0.33162353347842716,
+        "passed": false,
+        "diagnoses": [
+          "fragmentationTemporalStateCountPeak is under-driven: reference 5.000, render 2.000. Multiple temporal image states must participate in the same bounded event.",
+          "fragmentationOverlapDensityPeak is under-driven: reference 1.000, render 0.094. Visible temporal states must overlap at approximately the observed event-local density.",
+          "fragmentationStateSeparationPeak is over-driven: reference 0.038, render 0.084. Simultaneous temporal states must retain the observed within-frame spatial separation.",
+          "fragmentationCoherencePeak is under-driven: reference 1.000, render 0.470. Temporal states, overlap, and separation must occur as one coordinated high-frequency event.",
+          "accelerationPeak is under-driven: reference 0.070, render 0.009. The event requires the observed high-frequency motion impulse rather than a static layered composite.",
+          "recoveryFrames is over-driven: reference 6.000, render 55.857. The synthesized effect must converge at least as quickly as the observed reference event.",
+          "scaleRange is under-driven: reference 0.143, render 0.000. Scale excursion is coordinated with the fragmentation event and is defining, not decorative.",
+          "exposurePeak is under-driven: reference 0.583, render 0.032. Exposure energy is event-local and participates in the compound transition.",
+          "temporalPersistence is under-driven: reference 0.667, render 0.000. Observed temporalPersistence is a material part of the unknown reference behavior.",
+          "blurPeak is under-driven: reference 1.000, render 0.009. Observed blurPeak is a material part of the unknown reference behavior.",
+          "distortionPeak is under-driven: reference 0.470, render 0.000. Observed distortionPeak is a material part of the unknown reference behavior."
+        ],
+        "referenceEvidenceKey": "fa3f5c36a7a12c22692969aafc055f6c4a9c0c237c4e6b2ef786dc34555ab022",
+        "renderEvidenceKey": "bfd07ed9930780b01269435d013a8424c653a371ca20a42fada7f1cfb8890031"
+      },
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [
+          "unknown.scale"
+        ],
+        "underDrivenInvariantIds": [
+          "unknown.fragmentation-states",
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.fragmentation-coordination",
+          "unknown.acceleration",
+          "unknown.recovery",
+          "unknown.scale",
+          "unknown.exposure"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Missing defining behavior: unknown.scale.",
+          "Defining behavior failed rendered comparison: unknown.fragmentation-states, unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.fragmentation-coordination, unknown.acceleration, unknown.recovery, unknown.scale, unknown.exposure."
+        ]
+      }
+    }
+  }
 }

@@ -1,6 +1,8 @@
 import type {
   AdaptiveCapabilityProposalV1,
   ConstructionGraphV1,
+  ConstructionNodeKindV1,
+  ConstructionNodeV1,
   DenseEffectEvidenceV1,
   EffectAnatomyComponentV1,
   EffectAnatomyV1,
@@ -13,7 +15,7 @@ import type {
   VisualDimensionV1,
 } from "./contracts.js";
 import { buildConstructionGraphV1, compileConstructionGraphV1 } from "./construction.js";
-import { resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
+import { measureFragmentationEventProminenceV1, resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
 
 const invariant = (
   id: string,
@@ -68,9 +70,36 @@ const maxFrame = (evidence: DenseEffectEvidenceV1, metric: string): number => {
   return values.length === 0 ? 0 : Math.max(...values);
 };
 
+const eventLocalMetricContrast = (
+  evidence: DenseEffectEvidenceV1,
+  metric: string,
+  eventPhase: number,
+): Readonly<{ nearMean: number; farMean: number; delta: number; absoluteDelta: number }> => {
+  const denominator = Math.max(1, evidence.frames.length - 1);
+  const samples = evidence.frames.flatMap((frame, index) => {
+    const value = (frame as unknown as Readonly<Record<string, unknown>>)[metric];
+    return typeof value === "number" && Number.isFinite(value)
+      ? [{ phase: index / denominator, value }]
+      : [];
+  });
+  const mean = (values: readonly number[]): number =>
+    values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+  const near = samples
+    .filter((sample) => Math.abs(sample.phase - eventPhase) <= 0.12)
+    .map((sample) => sample.value);
+  const far = samples
+    .filter((sample) => Math.abs(sample.phase - eventPhase) >= 0.22)
+    .map((sample) => sample.value);
+  const nearMean = mean(near);
+  const farMean = mean(far);
+  const delta = nearMean - farMean;
+  return { nearMean, farMean, delta, absoluteDelta: Math.abs(delta) };
+};
+
 export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): EffectAnatomyV1 => {
   const s = evidence.summary;
   const fragmentation = resolveFragmentationEventMetricsV1(evidence);
+  const fragmentationProminence = measureFragmentationEventProminenceV1(evidence, fragmentation.phase);
   const defining: EffectInvariantV1[] = [];
   const optional: EffectInvariantV1[] = [];
   const observedMetrics: Record<string, number | NormalizedPointV1> = {};
@@ -84,14 +113,41 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
   };
 
   const coherentFragmentation = fragmentation.temporalStateCountPeak > 1
+    && fragmentationProminence.localized
     && fragmentation.overlapDensityPeak >= 0.015
     && fragmentation.stateSeparationPeak >= 0.005
     && fragmentation.peak >= 0.04;
+  if (fragmentationProminence.applicable) {
+    observedMetrics.fragmentationEventProminence = fragmentationProminence.delta;
+  }
   observedMetrics.effectEventPhase = coherentFragmentation
     ? fragmentation.phase
     : (s.accelerationPeak > 0.025 || s.displacementPeak > 0.04 || s.scaleRange > 0.04
       ? s.motionPeakPhase
       : s.opticalPeakPhase);
+  const analysisDurationMs = evidence.range.endMs - evidence.range.startMs;
+  if (Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
+    observedMetrics.effectAnalysisDurationMs = analysisDurationMs;
+  }
+  if (Number.isFinite(s.frameIntervalMs) && s.frameIntervalMs > 0) {
+    observedMetrics.referenceFrameIntervalMs = s.frameIntervalMs;
+    if (Number.isFinite(s.recoveryFrames) && s.recoveryFrames > 0) {
+      observedMetrics.effectRecoveryDurationMs = s.recoveryFrames * s.frameIntervalMs;
+    }
+  }
+
+  // A coherent fragmentation signature does not automatically make every other
+  // visual system decorative. Professional compound transitions often coordinate
+  // a zoom, blur, exposure/chroma accent, or deformation with the temporal event.
+  // Use event-local contrast against the same window's outer frames to distinguish
+  // coordinated effect behavior from large source-content maxima.
+  const coordinated = coherentFragmentation ? {
+    scale: eventLocalMetricContrast(evidence, "scale", fragmentation.phase),
+    blur: eventLocalMetricContrast(evidence, "blurStrength", fragmentation.phase),
+    distortion: eventLocalMetricContrast(evidence, "distortionStrength", fragmentation.phase),
+    chroma: eventLocalMetricContrast(evidence, "chromaticSeparation", fragmentation.phase),
+    exposure: eventLocalMetricContrast(evidence, "exposure", fragmentation.phase),
+  } : null;
 
   if (coherentFragmentation) {
     add(defining, invariant(
@@ -168,16 +224,65 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
         s.temporalPersistence, false), s.temporalPersistence);
     }
     if (s.scaleRange > 0.04) {
-      add(optional, rangeInvariant("unknown.scale", "SPATIAL", "scaleRange",
-        s.scaleRange, false), s.scaleRange);
+      const eventCoordinated = coordinated !== null
+        && coordinated.scale.absoluteDelta >= Math.max(0.025, s.scaleRange * 0.22);
+      add(eventCoordinated ? defining : optional, rangeInvariant(
+        "unknown.scale",
+        "SPATIAL",
+        "scaleRange",
+        s.scaleRange,
+        eventCoordinated,
+        eventCoordinated ? 1 : 0.25,
+        Math.max(0.005, Math.abs(s.scaleRange) * 0.08),
+        eventCoordinated
+          ? "Scale excursion is coordinated with the fragmentation event and is defining, not decorative."
+          : undefined,
+      ), s.scaleRange);
     }
     if (s.blurPeak > 0.15) {
-      add(optional, rangeInvariant("unknown.blur", "OPTICAL", "blurPeak",
-        s.blurPeak, false), s.blurPeak);
+      const eventCoordinated = coordinated !== null
+        && coordinated.blur.delta >= Math.max(0.08, s.blurPeak * 0.2);
+      add(eventCoordinated ? defining : optional, rangeInvariant(
+        "unknown.blur",
+        "OPTICAL",
+        "blurPeak",
+        s.blurPeak,
+        eventCoordinated,
+        eventCoordinated ? 1 : 0.25,
+        Math.max(0.005, Math.abs(s.blurPeak) * 0.08),
+        eventCoordinated
+          ? "Optical blur rises with the fragmentation event and must survive synthesis."
+          : undefined,
+      ), s.blurPeak);
     }
     if (s.distortionPeak > 0.15) {
-      add(optional, rangeInvariant("unknown.distortion", "DISTORTION", "distortionPeak",
-        s.distortionPeak, false), s.distortionPeak);
+      const eventCoordinated = coordinated !== null
+        && coordinated.distortion.delta >= Math.max(0.03, s.distortionPeak * 0.18);
+      add(eventCoordinated ? defining : optional, rangeInvariant(
+        "unknown.distortion",
+        "DISTORTION",
+        "distortionPeak",
+        s.distortionPeak,
+        eventCoordinated,
+        eventCoordinated ? 1 : 0.25,
+        Math.max(0.005, Math.abs(s.distortionPeak) * 0.08),
+        eventCoordinated
+          ? "Deformation strengthens inside the fragmentation event and is part of the compound identity."
+          : undefined,
+      ), s.distortionPeak);
+    }
+    if (s.exposurePeak > 0.15 && coordinated !== null
+      && coordinated.exposure.delta >= Math.max(0.08, s.exposurePeak * 0.15)) {
+      add(defining, rangeInvariant(
+        "unknown.exposure",
+        "OPTICAL",
+        "exposurePeak",
+        s.exposurePeak,
+        true,
+        0.8,
+        Math.max(0.01, Math.abs(s.exposurePeak) * 0.1),
+        "Exposure energy is event-local and participates in the compound transition.",
+      ), s.exposurePeak);
     }
   } else {
     if (s.temporalStateCountPeak > 1) {
@@ -258,9 +363,21 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
 
   const chroma = maxFrame(evidence, "chromaticSeparation");
   if (chroma > 0.1) {
-    const target = coherentFragmentation ? optional : defining;
-    add(target, rangeInvariant("unknown.chroma", "OPTICAL", "chromaticSeparationPeak",
-      chroma, !coherentFragmentation), chroma);
+    const eventCoordinated = coherentFragmentation && coordinated !== null
+      && coordinated.chroma.delta >= Math.max(0.025, chroma * 0.2);
+    const isDefining = !coherentFragmentation || eventCoordinated;
+    add(isDefining ? defining : optional, rangeInvariant(
+      "unknown.chroma",
+      "OPTICAL",
+      "chromaticSeparationPeak",
+      chroma,
+      isDefining,
+      isDefining ? 1 : 0.25,
+      Math.max(0.005, Math.abs(chroma) * 0.08),
+      eventCoordinated
+        ? "Chromatic separation rises inside the fragmentation event and is part of the compound identity."
+        : undefined,
+    ), chroma);
   }
   const mask = maxFrame(evidence, "maskCoverage");
   if (mask > 0.06) {
@@ -339,21 +456,428 @@ const finiteNodeParameter = (
 
 const echoProofParameters = (
   node: ConstructionGraphV1["nodes"][number],
-): Readonly<Record<string, number | string>> => {
+): Readonly<Record<string, number | string | boolean>> => {
   const measuredStates = finiteNodeParameter(node, "temporalStateCountPeak")
     ?? finiteNodeParameter(node, "fragmentationTemporalStateCountPeak")
     ?? 2;
   const stateCount = Math.max(2, Math.min(12, Math.round(measuredStates)));
+  // AE's Number of Echoes excludes the current frame: N echoes produce N + 1
+  // combined temporal states. Keep the semantic M6 state count reference-relative.
+  const numberOfEchoes = Math.max(1, stateCount - 1);
   const recoveryFrames = finiteNodeParameter(node, "effectRecoveryFrames")
     ?? finiteNodeParameter(node, "recoveryFrames")
     ?? stateCount;
   const persistence = finiteNodeParameter(node, "temporalPersistence") ?? 0.5;
+  const overlap = finiteNodeParameter(node, "fragmentationOverlapDensityPeak")
+    ?? finiteNodeParameter(node, "overlapDensityPeak")
+    ?? 0.5;
+  // Convert observed temporal persistence + event-local overlap into Echo's
+  // intensity envelope. This stays reference-relative: dense references retain
+  // older states more strongly, while sparse references decay them faster.
+  const startingIntensity = 0.5 + (overlap * 0.35) + (persistence * 0.2);
+  const decay = 0.3 + (overlap * 0.4) + (persistence * 0.35);
   return {
     effectSchemaRef: "ae.effect-schema.m6.echo.v1",
-    echoSpacingFrames: Math.max(1, Math.min(6, recoveryFrames / Math.max(1, stateCount - 1))),
-    numberOfEchoes: stateCount,
-    startingIntensity: Math.max(0.35, Math.min(1, 0.35 + persistence * 0.65)),
-    decay: Math.max(0.1, Math.min(0.95, persistence)),
+    // Echo is a transition behavior, not a shot-wide treatment. Route it through
+    // the Recipe Compiler's bounded accent-layer path so temporal states exist
+    // only around the measured event window.
+    eventLocalEffect: true,
+    echoSpacingFrames: Math.max(1, Math.min(6, recoveryFrames / numberOfEchoes)),
+    numberOfEchoes,
+    startingIntensity: Math.max(0.35, Math.min(1, startingIntensity)),
+    decay: Math.max(0.1, Math.min(0.95, decay)),
+  };
+};
+
+const turbulentDisplaceProofParameters = (
+  node: ConstructionGraphV1["nodes"][number],
+): Readonly<Record<string, number | string | boolean>> => {
+  const distortion = Math.max(0, Math.min(1,
+    finiteNodeParameter(node, "distortionPeak") ?? 0.2));
+  return {
+    effectSchemaRef: "ae.effect-schema.m6.turbulent-displace.v2",
+    // Map normalized measured deformation to AE's native Amount/Size/detail controls.
+    // Evolution is retained as an independent, bounded pattern-state actuator so
+    // rendered search can change the turbulence field without misusing Complexity
+    // as a magnitude control. Rendered comparison remains authoritative.
+    distortionAmount: Math.max(20, Math.min(100, 20 + distortion * 120)),
+    distortionSize: Math.max(10, Math.min(48, 10 + distortion * 35)),
+    distortionComplexity: Math.max(1.5, Math.min(4, 1.5 + distortion * 3)),
+    distortionEvolution: Math.max(45, Math.min(270, 45 + distortion * 225)),
+    eventLocalEffect: true,
+  };
+};
+
+const evolvingTurbulentProofParameters = (
+  node: ConstructionGraphV1["nodes"][number],
+): Readonly<Record<string, number | string | boolean>> => {
+  const distortion = Math.max(0, Math.min(1,
+    finiteNodeParameter(node, "distortionPeak") ?? 0.2));
+  const base = turbulentDisplaceProofParameters(node);
+  return {
+    ...base,
+    effectSchemaRef: "ae.effect-schema.m6.turbulent-displace.v3",
+    eventDynamicDistortion: true,
+    // Static scalar search plateaued in real AE for the retained compound proof.
+    // v3 therefore adds event-local deformation energy without rewriting the
+    // retained v2 construction: Amount pulses around the event while Evolution
+    // traverses a bounded pattern sweep. Both remain reference-relative.
+    eventAmountPulseScale: Math.max(1.2, Math.min(2.25, 1.15 + distortion * 1.8)),
+    eventEvolutionSweepDegrees: Math.max(180, Math.min(720, 180 + distortion * 720)),
+    eventEvolutionSweepScale: 1,
+  };
+};
+
+const echoStrategyGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const temporal = base.nodes.find((node) =>
+    node.kind === "TEMPORAL_DUPLICATES" && node.dimension === "TEMPORAL");
+  if (temporal === undefined) return null;
+
+  const echoTemporal: ConstructionNodeV1 = {
+    ...temporal,
+    capabilityCandidates: ["ae.effect.echo"],
+    parameters: {
+      ...temporal.parameters,
+      synthesisStrategy: "NATIVE_ECHO_HYBRID",
+      ...echoProofParameters(temporal),
+    },
+  };
+
+  // Echo can combine source-time motion directly. A separate precompose boundary is
+  // required only when the graph also contains event-local transform/recovery motion:
+  // AE evaluates layer transforms after effects, so outer-layer motion is otherwise
+  // invisible to Echo. The nested boundary moves that motion into Echo's input history.
+  const recovery = base.nodes.find((node) => node.kind === "RECOVERY" && !node.optional);
+  if (recovery === undefined) {
+    return {
+      ...base,
+      graphId: `${base.graphId}:native_echo_hybrid`,
+      nodes: base.nodes.map((node) => node.nodeId === temporal.nodeId ? echoTemporal : node),
+    };
+  }
+
+  const transform = base.nodes.find((node) =>
+    node.kind === "TRANSFORM_MOTION" && node.dependsOn.includes(recovery.nodeId));
+  const precomposeNodeId = `${temporal.nodeId}:echo-history-precompose`;
+  const innerTailId = transform?.nodeId ?? recovery.nodeId;
+  const precompose: ConstructionNodeV1 = {
+    nodeId: precomposeNodeId,
+    kind: "PRECOMPOSE_BOUNDARY",
+    dimension: "COMPOSITING",
+    dependsOn: [innerTailId],
+    requiredInvariantIds: temporal.requiredInvariantIds,
+    capabilityCandidates: ["ae.precompose.layers"],
+    parameters: {
+      causalBoundary: "ECHO_TRANSFORM_HISTORY",
+    },
+    optional: false,
+  };
+
+  const nodes = base.nodes.map((node): ConstructionNodeV1 => {
+    if (node.nodeId === temporal.nodeId) {
+      return { ...echoTemporal, dependsOn: [precomposeNodeId] };
+    }
+    if (node.nodeId === recovery.nodeId) {
+      return {
+        ...node,
+        dependsOn: temporal.dependsOn,
+        parameters: {
+          ...node.parameters,
+          motionProfile: "SHUTTER_CONVERGENCE",
+        },
+      };
+    }
+    if (node.nodeId === transform?.nodeId) return node;
+    if (node.dependsOn.includes(recovery.nodeId)) {
+      return {
+        ...node,
+        dependsOn: node.dependsOn.map((dependency) =>
+          dependency === recovery.nodeId ? temporal.nodeId : dependency),
+      };
+    }
+    return node;
+  });
+
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(base.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      temporal.requiredInvariantIds.includes(invariantId)
+        ? [...new Set([...nodeIds, precomposeNodeId])]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...base,
+    graphId: `${base.graphId}:native_echo_hybrid`,
+    nodes: [...nodes, precompose],
+    outputs: [temporal.nodeId],
+    invariantCoverage,
+  };
+};
+
+const layeredPrimitiveHistoryGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 => {
+  const temporalIndex = base.nodes.findIndex((node) =>
+    !node.optional
+    && node.kind === "TEMPORAL_DUPLICATES"
+    && node.dimension === "TEMPORAL");
+  if (temporalIndex < 0) return base;
+  const temporal = base.nodes[temporalIndex];
+  if (temporal === undefined) return base;
+
+  const historyKinds = new Set<ConstructionNodeKindV1>([
+    "CAMERA_MOTION",
+    "TRANSFORM_MOTION",
+    "RECOVERY",
+  ]);
+  const historyNodes = base.nodes.filter((node, index) =>
+    index > temporalIndex
+    && !node.optional
+    && historyKinds.has(node.kind));
+  if (historyNodes.length === 0) return base;
+
+  const historyIds = new Set(historyNodes.map((node) => node.nodeId));
+  const boundaryId = `${temporal.nodeId}:layered-history-precompose`;
+  const originalTemporalDependencies = [...temporal.dependsOn];
+  let historyTail: string | null = null;
+  let externalTail = temporal.nodeId;
+
+  const nodes = base.nodes.map((node, index): ConstructionNodeV1 => {
+    if (node.nodeId === temporal.nodeId) {
+      return { ...node, dependsOn: [boundaryId] };
+    }
+    if (historyIds.has(node.nodeId)) {
+      const dependencies = historyTail === null
+        ? originalTemporalDependencies
+        : [historyTail];
+      historyTail = node.nodeId;
+      return { ...node, dependsOn: dependencies };
+    }
+    if (index > temporalIndex) {
+      const dependencies = externalTail === null ? [] : [externalTail];
+      if (!node.optional) externalTail = node.nodeId;
+      return { ...node, dependsOn: dependencies };
+    }
+    return node;
+  });
+  if (historyTail === null) return base;
+
+  const boundary: ConstructionNodeV1 = {
+    nodeId: boundaryId,
+    kind: "PRECOMPOSE_BOUNDARY",
+    dimension: "COMPOSITING",
+    dependsOn: [historyTail],
+    requiredInvariantIds: [...new Set(historyNodes.flatMap((node) => node.requiredInvariantIds))],
+    capabilityCandidates: ["ae.precompose.layers"],
+    parameters: {
+      causalBoundary: "LAYERED_TRANSFORM_HISTORY",
+    },
+    optional: false,
+  };
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(base.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      boundary.requiredInvariantIds.includes(invariantId)
+        ? [...new Set([...nodeIds, boundaryId])]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...base,
+    graphId: `${base.graphId}:layered_transform_history`,
+    nodes: [...nodes, boundary],
+    outputs: base.outputs.map((output) =>
+      historyIds.has(output) ? externalTail : output),
+    invariantCoverage,
+  };
+};
+
+const layeredEchoAugmentedGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const layered = layeredPrimitiveHistoryGraph(base);
+  const temporal = layered.nodes.find((node) =>
+    node.kind === "TEMPORAL_DUPLICATES" && node.dimension === "TEMPORAL");
+  if (temporal === undefined) return null;
+  const persistenceInvariantIds = temporal.requiredInvariantIds.filter((invariantId) =>
+    invariantId.toLowerCase().includes("persistence"));
+  if (persistenceInvariantIds.length === 0) return null;
+
+  const echoNodeId = `${temporal.nodeId}:echo-augmentation`;
+  const echoNode: ConstructionNodeV1 = {
+    nodeId: echoNodeId,
+    kind: "TEMPORAL_DUPLICATES",
+    dimension: "TEMPORAL",
+    dependsOn: [temporal.nodeId],
+    requiredInvariantIds: [...persistenceInvariantIds],
+    capabilityCandidates: ["ae.effect.echo"],
+    parameters: {
+      ...temporal.parameters,
+      synthesisStrategy: "LAYERED_ECHO_AUGMENTED",
+      ...echoProofParameters(temporal),
+    },
+    optional: false,
+  };
+
+  const nodes = layered.nodes.map((node): ConstructionNodeV1 => {
+    if (node.nodeId === temporal.nodeId) return node;
+    if (!node.dependsOn.includes(temporal.nodeId)) return node;
+    return {
+      ...node,
+      dependsOn: node.dependsOn.map((dependency) =>
+        dependency === temporal.nodeId ? echoNodeId : dependency),
+    };
+  });
+  const persistenceSet = new Set(persistenceInvariantIds);
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(layered.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      persistenceSet.has(invariantId)
+        // In the layered strategy, duration/occupancy lives on the explicit
+        // temporal-state window. Echo augments those states, but spacing alone
+        // cannot lengthen their bounded visibility window. Keep the layered
+        // node first so comparator correction actuates temporalPersistenceScale;
+        // retain Echo as secondary provenance/construction coverage.
+        ? [...nodeIds.filter((nodeId) => nodeId !== echoNodeId), echoNodeId]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...layered,
+    graphId: `${layered.graphId}:layered_echo_augmented`,
+    nodes: [...nodes, echoNode],
+    outputs: layered.outputs.map((output) =>
+      output === temporal.nodeId ? echoNodeId : output),
+    invariantCoverage,
+  };
+};
+
+const compoundNativeHybridGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const echoAugmented = layeredEchoAugmentedGraph(base);
+  if (echoAugmented === null) return null;
+  const distortion = echoAugmented.nodes.find((node) =>
+    node.kind === "DISTORTION" && !node.optional);
+  if (distortion === undefined) return null;
+
+  // Compound synthesis must be additive. Retain the proven semantic
+  // displacement node and layer the new native warp after it instead of
+  // replacing already-rendered behavior with a different effect family.
+  const turbulentNodeId = `${distortion.nodeId}:turbulent-augmentation`;
+  const turbulentNode: ConstructionNodeV1 = {
+    nodeId: turbulentNodeId,
+    kind: "DISTORTION",
+    dimension: "DISTORTION",
+    dependsOn: [distortion.nodeId],
+    requiredInvariantIds: [...distortion.requiredInvariantIds],
+    capabilityCandidates: ["ae.effect.turbulent-displace"],
+    parameters: {
+      ...distortion.parameters,
+      synthesisStrategy: "TURBULENT_DISPLACE_HYBRID",
+      ...turbulentDisplaceProofParameters(distortion),
+    },
+    optional: false,
+  };
+  const distortionInvariantIds = new Set(distortion.requiredInvariantIds);
+  const compoundNodes = echoAugmented.nodes.map((node): ConstructionNodeV1 => {
+    if (node.kind !== "RECOVERY"
+      || !node.requiredInvariantIds.some((invariantId) =>
+        invariantId.toLowerCase().includes("acceleration"))) return node;
+    // A compound fragmented transition needs a zero-net convergence pulse, not
+    // the generic one-direction recovery impulse. The alternating shutter
+    // profile concentrates second-order motion energy near the cut while
+    // minimizing broad displacement that would disturb already-proven spatial
+    // fidelity. Rendered comparison remains the authority.
+    return {
+      ...node,
+      parameters: {
+        ...node.parameters,
+        // Preserve causal provenance for escalation ranking: this recovery node is
+        // the compound strategy's explicit acceleration intervention, not untouched
+        // base anatomy. primitiveFor() still lowers RECOVERY through MOTION_SHAPING.
+        synthesisStrategy: "COMPOUND_NATIVE_HYBRID",
+        motionProfile: "SHUTTER_CONVERGENCE",
+      },
+    };
+  });
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(echoAugmented.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      distortionInvariantIds.has(invariantId)
+        ? [turbulentNodeId, ...nodeIds.filter((nodeId) => nodeId !== turbulentNodeId)]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...echoAugmented,
+    graphId: `${base.graphId}:compound_native_hybrid`,
+    nodes: [...compoundNodes, turbulentNode],
+    outputs: echoAugmented.outputs.map((output) =>
+      output === distortion.nodeId ? turbulentNodeId : output),
+    invariantCoverage,
+  };
+};
+
+const compoundEvolvingWarpGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const compoundSource = compoundNativeHybridGraph(base);
+  if (compoundSource === null) return null;
+  // Isolate the escalation hypothesis from retained candidates. Construction
+  // graphs deliberately reuse immutable evidence-derived nodes elsewhere, but a
+  // synthesis escalation must never be able to invalidate a previously proven
+  // candidate through shared nested parameter objects.
+  const compound = structuredClone(compoundSource);
+  const turbulent = compound.nodes.find((node) =>
+    node.parameters["synthesisStrategy"] === "TURBULENT_DISPLACE_HYBRID"
+    && node.requiredInvariantIds.some((invariantId) =>
+      invariantId.toLowerCase().includes("distortion")));
+  const recovery = compound.nodes.find((node) =>
+    node.kind === "RECOVERY"
+    && node.requiredInvariantIds.some((invariantId) =>
+      invariantId.toLowerCase().includes("acceleration")));
+  if (turbulent === undefined || recovery === undefined) return null;
+
+  const accelerationInvariantIds = recovery.requiredInvariantIds.filter((invariantId) =>
+    invariantId.toLowerCase().includes("acceleration"));
+  const requiredInvariantIds = [...new Set([
+    ...turbulent.requiredInvariantIds,
+    ...accelerationInvariantIds,
+  ])];
+  // Escalate the already-retained Turbulent Displace stage in place. Adding a
+  // second event-local effect system exceeded the 96-operation correction
+  // transaction ceiling on compound references. v3 intentionally keeps v2's
+  // static property map and only adds dynamic Amount/Evolution expressions, so
+  // the retained static construction remains intact while the proof boundary is
+  // upgraded without duplicating layers/effects.
+  const evolvingNode: ConstructionNodeV1 = {
+    ...turbulent,
+    requiredInvariantIds,
+    parameters: {
+      ...turbulent.parameters,
+      synthesisStrategy: "COMPOUND_EVOLVING_WARP_HYBRID",
+      ...evolvingTurbulentProofParameters(turbulent),
+    },
+  };
+  const targeted = new Set(requiredInvariantIds);
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(compound.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      targeted.has(invariantId)
+        ? [turbulent.nodeId, ...nodeIds.filter((nodeId) => nodeId !== turbulent.nodeId)]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...compound,
+    graphId: `${compound.graphId}:evolving_warp`,
+    nodes: compound.nodes.map((node) =>
+      node.nodeId === turbulent.nodeId ? evolvingNode : node),
+    invariantCoverage,
   };
 };
 
@@ -361,23 +885,13 @@ const strategyGraph = (
   base: ConstructionGraphV1,
   strategy: UnknownEffectSynthesisStrategyV1,
 ): ConstructionGraphV1 | null => {
-  if (strategy === "LAYERED_PRIMITIVES") return base;
+  if (strategy === "LAYERED_PRIMITIVES") return layeredPrimitiveHistoryGraph(base);
+  if (strategy === "LAYERED_ECHO_AUGMENTED") return layeredEchoAugmentedGraph(base);
+  if (strategy === "COMPOUND_NATIVE_HYBRID") return compoundNativeHybridGraph(base);
+  if (strategy === "COMPOUND_EVOLVING_WARP_HYBRID") return compoundEvolvingWarpGraph(base);
+  if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
   let changed = false;
   const nodes = base.nodes.map((node) => {
-    if (strategy === "NATIVE_ECHO_HYBRID"
-      && node.kind === "TEMPORAL_DUPLICATES"
-      && node.dimension === "TEMPORAL") {
-      changed = true;
-      return {
-        ...node,
-        capabilityCandidates: ["ae.effect.echo"],
-        parameters: {
-          ...node.parameters,
-          synthesisStrategy: "NATIVE_ECHO_HYBRID",
-          ...echoProofParameters(node),
-        },
-      };
-    }
     if (strategy === "TIME_DISPLACEMENT_HYBRID"
       && node.kind === "TEMPORAL_DUPLICATES"
       && (node.dimension === "TEMPORAL" || node.dimension === "SPATIAL")) {
@@ -393,7 +907,11 @@ const strategyGraph = (
       return {
         ...node,
         capabilityCandidates: ["ae.effect.turbulent-displace"],
-        parameters: { ...node.parameters, synthesisStrategy: "TURBULENT_DISPLACE_HYBRID" },
+        parameters: {
+          ...node.parameters,
+          synthesisStrategy: "TURBULENT_DISPLACE_HYBRID",
+          ...turbulentDisplaceProofParameters(node),
+        },
       };
     }
     return node;
@@ -425,14 +943,19 @@ const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
   Partial<Record<UnknownEffectSynthesisStrategyV1, string>>
 > = Object.freeze({
   NATIVE_ECHO_HYBRID: "ae.effect-schema.m6.echo.v1",
+  LAYERED_ECHO_AUGMENTED: "ae.effect-schema.m6.echo.v1",
+  TURBULENT_DISPLACE_HYBRID: "ae.effect-schema.m6.turbulent-displace.v2",
+  COMPOUND_EVOLVING_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
 });
 
 const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
   [...new Set(graph.nodes.flatMap((node) => {
     const strategy = node.parameters["synthesisStrategy"];
     if (strategy !== "NATIVE_ECHO_HYBRID"
+      && strategy !== "LAYERED_ECHO_AUGMENTED"
       && strategy !== "TIME_DISPLACEMENT_HYBRID"
-      && strategy !== "TURBULENT_DISPLACE_HYBRID") return [];
+      && strategy !== "TURBULENT_DISPLACE_HYBRID"
+      && strategy !== "COMPOUND_EVOLVING_WARP_HYBRID") return [];
     const capability = node.capabilityCandidates[0] ?? String(strategy);
     const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
     const actualSchemaRef = node.parameters["effectSchemaRef"];
@@ -483,6 +1006,9 @@ export const synthesizeUnknownEffectV1 = (input: {
     complexityPenalty: number;
   }>[] = [
     { strategy: "LAYERED_PRIMITIVES", id: "adaptive:layered-primitives", complexityPenalty: 0 },
+    { strategy: "LAYERED_ECHO_AUGMENTED", id: "adaptive:layered-echo-augmented", complexityPenalty: 0.5 },
+    { strategy: "COMPOUND_NATIVE_HYBRID", id: "adaptive:compound-native-hybrid", complexityPenalty: 1 },
+    { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
     { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
     { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },
     { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },
@@ -512,6 +1038,71 @@ export const synthesizeUnknownEffectV1 = (input: {
       ? [...new Set(candidates.flatMap((item) => item.capabilityGaps))]
       : [],
   };
+};
+
+export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
+  synthesis: UnknownEffectSynthesisV1;
+  currentStrategy?: UnknownEffectSynthesisStrategyV1 | null;
+  requiredInvariantIds: readonly string[];
+}>): SynthesisCandidateV1 | null => {
+  const required = new Set(input.requiredInvariantIds);
+  if (required.size === 0) return null;
+  const interventionStrategies = (graph: ConstructionGraphV1): ReadonlySet<string> =>
+    new Set(graph.nodes.flatMap((node) =>
+      typeof node.parameters["synthesisStrategy"] === "string"
+        ? [node.parameters["synthesisStrategy"] as string]
+        : []));
+  const currentCandidate = input.currentStrategy === null || input.currentStrategy === undefined
+    ? undefined
+    : input.synthesis.candidates.find((candidate) => candidate.strategy === input.currentStrategy);
+  const currentInterventions = currentCandidate === undefined
+    ? new Set<string>()
+    : interventionStrategies(currentCandidate.graph);
+  const ranked = input.synthesis.candidates
+    .filter((candidate) => {
+      if (candidate.strategy === input.currentStrategy
+        || candidate.definingCoverage !== 1
+        || candidate.capabilityGaps.length > 0) return false;
+      const candidateInterventions = interventionStrategies(candidate.graph);
+      const isInterventionSubset = candidateInterventions.size > 0
+        && currentInterventions.size > 0
+        && [...candidateInterventions].every((strategy) => currentInterventions.has(strategy));
+      // Structural escalation must add causal machinery, not replace a richer
+      // retained construction with a strict subset of mechanisms it already
+      // contains. The rendered current state remains authoritative.
+      return !isInterventionSubset;
+    })
+    .map((candidate) => {
+      const interventionStrategies = new Set(candidate.graph.nodes.flatMap((node) =>
+        typeof node.parameters["synthesisStrategy"] === "string"
+          ? [node.parameters["synthesisStrategy"]]
+          : []));
+      const interventionInvariantIds = new Set(candidate.graph.nodes.flatMap((node) =>
+        typeof node.parameters["synthesisStrategy"] === "string"
+          ? node.requiredInvariantIds
+          : []));
+      const targetedInvariantCount = [...required]
+        .filter((invariantId) => interventionInvariantIds.has(invariantId)).length;
+      const collateralInvariantCount = [...interventionInvariantIds]
+        .filter((invariantId) => !required.has(invariantId)).length;
+      // Escalation should be monotonic when possible: if the current rendered
+      // strategy already solved defining behavior, prefer a candidate that
+      // preserves that intervention and layers the new synthesis on top.
+      // Otherwise a targeted fix can regress already-proven behavior.
+      const preservesCurrentStrategy = input.currentStrategy !== null
+        && input.currentStrategy !== undefined
+        && interventionStrategies.has(input.currentStrategy);
+      return { candidate, targetedInvariantCount, collateralInvariantCount, preservesCurrentStrategy };
+    })
+    .filter((entry) => entry.targetedInvariantCount > 0)
+    .sort((left, right) =>
+      right.targetedInvariantCount - left.targetedInvariantCount
+      || Number(right.preservesCurrentStrategy) - Number(left.preservesCurrentStrategy)
+      || left.collateralInvariantCount - right.collateralInvariantCount
+      || right.candidate.score - left.candidate.score
+      || left.candidate.complexity - right.candidate.complexity
+      || left.candidate.candidateId.localeCompare(right.candidate.candidateId));
+  return ranked[0]?.candidate ?? null;
 };
 
 export class SynthesizedEffectMemoryV1 {

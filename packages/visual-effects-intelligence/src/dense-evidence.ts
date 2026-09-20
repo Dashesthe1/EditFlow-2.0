@@ -23,6 +23,14 @@ const subtract = (a: NormalizedPointV1, b: NormalizedPointV1): NormalizedPointV1
   y: a.y - b.y,
 });
 const phase = (index: number, count: number): number => count <= 1 ? 0 : index / (count - 1);
+const median = (values: readonly number[]): number => {
+  if (values.length === 0) return 0;
+  const ordered = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 === 0
+    ? ((ordered[middle - 1] ?? 0) + (ordered[middle] ?? 0)) / 2
+    : ordered[middle] ?? 0;
+};
 
 interface PixelStatsV1 {
   readonly lumaMean: number;
@@ -41,6 +49,49 @@ const lumaAt = (rgba: Uint8Array, offset: number): number =>
   + ((rgba[offset + 1] ?? 0) * 0.7152)
   + ((rgba[offset + 2] ?? 0) * 0.0722);
 
+const projectionCorrelation = (
+  a: Float64Array,
+  b: Float64Array,
+  lag: number,
+): number => {
+  const start = Math.max(0, -lag);
+  const end = Math.min(a.length, b.length - lag);
+  if (end - start < 2) return 0;
+  let dot = 0;
+  let aa = 0;
+  let bb = 0;
+  for (let index = start; index < end; index += 1) {
+    const av = a[index] ?? 0;
+    const bv = b[index + lag] ?? 0;
+    dot += av * bv;
+    aa += av * av;
+    bb += bv * bv;
+  }
+  return aa <= 1e-9 || bb <= 1e-9 ? 0 : dot / Math.sqrt(aa * bb);
+};
+
+const projectionMisregistration = (
+  a: Float64Array,
+  b: Float64Array,
+  maxLag: number,
+): number => {
+  const zero = projectionCorrelation(a, b, 0);
+  let best = zero;
+  let bestLag = 0;
+  for (let lag = -maxLag; lag <= maxLag; lag += 1) {
+    if (lag === 0) continue;
+    const correlation = projectionCorrelation(a, b, lag);
+    if (correlation > best) {
+      best = correlation;
+      bestLag = lag;
+    }
+  }
+  if (best < 0.25 || bestLag === 0) return 0;
+  const improvement = Math.max(0, best - zero);
+  const shift = Math.abs(bestLag) / Math.max(1, maxLag);
+  return clamp01(improvement * best * (0.25 + 0.75 * shift) * 1.5);
+};
+
 const pixelStats = (frame: DenseFrameInputV1, edgeThreshold: number): PixelStatsV1 => {
   const pixels = frame.width * frame.height;
   if (!Number.isInteger(frame.width) || !Number.isInteger(frame.height)
@@ -53,7 +104,6 @@ const pixelStats = (frame: DenseFrameInputV1, edgeThreshold: number): PixelStats
 
   let sum = 0;
   let sumSquares = 0;
-  let chroma = 0;
   let alpha = 0;
   let edges = 0;
   let laplacian = 0;
@@ -66,19 +116,17 @@ const pixelStats = (frame: DenseFrameInputV1, edgeThreshold: number): PixelStats
   let backgroundX = 0;
   let backgroundY = 0;
   let backgroundWeight = 0;
+  const channelColumnEdges = Array.from({ length: 3 }, () => new Float64Array(frame.width));
+  const channelRowEdges = Array.from({ length: 3 }, () => new Float64Array(frame.height));
 
   for (let y = 0; y < frame.height; y += 1) {
     for (let x = 0; x < frame.width; x += 1) {
       const pixel = y * frame.width + x;
       const offset = pixel * 4;
-      const r = frame.rgba[offset] ?? 0;
-      const g = frame.rgba[offset + 1] ?? 0;
-      const b = frame.rgba[offset + 2] ?? 0;
       const a = frame.rgba[offset + 3] ?? 0;
       const luma = lumaAt(frame.rgba, offset);
       sum += luma;
       sumSquares += luma * luma;
-      chroma += Math.max(r, g, b) - Math.min(r, g, b);
       if (a >= 250) alpha += 1;
       const normalizedWeight = luma / 255 + 0.001;
       weightedX += (x / (frame.width - 1)) * normalizedWeight;
@@ -104,18 +152,52 @@ const pixelStats = (frame: DenseFrameInputV1, edgeThreshold: number): PixelStats
         const gradient = Math.hypot(right - left, below - above);
         if (gradient >= edgeThreshold) edges += 1;
         laplacian += Math.abs((4 * luma) - left - right - above - below);
+        for (let channel = 0; channel < 3; channel += 1) {
+          const center = offset + channel;
+          const channelLeft = frame.rgba[center - 4] ?? 0;
+          const channelRight = frame.rgba[center + 4] ?? 0;
+          const channelAbove = frame.rgba[center - frame.width * 4] ?? 0;
+          const channelBelow = frame.rgba[center + frame.width * 4] ?? 0;
+          const channelGradient = Math.hypot(
+            channelRight - channelLeft,
+            channelBelow - channelAbove,
+          );
+          const columnProjection = channelColumnEdges[channel]!;
+          const rowProjection = channelRowEdges[channel]!;
+          columnProjection[x] = (columnProjection[x] ?? 0) + channelGradient;
+          rowProjection[y] = (rowProjection[y] ?? 0) + channelGradient;
+        }
       }
     }
   }
   const interior = Math.max(1, (frame.width - 2) * (frame.height - 2));
   const mean = sum / pixels;
   const variance = Math.max(0, sumSquares / pixels - mean * mean);
+  const maxLagX = Math.max(1, Math.min(12, Math.round(frame.width * 0.04)));
+  const maxLagY = Math.max(1, Math.min(12, Math.round(frame.height * 0.04)));
+  const channelPairs = [[0, 1], [1, 2], [0, 2]] as const;
+  let chromaticSeparation = 0;
+  for (const [aChannel, bChannel] of channelPairs) {
+    chromaticSeparation = Math.max(
+      chromaticSeparation,
+      projectionMisregistration(
+        channelColumnEdges[aChannel]!,
+        channelColumnEdges[bChannel]!,
+        maxLagX,
+      ),
+      projectionMisregistration(
+        channelRowEdges[aChannel]!,
+        channelRowEdges[bChannel]!,
+        maxLagY,
+      ),
+    );
+  }
   return {
     lumaMean: mean / 255,
     lumaStd: Math.sqrt(variance) / 127.5,
     sharpness: clamp01((laplacian / interior) / 128),
     edgeDensity: edges / interior,
-    chromaticSeparation: chroma / (pixels * 255),
+    chromaticSeparation,
     alphaCoverage: alpha / pixels,
     centroid: { x: weightedX / weight, y: weightedY / weight },
     subjectCentroid: subjectWeight > 0
@@ -273,6 +355,85 @@ export const measureFragmentationCoherenceV1 = (
 };
 
 /**
+ * Measures whether a modern real-pixel fragmentation tuple is actually local
+ * to the selected effect event. Repeated source texture can make the
+ * autocorrelation detector report states/overlap/separation across an entire
+ * window; that is evidence of image content, not evidence of a shutter event.
+ *
+ * Retained pre-v6 evidence and hand-authored fixtures are deliberately
+ * non-applicable so older proofs keep their historical meaning.
+ */
+export const measureFragmentationEventProminenceV1 = (
+  evidence: DenseEffectEvidenceV1,
+  eventPhase?: number,
+): Readonly<{
+  applicable: boolean;
+  nearMean: number;
+  farMean: number;
+  delta: number;
+  localized: boolean;
+}> => {
+  const probeAlgorithm = evidence.evidenceRefs.find((ref) =>
+    ref.startsWith("probe-algorithm:editflow.m6.dense-video-probe.v"));
+  const versionMatch = probeAlgorithm?.match(/dense-video-probe\.v(\d+)$/);
+  const version = versionMatch === null || versionMatch === undefined
+    ? null
+    : Number(versionMatch[1]);
+  const applicable = version !== null && Number.isFinite(version) && version >= 6
+    && evidence.frames.length >= 5;
+  if (!applicable) {
+    return { applicable: false, nearMean: 0, farMean: 0, delta: 0, localized: true };
+  }
+
+  const resolvedPhase = eventPhase ?? evidence.summary.fragmentationCoherencePhase
+    ?? measureFragmentationCoherenceV1(evidence.frames, evidence.summary.frameIntervalMs).phase;
+  const denominator = Math.max(1, evidence.frames.length - 1);
+  const tupleScores = evidence.frames.map((frame, index) => {
+    const states = clamp01(frame.temporalStateCount - 1);
+    const overlap = clamp01(frame.overlapDensity / 0.20);
+    const separation = clamp01(((frame.stateSeparation ?? frame.displacementMagnitude) / 0.015));
+    return { phase: index / denominator, score: Math.min(states, overlap, separation) };
+  });
+  const mean = (values: readonly number[]): number =>
+    values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+  const near = tupleScores
+    .filter((sample) => Math.abs(sample.phase - resolvedPhase) <= 0.12)
+    .map((sample) => sample.score);
+  const far = tupleScores
+    .filter((sample) => Math.abs(sample.phase - resolvedPhase) >= 0.22)
+    .map((sample) => sample.score);
+  if (near.length === 0 || far.length === 0) {
+    return { applicable: false, nearMean: 0, farMean: 0, delta: 0, localized: true };
+  }
+  const nearMean = mean(near);
+  const farMean = mean(far);
+  const delta = nearMean - farMean;
+  return {
+    applicable: true,
+    nearMean,
+    farMean,
+    delta,
+    localized: nearMean >= 0.02 && delta >= 0.015,
+  };
+};
+
+/**
+ * Continuous [0,1] form of the same event-locality gate used by family
+ * classification. Pre-v6 evidence is non-applicable by design and therefore
+ * retains its historical meaning with a neutral passing score.
+ */
+export const scoreFragmentationEventLocalizationV1 = (
+  evidence: DenseEffectEvidenceV1,
+  eventPhase?: number,
+): number => {
+  const prominence = measureFragmentationEventProminenceV1(evidence, eventPhase);
+  if (!prominence.applicable) return 1;
+  const nearScore = clamp01(prominence.nearMean / 0.02);
+  const deltaScore = clamp01(prominence.delta / 0.015);
+  return Math.min(nearScore, deltaScore);
+};
+
+/**
  * Resolves the causal fragmentation event while preserving retained pre-v6
  * analyzer evidence. New/synthetic evidence is derived from the coordinated
  * event; v1-v5 real-pixel evidence keeps its historical global semantics and
@@ -362,12 +523,20 @@ export const summarizeDenseEffectFramesV1 = (
   }
   const displacementPeakIndex = peakIndex(frames, (frame) => frame.displacementMagnitude);
   const fragmentation = measureFragmentationCoherenceV1(frames, interval);
-  const active = frames.filter((frame) => frame.frameDifference >= 0.025).length;
+  // Temporal persistence is the occupancy of visible simultaneous temporal
+  // states, not generic inter-frame pixel change. Requiring state count,
+  // overlap, and within-frame separation together prevents static repeated
+  // source texture from masquerading as an Echo/trail while allowing a
+  // smoothly moving multi-state composite to remain persistent.
+  const persistentTemporalFrames = frames.filter((frame) =>
+    frame.temporalStateCount > 1
+    && frame.overlapDensity >= 0.20
+    && (frame.stateSeparation ?? 0) >= 0.015).length;
   return {
     frameCount: frames.length,
     frameIntervalMs: interval,
     temporalStateCountPeak: max((frame) => frame.temporalStateCount),
-    temporalPersistence: frames.length <= 1 ? 0 : active / (frames.length - 1),
+    temporalPersistence: frames.length === 0 ? 0 : persistentTemporalFrames / frames.length,
     motionEnergyPeak: motionPeak,
     displacementPeak: max((frame) => frame.displacementMagnitude),
     displacementDirection: frames[displacementPeakIndex]?.motionDirection ?? { x: 0, y: 0 },
@@ -451,6 +620,24 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
   if (cached !== null && cached !== undefined) return cached;
   const edgeThreshold = input.settings.edgeThreshold ?? 32;
   const stats = frames.map((frame) => pixelStats(frame, edgeThreshold));
+  const exposureEdgeCount = Math.max(1, Math.min(
+    Math.ceil(stats.length * 0.2),
+    Math.max(1, Math.floor(stats.length / 2)),
+  ));
+  const startExposureBaseline = median(
+    stats.slice(0, exposureEdgeCount).map((item) => item.lumaMean),
+  );
+  const endExposureBaseline = median(
+    stats.slice(-exposureEdgeCount).map((item) => item.lumaMean),
+  );
+  const relativeExposure = (index: number, lumaMean: number): number => {
+    const progress = phase(index, stats.length);
+    const expectedLuma = startExposureBaseline
+      + (endExposureBaseline - startExposureBaseline) * progress;
+    const epsilon = 1 / 255;
+    const stops = Math.abs(Math.log2((lumaMean + epsilon) / (expectedLuma + epsilon)));
+    return clamp01(stops / 4);
+  };
   const metrics: DenseFrameMetricsV1[] = [];
   for (const [index, frame] of frames.entries()) {
     const current = stats[index];
@@ -492,7 +679,7 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
       timeMs: frame.timeMs,
       lumaMean: current.lumaMean,
       lumaStd: current.lumaStd,
-      exposure: current.lumaMean,
+      exposure: relativeExposure(index, current.lumaMean),
       sharpness: current.sharpness,
       edgeDensity: current.edgeDensity,
       chromaticSeparation: current.chromaticSeparation,

@@ -101,6 +101,7 @@ export interface DenseEvidenceSummaryV1 {
   readonly frameCount: number;
   readonly frameIntervalMs: number;
   readonly temporalStateCountPeak: number;
+  /** Fraction of analyzed frames with coordinated visible simultaneous temporal states. */
   readonly temporalPersistence: number;
   readonly motionEnergyPeak: number;
   readonly displacementPeak: number;
@@ -288,6 +289,7 @@ export type ConstructionNodeKindV1 =
   | "EXPOSURE_ACCENT"
   | "CHROMATIC_TREATMENT"
   | "OCCLUSION_COMPOSITE"
+  | "PRECOMPOSE_BOUNDARY"
   | "RECOVERY";
 
 export interface ConstructionNodeV1 {
@@ -381,10 +383,15 @@ export const CONSTRUCTION_CONTROL_KINDS_V1 = [
   "SPATIAL_SEPARATION",
   "SPATIAL_DIRECTION",
   "MOTION_IMPULSE",
+  "MOTION_IMPULSE_SHARPNESS",
+  "MOTION_IMPULSE_PHASE",
   "RECOVERY_DURATION",
   "BLUR_STRENGTH",
   "EXPOSURE_STRENGTH",
   "DISTORTION_STRENGTH",
+  "DISTORTION_SIZE",
+  "DISTORTION_COMPLEXITY",
+  "DISTORTION_EVOLUTION",
   "SUBJECT_ISOLATION",
   "OCCLUSION_COVERAGE",
   "CHROMATIC_SEPARATION",
@@ -439,6 +446,9 @@ export interface CorrectionLoopResultV1 {
 
 export type UnknownEffectSynthesisStrategyV1 =
   | "LAYERED_PRIMITIVES"
+  | "LAYERED_ECHO_AUGMENTED"
+  | "COMPOUND_NATIVE_HYBRID"
+  | "COMPOUND_EVOLVING_WARP_HYBRID"
   | "NATIVE_ECHO_HYBRID"
   | "TIME_DISPLACEMENT_HYBRID"
   | "TURBULENT_DISPLACE_HYBRID";

@@ -77,6 +77,7 @@ export interface VirtualAeLayerV1 {
   masks: VirtualAeMaskV1[];
   matteLayerId?: string;
   parentLayerId?: string;
+  blendMode?: string;
   motion?: VirtualAeLayerMotionStateV1;
   stabilization?: VirtualAeStabilizationStateV1;
 }
@@ -115,9 +116,12 @@ export type VirtualAeOperationV1 =
       insertAfterEffectId?: string }
   | { type: "SET_EFFECT_PROPERTY"; compId: string; layerId: string; effectId: string;
       propertyPath: VirtualAeEffectPropertyPathV1; value: VirtualAeValueV1 }
+  | { type: "SET_EFFECT_EXPRESSION"; compId: string; layerId: string; effectId: string;
+      propertyPath: VirtualAeEffectPropertyPathV1; expression: string }
   | { type: "ADD_MASK"; compId: string; layerId: string; maskId: string;
       mode?: VirtualAeMaskV1["mode"]; closed?: boolean }
   | { type: "SET_MATTE"; compId: string; layerId: string; matteLayerId: string }
+  | { type: "SET_BLEND_MODE"; compId: string; layerId: string; blendMode: string }
   | { type: "SET_PARENT"; compId: string; layerId: string; parentLayerId: string | null }
   | { type: "PRECOMPOSE"; compId: string; newCompId: string; newCompName: string;
       newLayerId: string; layerIds: string[];
@@ -393,6 +397,15 @@ export const simulateVirtualAeV1 = (
       continue;
     }
 
+    if (operation.type === "SET_BLEND_MODE") {
+      if (!nonEmpty(operation.blendMode)) {
+        fail(errors, index, "SET_BLEND_MODE requires a non-empty blend mode");
+        continue;
+      }
+      layer.blendMode = operation.blendMode;
+      continue;
+    }
+
     if (operation.type === "APPLY_STABILIZATION") {
       if (operation.state.mode !== "POSITION_XY"
         || operation.state.direction !== "FORWARD"
@@ -470,12 +483,12 @@ export const simulateVirtualAeV1 = (
       continue;
     }
 
-    if (operation.type === "SET_EFFECT_PROPERTY") {
+    if (operation.type === "SET_EFFECT_PROPERTY" || operation.type === "SET_EFFECT_EXPRESSION") {
       const effect = layer.effects.find((candidate) => candidate.effectId === operation.effectId);
       const propertyKey = effectPropertyPathKey(operation.propertyPath);
       if (!effect || propertyKey === null) {
         fail(errors, index, effect
-          ? "SET_EFFECT_PROPERTY requires a valid propertyPath"
+          ? operation.type + " requires a valid propertyPath"
           : "effect '" + operation.effectId + "' does not exist");
         continue;
       }
@@ -484,7 +497,13 @@ export const simulateVirtualAeV1 = (
         property = { path: propertyKey, keyframes: [] };
         effect.properties.push(property);
       }
-      property.value = structuredClone(operation.value);
+      if (operation.type === "SET_EFFECT_PROPERTY") {
+        property.value = structuredClone(operation.value);
+      } else if (!nonEmpty(operation.expression)) {
+        fail(errors, index, "SET_EFFECT_EXPRESSION requires expression");
+      } else {
+        property.expression = operation.expression;
+      }
       continue;
     }
 

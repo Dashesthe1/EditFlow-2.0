@@ -249,6 +249,13 @@ test("current AE host loader layers v1.1 hardening over the green v1.0 dispatche
   assert.match(hardening, /app\.executeCommand\(16\)/);
   assert.match(hardening, /replacementStableId/);
   assert.match(hardening, /findLayerBySource/);
+  assert.match(hardening, /createdChildHostId/);
+  assert.match(hardening, /affectedObject\.hostId/);
+  assert.match(
+    hardening,
+    /createdChildHostId === null[\s\S]*findItem\(\{ stableId: request\.payload\.stableId \}\)[\s\S]*findItem\(\{ hostId: createdChildHostId \}\)/,
+    "precompose hardening must prefer the just-created AE host identity and use deterministic stable identity only as a legacy fallback",
+  );
   assert.match(hardening, /preserveSingleLayerTiming/);
   assert.match(hardening, /timingSnapshot/);
   assert.match(hardening, /restoreTiming/);

@@ -16,6 +16,12 @@ import {
   type AeAdapterTransportV11,
 } from "./protocol-v1_1.js";
 import {
+  AE_COMPOSITE_ROUTE_ID_V13,
+  capabilityForCompositeCommandV13,
+  isAeCompositeCommandV13,
+  type AeCompositeTransportV13,
+} from "./protocol-v1_3.js";
+import {
   AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
   capabilityForTemporalInterpolationCommandV17,
   isAeTemporalInterpolationCommandV17,
@@ -47,6 +53,7 @@ import {
   type StabilizationTruthCountsV1,
   type StabilizationVisualDriverV1,
 } from "./m4-stabilization.js";
+import { buildCompositeRequestV13 } from "./m3-composite.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
 import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
@@ -62,6 +69,7 @@ import {
 
 export type CurrentAeCepTransactionalTransportV1 =
   AeAdapterTransportV11
+  & AeCompositeTransportV13
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
   & AeMarkerMotionTransportV20
@@ -724,6 +732,27 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       };
     }
 
+    if (isAeCompositeCommandV13(parsed.command)) {
+      assertBinding(
+        operation,
+        capabilityForCompositeCommandV13(parsed.command),
+        AE_COMPOSITE_ROUTE_ID_V13,
+      );
+      const response = await this.transport.dispatch(
+        buildCompositeRequestV13({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: String(operation.operationId),
+          command: parsed.command,
+          expectedHostProjectRevision:
+            parsed.command === "layer.composite_readback" ? null : revision,
+          payload: parsed.payload,
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      return this.#accept(response as unknown as CommonResponse, parsed.command);
+    }
+
     if (isAePublicCommandV11(parsed.command)) {
       assertBinding(
         operation,
@@ -734,7 +763,9 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         ? await this.#materializeLiveCurvePayload(operation, parsed, revision)
         : parsed.payload;
       let effectBindingId: string | null = null;
-      if (parsed.command === "effect.add" || parsed.command === "effect.set_property") {
+      if (parsed.command === "effect.add"
+        || parsed.command === "effect.set_property"
+        || parsed.command === "property.set_expression") {
         const candidate = payload["effectBindingId"];
         if (candidate !== undefined
           && (typeof candidate !== "string" || candidate.trim().length === 0)) {
@@ -744,19 +775,29 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         if (effectBindingId !== null) {
           const materialized = structuredClone(payload) as Record<string, unknown>;
           delete materialized["effectBindingId"];
-          if (parsed.command === "effect.set_property") {
-            if (materialized["effectIndex"] !== undefined) {
-              throw new TypeError(
-                "effect.set_property cannot provide both effectIndex and effectBindingId.",
-              );
-            }
+          if (parsed.command === "effect.set_property" || parsed.command === "property.set_expression") {
             const effectIndex = this.#effectIndexByBindingId.get(effectBindingId);
             if (effectIndex === undefined) {
               throw new TypeError(
                 `No runtime effect index is bound for effectBindingId '${effectBindingId}'.`,
               );
             }
-            materialized["effectIndex"] = effectIndex;
+            if (parsed.command === "effect.set_property") {
+              if (materialized["effectIndex"] !== undefined) {
+                throw new TypeError(
+                  "effect.set_property cannot provide both effectIndex and effectBindingId.",
+                );
+              }
+              materialized["effectIndex"] = effectIndex;
+            } else {
+              const propertyPath = materialized["propertyPath"];
+              if (!Array.isArray(propertyPath) || propertyPath.length === 0) {
+                throw new TypeError(
+                  "effect-bound property.set_expression requires a non-empty propertyPath array.",
+                );
+              }
+              materialized["propertyPath"] = ["ADBE Effect Parade", effectIndex, ...propertyPath];
+            }
           }
           payload = materialized;
         }

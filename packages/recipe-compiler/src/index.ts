@@ -50,6 +50,9 @@ export const NATIVE_AE_SUPPORTED_PRIMITIVE_KINDS_V1 = [
   "TEMPORAL_DUPLICATION",
   "OPACITY_SHAPING",
   "DIRECTIONAL_OFFSET",
+  "BLUR",
+  "COLOR_TREATMENT",
+  "DISTORTION",
   "MOTION_SHAPING",
 ] as const satisfies readonly EditingIrPrimitiveKindV1[];
 
@@ -101,6 +104,8 @@ const supportedNodeVariantV1 = (
       && literalParameterValueV1(node, "analysisDirection") === "FORWARD";
   }
   if (node.kind === "DIRECTIONAL_OFFSET" && target === "NATIVE") {
+    const scaleRange = literalParameterValueV1(node, "scaleRange");
+    if (typeof scaleRange === "number" && Number.isFinite(scaleRange) && scaleRange > 0) return true;
     const displacement = literalParameterValueV1(node, "displacementPeak");
     const direction = literalParameterValueV1(node, "displacementDirection");
     const phase = literalParameterValueV1(node, "motionPeakPhase");
@@ -115,6 +120,20 @@ const supportedNodeVariantV1 = (
       && Number.isFinite(phase)
       && phase >= 0
       && phase <= 1;
+  }
+  if (node.kind === "BLUR" && target === "NATIVE") {
+    const blur = literalParameterValueV1(node, "blurPeak");
+    return typeof blur === "number" && Number.isFinite(blur) && blur > 0;
+  }
+  if (node.kind === "COLOR_TREATMENT" && target === "NATIVE") {
+    const exposure = literalParameterValueV1(node, "exposurePeak");
+    const chroma = literalParameterValueV1(node, "chromaticSeparationPeak");
+    return (typeof exposure === "number" && Number.isFinite(exposure) && exposure > 0)
+      || (typeof chroma === "number" && Number.isFinite(chroma) && chroma > 0);
+  }
+  if (node.kind === "DISTORTION" && target === "NATIVE") {
+    const distortion = literalParameterValueV1(node, "distortionPeak");
+    return typeof distortion === "number" && Number.isFinite(distortion) && distortion > 0;
   }
   return true;
 };
@@ -646,6 +665,33 @@ const adaptEffectSchemaValueV1 = (
 ): unknown | null => {
   const adapter = binding.valueAdapter ?? "IDENTITY";
   if (adapter === "IDENTITY") return structuredClone(value);
+  if (adapter === "MULTIPLY_BY_PARAMETER") {
+    if (typeof value !== "number" || !Number.isFinite(value)
+      || typeof binding.scaleParameter !== "string" || binding.scaleParameter.length === 0) {
+      addIssue(
+        issues,
+        node.nodeId,
+        "EFFECT_ADAPTATION_INVALID",
+        `Effect parameter '${binding.semanticParameter}' requires a finite numeric base value and scale parameter.`,
+      );
+      return null;
+    }
+    const scaleParameter = node.parameters.find((parameter) =>
+      parameter.name === binding.scaleParameter);
+    const scaleRaw = scaleParameter?.value ?? 1;
+    if (typeof scaleRaw !== "number" || !Number.isFinite(scaleRaw)) {
+      addIssue(
+        issues,
+        node.nodeId,
+        "EFFECT_ADAPTATION_INVALID",
+        `Effect scale '${binding.scaleParameter}' must be a finite numeric literal.`,
+      );
+      return null;
+    }
+    const range = binding.scaleRange ?? [0, Number.POSITIVE_INFINITY] as const;
+    const scale = Math.max(range[0], Math.min(range[1], scaleRaw));
+    return value * scale;
+  }
   if (adapter === "NEGATIVE_FRAMES_TO_SECONDS") {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0
       || !Number.isFinite(frameRate) || frameRate <= 0) {
@@ -707,7 +753,82 @@ const compileEffectStack = (
   }
   if (values.size !== schema.propertyBindings.length) return [];
 
-  for (const layerId of targets) {
+  const eventLocalEffect = literalParameterValueV1(node, "eventLocalEffect") === true;
+  const eventParameters = eventLocalEffect
+    ? resolveParameterMap(
+        node,
+        node.parameters.map((parameter) => parameter.name),
+        context,
+        issues,
+      )
+    : null;
+  if (eventLocalEffect && eventParameters === null) return [];
+  const effectTargets = eventLocalEffect
+    ? m6EventEffectTargetsV1(
+        node,
+        targets,
+        context,
+        eventParameters ?? {},
+        operations,
+        issues,
+        frameRate,
+        "effect-stack",
+      )
+    : targets;
+
+  const dynamicTurbulentV3 = schema.schemaId === "ae.effect-schema.m6.turbulent-displace.v3"
+    && eventLocalEffect
+    && eventParameters?.["eventDynamicDistortion"] === true;
+  let dynamicAmountExpression: string | null = null;
+  let dynamicEvolutionExpression: string | null = null;
+  if (dynamicTurbulentV3) {
+    const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+    const pulseScale = eventParameters?.["eventAmountPulseScale"];
+    const evolutionSweep = eventParameters?.["eventEvolutionSweepDegrees"];
+    const evolutionSweepScale = eventParameters?.["eventEvolutionSweepScale"] ?? 1;
+    const amountBase = values.get("distortionAmount");
+    const evolutionBase = values.get("distortionEvolution");
+    if (eventSeconds === null
+      || typeof pulseScale !== "number" || !Number.isFinite(pulseScale) || pulseScale < 1
+      || typeof evolutionSweep !== "number" || !Number.isFinite(evolutionSweep) || evolutionSweep <= 0
+      || typeof evolutionSweepScale !== "number" || !Number.isFinite(evolutionSweepScale) || evolutionSweepScale <= 0
+      || typeof amountBase !== "number" || !Number.isFinite(amountBase)
+      || typeof evolutionBase !== "number" || !Number.isFinite(evolutionBase)) {
+      addIssue(issues, node.nodeId, "M6_DYNAMIC_TURBULENT_PARAMETERS_INVALID",
+        "Dynamic Turbulent Displace requires finite adapted Amount/Evolution bases, eventAmountPulseScale >= 1, and positive eventEvolutionSweepDegrees/eventEvolutionSweepScale values.");
+      return [];
+    }
+    const recoveryWindowFrames = resolveM6RecoveryWindowFrames(eventParameters ?? {}, frameRate);
+    const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(eventParameters ?? {}, frameRate);
+    const preFrames = persistenceWindowFrames === null
+      ? Math.max(2, Math.min(6, recoveryWindowFrames))
+      : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
+    const postFrames = persistenceWindowFrames === null
+      ? 1
+      : Math.max(1, persistenceWindowFrames - preFrames);
+    const eventEnvelope = [
+      `var event=${eventSeconds};`,
+      "var f=(time-event)/thisComp.frameDuration;",
+      `var pre=${preFrames};`,
+      `var post=${postFrames};`,
+      "var span=Math.max(1,pre+post);",
+      "var u=Math.max(0,Math.min(1,(f+pre)/span));",
+      "var active=(f>-pre&&f<post)?1:0;",
+    ].join("");
+    dynamicAmountExpression = [
+      eventEnvelope,
+      `var base=${amountBase};`,
+      "var envelope=Math.sin(Math.PI*u)*active;",
+      `base*(1+(${pulseScale}-1)*envelope);`,
+    ].join("");
+    dynamicEvolutionExpression = [
+      eventEnvelope,
+      `var base=${evolutionBase};`,
+      `base+(${evolutionSweep * evolutionSweepScale})*u*active;`,
+    ].join("");
+  }
+
+  for (const layerId of effectTargets) {
     const effectId = `${node.nodeId}:${layerId}`;
     operations.push({
       type: "ADD_EFFECT",
@@ -717,17 +838,38 @@ const compileEffectStack = (
       matchName: schema.effectMatchName,
     });
     for (const binding of schema.propertyBindings) {
-      operations.push({
-        type: "SET_EFFECT_PROPERTY",
-        compId: context.compId,
-        layerId,
-        effectId,
-        propertyPath: [...binding.propertyPath],
-        value: structuredClone(values.get(binding.semanticParameter)),
-      });
+      const expression = binding.semanticParameter === "distortionAmount"
+        ? dynamicAmountExpression
+        : binding.semanticParameter === "distortionEvolution"
+          ? dynamicEvolutionExpression
+          : null;
+      if (expression === null) {
+        operations.push({
+          type: "SET_EFFECT_PROPERTY",
+          compId: context.compId,
+          layerId,
+          effectId,
+          propertyPath: [...binding.propertyPath],
+          value: structuredClone(values.get(binding.semanticParameter)),
+        });
+      } else {
+        // v3 is operation-neutral relative to v2: the expression includes the
+        // reference-adapted static base and replaces, rather than supplements,
+        // the corresponding static property write.
+        operations.push({
+          type: "SET_EFFECT_EXPRESSION",
+          compId: context.compId,
+          layerId,
+          effectId,
+          propertyPath: [...binding.propertyPath],
+          expression,
+        });
+      }
     }
   }
-  return targets;
+  return eventLocalEffect
+    ? uniqueStrings([...targets, ...effectTargets])
+    : targets;
 };
 
 const compileStabilization = (
@@ -878,6 +1020,60 @@ const resolveM6EffectEventSeconds = (
   return eventMs / 1000;
 };
 
+const resolveM6RecoveryWindowFrames = (
+  parameters: Readonly<Record<string, unknown>>,
+  frameRate: number,
+): number => {
+  const scaleRaw = parameters["recoveryDurationScale"];
+  const scale = typeof scaleRaw === "number" && Number.isFinite(scaleRaw)
+    ? Math.max(0.25, Math.min(2, scaleRaw))
+    : 1;
+  const durationMs = parameters["effectRecoveryDurationMs"];
+  if (typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs > 0) {
+    return Math.max(2, Math.min(6, (durationMs / 1000) * frameRate * scale));
+  }
+  const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
+  if (typeof rawRecoveryFrames === "number" && Number.isFinite(rawRecoveryFrames)
+    && rawRecoveryFrames > 0) {
+    return Math.max(2, Math.min(6, rawRecoveryFrames * scale));
+  }
+  return 3;
+};
+
+const resolveM6TemporalPersistenceWindowFrames = (
+  parameters: Readonly<Record<string, unknown>>,
+  frameRate: number,
+): number | null => {
+  const persistenceRaw = parameters["temporalPersistence"];
+  const persistenceTarget = typeof persistenceRaw === "number" && Number.isFinite(persistenceRaw)
+    ? Math.max(0, Math.min(1, persistenceRaw))
+    : 0;
+  const persistenceScaleRaw = parameters["temporalPersistenceScale"];
+  const temporalPersistenceScale =
+    typeof persistenceScaleRaw === "number" && Number.isFinite(persistenceScaleRaw)
+      ? Math.max(0.5, Math.min(4, persistenceScaleRaw))
+      : 1;
+  const analysisDurationRaw = parameters["effectAnalysisDurationMs"];
+  if (typeof analysisDurationRaw !== "number"
+    || !Number.isFinite(analysisDurationRaw)
+    || analysisDurationRaw <= 0) return null;
+  const analysisWindowFrames = Math.max(2, Math.round((analysisDurationRaw / 1000) * frameRate));
+  return Math.max(2, Math.min(
+    analysisWindowFrames,
+    Math.round(analysisWindowFrames * persistenceTarget * temporalPersistenceScale),
+  ));
+};
+
+const resolveM6ReferenceFrameSeconds = (
+  parameters: Readonly<Record<string, unknown>>,
+  frameRate: number,
+): number => {
+  const intervalMs = parameters["referenceFrameIntervalMs"];
+  return typeof intervalMs === "number" && Number.isFinite(intervalMs) && intervalMs > 0
+    ? intervalMs / 1000
+    : 1 / frameRate;
+};
+
 const compileM6TemporalDuplication = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -895,11 +1091,8 @@ const compileM6TemporalDuplication = (
   if (parameters === null) return [];
   const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
   if (eventSeconds === null) return [];
-  const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
-  const eventWindowFrames = typeof rawRecoveryFrames === "number"
-    && Number.isFinite(rawRecoveryFrames) && rawRecoveryFrames > 0
-    ? Math.max(2, Math.min(6, rawRecoveryFrames))
-    : 3;
+  const eventWindowFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
+  const referenceFrameSeconds = resolveM6ReferenceFrameSeconds(parameters, frameRate);
   const countParameter = node.parameters.find((parameter) =>
     parameter.name === "temporalStateCountPeak"
       || parameter.name === "fragmentationTemporalStateCountPeak"
@@ -910,12 +1103,49 @@ const compileM6TemporalDuplication = (
       "M6 temporal duplication requires a finite temporal state count.");
     return [];
   }
-  const count = Math.max(2, Math.min(8, Math.round(resolved)));
+  const copyCountScaleRaw = parameters["temporalCopyCountScale"];
+  const temporalCopyCountScale = typeof copyCountScaleRaw === "number" && Number.isFinite(copyCountScaleRaw)
+    ? Math.max(0.5, Math.min(2, copyCountScaleRaw))
+    : 1;
+  const count = Math.max(2, Math.min(8, Math.round(resolved * temporalCopyCountScale)));
+  const overlapRaw = parameters["fragmentationOverlapDensityPeak"] ?? parameters["overlapDensityPeak"];
+  const overlapTarget = typeof overlapRaw === "number" && Number.isFinite(overlapRaw)
+    ? Math.max(0, Math.min(1, overlapRaw))
+    : null;
+  const spreadScaleRaw = parameters["duplicateSpreadScale"];
+  const duplicateSpreadScale = typeof spreadScaleRaw === "number" && Number.isFinite(spreadScaleRaw)
+    ? Math.max(0.25, Math.min(2, spreadScaleRaw))
+    : 1;
+  const opacityScaleRaw = parameters["duplicateOpacityScale"];
+  const duplicateOpacityScale = typeof opacityScaleRaw === "number" && Number.isFinite(opacityScaleRaw)
+    ? Math.max(0.35, Math.min(1.5, opacityScaleRaw))
+    : 1;
+  const persistenceRaw = parameters["temporalPersistence"];
+  const persistenceTarget = typeof persistenceRaw === "number" && Number.isFinite(persistenceRaw)
+    ? Math.max(0, Math.min(1, persistenceRaw))
+    : 0;
+  const persistenceScaleRaw = parameters["temporalPersistenceScale"];
+  const temporalPersistenceScale =
+    typeof persistenceScaleRaw === "number" && Number.isFinite(persistenceScaleRaw)
+      ? Math.max(0.5, Math.min(4, persistenceScaleRaw))
+      : 1;
+  // Temporal persistence is a fraction of the analyzed professional-reference
+  // window, not a fixed number of AE frames. Preserve that semantic duration
+  // across destination FPS and clip length so the actuator can materially alter
+  // rendered frame-to-frame persistence instead of saturating at an 8-frame cap.
+  const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(parameters, frameRate);
+  const preFrames = persistenceWindowFrames === null
+    ? eventWindowFrames
+    : Math.max(eventWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
+  const postFrames = persistenceWindowFrames === null
+    ? Math.max(1, Math.min(8,
+      1 + eventWindowFrames * persistenceTarget * temporalPersistenceScale))
+    : Math.max(1, persistenceWindowFrames - preFrames);
   const outputs: string[] = [...targets];
   for (const sourceLayerId of targets) {
     for (let state = 1; state < count; state += 1) {
       const layerId = `${node.nodeId}::${sourceLayerId}::state-${state}`;
-      const sourceTimeOffsetSeconds = state / frameRate;
+      const sourceTimeOffsetSeconds = state * duplicateSpreadScale * referenceFrameSeconds;
       operations.push({
         type: "DUPLICATE_LAYER",
         compId: context.compId,
@@ -937,7 +1167,15 @@ const compileM6TemporalDuplication = (
         propertyPath: "TimeRemap.SourceTime",
         expression: `Math.max(0,value-${sourceTimeOffsetSeconds});`,
       });
-      const statePeakOpacity = Math.max(42, 78 - (state - 1) * 11);
+      // Dense overlap evidence drives the retained history ladder upward. Real-AE A/B
+      // proof shows this profile preserves recovery and improves fidelity versus both
+      // the neutral and transparency-inverted alternatives for coherent fragmentation.
+      const baseStatePeakOpacity = overlapTarget === null
+        ? Math.max(42, 78 - (state - 1) * 11)
+        : Math.max(42, Math.min(100,
+          (58 + overlapTarget * 40) - (state - 1) * (11 - overlapTarget * 5)));
+      const statePeakOpacity = Math.max(20, Math.min(100,
+        baseStatePeakOpacity * duplicateOpacityScale));
       operations.push({
         type: "SET_EXPRESSION",
         compId: context.compId,
@@ -945,13 +1183,14 @@ const compileM6TemporalDuplication = (
         propertyPath: "Transform.Opacity",
         expression: [
           `var event=${eventSeconds};`,
-          "var f=(time-event)*thisComp.frameRate;",
-          `var pre=${eventWindowFrames};`,
+          "var f=(time-event)/thisComp.frameDuration;",
+          `var pre=${preFrames};`,
+          `var post=${postFrames};`,
           `var peak=${statePeakOpacity};`,
-          "if(f<=-pre||f>=1){0}",
+          "if(f<=-pre||f>=post){0}",
           "else if(f<-1){linear(f,-pre,-1,0,peak)}",
           "else if(f<0){linear(f,-1,0,peak,peak*0.4)}",
-          "else{linear(f,0,1,peak*0.4,0)}",
+          "else{linear(f,0,post,peak*0.4,0)}",
         ].join(""),
       });
       outputs.push(layerId);
@@ -1019,6 +1258,55 @@ const registerM6PositionExpressionV1 = (
   });
 };
 
+const m6EventEffectTargetsV1 = (
+  node: EditingIrNodeV1,
+  targets: readonly string[],
+  context: RecipeCompilerContextV1,
+  parameters: Readonly<Record<string, unknown>>,
+  operations: VirtualAeOperationV1[],
+  issues: RecipeCompileIssueV1[],
+  frameRate: number,
+  suffix: string,
+): readonly string[] => {
+  if (targets.length > 1) return targets.slice(1);
+  const sourceLayerId = targets[0];
+  if (sourceLayerId === undefined) return [];
+  const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+  if (eventSeconds === null) return [];
+  const recoveryWindowFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
+  const persistenceWindowFrames = resolveM6TemporalPersistenceWindowFrames(parameters, frameRate);
+  const preFrames = persistenceWindowFrames === null
+    ? Math.max(2, Math.min(6, recoveryWindowFrames))
+    : Math.max(recoveryWindowFrames, Math.max(1, Math.floor(persistenceWindowFrames * 0.45)));
+  const postFrames = persistenceWindowFrames === null
+    ? 1
+    : Math.max(1, persistenceWindowFrames - preFrames);
+  const layerId = `${node.nodeId}::${suffix}-accent`;
+  operations.push({
+    type: "DUPLICATE_LAYER",
+    compId: context.compId,
+    sourceLayerId,
+    layerId,
+    name: `${sourceLayerId} ${suffix} accent`,
+  });
+  operations.push({
+    type: "SET_EXPRESSION",
+    compId: context.compId,
+    layerId,
+    propertyPath: "Transform.Opacity",
+    expression: [
+      `var event=${eventSeconds};`,
+      "var f=(time-event)/thisComp.frameDuration;",
+      `var pre=${preFrames};`,
+      `var post=${postFrames};`,
+      "if(f<=-pre||f>=post){0}",
+      "else if(f<0){linear(f,-pre,0,0,100)}",
+      "else{linear(f,0,post,100,0)}",
+    ].join(""),
+  });
+  return [layerId];
+};
+
 const compileM6SemanticVisualState = (
   node: EditingIrNodeV1,
   targets: readonly string[],
@@ -1026,6 +1314,7 @@ const compileM6SemanticVisualState = (
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
   positionExpressionRegistry: M6PositionExpressionRegistryV1,
+  frameRate: number,
 ): readonly string[] => {
   const parameters = resolveParameterMap(
     node,
@@ -1037,11 +1326,7 @@ const compileM6SemanticVisualState = (
   if (node.kind === "OPACITY_SHAPING") {
     const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
     if (eventSeconds === null) return [];
-    const rawRecoveryFrames = parameters["effectRecoveryFrames"] ?? parameters["recoveryFrames"];
-    const eventWindowFrames = typeof rawRecoveryFrames === "number"
-      && Number.isFinite(rawRecoveryFrames) && rawRecoveryFrames > 0
-      ? Math.max(2, Math.min(6, rawRecoveryFrames))
-      : 3;
+    const eventWindowFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
     const overlap = parameters["fragmentationOverlapDensityPeak"] ?? parameters["overlapDensityPeak"];
     const coherence = parameters["fragmentationCoherencePeak"];
     const driver = typeof coherence === "number" && Number.isFinite(coherence)
@@ -1064,7 +1349,7 @@ const compileM6SemanticVisualState = (
         propertyPath: "Transform.Opacity",
         expression: [
           `var event=${eventSeconds};`,
-          "var f=(time-event)*thisComp.frameRate;",
+          "var f=(time-event)/thisComp.frameDuration;",
           `var peak=${peak};`,
           `var pre=${eventWindowFrames};`,
           "var shaped=0;",
@@ -1079,6 +1364,39 @@ const compileM6SemanticVisualState = (
     return targets;
   }
   if (node.kind === "DIRECTIONAL_OFFSET") {
+    const scaleRaw = parameters["scaleRange"];
+    if (typeof scaleRaw === "number" && Number.isFinite(scaleRaw) && scaleRaw > 0) {
+      const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+      if (eventSeconds === null) return [];
+      const preFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
+      const scalePulseScaleRaw = parameters["scalePulseScale"];
+      const scalePulseScale = typeof scalePulseScaleRaw === "number" && Number.isFinite(scalePulseScaleRaw)
+        ? Math.max(0.25, Math.min(4, scalePulseScaleRaw))
+        : 1;
+      const amplitude = Math.max(0.005, Math.min(0.65, scaleRaw * scalePulseScale));
+      const expression = [
+        `var event=${eventSeconds};`,
+        "var f=(time-event)/thisComp.frameDuration;",
+        `var pre=${preFrames};`,
+        `var amplitude=${amplitude};`,
+        "var pulse=0;",
+        "if(f<=-pre||f>=1){pulse=0;}",
+        "else if(f<0){pulse=linear(f,-pre,0,0,amplitude);}",
+        "else{pulse=linear(f,0,1,amplitude,0);}",
+        "var factor=1+pulse;",
+        "value.length>2?[value[0]*factor,value[1]*factor,value[2]]:value*factor;",
+      ].join("");
+      for (const layerId of targets) {
+        operations.push({
+          type: "SET_EXPRESSION",
+          compId: context.compId,
+          layerId,
+          propertyPath: "Transform.Scale",
+          expression,
+        });
+      }
+      return targets;
+    }
     const displacementRaw = parameters["displacementPeak"];
     const directionRaw = parameters["displacementDirection"];
     const phaseRaw = parameters["motionPeakPhase"];
@@ -1157,6 +1475,250 @@ const compileM6SemanticVisualState = (
       return targets;
     }
   }
+  if (node.kind === "BLUR") {
+    const blurRaw = parameters["blurPeak"];
+    if (typeof blurRaw !== "number" || !Number.isFinite(blurRaw) || blurRaw <= 0) {
+      addIssue(issues, node.nodeId, "M6_BLUR_PARAMETERS_INVALID",
+        "M6 blur requires positive measured blurPeak evidence.");
+      return [];
+    }
+    const blurScaleRaw = parameters["blurStrengthScale"];
+    const blurStrengthScale = typeof blurScaleRaw === "number" && Number.isFinite(blurScaleRaw)
+      ? Math.max(0.25, Math.min(4, blurScaleRaw))
+      : 1;
+    const directionRaw = parameters["blurDirectionVector"];
+    const directionDegrees = Array.isArray(directionRaw)
+      && directionRaw.length === 2
+      && directionRaw.every((value) => typeof value === "number" && Number.isFinite(value))
+      && Math.hypot(Number(directionRaw[0]), Number(directionRaw[1])) > 1e-6
+      ? Math.atan2(Number(directionRaw[1]), Number(directionRaw[0])) * 180 / Math.PI
+      : 0;
+    const blurLength = Math.max(0.5, Math.min(160, blurRaw * 80 * blurStrengthScale));
+    const effectTargets = m6EventEffectTargetsV1(
+      node, targets, context, parameters, operations, issues, frameRate, "directional-blur");
+    for (const layerId of effectTargets) {
+      const effectId = `${node.nodeId}:${layerId}:directional-blur`;
+      operations.push({
+        type: "ADD_EFFECT",
+        compId: context.compId,
+        layerId,
+        effectId,
+        matchName: "ADBE Motion Blur",
+      });
+      operations.push({
+        type: "SET_EFFECT_PROPERTY",
+        compId: context.compId,
+        layerId,
+        effectId,
+        propertyPath: ["ADBE Motion Blur-0001"],
+        value: directionDegrees,
+      });
+      operations.push({
+        type: "SET_EFFECT_PROPERTY",
+        compId: context.compId,
+        layerId,
+        effectId,
+        propertyPath: ["ADBE Motion Blur-0002"],
+        value: blurLength,
+      });
+    }
+    return targets.length > 1 ? targets : [...targets, ...effectTargets];
+  }
+  if (node.kind === "DISTORTION") {
+    const distortionRaw = parameters["distortionPeak"];
+    if (typeof distortionRaw !== "number" || !Number.isFinite(distortionRaw) || distortionRaw <= 0) {
+      addIssue(issues, node.nodeId, "M6_DISTORTION_PARAMETERS_INVALID",
+        "M6 distortion requires positive measured distortionPeak evidence.");
+      return [];
+    }
+    const distortionScaleRaw = parameters["distortionStrengthScale"];
+    const distortionStrengthScale =
+      typeof distortionScaleRaw === "number" && Number.isFinite(distortionScaleRaw)
+        ? Math.max(0.25, Math.min(4, distortionScaleRaw))
+        : 1;
+    const displacementPixels = Math.max(1, Math.min(96,
+      distortionRaw * 64 * distortionStrengthScale));
+    const effectTargets = m6EventEffectTargetsV1(
+      node, targets, context, parameters, operations, issues, frameRate, "displacement");
+    for (const layerId of effectTargets) {
+      const effectId = `${node.nodeId}:${layerId}:displacement-map`;
+      operations.push({
+        type: "ADD_EFFECT",
+        compId: context.compId,
+        layerId,
+        effectId,
+        matchName: "ADBE Displacement Map",
+      });
+      for (const [propertyPath, value] of [
+        ["ADBE Displacement Map-0002", 5],
+        ["ADBE Displacement Map-0003", displacementPixels],
+        ["ADBE Displacement Map-0004", 5],
+        ["ADBE Displacement Map-0005", displacementPixels],
+      ] as const) {
+        operations.push({
+          type: "SET_EFFECT_PROPERTY",
+          compId: context.compId,
+          layerId,
+          effectId,
+          propertyPath: [propertyPath],
+          value,
+        });
+      }
+    }
+    return targets.length > 1 ? targets : [...targets, ...effectTargets];
+  }
+  if (node.kind === "COLOR_TREATMENT") {
+    const exposureRaw = parameters["exposurePeak"];
+    if (typeof exposureRaw === "number" && Number.isFinite(exposureRaw) && exposureRaw > 0) {
+      const exposureScaleRaw = parameters["exposureStrengthScale"];
+      const exposureStrengthScale = typeof exposureScaleRaw === "number" && Number.isFinite(exposureScaleRaw)
+        ? Math.max(0.25, Math.min(4, exposureScaleRaw))
+        : 1;
+      const exposureValue = Math.max(0.05, Math.min(4, exposureRaw * 1.5 * exposureStrengthScale));
+      const effectTargets = targets.length > 1 ? targets.slice(1) : targets;
+      for (const layerId of effectTargets) {
+        const effectId = `${node.nodeId}:${layerId}:exposure`;
+        operations.push({
+          type: "ADD_EFFECT",
+          compId: context.compId,
+          layerId,
+          effectId,
+          matchName: "ADBE Exposure2",
+        });
+        operations.push({
+          type: "SET_EFFECT_PROPERTY",
+          compId: context.compId,
+          layerId,
+          effectId,
+          propertyPath: ["ADBE Exposure2-0003"],
+          value: exposureValue,
+        });
+      }
+      return targets;
+    }
+    const chromaRaw = parameters["chromaticSeparationPeak"];
+    if (typeof chromaRaw === "number" && Number.isFinite(chromaRaw) && chromaRaw > 0) {
+      const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
+      if (eventSeconds === null) return [];
+      const preFrames = Math.max(2, Math.min(6,
+        resolveM6RecoveryWindowFrames(parameters, frameRate)));
+      const chromaticScaleRaw = parameters["chromaticSeparationScale"];
+      const chromaticSeparationScale =
+        typeof chromaticScaleRaw === "number" && Number.isFinite(chromaticScaleRaw)
+          ? Math.max(0.25, Math.min(4, chromaticScaleRaw))
+          : 1;
+      const normalizedOffset = Math.max(0.002, Math.min(0.16,
+        chromaRaw * 0.2 * chromaticSeparationScale));
+      const colorLayers: string[] = [];
+      const fringeSources = targets.length >= 3
+        ? [targets[1]!, targets[2]!] as const
+        : [targets[0]!, targets[0]!] as const;
+      if (fringeSources[0] === undefined || fringeSources[1] === undefined) return [];
+      const fringeDefinitions = [
+        { channel: "red", sourceLayerId: fringeSources[0] },
+        { channel: "blue", sourceLayerId: fringeSources[1] },
+      ] as const;
+      for (const definition of fringeDefinitions) {
+        const layerId = `${node.nodeId}::fringe::${definition.channel}`;
+        operations.push({
+          type: "DUPLICATE_LAYER",
+          compId: context.compId,
+          sourceLayerId: definition.sourceLayerId,
+          layerId,
+          name: `${definition.sourceLayerId} ${definition.channel} fringe`,
+        });
+        const sourceRegistryKey = `${context.compId}:${definition.sourceLayerId}`;
+        const targetRegistryKey = `${context.compId}:${layerId}`;
+        const inheritedPositionComponents = positionExpressionRegistry.get(sourceRegistryKey);
+        if (inheritedPositionComponents !== undefined) {
+          positionExpressionRegistry.set(targetRegistryKey, [...inheritedPositionComponents]);
+        }
+        colorLayers.push(layerId);
+      }
+      const configs = [
+        { layerId: colorLayers[0]!, channel: "red", source: 2, direction: 1 },
+        { layerId: colorLayers[1]!, channel: "blue", source: 4, direction: -1 },
+      ] as const;
+      for (const config of configs) {
+        const effectId = `${node.nodeId}:${config.layerId}:${config.channel}`;
+        operations.push({
+          type: "ADD_EFFECT",
+          compId: context.compId,
+          layerId: config.layerId,
+          effectId,
+          matchName: "ADBE Shift Channels",
+        });
+        const values = config.channel === "red"
+          ? [1, config.source, 10, 10]
+          : [1, 10, 10, config.source];
+        ["0001", "0002", "0003", "0004"].forEach((suffix, index) => {
+          operations.push({
+            type: "SET_EFFECT_PROPERTY",
+            compId: context.compId,
+            layerId: config.layerId,
+            effectId,
+            propertyPath: [`ADBE Shift Channels-${suffix}`],
+            value: values[index]!,
+          });
+        });
+        operations.push({
+          type: "SET_BLEND_MODE",
+          compId: context.compId,
+          layerId: config.layerId,
+          blendMode: "ADD",
+        });
+        const fringeOpacityPeak = Math.max(25, Math.min(85, 35 + chromaRaw * 150));
+        const fringeOpacityExpression = [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)/thisComp.frameDuration;",
+          `var pre=${preFrames};`,
+          "var envelope=0;",
+          "if(f<=-pre||f>=1){envelope=0;}",
+          "else if(f<0){envelope=linear(f,-pre,0,0,1);}",
+          "else{envelope=linear(f,0,1,1,0);}",
+          `var peak=${fringeOpacityPeak};`,
+          "peak*envelope;",
+        ].join("");
+        operations.push({
+          type: "SET_EXPRESSION",
+          compId: context.compId,
+          layerId: config.layerId,
+          propertyPath: "Transform.Opacity",
+          expression: fringeOpacityExpression,
+        });
+        const deltaExpression = [
+          "(function(){",
+          `var event=${eventSeconds};`,
+          "var f=(time-event)/thisComp.frameDuration;",
+          `var pre=${preFrames};`,
+          "var envelope=0;",
+          "if(f<=-pre||f>=1){envelope=0;}",
+          "else if(f<0){envelope=linear(f,-pre,0,0,1);}",
+          "else{envelope=linear(f,0,1,1,0);}",
+          `var dx=${config.direction}*${normalizedOffset}*Math.max(thisComp.width,thisComp.height)*envelope;`,
+          "return [dx,0];",
+          "})()",
+        ].join("");
+        const standaloneExpression =
+          `var d=${deltaExpression};value.length>2?[value[0]+d[0],value[1]+d[1],value[2]]:value+d;`;
+        registerM6PositionExpressionV1(
+          context.compId,
+          config.layerId,
+          {
+            componentId: `${node.nodeId}:${config.channel}-fringe`,
+            deltaExpression,
+            standaloneExpression,
+          },
+          positionExpressionRegistry,
+          operations,
+        );
+      }
+      return [...targets, ...colorLayers];
+    }
+    addIssue(issues, node.nodeId, "M6_COLOR_TREATMENT_PARAMETERS_INVALID",
+      "M6 color treatment requires measured exposurePeak or chromaticSeparationPeak evidence.");
+    return [];
+  }
   if (node.kind === "MOTION_SHAPING") {
     const accelerationRaw = parameters["accelerationPeak"];
     const recoveryRaw = parameters["recoveryFrames"];
@@ -1170,31 +1732,65 @@ const compileM6SemanticVisualState = (
     const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
     if (eventSeconds === null) return [];
     const acceleration = hasAcceleration ? accelerationRaw : 0.02;
-    const recoveryFrames = hasRecovery
-      ? recoveryRaw
-      : Math.max(2, Math.min(12, Math.round(0.5 / Math.max(acceleration, 0.02))));
-    const preFrames = Math.max(2, Math.min(6, recoveryFrames));
+    const recoveryFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
+    const basePreFrames = Math.max(2, Math.min(6, recoveryFrames));
+    const motionProfile = parameters["motionProfile"];
+    const shutterConvergence = motionProfile === "SHUTTER_CONVERGENCE";
+    const motionImpulseScaleRaw = parameters["motionImpulseScale"];
+    const motionImpulseScale = typeof motionImpulseScaleRaw === "number" && Number.isFinite(motionImpulseScaleRaw)
+      ? Math.max(0.25, Math.min(4, motionImpulseScaleRaw))
+      : 1;
+    const motionImpulseSharpnessScaleRaw = parameters["motionImpulseSharpnessScale"];
+    const motionImpulseSharpnessScale = typeof motionImpulseSharpnessScaleRaw === "number"
+      && Number.isFinite(motionImpulseSharpnessScaleRaw)
+      ? Math.max(0.5, Math.min(2, motionImpulseSharpnessScaleRaw))
+      : 1;
+    const motionImpulsePhaseScaleRaw = parameters["motionImpulsePhaseScale"];
+    const motionImpulsePhaseScale = typeof motionImpulsePhaseScaleRaw === "number"
+      && Number.isFinite(motionImpulsePhaseScaleRaw)
+      ? Math.max(0.5, Math.min(1.5, motionImpulsePhaseScaleRaw))
+      : 1;
+    // Acceleration is a temporal derivative, so amplitude alone is not a
+    // sufficient actuator. Window width controls temporal concentration while
+    // a bounded phase offset changes where the pulse lands relative to sampled
+    // frame boundaries without rewriting the observed reference evidence.
+    const preFrames = Math.max(2, Math.min(6, basePreFrames / motionImpulseSharpnessScale));
+    const phaseShiftFrames = (motionImpulsePhaseScale - 1) * 2;
+    const impulseBody = shutterConvergence
+      ? [
+          // A four-frame converge/alternate pulse makes motion-energy acceleration
+          // observable without increasing the final state spread beyond the
+          // reference-relative acceleration envelope. Vertical amplitude is
+          // normalized against comp height, matching dense displacement evidence.
+          `var amplitude=${acceleration}*thisComp.height*0.5*${motionImpulseScale};`,
+          `var pre=${Math.max(2, Math.min(4, preFrames))};`,
+          "var q=pre/4;",
+          "var impulse=0;",
+          "if(f<=-pre||f>=0){impulse=0;}",
+          "else if(f<-3*q){impulse=0;}",
+          "else if(f<-2*q){impulse=linear(f,-3*q,-2*q,0,amplitude);}",
+          "else if(f<-q){impulse=linear(f,-2*q,-q,amplitude,-amplitude);}",
+          "else{impulse=linear(f,-q,0,-amplitude,0);}",
+        ]
+      : [
+          `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5*${motionImpulseScale};`,
+          `var pre=${preFrames};`,
+          "var impulse=0;",
+          "if(f<=-pre||f>=0){impulse=0;}",
+          "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
+          "else{impulse=linear(f,-1,0,-amplitude,0);}",
+        ];
     const expression = [
       `var event=${eventSeconds};`,
-      "var f=(time-event)*thisComp.frameRate;",
-      `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
-      `var pre=${preFrames};`,
-      "var impulse=0;",
-      "if(f<=-pre||f>=0){impulse=0;}",
-      "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
-      "else{impulse=linear(f,-1,0,-amplitude,0);}",
+      `var f=((time-event)/thisComp.frameDuration)+${phaseShiftFrames};`,
+      ...impulseBody,
       "value+[0,impulse];",
     ].join("");
     const deltaExpression = [
       "(function(){",
       `var event=${eventSeconds};`,
-      "var f=(time-event)*thisComp.frameRate;",
-      `var amplitude=${acceleration}*Math.max(thisComp.width,thisComp.height)*0.5;`,
-      `var pre=${preFrames};`,
-      "var impulse=0;",
-      "if(f<=-pre||f>=0){impulse=0;}",
-      "else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}",
-      "else{impulse=linear(f,-1,0,-amplitude,0);}",
+      `var f=((time-event)/thisComp.frameDuration)+${phaseShiftFrames};`,
+      ...impulseBody,
       "return [0,impulse];",
       "})()",
     ].join("");
@@ -1384,6 +1980,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
         operations,
         issues,
         positionExpressionRegistry,
+        comp.frameRate,
       );
     } else if (node.optional === true) {
       skippedOptionalNodeIds.push(node.nodeId);

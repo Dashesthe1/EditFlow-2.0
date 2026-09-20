@@ -76,7 +76,7 @@ const evidence = analyzeDenseEffectEvidenceV1({
     `probe-algorithm:${probe.analysis.algorithmId}`,
     `probe-analyzer:sha256:${probe.analysis.analyzerFingerprint}`,
     `measurement-system:sha256:${analyzerFingerprint}`,
-    "algorithm:opencv-farneback-affine-motion-comp-edge-autocorrelation",
+    "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation",
   ],
 });
 

@@ -179,7 +179,15 @@ export class AsyncTransactionExecutor {
     for (let groupIndex = alreadyCommitted; groupIndex < groups.length; groupIndex += 1) {
       const plannedGroup = groups[groupIndex];
       if (plannedGroup === undefined) break;
+      const expectedBeforeState = groupIndex === alreadyCommitted
+        ? observed
+        : lastCommittedState(record);
       const beforeState = await host.readState();
+      if (!sameRecoveryState(beforeState, expectedBeforeState)) {
+        throw new TransactionRecoveryError(
+          "Project structure or environment changed between transaction boundary observations; refusing stale execution.",
+        );
+      }
       const beforeRecoverySnapshot = await host.captureRecoverySnapshot();
       const groupRecord: TransactionGroupRecord = {
         groupId: plannedGroup.groupId,

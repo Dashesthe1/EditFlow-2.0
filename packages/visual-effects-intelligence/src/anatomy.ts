@@ -8,7 +8,11 @@ import type {
   TransitionDnaV1,
   VisualDimensionV1,
 } from "./contracts.js";
-import { resolveFragmentationEventMetricsV1 } from "./dense-evidence.js";
+import {
+  measureFragmentationEventProminenceV1,
+  resolveFragmentationEventMetricsV1,
+  scoreFragmentationEventLocalizationV1,
+} from "./dense-evidence.js";
 
 // Probe v2's fragmentation-coherence score includes a temporal coordination
 // decay: component peaks receive full credit within one frame and fall toward
@@ -59,6 +63,8 @@ const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, read
       "Multiple simultaneously readable temporal image states define shutter fragmentation."),
     invariant("shutter.coordination", "COMPOSITING", "fragmentationCoherencePeak", "MIN", SHUTTER_COORDINATION_MIN_V2, 0.02, true,
       "Temporal states, overlap, and spatial separation must occur as one bounded high-frequency event rather than unrelated peaks in the same window.", 1.2),
+    invariant("shutter.event-locality", "COMPOSITING", "fragmentationEventLocalization", "MIN", 1, 0.05, true,
+      "The coordinated fragmentation tuple must be materially concentrated around the transition event rather than persist as source texture throughout the window.", 1.2),
     invariant("shutter.overlap", "COMPOSITING", "overlapDensityPeak", "MIN", 0.24, 0.01, true,
       "Temporal states must visibly overlap inside the coherent shutter event rather than borrowing a global scene-texture maximum."),
     invariant("shutter.displacement", "SPATIAL", "fragmentationStateSeparationPeak", "RANGE", [0.015, 0.08], 0.005, true,
@@ -155,7 +161,9 @@ export const classifyEffectFamilyV1 = (evidence: DenseEffectEvidenceV1): EffectF
   // Transition DNA. A family must not be selected if its own contract would
   // immediately reject the reference that triggered the selection.
   const fragmentation = resolveFragmentationEventMetricsV1(evidence);
+  const fragmentationProminence = measureFragmentationEventProminenceV1(evidence, fragmentation.phase);
   if (fragmentation.temporalStateCountPeak >= 2
+    && fragmentationProminence.localized
     && fragmentation.overlapDensityPeak >= shutterEventOverlapMinimum(evidence)
     && fragmentation.stateSeparationPeak >= 0.015
     && fragmentation.peak >= SHUTTER_COORDINATION_MIN_V2
@@ -227,6 +235,9 @@ const observedMetricValue = (
   if (metric === "chromaticSeparationPeak") return maxFrame(evidence, "chromaticSeparation");
   if (metric === "stateSeparationPeak") return stateSeparation(evidence);
   if (metric === "fragmentationCoherencePeak") return fragmentation.peak;
+  if (metric === "fragmentationEventLocalization") {
+    return scoreFragmentationEventLocalizationV1(evidence, fragmentation.phase);
+  }
   if (metric === "fragmentationStateSeparationPeak") return fragmentation.stateSeparationPeak;
   if (metric === "activeDimensionCount") return dimensionsForEvidence(evidence).length;
   return null;
@@ -247,6 +258,16 @@ export const deriveEffectAnatomyV1 = (
   for (const item of allInvariants) {
     const observed = observedMetricValue(evidence, item.metric, family);
     if (observed !== null) observedMetrics[item.metric] = observed;
+  }
+  const analysisDurationMs = evidence.range.endMs - evidence.range.startMs;
+  if (Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
+    observedMetrics.effectAnalysisDurationMs = analysisDurationMs;
+  }
+  if (Number.isFinite(evidence.summary.frameIntervalMs) && evidence.summary.frameIntervalMs > 0) {
+    observedMetrics.referenceFrameIntervalMs = evidence.summary.frameIntervalMs;
+    if (Number.isFinite(evidence.summary.recoveryFrames) && evidence.summary.recoveryFrames > 0) {
+      observedMetrics.effectRecoveryDurationMs = evidence.summary.recoveryFrames * evidence.summary.frameIntervalMs;
+    }
   }
   const components: EffectAnatomyComponentV1[] = [];
   for (const item of allInvariants) {
@@ -278,8 +299,12 @@ export const distinguishShutterFromFlashZoomV1 = (
 ): Readonly<{ shutter: boolean; reasons: readonly string[] }> => {
   const s = evidence.summary;
   const fragmentation = resolveFragmentationEventMetricsV1(evidence);
+  const fragmentationProminence = measureFragmentationEventProminenceV1(evidence, fragmentation.phase);
   const reasons: string[] = [];
   if (fragmentation.temporalStateCountPeak < 2) reasons.push("MISSING_MULTIPLE_TEMPORAL_STATES");
+  if (fragmentationProminence.applicable && !fragmentationProminence.localized) {
+    reasons.push("FRAGMENTATION_NOT_EVENT_LOCAL");
+  }
   if (fragmentation.overlapDensityPeak < shutterEventOverlapMinimum(evidence)) reasons.push("MISSING_OVERLAPPING_FRAGMENTATION");
   if (fragmentation.stateSeparationPeak < 0.015) reasons.push("MISSING_SPATIAL_STATE_SEPARATION");
   if (fragmentation.peak < SHUTTER_COORDINATION_MIN_V2) reasons.push("MISSING_COORDINATED_FRAGMENTATION");

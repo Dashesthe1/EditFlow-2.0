@@ -58,8 +58,11 @@ test("M6.5 v5 real-pixel comparator rejects weak AE shutter while preserving cau
   });
 
   assert.equal(weakComparison.passed, false);
-  assert.equal(weakComparison.definingCoverage, 2 / 6);
-  assert.equal(improvedComparison.definingCoverage, 4 / 6);
+  // v6+ event-locality is deliberately non-applicable to retained v5
+  // evidence, so it contributes one neutral passing invariant without
+  // rewriting the historical measurements.
+  assert.equal(weakComparison.definingCoverage, 3 / 7);
+  assert.equal(improvedComparison.definingCoverage, 5 / 7);
   assert.ok(improvedComparison.weightedFidelity > weakComparison.weightedFidelity);
   for (const metric of ["fragmentationCoherencePeak", "overlapDensityPeak", "accelerationPeak"]) {
     assert.ok(weakComparison.metrics.some((item) =>
@@ -74,23 +77,32 @@ test("M6.5 v5 real-pixel comparator rejects weak AE shutter while preserving cau
 });
 
 
-test("M6.5/M6.7 v6 real AE event-local shutter proof certifies fidelity and rejects regressions", async () => {
+test("M6.5/M6.7 event-locality gate supersedes stale v6 shutter certification and rejects regressions", async () => {
   const reference = await readJson("proofs/diagnostics/m6-v6-event-ref05-evidence.json");
-  const certified = await readJson("proofs/diagnostics/m6-v6-event-joint-01-evidence.json");
+  const historicalCertified = await readJson("proofs/diagnostics/m6-v6-event-joint-01-evidence.json");
   const incoherent = await readJson("proofs/diagnostics/m6-v6-event-joint-03-evidence.json");
   const overWide = await readJson("proofs/diagnostics/m6-v6-event-joint-04-evidence.json");
-  assert.equal(reference.analyzerFingerprint, certified.analyzerFingerprint);
+  assert.equal(reference.analyzerFingerprint, historicalCertified.analyzerFingerprint);
   assert.ok(reference.summary.overlapDensityPeak > reference.summary.fragmentationOverlapDensityPeak * 4,
     "global texture overlap must not replace the coherent shutter-event measurement");
   assert.equal(classifyEffectFamilyV1(reference), "SHUTTER_FRAGMENTATION");
-  assert.equal(classifyEffectFamilyV1(certified), "SHUTTER_FRAGMENTATION");
+  assert.notEqual(classifyEffectFamilyV1(historicalCertified), "SHUTTER_FRAGMENTATION",
+    "a render whose fragmentation persists as source texture must not remain family-certified");
   const dna = canonicalTransitionDnaV1("SHUTTER_FRAGMENTATION", reference.evidenceRefs);
-  const pass = compareSemanticVisualFidelityV1({ reference, render: certified, dna });
+  const superseded = compareSemanticVisualFidelityV1({
+    reference,
+    render: historicalCertified,
+    dna,
+  });
   const coordinationFail = compareSemanticVisualFidelityV1({ reference, render: incoherent, dna });
   const spreadFail = compareSemanticVisualFidelityV1({ reference, render: overWide, dna });
-  assert.equal(pass.passed, true);
-  assert.equal(pass.definingCoverage, 1);
-  assert.ok(pass.metrics.every((metric) => metric.passed));
+  assert.equal(superseded.passed, false);
+  assert.equal(superseded.definingCoverage, 6 / 7);
+  assert.ok(superseded.metrics.some((metric) =>
+    metric.invariantId === "shutter.event-locality"
+    && metric.metric === "fragmentationEventLocalization"
+    && !metric.passed
+    && Number(metric.renderValue) < Number(metric.referenceValue)));
   assert.equal(coordinationFail.passed, false);
   assert.ok(coordinationFail.metrics.some((metric) =>
     metric.invariantId === "shutter.coordination" && !metric.passed));

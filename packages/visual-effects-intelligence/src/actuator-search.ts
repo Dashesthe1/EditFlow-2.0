@@ -24,10 +24,16 @@ export interface ActuatorMetricResponseV1 {
   readonly metricSpan: number;
   readonly requiredDelta: number;
   readonly responseRatio: number;
+  /** Independent one-factor cohorts (all other physical controls equal) that rendered >=2 values of this actuator. */
+  readonly causalCohortCount: number;
+  /** Physical actuator span covered by clean one-factor evidence across all causal cohorts. */
+  readonly testedControlSpan: number;
   /** Number of +/- actuator directions rendered relative to the retained-best value. */
   readonly testedDirectionCount: number;
   /** Rendered probes that moved the target metric toward reference without sacrificing retained defining behavior. */
   readonly safeImprovingProbeCount: number;
+  /** Safe target-improving probes that also beat the retained lexicographic proof state. */
+  readonly retainedImprovingProbeCount: number;
   /** Target-improving probes that introduced a new defining residual or reduced defining coverage. */
   readonly collateralRegressionProbeCount: number;
   /** Raw causal response, irrespective of collateral damage. */
@@ -62,6 +68,13 @@ export interface BoundedActuatorSearchPlanV1 {
   readonly metricResponses: readonly ActuatorMetricResponseV1[];
   /** Defining invariants whose mapped actuators are all unavailable, exhausted, or proven non-responsive. */
   readonly synthesisRequiredInvariantIds: readonly string[];
+  /**
+   * Defining invariants with repeated causal actuator evidence but no rendered
+   * safe improvement. This is deliberately advisory rather than exhaustion:
+   * after the local render budget is spent, M6 may compare an alternate
+   * construction before consuming more probes on the same weak realization.
+   */
+  readonly structuralEscalationInvariantIds: readonly string[];
 }
 
 const EPSILON = 1e-9;
@@ -141,6 +154,59 @@ const changedControlCount = (
   return changed;
 };
 
+const singleChangedControl = (
+  a: ActuatorControlVectorV1,
+  b: ActuatorControlVectorV1,
+): ConstructionControlKindV1 | null => {
+  const controls = new Set<ConstructionControlKindV1>([
+    ...(Object.keys(a) as ConstructionControlKindV1[]),
+    ...(Object.keys(b) as ConstructionControlKindV1[]),
+  ]);
+  let changed: ConstructionControlKindV1 | null = null;
+  for (const control of controls) {
+    const av = controlValue(a, control);
+    const bv = controlValue(b, control);
+    if (av !== null && bv !== null && Math.abs(av - bv) <= EPSILON) continue;
+    if (changed !== null) return null;
+    changed = control;
+  }
+  return changed;
+};
+
+const invariantOneFactorPairCount = (
+  attempts: readonly ActuatorAttemptEvidenceV1[],
+  instructions: readonly ConstructionControlInstructionV1[],
+  invariantId: string,
+): number => {
+  const controls = new Set(instructions
+    .filter((instruction) => instruction.defining && instruction.invariantId === invariantId)
+    .map((instruction) => instruction.control));
+  if (controls.size === 0) return 0;
+  let pairs = 0;
+  for (let left = 0; left < attempts.length; left += 1) {
+    for (let right = left + 1; right < attempts.length; right += 1) {
+      const control = singleChangedControl(attempts[left]!.values, attempts[right]!.values);
+      if (control !== null && controls.has(control)) pairs += 1;
+    }
+  }
+  return pairs;
+};
+
+const controlOneFactorPairCount = (
+  attempts: readonly ActuatorAttemptEvidenceV1[],
+  control: ConstructionControlKindV1,
+): number => {
+  let pairs = 0;
+  for (let left = 0; left < attempts.length; left += 1) {
+    for (let right = left + 1; right < attempts.length; right += 1) {
+      if (singleChangedControl(attempts[left]!.values, attempts[right]!.values) === control) {
+        pairs += 1;
+      }
+    }
+  }
+  return pairs;
+};
+
 const objective = (attempt: ActuatorAttemptEvidenceV1): number =>
   (attempt.certified ? 100 : 0) + (attempt.definingCoverage * 4) + attempt.weightedFidelity;
 
@@ -188,6 +254,8 @@ const metricResponseEvidence = (
   // Any pair whose physical vectors differ in exactly this one control is a
   // valid one-factor counterfactual; it need not be centered on the current best.
   const participants = new Map<string, number>();
+  const participantControlValues = new Map<string, number>();
+  const causalCohorts = new Map<string, Set<number>>();
   for (let leftIndex = 0; leftIndex < attempts.length; leftIndex += 1) {
     const left = attempts[leftIndex]!;
     for (let rightIndex = leftIndex + 1; rightIndex < attempts.length; rightIndex += 1) {
@@ -202,19 +270,33 @@ const metricResponseEvidence = (
       if (leftMetric === null || rightMetric === null) continue;
       participants.set(left.attemptId, leftMetric);
       participants.set(right.attemptId, rightMetric);
+      participantControlValues.set(left.attemptId, leftControl);
+      participantControlValues.set(right.attemptId, rightControl);
+      const cohortKey = cohortKeyWithoutControl(left.values, instruction.control);
+      const cohortValues = causalCohorts.get(cohortKey) ?? new Set<number>();
+      cohortValues.add(leftControl);
+      cohortValues.add(rightControl);
+      causalCohorts.set(cohortKey, cohortValues);
     }
   }
   // A clean pair supplies two independently rendered actuator states.
   if (participants.size < 2) return null;
   const samples = [...participants.values()];
+  const controlSamples = [...participantControlValues.values()];
   const probeCount = participants.size;
   const metricSpan = Math.max(...samples) - Math.min(...samples);
+  const causalCohortCount = [...causalCohorts.values()]
+    .filter((values) => values.size >= 2).length;
+  const testedControlSpan = controlSamples.length >= 2
+    ? Math.max(...controlSamples) - Math.min(...controlSamples)
+    : 0;
   const requiredDelta = Math.abs(reference - retainedMetric);
   const responseRatio = requiredDelta <= EPSILON ? 1 : metricSpan / requiredDelta;
   const retainedControl = controlValue(retained.values, instruction.control);
   const retainedResiduals = new Set(retained.residualInvariantIds);
   const testedDirections = new Set<-1 | 1>();
   let safeImprovingProbeCount = 0;
+  let retainedImprovingProbeCount = 0;
   let collateralRegressionProbeCount = 0;
   const retainedError = Math.abs(reference - retainedMetric);
   for (const attempt of attempts) {
@@ -236,7 +318,10 @@ const metricResponseEvidence = (
       invariantId !== instruction.invariantId && !retainedResiduals.has(invariantId));
     const coverageRegression = attempt.definingCoverage + EPSILON < retained.definingCoverage;
     if (addedResidual || coverageRegression) collateralRegressionProbeCount += 1;
-    else safeImprovingProbeCount += 1;
+    else {
+      safeImprovingProbeCount += 1;
+      if (compareAttempt(attempt, retained) > 0) retainedImprovingProbeCount += 1;
+    }
   }
   const responsive = responseRatio >= 0.05;
   return {
@@ -246,8 +331,11 @@ const metricResponseEvidence = (
     metricSpan,
     requiredDelta,
     responseRatio,
+    causalCohortCount,
+    testedControlSpan,
     testedDirectionCount: testedDirections.size,
     safeImprovingProbeCount,
+    retainedImprovingProbeCount,
     collateralRegressionProbeCount,
     responsive,
     safeResponsive: responsive && safeImprovingProbeCount > 0,
@@ -370,6 +458,7 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
       exhaustedControls: [],
       metricResponses: [],
       synthesisRequiredInvariantIds: [],
+      structuralEscalationInvariantIds: [],
     };
   }
   const seen = new Set(input.attempts.map((attempt) => vectorKey(attempt.values)));
@@ -377,9 +466,54 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
   const exhausted = new Set<ConstructionControlKindV1>();
   const metricResponses: ActuatorMetricResponseV1[] = [];
   const maxCandidates = Math.max(1, Math.min(8, input.maxCandidates ?? 4));
+  const inputOrder = new Map(input.dimensions.map((dimension, index) => [dimension.control, index]));
+  const invariantProbeDepth = new Map<string, number>();
+  for (const invariantId of new Set(input.instructions
+    .filter((instruction) => instruction.defining)
+    .map((instruction) => instruction.invariantId))) {
+    invariantProbeDepth.set(
+      invariantId,
+      invariantOneFactorPairCount(input.attempts, input.instructions, invariantId),
+    );
+  }
+  const dimensionPriority = (
+    dimension: ActuatorSearchDimensionV1,
+  ): readonly [number, number, number, number] => {
+    const relevant = input.instructions.filter((instruction) =>
+      instruction.defining && instruction.control === dimension.control);
+    if (relevant.length === 0) {
+      return [
+        Number.POSITIVE_INFINITY,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+        inputOrder.get(dimension.control) ?? 0,
+      ];
+    }
+    const leastExploredInvariant = Math.min(...relevant.map((instruction) =>
+      invariantProbeDepth.get(instruction.invariantId) ?? 0));
+    const controlProbeDepth = controlOneFactorPairCount(input.attempts, dimension.control);
+    const largestResidual = Math.max(...relevant.map((instruction) => instruction.normalizedError));
+    return [
+      leastExploredInvariant,
+      controlProbeDepth,
+      largestResidual,
+      inputOrder.get(dimension.control) ?? 0,
+    ];
+  };
+  const orderedDimensions = [...input.dimensions].sort((left, right) => {
+    const [leftInvariantDepth, leftControlDepth, leftError, leftOrder] = dimensionPriority(left);
+    const [rightInvariantDepth, rightControlDepth, rightError, rightOrder] = dimensionPriority(right);
+    if (leftInvariantDepth !== rightInvariantDepth) return leftInvariantDepth - rightInvariantDepth;
+    if (leftControlDepth !== rightControlDepth) return leftControlDepth - rightControlDepth;
+    if (Math.abs(leftError - rightError) > EPSILON) return rightError - leftError;
+    return leftOrder - rightOrder;
+  });
 
-  for (const dimension of input.dimensions) {
-    if (candidates.length >= maxCandidates) break;
+  // Spend bounded render budget across under-explored defining invariants first.
+  // Without this, a compound transition can consume every local probe on the
+  // first high-error subsystem (for example overlap) while equally defining
+  // distortion/acceleration deficits never receive a causal rendered test.
+  for (const dimension of orderedDimensions) {
     if (dimension.maximum <= dimension.minimum || dimension.minimumStep <= 0) {
       throw new RangeError(`Invalid actuator search bounds for ${dimension.control}.`);
     }
@@ -407,16 +541,21 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
       && [...targetMetrics].every((metric) =>
         controlResponses.some((response) => response.metric === metric));
     const allTargetMetricsExhausted = allTargetMetricsAssessed
-      && controlResponses.every((response) =>
-        !response.responsive
-        || (response.testedDirectionCount >= 2
-          && response.safeImprovingProbeCount === 0
-          && response.collateralRegressionProbeCount > 0));
+      && controlResponses.every((response) => {
+        const robustCrossBaselineNonresponse = !response.responsive
+          && response.causalCohortCount >= 2
+          && response.testedControlSpan + EPSILON >= dimension.minimumStep * 2;
+        return (!response.responsive
+            && (response.testedDirectionCount >= 2 || robustCrossBaselineNonresponse))
+          || (response.testedDirectionCount >= 2
+            && response.safeImprovingProbeCount === 0
+            && response.collateralRegressionProbeCount > 0);
+      });
     const nonlinearCollateral = controlResponses.some((response) =>
       response.responsive
       && response.safeImprovingProbeCount === 0
       && response.collateralRegressionProbeCount > 0);
-    const refinements = nonlinearCollateral
+    const refinements = nonlinearCollateral && candidates.length < maxCandidates
       ? nonlinearIntervalRefinements(
           input.attempts,
           dimension,
@@ -436,6 +575,11 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
       exhausted.add(dimension.control);
       continue;
     }
+    // Candidate budget limits renders, not diagnosis. Continue collecting
+    // metric-response/exhaustion evidence for every defining dimension even
+    // after the local render budget is full, but do not falsely mark an
+    // unrendered actuator as exhausted merely because no candidate slot remains.
+    if (candidates.length >= maxCandidates) continue;
 
     const sensitivity = cleanSensitivity(retained, input.attempts, dimension.control);
     const requested = requestedDirections(input.instructions, dimension.control);
@@ -512,11 +656,12 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
     }
   }
 
-  const synthesisRequiredInvariantIds = [...new Set(
+  const definingInvariantIds = [...new Set(
     input.instructions
       .filter((instruction) => instruction.defining)
       .map((instruction) => instruction.invariantId),
-  )].filter((invariantId) => {
+  )];
+  const synthesisRequiredInvariantIds = definingInvariantIds.filter((invariantId) => {
     const controls = [...new Set(input.instructions
       .filter((instruction) => instruction.defining && instruction.invariantId === invariantId)
       .map((instruction) => instruction.control))];
@@ -525,6 +670,55 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
       (exhausted.has(control)
         || !input.dimensions.some((dimension) => dimension.control === control))
       && !candidates.some((candidate) => candidate.changedControls.includes(control)));
+  });
+
+  const strictSynthesis = new Set(synthesisRequiredInvariantIds);
+  const structuralEscalationInvariantIds = definingInvariantIds.filter((invariantId) => {
+    if (strictSynthesis.has(invariantId)) return false;
+    const relevant = input.instructions.filter((instruction) =>
+      instruction.defining && instruction.invariantId === invariantId);
+    const controls = [...new Set(relevant.map((instruction) => instruction.control))];
+    if (controls.length === 0) return false;
+    let observedWeakControl = false;
+    const allMappedControlsWeak = controls.every((control) => {
+      const dimension = input.dimensions.find((item) => item.control === control);
+      if (exhausted.has(control) || dimension === undefined) return true;
+      const targetMetrics = new Set(relevant
+        .filter((instruction) => instruction.control === control)
+        .map((instruction) => deficitMetric(instruction)));
+      const responses = metricResponses.filter((response) =>
+        response.control === control && targetMetrics.has(response.metric));
+      if (responses.length === 0
+        || [...targetMetrics].some((metric) => !responses.some((response) => response.metric === metric))) {
+        return false;
+      }
+      const structurallyWeak = responses.every((response) => {
+        // A metric-local improvement only justifies more scalar search when it
+        // can become the retained proof state. Otherwise the viewer-level
+        // objective has already shown that the local actuator tradeoff is weak.
+        if (response.safeResponsive && response.retainedImprovingProbeCount > 0) return false;
+        // Four independently rendered states in one clean one-factor cohort
+        // are already replicated causal evidence. Requiring a second cohort
+        // discards useful history after the retained best moves to a different
+        // actuator baseline and can block a warranted structural escalation.
+        const replicated = response.probeCount >= 4
+          && response.testedControlSpan + EPSILON >= dimension.minimumStep
+          && (response.causalCohortCount >= 1 || response.testedDirectionCount >= 2);
+        const insufficientAuthority = response.responsive
+          && replicated
+          && response.responseRatio < 1
+          && response.retainedImprovingProbeCount === 0;
+        const unsafeLocalResponse = response.responsive
+          && response.testedDirectionCount >= 2
+          && response.safeImprovingProbeCount === 0
+          && response.collateralRegressionProbeCount > 0;
+        const provenDead = !response.responsive && replicated;
+        return insufficientAuthority || unsafeLocalResponse || provenDead;
+      });
+      if (structurallyWeak) observedWeakControl = true;
+      return structurallyWeak;
+    });
+    return allMappedControlsWeak && observedWeakControl;
   });
 
   return {
@@ -536,5 +730,6 @@ export const planBoundedActuatorSearchV1 = (input: Readonly<{
     exhaustedControls: [...exhausted],
     metricResponses,
     synthesisRequiredInvariantIds,
+    structuralEscalationInvariantIds,
   };
 };

@@ -1,6 +1,6 @@
 # M6 Professional Effects & Transitions Intelligence Contract
 
-Status: **implementation foundation complete; one real AE shutter case is professional-fidelity verified, M6.7 automatic local correction is real-AE proof-closed for that case, and M6.8 has its first behavior-only real-pixel synthesis proof (1/3); transfer/benchmark/system-integration gates remain open**
+Status: **implementation foundation and live-AE correction infrastructure are complete; the active v10 analyzer has invalidated the prior v6 shutter certification, the strongest current UNKNOWN compound render reaches 5/7 defining coverage at 0.9846 weighted fidelity, and transfer/benchmark/system-integration gates remain open**
 
 Authority: `EditFlow_2.0_M6_Professional_Effects_Transitions_Roadmap_No_Hours.pdf`
 
@@ -151,7 +151,29 @@ flow, robust affine motion, motion-compensated residual, optical structure and
 within-frame temporal fragmentation. `scripts/proofs/m6-dense-video-evidence.mjs`
 lowers those measurements through the existing `DenseEffectEvidenceV1` schema.
 
-The v6 dense analyzer now separates global scene autocorrelation from the **coherent
+### Active v10 evidence boundary (September 2026)
+
+The active analyzer is `editflow.m6.dense-video-probe.v10`. Reference and render
+evidence must share analyzer fingerprint
+`c689774649df8cfe28173e6166f4cbd5cbbf18ae393a06153ba71dc3e922fc80`;
+mismatched evidence fails closed. The reference window is bound to source-video SHA-256
+`c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae`.
+
+The current best real-AE UNKNOWN compound checkpoint is
+`proofs/diagnostics/m6-compound-evolving-warp-live04.json`. It improves the
+retained state from 0.8919 weighted fidelity / 4-of-7 defining coverage to 0.9846 /
+5-of-7. Persistence and scale pass. Distortion and acceleration remain under-driven,
+so the proof status is `SYNTHESIS_REJECTED` and it is not professional-fidelity
+certified. The live controller now routes evolving-warp motion probes to the consumed
+event-evolution sweep actuator and preserves the retained physical scale across
+synthesis candidates.
+
+The v6 material below is retained as historical provenance only. It does not certify
+the active v10 gate and must not be represented as current completion evidence.
+
+### Historical v6 evidence (superseded for active certification)
+
+The v6 dense analyzer separated global scene autocorrelation from the **coherent
 fragmentation event**. This fixes a causal measurement failure found during real AE
 correction: changing duplicate spacing in AE changed the layer geometry, but the old
 global `stateSeparationPeak` stayed pinned to an unrelated repeated source-texture
@@ -213,9 +235,9 @@ visibility without shifting the whole layer. This closes direct generic UNKNOWN
 graph-to-real-AE materialization provenance for this one case, but it is structural
 readback evidence rather than an additional rendered-fidelity certification.
 
-The shutter case **is** `PROFESSIONAL_FIDELITY_VERIFIED` for the retained shutter
-construction, and its bounded M6.7 local AE correction loop is automatic; it does
-**not** certify M6 as a whole. The following evidence remains open:
+The shutter case **was** `PROFESSIONAL_FIDELITY_VERIFIED` under its retained v6
+analyzer contract, and its bounded M6.7 local AE correction loop was automatic. That
+historical result does **not** certify the active v10 gate or M6 as a whole. The following evidence remains open:
 
 1. transfer the shutter construction to materially different footage;
 2. real AE reconstructions for at least three substantially different compound effects;
@@ -224,8 +246,8 @@ construction, and its bounded M6.7 local AE correction loop is automatic; it doe
 5. a normal edit request invoking perception -> synthesis -> construction -> comparison
    -> correction -> fidelity without developer intervention.
 
-M6 therefore has its first real professional-fidelity-verified effect case, while
-`TRANSFER_VERIFIED`, benchmark-wide `PROFESSIONAL_FIDELITY_VERIFIED`, and
+M6 therefore retains a historical v6 professional-fidelity proof, while the active
+v10 gate, `TRANSFER_VERIFIED`, benchmark-wide `PROFESSIONAL_FIDELITY_VERIFIED`, and
 `ROBUST` remain open release gates.
 
 ## Verification

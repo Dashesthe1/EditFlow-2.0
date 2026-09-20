@@ -45,7 +45,8 @@ const templateFor = (
     return { kind: "TEMPORAL_DUPLICATES", dimension: "TEMPORAL",
       capabilities: ["ae.layer.duplicate", "ae.layer.time.offset"] };
   }
-  if (invariant.metric === "fragmentationCoherencePeak") {
+  if (invariant.metric === "fragmentationCoherencePeak"
+    || invariant.metric === "fragmentationEventLocalization") {
     return { kind: "TEMPORAL_DUPLICATES", dimension: "COMPOSITING",
       capabilities: ["ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set", "ae.layer.transform.set"] };
   }
@@ -71,7 +72,7 @@ const templateFor = (
   }
   if (invariant.metric === "chromaticSeparationPeak") {
     return { kind: "CHROMATIC_TREATMENT", dimension: "OPTICAL",
-      capabilities: ["ae.effect.channel-shift"] };
+      capabilities: ["ae.effect.channel-shift", "ae.layer.blend_mode.set"] };
   }
   if (invariant.metric === "occlusionPeak") {
     return { kind: "OCCLUSION_COMPOSITE", dimension: "COMPOSITING",
@@ -121,6 +122,12 @@ const nodeKey = (template: NodeTemplateV1): string =>
 
 export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): ConstructionGraphV1 => {
   const invariants = [...anatomy.dna.definingInvariants, ...anatomy.dna.optionalInvariants];
+  const fragmentationStates = anatomy.observedMetrics["fragmentationTemporalStateCountPeak"];
+  const fragmentationCoherence = anatomy.observedMetrics["fragmentationCoherencePeak"];
+  const hasCoherentFragmentation = typeof fragmentationStates === "number"
+    && Number.isFinite(fragmentationStates) && fragmentationStates >= 3
+    && typeof fragmentationCoherence === "number"
+    && Number.isFinite(fragmentationCoherence) && fragmentationCoherence >= 0.7;
   const grouped = new Map<string, { template: NodeTemplateV1; invariants: EffectInvariantV1[] }>();
   for (const item of invariants) {
     const template = templateFor(item, anatomy.family);
@@ -149,11 +156,17 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
   let previousRequired: string | null = null;
   for (const [index, group] of [...grouped.values()].entries()) {
     const required = group.invariants.some((item) => item.defining);
-    const nodeId = `node:${index + 1}:${group.template.kind.toLowerCase()}`;
+    const nodeId =`node:${index + 1}:${group.template.kind.toLowerCase()}`;
     const parameters: Record<string, number | string | boolean | readonly number[]> = {};
     for (const item of group.invariants) {
       parameters[item.metric] = parameterValue(item, anatomy.observedMetrics[item.metric]);
       coverage[item.invariantId] = [nodeId];
+    }
+    if (group.template.kind === "OPTICAL_TREATMENT") {
+      const displacementDirection = anatomy.observedMetrics["displacementDirection"];
+      if (displacementDirection !== undefined && typeof displacementDirection !== "number") {
+        parameters.blurDirectionVector = [displacementDirection.x, displacementDirection.y];
+      }
     }
     const effectEventPhase = anatomy.observedMetrics["effectEventPhase"];
     if (typeof effectEventPhase === "number" && Number.isFinite(effectEventPhase)) {
@@ -163,6 +176,24 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
     if (typeof effectRecoveryFrames === "number" && Number.isFinite(effectRecoveryFrames)
       && effectRecoveryFrames > 0) {
       parameters.effectRecoveryFrames = effectRecoveryFrames;
+    }
+    const referenceFrameIntervalMs = anatomy.observedMetrics["referenceFrameIntervalMs"];
+    if (typeof referenceFrameIntervalMs === "number" && Number.isFinite(referenceFrameIntervalMs)
+      && referenceFrameIntervalMs > 0) {
+      parameters.referenceFrameIntervalMs = referenceFrameIntervalMs;
+    }
+    const effectAnalysisDurationMs = anatomy.observedMetrics["effectAnalysisDurationMs"];
+    if (typeof effectAnalysisDurationMs === "number" && Number.isFinite(effectAnalysisDurationMs)
+      && effectAnalysisDurationMs > 0) {
+      parameters.effectAnalysisDurationMs = effectAnalysisDurationMs;
+    }
+    const effectRecoveryDurationMs = anatomy.observedMetrics["effectRecoveryDurationMs"];
+    if (typeof effectRecoveryDurationMs === "number" && Number.isFinite(effectRecoveryDurationMs)
+      && effectRecoveryDurationMs > 0) {
+      parameters.effectRecoveryDurationMs = effectRecoveryDurationMs;
+    }
+    if (group.template.kind === "RECOVERY" && hasCoherentFragmentation) {
+      parameters.motionProfile = "SHUTTER_CONVERGENCE";
     }
     const dependencies = previousRequired === null ? [] : [previousRequired];
     nodes.push({
@@ -221,8 +252,10 @@ export const validateConstructionGraphV1 = (
 const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
   const synthesisStrategy = node.parameters["synthesisStrategy"];
   if (synthesisStrategy === "NATIVE_ECHO_HYBRID"
+    || synthesisStrategy === "LAYERED_ECHO_AUGMENTED"
     || synthesisStrategy === "TIME_DISPLACEMENT_HYBRID"
-    || synthesisStrategy === "TURBULENT_DISPLACE_HYBRID") {
+    || synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
+    || synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID") {
     return "EFFECT_STACK";
   }
   switch (node.kind) {
@@ -239,6 +272,7 @@ const primitiveFor = (node: ConstructionNodeV1): EditingIrPrimitiveKindV1 => {
     case "EXPOSURE_ACCENT": return "COLOR_TREATMENT";
     case "CHROMATIC_TREATMENT": return "COLOR_TREATMENT";
     case "OCCLUSION_COMPOSITE": return "MATTE_RELATION";
+    case "PRECOMPOSE_BOUNDARY": return "PRECOMPOSE";
     case "RECOVERY": return "MOTION_SHAPING";
   }
 };

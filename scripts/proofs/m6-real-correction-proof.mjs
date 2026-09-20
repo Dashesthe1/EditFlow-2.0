@@ -42,6 +42,7 @@ const capabilities = [
   "ae.effect.directional-blur",
   "ae.effect.exposure",
   "ae.effect.channel-shift",
+  "ae.layer.blend_mode.set",
   "ae.layer.order.set",
   "ae.keyframe.temporal_ease.set",
   "ae.layer.transform.set",

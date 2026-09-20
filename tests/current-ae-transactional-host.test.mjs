@@ -820,18 +820,43 @@ test("current AE host resolves semantic effect binding ids to runtime effect ind
       value: true,
     },
   }));
+  await host.apply(operation({
+    id: "OP_EFFECT_EXPRESSION",
+    capabilityId: "ae.expression.set",
+    routeId: AE_ADAPTER_ROUTE_ID_V11,
+    command: "property.set_expression",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      effectBindingId: "effect.motion-tile",
+      propertyPath: ["ADBE Tile-0006"],
+      expression: "value;",
+      enabled: true,
+    },
+  }));
 
   const addRequest = transport.requests.find((request) =>
     request.command === "effect.add");
   const setRequest = transport.requests.find((request) =>
     request.command === "effect.set_property");
+  const expressionRequest = transport.requests.find((request) =>
+    request.command === "property.set_expression");
   assert.equal(addRequest.payload.effectBindingId, undefined);
   assert.equal(setRequest.payload.effectBindingId, undefined);
+  assert.equal(expressionRequest.payload.effectBindingId, undefined);
   assert.equal(setRequest.payload.effectIndex, 3);
   assert.deepEqual(setRequest.payload.propertyPath, ["ADBE Tile-0006"]);
+  assert.deepEqual(expressionRequest.payload.propertyPath, [
+    "ADBE Effect Parade", 3, "ADBE Tile-0006",
+  ]);
+  assert.equal(expressionRequest.payload.expression, "value;");
   assert.deepEqual(
-    [addRequest.expectedHostProjectRevision, setRequest.expectedHostProjectRevision],
-    [20, 21],
+    [
+      addRequest.expectedHostProjectRevision,
+      setRequest.expectedHostProjectRevision,
+      expressionRequest.expectedHostProjectRevision,
+    ],
+    [20, 21, 22],
   );
 
   await assert.rejects(

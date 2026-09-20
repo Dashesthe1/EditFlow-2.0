@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v6"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v10"
 
 
 def analyzer_fingerprint():
@@ -72,7 +72,7 @@ def affine_step(previous, current):
     points0 = cv2.goodFeaturesToTrack(
         previous, maxCorners=500, qualityLevel=0.01, minDistance=6, blockSize=5
     )
-    if points0 is None or len(points0) < 8:
+    if points0 is None or len(points0) < 4:
         return None
     points1, status, _error = cv2.calcOpticalFlowPyrLK(
         previous, current, points0, None, winSize=(21, 21), maxLevel=3
@@ -82,7 +82,7 @@ def affine_step(previous, current):
     keep = status.reshape(-1) == 1
     source = points0.reshape(-1, 2)[keep]
     target = points1.reshape(-1, 2)[keep]
-    if len(source) < 8:
+    if len(source) < 4:
         return None
     matrix, inliers = cv2.estimateAffinePartial2D(
         source,
@@ -105,9 +105,53 @@ def affine_step(previous, current):
         else 0.0
     )
     height, width = current.shape[:2]
+    extreme_scale_step = scale < 0.85 or scale > 1.18
+    minimum_inlier_ratio = 0.55 if extreme_scale_step else 0.35
     plausible = (
-        inlier_ratio >= 0.35
-        and 0.85 <= scale <= 1.18
+        inlier_ratio >= minimum_inlier_ratio
+        and 0.60 <= scale <= 1.70
+        and abs(rotation) <= 12.0
+        and abs(tx) <= width * 0.30
+        and abs(ty) <= height * 0.30
+    )
+    if not plausible:
+        return None
+    return matrix.astype(np.float32), scale, rotation, tx, ty, inlier_ratio
+
+
+def dense_affine_step(flow):
+    height, width = flow.shape[:2]
+    stride = max(4, min(height, width) // 36)
+    ys = np.arange(stride // 2, height, stride, dtype=np.int32)
+    xs = np.arange(stride // 2, width, stride, dtype=np.int32)
+    if len(xs) < 3 or len(ys) < 3:
+        return None
+    yy, xx = np.meshgrid(ys, xs, indexing="ij")
+    source = np.column_stack((xx.reshape(-1), yy.reshape(-1))).astype(np.float32)
+    delta = flow[yy, xx].reshape(-1, 2).astype(np.float32)
+    diagonal = max(math.hypot(width, height), 1.0)
+    finite = np.isfinite(delta).all(axis=1)
+    magnitude = np.linalg.norm(delta, axis=1)
+    keep = finite & (magnitude <= diagonal * 0.35)
+    source = source[keep]
+    delta = delta[keep]
+    if len(source) < 12:
+        return None
+    target = source + delta
+    matrix, inliers = cv2.estimateAffinePartial2D(
+        source, target, method=cv2.RANSAC, ransacReprojThreshold=2.5,
+        maxIters=1000, confidence=0.995, refineIters=10,
+    )
+    if matrix is None:
+        return None
+    a, b, tx = [float(v) for v in matrix[0]]
+    c, d, ty = [float(v) for v in matrix[1]]
+    scale = math.sqrt(max(1e-12, a * a + c * c))
+    rotation = math.degrees(math.atan2(c, a))
+    inlier_ratio = float(np.mean(inliers.reshape(-1) > 0)) if inliers is not None else 0.0
+    plausible = (
+        inlier_ratio >= 0.12
+        and 0.60 <= scale <= 1.70
         and abs(rotation) <= 12.0
         and abs(tx) <= width * 0.30
         and abs(ty) <= height * 0.30
@@ -183,16 +227,23 @@ def edge_echo_metrics(surface, temporal_baseline):
             continue
         pairs.append((float(values[py, px]), pair_radius))
     pairs.sort(reverse=True)
-    strongest_pair = pairs[0][0] if pairs else 0.0
-    strong_threshold = max(0.18, strongest_pair * 0.65)
-    strong_pairs = [pair for pair in pairs if pair[0] >= strong_threshold]
-    state_count = 1 + min(4, len(strong_pairs))
-    echo_strength = clamp01(strongest_pair)
-    overlap_density = clamp01(float(np.mean(values[search] >= 0.16)) * 12.0)
 
-    residual = values if temporal_baseline is None else np.maximum(
-        values - temporal_baseline, 0.0
-    )
+    # Raw autocorrelation measures repeated spatial texture as well as temporal
+    # copies. M6 defining shutter evidence must be transient relative to the
+    # same clip's temporal baseline, otherwise ordinary windows, faces, text,
+    # or moving source detail can masquerade as duplicated image states.
+    if temporal_baseline is None:
+        residual = values
+    else:
+        # Autocorrelation is translation-invariant in theory, but subpixel
+        # sampling and codec ringing can move a persistent edge-pair peak by a
+        # few pixels between frames. Subtract a local envelope of the temporal
+        # baseline so ordinary moving texture remains baseline behavior instead
+        # of being reclassified as a transient duplicate state.
+        baseline_envelope = cv2.dilate(
+            temporal_baseline.astype(np.float32), np.ones((5, 5), np.uint8)
+        )
+        residual = np.maximum(values - baseline_envelope, 0.0)
     residual_peak = float(np.max(residual[search])) if np.any(search) else 0.0
     residual_threshold = max(0.025, residual_peak * 0.55)
     residual_maxima = residual == cv2.dilate(
@@ -210,11 +261,23 @@ def edge_echo_metrics(surface, temporal_baseline):
         residual_pairs.append((float(residual[py, px]), pair_radius))
     residual_pairs.sort(reverse=True)
     if residual_peak >= 0.035 and residual_pairs:
+        strongest_residual = residual_pairs[0][0]
+        strong_threshold = max(0.035, strongest_residual * 0.65)
+        strong_pairs = [pair for pair in residual_pairs if pair[0] >= strong_threshold]
+        state_count = 1 + min(4, len(strong_pairs))
+        echo_strength = clamp01(residual_peak)
+        overlap_threshold = max(0.02, residual_peak * 0.35)
+        overlap_density = clamp01(
+            float(np.mean(residual[search] >= overlap_threshold)) * 12.0
+        )
         echo_offset_pixels = residual_pairs[0][1]
         state_separation = clamp01(
             echo_offset_pixels / max(math.hypot(surface["width"], surface["height"]), 1.0)
         )
     else:
+        state_count = 1
+        echo_strength = 0.0
+        overlap_density = 0.0
         state_separation = 0.0
     return state_count, echo_strength, overlap_density, state_separation
 
@@ -244,6 +307,31 @@ def read_window(video_path, start_seconds, end_seconds, longest):
     if len(frames) != end_index - start_index + 1:
         raise RuntimeError("Could not decode every requested source frame.")
     return fps, total, source_width, source_height, frames
+
+
+def read_cached_window(probe_path, longest):
+    retained = json.loads(Path(probe_path).read_text(encoding="utf-8"))
+    video = retained.get("video", {})
+    fps = float(video.get("fps", 0.0))
+    if not math.isfinite(fps) or fps <= 0:
+        raise RuntimeError("Retained probe reported an invalid frame rate.")
+    frames = []
+    for item in retained.get("frames", []):
+        png_path = Path(str(item.get("pngPath", "")))
+        frame = cv2.imread(str(png_path), cv2.IMREAD_COLOR)
+        if frame is None:
+            raise FileNotFoundError(png_path)
+        frames.append((int(item["sourceFrameIndex"]), resize_for_analysis(frame, longest)))
+    if len(frames) < 3:
+        raise RuntimeError("Retained probe must contain at least three cached frame images.")
+    return {
+        "retained": retained,
+        "fps": fps,
+        "total": int(video.get("frameCount", len(frames))),
+        "width": int(video.get("width", frames[0][1].shape[1])),
+        "height": int(video.get("height", frames[0][1].shape[0])),
+        "frames": frames,
+    }
 
 
 def analyze_frames(frames, fps):
@@ -290,6 +378,7 @@ def analyze_frames(frames, fps):
             "flowCoherence": 1.0,
             "flowResidualP90Pixels": 0.0,
             "affineInlierRatio": 0.0,
+            "affineFallbackUsed": 0.0,
             "motionCompensatedResidualMean": 0.0,
             "motionCompensatedResidualP90": 0.0,
             "motionCompensatedResidualCoverage": 0.0,
@@ -306,6 +395,10 @@ def analyze_frames(frames, fps):
             }
             semantic["cameraMotion"] = dict(semantic["displacement"])
             affine = affine_step(previous, gray)
+            if affine is None:
+                affine = dense_affine_step(flow)
+                if affine is not None:
+                    diagnostics["affineFallbackUsed"] = 1.0
             if affine is not None:
                 matrix, step_scale, step_rotation, tx, ty, inlier_ratio = affine
                 cumulative_scale *= step_scale
@@ -327,6 +420,13 @@ def analyze_frames(frames, fps):
                 diagnostics["motionCompensatedResidualMean"] = residual_mean
                 diagnostics["motionCompensatedResidualP90"] = residual_p90
                 diagnostics["motionCompensatedResidualCoverage"] = active
+            else:
+                # Untrackable deformation is evidence, not zero distortion. Use
+                # translation-removed flow residual as a conservative lower bound.
+                semantic["distortionStrength"] = clamp01(
+                    (flow_residual / diagonal) * 3.0
+                )
+                diagnostics["affineFallbackUsed"] = 2.0
             diagnostics["flowMeanPixels"] = mean_mag
             diagnostics["flowP90Pixels"] = p90_mag
             diagnostics["flowCoherence"] = coherence
@@ -347,33 +447,62 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Extract every-frame M6 effect evidence from a bounded video window."
     )
-    parser.add_argument("--video", required=True)
-    parser.add_argument("--start", type=float, required=True)
-    parser.add_argument("--end", type=float, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--video")
+    source.add_argument("--input-probe-json")
+    parser.add_argument("--start", type=float)
+    parser.add_argument("--end", type=float)
     parser.add_argument("--output", required=True)
     parser.add_argument("--source-id", default="")
-    parser.add_argument("--source-kind", choices=("REFERENCE", "RENDER"), required=True)
+    parser.add_argument("--source-kind", choices=("REFERENCE", "RENDER"))
     parser.add_argument("--analysis-size", type=int, default=360)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    video_path = Path(args.video).resolve()
     output_path = Path(args.output).resolve()
-    if not video_path.is_file():
-        raise FileNotFoundError(video_path)
-    if args.start < 0 or args.end <= args.start:
-        raise ValueError("--end must be greater than --start and both must be non-negative.")
     if args.analysis_size < 96 or args.analysis_size > 720:
         raise ValueError("--analysis-size must be in [96, 720].")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frame_dir = output_path.parent / f"{output_path.stem}-frames"
     frame_dir.mkdir(parents=True, exist_ok=True)
 
-    fps, total, width, height, frames = read_window(
-        video_path, args.start, args.end, args.analysis_size
-    )
+    retained = None
+    video_path = None
+    if args.video is not None:
+        video_path = Path(args.video).resolve()
+        if not video_path.is_file():
+            raise FileNotFoundError(video_path)
+        if args.start is None or args.end is None or args.start < 0 or args.end <= args.start:
+            raise ValueError("Video analysis requires valid --start and --end values.")
+        if args.source_kind is None:
+            raise ValueError("Video analysis requires --source-kind.")
+        fps, total, width, height, frames = read_window(
+            video_path, args.start, args.end, args.analysis_size
+        )
+        source_id = args.source_id or video_path.stem
+        source_kind = args.source_kind
+        source_sha256 = sha256_file(video_path)
+        requested_start = args.start
+        requested_end = args.end
+    else:
+        cached = read_cached_window(Path(args.input_probe_json).resolve(), args.analysis_size)
+        retained = cached["retained"]
+        fps, total, width, height, frames = (
+            cached["fps"], cached["total"], cached["width"], cached["height"], cached["frames"]
+        )
+        source_id = args.source_id or str(retained.get("sourceId", "retained-probe"))
+        source_kind = args.source_kind or str(retained.get("sourceKind", ""))
+        if source_kind not in ("REFERENCE", "RENDER"):
+            raise ValueError("Retained probe must provide REFERENCE or RENDER sourceKind.")
+        source_sha256 = str(retained.get("sourceVideoSha256", ""))
+        if len(source_sha256) != 64:
+            raise ValueError("Retained probe must preserve the immutable source-video SHA-256.")
+        retained_range = retained.get("range", {})
+        requested_start = retained_range.get("requestedStartSeconds")
+        requested_end = retained_range.get("requestedEndSeconds")
+
     analyzed = analyze_frames(frames, fps)
     payload_frames = []
     for index, item in enumerate(analyzed):
@@ -392,9 +521,9 @@ def main():
 
     payload = {
         "schema": "editflow.dense-video-probe.v1",
-        "sourceId": args.source_id or video_path.stem,
-        "sourceKind": args.source_kind,
-        "sourceVideoSha256": sha256_file(video_path),
+        "sourceId": source_id,
+        "sourceKind": source_kind,
+        "sourceVideoSha256": source_sha256,
         "video": {
             "fps": fps,
             "frameCount": total,
@@ -402,8 +531,8 @@ def main():
             "height": height,
         },
         "range": {
-            "requestedStartSeconds": args.start,
-            "requestedEndSeconds": args.end,
+            "requestedStartSeconds": requested_start,
+            "requestedEndSeconds": requested_end,
             "startFrame": frames[0][0],
             "endFrame": frames[-1][0],
         },
@@ -420,6 +549,7 @@ def main():
                 "Farneback dense optical flow",
                 "pyramidal Lucas-Kanade feature tracking",
                 "RANSAC estimateAffinePartial2D",
+                "dense-flow affine fallback",
                 "motion-compensated residual",
                 "edge autocorrelation echo detector",
                 "Laplacian sharpness proxy",

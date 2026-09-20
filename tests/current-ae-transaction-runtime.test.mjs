@@ -14,6 +14,9 @@ import {
   AE_ADAPTER_ROUTE_ID_V11,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import {
+  AE_COMPOSITE_ROUTE_ID_V13,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_3.js";
+import {
   AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
 import {
@@ -157,6 +160,51 @@ class RuntimeTransport {
   }
 }
 
+class EffectBindingTransport extends RuntimeTransport {
+  async dispatch(request) {
+    const response = await super.dispatch(request);
+    if (request.command === "effect.add"
+      && (response.outcome === "APPLIED" || response.outcome === "NO_OP")) {
+      return {
+        ...response,
+        readback: { ...(response.readback ?? {}), propertyIndex: 7 },
+      };
+    }
+    return response;
+  }
+}
+
+class RevisionAdvancingReadTransport extends RuntimeTransport {
+  async dispatch(request) {
+    if (request.command === "host.probe" || request.command === "project.inspect") {
+      this.project.hostRevision += 1;
+    }
+    return await super.dispatch(request);
+  }
+}
+
+class FailingMutationTransport extends RuntimeTransport {
+  constructor(failAtMutation) {
+    super();
+    this.failAtMutation = failAtMutation;
+  }
+
+  async dispatch(request) {
+    const observational = request.command === "host.probe"
+      || request.command === "project.inspect"
+      || request.command === "transaction.undo_last";
+    if (!observational && this.mutationCount + 1 === this.failAtMutation) {
+      this.requests.push(structuredClone(request));
+      return responseFor(request, {
+        outcome: "FAILED",
+        error: { code: "INJECTED_FAILURE", message: "Injected correction failure." },
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
+    return await super.dispatch(request);
+  }
+}
+
 const op = (id, capabilityId, routeId, command, dependsOn = []) => ({
   operationId: id,
   capabilityId,
@@ -167,6 +215,35 @@ const op = (id, capabilityId, routeId, command, dependsOn = []) => ({
   input: { command, payload: {} },
   rollbackBoundaryId: "ROLLBACK_CURRENT_RUNTIME",
 });
+
+const buildRepeatedPlan = (observed, operationCount, riskClass = "R1_REVERSIBLE") => {
+  const operations = Array.from({ length: operationCount }, (_, index) => ({
+    ...op(
+      `OP_CORRECTION_${String(index + 1).padStart(3, "0")}`,
+      "ae.keyframe.set",
+      AE_ADAPTER_ROUTE_ID_V11,
+      "property.set_keyframes",
+      index === 0 ? [] : [`OP_CORRECTION_${String(index).padStart(3, "0")}`],
+    ),
+    riskClass,
+  }));
+  return {
+    planId: "current-runtime-correction-plan",
+    planRevision: 1,
+    projectRevision: observed.projectRevision,
+    projectFingerprint: observed.projectFingerprint,
+    environmentFingerprint: observed.environmentFingerprint,
+    requiredCapabilities: ["ae.keyframe.set"],
+    bindings: [],
+    operations,
+    checkpoints: [],
+    invariants: { structural: [], visual: [] },
+    rollbackBoundaries: [{
+      id: "ROLLBACK_CURRENT_RUNTIME",
+      strategy: "RESTORE_SNAPSHOT",
+    }],
+  };
+};
 
 const buildPlan = (observed) => {
   const operations = [
@@ -231,6 +308,78 @@ test("current AE transaction runtime executes and recovers one mixed-protocol pl
   assert.equal(runtime.status().maxOperations, 64);
 });
 
+test("current AE transactional host resolves effect-bound property expressions through the runtime effect index", async () => {
+  const transport = new EffectBindingTransport();
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "effect-expression-project",
+    "effect-expression-transaction",
+    () => `effect-expression-request-${transport.requests.length + 1}`,
+  );
+  await host.readState();
+
+  const addEffect = {
+    ...op("OP_EFFECT_ADD", "ae.effect.add", AE_ADAPTER_ROUTE_ID_V11, "effect.add"),
+    input: {
+      command: "effect.add",
+      payload: {
+        comp: { stableId: "comp" },
+        layer: { stableId: "hero" },
+        matchName: "ADBE Turbulent Displace",
+        effectBindingId: "warp:dynamic",
+      },
+    },
+  };
+  const expression = {
+    ...op("OP_EFFECT_EXPRESSION", "ae.expression.set", AE_ADAPTER_ROUTE_ID_V11,
+      "property.set_expression", ["OP_EFFECT_ADD"]),
+    input: {
+      command: "property.set_expression",
+      payload: {
+        comp: { stableId: "comp" },
+        layer: { stableId: "hero" },
+        effectBindingId: "warp:dynamic",
+        propertyPath: ["ADBE Turbulent Displace-0006"],
+        expression: "value+time*180",
+        enabled: true,
+      },
+    },
+  };
+
+  assert.equal((await host.apply(addEffect)).outcome, "APPLIED");
+  assert.equal((await host.apply(expression)).outcome, "APPLIED");
+  const request = transport.requests.findLast((item) => item.command === "property.set_expression");
+  assert.ok(request);
+  assert.equal(request.payload.effectBindingId, undefined);
+  assert.deepEqual(request.payload.propertyPath, [
+    "ADBE Effect Parade",
+    7,
+    "ADBE Turbulent Displace-0006",
+  ]);
+});
+
+test("current AE transaction runtime tolerates revision-only observation drift while fingerprints remain stable", async () => {
+  const transport = new RevisionAdvancingReadTransport();
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "revision-drift-project",
+    "observe-revision-drift",
+    () => "observe-revision-drift-request",
+  );
+  const observed = await observer.readState();
+  const plan = buildPlan(observed);
+  const runtime = new CurrentAeTransactionRuntimeV1(
+    transport,
+    "revision-drift-project",
+  );
+
+  const result = await runtime.execute(plan);
+  assert.equal(result.state, "COMMITTED");
+  assert.equal(result.recovered, false);
+  assert.equal(result.appliedOperations, 5);
+  assert.equal(transport.mutationCount, 5);
+});
+
 test("current AE transaction runtime uses only proof-backed current routes", async () => {
   const transport = new RuntimeTransport();
   const observer = new AeCepCurrentTransactionalHostV1(
@@ -247,6 +396,7 @@ test("current AE transaction runtime uses only proof-backed current routes", asy
   for (const [capabilityId, routeId] of [
     ["ae.precompose.layers", AE_ADAPTER_ROUTE_ID_V11],
     ["ae.keyframe.set", AE_ADAPTER_ROUTE_ID_V11],
+    ["ae.layer.blend_mode.set", AE_COMPOSITE_ROUTE_ID_V13],
     ["ae.property.temporal_interpolation.set", AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17],
     ["ae.property.temporal_ease.set", AE_TEMPORAL_EASE_ROUTE_ID_V18],
     ["ae.comp.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
@@ -307,12 +457,96 @@ test("current AE transaction runtime rejects oversized plans before contacting A
   assert.equal(transport.requests.length, requestCount);
 });
 
+test("current AE correction runtime admits one bounded restore-snapshot plan above the normal limit", async () => {
+  const transport = new RuntimeTransport();
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "correction-runtime-project",
+    "observe-correction-runtime",
+    () => "observe-correction-runtime-request",
+  );
+  const observed = await observer.readState();
+  const runtime = new CurrentAeTransactionRuntimeV1(
+    transport,
+    "correction-runtime-project",
+  );
+  const plan = buildRepeatedPlan(observed, 72);
+  const requestCount = transport.requests.length;
+
+  await assert.rejects(
+    runtime.execute(plan),
+    /CURRENT_AE_TRANSACTION_OPERATION_LIMIT/,
+  );
+  assert.equal(transport.requests.length, requestCount);
+
+  const result = await runtime.executeCorrection(plan);
+  assert.equal(result.state, "COMMITTED");
+  assert.equal(result.appliedOperations, 72);
+  assert.equal(transport.project.itemCount, 72);
+  assert.equal(runtime.status().maxOperations, 64);
+  assert.equal(runtime.status().correctionMaxOperations, 96);
+});
+
+test("current AE correction runtime rolls back a failure beyond operation 64", async () => {
+  const transport = new FailingMutationTransport(66);
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "correction-rollback-project",
+    "observe-correction-rollback",
+    () => "observe-correction-rollback-request",
+  );
+  const observed = await observer.readState();
+  const runtime = new CurrentAeTransactionRuntimeV1(
+    transport,
+    "correction-rollback-project",
+  );
+  const result = await runtime.executeCorrection(buildRepeatedPlan(observed, 72));
+
+  assert.equal(result.state, "ROLLED_BACK");
+  assert.equal(result.appliedOperations, 65);
+  assert.equal(transport.project.itemCount, 0);
+  assert.equal(transport.undoStack.length, 0);
+  assert.equal(
+    transport.requests.filter((request) => request.command === "transaction.undo_last").length,
+    65,
+  );
+  assert.equal(result.finalState.projectFingerprint, observed.projectFingerprint);
+});
+
+test("current AE correction runtime forbids oversized external-UI plans before contacting AE", async () => {
+  const transport = new RuntimeTransport();
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "correction-external-ui-project",
+    "observe-correction-external-ui",
+    () => "observe-correction-external-ui-request",
+  );
+  const observed = await observer.readState();
+  const runtime = new CurrentAeTransactionRuntimeV1(
+    transport,
+    "correction-external-ui-project",
+  );
+  const requestCount = transport.requests.length;
+
+  await assert.rejects(
+    runtime.executeCorrection(buildRepeatedPlan(observed, 65, "R4_EXTERNAL_UI")),
+    /CURRENT_AE_CORRECTION_EXTERNAL_UI_FORBIDDEN/,
+  );
+  assert.equal(transport.requests.length, requestCount);
+});
+
 
 test("current Shadow daemon exposes typed mixed-protocol transaction execution", async () => {
   const source = await readFile("scripts/current-shadow-control-daemon.mjs", "utf8");
   assert.match(source, /CurrentAeTransactionRuntimeV1/);
   assert.match(source, /url\.pathname === "\/run-transaction"/);
   assert.match(source, /currentTransactionRuntime\.execute\(body\.plan\)/);
+  assert.match(source, /run-correction-transaction/);
+  assert.match(source, /currentTransactionRuntime\.executeCorrection\(body\.plan\)/);
+  assert.match(source, /x-editflow-mutation-lease/);
+  assert.match(source, /mutation-lease\/acquire/);
+  assert.match(source, /MUTATION_LEASE_HELD/);
+  assert.match(source, /LEASE_GUARDED_MUTATION_PATHS/);
   assert.match(source, /EditGptStabilizationVisualDriverV1/);
   assert.match(source, /supportedProtocolVersions.*2\.3\.0/s);
   assert.match(source, /result\.state === "COMMITTED"/);
