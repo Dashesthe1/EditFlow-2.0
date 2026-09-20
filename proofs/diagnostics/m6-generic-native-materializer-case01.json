@@ -1,0 +1,80 @@
+{
+  "schema": "editflow.m6.generic-native-materializer-proof.v1",
+  "generatedAt": "2026-09-20T04:40:18.949Z",
+  "sourceEvidence": "proofs/diagnostics/m6-v6r-ref05-evidence-current.json",
+  "evidenceRefs": [
+    "video:sha256:c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+    "probe-json:sha256:5c4fb6f426dd25f2b5b1ade7fc3adff77acb86e6097aa816ed971dc7e9b91e5e",
+    "probe-algorithm:editflow.m6.dense-video-probe.v6",
+    "probe-analyzer:sha256:a9d12e91312d5cdb7179224d7c817342f99d52be726a1b7f3b20f18a4652287b",
+    "measurement-system:sha256:0f2a89b5c283eae9e310203b5ddb3e21e660aafe6f1c06dc5b1a210f11ad43b1",
+    "algorithm:opencv-farneback-affine-motion-comp-edge-autocorrelation"
+  ],
+  "family": "UNKNOWN",
+  "strategy": "LAYERED_PRIMITIVES",
+  "graphId": "construction:anatomy:unknown:4824b8f94c33",
+  "definingCoverage": true,
+  "capabilityGaps": [],
+  "nativePlan": {
+    "operationCount": 6,
+    "commands": [
+      "layer.duplicate",
+      "layer.time_remap.enable",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression",
+      "property.set_expression"
+    ],
+    "requiredCapabilities": [
+      "ae.layer.duplicate",
+      "ae.layer.time_remap.enable",
+      "ae.expression.set"
+    ],
+    "containsOpaqueM6Placeholder": false,
+    "expectedTemporalStateCount": 2,
+    "expectedDuplicateCount": 1
+  },
+  "transaction": {
+    "state": "COMMITTED",
+    "result": {
+      "transactionId": "19be2706-06d8-47ac-997b-b2f5c34b160a",
+      "planHash": "plan:sha256:fa5e087cff4b166b321b73242615f17aefc900acc7eb359aa839d8224cbe324e",
+      "state": "COMMITTED",
+      "recovered": false,
+      "committedGroups": 1,
+      "appliedOperations": 6,
+      "finalState": {
+        "projectId": "shadow-current-project",
+        "projectRevision": "ae-revision:1024",
+        "projectFingerprint": "project:sha256:16df99bb0a18f11cfe86c50b4ea48523b1cfc9e123842a5de7b81ddc62e34ff1",
+        "environmentFingerprint": "environment:sha256:3d57e63acdbc5214bee09c839ea87a078043e12d6ad56f28b6c91ae210fa1d34"
+      }
+    }
+  },
+  "readbackVerification": {
+    "actualLayerCount": 2,
+    "duplicateCount": 1,
+    "startTimes": [
+      0,
+      0
+    ],
+    "globalLayerOffsetsAbsent": true,
+    "timeRemapEnabledCount": 1,
+    "timeRemapExpressions": [
+      "Math.max(0,value-0.03333333333333333);"
+    ],
+    "temporalOffsetsSeconds": [
+      0.03333333333333333
+    ],
+    "expectedTemporalOffsetsSeconds": [
+      0.03333333333333333
+    ],
+    "temporalOffsetsMatch": true,
+    "eventLocalOpacityExpressions": [
+      "var event=0.5;var f=(time-event)*thisComp.frameRate;var pre=6;var peak=78;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}"
+    ],
+    "eventLocalVisibilityMatch": true,
+    "recursiveStableId": false
+  },
+  "readback": "COMP\t__EF2_M6_GENERIC_NATIVE_PROOF__\t2\r\nLAYER\t1\tM6 Generic Hero 2\t[[EDITFLOW2_STABLE:node:1:temporal_duplicates::m6-proof-hero::state-1]]\t0\t0\t1\r\nTIME_REMAP\t1\tMath.max(0,value-0.03333333333333333);\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var amplitude=0.07006638912336575*Math.max(thisComp.width,thisComp.height)*0.5;var pre=6;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}else{impulse=linear(f,-1,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var pre=6;var peak=78;if(f<=-pre||f>=1){0}else if(f<-1){linear(f,-pre,-1,0,peak)}else if(f<0){linear(f,-1,0,peak,peak*0.4)}else{linear(f,0,1,peak*0.4,0)}\r\nANCHOR_EXPR\t\r\nLAYER\t2\tM6 Generic Hero\t[[EDITFLOW2_STABLE:m6-proof-hero]]\t0\t0\t1\r\nTIME_REMAP\t0\t\r\nPOSITION_EXPR\tvar event=0.5;var f=(time-event)*thisComp.frameRate;var amplitude=0.07006638912336575*Math.max(thisComp.width,thisComp.height)*0.5;var pre=6;var impulse=0;if(f<=-pre||f>=0){impulse=0;}else if(f<-1){impulse=linear(f,-pre,-1,0,-amplitude);}else{impulse=linear(f,-1,0,-amplitude,0);}value+[0,impulse];\r\nOPACITY_EXPR\t\r\nANCHOR_EXPR\t\r\n"
+}

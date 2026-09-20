@@ -189,3 +189,26 @@ test("M6.8 retained real-pixel unknown synthesis is behavior-driven and rejects 
       proposal.capabilityId === "ae.effect.time-displacement"
       && proposal.proofRequirement === "REAL_AE_RENDER")));
 });
+
+test("M6.8 retained live-AE UNKNOWN graph materialization is event-local and source-time based", async () => {
+  const proof = await readJson("proofs/diagnostics/m6-generic-native-materializer-case01.json");
+  assert.equal(proof.schema, "editflow.m6.generic-native-materializer-proof.v1");
+  assert.equal(proof.family, "UNKNOWN");
+  assert.equal(proof.strategy, "LAYERED_PRIMITIVES");
+  assert.equal(proof.definingCoverage, true);
+  assert.deepEqual(proof.capabilityGaps, []);
+  assert.equal(proof.transaction.state, "COMMITTED");
+  assert.equal(proof.nativePlan.containsOpaqueM6Placeholder, false);
+  assert.equal(proof.readbackVerification.actualLayerCount,
+    proof.nativePlan.expectedTemporalStateCount);
+  assert.equal(proof.readbackVerification.duplicateCount,
+    proof.nativePlan.expectedDuplicateCount);
+  assert.equal(proof.readbackVerification.globalLayerOffsetsAbsent, true);
+  assert.equal(proof.readbackVerification.timeRemapEnabledCount,
+    proof.nativePlan.expectedDuplicateCount);
+  assert.equal(proof.readbackVerification.temporalOffsetsMatch, true);
+  assert.equal(proof.readbackVerification.eventLocalVisibilityMatch, true);
+  assert.equal(proof.readbackVerification.recursiveStableId, false);
+  assert.ok(proof.nativePlan.commands.includes("layer.time_remap.enable"));
+  assert.ok(proof.nativePlan.commands.includes("property.set_expression"));
+});
