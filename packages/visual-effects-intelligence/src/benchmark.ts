@@ -135,6 +135,12 @@ export interface BenchmarkArtifactBindingV1 {
   readonly baselineSourceContentKey?: string;
   readonly transferSourceContentKey?: string;
   readonly transferAxes?: readonly string[];
+  /** Required for PROFESSIONAL_CASE_PROOF so Level 6 cannot be inferred from identity binding alone. */
+  readonly certified?: boolean;
+  readonly renderedOutputVerified?: boolean;
+  readonly degradedControlRejected?: boolean;
+  readonly definingCoverage?: number;
+  readonly weightedFidelity?: number;
 }
 
 export interface RetainedBenchmarkCaseEvidenceV1 extends BenchmarkCaseEvidenceV1 {
@@ -241,6 +247,15 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
     }
   }
   const evidenceByCase = new Map(evidence.map((item) => [item.caseId, item] as const));
+  const canonicalReferenceSourceByFamily = new Map<EffectFamilyV1, string>();
+  for (const benchmarkCase of cases) {
+    if (!benchmarkCase.caseId.endsWith(":canonical")) continue;
+    const artifact = artifactByRef.get(benchmarkCase.referenceEvidenceRef);
+    if (artifact?.kind === "REFERENCE_DENSE_EVIDENCE"
+      && isSha256V1(artifact.baselineSourceContentKey)) {
+      canonicalReferenceSourceByFamily.set(benchmarkCase.family, artifact.baselineSourceContentKey);
+    }
+  }
 
   for (const item of cases) {
     const proof = evidenceByCase.get(item.caseId);
@@ -291,6 +306,16 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
     if (reference !== null && !isSha256V1(referenceKey)) {
       failures.push(`${item.caseId}:REFERENCE_CONTENT_KEY_INVALID`);
     }
+    if (reference !== null && !isSha256V1(reference.baselineSourceContentKey)) {
+      failures.push(`${item.caseId}:REFERENCE_SOURCE_IDENTITY_MISSING`);
+    }
+    if (item.sourceKind === "HELD_OUT" && reference !== null) {
+      const canonicalSource = canonicalReferenceSourceByFamily.get(item.family);
+      if (isSha256V1(canonicalSource)
+        && reference.baselineSourceContentKey === canonicalSource) {
+        failures.push(`${item.caseId}:HELD_OUT_REFERENCE_SOURCE_NOT_INDEPENDENT`);
+      }
+    }
     if (render !== null && !isSha256V1(renderKey)) {
       failures.push(`${item.caseId}:RENDER_CONTENT_KEY_INVALID`);
     }
@@ -328,6 +353,18 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
       if (!isSha256V1(professionalCase.referenceContentKey)
         || !isSha256V1(professionalCase.renderContentKey)) {
         failures.push(`${item.caseId}:PROFESSIONAL_CASE_CONTENT_BINDING_INVALID`);
+      }
+      const professionalWeightedFidelity = professionalCase.weightedFidelity;
+      const professionalCaseCertified = professionalCase.certified === true
+        && professionalCase.renderedOutputVerified === true
+        && professionalCase.degradedControlRejected === true
+        && professionalCase.definingCoverage === 1
+        && typeof professionalWeightedFidelity === "number"
+        && Number.isFinite(professionalWeightedFidelity)
+        && professionalWeightedFidelity >= 0
+        && professionalWeightedFidelity <= 1;
+      if (!professionalCaseCertified) {
+        failures.push(`${item.caseId}:PROFESSIONAL_CASE_NOT_CERTIFIED`);
       }
       const sourceKey = professionalCase.baselineSourceContentKey;
       if (!isSha256V1(sourceKey)) {
