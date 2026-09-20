@@ -179,7 +179,9 @@ const PHYSICAL_SCALE_PARAMETER_BY_CONTROL: Readonly<Partial<Record<
   string
 >>> = {
   TEMPORAL_COPY_COUNT: "temporalCopyCountScale",
+  TEMPORAL_FRAGMENT_DENSITY: "temporalCopyCountScale",
   TEMPORAL_PERSISTENCE: "temporalPersistenceScale",
+  TEMPORAL_BAND_MIX: "temporalBandMixScale",
   DUPLICATE_OPACITY: "duplicateOpacityScale",
   DUPLICATE_SPREAD: "duplicateSpreadScale",
   MOTION_IMPULSE: "motionImpulseScale",
@@ -242,6 +244,7 @@ const physicalParameterForControl = (
 const PHYSICAL_SCALE_LIMITS: Readonly<Record<string, readonly [number, number]>> = {
   temporalCopyCountScale: [0.5, 2],
   temporalPersistenceScale: [0.5, 4],
+  temporalBandMixScale: [0.5, 2],
   duplicateOpacityScale: [0.35, 1.5],
   duplicateSpreadScale: [0.25, 2],
   motionImpulseScale: [0.25, 4],

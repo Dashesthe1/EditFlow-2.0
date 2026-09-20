@@ -1287,6 +1287,13 @@ const compileM6TemporalDuplication = (
   const overlapTarget = typeof overlapRaw === "number" && Number.isFinite(overlapRaw)
     ? Math.max(0, Math.min(1, overlapRaw))
     : null;
+  const temporalBandMixScaleRaw = parameters["temporalBandMixScale"];
+  const temporalBandMixScale = typeof temporalBandMixScaleRaw === "number" && Number.isFinite(temporalBandMixScaleRaw)
+    ? Math.max(0.5, Math.min(2, temporalBandMixScaleRaw))
+    : 1;
+  // Band mix is a distinct overlap actuator: change how strongly temporal
+  // states remain visible together at the event without extending recovery.
+  const eventBandMix = Math.max(0.2, Math.min(0.9, 0.4 * temporalBandMixScale));
   const spreadScaleRaw = parameters["duplicateSpreadScale"];
   const duplicateSpreadScale = typeof spreadScaleRaw === "number" && Number.isFinite(spreadScaleRaw)
     ? Math.max(0.25, Math.min(2, spreadScaleRaw))
@@ -1371,10 +1378,11 @@ const compileM6TemporalDuplication = (
           `var pre=${preFrames};`,
           `var post=${postFrames};`,
           `var peak=${statePeakOpacity};`,
+          `var mix=${eventBandMix};`,
           "if(f<=-pre||f>=post){0}",
           "else if(f<-1){linear(f,-pre,-1,0,peak)}",
-          "else if(f<0){linear(f,-1,0,peak,peak*0.4)}",
-          "else{linear(f,0,post,peak*0.4,0)}",
+          "else if(f<0){linear(f,-1,0,peak,peak*mix)}",
+          "else{linear(f,0,post,peak*mix,0)}",
         ].join(""),
       });
       outputs.push(layerId);

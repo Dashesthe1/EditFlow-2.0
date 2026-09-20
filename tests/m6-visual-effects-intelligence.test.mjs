@@ -1138,6 +1138,30 @@ test("M6.7 maps visual deficits to construction controls before touching AE para
   assert.ok((recovery?.multiplier ?? 1) < 1);
 });
 
+test("M6.7 layered overlap correction has physical band-mix and fragment-density actuators", () => {
+  const reference = shutterReference();
+  const anatomy = deriveEffectAnatomyV1(reference);
+  const graph = buildConstructionGraphV1(anatomy);
+  const render = evidence({ ...reference.summary, overlapDensityPeak: 0.08 });
+  const comparison = compareSemanticVisualFidelityV1({ reference, render, dna: anatomy.dna });
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  const overlapInstructions = plan.instructions.filter((instruction) =>
+    instruction.invariantId === "shutter.overlap");
+  const bandMix = overlapInstructions.find((instruction) => instruction.control === "TEMPORAL_BAND_MIX");
+  const fragmentDensity = overlapInstructions.find((instruction) =>
+    instruction.control === "TEMPORAL_FRAGMENT_DENSITY");
+  assert.ok(bandMix);
+  assert.ok(fragmentDensity);
+  const applied = applyConstructionActuationPlanV1(graph, plan);
+  const temporal = applied.graph.nodes.find((node) => node.kind === "TEMPORAL_DUPLICATES");
+  assert.ok(Number(temporal?.parameters.temporalBandMixScale ?? 1) > 1);
+  assert.ok(Number(temporal?.parameters.temporalCopyCountScale ?? 1) > 1);
+  assert.ok(applied.appliedInstructionIds.includes(bandMix.instructionId));
+  assert.ok(applied.appliedInstructionIds.includes(fragmentDensity.instructionId));
+  const overlapInstructionIds = new Set(overlapInstructions.map((instruction) => instruction.instructionId));
+  assert.deepEqual(applied.unsupportedInstructionIds.filter((id) => overlapInstructionIds.has(id)), []);
+});
+
 test("M6.7 maps event-local UNKNOWN fragmentation overlap to temporal construction controls", () => {
   const reference = shutterReference();
   const anatomy = decomposeUnknownEffectV1(reference);
@@ -3290,6 +3314,52 @@ test("M6.7 temporal persistence scales from reference analysis duration instead 
   assert.match(baseline, /var post=10;/);
   assert.match(boosted, /var pre=10;/);
   assert.match(boosted, /var post=14;/);
+  assert.notEqual(boosted, baseline);
+});
+
+test("M6.7 temporal band mix compiles to event-local opacity without extending the recovery window", () => {
+  const reference = shutterReference();
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: ALL_CAPABILITIES,
+  });
+  assert.equal(synthesis.selected?.strategy, "LAYERED_PRIMITIVES");
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "M6 temporal band mix fixture",
+      width: 1080,
+      height: 1080,
+      durationMs: 3000,
+      frameRate: 30,
+      layers: [{ layerId: "hero", name: "Hero", kind: "FOOTAGE", inMs: 0, outMs: 3000, properties: [], effects: [], masks: [] }],
+    }],
+  };
+  const compileMix = (scale) => {
+    const graph = {
+      ...synthesis.selected.graph,
+      nodes: synthesis.selected.graph.nodes.map((node) => node.kind === "TEMPORAL_DUPLICATES"
+        ? { ...node, parameters: { ...node.parameters, temporalBandMixScale: scale } }
+        : node),
+    };
+    const compilation = compileConstructionGraphV1(graph, ALL_CAPABILITIES);
+    assert.notEqual(compilation.recipe, null);
+    const compiled = compileEditingIrRecipeToVirtualAeV1(compilation.recipe, project, {
+      compId: "comp",
+      eventTimesMs: { transition: 1500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    });
+    return compiled.operations.find((operation) =>
+      operation.type === "SET_EXPRESSION" && operation.propertyPath === "Transform.Opacity")?.expression ?? "";
+  };
+  const baseline = compileMix(1);
+  const boosted = compileMix(2);
+  assert.match(baseline, /var mix=0\.4;/);
+  assert.match(boosted, /var mix=0\.8;/);
+  assert.equal(baseline.match(/var post=([0-9.]+);/)?.[1], boosted.match(/var post=([0-9.]+);/)?.[1]);
   assert.notEqual(boosted, baseline);
 });
 
