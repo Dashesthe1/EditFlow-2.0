@@ -14,6 +14,9 @@ const V6 = path.join(ROOT, "proofs", "manifests", "m6-real-pixel-fidelity-v6.jso
 const TRANSFER_V17 = path.join(
   ROOT, "proofs", "diagnostics", "m6-shutter-measurement-v17-proof.json",
 );
+const PROFESSIONAL_CASE_V16 = path.join(
+  ROOT, "proofs", "m6", "professional-cases", "shutter_fragmentation-held-out-w04-v16.json",
+);
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const relative = (file) => path.relative(ROOT, file).replaceAll("\\", "/");
 const sha256File = async (file) => createHash("sha256")
@@ -81,6 +84,76 @@ if (directAbSha !== v6.directAbEvidence.sha256) {
   throw new Error("M6 v6 direct A/B artifact digest no longer matches its manifest.");
 }
 
+const professionalCase = await load(PROFESSIONAL_CASE_V16);
+const professionalReferencePath = path.resolve(ROOT, professionalCase.reference.ref);
+const professionalRenderPath = path.resolve(
+  ROOT, professionalCase.constructionReuse.retainedRenderRef,
+);
+const professionalRenderEvidencePath = path.resolve(
+  ROOT, professionalCase.constructionReuse.renderEvidenceRef,
+);
+const professionalTransferPath = path.resolve(
+  ROOT, professionalCase.constructionReuse.transferProofRef,
+);
+const professionalFidelityPath = path.resolve(ROOT, professionalCase.fidelity.ref);
+const professionalDirectAbPath = path.resolve(ROOT, professionalCase.directAb.ref);
+const professionalDirectAbGenerator = path.resolve(ROOT, professionalCase.directAb.generatorRef);
+const professionalDegradedPath = path.resolve(ROOT, professionalCase.degradedControl.ref);
+const professionalDegradedEvidencePath = path.resolve(
+  ROOT, professionalCase.degradedControl.renderEvidenceRef,
+);
+const professionalReference = await load(professionalReferencePath);
+const professionalRenderEvidence = await load(professionalRenderEvidencePath);
+const professionalTransfer = await load(professionalTransferPath);
+const professionalFidelity = await load(professionalFidelityPath);
+const professionalDegraded = await load(professionalDegradedPath);
+const professionalDegradedEvidence = await load(professionalDegradedEvidencePath);
+const professionalReferenceSourceKey = sourceVideoKey(professionalReference);
+if (professionalCase.schema !== "editflow.m6.professional-case-pass.v1"
+  || professionalCase.result !== "PASS"
+  || professionalCase.family !== shutter.family
+  || professionalCase.independence?.distinctProfessionalSource !== true
+  || professionalCase.constructionReuse?.reusedWithoutHeldOutRetuning !== true
+  || professionalCase.independence?.canonicalSourceVideoSha256 !== canonicalReferenceSourceKey
+  || professionalReferenceSourceKey === null
+  || professionalReferenceSourceKey !== professionalCase.reference.sourceVideoSha256
+  || professionalReferenceSourceKey === canonicalReferenceSourceKey) {
+  throw new Error("M6 held-out professional case lost its independent-source identity.");
+}
+if (await sha256File(professionalReferencePath) !== professionalCase.reference.sha256
+  || await sha256File(professionalRenderPath) !== professionalCase.constructionReuse.retainedRenderSha256
+  || await sha256File(professionalFidelityPath) !== professionalCase.fidelity.sha256
+  || await sha256File(professionalDirectAbPath) !== professionalCase.directAb.sha256
+  || await sha256File(professionalDirectAbGenerator) !== professionalCase.directAb.generatorSha256
+  || await sha256File(professionalDegradedPath) !== professionalCase.degradedControl.sha256
+  || await sha256File(professionalDegradedEvidencePath)
+    !== professionalCase.degradedControl.renderEvidenceSha256) {
+  throw new Error("M6 held-out professional case lost a retained artifact digest binding.");
+}
+if (professionalReference.contentKey !== professionalCase.reference.contentKey
+  || professionalRenderEvidence.contentKey !== professionalCase.constructionReuse.renderContentKey
+  || professionalReference.analyzerFingerprint !== professionalRenderEvidence.analyzerFingerprint
+  || professionalTransfer.render?.ref !== professionalCase.constructionReuse.retainedRenderRef
+  || professionalTransfer.render?.sha256 !== professionalCase.constructionReuse.retainedRenderSha256
+  || professionalTransfer.render?.contentKey !== professionalRenderEvidence.contentKey
+  || professionalFidelity.result !== "CERTIFIED"
+  || professionalFidelity.gate?.certified !== true
+  || professionalFidelity.reference?.contentKey !== professionalReference.contentKey
+  || professionalFidelity.render?.contentKey !== professionalRenderEvidence.contentKey
+  || professionalCase.fidelity.certified !== true
+  || professionalCase.fidelity.definingCoverage !== 1) {
+  throw new Error("M6 held-out professional case lost its certified render/comparison binding.");
+}
+if (professionalDegraded.result !== "REJECTED"
+  || professionalDegraded.gate?.certified !== false
+  || professionalDegraded.reference?.contentKey !== professionalReference.contentKey
+  || professionalDegraded.render?.contentKey !== professionalDegradedEvidence.contentKey
+  || professionalDegradedEvidence.contentKey === professionalRenderEvidence.contentKey
+  || professionalCase.degradedControl.rejected !== true) {
+  throw new Error("M6 held-out professional case lost its degraded-control rejection.");
+}
+const professionalCaseRef = relative(PROFESSIONAL_CASE_V16);
+
 const renderRef = relative(renderSource);
 const comparisonRef = relative(comparisonSource);
 const directAbRef = relative(directAbSource);
@@ -88,20 +161,21 @@ const degradedRef = relative(degradedComparisonSource);
 const transferRef = relative(TRANSFER_V17);
 const evidence = [{
   caseId: shutter.caseId,
-  achievedLevel: "TRANSFER_VERIFIED",
+  achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
   maturityProof: {
     functionallyPresent: true,
     structuralCoverageComplete: true,
     visuallyRecognizable: true,
     referenceFaithful: true,
     transferVariantCount: 1,
-    professionalCasePassCount: 1,
+    professionalCasePassCount: 2,
     robustnessAxesPassed: [...shutter.transferAxes],
   },
   directAbReferenceRef: directAbRef,
   comparisonEvidenceRef: comparisonRef,
   renderEvidenceRef: renderRef,
   transferEvidenceRefs: [transferRef],
+  professionalCaseEvidenceRefs: [professionalCaseRef],
   degradedControlEvidenceRef: degradedRef,
   transferPassed: true,
   degradedCaseRejected: true,
@@ -164,6 +238,21 @@ const artifacts = [
     transferSourceContentKey: transferProof.transferIdentity.transferSourceContentKey,
     transferAxes: transferProof.transferIdentity.transferAxes,
   },
+  {
+    ref: professionalCaseRef,
+    kind: "PROFESSIONAL_CASE_PROOF",
+    caseId: shutter.caseId,
+    family: shutter.family,
+    sha256: await sha256File(PROFESSIONAL_CASE_V16),
+    referenceContentKey: professionalReference.contentKey,
+    renderContentKey: professionalRenderEvidence.contentKey,
+    baselineSourceContentKey: professionalReferenceSourceKey,
+    certified: true,
+    renderedOutputVerified: true,
+    degradedControlRejected: true,
+    definingCoverage: professionalCase.fidelity.definingCoverage,
+    weightedFidelity: professionalCase.fidelity.weightedFidelity,
+  },
 ];
 
 const result = evaluateRetainedProfessionalBenchmarkV1(cases, evidence, artifacts);
@@ -201,6 +290,16 @@ const manifest = {
     sha256: await sha256File(TRANSFER_V17),
     status: "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO",
   }],
+  professionalCasePassEvidence: [{
+    ref: professionalCaseRef,
+    sha256: await sha256File(PROFESSIONAL_CASE_V16),
+    sourceVideoSha256: professionalReferenceSourceKey,
+    distinctProfessionalSource: true,
+    reusedWithoutHeldOutRetuning: true,
+    weightedFidelity: professionalCase.fidelity.weightedFidelity,
+    definingCoverage: professionalCase.fidelity.definingCoverage,
+    degradedControlRejected: professionalCase.degradedControl.rejected,
+  }],
   proofSources: {
     evaluator: "packages/visual-effects-intelligence/src/benchmark.ts",
     evaluatorSha256: await sha256File(path.join(
@@ -209,9 +308,7 @@ const manifest = {
     generator: relative(fileURLToPath(import.meta.url)),
     generatorSha256: await sha256File(fileURLToPath(import.meta.url)),
   },
-  nextRequiredForShutterCanonical: [
-    "second professional case pass required for Level 6 maturity",
-  ],
+  nextRequiredForShutterCanonical: [],
   noOverclaim: result.passed
     ? null
     : "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates.",

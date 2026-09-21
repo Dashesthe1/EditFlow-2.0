@@ -1,0 +1,69 @@
+{
+  "schema": "editflow.m6.professional-case-pass.v1",
+  "generatedAt": "2026-09-20T23:23:31.549Z",
+  "caseId": "m6:shutter_fragmentation:held-out",
+  "family": "SHUTTER_FRAGMENTATION",
+  "result": "PASS",
+  "selection": {
+    "scoutRef": "proofs/diagnostics/m6-heldout-scout-candidate01.json",
+    "scoutSha256": "646ff096b9233adc9c964b5e7230a57177fef2cddbd12ca568f9118bb9256702",
+    "scoutAuthority": "SCOUT_ONLY_NOT_FIDELITY_EVIDENCE",
+    "rankedWindow": 4,
+    "windowStartSeconds": 25.2976864640884,
+    "windowEndSeconds": 26.097686464088397
+  },
+  "reference": {
+    "ref": "proofs/m6/references/shutter_fragmentation-held-out.json",
+    "sha256": "a7e49e70c4d1665c12cd20c1b721f4aa0c59b84c937c33ea1bdfeb88048974d4",
+    "contentKey": "fdfb4fafafd7e457b95a1195a0d65cb743f1b2cef8917cad3272f903a0bf0bdc",
+    "sourceVideoSha256": "d417dd4162c89cb8b6798496627ab864b85f6a75d672aa492ba721af808b017f",
+    "range": {
+      "startMs": 25297.203038674033,
+      "endMs": 26098.169889502762
+    },
+    "analyzerFingerprint": "bf8fbd46cf04644e2ef34a9a43bca519c509d408cdf4df88229b0a9d4605a81c",
+    "probeRef": "proofs/diagnostics/m6-heldout-candidate01-w04-v16-probe.json",
+    "probeSha256": "ae51f059fed17056d05c9bc75f3434050b838647ab2f38d7618994b9e5ee008f"
+  },
+  "independence": {
+    "canonicalSourceVideoSha256": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+    "heldOutSourceVideoSha256": "d417dd4162c89cb8b6798496627ab864b85f6a75d672aa492ba721af808b017f",
+    "distinctProfessionalSource": true
+  },
+  "constructionReuse": {
+    "transferProofRef": "proofs/m6/transfers/shutter_fragmentation-canonical-subject-aspect-ratio-v16.json",
+    "retainedRenderRef": "proofs/artifacts/m6-shutter-transfer-v15/render-16x9-pass02-v15.mp4",
+    "retainedRenderSha256": "a2693654ab90f7e6c6a4365fab501a632cb3995064979201203ca04fb2e775dc",
+    "renderEvidenceRef": "proofs/diagnostics/m6-shutter-transfer-pass02-v16-evidence.json",
+    "renderContentKey": "4137c6c0d1bab89af02b19a297f6c818981b86136e1bf2189f087ac0e98d2e3c",
+    "reusedWithoutHeldOutRetuning": true
+  },
+  "fidelity": {
+    "ref": "proofs/diagnostics/m6-heldout-w04-vs-retained-transfer-v16-fidelity.json",
+    "sha256": "0eb3fa7adba77ca3265fd7607025bddcf5bbb37bb67a5e26f4aab16f2a541222",
+    "certified": true,
+    "weightedFidelity": 0.9930369628780908,
+    "definingCoverage": 1
+  },
+  "directAb": {
+    "ref": "proofs/diagnostics/m6-shutter-heldout-w04-vs-retained-transfer-direct-ab.png",
+    "sha256": "14cf88bad02ae4ac62b6b0a5321b22ea073023694b67979be3faebbdcbd5dfcc",
+    "generatorRef": "scripts/proofs/m6-direct-ab-contact-sheet.py",
+    "generatorSha256": "42442fce6c042110254d2949f7f2bf7247143029e00d3a20456cd9290d54bbae",
+    "referenceProbeRef": "proofs/diagnostics/m6-heldout-candidate01-w04-v16-probe.json",
+    "renderProbeRef": "proofs/diagnostics/m6-shutter-transfer-pass02-v16-probe.json"
+  },
+  "degradedControl": {
+    "ref": "proofs/diagnostics/m6-heldout-w04-vs-p07-v16-degraded.json",
+    "sha256": "890c079cb560377f96893b44f85e193cb20507ec9c30bcd5d9a67ba705d77978",
+    "rejected": true,
+    "weightedFidelity": 0.6269760164909682,
+    "definingCoverage": 0.42857142857142855,
+    "renderEvidenceRef": "proofs/diagnostics/m6-shutter-pro-case02-p07-v16-evidence.json",
+    "renderEvidenceSha256": "509cc86d43751de15f76ae7f23a3837963f04ec007d2632d5751035bb2f93e48",
+    "renderContentKey": "131aef8b76981d443bedbca14d0e2a1c9f3e809f337793ab333a91792c90241b",
+    "renderSourceVideoSha256": "a2adda57ff9f051d483523faec7bdd7cac31a4d569f68842786d3cdc311cb5bb",
+    "renderProbeRef": "proofs/diagnostics/m6-shutter-pro-case02-p07-v16-probe.json",
+    "renderProbeSha256": "57f240597041d1976910f14d37df20ca0aa1146e7b4ebe6c1f2ab29061a05fdc"
+  }
+}

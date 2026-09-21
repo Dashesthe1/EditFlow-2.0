@@ -1,0 +1,61 @@
+{
+  "schema": "editflow.m6.shutter-transfer-plan.v1",
+  "generatedAt": "2026-09-20T19:59:42.5951697Z",
+  "compName": "__EF2_M6_SHUTTER_TRANSFER_V15_PASS02__",
+  "outgoingSource": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\artifacts\\m6-shutter-transfer-16x9\\source-outgoing.mp4",
+  "incomingSource": "C:\\Users\\Shadow\\EditFlow-2.0-m6\\proofs\\artifacts\\m6-shutter-transfer-16x9\\source-incoming.mp4",
+  "outputVideo": "C:\\Users\\Shadow\\EditFlow-2.0-m6-separation\\proofs\\artifacts\\m6-shutter-transfer-v15\\render-16x9-pass02-v15.mp4",
+  "sourceIdentity": {
+    "outgoingSha256": "e2749fe782afadcd14cca75cbf3711b45d240ce74f7e0298894c9e9ae13aa4e3",
+    "incomingSha256": "7c7e0b5f217d9184fd661223925c53d33af2d0505c8e24b7ffeff10254d31826",
+    "transferSourceContentKey": "3dea801bad6a239ba8f2bb2934209170f00a65b645d77317b751434477e5e063",
+    "baselineSourceContentKey": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae"
+  },
+  "width": 1280,
+  "height": 720,
+  "frameRate": 60,
+  "durationSeconds": 0.72,
+  "cutSeconds": 0.36,
+  "outgoingSourceStartSeconds": 2,
+  "incomingSourceStartSeconds": 5,
+  "transferAxes": [
+    "subject",
+    "aspect-ratio"
+  ],
+  "adaptation": {
+    "geometryRule": "scale spatial displacement by min(targetWidth,targetHeight)/1080",
+    "geometryScale": 0.6666666666666666,
+    "sourceFit": "COVER_CENTER",
+    "frameRateRule": "retain frame-count timing semantics at target frame rate",
+    "literalSourceValuesReused": false
+  },
+  "baselinePhysicalState": {
+    "motionImpulsePx": 190,
+    "duplicateSpreadPx": 28,
+    "duplicateOpacityPct": 80,
+    "postCutFrames": 1.25,
+    "copyCount": 2,
+    "fragmentBandCount": 5,
+    "overlapCopyCount": 1,
+    "overlapSpreadPx": 8,
+    "overlapOpacityPct": 65
+  },
+  "physicalState": {
+    "motionImpulsePx": 126.66666666666666,
+    "duplicateSpreadPx": 8.347987115999214,
+    "duplicateOpacityPct": 80,
+    "postCutFrames": 1.25,
+    "copyCount": 2,
+    "fragmentBandCount": 5,
+    "overlapCopyCount": 1,
+    "overlapSpreadPx": 5.333333333333333,
+    "overlapOpacityPct": 65
+  },
+  "correctionFrom": {
+    "fidelityRef": "proofs/diagnostics/m6-shutter-transfer-16x9-v13-fidelity.json",
+    "invariantId": "shutter.displacement",
+    "control": "DUPLICATE_SPREAD",
+    "direction": "DECREASE",
+    "multiplier": 0.4472135954999579
+  }
+}
