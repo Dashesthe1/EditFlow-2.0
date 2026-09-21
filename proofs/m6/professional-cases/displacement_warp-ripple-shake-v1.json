@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-case-pass.v1",
-  "generatedAt": "2026-09-21T10:21:00.133Z",
+  "generatedAt": "2026-09-21T09:55:50.437Z",
   "result": "PASS",
   "caseId": "m6:displacement_warp:canonical:professional:ripple-shake",
   "family": "DISPLACEMENT_WARP",

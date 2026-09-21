@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.degraded-control-proof.v1",
-  "generatedAt": "2026-09-21T10:21:00.132Z",
+  "generatedAt": "2026-09-21T09:55:50.437Z",
   "caseId": "m6:displacement_warp:canonical",
   "family": "DISPLACEMENT_WARP",
   "result": "REJECTED",

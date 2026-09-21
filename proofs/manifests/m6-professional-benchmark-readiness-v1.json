@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-21T10:21:00.297Z",
+  "generatedAt": "2026-09-21T09:55:50.437Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -170,7 +170,7 @@
       "kind": "SEMANTIC_COMPARISON",
       "caseId": "m6:displacement_warp:canonical",
       "family": "DISPLACEMENT_WARP",
-      "sha256": "d5edac76d4d86973cc8c7f593bf5b89ab907fa25f54fa07ec39772abf02cb4d7",
+      "sha256": "d6072de9906becca9178664a487540b6d44456f14bfd629c7f80efc069533512",
       "referenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
       "renderContentKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d"
     },
@@ -188,7 +188,7 @@
       "kind": "DEGRADED_CONTROL",
       "caseId": "m6:displacement_warp:canonical",
       "family": "DISPLACEMENT_WARP",
-      "sha256": "bf2a8f6611b8f643e1e274177672861dfee0be5344222e68efd88214e02d6965",
+      "sha256": "d7b86efb5d8f37d4fc319c8d3df139f977cddcca05080a41a8b3fcb203ec0222",
       "referenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
       "renderContentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
     },
@@ -197,7 +197,7 @@
       "kind": "TRANSFER_PROOF",
       "caseId": "m6:displacement_warp:canonical",
       "family": "DISPLACEMENT_WARP",
-      "sha256": "89366242b62a3ff9edcddb6b5c641bbf92fc35d41757b45ee3ae55c62dd51fbc",
+      "sha256": "d59b532afa52eaf1ec62aabbe4c8541c227bc582154d215287857ec068145109",
       "referenceContentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
       "renderContentKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4",
       "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
@@ -212,7 +212,7 @@
       "kind": "PROFESSIONAL_CASE_PROOF",
       "caseId": "m6:displacement_warp:canonical",
       "family": "DISPLACEMENT_WARP",
-      "sha256": "f27a5aefae5175f117d624657a5f6eb904ed4c18a3b89ed858b48641e2be0a55",
+      "sha256": "d5e46d4618948f55538dc560004645037080904ddb5476177e358895ff403f6c",
       "referenceContentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
       "renderContentKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4",
       "baselineSourceContentKey": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
@@ -293,7 +293,7 @@
     },
     {
       "ref": "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json",
-      "sha256": "89366242b62a3ff9edcddb6b5c641bbf92fc35d41757b45ee3ae55c62dd51fbc",
+      "sha256": "d59b532afa52eaf1ec62aabbe4c8541c227bc582154d215287857ec068145109",
       "status": "TRANSFER_VERIFIED_DURATION_INTENSITY"
     }
   ],
@@ -310,7 +310,7 @@
     },
     {
       "ref": "proofs/m6/professional-cases/displacement_warp-ripple-shake-v1.json",
-      "sha256": "f27a5aefae5175f117d624657a5f6eb904ed4c18a3b89ed858b48641e2be0a55",
+      "sha256": "d5e46d4618948f55538dc560004645037080904ddb5476177e358895ff403f6c",
       "sourceVideoSha256": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
       "distinctProfessionalSource": true,
       "automaticSemanticCorrection": true,
@@ -439,9 +439,9 @@
         "intensity"
       ],
       "transferProofRef": "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json",
-      "transferProofSha256": "89366242b62a3ff9edcddb6b5c641bbf92fc35d41757b45ee3ae55c62dd51fbc",
+      "transferProofSha256": "d59b532afa52eaf1ec62aabbe4c8541c227bc582154d215287857ec068145109",
       "professionalCaseRef": "proofs/m6/professional-cases/displacement_warp-ripple-shake-v1.json",
-      "professionalCaseSha256": "f27a5aefae5175f117d624657a5f6eb904ed4c18a3b89ed858b48641e2be0a55",
+      "professionalCaseSha256": "d5e46d4618948f55538dc560004645037080904ddb5476177e358895ff403f6c",
       "directAbRef": "proofs/diagnostics/m6-displacement-warp-canonical-direct-ab-v1.png",
       "directAbSha256": "aa78d0a0bbdddf9101296b5c2032e871b1999cb6f6176c9796fced956c40a046",
       "missingForBenchmarkPromotion": []
@@ -451,7 +451,7 @@
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
     "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "3dbda99bf3c0bc869ac884d17801ad8db7570dcd0b47ef20e0285ec1a24c3e18"
+    "generatorSha256": "e8298d8afd4eb09db7c2849e2f8e6fa466b5250aa3bc5a193848baaa9eac6eb8"
   },
   "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

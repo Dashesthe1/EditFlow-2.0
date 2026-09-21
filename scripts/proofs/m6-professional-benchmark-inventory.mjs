@@ -618,7 +618,7 @@ const artifactCoverage = Object.fromEntries(
 );
 const manifest = {
   schema: "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  generatedAt: new Date().toISOString(),
+  generatedAt: displacementProfessional.generatedAt,
   milestone: "M6.9",
   status: result.passed ? "PASS" : "IN_PROGRESS",
   authority: "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",

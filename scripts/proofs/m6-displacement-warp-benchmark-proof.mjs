@@ -89,6 +89,10 @@ const canonicalReference = await load(CANONICAL_RETAINED);
 const transferReference = await load(TRANSFER_RETAINED);
 const canonicalCorrection = await load(CANONICAL_CORRECTION);
 const transferCorrection = await load(TRANSFER_CORRECTION);
+const GENERATED_AT = transferCorrection.generatedAt;
+if (typeof GENERATED_AT !== "string" || GENERATED_AT.length === 0) {
+  throw new Error("Retained transfer correction proof lacks a stable generation timestamp.");
+}
 for (const [label, reference, correction] of [
   ["canonical", canonicalReference, canonicalCorrection],
   ["transfer", transferReference, transferCorrection],
@@ -121,7 +125,7 @@ if (Math.abs(1 - durationRatio) < 0.25 || Math.abs(1 - intensityRatio) < 0.15) {
 
 const canonicalFidelity = {
   schema: "editflow.m6.known-family-fidelity-proof.v1",
-  generatedAt: new Date().toISOString(),
+  generatedAt: GENERATED_AT,
   caseId: "m6:displacement_warp:canonical",
   family: "DISPLACEMENT_WARP",
   result: "CERTIFIED",
@@ -134,7 +138,7 @@ await writeFile(CANONICAL_FIDELITY, JSON.stringify(canonicalFidelity, null, 2) +
 
 const canonicalDegraded = {
   schema: "editflow.m6.degraded-control-proof.v1",
-  generatedAt: new Date().toISOString(),
+  generatedAt: GENERATED_AT,
   caseId: "m6:displacement_warp:canonical",
   family: "DISPLACEMENT_WARP",
   result: "REJECTED",
@@ -147,7 +151,7 @@ await writeFile(CANONICAL_DEGRADED, JSON.stringify(canonicalDegraded, null, 2) +
 
 const transferProof = {
   schema: "editflow.m6.known-family-transfer-proof.v1",
-  generatedAt: new Date().toISOString(),
+  generatedAt: GENERATED_AT,
   caseId: "m6:displacement_warp:canonical",
   family: "DISPLACEMENT_WARP",
   result: "PASS",
@@ -179,7 +183,7 @@ await writeFile(TRANSFER_PROOF, JSON.stringify(transferProof, null, 2) + "\n", "
 
 const professionalCase = {
   schema: "editflow.m6.professional-case-pass.v1",
-  generatedAt: new Date().toISOString(),
+  generatedAt: GENERATED_AT,
   result: "PASS",
   caseId: "m6:displacement_warp:canonical:professional:ripple-shake",
   family: "DISPLACEMENT_WARP",
