@@ -47,6 +47,21 @@ const DISPLACEMENT_CORRECTION_V8 = path.join(
   "diagnostics",
   "m6-displacement-warp-smooth-zoom-z19-auto-correction-v8.json",
 );
+const DISPLACEMENT_CANONICAL_FIDELITY = path.join(
+  ROOT, "proofs", "diagnostics", "m6-displacement-warp-canonical-fidelity-v1.json",
+);
+const DISPLACEMENT_CANONICAL_DEGRADED = path.join(
+  ROOT, "proofs", "diagnostics", "m6-displacement-warp-canonical-degraded-control-v1.json",
+);
+const DISPLACEMENT_TRANSFER_PROOF = path.join(
+  ROOT, "proofs", "diagnostics", "m6-displacement-warp-transfer-ripple-shake-v1.json",
+);
+const DISPLACEMENT_PROFESSIONAL_CASE = path.join(
+  ROOT, "proofs", "m6", "professional-cases", "displacement_warp-ripple-shake-v1.json",
+);
+const DISPLACEMENT_CANONICAL_AB = path.join(
+  ROOT, "proofs", "diagnostics", "m6-displacement-warp-canonical-direct-ab-v1.png",
+);
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const relative = (file) => path.relative(ROOT, file).replaceAll("\\", "/");
 const sha256File = async (file) => createHash("sha256")
@@ -358,6 +373,44 @@ const displacementFinalVideoRef = relative(displacementFinalVideoPath);
 const displacementFinalReadbackRef = relative(displacementFinalReadbackPath);
 const displacementSeedEvidenceRef = relative(displacementSeedEvidencePath);
 
+const displacementBenchmarkReferencePath = path.resolve(ROOT, displacement.referenceEvidenceRef);
+const displacementBenchmarkReference = await load(displacementBenchmarkReferencePath);
+const displacementFidelity = await load(DISPLACEMENT_CANONICAL_FIDELITY);
+const displacementDegraded = await load(DISPLACEMENT_CANONICAL_DEGRADED);
+const displacementTransfer = await load(DISPLACEMENT_TRANSFER_PROOF);
+const displacementProfessional = await load(DISPLACEMENT_PROFESSIONAL_CASE);
+const displacementTransferReferencePath = path.resolve(ROOT, displacementTransfer.reference.ref);
+const displacementTransferReference = await load(displacementTransferReferencePath);
+const displacementTransferRenderPath = path.resolve(ROOT, displacementTransfer.render.ref);
+const displacementTransferRender = await load(displacementTransferRenderPath);
+const displacementCanonicalSourceKey = sourceVideoKey(displacementBenchmarkReference);
+const displacementTransferSourceKey = sourceVideoKey(displacementTransferReference);
+if (displacementFidelity.result !== "CERTIFIED"
+  || displacementFidelity.gate?.certified !== true
+  || displacementFidelity.reference?.contentKey !== displacementBenchmarkReference.contentKey
+  || displacementFidelity.render?.contentKey !== displacementFinalEvidence.contentKey
+  || displacementDegraded.result !== "REJECTED"
+  || displacementDegraded.gate?.certified !== false
+  || displacementDegraded.render?.contentKey !== displacementSeedEvidence.contentKey
+  || displacementTransfer.result !== "PASS"
+  || displacementTransfer.gate?.certified !== true
+  || displacementTransfer.transferIdentity?.baselineSourceContentKey !== displacementCanonicalSourceKey
+  || displacementTransfer.transferIdentity?.transferSourceContentKey !== displacementTransferSourceKey
+  || displacementCanonicalSourceKey === displacementTransferSourceKey
+  || !displacementTransfer.transferIdentity?.transferAxes?.includes("duration")
+  || !displacementTransfer.transferIdentity?.transferAxes?.includes("intensity")
+  || displacementProfessional.result !== "PASS"
+  || displacementProfessional.fidelity?.certified !== true
+  || displacementProfessional.degradedControl?.rejected !== true
+  || displacementProfessional.assertions?.renderedOutputVerified !== true) {
+  throw new Error("M6 displacement-warp retained benchmark proof pack lost a fidelity or source-identity binding.");
+}
+const displacementFidelityRef = relative(DISPLACEMENT_CANONICAL_FIDELITY);
+const displacementDegradedRef = relative(DISPLACEMENT_CANONICAL_DEGRADED);
+const displacementTransferRef = relative(DISPLACEMENT_TRANSFER_PROOF);
+const displacementProfessionalRef = relative(DISPLACEMENT_PROFESSIONAL_CASE);
+const displacementCanonicalAbRef = relative(DISPLACEMENT_CANONICAL_AB);
+
 const renderRef = relative(renderSource);
 const comparisonRef = relative(comparisonSource);
 const directAbRef = relative(directAbSource);
@@ -381,6 +434,26 @@ const evidence = [{
   transferEvidenceRefs: [transferRef],
   professionalCaseEvidenceRefs: [professionalCaseRef],
   degradedControlEvidenceRef: degradedRef,
+  transferPassed: true,
+  degradedCaseRejected: true,
+}, {
+  caseId: displacement.caseId,
+  achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
+  maturityProof: {
+    functionallyPresent: true,
+    structuralCoverageComplete: true,
+    visuallyRecognizable: true,
+    referenceFaithful: true,
+    transferVariantCount: 1,
+    professionalCasePassCount: 2,
+    robustnessAxesPassed: [...displacement.transferAxes],
+  },
+  directAbReferenceRef: displacementCanonicalAbRef,
+  comparisonEvidenceRef: displacementFidelityRef,
+  renderEvidenceRef: displacementFinalEvidenceRef,
+  transferEvidenceRefs: [displacementTransferRef],
+  professionalCaseEvidenceRefs: [displacementProfessionalRef],
+  degradedControlEvidenceRef: displacementDegradedRef,
   transferPassed: true,
   degradedCaseRejected: true,
 }];
@@ -457,6 +530,77 @@ const artifacts = [
     definingCoverage: professionalCase.fidelity.definingCoverage,
     weightedFidelity: professionalCase.fidelity.weightedFidelity,
   },
+  {
+    ref: displacement.referenceEvidenceRef,
+    kind: "REFERENCE_DENSE_EVIDENCE",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(displacementBenchmarkReferencePath),
+    contentKey: displacementBenchmarkReference.contentKey,
+    baselineSourceContentKey: displacementCanonicalSourceKey,
+  },
+  {
+    ref: displacementFinalEvidenceRef,
+    kind: "RENDER_DENSE_EVIDENCE",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(displacementFinalEvidencePath),
+    contentKey: displacementFinalEvidence.contentKey,
+  },
+  {
+    ref: displacementFidelityRef,
+    kind: "SEMANTIC_COMPARISON",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(DISPLACEMENT_CANONICAL_FIDELITY),
+    referenceContentKey: displacementBenchmarkReference.contentKey,
+    renderContentKey: displacementFinalEvidence.contentKey,
+  },
+  {
+    ref: displacementCanonicalAbRef,
+    kind: "DIRECT_AB",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(DISPLACEMENT_CANONICAL_AB),
+    referenceContentKey: displacementBenchmarkReference.contentKey,
+    renderContentKey: displacementFinalEvidence.contentKey,
+  },
+  {
+    ref: displacementDegradedRef,
+    kind: "DEGRADED_CONTROL",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(DISPLACEMENT_CANONICAL_DEGRADED),
+    referenceContentKey: displacementBenchmarkReference.contentKey,
+    renderContentKey: displacementSeedEvidence.contentKey,
+  },
+  {
+    ref: displacementTransferRef,
+    kind: "TRANSFER_PROOF",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(DISPLACEMENT_TRANSFER_PROOF),
+    referenceContentKey: displacementTransferReference.contentKey,
+    renderContentKey: displacementTransferRender.contentKey,
+    baselineSourceContentKey: displacementCanonicalSourceKey,
+    transferSourceContentKey: displacementTransferSourceKey,
+    transferAxes: displacementTransfer.transferIdentity.transferAxes,
+  },
+  {
+    ref: displacementProfessionalRef,
+    kind: "PROFESSIONAL_CASE_PROOF",
+    caseId: displacement.caseId,
+    family: displacement.family,
+    sha256: await sha256File(DISPLACEMENT_PROFESSIONAL_CASE),
+    referenceContentKey: displacementTransferReference.contentKey,
+    renderContentKey: displacementTransferRender.contentKey,
+    baselineSourceContentKey: displacementTransferSourceKey,
+    certified: displacementProfessional.fidelity.certified,
+    renderedOutputVerified: displacementProfessional.assertions.renderedOutputVerified,
+    degradedControlRejected: displacementProfessional.degradedControl.rejected,
+    definingCoverage: displacementProfessional.fidelity.definingCoverage,
+    weightedFidelity: displacementProfessional.fidelity.weightedFidelity,
+  },
 ];
 
 const result = evaluateRetainedProfessionalBenchmarkV1(cases, evidence, artifacts);
@@ -493,6 +637,10 @@ const manifest = {
     ref: transferRef,
     sha256: await sha256File(TRANSFER_V17),
     status: "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO",
+  }, {
+    ref: displacementTransferRef,
+    sha256: await sha256File(DISPLACEMENT_TRANSFER_PROOF),
+    status: "TRANSFER_VERIFIED_DURATION_INTENSITY",
   }],
   professionalCasePassEvidence: [{
     ref: professionalCaseRef,
@@ -503,6 +651,16 @@ const manifest = {
     weightedFidelity: professionalCase.fidelity.weightedFidelity,
     definingCoverage: professionalCase.fidelity.definingCoverage,
     degradedControlRejected: professionalCase.degradedControl.rejected,
+  }, {
+    ref: displacementProfessionalRef,
+    sha256: await sha256File(DISPLACEMENT_PROFESSIONAL_CASE),
+    sourceVideoSha256: displacementTransferSourceKey,
+    distinctProfessionalSource: true,
+    automaticSemanticCorrection: true,
+    developerRetuningRequired: false,
+    weightedFidelity: displacementProfessional.fidelity.weightedFidelity,
+    definingCoverage: displacementProfessional.fidelity.definingCoverage,
+    degradedControlRejected: displacementProfessional.degradedControl.rejected,
   }],
   sourceAdmissionDiagnostics: [{
     caseId: velocity.caseId,
@@ -559,9 +717,9 @@ const manifest = {
   referenceFidelityDiagnostics: [{
     caseId: displacement.caseId,
     family: displacement.family,
-    authority: "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
-    maturityCeiling: "REFERENCE_FAITHFUL",
-    benchmarkPromoted: false,
+    authority: "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED",
+    maturityCeiling: "PROFESSIONAL_FIDELITY_VERIFIED",
+    benchmarkPromoted: true,
     sourceAdmissionRef: displacementSourceAdmissionRef,
     sourceAdmissionSha256: await sha256File(DISPLACEMENT_SOURCE_ADMISSION),
     referenceEvidenceRef: relative(displacementSourceEvidencePath),
@@ -605,11 +763,13 @@ const manifest = {
       residualInvariantIds: displacementCorrection.residualInvariantIds,
     },
     transferAxesRequired: [...displacement.transferAxes],
-    missingForBenchmarkPromotion: [
-      "DIRECT_AB_CALIBRATION",
-      ...displacement.transferAxes.map((axis) => `TRANSFER_${axis.toUpperCase().replaceAll("-", "_")}`),
-      "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
-    ],
+    transferProofRef: displacementTransferRef,
+    transferProofSha256: await sha256File(DISPLACEMENT_TRANSFER_PROOF),
+    professionalCaseRef: displacementProfessionalRef,
+    professionalCaseSha256: await sha256File(DISPLACEMENT_PROFESSIONAL_CASE),
+    directAbRef: displacementCanonicalAbRef,
+    directAbSha256: await sha256File(DISPLACEMENT_CANONICAL_AB),
+    missingForBenchmarkPromotion: [],
   }],
   proofSources: {
     evaluator: "packages/visual-effects-intelligence/src/benchmark.ts",

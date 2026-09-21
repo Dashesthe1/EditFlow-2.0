@@ -1,19 +1,19 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-21T09:43:05.950Z",
+  "generatedAt": "2026-09-21T10:21:00.297Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
   "canonicalCaseCount": 24,
-  "casesWithRetainedEvidence": 1,
+  "casesWithRetainedEvidence": 2,
   "artifactCoverage": {
-    "REFERENCE_DENSE_EVIDENCE": 1,
-    "RENDER_DENSE_EVIDENCE": 1,
-    "SEMANTIC_COMPARISON": 1,
-    "DIRECT_AB": 1,
-    "TRANSFER_PROOF": 1,
-    "PROFESSIONAL_CASE_PROOF": 1,
-    "DEGRADED_CONTROL": 1
+    "REFERENCE_DENSE_EVIDENCE": 2,
+    "RENDER_DENSE_EVIDENCE": 2,
+    "SEMANTIC_COMPARISON": 2,
+    "DIRECT_AB": 2,
+    "TRANSFER_PROOF": 2,
+    "PROFESSIONAL_CASE_PROOF": 2,
+    "DEGRADED_CONTROL": 2
   },
   "retainedCases": [
     {
@@ -41,6 +41,34 @@
         "proofs/m6/professional-cases/shutter_fragmentation-held-out-w04-v16.json"
       ],
       "degradedControlEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
+      "transferPassed": true,
+      "degradedCaseRejected": true
+    },
+    {
+      "caseId": "m6:displacement_warp:canonical",
+      "achievedLevel": "PROFESSIONAL_FIDELITY_VERIFIED",
+      "maturityProof": {
+        "functionallyPresent": true,
+        "structuralCoverageComplete": true,
+        "visuallyRecognizable": true,
+        "referenceFaithful": true,
+        "transferVariantCount": 1,
+        "professionalCasePassCount": 2,
+        "robustnessAxesPassed": [
+          "duration",
+          "intensity"
+        ]
+      },
+      "directAbReferenceRef": "proofs/diagnostics/m6-displacement-warp-canonical-direct-ab-v1.png",
+      "comparisonEvidenceRef": "proofs/diagnostics/m6-displacement-warp-canonical-fidelity-v1.json",
+      "renderEvidenceRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8-pass02-evidence.json",
+      "transferEvidenceRefs": [
+        "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json"
+      ],
+      "professionalCaseEvidenceRefs": [
+        "proofs/m6/professional-cases/displacement_warp-ripple-shake-v1.json"
+      ],
+      "degradedControlEvidenceRef": "proofs/diagnostics/m6-displacement-warp-canonical-degraded-control-v1.json",
       "transferPassed": true,
       "degradedCaseRejected": true
     }
@@ -119,13 +147,87 @@
       "degradedControlRejected": true,
       "definingCoverage": 1,
       "weightedFidelity": 0.9930369628780908
+    },
+    {
+      "ref": "proofs/m6/benchmark/references/displacement_warp-canonical.json",
+      "kind": "REFERENCE_DENSE_EVIDENCE",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "5041270c7b6f40a3ab6a76aef93b3f4b49ef8af80e8a37c29b8e7b836a232c9d",
+      "contentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+      "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8-pass02-evidence.json",
+      "kind": "RENDER_DENSE_EVIDENCE",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "7956bcf2ab74deeedc091e0eb6bb0d7b99187961d8b5ba8f777074dc537b5e87",
+      "contentKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-displacement-warp-canonical-fidelity-v1.json",
+      "kind": "SEMANTIC_COMPARISON",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "d5edac76d4d86973cc8c7f593bf5b89ab907fa25f54fa07ec39772abf02cb4d7",
+      "referenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+      "renderContentKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-displacement-warp-canonical-direct-ab-v1.png",
+      "kind": "DIRECT_AB",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "aa78d0a0bbdddf9101296b5c2032e871b1999cb6f6176c9796fced956c40a046",
+      "referenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+      "renderContentKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-displacement-warp-canonical-degraded-control-v1.json",
+      "kind": "DEGRADED_CONTROL",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "bf2a8f6611b8f643e1e274177672861dfee0be5344222e68efd88214e02d6965",
+      "referenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+      "renderContentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json",
+      "kind": "TRANSFER_PROOF",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "89366242b62a3ff9edcddb6b5c641bbf92fc35d41757b45ee3ae55c62dd51fbc",
+      "referenceContentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
+      "renderContentKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4",
+      "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "transferSourceContentKey": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
+      "transferAxes": [
+        "duration",
+        "intensity"
+      ]
+    },
+    {
+      "ref": "proofs/m6/professional-cases/displacement_warp-ripple-shake-v1.json",
+      "kind": "PROFESSIONAL_CASE_PROOF",
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "sha256": "f27a5aefae5175f117d624657a5f6eb904ed4c18a3b89ed858b48641e2be0a55",
+      "referenceContentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
+      "renderContentKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4",
+      "baselineSourceContentKey": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
+      "certified": true,
+      "renderedOutputVerified": true,
+      "degradedControlRejected": true,
+      "definingCoverage": 1,
+      "weightedFidelity": 0.8415997125320456
     }
   ],
   "result": {
     "schema": "editflow.professional-benchmark-result.v1",
     "passed": false,
     "total": 24,
-    "passedCases": 1,
+    "passedCases": 2,
     "familyCoverage": [
       "SHUTTER_FRAGMENTATION",
       "TEMPORAL_ECHO",
@@ -156,7 +258,6 @@
       "m6:velocity_transition:canonical:MISSING_EVIDENCE",
       "m6:subject_isolated_transition:canonical:MISSING_EVIDENCE",
       "m6:whip_smear:canonical:MISSING_EVIDENCE",
-      "m6:displacement_warp:canonical:MISSING_EVIDENCE",
       "m6:zoom_impact:canonical:MISSING_EVIDENCE",
       "m6:occlusion_transition:canonical:MISSING_EVIDENCE",
       "m6:freeze_fragmentation:canonical:MISSING_EVIDENCE",
@@ -189,6 +290,11 @@
       "ref": "proofs/diagnostics/m6-shutter-measurement-v17-proof.json",
       "sha256": "e4cf2fdedfbe90f3e8e3bfce6526be5643b78a812abc1f435079aa0ec9d2194f",
       "status": "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json",
+      "sha256": "89366242b62a3ff9edcddb6b5c641bbf92fc35d41757b45ee3ae55c62dd51fbc",
+      "status": "TRANSFER_VERIFIED_DURATION_INTENSITY"
     }
   ],
   "professionalCasePassEvidence": [
@@ -199,6 +305,17 @@
       "distinctProfessionalSource": true,
       "reusedWithoutHeldOutRetuning": true,
       "weightedFidelity": 0.9930369628780908,
+      "definingCoverage": 1,
+      "degradedControlRejected": true
+    },
+    {
+      "ref": "proofs/m6/professional-cases/displacement_warp-ripple-shake-v1.json",
+      "sha256": "f27a5aefae5175f117d624657a5f6eb904ed4c18a3b89ed858b48641e2be0a55",
+      "sourceVideoSha256": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
+      "distinctProfessionalSource": true,
+      "automaticSemanticCorrection": true,
+      "developerRetuningRequired": false,
+      "weightedFidelity": 0.8415997125320456,
       "definingCoverage": 1,
       "degradedControlRejected": true
     }
@@ -265,9 +382,9 @@
     {
       "caseId": "m6:displacement_warp:canonical",
       "family": "DISPLACEMENT_WARP",
-      "authority": "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
-      "maturityCeiling": "REFERENCE_FAITHFUL",
-      "benchmarkPromoted": false,
+      "authority": "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED",
+      "maturityCeiling": "PROFESSIONAL_FIDELITY_VERIFIED",
+      "benchmarkPromoted": true,
       "sourceAdmissionRef": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-admission.json",
       "sourceAdmissionSha256": "83fb7264d758890df7d55d9111d0559e42f003c20ff172da6444bf3165c28a65",
       "referenceEvidenceRef": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-evidence.json",
@@ -321,19 +438,20 @@
         "duration",
         "intensity"
       ],
-      "missingForBenchmarkPromotion": [
-        "DIRECT_AB_CALIBRATION",
-        "TRANSFER_DURATION",
-        "TRANSFER_INTENSITY",
-        "SECOND_INDEPENDENT_PROFESSIONAL_CASE"
-      ]
+      "transferProofRef": "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json",
+      "transferProofSha256": "89366242b62a3ff9edcddb6b5c641bbf92fc35d41757b45ee3ae55c62dd51fbc",
+      "professionalCaseRef": "proofs/m6/professional-cases/displacement_warp-ripple-shake-v1.json",
+      "professionalCaseSha256": "f27a5aefae5175f117d624657a5f6eb904ed4c18a3b89ed858b48641e2be0a55",
+      "directAbRef": "proofs/diagnostics/m6-displacement-warp-canonical-direct-ab-v1.png",
+      "directAbSha256": "aa78d0a0bbdddf9101296b5c2032e871b1999cb6f6176c9796fced956c40a046",
+      "missingForBenchmarkPromotion": []
     }
   ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
     "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "aebe628050170002b307ff102a5c83d1efd69dce5114928c00927899fae58024"
+    "generatorSha256": "3dbda99bf3c0bc869ac884d17801ad8db7570dcd0b47ef20e0285ec1a24c3e18"
   },
   "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

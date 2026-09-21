@@ -1,0 +1,145 @@
+{
+  "schema": "editflow.m6.known-family-transfer-proof.v1",
+  "generatedAt": "2026-09-21T10:21:00.132Z",
+  "caseId": "m6:displacement_warp:canonical",
+  "family": "DISPLACEMENT_WARP",
+  "result": "PASS",
+  "transferIdentity": {
+    "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+    "transferSourceContentKey": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
+    "transferAxes": [
+      "duration",
+      "intensity"
+    ],
+    "canonicalDurationMs": 900.177692225785,
+    "transferDurationMs": 300.0540356414681,
+    "durationRatio": 0.33332756213892906,
+    "canonicalDistortionPeak": 0.7439122748826947,
+    "transferDistortionPeak": 0.9790602046823321,
+    "intensityRatio": 1.3160963163791284
+  },
+  "reference": {
+    "ref": "proofs/m6/benchmark/references/displacement_warp-professional-ripple-shake-v1.json",
+    "contentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4"
+  },
+  "render": {
+    "ref": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass02-evidence.json",
+    "contentKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4"
+  },
+  "comparison": {
+    "schema": "editflow.semantic-fidelity-comparison.v1",
+    "family": "DISPLACEMENT_WARP",
+    "alignment": "SEMANTIC",
+    "metrics": [
+      {
+        "invariantId": "warp.distortion",
+        "dimension": "DISTORTION",
+        "metric": "distortionPeak",
+        "referenceValue": 0.9790602046823321,
+        "renderValue": 1,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "distortionPeak preserves the defining reference behavior.",
+        "comparisonBasis": "ABSOLUTE"
+      },
+      {
+        "invariantId": "warp.energy",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "motionEnergyPeak",
+        "referenceValue": 0.06715652527203898,
+        "renderValue": 0.009336601307189543,
+        "normalizedError": 0.6109725373763957,
+        "passed": false,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "motionEnergyPeak is under-driven: reference 0.067, render 0.009. Motion energy may reinforce the deformation.",
+        "comparisonBasis": "ABSOLUTE"
+      }
+    ],
+    "definingCoverage": 1,
+    "weightedFidelity": 0.8415997125320456,
+    "passed": true,
+    "diagnoses": [
+      "motionEnergyPeak is under-driven: reference 0.067, render 0.009. Motion energy may reinforce the deformation."
+    ],
+    "referenceEvidenceKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
+    "renderEvidenceKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4"
+  },
+  "gate": {
+    "schema": "editflow.professional-fidelity-gate.v1",
+    "outcome": "PASS",
+    "certified": true,
+    "missingDefiningInvariantIds": [],
+    "underDrivenInvariantIds": [],
+    "weakerSubstitutionDetected": false,
+    "reasons": [
+      "Every defining invariant is covered by construction and passes rendered semantic comparison."
+    ]
+  },
+  "degradedControl": {
+    "comparison": {
+      "schema": "editflow.semantic-fidelity-comparison.v1",
+      "family": "DISPLACEMENT_WARP",
+      "alignment": "SEMANTIC",
+      "metrics": [
+        {
+          "invariantId": "warp.distortion",
+          "dimension": "DISTORTION",
+          "metric": "distortionPeak",
+          "referenceValue": 0.9790602046823321,
+          "renderValue": 0.07477993455933399,
+          "normalizedError": 0.6521235631200947,
+          "passed": false,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "distortionPeak is under-driven: reference 0.979, render 0.075. Non-rigid deformation is defining.",
+          "comparisonBasis": "ABSOLUTE"
+        },
+        {
+          "invariantId": "warp.energy",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "motionEnergyPeak",
+          "referenceValue": 0.06715652527203898,
+          "renderValue": 0.009336601307189543,
+          "normalizedError": 0.6109725373763957,
+          "passed": false,
+          "defining": false,
+          "weight": 0.35,
+          "diagnosis": "motionEnergyPeak is under-driven: reference 0.067, render 0.009. Motion energy may reinforce the deformation.",
+          "comparisonBasis": "ABSOLUTE"
+        }
+      ],
+      "definingCoverage": 0,
+      "weightedFidelity": 0.3585452213319754,
+      "passed": false,
+      "diagnoses": [
+        "distortionPeak is under-driven: reference 0.979, render 0.075. Non-rigid deformation is defining.",
+        "motionEnergyPeak is under-driven: reference 0.067, render 0.009. Motion energy may reinforce the deformation."
+      ],
+      "referenceEvidenceKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
+      "renderEvidenceKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+    },
+    "gate": {
+      "schema": "editflow.professional-fidelity-gate.v1",
+      "outcome": "CORRECTION_REQUIRED",
+      "certified": false,
+      "missingDefiningInvariantIds": [],
+      "underDrivenInvariantIds": [
+        "warp.distortion"
+      ],
+      "weakerSubstitutionDetected": false,
+      "reasons": [
+        "Defining behavior failed rendered comparison: warp.distortion."
+      ]
+    }
+  },
+  "automaticCorrection": {
+    "proofRef": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1.json",
+    "finalWeightedFidelity": 0.8415997125320456,
+    "finalDefiningCoverage": 1,
+    "residualInvariantIds": [],
+    "developerRetuningRequired": false
+  }
+}
