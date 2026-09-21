@@ -1,0 +1,257 @@
+import { createHash } from "node:crypto";
+
+import type {
+  PracticeContentBaselineV1,
+  PracticeReferenceAnalysisV1,
+  PracticeSceneMatchV1,
+} from "./contracts.js";
+
+export type PracticeAeBaselineCommandV1 =
+  | "media.import"
+  | "comp.create"
+  | "layer.add_media"
+  | "layer.set_timing";
+
+export interface PracticeAeBaselineOperationV1 {
+  readonly operationId: string;
+  readonly command: PracticeAeBaselineCommandV1;
+  readonly capabilityId:
+    | "ae.media.import"
+    | "ae.comp.create"
+    | "ae.layer.create"
+    | "ae.layer.timing.set";
+  readonly payload: Readonly<Record<string, unknown>>;
+}
+
+export interface PracticeAeBaselinePlanV1 {
+  readonly schema: "editflow.practice-ae-baseline-plan.v1";
+  readonly baselineId: string;
+  readonly referenceId: string;
+  readonly compStableId: string;
+  readonly durationMs: number;
+  readonly frameRate: number;
+  readonly operations: readonly PracticeAeBaselineOperationV1[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeAeBaselineCommandRunnerV1 {
+  execute(operation: PracticeAeBaselineOperationV1): Promise<{
+    readonly evidenceRefs?: readonly string[];
+  }>;
+}
+
+const digest = (value: unknown): string =>
+  createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex");
+
+const stableToken = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 42) || "item";
+
+const commandCapability = (
+  command: PracticeAeBaselineCommandV1,
+): PracticeAeBaselineOperationV1["capabilityId"] => {
+  switch (command) {
+    case "media.import": return "ae.media.import";
+    case "comp.create": return "ae.comp.create";
+    case "layer.add_media": return "ae.layer.create";
+    case "layer.set_timing": return "ae.layer.timing.set";
+  }
+};
+
+const operation = (
+  baselineId: string,
+  ordinal: number,
+  command: PracticeAeBaselineCommandV1,
+  payload: Readonly<Record<string, unknown>>,
+): PracticeAeBaselineOperationV1 => ({
+  operationId: `${baselineId}:op:${String(ordinal).padStart(3, "0")}`,
+  command,
+  capabilityId: commandCapability(command),
+  payload,
+});
+
+const timingForMatch = (
+  shot: PracticeReferenceAnalysisV1["shots"][number],
+  match: PracticeSceneMatchV1,
+): Readonly<Record<string, number>> => {
+  if (!Number.isFinite(match.playbackRate) || match.playbackRate <= 0) {
+    throw new TypeError(`Invalid playback rate for ${match.shotId}.`);
+  }
+  const refStart = shot.referenceStartMs / 1000;
+  const refEnd = shot.referenceEndMs / 1000;
+  const sourceStart = match.sourceStartMs / 1000;
+  const sourceEnd = match.sourceEndMs / 1000;
+  const slope = match.direction === "FORWARD"
+    ? match.playbackRate
+    : -match.playbackRate;
+  const sourceAtReferenceStart = match.direction === "FORWARD"
+    ? sourceStart
+    : sourceEnd;
+  const startTime = refStart - (sourceAtReferenceStart / slope);
+  return {
+    startTime,
+    inPoint: refStart,
+    outPoint: refEnd,
+    stretch: 100 / slope,
+  };
+};
+
+export const compilePracticeAeBaselinePlanV1 = (input: {
+  readonly reference: PracticeReferenceAnalysisV1;
+  readonly matches: readonly PracticeSceneMatchV1[];
+  readonly compName?: string;
+}): PracticeAeBaselinePlanV1 => {
+  const { reference } = input;
+  if (reference.video === undefined) {
+    throw new TypeError("Practice AE baseline requires reference video metadata.");
+  }
+  if (input.matches.length !== reference.shots.length) {
+    throw new TypeError("Practice AE baseline requires one match per reference shot.");
+  }
+
+  const byShot = new Map(input.matches.map((match) => [match.shotId, match]));
+  const orderedShots = [...reference.shots].sort((a, b) => a.order - b.order);
+  if (byShot.size !== orderedShots.length) {
+    throw new TypeError("Practice AE baseline contains duplicate or missing shot matches.");
+  }
+
+  const identityMaterial = orderedShots.map((shot) => {
+    const match = byShot.get(shot.shotId);
+    if (match === undefined) throw new TypeError(`Missing source match for ${shot.shotId}.`);
+    return {
+      shotId: shot.shotId,
+      referenceStartMs: shot.referenceStartMs,
+      referenceEndMs: shot.referenceEndMs,
+      sourceId: match.sourceId,
+      sourcePath: match.sourcePath ?? null,
+      sourceStartMs: match.sourceStartMs,
+      sourceEndMs: match.sourceEndMs,
+      direction: match.direction,
+      playbackRate: match.playbackRate,
+    };
+  });
+  const shortHash = digest({
+    referenceId: reference.referenceId,
+    styleFingerprint: reference.styleFingerprint,
+    identityMaterial,
+  }).slice(0, 16);
+  const baselineId = `practice-baseline:${shortHash}`;
+  const compStableId = `PRACTICE_BASELINE_COMP_${shortHash}`;
+
+  const sourcePaths = new Map<string, string>();
+  for (const match of input.matches) {
+    if (match.sourcePath === undefined || match.sourcePath.trim().length === 0) {
+      throw new TypeError(
+        `Practice AE baseline requires a resolved local source path for ${match.sourceId}.`,
+      );
+    }
+    const prior = sourcePaths.get(match.sourceId);
+    if (prior !== undefined && prior !== match.sourcePath) {
+      throw new TypeError(
+        `Source id ${match.sourceId} resolved to more than one local path.`,
+      );
+    }
+    sourcePaths.set(match.sourceId, match.sourcePath);
+  }
+
+  const sourceStableIds = new Map<string, string>();
+  const operations: PracticeAeBaselineOperationV1[] = [];
+  let ordinal = 1;
+  for (const [sourceId, sourcePath] of [...sourcePaths.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))) {
+    const sourceStableId = `PRACTICE_MEDIA_${shortHash}_${stableToken(sourceId)}`;
+    sourceStableIds.set(sourceId, sourceStableId);
+    operations.push(operation(baselineId, ordinal, "media.import", {
+      path: sourcePath,
+      stableId: sourceStableId,
+      sequence: false,
+    }));
+    ordinal += 1;
+  }
+
+  operations.push(operation(baselineId, ordinal, "comp.create", {
+    stableId: compStableId,
+    name: input.compName ?? `Practice Baseline - ${reference.referenceId}`,
+    width: reference.video.width,
+    height: reference.video.height,
+    pixelAspect: 1,
+    duration: reference.video.durationMs / 1000,
+    frameRate: reference.video.fps,
+  }));
+  ordinal += 1;
+
+  for (const shot of orderedShots) {
+    const match = byShot.get(shot.shotId);
+    if (match === undefined) {
+      throw new TypeError(`Missing source match for ${shot.shotId}.`);
+    }
+    const sourceStableId = sourceStableIds.get(match.sourceId);
+    if (sourceStableId === undefined) {
+      throw new TypeError(`No imported media identity exists for ${match.sourceId}.`);
+    }
+    const layerStableId = `PRACTICE_SHOT_${shortHash}_${String(shot.order + 1).padStart(4, "0")}`;
+    operations.push(operation(baselineId, ordinal, "layer.add_media", {
+      stableId: layerStableId,
+      comp: { stableId: compStableId },
+      item: { stableId: sourceStableId },
+    }));
+    ordinal += 1;
+    operations.push(operation(baselineId, ordinal, "layer.set_timing", {
+      comp: { stableId: compStableId },
+      layer: { stableId: layerStableId },
+      timing: timingForMatch(shot, match),
+    }));
+    ordinal += 1;
+  }
+
+  return {
+    schema: "editflow.practice-ae-baseline-plan.v1",
+    baselineId,
+    referenceId: reference.referenceId,
+    compStableId,
+    durationMs: reference.video.durationMs,
+    frameRate: reference.video.fps,
+    operations,
+    evidenceRefs: [
+      ...reference.evidenceRefs,
+      ...input.matches.flatMap((match) => match.evidenceRefs),
+      `practice-baseline-plan:sha256:${digest(operations)}`,
+    ],
+  };
+};
+
+export class PracticeAeBaselineBuilderV1 {
+  readonly runner: PracticeAeBaselineCommandRunnerV1;
+  readonly #plans = new Map<string, PracticeAeBaselinePlanV1>();
+
+  constructor(runner: PracticeAeBaselineCommandRunnerV1) {
+    this.runner = runner;
+  }
+
+  plan(baselineId: string): PracticeAeBaselinePlanV1 | null {
+    const plan = this.#plans.get(baselineId);
+    return plan === undefined ? null : structuredClone(plan);
+  }
+
+  buildContentBaseline = async (input: {
+    readonly reference: PracticeReferenceAnalysisV1;
+    readonly matches: readonly PracticeSceneMatchV1[];
+  }): Promise<PracticeContentBaselineV1> => {
+    const plan = compilePracticeAeBaselinePlanV1(input);
+    const evidenceRefs = [...plan.evidenceRefs];
+    for (const operation of plan.operations) {
+      const result = await this.runner.execute(operation);
+      evidenceRefs.push(
+        `practice-ae-operation:${operation.operationId}`,
+        ...(result.evidenceRefs ?? []),
+      );
+    }
+    this.#plans.set(plan.baselineId, plan);
+    return {
+      baselineId: plan.baselineId,
+      timelineRef: `ae:comp:${plan.compStableId}`,
+      evidenceRefs: [...new Set(evidenceRefs)],
+    };
+  };
+}

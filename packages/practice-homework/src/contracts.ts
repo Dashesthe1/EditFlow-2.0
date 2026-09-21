@@ -24,10 +24,19 @@ export interface PracticeReferenceShotV1 {
   readonly referenceEndMs: number;
   readonly evidenceRefs: readonly string[];
 }
+export interface PracticeReferenceVideoV1 {
+  readonly fps: number;
+  readonly frameCount: number;
+  readonly width: number;
+  readonly height: number;
+  readonly durationMs: number;
+}
+
 export interface PracticeReferenceAnalysisV1 {
   readonly referenceId: string;
   readonly shots: readonly PracticeReferenceShotV1[];
   readonly styleFingerprint: string;
+  readonly video?: PracticeReferenceVideoV1;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -40,6 +49,7 @@ export interface PracticeSourceIndexV1 {
 export interface PracticeSceneMatchV1 {
   readonly shotId: string;
   readonly sourceId: string;
+  readonly sourcePath?: string;
   readonly sourceStartMs: number;
   readonly sourceEndMs: number;
   readonly direction: "FORWARD" | "REVERSE";

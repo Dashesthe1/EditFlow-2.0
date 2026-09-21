@@ -1,0 +1,143 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import {
+  PracticeAeBaselineBuilderV1,
+  PracticeLearningMemoryFileV1,
+  compilePracticeAeBaselinePlanV1,
+} from "../.tmp/runtime/packages/practice-homework/src/index.js";
+
+const reference = {
+  referenceId: "finish:fixture",
+  styleFingerprint: "style:fixture",
+  video: {
+    fps: 24,
+    frameCount: 60,
+    width: 320,
+    height: 180,
+    durationMs: 2500,
+  },
+  shots: [
+    {
+      shotId: "shot:001",
+      order: 0,
+      referenceStartMs: 0,
+      referenceEndMs: 1000,
+      evidenceRefs: ["ref:001"],
+    },
+    {
+      shotId: "shot:002",
+      order: 1,
+      referenceStartMs: 1000,
+      referenceEndMs: 2500,
+      evidenceRefs: ["ref:002"],
+    },
+  ],
+  evidenceRefs: ["reference:evidence"],
+};
+
+const matches = [
+  {
+    shotId: "shot:001",
+    sourceId: "movie:a",
+    sourcePath: "C:\\Media\\movie-a.mp4",
+    sourceStartMs: 5000,
+    sourceEndMs: 6000,
+    direction: "FORWARD",
+    playbackRate: 1,
+    appearanceSimilarity: 0.99,
+    temporalSimilarity: 0.99,
+    motionSimilarity: 0.99,
+    confidence: 0.99,
+    evidenceRefs: ["match:001"],
+  },
+  {
+    shotId: "shot:002",
+    sourceId: "movie:a",
+    sourcePath: "C:\\Media\\movie-a.mp4",
+    sourceStartMs: 7000,
+    sourceEndMs: 8500,
+    direction: "REVERSE",
+    playbackRate: 1,
+    appearanceSimilarity: 0.99,
+    temporalSimilarity: 0.99,
+    motionSimilarity: 0.99,
+    confidence: 0.99,
+    evidenceRefs: ["match:002"],
+  },
+];
+
+test("AE baseline compiler maps forward and reverse source time into reference time", () => {
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches });
+  assert.equal(plan.frameRate, 24);
+  assert.equal(plan.durationMs, 2500);
+  assert.equal(plan.operations.filter((item) => item.command === "media.import").length, 1);
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.deepEqual(timings[0], {
+    startTime: -5,
+    inPoint: 0,
+    outPoint: 1,
+    stretch: 100,
+  });
+  assert.deepEqual(timings[1], {
+    startTime: 9.5,
+    inPoint: 1,
+    outPoint: 2.5,
+    stretch: -100,
+  });
+});
+
+test("AE baseline builder executes the deterministic plan in order", async () => {
+  const executed = [];
+  const builder = new PracticeAeBaselineBuilderV1({
+    async execute(operation) {
+      executed.push(operation);
+      return { evidenceRefs: [`runner:${operation.operationId}`] };
+    },
+  });
+  const baseline = await builder.buildContentBaseline({ reference, matches });
+  const plan = builder.plan(baseline.baselineId);
+  assert.ok(plan);
+  assert.deepEqual(
+    executed.map((item) => item.command),
+    plan.operations.map((item) => item.command),
+  );
+  assert.equal(baseline.timelineRef, `ae:comp:${plan.compStableId}`);
+  assert.ok(baseline.evidenceRefs.some((item) => item.startsWith("runner:")));
+});
+
+test("disk-backed Practice learning memory survives process-memory loss", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "editflow-practice-memory-"));
+  try {
+    const storePath = path.join(directory, "practice-memory.json");
+    const store = new PracticeLearningMemoryFileV1(storePath);
+    const episode = {
+      sessionId: "practice:memory:001",
+      styleFingerprint: "style:memory",
+      baselineId: "baseline:memory",
+      matches: [],
+      attempts: [],
+      mastered: false,
+      bestAttempt: null,
+    };
+    await store.recordEpisode(episode);
+    const reloaded = await store.load();
+    assert.equal(reloaded.size, 1);
+    assert.equal(reloaded.get("practice:memory:001")?.baselineId, "baseline:memory");
+
+    await store.recordEpisode({
+      ...episode,
+      mastered: true,
+    });
+    const snapshot = await store.snapshot();
+    assert.equal(snapshot.length, 1);
+    assert.equal(snapshot[0].mastered, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

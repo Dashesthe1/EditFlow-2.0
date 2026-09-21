@@ -152,28 +152,47 @@ retrieval evidence for Pro Creation. Failed choices remain useful negative evide
 
 This is the bridge between M6 capability development and improved editorial judgment.
 
-## Implemented V1 modules
+## Implemented modules
+
+The orchestration foundation is implemented together with the first concrete media and AE adapters:
 
 - packages/practice-homework/src/contracts.ts
 - packages/practice-homework/src/similarity.ts
 - packages/practice-homework/src/memory.ts
+- packages/practice-homework/src/persistent-memory.ts
 - packages/practice-homework/src/engine.ts
 - packages/practice-homework/src/ui-contract.ts
+- packages/practice-homework/src/local-media.ts
+- packages/practice-homework/src/ae-baseline.ts
+- scripts/practice/practice-media-match.py
 - spec/practice-session-v1.schema.json
 - tests/practice-homework.test.mjs
+- tests/practice-homework-media-baseline.test.mjs
 
 The package is re-exported through @editflow/editor-brain and the MCP server module.
 
+### Concrete media layer
+
+The Practice media matcher now performs real full-video indexing and reference-to-source retrieval. It uses cached effect-resistant frame fingerprints for coarse search, SIFT/RANSAC feature evidence for refinement, forward/reverse and playback-rate hypotheses, and a local temporal fit for source in/out recovery. Artifacts are provenance-keyed to the analyzer implementation and become stale when that implementation changes. Source indexes are cacheable so a full movie does not need to be rescanned for every homework session.
+
+A retained synthetic proof uses a treated/re-encoded three-shot reference built from a longer source. The current matcher recovers all three source scenes, including the reversed middle shot, above the default 0.95 retained-confidence gate. This proves the mechanism; it is not yet a substitute for long real-movie benchmarks.
+
+### Concrete AE baseline layer
+
+The baseline compiler lowers matched source ranges through EditFlow's existing typed AE commands: media.import, comp.create, layer.add_media, and layer.set_timing. It carries the reference edit's resolution, frame rate, and duration into the baseline composition and maps forward/reverse source ranges to deterministic startTime, inPoint, outPoint, and stretch values. Negative stretch is used for reverse playback through the already-supported AE timing primitive.
+
+### Persistent homework memory
+
+Practice episodes can now be stored in a disk-backed JSON memory with atomic replacement, session deduplication, and reload into PracticeLearningMemoryV1. Full attempt histories, including failures, therefore survive process or chat restarts and can later become retrieval evidence for Pro Creation.
+
 ## Integration boundary still open
 
-V1 deliberately separates orchestration from heavy media adapters.
-The next implementation layer must connect PracticeHomeworkAdaptersV1 to real:
+The remaining production integration is narrower:
 
-1. full-video shot decomposition and indexing;
-2. effect-robust reference-to-source retrieval and temporal alignment;
-3. AE content-baseline materialization;
-4. per-shot M6 reconstruction and render comparison;
-5. persistent disk-backed Practice/Experience Memory;
-6. the shipping EditFlow visual panel/drop zones.
+1. connect per-shot/reference-window decomposition to the existing M6 dense-effect evidence pipeline;
+2. connect reconstruction attempts to the existing M6 VisualEffectsBrain, Recipe Compiler, and live AE transaction runner;
+3. render each attempt and convert M6 semantic/reference comparisons into the aggregate Practice similarity report;
+4. benchmark full-length real movies and difficult references, then tune indexing/refinement confidence gates;
+5. add the shipping EditFlow visual panel/drop zones for Finish, Start, mode selection, progress, best-attempt preview, and human grading.
 
-These are implementation gaps, not reasons to weaken the Practice contract.
+These are implementation/proof gaps, not reasons to weaken the Practice contract or certify an unverified reconstruction.
