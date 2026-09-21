@@ -382,11 +382,17 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
     }
 
     const expectedTransferVariants = Math.max(1, proof.maturityProof.transferVariantCount);
-    if (proof.transferEvidenceRefs.length < expectedTransferVariants) {
+    const uniqueTransferRefs = new Set(proof.transferEvidenceRefs);
+    if (uniqueTransferRefs.size !== proof.transferEvidenceRefs.length) {
+      failures.push(`${item.caseId}:TRANSFER_ARTIFACT_REF_REUSED`);
+    }
+    if (uniqueTransferRefs.size < expectedTransferVariants) {
       failures.push(`${item.caseId}:INSUFFICIENT_TRANSFER_ARTIFACTS`);
     }
     const coveredTransferAxes = new Set<string>();
-    for (const transferRef of proof.transferEvidenceRefs) {
+    const coveredRobustnessAxes = new Set<string>();
+    const uniqueTransferSources = new Set<string>();
+    for (const transferRef of uniqueTransferRefs) {
       const transfer = requireArtifact(transferRef, "TRANSFER_PROOF", "TRANSFER");
       if (transfer === null) continue;
       if (!isSha256V1(transfer.referenceContentKey)) {
@@ -414,18 +420,35 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
         failures.push(`${item.caseId}:TRANSFER_SOURCE_IDENTITY_MISSING`);
       } else if (transfer.baselineSourceContentKey === transfer.transferSourceContentKey) {
         failures.push(`${item.caseId}:TRANSFER_SOURCE_NOT_MATERIALLY_DIFFERENT`);
+      } else if (uniqueTransferSources.has(transfer.transferSourceContentKey)) {
+        failures.push(`${item.caseId}:TRANSFER_SOURCE_REUSED`);
+      } else {
+        uniqueTransferSources.add(transfer.transferSourceContentKey);
       }
       if (transfer.transferAxes === undefined || transfer.transferAxes.length === 0) {
         failures.push(`${item.caseId}:TRANSFER_AXES_MISSING`);
       } else {
         for (const axis of transfer.transferAxes) {
           if (item.transferAxes.includes(axis)) coveredTransferAxes.add(axis);
+          if ((ROBUSTNESS_AXES_V1 as readonly string[]).includes(axis)) {
+            coveredRobustnessAxes.add(axis);
+          }
         }
       }
+    }
+    if (uniqueTransferSources.size < expectedTransferVariants) {
+      failures.push(`${item.caseId}:INSUFFICIENT_UNIQUE_TRANSFER_VARIANTS`);
     }
     for (const axis of item.transferAxes) {
       if (!coveredTransferAxes.has(axis)) {
         failures.push(`${item.caseId}:TRANSFER_AXIS_UNPROVEN_${axis.toUpperCase().replace(/-/g, "_")}`);
+      }
+    }
+    for (const axis of proof.maturityProof.robustnessAxesPassed) {
+      if (!(ROBUSTNESS_AXES_V1 as readonly string[]).includes(axis)) {
+        failures.push(`${item.caseId}:ROBUSTNESS_AXIS_UNKNOWN_${axis.toUpperCase().replace(/-/g, "_")}`);
+      } else if (!coveredRobustnessAxes.has(axis)) {
+        failures.push(`${item.caseId}:ROBUSTNESS_AXIS_UNPROVEN_${axis.toUpperCase().replace(/-/g, "_")}`);
       }
     }
   }

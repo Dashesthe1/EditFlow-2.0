@@ -4030,6 +4030,82 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
   const sourceResult = evaluateRetainedProfessionalBenchmarkV1(cases, retainedEvidence, reusedSource);
   assert.equal(sourceResult.passed, false);
   assert.ok(sourceResult.failures.some((item) => /TRANSFER_SOURCE_NOT_MATERIALLY_DIFFERENT/.test(item)));
+
+  const robustnessAxes = [
+    "subject", "aspect-ratio", "frame-rate", "motion-direction", "duration", "intensity",
+  ];
+  const selfAssertedRobust = retainedEvidence.map((proof, index) => index === 0
+    ? {
+        ...proof,
+        achievedLevel: "ROBUST",
+        maturityProof: { ...proof.maturityProof, robustnessAxesPassed: robustnessAxes },
+      }
+    : proof);
+  const selfAssertedRobustResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, selfAssertedRobust, artifacts,
+  );
+  assert.equal(selfAssertedRobustResult.passed, false);
+  assert.ok(selfAssertedRobustResult.failures.some(
+    (item) => /ROBUSTNESS_AXIS_UNPROVEN_/.test(item),
+  ));
+
+  const robustnessBackedArtifacts = artifacts.map((artifact) =>
+    artifact.kind === "TRANSFER_PROOF" && artifact.caseId === cases[0].caseId
+      ? { ...artifact, transferAxes: robustnessAxes }
+      : artifact);
+  const robustnessBackedResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, selfAssertedRobust, robustnessBackedArtifacts,
+  );
+  assert.equal(robustnessBackedResult.passed, true, robustnessBackedResult.failures.join(", "));
+
+  const duplicateTransferRefEvidence = retainedEvidence.map((proof, index) => index === 0
+    ? {
+        ...proof,
+        maturityProof: { ...proof.maturityProof, transferVariantCount: 2 },
+        transferEvidenceRefs: [proof.transferEvidenceRefs[0], proof.transferEvidenceRefs[0]],
+      }
+    : proof);
+  const duplicateTransferRefResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, duplicateTransferRefEvidence, artifacts,
+  );
+  assert.equal(duplicateTransferRefResult.passed, false);
+  assert.ok(duplicateTransferRefResult.failures.some(
+    (item) => /TRANSFER_ARTIFACT_REF_REUSED/.test(item),
+  ));
+  assert.ok(duplicateTransferRefResult.failures.some(
+    (item) => /INSUFFICIENT_UNIQUE_TRANSFER_VARIANTS/.test(item),
+  ));
+
+  const firstTransfer = artifacts.find(
+    (artifact) => artifact.kind === "TRANSFER_PROOF" && artifact.caseId === cases[0].caseId,
+  );
+  assert.ok(firstTransfer);
+  const repeatedSourceEvidence = retainedEvidence.map((proof, index) => index === 0
+    ? {
+        ...proof,
+        maturityProof: { ...proof.maturityProof, transferVariantCount: 2 },
+        transferEvidenceRefs: [
+          proof.transferEvidenceRefs[0],
+          `artifact:transfer-secondary:${proof.caseId}`,
+        ],
+      }
+    : proof);
+  const repeatedSourceArtifacts = [
+    ...artifacts,
+    {
+      ...firstTransfer,
+      ref: `artifact:transfer-secondary:${cases[0].caseId}`,
+      sha256: hex(99999),
+    },
+  ];
+  const repeatedSourceResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, repeatedSourceEvidence, repeatedSourceArtifacts,
+  );
+  assert.equal(repeatedSourceResult.passed, false);
+  assert.ok(repeatedSourceResult.failures.some((item) => /TRANSFER_SOURCE_REUSED/.test(item)));
+  assert.ok(repeatedSourceResult.failures.some(
+    (item) => /INSUFFICIENT_UNIQUE_TRANSFER_VARIANTS/.test(item),
+  ));
 });
 
 test("M6.10 keeps proven low-risk work on fast path and routes difficult references through fidelity", async () => {
