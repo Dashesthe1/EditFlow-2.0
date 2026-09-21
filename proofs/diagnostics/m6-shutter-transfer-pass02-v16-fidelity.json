@@ -1,0 +1,260 @@
+{
+  "schema": "editflow.m6.local-shutter-fidelity-proof.v1",
+  "executedAt": "2026-09-20T23:04:27.964Z",
+  "tag": "shutter-transfer-pass02-v16",
+  "result": "CERTIFIED",
+  "reference": {
+    "sourceId": "m6-m69-shutter-reference-v16",
+    "contentKey": "8ec2ce0515d862a6c14c2484fc9b8caee16e540f2d6f54b59f4e2b368547609d",
+    "analyzerFingerprint": "bf8fbd46cf04644e2ef34a9a43bca519c509d408cdf4df88229b0a9d4605a81c",
+    "settingsFingerprint": "79eb795b4fbea6551bf031538aa632e00e55f2c3cc11b3b66f90f65ab700b6fe",
+    "range": {
+      "startMs": 9507.694776501841,
+      "endMs": 10209.492984960676
+    },
+    "summary": {
+      "frameCount": 43,
+      "frameIntervalMs": 16.70948115378178,
+      "temporalStateCountPeak": 2,
+      "temporalPersistence": 0,
+      "motionEnergyPeak": 0.09769646589331762,
+      "displacementPeak": 0.019124034320670242,
+      "displacementDirection": {
+        "x": -0.002608385019832187,
+        "y": -0.018945316473642986
+      },
+      "scaleRange": 0.14584690177988824,
+      "rotationRange": 4.471258222991206,
+      "blurPeak": 0.9997532681688431,
+      "blurPeakPhase": 0.40476190476190477,
+      "distortionPeak": 1,
+      "exposurePeak": 0.4851657315279981,
+      "subjectSeparationPeak": 0,
+      "overlapDensityPeak": 0.02562814070351759,
+      "stateSeparationPeak": 0.021695137988629595,
+      "fragmentationCoherencePeak": 0.12814070351758794,
+      "fragmentationCoherencePhase": 0.35714285714285715,
+      "fragmentationTemporalStateCountPeak": 2,
+      "fragmentationOverlapDensityPeak": 0.02562814070351759,
+      "fragmentationStateSeparationPeak": 0.021695137988629595,
+      "occlusionPeak": 0,
+      "accelerationPeak": 0.07006638912336575,
+      "recoveryFrames": 6,
+      "opticalPeakPhase": 0.38095238095238093,
+      "motionPeakPhase": 0.47619047619047616
+    },
+    "shutterContract": {
+      "shutter": true,
+      "reasons": []
+    }
+  },
+  "render": {
+    "sourceId": "m6-shutter-transfer-pass02-v16",
+    "contentKey": "4137c6c0d1bab89af02b19a297f6c818981b86136e1bf2189f087ac0e98d2e3c",
+    "analyzerFingerprint": "bf8fbd46cf04644e2ef34a9a43bca519c509d408cdf4df88229b0a9d4605a81c",
+    "settingsFingerprint": "037f569a6893b59aaa06ac946fa6968839cf45f436aea77b5ca614d4a4f64a2d",
+    "range": {
+      "startMs": 0,
+      "endMs": 700
+    },
+    "summary": {
+      "frameCount": 43,
+      "frameIntervalMs": 16.666666666666668,
+      "temporalStateCountPeak": 5,
+      "temporalPersistence": 0.046511627906976744,
+      "motionEnergyPeak": 0.15075255781286537,
+      "displacementPeak": 0.017875449506611404,
+      "displacementDirection": {
+        "x": -0.0005968314905961355,
+        "y": -0.017865483123477143
+      },
+      "scaleRange": 0.01618997518602361,
+      "rotationRange": 6.372011558428849,
+      "blurPeak": 0.997040794273845,
+      "blurPeakPhase": 0.023809523809523808,
+      "distortionPeak": 1,
+      "exposurePeak": 0.3722111027335684,
+      "subjectSeparationPeak": 0,
+      "overlapDensityPeak": 0.7512038523274479,
+      "stateSeparationPeak": 0.02664727431153286,
+      "fragmentationCoherencePeak": 1,
+      "fragmentationCoherencePhase": 0.40476190476190477,
+      "fragmentationTemporalStateCountPeak": 4,
+      "fragmentationOverlapDensityPeak": 0.7512038523274479,
+      "fragmentationStateSeparationPeak": 0.02664727431153286,
+      "occlusionPeak": 0,
+      "accelerationPeak": 0.19442124292042312,
+      "recoveryFrames": 1,
+      "opticalPeakPhase": 0.42857142857142855,
+      "motionPeakPhase": 0.5476190476190477
+    },
+    "classifiedFamily": "SHUTTER_FRAGMENTATION",
+    "shutterContract": {
+      "shutter": true,
+      "reasons": []
+    }
+  },
+  "comparison": {
+    "schema": "editflow.semantic-fidelity-comparison.v1",
+    "family": "SHUTTER_FRAGMENTATION",
+    "alignment": "FRAME_ALIGNED",
+    "metrics": [
+      {
+        "invariantId": "shutter.states",
+        "dimension": "TEMPORAL",
+        "metric": "temporalStateCountPeak",
+        "referenceValue": 2,
+        "renderValue": 4,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "temporalStateCountPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.coordination",
+        "dimension": "COMPOSITING",
+        "metric": "fragmentationCoherencePeak",
+        "referenceValue": 0.12814070351758794,
+        "renderValue": 1,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1.2,
+        "diagnosis": "fragmentationCoherencePeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.event-locality",
+        "dimension": "COMPOSITING",
+        "metric": "fragmentationEventLocalization",
+        "referenceValue": 1,
+        "renderValue": 1,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1.2,
+        "diagnosis": "fragmentationEventLocalization preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.overlap",
+        "dimension": "COMPOSITING",
+        "metric": "overlapDensityPeak",
+        "referenceValue": 0.02562814070351759,
+        "renderValue": 0.7512038523274479,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "overlapDensityPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.displacement",
+        "dimension": "SPATIAL",
+        "metric": "fragmentationStateSeparationPeak",
+        "referenceValue": 0.021695137988629595,
+        "renderValue": 0.02664727431153286,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "fragmentationStateSeparationPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.acceleration",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "accelerationPeak",
+        "referenceValue": 0.07006638912336575,
+        "renderValue": 0.19442124292042312,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "accelerationPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.recovery",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "recoveryFrames",
+        "referenceValue": 6,
+        "renderValue": 0.9974377129534376,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "recoveryFrames preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.blur",
+        "dimension": "OPTICAL",
+        "metric": "blurPeak",
+        "referenceValue": 0.9997532681688431,
+        "renderValue": 0.997040794273845,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "blurPeak preserves the defining reference behavior."
+      },
+      {
+        "invariantId": "shutter.exposure",
+        "dimension": "OPTICAL",
+        "metric": "exposurePeak",
+        "referenceValue": 0.4851657315279981,
+        "renderValue": 0.3722111027335684,
+        "normalizedError": 0.06792447745771575,
+        "passed": false,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "exposurePeak is under-driven: reference 0.485, render 0.372. An exposure accent is optional decoration rather than defining behavior."
+      }
+    ],
+    "definingCoverage": 1,
+    "weightedFidelity": 0.99706499171479,
+    "passed": true,
+    "diagnoses": [
+      "exposurePeak is under-driven: reference 0.485, render 0.372. An exposure accent is optional decoration rather than defining behavior."
+    ],
+    "referenceEvidenceKey": "8ec2ce0515d862a6c14c2484fc9b8caee16e540f2d6f54b59f4e2b368547609d",
+    "renderEvidenceKey": "4137c6c0d1bab89af02b19a297f6c818981b86136e1bf2189f087ac0e98d2e3c"
+  },
+  "gate": {
+    "schema": "editflow.professional-fidelity-gate.v1",
+    "outcome": "PASS",
+    "certified": true,
+    "missingDefiningInvariantIds": [],
+    "underDrivenInvariantIds": [],
+    "weakerSubstitutionDetected": false,
+    "reasons": [
+      "Every defining invariant is covered by construction and passes rendered semantic comparison."
+    ]
+  },
+  "actuationPlan": {
+    "schema": "editflow.construction-actuation-plan.v1",
+    "family": "SHUTTER_FRAGMENTATION",
+    "comparisonKey": "8ec2ce0515d862a6c14c2484fc9b8caee16e540f2d6f54b59f4e2b368547609d->4137c6c0d1bab89af02b19a297f6c818981b86136e1bf2189f087ac0e98d2e3c",
+    "instructions": [
+      {
+        "instructionId": "actuate:shutter.exposure:exposure_strength",
+        "invariantId": "shutter.exposure",
+        "nodeId": "node:4:exposure_accent",
+        "metric": "exposurePeak",
+        "deficitMetric": "exposurePeak",
+        "deficitReferenceValue": 0.4851657315279981,
+        "deficitRenderValue": 0.3722111027335684,
+        "control": "EXPOSURE_STRENGTH",
+        "direction": "INCREASE",
+        "referenceValue": 0.4851657315279981,
+        "renderValue": 0.3722111027335684,
+        "multiplier": 1.1416957836373214,
+        "normalizedError": 0.06792447745771575,
+        "defining": false,
+        "rationale": "exposurePeak is under-driven: reference 0.485, render 0.372. An exposure accent is optional decoration rather than defining behavior."
+      }
+    ],
+    "unresolvedInvariantIds": []
+  },
+  "evidenceBoundary": [
+    "This proof compares one pre-isolated transition cut only; it does not use sequence-event detection or cross-cut H.264 context.",
+    "Certification remains fail-closed on every defining Transition DNA invariant and the compiled capability graph."
+  ]
+}

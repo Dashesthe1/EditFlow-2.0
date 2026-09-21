@@ -1,0 +1,98 @@
+{
+  "algorithmId": "editflow.m6.reference-window-scout.v1",
+  "authority": "SCOUT_ONLY_NOT_FIDELITY_EVIDENCE",
+  "rankedWindows": [
+    {
+      "chromaticSeparationProxy": 0.11923721432685852,
+      "edgeDensity": 0.08817901234567901,
+      "frameDifference": 0.5976586782861293,
+      "frameIndex": 1458,
+      "motionP90Normalized": 0.041627436876297,
+      "nonrigidP90Normalized": 0.040691256523132324,
+      "scoutScore": 6.363407596541464,
+      "sharpness": 0.002448518294841051,
+      "timeSeconds": 24.329368093922653,
+      "windowEndSeconds": 24.729368093922652,
+      "windowStartSeconds": 23.929368093922655
+    },
+    {
+      "chromaticSeparationProxy": 0.027010491117835045,
+      "edgeDensity": 0.032530864197530866,
+      "frameDifference": 0.08026349552166546,
+      "frameIndex": 826,
+      "motionP90Normalized": 0.06469713151454926,
+      "nonrigidP90Normalized": 0.06456994265317917,
+      "scoutScore": 5.5731481468385615,
+      "sharpness": 0.0013940631179139018,
+      "timeSeconds": 13.78330455801105,
+      "windowEndSeconds": 14.18330455801105,
+      "windowStartSeconds": 13.38330455801105
+    },
+    {
+      "chromaticSeparationProxy": 0.10777100175619125,
+      "edgeDensity": 0.039907407407407405,
+      "frameDifference": 0.6018836843379327,
+      "frameIndex": 1500,
+      "motionP90Normalized": 0.03187097981572151,
+      "nonrigidP90Normalized": 0.03184690326452255,
+      "scoutScore": 5.504528628771407,
+      "sharpness": 0.0014322781935334206,
+      "timeSeconds": 25.03021408839779,
+      "windowEndSeconds": 25.43021408839779,
+      "windowStartSeconds": 24.630214088397793
+    },
+    {
+      "chromaticSeparationProxy": 0.04109771549701691,
+      "edgeDensity": 0.06290123456790124,
+      "frameDifference": 0.25370999757927865,
+      "frameIndex": 1540,
+      "motionP90Normalized": 0.046683866530656815,
+      "nonrigidP90Normalized": 0.036592915654182434,
+      "scoutScore": 5.456568078446817,
+      "sharpness": 0.0017960306722670794,
+      "timeSeconds": 25.6976864640884,
+      "windowEndSeconds": 26.097686464088397,
+      "windowStartSeconds": 25.2976864640884
+    },
+    {
+      "chromaticSeparationProxy": 0.026204952970147133,
+      "edgeDensity": 0.10126543209876543,
+      "frameDifference": 0.14292084241103847,
+      "frameIndex": 504,
+      "motionP90Normalized": 0.0463186614215374,
+      "nonrigidP90Normalized": 0.04415163770318031,
+      "scoutScore": 5.424920274735904,
+      "sharpness": 0.011734413914382458,
+      "timeSeconds": 8.410151933701657,
+      "windowEndSeconds": 8.810151933701658,
+      "windowStartSeconds": 8.010151933701657
+    },
+    {
+      "chromaticSeparationProxy": 0.004717420786619186,
+      "edgeDensity": 0.03876543209876543,
+      "frameDifference": 0.36705180343742433,
+      "frameIndex": 1416,
+      "motionP90Normalized": 0.04340736195445061,
+      "nonrigidP90Normalized": 0.04250119999051094,
+      "scoutScore": 5.330769633662745,
+      "sharpness": 0.005973201245069504,
+      "timeSeconds": 23.628522099447515,
+      "windowEndSeconds": 24.028522099447514,
+      "windowStartSeconds": 23.228522099447517
+    }
+  ],
+  "schema": "editflow.m6.reference-window-scout.v1",
+  "settings": {
+    "analysisSize": 180,
+    "minSeparationSeconds": 0.65,
+    "sampleStep": 2,
+    "top": 6,
+    "windowSeconds": 0.8
+  },
+  "video": {
+    "durationSeconds": 30.203125,
+    "fps": 59.927573719606826,
+    "frameCount": 1810,
+    "path": "C:\\Users\\Shadow\\Downloads\\Typical Pro Edits\\Clipto AI Video Downloader Not today, Flash.  - The Amazing Spiderman Edit _ Miguel Angeles - DEATH RATTLE [slowed + reverb].mp4"
+  }
+}

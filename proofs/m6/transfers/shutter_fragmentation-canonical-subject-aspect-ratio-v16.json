@@ -1,0 +1,44 @@
+{
+  "schema": "editflow.m6.transfer-proof.v1",
+  "generatedAt": "2026-09-20T23:04:27.964Z",
+  "caseId": "m6:shutter_fragmentation:canonical",
+  "family": "SHUTTER_FRAGMENTATION",
+  "transferAxes": [
+    "subject",
+    "aspect-ratio"
+  ],
+  "canonicalReferenceContentKey": "4824b8f94c33145948b25329a5656d0eafcecbafcd347485a1939cc01ac5d344",
+  "remeasuredReferenceContentKey": "8ec2ce0515d862a6c14c2484fc9b8caee16e540f2d6f54b59f4e2b368547609d",
+  "baselineSourceContentKey": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
+  "transferSourceContentKey": "3dea801bad6a239ba8f2bb2934209170f00a65b645d77317b751434477e5e063",
+  "transferSourceSha256": {
+    "outgoing": "e2749fe782afadcd14cca75cbf3711b45d240ce74f7e0298894c9e9ae13aa4e3",
+    "incoming": "7c7e0b5f217d9184fd661223925c53d33af2d0505c8e24b7ffeff10254d31826"
+  },
+  "adaptation": {
+    "geometryRule": "scale spatial displacement by min(targetWidth,targetHeight)/1080",
+    "geometryScale": 0.6666666666666666,
+    "sourceFit": "COVER_CENTER",
+    "frameRateRule": "retain frame-count timing semantics at target frame rate",
+    "literalSourceValuesReused": false
+  },
+  "construction": {
+    "planRef": "proofs/diagnostics/m6-shutter-transfer-v15-pass02-plan.json",
+    "planSha256": "fff6b2d23ac335404f10f05cec30c761b8296d10a454e73372a1167f30802949",
+    "aeScriptRef": "proofs/diagnostics/m6-shutter-transfer-v15-pass02.jsx",
+    "aeScriptSha256": "cc9d7d749982d75da3f2cf28511fde5b71587a9b8e84ea79755f959cc4ef0b9c"
+  },
+  "render": {
+    "ref": "proofs/artifacts/m6-shutter-transfer-v15/render-16x9-pass02-v15.mp4",
+    "sha256": "a2693654ab90f7e6c6a4365fab501a632cb3995064979201203ca04fb2e775dc",
+    "evidenceRef": "proofs/diagnostics/m6-shutter-transfer-pass02-v16-evidence.json",
+    "contentKey": "4137c6c0d1bab89af02b19a297f6c818981b86136e1bf2189f087ac0e98d2e3c"
+  },
+  "fidelity": {
+    "ref": "proofs/diagnostics/m6-shutter-transfer-pass02-v16-fidelity.json",
+    "sha256": "99d971facd347852e414cd33c1ab672d6d15519b54cdbc9998387b7f39b75745",
+    "certified": true,
+    "weightedFidelity": 0.99706499171479,
+    "definingCoverage": 1
+  }
+}
