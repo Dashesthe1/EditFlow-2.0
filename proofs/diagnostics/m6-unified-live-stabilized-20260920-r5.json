@@ -1,0 +1,1274 @@
+{
+  "schema": "editflow.m6.generic-native-auto-correction-proof.v1",
+  "generatedAt": "2026-09-21T03:03:42.831Z",
+  "sourceEvidence": "proofs/m6/references/shutter_fragmentation-canonical.json",
+  "seedEvidence": "proofs/diagnostics/m6-shutter-control-v17-evidence.json",
+  "seedStrategy": "LAYERED_PRIMITIVES",
+  "resumedFromProof": null,
+  "family": "UNKNOWN",
+  "strategy": "LAYERED_PRIMITIVES",
+  "status": "ITERATION_LIMIT",
+  "certified": false,
+  "finalWeightedFidelity": 0.5655123033052262,
+  "finalDefiningCoverage": 0.36363636363636365,
+  "residualInvariantIds": [
+    "unknown.blur-attack",
+    "unknown.fragmentation-overlap",
+    "unknown.fragmentation-separation",
+    "unknown.acceleration",
+    "unknown.recovery",
+    "unknown.distortion",
+    "unknown.exposure"
+  ],
+  "renderedAttemptCount": 3,
+  "synthesisEscalation": {
+    "requiredInvariantIds": [],
+    "hardRequiredInvariantIds": [],
+    "structuralEscalationInvariantIds": [],
+    "searchPlan": {
+      "schema": "editflow.bounded-actuator-search-plan.v1",
+      "retainedBestAttemptId": "blind-2",
+      "regressingAttemptIds": [
+        "materialized-seed",
+        "search-1"
+      ],
+      "trustScale": 0.5,
+      "candidates": [
+        {
+          "candidateId": "probe:duplicate_spread:down:1",
+          "values": {
+            "DUPLICATE_OPACITY": 1.5,
+            "DUPLICATE_SPREAD": 1.875,
+            "MOTION_IMPULSE": 2,
+            "MOTION_IMPULSE_SHARPNESS": 2,
+            "MOTION_IMPULSE_PHASE": 1.5,
+            "RECOVERY_DURATION": 0.44778764369439833,
+            "BLUR_ATTACK_DURATION": 2,
+            "EXPOSURE_STRENGTH": 2,
+            "DISTORTION_STRENGTH": 2
+          },
+          "changedControls": [
+            "DUPLICATE_SPREAD"
+          ],
+          "rationale": "Isolate DUPLICATE_SPREAD in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:recovery_duration:down:2",
+          "values": {
+            "DUPLICATE_OPACITY": 1.5,
+            "DUPLICATE_SPREAD": 2,
+            "MOTION_IMPULSE": 2,
+            "MOTION_IMPULSE_SHARPNESS": 2,
+            "MOTION_IMPULSE_PHASE": 1.5,
+            "RECOVERY_DURATION": 0.32278764369439833,
+            "BLUR_ATTACK_DURATION": 2,
+            "EXPOSURE_STRENGTH": 2,
+            "DISTORTION_STRENGTH": 2
+          },
+          "changedControls": [
+            "RECOVERY_DURATION"
+          ],
+          "rationale": "Isolate RECOVERY_DURATION in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:recovery_duration:up:3",
+          "values": {
+            "DUPLICATE_OPACITY": 1.5,
+            "DUPLICATE_SPREAD": 2,
+            "MOTION_IMPULSE": 2,
+            "MOTION_IMPULSE_SHARPNESS": 2,
+            "MOTION_IMPULSE_PHASE": 1.5,
+            "RECOVERY_DURATION": 0.5727876436943984,
+            "BLUR_ATTACK_DURATION": 2,
+            "EXPOSURE_STRENGTH": 2,
+            "DISTORTION_STRENGTH": 2
+          },
+          "changedControls": [
+            "RECOVERY_DURATION"
+          ],
+          "rationale": "Isolate RECOVERY_DURATION in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:blur_attack_duration:up:4",
+          "values": {
+            "DUPLICATE_OPACITY": 1.5,
+            "DUPLICATE_SPREAD": 2,
+            "MOTION_IMPULSE": 2,
+            "MOTION_IMPULSE_SHARPNESS": 2,
+            "MOTION_IMPULSE_PHASE": 1.5,
+            "RECOVERY_DURATION": 0.44778764369439833,
+            "BLUR_ATTACK_DURATION": 2.25,
+            "EXPOSURE_STRENGTH": 2,
+            "DISTORTION_STRENGTH": 2
+          },
+          "changedControls": [
+            "BLUR_ATTACK_DURATION"
+          ],
+          "rationale": "Isolate BLUR_ATTACK_DURATION in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:blur_attack_duration:down:5",
+          "values": {
+            "DUPLICATE_OPACITY": 1.5,
+            "DUPLICATE_SPREAD": 2,
+            "MOTION_IMPULSE": 2,
+            "MOTION_IMPULSE_SHARPNESS": 2,
+            "MOTION_IMPULSE_PHASE": 1.5,
+            "RECOVERY_DURATION": 0.44778764369439833,
+            "BLUR_ATTACK_DURATION": 1.75,
+            "EXPOSURE_STRENGTH": 2,
+            "DISTORTION_STRENGTH": 2
+          },
+          "changedControls": [
+            "BLUR_ATTACK_DURATION"
+          ],
+          "rationale": "Isolate BLUR_ATTACK_DURATION in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:motion_impulse:up:6",
+          "values": {
+            "DUPLICATE_OPACITY": 1.5,
+            "DUPLICATE_SPREAD": 2,
+            "MOTION_IMPULSE": 2.25,
+            "MOTION_IMPULSE_SHARPNESS": 2,
+            "MOTION_IMPULSE_PHASE": 1.5,
+            "RECOVERY_DURATION": 0.44778764369439833,
+            "BLUR_ATTACK_DURATION": 2,
+            "EXPOSURE_STRENGTH": 2,
+            "DISTORTION_STRENGTH": 2
+          },
+          "changedControls": [
+            "MOTION_IMPULSE"
+          ],
+          "rationale": "Isolate MOTION_IMPULSE in a bounded rendered probe; physical response is not yet proven monotonic."
+        }
+      ],
+      "exhaustedControls": [],
+      "metricResponses": [
+        {
+          "control": "DUPLICATE_OPACITY",
+          "metric": "fragmentationOverlapDensityPeak",
+          "probeCount": 2,
+          "metricSpan": 0.14848484848484844,
+          "requiredDelta": 0.5592203441449672,
+          "responseRatio": 0.26552118505609407,
+          "causalCohortCount": 1,
+          "testedControlSpan": 0.10000000000000009,
+          "testedDirectionCount": 1,
+          "safeImprovingProbeCount": 0,
+          "retainedImprovingProbeCount": 0,
+          "collateralRegressionProbeCount": 0,
+          "responsive": true,
+          "safeResponsive": false
+        }
+      ],
+      "synthesisRequiredInvariantIds": [],
+      "structuralEscalationInvariantIds": []
+    },
+    "selectedStrategy": null
+  },
+  "passes": [
+    {
+      "iteration": 0,
+      "source": "retained-real-ae-seed",
+      "causalActuationState": false,
+      "strategy": "LAYERED_PRIMITIVES",
+      "weightedFidelity": 0.5503620269672008,
+      "definingCoverage": 0.45454545454545453,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [
+          "unknown.fragmentation-states",
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.fragmentation-coordination"
+        ],
+        "underDrivenInvariantIds": [
+          "unknown.fragmentation-states",
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.fragmentation-coordination",
+          "unknown.recovery",
+          "unknown.blur-recovery"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Missing defining behavior: unknown.fragmentation-states, unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.fragmentation-coordination.",
+          "Defining behavior failed rendered comparison: unknown.fragmentation-states, unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.fragmentation-coordination, unknown.recovery, unknown.blur-recovery."
+        ]
+      },
+      "summary": {
+        "frameCount": 43,
+        "frameIntervalMs": 16.666666666666668,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.10897822438673585,
+        "displacementPeak": 0.0073430833442837086,
+        "displacementDirection": {
+          "x": 0.007091479168997871,
+          "y": -0.0019057272094311101
+        },
+        "scaleRange": 0.01618997518602361,
+        "rotationRange": 6.450123282491668,
+        "blurPeak": 0.9970530791128475,
+        "blurPeakPhase": 0.023809523809523808,
+        "distortionPeak": 1,
+        "exposurePeak": 0.4236296030600947,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.1808478307048514,
+        "recoveryFrames": 13,
+        "opticalPeakPhase": 0.5,
+        "motionPeakPhase": 0.07142857142857142
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "fragmentationTemporalStateCountPeak": 2,
+            "fragmentationOverlapDensityPeak": 0.02562814070351759,
+            "fragmentationStateSeparationPeak": 0.021695137988629595,
+            "fragmentationCoherencePeak": 0.12814070351758794,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "recoveryFrames": 6,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "blurHalfPeakAttackMs": 284.06117961428936,
+            "blurHalfPeakRecoveryMs": 100.25688692269068,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 47.98815687210447,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.40476190476190477,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:exposure_accent",
+          "parameters": {
+            "exposurePeak": 0.4851657315279981,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:6:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "source": "real-ae-materialized-seed",
+      "causalActuationState": true,
+      "operationCount": 18,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:770b59488a557ce2a572b7efcf220067806f64dc2ec6171ca6d3bb4de5f78c6a",
+      "cleanupProjectFingerprint": "project:sha256:770b59488a557ce2a572b7efcf220067806f64dc2ec6171ca6d3bb4de5f78c6a",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass01-readback.txt",
+      "video": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass01.mp4",
+      "evidence": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass01-evidence.json",
+      "weightedFidelity": 0.3875160298263682,
+      "definingCoverage": 0,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [
+          "unknown.fragmentation-states",
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.fragmentation-coordination"
+        ],
+        "underDrivenInvariantIds": [
+          "unknown.fragmentation-states",
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.fragmentation-coordination",
+          "unknown.acceleration",
+          "unknown.recovery",
+          "unknown.blur",
+          "unknown.blur-attack",
+          "unknown.blur-recovery",
+          "unknown.distortion",
+          "unknown.exposure"
+        ],
+        "weakerSubstitutionDetected": true,
+        "reasons": [
+          "Missing defining behavior: unknown.fragmentation-states, unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.fragmentation-coordination.",
+          "Defining behavior failed rendered comparison: unknown.fragmentation-states, unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.fragmentation-coordination, unknown.acceleration, unknown.recovery, unknown.blur, unknown.blur-attack, unknown.blur-recovery, unknown.distortion, unknown.exposure.",
+          "Optional decoration is present while defining behavior is absent or materially under-driven."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.018232229235416463,
+        "displacementPeak": 3.525753305573872e-30,
+        "displacementDirection": {
+          "x": 3.525753305573872e-30,
+          "y": -1.5569982936942412e-47
+        },
+        "scaleRange": 0.11415613441838768,
+        "rotationRange": 0.6742272333897555,
+        "blurPeak": 0.6090457860963477,
+        "blurPeakPhase": 0.4827586206896552,
+        "distortionPeak": 0.137718003794148,
+        "exposurePeak": 0.07804316094106664,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.015273327881640077,
+        "recoveryFrames": 15,
+        "opticalPeakPhase": 0.4827586206896552,
+        "motionPeakPhase": 0.4827586206896552
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "fragmentationTemporalStateCountPeak": 2,
+            "fragmentationOverlapDensityPeak": 0.02562814070351759,
+            "fragmentationStateSeparationPeak": 0.021695137988629595,
+            "fragmentationCoherencePeak": 0.12814070351758794,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "recoveryFrames": 6,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "blurHalfPeakAttackMs": 284.06117961428936,
+            "blurHalfPeakRecoveryMs": 100.25688692269068,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 47.98815687210447,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.40476190476190477,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:exposure_accent",
+          "parameters": {
+            "exposurePeak": 0.4851657315279981,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:6:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "source": "real-ae-local-rerender",
+      "operationCount": 48,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:770b59488a557ce2a572b7efcf220067806f64dc2ec6171ca6d3bb4de5f78c6a",
+      "cleanupProjectFingerprint": "project:sha256:770b59488a557ce2a572b7efcf220067806f64dc2ec6171ca6d3bb4de5f78c6a",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass02-readback.txt",
+      "video": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass02.mp4",
+      "evidence": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass02-evidence.json",
+      "actuationPlan": {
+        "schema": "editflow.construction-actuation-plan.v1",
+        "family": "UNKNOWN",
+        "comparisonKey": "97aec03fbe078a983fe899d3c5496c0311276962f7e60d03f14c41e496fa3b6c->903873f220352f3352ef23cb4533afcdc2f175680482f6df85a6292fd11817fe",
+        "instructions": [
+          {
+            "instructionId": "actuate:unknown.fragmentation-states:duplicate_opacity",
+            "invariantId": "unknown.fragmentation-states",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationTemporalStateCountPeak",
+            "deficitMetric": "fragmentationTemporalStateCountPeak",
+            "deficitReferenceValue": 2,
+            "deficitRenderValue": 0,
+            "control": "DUPLICATE_OPACITY",
+            "direction": "INCREASE",
+            "referenceValue": 2,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 1,
+            "defining": true,
+            "rationale": "fragmentationTemporalStateCountPeak is under-driven: reference 2.000, render 0.000. Multiple temporal image states must participate in the same bounded event."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-overlap:temporal_band_mix",
+            "invariantId": "unknown.fragmentation-overlap",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationOverlapDensityPeak",
+            "deficitMetric": "fragmentationOverlapDensityPeak",
+            "deficitReferenceValue": 0.02562814070351759,
+            "deficitRenderValue": 0,
+            "control": "TEMPORAL_BAND_MIX",
+            "direction": "INCREASE",
+            "referenceValue": 0.02562814070351759,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.6829411764705884,
+            "defining": true,
+            "rationale": "fragmentationOverlapDensityPeak is under-driven: reference 0.026, render 0.000. Visible temporal states must overlap at approximately the observed event-local density."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-overlap:duplicate_opacity",
+            "invariantId": "unknown.fragmentation-overlap",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationOverlapDensityPeak",
+            "deficitMetric": "fragmentationOverlapDensityPeak",
+            "deficitReferenceValue": 0.02562814070351759,
+            "deficitRenderValue": 0,
+            "control": "DUPLICATE_OPACITY",
+            "direction": "INCREASE",
+            "referenceValue": 0.02562814070351759,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.6829411764705884,
+            "defining": true,
+            "rationale": "fragmentationOverlapDensityPeak is under-driven: reference 0.026, render 0.000. Visible temporal states must overlap at approximately the observed event-local density."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-overlap:duplicate_spread",
+            "invariantId": "unknown.fragmentation-overlap",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationStateSeparationPeak",
+            "deficitMetric": "fragmentationOverlapDensityPeak",
+            "deficitReferenceValue": 0.02562814070351759,
+            "deficitRenderValue": 0,
+            "control": "DUPLICATE_SPREAD",
+            "direction": "INCREASE",
+            "referenceValue": 0.021695137988629595,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.6829411764705884,
+            "defining": true,
+            "rationale": "fragmentationOverlapDensityPeak is under-driven: reference 0.026, render 0.000. Visible temporal states must overlap at approximately the observed event-local density. Duplicate spread is constrained by the reference within-frame state-separation envelope so overlap correction cannot over-drive fragment spacing."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-overlap:temporal_fragment_density",
+            "invariantId": "unknown.fragmentation-overlap",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationOverlapDensityPeak",
+            "deficitMetric": "fragmentationOverlapDensityPeak",
+            "deficitReferenceValue": 0.02562814070351759,
+            "deficitRenderValue": 0,
+            "control": "TEMPORAL_FRAGMENT_DENSITY",
+            "direction": "INCREASE",
+            "referenceValue": 0.02562814070351759,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.6829411764705884,
+            "defining": true,
+            "rationale": "fragmentationOverlapDensityPeak is under-driven: reference 0.026, render 0.000. Visible temporal states must overlap at approximately the observed event-local density."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-separation:spatial_separation",
+            "invariantId": "unknown.fragmentation-separation",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationStateSeparationPeak",
+            "deficitMetric": "fragmentationStateSeparationPeak",
+            "deficitReferenceValue": 0.021695137988629595,
+            "deficitRenderValue": 0,
+            "control": "SPATIAL_SEPARATION",
+            "direction": "INCREASE",
+            "referenceValue": 0.021695137988629595,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.7078134464483149,
+            "defining": true,
+            "rationale": "fragmentationStateSeparationPeak is under-driven: reference 0.022, render 0.000. Simultaneous temporal states must retain the observed within-frame spatial separation."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-separation:duplicate_spread",
+            "invariantId": "unknown.fragmentation-separation",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationStateSeparationPeak",
+            "deficitMetric": "fragmentationStateSeparationPeak",
+            "deficitReferenceValue": 0.021695137988629595,
+            "deficitRenderValue": 0,
+            "control": "DUPLICATE_SPREAD",
+            "direction": "INCREASE",
+            "referenceValue": 0.021695137988629595,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.7078134464483149,
+            "defining": true,
+            "rationale": "fragmentationStateSeparationPeak is under-driven: reference 0.022, render 0.000. Simultaneous temporal states must retain the observed within-frame spatial separation. Duplicate spread is constrained by the reference within-frame state-separation envelope so overlap correction cannot over-drive fragment spacing."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-coordination:temporal_band_mix",
+            "invariantId": "unknown.fragmentation-coordination",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationCoherencePeak",
+            "deficitMetric": "fragmentationCoherencePeak",
+            "deficitReferenceValue": 0.12814070351758794,
+            "deficitRenderValue": 0,
+            "control": "TEMPORAL_BAND_MIX",
+            "direction": "INCREASE",
+            "referenceValue": 0.12814070351758794,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.75,
+            "defining": true,
+            "rationale": "fragmentationCoherencePeak is under-driven: reference 0.128, render 0.000. Temporal states, overlap, and separation must occur as one coordinated high-frequency event."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-coordination:temporal_copy_count",
+            "invariantId": "unknown.fragmentation-coordination",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationCoherencePeak",
+            "deficitMetric": "fragmentationCoherencePeak",
+            "deficitReferenceValue": 0.12814070351758794,
+            "deficitRenderValue": 0,
+            "control": "TEMPORAL_COPY_COUNT",
+            "direction": "INCREASE",
+            "referenceValue": 0.12814070351758794,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.75,
+            "defining": true,
+            "rationale": "fragmentationCoherencePeak is under-driven: reference 0.128, render 0.000. Temporal states, overlap, and separation must occur as one coordinated high-frequency event."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-coordination:duplicate_opacity",
+            "invariantId": "unknown.fragmentation-coordination",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationCoherencePeak",
+            "deficitMetric": "fragmentationCoherencePeak",
+            "deficitReferenceValue": 0.12814070351758794,
+            "deficitRenderValue": 0,
+            "control": "DUPLICATE_OPACITY",
+            "direction": "INCREASE",
+            "referenceValue": 0.12814070351758794,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.75,
+            "defining": true,
+            "rationale": "fragmentationCoherencePeak is under-driven: reference 0.128, render 0.000. Temporal states, overlap, and separation must occur as one coordinated high-frequency event."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-coordination:duplicate_spread",
+            "invariantId": "unknown.fragmentation-coordination",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationStateSeparationPeak",
+            "deficitMetric": "fragmentationCoherencePeak",
+            "deficitReferenceValue": 0.12814070351758794,
+            "deficitRenderValue": 0,
+            "control": "DUPLICATE_SPREAD",
+            "direction": "INCREASE",
+            "referenceValue": 0.021695137988629595,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.75,
+            "defining": true,
+            "rationale": "fragmentationCoherencePeak is under-driven: reference 0.128, render 0.000. Temporal states, overlap, and separation must occur as one coordinated high-frequency event. Duplicate spread is constrained by the reference within-frame state-separation envelope so overlap correction cannot over-drive fragment spacing."
+          },
+          {
+            "instructionId": "actuate:unknown.fragmentation-coordination:temporal_fragment_density",
+            "invariantId": "unknown.fragmentation-coordination",
+            "nodeId": "node:1:temporal_duplicates",
+            "metric": "fragmentationCoherencePeak",
+            "deficitMetric": "fragmentationCoherencePeak",
+            "deficitReferenceValue": 0.12814070351758794,
+            "deficitRenderValue": 0,
+            "control": "TEMPORAL_FRAGMENT_DENSITY",
+            "direction": "INCREASE",
+            "referenceValue": 0.12814070351758794,
+            "renderValue": 0,
+            "multiplier": 2,
+            "normalizedError": 0.75,
+            "defining": true,
+            "rationale": "fragmentationCoherencePeak is under-driven: reference 0.128, render 0.000. Temporal states, overlap, and separation must occur as one coordinated high-frequency event."
+          },
+          {
+            "instructionId": "actuate:unknown.acceleration:motion_impulse",
+            "invariantId": "unknown.acceleration",
+            "nodeId": "node:2:recovery",
+            "metric": "accelerationPeak",
+            "deficitMetric": "accelerationPeak",
+            "deficitReferenceValue": 0.07006638912336575,
+            "deficitRenderValue": 0.015273327881640077,
+            "control": "MOTION_IMPULSE",
+            "direction": "INCREASE",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.015273327881640077,
+            "multiplier": 2,
+            "normalizedError": 0.5320163408913744,
+            "defining": true,
+            "rationale": "accelerationPeak is under-driven: reference 0.070, render 0.015. The event requires the observed high-frequency motion impulse rather than a static layered composite."
+          },
+          {
+            "instructionId": "actuate:unknown.acceleration:motion_impulse_sharpness",
+            "invariantId": "unknown.acceleration",
+            "nodeId": "node:2:recovery",
+            "metric": "accelerationPeak",
+            "deficitMetric": "accelerationPeak",
+            "deficitReferenceValue": 0.07006638912336575,
+            "deficitRenderValue": 0.015273327881640077,
+            "control": "MOTION_IMPULSE_SHARPNESS",
+            "direction": "INCREASE",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.015273327881640077,
+            "multiplier": 2,
+            "normalizedError": 0.5320163408913744,
+            "defining": true,
+            "rationale": "accelerationPeak is under-driven: reference 0.070, render 0.015. The event requires the observed high-frequency motion impulse rather than a static layered composite."
+          },
+          {
+            "instructionId": "actuate:unknown.acceleration:motion_impulse_phase",
+            "invariantId": "unknown.acceleration",
+            "nodeId": "node:2:recovery",
+            "metric": "accelerationPeak",
+            "deficitMetric": "accelerationPeak",
+            "deficitReferenceValue": 0.07006638912336575,
+            "deficitRenderValue": 0.015273327881640077,
+            "control": "MOTION_IMPULSE_PHASE",
+            "direction": "INCREASE",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.015273327881640077,
+            "multiplier": 2,
+            "normalizedError": 0.5320163408913744,
+            "defining": true,
+            "rationale": "accelerationPeak is under-driven: reference 0.070, render 0.015. The event requires the observed high-frequency motion impulse rather than a static layered composite."
+          },
+          {
+            "instructionId": "actuate:unknown.recovery:recovery_duration",
+            "invariantId": "unknown.recovery",
+            "nodeId": "node:2:recovery",
+            "metric": "recoveryFrames",
+            "deficitMetric": "recoveryFrames",
+            "deficitReferenceValue": 6,
+            "deficitRenderValue": 29.92313138860312,
+            "control": "RECOVERY_DURATION",
+            "direction": "DECREASE",
+            "referenceValue": 6,
+            "renderValue": 29.92313138860312,
+            "multiplier": 0.44778764369439833,
+            "normalizedError": 1,
+            "defining": true,
+            "rationale": "recoveryFrames is over-driven: reference 6.000, render 29.923. The synthesized effect must converge at least as quickly as the observed reference event."
+          },
+          {
+            "instructionId": "actuate:unknown.blur:blur_strength",
+            "invariantId": "unknown.blur",
+            "nodeId": "node:3:optical_treatment",
+            "metric": "blurPeak",
+            "deficitMetric": "blurPeak",
+            "deficitReferenceValue": 0.9997532681688431,
+            "deficitRenderValue": 0.6090457860963477,
+            "control": "BLUR_STRENGTH",
+            "direction": "INCREASE",
+            "referenceValue": 0.9997532681688431,
+            "renderValue": 0.6090457860963477,
+            "multiplier": 1.2812133193564568,
+            "normalizedError": 0.11080390583580552,
+            "defining": true,
+            "rationale": "blurPeak is under-driven: reference 1.000, render 0.609. Optical blur rises with the fragmentation event and must survive synthesis."
+          },
+          {
+            "instructionId": "actuate:unknown.blur-attack:blur_attack_duration",
+            "invariantId": "unknown.blur-attack",
+            "nodeId": "node:3:optical_treatment",
+            "metric": "blurHalfPeakAttackMs",
+            "deficitMetric": "blurHalfPeakAttackMs",
+            "deficitReferenceValue": 284.06117961428936,
+            "deficitRenderValue": 33.33333333333337,
+            "control": "BLUR_ATTACK_DURATION",
+            "direction": "INCREASE",
+            "referenceValue": 284.06117961428936,
+            "renderValue": 33.33333333333337,
+            "multiplier": 2,
+            "normalizedError": 0.5626543867113598,
+            "defining": true,
+            "rationale": "blurHalfPeakAttackMs is under-driven: reference 284.061, render 33.333. The blur build-up duration around the optical peak is part of the reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.blur-recovery:blur_recovery_duration",
+            "invariantId": "unknown.blur-recovery",
+            "nodeId": "node:3:optical_treatment",
+            "metric": "blurHalfPeakRecoveryMs",
+            "deficitMetric": "blurHalfPeakRecoveryMs",
+            "deficitReferenceValue": 100.25688692269068,
+            "deficitRenderValue": 33.333333333333314,
+            "control": "BLUR_RECOVERY_DURATION",
+            "direction": "INCREASE",
+            "referenceValue": 100.25688692269068,
+            "renderValue": 33.333333333333314,
+            "multiplier": 1.7342740866658657,
+            "normalizedError": 0.30085409568218774,
+            "defining": true,
+            "rationale": "blurHalfPeakRecoveryMs is under-driven: reference 100.257, render 33.333. The post-peak blur persistence/recovery duration is part of the reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_strength",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.137718003794148,
+            "control": "DISTORTION_STRENGTH",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.137718003794148,
+            "multiplier": 2,
+            "normalizedError": 0.5822819962058521,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.138. Deformation strengthens inside the fragmentation event and is part of the compound identity."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_size",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.137718003794148,
+            "control": "DISTORTION_SIZE",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.137718003794148,
+            "multiplier": 2,
+            "normalizedError": 0.5822819962058521,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.138. Deformation strengthens inside the fragmentation event and is part of the compound identity."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_complexity",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.137718003794148,
+            "control": "DISTORTION_COMPLEXITY",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.137718003794148,
+            "multiplier": 2,
+            "normalizedError": 0.5822819962058521,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.138. Deformation strengthens inside the fragmentation event and is part of the compound identity."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_evolution",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.137718003794148,
+            "control": "DISTORTION_EVOLUTION",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.137718003794148,
+            "multiplier": 2,
+            "normalizedError": 0.5822819962058521,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.138. Deformation strengthens inside the fragmentation event and is part of the compound identity."
+          },
+          {
+            "instructionId": "actuate:unknown.exposure:exposure_strength",
+            "invariantId": "unknown.exposure",
+            "nodeId": "node:5:exposure_accent",
+            "metric": "exposurePeak",
+            "deficitMetric": "exposurePeak",
+            "deficitReferenceValue": 0.4851657315279981,
+            "deficitRenderValue": 0.07804316094106664,
+            "control": "EXPOSURE_STRENGTH",
+            "direction": "INCREASE",
+            "referenceValue": 0.4851657315279981,
+            "renderValue": 0.07804316094106664,
+            "multiplier": 2,
+            "normalizedError": 0.5391412338722383,
+            "defining": true,
+            "rationale": "exposurePeak is under-driven: reference 0.485, render 0.078. Exposure energy is event-local and participates in the compound transition."
+          }
+        ],
+        "unresolvedInvariantIds": []
+      },
+      "appliedInstructionIds": [
+        "actuate:unknown.fragmentation-states:duplicate_opacity",
+        "actuate:unknown.fragmentation-overlap:duplicate_opacity",
+        "actuate:unknown.fragmentation-coordination:duplicate_opacity",
+        "actuate:unknown.fragmentation-overlap:duplicate_spread",
+        "actuate:unknown.fragmentation-separation:duplicate_spread",
+        "actuate:unknown.fragmentation-coordination:duplicate_spread",
+        "actuate:unknown.fragmentation-coordination:temporal_copy_count",
+        "actuate:unknown.acceleration:motion_impulse",
+        "actuate:unknown.acceleration:motion_impulse_sharpness",
+        "actuate:unknown.acceleration:motion_impulse_phase",
+        "actuate:unknown.recovery:recovery_duration",
+        "actuate:unknown.blur:blur_strength",
+        "actuate:unknown.blur-attack:blur_attack_duration",
+        "actuate:unknown.blur-recovery:blur_recovery_duration",
+        "actuate:unknown.distortion:distortion_strength",
+        "actuate:unknown.exposure:exposure_strength"
+      ],
+      "unsupportedInstructionIds": [
+        "actuate:unknown.fragmentation-overlap:temporal_band_mix",
+        "actuate:unknown.fragmentation-overlap:temporal_fragment_density",
+        "actuate:unknown.fragmentation-separation:spatial_separation",
+        "actuate:unknown.fragmentation-coordination:temporal_band_mix",
+        "actuate:unknown.fragmentation-coordination:temporal_fragment_density",
+        "actuate:unknown.distortion:distortion_size",
+        "actuate:unknown.distortion:distortion_complexity",
+        "actuate:unknown.distortion:distortion_evolution"
+      ],
+      "weightedFidelity": 0.5655123033052262,
+      "definingCoverage": 0.36363636363636365,
+      "improved": true,
+      "accepted": true,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [
+          "unknown.blur-attack"
+        ],
+        "underDrivenInvariantIds": [
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.acceleration",
+          "unknown.recovery",
+          "unknown.blur-attack",
+          "unknown.distortion",
+          "unknown.exposure"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Missing defining behavior: unknown.blur-attack.",
+          "Defining behavior failed rendered comparison: unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.acceleration, unknown.recovery, unknown.blur-attack, unknown.distortion, unknown.exposure."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 4,
+        "temporalPersistence": 0.1,
+        "motionEnergyPeak": 0.020360560703502006,
+        "displacementPeak": 3.4959784377763755e-25,
+        "displacementDirection": {
+          "x": 5.453543638102075e-29,
+          "y": -3.49597839524016e-25
+        },
+        "scaleRange": 0.08545923330377259,
+        "rotationRange": 3.119983494825511,
+        "blurPeak": 0.7454568770513628,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.28784877561346217,
+        "exposurePeak": 0.1830775642208738,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.7242424242424242,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.3793103448275862,
+        "fragmentationTemporalStateCountPeak": 3,
+        "fragmentationOverlapDensityPeak": 0.5848484848484848,
+        "fragmentationStateSeparationPeak": 0.08715755371245493,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.018691225410882268,
+        "recoveryFrames": 16,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.4482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "fragmentationTemporalStateCountPeak": 2,
+            "fragmentationOverlapDensityPeak": 0.02562814070351759,
+            "fragmentationStateSeparationPeak": 0.021695137988629595,
+            "fragmentationCoherencePeak": 0.12814070351758794,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "duplicateOpacityScale": 1.5,
+            "duplicateSpreadScale": 2,
+            "temporalCopyCountScale": 2
+          }
+        },
+        {
+          "nodeId": "node:2:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "recoveryFrames": 6,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "motionImpulseScale": 2,
+            "motionImpulseSharpnessScale": 2,
+            "motionImpulsePhaseScale": 1.5,
+            "recoveryDurationScale": 0.44778764369439833
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "blurHalfPeakAttackMs": 284.06117961428936,
+            "blurHalfPeakRecoveryMs": 100.25688692269068,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 47.98815687210447,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.40476190476190477,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "blurStrengthScale": 1.2812133193564568,
+            "blurAttackDurationScale": 2,
+            "blurRecoveryDurationScale": 1.7342740866658657
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "distortionStrengthScale": 2
+          }
+        },
+        {
+          "nodeId": "node:5:exposure_accent",
+          "parameters": {
+            "exposurePeak": 0.4851657315279981,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "exposureStrengthScale": 2
+          }
+        },
+        {
+          "nodeId": "node:6:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:duplicate_opacity:down:1",
+      "changedControls": [
+        "DUPLICATE_OPACITY"
+      ],
+      "candidateRationale": "Isolate DUPLICATE_OPACITY in a bounded rendered probe; physical response is not yet proven monotonic.",
+      "searchPlan": {
+        "retainedBestAttemptId": "blind-2",
+        "regressingAttemptIds": [
+          "materialized-seed"
+        ],
+        "trustScale": 0.6666666666666666,
+        "exhaustedControls": [],
+        "metricResponses": [],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": []
+      },
+      "operationCount": 48,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:770b59488a557ce2a572b7efcf220067806f64dc2ec6171ca6d3bb4de5f78c6a",
+      "cleanupProjectFingerprint": "project:sha256:770b59488a557ce2a572b7efcf220067806f64dc2ec6171ca6d3bb4de5f78c6a",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass03-readback.txt",
+      "video": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass03.mp4",
+      "evidence": "proofs/diagnostics/m6-unified-live-stabilized-20260920-r5-pass03-evidence.json",
+      "weightedFidelity": 0.5596325290735349,
+      "definingCoverage": 0.36363636363636365,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [
+          "unknown.blur-attack"
+        ],
+        "underDrivenInvariantIds": [
+          "unknown.fragmentation-overlap",
+          "unknown.fragmentation-separation",
+          "unknown.acceleration",
+          "unknown.recovery",
+          "unknown.blur-attack",
+          "unknown.distortion",
+          "unknown.exposure"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Missing defining behavior: unknown.blur-attack.",
+          "Defining behavior failed rendered comparison: unknown.fragmentation-overlap, unknown.fragmentation-separation, unknown.acceleration, unknown.recovery, unknown.blur-attack, unknown.distortion, unknown.exposure."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.1,
+        "motionEnergyPeak": 0.019072091778369056,
+        "displacementPeak": 1.0500167049077394e-25,
+        "displacementDirection": {
+          "x": 1.0494913777980109e-25,
+          "y": 3.321036755201435e-27
+        },
+        "scaleRange": 0.08329678638096716,
+        "rotationRange": 3.051097230458848,
+        "blurPeak": 0.7347628965430497,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.26616997086880445,
+        "exposurePeak": 0.18249603622564814,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.7909090909090908,
+        "stateSeparationPeak": 0.08715755371245493,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.3793103448275862,
+        "fragmentationTemporalStateCountPeak": 3,
+        "fragmentationOverlapDensityPeak": 0.7333333333333333,
+        "fragmentationStateSeparationPeak": 0.08715755371245493,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.016128955100971305,
+        "recoveryFrames": 16,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.4482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "fragmentationTemporalStateCountPeak": 2,
+            "fragmentationOverlapDensityPeak": 0.02562814070351759,
+            "fragmentationStateSeparationPeak": 0.021695137988629595,
+            "fragmentationCoherencePeak": 0.12814070351758794,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "duplicateOpacityScale": 1.4,
+            "duplicateSpreadScale": 2,
+            "temporalCopyCountScale": 2
+          }
+        },
+        {
+          "nodeId": "node:2:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "recoveryFrames": 6,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "motionImpulseScale": 2,
+            "motionImpulseSharpnessScale": 2,
+            "motionImpulsePhaseScale": 1.5,
+            "recoveryDurationScale": 0.44778764369439833
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "blurHalfPeakAttackMs": 284.06117961428936,
+            "blurHalfPeakRecoveryMs": 100.25688692269068,
+            "effectSchemaRef": "ae.effect-schema.m6.directional-blur.v1",
+            "blurDirectionDegrees": 0,
+            "blurLengthPixels": 47.98815687210447,
+            "eventLocalEffect": true,
+            "blurPeakPhase": 0.40476190476190477,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "blurStrengthScale": 1.2812133193564568,
+            "blurAttackDurationScale": 2,
+            "blurRecoveryDurationScale": 1.7342740866658657
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "distortionStrengthScale": 2
+          }
+        },
+        {
+          "nodeId": "node:5:exposure_accent",
+          "parameters": {
+            "exposurePeak": 0.4851657315279981,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "exposureStrengthScale": 2
+          }
+        },
+        {
+          "nodeId": "node:6:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.35714285714285715,
+            "effectRecoveryFrames": 6,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1223 @@
+{
+  "schema": "editflow.dense-effect-evidence.v1",
+  "sourceId": "m6-unified-live-stabilized-20260920-r7-pass04",
+  "sourceKind": "RENDER",
+  "range": {
+    "startMs": 0,
+    "endMs": 966.6666666666666
+  },
+  "analyzerFingerprint": "d41ff9770ed6bf38ed280c972c3eafc6b7c3ce2294c9ced6d3eadbda9531a4b2",
+  "settingsFingerprint": "501aa46fc7b2700b20f9d35fc1d497de98307793a2cdfe984bd7316d2e033480",
+  "contentKey": "143e910460dbb0394dc24d6867ceea19aa695125feb0ce03fcb0313d673caf44",
+  "frames": [
+    {
+      "timeMs": 0,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0,
+      "structuralDifference": 0,
+      "motionEnergy": 0,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1,
+      "rotationDegrees": 0,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 0,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 33.333333333333336,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.000001380191859494185,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 8.758115402030107e-48,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 8.758115402030107e-48,
+      "scale": 0.9999992010201612,
+      "rotationDegrees": 0.000043557463455891946,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 0.0012406862745098063,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 66.66666666666667,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.0000027603784373752516,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 7.006492321624086e-47,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 7.006492321624086e-47,
+      "scale": 0.9999983837430887,
+      "rotationDegrees": 0.00017174543978511073,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 1.0559832484755903e-17,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 100,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.000004140559733762572,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 0.9999951262123989,
+      "rotationDegrees": 0.00020951546690063305,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 5.87172782101422e-18,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 133.33333333333334,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.000005520735748735476,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 0.999994875933607,
+      "rotationDegrees": 0.00017540902959984565,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 5.139711295289794e-18,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 166.66666666666666,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.0000069009064822131235,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 0.9999947665407972,
+      "rotationDegrees": 0.00013581350059752107,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 4.778272532246974e-18,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 200,
+      "lumaMean": 0.03227464596949891,
+      "lumaStd": 0.2465978946319353,
+      "exposure": 0.000010316279736104053,
+      "sharpness": 0.008389700816196735,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368329227466885,
+      "frameDifference": 0.009335307734204793,
+      "structuralDifference": 0.00933510003183107,
+      "motionEnergy": 0.00933510003183107,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 0.9999901992074308,
+      "rotationDegrees": 0.0007733408127986827,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.008948766672444486,
+      "distortionStrength": 0.0000031045751634050055,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 233.33333333333334,
+      "lumaMean": 0.03227852668845316,
+      "lumaStd": 0.24665747642209784,
+      "exposure": 0.00002697054465694798,
+      "sharpness": 0.00840874761500954,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370315287138969,
+      "frameDifference": 0.00933517156862745,
+      "structuralDifference": 0.009316395402132565,
+      "motionEnergy": 0.009316395402132565,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001192537196124,
+      "rotationDegrees": -0.0007188574137316568,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.0013195117619240193,
+      "distortionStrength": 0.000021405228758956723,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 266.6666666666667,
+      "lumaMean": 0.03227852668845316,
+      "lumaStd": 0.24665747642209784,
+      "exposure": 0.000025590389767541617,
+      "sharpness": 0.00840874761500954,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370315287138969,
+      "frameDifference": 0.009334014161220044,
+      "structuralDifference": 0.009334014161220044,
+      "motionEnergy": 0.009334014161220044,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001192737512763,
+      "rotationDegrees": -0.0007117890318861556,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.0013195117619240193,
+      "distortionStrength": 9.08204035350075e-16,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 300,
+      "lumaMean": 0.03227852668845316,
+      "lumaStd": 0.24665747642209784,
+      "exposure": 0.000024210240159481688,
+      "sharpness": 0.00840874761500954,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370315287138969,
+      "frameDifference": 0.009334014161220044,
+      "structuralDifference": 0.009334014161220044,
+      "motionEnergy": 0.009334014161220044,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001178329573042,
+      "rotationDegrees": -0.0006973860259978985,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.0013195117619240193,
+      "distortionStrength": 9.495607994430128e-16,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 333.3333333333333,
+      "lumaMean": 0.03227852668845316,
+      "lumaStd": 0.24665747642209784,
+      "exposure": 0.00002283009583260879,
+      "sharpness": 0.00840874761500954,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370315287138969,
+      "frameDifference": 0.009334014161220044,
+      "structuralDifference": 0.009334014161220044,
+      "motionEnergy": 0.009334014161220044,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.000115260246445,
+      "rotationDegrees": -0.0007256202259031814,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.0013195117619240193,
+      "distortionStrength": 4.3649591825614047e-16,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 366.6666666666667,
+      "lumaMean": 0.03227852668845316,
+      "lumaStd": 0.24665747642209784,
+      "exposure": 0.000021449956786923677,
+      "sharpness": 0.00840874761500954,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370315287138969,
+      "frameDifference": 0.009334014161220044,
+      "structuralDifference": 0.009334014161220044,
+      "motionEnergy": 0.009334014161220044,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001140656739418,
+      "rotationDegrees": -0.0007074228489045917,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.0013195117619240193,
+      "distortionStrength": 4.935193899053924e-16,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 400,
+      "lumaMean": 0.032596200980392155,
+      "lumaStd": 0.24660063779174912,
+      "exposure": 0.0031713589982516597,
+      "sharpness": 0.008600871846512615,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368420666127345,
+      "frameDifference": 0.009656045751633986,
+      "structuralDifference": 0.009324161802107808,
+      "motionEnergy": 0.009324161802107808,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.000115579987035,
+      "rotationDegrees": -0.0007040483771610917,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.0010853271789998953,
+      "distortionStrength": 0.0007731971424332102,
+      "subjectSeparation": 0,
+      "overlapDensity": 0.08181818181818182,
+      "stateSeparation": 0.08715755371245493,
+      "temporalStateCount": 2,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 433.3333333333333,
+      "lumaMean": 0.04605119825708061,
+      "lumaStd": 0.20416022469998268,
+      "exposure": 0.11630584050269725,
+      "sharpness": 0.00905054192283231,
+      "edgeDensity": 0.011818952724189103,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.07199305914139059,
+      "frameDifference": 0.044678581154684094,
+      "structuralDifference": 0.02061348060505403,
+      "motionEnergy": 0.02061348060505403,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0002038249174219,
+      "rotationDegrees": 0.0004388730762089955,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.7391540841678323,
+      "distortionStrength": 0.20802158852353902,
+      "subjectSeparation": 0,
+      "overlapDensity": 0.5090909090909091,
+      "stateSeparation": 0.029334861933015467,
+      "temporalStateCount": 5,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 466.6666666666667,
+      "lumaMean": 0.0558926334422658,
+      "lumaStd": 0.27524530145892007,
+      "exposure": 0.18114095393727814,
+      "sharpness": 0.009001130662144018,
+      "edgeDensity": 0.004946646880079147,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.09339731611299973,
+      "frameDifference": 0.039732502723311545,
+      "structuralDifference": 0.01211979834839201,
+      "motionEnergy": 0.01211979834839201,
+      "motionDirection": {
+        "x": 5.453400637803704e-29,
+        "y": -2.4571967574374515e-26
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 2.4572028089556715e-26,
+      "scale": 1.0001779335028151,
+      "rotationDegrees": -0.0005422768674187819,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.49276428700495545,
+      "distortionStrength": 0.25808080927755395,
+      "subjectSeparation": 0,
+      "overlapDensity": 0.7303030303030303,
+      "stateSeparation": 0.062228639394019056,
+      "temporalStateCount": 4,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 500,
+      "lumaMean": 0.0494353894335512,
+      "lumaStd": 0.19311414686962217,
+      "exposure": 0.13993666026862256,
+      "sharpness": 0.009305741422867641,
+      "edgeDensity": 0.011942618896191082,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.06835225525527108,
+      "frameDifference": 0.034002995642701525,
+      "structuralDifference": 0.007012962986662451,
+      "motionEnergy": 0.007012962986662451,
+      "motionDirection": {
+        "x": 1.7857044897691702e-30,
+        "y": 3.995389405302938e-26
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 3.9953894092934634e-26,
+      "scale": 1.0002271521401098,
+      "rotationDegrees": 0.0002907227151121339,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.7454955971370743,
+      "distortionStrength": 0.25111179878916823,
+      "subjectSeparation": 0,
+      "overlapDensity": 0.6393939393939394,
+      "stateSeparation": 0.031763218935607504,
+      "temporalStateCount": 5,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 533.3333333333334,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.00002208243598650198,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.04002668845315904,
+      "structuralDifference": 0.009495215750902196,
+      "motionEnergy": 0.009495215750902196,
+      "motionDirection": {
+        "x": 6.718782464949756e-33,
+        "y": 4.040467434921974e-33
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 7.840115745572975e-33,
+      "scale": 1.0002019590879934,
+      "rotationDegrees": 0.0019937085454870655,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 0.24698670750117305,
+      "subjectSeparation": 0,
+      "overlapDensity": 0.10303030303030303,
+      "stateSeparation": 0.08443388015894071,
+      "temporalStateCount": 3,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 566.6666666666666,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.0000234625433457823,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.000201093247392,
+      "rotationDegrees": 0.0019999857996971055,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 1.1048593932321963e-17,
+      "subjectSeparation": 0,
+      "overlapDensity": 0.10303030303030303,
+      "stateSeparation": 0.08443388015894071,
+      "temporalStateCount": 3,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 600,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.000024842645424158326,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0002005881322045,
+      "rotationDegrees": 0.0019617191782758917,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 7.538881432095439e-18,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 633.3333333333334,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.00002622274222166937,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001998966099914,
+      "rotationDegrees": 0.0018878282824930314,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 6.472922474808204e-18,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 666.6666666666666,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.000027602833738314693,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001997452983935,
+      "rotationDegrees": 0.0018616752308551513,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 4.5896325078633726e-18,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 700,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659788081590445,
+      "exposure": 0.000028982919974173655,
+      "sharpness": 0.008397153911384354,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368328766932522,
+      "frameDifference": 0.009336601307189543,
+      "structuralDifference": 0.009336601307189543,
+      "motionEnergy": 0.009336601307189543,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0001976881287753,
+      "rotationDegrees": 0.0018232642459359613,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009379286473947812,
+      "distortionStrength": 1.1048593932321963e-17,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 733.3333333333334,
+      "lumaMean": 0.03227485021786492,
+      "lumaStd": 0.24659991195123757,
+      "exposure": 0.00003036300092924552,
+      "sharpness": 0.008390528937884249,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08368396471443627,
+      "frameDifference": 0.009335648148148148,
+      "structuralDifference": 0.009335140364314869,
+      "motionEnergy": 0.009335140364314869,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0002001801827252,
+      "rotationDegrees": 0.0019528328269817572,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0.009133466220712871,
+      "distortionStrength": 0.000002287581699354767,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 766.6666666666666,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0.000008280343153445306,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009334626906318083,
+      "structuralDifference": 0.009313932465163566,
+      "motionEnergy": 0.009313932465163566,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003435613868124,
+      "rotationDegrees": 0.0025764664288678686,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 0.000027124183006546942,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 800,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0.000006900272759749341,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009333333333333334,
+      "structuralDifference": 0.009333333333333334,
+      "motionEnergy": 0.009333333333333334,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003417906385157,
+      "rotationDegrees": 0.0025356499872286626,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 6.344702183534932e-21,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 833.3333333333334,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0.000005520207646751883,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009333333333333334,
+      "structuralDifference": 0.009333333333333334,
+      "motionEnergy": 0.009333333333333334,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003408011307924,
+      "rotationDegrees": 0.0024560198172645666,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 1.3029368374253573e-20,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 866.6666666666666,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0.000004140147814213417,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009333333333333334,
+      "structuralDifference": 0.009333333333333334,
+      "motionEnergy": 0.009333333333333334,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003408792639297,
+      "rotationDegrees": 0.0024494998586889164,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 1.1418879950943946e-20,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 900,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0.0000027600932622948475,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009333333333333334,
+      "structuralDifference": 0.009333333333333334,
+      "motionEnergy": 0.009333333333333334,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003386057207295,
+      "rotationDegrees": 0.002345864672845741,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 1.8262013901457602e-20,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 933.3333333333334,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0.0000013800439909168255,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009333333333333334,
+      "structuralDifference": 0.009333333333333334,
+      "motionEnergy": 0.009333333333333334,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003364125325311,
+      "rotationDegrees": 0.0023407509489029267,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 3.3319956235836497e-20,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    },
+    {
+      "timeMs": 966.6666666666666,
+      "lumaMean": 0.03227886710239652,
+      "lumaStd": 0.24666662217772925,
+      "exposure": 0,
+      "sharpness": 0.00840929969613455,
+      "edgeDensity": 0.0044519821920712315,
+      "chromaticSeparation": 0,
+      "alphaCoverage": 1,
+      "visualDensity": 0.08370620145660017,
+      "frameDifference": 0.009333333333333334,
+      "structuralDifference": 0.009333333333333334,
+      "motionEnergy": 0.009333333333333334,
+      "motionDirection": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "backgroundMotion": {
+        "x": 0,
+        "y": 0
+      },
+      "subjectBackgroundDivergence": 0,
+      "displacementMagnitude": 0,
+      "scale": 1.0003376572835307,
+      "rotationDegrees": 0.0024238792489759083,
+      "perspectiveEnergy": 0,
+      "blurStrength": 0,
+      "distortionStrength": 1.6892557988558996e-20,
+      "subjectSeparation": 0,
+      "overlapDensity": 0,
+      "stateSeparation": 0,
+      "temporalStateCount": 1,
+      "occlusion": 0,
+      "maskCoverage": 0
+    }
+  ],
+  "summary": {
+    "frameCount": 30,
+    "frameIntervalMs": 33.33333333333333,
+    "temporalStateCountPeak": 5,
+    "temporalPersistence": 0.1,
+    "motionEnergyPeak": 0.02061348060505403,
+    "displacementPeak": 3.9953894092934634e-26,
+    "displacementDirection": {
+      "x": 1.7857044897691702e-30,
+      "y": 3.995389405302938e-26
+    },
+    "scaleRange": 0.00035336217938153336,
+    "rotationRange": 0.00330208665477105,
+    "blurPeak": 0.7454955971370743,
+    "blurPeakPhase": 0.5172413793103449,
+    "distortionPeak": 0.25808080927755395,
+    "exposurePeak": 0.18114095393727814,
+    "subjectSeparationPeak": 0,
+    "overlapDensityPeak": 0.7303030303030303,
+    "stateSeparationPeak": 0.08715755371245493,
+    "fragmentationCoherencePeak": 1,
+    "fragmentationCoherencePhase": 0.3793103448275862,
+    "fragmentationTemporalStateCountPeak": 2,
+    "fragmentationOverlapDensityPeak": 0.5090909090909091,
+    "fragmentationStateSeparationPeak": 0.08715755371245493,
+    "occlusionPeak": 0,
+    "accelerationPeak": 0.019783001059608243,
+    "recoveryFrames": 16,
+    "opticalPeakPhase": 0.5172413793103449,
+    "motionPeakPhase": 0.4482758620689655
+  },
+  "evidenceRefs": [
+    "video:sha256:32d272b46feed482251b66070dc9c2af76c6c35e57b1f9ed9c759f1a09a718d2",
+    "probe-json:sha256:92e6933a3899a913b222c1eefaa749dd90b5ccc3ce2fde2b9662241019eade55",
+    "probe-algorithm:editflow.m6.dense-video-probe.v17",
+    "probe-analyzer:sha256:ea3c826d32c753f3eb8c129bd17a3ddca641ed554ea2e4f8568652bec783c15d",
+    "measurement-system:sha256:d41ff9770ed6bf38ed280c972c3eafc6b7c3ce2294c9ced6d3eadbda9531a4b2",
+    "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation"
+  ]
+}
