@@ -77,6 +77,53 @@ export interface BoundedActuatorSearchPlanV1 {
   readonly structuralEscalationInvariantIds: readonly string[];
 }
 
+export interface BoundedActuatorSearchDecisionV1 {
+  readonly candidate: ActuatorSearchCandidateV1 | null;
+  readonly structuralEscalationReady: boolean;
+  readonly deferredStructuralInvariantIds: readonly string[];
+}
+
+/**
+ * Structural escalation is local to the invariants that earned it. Do not let
+ * one stalled subsystem pre-empt still-unproven scalar authority for another
+ * defining residual. Prefer one bounded candidate that addresses a defining
+ * invariant outside the escalation set; escalate only when no such candidate
+ * remains.
+ */
+export const selectBoundedActuatorSearchDecisionV1 = (input: Readonly<{
+  plan: BoundedActuatorSearchPlanV1;
+  instructions: readonly ConstructionControlInstructionV1[];
+}>): BoundedActuatorSearchDecisionV1 => {
+  const structural = new Set(input.plan.structuralEscalationInvariantIds);
+  if (structural.size === 0) {
+    return {
+      candidate: input.plan.candidates[0] ?? null,
+      structuralEscalationReady: false,
+      deferredStructuralInvariantIds: [],
+    };
+  }
+
+  const candidate = input.plan.candidates.find((item) =>
+    item.changedControls.some((control) =>
+      input.instructions.some((instruction) =>
+        instruction.defining
+        && instruction.control === control
+        && !structural.has(instruction.invariantId))));
+  if (candidate !== undefined) {
+    return {
+      candidate,
+      structuralEscalationReady: false,
+      deferredStructuralInvariantIds: [...structural],
+    };
+  }
+
+  return {
+    candidate: null,
+    structuralEscalationReady: true,
+    deferredStructuralInvariantIds: [],
+  };
+};
+
 const EPSILON = 1e-9;
 
 const finite01 = (value: number, name: string): number => {

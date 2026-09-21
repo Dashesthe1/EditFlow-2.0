@@ -12,6 +12,7 @@ import {
   deriveConstructionActuationPlanV1,
   evaluateProfessionalFidelityGateV1,
   planBoundedActuatorSearchV1,
+  selectBoundedActuatorSearchDecisionV1,
   selectRetainedBestActuatorAttemptV1,
   selectSynthesisEscalationCandidateV1,
   synthesizeUnknownEffectV1,
@@ -867,6 +868,10 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
     dimensions,
     maxCandidates: 6,
   });
+  const searchDecision = selectBoundedActuatorSearchDecisionV1({
+    plan: searchPlan,
+    instructions: actuationPlan.instructions,
+  });
   const retainedAttempt = selectRetainedBestActuatorAttemptV1(attempts);
   const retainedState = renderedStates.find((item) => item.attemptId === retainedAttempt.attemptId);
   if (retainedState !== undefined) {
@@ -875,7 +880,8 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
   const hasRetainedScalarAuthority = searchPlan.metricResponses.some((response) =>
     response.retainedImprovingProbeCount > 0);
   if (searchPlan.structuralEscalationInvariantIds.length > 0
-    && !hasRetainedScalarAuthority) {
+    && !hasRetainedScalarAuthority
+    && searchDecision.structuralEscalationReady) {
     const previouslyRenderedStrategies = [...new Set(renderedStates
       .map((state) => graphStrategyKey(state.graph))
       .filter((strategy) => strategy !== activeStrategyKey))];
@@ -918,7 +924,10 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
     });
     break;
   }
-  const candidate = searchPlan.candidates[0];
+  const candidate = searchDecision.candidate ?? searchPlan.candidates[0];
+  if (candidate === undefined) {
+    throw new Error("Bounded actuator search produced no executable scalar candidate.");
+  }
   const proposedGraph = applySearchCandidateToGraph(graph, actuationPlan, candidate);
   const pass = await executePass(proposedGraph, nextRenderIteration);
   const trialGraph = pass.graph;

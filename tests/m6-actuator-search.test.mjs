@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   planBoundedActuatorSearchV1,
+  selectBoundedActuatorSearchDecisionV1,
   selectRetainedBestActuatorAttemptV1,
 } from "../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
 
@@ -49,6 +50,74 @@ test("M6.7 actuator retention is lexicographic and never replaces better definin
     attempt("pass-3", { DUPLICATE_OPACITY: 100 }, 0.6, 0.995),
   ]);
   assert.equal(retained.attemptId, "pass-2");
+});
+
+test("M6.7 defers local structural escalation while another defining residual still has scalar authority to test", () => {
+  const overlapInstruction = instruction("DUPLICATE_OPACITY");
+  const accelerationInstruction = {
+    ...instruction("MOTION_IMPULSE"),
+    instructionId: "instruction:motion-impulse",
+    invariantId: "shutter.acceleration",
+    metric: "accelerationPeak",
+    deficitMetric: "accelerationPeak",
+  };
+  const decision = selectBoundedActuatorSearchDecisionV1({
+    plan: {
+      schema: "editflow.bounded-actuator-search-plan.v1",
+      retainedBestAttemptId: "retained",
+      regressingAttemptIds: [],
+      trustScale: 0.5,
+      candidates: [
+        {
+          candidateId: "probe:opacity",
+          values: { DUPLICATE_OPACITY: 0.9, MOTION_IMPULSE: 1 },
+          changedControls: ["DUPLICATE_OPACITY"],
+          rationale: "Probe stalled overlap.",
+        },
+        {
+          candidateId: "probe:motion",
+          values: { DUPLICATE_OPACITY: 0.8, MOTION_IMPULSE: 1.25 },
+          changedControls: ["MOTION_IMPULSE"],
+          rationale: "Establish acceleration authority.",
+        },
+      ],
+      exhaustedControls: [],
+      metricResponses: [],
+      synthesisRequiredInvariantIds: [],
+      structuralEscalationInvariantIds: ["shutter.overlap"],
+    },
+    instructions: [overlapInstruction, accelerationInstruction],
+  });
+
+  assert.equal(decision.structuralEscalationReady, false);
+  assert.equal(decision.candidate?.candidateId, "probe:motion");
+  assert.deepEqual(decision.deferredStructuralInvariantIds, ["shutter.overlap"]);
+});
+
+test("M6.7 escalates when every remaining scalar candidate belongs only to already-stalled invariants", () => {
+  const decision = selectBoundedActuatorSearchDecisionV1({
+    plan: {
+      schema: "editflow.bounded-actuator-search-plan.v1",
+      retainedBestAttemptId: "retained",
+      regressingAttemptIds: [],
+      trustScale: 0.5,
+      candidates: [{
+        candidateId: "probe:opacity",
+        values: { DUPLICATE_OPACITY: 0.9 },
+        changedControls: ["DUPLICATE_OPACITY"],
+        rationale: "Probe stalled overlap.",
+      }],
+      exhaustedControls: [],
+      metricResponses: [],
+      synthesisRequiredInvariantIds: [],
+      structuralEscalationInvariantIds: ["shutter.overlap"],
+    },
+    instructions: [instruction("DUPLICATE_OPACITY")],
+  });
+
+  assert.equal(decision.structuralEscalationReady, true);
+  assert.equal(decision.candidate, null);
+  assert.deepEqual(decision.deferredStructuralInvariantIds, []);
 });
 
 test("M6.7 bounded actuator search turns confounded regressions into isolated causal probes", () => {
