@@ -1,19 +1,19 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-21T09:55:50.437Z",
+  "generatedAt": "2026-09-21T12:58:57.342Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
   "canonicalCaseCount": 24,
-  "casesWithRetainedEvidence": 2,
+  "casesWithRetainedEvidence": 3,
   "artifactCoverage": {
-    "REFERENCE_DENSE_EVIDENCE": 2,
-    "RENDER_DENSE_EVIDENCE": 2,
-    "SEMANTIC_COMPARISON": 2,
-    "DIRECT_AB": 2,
-    "TRANSFER_PROOF": 2,
-    "PROFESSIONAL_CASE_PROOF": 2,
-    "DEGRADED_CONTROL": 2
+    "REFERENCE_DENSE_EVIDENCE": 3,
+    "RENDER_DENSE_EVIDENCE": 3,
+    "SEMANTIC_COMPARISON": 3,
+    "DIRECT_AB": 3,
+    "TRANSFER_PROOF": 3,
+    "PROFESSIONAL_CASE_PROOF": 3,
+    "DEGRADED_CONTROL": 3
   },
   "retainedCases": [
     {
@@ -41,6 +41,34 @@
         "proofs/m6/professional-cases/shutter_fragmentation-held-out-w04-v16.json"
       ],
       "degradedControlEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
+      "transferPassed": true,
+      "degradedCaseRejected": true
+    },
+    {
+      "caseId": "m6:zoom_impact:canonical",
+      "achievedLevel": "PROFESSIONAL_FIDELITY_VERIFIED",
+      "maturityProof": {
+        "functionallyPresent": true,
+        "structuralCoverageComplete": true,
+        "visuallyRecognizable": true,
+        "referenceFaithful": true,
+        "transferVariantCount": 2,
+        "professionalCasePassCount": 2,
+        "robustnessAxesPassed": [
+          "subject",
+          "aspect-ratio"
+        ]
+      },
+      "directAbReferenceRef": "proofs/diagnostics/m6-zoom-impact-canonical-direct-ab-v1.png",
+      "comparisonEvidenceRef": "proofs/diagnostics/m6-zoom-impact-canonical-fidelity-v1.json",
+      "renderEvidenceRef": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2-pass02-evidence.json",
+      "transferEvidenceRefs": [
+        "proofs/diagnostics/m6-zoom-impact-transfer-bcc-v1.json"
+      ],
+      "professionalCaseEvidenceRefs": [
+        "proofs/m6/professional-cases/zoom_impact-bcc-v1.json"
+      ],
+      "degradedControlEvidenceRef": "proofs/diagnostics/m6-zoom-impact-canonical-degraded-control-v1.json",
       "transferPassed": true,
       "degradedCaseRejected": true
     },
@@ -126,6 +154,9 @@
       "sha256": "e4cf2fdedfbe90f3e8e3bfce6526be5643b78a812abc1f435079aa0ec9d2194f",
       "referenceContentKey": "97aec03fbe078a983fe899d3c5496c0311276962f7e60d03f14c41e496fa3b6c",
       "renderContentKey": "c6025176d7e5345911141840c72ba2fc04c02518dfedcdc355169b912b871091",
+      "transferRenderContentKeys": [
+        "c6025176d7e5345911141840c72ba2fc04c02518dfedcdc355169b912b871091"
+      ],
       "baselineSourceContentKey": "c6b8fa7373d43ae332a71852468afcbd4ff812571fe9a76aec266463ae78f2ae",
       "transferSourceContentKey": "3dea801bad6a239ba8f2bb2934209170f00a65b645d77317b751434477e5e063",
       "transferAxes": [
@@ -147,6 +178,84 @@
       "degradedControlRejected": true,
       "definingCoverage": 1,
       "weightedFidelity": 0.9930369628780908
+    },
+    {
+      "ref": "proofs/m6/benchmark/references/zoom_impact-canonical.json",
+      "kind": "REFERENCE_DENSE_EVIDENCE",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "5d1396e7fb9d1064deecf1180170d77c808f2d83bfe48924e8068e0f7ebca2e4",
+      "contentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+      "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2-pass02-evidence.json",
+      "kind": "RENDER_DENSE_EVIDENCE",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "2cac4b0221cc053b1ba6aa4c44520848101583ec9da1f2f190452879a912c6e5",
+      "contentKey": "c2f3da7791a528dd5b57ed821bdeb4af430988156b33b19f62d53f7308b2c307"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-zoom-impact-canonical-fidelity-v1.json",
+      "kind": "SEMANTIC_COMPARISON",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "b0636a4ddc85fcd706215b517b0d0fcc24528d13ac2201b3acaac8d30999518b",
+      "referenceContentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+      "renderContentKey": "c2f3da7791a528dd5b57ed821bdeb4af430988156b33b19f62d53f7308b2c307"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-zoom-impact-canonical-direct-ab-v1.png",
+      "kind": "DIRECT_AB",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "175288b84f16832d233ba2620ac5cd43408042dd0592de24650dbf4413405701",
+      "referenceContentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+      "renderContentKey": "c2f3da7791a528dd5b57ed821bdeb4af430988156b33b19f62d53f7308b2c307"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-zoom-impact-canonical-degraded-control-v1.json",
+      "kind": "DEGRADED_CONTROL",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "4292f40eb881c463d3db158f23f9054027d526748995c4a32a994060d32936b4",
+      "referenceContentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+      "renderContentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+    },
+    {
+      "ref": "proofs/diagnostics/m6-zoom-impact-transfer-bcc-v1.json",
+      "kind": "TRANSFER_PROOF",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "9da45df134e13a57a8d42c6428ffd389bf3be45d1e0df833f00127708dfdbfb4",
+      "referenceContentKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca",
+      "renderContentKey": "f5e0a9dc3ab0402833e4487936798b7e95b23c45c9b55e592722067dd1572786",
+      "transferRenderContentKeys": [
+        "f5e0a9dc3ab0402833e4487936798b7e95b23c45c9b55e592722067dd1572786",
+        "4ecdbc37bfee87bfab6b3ec62a900de6b41cbdde2afed408a008302a1a7e45ef"
+      ],
+      "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "transferSourceContentKey": "b1a0a5f915020e01017be96767df5d79ee7a8cb0cd34f24ddbbdc673b6fbd1f1",
+      "transferAxes": [
+        "subject",
+        "aspect-ratio"
+      ]
+    },
+    {
+      "ref": "proofs/m6/professional-cases/zoom_impact-bcc-v1.json",
+      "kind": "PROFESSIONAL_CASE_PROOF",
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "sha256": "b2bbb2a53f246651efa4c1fb6eb7d7daa391de042d861e624def01b1b0d89f14",
+      "referenceContentKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca",
+      "renderContentKey": "f5e0a9dc3ab0402833e4487936798b7e95b23c45c9b55e592722067dd1572786",
+      "baselineSourceContentKey": "b1a0a5f915020e01017be96767df5d79ee7a8cb0cd34f24ddbbdc673b6fbd1f1",
+      "certified": true,
+      "renderedOutputVerified": true,
+      "degradedControlRejected": true,
+      "definingCoverage": 1,
+      "weightedFidelity": 1
     },
     {
       "ref": "proofs/m6/benchmark/references/displacement_warp-canonical.json",
@@ -200,6 +309,9 @@
       "sha256": "d59b532afa52eaf1ec62aabbe4c8541c227bc582154d215287857ec068145109",
       "referenceContentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
       "renderContentKey": "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4",
+      "transferRenderContentKeys": [
+        "f6b4e98703e5390748eea4c69621438f43b69bcd5223d5e6181e8546c16dddb4"
+      ],
       "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
       "transferSourceContentKey": "a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
       "transferAxes": [
@@ -227,7 +339,7 @@
     "schema": "editflow.professional-benchmark-result.v1",
     "passed": false,
     "total": 24,
-    "passedCases": 2,
+    "passedCases": 3,
     "familyCoverage": [
       "SHUTTER_FRAGMENTATION",
       "TEMPORAL_ECHO",
@@ -258,7 +370,6 @@
       "m6:velocity_transition:canonical:MISSING_EVIDENCE",
       "m6:subject_isolated_transition:canonical:MISSING_EVIDENCE",
       "m6:whip_smear:canonical:MISSING_EVIDENCE",
-      "m6:zoom_impact:canonical:MISSING_EVIDENCE",
       "m6:occlusion_transition:canonical:MISSING_EVIDENCE",
       "m6:freeze_fragmentation:canonical:MISSING_EVIDENCE",
       "m6:camera_motion_match:canonical:MISSING_EVIDENCE",
@@ -292,6 +403,11 @@
       "status": "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO"
     },
     {
+      "ref": "proofs/diagnostics/m6-zoom-impact-transfer-bcc-v1.json",
+      "sha256": "9da45df134e13a57a8d42c6428ffd389bf3be45d1e0df833f00127708dfdbfb4",
+      "status": "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO"
+    },
+    {
       "ref": "proofs/diagnostics/m6-displacement-warp-transfer-ripple-shake-v1.json",
       "sha256": "d59b532afa52eaf1ec62aabbe4c8541c227bc582154d215287857ec068145109",
       "status": "TRANSFER_VERIFIED_DURATION_INTENSITY"
@@ -305,6 +421,17 @@
       "distinctProfessionalSource": true,
       "reusedWithoutHeldOutRetuning": true,
       "weightedFidelity": 0.9930369628780908,
+      "definingCoverage": 1,
+      "degradedControlRejected": true
+    },
+    {
+      "ref": "proofs/m6/professional-cases/zoom_impact-bcc-v1.json",
+      "sha256": "b2bbb2a53f246651efa4c1fb6eb7d7daa391de042d861e624def01b1b0d89f14",
+      "sourceVideoSha256": "b1a0a5f915020e01017be96767df5d79ee7a8cb0cd34f24ddbbdc673b6fbd1f1",
+      "distinctProfessionalSource": true,
+      "automaticSemanticCorrection": true,
+      "developerRetuningRequired": false,
+      "weightedFidelity": 1,
       "definingCoverage": 1,
       "degradedControlRejected": true
     },
@@ -359,7 +486,7 @@
       ],
       "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
       "preAeRejectionRef": "proofs/diagnostics/m6-zoom-impact-source-admission-live-boundary-v2.json",
-      "preAeRejectionSha256": "55c7489428511c0792422f536c80583b16c384574d5e45b62bdd1a76936c8b4c",
+      "preAeRejectionSha256": "48e0aeaa1c24c93b6785200aca2ef8c9bc9d812a4e50f9bf1d5852190b32b6d8",
       "preAeRejectionStatus": "PASS"
     },
     {
@@ -398,9 +525,9 @@
     {
       "caseId": "m6:zoom_impact:canonical",
       "family": "ZOOM_IMPACT",
-      "authority": "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
-      "maturityCeiling": "REFERENCE_FAITHFUL",
-      "benchmarkPromoted": false,
+      "authority": "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED",
+      "maturityCeiling": "PROFESSIONAL_FIDELITY_VERIFIED",
+      "benchmarkPromoted": true,
       "sourceAdmissionRef": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z63-v1-admission.json",
       "sourceAdmissionSha256": "0a6e339721f58a48e2e7360f68a97107240b570e2b40e11c2c30e4dd8f9f359d",
       "referenceEvidenceRef": "proofs/m6/benchmark/references/zoom_impact-canonical.json",
@@ -411,9 +538,9 @@
       "correctionProofRef": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2.json",
       "correctionProofSha256": "41693d2d946f9120d9e3178dc0ce64bdb68271f43225b90f6c16916f9e0e276d",
       "canonicalFidelityRef": "proofs/diagnostics/m6-zoom-impact-canonical-fidelity-v1.json",
-      "canonicalFidelitySha256": "a309fc785afedaac0a0f4ee0e31d2e4777850af7be34282559ea463eb0236e38",
+      "canonicalFidelitySha256": "b0636a4ddc85fcd706215b517b0d0fcc24528d13ac2201b3acaac8d30999518b",
       "canonicalDegradedRef": "proofs/diagnostics/m6-zoom-impact-canonical-degraded-control-v1.json",
-      "canonicalDegradedSha256": "c0d3ef3a861d1d3447982bd1621b92edc284ad218b20accf35d17a9aded70f20",
+      "canonicalDegradedSha256": "4292f40eb881c463d3db158f23f9054027d526748995c4a32a994060d32936b4",
       "proofWindow": {
         "durationMs": 1600,
         "eventMs": 1150
@@ -461,13 +588,15 @@
         "subject",
         "aspect-ratio"
       ],
+      "transferProofRef": "proofs/diagnostics/m6-zoom-impact-transfer-bcc-v1.json",
+      "transferProofSha256": "9da45df134e13a57a8d42c6428ffd389bf3be45d1e0df833f00127708dfdbfb4",
+      "professionalCaseRef": "proofs/m6/professional-cases/zoom_impact-bcc-v1.json",
+      "professionalCaseSha256": "b2bbb2a53f246651efa4c1fb6eb7d7daa391de042d861e624def01b1b0d89f14",
+      "transferDirectAbRef": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-direct-ab-v1.png",
+      "transferDirectAbSha256": "995be3e3239389320c62ed05d721e279e86fb7c9a2c161a056232fbebb44cd06",
       "directAbRef": "proofs/diagnostics/m6-zoom-impact-canonical-direct-ab-v1.png",
       "directAbSha256": "175288b84f16832d233ba2620ac5cd43408042dd0592de24650dbf4413405701",
-      "missingForBenchmarkPromotion": [
-        "TRANSFER_SUBJECT",
-        "TRANSFER_ASPECT_RATIO",
-        "SECOND_INDEPENDENT_PROFESSIONAL_CASE"
-      ]
+      "missingForBenchmarkPromotion": []
     },
     {
       "caseId": "m6:displacement_warp:canonical",
@@ -539,9 +668,9 @@
   ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
-    "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
+    "evaluatorSha256": "47cb68eba64021ef1a1a11eda39eca9c36c0551c52813b265d327528fb651793",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "5695b4778920857d915b7ecee7312e3061867a4cce7fba8eff4a12ebecf0d0f0"
+    "generatorSha256": "3e5f10d4f6c438908258d44b3fc5feeb66fe4d6be6f176b5a494c43e9fcb3b65"
   },
   "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

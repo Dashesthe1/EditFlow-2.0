@@ -1608,22 +1608,122 @@ const compileM6SemanticVisualState = (
         ? scaleVelocityRaw * scaleVelocityScale
         : scaleVelocityRaw;
       const scaleRecoveryMsRaw = parameters["scaleVelocityRecoveryMs"];
+      const scaleRecoveryDurationScaleRaw = parameters["scaleRecoveryDurationScale"];
+      const scaleRecoveryDurationScale = typeof scaleRecoveryDurationScaleRaw === "number"
+        && Number.isFinite(scaleRecoveryDurationScaleRaw)
+        ? Math.max(0.25, Math.min(4, scaleRecoveryDurationScaleRaw))
+        : 1;
+      const scaledRecoveryMs = typeof scaleRecoveryMsRaw === "number" && Number.isFinite(scaleRecoveryMsRaw)
+        ? scaleRecoveryMsRaw * scaleRecoveryDurationScale
+        : scaleRecoveryMsRaw;
+      const profileMinFactor = parameters["scaleProfileMinFactor"];
+      const profileMinPhase = parameters["scaleProfileMinPhase"];
+      const profileMaxFactor = parameters["scaleProfileMaxFactor"];
+      const profileMaxPhase = parameters["scaleProfileMaxPhase"];
+      const profileEndFactor = parameters["scaleProfileEndFactor"];
+      const profileImpactPhase = parameters["scaleProfileImpactPhase"];
+      const analysisDurationMs = parameters["effectAnalysisDurationMs"];
+      const hasMeasuredScaleTrajectory = [
+        profileMinFactor,
+        profileMinPhase,
+        profileMaxFactor,
+        profileMaxPhase,
+        profileEndFactor,
+        profileImpactPhase,
+        analysisDurationMs,
+      ].every((value) => typeof value === "number" && Number.isFinite(value))
+        && (profileMinFactor as number) > 0
+        && (profileMaxFactor as number) > 0
+        && (profileEndFactor as number) > 0
+        && (profileMinPhase as number) >= 0 && (profileMinPhase as number) <= 1
+        && (profileMaxPhase as number) >= 0 && (profileMaxPhase as number) <= 1
+        && (profileImpactPhase as number) >= 0 && (profileImpactPhase as number) <= 1
+        && (analysisDurationMs as number) > 0;
+      let scaleTrajectoryExpression: string | null = null;
+      if (hasMeasuredScaleTrajectory) {
+        const durationSeconds = (analysisDurationMs as number) / 1000;
+        const impactPhase = profileImpactPhase as number;
+        const timeForPhase = (phase: number): number => {
+          const relativePhase = phase - impactPhase;
+          const recoveryScale = relativePhase > 0 ? scaleRecoveryDurationScale : 1;
+          return eventSeconds + (relativePhase * durationSeconds * recoveryScale / scaleVelocityScale);
+        };
+        const adjustedFactor = (factor: number): number =>
+          1 + ((factor - 1) * scalePulseScale);
+        const terminalResidual = Math.abs((profileEndFactor as number) - 1);
+        const normalizeTerminalRecovery = terminalResidual <= Math.max(0.005, scaleRaw * 0.25);
+        // A small terminal offset relative to the complete impact excursion is
+        // source/camera drift, not defining zoom behavior. Transfer the impact
+        // trajectory but settle back to the target layer's neutral scale.
+        const terminalFactor = normalizeTerminalRecovery
+          ? 1
+          : adjustedFactor(profileEndFactor as number);
+        const rawKnots = [
+          { phase: 0, factor: 1 },
+          { phase: profileMinPhase as number, factor: adjustedFactor(profileMinFactor as number) },
+          { phase: profileMaxPhase as number, factor: adjustedFactor(profileMaxFactor as number) },
+          { phase: 1, factor: terminalFactor },
+        ].sort((a, b) => a.phase - b.phase);
+        const knots: Array<{ phase: number; factor: number }> = [];
+        for (const knot of rawKnots) {
+          const previous = knots.at(-1);
+          if (previous !== undefined && Math.abs(previous.phase - knot.phase) <= 1e-9) {
+            if (Math.abs(knot.factor - 1) >= Math.abs(previous.factor - 1)) {
+              knots[knots.length - 1] = knot;
+            }
+          } else {
+            knots.push(knot);
+          }
+        }
+        if (knots.length >= 2) {
+          const expressionParts = [
+            `var event=${eventSeconds};`,
+            `var scaleTrajectoryProfile=1;`,
+            `var scaleTrajectoryNeutralRecovery=${normalizeTerminalRecovery ? 1 : 0};`,
+            `var t=time;`,
+            `var factor=${knots[0]!.factor};`,
+          ];
+          const firstTime = timeForPhase(knots[0]!.phase);
+          expressionParts.push(`var k0=${firstTime};`);
+          for (let index = 1; index < knots.length; index += 1) {
+            const previous = knots[index - 1]!;
+            const current = knots[index]!;
+            const previousTime = timeForPhase(previous.phase);
+            const currentTime = timeForPhase(current.phase);
+            const afterImpact = previous.phase >= impactPhase - 1e-9;
+            const branch = index === 1 ? "if" : "else if";
+            const interpolation = afterImpact
+              ? `var u=(t-${previousTime})/${Math.max(1e-6, currentTime - previousTime)};var s=u*u*u*(u*(u*6-15)+10);factor=${previous.factor}+(${current.factor - previous.factor})*s;`
+              : `factor=linear(t,${previousTime},${currentTime},${previous.factor},${current.factor});`;
+            expressionParts.push(
+              `${branch}(t<${currentTime}){${interpolation}}`,
+            );
+          }
+          expressionParts.push(
+            `else{factor=${knots.at(-1)!.factor};}`,
+            "value.length>2?[value[0]*factor,value[1]*factor,value[2]]:value*factor;",
+          );
+          scaleTrajectoryExpression = expressionParts.join("");
+        }
+      }
       const hasMeasuredScaleVelocityProfile = typeof scaledVelocity === "number"
         && Number.isFinite(scaledVelocity) && scaledVelocity > 1e-6
-        && typeof scaleRecoveryMsRaw === "number"
-        && Number.isFinite(scaleRecoveryMsRaw) && scaleRecoveryMsRaw > 0;
+        && typeof scaledRecoveryMs === "number"
+        && Number.isFinite(scaledRecoveryMs) && scaledRecoveryMs > 0;
       const legacyPreFrames = typeof scaledVelocity === "number" && Number.isFinite(scaledVelocity)
         && scaledVelocity > 1e-6
         ? Math.max(2, Math.min(12, (amplitude / scaledVelocity) * frameRate))
         : recoveryFrames;
-      const expression = hasMeasuredScaleVelocityProfile
+      const expression = scaleTrajectoryExpression ?? (hasMeasuredScaleVelocityProfile
         ? [
           `var event=${eventSeconds};`,
           `var amplitude=${amplitude};`,
           `var requestedVelocity=${scaledVelocity};`,
-          `var recoverySeconds=${Math.max(1 / frameRate, Math.min(0.5, scaleRecoveryMsRaw / 1000))};`,
-          "var velocity=Math.min(requestedVelocity,(2*amplitude)/(thisComp.frameDuration+recoverySeconds));",
-          "var preSeconds=Math.max(thisComp.frameDuration,(2*amplitude/velocity)-recoverySeconds);",
+          `var requestedRecoverySeconds=${Math.max(1 / frameRate, Math.min(0.5, scaledRecoveryMs / 1000))};`,
+          "var velocity=Math.min(requestedVelocity,amplitude/thisComp.frameDuration);",
+          "var totalSeconds=(2*amplitude)/velocity;",
+          "var recoverySeconds=Math.min(requestedRecoverySeconds,Math.max(thisComp.frameDuration,totalSeconds-thisComp.frameDuration));",
+          "var preSeconds=Math.max(thisComp.frameDuration,totalSeconds-recoverySeconds);",
           "var t=time-event;",
           "var pulse=0;",
           "if(t<=-preSeconds){pulse=0;}",
@@ -1645,7 +1745,7 @@ const compileM6SemanticVisualState = (
           "else{pulse=linear(f,0,post,amplitude,0);}",
           "var factor=1+pulse;",
           "value.length>2?[value[0]*factor,value[1]*factor,value[2]]:value*factor;",
-        ].join("");
+        ].join(""));
       for (const layerId of targets) {
         operations.push({
           type: "SET_EXPRESSION",

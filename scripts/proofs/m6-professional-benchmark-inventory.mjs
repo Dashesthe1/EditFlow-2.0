@@ -52,6 +52,15 @@ const ZOOM_CANONICAL_DEGRADED = path.join(
 const ZOOM_CANONICAL_AB = path.join(
   ROOT, "proofs", "diagnostics", "m6-zoom-impact-canonical-direct-ab-v1.png",
 );
+const ZOOM_TRANSFER_PROOF = path.join(
+  ROOT, "proofs", "diagnostics", "m6-zoom-impact-transfer-bcc-v1.json",
+);
+const ZOOM_PROFESSIONAL_CASE = path.join(
+  ROOT, "proofs", "m6", "professional-cases", "zoom_impact-bcc-v1.json",
+);
+const ZOOM_TRANSFER_AB = path.join(
+  ROOT, "proofs", "diagnostics", "m6-zoom-impact-bcc-transfer-landscape-direct-ab-v1.png",
+);
 const DISPLACEMENT_SOURCE_ADMISSION = path.join(
   ROOT,
   "proofs",
@@ -389,6 +398,43 @@ if (zoomBenchmarkReference.contentKey !== zoomFidelitySourceEvidence.contentKey
   || zoomCanonicalDegraded.render?.contentKey !== zoomFidelitySeedEvidence.contentKey) {
   throw new Error("M6 Zoom retained canonical proof pack lost its fidelity/degraded-control binding.");
 }
+
+const zoomTransfer = await load(ZOOM_TRANSFER_PROOF);
+const zoomProfessional = await load(ZOOM_PROFESSIONAL_CASE);
+const zoomTransferReferencePath = path.resolve(ROOT, zoomTransfer.reference?.ref ?? "");
+const zoomTransferReference = await load(zoomTransferReferencePath);
+const zoomTransferRenderPath = path.resolve(ROOT, zoomTransfer.renders?.[0]?.ref ?? "");
+const zoomTransferRender = await load(zoomTransferRenderPath);
+const zoomCanonicalSourceKey = sourceVideoKey(zoomBenchmarkReference);
+const zoomTransferSourceKey = sourceVideoKey(zoomTransferReference);
+const zoomTransferRenders = zoomTransfer.renders ?? [];
+if (zoomTransfer.result !== "PASS"
+  || zoomTransferRenders.length !== 2
+  || zoomTransferRenders.some((item) =>
+    item.comparison?.passed !== true
+      || item.gate?.outcome !== "PASS"
+      || item.gate?.certified !== true)
+  || zoomTransfer.transferIdentity?.baselineSourceContentKey !== zoomCanonicalSourceKey
+  || zoomTransfer.transferIdentity?.transferSourceContentKey !== zoomTransferSourceKey
+  || zoomCanonicalSourceKey === zoomTransferSourceKey
+  || !zoomTransfer.transferIdentity?.transferAxes?.includes("subject")
+  || !zoomTransfer.transferIdentity?.transferAxes?.includes("aspect-ratio")
+  || zoomTransfer.transferIdentity?.landscapeCanvas?.width !== 640
+  || zoomTransfer.transferIdentity?.landscapeCanvas?.height !== 360
+  || zoomTransfer.transferIdentity?.portraitCanvas?.width !== 360
+  || zoomTransfer.transferIdentity?.portraitCanvas?.height !== 640
+  || zoomProfessional.result !== "PASS"
+  || zoomProfessional.fidelity?.certified !== true
+  || zoomProfessional.degradedControl?.rejected !== true
+  || zoomProfessional.assertions?.sourceIdentityDistinct !== true
+  || zoomProfessional.assertions?.renderedOutputVerified !== true
+  || zoomProfessional.assertions?.degradedControlRejected !== true
+  || zoomProfessional.constructionReuse?.developerRetuningRequired !== false) {
+  throw new Error("M6 Zoom retained transfer pack lost a fidelity, aspect-ratio, or source-identity binding.");
+}
+const zoomTransferRef = relative(ZOOM_TRANSFER_PROOF);
+const zoomProfessionalRef = relative(ZOOM_PROFESSIONAL_CASE);
+const zoomTransferAbRef = relative(ZOOM_TRANSFER_AB);
 const zoomFidelitySourceAdmissionRef = relative(ZOOM_FIDELITY_SOURCE_ADMISSION);
 const zoomFidelityCorrectionRef = relative(ZOOM_FIDELITY_CORRECTION);
 const zoomFidelityFinalEvidenceRef = relative(zoomFidelityFinalEvidencePath);
@@ -553,6 +599,26 @@ const evidence = [{
   transferPassed: true,
   degradedCaseRejected: true,
 }, {
+  caseId: zoom.caseId,
+  achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
+  maturityProof: {
+    functionallyPresent: true,
+    structuralCoverageComplete: true,
+    visuallyRecognizable: true,
+    referenceFaithful: true,
+    transferVariantCount: zoomTransferRenders.length,
+    professionalCasePassCount: 2,
+    robustnessAxesPassed: [...zoom.transferAxes],
+  },
+  directAbReferenceRef: zoomCanonicalAbRef,
+  comparisonEvidenceRef: relative(ZOOM_CANONICAL_FIDELITY),
+  renderEvidenceRef: zoomFidelityFinalEvidenceRef,
+  transferEvidenceRefs: [zoomTransferRef],
+  professionalCaseEvidenceRefs: [zoomProfessionalRef],
+  degradedControlEvidenceRef: relative(ZOOM_CANONICAL_DEGRADED),
+  transferPassed: true,
+  degradedCaseRejected: true,
+}, {
   caseId: displacement.caseId,
   achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
   maturityProof: {
@@ -627,6 +693,7 @@ const artifacts = [
     sha256: await sha256File(TRANSFER_V17),
     referenceContentKey: transferReference.contentKey,
     renderContentKey: transferRender.contentKey,
+    transferRenderContentKeys: [transferRender.contentKey],
     baselineSourceContentKey: transferProof.transferIdentity.baselineSourceContentKey,
     transferSourceContentKey: transferProof.transferIdentity.transferSourceContentKey,
     transferAxes: transferProof.transferIdentity.transferAxes,
@@ -645,6 +712,78 @@ const artifacts = [
     degradedControlRejected: true,
     definingCoverage: professionalCase.fidelity.definingCoverage,
     weightedFidelity: professionalCase.fidelity.weightedFidelity,
+  },
+  {
+    ref: zoom.referenceEvidenceRef,
+    kind: "REFERENCE_DENSE_EVIDENCE",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(zoomBenchmarkReferencePath),
+    contentKey: zoomBenchmarkReference.contentKey,
+    baselineSourceContentKey: zoomCanonicalSourceKey,
+  },
+  {
+    ref: zoomFidelityFinalEvidenceRef,
+    kind: "RENDER_DENSE_EVIDENCE",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(zoomFidelityFinalEvidencePath),
+    contentKey: zoomFidelityFinalEvidence.contentKey,
+  },
+  {
+    ref: relative(ZOOM_CANONICAL_FIDELITY),
+    kind: "SEMANTIC_COMPARISON",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(ZOOM_CANONICAL_FIDELITY),
+    referenceContentKey: zoomBenchmarkReference.contentKey,
+    renderContentKey: zoomFidelityFinalEvidence.contentKey,
+  },
+  {
+    ref: zoomCanonicalAbRef,
+    kind: "DIRECT_AB",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(ZOOM_CANONICAL_AB),
+    referenceContentKey: zoomBenchmarkReference.contentKey,
+    renderContentKey: zoomFidelityFinalEvidence.contentKey,
+  },
+  {
+    ref: relative(ZOOM_CANONICAL_DEGRADED),
+    kind: "DEGRADED_CONTROL",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(ZOOM_CANONICAL_DEGRADED),
+    referenceContentKey: zoomBenchmarkReference.contentKey,
+    renderContentKey: zoomFidelitySeedEvidence.contentKey,
+  },
+  {
+    ref: zoomTransferRef,
+    kind: "TRANSFER_PROOF",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(ZOOM_TRANSFER_PROOF),
+    referenceContentKey: zoomTransferReference.contentKey,
+    renderContentKey: zoomTransferRender.contentKey,
+    transferRenderContentKeys: zoomTransferRenders.map((item) => item.contentKey),
+    baselineSourceContentKey: zoomCanonicalSourceKey,
+    transferSourceContentKey: zoomTransferSourceKey,
+    transferAxes: zoomTransfer.transferIdentity.transferAxes,
+  },
+  {
+    ref: zoomProfessionalRef,
+    kind: "PROFESSIONAL_CASE_PROOF",
+    caseId: zoom.caseId,
+    family: zoom.family,
+    sha256: await sha256File(ZOOM_PROFESSIONAL_CASE),
+    referenceContentKey: zoomTransferReference.contentKey,
+    renderContentKey: zoomTransferRender.contentKey,
+    baselineSourceContentKey: zoomTransferSourceKey,
+    certified: zoomProfessional.fidelity.certified,
+    renderedOutputVerified: zoomProfessional.assertions.renderedOutputVerified,
+    degradedControlRejected: zoomProfessional.degradedControl.rejected,
+    definingCoverage: zoomProfessional.fidelity.definingCoverage,
+    weightedFidelity: zoomProfessional.fidelity.weightedFidelity,
   },
   {
     ref: displacement.referenceEvidenceRef,
@@ -698,6 +837,7 @@ const artifacts = [
     sha256: await sha256File(DISPLACEMENT_TRANSFER_PROOF),
     referenceContentKey: displacementTransferReference.contentKey,
     renderContentKey: displacementTransferRender.contentKey,
+    transferRenderContentKeys: [displacementTransferRender.contentKey],
     baselineSourceContentKey: displacementCanonicalSourceKey,
     transferSourceContentKey: displacementTransferSourceKey,
     transferAxes: displacementTransfer.transferIdentity.transferAxes,
@@ -734,7 +874,7 @@ const artifactCoverage = Object.fromEntries(
 );
 const manifest = {
   schema: "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  generatedAt: displacementProfessional.generatedAt,
+  generatedAt: zoomProfessional.generatedAt,
   milestone: "M6.9",
   status: result.passed ? "PASS" : "IN_PROGRESS",
   authority: "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -754,6 +894,10 @@ const manifest = {
     sha256: await sha256File(TRANSFER_V17),
     status: "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO",
   }, {
+    ref: zoomTransferRef,
+    sha256: await sha256File(ZOOM_TRANSFER_PROOF),
+    status: "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO",
+  }, {
     ref: displacementTransferRef,
     sha256: await sha256File(DISPLACEMENT_TRANSFER_PROOF),
     status: "TRANSFER_VERIFIED_DURATION_INTENSITY",
@@ -767,6 +911,16 @@ const manifest = {
     weightedFidelity: professionalCase.fidelity.weightedFidelity,
     definingCoverage: professionalCase.fidelity.definingCoverage,
     degradedControlRejected: professionalCase.degradedControl.rejected,
+  }, {
+    ref: zoomProfessionalRef,
+    sha256: await sha256File(ZOOM_PROFESSIONAL_CASE),
+    sourceVideoSha256: zoomTransferSourceKey,
+    distinctProfessionalSource: true,
+    automaticSemanticCorrection: true,
+    developerRetuningRequired: false,
+    weightedFidelity: zoomProfessional.fidelity.weightedFidelity,
+    definingCoverage: zoomProfessional.fidelity.definingCoverage,
+    degradedControlRejected: zoomProfessional.degradedControl.rejected,
   }, {
     ref: displacementProfessionalRef,
     sha256: await sha256File(DISPLACEMENT_PROFESSIONAL_CASE),
@@ -848,9 +1002,9 @@ const manifest = {
   referenceFidelityDiagnostics: [{
     caseId: zoom.caseId,
     family: zoom.family,
-    authority: "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
-    maturityCeiling: "REFERENCE_FAITHFUL",
-    benchmarkPromoted: false,
+    authority: "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED",
+    maturityCeiling: "PROFESSIONAL_FIDELITY_VERIFIED",
+    benchmarkPromoted: true,
     sourceAdmissionRef: zoomFidelitySourceAdmissionRef,
     sourceAdmissionSha256: await sha256File(ZOOM_FIDELITY_SOURCE_ADMISSION),
     referenceEvidenceRef: relative(zoomBenchmarkReferencePath),
@@ -899,13 +1053,15 @@ const manifest = {
       residualInvariantIds: zoomFidelityCorrection.residualInvariantIds,
     },
     transferAxesRequired: [...zoom.transferAxes],
+    transferProofRef: zoomTransferRef,
+    transferProofSha256: await sha256File(ZOOM_TRANSFER_PROOF),
+    professionalCaseRef: zoomProfessionalRef,
+    professionalCaseSha256: await sha256File(ZOOM_PROFESSIONAL_CASE),
+    transferDirectAbRef: zoomTransferAbRef,
+    transferDirectAbSha256: await sha256File(ZOOM_TRANSFER_AB),
     directAbRef: zoomCanonicalAbRef,
     directAbSha256: await sha256File(ZOOM_CANONICAL_AB),
-    missingForBenchmarkPromotion: [
-      "TRANSFER_SUBJECT",
-      "TRANSFER_ASPECT_RATIO",
-      "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
-    ],
+    missingForBenchmarkPromotion: [],
   }, {
     caseId: displacement.caseId,
     family: displacement.family,

@@ -250,6 +250,19 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
         && scaleVelocityRecoveryMs > 0) {
         parameters.scaleVelocityRecoveryMs = scaleVelocityRecoveryMs;
       }
+      for (const profileParameter of [
+        "scaleProfileMinFactor",
+        "scaleProfileMinPhase",
+        "scaleProfileMaxFactor",
+        "scaleProfileMaxPhase",
+        "scaleProfileEndFactor",
+        "scaleProfileImpactPhase",
+      ] as const) {
+        const value = anatomy.observedMetrics[profileParameter];
+        if (typeof value === "number" && Number.isFinite(value)) {
+          parameters[profileParameter] = value;
+        }
+      }
     }
     if (group.template.kind === "RECOVERY" && hasCoherentFragmentation) {
       parameters.motionProfile = "SHUTTER_CONVERGENCE";

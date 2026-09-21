@@ -1,0 +1,252 @@
+{
+  "schema": "editflow.m6.known-family-transfer-proof.v1",
+  "generatedAt": "2026-09-21T12:58:57.342Z",
+  "caseId": "m6:zoom_impact:canonical",
+  "family": "ZOOM_IMPACT",
+  "result": "PASS",
+  "transferIdentity": {
+    "baselineSourceContentKey": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+    "transferSourceContentKey": "b1a0a5f915020e01017be96767df5d79ee7a8cb0cd34f24ddbbdc673b6fbd1f1",
+    "baselineSourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom-scan:63.000-64.629",
+    "transferSourceId": "gdrive:1Jgy_VEMJo0MsqtyzDIVnUND2LoKY2RAY:zoom-bcc-scan:17.720-18.720",
+    "transferAxes": [
+      "subject",
+      "aspect-ratio"
+    ],
+    "landscapeCanvas": {
+      "width": 640,
+      "height": 360,
+      "frameRate": 30,
+      "aspectRatio": 1.7777777777777777
+    },
+    "portraitCanvas": {
+      "width": 360,
+      "height": 640,
+      "frameRate": 30,
+      "aspectRatio": 0.5625
+    }
+  },
+  "reference": {
+    "ref": "proofs/m6/benchmark/references/zoom_impact-professional-bcc-v1.json",
+    "contentKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca"
+  },
+  "renders": [
+    {
+      "variant": "LANDSCAPE",
+      "ref": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass02-evidence.json",
+      "contentKey": "f5e0a9dc3ab0402833e4487936798b7e95b23c45c9b55e592722067dd1572786",
+      "comparison": {
+        "schema": "editflow.semantic-fidelity-comparison.v1",
+        "family": "ZOOM_IMPACT",
+        "alignment": "SEMANTIC",
+        "metrics": [
+          {
+            "invariantId": "zoom.scale",
+            "dimension": "SPATIAL",
+            "metric": "scaleRange",
+            "referenceValue": 0.130118138032283,
+            "renderValue": 0.1512584170302803,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleRange preserves the defining reference behavior.",
+            "comparisonBasis": "ABSOLUTE"
+          },
+          {
+            "invariantId": "zoom.motion",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "scaleVelocityPeakPerSecond",
+            "referenceValue": 1.484991024192258,
+            "renderValue": 1.9999453740311512,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleVelocityPeakPerSecond preserves the defining reference behavior.",
+            "comparisonBasis": "ABSOLUTE"
+          },
+          {
+            "invariantId": "zoom.recovery",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "scaleVelocityRecoveryRatio",
+            "referenceValue": 0.047023328828029176,
+            "renderValue": 0.000027424050187560803,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleVelocityRecoveryRatio preserves the defining reference behavior.",
+            "comparisonBasis": "ABSOLUTE"
+          }
+        ],
+        "definingCoverage": 1,
+        "weightedFidelity": 1,
+        "passed": true,
+        "diagnoses": [],
+        "referenceEvidenceKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca",
+        "renderEvidenceKey": "f5e0a9dc3ab0402833e4487936798b7e95b23c45c9b55e592722067dd1572786"
+      },
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "PASS",
+        "certified": true,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Every defining invariant is covered by construction and passes rendered semantic comparison."
+        ]
+      }
+    },
+    {
+      "variant": "PORTRAIT",
+      "ref": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-portrait-auto-v4-pass02-evidence.json",
+      "contentKey": "4ecdbc37bfee87bfab6b3ec62a900de6b41cbdde2afed408a008302a1a7e45ef",
+      "comparison": {
+        "schema": "editflow.semantic-fidelity-comparison.v1",
+        "family": "ZOOM_IMPACT",
+        "alignment": "SEMANTIC",
+        "metrics": [
+          {
+            "invariantId": "zoom.scale",
+            "dimension": "SPATIAL",
+            "metric": "scaleRange",
+            "referenceValue": 0.130118138032283,
+            "renderValue": 0.1510412871625466,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleRange preserves the defining reference behavior.",
+            "comparisonBasis": "ABSOLUTE"
+          },
+          {
+            "invariantId": "zoom.motion",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "scaleVelocityPeakPerSecond",
+            "referenceValue": 1.484991024192258,
+            "renderValue": 1.9999615211750332,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleVelocityPeakPerSecond preserves the defining reference behavior.",
+            "comparisonBasis": "ABSOLUTE"
+          },
+          {
+            "invariantId": "zoom.recovery",
+            "dimension": "MOTION_STRUCTURE",
+            "metric": "scaleVelocityRecoveryRatio",
+            "referenceValue": 0.047023328828029176,
+            "renderValue": 0.00003194362484511708,
+            "normalizedError": 0,
+            "passed": true,
+            "defining": true,
+            "weight": 1,
+            "diagnosis": "scaleVelocityRecoveryRatio preserves the defining reference behavior.",
+            "comparisonBasis": "ABSOLUTE"
+          }
+        ],
+        "definingCoverage": 1,
+        "weightedFidelity": 1,
+        "passed": true,
+        "diagnoses": [],
+        "referenceEvidenceKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca",
+        "renderEvidenceKey": "4ecdbc37bfee87bfab6b3ec62a900de6b41cbdde2afed408a008302a1a7e45ef"
+      },
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "PASS",
+        "certified": true,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Every defining invariant is covered by construction and passes rendered semantic comparison."
+        ]
+      }
+    }
+  ],
+  "degradedControl": {
+    "comparison": {
+      "schema": "editflow.semantic-fidelity-comparison.v1",
+      "family": "ZOOM_IMPACT",
+      "alignment": "SEMANTIC",
+      "metrics": [
+        {
+          "invariantId": "zoom.scale",
+          "dimension": "SPATIAL",
+          "metric": "scaleRange",
+          "referenceValue": 0.130118138032283,
+          "renderValue": 0.00014740188048734115,
+          "normalizedError": 0.5683074601558807,
+          "passed": false,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "scaleRange is under-driven: reference 0.130, render 0.000. A material but reference-bounded scale excursion defines the zoom impact.",
+          "comparisonBasis": "ABSOLUTE"
+        },
+        {
+          "invariantId": "zoom.motion",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "scaleVelocityPeakPerSecond",
+          "referenceValue": 1.484991024192258,
+          "renderValue": 0.0038716353654477667,
+          "normalizedError": 0.6963821108284851,
+          "passed": false,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "scaleVelocityPeakPerSecond is under-driven: reference 1.485, render 0.004. The zoom must carry a reference-faithful scale-rate impulse rather than an arbitrary snap.",
+          "comparisonBasis": "ABSOLUTE"
+        },
+        {
+          "invariantId": "zoom.recovery",
+          "dimension": "MOTION_STRUCTURE",
+          "metric": "scaleVelocityRecoveryRatio",
+          "referenceValue": 0.047023328828029176,
+          "renderValue": 0.01761316351342372,
+          "normalizedError": 0,
+          "passed": true,
+          "defining": true,
+          "weight": 1,
+          "diagnosis": "scaleVelocityRecoveryRatio preserves the defining reference behavior.",
+          "comparisonBasis": "ABSOLUTE"
+        }
+      ],
+      "definingCoverage": 0.3333333333333333,
+      "weightedFidelity": 0.578436809671878,
+      "passed": false,
+      "diagnoses": [
+        "scaleRange is under-driven: reference 0.130, render 0.000. A material but reference-bounded scale excursion defines the zoom impact.",
+        "scaleVelocityPeakPerSecond is under-driven: reference 1.485, render 0.004. The zoom must carry a reference-faithful scale-rate impulse rather than an arbitrary snap."
+      ],
+      "referenceEvidenceKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca",
+      "renderEvidenceKey": "e27aae744fb7900e7ea86f392c3921baeb82e794842cbad3f5ee175cd3734ee2"
+    },
+    "gate": {
+      "schema": "editflow.professional-fidelity-gate.v1",
+      "outcome": "CORRECTION_REQUIRED",
+      "certified": false,
+      "missingDefiningInvariantIds": [],
+      "underDrivenInvariantIds": [
+        "zoom.scale",
+        "zoom.motion"
+      ],
+      "weakerSubstitutionDetected": false,
+      "reasons": [
+        "Defining behavior failed rendered comparison: zoom.scale, zoom.motion."
+      ]
+    }
+  },
+  "automaticCorrection": {
+    "proofRefs": [
+      "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7.json",
+      "proofs/diagnostics/m6-zoom-impact-bcc-transfer-portrait-auto-v4.json"
+    ],
+    "finalWeightedFidelity": 1,
+    "finalDefiningCoverage": 1,
+    "residualInvariantIds": [],
+    "developerRetuningRequired": false
+  }
+}

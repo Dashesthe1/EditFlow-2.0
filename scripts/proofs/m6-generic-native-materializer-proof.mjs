@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -36,6 +36,20 @@ const CANDIDATE_VIDEO = path.join(ROOT, "proofs", "diagnostics", STEM + ".mp4");
 const CONTROL_VIDEO = path.join(ROOT, "proofs", "diagnostics", STEM + "-control.mp4");
 const CANDIDATE_EVIDENCE = path.join(ROOT, "proofs", "diagnostics", STEM + "-evidence.json");
 const CONTROL_EVIDENCE = path.join(ROOT, "proofs", "diagnostics", STEM + "-control-evidence.json");
+const PROOF_CANVAS_CONFIG = path.join(os.tmpdir(), "M6_generic_native_case01_canvas.json");
+const boundedIntegerCli = (name, fallback, minimum, maximum) => {
+  const value = Number(cliValue(name, String(fallback)));
+  return Number.isFinite(value)
+    ? Math.max(minimum, Math.min(maximum, Math.round(value)))
+    : fallback;
+};
+const boundedNumberCli = (name, fallback, minimum, maximum) => {
+  const value = Number(cliValue(name, String(fallback)));
+  return Number.isFinite(value) ? Math.max(minimum, Math.min(maximum, value)) : fallback;
+};
+const PROOF_WIDTH = boundedIntegerCli("--proof-width", 640, 64, 4096);
+const PROOF_HEIGHT = boundedIntegerCli("--proof-height", 360, 64, 4096);
+const PROOF_FRAME_RATE = boundedNumberCli("--proof-fps", 30, 12, 120);
 let controlRepoRoot = ROOT;
 const WINDOWS = (name) => path.join(controlRepoRoot, "scripts", "windows", name);
 const CAPABILITIES = [
@@ -91,6 +105,12 @@ const runProofScript = (name) => request("/proof-script", {
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ scriptPath: WINDOWS(name) }),
 });
+const installProofCanvasConfig = async () => writeFile(
+  PROOF_CANVAS_CONFIG,
+  JSON.stringify({ width: PROOF_WIDTH, height: PROOF_HEIGHT, frameRate: PROOF_FRAME_RATE }) + "\n",
+  "utf8",
+);
+const clearProofCanvasConfig = async () => rm(PROOF_CANVAS_CONFIG, { force: true });
 const run = (command, args) => {
   const result = spawnSync(command, args, {
     cwd: ROOT,
@@ -182,7 +202,7 @@ const project = {
   compositions: [{
     compId: "m6-proof-case01-comp",
     name: "__EF2_M6_GENERIC_NATIVE_CASE01_PROOF__",
-    width: 640, height: 360, durationMs: 1000, frameRate: 30,
+    width: PROOF_WIDTH, height: PROOF_HEIGHT, durationMs: 1000, frameRate: PROOF_FRAME_RATE,
     layers: [{
       layerId: "m6-proof-case01-hero", name: "M6 Generic Hero", kind: "PRECOMP",
       sourceRef: "m6-proof-case01-source-comp",
@@ -270,6 +290,7 @@ try {
   }
   hostScriptParity = await verifyControlHostScriptParity();
   await acquireMutationLease();
+  await installProofCanvasConfig();
   fixtureTouched = true;
   await runProofScript("m6-generic-native-case01-setup.jsx");
   await runProofScript("m6-generic-native-case01-render-control.jsx");
@@ -394,7 +415,11 @@ try {
   const commands = native.plan.operations.map((operation) => operation.input.command);
   const duplicateCount = commands.filter((command) => command === "layer.duplicate").length;
   const compLine = readback.split(/\r?\n/).find((line) => line.startsWith("COMP\t"));
-  const actualLayerCount = Number(compLine?.split("\t")[2]);
+  const compFields = compLine?.split("\t") ?? [];
+  const actualLayerCount = Number(compFields[2]);
+  const actualWidth = Number(compFields[3]);
+  const actualHeight = Number(compFields[4]);
+  const actualFrameRate = Number(compFields[5]);
   const layerLines = readback.split(/\r?\n/).filter((line) => line.startsWith("LAYER\t"));
   const lines = readback.split(/\r?\n/);
   const startTimes = layerLines
@@ -461,6 +486,11 @@ try {
       analyzerFingerprint: sourceAdmission.analyzerFingerprint,
     },
     hostScriptParity,
+    proofCanvas: {
+      requested: { width: PROOF_WIDTH, height: PROOF_HEIGHT, frameRate: PROOF_FRAME_RATE },
+      actual: { width: actualWidth, height: actualHeight, frameRate: actualFrameRate },
+      aspectRatio: PROOF_WIDTH / PROOF_HEIGHT,
+    },
     graphId: selected.graph.graphId,
     definingCoverage: compilation.definingCoverageComplete,
     capabilityGaps: compilation.capabilityGaps,
@@ -495,6 +525,10 @@ try {
     readback,
   };
   if (transaction.result.state !== "COMMITTED") throw new Error("Native transaction did not commit.");
+  if (actualWidth !== PROOF_WIDTH || actualHeight !== PROOF_HEIGHT
+    || !Number.isFinite(actualFrameRate) || Math.abs(actualFrameRate - PROOF_FRAME_RATE) > 0.001) {
+    throw new Error(`Real-AE proof canvas mismatch: requested ${PROOF_WIDTH}x${PROOF_HEIGHT}@${PROOF_FRAME_RATE}, observed ${actualWidth}x${actualHeight}@${actualFrameRate}.`);
+  }
   if (artifact.nativePlan.containsOpaqueM6Placeholder) throw new Error("Opaque M6 placeholder leaked to native plan.");
   if (duplicateCount !== expectedDuplicateCount) {
     throw new Error(`Materializer duplicated ${duplicateCount} times; expected ${expectedDuplicateCount} from temporal plus chromatic construction.`);
@@ -607,6 +641,7 @@ try {
       await runProofScript("m6-generic-native-case01-cleanup.jsx").catch(() => {});
     }
   } finally {
+    await clearProofCanvasConfig().catch(() => {});
     await releaseMutationLease().catch(() => {});
   }
 }

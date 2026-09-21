@@ -51,6 +51,18 @@ const PROOF_EVENT_MS = Number.isFinite(proofEventRaw)
   ? Math.max(0, Math.min(PROOF_DURATION_MS, proofEventRaw))
   : PROOF_DURATION_MS / 2;
 const PROOF_DURATION_SECONDS = PROOF_DURATION_MS / 1000;
+const proofWidthRaw = Number(cliValue("--proof-width", "640"));
+const PROOF_WIDTH = Number.isFinite(proofWidthRaw)
+  ? Math.max(64, Math.min(4096, Math.round(proofWidthRaw)))
+  : 640;
+const proofHeightRaw = Number(cliValue("--proof-height", "360"));
+const PROOF_HEIGHT = Number.isFinite(proofHeightRaw)
+  ? Math.max(64, Math.min(4096, Math.round(proofHeightRaw)))
+  : 360;
+const proofFpsRaw = Number(cliValue("--proof-fps", "30"));
+const PROOF_FRAME_RATE = Number.isFinite(proofFpsRaw)
+  ? Math.max(12, Math.min(120, proofFpsRaw))
+  : 30;
 const PROOF_WINDOW_CONFIG = path.join(os.tmpdir(), "M6_generic_native_corr01_window.json");
 let controlRepoRoot = ROOT;
 const WINDOWS = (name) => path.join(controlRepoRoot, "scripts", "windows", name);
@@ -72,6 +84,7 @@ const PHYSICAL_PARAMETER_BY_CONTROL = Object.freeze({
   CHROMATIC_SEPARATION: "chromaticSeparationScale",
   SCALE_PULSE: "scalePulseScale",
   SCALE_RATE: "scaleVelocityScale",
+  SCALE_RECOVERY: "scaleRecoveryDurationScale",
 });
 const physicalParameterForNodeControl = (node, control) => {
   if (node?.parameters?.synthesisStrategy === "NATIVE_ECHO_HYBRID"
@@ -128,6 +141,7 @@ const SEARCH_DIMENSIONS = Object.freeze([
   { control: "CHROMATIC_SEPARATION", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "SCALE_PULSE", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "SCALE_RATE", minimum: 0.25, maximum: 4, minimumStep: 0.0625 },
+  { control: "SCALE_RECOVERY", minimum: 0.25, maximum: 4, minimumStep: 0.0625 },
 ]);
 const CAPABILITIES = [
   "ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set",
@@ -145,7 +159,7 @@ const project = {
   activeCompId: "m6-proof-corr01-comp",
   compositions: [{
     compId: "m6-proof-corr01-comp", name: "__EF2_M6_GENERIC_NATIVE_CORR01_PROOF__",
-    width: 640, height: 360, durationMs: PROOF_DURATION_MS, frameRate: 30,
+    width: PROOF_WIDTH, height: PROOF_HEIGHT, durationMs: PROOF_DURATION_MS, frameRate: PROOF_FRAME_RATE,
     layers: [{
       layerId: "m6-proof-corr01-hero", name: "M6 Generic Hero", kind: "PRECOMP",
       sourceRef: "m6-proof-corr01-source-comp", inMs: 0, outMs: PROOF_DURATION_MS,
@@ -179,7 +193,12 @@ const proofScript = (name) => request("/proof-script", {
 });
 const installProofWindowConfig = async () => writeFile(
   PROOF_WINDOW_CONFIG,
-  JSON.stringify({ durationSeconds: PROOF_DURATION_SECONDS }) + "\n",
+  JSON.stringify({
+    durationSeconds: PROOF_DURATION_SECONDS,
+    width: PROOF_WIDTH,
+    height: PROOF_HEIGHT,
+    frameRate: PROOF_FRAME_RATE,
+  }) + "\n",
   "utf8",
 );
 const clearProofWindowConfig = async () => rm(PROOF_WINDOW_CONFIG, { force: true });
@@ -324,6 +343,23 @@ const executePass = async (graph, iteration) => {
     const passStem = `${STEM}-pass${String(iteration).padStart(2, "0")}`;
     const readback = path.join(ROOT, "proofs", "diagnostics", passStem + "-readback.txt");
     await copyFile(path.join(controlRepoRoot, ".tmp", "m6-generic-native-corr01-readback.txt"), readback);
+    const readbackText = await readFile(readback, "utf8");
+    const compLine = readbackText.split(/\r?\n/).find((line) => line.startsWith("COMP\t"));
+    const compFields = compLine?.split("\t") ?? [];
+    const actualCanvas = {
+      width: Number(compFields[3]),
+      height: Number(compFields[4]),
+      frameRate: Number(compFields[5]),
+    };
+    if (actualCanvas.width !== PROOF_WIDTH || actualCanvas.height !== PROOF_HEIGHT
+      || !Number.isFinite(actualCanvas.frameRate)
+      || Math.abs(actualCanvas.frameRate - PROOF_FRAME_RATE) > 0.001) {
+      throw new Error(
+        "Real-AE correction canvas mismatch: requested "
+        + PROOF_WIDTH + "x" + PROOF_HEIGHT + "@" + PROOF_FRAME_RATE
+        + ", observed " + actualCanvas.width + "x" + actualCanvas.height + "@" + actualCanvas.frameRate + ".",
+      );
+    }
     await proofScript("m6-generic-native-corr01-render.jsx");
     const video = path.join(ROOT, "proofs", "diagnostics", passStem + ".mp4");
     await copyFile(path.join(os.tmpdir(), "M6_generic_native_corr01_candidate.mp4"), video);
@@ -335,6 +371,10 @@ const executePass = async (graph, iteration) => {
       native,
       transaction,
       readback,
+      proofCanvas: {
+        requested: { width: PROOF_WIDTH, height: PROOF_HEIGHT, frameRate: PROOF_FRAME_RATE },
+        actual: actualCanvas,
+      },
       video,
       measured,
     };

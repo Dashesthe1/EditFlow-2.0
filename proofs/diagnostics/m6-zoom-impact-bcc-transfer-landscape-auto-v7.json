@@ -1,0 +1,367 @@
+{
+  "schema": "editflow.m6.generic-native-auto-correction-proof.v1",
+  "generatedAt": "2026-09-21T12:58:11.329Z",
+  "proofWindow": {
+    "durationMs": 1000,
+    "eventMs": 500
+  },
+  "sourceEvidence": "proofs/m6/benchmark/references/zoom_impact-professional-bcc-v1.json",
+  "requestedFamily": "ZOOM_IMPACT",
+  "sourceAdmission": {
+    "schema": "editflow.reference-family-candidate.v1",
+    "sourceId": "gdrive:1Jgy_VEMJo0MsqtyzDIVnUND2LoKY2RAY:zoom-bcc-scan:17.720-18.720",
+    "evidenceContentKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca",
+    "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+    "requestedFamily": "ZOOM_IMPACT",
+    "classifiedFamily": "ZOOM_IMPACT",
+    "familyConflict": null,
+    "overlappingFullCoverageFamilies": [],
+    "passed": true,
+    "definingCoverage": 1,
+    "weightedContractScore": 1,
+    "checks": [
+      {
+        "invariantId": "zoom.scale",
+        "metric": "scaleRange",
+        "comparator": "RANGE",
+        "target": [
+          0.08,
+          0.8
+        ],
+        "tolerance": 0.03,
+        "observed": 0.130118138032283,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleRange satisfies family admission (range 0.0500..0.8300)."
+      },
+      {
+        "invariantId": "zoom.motion",
+        "metric": "scaleVelocityPeakPerSecond",
+        "comparator": "RANGE",
+        "target": [
+          0.25,
+          8
+        ],
+        "tolerance": 0.15,
+        "observed": 1.484991024192258,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleVelocityPeakPerSecond satisfies family admission (range 0.1000..8.1500)."
+      },
+      {
+        "invariantId": "zoom.recovery",
+        "metric": "scaleVelocityRecoveryRatio",
+        "comparator": "MAX",
+        "target": 0.35,
+        "tolerance": 0.05,
+        "observed": 0.047023328828029176,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleVelocityRecoveryRatio satisfies family admission (maximum 0.4000)."
+      }
+    ],
+    "failures": [],
+    "evidenceRefs": [
+      "video:sha256:b1a0a5f915020e01017be96767df5d79ee7a8cb0cd34f24ddbbdc673b6fbd1f1",
+      "probe-json:sha256:952ad11857d0a48a759ec5a8c137a2b3bb657ddf3c1758cf8ba8bac22da6f755",
+      "probe-algorithm:editflow.m6.dense-video-probe.v18",
+      "probe-analyzer:sha256:faf510f45c1912e4218f67274ff842fd7f7d3d4500b1ac15f670237b50bd4244",
+      "measurement-system:sha256:2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+      "algorithm:opencv-farneback-affine-flow-residual-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "seedEvidence": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-v6-control-evidence.json",
+  "seedStrategy": "KNOWN_FAMILY_ZOOM_IMPACT",
+  "causalBaselineEvidence": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-causal-baseline-evidence.json",
+  "causalBaselineVideo": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-causal-baseline.mp4",
+  "causalBaselineCleanupRestored": true,
+  "resumedFromProof": null,
+  "family": "ZOOM_IMPACT",
+  "strategy": "KNOWN_FAMILY_ZOOM_IMPACT",
+  "status": "PASSED",
+  "certified": true,
+  "finalWeightedFidelity": 1,
+  "finalDefiningCoverage": 1,
+  "residualInvariantIds": [],
+  "renderedAttemptCount": 2,
+  "synthesisEscalation": null,
+  "passes": [
+    {
+      "iteration": 0,
+      "source": "retained-real-ae-seed",
+      "causalActuationState": false,
+      "strategy": "KNOWN_FAMILY_ZOOM_IMPACT",
+      "weightedFidelity": 0.578436809671878,
+      "definingCoverage": 0.3333333333333333,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "zoom.scale",
+          "zoom.motion"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: zoom.scale, zoom.motion."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.00014740188048734115,
+        "scaleDynamicsVersion": "SUSTAINED_TAIL_V1",
+        "scaleVelocityPeakPerSecond": 0.0038716353654477667,
+        "scaleVelocityRecoveryRatio": 0.01761316351342372,
+        "scaleVelocityRecoveryMs": 33.33333333333334,
+        "rotationRange": 0.001560053979505077,
+        "blurPeak": 0.009379286473947812,
+        "blurPeakPhase": 0,
+        "distortionPeak": 0.07477993455933399,
+        "exposurePeak": 0.00002697054465694798,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.1724137931034483,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:transform_motion",
+          "parameters": {
+            "scaleRange": 0.130118138032283,
+            "scaleVelocityPeakPerSecond": 1.484991024192258,
+            "scaleVelocityRecoveryRatio": 0.047023328828029176,
+            "effectEventPhase": 0.4666666666666667,
+            "referenceFrameIntervalMs": 33.37033509246151,
+            "effectAnalysisDurationMs": 1001.1100527738454,
+            "effectRecoveryDurationMs": 533.9253614793852,
+            "scaleVelocityRecoveryMs": 533.9253614793852,
+            "scaleProfileMinFactor": 0.9194365100543117,
+            "scaleProfileMinPhase": 0.4666666666666667,
+            "scaleProfileMaxFactor": 1.0495546480865947,
+            "scaleProfileMaxPhase": 0.03333333333333333,
+            "scaleProfileEndFactor": 0.9765252308792063,
+            "scaleProfileImpactPhase": 0.4666666666666667
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "source": "real-ae-materialized-seed",
+      "causalActuationState": true,
+      "operationCount": 1,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass01-readback.txt",
+      "video": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass01.mp4",
+      "evidence": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass01-evidence.json",
+      "weightedFidelity": 0.6666666666666666,
+      "definingCoverage": 0.6666666666666666,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "zoom.recovery"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: zoom.recovery."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.01118789077478035,
+        "displacementPeak": 2.4105562329283762e-27,
+        "displacementDirection": {
+          "x": 7.329412023898182e-39,
+          "y": 2.4105562329283762e-27
+        },
+        "scaleRange": 0.15156667333687524,
+        "scaleDynamicsVersion": "SUSTAINED_TAIL_V1",
+        "scaleVelocityPeakPerSecond": 1.9999453740311512,
+        "scaleVelocityRecoveryRatio": 0.49899525778838766,
+        "scaleVelocityRecoveryMs": 800,
+        "rotationRange": 0.0017421416538302267,
+        "blurPeak": 0.08194785127995896,
+        "blurPeakPhase": 0.4827586206896552,
+        "distortionPeak": 0.1657536220088289,
+        "exposurePeak": 0.05152502608535921,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.020027962616228606,
+        "recoveryFrames": 25,
+        "opticalPeakPhase": 0.5517241379310345,
+        "motionPeakPhase": 0.13793103448275862
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:transform_motion",
+          "parameters": {
+            "scaleRange": 0.130118138032283,
+            "scaleVelocityPeakPerSecond": 1.484991024192258,
+            "scaleVelocityRecoveryRatio": 0.047023328828029176,
+            "effectEventPhase": 0.4666666666666667,
+            "referenceFrameIntervalMs": 33.37033509246151,
+            "effectAnalysisDurationMs": 1001.1100527738454,
+            "effectRecoveryDurationMs": 533.9253614793852,
+            "scaleVelocityRecoveryMs": 533.9253614793852,
+            "scaleProfileMinFactor": 0.9194365100543117,
+            "scaleProfileMinPhase": 0.4666666666666667,
+            "scaleProfileMaxFactor": 1.0495546480865947,
+            "scaleProfileMaxPhase": 0.03333333333333333,
+            "scaleProfileEndFactor": 0.9765252308792063,
+            "scaleProfileImpactPhase": 0.4666666666666667
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "source": "real-ae-local-rerender",
+      "operationCount": 1,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass02-readback.txt",
+      "video": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass02.mp4",
+      "evidence": "proofs/diagnostics/m6-zoom-impact-bcc-transfer-landscape-auto-v7-pass02-evidence.json",
+      "actuationPlan": {
+        "schema": "editflow.construction-actuation-plan.v1",
+        "family": "ZOOM_IMPACT",
+        "comparisonKey": "6b699a27314be05959a5b03aaa100fd2b02b4d4ffb46f4c8e6638c69b51047ca->3fa2610e130c33ff1693ea0fb571f61ef2aafc00326b3133e81456fb3fd0c7bd",
+        "instructions": [
+          {
+            "instructionId": "actuate:zoom.recovery:scale_recovery",
+            "invariantId": "zoom.recovery",
+            "nodeId": "node:1:transform_motion",
+            "metric": "scaleVelocityRecoveryRatio",
+            "deficitMetric": "scaleVelocityRecoveryRatio",
+            "deficitReferenceValue": 0.047023328828029176,
+            "deficitRenderValue": 0.49899525778838766,
+            "control": "SCALE_RECOVERY",
+            "direction": "DECREASE",
+            "referenceValue": 0.047023328828029176,
+            "renderValue": 0.49899525778838766,
+            "multiplier": 0.25,
+            "normalizedError": 1,
+            "defining": true,
+            "rationale": "scaleVelocityRecoveryRatio is over-driven: reference 0.047, render 0.499. Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."
+          }
+        ],
+        "unresolvedInvariantIds": []
+      },
+      "appliedInstructionIds": [
+        "actuate:zoom.recovery:scale_recovery"
+      ],
+      "unsupportedInstructionIds": [],
+      "weightedFidelity": 1,
+      "definingCoverage": 1,
+      "improved": true,
+      "accepted": true,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "PASS",
+        "certified": true,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Every defining invariant is covered by construction and passes rendered semantic comparison."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.01118789077478035,
+        "displacementPeak": 2.0960700450404653e-27,
+        "displacementDirection": {
+          "x": -2.9855948961235647e-28,
+          "y": 2.074698017755439e-27
+        },
+        "scaleRange": 0.1512584170302803,
+        "scaleDynamicsVersion": "SUSTAINED_TAIL_V1",
+        "scaleVelocityPeakPerSecond": 1.9999453740311512,
+        "scaleVelocityRecoveryRatio": 0.000027424050187560803,
+        "scaleVelocityRecoveryMs": 566.6666666666667,
+        "rotationRange": 0.0017421416538302267,
+        "blurPeak": 0.08194785127995896,
+        "blurPeakPhase": 0.4827586206896552,
+        "distortionPeak": 0.1657536220088289,
+        "exposurePeak": 0.054141711580168034,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.020027962616228606,
+        "recoveryFrames": 25,
+        "opticalPeakPhase": 0.5517241379310345,
+        "motionPeakPhase": 0.13793103448275862
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:transform_motion",
+          "parameters": {
+            "scaleRange": 0.130118138032283,
+            "scaleVelocityPeakPerSecond": 1.484991024192258,
+            "scaleVelocityRecoveryRatio": 0.047023328828029176,
+            "effectEventPhase": 0.4666666666666667,
+            "referenceFrameIntervalMs": 33.37033509246151,
+            "effectAnalysisDurationMs": 1001.1100527738454,
+            "effectRecoveryDurationMs": 533.9253614793852,
+            "scaleVelocityRecoveryMs": 533.9253614793852,
+            "scaleProfileMinFactor": 0.9194365100543117,
+            "scaleProfileMinPhase": 0.4666666666666667,
+            "scaleProfileMaxFactor": 1.0495546480865947,
+            "scaleProfileMaxPhase": 0.03333333333333333,
+            "scaleProfileEndFactor": 0.9765252308792063,
+            "scaleProfileImpactPhase": 0.4666666666666667,
+            "scaleRecoveryDurationScale": 0.25
+          }
+        }
+      ]
+    }
+  ]
+}

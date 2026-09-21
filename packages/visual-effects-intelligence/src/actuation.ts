@@ -39,6 +39,7 @@ const CONTROL_BY_METRIC: Readonly<Record<string, readonly ConstructionControlKin
   chromaticSeparationPeak: ["CHROMATIC_SEPARATION"],
   scaleRange: ["SCALE_PULSE"],
   scaleVelocityPeakPerSecond: ["SCALE_RATE"],
+  scaleVelocityRecoveryRatio: ["SCALE_RECOVERY"],
   rotationRange: ["ROTATION_PULSE"],
   activeDimensionCount: ["COORDINATED_DIMENSION_COUNT"],
 };
@@ -136,7 +137,15 @@ export const deriveConstructionActuationPlanV1 = (input: {
       const controlReference = coupledMetric?.referenceValue ?? failure.referenceValue;
       const controlRender = coupledMetric?.renderValue ?? failure.renderValue;
       const direction = correctionDirection(controlReference, controlRender);
-      const multiplier = correctionMultiplier(direction, controlReference, controlRender);
+      // Recovery duration is already a bounded physical time scale. Apply the
+      // measured residual ratio directly so a large terminal tail can reach the
+      // settled reference window in one causal pass; the generic square-root
+      // damping is reserved for less direct visual-to-parameter relationships.
+      const multiplier = control === "SCALE_RECOVERY"
+        ? (magnitude(controlRender) <= 1e-6
+          ? (magnitude(controlReference) <= 1e-6 ? 1 : 4)
+          : clamp(magnitude(controlReference) / magnitude(controlRender), 0.25, 4))
+        : correctionMultiplier(direction, controlReference, controlRender);
       const couplingRationale = coupledMetric === undefined
         ? ""
         : " Duplicate spread is constrained by the reference within-frame state-separation envelope so overlap correction cannot over-drive fragment spacing.";
@@ -195,6 +204,7 @@ const PHYSICAL_SCALE_PARAMETER_BY_CONTROL: Readonly<Partial<Record<
   CHROMATIC_SEPARATION: "chromaticSeparationScale",
   SCALE_PULSE: "scalePulseScale",
   SCALE_RATE: "scaleVelocityScale",
+  SCALE_RECOVERY: "scaleRecoveryDurationScale",
 };
 
 const physicalParameterForControl = (
@@ -273,6 +283,7 @@ const PHYSICAL_SCALE_LIMITS: Readonly<Record<string, readonly [number, number]>>
   chromaticSeparationScale: [0.25, 4],
   scalePulseScale: [0.25, 4],
   scaleVelocityScale: [0.25, 4],
+  scaleRecoveryDurationScale: [0.25, 4],
   numberOfEchoes: [1, 12],
   echoSpacingFrames: [0.25, 8],
   startingIntensity: [0.1, 1],

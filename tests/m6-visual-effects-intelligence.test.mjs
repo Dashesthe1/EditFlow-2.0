@@ -4301,6 +4301,39 @@ test("M6.9 retained benchmark requires content-addressed case, transfer, A/B, an
   const sourceResult = evaluateRetainedProfessionalBenchmarkV1(cases, retainedEvidence, reusedSource);
   assert.equal(sourceResult.passed, false);
   assert.ok(sourceResult.failures.some((item) => /TRANSFER_SOURCE_NOT_MATERIALLY_DIFFERENT/.test(item)));
+
+  const groupedVariantEvidence = retainedEvidence.map((proof, index) => index === 0
+    ? {
+        ...proof,
+        maturityProof: { ...proof.maturityProof, transferVariantCount: 2 },
+      }
+    : proof);
+  const groupedVariantArtifacts = artifacts.map((artifact) =>
+    artifact.kind === "TRANSFER_PROOF" && artifact.caseId === cases[0].caseId
+      ? {
+          ...artifact,
+          transferRenderContentKeys: [artifact.renderContentKey, hex(12000)],
+        }
+      : artifact);
+  const groupedVariantResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, groupedVariantEvidence, groupedVariantArtifacts,
+  );
+  assert.equal(groupedVariantResult.passed, true, groupedVariantResult.failures.join(", "));
+
+  const duplicateGroupedVariantArtifacts = groupedVariantArtifacts.map((artifact) =>
+    artifact.kind === "TRANSFER_PROOF" && artifact.caseId === cases[0].caseId
+      ? {
+          ...artifact,
+          transferRenderContentKeys: [artifact.renderContentKey, artifact.renderContentKey],
+        }
+      : artifact);
+  const duplicateGroupedVariantResult = evaluateRetainedProfessionalBenchmarkV1(
+    cases, groupedVariantEvidence, duplicateGroupedVariantArtifacts,
+  );
+  assert.equal(duplicateGroupedVariantResult.passed, false);
+  assert.ok(duplicateGroupedVariantResult.failures.some(
+    (item) => /INSUFFICIENT_TRANSFER_ARTIFACTS/.test(item),
+  ));
 });
 
 test("M6.10 keeps proven low-risk work on fast path and routes difficult references through fidelity", async () => {
@@ -5490,9 +5523,91 @@ test("M6.4/M6.9 Zoom Impact keeps scale magnitude, rate, and recovery on one nat
   assert.ok(scaleExpression);
   const scaleExpressionSource = String(scaleExpression.input.payload.expression);
   assert.match(scaleExpressionSource, /requestedVelocity=1\.7/);
+  assert.match(scaleExpressionSource, /requestedRecoverySeconds=/);
+  assert.match(scaleExpressionSource, /totalSeconds=\(2\*amplitude\)\/velocity/);
   assert.match(scaleExpressionSource, /preSeconds=Math\.max\(thisComp\.frameDuration/);
+  assert.doesNotMatch(scaleExpressionSource, /velocity=Math\.min\(requestedVelocity,\(2\*amplitude\)\//);
   assert.match(scaleExpressionSource, /else\{pulse=amplitude;\}/);
   assert.doesNotMatch(scaleExpressionSource, /linear\(f,0,post,amplitude,0\)/);
+});
+
+test("M6.4/M6.9 Zoom Impact transfers measured push-pull trajectory semantics into native AE", () => {
+  const reference = evidence({
+    frameCount: 7,
+    frameIntervalMs: 100,
+    scaleRange: 0.13,
+    scaleVelocityPeakPerSecond: 0.5,
+    scaleVelocityRecoveryRatio: 0.05,
+    scaleVelocityRecoveryMs: 300,
+  });
+  const scales = [1, 1.05, 1.02, 0.92, 0.94, 0.96, 0.975];
+  reference.frames = reference.frames.map((frame, index) => ({
+    ...frame,
+    timeMs: index * 100,
+    scale: scales[index],
+  }));
+  reference.range = { startMs: 0, endMs: 600 };
+
+  const anatomy = deriveEffectAnatomyV1(reference, "ZOOM_IMPACT");
+  assert.equal(anatomy.observedMetrics.scaleProfileMaxFactor, 1.05);
+  assert.equal(anatomy.observedMetrics.scaleProfileMaxPhase, 1 / 6);
+  assert.equal(anatomy.observedMetrics.scaleProfileMinFactor, 0.92);
+  assert.equal(anatomy.observedMetrics.scaleProfileMinPhase, 0.5);
+  assert.equal(anatomy.observedMetrics.scaleProfileEndFactor, 0.975);
+  assert.equal(anatomy.observedMetrics.effectEventPhase, 0.5);
+
+  const graph = buildConstructionGraphV1(anatomy);
+  const transform = graph.nodes.find((node) => node.kind === "TRANSFORM_MOTION");
+  assert.ok(transform);
+  assert.equal(transform.parameters.scaleProfileImpactPhase, 0.5);
+  assert.equal(transform.parameters.scaleProfileMaxFactor, 1.05);
+  assert.equal(transform.parameters.scaleProfileMinFactor, 0.92);
+
+  const compilation = compileConstructionGraphV1(graph, ALL_CAPABILITIES);
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp", name: "Zoom trajectory", width: 640, height: 360,
+      durationMs: 1000, frameRate: 30,
+      layers: [{
+        layerId: "hero", name: "Hero", kind: "PRECOMP", sourceRef: "source",
+        inMs: 0, outMs: 1000, properties: [], effects: [], masks: [],
+      }],
+    }],
+  };
+  const native = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-zoom-trajectory-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+    },
+  );
+  assert.equal(native.compiled, true);
+  assert.ok(native.plan);
+  const scaleExpression = native.plan.operations.find((operation) =>
+    operation.input.command === "property.set_expression"
+    && JSON.stringify(operation.input.payload.propertyPath).includes("ADBE Scale"));
+  assert.ok(scaleExpression);
+  const source = String(scaleExpression.input.payload.expression);
+  assert.match(source, /scaleTrajectoryProfile=1/);
+  assert.match(source, /scaleTrajectoryNeutralRecovery=1/);
+  assert.match(source, /factor=linear\(t,/);
+  assert.match(source, /var s=u\*u\*u\*\(u\*\(u\*6-15\)\+10\)/);
+  assert.doesNotMatch(source, /requestedVelocity=/);
 });
 
 test("M6.6 Zoom gate does not misclassify a valid near-zero settling metric as missing behavior", () => {
@@ -5592,6 +5707,88 @@ test("M6.7 Zoom scale-rate deficits map to a bounded native scale-velocity actua
     .match(/requestedVelocity=([0-9.]+)/)?.[1]);
   assert.ok(Number.isFinite(requested));
   assert.ok(requested < 1.7);
+});
+
+test("M6.7 Zoom recovery-ratio deficits actuate bounded recovery duration without rewriting reference evidence", () => {
+  const reference = evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 1.7,
+    scaleVelocityRecoveryRatio: 0.05,
+    scaleVelocityRecoveryMs: 100,
+  });
+  const render = evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 1.7,
+    scaleVelocityRecoveryRatio: 0.30,
+    scaleVelocityRecoveryMs: 300,
+  });
+  render.sourceKind = "RENDER";
+  const anatomy = deriveEffectAnatomyV1(reference, "ZOOM_IMPACT");
+  const graph = buildConstructionGraphV1(anatomy);
+  const comparison = compareSemanticVisualFidelityV1({ reference, render, dna: anatomy.dna });
+  assert.deepEqual(
+    comparison.metrics.filter((metric) => !metric.passed).map((metric) => metric.invariantId),
+    ["zoom.recovery"],
+  );
+
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  assert.deepEqual(plan.unresolvedInvariantIds, []);
+  assert.equal(plan.instructions.length, 1);
+  assert.equal(plan.instructions[0].control, "SCALE_RECOVERY");
+  assert.equal(plan.instructions[0].direction, "DECREASE");
+  assert.ok(plan.instructions[0].multiplier < 1);
+
+  const application = applyConstructionActuationPlanV1(graph, plan);
+  assert.deepEqual(application.unsupportedInstructionIds, []);
+  assert.equal(application.appliedInstructionIds.length, 1);
+  const transform = application.graph.nodes.find((node) => node.kind === "TRANSFORM_MOTION");
+  assert.ok(transform);
+  assert.equal(transform.parameters.scaleVelocityRecoveryMs, 100);
+  assert.equal(transform.parameters.scaleRecoveryDurationScale, 0.25);
+
+  const compilation = compileConstructionGraphV1(application.graph, ALL_CAPABILITIES);
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp", name: "Zoom recovery correction", width: 640, height: 360,
+      durationMs: 1000, frameRate: 30,
+      layers: [{
+        layerId: "hero", name: "Hero", kind: "PRECOMP", sourceRef: "source",
+        inMs: 0, outMs: 1000, properties: [], effects: [], masks: [],
+      }],
+    }],
+  };
+  const native = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-zoom-recovery-correction-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+    },
+  );
+  assert.equal(native.compiled, true);
+  assert.ok(native.plan);
+  const scaleExpression = native.plan.operations.find((operation) =>
+    operation.input.command === "property.set_expression"
+    && JSON.stringify(operation.input.payload.propertyPath).includes("ADBE Scale"));
+  assert.ok(scaleExpression);
+  const requestedRecoverySeconds = Number(String(scaleExpression.input.payload.expression)
+    .match(/requestedRecoverySeconds=([0-9.]+)/)?.[1]);
+  assert.ok(Number.isFinite(requestedRecoverySeconds));
+  assert.ok(requestedRecoverySeconds < 0.1);
 });
 
 test("M6.9 Zoom admission rejects scale-rate drift that never settles", () => {

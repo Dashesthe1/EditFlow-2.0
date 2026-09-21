@@ -11,8 +11,8 @@ test("M6.9 retained readiness binds canonical shutter Level 6 to independent pro
   assert.equal(manifest.status, "IN_PROGRESS");
   assert.equal(manifest.canonicalCaseCount, 24);
   assert.equal(manifest.result.passed, false);
-  assert.equal(manifest.result.passedCases, 2);
-  assert.equal(manifest.result.failures.length, 22);
+  assert.equal(manifest.result.passedCases, 3);
+  assert.equal(manifest.result.failures.length, 21);
   const shutter = manifest.retainedCases.find((item) => item.caseId === "m6:shutter_fragmentation:canonical");
   assert.equal(shutter?.achievedLevel, "PROFESSIONAL_FIDELITY_VERIFIED");
   assert.equal(shutter?.maturityProof.professionalCasePassCount, 2);
@@ -61,11 +61,11 @@ test("M6.9 source admission retains rejected tutorial candidates without promoti
     manifest.retainedCases.some((item) => item.caseId === "m6:velocity_transition:canonical"),
     false,
   );
-  assert.equal(manifest.casesWithRetainedEvidence, 2);
-  assert.equal(manifest.result.passedCases, 2);
+  assert.equal(manifest.casesWithRetainedEvidence, 3);
+  assert.equal(manifest.result.passedCases, 3);
 });
 
-test("M6.9 Zoom source admission rejects scale drift without promoting benchmark evidence", async () => {
+test("M6.9 Zoom source admission rejects scale drift without displacing admitted benchmark evidence", async () => {
   const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
   const diagnostic = manifest.sourceAdmissionDiagnostics.find((item) =>
     item.caseId === "m6:zoom_impact:canonical"
@@ -93,12 +93,12 @@ test("M6.9 Zoom source admission rejects scale drift without promoting benchmark
 
   assert.equal(
     manifest.retainedCases.some((item) => item.caseId === "m6:zoom_impact:canonical"),
-    false,
+    true,
   );
-  assert.equal(manifest.casesWithRetainedEvidence, 2);
+  assert.equal(manifest.casesWithRetainedEvidence, 3);
 });
 
-test("M6.9 Zoom retains a canonical Reference-Faithful proof without transfer overclaim", async () => {
+test("M6.9 Zoom promotes retained subject/aspect transfer to Level 6 without completing M6.9", async () => {
   const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
   const admission = manifest.sourceAdmissionDiagnostics.find((item) =>
     item.caseId === "m6:zoom_impact:canonical" && item.result === "ADMITTED"
@@ -113,9 +113,9 @@ test("M6.9 Zoom retains a canonical Reference-Faithful proof without transfer ov
   const diagnostic = manifest.referenceFidelityDiagnostics.find((item) =>
     item.caseId === "m6:zoom_impact:canonical"
   );
-  assert.equal(diagnostic?.authority, "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED");
-  assert.equal(diagnostic?.maturityCeiling, "REFERENCE_FAITHFUL");
-  assert.equal(diagnostic?.benchmarkPromoted, false);
+  assert.equal(diagnostic?.authority, "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED");
+  assert.equal(diagnostic?.maturityCeiling, "PROFESSIONAL_FIDELITY_VERIFIED");
+  assert.equal(diagnostic?.benchmarkPromoted, true);
   assert.deepEqual(diagnostic?.proofWindow, { durationMs: 1600, eventMs: 1150 });
   assert.equal(diagnostic?.sourceAdmissionSha256, await sha256(diagnostic.sourceAdmissionRef));
   assert.equal(diagnostic?.referenceEvidenceSha256, await sha256(diagnostic.referenceEvidenceRef));
@@ -123,6 +123,9 @@ test("M6.9 Zoom retains a canonical Reference-Faithful proof without transfer ov
   assert.equal(diagnostic?.canonicalFidelitySha256, await sha256(diagnostic.canonicalFidelityRef));
   assert.equal(diagnostic?.canonicalDegradedSha256, await sha256(diagnostic.canonicalDegradedRef));
   assert.equal(diagnostic?.directAbSha256, await sha256(diagnostic.directAbRef));
+  assert.equal(diagnostic?.transferProofSha256, await sha256(diagnostic.transferProofRef));
+  assert.equal(diagnostic?.professionalCaseSha256, await sha256(diagnostic.professionalCaseRef));
+  assert.equal(diagnostic?.transferDirectAbSha256, await sha256(diagnostic.transferDirectAbRef));
   assert.equal(diagnostic?.degradedSeed.gateCertified, false);
   assert.equal(diagnostic?.degradedSeed.definingCoverage, 0);
   assert.equal(diagnostic?.finalRealAe.weightedFidelity, 1);
@@ -139,17 +142,19 @@ test("M6.9 Zoom retains a canonical Reference-Faithful proof without transfer ov
   assert.equal(diagnostic?.correction.causalBaselineCleanupRestored, true);
   assert.deepEqual(diagnostic?.correction.residualInvariantIds, []);
   assert.deepEqual(diagnostic?.transferAxesRequired, ["subject", "aspect-ratio"]);
-  assert.deepEqual(diagnostic?.missingForBenchmarkPromotion, [
-    "TRANSFER_SUBJECT",
-    "TRANSFER_ASPECT_RATIO",
-    "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
-  ]);
-  assert.equal(
-    manifest.retainedCases.some((item) => item.caseId === "m6:zoom_impact:canonical"),
-    false,
+  assert.deepEqual(diagnostic?.missingForBenchmarkPromotion, []);
+
+  const retained = manifest.retainedCases.find((item) =>
+    item.caseId === "m6:zoom_impact:canonical"
   );
-  assert.equal(manifest.casesWithRetainedEvidence, 2);
-  assert.equal(manifest.result.passedCases, 2);
+  assert.equal(retained?.achievedLevel, "PROFESSIONAL_FIDELITY_VERIFIED");
+  assert.equal(retained?.maturityProof.transferVariantCount, 2);
+  assert.equal(retained?.maturityProof.professionalCasePassCount, 2);
+  assert.deepEqual(retained?.maturityProof.robustnessAxesPassed, ["subject", "aspect-ratio"]);
+  assert.equal(retained?.transferPassed, true);
+  assert.equal(retained?.degradedCaseRejected, true);
+  assert.equal(manifest.casesWithRetainedEvidence, 3);
+  assert.equal(manifest.result.passedCases, 3);
 });
 
 test("M6.9 Displacement Warp promotes retained duration/intensity transfer to Level 6 without completing M6.9", async () => {
@@ -216,6 +221,6 @@ test("M6.9 Displacement Warp promotes retained duration/intensity transfer to Le
   assert.equal(retained?.achievedLevel, "PROFESSIONAL_FIDELITY_VERIFIED");
   assert.deepEqual(retained?.maturityProof.robustnessAxesPassed, ["duration", "intensity"]);
   assert.equal(retained?.maturityProof.professionalCasePassCount, 2);
-  assert.equal(manifest.casesWithRetainedEvidence, 2);
-  assert.equal(manifest.result.passedCases, 2);
+  assert.equal(manifest.casesWithRetainedEvidence, 3);
+  assert.equal(manifest.result.passedCases, 3);
 });

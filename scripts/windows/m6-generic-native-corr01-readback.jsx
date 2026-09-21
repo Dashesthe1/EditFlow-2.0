@@ -6,7 +6,7 @@
   var scriptFile=new File($.fileName),root=scriptFile.parent.parent.parent;
   var f=new File(root.fsName+"/.tmp/m6-generic-native-corr01-readback.txt");
   if(!f.open("w"))throw new Error("M6_GENERIC_READBACK_OPEN_FAILED");
-  f.writeln("COMP\t"+c.name+"\t"+c.numLayers);
+  f.writeln("COMP\t"+c.name+"\t"+c.numLayers+"\t"+c.width+"\t"+c.height+"\t"+c.frameRate);
   for(var j=1;j<=c.numLayers;j++){var l=c.layer(j),t=l.property("ADBE Transform Group");
     var ppos=t.property("ADBE Position"),op=t.property("ADBE Opacity"),ap=t.property("ADBE Anchor Point");
     var tr=l.property("ADBE Time Remapping"),trExpr=(tr&&tr.expressionEnabled)?tr.expression:"";

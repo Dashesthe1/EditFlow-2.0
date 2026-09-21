@@ -195,12 +195,15 @@ export const classifyEffectFamilyV1 = (evidence: DenseEffectEvidenceV1): EffectF
   if (s.subjectSeparationPeak >= 0.3 && mask >= 0.06) return "SUBJECT_ISOLATED_TRANSITION";
   if (s.displacementPeak >= 0.18 && s.blurPeak >= 0.42
     && s.recoveryFrames <= 7) return "WHIP_SMEAR";
-  if (s.distortionPeak >= 0.35) return "DISPLACEMENT_WARP";
   if (chroma >= 0.18 && s.temporalPersistence <= 0.55) return "CHROMATIC_GLITCH";
   const scaleDynamics = measureScaleDynamicsV1(evidence.frames);
+  // Complete scale magnitude + rate + recovery evidence is more specific than
+  // the single distortion proxy. Optical/lens blur can raise that proxy even
+  // when the visible event is a clean zoom, so test Zoom before warp.
   if (s.scaleRange >= 0.08 && scaleDynamics.scaleVelocityPeakPerSecond >= 0.25
     && scaleDynamics.scaleVelocityPeakPerSecond <= 8
     && scaleDynamics.scaleVelocityRecoveryRatio <= 0.40) return "ZOOM_IMPACT";
+  if (s.distortionPeak >= 0.35) return "DISPLACEMENT_WARP";
   if (mask >= 0.12) return "MASK_REVEAL";
   if (s.motionEnergyPeak >= 0.28 && s.accelerationPeak >= 0.05
     && s.recoveryFrames <= 8) return "VELOCITY_TRANSITION";
@@ -296,6 +299,39 @@ export const deriveEffectAnatomyV1 = (
   const analysisDurationMs = evidence.range.endMs - evidence.range.startMs;
   if (Number.isFinite(analysisDurationMs) && analysisDurationMs > 0) {
     observedMetrics.effectAnalysisDurationMs = analysisDurationMs;
+  }
+  if (family === "ZOOM_IMPACT" && evidence.frames.length >= 3) {
+    const scales = evidence.frames.map((frame) => frame.scale);
+    const startScale = scales[0] ?? 1;
+    const minScale = Math.min(...scales);
+    const maxScale = Math.max(...scales);
+    const measuredRange = maxScale - minScale;
+    const expectedRange = evidence.summary.scaleRange;
+    const minIndex = scales.indexOf(minScale);
+    const maxIndex = scales.indexOf(maxScale);
+    const phaseDenominator = Math.max(1, scales.length - 1);
+    if (Number.isFinite(startScale) && Math.abs(startScale) > 1e-6
+      && Number.isFinite(measuredRange)
+      && measuredRange >= Math.max(0.01, expectedRange * 0.5)
+      && minIndex >= 0 && maxIndex >= 0 && minIndex !== maxIndex) {
+      const minFactor = minScale / startScale;
+      const maxFactor = maxScale / startScale;
+      const endFactor = (scales.at(-1) ?? startScale) / startScale;
+      const minPhase = minIndex / phaseDenominator;
+      const maxPhase = maxIndex / phaseDenominator;
+      const impactPhase = Math.abs(minFactor - 1) >= Math.abs(maxFactor - 1)
+        ? minPhase : maxPhase;
+      // Store normalized visual trajectory semantics, not literal AE Scale values.
+      // These ratios and phases transfer across canvas size while preserving the
+      // reference's push/pull/recovery behavior.
+      observedMetrics.scaleProfileMinFactor = minFactor;
+      observedMetrics.scaleProfileMinPhase = minPhase;
+      observedMetrics.scaleProfileMaxFactor = maxFactor;
+      observedMetrics.scaleProfileMaxPhase = maxPhase;
+      observedMetrics.scaleProfileEndFactor = endFactor;
+      observedMetrics.scaleProfileImpactPhase = impactPhase;
+      observedMetrics.effectEventPhase = impactPhase;
+    }
   }
   if (Number.isFinite(evidence.summary.frameIntervalMs) && evidence.summary.frameIntervalMs > 0) {
     observedMetrics.referenceFrameIntervalMs = evidence.summary.frameIntervalMs;

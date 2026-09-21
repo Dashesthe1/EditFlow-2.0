@@ -134,6 +134,8 @@ export interface BenchmarkArtifactBindingV1 {
   readonly renderContentKey?: string;
   readonly baselineSourceContentKey?: string;
   readonly transferSourceContentKey?: string;
+  /** Distinct rendered variants retained inside one TRANSFER_PROOF artifact. */
+  readonly transferRenderContentKeys?: readonly string[];
   readonly transferAxes?: readonly string[];
   /** Required for PROFESSIONAL_CASE_PROOF so Level 6 cannot be inferred from identity binding alone. */
   readonly certified?: boolean;
@@ -382,10 +384,8 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
     }
 
     const expectedTransferVariants = Math.max(1, proof.maturityProof.transferVariantCount);
-    if (proof.transferEvidenceRefs.length < expectedTransferVariants) {
-      failures.push(`${item.caseId}:INSUFFICIENT_TRANSFER_ARTIFACTS`);
-    }
     const coveredTransferAxes = new Set<string>();
+    const coveredTransferRenderKeys = new Set<string>();
     for (const transferRef of proof.transferEvidenceRefs) {
       const transfer = requireArtifact(transferRef, "TRANSFER_PROOF", "TRANSFER");
       if (transfer === null) continue;
@@ -406,8 +406,17 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
         }
       }
 
-      if (!isSha256V1(transfer.renderContentKey)) {
+      const transferRenderKeys = transfer.transferRenderContentKeys
+        ?? (transfer.renderContentKey === undefined ? [] : [transfer.renderContentKey]);
+      if (transferRenderKeys.length === 0) {
         failures.push(`${item.caseId}:TRANSFER_RENDER_CONTENT_KEY_INVALID`);
+      }
+      for (const transferRenderKey of transferRenderKeys) {
+        if (!isSha256V1(transferRenderKey)) {
+          failures.push(`${item.caseId}:TRANSFER_RENDER_CONTENT_KEY_INVALID`);
+        } else {
+          coveredTransferRenderKeys.add(transferRenderKey);
+        }
       }
       if (!isSha256V1(transfer.baselineSourceContentKey)
         || !isSha256V1(transfer.transferSourceContentKey)) {
@@ -422,6 +431,9 @@ export const evaluateRetainedProfessionalBenchmarkV1 = (
           if (item.transferAxes.includes(axis)) coveredTransferAxes.add(axis);
         }
       }
+    }
+    if (coveredTransferRenderKeys.size < expectedTransferVariants) {
+      failures.push(`${item.caseId}:INSUFFICIENT_TRANSFER_ARTIFACTS`);
     }
     for (const axis of item.transferAxes) {
       if (!coveredTransferAxes.has(axis)) {
