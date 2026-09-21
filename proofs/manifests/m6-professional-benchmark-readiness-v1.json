@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-20T20:58:07.167Z",
+  "generatedAt": "2026-09-21T00:50:14.542Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -176,7 +176,7 @@
   ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
-    "evaluatorSha256": "49dc397bf704607333ee27ac5197bb90f90deb645049f8a6b9324634ce6378d6",
+    "evaluatorSha256": "ab00f8d77676e22798b406b316e4cb2daa05ed3d924889b7ec69aad707918f85",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
     "generatorSha256": "01dd8831f9e7b7cb0683f169f37ef005ea00f0f13040ae3ce692c5ebdb8a74af"
   },
