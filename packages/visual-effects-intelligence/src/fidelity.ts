@@ -149,18 +149,26 @@ const metricValuesForComparison = (
       render,
       "blurStrength",
       preferredRenderPhase,
+      baseline,
     );
-    return invariant.metric === "blurHalfPeakAttackMs"
-      ? {
-          referenceValue: referenceProfile.attackMs,
-          renderValue: renderProfile.attackMs,
-          comparisonBasis: "ABSOLUTE",
-        }
-      : {
-          referenceValue: referenceProfile.recoveryMs,
-          renderValue: renderProfile.recoveryMs,
-          comparisonBasis: "ABSOLUTE",
-        };
+    const rawRenderProfile = baseline === undefined
+      ? null
+      : measureHalfPeakTemporalProfileV1(render, "blurStrength", preferredRenderPhase);
+    const baselineProfile = baseline === undefined
+      ? null
+      : measureHalfPeakTemporalProfileV1(baseline, "blurStrength", preferredRenderPhase);
+    const attack = invariant.metric === "blurHalfPeakAttackMs";
+    return {
+      referenceValue: attack ? referenceProfile.attackMs : referenceProfile.recoveryMs,
+      renderValue: attack ? renderProfile.attackMs : renderProfile.recoveryMs,
+      ...(baselineProfile === null || rawRenderProfile === null
+        ? {}
+        : {
+            baselineValue: attack ? baselineProfile.attackMs : baselineProfile.recoveryMs,
+            rawRenderValue: attack ? rawRenderProfile.attackMs : rawRenderProfile.recoveryMs,
+          }),
+      comparisonBasis: baseline === undefined ? "ABSOLUTE" : "BASELINE_ALIGNED_DELTA",
+    };
   }
   const referenceValue = metricValue(reference, invariant.invariantId, invariant.metric);
   let renderValue = metricValue(render, invariant.invariantId, invariant.metric);

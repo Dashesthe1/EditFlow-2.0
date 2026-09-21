@@ -1232,18 +1232,11 @@ const compoundEvolvingWarpGraph = (
   };
 };
 
-const opticalProfileGraph = (
-  base: ConstructionGraphV1,
+const applyOpticalProfileToFoundation = (
+  foundation: ConstructionGraphV1,
+  synthesisStrategy: UnknownEffectSynthesisStrategyV1,
+  extendsSynthesisStrategy?: UnknownEffectSynthesisStrategyV1,
 ): ConstructionGraphV1 | null => {
-  // Optical timing is a structural intervention, not a scalar tweak. Preserve
-  // the richest already-proven compound construction when it is available, then
-  // opt the existing Directional Blur node into a direct event-envelope profile.
-  // This prevents BLUR_ATTACK/RECOVERY search from silently changing layer
-  // topology while still giving synthesis an explicit mechanism for the temporal
-  // blur shape seen in professional references.
-  const foundation = compoundEvolvingWarpGraph(base)
-    ?? compoundNativeHybridGraph(base)
-    ?? base;
   const optical = foundation.nodes.find((node) =>
     node.kind === "OPTICAL_TREATMENT"
     && !node.optional
@@ -1262,7 +1255,8 @@ const opticalProfileGraph = (
     capabilityCandidates: ["ae.effect.directional-blur"],
     parameters: {
       ...optical.parameters,
-      synthesisStrategy: "OPTICAL_PROFILE_HYBRID",
+      synthesisStrategy,
+      ...(extendsSynthesisStrategy === undefined ? {} : { extendsSynthesisStrategy }),
       effectSchemaRef: "ae.effect-schema.m6.directional-blur.v1",
       eventLocalEffect: true,
       eventDynamicDirectionalBlurProfile: true,
@@ -1280,6 +1274,21 @@ const opticalProfileGraph = (
     nodes: foundation.nodes.map((node) =>
       node.nodeId === optical.nodeId ? profiled : node),
   };
+};
+
+const opticalProfileGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  // Optical timing is a structural intervention, not a scalar tweak. Preserve
+  // the richest already-proven compound construction when it is available, then
+  // opt the existing Directional Blur node into a direct event-envelope profile.
+  // This prevents BLUR_ATTACK/RECOVERY search from silently changing layer
+  // topology while still giving synthesis an explicit mechanism for the temporal
+  // blur shape seen in professional references.
+  const foundation = compoundEvolvingWarpGraph(base)
+    ?? compoundNativeHybridGraph(base)
+    ?? base;
+  return applyOpticalProfileToFoundation(foundation, "OPTICAL_PROFILE_HYBRID");
 };
 
 const compoundTemporalWarpGraph = (
@@ -1362,6 +1371,22 @@ const compoundCompositeWarpGraph = (
   };
 };
 
+const compoundCompositeOpticalGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const composite = compoundCompositeWarpGraph(base);
+  if (composite === null) return null;
+  // Preserve the retained grouped-warp construction and change only the optical
+  // realization. The live correction proof can therefore test whether direct
+  // Blur Length envelope control resolves blur recovery without discarding the
+  // composite topology that already improved fragmentation/separation.
+  return applyOpticalProfileToFoundation(
+    composite,
+    "COMPOUND_COMPOSITE_OPTICAL_HYBRID",
+    "OPTICAL_PROFILE_HYBRID",
+  );
+};
+
 const compoundDualWarpGraph = (
   base: ConstructionGraphV1,
 ): ConstructionGraphV1 | null => {
@@ -1432,6 +1457,7 @@ const strategyGraph = (
   if (strategy === "COMPOUND_TEMPORAL_WARP_HYBRID") return compoundTemporalWarpGraph(base);
   if (strategy === "OPTICAL_PROFILE_HYBRID") return opticalProfileGraph(base);
   if (strategy === "COMPOUND_COMPOSITE_WARP_HYBRID") return compoundCompositeWarpGraph(base);
+  if (strategy === "COMPOUND_COMPOSITE_OPTICAL_HYBRID") return compoundCompositeOpticalGraph(base);
   if (strategy === "COMPOUND_DUAL_WARP_HYBRID") return compoundDualWarpGraph(base);
   if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
   if (strategy === "TIME_DISPLACEMENT_HYBRID") {
@@ -1505,6 +1531,7 @@ const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
   COMPOUND_EVOLVING_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
   OPTICAL_PROFILE_HYBRID: "ae.effect-schema.m6.directional-blur.v1",
   COMPOUND_COMPOSITE_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
+  COMPOUND_COMPOSITE_OPTICAL_HYBRID: "ae.effect-schema.m6.directional-blur.v1",
   COMPOUND_DUAL_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
 });
 
@@ -1518,6 +1545,7 @@ const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
       && strategy !== "COMPOUND_EVOLVING_WARP_HYBRID"
       && strategy !== "OPTICAL_PROFILE_HYBRID"
       && strategy !== "COMPOUND_COMPOSITE_WARP_HYBRID"
+      && strategy !== "COMPOUND_COMPOSITE_OPTICAL_HYBRID"
       && strategy !== "COMPOUND_DUAL_WARP_HYBRID") return [];
     const capability = node.capabilityCandidates[0] ?? String(strategy);
     const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
@@ -1576,6 +1604,7 @@ export const synthesizeUnknownEffectV1 = (input: {
     { strategy: "COMPOUND_TEMPORAL_WARP_HYBRID", id: "adaptive:compound-temporal-warp-hybrid", complexityPenalty: 2 },
     { strategy: "COMPOUND_DUAL_WARP_HYBRID", id: "adaptive:compound-dual-warp-hybrid", complexityPenalty: 1.75 },
     { strategy: "COMPOUND_COMPOSITE_WARP_HYBRID", id: "adaptive:compound-composite-warp-hybrid", complexityPenalty: 2 },
+    { strategy: "COMPOUND_COMPOSITE_OPTICAL_HYBRID", id: "adaptive:compound-composite-optical-hybrid", complexityPenalty: 2.25 },
     { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
     { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },
     { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },

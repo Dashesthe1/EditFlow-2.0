@@ -1359,6 +1359,70 @@ test("M6.5 baseline-aware velocity fidelity measures aligned causal motion inste
   }), /time-aligned target and baseline frames/);
 });
 
+test("M6.5 baseline-aware blur timing isolates the causal optical envelope from source sharpness", () => {
+  const referenceBase = evidence({
+    frameCount: 9,
+    frameIntervalMs: 20,
+    motionEnergyPeak: 0.01,
+    displacementPeak: 0.01,
+    blurPeak: 1,
+    blurPeakPhase: 0.5,
+    opticalPeakPhase: 0.5,
+    distortionPeak: 0.02,
+    exposurePeak: 0.05,
+    accelerationPeak: 0.001,
+    recoveryFrames: 2,
+  });
+  const opticalEnvelope = [0, 0.2, 0.5, 0.8, 1, 0.8, 0.5, 0.2, 0];
+  const reference = {
+    ...referenceBase,
+    frames: referenceBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: opticalEnvelope[index] ?? 0,
+    })),
+  };
+  const dna = decomposeUnknownEffectV1(reference).dna;
+  assert.ok(dna.definingInvariants.some((item) => item.metric === "blurHalfPeakRecoveryMs"));
+
+  const sourceBlur = [0.45, 0.4, 0.3, 0.15, 0, 0.15, 0.3, 0.4, 0.45];
+  const baselineSeed = evidence({ ...reference.summary });
+  const baseline = {
+    ...baselineSeed,
+    sourceKind: "RENDER",
+    analyzerFingerprint: reference.analyzerFingerprint,
+    settingsFingerprint: reference.settingsFingerprint,
+    frames: baselineSeed.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: sourceBlur[index] ?? 0,
+    })),
+  };
+  const renderSeed = evidence({ ...reference.summary });
+  const render = {
+    ...renderSeed,
+    sourceKind: "RENDER",
+    analyzerFingerprint: reference.analyzerFingerprint,
+    settingsFingerprint: reference.settingsFingerprint,
+    frames: renderSeed.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: Math.min(1, (sourceBlur[index] ?? 0) + (opticalEnvelope[index] ?? 0)),
+    })),
+  };
+
+  const absolute = compareSemanticVisualFidelityV1({ reference, render, dna });
+  assert.equal(
+    absolute.metrics.find((item) => item.metric === "blurHalfPeakRecoveryMs")?.passed,
+    false,
+    "raw source sharpness should demonstrate the optical timing confound",
+  );
+
+  const aligned = compareSemanticVisualFidelityV1({ reference, render, baseline, dna });
+  for (const metricName of ["blurHalfPeakAttackMs", "blurHalfPeakRecoveryMs"]) {
+    const metric = aligned.metrics.find((item) => item.metric === metricName);
+    assert.equal(metric?.comparisonBasis, "BASELINE_ALIGNED_DELTA");
+    assert.equal(metric?.passed, true);
+  }
+});
+
 test("M6.5 shutter fidelity rejects materially over-driven within-frame separation", () => {
   const reference = shutterReference();
   const overSeparated = evidence({
@@ -1594,8 +1658,8 @@ test("M6.3/M6.5 preserves peak-aligned blur recovery across semantic windows", (
   };
   const profile = measureHalfPeakTemporalProfileV1(reference, "blurStrength");
   assert.equal(profile.peakIndex, 2);
-  assert.equal(profile.attackMs, 20);
-  assert.equal(profile.recoveryMs, 60);
+  assert.ok(Math.abs(profile.attackMs - 24) < 1e-9);
+  assert.ok(Math.abs(profile.recoveryMs - 61.25) < 1e-9);
 
   const anatomy = decomposeUnknownEffectV1(reference);
   assert.ok(anatomy.dna.definingInvariants.some((item) =>
@@ -1604,7 +1668,7 @@ test("M6.3/M6.5 preserves peak-aligned blur recovery across semantic windows", (
     item.invariantId === "unknown.blur-recovery"));
   const graph = buildConstructionGraphV1(anatomy);
   const optical = graph.nodes.find((node) => node.kind === "OPTICAL_TREATMENT");
-  assert.equal(optical?.parameters.blurHalfPeakRecoveryMs, 60);
+  assert.ok(Math.abs(Number(optical?.parameters.blurHalfPeakRecoveryMs) - 61.25) < 1e-9);
 
   const degradedBase = evidence({
     frameCount: 12,
@@ -1633,6 +1697,30 @@ test("M6.3/M6.5 preserves peak-aligned blur recovery across semantic windows", (
   assert.ok(actuation.instructions.some((item) =>
     item.invariantId === "unknown.blur-recovery"
     && item.control === "BLUR_RECOVERY_DURATION"));
+});
+
+test("M6.1/M6.5 half-peak timing resolves sub-frame rendered changes instead of whole-frame quantization", () => {
+  const base = evidence({
+    frameCount: 4,
+    frameIntervalMs: 100 / 3,
+    blurPeak: 1,
+    blurPeakPhase: 1 / 3,
+    opticalPeakPhase: 1 / 3,
+  });
+  const profiled = (tail) => ({
+    ...base,
+    frames: base.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: [0.1, 1, 0.52, tail][index] ?? 0,
+    })),
+  });
+  const longer = measureHalfPeakTemporalProfileV1(profiled(0.49), "blurStrength");
+  const shorter = measureHalfPeakTemporalProfileV1(profiled(0.48), "blurStrength");
+  assert.equal(longer.lastHalfPeakIndex, shorter.lastHalfPeakIndex);
+  assert.ok(longer.recoveryMs > shorter.recoveryMs,
+    "different rendered tail energy must produce different semantic recovery timing even inside one frame interval");
+  assert.ok(longer.recoveryMs - shorter.recoveryMs < (100 / 3),
+    "the recovered timing difference should retain sub-frame precision");
 });
 
 test("M6.8 rejects uncorroborated global temporal-state texture as unknown effect identity", () => {
@@ -3779,6 +3867,70 @@ test("M6.8 optical-profile synthesis targets stalled blur timing while preservin
   assert.equal(escalation?.strategy, "OPTICAL_PROFILE_HYBRID");
 });
 
+test("M6.8 composite optical escalation preserves retained composite warp for blur recovery", () => {
+  const referenceBase = evidence({
+    frameCount: 14,
+    frameIntervalMs: 20,
+    temporalStateCountPeak: 5,
+    temporalPersistence: 0.66,
+    overlapDensityPeak: 0.9,
+    blurPeak: 0.5,
+    blurPeakPhase: 7 / 13,
+    opticalPeakPhase: 7 / 13,
+    distortionPeak: 0.42,
+    accelerationPeak: 0.08,
+    recoveryFrames: 4,
+  });
+  const blurProfile = [0.02, 0.05, 0.1, 0.18, 0.28, 0.38, 0.46, 0.5, 0.48, 0.4, 0.32, 0.24, 0.1, 0.03];
+  const reference = {
+    ...referenceBase,
+    frames: referenceBase.frames.map((frame, index) => ({
+      ...frame,
+      blurStrength: blurProfile[index] ?? 0,
+      distortionStrength: index === 7 ? 0.42 : 0.04,
+    })),
+  };
+  const capabilities = [
+    ...ALL_CAPABILITIES,
+    "ae.effect.echo",
+    "ae.effect.turbulent-displace",
+    "ae.precompose.layers",
+  ];
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: capabilities,
+  });
+  const composite = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_COMPOSITE_WARP_HYBRID");
+  const compositeOptical = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_COMPOSITE_OPTICAL_HYBRID");
+  assert.ok(composite, "fixture must expose the retained composite-warp construction");
+  assert.ok(compositeOptical,
+    "blur-recovery escalation must be able to extend the retained composite-warp construction");
+  assert.deepEqual(compositeOptical.capabilityGaps, []);
+
+  const preservedWarp = compositeOptical.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID");
+  const profiledBlur = compositeOptical.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_OPTICAL_HYBRID");
+  const boundary = compositeOptical.graph.nodes.find((node) =>
+    node.parameters.causalBoundary === "COMPOSITE_WARP_INPUT");
+  assert.ok(preservedWarp, "composed optical escalation must retain the grouped warp node");
+  assert.ok(boundary, "composed optical escalation must retain the grouped precompose boundary");
+  assert.ok(profiledBlur?.requiredInvariantIds.includes("unknown.blur-recovery"));
+  assert.equal(profiledBlur?.parameters.extendsSynthesisStrategy, "OPTICAL_PROFILE_HYBRID");
+  assert.equal(profiledBlur?.parameters.eventDynamicDirectionalBlurProfile, true);
+  assert.equal(profiledBlur?.parameters.effectSchemaRef, "ae.effect-schema.m6.directional-blur.v1");
+
+  const escalation = selectSynthesisEscalationCandidateV1({
+    synthesis,
+    currentStrategy: "COMPOUND_COMPOSITE_WARP_HYBRID",
+    requiredInvariantIds: ["unknown.blur-recovery"],
+  });
+  assert.equal(escalation?.strategy, "COMPOUND_COMPOSITE_OPTICAL_HYBRID",
+    "stalled blur recovery must add optical-profile machinery without reverting the retained composite topology");
+});
+
 test("M6.7 zero blur strength remains a true identity calibration point", () => {
   const compiler = readFileSync(
     new URL("../packages/recipe-compiler/src/index.ts", import.meta.url),
@@ -4382,6 +4534,36 @@ test("M6 live correction search reads the same physical actuator it writes", () 
     controller.match(/excludedStrategies: previouslyRenderedStrategies/g)?.length,
     2,
     "both bounded and final synthesis selection must retain rejected strategies as negative evidence",
+  );
+  assert.equal(
+    controller.match(/renderedSynthesisNegativeEvidence\(\s*renderedStates,\s*passes,\s*activeStrategyKey,\s*\)/g)?.length,
+    2,
+    "bounded and final synthesis escalation must consult the same retained negative-evidence identity",
+  );
+  assert.match(
+    controller,
+    /pass\.source === "synthesis-escalation" && typeof pass\.strategy === "string"[\s\S]{0,80}\[pass\.strategy\]/,
+    "resume must preserve the actual failed synthesis candidate tag instead of only a composite graph key",
+  );
+  assert.match(
+    controller,
+    /const followupBudget = Math\.min\(2, MAX_SEARCH_PROBES\);/,
+    "new synthesis topologies need a bounded local tuning budget before they become negative evidence",
+  );
+  assert.match(
+    controller,
+    /source: "synthesis-local-correction-probe"/,
+    "structural escalation must retain proof records for topology-local correction renders",
+  );
+  assert.match(
+    controller,
+    /synthesizedInvariantIds\.has\(instruction\.invariantId\)[\s\S]{0,120}triggeredInvariantIds\.has\(instruction\.invariantId\)/,
+    "synthesis-local tuning must be limited to invariants introduced by the new intervention and implicated by rendered evidence",
+  );
+  assert.match(
+    controller,
+    /if \(topologyGate\.certified\) break;/,
+    "topology-local correction must stop immediately after rendered certification",
   );
 });
 

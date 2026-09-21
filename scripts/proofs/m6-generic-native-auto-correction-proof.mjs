@@ -337,6 +337,47 @@ const executePass = async (graph, iteration) => {
   };
 };
 
+const executeCausalBaseline = async () => {
+  await acquireMutationLease("causal-baseline");
+  let baselineProjectFingerprint = null;
+  let cleanupProjectFingerprint = null;
+  let result = null;
+  try {
+    await proofScript("m6-generic-native-corr01-cleanup.jsx");
+    const baselineState = await request("/state");
+    baselineProjectFingerprint = baselineState.state.observed.projectFingerprint;
+    await proofScript("m6-generic-native-corr01-setup.jsx");
+    await proofScript("m6-reload-current-host.jsx");
+    await proofScript("m6-generic-native-corr01-render.jsx");
+    const passStem = `${STEM}-causal-baseline`;
+    const video = path.join(ROOT, "proofs", "diagnostics", passStem + ".mp4");
+    await copyFile(path.join(os.tmpdir(), "M6_generic_native_corr01_candidate.mp4"), video);
+    result = { video, measured: await measure(video, passStem) };
+  } finally {
+    try {
+      await proofScript("m6-generic-native-corr01-cleanup.jsx");
+      const cleanupState = await request("/state");
+      cleanupProjectFingerprint = cleanupState.state.observed.projectFingerprint;
+      if (baselineProjectFingerprint !== null
+        && cleanupProjectFingerprint !== baselineProjectFingerprint) {
+        throw new Error(
+          "Real-AE causal-baseline cleanup failed to restore the pre-pass project fingerprint: "
+          + baselineProjectFingerprint + " -> " + cleanupProjectFingerprint,
+        );
+      }
+    } finally {
+      await releaseMutationLease().catch(() => {});
+    }
+  }
+  if (result === null) throw new Error("Real-AE causal baseline completed without retained evidence.");
+  return {
+    ...result,
+    baselineProjectFingerprint,
+    cleanupProjectFingerprint,
+    cleanupRestored: cleanupProjectFingerprint === baselineProjectFingerprint,
+  };
+};
+
 const searchControlFilter = new Set(
   cliValue("--search-controls", "")
     .split(",")
@@ -421,6 +462,9 @@ const strategyKeyFromSet = (strategies) => {
   // Prefer the most structurally advanced explicit strategy. A v3 graph also
   // contains its retained v2 Echo/Turbulent interventions, so checking those
   // first would incorrectly collapse the evolving graph back to compound v2.
+  if (strategies.has("COMPOUND_COMPOSITE_OPTICAL_HYBRID")) {
+    return "COMPOUND_COMPOSITE_OPTICAL_HYBRID";
+  }
   if (strategies.has("COMPOUND_DUAL_WARP_HYBRID")) {
     return "COMPOUND_DUAL_WARP_HYBRID";
   }
@@ -447,6 +491,14 @@ const graphStrategyKey = (valueGraph) => strategyKeyFromSet(new Set(
       ? [node.parameters.synthesisStrategy]
       : []),
 ));
+const renderedSynthesisNegativeEvidence = (states, passHistory, activeStrategyKey) =>
+  [...new Set([
+    ...states.map((state) => graphStrategyKey(state.graph)),
+    ...passHistory.flatMap((pass) =>
+      pass.source === "synthesis-escalation" && typeof pass.strategy === "string"
+        ? [pass.strategy]
+        : []),
+  ])].filter((strategy) => strategy !== activeStrategyKey);
 const recordedStrategyKey = (graphParameters) => strategyKeyFromSet(new Set(
   graphParameters.flatMap((entry) =>
     typeof entry?.parameters?.synthesisStrategy === "string"
@@ -597,6 +649,11 @@ if (seedCandidate === undefined || seedCandidate === null) {
 if (seedCandidate.capabilityGaps.length > 0) {
   throw new Error(`Requested seed strategy '${seedCandidate.strategy}' has capability gaps: ${seedCandidate.capabilityGaps.join(", ")}.`);
 }
+const causalBaselinePass = await executeCausalBaseline();
+const causalBaseline = causalBaselinePass.measured.value;
+if (causalBaseline.analyzerFingerprint !== reference.analyzerFingerprint) {
+  throw new Error("Real-AE causal baseline analyzer is incompatible with the reference.");
+}
 let graph = seedCandidate.graph;
 let render = seedRender;
 let comparison = compareSemanticVisualFidelityV1({
@@ -629,6 +686,9 @@ const checkpointPasses = async (checkpointStatus) => {
     sourceEvidence: path.relative(ROOT, REF).replaceAll("\\", "/"),
     seedEvidence: path.relative(ROOT, SEED).replaceAll("\\", "/"),
     seedStrategy: seedCandidate.strategy,
+    causalBaselineEvidence: path.relative(ROOT, causalBaselinePass.measured.evidence).replaceAll("\\", "/"),
+    causalBaselineVideo: path.relative(ROOT, causalBaselinePass.video).replaceAll("\\", "/"),
+    causalBaselineCleanupRestored: causalBaselinePass.cleanupRestored,
     status: checkpointStatus,
     passes,
   }, null, 2) + "\n", "utf8");
@@ -668,7 +728,7 @@ if (resumeProofArg.length > 0) {
     const resumedGraph = graphFromRecordedParameters(baseGraph, previousPass.graphParameters);
     const resumedCompilation = compileConstructionGraphV1(resumedGraph, CAPABILITIES);
     const resumedComparison = compareSemanticVisualFidelityV1({
-      reference, render: resumedRender, dna: anatomy.dna, alignment: "SEMANTIC",
+      reference, render: resumedRender, baseline: causalBaseline, dna: anatomy.dna, alignment: "SEMANTIC",
     });
     const resumedGate = evaluateProfessionalFidelityGateV1({
       comparison: resumedComparison, compilation: resumedCompilation, synthesisPossible: true,
@@ -713,7 +773,7 @@ if (resumedFromProof === null) {
     throw new Error("Materialized seed analyzer is incompatible with the reference.");
   }
   const materializedComparison = compareSemanticVisualFidelityV1({
-    reference, render: materializedRender, dna: anatomy.dna, alignment: "SEMANTIC",
+    reference, render: materializedRender, baseline: causalBaseline, dna: anatomy.dna, alignment: "SEMANTIC",
   });
   const materializedGate = evaluateProfessionalFidelityGateV1({
     comparison: materializedComparison,
@@ -785,7 +845,7 @@ for (let correctionPass = 1; correctionPass <= BLIND_CORRECTION_PASSES && !gate.
     throw new Error("Corrected render analyzer is incompatible with the reference.");
   }
   const nextComparison = compareSemanticVisualFidelityV1({
-    reference, render: trialRender, dna: anatomy.dna, alignment: "SEMANTIC",
+    reference, render: trialRender, baseline: causalBaseline, dna: anatomy.dna, alignment: "SEMANTIC",
   });
   const nextGate = evaluateProfessionalFidelityGateV1({
     comparison: nextComparison, compilation: trialCompilation, synthesisPossible: true,
@@ -882,9 +942,11 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
   if (searchPlan.structuralEscalationInvariantIds.length > 0
     && !hasRetainedScalarAuthority
     && searchDecision.structuralEscalationReady) {
-    const previouslyRenderedStrategies = [...new Set(renderedStates
-      .map((state) => graphStrategyKey(state.graph))
-      .filter((strategy) => strategy !== activeStrategyKey))];
+    const previouslyRenderedStrategies = renderedSynthesisNegativeEvidence(
+      renderedStates,
+      passes,
+      activeStrategyKey,
+    );
     const structuralCandidate = selectSynthesisEscalationCandidateV1({
       synthesis,
       currentStrategy: activeStrategyKey,
@@ -937,7 +999,7 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
     throw new Error("Bounded-search render analyzer is incompatible with the reference.");
   }
   const nextComparison = compareSemanticVisualFidelityV1({
-    reference, render: trialRender, dna: anatomy.dna, alignment: "SEMANTIC",
+    reference, render: trialRender, baseline: causalBaseline, dna: anatomy.dna, alignment: "SEMANTIC",
   });
   const nextGate = evaluateProfessionalFidelityGateV1({
     comparison: nextComparison, compilation: trialCompilation, synthesisPossible: true,
@@ -1016,9 +1078,11 @@ if (!gate.certified) {
     ...hardRequiredInvariantIds,
     ...structuralEscalationInvariantIds,
   ])];
-  const previouslyRenderedStrategies = [...new Set(renderedStates
-    .map((state) => graphStrategyKey(state.graph))
-    .filter((strategy) => strategy !== activeStrategyKey))];
+  const previouslyRenderedStrategies = renderedSynthesisNegativeEvidence(
+    renderedStates,
+    passes,
+    activeStrategyKey,
+  );
   const alternate = selectSynthesisEscalationCandidateV1({
     synthesis,
     currentStrategy: activeStrategyKey,
@@ -1042,7 +1106,7 @@ if (!gate.certified) {
       throw new Error("Synthesis-escalation render analyzer is incompatible with the reference.");
     }
     const nextComparison = compareSemanticVisualFidelityV1({
-      reference, render: trialRender, dna: anatomy.dna, alignment: "SEMANTIC",
+      reference, render: trialRender, baseline: causalBaseline, dna: anatomy.dna, alignment: "SEMANTIC",
     });
     const nextGate = evaluateProfessionalFidelityGateV1({
       comparison: nextComparison, compilation: trialCompilation, synthesisPossible: true,
@@ -1078,14 +1142,141 @@ if (!gate.certified) {
       graphParameters: trialGraph.nodes.map((node) => ({ nodeId: node.nodeId, parameters: node.parameters })),
     });
     await checkpointPasses("IN_PROGRESS");
+    nextRenderIteration += 1;
+
+    // A structural synthesis is a new causal topology, not a finished preset.
+    // Give only the invariants owned by the newly introduced intervention a
+    // bounded local correction opportunity before treating the whole strategy
+    // as negative evidence. This is especially important when the first neutral
+    // render makes a previously missing behavior measurable but perturbs a
+    // different defining metric. The retained global best remains authoritative
+    // throughout these exploratory renders.
+    const synthesizedInvariantIds = new Set(alternate.graph.nodes.flatMap((node) =>
+      node.parameters.synthesisStrategy === alternate.strategy
+        ? node.requiredInvariantIds
+        : []));
+    const triggeredInvariantIds = new Set(requiredInvariantIds);
+    const followupBudget = Math.min(2, MAX_SEARCH_PROBES);
+    for (let followupIndex = 1;
+      followupIndex <= followupBudget && !nextGate.certified;
+      followupIndex += 1) {
+      // A synthesis candidate can be additive: its graph may retain an older,
+      // structurally dominant strategy while introducing the new intervention.
+      // Match the actual intervention node rather than the graph's dominant key.
+      const topologyAttempts = renderedStates.filter((state) =>
+        state.graph.nodes.some((node) => node.parameters.synthesisStrategy === alternate.strategy));
+      if (topologyAttempts.length === 0) {
+        throw new Error(`Synthesis-local correction lost rendered '${alternate.strategy}' intervention evidence.`);
+      }
+      const topologyBestAttempt = selectRetainedBestActuatorAttemptV1(
+        topologyAttempts.map((state) => attemptEvidenceFromState(state)),
+      );
+      const topologyBestState = topologyAttempts.find((state) =>
+        state.attemptId === topologyBestAttempt.attemptId);
+      if (topologyBestState === undefined) break;
+
+      const fullActuationPlan = deriveConstructionActuationPlanV1({
+        graph: topologyBestState.graph,
+        comparison: topologyBestState.comparison,
+      });
+      const scopedInstructions = fullActuationPlan.instructions.filter((instruction) =>
+        instruction.defining
+        && synthesizedInvariantIds.has(instruction.invariantId)
+        && triggeredInvariantIds.has(instruction.invariantId));
+      if (scopedInstructions.length === 0) break;
+      const scopedActuationPlan = {
+        ...fullActuationPlan,
+        instructions: scopedInstructions,
+        unresolvedInvariantIds: fullActuationPlan.unresolvedInvariantIds.filter((invariantId) =>
+          synthesizedInvariantIds.has(invariantId) && triggeredInvariantIds.has(invariantId)),
+      };
+      const topologyDimensions = searchDimensionsForPlan(
+        scopedActuationPlan,
+        topologyBestState.graph,
+      );
+      const topologyControls = topologyDimensions.map((dimension) => dimension.control);
+      if (topologyControls.length === 0) break;
+      const topologyAttemptEvidence = topologyAttempts.map((state) =>
+        attemptEvidenceFromState(state, topologyControls, scopedInstructions));
+      const topologySearchPlan = planBoundedActuatorSearchV1({
+        attempts: topologyAttemptEvidence,
+        instructions: scopedInstructions,
+        dimensions: topologyDimensions,
+        maxCandidates: 4,
+      });
+      const topologyDecision = selectBoundedActuatorSearchDecisionV1({
+        plan: topologySearchPlan,
+        instructions: scopedInstructions,
+      });
+      const topologyCandidate = topologyDecision.candidate ?? topologySearchPlan.candidates[0];
+      if (topologyCandidate === undefined) break;
+
+      const topologyGraph = applySearchCandidateToGraph(
+        topologyBestState.graph,
+        scopedActuationPlan,
+        topologyCandidate,
+      );
+      const topologyPass = await executePass(topologyGraph, nextRenderIteration);
+      const topologyRender = topologyPass.measured.value;
+      if (topologyRender.analyzerFingerprint !== reference.analyzerFingerprint) {
+        throw new Error("Synthesis-local correction render analyzer is incompatible with the reference.");
+      }
+      const topologyComparison = compareSemanticVisualFidelityV1({
+        reference, render: topologyRender, baseline: causalBaseline, dna: anatomy.dna, alignment: "SEMANTIC",
+      });
+      const topologyGate = evaluateProfessionalFidelityGateV1({
+        comparison: topologyComparison,
+        compilation: topologyPass.compilation,
+        synthesisPossible: true,
+      });
+      const topologyAttemptId = `synthesis-${alternate.strategy.toLowerCase()}-local-${followupIndex}`;
+      renderedStates.push({
+        attemptId: topologyAttemptId,
+        graph: topologyPass.graph,
+        compilation: topologyPass.compilation,
+        render: topologyRender,
+        comparison: topologyComparison,
+        gate: topologyGate,
+      });
+      passes.push({
+        iteration: nextRenderIteration,
+        source: "synthesis-local-correction-probe",
+        strategy: alternate.strategy,
+        candidateId: topologyCandidate.candidateId,
+        changedControls: topologyCandidate.changedControls,
+        candidateRationale: topologyCandidate.rationale,
+        searchPlan: topologySearchPlan,
+        operationCount: topologyPass.native.plan.operations.length,
+        transactionState: topologyPass.transaction.result.state,
+        budgetBackoff: topologyPass.budgetBackoff,
+        baselineProjectFingerprint: topologyPass.baselineProjectFingerprint,
+        cleanupProjectFingerprint: topologyPass.cleanupProjectFingerprint,
+        cleanupRestored: topologyPass.cleanupRestored,
+        readback: path.relative(ROOT, topologyPass.readback).replaceAll("\\", "/"),
+        video: path.relative(ROOT, topologyPass.video).replaceAll("\\", "/"),
+        evidence: path.relative(ROOT, topologyPass.measured.evidence).replaceAll("\\", "/"),
+        weightedFidelity: topologyComparison.weightedFidelity,
+        definingCoverage: topologyComparison.definingCoverage,
+        gate: topologyGate,
+        summary: topologyRender.summary,
+        graphParameters: topologyPass.graph.nodes.map((node) => ({
+          nodeId: node.nodeId,
+          parameters: node.parameters,
+        })),
+      });
+      await checkpointPasses("IN_PROGRESS");
+      nextRenderIteration += 1;
+      if (topologyGate.certified) break;
+    }
+
     const bestAttempt = selectRetainedBestActuatorAttemptV1(renderedStates.map((state) => attemptEvidenceFromState(state)));
     const bestState = renderedStates.find((item) => item.attemptId === bestAttempt.attemptId);
     if (bestState === undefined) throw new Error("Synthesis escalation lost its retained-best render.");
     ({ graph, compilation, render, comparison, gate } = bestState);
     status = gate.certified
       ? "PASSED"
-      : bestAttempt.attemptId === attemptId ? "SYNTHESIS_IMPROVED" : "SYNTHESIS_REJECTED";
-    nextRenderIteration += 1;
+      : bestAttempt.attemptId.startsWith(`synthesis-${alternate.strategy.toLowerCase()}`)
+        ? "SYNTHESIS_IMPROVED" : "SYNTHESIS_REJECTED";
   } else if (requiredInvariantIds.length > 0) {
     status = "SYNTHESIS_REQUIRED";
   }
@@ -1097,6 +1288,9 @@ const result = {
   sourceEvidence: path.relative(ROOT, REF).replaceAll("\\", "/"),
   seedEvidence: path.relative(ROOT, SEED).replaceAll("\\", "/"),
   seedStrategy: seedCandidate.strategy,
+  causalBaselineEvidence: path.relative(ROOT, causalBaselinePass.measured.evidence).replaceAll("\\", "/"),
+  causalBaselineVideo: path.relative(ROOT, causalBaselinePass.video).replaceAll("\\", "/"),
+  causalBaselineCleanupRestored: causalBaselinePass.cleanupRestored,
   resumedFromProof,
   family: seedCandidate.graph.family,
   strategy: seedCandidate.strategy,

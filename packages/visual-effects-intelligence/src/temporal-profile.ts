@@ -22,10 +22,27 @@ export const measureHalfPeakTemporalProfileV1 = (
   evidence: DenseEffectEvidenceV1,
   metric: string,
   preferredPeakPhase?: number,
+  baseline?: DenseEffectEvidenceV1,
 ): HalfPeakTemporalProfileV1 => {
-  const samples = evidence.frames.map((frame) => {
+  if (baseline !== undefined) {
+    if (baseline.frames.length !== evidence.frames.length) {
+      throw new TypeError("Baseline-aligned temporal profiles require equal frame counts.");
+    }
+    if (baseline.frames.some((frame, index) =>
+      Math.abs(frame.timeMs - evidence.frames[index]!.timeMs) > 1e-3)) {
+      throw new TypeError("Baseline-aligned temporal profiles require time-aligned frames.");
+    }
+  }
+  const samples = evidence.frames.map((frame, index) => {
     const value = (frame as unknown as Readonly<Record<string, unknown>>)[metric];
-    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+    const observed = typeof value === "number" && Number.isFinite(value) ? value : 0;
+    const baselineValue = baseline === undefined
+      ? 0
+      : (baseline.frames[index] as unknown as Readonly<Record<string, unknown>>)[metric];
+    const baselineObserved = typeof baselineValue === "number" && Number.isFinite(baselineValue)
+      ? baselineValue
+      : 0;
+    return Math.max(0, observed - baselineObserved);
   });
   if (samples.length === 0) {
     return {
@@ -93,8 +110,30 @@ export const measureHalfPeakTemporalProfileV1 = (
   while (last + 1 < samples.length && (samples[last + 1] ?? 0) >= threshold) last += 1;
 
   const peakTimeMs = evidence.frames[peakIndex]?.timeMs ?? 0;
-  const firstTimeMs = evidence.frames[first]?.timeMs ?? peakTimeMs;
-  const lastTimeMs = evidence.frames[last]?.timeMs ?? peakTimeMs;
+  const crossingTimeMs = (
+    insideIndex: number,
+    outsideIndex: number,
+  ): number => {
+    const insideValue = samples[insideIndex] ?? threshold;
+    const outsideValue = samples[outsideIndex] ?? threshold;
+    const insideTime = evidence.frames[insideIndex]?.timeMs ?? peakTimeMs;
+    const outsideTime = evidence.frames[outsideIndex]?.timeMs ?? insideTime;
+    const denominator = insideValue - outsideValue;
+    if (Math.abs(denominator) <= 1e-12) return insideTime;
+    const fractionFromOutside = (threshold - outsideValue) / denominator;
+    const boundedFraction = Math.min(1, Math.max(0, fractionFromOutside));
+    return outsideTime + ((insideTime - outsideTime) * boundedFraction);
+  };
+  // Keep the sampled lobe indices as traceable evidence, but estimate the
+  // half-peak crossing between adjacent samples. This prevents 30/60-fps
+  // comparisons and bounded actuator probes from being quantized to a whole
+  // frame when the rendered pixels already show a smaller timing change.
+  const firstTimeMs = first > 0
+    ? crossingTimeMs(first, first - 1)
+    : evidence.frames[first]?.timeMs ?? peakTimeMs;
+  const lastTimeMs = last + 1 < samples.length
+    ? crossingTimeMs(last, last + 1)
+    : evidence.frames[last]?.timeMs ?? peakTimeMs;
   return {
     metric,
     peakValue,
