@@ -36,7 +36,7 @@ export const createCanonicalProfessionalBenchmarkV1 = (): readonly ProfessionalB
       family,
       sourceKind: index < 5 ? "TUTORIAL" : "REFERENCE_ONLY",
       transferAxes: variants[index % variants.length] ?? ["subject"],
-      referenceEvidenceRef: `proofs/m6/references/${family.toLowerCase()}-canonical.json`,
+      referenceEvidenceRef: `proofs/m6/benchmark/references/${family.toLowerCase()}-canonical.json`,
       expectedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
     });
   }
@@ -46,7 +46,7 @@ export const createCanonicalProfessionalBenchmarkV1 = (): readonly ProfessionalB
       family,
       sourceKind: "HELD_OUT",
       transferAxes: variants[(index + 1) % variants.length] ?? ["duration"],
-      referenceEvidenceRef: `proofs/m6/references/${family.toLowerCase()}-held-out.json`,
+      referenceEvidenceRef: `proofs/m6/benchmark/references/${family.toLowerCase()}-held-out.json`,
       expectedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
     });
   }

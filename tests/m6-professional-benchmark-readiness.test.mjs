@@ -25,3 +25,21 @@ test("M6.9 retained readiness binds canonical shutter Level 6 to independent pro
   assert.ok(artifact?.weightedFidelity > 0.99);
   assert.equal(artifact?.sha256, await sha256(ref));
 });
+
+test("M6.9 benchmark inventory keeps retained benchmark references isolated from live correction fixtures", async () => {
+  const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
+  const liveCanonical = await load("proofs/m6/references/shutter_fragmentation-canonical.json");
+  const liveProof = await load("proofs/diagnostics/m6-shutter-measurement-v17-proof.json");
+  const referenceArtifact = manifest.artifacts.find((item) =>
+    item.caseId === "m6:shutter_fragmentation:canonical"
+    && item.kind === "REFERENCE_DENSE_EVIDENCE"
+  );
+  assert.match(referenceArtifact?.ref ?? "", /^proofs\/m6\/benchmark\/references\//u);
+  assert.notEqual(referenceArtifact?.ref, "proofs/m6/references/shutter_fragmentation-canonical.json");
+  assert.equal(liveCanonical.analyzerFingerprint, liveProof.analyzer.measurementFingerprint);
+  const benchmarkReference = await load(referenceArtifact.ref);
+  assert.equal(benchmarkReference.contentKey, referenceArtifact.contentKey);
+  const liveSource = liveCanonical.evidenceRefs.find((item) => item.startsWith("video:sha256:"));
+  const benchmarkSource = benchmarkReference.evidenceRefs.find((item) => item.startsWith("video:sha256:"));
+  assert.equal(benchmarkSource, liveSource);
+});

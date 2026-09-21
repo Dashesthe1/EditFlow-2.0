@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-20T20:58:07.167Z",
+  "generatedAt": "2026-09-21T06:18:12.287Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -12,20 +12,20 @@
     "SEMANTIC_COMPARISON": 1,
     "DIRECT_AB": 1,
     "TRANSFER_PROOF": 1,
-    "PROFESSIONAL_CASE_PROOF": 0,
+    "PROFESSIONAL_CASE_PROOF": 1,
     "DEGRADED_CONTROL": 1
   },
   "retainedCases": [
     {
       "caseId": "m6:shutter_fragmentation:canonical",
-      "achievedLevel": "TRANSFER_VERIFIED",
+      "achievedLevel": "PROFESSIONAL_FIDELITY_VERIFIED",
       "maturityProof": {
         "functionallyPresent": true,
         "structuralCoverageComplete": true,
         "visuallyRecognizable": true,
         "referenceFaithful": true,
         "transferVariantCount": 1,
-        "professionalCasePassCount": 1,
+        "professionalCasePassCount": 2,
         "robustnessAxesPassed": [
           "subject",
           "aspect-ratio"
@@ -37,6 +37,9 @@
       "transferEvidenceRefs": [
         "proofs/diagnostics/m6-shutter-measurement-v17-proof.json"
       ],
+      "professionalCaseEvidenceRefs": [
+        "proofs/m6/professional-cases/shutter_fragmentation-held-out-w04-v16.json"
+      ],
       "degradedControlEvidenceRef": "proofs/diagnostics/m6-v6-event-joint-03-fidelity.json",
       "transferPassed": true,
       "degradedCaseRejected": true
@@ -44,7 +47,7 @@
   ],
   "artifacts": [
     {
-      "ref": "proofs/m6/references/shutter_fragmentation-canonical.json",
+      "ref": "proofs/m6/benchmark/references/shutter_fragmentation-canonical.json",
       "kind": "REFERENCE_DENSE_EVIDENCE",
       "caseId": "m6:shutter_fragmentation:canonical",
       "family": "SHUTTER_FRAGMENTATION",
@@ -101,13 +104,28 @@
         "subject",
         "aspect-ratio"
       ]
+    },
+    {
+      "ref": "proofs/m6/professional-cases/shutter_fragmentation-held-out-w04-v16.json",
+      "kind": "PROFESSIONAL_CASE_PROOF",
+      "caseId": "m6:shutter_fragmentation:canonical",
+      "family": "SHUTTER_FRAGMENTATION",
+      "sha256": "aaf31a864951c3658da4abc7ea173136947c1b611ce9b025d2add779b7542d3d",
+      "referenceContentKey": "fdfb4fafafd7e457b95a1195a0d65cb743f1b2cef8917cad3272f903a0bf0bdc",
+      "renderContentKey": "4137c6c0d1bab89af02b19a297f6c818981b86136e1bf2189f087ac0e98d2e3c",
+      "baselineSourceContentKey": "d417dd4162c89cb8b6798496627ab864b85f6a75d672aa492ba721af808b017f",
+      "certified": true,
+      "renderedOutputVerified": true,
+      "degradedControlRejected": true,
+      "definingCoverage": 1,
+      "weightedFidelity": 0.9930369628780908
     }
   ],
   "result": {
     "schema": "editflow.professional-benchmark-result.v1",
     "passed": false,
     "total": 24,
-    "passedCases": 0,
+    "passedCases": 1,
     "familyCoverage": [
       "SHUTTER_FRAGMENTATION",
       "TEMPORAL_ECHO",
@@ -134,7 +152,6 @@
       "subject"
     ],
     "failures": [
-      "m6:shutter_fragmentation:canonical:MATURITY_TRANSFER_VERIFIED",
       "m6:temporal_echo:canonical:MISSING_EVIDENCE",
       "m6:velocity_transition:canonical:MISSING_EVIDENCE",
       "m6:subject_isolated_transition:canonical:MISSING_EVIDENCE",
@@ -174,14 +191,24 @@
       "status": "TRANSFER_VERIFIED_SUBJECT_ASPECT_RATIO"
     }
   ],
+  "professionalCasePassEvidence": [
+    {
+      "ref": "proofs/m6/professional-cases/shutter_fragmentation-held-out-w04-v16.json",
+      "sha256": "aaf31a864951c3658da4abc7ea173136947c1b611ce9b025d2add779b7542d3d",
+      "sourceVideoSha256": "d417dd4162c89cb8b6798496627ab864b85f6a75d672aa492ba721af808b017f",
+      "distinctProfessionalSource": true,
+      "reusedWithoutHeldOutRetuning": true,
+      "weightedFidelity": 0.9930369628780908,
+      "definingCoverage": 1,
+      "degradedControlRejected": true
+    }
+  ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
-    "evaluatorSha256": "49dc397bf704607333ee27ac5197bb90f90deb645049f8a6b9324634ce6378d6",
+    "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "01dd8831f9e7b7cb0683f169f37ef005ea00f0f13040ae3ce692c5ebdb8a74af"
+    "generatorSha256": "5e10b350cc9f78467b88aa2be822d05dafb58a3d48623db2e65b4faf3aa83c55"
   },
-  "nextRequiredForShutterCanonical": [
-    "second professional case pass required for Level 6 maturity"
-  ],
+  "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."
 }
