@@ -1,0 +1,78 @@
+{
+  "schema": "editflow.m6.reference-family-admission-proof.v1",
+  "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
+  "result": "REJECTED",
+  "requestedFamily": "VELOCITY_TRANSITION",
+  "sourceEvidence": {
+    "ref": "proofs/diagnostics/m6-velocity-source-candidate-smooth-twixtor-w09-v1-evidence.json",
+    "sha256": "9ae2e4db97ea53ef0864ff86cdf347c1f898c22d81307378d4795190a31f0860",
+    "contentKey": "8dfef7f9855fd80ee1c743547c53eae75a3520478e333fca775c6aecbbab5e29",
+    "sourceId": "gdrive:1w6lO4N0yZ6hA38_TnW8VZZ3N2IlYdmq9:smooth-twixtor:8.828-9.728",
+    "analyzerFingerprint": "d41ff9770ed6bf38ed280c972c3eafc6b7c3ce2294c9ced6d3eadbda9531a4b2",
+    "sourceVideoSha256": "9d1e5397a74a83a19b89722ecc967046a3e0fc4c7c0012e5a6dfa7ebd13a546f"
+  },
+  "candidate": {
+    "schema": "editflow.reference-family-candidate.v1",
+    "sourceId": "gdrive:1w6lO4N0yZ6hA38_TnW8VZZ3N2IlYdmq9:smooth-twixtor:8.828-9.728",
+    "evidenceContentKey": "8dfef7f9855fd80ee1c743547c53eae75a3520478e333fca775c6aecbbab5e29",
+    "analyzerFingerprint": "d41ff9770ed6bf38ed280c972c3eafc6b7c3ce2294c9ced6d3eadbda9531a4b2",
+    "requestedFamily": "VELOCITY_TRANSITION",
+    "classifiedFamily": "SHUTTER_FRAGMENTATION",
+    "passed": false,
+    "definingCoverage": 0.6666666666666666,
+    "weightedContractScore": 0.6920379873208783,
+    "checks": [
+      {
+        "invariantId": "velocity.energy",
+        "metric": "motionEnergyPeak",
+        "comparator": "MIN",
+        "target": 0.28,
+        "tolerance": 0.06,
+        "observed": 0.016745071631779636,
+        "passed": false,
+        "score": 0.0761139619626347,
+        "diagnosis": "motionEnergyPeak=0.0167 fails family admission (minimum 0.2200). A clear velocity impulse drives the cut."
+      },
+      {
+        "invariantId": "velocity.acceleration",
+        "metric": "accelerationPeak",
+        "comparator": "MIN",
+        "target": 0.05,
+        "tolerance": 0.02,
+        "observed": 0.03349014326355927,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "accelerationPeak satisfies family admission (minimum 0.0300)."
+      },
+      {
+        "invariantId": "velocity.recovery",
+        "metric": "recoveryFrames",
+        "comparator": "MAX",
+        "target": 8,
+        "tolerance": 2,
+        "observed": 1,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "recoveryFrames satisfies family admission (maximum 10.0000)."
+      }
+    ],
+    "failures": [
+      "motionEnergyPeak=0.0167 fails family admission (minimum 0.2200). A clear velocity impulse drives the cut."
+    ],
+    "evidenceRefs": [
+      "video:sha256:9d1e5397a74a83a19b89722ecc967046a3e0fc4c7c0012e5a6dfa7ebd13a546f",
+      "probe-json:sha256:7b22b000191ea1547f630c744c29bc919483fa786cecd7da568efd2203c2203d",
+      "probe-algorithm:editflow.m6.dense-video-probe.v17",
+      "probe-analyzer:sha256:ea3c826d32c753f3eb8c129bd17a3ddca641ed554ea2e4f8568652bec783c15d",
+      "measurement-system:sha256:d41ff9770ed6bf38ed280c972c3eafc6b7c3ce2294c9ced6d3eadbda9531a4b2",
+      "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "noOverclaim": "Rejected source windows must not enter benchmark reconstruction as evidence for the requested family.",
+  "proofSources": {
+    "evaluator": "packages/visual-effects-intelligence/src/reference-admission.ts",
+    "evaluatorSha256": "ece37775124fae160f9cd0a8d08246c47834741fab7ed519dae01d9497a7c05e",
+    "generator": "scripts/proofs/m6-reference-family-admission.mjs",
+    "generatorSha256": "96c88d0def83e5639b1ce7cf57bc8cd03adc52c0c3474bcf926d0511bffc47ca"
+  }
+}

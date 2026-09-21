@@ -9,6 +9,7 @@ import type {
   TransitionDnaV1,
 } from "./contracts.js";
 import {
+  measureScaleDynamicsV1,
   resolveFragmentationEventMetricsV1,
   scoreFragmentationEventLocalizationV1,
 } from "./dense-evidence.js";
@@ -73,6 +74,17 @@ const metricValue = (
     return fragmentation.stateSeparationPeak;
   }
   const summary = evidence.summary as unknown as Readonly<Record<string, unknown>>;
+  if (metric === "scaleVelocityPeakPerSecond" || metric === "scaleVelocityRecoveryRatio") {
+    const cached = summary[metric];
+    if (evidence.summary.scaleDynamicsVersion === "SUSTAINED_TAIL_V1"
+      && typeof cached === "number" && Number.isFinite(cached)) {
+      return cached;
+    }
+    const dynamics = measureScaleDynamicsV1(evidence.frames);
+    return metric === "scaleVelocityPeakPerSecond"
+      ? dynamics.scaleVelocityPeakPerSecond
+      : dynamics.scaleVelocityRecoveryRatio;
+  }
   const summaryValue = summary[metric];
   if (typeof summaryValue === "number") return summaryValue;
   if (metric === "displacementDirection") return evidence.summary.displacementDirection;
@@ -441,7 +453,11 @@ export const evaluateProfessionalFidelityGateV1 = (input: {
     .map((metric) => metric.invariantId);
   const missingDefiningInvariantIds = [...new Set([
     ...input.compilation.graph.missingInvariantIds,
-    ...definingMetrics.filter((metric) => scalar(metric.renderValue) <= 1e-6).map((metric) => metric.invariantId),
+    ...definingMetrics
+      .filter((metric) => !metric.passed
+        && scalar(metric.referenceValue) > 1e-6
+        && scalar(metric.renderValue) <= 1e-6)
+      .map((metric) => metric.invariantId),
   ])];
   const optionalPasses = input.comparison.metrics.filter((metric) => !metric.defining && metric.passed).length;
   const weakerSubstitutionDetected = underDrivenInvariantIds.length > 0 && optionalPasses > 0;

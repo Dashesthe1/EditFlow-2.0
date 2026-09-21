@@ -1593,24 +1593,59 @@ const compileM6SemanticVisualState = (
     if (typeof scaleRaw === "number" && Number.isFinite(scaleRaw) && scaleRaw > 0) {
       const eventSeconds = resolveM6EffectEventSeconds(node, context, issues);
       if (eventSeconds === null) return [];
-      const preFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
+      const recoveryFrames = resolveM6RecoveryWindowFrames(parameters, frameRate);
       const scalePulseScaleRaw = parameters["scalePulseScale"];
       const scalePulseScale = typeof scalePulseScaleRaw === "number" && Number.isFinite(scalePulseScaleRaw)
         ? Math.max(0.25, Math.min(4, scalePulseScaleRaw))
         : 1;
       const amplitude = Math.max(0.005, Math.min(0.65, scaleRaw * scalePulseScale));
-      const expression = [
-        `var event=${eventSeconds};`,
-        "var f=(time-event)/thisComp.frameDuration;",
-        `var pre=${preFrames};`,
-        `var amplitude=${amplitude};`,
-        "var pulse=0;",
-        "if(f<=-pre||f>=1){pulse=0;}",
-        "else if(f<0){pulse=linear(f,-pre,0,0,amplitude);}",
-        "else{pulse=linear(f,0,1,amplitude,0);}",
-        "var factor=1+pulse;",
-        "value.length>2?[value[0]*factor,value[1]*factor,value[2]]:value*factor;",
-      ].join("");
+      const scaleVelocityRaw = parameters["scaleVelocityPeakPerSecond"];
+      const scaleVelocityScaleRaw = parameters["scaleVelocityScale"];
+      const scaleVelocityScale = typeof scaleVelocityScaleRaw === "number" && Number.isFinite(scaleVelocityScaleRaw)
+        ? Math.max(0.25, Math.min(4, scaleVelocityScaleRaw))
+        : 1;
+      const scaledVelocity = typeof scaleVelocityRaw === "number" && Number.isFinite(scaleVelocityRaw)
+        ? scaleVelocityRaw * scaleVelocityScale
+        : scaleVelocityRaw;
+      const scaleRecoveryMsRaw = parameters["scaleVelocityRecoveryMs"];
+      const hasMeasuredScaleVelocityProfile = typeof scaledVelocity === "number"
+        && Number.isFinite(scaledVelocity) && scaledVelocity > 1e-6
+        && typeof scaleRecoveryMsRaw === "number"
+        && Number.isFinite(scaleRecoveryMsRaw) && scaleRecoveryMsRaw > 0;
+      const legacyPreFrames = typeof scaledVelocity === "number" && Number.isFinite(scaledVelocity)
+        && scaledVelocity > 1e-6
+        ? Math.max(2, Math.min(12, (amplitude / scaledVelocity) * frameRate))
+        : recoveryFrames;
+      const expression = hasMeasuredScaleVelocityProfile
+        ? [
+          `var event=${eventSeconds};`,
+          `var amplitude=${amplitude};`,
+          `var requestedVelocity=${scaledVelocity};`,
+          `var recoverySeconds=${Math.max(1 / frameRate, Math.min(0.5, scaleRecoveryMsRaw / 1000))};`,
+          "var velocity=Math.min(requestedVelocity,(2*amplitude)/(thisComp.frameDuration+recoverySeconds));",
+          "var preSeconds=Math.max(thisComp.frameDuration,(2*amplitude/velocity)-recoverySeconds);",
+          "var t=time-event;",
+          "var pulse=0;",
+          "if(t<=-preSeconds){pulse=0;}",
+          "else if(t<0){var u=t+preSeconds;pulse=0.5*velocity*u*u/preSeconds;}",
+          "else if(t<recoverySeconds){var u=t;var atPeak=0.5*velocity*preSeconds;pulse=atPeak+velocity*u-(0.5*velocity*u*u/recoverySeconds);}",
+          "else{pulse=amplitude;}",
+          "var factor=1+pulse;",
+          "value.length>2?[value[0]*factor,value[1]*factor,value[2]]:value*factor;",
+        ].join("")
+        : [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)/thisComp.frameDuration;",
+          `var pre=${legacyPreFrames};`,
+          `var post=${recoveryFrames};`,
+          `var amplitude=${amplitude};`,
+          "var pulse=0;",
+          "if(f<=-pre||f>=post){pulse=0;}",
+          "else if(f<0){pulse=linear(f,-pre,0,0,amplitude);}",
+          "else{pulse=linear(f,0,post,amplitude,0);}",
+          "var factor=1+pulse;",
+          "value.length>2?[value[0]*factor,value[1]*factor,value[2]]:value*factor;",
+        ].join("");
       for (const layerId of targets) {
         operations.push({
           type: "SET_EXPRESSION",

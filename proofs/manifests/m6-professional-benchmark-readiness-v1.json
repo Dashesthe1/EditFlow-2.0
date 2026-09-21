@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-21T06:18:12.287Z",
+  "generatedAt": "2026-09-21T08:24:26.594Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -203,11 +203,54 @@
       "degradedControlRejected": true
     }
   ],
+  "sourceAdmissionDiagnostics": [
+    {
+      "caseId": "m6:velocity_transition:canonical",
+      "family": "VELOCITY_TRANSITION",
+      "ref": "proofs/diagnostics/m6-velocity-source-candidate-smooth-twixtor-w09-v1-admission.json",
+      "sha256": "1184f788e904e1f97358bf37260b7b50ae16fbec577524abb421f63236159821",
+      "sourceEvidenceRef": "proofs/diagnostics/m6-velocity-source-candidate-smooth-twixtor-w09-v1-evidence.json",
+      "sourceEvidenceSha256": "9ae2e4db97ea53ef0864ff86cdf347c1f898c22d81307378d4795190a31f0860",
+      "sourceVideoSha256": "9d1e5397a74a83a19b89722ecc967046a3e0fc4c7c0012e5a6dfa7ebd13a546f",
+      "result": "REJECTED",
+      "definingCoverage": 0.6666666666666666,
+      "weightedContractScore": 0.6920379873208783,
+      "failedInvariantIds": [
+        "velocity.energy"
+      ],
+      "reasons": [
+        "motionEnergyPeak=0.0167 fails family admission (minimum 0.2200). A clear velocity impulse drives the cut."
+      ],
+      "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY"
+    },
+    {
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "ref": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z19-v1-admission.json",
+      "sha256": "e5de07a6407c81109503fa36b3e9cb14bf28393941c716e3214fce7e599134c2",
+      "sourceEvidenceRef": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z19-v1-evidence.json",
+      "sourceEvidenceSha256": "d37c796b21395799f39cc8d82a3e71bfad0a25d0c68107039afe0b57658f01b2",
+      "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "result": "REJECTED",
+      "definingCoverage": 0.6666666666666666,
+      "weightedContractScore": 0.6892207101702348,
+      "failedInvariantIds": [
+        "zoom.recovery"
+      ],
+      "reasons": [
+        "scaleVelocityRecoveryRatio=0.7729 fails family admission (maximum 0.4000). Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."
+      ],
+      "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
+      "preAeRejectionRef": "proofs/diagnostics/m6-zoom-impact-source-admission-live-boundary-v1.json",
+      "preAeRejectionSha256": "67b71552811b0f4957c9233c93e33942270cfca3a3b658d69b27f7ffe35a3157",
+      "preAeRejectionStatus": "PASS"
+    }
+  ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
     "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "5e10b350cc9f78467b88aa2be822d05dafb58a3d48623db2e65b4faf3aa83c55"
+    "generatorSha256": "cc989b17a01bfaef420b58bec4805bc64c4cb529ccdf9606f2f4420df2cb2e82"
   },
   "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

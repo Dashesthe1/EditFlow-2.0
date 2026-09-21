@@ -43,3 +43,57 @@ test("M6.9 benchmark inventory keeps retained benchmark references isolated from
   const benchmarkSource = benchmarkReference.evidenceRefs.find((item) => item.startsWith("video:sha256:"));
   assert.equal(benchmarkSource, liveSource);
 });
+test("M6.9 source admission retains rejected tutorial candidates without promoting benchmark evidence", async () => {
+  const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
+  const diagnostic = manifest.sourceAdmissionDiagnostics.find((item) =>
+    item.caseId === "m6:velocity_transition:canonical"
+  );
+  assert.equal(diagnostic?.family, "VELOCITY_TRANSITION");
+  assert.equal(diagnostic?.result, "REJECTED");
+  assert.equal(diagnostic?.authority, "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY");
+  assert.equal(diagnostic?.definingCoverage, 2 / 3);
+  assert.deepEqual(diagnostic?.failedInvariantIds, ["velocity.energy"]);
+  assert.match(diagnostic?.reasons?.join("\n") ?? "", /motionEnergyPeak=0\.0167/);
+  assert.equal(diagnostic?.sha256, await sha256(diagnostic.ref));
+  assert.equal(diagnostic?.sourceEvidenceSha256, await sha256(diagnostic.sourceEvidenceRef));
+
+  assert.equal(
+    manifest.retainedCases.some((item) => item.caseId === "m6:velocity_transition:canonical"),
+    false,
+  );
+  assert.equal(manifest.casesWithRetainedEvidence, 1);
+  assert.equal(manifest.result.passedCases, 1);
+});
+
+test("M6.9 Zoom source admission rejects scale drift without promoting benchmark evidence", async () => {
+  const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
+  const diagnostic = manifest.sourceAdmissionDiagnostics.find((item) =>
+    item.caseId === "m6:zoom_impact:canonical"
+  );
+  assert.equal(diagnostic?.family, "ZOOM_IMPACT");
+  assert.equal(diagnostic?.result, "REJECTED");
+  assert.equal(diagnostic?.definingCoverage, 2 / 3);
+  assert.ok(diagnostic?.weightedContractScore < 1);
+  assert.deepEqual(diagnostic?.failedInvariantIds, ["zoom.recovery"]);
+  assert.match(
+    diagnostic?.reasons?.join("\n") ?? "",
+    /scaleVelocityRecoveryRatio=.*fails family admission/,
+  );
+  assert.equal(diagnostic?.sha256, await sha256(diagnostic.ref));
+  assert.equal(diagnostic?.sourceEvidenceSha256, await sha256(diagnostic.sourceEvidenceRef));
+  assert.equal(diagnostic?.preAeRejectionStatus, "PASS");
+  assert.equal(diagnostic?.preAeRejectionSha256, await sha256(diagnostic.preAeRejectionRef));
+  const boundary = await load(diagnostic.preAeRejectionRef);
+  assert.equal(boundary.authority, "LIVE_AE_FAIL_CLOSED_BEFORE_MUTATION");
+  assert.equal(boundary.liveAe.beforeHostRevision, boundary.liveAe.afterHostRevision);
+  assert.equal(boundary.materializer.exitCode, 1);
+  assert.equal(boundary.correction.exitCode, 1);
+  assert.equal(boundary.liveAe.beforeMutationLeaseHeld, false);
+  assert.equal(boundary.liveAe.afterMutationLeaseHeld, false);
+
+  assert.equal(
+    manifest.retainedCases.some((item) => item.caseId === "m6:zoom_impact:canonical"),
+    false,
+  );
+  assert.equal(manifest.casesWithRetainedEvidence, 1);
+});

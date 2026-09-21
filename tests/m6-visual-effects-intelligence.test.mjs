@@ -23,11 +23,13 @@ import {
   deriveProfessionalFidelityLevelV1,
   distinguishShutterFromFlashZoomV1,
   evaluateProfessionalBenchmarkV1,
+  evaluateReferenceFamilyCandidateV1,
   evaluateRetainedProfessionalBenchmarkV1,
   evaluateProfessionalFidelityGateV1,
   evaluateUnknownEffectSynthesisMilestoneV1,
   learnTutorialActionPixelConsequencesV1,
   measureHalfPeakTemporalProfileV1,
+  measureScaleDynamicsV1,
   runAutomaticVisualCorrectionLoopV1,
   selectSynthesisEscalationCandidateV1,
   summarizeDenseEffectFramesV1,
@@ -71,6 +73,7 @@ const summaryDefaults = {
   displacementPeak: 0.02,
   displacementDirection: { x: 1, y: 0 },
   scaleRange: 0,
+  scaleDynamicsVersion: "SUSTAINED_TAIL_V1",
   rotationRange: 0,
   blurPeak: 0.08,
   blurPeakPhase: 0.5,
@@ -5073,4 +5076,341 @@ test("M6 live correction maps advanced-warp acceleration to consumed actuators a
     controller,
     /const ADVANCED_WARP_MOTION_CONTROLS = new Set\(\[[\s\S]{0,180}"DISTORTION_STRENGTH"/,
   );
+});
+
+test("M6.1/M6.9 Zoom recovery ignores a one-frame stall when scale motion resumes", () => {
+  const frames = [1, 1.2, 1.201, 1.3, 1.4, 1.5].map((scale, index) => ({
+    ...frameDefaults,
+    timeMs: index * 100,
+    scale,
+  }));
+  const dynamics = measureScaleDynamicsV1(frames);
+
+  assert.ok(dynamics.scaleVelocityPeakPerSecond > 1.9);
+  assert.ok(dynamics.scaleVelocityRecoveryRatio > 0.4);
+  assert.equal(dynamics.scaleVelocityRecoveryMs, 400);
+});
+
+test("M6.1/M6.9 Zoom recovery requires a sustained low-rate tail", () => {
+  const frames = [1, 1.2, 1.24, 1.25, 1.255, 1.257].map((scale, index) => ({
+    ...frameDefaults,
+    timeMs: index * 100,
+    scale,
+  }));
+  const dynamics = measureScaleDynamicsV1(frames);
+
+  assert.ok(dynamics.scaleVelocityPeakPerSecond > 1.9);
+  assert.ok(dynamics.scaleVelocityRecoveryRatio < 0.1);
+  assert.equal(dynamics.scaleVelocityRecoveryMs, 100);
+});
+
+test("M6.9 unversioned cached Zoom recovery cannot override current frame evidence", () => {
+  const candidateEvidence = evidence({
+    scaleRange: 0.5,
+    scaleVelocityPeakPerSecond: 2,
+    scaleVelocityRecoveryRatio: 0.01,
+    scaleVelocityRecoveryMs: 100,
+  });
+  delete candidateEvidence.summary.scaleDynamicsVersion;
+  const scales = [1, 1.2, 1.201, 1.3, 1.4, 1.5, 1.6];
+  candidateEvidence.frames = candidateEvidence.frames.map((frame, index) => ({
+    ...frame,
+    scale: scales[index],
+  }));
+
+  const candidate = evaluateReferenceFamilyCandidateV1(candidateEvidence, "ZOOM_IMPACT");
+  assert.equal(candidate.passed, false);
+  assert.equal(
+    candidate.checks.find((item) => item.invariantId === "zoom.recovery")?.passed,
+    false,
+  );
+  assert.match(candidate.failures.join("\n"), /scaleVelocityRecoveryRatio=/);
+});
+
+test("M6.9 family reference admission rejects interesting windows that miss Velocity DNA", () => {
+  const candidate = evaluateReferenceFamilyCandidateV1(evidence({
+    motionEnergyPeak: 0.016745071631779636,
+    accelerationPeak: 0.03349014326355927,
+    recoveryFrames: 1,
+    scaleRange: 0.24715848786719763,
+    blurPeak: 0.9889133540148722,
+  }), "VELOCITY_TRANSITION");
+
+  assert.equal(candidate.passed, false);
+  assert.equal(candidate.definingCoverage, 2 / 3);
+  assert.ok(candidate.weightedContractScore < 1);
+  assert.match(candidate.failures.join("\n"), /motionEnergyPeak=.*fails family admission/);
+  assert.equal(candidate.checks.find((item) => item.invariantId === "velocity.acceleration")?.passed, true);
+});
+
+test("M6.9 family reference admission accepts a reference only when all defining DNA is measured", () => {
+  const candidate = evaluateReferenceFamilyCandidateV1(evidence({
+    motionEnergyPeak: 0.34,
+    accelerationPeak: 0.08,
+    recoveryFrames: 4,
+  }), "VELOCITY_TRANSITION");
+
+  assert.equal(candidate.passed, true);
+  assert.equal(candidate.definingCoverage, 1);
+  assert.equal(candidate.failures.length, 0);
+  assert.ok(candidate.weightedContractScore >= 0.99);
+});
+
+test("M6.9 family reference admission treats opposite camera directions as the same match axis", () => {
+  const candidate = evaluateReferenceFamilyCandidateV1(evidence({
+    displacementDirection: { x: -1, y: 0 },
+    motionEnergyPeak: 0.26,
+  }), "CAMERA_MOTION_MATCH");
+
+  assert.equal(candidate.passed, true);
+  assert.equal(candidate.definingCoverage, 1);
+  assert.equal(candidate.checks.find((item) => item.invariantId === "camera.direction")?.passed, true);
+});
+
+test("M6.9 family reference admission refuses render evidence as a benchmark source", () => {
+  const render = evidence({
+    motionEnergyPeak: 0.34,
+    accelerationPeak: 0.08,
+    recoveryFrames: 4,
+  });
+  render.sourceKind = "RENDER";
+
+  assert.throws(
+    () => evaluateReferenceFamilyCandidateV1(render, "VELOCITY_TRANSITION"),
+    /requires REFERENCE dense evidence/,
+  );
+});
+
+test("M6.4/M6.9 Zoom Impact keeps scale magnitude, rate, and recovery on one native-realizable transform", () => {
+  const anatomy = deriveEffectAnatomyV1(evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 1.7,
+    scaleVelocityRecoveryRatio: 0.12,
+    scaleVelocityRecoveryMs: 100,
+  }), "ZOOM_IMPACT");
+  const graph = buildConstructionGraphV1(anatomy);
+  const transformNodes = graph.nodes.filter((node) => node.kind === "TRANSFORM_MOTION");
+  assert.equal(transformNodes.length, 1);
+  assert.deepEqual(
+    [...transformNodes[0].requiredInvariantIds].sort(),
+    ["zoom.motion", "zoom.recovery", "zoom.scale"],
+  );
+  assert.equal(transformNodes[0].parameters.scaleRange, 0.435);
+  assert.equal(transformNodes[0].parameters.scaleVelocityPeakPerSecond, 1.7);
+  assert.equal(transformNodes[0].parameters.scaleVelocityRecoveryRatio, 0.12);
+  assert.equal(transformNodes[0].parameters.scaleVelocityRecoveryMs, 100);
+
+  const compilation = compileConstructionGraphV1(graph, ALL_CAPABILITIES);
+  assert.equal(compilation.definingCoverageComplete, true);
+  assert.deepEqual(compilation.capabilityGaps, []);
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "Zoom proof",
+      width: 640,
+      height: 360,
+      durationMs: 1000,
+      frameRate: 30,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "PRECOMP",
+        sourceRef: "source",
+        inMs: 0,
+        outMs: 1000,
+        properties: [],
+        effects: [],
+        masks: [],
+      }],
+    }],
+  };
+  const result = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-zoom-native-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+      creativeObjective: "Materialize admitted Zoom Impact behavior.",
+      recipeRefs: [graph.graphId],
+    },
+  );
+
+  assert.equal(result.compiled, true);
+  assert.deepEqual(result.issues, []);
+  assert.ok(result.plan !== null);
+  assert.equal(
+    result.plan.operations.filter((operation) =>
+      operation.input.command === "property.set_expression").length,
+    1,
+  );
+  const scaleExpression = result.plan.operations.find((operation) =>
+    operation.input.command === "property.set_expression"
+    && JSON.stringify(operation.input.payload.propertyPath).includes("ADBE Scale"));
+  assert.ok(scaleExpression);
+  const scaleExpressionSource = String(scaleExpression.input.payload.expression);
+  assert.match(scaleExpressionSource, /requestedVelocity=1\.7/);
+  assert.match(scaleExpressionSource, /preSeconds=Math\.max\(thisComp\.frameDuration/);
+  assert.match(scaleExpressionSource, /else\{pulse=amplitude;\}/);
+  assert.doesNotMatch(scaleExpressionSource, /linear\(f,0,post,amplitude,0\)/);
+});
+
+test("M6.6 Zoom gate does not misclassify a valid near-zero settling metric as missing behavior", () => {
+  const reference = evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 1.7,
+    scaleVelocityRecoveryRatio: 0.003,
+    scaleVelocityRecoveryMs: 33.333,
+  });
+  const anatomy = deriveEffectAnatomyV1(reference, "ZOOM_IMPACT");
+  const compilation = compileConstructionGraphV1(buildConstructionGraphV1(anatomy), ALL_CAPABILITIES);
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render: reference,
+    dna: anatomy.dna,
+  });
+  const gate = evaluateProfessionalFidelityGateV1({ comparison, compilation, synthesisPossible: true });
+  assert.equal(gate.certified, true);
+  assert.deepEqual(gate.missingDefiningInvariantIds, []);
+});
+
+test("M6.7 Zoom scale-rate deficits map to a bounded native scale-velocity actuator", () => {
+  const reference = evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 1.7,
+    scaleVelocityRecoveryRatio: 0.003,
+    scaleVelocityRecoveryMs: 33.333,
+  });
+  const render = evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 2.55,
+    scaleVelocityRecoveryRatio: 0.003,
+    scaleVelocityRecoveryMs: 33.333,
+  });
+  render.sourceKind = "RENDER";
+  const anatomy = deriveEffectAnatomyV1(reference, "ZOOM_IMPACT");
+  const graph = buildConstructionGraphV1(anatomy);
+  const comparison = compareSemanticVisualFidelityV1({ reference, render, dna: anatomy.dna });
+  assert.deepEqual(
+    comparison.metrics.filter((metric) => !metric.passed).map((metric) => metric.invariantId),
+    ["zoom.motion"],
+  );
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  assert.deepEqual(plan.unresolvedInvariantIds, []);
+  assert.equal(plan.instructions.length, 1);
+  assert.equal(plan.instructions[0].control, "SCALE_RATE");
+  assert.equal(plan.instructions[0].direction, "DECREASE");
+  assert.ok(plan.instructions[0].multiplier < 1);
+
+  const application = applyConstructionActuationPlanV1(graph, plan);
+  assert.deepEqual(application.unsupportedInstructionIds, []);
+  assert.equal(application.appliedInstructionIds.length, 1);
+  const transform = application.graph.nodes.find((node) => node.kind === "TRANSFORM_MOTION");
+  assert.ok(transform);
+  assert.ok(transform.parameters.scaleVelocityScale < 1);
+
+  const compilation = compileConstructionGraphV1(application.graph, ALL_CAPABILITIES);
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp", name: "Zoom correction", width: 640, height: 360,
+      durationMs: 1000, frameRate: 30,
+      layers: [{
+        layerId: "hero", name: "Hero", kind: "PRECOMP", sourceRef: "source",
+        inMs: 0, outMs: 1000, properties: [], effects: [], masks: [],
+      }],
+    }],
+  };
+  const native = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+    },
+    {
+      planId: "m6-zoom-rate-correction-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+    },
+  );
+  assert.equal(native.compiled, true);
+  assert.ok(native.plan);
+  const scaleExpression = native.plan.operations.find((operation) =>
+    operation.input.command === "property.set_expression"
+    && JSON.stringify(operation.input.payload.propertyPath).includes("ADBE Scale"));
+  assert.ok(scaleExpression);
+  const requested = Number(String(scaleExpression.input.payload.expression)
+    .match(/requestedVelocity=([0-9.]+)/)?.[1]);
+  assert.ok(Number.isFinite(requested));
+  assert.ok(requested < 1.7);
+});
+
+test("M6.9 Zoom admission rejects scale-rate drift that never settles", () => {
+  const candidate = evaluateReferenceFamilyCandidateV1(evidence({
+    scaleRange: 0.435,
+    scaleVelocityPeakPerSecond: 1.7,
+    scaleVelocityRecoveryRatio: 0.92,
+    scaleVelocityRecoveryMs: 900,
+  }), "ZOOM_IMPACT");
+
+  assert.equal(candidate.passed, false);
+  assert.equal(candidate.definingCoverage, 2 / 3);
+  assert.deepEqual(
+    candidate.checks.filter((item) => !item.passed).map((item) => item.invariantId),
+    ["zoom.recovery"],
+  );
+  assert.match(candidate.failures.join("\n"), /scaleVelocityRecoveryRatio=0\.9200 fails family admission/);
+});
+
+test("M6.7/M6.9 known-family correction rejects inadmissible sources before live AE contact", () => {
+  const source = readFileSync(
+    new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /evaluateReferenceFamilyCandidateV1\(reference, REQUESTED_FAMILY\)/);
+  assert.ok(
+    source.indexOf("if (!sourceAdmission.passed)") < source.indexOf('await request("/healthz")'),
+    "Known-family correction must fail source admission before contacting live AE.",
+  );
+});
+
+test("M6.9 real-AE materializer admits known families without weakening UNKNOWN proof governance", () => {
+  const source = readFileSync(
+    new URL("../scripts/proofs/m6-generic-native-materializer-proof.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /const REQUESTED_FAMILY = cliValue\("--family", "UNKNOWN"\)/);
+  assert.match(source, /evaluateReferenceFamilyCandidateV1\(evidence, REQUESTED_FAMILY\)/);
+  assert.match(source, /sourceAdmission\.passed/);
+  assert.match(source, /REQUESTED_FAMILY === "UNKNOWN" && selected\.capabilityGaps\.length > 0/);
+  assert.match(source, /verifyControlHostScriptParity/);
+  assert.match(source, /mutation-lease\/acquire/);
+  assert.ok(
+    source.indexOf("if (!sourceAdmission.passed)") < source.indexOf('await request("/healthz")'),
+    "Known-family source admission must fail before the live AE control plane is contacted.",
+  );
+  assert.match(source, /baselineAwareComparison = REQUESTED_FAMILY !== "UNKNOWN"/);
+  assert.match(source, /path\.join\(controlRepoRoot, "\.tmp", "m6-generic-native-case01-readback\.txt"\)/);
 });

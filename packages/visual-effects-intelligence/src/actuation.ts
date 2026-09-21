@@ -38,6 +38,7 @@ const CONTROL_BY_METRIC: Readonly<Record<string, readonly ConstructionControlKin
   occlusionPeak: ["OCCLUSION_COVERAGE"],
   chromaticSeparationPeak: ["CHROMATIC_SEPARATION"],
   scaleRange: ["SCALE_PULSE"],
+  scaleVelocityPeakPerSecond: ["SCALE_RATE"],
   rotationRange: ["ROTATION_PULSE"],
   activeDimensionCount: ["COORDINATED_DIMENSION_COUNT"],
 };
@@ -193,6 +194,7 @@ const PHYSICAL_SCALE_PARAMETER_BY_CONTROL: Readonly<Partial<Record<
   DISTORTION_STRENGTH: "distortionStrengthScale",
   CHROMATIC_SEPARATION: "chromaticSeparationScale",
   SCALE_PULSE: "scalePulseScale",
+  SCALE_RATE: "scaleVelocityScale",
 };
 
 const physicalParameterForControl = (
@@ -266,6 +268,7 @@ const PHYSICAL_SCALE_LIMITS: Readonly<Record<string, readonly [number, number]>>
   eventEvolutionSharpnessScale: [0.5, 2],
   chromaticSeparationScale: [0.25, 4],
   scalePulseScale: [0.25, 4],
+  scaleVelocityScale: [0.25, 4],
   numberOfEchoes: [1, 12],
   echoSpacingFrames: [0.25, 8],
   startingIntensity: [0.1, 1],

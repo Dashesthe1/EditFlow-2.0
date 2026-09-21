@@ -5,12 +5,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applyConstructionActuationPlanV1,
+  buildConstructionGraphV1,
   compareSemanticVisualFidelityV1,
   compileConstructionGraphV1,
   compileConstructionThroughNativeAeV1,
+  createCanonicalProfessionalBenchmarkV1,
   decomposeUnknownEffectV1,
   deriveConstructionActuationPlanV1,
+  deriveEffectAnatomyV1,
   evaluateProfessionalFidelityGateV1,
+  evaluateReferenceFamilyCandidateV1,
   planBoundedActuatorSearchV1,
   selectBoundedActuatorSearchDecisionV1,
   selectRetainedBestActuatorAttemptV1,
@@ -26,6 +30,7 @@ const cliValue = (name, fallback) => {
   return index >= 0 && cli[index + 1] ? cli[index + 1] : fallback;
 };
 const STEM = cliValue("--stem", "m6-generic-native-auto-correction");
+const REQUESTED_FAMILY = cliValue("--family", "UNKNOWN").trim().toUpperCase();
 const REF = path.resolve(ROOT, cliValue(
   "--reference",
   "proofs/m6/references/shutter_fragmentation-canonical.json",
@@ -54,6 +59,7 @@ const PHYSICAL_PARAMETER_BY_CONTROL = Object.freeze({
   DISTORTION_STRENGTH: "distortionStrengthScale",
   CHROMATIC_SEPARATION: "chromaticSeparationScale",
   SCALE_PULSE: "scalePulseScale",
+  SCALE_RATE: "scaleVelocityScale",
 });
 const physicalParameterForNodeControl = (node, control) => {
   if (node?.parameters?.synthesisStrategy === "NATIVE_ECHO_HYBRID"
@@ -105,6 +111,7 @@ const SEARCH_DIMENSIONS = Object.freeze([
   { control: "DISTORTION_EVOLUTION", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "CHROMATIC_SEPARATION", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
   { control: "SCALE_PULSE", minimum: 0.25, maximum: 4, minimumStep: 0.25 },
+  { control: "SCALE_RATE", minimum: 0.25, maximum: 4, minimumStep: 0.0625 },
 ]);
 const CAPABILITIES = [
   "ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set",
@@ -485,12 +492,15 @@ const strategyKeyFromSet = (strategies) => {
   }
   return [...strategies][0] ?? "LAYERED_PRIMITIVES";
 };
-const graphStrategyKey = (valueGraph) => strategyKeyFromSet(new Set(
-  valueGraph.nodes.flatMap((node) =>
+const graphStrategyKey = (valueGraph) => {
+  const strategies = new Set(valueGraph.nodes.flatMap((node) =>
     typeof node.parameters.synthesisStrategy === "string"
       ? [node.parameters.synthesisStrategy]
-      : []),
-));
+      : []));
+  return strategies.size === 0 && REQUESTED_FAMILY !== "UNKNOWN"
+    ? `KNOWN_FAMILY_${REQUESTED_FAMILY}`
+    : strategyKeyFromSet(strategies);
+};
 const renderedSynthesisNegativeEvidence = (states, passHistory, activeStrategyKey) =>
   [...new Set([
     ...states.map((state) => graphStrategyKey(state.graph)),
@@ -499,12 +509,15 @@ const renderedSynthesisNegativeEvidence = (states, passHistory, activeStrategyKe
         ? [pass.strategy]
         : []),
   ])].filter((strategy) => strategy !== activeStrategyKey);
-const recordedStrategyKey = (graphParameters) => strategyKeyFromSet(new Set(
-  graphParameters.flatMap((entry) =>
+const recordedStrategyKey = (graphParameters) => {
+  const strategies = new Set(graphParameters.flatMap((entry) =>
     typeof entry?.parameters?.synthesisStrategy === "string"
       ? [entry.parameters.synthesisStrategy]
-      : []),
-));
+      : []));
+  return strategies.size === 0 && REQUESTED_FAMILY !== "UNKNOWN"
+    ? `KNOWN_FAMILY_${REQUESTED_FAMILY}`
+    : strategyKeyFromSet(strategies);
+};
 const attemptEvidenceFromState = (
   state,
   controls = SEARCH_CONTROLS,
@@ -629,16 +642,57 @@ const graphFromRecordedParameters = (baseGraph, graphParameters) => {
   };
 };
 
-await request("/healthz");
 const reference = await load(REF);
 const seedRender = await load(SEED);
 if (reference.analyzerFingerprint !== seedRender.analyzerFingerprint) {
   throw new Error("Retained seed render is not analyzer-compatible with the reference.");
 }
-const anatomy = decomposeUnknownEffectV1(reference);
-const synthesis = synthesizeUnknownEffectV1({ evidence: reference, availableCapabilities: CAPABILITIES });
-if (synthesis.status !== "READY_FOR_PROOF" || synthesis.selected === null) {
-  throw new Error("UNKNOWN synthesis is not ready for correction proof.");
+let anatomy;
+let synthesis;
+let sourceAdmission = null;
+if (REQUESTED_FAMILY === "UNKNOWN") {
+  anatomy = decomposeUnknownEffectV1(reference);
+  synthesis = synthesizeUnknownEffectV1({ evidence: reference, availableCapabilities: CAPABILITIES });
+  if (synthesis.status !== "READY_FOR_PROOF" || synthesis.selected === null) {
+    throw new Error("UNKNOWN synthesis is not ready for correction proof.");
+  }
+} else {
+  if (SEED_STRATEGY.length > 0) {
+    throw new Error("--seed-strategy is only valid for UNKNOWN synthesis correction.");
+  }
+  const supportedFamilies = new Set(
+    createCanonicalProfessionalBenchmarkV1()
+      .map((item) => item.family)
+      .filter((family) => family !== "UNKNOWN"),
+  );
+  if (!supportedFamilies.has(REQUESTED_FAMILY)) {
+    throw new Error(`Unsupported known benchmark family '${REQUESTED_FAMILY}'.`);
+  }
+  sourceAdmission = evaluateReferenceFamilyCandidateV1(reference, REQUESTED_FAMILY);
+  if (!sourceAdmission.passed) {
+    throw new Error(
+      `Reference evidence failed ${REQUESTED_FAMILY} family admission: ${sourceAdmission.failures.join(" | ")}`,
+    );
+  }
+  anatomy = deriveEffectAnatomyV1(reference, REQUESTED_FAMILY);
+  const graph = buildConstructionGraphV1(anatomy);
+  const knownCandidate = {
+    candidateId: `known-family:${REQUESTED_FAMILY}:${reference.contentKey}`,
+    strategy: `KNOWN_FAMILY_${REQUESTED_FAMILY}`,
+    graph,
+    definingCoverage: graph.missingInvariantIds.length === 0 ? 1 : 0,
+    score: graph.missingInvariantIds.length === 0 ? 1 : 0,
+    complexity: graph.nodes.length,
+    capabilityGaps: [],
+  };
+  synthesis = {
+    schema: "editflow.unknown-effect-synthesis.v1",
+    status: "READY_FOR_PROOF",
+    selected: knownCandidate,
+    candidates: [knownCandidate],
+    provenance: [reference.contentKey, ...reference.evidenceRefs],
+    gapReasons: [],
+  };
 }
 const seedCandidate = SEED_STRATEGY.length === 0
   ? synthesis.selected
@@ -649,6 +703,9 @@ if (seedCandidate === undefined || seedCandidate === null) {
 if (seedCandidate.capabilityGaps.length > 0) {
   throw new Error(`Requested seed strategy '${seedCandidate.strategy}' has capability gaps: ${seedCandidate.capabilityGaps.join(", ")}.`);
 }
+// Known-family source admission and compile-time capability checks must finish
+// before the correction harness touches the live AE control plane.
+await request("/healthz");
 const causalBaselinePass = await executeCausalBaseline();
 const causalBaseline = causalBaselinePass.measured.value;
 if (causalBaseline.analyzerFingerprint !== reference.analyzerFingerprint) {
@@ -684,6 +741,8 @@ const checkpointPasses = async (checkpointStatus) => {
     schema: "editflow.m6.generic-native-auto-correction-proof.v1",
     generatedAt: new Date().toISOString(),
     sourceEvidence: path.relative(ROOT, REF).replaceAll("\\", "/"),
+    requestedFamily: REQUESTED_FAMILY,
+    sourceAdmission,
     seedEvidence: path.relative(ROOT, SEED).replaceAll("\\", "/"),
     seedStrategy: seedCandidate.strategy,
     causalBaselineEvidence: path.relative(ROOT, causalBaselinePass.measured.evidence).replaceAll("\\", "/"),
@@ -1286,6 +1345,8 @@ const result = {
   schema: "editflow.m6.generic-native-auto-correction-proof.v1",
   generatedAt: new Date().toISOString(),
   sourceEvidence: path.relative(ROOT, REF).replaceAll("\\", "/"),
+  requestedFamily: REQUESTED_FAMILY,
+  sourceAdmission,
   seedEvidence: path.relative(ROOT, SEED).replaceAll("\\", "/"),
   seedStrategy: seedCandidate.strategy,
   causalBaselineEvidence: path.relative(ROOT, causalBaselinePass.measured.evidence).replaceAll("\\", "/"),

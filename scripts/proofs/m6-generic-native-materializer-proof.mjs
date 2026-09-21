@@ -5,11 +5,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildConstructionGraphV1,
   compareSemanticVisualFidelityV1,
   compileConstructionGraphV1,
   compileConstructionThroughNativeAeV1,
+  createCanonicalProfessionalBenchmarkV1,
   decomposeUnknownEffectV1,
+  deriveEffectAnatomyV1,
   evaluateProfessionalFidelityGateV1,
+  evaluateReferenceFamilyCandidateV1,
   synthesizeUnknownEffectV1,
 } from "../../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
 
@@ -21,6 +25,7 @@ const cliValue = (name, fallback) => {
   return index >= 0 && cli[index + 1] ? cli[index + 1] : fallback;
 };
 const STEM = cliValue("--stem", "m6-generic-native-materializer-case01");
+const REQUESTED_FAMILY = cliValue("--family", "UNKNOWN").trim().toUpperCase();
 const REQUESTED_STRATEGY = cliValue("--strategy", "").trim();
 const EVIDENCE_PATH = path.resolve(ROOT, cliValue(
   "--evidence",
@@ -31,7 +36,8 @@ const CANDIDATE_VIDEO = path.join(ROOT, "proofs", "diagnostics", STEM + ".mp4");
 const CONTROL_VIDEO = path.join(ROOT, "proofs", "diagnostics", STEM + "-control.mp4");
 const CANDIDATE_EVIDENCE = path.join(ROOT, "proofs", "diagnostics", STEM + "-evidence.json");
 const CONTROL_EVIDENCE = path.join(ROOT, "proofs", "diagnostics", STEM + "-control-evidence.json");
-const WINDOWS = (name) => path.join(ROOT, "scripts", "windows", name);
+let controlRepoRoot = ROOT;
+const WINDOWS = (name) => path.join(controlRepoRoot, "scripts", "windows", name);
 const CAPABILITIES = [
   "ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set",
   "ae.layer.transform.set", "ae.keyframe.temporal_ease.set",
@@ -44,13 +50,41 @@ const CAPABILITIES = [
   "ae.precompose.layers",
 ];
 
-const request = async (pathname, init) => {
-  const response = await fetch(CONTROL + pathname, init);
+let mutationLeaseToken = null;
+const request = async (pathname, init = {}) => {
+  const headers = { ...(init.headers ?? {}) };
+  if (mutationLeaseToken !== null) headers["x-editflow-mutation-lease"] = mutationLeaseToken;
+  const response = await fetch(CONTROL + pathname, { ...init, headers });
   const body = await response.json();
   if (!response.ok || body.ok === false) {
     throw new Error(pathname + " failed: " + JSON.stringify(body));
   }
   return body;
+};
+const acquireMutationLease = async () => {
+  const lease = await request("/mutation-lease/acquire", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      owner: "m6-generic-native-materializer:" + STEM,
+      ttlMs: 180_000,
+    }),
+  });
+  mutationLeaseToken = lease.lease.token;
+  return lease.lease;
+};
+const releaseMutationLease = async () => {
+  const token = mutationLeaseToken;
+  if (token === null) return;
+  try {
+    await request("/mutation-lease/release", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+  } finally {
+    mutationLeaseToken = null;
+  }
 };
 const runProofScript = (name) => request("/proof-script", {
   method: "POST",
@@ -73,6 +107,32 @@ const run = (command, args) => {
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const relative = (file) => path.relative(ROOT, file).replaceAll("\\", "/");
 const sha256File = async (file) => createHash("sha256").update(await readFile(file)).digest("hex");
+const HOST_SCRIPT_NAMES = Object.freeze([
+  "m6-generic-native-case01-setup.jsx",
+  "m6-generic-native-case01-render-control.jsx",
+  "m6-generic-native-case01-readback.jsx",
+  "m6-generic-native-case01-render.jsx",
+  "m6-generic-native-case01-cleanup.jsx",
+]);
+const verifyControlHostScriptParity = async () => {
+  const crossWorktree = path.resolve(controlRepoRoot) !== path.resolve(ROOT);
+  const scripts = [];
+  for (const name of HOST_SCRIPT_NAMES) {
+    const localPath = path.join(ROOT, "scripts", "windows", name);
+    const activePath = WINDOWS(name);
+    const [localSha256, activeSha256] = await Promise.all([
+      sha256File(localPath),
+      sha256File(activePath),
+    ]);
+    if (localSha256 !== activeSha256) {
+      throw new Error(
+        `Active control worktree host script differs from the proof checkout: ${name}.`,
+      );
+    }
+    scripts.push({ name, sha256: localSha256 });
+  }
+  return { crossWorktree, scripts };
+};
 const segmentedPlan = (plan, segmentOperations, suffix, observed = null) => {
   const operationIds = new Set(segmentOperations.map((operation) => String(operation.operationId)));
   const operations = segmentOperations.map((operation) => ({
@@ -138,49 +198,97 @@ const context = {
 };
 
 let artifact = null;
+let fixtureTouched = false;
+let hostScriptParity = null;
 try {
-  await request("/healthz");
-  await runProofScript("m6-generic-native-case01-setup.jsx");
-  await runProofScript("m6-generic-native-case01-render-control.jsx");
-  await copyFile(path.join(os.tmpdir(), "M6_generic_native_case01_control.mp4"), CONTROL_VIDEO);
-  const live = await request("/state");
   const evidence = await load(EVIDENCE_PATH);
-  const anatomy = decomposeUnknownEffectV1(evidence);
-  const synthesis = synthesizeUnknownEffectV1({
-    evidence,
-    availableCapabilities: CAPABILITIES,
-  });
-  if (synthesis.status !== "READY_FOR_PROOF" || synthesis.selected === null) {
-    throw new Error("Unknown synthesis did not produce a selectable construction.");
+  let anatomy;
+  let selected;
+  let sourceAdmission = null;
+  if (REQUESTED_FAMILY === "UNKNOWN") {
+    anatomy = decomposeUnknownEffectV1(evidence);
+    const synthesis = synthesizeUnknownEffectV1({
+      evidence,
+      availableCapabilities: CAPABILITIES,
+    });
+    if (synthesis.status !== "READY_FOR_PROOF" || synthesis.selected === null) {
+      throw new Error("Unknown synthesis did not produce a selectable construction.");
+    }
+    selected = REQUESTED_STRATEGY.length === 0
+      ? synthesis.selected
+      : synthesis.candidates.find((candidate) => candidate.strategy === REQUESTED_STRATEGY);
+    if (selected === undefined || selected === null) {
+      throw new Error(`Requested synthesis strategy '${REQUESTED_STRATEGY}' is unavailable.`);
+    }
+  } else {
+    const supportedFamilies = new Set(
+      createCanonicalProfessionalBenchmarkV1()
+        .map((item) => item.family)
+        .filter((family) => family !== "UNKNOWN"),
+    );
+    if (!supportedFamilies.has(REQUESTED_FAMILY)) {
+      throw new Error(`Unsupported known benchmark family '${REQUESTED_FAMILY}'.`);
+    }
+    if (REQUESTED_STRATEGY.length > 0) {
+      throw new Error("--strategy is only valid for UNKNOWN synthesis materialization.");
+    }
+    sourceAdmission = evaluateReferenceFamilyCandidateV1(evidence, REQUESTED_FAMILY);
+    if (!sourceAdmission.passed) {
+      throw new Error(
+        `Reference evidence failed ${REQUESTED_FAMILY} family admission: ${sourceAdmission.failures.join(" | ")}`,
+      );
+    }
+    anatomy = deriveEffectAnatomyV1(evidence, REQUESTED_FAMILY);
+    const graph = buildConstructionGraphV1(anatomy);
+    selected = {
+      candidateId: `known-family:${REQUESTED_FAMILY}:${evidence.contentKey}`,
+      strategy: `KNOWN_FAMILY_${REQUESTED_FAMILY}`,
+      graph,
+      capabilityGaps: [],
+    };
   }
-  const selected = REQUESTED_STRATEGY.length === 0
-    ? synthesis.selected
-    : synthesis.candidates.find((candidate) => candidate.strategy === REQUESTED_STRATEGY);
-  if (selected === undefined || selected === null) {
-    throw new Error(`Requested synthesis strategy '${REQUESTED_STRATEGY}' is unavailable.`);
-  }
-  if (selected.capabilityGaps.length > 0) {
-    throw new Error(`Requested synthesis strategy '${selected.strategy}' has capability gaps: ${selected.capabilityGaps.join(", ")}.`);
-  }
-  if (selected.graph.family !== "UNKNOWN") {
-    throw new Error("Generic proof requires UNKNOWN family provenance.");
+  if (REQUESTED_FAMILY === "UNKNOWN" && selected.capabilityGaps.length > 0) {
+    throw new Error(
+      `Requested synthesis strategy '${selected.strategy}' has capability gaps: ${selected.capabilityGaps.join(", ")}.`,
+    );
   }
   const compilation = compileConstructionGraphV1(
     selected.graph,
     CAPABILITIES,
   );
+  if (compilation.capabilityGaps.length > 0) {
+    throw new Error(
+      `Requested materialization has capability gaps: ${compilation.capabilityGaps.join(", ")}.`,
+    );
+  }
+  // Reject invalid visual evidence before touching the live AE control plane.
+  // Host parity and mutation leasing are relevant only after a construction is
+  // semantically admissible and compile-complete.
+  const health = await request("/healthz");
+  if (typeof health.repoRoot === "string" && health.repoRoot.length > 0) {
+    controlRepoRoot = path.resolve(health.repoRoot);
+  }
+  hostScriptParity = await verifyControlHostScriptParity();
+  await acquireMutationLease();
+  fixtureTouched = true;
+  await runProofScript("m6-generic-native-case01-setup.jsx");
+  await runProofScript("m6-generic-native-case01-render-control.jsx");
+  await copyFile(path.join(os.tmpdir(), "M6_generic_native_case01_control.mp4"), CONTROL_VIDEO);
+  const live = await request("/state");
   const temporalNodes = selected.graph.nodes.filter((node) =>
     node.kind === "TEMPORAL_DUPLICATES"
     && node.parameters.synthesisStrategy !== "LAYERED_ECHO_AUGMENTED");
-  if (temporalNodes.length !== 1) {
-    throw new Error(`Expected one coordinated temporal node, received ${temporalNodes.length}.`);
+  if (temporalNodes.length > 1) {
+    throw new Error(`Expected at most one coordinated temporal node, received ${temporalNodes.length}.`);
   }
-  const temporalParameters = temporalNodes[0].parameters;
-  const expectedTemporalStateCount = Math.max(2, Math.min(8, Math.round(
-    temporalParameters.fragmentationTemporalStateCountPeak
-      ?? temporalParameters.temporalStateCountPeak
-      ?? 2,
-  )));
+  const temporalParameters = temporalNodes[0]?.parameters ?? {};
+  const expectedTemporalStateCount = temporalNodes.length === 0
+    ? 1
+    : Math.max(2, Math.min(8, Math.round(
+      temporalParameters.fragmentationTemporalStateCountPeak
+        ?? temporalParameters.temporalStateCountPeak
+        ?? 2,
+    )));
   const chromaNode = selected.graph.nodes.find((node) =>
     node.kind === "CHROMATIC_TREATMENT");
   const expectedChromaDuplicateCount = typeof chromaNode?.parameters.chromaticSeparationPeak === "number"
@@ -203,7 +311,7 @@ try {
       planId: STEM,
       observedState,
       curveBindingMode: "LIVE_ADAPTIVE",
-      creativeObjective: "Materialize UNKNOWN reference behavior through Editing IR, Virtual AE, and native AE.",
+      creativeObjective: `Materialize ${selected.graph.family} reference behavior through Editing IR, Virtual AE, and native AE.`,
       recipeRefs: [selected.graph.graphId],
     },
   );
@@ -272,7 +380,10 @@ try {
     transaction = await executeNative();
   }
   await runProofScript("m6-generic-native-case01-readback.jsx");
-  const readback = await readFile(path.join(ROOT, ".tmp", "m6-generic-native-case01-readback.txt"), "utf8");
+  const readback = await readFile(
+    path.join(controlRepoRoot, ".tmp", "m6-generic-native-case01-readback.txt"),
+    "utf8",
+  );
   const commands = native.plan.operations.map((operation) => operation.input.command);
   const duplicateCount = commands.filter((command) => command === "layer.duplicate").length;
   const compLine = readback.split(/\r?\n/).find((line) => line.startsWith("COMP\t"));
@@ -319,10 +430,21 @@ try {
   artifact = {
     schema: "editflow.m6.generic-native-materializer-proof.v1",
     generatedAt: new Date().toISOString(),
-    sourceEvidence: path.relative(process.cwd(), EVIDENCE_PATH).replaceAll("\\", "/"),
+    sourceEvidence: relative(EVIDENCE_PATH),
     evidenceRefs: evidence.evidenceRefs,
+    requestedFamily: REQUESTED_FAMILY,
     family: selected.graph.family,
     strategy: selected.strategy,
+    sourceAdmission: sourceAdmission === null ? null : {
+      passed: sourceAdmission.passed,
+      requestedFamily: sourceAdmission.requestedFamily,
+      classifiedFamily: sourceAdmission.classifiedFamily,
+      definingCoverage: sourceAdmission.definingCoverage,
+      weightedContractScore: sourceAdmission.weightedContractScore,
+      evidenceContentKey: sourceAdmission.evidenceContentKey,
+      analyzerFingerprint: sourceAdmission.analyzerFingerprint,
+    },
+    hostScriptParity,
     graphId: selected.graph.graphId,
     definingCoverage: compilation.definingCoverageComplete,
     capabilityGaps: compilation.capabilityGaps,
@@ -355,7 +477,7 @@ try {
   if (transaction.result.state !== "COMMITTED") throw new Error("Native transaction did not commit.");
   if (artifact.nativePlan.containsOpaqueM6Placeholder) throw new Error("Opaque M6 placeholder leaked to native plan.");
   if (duplicateCount !== expectedDuplicateCount) {
-    throw new Error(`UNKNOWN materializer duplicated ${duplicateCount} times; expected ${expectedDuplicateCount} from temporal plus chromatic construction.`);
+    throw new Error(`Materializer duplicated ${duplicateCount} times; expected ${expectedDuplicateCount} from temporal plus chromatic construction.`);
   }
   const expectedLayerCount = 1 + expectedDuplicateCount;
   if (actualLayerCount !== expectedLayerCount) {
@@ -385,15 +507,18 @@ try {
     || control.value.analyzerFingerprint !== evidence.analyzerFingerprint) {
     throw new Error("Generic native render evidence is not analyzer-compatible with the professional reference.");
   }
+  const baselineAwareComparison = REQUESTED_FAMILY !== "UNKNOWN";
   const candidateComparison = compareSemanticVisualFidelityV1({
     reference: evidence,
     render: candidate.value,
+    ...(baselineAwareComparison ? { baseline: control.value } : {}),
     dna: anatomy.dna,
     alignment: "SEMANTIC",
   });
   const controlComparison = compareSemanticVisualFidelityV1({
     reference: evidence,
     render: control.value,
+    ...(baselineAwareComparison ? { baseline: control.value } : {}),
     dna: anatomy.dna,
     alignment: "SEMANTIC",
   });
@@ -437,7 +562,7 @@ try {
       gate: controlGate,
     },
   };
-  if (!visibleConsequence) throw new Error("Materialized UNKNOWN graph produced no retained pixel consequence versus the control render.");
+  if (!visibleConsequence) throw new Error("Materialized graph produced no retained pixel consequence versus the control render.");
   await mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
   await writeFile(OUTPUT_PATH, JSON.stringify(artifact, null, 2) + "\n", "utf8");
   console.log(JSON.stringify({
@@ -457,5 +582,11 @@ try {
   }));
   if (artifact.status !== "PROFESSIONAL_FIDELITY_PASS") process.exitCode = 2;
 } finally {
-  await runProofScript("m6-generic-native-case01-cleanup.jsx").catch(() => {});
+  try {
+    if (fixtureTouched) {
+      await runProofScript("m6-generic-native-case01-cleanup.jsx").catch(() => {});
+    }
+  } finally {
+    await releaseMutationLease().catch(() => {});
+  }
 }

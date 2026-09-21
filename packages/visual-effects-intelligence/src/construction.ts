@@ -122,6 +122,19 @@ const nodeKey = (template: NodeTemplateV1): string =>
     ? template.kind
     : `${template.kind}:${template.dimension}`;
 
+const constructionNodeKeyV1 = (
+  template: NodeTemplateV1,
+  family: EffectAnatomyV1["family"],
+): string => {
+  // Zoom motion energy is the visible consequence of the same scale pulse,
+  // not an independent directionless offset. Keep both defining invariants on
+  // one transform node so native lowering receives the measured scale driver.
+  if (family === "ZOOM_IMPACT" && template.kind === "TRANSFORM_MOTION") {
+    return "TRANSFORM_MOTION:ZOOM_IMPACT";
+  }
+  return nodeKey(template);
+};
+
 export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): ConstructionGraphV1 => {
   const invariants = [...anatomy.dna.definingInvariants, ...anatomy.dna.optionalInvariants];
   const fragmentationStates = anatomy.observedMetrics["fragmentationTemporalStateCountPeak"];
@@ -133,7 +146,7 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
   const grouped = new Map<string, { template: NodeTemplateV1; invariants: EffectInvariantV1[] }>();
   for (const item of invariants) {
     const template = templateFor(item, anatomy.family);
-    const key = nodeKey(template);
+    const key = constructionNodeKeyV1(template, anatomy.family);
     const existing = grouped.get(key);
     if (existing === undefined) {
       grouped.set(key, {
@@ -208,6 +221,13 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
     if (typeof effectRecoveryDurationMs === "number" && Number.isFinite(effectRecoveryDurationMs)
       && effectRecoveryDurationMs > 0) {
       parameters.effectRecoveryDurationMs = effectRecoveryDurationMs;
+    }
+    if (anatomy.family === "ZOOM_IMPACT" && group.template.kind === "TRANSFORM_MOTION") {
+      const scaleVelocityRecoveryMs = anatomy.observedMetrics["scaleVelocityRecoveryMs"];
+      if (typeof scaleVelocityRecoveryMs === "number" && Number.isFinite(scaleVelocityRecoveryMs)
+        && scaleVelocityRecoveryMs > 0) {
+        parameters.scaleVelocityRecoveryMs = scaleVelocityRecoveryMs;
+      }
     }
     if (group.template.kind === "RECOVERY" && hasCoherentFragmentation) {
       parameters.motionProfile = "SHUTTER_CONVERGENCE";

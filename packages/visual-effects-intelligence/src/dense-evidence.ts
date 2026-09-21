@@ -516,6 +516,78 @@ export const resolveFragmentationEventMetricsV1 = (
   return measureFragmentationCoherenceV1(evidence.frames, summary.frameIntervalMs);
 };
 
+export const measureScaleDynamicsV1 = (
+  frames: readonly DenseFrameMetricsV1[],
+  recoveryRatio = 0.35,
+): Readonly<{
+  scaleVelocityPeakPerSecond: number;
+  scaleVelocityRecoveryRatio: number;
+  scaleVelocityRecoveryMs: number;
+}> => {
+  if (frames.length < 2) {
+    return {
+      scaleVelocityPeakPerSecond: 0,
+      scaleVelocityRecoveryRatio: 1,
+      scaleVelocityRecoveryMs: 0,
+    };
+  }
+  const velocities: Array<Readonly<{ timeMs: number; value: number }>> = [];
+  for (let index = 1; index < frames.length; index += 1) {
+    const current = frames[index]!;
+    const previous = frames[index - 1]!;
+    const elapsedSeconds = (current.timeMs - previous.timeMs) / 1000;
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) continue;
+    velocities.push({
+      timeMs: current.timeMs,
+      value: Math.abs(current.scale - previous.scale) / elapsedSeconds,
+    });
+  }
+  if (velocities.length === 0) {
+    return {
+      scaleVelocityPeakPerSecond: 0,
+      scaleVelocityRecoveryRatio: 1,
+      scaleVelocityRecoveryMs: 0,
+    };
+  }
+  const scaleVelocityPeakPerSecond = Math.max(...velocities.map((item) => item.value));
+  const peakIndex = velocities.findIndex((item) => item.value === scaleVelocityPeakPerSecond);
+  const peakTimeMs = velocities[peakIndex]?.timeMs ?? frames[0]!.timeMs;
+  const finalVelocityTimeMs = velocities.at(-1)?.timeMs ?? peakTimeMs;
+  const totalDurationMs = Math.max(0, finalVelocityTimeMs - peakTimeMs);
+  let scaleVelocityRecoveryRatio = 1;
+  let scaleVelocityRecoveryMs = totalDurationMs;
+  if (scaleVelocityPeakPerSecond > 1e-6) {
+    const postPeak = velocities.slice(peakIndex + 1);
+    if (postPeak.length > 0 && totalDurationMs > 0) {
+      // A single near-zero scale delta can occur at a cut, optical-flow wobble,
+      // or the crest of a compound push. It is not recovery if scale motion
+      // immediately resumes. Measure terminal residual speed over the final
+      // quarter of post-peak time, then require recovery to remain inside the
+      // band for the rest of the observed effect window.
+      const terminalStartMs = peakTimeMs + (totalDurationMs * 0.75);
+      const terminal = postPeak.filter((item) => item.timeMs >= terminalStartMs);
+      const terminalSamples = terminal.length > 0 ? terminal : postPeak.slice(-1);
+      scaleVelocityRecoveryRatio = Math.min(
+        1,
+        Math.max(...terminalSamples.map((item) => item.value)) / scaleVelocityPeakPerSecond,
+      );
+      const threshold = scaleVelocityPeakPerSecond * recoveryRatio;
+      const recovered = postPeak.find((item, index) => {
+        const suffix = postPeak.slice(index);
+        return suffix.length >= 2 && suffix.every((sample) => sample.value <= threshold);
+      });
+      if (recovered !== undefined) {
+        scaleVelocityRecoveryMs = Math.max(0, recovered.timeMs - peakTimeMs);
+      }
+    }
+  }
+  return {
+    scaleVelocityPeakPerSecond,
+    scaleVelocityRecoveryRatio,
+    scaleVelocityRecoveryMs,
+  };
+};
+
 export const summarizeDenseEffectFramesV1 = (
   frames: readonly DenseFrameMetricsV1[],
   interval: number,
@@ -543,6 +615,7 @@ export const summarizeDenseEffectFramesV1 = (
     accelerationPeak = Math.max(accelerationPeak, Math.abs((c - b) - (b - a)));
   }
   const displacementPeakIndex = peakIndex(frames, (frame) => frame.displacementMagnitude);
+  const scaleDynamics = measureScaleDynamicsV1(frames, recoveryEnergyRatio);
   const fragmentation = measureFragmentationCoherenceV1(frames, interval);
   // Temporal persistence is the occupancy of visible simultaneous temporal
   // states, not generic inter-frame pixel change. Requiring state count,
@@ -562,6 +635,10 @@ export const summarizeDenseEffectFramesV1 = (
     displacementPeak: max((frame) => frame.displacementMagnitude),
     displacementDirection: frames[displacementPeakIndex]?.motionDirection ?? { x: 0, y: 0 },
     scaleRange: max((frame) => frame.scale) - min((frame) => frame.scale),
+    scaleDynamicsVersion: "SUSTAINED_TAIL_V1",
+    scaleVelocityPeakPerSecond: scaleDynamics.scaleVelocityPeakPerSecond,
+    scaleVelocityRecoveryRatio: scaleDynamics.scaleVelocityRecoveryRatio,
+    scaleVelocityRecoveryMs: scaleDynamics.scaleVelocityRecoveryMs,
     rotationRange: max((frame) => frame.rotationDegrees) - min((frame) => frame.rotationDegrees),
     blurPeak: max((frame) => frame.blurStrength),
     blurPeakPhase: phase(blurIndex, frames.length),

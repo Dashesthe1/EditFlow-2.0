@@ -10,6 +10,7 @@ import type {
 } from "./contracts.js";
 import {
   measureFragmentationEventProminenceV1,
+  measureScaleDynamicsV1,
   resolveFragmentationEventMetricsV1,
   scoreFragmentationEventLocalizationV1,
 } from "./dense-evidence.js";
@@ -115,9 +116,9 @@ const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, read
     invariant("warp.energy", "MOTION_STRUCTURE", "motionEnergyPeak", "MIN", 0.16, 0.04, false, "Motion energy may reinforce the deformation."),
   ],
   ZOOM_IMPACT: [
-    invariant("zoom.scale", "SPATIAL", "scaleRange", "MIN", 0.12, 0.03, true, "A material scale pulse defines the zoom impact."),
-    invariant("zoom.motion", "MOTION_STRUCTURE", "motionEnergyPeak", "MIN", 0.12, 0.03, true, "The scale pulse must have visible energy."),
-    invariant("zoom.recovery", "MOTION_STRUCTURE", "recoveryFrames", "MAX", 9, 2, true, "The push must recover rather than drift."),
+    invariant("zoom.scale", "SPATIAL", "scaleRange", "RANGE", [0.08, 0.8], 0.03, true, "A material but reference-bounded scale excursion defines the zoom impact."),
+    invariant("zoom.motion", "MOTION_STRUCTURE", "scaleVelocityPeakPerSecond", "RANGE", [0.25, 8], 0.15, true, "The zoom must carry a reference-faithful scale-rate impulse rather than an arbitrary snap."),
+    invariant("zoom.recovery", "MOTION_STRUCTURE", "scaleVelocityRecoveryRatio", "MAX", 0.35, 0.05, true, "Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."),
   ],
   OCCLUSION_TRANSITION: [
     invariant("occlusion.coverage", "COMPOSITING", "occlusionPeak", "MIN", 0.65, 0.08, true, "A foreground object must materially cover the frame."),
@@ -191,8 +192,10 @@ export const classifyEffectFamilyV1 = (evidence: DenseEffectEvidenceV1): EffectF
     && s.recoveryFrames <= 7) return "WHIP_SMEAR";
   if (s.distortionPeak >= 0.35) return "DISPLACEMENT_WARP";
   if (chroma >= 0.18 && s.temporalPersistence <= 0.55) return "CHROMATIC_GLITCH";
-  if (s.scaleRange >= 0.12 && s.motionEnergyPeak >= 0.12
-    && s.recoveryFrames <= 9) return "ZOOM_IMPACT";
+  const scaleDynamics = measureScaleDynamicsV1(evidence.frames);
+  if (s.scaleRange >= 0.08 && scaleDynamics.scaleVelocityPeakPerSecond >= 0.25
+    && scaleDynamics.scaleVelocityPeakPerSecond <= 8
+    && scaleDynamics.scaleVelocityRecoveryRatio <= 0.40) return "ZOOM_IMPACT";
   if (mask >= 0.12) return "MASK_REVEAL";
   if (s.motionEnergyPeak >= 0.28 && s.accelerationPeak >= 0.05
     && s.recoveryFrames <= 8) return "VELOCITY_TRANSITION";
@@ -226,7 +229,9 @@ const dimensionsForEvidence = (evidence: DenseEffectEvidenceV1): readonly Visual
   if (s.blurPeak > 0.12 || s.exposurePeak > 0.55 || maxFrame(evidence, "chromaticSeparation") > 0.08) dimensions.push("OPTICAL");
   if (s.distortionPeak > 0.12) dimensions.push("DISTORTION");
   if (s.overlapDensityPeak > 0.1 || s.occlusionPeak > 0.1) dimensions.push("COMPOSITING");
-  if (s.motionEnergyPeak > 0.08 || s.accelerationPeak > 0.02) dimensions.push("MOTION_STRUCTURE");
+  const scaleDynamics = measureScaleDynamicsV1(evidence.frames);
+  if (s.motionEnergyPeak > 0.08 || s.accelerationPeak > 0.02
+    || scaleDynamics.scaleVelocityPeakPerSecond > 0.25) dimensions.push("MOTION_STRUCTURE");
   return dimensions;
 };
 
@@ -241,6 +246,17 @@ const observedMetricValue = (
     if (metric === "overlapDensityPeak") return fragmentation.overlapDensityPeak;
   }
   const summary = evidence.summary as unknown as Readonly<Record<string, unknown>>;
+  if (metric === "scaleVelocityPeakPerSecond" || metric === "scaleVelocityRecoveryRatio") {
+    const cached = summary[metric];
+    if (evidence.summary.scaleDynamicsVersion === "SUSTAINED_TAIL_V1"
+      && typeof cached === "number" && Number.isFinite(cached)) {
+      return cached;
+    }
+    const dynamics = measureScaleDynamicsV1(evidence.frames);
+    return metric === "scaleVelocityPeakPerSecond"
+      ? dynamics.scaleVelocityPeakPerSecond
+      : dynamics.scaleVelocityRecoveryRatio;
+  }
   const value = summary[metric];
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (metric === "displacementDirection") return evidence.summary.displacementDirection;
@@ -278,7 +294,15 @@ export const deriveEffectAnatomyV1 = (
   }
   if (Number.isFinite(evidence.summary.frameIntervalMs) && evidence.summary.frameIntervalMs > 0) {
     observedMetrics.referenceFrameIntervalMs = evidence.summary.frameIntervalMs;
-    if (Number.isFinite(evidence.summary.recoveryFrames) && evidence.summary.recoveryFrames > 0) {
+    const zoomRecoveryMs = family === "ZOOM_IMPACT"
+      ? (evidence.summary.scaleDynamicsVersion === "SUSTAINED_TAIL_V1"
+        ? evidence.summary.scaleVelocityRecoveryMs
+        : measureScaleDynamicsV1(evidence.frames).scaleVelocityRecoveryMs)
+      : undefined;
+    if (typeof zoomRecoveryMs === "number" && Number.isFinite(zoomRecoveryMs) && zoomRecoveryMs > 0) {
+      observedMetrics.scaleVelocityRecoveryMs = zoomRecoveryMs;
+      observedMetrics.effectRecoveryDurationMs = zoomRecoveryMs;
+    } else if (Number.isFinite(evidence.summary.recoveryFrames) && evidence.summary.recoveryFrames > 0) {
       observedMetrics.effectRecoveryDurationMs = evidence.summary.recoveryFrames * evidence.summary.frameIntervalMs;
     }
   }

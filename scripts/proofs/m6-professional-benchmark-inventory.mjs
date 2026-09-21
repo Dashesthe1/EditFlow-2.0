@@ -17,6 +17,24 @@ const TRANSFER_V17 = path.join(
 const PROFESSIONAL_CASE_V16 = path.join(
   ROOT, "proofs", "m6", "professional-cases", "shutter_fragmentation-held-out-w04-v16.json",
 );
+const VELOCITY_SOURCE_REJECTION = path.join(
+  ROOT,
+  "proofs",
+  "diagnostics",
+  "m6-velocity-source-candidate-smooth-twixtor-w09-v1-admission.json",
+);
+const ZOOM_SOURCE_ADMISSION = path.join(
+  ROOT,
+  "proofs",
+  "diagnostics",
+  "m6-zoom-impact-source-candidate-smooth-zoom-z19-v1-admission.json",
+);
+const ZOOM_PRE_AE_REJECTION = path.join(
+  ROOT,
+  "proofs",
+  "diagnostics",
+  "m6-zoom-impact-source-admission-live-boundary-v1.json",
+);
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const relative = (file) => path.relative(ROOT, file).replaceAll("\\", "/");
 const sha256File = async (file) => createHash("sha256")
@@ -30,6 +48,10 @@ const sourceVideoKey = (evidence) => {
 const cases = createCanonicalProfessionalBenchmarkV1();
 const shutter = cases.find((item) => item.caseId === "m6:shutter_fragmentation:canonical");
 if (shutter === undefined) throw new Error("Canonical shutter benchmark case is missing.");
+const velocity = cases.find((item) => item.caseId === "m6:velocity_transition:canonical");
+if (velocity === undefined) throw new Error("Canonical velocity benchmark case is missing.");
+const zoom = cases.find((item) => item.caseId === "m6:zoom_impact:canonical");
+if (zoom === undefined) throw new Error("Canonical zoom benchmark case is missing.");
 const v6 = await load(V6);
 const referenceSource = path.resolve(ROOT, v6.reference.evidence);
 const renderSource = path.resolve(ROOT, v6.certifiedRealAeCandidate.evidence);
@@ -153,6 +175,82 @@ if (professionalDegraded.result !== "REJECTED"
   throw new Error("M6 held-out professional case lost its degraded-control rejection.");
 }
 const professionalCaseRef = relative(PROFESSIONAL_CASE_V16);
+
+const velocitySourceAdmission = await load(VELOCITY_SOURCE_REJECTION);
+const velocitySourceEvidencePath = path.resolve(
+  ROOT,
+  velocitySourceAdmission.sourceEvidence?.ref ?? "",
+);
+const velocitySourceEvidence = await load(velocitySourceEvidencePath);
+if (velocitySourceAdmission.schema !== "editflow.m6.reference-family-admission-proof.v1"
+  || velocitySourceAdmission.authority !== "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY"
+  || velocitySourceAdmission.result !== "REJECTED"
+  || velocitySourceAdmission.requestedFamily !== velocity.family
+  || velocitySourceAdmission.candidate?.passed !== false
+  || velocitySourceAdmission.candidate?.definingCoverage >= 1
+  || !velocitySourceAdmission.candidate?.checks?.some((item) =>
+    item.invariantId === "velocity.energy" && item.passed === false)) {
+  throw new Error("M6 velocity source-admission rejection lost its fail-closed family-DNA decision.");
+}
+if (velocitySourceEvidence.sourceKind !== "REFERENCE"
+  || velocitySourceEvidence.contentKey !== velocitySourceAdmission.sourceEvidence.contentKey
+  || velocitySourceEvidence.analyzerFingerprint
+    !== velocitySourceAdmission.sourceEvidence.analyzerFingerprint
+  || await sha256File(velocitySourceEvidencePath) !== velocitySourceAdmission.sourceEvidence.sha256) {
+  throw new Error("M6 velocity source-admission rejection lost its dense-evidence binding.");
+}
+const velocitySourceAdmissionRef = relative(VELOCITY_SOURCE_REJECTION);
+
+const zoomSourceAdmission = await load(ZOOM_SOURCE_ADMISSION);
+const zoomSourceEvidencePath = path.resolve(
+  ROOT,
+  zoomSourceAdmission.sourceEvidence?.ref ?? "",
+);
+const zoomSourceEvidence = await load(zoomSourceEvidencePath);
+const zoomAdmissionDecisionCoherent = zoomSourceAdmission.result === "ADMITTED"
+  ? zoomSourceAdmission.candidate?.passed === true
+    && zoomSourceAdmission.candidate?.definingCoverage === 1
+    && !zoomSourceAdmission.candidate?.checks?.some((item) => item.passed !== true)
+  : zoomSourceAdmission.result === "REJECTED"
+    && zoomSourceAdmission.candidate?.passed === false
+    && zoomSourceAdmission.candidate?.definingCoverage < 1
+    && zoomSourceAdmission.candidate?.checks?.some((item) => item.passed === false);
+if (zoomSourceAdmission.schema !== "editflow.m6.reference-family-admission-proof.v1"
+  || zoomSourceAdmission.authority !== "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY"
+  || zoomSourceAdmission.requestedFamily !== zoom.family
+  || !zoomAdmissionDecisionCoherent) {
+  throw new Error("M6 zoom source admission lost its fail-closed family-DNA decision.");
+}
+if (zoomSourceEvidence.sourceKind !== "REFERENCE"
+  || zoomSourceEvidence.contentKey !== zoomSourceAdmission.sourceEvidence.contentKey
+  || zoomSourceEvidence.analyzerFingerprint !== zoomSourceAdmission.sourceEvidence.analyzerFingerprint
+  || await sha256File(zoomSourceEvidencePath) !== zoomSourceAdmission.sourceEvidence.sha256) {
+  throw new Error("M6 zoom source admission lost its dense-evidence binding.");
+}
+const zoomSourceAdmissionRef = relative(ZOOM_SOURCE_ADMISSION);
+const zoomPreAeRejection = await load(ZOOM_PRE_AE_REJECTION);
+const materializerPath = path.join(
+  ROOT, "scripts", "proofs", "m6-generic-native-materializer-proof.mjs",
+);
+const autoCorrectionPath = path.join(
+  ROOT, "scripts", "proofs", "m6-generic-native-auto-correction-proof.mjs",
+);
+if (zoomPreAeRejection.schema !== "editflow.m6.known-family-rejection-live-boundary-proof.v1"
+  || zoomPreAeRejection.status !== "PASS"
+  || zoomPreAeRejection.authority !== "LIVE_AE_FAIL_CLOSED_BEFORE_MUTATION"
+  || zoomPreAeRejection.family !== zoom.family
+  || zoomPreAeRejection.sourceAdmission?.ref !== zoomSourceAdmissionRef
+  || zoomPreAeRejection.sourceAdmission?.sha256 !== await sha256File(ZOOM_SOURCE_ADMISSION)
+  || zoomPreAeRejection.materializer?.sha256 !== await sha256File(materializerPath)
+  || zoomPreAeRejection.correction?.sha256 !== await sha256File(autoCorrectionPath)
+  || zoomPreAeRejection.materializer?.exitCode === 0
+  || zoomPreAeRejection.correction?.exitCode === 0
+  || zoomPreAeRejection.liveAe?.beforeHostRevision !== zoomPreAeRejection.liveAe?.afterHostRevision
+  || zoomPreAeRejection.liveAe?.beforeMutationLeaseHeld !== false
+  || zoomPreAeRejection.liveAe?.afterMutationLeaseHeld !== false) {
+  throw new Error("M6 zoom source admission lost its live pre-AE rejection boundary proof.");
+}
+const zoomPreAeRejectionRef = relative(ZOOM_PRE_AE_REJECTION);
 
 const renderRef = relative(renderSource);
 const comparisonRef = relative(comparisonSource);
@@ -299,6 +397,42 @@ const manifest = {
     weightedFidelity: professionalCase.fidelity.weightedFidelity,
     definingCoverage: professionalCase.fidelity.definingCoverage,
     degradedControlRejected: professionalCase.degradedControl.rejected,
+  }],
+  sourceAdmissionDiagnostics: [{
+    caseId: velocity.caseId,
+    family: velocity.family,
+    ref: velocitySourceAdmissionRef,
+    sha256: await sha256File(VELOCITY_SOURCE_REJECTION),
+    sourceEvidenceRef: velocitySourceAdmission.sourceEvidence.ref,
+    sourceEvidenceSha256: velocitySourceAdmission.sourceEvidence.sha256,
+    sourceVideoSha256: velocitySourceAdmission.sourceEvidence.sourceVideoSha256,
+    result: velocitySourceAdmission.result,
+    definingCoverage: velocitySourceAdmission.candidate.definingCoverage,
+    weightedContractScore: velocitySourceAdmission.candidate.weightedContractScore,
+    failedInvariantIds: velocitySourceAdmission.candidate.checks
+      .filter((item) => !item.passed)
+      .map((item) => item.invariantId),
+    reasons: velocitySourceAdmission.candidate.failures,
+    authority: velocitySourceAdmission.authority,
+  }, {
+    caseId: zoom.caseId,
+    family: zoom.family,
+    ref: zoomSourceAdmissionRef,
+    sha256: await sha256File(ZOOM_SOURCE_ADMISSION),
+    sourceEvidenceRef: zoomSourceAdmission.sourceEvidence.ref,
+    sourceEvidenceSha256: zoomSourceAdmission.sourceEvidence.sha256,
+    sourceVideoSha256: zoomSourceAdmission.sourceEvidence.sourceVideoSha256,
+    result: zoomSourceAdmission.result,
+    definingCoverage: zoomSourceAdmission.candidate.definingCoverage,
+    weightedContractScore: zoomSourceAdmission.candidate.weightedContractScore,
+    failedInvariantIds: zoomSourceAdmission.candidate.checks
+      .filter((item) => !item.passed)
+      .map((item) => item.invariantId),
+    reasons: zoomSourceAdmission.candidate.failures,
+    authority: zoomSourceAdmission.authority,
+    preAeRejectionRef: zoomPreAeRejectionRef,
+    preAeRejectionSha256: await sha256File(ZOOM_PRE_AE_REJECTION),
+    preAeRejectionStatus: zoomPreAeRejection.status,
   }],
   proofSources: {
     evaluator: "packages/visual-effects-intelligence/src/benchmark.ts",

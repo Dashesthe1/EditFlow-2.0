@@ -1,0 +1,84 @@
+{
+  "schema": "editflow.m6.reference-family-admission-proof.v1",
+  "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
+  "result": "REJECTED",
+  "requestedFamily": "ZOOM_IMPACT",
+  "sourceEvidence": {
+    "ref": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z19-v1-evidence.json",
+    "sha256": "d37c796b21395799f39cc8d82a3e71bfad0a25d0c68107039afe0b57658f01b2",
+    "contentKey": "bc1de7d37a8ea014fe886f2e1033fc6ee5046fa50ec200c5265d8462788d8de9",
+    "sourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom:18.82-19.72",
+    "analyzerFingerprint": "e3a0ade96e5be9d7cf83d362ba97258a3638500ac8716ffeef1d8a1d99f9b1b0",
+    "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d"
+  },
+  "candidate": {
+    "schema": "editflow.reference-family-candidate.v1",
+    "sourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom:18.82-19.72",
+    "evidenceContentKey": "bc1de7d37a8ea014fe886f2e1033fc6ee5046fa50ec200c5265d8462788d8de9",
+    "analyzerFingerprint": "e3a0ade96e5be9d7cf83d362ba97258a3638500ac8716ffeef1d8a1d99f9b1b0",
+    "requestedFamily": "ZOOM_IMPACT",
+    "classifiedFamily": "DISPLACEMENT_WARP",
+    "passed": false,
+    "definingCoverage": 0.6666666666666666,
+    "weightedContractScore": 0.6892207101702348,
+    "checks": [
+      {
+        "invariantId": "zoom.scale",
+        "metric": "scaleRange",
+        "comparator": "RANGE",
+        "target": [
+          0.08,
+          0.8
+        ],
+        "tolerance": 0.03,
+        "observed": 0.43527573361114613,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleRange satisfies family admission (range 0.0500..0.8300)."
+      },
+      {
+        "invariantId": "zoom.motion",
+        "metric": "scaleVelocityPeakPerSecond",
+        "comparator": "RANGE",
+        "target": [
+          0.25,
+          8
+        ],
+        "tolerance": 0.15,
+        "observed": 1.7358549239403118,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleVelocityPeakPerSecond satisfies family admission (range 0.1000..8.1500)."
+      },
+      {
+        "invariantId": "zoom.recovery",
+        "metric": "scaleVelocityRecoveryRatio",
+        "comparator": "MAX",
+        "target": 0.35,
+        "tolerance": 0.05,
+        "observed": 0.7729351477957181,
+        "passed": false,
+        "score": 0.06766213051070447,
+        "diagnosis": "scaleVelocityRecoveryRatio=0.7729 fails family admission (maximum 0.4000). Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."
+      }
+    ],
+    "failures": [
+      "scaleVelocityRecoveryRatio=0.7729 fails family admission (maximum 0.4000). Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."
+    ],
+    "evidenceRefs": [
+      "video:sha256:9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "probe-json:sha256:57cc3da8c0c5645cde89cdd44ed079260ba74bec6a70bf9963f33ddded7a9880",
+      "probe-algorithm:editflow.m6.dense-video-probe.v17",
+      "probe-analyzer:sha256:ea3c826d32c753f3eb8c129bd17a3ddca641ed554ea2e4f8568652bec783c15d",
+      "measurement-system:sha256:e3a0ade96e5be9d7cf83d362ba97258a3638500ac8716ffeef1d8a1d99f9b1b0",
+      "algorithm:opencv-farneback-dual-affine-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "noOverclaim": "Rejected source windows must not enter benchmark reconstruction as evidence for the requested family.",
+  "proofSources": {
+    "evaluator": "packages/visual-effects-intelligence/src/reference-admission.ts",
+    "evaluatorSha256": "ece37775124fae160f9cd0a8d08246c47834741fab7ed519dae01d9497a7c05e",
+    "generator": "scripts/proofs/m6-reference-family-admission.mjs",
+    "generatorSha256": "96c88d0def83e5639b1ce7cf57bc8cd03adc52c0c3474bcf926d0511bffc47ca"
+  }
+}

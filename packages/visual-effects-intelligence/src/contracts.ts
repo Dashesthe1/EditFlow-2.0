@@ -109,6 +109,14 @@ export interface DenseEvidenceSummaryV1 {
   readonly displacementPeak: number;
   readonly displacementDirection: NormalizedPointV1;
   readonly scaleRange: number;
+  /** Versioned semantics for cached scale-dynamics summary fields. */
+  readonly scaleDynamicsVersion?: "SUSTAINED_TAIL_V1";
+  /** Peak absolute scale-change rate normalized to seconds, so Zoom DNA transfers across FPS. */
+  readonly scaleVelocityPeakPerSecond?: number;
+  /** Maximum residual scale-rate over the terminal post-peak quarter, divided by peak rate. */
+  readonly scaleVelocityRecoveryRatio?: number;
+  /** Earliest post-peak time after which scale rate stays inside the recovery band. */
+  readonly scaleVelocityRecoveryMs?: number;
   readonly rotationRange: number;
   readonly blurPeak: number;
   readonly blurPeakPhase: number;
@@ -407,6 +415,7 @@ export const CONSTRUCTION_CONTROL_KINDS_V1 = [
   "OCCLUSION_COVERAGE",
   "CHROMATIC_SEPARATION",
   "SCALE_PULSE",
+  "SCALE_RATE",
   "ROTATION_PULSE",
   "COORDINATED_DIMENSION_COUNT",
 ] as const;
