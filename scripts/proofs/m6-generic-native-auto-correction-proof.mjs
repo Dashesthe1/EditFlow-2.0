@@ -27,11 +27,11 @@ const cliValue = (name, fallback) => {
 const STEM = cliValue("--stem", "m6-generic-native-auto-correction");
 const REF = path.resolve(ROOT, cliValue(
   "--reference",
-  "proofs/diagnostics/m6-v7r-ref05-evidence-refresh.json",
+  "proofs/m6/references/shutter_fragmentation-canonical.json",
 ));
 const SEED = path.resolve(ROOT, cliValue(
   "--seed",
-  "proofs/diagnostics/m6-generic-native-materializer-case01-evidence.json",
+  "proofs/diagnostics/m6-shutter-control-v17-evidence.json",
 ));
 const SEED_STRATEGY = cliValue("--seed-strategy", "").trim();
 const OUT = path.join(ROOT, "proofs", "diagnostics", STEM + ".json");
@@ -230,66 +230,110 @@ const compileNative = (graph, observedState, iteration) => {
 
 const executePass = async (graph, iteration) => {
   await acquireMutationLease(iteration);
+  let baselineProjectFingerprint = null;
+  let cleanupProjectFingerprint = null;
+  let passResult = null;
   try {
-    await proofScript("m6-generic-native-corr01-cleanup.jsx").catch(() => {});
-  await proofScript("m6-generic-native-corr01-setup.jsx");
-  // Reinstall the accepted 2.7 host chain immediately before native execution.
-  // Older proof/reopen helpers can legitimately reload the legacy current host,
-  // which would otherwise leave Time Remap lowering pointed at an unavailable
-  // dispatcher even though the warm CEP panel still advertises protocol 2.7.
-  await proofScript("m6-reload-current-host.jsx");
-  const live = await request("/state");
-  let budgetGraph = graph;
-  let compiled = compileNative(budgetGraph, live.state.observed, iteration);
-  const budgetBackoff = [];
-  while (compiled.native.plan.operations.length > MAX_CORRECTION_OPERATIONS) {
-    const temporal = budgetGraph.nodes.find((node) => node.kind === "TEMPORAL_DUPLICATES");
-    if (temporal === undefined) {
-      throw new Error("Corrected native plan exceeds the host operation budget without a reducible temporal construction.");
+    // Normalize only stale proof-owned state before recording the restoration baseline.
+    await proofScript("m6-generic-native-corr01-cleanup.jsx");
+    const baseline = await request("/state");
+    baselineProjectFingerprint = baseline.state.observed.projectFingerprint;
+
+    await proofScript("m6-generic-native-corr01-setup.jsx");
+    // Reinstall the accepted 2.7 host chain immediately before native execution.
+    // Older proof/reopen helpers can legitimately reload the legacy current host,
+    // which would otherwise leave Time Remap lowering pointed at an unavailable
+    // dispatcher even though the warm CEP panel still advertises protocol 2.7.
+    await proofScript("m6-reload-current-host.jsx");
+    const live = await request("/state");
+    let budgetGraph = graph;
+    let compiled = compileNative(budgetGraph, live.state.observed, iteration);
+    const budgetBackoff = [];
+    while (compiled.native.plan.operations.length > MAX_CORRECTION_OPERATIONS) {
+      const temporal = budgetGraph.nodes.find((node) => node.kind === "TEMPORAL_DUPLICATES");
+      if (temporal === undefined) {
+        throw new Error("Corrected native plan exceeds the host operation budget without a reducible temporal construction.");
+      }
+      const baseCount = Number(
+        temporal.parameters.fragmentationTemporalStateCountPeak
+        ?? temporal.parameters.temporalStateCountPeak
+        ?? 2,
+      );
+      const scale = Number(temporal.parameters.temporalCopyCountScale ?? 1);
+      const effectiveCount = Math.max(2, Math.min(8, Math.round(baseCount * scale)));
+      if (!Number.isFinite(baseCount) || baseCount <= 0 || effectiveCount <= 2) {
+        throw new Error("Corrected native plan cannot be reduced within the host operation budget.");
+      }
+      const nextCount = effectiveCount - 1;
+      const nextScale = nextCount / baseCount;
+      budgetGraph = {
+        ...budgetGraph,
+        nodes: budgetGraph.nodes.map((node) => node.nodeId === temporal.nodeId
+          ? { ...node, parameters: { ...node.parameters, temporalCopyCountScale: nextScale } }
+          : node),
+      };
+      budgetBackoff.push({
+        fromOperations: compiled.native.plan.operations.length,
+        effectiveCount,
+        nextCount,
+        nextScale,
+      });
+      compiled = compileNative(budgetGraph, live.state.observed, iteration);
     }
-    const baseCount = Number(
-      temporal.parameters.fragmentationTemporalStateCountPeak
-      ?? temporal.parameters.temporalStateCountPeak
-      ?? 2,
-    );
-    const scale = Number(temporal.parameters.temporalCopyCountScale ?? 1);
-    const effectiveCount = Math.max(2, Math.min(8, Math.round(baseCount * scale)));
-    if (!Number.isFinite(baseCount) || baseCount <= 0 || effectiveCount <= 2) {
-      throw new Error("Corrected native plan cannot be reduced within the host operation budget.");
+    const { compilation, native } = compiled;
+    const transaction = await request("/run-correction-transaction", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ plan: native.plan }),
+    });
+    if (transaction.result.state !== "COMMITTED") {
+      throw new Error("Corrected real-AE transaction did not commit.");
     }
-    const nextCount = effectiveCount - 1;
-    const nextScale = nextCount / baseCount;
-    budgetGraph = {
-      ...budgetGraph,
-      nodes: budgetGraph.nodes.map((node) => node.nodeId === temporal.nodeId
-        ? { ...node, parameters: { ...node.parameters, temporalCopyCountScale: nextScale } }
-        : node),
+    await proofScript("m6-generic-native-corr01-readback.jsx");
+    const passStem = `${STEM}-pass${String(iteration).padStart(2, "0")}`;
+    const readback = path.join(ROOT, "proofs", "diagnostics", passStem + "-readback.txt");
+    await copyFile(path.join(ROOT, ".tmp", "m6-generic-native-corr01-readback.txt"), readback);
+    await proofScript("m6-generic-native-corr01-render.jsx");
+    const video = path.join(ROOT, "proofs", "diagnostics", passStem + ".mp4");
+    await copyFile(path.join(os.tmpdir(), "M6_generic_native_corr01_candidate.mp4"), video);
+    const measured = await measure(video, passStem);
+    passResult = {
+      graph: budgetGraph,
+      budgetBackoff,
+      compilation,
+      native,
+      transaction,
+      readback,
+      video,
+      measured,
     };
-    budgetBackoff.push({ fromOperations: compiled.native.plan.operations.length, effectiveCount, nextCount, nextScale });
-    compiled = compileNative(budgetGraph, live.state.observed, iteration);
-  }
-  const { compilation, native } = compiled;
-  const transaction = await request("/run-correction-transaction", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ plan: native.plan }),
-  });
-  if (transaction.result.state !== "COMMITTED") {
-    throw new Error("Corrected real-AE transaction did not commit.");
-  }
-  await proofScript("m6-generic-native-corr01-readback.jsx");
-  const passStem = `${STEM}-pass${String(iteration).padStart(2, "0")}`;
-  const readback = path.join(ROOT, "proofs", "diagnostics", passStem + "-readback.txt");
-  await copyFile(path.join(ROOT, ".tmp", "m6-generic-native-corr01-readback.txt"), readback);
-  await proofScript("m6-generic-native-corr01-render.jsx");
-  const video = path.join(ROOT, "proofs", "diagnostics", passStem + ".mp4");
-  await copyFile(path.join(os.tmpdir(), "M6_generic_native_corr01_candidate.mp4"), video);
-  const measured = await measure(video, passStem);
-  return { graph: budgetGraph, budgetBackoff, compilation, native, transaction, readback, video, measured };
   } finally {
-    await proofScript("m6-generic-native-corr01-cleanup.jsx").catch(() => {});
-    await releaseMutationLease().catch(() => {});
+    try {
+      await proofScript("m6-generic-native-corr01-cleanup.jsx");
+      const cleanupState = await request("/state");
+      cleanupProjectFingerprint = cleanupState.state.observed.projectFingerprint;
+      if (
+        baselineProjectFingerprint !== null
+        && cleanupProjectFingerprint !== baselineProjectFingerprint
+      ) {
+        throw new Error(
+          "Real-AE correction cleanup failed to restore the pre-pass project fingerprint: "
+          + baselineProjectFingerprint + " -> " + cleanupProjectFingerprint,
+        );
+      }
+    } finally {
+      await releaseMutationLease().catch(() => {});
+    }
   }
+  if (passResult === null) {
+    throw new Error("Real-AE correction pass completed without a retained result.");
+  }
+  return {
+    ...passResult,
+    baselineProjectFingerprint,
+    cleanupProjectFingerprint,
+    cleanupRestored: cleanupProjectFingerprint === baselineProjectFingerprint,
+  };
 };
 
 const searchControlFilter = new Set(
@@ -323,7 +367,9 @@ const controlTargetNode = (valueGraph, control, preferredNodeId) => {
     const advancedWarp = valueGraph.nodes.find((candidate) =>
       candidate.parameters.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID")
       ?? valueGraph.nodes.find((candidate) =>
-        candidate.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID");
+        candidate.parameters.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID")
+      ?? valueGraph.nodes.find((candidate) =>
+        candidate.parameters.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID");
     if (advancedWarp !== undefined) return advancedWarp;
   }
   if (typeof preferredNodeId === "string") {
@@ -688,6 +734,9 @@ if (resumedFromProof === null) {
     operationCount: materializedPass.native.plan.operations.length,
     transactionState: materializedPass.transaction.result.state,
     budgetBackoff: materializedPass.budgetBackoff,
+    baselineProjectFingerprint: materializedPass.baselineProjectFingerprint,
+    cleanupProjectFingerprint: materializedPass.cleanupProjectFingerprint,
+    cleanupRestored: materializedPass.cleanupRestored,
     readback: path.relative(ROOT, materializedPass.readback).replaceAll("\\", "/"),
     video: path.relative(ROOT, materializedPass.video).replaceAll("\\", "/"),
     evidence: path.relative(ROOT, materializedPass.measured.evidence).replaceAll("\\", "/"),
@@ -760,6 +809,9 @@ for (let correctionPass = 1; correctionPass <= BLIND_CORRECTION_PASSES && !gate.
     operationCount: pass.native.plan.operations.length,
     transactionState: pass.transaction.result.state,
     budgetBackoff: pass.budgetBackoff,
+    baselineProjectFingerprint: pass.baselineProjectFingerprint,
+    cleanupProjectFingerprint: pass.cleanupProjectFingerprint,
+    cleanupRestored: pass.cleanupRestored,
     readback: path.relative(ROOT, pass.readback).replaceAll("\\", "/"),
     video: path.relative(ROOT, pass.video).replaceAll("\\", "/"),
     evidence: path.relative(ROOT, pass.measured.evidence).replaceAll("\\", "/"),
@@ -908,6 +960,9 @@ for (let probeIndex = 1; probeIndex <= MAX_SEARCH_PROBES && !gate.certified; pro
     operationCount: pass.native.plan.operations.length,
     transactionState: pass.transaction.result.state,
     budgetBackoff: pass.budgetBackoff,
+    baselineProjectFingerprint: pass.baselineProjectFingerprint,
+    cleanupProjectFingerprint: pass.cleanupProjectFingerprint,
+    cleanupRestored: pass.cleanupRestored,
     readback: path.relative(ROOT, pass.readback).replaceAll("\\", "/"),
     video: path.relative(ROOT, pass.video).replaceAll("\\", "/"),
     evidence: path.relative(ROOT, pass.measured.evidence).replaceAll("\\", "/"),
@@ -1001,6 +1056,9 @@ if (!gate.certified) {
       operationCount: pass.native.plan.operations.length,
       transactionState: pass.transaction.result.state,
       budgetBackoff: pass.budgetBackoff,
+      baselineProjectFingerprint: pass.baselineProjectFingerprint,
+      cleanupProjectFingerprint: pass.cleanupProjectFingerprint,
+      cleanupRestored: pass.cleanupRestored,
       readback: path.relative(ROOT, pass.readback).replaceAll("\\", "/"),
       video: path.relative(ROOT, pass.video).replaceAll("\\", "/"),
       evidence: path.relative(ROOT, pass.measured.evidence).replaceAll("\\", "/"),

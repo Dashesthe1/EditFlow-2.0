@@ -647,6 +647,13 @@ const evolvingTurbulentProofParameters = (
     ...base,
     effectSchemaRef: "ae.effect-schema.m6.turbulent-displace.v3",
     eventDynamicDistortion: true,
+    // Preserve the retained live-AE v3 proof topology after the compiler gained
+    // default in-place routing for dynamically gated effects. The evolving warp
+    // is a per-state accent over reconstructed temporal states; routing through
+    // the bounded accent path intentionally excludes the untouched base precomp.
+    // Composite and dual successors explicitly override this to IN_PLACE when
+    // their causal hypothesis requires deformation on the grouped/primary visual.
+    eventLocalEffectApplication: "ACCENT_DUPLICATE",
     // Static scalar search plateaued in real AE for the retained compound proof.
     // v3 therefore adds event-local deformation energy without rewriting the
     // retained v2 construction: Amount pulses around the event while Evolution
@@ -669,8 +676,18 @@ const echoStrategyGraph = (
     node.kind === "TEMPORAL_DUPLICATES" && node.dimension === "TEMPORAL");
   if (temporal === undefined) return null;
 
+  const echoCausalInvariantIds = temporal.requiredInvariantIds.filter((invariantId) => {
+    const normalized = invariantId.toLowerCase();
+    // Echo samples source time. It can create temporal history, occupancy, and
+    // overlap, but within-frame spatial separation is only an indirect outcome
+    // when its input already contains motion. Do not advertise separation as a
+    // novel Echo actuator or structural escalation will replace explicit state
+    // offsets with an effect that cannot reliably control the measured deficit.
+    return !normalized.includes("separation");
+  });
   const echoTemporal: ConstructionNodeV1 = {
     ...temporal,
+    requiredInvariantIds: echoCausalInvariantIds,
     capabilityCandidates: ["ae.effect.echo"],
     parameters: {
       ...temporal.parameters,
@@ -887,6 +904,28 @@ const layeredEchoAugmentedGraph = (
       output === temporal.nodeId ? echoNodeId : output),
     invariantCoverage,
   };
+};
+
+const timeDisplacementHypothesisGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  let changed = false;
+  const nodes = base.nodes.map((node) => {
+    if (node.kind !== "TEMPORAL_DUPLICATES"
+      || (node.dimension !== "TEMPORAL" && node.dimension !== "SPATIAL")) return node;
+    changed = true;
+    return {
+      ...node,
+      capabilityCandidates: ["ae.effect.time-displacement"],
+      parameters: {
+        ...node.parameters,
+        synthesisStrategy: "TIME_DISPLACEMENT_HYBRID",
+      },
+    } satisfies ConstructionNodeV1;
+  });
+  return changed
+    ? { ...base, graphId: `${base.graphId}:time_displacement_hypothesis`, nodes }
+    : null;
 };
 
 const timeDisplacementAugmentedGraph = (
@@ -1384,6 +1423,7 @@ const compoundDualWarpGraph = (
 const strategyGraph = (
   base: ConstructionGraphV1,
   strategy: UnknownEffectSynthesisStrategyV1,
+  availableCapabilities: readonly string[],
 ): ConstructionGraphV1 | null => {
   if (strategy === "LAYERED_PRIMITIVES") return layeredPrimitiveHistoryGraph(base);
   if (strategy === "LAYERED_ECHO_AUGMENTED") return layeredEchoAugmentedGraph(base);
@@ -1394,7 +1434,16 @@ const strategyGraph = (
   if (strategy === "COMPOUND_COMPOSITE_WARP_HYBRID") return compoundCompositeWarpGraph(base);
   if (strategy === "COMPOUND_DUAL_WARP_HYBRID") return compoundDualWarpGraph(base);
   if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
-  if (strategy === "TIME_DISPLACEMENT_HYBRID") return timeDisplacementAugmentedGraph(base);
+  if (strategy === "TIME_DISPLACEMENT_HYBRID") {
+    const supportsMaterializedTemporalField = [
+      "ae.layer.duplicate",
+      "ae.layer.time.offset",
+      "ae.precompose.layers",
+    ].every((capability) => availableCapabilities.includes(capability));
+    return supportsMaterializedTemporalField
+      ? timeDisplacementAugmentedGraph(base)
+      : timeDisplacementHypothesisGraph(base);
+  }
   let changed = false;
   const nodes = base.nodes.map((node) => {
     if (strategy === "TURBULENT_DISPLACE_HYBRID"
@@ -1532,7 +1581,7 @@ export const synthesizeUnknownEffectV1 = (input: {
     { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },
   ];
   const candidates = strategies.flatMap((item) => {
-    const graph = strategyGraph(base, item.strategy);
+    const graph = strategyGraph(base, item.strategy, input.availableCapabilities);
     return graph === null ? [] : [
       candidate(
         item.id,
@@ -1599,16 +1648,16 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
     })
     .map((candidate) => {
       const candidateInterventions = interventionStrategies(candidate.graph);
-      const interventionInvariantIds = new Set(candidate.graph.nodes.flatMap((node) => {
+      const novelInterventionInvariantIds = new Set(candidate.graph.nodes.flatMap((node) => {
         const strategy = node.parameters["synthesisStrategy"];
         const extendsStrategy = node.parameters["extendsSynthesisStrategy"];
-        return typeof strategy === "string" || typeof extendsStrategy === "string"
-          ? node.requiredInvariantIds
-          : [];
+        const introducesNewStrategy = (typeof strategy === "string" && !currentInterventions.has(strategy))
+          || (typeof extendsStrategy === "string" && !currentInterventions.has(extendsStrategy));
+        return introducesNewStrategy ? node.requiredInvariantIds : [];
       }));
       const targetedInvariantCount = [...required]
-        .filter((invariantId) => interventionInvariantIds.has(invariantId)).length;
-      const collateralInvariantCount = [...interventionInvariantIds]
+        .filter((invariantId) => novelInterventionInvariantIds.has(invariantId)).length;
+      const collateralInvariantCount = [...novelInterventionInvariantIds]
         .filter((invariantId) => !required.has(invariantId)).length;
       // Escalation should be monotonic when possible: if the current rendered
       // strategy already solved defining behavior, prefer a candidate that
@@ -1618,11 +1667,22 @@ export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{
       const preservesCurrentStrategy = input.currentStrategy !== null
         && input.currentStrategy !== undefined
         && candidateInterventions.has(input.currentStrategy);
-      return { candidate, targetedInvariantCount, collateralInvariantCount, preservesCurrentStrategy };
+      const retainsCurrentStrategyNode = input.currentStrategy !== null
+        && input.currentStrategy !== undefined
+        && candidate.graph.nodes.some((node) =>
+          node.parameters["synthesisStrategy"] === input.currentStrategy);
+      return {
+        candidate,
+        targetedInvariantCount,
+        collateralInvariantCount,
+        preservesCurrentStrategy,
+        retainsCurrentStrategyNode,
+      };
     })
     .filter((entry) => entry.targetedInvariantCount > 0)
     .sort((left, right) =>
-      right.targetedInvariantCount - left.targetedInvariantCount
+      Number(right.retainsCurrentStrategyNode) - Number(left.retainsCurrentStrategyNode)
+      || right.targetedInvariantCount - left.targetedInvariantCount
       || Number(right.preservesCurrentStrategy) - Number(left.preservesCurrentStrategy)
       || left.collateralInvariantCount - right.collateralInvariantCount
       || right.candidate.score - left.candidate.score

@@ -94,14 +94,50 @@ const metricValue = (
   return maxFrameMetric(evidence, metric);
 };
 
+const baselineDeltaMetrics = new Set([
+  "motionEnergyPeak",
+  "accelerationPeak",
+]);
+
+const baselineAlignedVelocityMetric = (
+  render: DenseEffectEvidenceV1,
+  baseline: DenseEffectEvidenceV1,
+  metric: string,
+): number | null => {
+  const residual = render.frames.map((frame, index) => {
+    const baselineFrame = baseline.frames[index];
+    if (baselineFrame === undefined) return Number.NaN;
+    return frame.motionEnergy - baselineFrame.motionEnergy;
+  });
+  if (residual.some((value) => !Number.isFinite(value))) return null;
+  if (metric === "motionEnergyPeak") {
+    return residual.length === 0 ? 0 : Math.max(...residual.map((value) => Math.abs(value)));
+  }
+  if (metric === "accelerationPeak") {
+    let peak = 0;
+    for (let index = 2; index < residual.length; index += 1) {
+      const a = residual[index - 2]!;
+      const b = residual[index - 1]!;
+      const c = residual[index]!;
+      peak = Math.max(peak, Math.abs((c - b) - (b - a)));
+    }
+    return peak;
+  }
+  return null;
+};
+
 const metricValuesForComparison = (
   reference: DenseEffectEvidenceV1,
   render: DenseEffectEvidenceV1,
   invariant: EffectInvariantV1,
   alignment: "FRAME" | "SEMANTIC",
+  baseline?: DenseEffectEvidenceV1,
 ): Readonly<{
   referenceValue: number | NormalizedPointV1;
   renderValue: number | NormalizedPointV1;
+  baselineValue?: number | NormalizedPointV1;
+  rawRenderValue?: number | NormalizedPointV1;
+  comparisonBasis: "ABSOLUTE" | "BASELINE_DELTA" | "BASELINE_ALIGNED_DELTA";
 }> => {
   if (invariant.metric === "blurHalfPeakAttackMs"
     || invariant.metric === "blurHalfPeakRecoveryMs") {
@@ -115,11 +151,39 @@ const metricValuesForComparison = (
       preferredRenderPhase,
     );
     return invariant.metric === "blurHalfPeakAttackMs"
-      ? { referenceValue: referenceProfile.attackMs, renderValue: renderProfile.attackMs }
-      : { referenceValue: referenceProfile.recoveryMs, renderValue: renderProfile.recoveryMs };
+      ? {
+          referenceValue: referenceProfile.attackMs,
+          renderValue: renderProfile.attackMs,
+          comparisonBasis: "ABSOLUTE",
+        }
+      : {
+          referenceValue: referenceProfile.recoveryMs,
+          renderValue: renderProfile.recoveryMs,
+          comparisonBasis: "ABSOLUTE",
+        };
   }
   const referenceValue = metricValue(reference, invariant.invariantId, invariant.metric);
   let renderValue = metricValue(render, invariant.invariantId, invariant.metric);
+  if (
+    baseline !== undefined
+    && invariant.invariantId.startsWith("velocity.")
+    && baselineDeltaMetrics.has(invariant.metric)
+    && typeof renderValue === "number"
+  ) {
+    const baselineValue = metricValue(baseline, invariant.invariantId, invariant.metric);
+    const alignedDelta = baselineAlignedVelocityMetric(render, baseline, invariant.metric);
+    if (typeof baselineValue === "number" && alignedDelta !== null) {
+      const rawRenderValue = renderValue;
+      renderValue = alignedDelta;
+      return {
+        referenceValue,
+        renderValue,
+        baselineValue,
+        rawRenderValue,
+        comparisonBasis: "BASELINE_ALIGNED_DELTA",
+      };
+    }
+  }
   if (invariant.metric === "recoveryFrames"
     && typeof referenceValue === "number" && typeof renderValue === "number") {
     const referenceInterval = reference.summary.frameIntervalMs;
@@ -131,11 +195,27 @@ const metricValuesForComparison = (
       renderValue *= renderInterval / referenceInterval;
     }
   }
-  return { referenceValue, renderValue };
+  return {
+    referenceValue,
+    renderValue,
+    comparisonBasis: "ABSOLUTE",
+  };
 };
 
 const scalar = (value: number | NormalizedPointV1): number =>
   typeof value === "number" ? value : Math.hypot(value.x, value.y);
+
+const referenceRelativeTolerance = (nominal: number, referenceScalar: number): number => {
+  if (nominal <= 0 || referenceScalar <= 1e-9) return nominal;
+  // Family tolerances are recognition-scale defaults. When a real professional
+  // reference measures far below that synthetic scale, a larger absolute
+  // tolerance can erase the defining signal entirely (for example, allowing
+  // zero motion to match a small but clearly localized velocity impulse).
+  // Only cap tolerances that are at least half of the observed signal, keeping
+  // ordinary family tolerances unchanged while preserving non-zero evidence.
+  if (nominal < referenceScalar * 0.5) return nominal;
+  return Math.min(nominal, Math.max(referenceScalar * 0.25, 1e-6));
+};
 
 const directionError = (a: NormalizedPointV1, b: NormalizedPointV1): number => {
   const am = Math.hypot(a.x, a.y);
@@ -149,13 +229,19 @@ const compareInvariant = (
   invariant: EffectInvariantV1,
   referenceValue: number | NormalizedPointV1,
   renderValue: number | NormalizedPointV1,
+  referenceMagnitudeOnly = false,
 ): FidelityMetricResultV1 => {
   const referenceScalar = scalar(referenceValue);
   const renderScalar = scalar(renderValue);
   const target = invariant.target;
+  const tolerance = referenceRelativeTolerance(invariant.tolerance, referenceScalar);
   let error = 1;
   let passed = false;
-  if (invariant.comparator === "DIRECTION") {
+  if (referenceMagnitudeOnly) {
+    const delta = Math.abs(renderScalar - referenceScalar);
+    passed = delta <= tolerance;
+    error = clamp01(delta / Math.max(Math.abs(referenceScalar), tolerance, 1e-6));
+  } else if (invariant.comparator === "DIRECTION") {
     const ref = typeof referenceValue === "number" ? { x: referenceValue, y: 0 } : referenceValue;
     const render = typeof renderValue === "number" ? { x: renderValue, y: 0 } : renderValue;
     error = directionError(ref, render);
@@ -164,7 +250,7 @@ const compareInvariant = (
     const referenceFloor = referenceScalar * 0.8;
     const contractFloor = typeof target === "number" ? target : referenceFloor;
     const floor = Math.min(referenceScalar, Math.max(contractFloor, referenceFloor));
-    const allowedFloor = Math.max(0, floor - invariant.tolerance);
+    const allowedFloor = Math.max(0, floor - tolerance);
     const deficit = Math.max(0, allowedFloor - renderScalar);
     passed = deficit <= 1e-9;
     error = clamp01(deficit / Math.max(Math.abs(referenceScalar), floor, 1e-6));
@@ -172,7 +258,7 @@ const compareInvariant = (
     const referenceCeiling = referenceScalar * 1.25;
     const contractCeiling = typeof target === "number" ? target : referenceCeiling;
     const ceiling = Math.max(referenceScalar, Math.min(contractCeiling, referenceCeiling));
-    const allowedCeiling = ceiling + invariant.tolerance;
+    const allowedCeiling = ceiling + tolerance;
     const excess = Math.max(0, renderScalar - allowedCeiling);
     passed = excess <= 1e-9;
     error = clamp01(excess / Math.max(Math.abs(referenceScalar), ceiling, 1e-6));
@@ -182,18 +268,18 @@ const compareInvariant = (
     // Intersect the contract with the same 80%-125% reference window used by MIN/MAX,
     // then apply the invariant tolerance. This prevents a family-valid but visibly
     // over/under-driven construction from being certified as reference faithful.
-    const referenceLow = referenceScalar * 0.8 - invariant.tolerance;
-    const referenceHigh = referenceScalar * 1.25 + invariant.tolerance;
-    const low = Math.max(contractLow - invariant.tolerance, referenceLow);
-    const high = Math.min(contractHigh + invariant.tolerance, referenceHigh);
+    const referenceLow = referenceScalar * 0.8 - tolerance;
+    const referenceHigh = referenceScalar * 1.25 + tolerance;
+    const low = Math.max(contractLow - tolerance, referenceLow);
+    const high = Math.min(contractHigh + tolerance, referenceHigh);
     const miss = renderScalar < low ? low - renderScalar
       : renderScalar > high ? renderScalar - high : 0;
     passed = miss <= 1e-9;
     error = clamp01(miss / Math.max(Math.abs(referenceScalar), Math.abs(high - low), 1e-6));
   } else {
     const delta = Math.abs(renderScalar - referenceScalar);
-    passed = delta <= invariant.tolerance;
-    error = clamp01(delta / Math.max(Math.abs(referenceScalar), invariant.tolerance, 0.1));
+    passed = delta <= tolerance;
+    error = clamp01(delta / Math.max(Math.abs(referenceScalar), tolerance, 0.1));
   }
   const direction = renderScalar < referenceScalar ? "under-driven" : "over-driven";
   return {
@@ -215,19 +301,53 @@ const compareInvariant = (
 export const compareSemanticVisualFidelityV1 = (input: {
   readonly reference: DenseEffectEvidenceV1;
   readonly render: DenseEffectEvidenceV1;
+  /** Optional no-effect render of the same target-footage window for causal transfer comparison. */
+  readonly baseline?: DenseEffectEvidenceV1;
   readonly dna: TransitionDnaV1;
   readonly alignment?: "FRAME" | "SEMANTIC";
   readonly minimumWeightedFidelity?: number;
 }): FidelityComparisonV1 => {
   const referenceProvenance = measurementProvenanceKey(input.reference);
   const renderProvenance = measurementProvenanceKey(input.render);
-  if (referenceProvenance.length === 0 || renderProvenance.length === 0) {
-    throw new TypeError("Fidelity comparison requires analyzer provenance on both reference and render evidence.");
+  const baselineProvenance = input.baseline === undefined
+    ? null : measurementProvenanceKey(input.baseline);
+  if (
+    referenceProvenance.length === 0
+    || renderProvenance.length === 0
+    || baselineProvenance === ""
+  ) {
+    throw new TypeError(
+      "Fidelity comparison requires analyzer provenance on reference, render, and any supplied baseline evidence.",
+    );
   }
-  if (referenceProvenance !== renderProvenance) {
+  if (
+    referenceProvenance !== renderProvenance
+    || (baselineProvenance !== null && baselineProvenance !== renderProvenance)
+  ) {
     throw new TypeError(
       "Fidelity comparison refuses evidence produced by different analyzer implementations.",
     );
+  }
+  if (input.baseline !== undefined) {
+    if (input.render.sourceKind !== "RENDER" || input.baseline.sourceKind !== "RENDER") {
+      throw new TypeError("Baseline-aware fidelity comparison requires RENDER target and baseline evidence.");
+    }
+    if (input.baseline.frames.length !== input.render.frames.length) {
+      throw new TypeError(
+        "Baseline-aware fidelity comparison requires equal target and baseline frame counts.",
+      );
+    }
+    if (input.baseline.settingsFingerprint !== input.render.settingsFingerprint) {
+      throw new TypeError(
+        "Baseline-aware fidelity comparison requires identical target and baseline evidence settings.",
+      );
+    }
+    if (input.baseline.frames.some((frame, index) =>
+      Math.abs(frame.timeMs - input.render.frames[index]!.timeMs) > 1e-3)) {
+      throw new TypeError(
+        "Baseline-aware fidelity comparison requires time-aligned target and baseline frames.",
+      );
+    }
   }
   const alignment = input.alignment ?? "SEMANTIC";
   if (alignment === "FRAME" && input.reference.frames.length !== input.render.frames.length) {
@@ -235,8 +355,49 @@ export const compareSemanticVisualFidelityV1 = (input: {
   }
   const invariants = [...input.dna.definingInvariants, ...input.dna.optionalInvariants];
   const metrics = invariants.map((item) => {
-    const values = metricValuesForComparison(input.reference, input.render, item, alignment);
-    return compareInvariant(item, values.referenceValue, values.renderValue);
+    const values = metricValuesForComparison(
+      input.reference,
+      input.render,
+      item,
+      alignment,
+      input.baseline,
+    );
+    const compared = compareInvariant(
+      item,
+      values.referenceValue,
+      values.renderValue,
+      values.comparisonBasis === "BASELINE_ALIGNED_DELTA",
+    );
+    if (
+      (values.comparisonBasis === "BASELINE_DELTA"
+        || values.comparisonBasis === "BASELINE_ALIGNED_DELTA")
+      && values.baselineValue !== undefined
+      && values.rawRenderValue !== undefined
+    ) {
+      const baselineScalar = scalar(values.baselineValue);
+      const rawRenderScalar = scalar(values.rawRenderValue);
+      const effectScalar = scalar(values.renderValue);
+      const referenceScalar = scalar(values.referenceValue);
+      const causalDirection = effectScalar < referenceScalar ? "under-driven" : "over-driven";
+      return {
+        ...compared,
+        baselineValue: values.baselineValue,
+        rawRenderValue: values.rawRenderValue,
+        comparisonBasis: values.comparisonBasis,
+        diagnosis: compared.passed
+          ? item.metric + " aligned causal delta preserves the defining reference behavior: reference "
+            + referenceScalar.toFixed(3) + ", baseline peak " + baselineScalar.toFixed(3)
+            + ", edited peak " + rawRenderScalar.toFixed(3) + ", causal peak " + effectScalar.toFixed(3) + "."
+          : item.metric + " aligned causal delta is " + causalDirection + ": reference "
+            + referenceScalar.toFixed(3) + ", baseline peak " + baselineScalar.toFixed(3)
+            + ", edited peak " + rawRenderScalar.toFixed(3) + ", causal peak " + effectScalar.toFixed(3)
+            + ". " + item.rationale,
+      } satisfies FidelityMetricResultV1;
+    }
+    return {
+      ...compared,
+      comparisonBasis: values.comparisonBasis,
+    } satisfies FidelityMetricResultV1;
   });
   const defining = metrics.filter((metric) => metric.defining);
   const definingCoverage = defining.length === 0
@@ -256,6 +417,8 @@ export const compareSemanticVisualFidelityV1 = (input: {
     diagnoses: metrics.filter((metric) => !metric.passed).map((metric) => metric.diagnosis),
     referenceEvidenceKey: input.reference.contentKey,
     renderEvidenceKey: input.render.contentKey,
+    ...(input.baseline === undefined
+      ? {} : { baselineEvidenceKey: input.baseline.contentKey }),
   };
 };
 

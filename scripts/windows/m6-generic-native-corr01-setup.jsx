@@ -5,8 +5,10 @@
   var source=p.items.addComp(sourceName,640,360,1,1,30);
   source.comment="[[EDITFLOW2_STABLE:m6-proof-corr01-source-comp]]";
   var background=source.layers.addSolid([0.02,0.02,0.02],"M6 Echo Background",640,360,1,1);
+  background.source.comment="[[EDITFLOW2_STABLE:m6-proof-corr01-solid-background]]";
   background.startTime=0;background.inPoint=0;background.outPoint=1;
   var content=source.layers.addSolid([0.95,0.95,0.95],"M6 Echo Subject",64,64,1,1);
+  content.source.comment="[[EDITFLOW2_STABLE:m6-proof-corr01-solid-subject]]";
   content.startTime=0;content.inPoint=0;content.outPoint=1;
   var contentPosition=content.property("ADBE Transform Group").property("ADBE Position");
   contentPosition.setValueAtTime(0,[50,180]);

@@ -329,6 +329,11 @@ export interface FidelityMetricResultV1 {
   readonly metric: string;
   readonly referenceValue: number | NormalizedPointV1;
   readonly renderValue: number | NormalizedPointV1;
+  /** No-effect value measured on the same target-footage window, when baseline-aware comparison is active. */
+  readonly baselineValue?: number | NormalizedPointV1;
+  /** Unadjusted edited-render value when renderValue has been converted to a causal delta. */
+  readonly rawRenderValue?: number | NormalizedPointV1;
+  readonly comparisonBasis?: "ABSOLUTE" | "BASELINE_DELTA" | "BASELINE_ALIGNED_DELTA";
   readonly normalizedError: number;
   readonly passed: boolean;
   readonly defining: boolean;
@@ -347,6 +352,8 @@ export interface FidelityComparisonV1 {
   readonly diagnoses: readonly string[];
   readonly referenceEvidenceKey: string;
   readonly renderEvidenceKey: string;
+  /** Content-addressed no-effect target render used to isolate causal effect behavior. */
+  readonly baselineEvidenceKey?: string;
 }
 
 export type FidelityGateOutcomeV1 =

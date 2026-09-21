@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -1213,6 +1213,152 @@ test("M6.5 shutter RANGE fidelity is reference-relative inside the broader famil
   assert.match(displacement?.diagnosis ?? "", /over-driven/);
 });
 
+test("M6.5 reference-relative tolerance preserves low-magnitude defining velocity signals", () => {
+  const reference = evidence({
+    motionEnergyPeak: 0.011560734377060917,
+    accelerationPeak: 0.011678843472532311,
+    recoveryFrames: 6,
+  });
+  const zeroMotion = evidence({
+    ...reference.summary,
+    motionEnergyPeak: 0,
+    accelerationPeak: 0,
+  });
+  const rejected = compareSemanticVisualFidelityV1({
+    reference,
+    render: zeroMotion,
+    dna: canonicalTransitionDnaV1("VELOCITY_TRANSITION"),
+  });
+  assert.equal(rejected.passed, false);
+  assert.equal(rejected.metrics.find((item) => item.invariantId === "velocity.energy")?.passed, false);
+  assert.equal(rejected.metrics.find((item) => item.invariantId === "velocity.acceleration")?.passed, false);
+
+  const faithful = evidence({
+    ...reference.summary,
+    motionEnergyPeak: reference.summary.motionEnergyPeak * 0.9,
+    accelerationPeak: reference.summary.accelerationPeak * 0.9,
+  });
+  assert.equal(compareSemanticVisualFidelityV1({
+    reference,
+    render: faithful,
+    dna: canonicalTransitionDnaV1("VELOCITY_TRANSITION"),
+  }).passed, true);
+});
+
+test("M6.5 baseline-aware velocity fidelity measures aligned causal motion instead of global peak subtraction", () => {
+  const reference = evidence({
+    motionEnergyPeak: 0.011560734377060917,
+    accelerationPeak: 0.011678843472532311,
+    recoveryFrames: 6,
+  });
+  const naturalSeries = [0.02, 0.08, 0.02, 0.02, 0.02, 0.02, 0.02];
+  const withMotionSeries = (seed, series, recoveryFrames) => {
+    const frames = seed.frames.map((frame, index) => ({
+      ...frame,
+      motionEnergy: series[index],
+    }));
+    let accelerationPeak = 0;
+    for (let index = 2; index < series.length; index += 1) {
+      const a = series[index - 2];
+      const b = series[index - 1];
+      const c = series[index];
+      accelerationPeak = Math.max(accelerationPeak, Math.abs((c - b) - (b - a)));
+    }
+    return {
+      ...seed,
+      sourceKind: "RENDER",
+      frames,
+      summary: {
+        ...seed.summary,
+        motionEnergyPeak: Math.max(...series),
+        accelerationPeak,
+        recoveryFrames,
+      },
+    };
+  };
+  const baseline = withMotionSeries(evidence(), naturalSeries, 4);
+  const dna = canonicalTransitionDnaV1("VELOCITY_TRANSITION");
+
+  assert.equal(compareSemanticVisualFidelityV1({
+    reference,
+    render: baseline,
+    dna,
+  }).passed, true, "absolute-only comparison demonstrates the natural source-motion confound");
+
+  const degradedControl = compareSemanticVisualFidelityV1({
+    reference,
+    render: baseline,
+    baseline,
+    dna,
+  });
+  assert.equal(degradedControl.passed, false);
+  assert.equal(degradedControl.baselineEvidenceKey, baseline.contentKey);
+  for (const invariantId of ["velocity.energy", "velocity.acceleration"]) {
+    const metric = degradedControl.metrics.find((item) => item.invariantId === invariantId);
+    assert.equal(metric?.comparisonBasis, "BASELINE_ALIGNED_DELTA");
+    assert.equal(metric?.renderValue, 0);
+    assert.equal(metric?.passed, false);
+  }
+
+  const underDrivenAmount = 0.003;
+  const underDrivenSeries = naturalSeries.map((value, index) =>
+    index >= 3 && index <= 5 ? value + underDrivenAmount : value);
+  const underDriven = withMotionSeries(evidence(), underDrivenSeries, 6);
+  const currentEdit = compareSemanticVisualFidelityV1({
+    reference,
+    render: underDriven,
+    baseline,
+    dna,
+  });
+  assert.equal(currentEdit.passed, false);
+  assert.equal(currentEdit.metrics.find((item) => item.invariantId === "velocity.energy")?.passed, false);
+  assert.equal(currentEdit.metrics.find((item) => item.invariantId === "velocity.acceleration")?.passed, false);
+
+  const faithfulAmount = reference.summary.motionEnergyPeak;
+  const faithfulSeries = naturalSeries.map((value, index) =>
+    index >= 3 && index <= 5 ? value + faithfulAmount : value);
+  const faithful = withMotionSeries(evidence(), faithfulSeries, 6);
+  const accepted = compareSemanticVisualFidelityV1({
+    reference,
+    render: faithful,
+    baseline,
+    dna,
+  });
+  assert.equal(accepted.passed, true);
+  assert.equal(accepted.definingCoverage, 1);
+  assert.ok(Math.abs(
+    accepted.metrics.find((item) => item.invariantId === "velocity.energy")?.renderValue
+      - faithfulAmount,
+  ) < 1e-9);
+
+  const overDrivenSeries = naturalSeries.map((value, index) =>
+    index >= 3 && index <= 5 ? value + faithfulAmount * 4 : value);
+  const overDriven = withMotionSeries(evidence(), overDrivenSeries, 6);
+  const rejectedOverDrive = compareSemanticVisualFidelityV1({
+    reference,
+    render: overDriven,
+    baseline,
+    dna,
+  });
+  assert.equal(rejectedOverDrive.passed, false);
+  assert.match(
+    rejectedOverDrive.metrics.find((item) => item.invariantId === "velocity.energy")?.diagnosis ?? "",
+    /over-driven/,
+  );
+
+  const misalignedBaseline = {
+    ...baseline,
+    frames: baseline.frames.map((frame, index) =>
+      index === 0 ? { ...frame, timeMs: frame.timeMs + 1 } : frame),
+  };
+  assert.throws(() => compareSemanticVisualFidelityV1({
+    reference,
+    render: faithful,
+    baseline: misalignedBaseline,
+    dna,
+  }), /time-aligned target and baseline frames/);
+});
+
 test("M6.5 shutter fidelity rejects materially over-driven within-frame separation", () => {
   const reference = shutterReference();
   const overSeparated = evidence({
@@ -1765,6 +1911,40 @@ test("M6.8 escalation selects an alternate construction that directly targets ex
   });
   assert.notEqual(noReproof?.strategy, "LAYERED_ECHO_AUGMENTED",
     "an unchanged synthesis strategy with retained losing render evidence must not be selected for re-proof");
+
+  const separationReference = synthesizeUnknownEffectV1({
+    evidence: evidence({
+      temporalStateCountPeak: 3,
+      fragmentationTemporalStateCountPeak: 3,
+      overlapDensityPeak: 0.05,
+      fragmentationOverlapDensityPeak: 0.05,
+      stateSeparationPeak: 0.03,
+      fragmentationStateSeparationPeak: 0.03,
+      fragmentationCoherencePeak: 0.12,
+      motionEnergyPeak: 0.08,
+      accelerationPeak: 0.01,
+    }),
+    availableCapabilities: [
+      ...ALL_CAPABILITIES,
+      "ae.effect.echo",
+      "ae.precompose.layers",
+      "ae.effect.time-displacement",
+    ],
+  });
+  const nativeEcho = separationReference.candidates.find((candidate) =>
+    candidate.strategy === "NATIVE_ECHO_HYBRID");
+  assert.ok(nativeEcho);
+  assert.equal(nativeEcho.graph.nodes.some((node) =>
+    node.parameters.synthesisStrategy === "NATIVE_ECHO_HYBRID"
+    && node.requiredInvariantIds.includes("unknown.fragmentation-separation")), false,
+  "Echo must not claim direct causal control of within-frame state separation");
+  const separationEscalation = selectSynthesisEscalationCandidateV1({
+    synthesis: separationReference,
+    currentStrategy: "LAYERED_PRIMITIVES",
+    requiredInvariantIds: ["unknown.fragmentation-separation"],
+  });
+  assert.notEqual(separationEscalation?.strategy, "NATIVE_ECHO_HYBRID",
+    "a separation deficit must not replace explicit layered offsets with Echo");
 
   const distortionMotionOnly = synthesizeUnknownEffectV1({
     evidence: evidence({
@@ -4077,6 +4257,65 @@ test("M6.3/M6.5 treats the observed professional reference as the fidelity autho
 });
 
 
+test("M6 live correction canonical fixtures share current analyzer provenance", () => {
+  const reference = JSON.parse(readFileSync(
+    new URL("../proofs/m6/references/shutter_fragmentation-canonical.json", import.meta.url),
+    "utf8",
+  ));
+  const degraded = JSON.parse(readFileSync(
+    new URL("../proofs/diagnostics/m6-shutter-control-v17-evidence.json", import.meta.url),
+    "utf8",
+  ));
+  const retainedProof = JSON.parse(readFileSync(
+    new URL("../proofs/diagnostics/m6-shutter-measurement-v17-proof.json", import.meta.url),
+    "utf8",
+  ));
+  assert.equal(reference.analyzerFingerprint, degraded.analyzerFingerprint);
+  assert.equal(reference.analyzerFingerprint, retainedProof.analyzer.measurementFingerprint);
+  assert.equal(reference.sourceKind, "REFERENCE");
+  assert.equal(degraded.sourceKind, "RENDER");
+  assert.ok(reference.evidenceRefs.includes(
+    `video:sha256:${retainedProof.reference.sourceVideoSha256}`,
+  ));
+});
+
+
+test("M6 live correction cleanup is proof-identity-scoped and exact-restoration gated", () => {
+  const controllerUrl = new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url);
+  const setupUrl = new URL("../scripts/windows/m6-generic-native-corr01-setup.jsx", import.meta.url);
+  const cleanupUrl = new URL("../scripts/windows/m6-generic-native-corr01-cleanup.jsx", import.meta.url);
+  const controller = readFileSync(controllerUrl, "utf8");
+  const setup = readFileSync(setupUrl, "utf8");
+  const cleanup = readFileSync(cleanupUrl, "utf8");
+
+  assert.match(setup, /background\.source\.comment=.*m6-proof-corr01-solid-background/);
+  assert.match(setup, /content\.source\.comment=.*m6-proof-corr01-solid-subject/);
+  assert.match(cleanup, /function hasProofIdentity\(value\)/);
+  assert.match(cleanup, /m6-proof-corr01-/);
+  assert.match(cleanup, /comp\.name === name \|\| comp\.name === sourceName/);
+  assert.match(cleanup, /item instanceof FootageItem/);
+  assert.match(cleanup, /item\.mainSource instanceof SolidSource/);
+  assert.match(cleanup, /item\.name === "M6 Echo Background"[\s\S]{0,120}item\.width === 640 && item\.height === 360/);
+  assert.match(cleanup, /item\.name === "M6 Echo Subject"[\s\S]{0,120}item\.width === 64 && item\.height === 64/);
+  assert.doesNotMatch(cleanup, /name\.indexOf\("echo-history-precompose"\)/);
+  assert.doesNotMatch(cleanup, /name\.indexOf\("layered-history-precompose"\)/);
+
+  assert.match(controller, /baselineProjectFingerprint = baseline\.state\.observed\.projectFingerprint/);
+  assert.match(controller, /cleanupProjectFingerprint = cleanupState\.state\.observed\.projectFingerprint/);
+  assert.match(controller, /Real-AE correction cleanup failed to restore the pre-pass project fingerprint/);
+  assert.match(controller, /cleanupRestored: cleanupProjectFingerprint === baselineProjectFingerprint/);
+  assert.match(controller, /proofs\/m6\/references\/shutter_fragmentation-canonical\.json/);
+  assert.match(controller, /proofs\/diagnostics\/m6-shutter-control-v17-evidence\.json/);
+  assert.equal(
+    existsSync(new URL("../proofs/m6/references/shutter_fragmentation-canonical.json", import.meta.url)),
+    true,
+  );
+  assert.equal(
+    existsSync(new URL("../proofs/diagnostics/m6-shutter-control-v17-evidence.json", import.meta.url)),
+    true,
+  );
+});
+
 test("M6 live correction keeps evolving-warp acceleration on the dedicated motion-shaping actuator", () => {
   const controller = readFileSync(
     new URL("../scripts/proofs/m6-generic-native-auto-correction-proof.mjs", import.meta.url),
@@ -4548,7 +4787,7 @@ test("M6.8 composite warp flattens fragmented states before deformation and redu
     creativeObjective: "Preserve per-state deformation and add one bounded macro warp.",
   });
   assert.ok(dualNative.operations.length <= 96,
-    "dual warp must remain inside the bounded live-correction transaction ceiling");
+    `dual warp must remain inside the bounded live-correction transaction ceiling (got ${dualNative.operations.length})`);
 });
 
 
