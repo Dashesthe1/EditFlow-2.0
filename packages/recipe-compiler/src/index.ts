@@ -663,10 +663,29 @@ const adaptEffectSchemaValueV1 = (
   binding: EffectSchemaPropertyBindingV1,
   value: unknown,
   frameRate: number,
+  compWidth: number,
+  compHeight: number,
   issues: RecipeCompileIssueV1[],
 ): unknown | null => {
   const adapter = binding.valueAdapter ?? "IDENTITY";
   if (adapter === "IDENTITY") return structuredClone(value);
+  if (adapter === "NORMALIZED_POINT_TO_COMP_PIXELS") {
+    if (!Array.isArray(value)
+      || value.length !== 2
+      || !value.every((entry) => typeof entry === "number" && Number.isFinite(entry)
+        && entry >= 0 && entry <= 1)
+      || !Number.isFinite(compWidth) || compWidth <= 0
+      || !Number.isFinite(compHeight) || compHeight <= 0) {
+      addIssue(
+        issues,
+        node.nodeId,
+        "EFFECT_ADAPTATION_INVALID",
+        `Effect parameter '${binding.semanticParameter}' requires a normalized [x, y] point and positive composition dimensions.`,
+      );
+      return null;
+    }
+    return [value[0] * compWidth, value[1] * compHeight];
+  }
   if (adapter === "MULTIPLY_BY_PARAMETER") {
     if (typeof value !== "number" || !Number.isFinite(value)
       || typeof binding.scaleParameter !== "string" || binding.scaleParameter.length === 0) {
@@ -723,6 +742,8 @@ const compileEffectStack = (
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
   frameRate: number,
+  compWidth: number,
+  compHeight: number,
 ): readonly string[] => {
   if (node.timing !== undefined) {
     addIssue(issues, node.nodeId, "EFFECT_TIMING_UNSUPPORTED",
@@ -749,7 +770,8 @@ const compileEffectStack = (
       issues,
     );
     if (value !== null) {
-      const adapted = adaptEffectSchemaValueV1(node, binding, value, frameRate, issues);
+      const adapted = adaptEffectSchemaValueV1(
+        node, binding, value, frameRate, compWidth, compHeight, issues);
       if (adapted !== null) values.set(binding.semanticParameter, adapted);
     }
   }
@@ -2001,7 +2023,8 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
     } else if (node.kind === "MOTION_BLUR") {
       outputs = compileMotionBlur(node, targets, context, operations, issues);
     } else if (node.kind === "EFFECT_STACK") {
-      outputs = compileEffectStack(node, targets, context, operations, issues, comp.frameRate);
+      outputs = compileEffectStack(
+        node, targets, context, operations, issues, comp.frameRate, comp.width, comp.height);
     } else if (node.kind === "STABILIZATION") {
       outputs = compileStabilization(node, targets, context, operations, issues);
     } else if (node.kind === "LAYER_DUPLICATION" || node.kind === "TEMPORAL_DUPLICATION") {

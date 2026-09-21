@@ -178,6 +178,18 @@ reached 0.8933 weighted fidelity / 4-of-7 defining coverage and introduced a sca
 residual, so it was correctly rejected; the 0.9846 / 5-of-7 checkpoint remains retained.
 This is diagnostic search evidence, not professional-fidelity certification.
 
+The alternate point-to-point deformation hypothesis is now represented by the proof-gated
+`DIRECTIONAL_SMEAR_HYBRID` strategy and the proposed
+`ae.effect-schema.m6.cc-smear.v1` schema. The schema uses installed AE 2025
+`CC Smear` property match names and comp-relative normalized From/To points, so the same
+construction transfers across resolution without baking source pixels into the graph.
+`proofs/diagnostics/m6-directional-smear-live01.json` proves the native effect, 91-operation
+transaction, readback, render, analyzer, and bounded Reach/Radius response in live AE. The
+strongest CC Smear render reached 0.8606 weighted fidelity / 4-of-7 defining coverage and
+regressed persistence, scale, or acceleration depending on the probe. It was therefore
+correctly rejected; the 0.9846 / 5-of-7 evolving-warp checkpoint remains retained. CC Smear
+stays `PROOF_REQUIRED` and is not an accepted or certified M6 capability.
+
 The native Echo hypothesis now also has refreshed active-v10 live-AE evidence at
 `proofs/diagnostics/m6-native-echo-live-proof.json`. The proof commits the real
 `ADBE Echo` effect, verifies its compiled property values by AE readback, and compares

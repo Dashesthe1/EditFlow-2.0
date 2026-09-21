@@ -444,6 +444,10 @@ const PROPOSABLE_NATIVE_EFFECTS: Readonly<Record<string, Readonly<{
     nativeEffect: "Turbulent Displace",
     rationale: "Native Turbulent Displace can provide a procedural warp hypothesis when a displacement-map construction cannot reproduce the observed deformation.",
   },
+  "ae.effect.cc-smear": {
+    nativeEffect: "CC Smear",
+    rationale: "CC Smear can test a directional point-to-point pixel-transport hypothesis when fractal deformation plateaus below the observed displacement behavior.",
+  },
 };
 
 const finiteNodeParameter = (
@@ -530,6 +534,41 @@ const evolvingTurbulentProofParameters = (
     // same total Evolution travel near the end of the event; they do not add
     // deformation magnitude or change the reference-derived sweep distance.
     eventEvolutionSharpnessScale: 1,
+  };
+};
+
+const directionalSmearProofParameters = (
+  distortionNode: ConstructionGraphV1["nodes"][number],
+  directionNode: ConstructionGraphV1["nodes"][number] | undefined,
+): Readonly<Record<string, number | string | boolean | readonly number[]>> => {
+  const distortion = Math.max(0, Math.min(1,
+    finiteNodeParameter(distortionNode, "distortionPeak") ?? 0.2));
+  const rawDirection = directionNode?.parameters["displacementDirection"];
+  const direction = Array.isArray(rawDirection)
+    && rawDirection.length === 2
+    && rawDirection.every((value) => typeof value === "number" && Number.isFinite(value))
+    ? [Number(rawDirection[0]), Number(rawDirection[1])] as const
+    : [1, 0] as const;
+  const magnitude = Math.hypot(direction[0], direction[1]);
+  const unitX = magnitude > 1e-6 ? direction[0] / magnitude : 1;
+  const unitY = magnitude > 1e-6 ? direction[1] / magnitude : 0;
+  const travel = Math.max(0.12, Math.min(0.42, 0.12 + distortion * 0.3));
+  const clampPoint = (value: number): number => Math.max(0.06, Math.min(0.94, value));
+  return {
+    effectSchemaRef: "ae.effect-schema.m6.cc-smear.v1",
+    smearFromNormalized: [
+      clampPoint(0.5 - unitX * travel * 0.5),
+      clampPoint(0.5 - unitY * travel * 0.5),
+    ],
+    smearToNormalized: [
+      clampPoint(0.5 + unitX * travel * 0.5),
+      clampPoint(0.5 + unitY * travel * 0.5),
+    ],
+    smearReach: Math.max(100, Math.min(720, 100 + distortion * 620)),
+    smearRadius: Math.max(40, Math.min(220, 40 + distortion * 180)),
+    smearReachScale: 1,
+    smearRadiusScale: 1,
+    eventLocalEffect: true,
   };
 };
 
@@ -1017,6 +1056,68 @@ const compoundDualWarpGraph = (
   };
 };
 
+const directionalSmearGraph = (
+  base: ConstructionGraphV1,
+): ConstructionGraphV1 | null => {
+  const layered = layeredEchoAugmentedGraph(base);
+  if (layered === null) return null;
+  const distortion = layered.nodes.find((node) =>
+    node.kind === "DISTORTION" && !node.optional);
+  if (distortion === undefined) return null;
+  const direction = layered.nodes.find((node) =>
+    Array.isArray(node.parameters["displacementDirection"]));
+  const accelerationInvariantIds = layered.nodes
+    .filter((node) => node.kind === "RECOVERY")
+    .flatMap((node) => node.requiredInvariantIds)
+    .filter((invariantId) => invariantId.toLowerCase().includes("acceleration"));
+  const requiredInvariantIds = [...new Set([
+    ...distortion.requiredInvariantIds,
+    ...accelerationInvariantIds,
+  ])];
+  const smearNodeId = `${distortion.nodeId}:directional-smear-augmentation`;
+  const smearNode: ConstructionNodeV1 = {
+    nodeId: smearNodeId,
+    kind: "DISTORTION",
+    dimension: "DISTORTION",
+    dependsOn: [distortion.nodeId],
+    requiredInvariantIds,
+    capabilityCandidates: ["ae.effect.cc-smear"],
+    parameters: {
+      ...distortion.parameters,
+      synthesisStrategy: "DIRECTIONAL_SMEAR_HYBRID",
+      ...directionalSmearProofParameters(distortion, direction),
+    },
+    optional: false,
+  };
+  const targeted = new Set(requiredInvariantIds);
+  const nodes = layered.nodes.map((node): ConstructionNodeV1 => {
+    if (node.nodeId === distortion.nodeId) return node;
+    return node.dependsOn.includes(distortion.nodeId)
+      ? {
+          ...node,
+          dependsOn: node.dependsOn.map((dependency) =>
+            dependency === distortion.nodeId ? smearNodeId : dependency),
+        }
+      : node;
+  });
+  const invariantCoverage = Object.fromEntries(
+    Object.entries(layered.invariantCoverage).map(([invariantId, nodeIds]) => [
+      invariantId,
+      targeted.has(invariantId)
+        ? [smearNodeId, ...nodeIds.filter((nodeId) => nodeId !== smearNodeId)]
+        : nodeIds,
+    ]),
+  );
+  return {
+    ...layered,
+    graphId: `${layered.graphId}:directional_smear`,
+    nodes: [...nodes, smearNode],
+    outputs: layered.outputs.map((output) =>
+      output === distortion.nodeId ? smearNodeId : output),
+    invariantCoverage,
+  };
+};
+
 const strategyGraph = (
   base: ConstructionGraphV1,
   strategy: UnknownEffectSynthesisStrategyV1,
@@ -1027,6 +1128,7 @@ const strategyGraph = (
   if (strategy === "COMPOUND_EVOLVING_WARP_HYBRID") return compoundEvolvingWarpGraph(base);
   if (strategy === "COMPOUND_COMPOSITE_WARP_HYBRID") return compoundCompositeWarpGraph(base);
   if (strategy === "COMPOUND_DUAL_WARP_HYBRID") return compoundDualWarpGraph(base);
+  if (strategy === "DIRECTIONAL_SMEAR_HYBRID") return directionalSmearGraph(base);
   if (strategy === "NATIVE_ECHO_HYBRID") return echoStrategyGraph(base);
   let changed = false;
   const nodes = base.nodes.map((node) => {
@@ -1086,6 +1188,7 @@ const MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY: Readonly<
   COMPOUND_EVOLVING_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
   COMPOUND_COMPOSITE_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
   COMPOUND_DUAL_WARP_HYBRID: "ae.effect-schema.m6.turbulent-displace.v3",
+  DIRECTIONAL_SMEAR_HYBRID: "ae.effect-schema.m6.cc-smear.v1",
 });
 
 const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
@@ -1097,7 +1200,8 @@ const nativeRealizationGaps = (graph: ConstructionGraphV1): readonly string[] =>
       && strategy !== "TURBULENT_DISPLACE_HYBRID"
       && strategy !== "COMPOUND_EVOLVING_WARP_HYBRID"
       && strategy !== "COMPOUND_COMPOSITE_WARP_HYBRID"
-      && strategy !== "COMPOUND_DUAL_WARP_HYBRID") return [];
+      && strategy !== "COMPOUND_DUAL_WARP_HYBRID"
+      && strategy !== "DIRECTIONAL_SMEAR_HYBRID") return [];
     const capability = node.capabilityCandidates[0] ?? String(strategy);
     const expectedSchemaRef = MATERIALIZED_NATIVE_SCHEMA_BY_STRATEGY[strategy];
     const actualSchemaRef = node.parameters["effectSchemaRef"];
@@ -1152,6 +1256,7 @@ export const synthesizeUnknownEffectV1 = (input: {
     { strategy: "COMPOUND_NATIVE_HYBRID", id: "adaptive:compound-native-hybrid", complexityPenalty: 1 },
     { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
     { strategy: "COMPOUND_DUAL_WARP_HYBRID", id: "adaptive:compound-dual-warp-hybrid", complexityPenalty: 1.75 },
+    { strategy: "DIRECTIONAL_SMEAR_HYBRID", id: "adaptive:directional-smear-hybrid", complexityPenalty: 1.5 },
     { strategy: "COMPOUND_COMPOSITE_WARP_HYBRID", id: "adaptive:compound-composite-warp-hybrid", complexityPenalty: 2 },
     { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
     { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },

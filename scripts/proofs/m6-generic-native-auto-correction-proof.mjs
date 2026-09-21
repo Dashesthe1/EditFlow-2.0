@@ -61,6 +61,10 @@ const physicalParameterForNodeControl = (node, control) => {
     if (control === "DUPLICATE_OPACITY") return "startingIntensity";
     if (control === "DUPLICATE_SPREAD") return undefined;
   }
+  if (node?.parameters?.synthesisStrategy === "DIRECTIONAL_SMEAR_HYBRID") {
+    if (control === "DISTORTION_STRENGTH") return "smearReachScale";
+    if (control === "DISTORTION_SIZE") return "smearRadiusScale";
+  }
   if (node?.parameters?.synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
       || node?.parameters?.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"
       || node?.parameters?.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID"
@@ -103,7 +107,7 @@ const CAPABILITIES = [
   "ae.layer.transform.set", "ae.keyframe.temporal_ease.set",
   "ae.keyframe.spatial.set", "ae.effect.directional-blur",
   "ae.effect.displacement-map", "ae.effect.turbulent-displace",
-  "ae.effect.echo", "ae.precompose.layers",
+  "ae.effect.cc-smear", "ae.effect.echo", "ae.precompose.layers",
   "ae.effect.exposure", "ae.effect.channel-shift",
   "ae.layer.blend_mode.set",
   "ae.subject.isolate", "ae.layer.matte.set", "ae.layer.order.set",
@@ -346,6 +350,9 @@ const strategyKeyFromSet = (strategies) => {
   // Prefer the most structurally advanced explicit strategy. A v3 graph also
   // contains its retained v2 Echo/Turbulent interventions, so checking those
   // first would incorrectly collapse the evolving graph back to compound v2.
+  if (strategies.has("DIRECTIONAL_SMEAR_HYBRID")) {
+    return "DIRECTIONAL_SMEAR_HYBRID";
+  }
   if (strategies.has("COMPOUND_DUAL_WARP_HYBRID")) {
     return "COMPOUND_DUAL_WARP_HYBRID";
   }
@@ -468,6 +475,8 @@ const transferRetainedPhysicalScales = (sourceGraph, targetGraph) => ({
       "distortionEvolutionScale",
       "eventEvolutionSweepScale",
       "eventEvolutionSharpnessScale",
+      "smearReachScale",
+      "smearRadiusScale",
     ]) {
       const value = sourceNode.parameters[parameter];
       if (typeof value === "number" && Number.isFinite(value)) parameters[parameter] = value;

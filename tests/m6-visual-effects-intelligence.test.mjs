@@ -3437,3 +3437,135 @@ test("M6 live correction maps advanced-warp acceleration to consumed actuators a
     /const ADVANCED_WARP_MOTION_CONTROLS = new Set\(\[[\s\S]{0,180}"DISTORTION_STRENGTH"/,
   );
 });
+
+test("M6.8 directional smear synthesis compiles normalized points and exposes physical correction actuators", () => {
+  const reference = evidence({
+    temporalStateCountPeak: 5,
+    temporalPersistence: 0.66,
+    overlapDensityPeak: 0.9,
+    displacementPeak: 0.11,
+    displacementDirection: { x: 0.6, y: -0.8 },
+    distortionPeak: 0.42,
+    accelerationPeak: 0.07,
+    recoveryFrames: 4,
+  });
+  const capabilities = [
+    ...ALL_CAPABILITIES,
+    "ae.effect.echo",
+    "ae.effect.cc-smear",
+  ];
+  const synthesis = synthesizeUnknownEffectV1({
+    evidence: reference,
+    availableCapabilities: capabilities,
+  });
+  const smear = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "DIRECTIONAL_SMEAR_HYBRID");
+  assert.ok(smear);
+  assert.deepEqual(smear.capabilityGaps, []);
+  const smearNode = smear.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "DIRECTIONAL_SMEAR_HYBRID");
+  assert.ok(smearNode);
+  assert.equal(smearNode.parameters.effectSchemaRef, "ae.effect-schema.m6.cc-smear.v1");
+  assert.ok(smearNode.requiredInvariantIds.includes("unknown.distortion"));
+  assert.ok(smearNode.requiredInvariantIds.includes("unknown.acceleration"));
+
+  const compilation = compileConstructionGraphV1(smear.graph, capabilities);
+  assert.equal(compilation.definingCoverageComplete, true);
+  assert.notEqual(compilation.recipe, null);
+  const compileAt = (width, height) => compileEditingIrRecipeToVirtualAeV1(
+    compilation.recipe,
+    {
+      schema: "editflow.virtual-ae.project.v1",
+      activeCompId: "comp",
+      compositions: [{
+        compId: "comp",
+        name: "Directional smear transfer proof",
+        width,
+        height,
+        durationMs: 1000,
+        frameRate: 30,
+        layers: [{
+          layerId: "hero",
+          name: "Hero",
+          kind: "PRECOMP",
+          sourceRef: "source",
+          inMs: 0,
+          outMs: 1000,
+          properties: [],
+          effects: [],
+          masks: [],
+        }],
+      }],
+    },
+    {
+      compId: "comp",
+      eventTimesMs: { transition: 500 },
+      roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+      parameterValues: {},
+      proofOnlyEffectSchemaRefs: [
+        "ae.effect-schema.m6.echo.v1",
+        "ae.effect-schema.m6.cc-smear.v1",
+      ],
+    },
+  );
+  const compiled640 = compileAt(640, 360);
+  const compiled1280 = compileAt(1280, 720);
+  const effectValue = (compiled, path) => compiled.operations.find((operation) =>
+    operation.type === "SET_EFFECT_PROPERTY"
+    && operation.effectId.startsWith(smearNode.nodeId)
+    && operation.propertyPath[0] === path)?.value;
+  const from640 = effectValue(compiled640, "CC Smear-0001");
+  const to640 = effectValue(compiled640, "CC Smear-0002");
+  const from1280 = effectValue(compiled1280, "CC Smear-0001");
+  const to1280 = effectValue(compiled1280, "CC Smear-0002");
+  assert.ok(Array.isArray(from640));
+  assert.ok(Array.isArray(to640));
+  assert.deepEqual(from1280, from640.map((value) => value * 2));
+  assert.deepEqual(to1280, to640.map((value) => value * 2));
+  assert.equal(typeof effectValue(compiled640, "CC Smear-0003"), "number");
+  assert.equal(typeof effectValue(compiled640, "CC Smear-0004"), "number");
+
+  const actuated = applyConstructionActuationPlanV1(smear.graph, {
+    schema: "editflow.construction-actuation-plan.v1",
+    family: "UNKNOWN",
+    comparisonKey: "directional-smear-actuation",
+    instructions: [{
+      instructionId: "actuate:smear:reach",
+      invariantId: "unknown.distortion",
+      nodeId: smearNode.nodeId,
+      metric: "distortionPeak",
+      deficitMetric: "distortionPeak",
+      deficitReferenceValue: 0.42,
+      deficitRenderValue: 0.21,
+      control: "DISTORTION_STRENGTH",
+      direction: "INCREASE",
+      referenceValue: 0.42,
+      renderValue: 0.21,
+      multiplier: 1.5,
+      normalizedError: 0.5,
+      defining: true,
+      rationale: "Increase point-to-point transport reach.",
+    }, {
+      instructionId: "actuate:smear:radius",
+      invariantId: "unknown.distortion",
+      nodeId: smearNode.nodeId,
+      metric: "distortionPeak",
+      deficitMetric: "distortionPeak",
+      deficitReferenceValue: 0.42,
+      deficitRenderValue: 0.21,
+      control: "DISTORTION_SIZE",
+      direction: "INCREASE",
+      referenceValue: 0.42,
+      renderValue: 0.21,
+      multiplier: 1.25,
+      normalizedError: 0.5,
+      defining: true,
+      rationale: "Increase the smear influence radius.",
+    }],
+    unresolvedInvariantIds: [],
+  });
+  const actuatedSmear = actuated.graph.nodes.find((node) => node.nodeId === smearNode.nodeId);
+  assert.equal(actuatedSmear.parameters.smearReachScale, 1.5);
+  assert.equal(actuatedSmear.parameters.smearRadiusScale, 1.25);
+  assert.deepEqual(actuated.unsupportedInstructionIds, []);
+});

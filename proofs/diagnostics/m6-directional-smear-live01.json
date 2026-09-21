@@ -1,0 +1,1476 @@
+{
+  "schema": "editflow.m6.generic-native-auto-correction-proof.v1",
+  "generatedAt": "2026-09-21T00:11:11.406Z",
+  "sourceEvidence": "proofs/diagnostics/m6-persistence-v2-ref-evidence.json",
+  "seedEvidence": "proofs/diagnostics/m6-compound-evolving-warp-live04-pass13-evidence.json",
+  "seedStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+  "resumedFromProof": null,
+  "family": "UNKNOWN",
+  "strategy": "DIRECTIONAL_SMEAR_HYBRID",
+  "status": "ITERATION_LIMIT",
+  "certified": false,
+  "finalWeightedFidelity": 0.9845757276750248,
+  "finalDefiningCoverage": 0.7142857142857143,
+  "residualInvariantIds": [
+    "unknown.distortion",
+    "unknown.acceleration"
+  ],
+  "renderedAttemptCount": 6,
+  "synthesisEscalation": {
+    "requiredInvariantIds": [],
+    "hardRequiredInvariantIds": [],
+    "structuralEscalationInvariantIds": [],
+    "searchPlan": {
+      "schema": "editflow.bounded-actuator-search-plan.v1",
+      "retainedBestAttemptId": "seed",
+      "regressingAttemptIds": [
+        "blind-1",
+        "search-1",
+        "search-2",
+        "search-3",
+        "search-4"
+      ],
+      "trustScale": 0.2857142857142857,
+      "candidates": [
+        {
+          "candidateId": "probe:motion_impulse_phase:up:1",
+          "values": {
+            "MOTION_IMPULSE": 1,
+            "MOTION_IMPULSE_SHARPNESS": 1,
+            "MOTION_IMPULSE_PHASE": 1.125,
+            "DISTORTION_STRENGTH": 1,
+            "DISTORTION_SIZE": 1
+          },
+          "changedControls": [
+            "MOTION_IMPULSE_PHASE"
+          ],
+          "rationale": "Isolate MOTION_IMPULSE_PHASE in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:motion_impulse_phase:down:2",
+          "values": {
+            "MOTION_IMPULSE": 1,
+            "MOTION_IMPULSE_SHARPNESS": 1,
+            "MOTION_IMPULSE_PHASE": 0.875,
+            "DISTORTION_STRENGTH": 1,
+            "DISTORTION_SIZE": 1
+          },
+          "changedControls": [
+            "MOTION_IMPULSE_PHASE"
+          ],
+          "rationale": "Isolate MOTION_IMPULSE_PHASE in a bounded rendered probe; physical response is not yet proven monotonic."
+        },
+        {
+          "candidateId": "probe:distortion_strength:down:3",
+          "values": {
+            "MOTION_IMPULSE": 1,
+            "MOTION_IMPULSE_SHARPNESS": 1,
+            "MOTION_IMPULSE_PHASE": 1,
+            "DISTORTION_STRENGTH": 0.75,
+            "DISTORTION_SIZE": 1
+          },
+          "changedControls": [
+            "DISTORTION_STRENGTH"
+          ],
+          "rationale": "Follow measured positive local sensitivity for DISTORTION_STRENGTH while holding all other actuators at the retained-best state."
+        },
+        {
+          "candidateId": "probe:distortion_size:down:4",
+          "values": {
+            "MOTION_IMPULSE": 1,
+            "MOTION_IMPULSE_SHARPNESS": 1,
+            "MOTION_IMPULSE_PHASE": 1,
+            "DISTORTION_STRENGTH": 1,
+            "DISTORTION_SIZE": 0.75
+          },
+          "changedControls": [
+            "DISTORTION_SIZE"
+          ],
+          "rationale": "Follow measured positive local sensitivity for DISTORTION_SIZE while holding all other actuators at the retained-best state."
+        },
+        {
+          "candidateId": "probe:motion_impulse:down:5",
+          "values": {
+            "MOTION_IMPULSE": 0.75,
+            "MOTION_IMPULSE_SHARPNESS": 1,
+            "MOTION_IMPULSE_PHASE": 1,
+            "DISTORTION_STRENGTH": 1,
+            "DISTORTION_SIZE": 1
+          },
+          "changedControls": [
+            "MOTION_IMPULSE"
+          ],
+          "rationale": "Follow measured positive local sensitivity for MOTION_IMPULSE while holding all other actuators at the retained-best state."
+        },
+        {
+          "candidateId": "probe:motion_impulse_sharpness:down:6",
+          "values": {
+            "MOTION_IMPULSE": 1,
+            "MOTION_IMPULSE_SHARPNESS": 0.875,
+            "MOTION_IMPULSE_PHASE": 1,
+            "DISTORTION_STRENGTH": 1,
+            "DISTORTION_SIZE": 1
+          },
+          "changedControls": [
+            "MOTION_IMPULSE_SHARPNESS"
+          ],
+          "rationale": "Follow measured positive local sensitivity for MOTION_IMPULSE_SHARPNESS while holding all other actuators at the retained-best state."
+        }
+      ],
+      "exhaustedControls": [],
+      "metricResponses": [
+        {
+          "control": "DISTORTION_STRENGTH",
+          "metric": "distortionPeak",
+          "probeCount": 2,
+          "metricSpan": 0.25647818180221127,
+          "requiredDelta": 0.38721108631352963,
+          "responseRatio": 0.6623730333860784,
+          "causalCohortCount": 1,
+          "testedControlSpan": 0.25,
+          "testedDirectionCount": 1,
+          "safeImprovingProbeCount": 0,
+          "retainedImprovingProbeCount": 0,
+          "collateralRegressionProbeCount": 1,
+          "responsive": true,
+          "safeResponsive": false
+        },
+        {
+          "control": "DISTORTION_SIZE",
+          "metric": "distortionPeak",
+          "probeCount": 2,
+          "metricSpan": 0.04457355007882957,
+          "requiredDelta": 0.38721108631352963,
+          "responseRatio": 0.1151143437115791,
+          "causalCohortCount": 1,
+          "testedControlSpan": 0.25,
+          "testedDirectionCount": 1,
+          "safeImprovingProbeCount": 0,
+          "retainedImprovingProbeCount": 0,
+          "collateralRegressionProbeCount": 0,
+          "responsive": true,
+          "safeResponsive": false
+        },
+        {
+          "control": "MOTION_IMPULSE",
+          "metric": "accelerationPeak",
+          "probeCount": 2,
+          "metricSpan": 0.034009868054550876,
+          "requiredDelta": 0.017569765055524184,
+          "responseRatio": 1.9357042024792295,
+          "causalCohortCount": 1,
+          "testedControlSpan": 0.25,
+          "testedDirectionCount": 1,
+          "safeImprovingProbeCount": 0,
+          "retainedImprovingProbeCount": 0,
+          "collateralRegressionProbeCount": 0,
+          "responsive": true,
+          "safeResponsive": false
+        },
+        {
+          "control": "MOTION_IMPULSE_SHARPNESS",
+          "metric": "accelerationPeak",
+          "probeCount": 2,
+          "metricSpan": 0.034009868054550876,
+          "requiredDelta": 0.017569765055524184,
+          "responseRatio": 1.9357042024792295,
+          "causalCohortCount": 1,
+          "testedControlSpan": 0.125,
+          "testedDirectionCount": 1,
+          "safeImprovingProbeCount": 0,
+          "retainedImprovingProbeCount": 0,
+          "collateralRegressionProbeCount": 0,
+          "responsive": true,
+          "safeResponsive": false
+        }
+      ],
+      "synthesisRequiredInvariantIds": [],
+      "structuralEscalationInvariantIds": []
+    },
+    "selectedStrategy": null
+  },
+  "passes": [
+    {
+      "iteration": 0,
+      "source": "retained-real-ae-seed",
+      "strategy": "DIRECTIONAL_SMEAR_HYBRID",
+      "weightedFidelity": 0.9845757276750248,
+      "definingCoverage": 0.7142857142857143,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.distortion",
+          "unknown.acceleration"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.distortion, unknown.acceleration."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.36666666666666664,
+        "motionEnergyPeak": 0.02781065270741194,
+        "displacementPeak": 0.000047192657075318145,
+        "displacementDirection": {
+          "x": -0.00003608993720263243,
+          "y": -0.000030408277072840268
+        },
+        "scaleRange": 0.12861600766249714,
+        "rotationRange": 4.514970449177438,
+        "blurPeak": 0.7775248563975348,
+        "blurPeakPhase": 0.5517241379310345,
+        "distortionPeak": 0.6127889136864704,
+        "exposurePeak": 0.381961567775802,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 1,
+        "stateSeparationPeak": 0.11695950248933144,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.4827586206896552,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 1,
+        "fragmentationStateSeparationPeak": 0.047566913668687726,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.05249662406784157,
+        "recoveryFrames": 1,
+        "opticalPeakPhase": 0.5517241379310345,
+        "motionPeakPhase": 0.5862068965517241
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:echo-augmentation",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "LAYERED_ECHO_AUGMENTED",
+            "effectSchemaRef": "ae.effect-schema.m6.echo.v1",
+            "eventLocalEffect": true,
+            "echoSpacingFrames": 1.25,
+            "numberOfEchoes": 4,
+            "startingIntensity": 0.9430232558139535,
+            "decay": 0.8627906976744185
+          }
+        },
+        {
+          "nodeId": "node:4:distortion:directional-smear-augmentation",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+            "effectSchemaRef": "ae.effect-schema.m6.cc-smear.v1",
+            "smearFromNormalized": [
+              0.29000000000000004,
+              0.5
+            ],
+            "smearToNormalized": [
+              0.71,
+              0.5
+            ],
+            "smearReach": 720,
+            "smearRadius": 220,
+            "smearReachScale": 1,
+            "smearRadiusScale": 1,
+            "eventLocalEffect": true
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "source": "real-ae-local-rerender",
+      "operationCount": 91,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-directional-smear-live01-pass01-readback.txt",
+      "video": "proofs/diagnostics/m6-directional-smear-live01-pass01.mp4",
+      "evidence": "proofs/diagnostics/m6-directional-smear-live01-pass01-evidence.json",
+      "actuationPlan": {
+        "schema": "editflow.construction-actuation-plan.v1",
+        "family": "UNKNOWN",
+        "comparisonKey": "c6467fd2e6a16933fb90c378a6333c10d01ad8d9f7f3651f92b87a7a7e5b2d80->79fd263837f1f61f227f8b1dd80af9c1f506fdf3620ec38b30e6e0d7ebf60f8b",
+        "instructions": [
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_strength",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.6127889136864704,
+            "control": "DISTORTION_STRENGTH",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.6127889136864704,
+            "multiplier": 1.2774518811672662,
+            "normalizedError": 0.10721108631352971,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.613. Observed distortionPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_size",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.6127889136864704,
+            "control": "DISTORTION_SIZE",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.6127889136864704,
+            "multiplier": 1.2774518811672662,
+            "normalizedError": 0.10721108631352971,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.613. Observed distortionPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_complexity",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.6127889136864704,
+            "control": "DISTORTION_COMPLEXITY",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.6127889136864704,
+            "multiplier": 1.2774518811672662,
+            "normalizedError": 0.10721108631352971,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.613. Observed distortionPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.distortion:distortion_evolution",
+            "invariantId": "unknown.distortion",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 1,
+            "deficitRenderValue": 0.6127889136864704,
+            "control": "DISTORTION_EVOLUTION",
+            "direction": "INCREASE",
+            "referenceValue": 1,
+            "renderValue": 0.6127889136864704,
+            "multiplier": 1.2774518811672662,
+            "normalizedError": 0.10721108631352971,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 1.000, render 0.613. Observed distortionPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.acceleration:motion_impulse",
+            "invariantId": "unknown.acceleration",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "accelerationPeak",
+            "deficitMetric": "accelerationPeak",
+            "deficitReferenceValue": 0.07006638912336575,
+            "deficitRenderValue": 0.05249662406784157,
+            "control": "MOTION_IMPULSE",
+            "direction": "INCREASE",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.05249662406784157,
+            "multiplier": 1.1552851218888684,
+            "normalizedError": 0.0007588199612960774,
+            "defining": true,
+            "rationale": "accelerationPeak is under-driven: reference 0.070, render 0.052. Observed accelerationPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.acceleration:motion_impulse_sharpness",
+            "invariantId": "unknown.acceleration",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "accelerationPeak",
+            "deficitMetric": "accelerationPeak",
+            "deficitReferenceValue": 0.07006638912336575,
+            "deficitRenderValue": 0.05249662406784157,
+            "control": "MOTION_IMPULSE_SHARPNESS",
+            "direction": "INCREASE",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.05249662406784157,
+            "multiplier": 1.1552851218888684,
+            "normalizedError": 0.0007588199612960774,
+            "defining": true,
+            "rationale": "accelerationPeak is under-driven: reference 0.070, render 0.052. Observed accelerationPeak is a material part of the unknown reference behavior."
+          },
+          {
+            "instructionId": "actuate:unknown.acceleration:motion_impulse_phase",
+            "invariantId": "unknown.acceleration",
+            "nodeId": "node:4:distortion:directional-smear-augmentation",
+            "metric": "accelerationPeak",
+            "deficitMetric": "accelerationPeak",
+            "deficitReferenceValue": 0.07006638912336575,
+            "deficitRenderValue": 0.05249662406784157,
+            "control": "MOTION_IMPULSE_PHASE",
+            "direction": "INCREASE",
+            "referenceValue": 0.07006638912336575,
+            "renderValue": 0.05249662406784157,
+            "multiplier": 1.1552851218888684,
+            "normalizedError": 0.0007588199612960774,
+            "defining": true,
+            "rationale": "accelerationPeak is under-driven: reference 0.070, render 0.052. Observed accelerationPeak is a material part of the unknown reference behavior."
+          }
+        ],
+        "unresolvedInvariantIds": []
+      },
+      "appliedInstructionIds": [
+        "actuate:unknown.distortion:distortion_strength",
+        "actuate:unknown.distortion:distortion_size",
+        "actuate:unknown.acceleration:motion_impulse",
+        "actuate:unknown.acceleration:motion_impulse_sharpness",
+        "actuate:unknown.acceleration:motion_impulse_phase"
+      ],
+      "unsupportedInstructionIds": [
+        "actuate:unknown.distortion:distortion_complexity",
+        "actuate:unknown.distortion:distortion_evolution"
+      ],
+      "weightedFidelity": 0.7994557390370852,
+      "definingCoverage": 0.5714285714285714,
+      "improved": false,
+      "accepted": false,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.persistence",
+          "unknown.overlap",
+          "unknown.acceleration"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.persistence, unknown.overlap, unknown.acceleration."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.06666666666666667,
+        "motionEnergyPeak": 0.024850834078321976,
+        "displacementPeak": 8.334344857248406e-21,
+        "displacementDirection": {
+          "x": 8.334344857248406e-21,
+          "y": 0
+        },
+        "scaleRange": 0.15074746282701001,
+        "rotationRange": 7.980376181348522,
+        "blurPeak": 0.9420003340374598,
+        "blurPeakPhase": 0.4482758620689655,
+        "distortionPeak": 0.7482903042602543,
+        "exposurePeak": 0.4003267534844299,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.32121212121212117,
+        "stateSeparationPeak": 0.10349959503354023,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.4482758620689655,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.2090909090909091,
+        "fragmentationStateSeparationPeak": 0.10198329996528888,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.02253648402090059,
+        "recoveryFrames": 2,
+        "opticalPeakPhase": 0.4482758620689655,
+        "motionPeakPhase": 0.41379310344827586
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:echo-augmentation",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "LAYERED_ECHO_AUGMENTED",
+            "effectSchemaRef": "ae.effect-schema.m6.echo.v1",
+            "eventLocalEffect": true,
+            "echoSpacingFrames": 1.25,
+            "numberOfEchoes": 4,
+            "startingIntensity": 0.9430232558139535,
+            "decay": 0.8627906976744185
+          }
+        },
+        {
+          "nodeId": "node:4:distortion:directional-smear-augmentation",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+            "effectSchemaRef": "ae.effect-schema.m6.cc-smear.v1",
+            "smearFromNormalized": [
+              0.29000000000000004,
+              0.5
+            ],
+            "smearToNormalized": [
+              0.71,
+              0.5
+            ],
+            "smearReach": 720,
+            "smearRadius": 220,
+            "smearReachScale": 1.2774518811672662,
+            "smearRadiusScale": 1.2774518811672662,
+            "eventLocalEffect": true,
+            "motionImpulseScale": 1.1552851218888684,
+            "motionImpulseSharpnessScale": 1.1552851218888684,
+            "motionImpulsePhaseScale": 1.1552851218888684
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:distortion_strength:up:1",
+      "changedControls": [
+        "DISTORTION_STRENGTH"
+      ],
+      "candidateRationale": "Isolate DISTORTION_STRENGTH in a bounded rendered probe; physical response is not yet proven monotonic.",
+      "searchPlan": {
+        "retainedBestAttemptId": "seed",
+        "regressingAttemptIds": [
+          "blind-1"
+        ],
+        "trustScale": 0.6666666666666666,
+        "exhaustedControls": [],
+        "metricResponses": [],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": []
+      },
+      "operationCount": 91,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-directional-smear-live01-pass02-readback.txt",
+      "video": "proofs/diagnostics/m6-directional-smear-live01-pass02.mp4",
+      "evidence": "proofs/diagnostics/m6-directional-smear-live01-pass02-evidence.json",
+      "weightedFidelity": 0.8606272789922198,
+      "definingCoverage": 0.5714285714285714,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.persistence",
+          "unknown.scale",
+          "unknown.acceleration"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.persistence, unknown.scale, unknown.acceleration."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.06666666666666667,
+        "motionEnergyPeak": 0.02589674079152538,
+        "displacementPeak": 1.6608077811093726e-16,
+        "displacementDirection": {
+          "x": 1.660807781109371e-16,
+          "y": 7.194871449174584e-24
+        },
+        "scaleRange": 0.24615319871147268,
+        "rotationRange": 5.6158832714437485,
+        "blurPeak": 0.8978640237220729,
+        "blurPeakPhase": 0.5517241379310345,
+        "distortionPeak": 0.8692670954886816,
+        "exposurePeak": 0.458020359581287,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.7818181818181819,
+        "stateSeparationPeak": 0.10198329996528888,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.5172413793103449,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.30303030303030304,
+        "fragmentationStateSeparationPeak": 0.023429925828571122,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.04966363383798343,
+        "recoveryFrames": 1,
+        "opticalPeakPhase": 0.5172413793103449,
+        "motionPeakPhase": 0.4827586206896552
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:echo-augmentation",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "LAYERED_ECHO_AUGMENTED",
+            "effectSchemaRef": "ae.effect-schema.m6.echo.v1",
+            "eventLocalEffect": true,
+            "echoSpacingFrames": 1.25,
+            "numberOfEchoes": 4,
+            "startingIntensity": 0.9430232558139535,
+            "decay": 0.8627906976744185
+          }
+        },
+        {
+          "nodeId": "node:4:distortion:directional-smear-augmentation",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+            "effectSchemaRef": "ae.effect-schema.m6.cc-smear.v1",
+            "smearFromNormalized": [
+              0.29000000000000004,
+              0.5
+            ],
+            "smearToNormalized": [
+              0.71,
+              0.5
+            ],
+            "smearReach": 720,
+            "smearRadius": 220,
+            "smearReachScale": 1.25,
+            "smearRadiusScale": 1,
+            "eventLocalEffect": true
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:motion_impulse:up:1",
+      "changedControls": [
+        "MOTION_IMPULSE"
+      ],
+      "candidateRationale": "Isolate MOTION_IMPULSE in a bounded rendered probe; physical response is not yet proven monotonic.",
+      "searchPlan": {
+        "retainedBestAttemptId": "seed",
+        "regressingAttemptIds": [
+          "blind-1",
+          "search-1"
+        ],
+        "trustScale": 0.5,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "DISTORTION_STRENGTH",
+            "metric": "distortionPeak",
+            "probeCount": 2,
+            "metricSpan": 0.25647818180221127,
+            "requiredDelta": 0.38721108631352963,
+            "responseRatio": 0.6623730333860784,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.25,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 1,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": []
+      },
+      "operationCount": 91,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-directional-smear-live01-pass03-readback.txt",
+      "video": "proofs/diagnostics/m6-directional-smear-live01-pass03.mp4",
+      "evidence": "proofs/diagnostics/m6-directional-smear-live01-pass03-evidence.json",
+      "weightedFidelity": 0.7860040138018156,
+      "definingCoverage": 0.5714285714285714,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.persistence",
+          "unknown.overlap",
+          "unknown.acceleration"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.persistence, unknown.overlap, unknown.acceleration."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.06666666666666667,
+        "motionEnergyPeak": 0.021653144771965227,
+        "displacementPeak": 1.5874360637414428e-18,
+        "displacementDirection": {
+          "x": 5.607823434081623e-28,
+          "y": 1.5874360637414428e-18
+        },
+        "scaleRange": 0.12133194172204465,
+        "rotationRange": 7.3026736739954305,
+        "blurPeak": 0.9163949680023833,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.8228346888911366,
+        "exposurePeak": 0.4257478217616969,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.28484848484848485,
+        "stateSeparationPeak": 0.10278033965493871,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.5172413793103449,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.28484848484848485,
+        "fragmentationStateSeparationPeak": 0.03187978159864725,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.018486756013290695,
+        "recoveryFrames": 2,
+        "opticalPeakPhase": 0.4482758620689655,
+        "motionPeakPhase": 0.41379310344827586
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:echo-augmentation",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "LAYERED_ECHO_AUGMENTED",
+            "effectSchemaRef": "ae.effect-schema.m6.echo.v1",
+            "eventLocalEffect": true,
+            "echoSpacingFrames": 1.25,
+            "numberOfEchoes": 4,
+            "startingIntensity": 0.9430232558139535,
+            "decay": 0.8627906976744185
+          }
+        },
+        {
+          "nodeId": "node:4:distortion:directional-smear-augmentation",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+            "effectSchemaRef": "ae.effect-schema.m6.cc-smear.v1",
+            "smearFromNormalized": [
+              0.29000000000000004,
+              0.5
+            ],
+            "smearToNormalized": [
+              0.71,
+              0.5
+            ],
+            "smearReach": 720,
+            "smearRadius": 220,
+            "smearReachScale": 1,
+            "smearRadiusScale": 1,
+            "eventLocalEffect": true,
+            "motionImpulseScale": 1.25
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:distortion_size:up:1",
+      "changedControls": [
+        "DISTORTION_SIZE"
+      ],
+      "candidateRationale": "Isolate DISTORTION_SIZE in a bounded rendered probe; physical response is not yet proven monotonic.",
+      "searchPlan": {
+        "retainedBestAttemptId": "seed",
+        "regressingAttemptIds": [
+          "blind-1",
+          "search-1",
+          "search-2"
+        ],
+        "trustScale": 0.4,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "DISTORTION_STRENGTH",
+            "metric": "distortionPeak",
+            "probeCount": 2,
+            "metricSpan": 0.25647818180221127,
+            "requiredDelta": 0.38721108631352963,
+            "responseRatio": 0.6623730333860784,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.25,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 1,
+            "responsive": true,
+            "safeResponsive": false
+          },
+          {
+            "control": "MOTION_IMPULSE",
+            "metric": "accelerationPeak",
+            "probeCount": 2,
+            "metricSpan": 0.034009868054550876,
+            "requiredDelta": 0.017569765055524184,
+            "responseRatio": 1.9357042024792295,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.25,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": []
+      },
+      "operationCount": 91,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-directional-smear-live01-pass04-readback.txt",
+      "video": "proofs/diagnostics/m6-directional-smear-live01-pass04.mp4",
+      "evidence": "proofs/diagnostics/m6-directional-smear-live01-pass04-evidence.json",
+      "weightedFidelity": 0.743874675386597,
+      "definingCoverage": 0.2857142857142857,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.temporal-states",
+          "unknown.persistence",
+          "unknown.distortion",
+          "unknown.overlap",
+          "unknown.acceleration"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.temporal-states, unknown.persistence, unknown.distortion, unknown.overlap, unknown.acceleration."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 3,
+        "temporalPersistence": 0.03333333333333333,
+        "motionEnergyPeak": 0.02005347340406998,
+        "displacementPeak": 4.116635116505425e-21,
+        "displacementDirection": {
+          "x": -4.1166349243714814e-21,
+          "y": 1.2577323398643949e-24
+        },
+        "scaleRange": 0.1184949731208138,
+        "rotationRange": 4.48124204185974,
+        "blurPeak": 0.9449504590700182,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.5682153636076408,
+        "exposurePeak": 0.3182175361125185,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.2727272727272727,
+        "stateSeparationPeak": 0.09805224792651179,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.5517241379310345,
+        "fragmentationTemporalStateCountPeak": 3,
+        "fragmentationOverlapDensityPeak": 0.2727272727272727,
+        "fragmentationStateSeparationPeak": 0.031763218935607504,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.02834279502097778,
+        "recoveryFrames": 1,
+        "opticalPeakPhase": 0.4482758620689655,
+        "motionPeakPhase": 0.4482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:echo-augmentation",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "LAYERED_ECHO_AUGMENTED",
+            "effectSchemaRef": "ae.effect-schema.m6.echo.v1",
+            "eventLocalEffect": true,
+            "echoSpacingFrames": 1.25,
+            "numberOfEchoes": 4,
+            "startingIntensity": 0.9430232558139535,
+            "decay": 0.8627906976744185
+          }
+        },
+        {
+          "nodeId": "node:4:distortion:directional-smear-augmentation",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+            "effectSchemaRef": "ae.effect-schema.m6.cc-smear.v1",
+            "smearFromNormalized": [
+              0.29000000000000004,
+              0.5
+            ],
+            "smearToNormalized": [
+              0.71,
+              0.5
+            ],
+            "smearReach": 720,
+            "smearRadius": 220,
+            "smearReachScale": 1,
+            "smearRadiusScale": 1.25,
+            "eventLocalEffect": true
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "source": "bounded-actuator-probe",
+      "candidateId": "probe:motion_impulse_sharpness:up:1",
+      "changedControls": [
+        "MOTION_IMPULSE_SHARPNESS"
+      ],
+      "candidateRationale": "Isolate MOTION_IMPULSE_SHARPNESS in a bounded rendered probe; physical response is not yet proven monotonic.",
+      "searchPlan": {
+        "retainedBestAttemptId": "seed",
+        "regressingAttemptIds": [
+          "blind-1",
+          "search-1",
+          "search-2",
+          "search-3"
+        ],
+        "trustScale": 0.3333333333333333,
+        "exhaustedControls": [],
+        "metricResponses": [
+          {
+            "control": "MOTION_IMPULSE",
+            "metric": "accelerationPeak",
+            "probeCount": 2,
+            "metricSpan": 0.034009868054550876,
+            "requiredDelta": 0.017569765055524184,
+            "responseRatio": 1.9357042024792295,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.25,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          },
+          {
+            "control": "DISTORTION_STRENGTH",
+            "metric": "distortionPeak",
+            "probeCount": 2,
+            "metricSpan": 0.25647818180221127,
+            "requiredDelta": 0.38721108631352963,
+            "responseRatio": 0.6623730333860784,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.25,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 1,
+            "responsive": true,
+            "safeResponsive": false
+          },
+          {
+            "control": "DISTORTION_SIZE",
+            "metric": "distortionPeak",
+            "probeCount": 2,
+            "metricSpan": 0.04457355007882957,
+            "requiredDelta": 0.38721108631352963,
+            "responseRatio": 0.1151143437115791,
+            "causalCohortCount": 1,
+            "testedControlSpan": 0.25,
+            "testedDirectionCount": 1,
+            "safeImprovingProbeCount": 0,
+            "retainedImprovingProbeCount": 0,
+            "collateralRegressionProbeCount": 0,
+            "responsive": true,
+            "safeResponsive": false
+          }
+        ],
+        "synthesisRequiredInvariantIds": [],
+        "structuralEscalationInvariantIds": []
+      },
+      "operationCount": 91,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "readback": "proofs/diagnostics/m6-directional-smear-live01-pass05-readback.txt",
+      "video": "proofs/diagnostics/m6-directional-smear-live01-pass05.mp4",
+      "evidence": "proofs/diagnostics/m6-directional-smear-live01-pass05-evidence.json",
+      "weightedFidelity": 0.7860040138018156,
+      "definingCoverage": 0.5714285714285714,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "unknown.persistence",
+          "unknown.overlap",
+          "unknown.acceleration"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: unknown.persistence, unknown.overlap, unknown.acceleration."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 5,
+        "temporalPersistence": 0.06666666666666667,
+        "motionEnergyPeak": 0.021653144771965227,
+        "displacementPeak": 1.5874360637414428e-18,
+        "displacementDirection": {
+          "x": 5.607823434081623e-28,
+          "y": 1.5874360637414428e-18
+        },
+        "scaleRange": 0.12133194172204465,
+        "rotationRange": 7.3026736739954305,
+        "blurPeak": 0.9163949680023833,
+        "blurPeakPhase": 0.5172413793103449,
+        "distortionPeak": 0.8228346888911366,
+        "exposurePeak": 0.4257478217616969,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0.28484848484848485,
+        "stateSeparationPeak": 0.10278033965493871,
+        "fragmentationCoherencePeak": 1,
+        "fragmentationCoherencePhase": 0.5172413793103449,
+        "fragmentationTemporalStateCountPeak": 2,
+        "fragmentationOverlapDensityPeak": 0.28484848484848485,
+        "fragmentationStateSeparationPeak": 0.03187978159864725,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.018486756013290695,
+        "recoveryFrames": 2,
+        "opticalPeakPhase": 0.4482758620689655,
+        "motionPeakPhase": 0.41379310344827586
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:temporal_duplicates",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "scaleRange": 0.14584690177988824,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:3:optical_treatment",
+          "parameters": {
+            "blurPeak": 0.9997532681688431,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:4:distortion",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:5:recovery",
+          "parameters": {
+            "accelerationPeak": 0.07006638912336575,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:layered-history-precompose",
+          "parameters": {
+            "causalBoundary": "LAYERED_TRANSFORM_HISTORY"
+          }
+        },
+        {
+          "nodeId": "node:1:temporal_duplicates:echo-augmentation",
+          "parameters": {
+            "temporalStateCountPeak": 5,
+            "temporalPersistence": 0.46511627906976744,
+            "overlapDensityPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "LAYERED_ECHO_AUGMENTED",
+            "effectSchemaRef": "ae.effect-schema.m6.echo.v1",
+            "eventLocalEffect": true,
+            "echoSpacingFrames": 1.25,
+            "numberOfEchoes": 4,
+            "startingIntensity": 0.9430232558139535,
+            "decay": 0.8627906976744185
+          }
+        },
+        {
+          "nodeId": "node:4:distortion:directional-smear-augmentation",
+          "parameters": {
+            "distortionPeak": 1,
+            "effectEventPhase": 0.47619047619047616,
+            "referenceFrameIntervalMs": 16.70948115378178,
+            "effectAnalysisDurationMs": 701.7982084588348,
+            "effectRecoveryDurationMs": 100.25688692269068,
+            "synthesisStrategy": "DIRECTIONAL_SMEAR_HYBRID",
+            "effectSchemaRef": "ae.effect-schema.m6.cc-smear.v1",
+            "smearFromNormalized": [
+              0.29000000000000004,
+              0.5
+            ],
+            "smearToNormalized": [
+              0.71,
+              0.5
+            ],
+            "smearReach": 720,
+            "smearRadius": 220,
+            "smearReachScale": 1,
+            "smearRadiusScale": 1,
+            "eventLocalEffect": true,
+            "motionImpulseSharpnessScale": 1.125
+          }
+        }
+      ]
+    }
+  ]
+}

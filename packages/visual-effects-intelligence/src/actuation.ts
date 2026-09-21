@@ -198,6 +198,10 @@ const physicalParameterForControl = (
         break;
     }
   }
+  if (node.parameters["synthesisStrategy"] === "DIRECTIONAL_SMEAR_HYBRID") {
+    if (control === "DISTORTION_STRENGTH") return "smearReachScale";
+    if (control === "DISTORTION_SIZE") return "smearRadiusScale";
+  }
   if (node.parameters["synthesisStrategy"] === "TURBULENT_DISPLACE_HYBRID"
     || node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID"
     || node.parameters["synthesisStrategy"] === "COMPOUND_COMPOSITE_WARP_HYBRID"
@@ -232,6 +236,8 @@ const PHYSICAL_SCALE_LIMITS: Readonly<Record<string, readonly [number, number]>>
   blurStrengthScale: [0.25, 4],
   exposureStrengthScale: [0.25, 4],
   distortionStrengthScale: [0.25, 4],
+  smearReachScale: [0.25, 4],
+  smearRadiusScale: [0.25, 4],
   distortionSizeScale: [0.25, 4],
   distortionComplexityScale: [0.5, 2],
   distortionEvolutionScale: [0.25, 4],
