@@ -1,0 +1,441 @@
+{
+  "schema": "editflow.m6.generic-native-auto-correction-proof.v1",
+  "generatedAt": "2026-09-21T09:55:50.437Z",
+  "sourceEvidence": ".tmp/m6-ripple-scan/w400-429-evidence.json",
+  "requestedFamily": "DISPLACEMENT_WARP",
+  "sourceAdmission": {
+    "schema": "editflow.reference-family-candidate.v1",
+    "sourceId": "gdrive:1iAzu1k6LoGGhL5B71zwXYWKQhA_3b7UY:ripple-shake:4.00-4.29",
+    "evidenceContentKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4",
+    "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+    "requestedFamily": "DISPLACEMENT_WARP",
+    "classifiedFamily": "DISPLACEMENT_WARP",
+    "familyConflict": null,
+    "overlappingFullCoverageFamilies": [],
+    "passed": true,
+    "definingCoverage": 1,
+    "weightedContractScore": 1,
+    "checks": [
+      {
+        "invariantId": "warp.distortion",
+        "metric": "distortionPeak",
+        "comparator": "MIN",
+        "target": 0.35,
+        "tolerance": 0.07,
+        "observed": 0.9790602046823321,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "distortionPeak satisfies family admission (minimum 0.2800)."
+      }
+    ],
+    "failures": [],
+    "evidenceRefs": [
+      "video:sha256:a339e8c6d247053efae5a5fd3c003d0dbd316a870481c9ce113be6de08b8ef71",
+      "probe-json:sha256:eaf5d6caf65618cebc40d05a8d6c09105e50f6c2eebc566cc844d1b8799b10be",
+      "probe-algorithm:editflow.m6.dense-video-probe.v18",
+      "probe-analyzer:sha256:faf510f45c1912e4218f67274ff842fd7f7d3d4500b1ac15f670237b50bd4244",
+      "measurement-system:sha256:2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+      "algorithm:opencv-farneback-affine-flow-residual-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "seedEvidence": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-control-v18-evidence.json",
+  "seedStrategy": "KNOWN_FAMILY_DISPLACEMENT_WARP",
+  "causalBaselineEvidence": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-causal-baseline-evidence.json",
+  "causalBaselineVideo": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-causal-baseline.mp4",
+  "causalBaselineCleanupRestored": true,
+  "resumedFromProof": null,
+  "family": "DISPLACEMENT_WARP",
+  "strategy": "KNOWN_FAMILY_DISPLACEMENT_WARP",
+  "status": "PASSED",
+  "certified": true,
+  "finalWeightedFidelity": 0.8415997125320456,
+  "finalDefiningCoverage": 1,
+  "residualInvariantIds": [],
+  "renderedAttemptCount": 2,
+  "synthesisEscalation": null,
+  "passes": [
+    {
+      "iteration": 0,
+      "source": "retained-real-ae-seed",
+      "causalActuationState": false,
+      "strategy": "KNOWN_FAMILY_DISPLACEMENT_WARP",
+      "weightedFidelity": 0.3585452213319754,
+      "definingCoverage": 0,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "warp.distortion"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: warp.distortion."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.00014740188048734115,
+        "scaleDynamicsVersion": "SUSTAINED_TAIL_V1",
+        "scaleVelocityPeakPerSecond": 0.0038716353654477667,
+        "scaleVelocityRecoveryRatio": 0.01761316351342372,
+        "scaleVelocityRecoveryMs": 33.33333333333334,
+        "rotationRange": 0.001560053979505077,
+        "blurPeak": 0.009379286473947812,
+        "blurPeakPhase": 0,
+        "distortionPeak": 0.07477993455933399,
+        "exposurePeak": 0.00002697054465694798,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 28,
+        "opticalPeakPhase": 0.1724137931034483,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:distortion",
+          "parameters": {
+            "distortionPeak": 0.9790602046823321,
+            "effectSchemaRef": "ae.effect-schema.m6.turbulent-displace.v3",
+            "distortionAmount": 100,
+            "distortionSize": 44.267107163881626,
+            "distortionComplexity": 4,
+            "distortionEvolution": 265.2885460535247,
+            "eventLocalEffect": true,
+            "eventDynamicDistortion": true,
+            "eventLocalEffectApplication": "IN_PLACE",
+            "eventLocalEffectTargetScope": "PRIMARY",
+            "eventLocalEffectRecoveryBounded": true,
+            "eventAmountPulseScale": 2.25,
+            "eventEvolutionSweepDegrees": 720,
+            "eventEvolutionSweepScale": 1,
+            "eventEvolutionSharpnessScale": 1,
+            "referenceFrameIntervalMs": 33.339337293496456,
+            "effectAnalysisDurationMs": 300.0540356414681
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "motionEnergyPeak": 0.06715652527203898,
+            "referenceFrameIntervalMs": 33.339337293496456,
+            "effectAnalysisDurationMs": 300.0540356414681
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "source": "real-ae-materialized-seed",
+      "causalActuationState": true,
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass01-readback.txt",
+      "video": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass01.mp4",
+      "evidence": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass01-evidence.json",
+      "weightedFidelity": 0.5091912681599172,
+      "definingCoverage": 0,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "CORRECTION_REQUIRED",
+        "certified": false,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [
+          "warp.distortion"
+        ],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Defining behavior failed rendered comparison: warp.distortion."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.013181415509543416,
+        "displacementPeak": 7.006492321624086e-47,
+        "displacementDirection": {
+          "x": 7.006492321624086e-47,
+          "y": 0
+        },
+        "scaleRange": 0.024058955106282642,
+        "scaleDynamicsVersion": "SUSTAINED_TAIL_V1",
+        "scaleVelocityPeakPerSecond": 0.7200459932384675,
+        "scaleVelocityRecoveryRatio": 0.00009338939086908628,
+        "scaleVelocityRecoveryMs": 33.33333333333326,
+        "rotationRange": 6.552441333808485,
+        "blurPeak": 0.5743104755857266,
+        "blurPeakPhase": 0,
+        "distortionPeak": 0.25427508122358833,
+        "exposurePeak": 0.15931796059968997,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.014271629560289836,
+        "recoveryFrames": 2,
+        "opticalPeakPhase": 0.1724137931034483,
+        "motionPeakPhase": 0.41379310344827586
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:distortion",
+          "parameters": {
+            "distortionPeak": 0.9790602046823321,
+            "effectSchemaRef": "ae.effect-schema.m6.turbulent-displace.v3",
+            "distortionAmount": 100,
+            "distortionSize": 44.267107163881626,
+            "distortionComplexity": 4,
+            "distortionEvolution": 265.2885460535247,
+            "eventLocalEffect": true,
+            "eventDynamicDistortion": true,
+            "eventLocalEffectApplication": "IN_PLACE",
+            "eventLocalEffectTargetScope": "PRIMARY",
+            "eventLocalEffectRecoveryBounded": true,
+            "eventAmountPulseScale": 2.25,
+            "eventEvolutionSweepDegrees": 720,
+            "eventEvolutionSweepScale": 1,
+            "eventEvolutionSharpnessScale": 1,
+            "referenceFrameIntervalMs": 33.339337293496456,
+            "effectAnalysisDurationMs": 300.0540356414681
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "motionEnergyPeak": 0.06715652527203898,
+            "referenceFrameIntervalMs": 33.339337293496456,
+            "effectAnalysisDurationMs": 300.0540356414681
+          }
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "source": "real-ae-local-rerender",
+      "operationCount": 5,
+      "transactionState": "COMMITTED",
+      "budgetBackoff": [],
+      "baselineProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupProjectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+      "cleanupRestored": true,
+      "readback": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass02-readback.txt",
+      "video": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass02.mp4",
+      "evidence": "proofs/diagnostics/m6-displacement-warp-ripple-shake-w400-429-auto-correction-v1-pass02-evidence.json",
+      "actuationPlan": {
+        "schema": "editflow.construction-actuation-plan.v1",
+        "family": "DISPLACEMENT_WARP",
+        "comparisonKey": "e1b8d61f304bc2b4a18c7b123091e381491c8f2158aff6240f1b4727732746a4->4b59f62482848ca043f59794edfea527071f0d0281cbe271fbd896b0c8cd682a",
+        "instructions": [
+          {
+            "instructionId": "actuate:warp.distortion:distortion_strength",
+            "invariantId": "warp.distortion",
+            "nodeId": "node:1:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 0.9790602046823321,
+            "deficitRenderValue": 0.25427508122358833,
+            "control": "DISTORTION_STRENGTH",
+            "direction": "INCREASE",
+            "referenceValue": 0.9790602046823321,
+            "renderValue": 0.25427508122358833,
+            "multiplier": 1.9622430445688777,
+            "normalizedError": 0.4687894373882724,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 0.979, render 0.254. Non-rigid deformation is defining."
+          },
+          {
+            "instructionId": "actuate:warp.distortion:distortion_size",
+            "invariantId": "warp.distortion",
+            "nodeId": "node:1:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 0.9790602046823321,
+            "deficitRenderValue": 0.25427508122358833,
+            "control": "DISTORTION_SIZE",
+            "direction": "INCREASE",
+            "referenceValue": 0.9790602046823321,
+            "renderValue": 0.25427508122358833,
+            "multiplier": 1.9622430445688777,
+            "normalizedError": 0.4687894373882724,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 0.979, render 0.254. Non-rigid deformation is defining."
+          },
+          {
+            "instructionId": "actuate:warp.distortion:distortion_complexity",
+            "invariantId": "warp.distortion",
+            "nodeId": "node:1:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 0.9790602046823321,
+            "deficitRenderValue": 0.25427508122358833,
+            "control": "DISTORTION_COMPLEXITY",
+            "direction": "INCREASE",
+            "referenceValue": 0.9790602046823321,
+            "renderValue": 0.25427508122358833,
+            "multiplier": 1.9622430445688777,
+            "normalizedError": 0.4687894373882724,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 0.979, render 0.254. Non-rigid deformation is defining."
+          },
+          {
+            "instructionId": "actuate:warp.distortion:distortion_evolution",
+            "invariantId": "warp.distortion",
+            "nodeId": "node:1:distortion",
+            "metric": "distortionPeak",
+            "deficitMetric": "distortionPeak",
+            "deficitReferenceValue": 0.9790602046823321,
+            "deficitRenderValue": 0.25427508122358833,
+            "control": "DISTORTION_EVOLUTION",
+            "direction": "INCREASE",
+            "referenceValue": 0.9790602046823321,
+            "renderValue": 0.25427508122358833,
+            "multiplier": 1.9622430445688777,
+            "normalizedError": 0.4687894373882724,
+            "defining": true,
+            "rationale": "distortionPeak is under-driven: reference 0.979, render 0.254. Non-rigid deformation is defining."
+          },
+          {
+            "instructionId": "actuate:warp.energy:motion_impulse",
+            "invariantId": "warp.energy",
+            "nodeId": "node:2:transform_motion",
+            "metric": "motionEnergyPeak",
+            "deficitMetric": "motionEnergyPeak",
+            "deficitReferenceValue": 0.06715652527203898,
+            "deficitRenderValue": 0.013181415509543416,
+            "control": "MOTION_IMPULSE",
+            "direction": "INCREASE",
+            "referenceValue": 0.06715652527203898,
+            "renderValue": 0.013181415509543416,
+            "multiplier": 2,
+            "normalizedError": 0.5537210017023979,
+            "defining": false,
+            "rationale": "motionEnergyPeak is under-driven: reference 0.067, render 0.013. Motion energy may reinforce the deformation."
+          }
+        ],
+        "unresolvedInvariantIds": []
+      },
+      "appliedInstructionIds": [
+        "actuate:warp.distortion:distortion_strength",
+        "actuate:warp.distortion:distortion_size",
+        "actuate:warp.distortion:distortion_complexity",
+        "actuate:warp.distortion:distortion_evolution"
+      ],
+      "unsupportedInstructionIds": [],
+      "weightedFidelity": 0.8415997125320456,
+      "definingCoverage": 1,
+      "improved": true,
+      "accepted": true,
+      "gate": {
+        "schema": "editflow.professional-fidelity-gate.v1",
+        "outcome": "PASS",
+        "certified": true,
+        "missingDefiningInvariantIds": [],
+        "underDrivenInvariantIds": [],
+        "weakerSubstitutionDetected": false,
+        "reasons": [
+          "Every defining invariant is covered by construction and passes rendered semantic comparison."
+        ]
+      },
+      "summary": {
+        "frameCount": 30,
+        "frameIntervalMs": 33.33333333333333,
+        "temporalStateCountPeak": 1,
+        "temporalPersistence": 0,
+        "motionEnergyPeak": 0.009336601307189543,
+        "displacementPeak": 3.059299444885255e-8,
+        "displacementDirection": {
+          "x": -3.059299444885255e-8,
+          "y": -3.6192858825177177e-35
+        },
+        "scaleRange": 0.387522760054804,
+        "scaleDynamicsVersion": "SUSTAINED_TAIL_V1",
+        "scaleVelocityPeakPerSecond": 11.625682801644107,
+        "scaleVelocityRecoveryRatio": 0.000003594014427546401,
+        "scaleVelocityRecoveryMs": 33.333333333333314,
+        "rotationRange": 4.889702613591206,
+        "blurPeak": 0.7034591565943179,
+        "blurPeakPhase": 0,
+        "distortionPeak": 1,
+        "exposurePeak": 0.2623065198126076,
+        "subjectSeparationPeak": 0,
+        "overlapDensityPeak": 0,
+        "stateSeparationPeak": 0,
+        "fragmentationCoherencePeak": 0,
+        "fragmentationCoherencePhase": 0,
+        "fragmentationTemporalStateCountPeak": 0,
+        "fragmentationOverlapDensityPeak": 0,
+        "fragmentationStateSeparationPeak": 0,
+        "occlusionPeak": 0,
+        "accelerationPeak": 0.009336601307189543,
+        "recoveryFrames": 11,
+        "opticalPeakPhase": 0.4482758620689655,
+        "motionPeakPhase": 0.034482758620689655
+      },
+      "graphParameters": [
+        {
+          "nodeId": "node:1:distortion",
+          "parameters": {
+            "distortionPeak": 0.9790602046823321,
+            "effectSchemaRef": "ae.effect-schema.m6.turbulent-displace.v3",
+            "distortionAmount": 100,
+            "distortionSize": 44.267107163881626,
+            "distortionComplexity": 4,
+            "distortionEvolution": 265.2885460535247,
+            "eventLocalEffect": true,
+            "eventDynamicDistortion": true,
+            "eventLocalEffectApplication": "IN_PLACE",
+            "eventLocalEffectTargetScope": "PRIMARY",
+            "eventLocalEffectRecoveryBounded": true,
+            "eventAmountPulseScale": 2.25,
+            "eventEvolutionSweepDegrees": 720,
+            "eventEvolutionSweepScale": 1,
+            "eventEvolutionSharpnessScale": 1,
+            "referenceFrameIntervalMs": 33.339337293496456,
+            "effectAnalysisDurationMs": 300.0540356414681,
+            "distortionStrengthScale": 1.9622430445688777,
+            "distortionSizeScale": 1.9622430445688777,
+            "distortionComplexityScale": 1.9622430445688777,
+            "distortionEvolutionScale": 1.9622430445688777
+          }
+        },
+        {
+          "nodeId": "node:2:transform_motion",
+          "parameters": {
+            "motionEnergyPeak": 0.06715652527203898,
+            "referenceFrameIntervalMs": 33.339337293496456,
+            "effectAnalysisDurationMs": 300.0540356414681
+          }
+        }
+      ]
+    }
+  ]
+}

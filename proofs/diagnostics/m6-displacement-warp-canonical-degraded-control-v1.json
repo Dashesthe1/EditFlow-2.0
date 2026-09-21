@@ -1,0 +1,70 @@
+{
+  "schema": "editflow.m6.degraded-control-proof.v1",
+  "generatedAt": "2026-09-21T09:55:50.437Z",
+  "caseId": "m6:displacement_warp:canonical",
+  "family": "DISPLACEMENT_WARP",
+  "result": "REJECTED",
+  "reference": {
+    "ref": "proofs/m6/benchmark/references/displacement_warp-canonical.json",
+    "contentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7"
+  },
+  "render": {
+    "ref": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-control-v18-evidence.json",
+    "contentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+  },
+  "comparison": {
+    "schema": "editflow.semantic-fidelity-comparison.v1",
+    "family": "DISPLACEMENT_WARP",
+    "alignment": "SEMANTIC",
+    "metrics": [
+      {
+        "invariantId": "warp.distortion",
+        "dimension": "DISTORTION",
+        "metric": "distortionPeak",
+        "referenceValue": 0.7439122748826947,
+        "renderValue": 0.07477993455933399,
+        "normalizedError": 0.6053803661430861,
+        "passed": false,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "distortionPeak is under-driven: reference 0.744, render 0.075. Non-rigid deformation is defining.",
+        "comparisonBasis": "ABSOLUTE"
+      },
+      {
+        "invariantId": "warp.energy",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "motionEnergyPeak",
+        "referenceValue": 0.09042417914417522,
+        "renderValue": 0.009336601307189543,
+        "normalizedError": 0.4543870702046885,
+        "passed": false,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "motionEnergyPeak is under-driven: reference 0.090, render 0.009. Motion energy may reinforce the deformation.",
+        "comparisonBasis": "ABSOLUTE"
+      }
+    ],
+    "definingCoverage": 0,
+    "weightedFidelity": 0.4337660439150169,
+    "passed": false,
+    "diagnoses": [
+      "distortionPeak is under-driven: reference 0.744, render 0.075. Non-rigid deformation is defining.",
+      "motionEnergyPeak is under-driven: reference 0.090, render 0.009. Motion energy may reinforce the deformation."
+    ],
+    "referenceEvidenceKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+    "renderEvidenceKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+  },
+  "gate": {
+    "schema": "editflow.professional-fidelity-gate.v1",
+    "outcome": "CORRECTION_REQUIRED",
+    "certified": false,
+    "missingDefiningInvariantIds": [],
+    "underDrivenInvariantIds": [
+      "warp.distortion"
+    ],
+    "weakerSubstitutionDetected": false,
+    "reasons": [
+      "Defining behavior failed rendered comparison: warp.distortion."
+    ]
+  }
+}

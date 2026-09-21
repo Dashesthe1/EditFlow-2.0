@@ -11,8 +11,8 @@ test("M6.9 retained readiness binds canonical shutter Level 6 to independent pro
   assert.equal(manifest.status, "IN_PROGRESS");
   assert.equal(manifest.canonicalCaseCount, 24);
   assert.equal(manifest.result.passed, false);
-  assert.equal(manifest.result.passedCases, 1);
-  assert.equal(manifest.result.failures.length, 23);
+  assert.equal(manifest.result.passedCases, 2);
+  assert.equal(manifest.result.failures.length, 22);
   const shutter = manifest.retainedCases.find((item) => item.caseId === "m6:shutter_fragmentation:canonical");
   assert.equal(shutter?.achievedLevel, "PROFESSIONAL_FIDELITY_VERIFIED");
   assert.equal(shutter?.maturityProof.professionalCasePassCount, 2);
@@ -61,8 +61,8 @@ test("M6.9 source admission retains rejected tutorial candidates without promoti
     manifest.retainedCases.some((item) => item.caseId === "m6:velocity_transition:canonical"),
     false,
   );
-  assert.equal(manifest.casesWithRetainedEvidence, 1);
-  assert.equal(manifest.result.passedCases, 1);
+  assert.equal(manifest.casesWithRetainedEvidence, 2);
+  assert.equal(manifest.result.passedCases, 2);
 });
 
 test("M6.9 Zoom source admission rejects scale drift without promoting benchmark evidence", async () => {
@@ -95,10 +95,10 @@ test("M6.9 Zoom source admission rejects scale drift without promoting benchmark
     manifest.retainedCases.some((item) => item.caseId === "m6:zoom_impact:canonical"),
     false,
   );
-  assert.equal(manifest.casesWithRetainedEvidence, 1);
+  assert.equal(manifest.casesWithRetainedEvidence, 2);
 });
 
-test("M6.9 Displacement Warp retains real-AE reference-faithful progress without Level 6 promotion", async () => {
+test("M6.9 Displacement Warp promotes retained duration/intensity transfer to Level 6 without completing M6.9", async () => {
   const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
   const admission = manifest.sourceAdmissionDiagnostics.find((item) =>
     item.caseId === "m6:displacement_warp:canonical"
@@ -116,10 +116,10 @@ test("M6.9 Displacement Warp retains real-AE reference-faithful progress without
   );
   assert.equal(
     diagnostic?.authority,
-    "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
+    "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED",
   );
-  assert.equal(diagnostic?.maturityCeiling, "REFERENCE_FAITHFUL");
-  assert.equal(diagnostic?.benchmarkPromoted, false);
+  assert.equal(diagnostic?.maturityCeiling, "PROFESSIONAL_FIDELITY_VERIFIED");
+  assert.equal(diagnostic?.benchmarkPromoted, true);
   assert.equal(diagnostic?.sourceAdmissionSha256, await sha256(diagnostic.sourceAdmissionRef));
   assert.equal(diagnostic?.referenceEvidenceSha256, await sha256(diagnostic.referenceEvidenceRef));
   assert.equal(diagnostic?.correctionProofSha256, await sha256(diagnostic.correctionProofRef));
@@ -151,20 +151,17 @@ test("M6.9 Displacement Warp retains real-AE reference-faithful progress without
   assert.deepEqual(diagnostic?.correction.residualInvariantIds, []);
   assert.equal(diagnostic?.correction.synthesisEscalation, null);
   assert.deepEqual(diagnostic?.transferAxesRequired, ["duration", "intensity"]);
-  assert.deepEqual(
-    diagnostic?.missingForBenchmarkPromotion,
-    [
-      "DIRECT_AB_CALIBRATION",
-      "TRANSFER_DURATION",
-      "TRANSFER_INTENSITY",
-      "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
-    ],
-  );
+  assert.deepEqual(diagnostic?.missingForBenchmarkPromotion, []);
+  assert.equal(diagnostic?.transferProofSha256, await sha256(diagnostic.transferProofRef));
+  assert.equal(diagnostic?.professionalCaseSha256, await sha256(diagnostic.professionalCaseRef));
+  assert.equal(diagnostic?.directAbSha256, await sha256(diagnostic.directAbRef));
 
-  assert.equal(
-    manifest.retainedCases.some((item) => item.caseId === "m6:displacement_warp:canonical"),
-    false,
+  const retained = manifest.retainedCases.find((item) =>
+    item.caseId === "m6:displacement_warp:canonical"
   );
-  assert.equal(manifest.casesWithRetainedEvidence, 1);
-  assert.equal(manifest.result.passedCases, 1);
+  assert.equal(retained?.achievedLevel, "PROFESSIONAL_FIDELITY_VERIFIED");
+  assert.deepEqual(retained?.maturityProof.robustnessAxesPassed, ["duration", "intensity"]);
+  assert.equal(retained?.maturityProof.professionalCasePassCount, 2);
+  assert.equal(manifest.casesWithRetainedEvidence, 2);
+  assert.equal(manifest.result.passedCases, 2);
 });

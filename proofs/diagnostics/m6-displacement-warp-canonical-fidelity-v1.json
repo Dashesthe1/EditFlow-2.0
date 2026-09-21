@@ -1,0 +1,67 @@
+{
+  "schema": "editflow.m6.known-family-fidelity-proof.v1",
+  "generatedAt": "2026-09-21T09:55:50.437Z",
+  "caseId": "m6:displacement_warp:canonical",
+  "family": "DISPLACEMENT_WARP",
+  "result": "CERTIFIED",
+  "reference": {
+    "ref": "proofs/m6/benchmark/references/displacement_warp-canonical.json",
+    "contentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7"
+  },
+  "render": {
+    "ref": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8-pass02-evidence.json",
+    "contentKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d"
+  },
+  "comparison": {
+    "schema": "editflow.semantic-fidelity-comparison.v1",
+    "family": "DISPLACEMENT_WARP",
+    "alignment": "SEMANTIC",
+    "metrics": [
+      {
+        "invariantId": "warp.distortion",
+        "dimension": "DISTORTION",
+        "metric": "distortionPeak",
+        "referenceValue": 0.7439122748826947,
+        "renderValue": 0.5622525018764475,
+        "normalizedError": 0,
+        "passed": true,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "distortionPeak preserves the defining reference behavior.",
+        "comparisonBasis": "ABSOLUTE"
+      },
+      {
+        "invariantId": "warp.energy",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "motionEnergyPeak",
+        "referenceValue": 0.09042417914417522,
+        "renderValue": 0.012915155061924956,
+        "normalizedError": 0.4148118836936819,
+        "passed": false,
+        "defining": false,
+        "weight": 0.35,
+        "diagnosis": "motionEnergyPeak is under-driven: reference 0.090, render 0.013. Motion energy may reinforce the deformation.",
+        "comparisonBasis": "ABSOLUTE"
+      }
+    ],
+    "definingCoverage": 1,
+    "weightedFidelity": 0.892456178301638,
+    "passed": true,
+    "diagnoses": [
+      "motionEnergyPeak is under-driven: reference 0.090, render 0.013. Motion energy may reinforce the deformation."
+    ],
+    "referenceEvidenceKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+    "renderEvidenceKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d"
+  },
+  "gate": {
+    "schema": "editflow.professional-fidelity-gate.v1",
+    "outcome": "PASS",
+    "certified": true,
+    "missingDefiningInvariantIds": [],
+    "underDrivenInvariantIds": [],
+    "weakerSubstitutionDetected": false,
+    "reasons": [
+      "Every defining invariant is covered by construction and passes rendered semantic comparison."
+    ]
+  }
+}
