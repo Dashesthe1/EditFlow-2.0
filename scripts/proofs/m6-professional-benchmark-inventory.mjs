@@ -33,7 +33,19 @@ const ZOOM_PRE_AE_REJECTION = path.join(
   ROOT,
   "proofs",
   "diagnostics",
-  "m6-zoom-impact-source-admission-live-boundary-v1.json",
+  "m6-zoom-impact-source-admission-live-boundary-v2.json",
+);
+const DISPLACEMENT_SOURCE_ADMISSION = path.join(
+  ROOT,
+  "proofs",
+  "diagnostics",
+  "m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-admission.json",
+);
+const DISPLACEMENT_CORRECTION_V8 = path.join(
+  ROOT,
+  "proofs",
+  "diagnostics",
+  "m6-displacement-warp-smooth-zoom-z19-auto-correction-v8.json",
 );
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
 const relative = (file) => path.relative(ROOT, file).replaceAll("\\", "/");
@@ -52,6 +64,8 @@ const velocity = cases.find((item) => item.caseId === "m6:velocity_transition:ca
 if (velocity === undefined) throw new Error("Canonical velocity benchmark case is missing.");
 const zoom = cases.find((item) => item.caseId === "m6:zoom_impact:canonical");
 if (zoom === undefined) throw new Error("Canonical zoom benchmark case is missing.");
+const displacement = cases.find((item) => item.caseId === "m6:displacement_warp:canonical");
+if (displacement === undefined) throw new Error("Canonical displacement-warp benchmark case is missing.");
 const v6 = await load(V6);
 const referenceSource = path.resolve(ROOT, v6.reference.evidence);
 const renderSource = path.resolve(ROOT, v6.certifiedRealAeCandidate.evidence);
@@ -252,6 +266,98 @@ if (zoomPreAeRejection.schema !== "editflow.m6.known-family-rejection-live-bound
 }
 const zoomPreAeRejectionRef = relative(ZOOM_PRE_AE_REJECTION);
 
+const displacementSourceAdmission = await load(DISPLACEMENT_SOURCE_ADMISSION);
+const displacementSourceEvidencePath = path.resolve(
+  ROOT,
+  displacementSourceAdmission.sourceEvidence?.ref ?? "",
+);
+const displacementSourceEvidence = await load(displacementSourceEvidencePath);
+if (displacementSourceAdmission.schema !== "editflow.m6.reference-family-admission-proof.v1"
+  || displacementSourceAdmission.authority !== "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY"
+  || displacementSourceAdmission.result !== "ADMITTED"
+  || displacementSourceAdmission.requestedFamily !== displacement.family
+  || displacementSourceAdmission.candidate?.passed !== true
+  || displacementSourceAdmission.candidate?.definingCoverage !== 1
+  || displacementSourceAdmission.candidate?.checks?.some((item) => item.passed !== true)
+  || displacementSourceEvidence.sourceKind !== "REFERENCE"
+  || displacementSourceEvidence.contentKey !== displacementSourceAdmission.sourceEvidence?.contentKey
+  || displacementSourceEvidence.analyzerFingerprint
+    !== displacementSourceAdmission.sourceEvidence?.analyzerFingerprint
+  || await sha256File(displacementSourceEvidencePath)
+    !== displacementSourceAdmission.sourceEvidence?.sha256) {
+  throw new Error("M6 displacement-warp source admission lost its retained family-DNA binding.");
+}
+
+const displacementCorrection = await load(DISPLACEMENT_CORRECTION_V8);
+const displacementSeedEvidencePath = path.resolve(ROOT, displacementCorrection.seedEvidence ?? "");
+const displacementSeedEvidence = await load(displacementSeedEvidencePath);
+const displacementFinalPass = displacementCorrection.passes?.at(-1);
+if (displacementFinalPass === undefined
+  || typeof displacementFinalPass.evidence !== "string"
+  || typeof displacementFinalPass.video !== "string"
+  || typeof displacementFinalPass.readback !== "string") {
+  throw new Error("M6 displacement-warp correction proof lacks a retained final AE pass.");
+}
+const displacementFinalEvidencePath = path.resolve(ROOT, displacementFinalPass.evidence);
+const displacementFinalVideoPath = path.resolve(ROOT, displacementFinalPass.video);
+const displacementFinalReadbackPath = path.resolve(ROOT, displacementFinalPass.readback);
+const displacementFinalEvidence = await load(displacementFinalEvidencePath);
+const displacementInitialPass = displacementCorrection.passes?.[0];
+const requiredDisplacementActuationIds = [
+  "actuate:warp.distortion:distortion_strength",
+  "actuate:warp.distortion:distortion_size",
+  "actuate:warp.distortion:distortion_complexity",
+  "actuate:warp.distortion:distortion_evolution",
+];
+const displacementAppliedIds = new Set(displacementFinalPass.appliedInstructionIds ?? []);
+const displacementCorrectionCoherent = displacementCorrection.schema
+    === "editflow.m6.generic-native-auto-correction-proof.v1"
+  && displacementCorrection.requestedFamily === displacement.family
+  && displacementCorrection.family === displacement.family
+  && displacementCorrection.strategy === "KNOWN_FAMILY_DISPLACEMENT_WARP"
+  && displacementCorrection.status === "PASSED"
+  && displacementCorrection.certified === true
+  && displacementCorrection.sourceEvidence === relative(displacementSourceEvidencePath)
+  && displacementCorrection.sourceAdmission?.passed === true
+  && displacementCorrection.sourceAdmission?.definingCoverage === 1
+  && displacementCorrection.sourceAdmission?.evidenceContentKey === displacementSourceEvidence.contentKey
+  && displacementCorrection.sourceAdmission?.analyzerFingerprint
+    === displacementSourceEvidence.analyzerFingerprint
+  && displacementCorrection.causalBaselineCleanupRestored === true
+  && displacementCorrection.synthesisEscalation === null
+  && displacementCorrection.finalDefiningCoverage === 1
+  && displacementCorrection.residualInvariantIds?.length === 0
+  && displacementInitialPass?.gate?.certified === false
+  && displacementInitialPass?.gate?.underDrivenInvariantIds?.includes("warp.distortion")
+  && displacementInitialPass?.weightedFidelity === displacementCorrection.passes?.[0]?.weightedFidelity
+  && displacementFinalPass.source === "real-ae-local-rerender"
+  && displacementFinalPass.transactionState === "COMMITTED"
+  && displacementFinalPass.cleanupRestored === true
+  && displacementFinalPass.gate?.outcome === "PASS"
+  && displacementFinalPass.gate?.certified === true
+  && displacementFinalPass.gate?.weakerSubstitutionDetected === false
+  && displacementFinalPass.definingCoverage === 1
+  && displacementFinalPass.weightedFidelity === displacementCorrection.finalWeightedFidelity
+  && (displacementFinalPass.unsupportedInstructionIds?.length ?? 0) === 0
+  && requiredDisplacementActuationIds.every((id) => displacementAppliedIds.has(id))
+  && displacementCorrection.passes.slice(1).every((pass) =>
+    pass.transactionState === "COMMITTED" && pass.cleanupRestored === true);
+if (!displacementCorrectionCoherent
+  || displacementSeedEvidence.sourceKind !== "RENDER"
+  || displacementFinalEvidence.sourceKind !== "RENDER"
+  || displacementSourceEvidence.analyzerFingerprint !== displacementSeedEvidence.analyzerFingerprint
+  || displacementSourceEvidence.analyzerFingerprint !== displacementFinalEvidence.analyzerFingerprint
+  || displacementSeedEvidence.contentKey === displacementFinalEvidence.contentKey) {
+  throw new Error("M6 displacement-warp real-AE fidelity proof lost its causal or analyzer binding.");
+}
+
+const displacementSourceAdmissionRef = relative(DISPLACEMENT_SOURCE_ADMISSION);
+const displacementCorrectionRef = relative(DISPLACEMENT_CORRECTION_V8);
+const displacementFinalEvidenceRef = relative(displacementFinalEvidencePath);
+const displacementFinalVideoRef = relative(displacementFinalVideoPath);
+const displacementFinalReadbackRef = relative(displacementFinalReadbackPath);
+const displacementSeedEvidenceRef = relative(displacementSeedEvidencePath);
+
 const renderRef = relative(renderSource);
 const comparisonRef = relative(comparisonSource);
 const directAbRef = relative(directAbSource);
@@ -433,6 +539,77 @@ const manifest = {
     preAeRejectionRef: zoomPreAeRejectionRef,
     preAeRejectionSha256: await sha256File(ZOOM_PRE_AE_REJECTION),
     preAeRejectionStatus: zoomPreAeRejection.status,
+  }, {
+    caseId: displacement.caseId,
+    family: displacement.family,
+    ref: displacementSourceAdmissionRef,
+    sha256: await sha256File(DISPLACEMENT_SOURCE_ADMISSION),
+    sourceEvidenceRef: displacementSourceAdmission.sourceEvidence.ref,
+    sourceEvidenceSha256: displacementSourceAdmission.sourceEvidence.sha256,
+    sourceVideoSha256: displacementSourceAdmission.sourceEvidence.sourceVideoSha256,
+    result: displacementSourceAdmission.result,
+    definingCoverage: displacementSourceAdmission.candidate.definingCoverage,
+    weightedContractScore: displacementSourceAdmission.candidate.weightedContractScore,
+    failedInvariantIds: displacementSourceAdmission.candidate.checks
+      .filter((item) => !item.passed)
+      .map((item) => item.invariantId),
+    reasons: displacementSourceAdmission.candidate.failures,
+    authority: displacementSourceAdmission.authority,
+  }],
+  referenceFidelityDiagnostics: [{
+    caseId: displacement.caseId,
+    family: displacement.family,
+    authority: "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
+    maturityCeiling: "REFERENCE_FAITHFUL",
+    benchmarkPromoted: false,
+    sourceAdmissionRef: displacementSourceAdmissionRef,
+    sourceAdmissionSha256: await sha256File(DISPLACEMENT_SOURCE_ADMISSION),
+    referenceEvidenceRef: relative(displacementSourceEvidencePath),
+    referenceEvidenceSha256: await sha256File(displacementSourceEvidencePath),
+    referenceContentKey: displacementSourceEvidence.contentKey,
+    sourceVideoSha256: sourceVideoKey(displacementSourceEvidence),
+    analyzerFingerprint: displacementSourceEvidence.analyzerFingerprint,
+    correctionProofRef: displacementCorrectionRef,
+    correctionProofSha256: await sha256File(DISPLACEMENT_CORRECTION_V8),
+    degradedSeed: {
+      evidenceRef: displacementSeedEvidenceRef,
+      evidenceSha256: await sha256File(displacementSeedEvidencePath),
+      renderContentKey: displacementSeedEvidence.contentKey,
+      weightedFidelity: displacementInitialPass.weightedFidelity,
+      definingCoverage: displacementInitialPass.definingCoverage,
+      gateCertified: displacementInitialPass.gate.certified,
+      failedInvariantIds: displacementInitialPass.gate.underDrivenInvariantIds,
+    },
+    finalRealAe: {
+      evidenceRef: displacementFinalEvidenceRef,
+      evidenceSha256: await sha256File(displacementFinalEvidencePath),
+      renderContentKey: displacementFinalEvidence.contentKey,
+      videoRef: displacementFinalVideoRef,
+      videoSha256: await sha256File(displacementFinalVideoPath),
+      readbackRef: displacementFinalReadbackRef,
+      readbackSha256: await sha256File(displacementFinalReadbackPath),
+      weightedFidelity: displacementFinalPass.weightedFidelity,
+      definingCoverage: displacementFinalPass.definingCoverage,
+      gateOutcome: displacementFinalPass.gate.outcome,
+      gateCertified: displacementFinalPass.gate.certified,
+      weakerSubstitutionDetected: displacementFinalPass.gate.weakerSubstitutionDetected,
+      transactionState: displacementFinalPass.transactionState,
+      cleanupRestored: displacementFinalPass.cleanupRestored,
+      appliedDefiningActuationIds: requiredDisplacementActuationIds,
+      unsupportedInstructionIds: displacementFinalPass.unsupportedInstructionIds ?? [],
+    },
+    correction: {
+      renderedAttemptCount: displacementCorrection.renderedAttemptCount,
+      causalBaselineCleanupRestored: displacementCorrection.causalBaselineCleanupRestored,
+      synthesisEscalation: displacementCorrection.synthesisEscalation,
+      residualInvariantIds: displacementCorrection.residualInvariantIds,
+    },
+    transferAxesRequired: [...displacement.transferAxes],
+    missingForBenchmarkPromotion: [
+      "DIRECT_AB_CALIBRATION",
+      ...displacement.transferAxes.map((axis) => `TRANSFER_${axis.toUpperCase().replaceAll("-", "_")}`),
+      "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
+    ],
   }],
   proofSources: {
     evaluator: "packages/visual-effects-intelligence/src/benchmark.ts",

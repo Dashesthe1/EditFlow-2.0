@@ -296,7 +296,14 @@ try {
     && chromaNode.parameters.chromaticSeparationPeak > 0
     ? 2
     : 0;
-  const expectedDuplicateCount = expectedTemporalStateCount - 1 + expectedChromaDuplicateCount;
+  const expectedDisplacementAccentDuplicateCount = selected.graph.nodes.filter((node) =>
+    node.kind === "DISTORTION"
+    && node.requiredInvariantIds.includes("warp.distortion")
+    && node.capabilityCandidates.includes("ae.effect.displacement-map")
+    && typeof node.parameters.synthesisStrategy !== "string").length;
+  const expectedDuplicateCount = expectedTemporalStateCount - 1
+    + expectedChromaDuplicateCount
+    + expectedDisplacementAccentDuplicateCount;
   const proofOnlyEffectSchemaRefs = [...new Set(selected.graph.nodes
     .map((node) => node.parameters.effectSchemaRef)
     .filter((value) => typeof value === "string" && value.length > 0))];
@@ -425,7 +432,16 @@ try {
     .map((line) => line.slice("OPACITY_EXPR\t".length))
     .filter((value) => value.includes("var event=0.5;") && value.includes("thisComp.frameDuration"));
   const eventLocalOpacityExpressionVariants = [...new Set(eventLocalOpacityExpressions)];
-  const eventLocalVisibilityMatch = eventLocalOpacityExpressionVariants.length === expectedTemporalStateCount - 1;
+  const layerBlocks = readback.split(/(?=LAYER\t)/).filter((block) => block.startsWith("LAYER\t"));
+  const temporalEventLocalOpacityExpressions = layerBlocks
+    .filter((block) => /(?:^|\n)TIME_REMAP\t1\t/.test(block))
+    .map((block) => block.split(/\r?\n/)
+      .find((line) => line.startsWith("OPACITY_EXPR\t"))?.slice("OPACITY_EXPR\t".length) ?? "")
+    .filter((value) => value.includes("var event=0.5;") && value.includes("thisComp.frameDuration"));
+  const temporalEventLocalOpacityExpressionVariants = [...new Set(temporalEventLocalOpacityExpressions)];
+  const eventLocalVisibilityMatch =
+    temporalEventLocalOpacityExpressions.length === expectedTemporalStateCount - 1
+    && temporalEventLocalOpacityExpressionVariants.length === expectedTemporalStateCount - 1;
   const recursiveStableId = /::state-\d+.*::state-\d+/.test(readback);
   artifact = {
     schema: "editflow.m6.generic-native-materializer-proof.v1",
@@ -456,6 +472,7 @@ try {
       expectedTemporalStateCount,
       expectedDuplicateCount,
       expectedChromaDuplicateCount,
+      expectedDisplacementAccentDuplicateCount,
     },
     transaction: { state: transaction.result.state, result: transaction.result },
     readbackVerification: {
@@ -469,6 +486,9 @@ try {
       expectedTemporalOffsetsSeconds,
       temporalOffsetsMatch,
       eventLocalOpacityExpressions,
+      eventLocalOpacityExpressionVariants,
+      temporalEventLocalOpacityExpressions,
+      temporalEventLocalOpacityExpressionVariants,
       eventLocalVisibilityMatch,
       recursiveStableId,
     },

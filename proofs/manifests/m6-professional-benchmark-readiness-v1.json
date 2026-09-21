@@ -1,6 +1,6 @@
 {
   "schema": "editflow.m6.professional-benchmark-readiness-manifest.v1",
-  "generatedAt": "2026-09-21T08:24:26.594Z",
+  "generatedAt": "2026-09-21T09:43:05.950Z",
   "milestone": "M6.9",
   "status": "IN_PROGRESS",
   "authority": "RETAINED_CONTENT_ADDRESSED_ARTIFACTS_ONLY",
@@ -241,16 +241,99 @@
         "scaleVelocityRecoveryRatio=0.7729 fails family admission (maximum 0.4000). Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."
       ],
       "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
-      "preAeRejectionRef": "proofs/diagnostics/m6-zoom-impact-source-admission-live-boundary-v1.json",
-      "preAeRejectionSha256": "67b71552811b0f4957c9233c93e33942270cfca3a3b658d69b27f7ffe35a3157",
+      "preAeRejectionRef": "proofs/diagnostics/m6-zoom-impact-source-admission-live-boundary-v2.json",
+      "preAeRejectionSha256": "48997b2cb28b742eea856900c481ab3091731f09bfae46076f99aafd12e5811c",
       "preAeRejectionStatus": "PASS"
+    },
+    {
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "ref": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-admission.json",
+      "sha256": "83fb7264d758890df7d55d9111d0559e42f003c20ff172da6444bf3165c28a65",
+      "sourceEvidenceRef": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-evidence.json",
+      "sourceEvidenceSha256": "5041270c7b6f40a3ab6a76aef93b3f4b49ef8af80e8a37c29b8e7b836a232c9d",
+      "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "result": "ADMITTED",
+      "definingCoverage": 1,
+      "weightedContractScore": 1,
+      "failedInvariantIds": [],
+      "reasons": [],
+      "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY"
+    }
+  ],
+  "referenceFidelityDiagnostics": [
+    {
+      "caseId": "m6:displacement_warp:canonical",
+      "family": "DISPLACEMENT_WARP",
+      "authority": "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
+      "maturityCeiling": "REFERENCE_FAITHFUL",
+      "benchmarkPromoted": false,
+      "sourceAdmissionRef": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-admission.json",
+      "sourceAdmissionSha256": "83fb7264d758890df7d55d9111d0559e42f003c20ff172da6444bf3165c28a65",
+      "referenceEvidenceRef": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-evidence.json",
+      "referenceEvidenceSha256": "5041270c7b6f40a3ab6a76aef93b3f4b49ef8af80e8a37c29b8e7b836a232c9d",
+      "referenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+      "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+      "correctionProofRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8.json",
+      "correctionProofSha256": "e96dd88664ecd77831d48285f6fbf70cf586b9168dd595721a3f80bafb38a8bb",
+      "degradedSeed": {
+        "evidenceRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-control-v18-evidence.json",
+        "evidenceSha256": "435d1fa9585a0908db3f8af3d9d0c690f493c5be2267093b2e70992191cd0e12",
+        "renderContentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14",
+        "weightedFidelity": 0.4337660439150169,
+        "definingCoverage": 0,
+        "gateCertified": false,
+        "failedInvariantIds": [
+          "warp.distortion"
+        ]
+      },
+      "finalRealAe": {
+        "evidenceRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8-pass02-evidence.json",
+        "evidenceSha256": "7956bcf2ab74deeedc091e0eb6bb0d7b99187961d8b5ba8f777074dc537b5e87",
+        "renderContentKey": "fc29bfedc0f512f710943ee131b9f64dd47885c5a6d0858622682c34ba32325d",
+        "videoRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8-pass02.mp4",
+        "videoSha256": "53c82b51d8682cb7ca9157b6f047ecb9ed5c25997e7c6fd3bbefd1a7a58b73e4",
+        "readbackRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-auto-correction-v8-pass02-readback.txt",
+        "readbackSha256": "1d0b10744d79723b906a19cb676d91856742d4ae0fad19dcd062fbe394a20a85",
+        "weightedFidelity": 0.892456178301638,
+        "definingCoverage": 1,
+        "gateOutcome": "PASS",
+        "gateCertified": true,
+        "weakerSubstitutionDetected": false,
+        "transactionState": "COMMITTED",
+        "cleanupRestored": true,
+        "appliedDefiningActuationIds": [
+          "actuate:warp.distortion:distortion_strength",
+          "actuate:warp.distortion:distortion_size",
+          "actuate:warp.distortion:distortion_complexity",
+          "actuate:warp.distortion:distortion_evolution"
+        ],
+        "unsupportedInstructionIds": []
+      },
+      "correction": {
+        "renderedAttemptCount": 2,
+        "causalBaselineCleanupRestored": true,
+        "synthesisEscalation": null,
+        "residualInvariantIds": []
+      },
+      "transferAxesRequired": [
+        "duration",
+        "intensity"
+      ],
+      "missingForBenchmarkPromotion": [
+        "DIRECT_AB_CALIBRATION",
+        "TRANSFER_DURATION",
+        "TRANSFER_INTENSITY",
+        "SECOND_INDEPENDENT_PROFESSIONAL_CASE"
+      ]
     }
   ],
   "proofSources": {
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
     "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "cc989b17a01bfaef420b58bec4805bc64c4cb529ccdf9606f2f4420df2cb2e82"
+    "generatorSha256": "aebe628050170002b307ff102a5c83d1efd69dce5114928c00927899fae58024"
   },
   "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

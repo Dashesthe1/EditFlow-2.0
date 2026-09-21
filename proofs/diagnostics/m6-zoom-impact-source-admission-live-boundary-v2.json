@@ -1,0 +1,37 @@
+{
+  "schema": "editflow.m6.known-family-rejection-live-boundary-proof.v1",
+  "status": "PASS",
+  "authority": "LIVE_AE_FAIL_CLOSED_BEFORE_MUTATION",
+  "family": "ZOOM_IMPACT",
+  "sourceAdmission": {
+    "ref": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z19-v1-admission.json",
+    "sha256": "e5de07a6407c81109503fa36b3e9cb14bf28393941c716e3214fce7e599134c2",
+    "definingCoverage": 0.6666666666666666,
+    "failedInvariantIds": [
+      "zoom.recovery"
+    ]
+  },
+  "materializer": {
+    "ref": "scripts/proofs/m6-generic-native-materializer-proof.mjs",
+    "sha256": "33fa47dea43219a9b0ed84e2b0a2d58f78807da2df293ed0fb012b06ae76907a",
+    "exitCode": 1,
+    "expectedFailure": "Reference evidence failed ZOOM_IMPACT family admission:"
+  },
+  "correction": {
+    "ref": "scripts/proofs/m6-generic-native-auto-correction-proof.mjs",
+    "sha256": "4451b01bede733c1a87c44eb8e3cf3b9c7556592f4d4c40b32edde117ac9f3d2",
+    "exitCode": 1,
+    "expectedFailure": "Reference evidence failed ZOOM_IMPACT family admission:"
+  },
+  "liveAe": {
+    "hostName": "Adobe After Effects",
+    "hostVersion": "25.6.6x4",
+    "protocolVersion": "2.7.0",
+    "beforeHostRevision": 11907,
+    "afterHostRevision": 11907,
+    "projectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
+    "beforeMutationLeaseHeld": false,
+    "afterMutationLeaseHeld": false
+  },
+  "noOverclaim": "This proves rejected family evidence is blocked before AE mutation. It is not a fidelity pass."
+}

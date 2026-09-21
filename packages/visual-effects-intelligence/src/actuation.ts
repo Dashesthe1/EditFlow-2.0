@@ -224,10 +224,14 @@ const physicalParameterForControl = (
   if (node.parameters["synthesisStrategy"] === "TIME_DISPLACEMENT_HYBRID") {
     if (control === "TEMPORAL_PERSISTENCE") return "timeDisplacementStrengthScale";
   }
-  if (node.parameters["synthesisStrategy"] === "TURBULENT_DISPLACE_HYBRID"
+  const effectSchemaRef = node.parameters["effectSchemaRef"];
+  const usesTurbulentDisplaceSchema = typeof effectSchemaRef === "string"
+    && effectSchemaRef.startsWith("ae.effect-schema.m6.turbulent-displace.");
+  const isTurbulentDisplaceHybrid = node.parameters["synthesisStrategy"] === "TURBULENT_DISPLACE_HYBRID"
     || node.parameters["synthesisStrategy"] === "COMPOUND_EVOLVING_WARP_HYBRID"
     || node.parameters["synthesisStrategy"] === "COMPOUND_COMPOSITE_WARP_HYBRID"
-    || node.parameters["synthesisStrategy"] === "COMPOUND_DUAL_WARP_HYBRID") {
+    || node.parameters["synthesisStrategy"] === "COMPOUND_DUAL_WARP_HYBRID";
+  if (usesTurbulentDisplaceSchema || isTurbulentDisplaceHybrid) {
     if (control === "DISTORTION_SIZE") return "distortionSizeScale";
     if (control === "DISTORTION_COMPLEXITY") return "distortionComplexityScale";
     if (control === "DISTORTION_EVOLUTION") return "distortionEvolutionScale";

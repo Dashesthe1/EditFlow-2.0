@@ -1105,6 +1105,20 @@ const compoundNativeHybridGraph = (
   // displacement node and layer the new native warp after it instead of
   // replacing already-rendered behavior with a different effect family.
   const turbulentNodeId = `${distortion.nodeId}:turbulent-augmentation`;
+  const dynamicTurbulentOnlyParameters = new Set([
+    "eventDynamicDistortion",
+    "eventLocalEffectApplication",
+    "eventLocalEffectTargetScope",
+    "eventLocalEffectRecoveryBounded",
+    "eventAmountPulseScale",
+    "eventEvolutionSweepDegrees",
+    "eventEvolutionSweepScale",
+    "eventEvolutionSharpnessScale",
+  ]);
+  const inheritedDistortionParameters = Object.fromEntries(
+    Object.entries(distortion.parameters).filter(([key]) =>
+      !dynamicTurbulentOnlyParameters.has(key)),
+  );
   const turbulentNode: ConstructionNodeV1 = {
     nodeId: turbulentNodeId,
     kind: "DISTORTION",
@@ -1113,7 +1127,7 @@ const compoundNativeHybridGraph = (
     requiredInvariantIds: [...distortion.requiredInvariantIds],
     capabilityCandidates: ["ae.effect.turbulent-displace"],
     parameters: {
-      ...distortion.parameters,
+      ...inheritedDistortionParameters,
       synthesisStrategy: "TURBULENT_DISPLACE_HYBRID",
       ...turbulentDisplaceProofParameters(distortion),
     },
@@ -1485,6 +1499,12 @@ const strategyGraph = (
       };
     }
     if (strategy === "TURBULENT_DISPLACE_HYBRID" && node.kind === "DISTORTION") {
+      // Do not propose the static v2 hypothesis as an escalation when the retained
+      // construction already has the stronger event-dynamic v3 realization.
+      // Escalation must add causal machinery rather than silently downgrade it.
+      if (node.parameters["effectSchemaRef"] === "ae.effect-schema.m6.turbulent-displace.v3") {
+        return node;
+      }
       changed = true;
       return {
         ...node,
@@ -1584,40 +1604,40 @@ const candidate = (
   };
 };
 
-export const synthesizeUnknownEffectV1 = (input: {
-  readonly evidence: DenseEffectEvidenceV1;
-  readonly availableCapabilities: readonly string[];
-}): UnknownEffectSynthesisV1 => {
-  const anatomy = decomposeUnknownEffectV1(input.evidence);
-  const base = buildConstructionGraphV1(anatomy);
-  const definingCount = anatomy.dna.definingInvariants.length;
-  const strategies: readonly Readonly<{
-    strategy: UnknownEffectSynthesisStrategyV1;
-    id: string;
-    complexityPenalty: number;
-  }>[] = [
-    { strategy: "LAYERED_PRIMITIVES", id: "adaptive:layered-primitives", complexityPenalty: 0 },
-    { strategy: "LAYERED_ECHO_AUGMENTED", id: "adaptive:layered-echo-augmented", complexityPenalty: 0.5 },
-    { strategy: "COMPOUND_NATIVE_HYBRID", id: "adaptive:compound-native-hybrid", complexityPenalty: 1 },
-    { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
-    { strategy: "OPTICAL_PROFILE_HYBRID", id: "adaptive:optical-profile-hybrid", complexityPenalty: 1.75 },
-    { strategy: "COMPOUND_TEMPORAL_WARP_HYBRID", id: "adaptive:compound-temporal-warp-hybrid", complexityPenalty: 2 },
-    { strategy: "COMPOUND_DUAL_WARP_HYBRID", id: "adaptive:compound-dual-warp-hybrid", complexityPenalty: 1.75 },
-    { strategy: "COMPOUND_COMPOSITE_WARP_HYBRID", id: "adaptive:compound-composite-warp-hybrid", complexityPenalty: 2 },
-    { strategy: "COMPOUND_COMPOSITE_OPTICAL_HYBRID", id: "adaptive:compound-composite-optical-hybrid", complexityPenalty: 2.25 },
-    { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
-    { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },
-    { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },
-  ];
-  const candidates = strategies.flatMap((item) => {
-    const graph = strategyGraph(base, item.strategy, input.availableCapabilities);
+const SYNTHESIS_STRATEGIES_V1: readonly Readonly<{
+  strategy: UnknownEffectSynthesisStrategyV1;
+  id: string;
+  complexityPenalty: number;
+}>[] = Object.freeze([
+  { strategy: "LAYERED_PRIMITIVES", id: "adaptive:layered-primitives", complexityPenalty: 0 },
+  { strategy: "LAYERED_ECHO_AUGMENTED", id: "adaptive:layered-echo-augmented", complexityPenalty: 0.5 },
+  { strategy: "COMPOUND_NATIVE_HYBRID", id: "adaptive:compound-native-hybrid", complexityPenalty: 1 },
+  { strategy: "COMPOUND_EVOLVING_WARP_HYBRID", id: "adaptive:compound-evolving-warp-hybrid", complexityPenalty: 1.5 },
+  { strategy: "OPTICAL_PROFILE_HYBRID", id: "adaptive:optical-profile-hybrid", complexityPenalty: 1.75 },
+  { strategy: "COMPOUND_TEMPORAL_WARP_HYBRID", id: "adaptive:compound-temporal-warp-hybrid", complexityPenalty: 2 },
+  { strategy: "COMPOUND_DUAL_WARP_HYBRID", id: "adaptive:compound-dual-warp-hybrid", complexityPenalty: 1.75 },
+  { strategy: "COMPOUND_COMPOSITE_WARP_HYBRID", id: "adaptive:compound-composite-warp-hybrid", complexityPenalty: 2 },
+  { strategy: "COMPOUND_COMPOSITE_OPTICAL_HYBRID", id: "adaptive:compound-composite-optical-hybrid", complexityPenalty: 2.25 },
+  { strategy: "NATIVE_ECHO_HYBRID", id: "adaptive:native-echo-hybrid", complexityPenalty: 1.5 },
+  { strategy: "TIME_DISPLACEMENT_HYBRID", id: "adaptive:time-displacement-hybrid", complexityPenalty: 2 },
+  { strategy: "TURBULENT_DISPLACE_HYBRID", id: "adaptive:turbulent-displace-hybrid", complexityPenalty: 1.5 },
+]);
+
+const synthesizeFromConstructionGraphV1 = (
+  base: ConstructionGraphV1,
+  definingCount: number,
+  availableCapabilities: readonly string[],
+  provenance: readonly string[],
+): UnknownEffectSynthesisV1 => {
+  const candidates = SYNTHESIS_STRATEGIES_V1.flatMap((item) => {
+    const graph = strategyGraph(base, item.strategy, availableCapabilities);
     return graph === null ? [] : [
       candidate(
         item.id,
         item.strategy,
         graph,
         definingCount,
-        input.availableCapabilities,
+        availableCapabilities,
         item.complexityPenalty,
       ),
     ];
@@ -1629,11 +1649,41 @@ export const synthesizeUnknownEffectV1 = (input: {
     status: selected === null ? "CAPABILITY_GAP" : "READY_FOR_PROOF",
     selected,
     candidates,
-    provenance: [input.evidence.contentKey, ...input.evidence.evidenceRefs],
+    provenance: [...new Set(provenance)],
     gapReasons: selected === null
       ? [...new Set(candidates.flatMap((item) => item.capabilityGaps))]
       : [],
   };
+};
+
+export const synthesizeConstructionAlternativesV1 = (input: {
+  readonly baseGraph: ConstructionGraphV1;
+  readonly availableCapabilities: readonly string[];
+  readonly provenance?: readonly string[];
+}): UnknownEffectSynthesisV1 => {
+  const definingCount = new Set(input.baseGraph.nodes
+    .filter((node) => !node.optional)
+    .flatMap((node) => node.requiredInvariantIds)).size;
+  return synthesizeFromConstructionGraphV1(
+    input.baseGraph,
+    definingCount,
+    input.availableCapabilities,
+    input.provenance ?? input.baseGraph.evidenceRefs,
+  );
+};
+
+export const synthesizeUnknownEffectV1 = (input: {
+  readonly evidence: DenseEffectEvidenceV1;
+  readonly availableCapabilities: readonly string[];
+}): UnknownEffectSynthesisV1 => {
+  const anatomy = decomposeUnknownEffectV1(input.evidence);
+  const base = buildConstructionGraphV1(anatomy);
+  return synthesizeFromConstructionGraphV1(
+    base,
+    anatomy.dna.definingInvariants.length,
+    input.availableCapabilities,
+    [input.evidence.contentKey, ...input.evidence.evidenceRefs],
+  );
 };
 
 export const selectSynthesisEscalationCandidateV1 = (input: Readonly<{

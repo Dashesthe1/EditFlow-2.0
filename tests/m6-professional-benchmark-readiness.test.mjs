@@ -97,3 +97,74 @@ test("M6.9 Zoom source admission rejects scale drift without promoting benchmark
   );
   assert.equal(manifest.casesWithRetainedEvidence, 1);
 });
+
+test("M6.9 Displacement Warp retains real-AE reference-faithful progress without Level 6 promotion", async () => {
+  const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
+  const admission = manifest.sourceAdmissionDiagnostics.find((item) =>
+    item.caseId === "m6:displacement_warp:canonical"
+  );
+  assert.equal(admission?.family, "DISPLACEMENT_WARP");
+  assert.equal(admission?.result, "ADMITTED");
+  assert.equal(admission?.definingCoverage, 1);
+  assert.equal(admission?.weightedContractScore, 1);
+  assert.deepEqual(admission?.failedInvariantIds, []);
+  assert.equal(admission?.sha256, await sha256(admission.ref));
+  assert.equal(admission?.sourceEvidenceSha256, await sha256(admission.sourceEvidenceRef));
+
+  const diagnostic = manifest.referenceFidelityDiagnostics.find((item) =>
+    item.caseId === "m6:displacement_warp:canonical"
+  );
+  assert.equal(
+    diagnostic?.authority,
+    "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
+  );
+  assert.equal(diagnostic?.maturityCeiling, "REFERENCE_FAITHFUL");
+  assert.equal(diagnostic?.benchmarkPromoted, false);
+  assert.equal(diagnostic?.sourceAdmissionSha256, await sha256(diagnostic.sourceAdmissionRef));
+  assert.equal(diagnostic?.referenceEvidenceSha256, await sha256(diagnostic.referenceEvidenceRef));
+  assert.equal(diagnostic?.correctionProofSha256, await sha256(diagnostic.correctionProofRef));
+  assert.equal(diagnostic?.degradedSeed.evidenceSha256, await sha256(diagnostic.degradedSeed.evidenceRef));
+  assert.equal(diagnostic?.degradedSeed.gateCertified, false);
+  assert.equal(diagnostic?.degradedSeed.definingCoverage, 0);
+  assert.deepEqual(diagnostic?.degradedSeed.failedInvariantIds, ["warp.distortion"]);
+
+  assert.equal(diagnostic?.finalRealAe.evidenceSha256, await sha256(diagnostic.finalRealAe.evidenceRef));
+  assert.equal(diagnostic?.finalRealAe.videoSha256, await sha256(diagnostic.finalRealAe.videoRef));
+  assert.equal(diagnostic?.finalRealAe.readbackSha256, await sha256(diagnostic.finalRealAe.readbackRef));
+  assert.ok(diagnostic?.finalRealAe.weightedFidelity > diagnostic?.degradedSeed.weightedFidelity);
+  assert.equal(diagnostic?.finalRealAe.definingCoverage, 1);
+  assert.equal(diagnostic?.finalRealAe.gateOutcome, "PASS");
+  assert.equal(diagnostic?.finalRealAe.gateCertified, true);
+  assert.equal(diagnostic?.finalRealAe.weakerSubstitutionDetected, false);
+  assert.equal(diagnostic?.finalRealAe.transactionState, "COMMITTED");
+  assert.equal(diagnostic?.finalRealAe.cleanupRestored, true);
+  assert.deepEqual(
+    diagnostic?.finalRealAe.appliedDefiningActuationIds,
+    [
+      "actuate:warp.distortion:distortion_strength",
+      "actuate:warp.distortion:distortion_size",
+      "actuate:warp.distortion:distortion_complexity",
+      "actuate:warp.distortion:distortion_evolution",
+    ],
+  );
+  assert.deepEqual(diagnostic?.finalRealAe.unsupportedInstructionIds, []);
+  assert.deepEqual(diagnostic?.correction.residualInvariantIds, []);
+  assert.equal(diagnostic?.correction.synthesisEscalation, null);
+  assert.deepEqual(diagnostic?.transferAxesRequired, ["duration", "intensity"]);
+  assert.deepEqual(
+    diagnostic?.missingForBenchmarkPromotion,
+    [
+      "DIRECT_AB_CALIBRATION",
+      "TRANSFER_DURATION",
+      "TRANSFER_INTENSITY",
+      "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
+    ],
+  );
+
+  assert.equal(
+    manifest.retainedCases.some((item) => item.caseId === "m6:displacement_warp:canonical"),
+    false,
+  );
+  assert.equal(manifest.casesWithRetainedEvidence, 1);
+  assert.equal(manifest.result.passedCases, 1);
+});

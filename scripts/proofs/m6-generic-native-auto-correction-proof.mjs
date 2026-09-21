@@ -19,6 +19,7 @@ import {
   selectBoundedActuatorSearchDecisionV1,
   selectRetainedBestActuatorAttemptV1,
   selectSynthesisEscalationCandidateV1,
+  synthesizeConstructionAlternativesV1,
   synthesizeUnknownEffectV1,
 } from "../../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
 
@@ -41,7 +42,8 @@ const SEED = path.resolve(ROOT, cliValue(
 ));
 const SEED_STRATEGY = cliValue("--seed-strategy", "").trim();
 const OUT = path.join(ROOT, "proofs", "diagnostics", STEM + ".json");
-const WINDOWS = (name) => path.join(ROOT, "scripts", "windows", name);
+let controlRepoRoot = ROOT;
+const WINDOWS = (name) => path.join(controlRepoRoot, "scripts", "windows", name);
 const MAX_CORRECTION_OPERATIONS = 96;
 const PHYSICAL_PARAMETER_BY_CONTROL = Object.freeze({
   TEMPORAL_COPY_COUNT: "temporalCopyCountScale",
@@ -73,10 +75,14 @@ const physicalParameterForNodeControl = (node, control) => {
   if (node?.parameters?.synthesisStrategy === "TIME_DISPLACEMENT_HYBRID") {
     if (control === "TEMPORAL_PERSISTENCE") return "timeDisplacementStrengthScale";
   }
-  if (node?.parameters?.synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
+  const effectSchemaRef = node?.parameters?.effectSchemaRef;
+  const usesTurbulentDisplaceSchema = typeof effectSchemaRef === "string"
+    && effectSchemaRef.startsWith("ae.effect-schema.m6.turbulent-displace.");
+  const isTurbulentDisplaceHybrid = node?.parameters?.synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
       || node?.parameters?.synthesisStrategy === "COMPOUND_EVOLVING_WARP_HYBRID"
       || node?.parameters?.synthesisStrategy === "COMPOUND_COMPOSITE_WARP_HYBRID"
-      || node?.parameters?.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID") {
+      || node?.parameters?.synthesisStrategy === "COMPOUND_DUAL_WARP_HYBRID";
+  if (usesTurbulentDisplaceSchema || isTurbulentDisplaceHybrid) {
     if (control === "DISTORTION_SIZE") return "distortionSizeScale";
     if (control === "DISTORTION_COMPLEXITY") return "distortionComplexityScale";
     if (control === "DISTORTION_EVOLUTION") return "distortionEvolutionScale";
@@ -300,7 +306,7 @@ const executePass = async (graph, iteration) => {
     await proofScript("m6-generic-native-corr01-readback.jsx");
     const passStem = `${STEM}-pass${String(iteration).padStart(2, "0")}`;
     const readback = path.join(ROOT, "proofs", "diagnostics", passStem + "-readback.txt");
-    await copyFile(path.join(ROOT, ".tmp", "m6-generic-native-corr01-readback.txt"), readback);
+    await copyFile(path.join(controlRepoRoot, ".tmp", "m6-generic-native-corr01-readback.txt"), readback);
     await proofScript("m6-generic-native-corr01-render.jsx");
     const video = path.join(ROOT, "proofs", "diagnostics", passStem + ".mp4");
     await copyFile(path.join(os.tmpdir(), "M6_generic_native_corr01_candidate.mp4"), video);
@@ -676,6 +682,11 @@ if (REQUESTED_FAMILY === "UNKNOWN") {
   }
   anatomy = deriveEffectAnatomyV1(reference, REQUESTED_FAMILY);
   const graph = buildConstructionGraphV1(anatomy);
+  const adaptiveAlternatives = synthesizeConstructionAlternativesV1({
+    baseGraph: graph,
+    availableCapabilities: CAPABILITIES,
+    provenance: [reference.contentKey, ...reference.evidenceRefs],
+  });
   const knownCandidate = {
     candidateId: `known-family:${REQUESTED_FAMILY}:${reference.contentKey}`,
     strategy: `KNOWN_FAMILY_${REQUESTED_FAMILY}`,
@@ -689,9 +700,9 @@ if (REQUESTED_FAMILY === "UNKNOWN") {
     schema: "editflow.unknown-effect-synthesis.v1",
     status: "READY_FOR_PROOF",
     selected: knownCandidate,
-    candidates: [knownCandidate],
+    candidates: [knownCandidate, ...adaptiveAlternatives.candidates],
     provenance: [reference.contentKey, ...reference.evidenceRefs],
-    gapReasons: [],
+    gapReasons: adaptiveAlternatives.gapReasons,
   };
 }
 const seedCandidate = SEED_STRATEGY.length === 0
@@ -704,8 +715,13 @@ if (seedCandidate.capabilityGaps.length > 0) {
   throw new Error(`Requested seed strategy '${seedCandidate.strategy}' has capability gaps: ${seedCandidate.capabilityGaps.join(", ")}.`);
 }
 // Known-family source admission and compile-time capability checks must finish
-// before the correction harness touches the live AE control plane.
-await request("/healthz");
+// before the correction harness touches the live AE control plane. The daemon may
+// serve a different authoritative worktree than this proof checkout; use its
+// declared repo root for allow-listed JSX execution and generated readback files.
+const health = await request("/healthz");
+if (typeof health.repoRoot === "string" && health.repoRoot.trim().length > 0) {
+  controlRepoRoot = path.resolve(health.repoRoot);
+}
 const causalBaselinePass = await executeCausalBaseline();
 const causalBaseline = causalBaselinePass.measured.value;
 if (causalBaseline.analyzerFingerprint !== reference.analyzerFingerprint) {
@@ -1156,6 +1172,7 @@ if (!gate.certified) {
     selectedStrategy: alternate?.strategy ?? null,
   };
   if (alternate !== null) {
+    const retainedGraphBeforeSynthesis = graph;
     const proposedGraph = transferRetainedPhysicalScales(graph, alternate.graph);
     const pass = await executePass(proposedGraph, nextRenderIteration);
     const trialGraph = pass.graph;
@@ -1210,22 +1227,28 @@ if (!gate.certified) {
     // render makes a previously missing behavior measurable but perturbs a
     // different defining metric. The retained global best remains authoritative
     // throughout these exploratory renders.
-    const synthesizedInvariantIds = new Set(alternate.graph.nodes.flatMap((node) =>
-      node.parameters.synthesisStrategy === alternate.strategy
-        ? node.requiredInvariantIds
-        : []));
+    const retainedNodesById = new Map(retainedGraphBeforeSynthesis.nodes
+      .map((node) => [node.nodeId, node]));
+    const synthesizedInvariantIds = new Set(alternate.graph.nodes.flatMap((node) => {
+      const retainedNode = retainedNodesById.get(node.nodeId);
+      const changed = retainedNode === undefined
+        || JSON.stringify(retainedNode) !== JSON.stringify(node);
+      return changed ? node.requiredInvariantIds : [];
+    }));
     const triggeredInvariantIds = new Set(requiredInvariantIds);
+    const synthesisTopologyGraphId = trialGraph.graphId;
     const followupBudget = Math.min(2, MAX_SEARCH_PROBES);
     for (let followupIndex = 1;
       followupIndex <= followupBudget && !nextGate.certified;
       followupIndex += 1) {
-      // A synthesis candidate can be additive: its graph may retain an older,
-      // structurally dominant strategy while introducing the new intervention.
-      // Match the actual intervention node rather than the graph's dominant key.
+      // Candidate-level strategy names are not always copied onto every new node
+      // (for example COMPOUND_NATIVE_HYBRID adds a Turbulent Displace intervention).
+      // Track the rendered structural hypothesis by graph identity and derive
+      // intervention ownership from the graph delta rather than a naming alias.
       const topologyAttempts = renderedStates.filter((state) =>
-        state.graph.nodes.some((node) => node.parameters.synthesisStrategy === alternate.strategy));
+        state.graph.graphId === synthesisTopologyGraphId);
       if (topologyAttempts.length === 0) {
-        throw new Error(`Synthesis-local correction lost rendered '${alternate.strategy}' intervention evidence.`);
+        throw new Error(`Synthesis-local correction lost rendered '${alternate.strategy}' topology evidence.`);
       }
       const topologyBestAttempt = selectRetainedBestActuatorAttemptV1(
         topologyAttempts.map((state) => attemptEvidenceFromState(state)),

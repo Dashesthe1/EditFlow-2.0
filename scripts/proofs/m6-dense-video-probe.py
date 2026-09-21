@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v17"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v18"
 ECHO_ANALYSIS_LONGEST = 360
 ECHO_SPATIAL_PAIR_MIN = 0.035
 TEMPORAL_ECHO_MOTION_COVERAGE_MIN = 0.04
@@ -181,6 +181,28 @@ def motion_compensated_residual(previous, current, matrix):
     p90 = float(np.percentile(residual, 90) / 255.0)
     active = float(np.mean(residual >= 28))
     return mean, p90, active
+
+
+def affine_flow_residual_p90(flow, matrix):
+    # Distortion is the flow that remains after the fitted global affine camera
+    # motion (translation / scale / rotation) is removed. Comparing flow only
+    # against its median incorrectly treats a clean zoom as non-rigid because a
+    # zoom's radial field necessarily varies across the frame.
+    height, width = flow.shape[:2]
+    yy, xx = np.indices((height, width), dtype=np.float32)
+    predicted_x = (
+        matrix[0, 0] * xx + matrix[0, 1] * yy + matrix[0, 2] - xx
+    )
+    predicted_y = (
+        matrix[1, 0] * xx + matrix[1, 1] * yy + matrix[1, 2] - yy
+    )
+    residual_x = flow[..., 0] - predicted_x
+    residual_y = flow[..., 1] - predicted_y
+    residual = np.sqrt(residual_x * residual_x + residual_y * residual_y)
+    finite = residual[np.isfinite(residual)]
+    if finite.size == 0:
+        return 0.0
+    return float(np.percentile(finite, 90))
 
 
 def normalized_frame_mae(previous, current):
@@ -558,6 +580,7 @@ def analyze_frames(frames, fps):
             "flowP90Pixels": 0.0,
             "flowCoherence": 1.0,
             "flowResidualP90Pixels": 0.0,
+            "affineFlowResidualP90Pixels": 0.0,
             "affineInlierRatio": 0.0,
             "affineFallbackUsed": 0.0,
             "motionCompensatedResidualMean": 0.0,
@@ -610,7 +633,9 @@ def analyze_frames(frames, fps):
                 residual_mean, residual_p90, active = motion_compensated_residual(
                     previous, gray, matrix
                 )
+                affine_flow_residual = affine_flow_residual_p90(flow, matrix)
                 diagnostics["affineInlierRatio"] = inlier_ratio
+                diagnostics["affineFlowResidualP90Pixels"] = affine_flow_residual
                 diagnostics["motionCompensatedResidualMean"] = residual_mean
                 diagnostics["motionCompensatedResidualP90"] = residual_p90
                 diagnostics["motionCompensatedResidualCoverage"] = active
@@ -635,7 +660,7 @@ def analyze_frames(frames, fps):
                     semantic["distortionStrength"] = clamp01(
                         residual_mean * 2.4
                         + residual_p90 * 1.4
-                        + (flow_residual / diagonal) * 3.0
+                        + (affine_flow_residual / diagonal) * 3.0
                     )
             else:
                 diagnostics["affineFallbackUsed"] = 2.0

@@ -1,0 +1,56 @@
+{
+  "schema": "editflow.m6.reference-family-admission-proof.v1",
+  "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
+  "result": "ADMITTED",
+  "requestedFamily": "DISPLACEMENT_WARP",
+  "sourceEvidence": {
+    "ref": "proofs/diagnostics/m6-displacement-warp-source-candidate-smooth-zoom-z19-v3-evidence.json",
+    "sha256": "5041270c7b6f40a3ab6a76aef93b3f4b49ef8af80e8a37c29b8e7b836a232c9d",
+    "contentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+    "sourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom:18.82-19.72",
+    "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+    "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d"
+  },
+  "candidate": {
+    "schema": "editflow.reference-family-candidate.v1",
+    "sourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom:18.82-19.72",
+    "evidenceContentKey": "67256fd6ed969246089ca56aff48575dbe6a635afea7d77f76ef94a08621b1b7",
+    "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+    "requestedFamily": "DISPLACEMENT_WARP",
+    "classifiedFamily": "DISPLACEMENT_WARP",
+    "familyConflict": null,
+    "overlappingFullCoverageFamilies": [],
+    "passed": true,
+    "definingCoverage": 1,
+    "weightedContractScore": 1,
+    "checks": [
+      {
+        "invariantId": "warp.distortion",
+        "metric": "distortionPeak",
+        "comparator": "MIN",
+        "target": 0.35,
+        "tolerance": 0.07,
+        "observed": 0.7439122748826947,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "distortionPeak satisfies family admission (minimum 0.2800)."
+      }
+    ],
+    "failures": [],
+    "evidenceRefs": [
+      "video:sha256:9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "probe-json:sha256:ac3f780d9ef52457518e2689b966149651aa4a7667ea1d76046a9336e48f6d81",
+      "probe-algorithm:editflow.m6.dense-video-probe.v18",
+      "probe-analyzer:sha256:faf510f45c1912e4218f67274ff842fd7f7d3d4500b1ac15f670237b50bd4244",
+      "measurement-system:sha256:2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+      "algorithm:opencv-farneback-affine-flow-residual-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "noOverclaim": "Admission means the reference window satisfies family-defining DNA and may enter reconstruction; it is not a fidelity pass.",
+  "proofSources": {
+    "evaluator": "packages/visual-effects-intelligence/src/reference-admission.ts",
+    "evaluatorSha256": "9d0c108479700367e3cb82c5e557f033cdac501ec8b9d9da914dc10c590b28fe",
+    "generator": "scripts/proofs/m6-reference-family-admission.mjs",
+    "generatorSha256": "96c88d0def83e5639b1ce7cf57bc8cd03adc52c0c3474bcf926d0511bffc47ca"
+  }
+}

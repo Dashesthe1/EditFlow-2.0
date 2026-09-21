@@ -33,6 +33,7 @@ import {
   runAutomaticVisualCorrectionLoopV1,
   selectSynthesisEscalationCandidateV1,
   summarizeDenseEffectFramesV1,
+  synthesizeConstructionAlternativesV1,
   synthesizeUnknownEffectV1,
   SynthesizedEffectMemoryV1,
   validateConstructionGraphV1,
@@ -52,6 +53,7 @@ const ALL_CAPABILITIES = [
   "ae.subject.isolate",
   "ae.layer.matte.set",
   "ae.effect.displacement-map",
+  "ae.effect.turbulent-displace",
   "ae.effect.time-displacement",
   "ae.effect.directional-blur",
   "ae.effect.exposure",
@@ -5127,6 +5129,43 @@ test("M6.9 unversioned cached Zoom recovery cannot override current frame eviden
   assert.match(candidate.failures.join("\n"), /scaleVelocityRecoveryRatio=/);
 });
 
+test("M6.9 canonical family admission rejects cross-family numeric aliasing", () => {
+  const retainedShutter = JSON.parse(readFileSync(
+    new URL(
+      "../proofs/diagnostics/m6-heldout-candidate01-w04-v16-evidence.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ));
+  const candidate = evaluateReferenceFamilyCandidateV1(retainedShutter, "ZOOM_IMPACT");
+
+  assert.equal(candidate.classifiedFamily, "SHUTTER_FRAGMENTATION");
+  assert.equal(candidate.definingCoverage, 1);
+  assert.equal(candidate.familyConflict, "SHUTTER_FRAGMENTATION");
+  assert.equal(candidate.passed, false);
+  assert.match(candidate.failures.join("\n"), /Canonical family admission is ambiguous/);
+});
+
+test("M6.9 UNKNOWN-classified multi-family evidence is admitted only as compound", () => {
+  const compoundReference = JSON.parse(readFileSync(
+    new URL("../proofs/diagnostics/m6-microwave-reference-cut1-evidence.json", import.meta.url),
+    "utf8",
+  ));
+  const warp = evaluateReferenceFamilyCandidateV1(compoundReference, "DISPLACEMENT_WARP");
+  assert.equal(warp.classifiedFamily, "UNKNOWN");
+  assert.equal(warp.definingCoverage, 1);
+  assert.ok(warp.overlappingFullCoverageFamilies.includes("COMPOUND_LAYERED"));
+  assert.equal(warp.familyConflict, "COMPOUND_LAYERED");
+  assert.equal(warp.passed, false);
+
+  const compound = evaluateReferenceFamilyCandidateV1(compoundReference, "COMPOUND_LAYERED");
+  assert.equal(compound.classifiedFamily, "UNKNOWN");
+  assert.equal(compound.definingCoverage, 1);
+  assert.ok(compound.overlappingFullCoverageFamilies.includes("DISPLACEMENT_WARP"));
+  assert.equal(compound.familyConflict, null);
+  assert.equal(compound.passed, true);
+});
+
 test("M6.9 family reference admission rejects interesting windows that miss Velocity DNA", () => {
   const candidate = evaluateReferenceFamilyCandidateV1(evidence({
     motionEnergyPeak: 0.016745071631779636,
@@ -5179,6 +5218,194 @@ test("M6.9 family reference admission refuses render evidence as a benchmark sou
     () => evaluateReferenceFamilyCandidateV1(render, "VELOCITY_TRANSITION"),
     /requires REFERENCE dense evidence/,
   );
+});
+
+test("M6.4/M6.9 Displacement Warp uses proof-gated dynamic Turbulent Displace instead of an un-driven map", () => {
+  const anatomy = deriveEffectAnatomyV1(evidence({
+    distortionPeak: 0.744,
+    motionEnergyPeak: 0.09,
+    recoveryFrames: 3,
+  }), "DISPLACEMENT_WARP");
+  const graph = buildConstructionGraphV1(anatomy);
+  const distortion = graph.nodes.find((node) => node.kind === "DISTORTION");
+
+  assert.ok(distortion);
+  assert.deepEqual(distortion.capabilityCandidates, ["ae.effect.turbulent-displace"]);
+  assert.equal(distortion.parameters.effectSchemaRef, "ae.effect-schema.m6.turbulent-displace.v3");
+  assert.equal(distortion.parameters.eventDynamicDistortion, true);
+  assert.equal(distortion.parameters.eventLocalEffectApplication, "IN_PLACE");
+  assert.equal(distortion.parameters.eventLocalEffectTargetScope, "PRIMARY");
+  assert.equal(distortion.parameters.eventLocalEffectRecoveryBounded, true);
+  assert.ok(distortion.parameters.distortionAmount >= 20);
+  assert.ok(distortion.parameters.eventAmountPulseScale >= 1.2);
+
+  const compilation = compileConstructionGraphV1(graph, ALL_CAPABILITIES);
+  assert.equal(compilation.definingCoverageComplete, true);
+  assert.deepEqual(compilation.capabilityGaps, []);
+  assert.ok(compilation.recipe);
+  const distortionRecipeNode = compilation.recipe.nodes.find((node) => node.nodeId === distortion.nodeId);
+  assert.equal(distortionRecipeNode?.kind, "EFFECT_STACK");
+
+  const blocked = inspectRecipeCompilerSupportV1(compilation.recipe);
+  assert.ok(blocked.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+  const proofContext = {
+    compId: "comp",
+    eventTimesMs: { transition: 500 },
+    roleBindings: [{ role: "hero", layerIds: ["hero"] }],
+    parameterValues: {},
+    proofOnlyEffectSchemaRefs: ["ae.effect-schema.m6.turbulent-displace.v3"],
+  };
+  const support = inspectRecipeCompilerSupportV1(compilation.recipe, proofContext);
+  assert.ok(!support.nativeAeBlockedPrimitiveKinds.includes("EFFECT_STACK"));
+
+  const project = {
+    schema: "editflow.virtual-ae.project.v1",
+    activeCompId: "comp",
+    compositions: [{
+      compId: "comp",
+      name: "Displacement proof",
+      width: 640,
+      height: 360,
+      durationMs: 1000,
+      frameRate: 30,
+      layers: [{
+        layerId: "hero",
+        name: "Hero",
+        kind: "PRECOMP",
+        sourceRef: "source",
+        inMs: 0,
+        outMs: 1000,
+        properties: [],
+        effects: [],
+        masks: [],
+      }],
+    }],
+  };
+  const native = compileConstructionThroughNativeAeV1(
+    compilation,
+    project,
+    proofContext,
+    {
+      planId: "m6-displacement-warp-native-plan",
+      observedState: {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      },
+      curveBindingMode: "LIVE_ADAPTIVE",
+      creativeObjective: "Materialize admitted Displacement Warp behavior.",
+      recipeRefs: [graph.graphId],
+    },
+  );
+  assert.equal(native.compiled, true);
+  assert.deepEqual(native.issues, []);
+  assert.ok(native.plan);
+  const payloads = native.plan.operations.map((operation) => operation.input.payload);
+  assert.ok(payloads.some((payload) => payload.matchName === "ADBE Turbulent Displace"));
+  assert.ok(!payloads.some((payload) => payload.matchName === "ADBE Displacement Map"));
+  assert.ok(native.plan.operations.some((operation) =>
+    operation.input.command === "property.set_expression"
+    && JSON.stringify(operation.input.payload.propertyPath).includes("ADBE Turbulent Displace-0002")));
+});
+
+test("M6.7/M6.9 admitted Displacement Warp exposes every compiler-consumed distortion actuator before synthesis escalation", () => {
+  const reference = evidence({
+    distortionPeak: 0.744,
+    motionEnergyPeak: 0.09,
+    recoveryFrames: 3,
+  });
+  const render = evidence({
+    distortionPeak: 0.094,
+    motionEnergyPeak: 0.09,
+    recoveryFrames: 3,
+  });
+  render.sourceKind = "RENDER";
+
+  const anatomy = deriveEffectAnatomyV1(reference, "DISPLACEMENT_WARP");
+  const graph = buildConstructionGraphV1(anatomy);
+  const distortion = graph.nodes.find((node) => node.kind === "DISTORTION");
+  assert.ok(distortion);
+  assert.equal(distortion.parameters.effectSchemaRef, "ae.effect-schema.m6.turbulent-displace.v3");
+  assert.equal(distortion.parameters.synthesisStrategy, undefined,
+    "known-family admission must not require a synthesized-hybrid marker to expose native Turbulent Displace controls");
+
+  const comparison = compareSemanticVisualFidelityV1({
+    reference,
+    render,
+    dna: anatomy.dna,
+    alignment: "SEMANTIC",
+  });
+  assert.deepEqual(
+    comparison.metrics.filter((metric) => !metric.passed && metric.defining)
+      .map((metric) => metric.invariantId),
+    ["warp.distortion"],
+  );
+
+  const plan = deriveConstructionActuationPlanV1({ graph, comparison });
+  assert.deepEqual(
+    plan.instructions.filter((instruction) => instruction.defining).map((instruction) => instruction.control),
+    ["DISTORTION_STRENGTH", "DISTORTION_SIZE", "DISTORTION_COMPLEXITY", "DISTORTION_EVOLUTION"],
+  );
+
+  const application = applyConstructionActuationPlanV1(graph, plan);
+  assert.deepEqual(application.unsupportedInstructionIds, []);
+  assert.deepEqual(
+    [...application.appliedInstructionIds].sort(),
+    [
+      "actuate:warp.distortion:distortion_complexity",
+      "actuate:warp.distortion:distortion_evolution",
+      "actuate:warp.distortion:distortion_size",
+      "actuate:warp.distortion:distortion_strength",
+    ],
+  );
+  const actuated = application.graph.nodes.find((node) => node.nodeId === distortion.nodeId);
+  assert.ok(actuated);
+  assert.ok(actuated.parameters.distortionStrengthScale > 1);
+  assert.ok(actuated.parameters.distortionSizeScale > 1);
+  assert.ok(actuated.parameters.distortionComplexityScale > 1);
+  assert.ok(actuated.parameters.distortionEvolutionScale > 1);
+
+  const compilation = compileConstructionGraphV1(application.graph, ALL_CAPABILITIES);
+  assert.equal(compilation.definingCoverageComplete, true);
+  assert.deepEqual(compilation.capabilityGaps, []);
+});
+
+test("M6.7/M6.8 known-family construction can synthesize a stronger alternate after scalar correction exhausts", () => {
+  const anatomy = deriveEffectAnatomyV1(evidence({
+    distortionPeak: 0.744,
+    motionEnergyPeak: 0.09,
+    recoveryFrames: 3,
+  }), "DISPLACEMENT_WARP");
+  const baseGraph = buildConstructionGraphV1(anatomy);
+  const synthesis = synthesizeConstructionAlternativesV1({
+    baseGraph,
+    availableCapabilities: ALL_CAPABILITIES,
+    provenance: ["known-family-test"],
+  });
+
+  assert.equal(synthesis.status, "READY_FOR_PROOF");
+  assert.ok(!synthesis.candidates.some((candidate) =>
+    candidate.strategy === "TURBULENT_DISPLACE_HYBRID"),
+  "A retained dynamic v3 warp must not be downgraded to the static v2 replacement.");
+  const compound = synthesis.candidates.find((candidate) =>
+    candidate.strategy === "COMPOUND_NATIVE_HYBRID");
+  assert.ok(compound);
+  const compoundWarp = compound.graph.nodes.find((node) =>
+    node.parameters.synthesisStrategy === "TURBULENT_DISPLACE_HYBRID"
+    && node.requiredInvariantIds.includes("warp.distortion"));
+  assert.ok(compoundWarp);
+  assert.equal(compoundWarp.parameters.effectSchemaRef, "ae.effect-schema.m6.turbulent-displace.v2");
+  assert.equal(compoundWarp.parameters.eventDynamicDistortion, undefined);
+  assert.equal(compoundWarp.parameters.eventLocalEffectApplication, undefined);
+  assert.equal(compoundWarp.parameters.eventLocalEffectTargetScope, undefined);
+
+  const escalation = selectSynthesisEscalationCandidateV1({
+    synthesis,
+    currentStrategy: "KNOWN_FAMILY_DISPLACEMENT_WARP",
+    requiredInvariantIds: ["warp.distortion"],
+  });
+  assert.equal(escalation?.strategy, "COMPOUND_NATIVE_HYBRID");
 });
 
 test("M6.4/M6.9 Zoom Impact keeps scale magnitude, rate, and recovery on one native-realizable transform", () => {
@@ -5390,6 +5617,16 @@ test("M6.7/M6.9 known-family correction rejects inadmissible sources before live
     "utf8",
   );
   assert.match(source, /evaluateReferenceFamilyCandidateV1\(reference, REQUESTED_FAMILY\)/);
+  assert.match(source, /let controlRepoRoot = ROOT;/);
+  assert.match(source, /controlRepoRoot = path\.resolve\(health\.repoRoot\)/);
+  assert.match(source, /path\.join\(controlRepoRoot, "\.tmp", "m6-generic-native-corr01-readback\.txt"\)/);
+  assert.match(source, /state\.graph\.graphId === synthesisTopologyGraphId/);
+  assert.match(source, /retainedNodesById\.get\(node\.nodeId\)/);
+  assert.match(source, /usesTurbulentDisplaceSchema/);
+  assert.match(source, /effectSchemaRef\.startsWith\("ae\.effect-schema\.m6\.turbulent-displace\."\)/);
+  assert.match(source, /control === "DISTORTION_SIZE"\) return "distortionSizeScale"/);
+  assert.match(source, /control === "DISTORTION_COMPLEXITY"\) return "distortionComplexityScale"/);
+  assert.match(source, /control === "DISTORTION_EVOLUTION"\) return "distortionEvolutionScale"/);
   assert.ok(
     source.indexOf("if (!sourceAdmission.passed)") < source.indexOf('await request("/healthz")'),
     "Known-family correction must fail source admission before contacting live AE.",

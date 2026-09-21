@@ -60,7 +60,9 @@ const templateFor = (
   }
   if (invariant.metric === "distortionPeak") {
     return { kind: "DISTORTION", dimension: "DISTORTION",
-      capabilities: ["ae.effect.displacement-map"] };
+      capabilities: family === "DISPLACEMENT_WARP"
+        ? ["ae.effect.turbulent-displace"]
+        : ["ae.effect.displacement-map"] };
   }
   if (invariant.metric === "blurPeak"
     || invariant.metric === "blurHalfPeakAttackMs"
@@ -176,6 +178,26 @@ export const buildConstructionGraphV1 = (anatomy: EffectAnatomyV1): Construction
     for (const item of group.invariants) {
       parameters[item.metric] = parameterValue(item, anatomy.observedMetrics[item.metric]);
       coverage[item.invariantId] = [nodeId];
+    }
+    if (anatomy.family === "DISPLACEMENT_WARP" && group.template.kind === "DISTORTION") {
+      const distortionPeak = parameters.distortionPeak;
+      if (typeof distortionPeak === "number" && Number.isFinite(distortionPeak) && distortionPeak > 0) {
+        const distortion = Math.max(0, Math.min(1, distortionPeak));
+        parameters.effectSchemaRef = "ae.effect-schema.m6.turbulent-displace.v3";
+        parameters.distortionAmount = Math.max(20, Math.min(100, 20 + distortion * 120));
+        parameters.distortionSize = Math.max(10, Math.min(48, 10 + distortion * 35));
+        parameters.distortionComplexity = Math.max(1.5, Math.min(4, 1.5 + distortion * 3));
+        parameters.distortionEvolution = Math.max(45, Math.min(270, 45 + distortion * 225));
+        parameters.eventLocalEffect = true;
+        parameters.eventDynamicDistortion = true;
+        parameters.eventLocalEffectApplication = "IN_PLACE";
+        parameters.eventLocalEffectTargetScope = "PRIMARY";
+        parameters.eventLocalEffectRecoveryBounded = true;
+        parameters.eventAmountPulseScale = Math.max(1.2, Math.min(2.25, 1.15 + distortion * 1.8));
+        parameters.eventEvolutionSweepDegrees = Math.max(180, Math.min(720, 180 + distortion * 720));
+        parameters.eventEvolutionSweepScale = 1;
+        parameters.eventEvolutionSharpnessScale = 1;
+      }
     }
     if (group.template.kind === "OPTICAL_TREATMENT") {
       const displacementDirection = anatomy.observedMetrics["displacementDirection"];

@@ -7,6 +7,7 @@ import type {
 import {
   classifyEffectFamilyV1,
   deriveEffectAnatomyV1,
+  knownEffectFamiliesV1,
 } from "./anatomy.js";
 
 export interface ReferenceFamilyInvariantCheckV1 {
@@ -28,6 +29,10 @@ export interface ReferenceFamilyCandidateV1 {
   readonly analyzerFingerprint: string;
   readonly requestedFamily: Exclude<EffectFamilyV1, "UNKNOWN">;
   readonly classifiedFamily: EffectFamilyV1;
+  /** A strong, different known family classification makes this source ambiguous for canonical admission. */
+  readonly familyConflict: EffectFamilyV1 | null;
+  /** Other canonical contracts simultaneously satisfied when the primary classifier is UNKNOWN. */
+  readonly overlappingFullCoverageFamilies: readonly Exclude<EffectFamilyV1, "UNKNOWN">[];
   readonly passed: boolean;
   readonly definingCoverage: number;
   readonly weightedContractScore: number;
@@ -147,13 +152,16 @@ const evaluateInvariant = (
   };
 };
 
-export const evaluateReferenceFamilyCandidateV1 = (
+interface FamilyContractEvaluationV1 {
+  readonly checks: readonly ReferenceFamilyInvariantCheckV1[];
+  readonly definingCoverage: number;
+  readonly weightedContractScore: number;
+}
+
+const evaluateFamilyContractV1 = (
   evidence: DenseEffectEvidenceV1,
   family: Exclude<EffectFamilyV1, "UNKNOWN">,
-): ReferenceFamilyCandidateV1 => {
-  if (evidence.sourceKind !== "REFERENCE") {
-    throw new TypeError("Reference-family admission requires REFERENCE dense evidence.");
-  }
+): FamilyContractEvaluationV1 => {
   const anatomy = deriveEffectAnatomyV1(evidence, family);
   const checks = anatomy.dna.definingInvariants.map((invariant) =>
     evaluateInvariant(invariant, anatomy.observedMetrics[invariant.metric] ?? null));
@@ -167,7 +175,46 @@ export const evaluateReferenceFamilyCandidateV1 = (
     ? 0
     : anatomy.dna.definingInvariants.reduce((sum, invariant, index) =>
       sum + ((checks[index]?.score ?? 0) * invariant.weight), 0) / totalWeight;
-  const failures = checks.filter((check) => !check.passed).map((check) => check.diagnosis);
+  return { checks, definingCoverage, weightedContractScore };
+};
+
+export const evaluateReferenceFamilyCandidateV1 = (
+  evidence: DenseEffectEvidenceV1,
+  family: Exclude<EffectFamilyV1, "UNKNOWN">,
+): ReferenceFamilyCandidateV1 => {
+  if (evidence.sourceKind !== "REFERENCE") {
+    throw new TypeError("Reference-family admission requires REFERENCE dense evidence.");
+  }
+  const requested = evaluateFamilyContractV1(evidence, family);
+  const { checks, definingCoverage, weightedContractScore } = requested;
+  const classifiedFamily = classifyEffectFamilyV1(evidence);
+  const overlappingFullCoverageFamilies = classifiedFamily === "UNKNOWN"
+    && definingCoverage === 1
+    ? knownEffectFamiliesV1().filter((otherFamily) =>
+      otherFamily !== family
+      && evaluateFamilyContractV1(evidence, otherFamily).definingCoverage === 1)
+    : [];
+  const familyConflict = classifiedFamily !== "UNKNOWN" && classifiedFamily !== family
+    ? classifiedFamily
+    : family !== "COMPOUND_LAYERED" && overlappingFullCoverageFamilies.length > 0
+      ? overlappingFullCoverageFamilies[0] ?? null
+      : null;
+  const invariantFailures = checks.filter((check) => !check.passed).map((check) => check.diagnosis);
+  const conflictFailure = familyConflict === null
+    ? []
+    : classifiedFamily !== "UNKNOWN" && classifiedFamily !== family
+      ? [
+        "Canonical family admission is ambiguous: requested " + family
+          + " but dense evidence is independently classified as " + classifiedFamily
+          + ". Use a cleaner source window or admit it under its dominant family before benchmark promotion.",
+      ]
+      : [
+        "Canonical family admission is ambiguous: requested " + family
+          + " but the same UNKNOWN-classified source fully satisfies "
+          + overlappingFullCoverageFamilies.join(", ")
+          + ". Use a family-distinct source window or admit the compound construction instead.",
+      ];
+  const failures = [...invariantFailures, ...conflictFailure];
 
   return {
     schema: "editflow.reference-family-candidate.v1",
@@ -175,8 +222,10 @@ export const evaluateReferenceFamilyCandidateV1 = (
     evidenceContentKey: evidence.contentKey,
     analyzerFingerprint: evidence.analyzerFingerprint,
     requestedFamily: family,
-    classifiedFamily: classifyEffectFamilyV1(evidence),
-    passed: definingCoverage === 1,
+    classifiedFamily,
+    familyConflict,
+    overlappingFullCoverageFamilies,
+    passed: definingCoverage === 1 && familyConflict === null,
     definingCoverage,
     weightedContractScore,
     checks,

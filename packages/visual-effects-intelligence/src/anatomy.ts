@@ -153,6 +153,11 @@ const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, read
   ],
 };
 
+export const knownEffectFamiliesV1 = (): readonly Exclude<EffectFamilyV1, "UNKNOWN">[] =>
+  Object.freeze(
+    Object.keys(FAMILY_CONTRACTS) as Exclude<EffectFamilyV1, "UNKNOWN">[],
+  );
+
 const maxFrame = (evidence: DenseEffectEvidenceV1, key: keyof DenseEffectEvidenceV1["frames"][number]): number => {
   const values = evidence.frames.map((frame) => frame[key]).filter((value): value is number => typeof value === "number");
   return values.length === 0 ? 0 : Math.max(...values);
