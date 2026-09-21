@@ -1,0 +1,86 @@
+{
+  "schema": "editflow.m6.degraded-control-proof.v1",
+  "generatedAt": "2026-09-21T10:51:20.587Z",
+  "caseId": "m6:zoom_impact:canonical",
+  "family": "ZOOM_IMPACT",
+  "result": "REJECTED",
+  "reference": {
+    "ref": "proofs/m6/benchmark/references/zoom_impact-canonical.json",
+    "contentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65"
+  },
+  "render": {
+    "ref": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-control-v18-evidence.json",
+    "contentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+  },
+  "comparison": {
+    "schema": "editflow.semantic-fidelity-comparison.v1",
+    "family": "ZOOM_IMPACT",
+    "alignment": "SEMANTIC",
+    "metrics": [
+      {
+        "invariantId": "zoom.scale",
+        "dimension": "SPATIAL",
+        "metric": "scaleRange",
+        "referenceValue": 0.5967324422589235,
+        "renderValue": 0.00014740188048734115,
+        "normalizedError": 0.7494791974668502,
+        "passed": false,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "scaleRange is under-driven: reference 0.597, render 0.000. A material but reference-bounded scale excursion defines the zoom impact.",
+        "comparisonBasis": "ABSOLUTE"
+      },
+      {
+        "invariantId": "zoom.motion",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "scaleVelocityPeakPerSecond",
+        "referenceValue": 1.1304744071430557,
+        "renderValue": 0.0038716353654477667,
+        "normalizedError": 0.6638875551775529,
+        "passed": false,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "scaleVelocityPeakPerSecond is under-driven: reference 1.130, render 0.004. The zoom must carry a reference-faithful scale-rate impulse rather than an arbitrary snap.",
+        "comparisonBasis": "ABSOLUTE"
+      },
+      {
+        "invariantId": "zoom.recovery",
+        "dimension": "MOTION_STRUCTURE",
+        "metric": "scaleVelocityRecoveryRatio",
+        "referenceValue": 0.0064829475338057255,
+        "renderValue": 0.01761316351342372,
+        "normalizedError": 0.9734759902441048,
+        "passed": false,
+        "defining": true,
+        "weight": 1,
+        "diagnosis": "scaleVelocityRecoveryRatio is over-driven: reference 0.006, render 0.018. Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery.",
+        "comparisonBasis": "ABSOLUTE"
+      }
+    ],
+    "definingCoverage": 0,
+    "weightedFidelity": 0.20438575237049736,
+    "passed": false,
+    "diagnoses": [
+      "scaleRange is under-driven: reference 0.597, render 0.000. A material but reference-bounded scale excursion defines the zoom impact.",
+      "scaleVelocityPeakPerSecond is under-driven: reference 1.130, render 0.004. The zoom must carry a reference-faithful scale-rate impulse rather than an arbitrary snap.",
+      "scaleVelocityRecoveryRatio is over-driven: reference 0.006, render 0.018. Scale velocity must visibly settle after its peak; unrelated scene motion cannot satisfy zoom recovery."
+    ],
+    "referenceEvidenceKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+    "renderEvidenceKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14"
+  },
+  "gate": {
+    "schema": "editflow.professional-fidelity-gate.v1",
+    "outcome": "CORRECTION_REQUIRED",
+    "certified": false,
+    "missingDefiningInvariantIds": [],
+    "underDrivenInvariantIds": [
+      "zoom.scale",
+      "zoom.motion",
+      "zoom.recovery"
+    ],
+    "weakerSubstitutionDetected": false,
+    "reasons": [
+      "Defining behavior failed rendered comparison: zoom.scale, zoom.motion, zoom.recovery."
+    ]
+  }
+}

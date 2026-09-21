@@ -19,7 +19,7 @@
   },
   "correction": {
     "ref": "scripts/proofs/m6-generic-native-auto-correction-proof.mjs",
-    "sha256": "4451b01bede733c1a87c44eb8e3cf3b9c7556592f4d4c40b32edde117ac9f3d2",
+    "sha256": "1aec2f1a1d7261cefc5f186f05b1e25d84fc8f10035c602ce955b97d1b24bb74",
     "exitCode": 1,
     "expectedFailure": "Reference evidence failed ZOOM_IMPACT family admission:"
   },
@@ -27,8 +27,8 @@
     "hostName": "Adobe After Effects",
     "hostVersion": "25.6.6x4",
     "protocolVersion": "2.7.0",
-    "beforeHostRevision": 11907,
-    "afterHostRevision": 11907,
+    "beforeHostRevision": 13128,
+    "afterHostRevision": 13128,
     "projectFingerprint": "project:sha256:9e97b0726fbb94d6a127c732e7c428c0ba882d8afe94071d9136bceaca92add0",
     "beforeMutationLeaseHeld": false,
     "afterMutationLeaseHeld": false

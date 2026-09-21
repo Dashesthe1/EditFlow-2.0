@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +42,16 @@ const SEED = path.resolve(ROOT, cliValue(
 ));
 const SEED_STRATEGY = cliValue("--seed-strategy", "").trim();
 const OUT = path.join(ROOT, "proofs", "diagnostics", STEM + ".json");
+const proofDurationRaw = Number(cliValue("--proof-duration-ms", "1000"));
+const PROOF_DURATION_MS = Number.isFinite(proofDurationRaw)
+  ? Math.max(500, Math.min(5000, proofDurationRaw))
+  : 1000;
+const proofEventRaw = Number(cliValue("--proof-event-ms", String(PROOF_DURATION_MS / 2)));
+const PROOF_EVENT_MS = Number.isFinite(proofEventRaw)
+  ? Math.max(0, Math.min(PROOF_DURATION_MS, proofEventRaw))
+  : PROOF_DURATION_MS / 2;
+const PROOF_DURATION_SECONDS = PROOF_DURATION_MS / 1000;
+const PROOF_WINDOW_CONFIG = path.join(os.tmpdir(), "M6_generic_native_corr01_window.json");
 let controlRepoRoot = ROOT;
 const WINDOWS = (name) => path.join(controlRepoRoot, "scripts", "windows", name);
 const MAX_CORRECTION_OPERATIONS = 96;
@@ -135,17 +145,17 @@ const project = {
   activeCompId: "m6-proof-corr01-comp",
   compositions: [{
     compId: "m6-proof-corr01-comp", name: "__EF2_M6_GENERIC_NATIVE_CORR01_PROOF__",
-    width: 640, height: 360, durationMs: 1000, frameRate: 30,
+    width: 640, height: 360, durationMs: PROOF_DURATION_MS, frameRate: 30,
     layers: [{
       layerId: "m6-proof-corr01-hero", name: "M6 Generic Hero", kind: "PRECOMP",
-      sourceRef: "m6-proof-corr01-source-comp", inMs: 0, outMs: 1000,
+      sourceRef: "m6-proof-corr01-source-comp", inMs: 0, outMs: PROOF_DURATION_MS,
       properties: [], effects: [], masks: [],
     }],
   }],
 };
 const context = {
   compId: "m6-proof-corr01-comp",
-  eventTimesMs: { transition: 500 },
+  eventTimesMs: { transition: PROOF_EVENT_MS },
   roleBindings: [{ role: "hero", layerIds: ["m6-proof-corr01-hero"] }],
   parameterValues: {},
 };
@@ -167,6 +177,12 @@ const proofScript = (name) => request("/proof-script", {
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ scriptPath: WINDOWS(name) }),
 });
+const installProofWindowConfig = async () => writeFile(
+  PROOF_WINDOW_CONFIG,
+  JSON.stringify({ durationSeconds: PROOF_DURATION_SECONDS }) + "\n",
+  "utf8",
+);
+const clearProofWindowConfig = async () => rm(PROOF_WINDOW_CONFIG, { force: true });
 const acquireMutationLease = async (iteration) => {
   if (mutationLeaseToken !== null) throw new Error("Mutation lease is already held by this proof process.");
   const lease = await request("/mutation-lease/acquire", {
@@ -205,7 +221,7 @@ const measure = async (video, stem) => {
   const probe = path.join(ROOT, "proofs", "diagnostics", stem + "-probe.json");
   const evidence = path.join(ROOT, "proofs", "diagnostics", stem + "-evidence.json");
   run("py", ["-3.12", "scripts/proofs/m6-dense-video-probe.py",
-    "--video", video, "--start", "0", "--end", "1", "--output", probe,
+    "--video", video, "--start", "0", "--end", String(PROOF_DURATION_SECONDS), "--output", probe,
     "--source-id", stem, "--source-kind", "RENDER", "--analysis-size", "360"]);
   run(process.execPath, ["scripts/proofs/m6-dense-video-evidence.mjs",
     "--probe-json", probe, "--output-evidence", evidence]);
@@ -248,6 +264,7 @@ const executePass = async (graph, iteration) => {
   let cleanupProjectFingerprint = null;
   let passResult = null;
   try {
+    await installProofWindowConfig();
     // Normalize only stale proof-owned state before recording the restoration baseline.
     await proofScript("m6-generic-native-corr01-cleanup.jsx");
     const baseline = await request("/state");
@@ -336,6 +353,7 @@ const executePass = async (graph, iteration) => {
         );
       }
     } finally {
+      await clearProofWindowConfig().catch(() => {});
       await releaseMutationLease().catch(() => {});
     }
   }
@@ -356,6 +374,7 @@ const executeCausalBaseline = async () => {
   let cleanupProjectFingerprint = null;
   let result = null;
   try {
+    await installProofWindowConfig();
     await proofScript("m6-generic-native-corr01-cleanup.jsx");
     const baselineState = await request("/state");
     baselineProjectFingerprint = baselineState.state.observed.projectFingerprint;
@@ -379,6 +398,7 @@ const executeCausalBaseline = async () => {
         );
       }
     } finally {
+      await clearProofWindowConfig().catch(() => {});
       await releaseMutationLease().catch(() => {});
     }
   }
@@ -756,6 +776,7 @@ const checkpointPasses = async (checkpointStatus) => {
   await writeFile(OUT, JSON.stringify({
     schema: "editflow.m6.generic-native-auto-correction-proof.v1",
     generatedAt: new Date().toISOString(),
+    proofWindow: { durationMs: PROOF_DURATION_MS, eventMs: PROOF_EVENT_MS },
     sourceEvidence: path.relative(ROOT, REF).replaceAll("\\", "/"),
     requestedFamily: REQUESTED_FAMILY,
     sourceAdmission,
@@ -781,6 +802,11 @@ if (resumeProofArg.length > 0) {
   }
   if (typeof previous.seedStrategy === "string" && previous.seedStrategy !== seedCandidate.strategy) {
     throw new Error("Resume proof does not match the requested seed synthesis strategy.");
+  }
+  const previousProofWindow = previous.proofWindow ?? { durationMs: 1000, eventMs: 500 };
+  if (previousProofWindow.durationMs !== PROOF_DURATION_MS
+    || previousProofWindow.eventMs !== PROOF_EVENT_MS) {
+    throw new Error("Resume proof does not match the requested local proof window.");
   }
   let loadedAttempts = 0;
   for (const previousPass of previous.passes) {
@@ -1367,6 +1393,7 @@ if (!gate.certified && status === "BOUNDED_SEARCH") status = "ITERATION_LIMIT";
 const result = {
   schema: "editflow.m6.generic-native-auto-correction-proof.v1",
   generatedAt: new Date().toISOString(),
+  proofWindow: { durationMs: PROOF_DURATION_MS, eventMs: PROOF_EVENT_MS },
   sourceEvidence: path.relative(ROOT, REF).replaceAll("\\", "/"),
   requestedFamily: REQUESTED_FAMILY,
   sourceAdmission,

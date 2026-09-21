@@ -35,6 +35,23 @@ const ZOOM_PRE_AE_REJECTION = path.join(
   "diagnostics",
   "m6-zoom-impact-source-admission-live-boundary-v2.json",
 );
+const ZOOM_FIDELITY_SOURCE_ADMISSION = path.join(
+  ROOT, "proofs", "diagnostics",
+  "m6-zoom-impact-source-candidate-smooth-zoom-z63-v1-admission.json",
+);
+const ZOOM_FIDELITY_CORRECTION = path.join(
+  ROOT, "proofs", "diagnostics",
+  "m6-zoom-impact-smooth-zoom-z63-auto-correction-v2.json",
+);
+const ZOOM_CANONICAL_FIDELITY = path.join(
+  ROOT, "proofs", "diagnostics", "m6-zoom-impact-canonical-fidelity-v1.json",
+);
+const ZOOM_CANONICAL_DEGRADED = path.join(
+  ROOT, "proofs", "diagnostics", "m6-zoom-impact-canonical-degraded-control-v1.json",
+);
+const ZOOM_CANONICAL_AB = path.join(
+  ROOT, "proofs", "diagnostics", "m6-zoom-impact-canonical-direct-ab-v1.png",
+);
 const DISPLACEMENT_SOURCE_ADMISSION = path.join(
   ROOT,
   "proofs",
@@ -280,6 +297,105 @@ if (zoomPreAeRejection.schema !== "editflow.m6.known-family-rejection-live-bound
   throw new Error("M6 zoom source admission lost its live pre-AE rejection boundary proof.");
 }
 const zoomPreAeRejectionRef = relative(ZOOM_PRE_AE_REJECTION);
+
+const zoomFidelitySourceAdmission = await load(ZOOM_FIDELITY_SOURCE_ADMISSION);
+const zoomFidelitySourceEvidencePath = path.resolve(
+  ROOT,
+  zoomFidelitySourceAdmission.sourceEvidence?.ref ?? "",
+);
+const zoomFidelitySourceEvidence = await load(zoomFidelitySourceEvidencePath);
+if (zoomFidelitySourceAdmission.schema !== "editflow.m6.reference-family-admission-proof.v1"
+  || zoomFidelitySourceAdmission.authority !== "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY"
+  || zoomFidelitySourceAdmission.result !== "ADMITTED"
+  || zoomFidelitySourceAdmission.requestedFamily !== zoom.family
+  || zoomFidelitySourceAdmission.candidate?.passed !== true
+  || zoomFidelitySourceAdmission.candidate?.classifiedFamily !== zoom.family
+  || zoomFidelitySourceAdmission.candidate?.definingCoverage !== 1
+  || zoomFidelitySourceAdmission.candidate?.checks?.some((item) => item.passed !== true)
+  || zoomFidelitySourceEvidence.sourceKind !== "REFERENCE"
+  || zoomFidelitySourceEvidence.contentKey !== zoomFidelitySourceAdmission.sourceEvidence?.contentKey
+  || zoomFidelitySourceEvidence.analyzerFingerprint
+    !== zoomFidelitySourceAdmission.sourceEvidence?.analyzerFingerprint
+  || await sha256File(zoomFidelitySourceEvidencePath)
+    !== zoomFidelitySourceAdmission.sourceEvidence?.sha256) {
+  throw new Error("M6 Zoom fidelity source admission lost its retained family-DNA binding.");
+}
+
+const zoomFidelityCorrection = await load(ZOOM_FIDELITY_CORRECTION);
+const zoomFidelityInitialPass = zoomFidelityCorrection.passes?.[0];
+const zoomFidelityFinalPass = zoomFidelityCorrection.passes?.at(-1);
+if (zoomFidelityFinalPass === undefined
+  || typeof zoomFidelityFinalPass.evidence !== "string"
+  || typeof zoomFidelityFinalPass.video !== "string"
+  || typeof zoomFidelityFinalPass.readback !== "string") {
+  throw new Error("M6 Zoom correction proof lacks a retained final AE pass.");
+}
+const zoomFidelitySeedEvidencePath = path.resolve(ROOT, zoomFidelityCorrection.seedEvidence ?? "");
+const zoomFidelityFinalEvidencePath = path.resolve(ROOT, zoomFidelityFinalPass.evidence);
+const zoomFidelityFinalVideoPath = path.resolve(ROOT, zoomFidelityFinalPass.video);
+const zoomFidelityFinalReadbackPath = path.resolve(ROOT, zoomFidelityFinalPass.readback);
+const zoomFidelitySeedEvidence = await load(zoomFidelitySeedEvidencePath);
+const zoomFidelityFinalEvidence = await load(zoomFidelityFinalEvidencePath);
+const zoomAppliedIds = new Set(zoomFidelityFinalPass.appliedInstructionIds ?? []);
+if (zoomFidelityCorrection.schema !== "editflow.m6.generic-native-auto-correction-proof.v1"
+  || zoomFidelityCorrection.requestedFamily !== zoom.family
+  || zoomFidelityCorrection.family !== zoom.family
+  || zoomFidelityCorrection.strategy !== "KNOWN_FAMILY_ZOOM_IMPACT"
+  || zoomFidelityCorrection.status !== "PASSED"
+  || zoomFidelityCorrection.certified !== true
+  || zoomFidelityCorrection.proofWindow?.durationMs !== 1600
+  || zoomFidelityCorrection.proofWindow?.eventMs !== 1150
+  || zoomFidelityCorrection.sourceEvidence !== relative(zoomFidelitySourceEvidencePath)
+  || zoomFidelityCorrection.sourceAdmission?.evidenceContentKey
+    !== zoomFidelitySourceEvidence.contentKey
+  || zoomFidelityCorrection.sourceAdmission?.analyzerFingerprint
+    !== zoomFidelitySourceEvidence.analyzerFingerprint
+  || zoomFidelityCorrection.causalBaselineCleanupRestored !== true
+  || zoomFidelityCorrection.synthesisEscalation !== null
+  || zoomFidelityCorrection.finalDefiningCoverage !== 1
+  || zoomFidelityCorrection.residualInvariantIds?.length !== 0
+  || zoomFidelityInitialPass?.gate?.certified !== false
+  || zoomFidelityFinalPass.source !== "real-ae-local-rerender"
+  || zoomFidelityFinalPass.transactionState !== "COMMITTED"
+  || zoomFidelityFinalPass.cleanupRestored !== true
+  || zoomFidelityFinalPass.gate?.outcome !== "PASS"
+  || zoomFidelityFinalPass.gate?.certified !== true
+  || zoomFidelityFinalPass.gate?.weakerSubstitutionDetected !== false
+  || zoomFidelityFinalPass.definingCoverage !== 1
+  || zoomFidelityFinalPass.weightedFidelity !== zoomFidelityCorrection.finalWeightedFidelity
+  || !zoomAppliedIds.has("actuate:zoom.motion:scale_rate")
+  || (zoomFidelityFinalPass.unsupportedInstructionIds?.length ?? 0) !== 0
+  || zoomFidelityCorrection.passes.slice(1).some((pass) =>
+    pass.transactionState !== "COMMITTED" || pass.cleanupRestored !== true)
+  || zoomFidelitySourceEvidence.analyzerFingerprint !== zoomFidelitySeedEvidence.analyzerFingerprint
+  || zoomFidelitySourceEvidence.analyzerFingerprint !== zoomFidelityFinalEvidence.analyzerFingerprint
+  || zoomFidelitySeedEvidence.contentKey === zoomFidelityFinalEvidence.contentKey) {
+  throw new Error("M6 Zoom real-AE fidelity proof lost its causal, window, or analyzer binding.");
+}
+
+const zoomBenchmarkReferencePath = path.resolve(ROOT, zoom.referenceEvidenceRef);
+const zoomBenchmarkReference = await load(zoomBenchmarkReferencePath);
+const zoomCanonicalFidelity = await load(ZOOM_CANONICAL_FIDELITY);
+const zoomCanonicalDegraded = await load(ZOOM_CANONICAL_DEGRADED);
+if (zoomBenchmarkReference.contentKey !== zoomFidelitySourceEvidence.contentKey
+  || sourceVideoKey(zoomBenchmarkReference) !== sourceVideoKey(zoomFidelitySourceEvidence)
+  || zoomCanonicalFidelity.result !== "CERTIFIED"
+  || zoomCanonicalFidelity.gate?.certified !== true
+  || zoomCanonicalFidelity.reference?.contentKey !== zoomBenchmarkReference.contentKey
+  || zoomCanonicalFidelity.render?.contentKey !== zoomFidelityFinalEvidence.contentKey
+  || zoomCanonicalDegraded.result !== "REJECTED"
+  || zoomCanonicalDegraded.gate?.certified !== false
+  || zoomCanonicalDegraded.reference?.contentKey !== zoomBenchmarkReference.contentKey
+  || zoomCanonicalDegraded.render?.contentKey !== zoomFidelitySeedEvidence.contentKey) {
+  throw new Error("M6 Zoom retained canonical proof pack lost its fidelity/degraded-control binding.");
+}
+const zoomFidelitySourceAdmissionRef = relative(ZOOM_FIDELITY_SOURCE_ADMISSION);
+const zoomFidelityCorrectionRef = relative(ZOOM_FIDELITY_CORRECTION);
+const zoomFidelityFinalEvidenceRef = relative(zoomFidelityFinalEvidencePath);
+const zoomFidelityFinalVideoRef = relative(zoomFidelityFinalVideoPath);
+const zoomFidelityFinalReadbackRef = relative(zoomFidelityFinalReadbackPath);
+const zoomFidelitySeedEvidenceRef = relative(zoomFidelitySeedEvidencePath);
+const zoomCanonicalAbRef = relative(ZOOM_CANONICAL_AB);
 
 const displacementSourceAdmission = await load(DISPLACEMENT_SOURCE_ADMISSION);
 const displacementSourceEvidencePath = path.resolve(
@@ -698,6 +814,21 @@ const manifest = {
     preAeRejectionSha256: await sha256File(ZOOM_PRE_AE_REJECTION),
     preAeRejectionStatus: zoomPreAeRejection.status,
   }, {
+    caseId: zoom.caseId,
+    family: zoom.family,
+    ref: zoomFidelitySourceAdmissionRef,
+    sha256: await sha256File(ZOOM_FIDELITY_SOURCE_ADMISSION),
+    sourceEvidenceRef: zoomFidelitySourceAdmission.sourceEvidence.ref,
+    sourceEvidenceSha256: zoomFidelitySourceAdmission.sourceEvidence.sha256,
+    sourceVideoSha256: zoomFidelitySourceAdmission.sourceEvidence.sourceVideoSha256,
+    result: zoomFidelitySourceAdmission.result,
+    definingCoverage: zoomFidelitySourceAdmission.candidate.definingCoverage,
+    weightedContractScore: zoomFidelitySourceAdmission.candidate.weightedContractScore,
+    failedInvariantIds: [],
+    reasons: [],
+    authority: zoomFidelitySourceAdmission.authority,
+    retainedForReferenceFidelity: true,
+  }, {
     caseId: displacement.caseId,
     family: displacement.family,
     ref: displacementSourceAdmissionRef,
@@ -715,6 +846,67 @@ const manifest = {
     authority: displacementSourceAdmission.authority,
   }],
   referenceFidelityDiagnostics: [{
+    caseId: zoom.caseId,
+    family: zoom.family,
+    authority: "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
+    maturityCeiling: "REFERENCE_FAITHFUL",
+    benchmarkPromoted: false,
+    sourceAdmissionRef: zoomFidelitySourceAdmissionRef,
+    sourceAdmissionSha256: await sha256File(ZOOM_FIDELITY_SOURCE_ADMISSION),
+    referenceEvidenceRef: relative(zoomBenchmarkReferencePath),
+    referenceEvidenceSha256: await sha256File(zoomBenchmarkReferencePath),
+    referenceContentKey: zoomBenchmarkReference.contentKey,
+    sourceVideoSha256: sourceVideoKey(zoomBenchmarkReference),
+    analyzerFingerprint: zoomBenchmarkReference.analyzerFingerprint,
+    correctionProofRef: zoomFidelityCorrectionRef,
+    correctionProofSha256: await sha256File(ZOOM_FIDELITY_CORRECTION),
+    canonicalFidelityRef: relative(ZOOM_CANONICAL_FIDELITY),
+    canonicalFidelitySha256: await sha256File(ZOOM_CANONICAL_FIDELITY),
+    canonicalDegradedRef: relative(ZOOM_CANONICAL_DEGRADED),
+    canonicalDegradedSha256: await sha256File(ZOOM_CANONICAL_DEGRADED),
+    proofWindow: { ...zoomFidelityCorrection.proofWindow },
+    degradedSeed: {
+      evidenceRef: zoomFidelitySeedEvidenceRef,
+      evidenceSha256: await sha256File(zoomFidelitySeedEvidencePath),
+      renderContentKey: zoomFidelitySeedEvidence.contentKey,
+      weightedFidelity: zoomFidelityInitialPass.weightedFidelity,
+      definingCoverage: zoomFidelityInitialPass.definingCoverage,
+      gateCertified: zoomFidelityInitialPass.gate.certified,
+      failedInvariantIds: zoomFidelityInitialPass.gate.underDrivenInvariantIds,
+    },
+    finalRealAe: {
+      evidenceRef: zoomFidelityFinalEvidenceRef,
+      evidenceSha256: await sha256File(zoomFidelityFinalEvidencePath),
+      renderContentKey: zoomFidelityFinalEvidence.contentKey,
+      videoRef: zoomFidelityFinalVideoRef,
+      videoSha256: await sha256File(zoomFidelityFinalVideoPath),
+      readbackRef: zoomFidelityFinalReadbackRef,
+      readbackSha256: await sha256File(zoomFidelityFinalReadbackPath),
+      weightedFidelity: zoomFidelityFinalPass.weightedFidelity,
+      definingCoverage: zoomFidelityFinalPass.definingCoverage,
+      gateOutcome: zoomFidelityFinalPass.gate.outcome,
+      gateCertified: zoomFidelityFinalPass.gate.certified,
+      weakerSubstitutionDetected: zoomFidelityFinalPass.gate.weakerSubstitutionDetected,
+      transactionState: zoomFidelityFinalPass.transactionState,
+      cleanupRestored: zoomFidelityFinalPass.cleanupRestored,
+      appliedDefiningActuationIds: zoomFidelityFinalPass.appliedInstructionIds ?? [],
+      unsupportedInstructionIds: zoomFidelityFinalPass.unsupportedInstructionIds ?? [],
+    },
+    correction: {
+      renderedAttemptCount: zoomFidelityCorrection.renderedAttemptCount,
+      causalBaselineCleanupRestored: zoomFidelityCorrection.causalBaselineCleanupRestored,
+      synthesisEscalation: zoomFidelityCorrection.synthesisEscalation,
+      residualInvariantIds: zoomFidelityCorrection.residualInvariantIds,
+    },
+    transferAxesRequired: [...zoom.transferAxes],
+    directAbRef: zoomCanonicalAbRef,
+    directAbSha256: await sha256File(ZOOM_CANONICAL_AB),
+    missingForBenchmarkPromotion: [
+      "TRANSFER_SUBJECT",
+      "TRANSFER_ASPECT_RATIO",
+      "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
+    ],
+  }, {
     caseId: displacement.caseId,
     family: displacement.family,
     authority: "M6_9_RETAINED_PROFESSIONAL_FIDELITY_VERIFIED",

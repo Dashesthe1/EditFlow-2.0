@@ -1,0 +1,84 @@
+{
+  "schema": "editflow.m6.reference-family-admission-proof.v1",
+  "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
+  "result": "ADMITTED",
+  "requestedFamily": "ZOOM_IMPACT",
+  "sourceEvidence": {
+    "ref": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z63-v1-evidence.json",
+    "sha256": "5d1396e7fb9d1064deecf1180170d77c808f2d83bfe48924e8068e0f7ebca2e4",
+    "contentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+    "sourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom-scan:63.000-64.629",
+    "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+    "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d"
+  },
+  "candidate": {
+    "schema": "editflow.reference-family-candidate.v1",
+    "sourceId": "gdrive:14RepoPcAvvLOmii_JAvHphtz0AH1X6MX:smooth-zoom-scan:63.000-64.629",
+    "evidenceContentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+    "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+    "requestedFamily": "ZOOM_IMPACT",
+    "classifiedFamily": "ZOOM_IMPACT",
+    "familyConflict": null,
+    "overlappingFullCoverageFamilies": [],
+    "passed": true,
+    "definingCoverage": 1,
+    "weightedContractScore": 1,
+    "checks": [
+      {
+        "invariantId": "zoom.scale",
+        "metric": "scaleRange",
+        "comparator": "RANGE",
+        "target": [
+          0.08,
+          0.8
+        ],
+        "tolerance": 0.03,
+        "observed": 0.5967324422589235,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleRange satisfies family admission (range 0.0500..0.8300)."
+      },
+      {
+        "invariantId": "zoom.motion",
+        "metric": "scaleVelocityPeakPerSecond",
+        "comparator": "RANGE",
+        "target": [
+          0.25,
+          8
+        ],
+        "tolerance": 0.15,
+        "observed": 1.1304744071430557,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleVelocityPeakPerSecond satisfies family admission (range 0.1000..8.1500)."
+      },
+      {
+        "invariantId": "zoom.recovery",
+        "metric": "scaleVelocityRecoveryRatio",
+        "comparator": "MAX",
+        "target": 0.35,
+        "tolerance": 0.05,
+        "observed": 0.0064829475338057255,
+        "passed": true,
+        "score": 1,
+        "diagnosis": "scaleVelocityRecoveryRatio satisfies family admission (maximum 0.4000)."
+      }
+    ],
+    "failures": [],
+    "evidenceRefs": [
+      "video:sha256:9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "probe-json:sha256:e1b3ea72ab8d47b9ce665404c57fd1f4d8818b64a23e32d756aedca119045014",
+      "probe-algorithm:editflow.m6.dense-video-probe.v18",
+      "probe-analyzer:sha256:faf510f45c1912e4218f67274ff842fd7f7d3d4500b1ac15f670237b50bd4244",
+      "measurement-system:sha256:2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+      "algorithm:opencv-farneback-affine-flow-residual-motion-comp-edge-autocorrelation"
+    ]
+  },
+  "noOverclaim": "Admission means the reference window satisfies family-defining DNA and may enter reconstruction; it is not a fidelity pass.",
+  "proofSources": {
+    "evaluator": "packages/visual-effects-intelligence/src/reference-admission.ts",
+    "evaluatorSha256": "9d0c108479700367e3cb82c5e557f033cdac501ec8b9d9da914dc10c590b28fe",
+    "generator": "scripts/proofs/m6-reference-family-admission.mjs",
+    "generatorSha256": "96c88d0def83e5639b1ce7cf57bc8cd03adc52c0c3474bcf926d0511bffc47ca"
+  }
+}

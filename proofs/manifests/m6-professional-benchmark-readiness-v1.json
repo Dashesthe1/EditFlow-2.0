@@ -359,8 +359,24 @@
       ],
       "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
       "preAeRejectionRef": "proofs/diagnostics/m6-zoom-impact-source-admission-live-boundary-v2.json",
-      "preAeRejectionSha256": "48997b2cb28b742eea856900c481ab3091731f09bfae46076f99aafd12e5811c",
+      "preAeRejectionSha256": "55c7489428511c0792422f536c80583b16c384574d5e45b62bdd1a76936c8b4c",
       "preAeRejectionStatus": "PASS"
+    },
+    {
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "ref": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z63-v1-admission.json",
+      "sha256": "0a6e339721f58a48e2e7360f68a97107240b570e2b40e11c2c30e4dd8f9f359d",
+      "sourceEvidenceRef": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z63-v1-evidence.json",
+      "sourceEvidenceSha256": "5d1396e7fb9d1064deecf1180170d77c808f2d83bfe48924e8068e0f7ebca2e4",
+      "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "result": "ADMITTED",
+      "definingCoverage": 1,
+      "weightedContractScore": 1,
+      "failedInvariantIds": [],
+      "reasons": [],
+      "authority": "SOURCE_ADMISSION_ONLY_NOT_PROFESSIONAL_FIDELITY",
+      "retainedForReferenceFidelity": true
     },
     {
       "caseId": "m6:displacement_warp:canonical",
@@ -379,6 +395,80 @@
     }
   ],
   "referenceFidelityDiagnostics": [
+    {
+      "caseId": "m6:zoom_impact:canonical",
+      "family": "ZOOM_IMPACT",
+      "authority": "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED",
+      "maturityCeiling": "REFERENCE_FAITHFUL",
+      "benchmarkPromoted": false,
+      "sourceAdmissionRef": "proofs/diagnostics/m6-zoom-impact-source-candidate-smooth-zoom-z63-v1-admission.json",
+      "sourceAdmissionSha256": "0a6e339721f58a48e2e7360f68a97107240b570e2b40e11c2c30e4dd8f9f359d",
+      "referenceEvidenceRef": "proofs/m6/benchmark/references/zoom_impact-canonical.json",
+      "referenceEvidenceSha256": "5d1396e7fb9d1064deecf1180170d77c808f2d83bfe48924e8068e0f7ebca2e4",
+      "referenceContentKey": "16cf980b44ba31f6d25cb476f0d05f3458d709b9f9fff3cf0d4ed4b2af963e65",
+      "sourceVideoSha256": "9b95c80e16ed800f83ed8c4666e6db82f2f4fd614b7b36311c35751174c3fd6d",
+      "analyzerFingerprint": "2ac6edf4d08e2da25aac1739dcd823b7b0c3346dfab72e66face05edcd454207",
+      "correctionProofRef": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2.json",
+      "correctionProofSha256": "41693d2d946f9120d9e3178dc0ce64bdb68271f43225b90f6c16916f9e0e276d",
+      "canonicalFidelityRef": "proofs/diagnostics/m6-zoom-impact-canonical-fidelity-v1.json",
+      "canonicalFidelitySha256": "a309fc785afedaac0a0f4ee0e31d2e4777850af7be34282559ea463eb0236e38",
+      "canonicalDegradedRef": "proofs/diagnostics/m6-zoom-impact-canonical-degraded-control-v1.json",
+      "canonicalDegradedSha256": "c0d3ef3a861d1d3447982bd1621b92edc284ad218b20accf35d17a9aded70f20",
+      "proofWindow": {
+        "durationMs": 1600,
+        "eventMs": 1150
+      },
+      "degradedSeed": {
+        "evidenceRef": "proofs/diagnostics/m6-displacement-warp-smooth-zoom-z19-control-v18-evidence.json",
+        "evidenceSha256": "435d1fa9585a0908db3f8af3d9d0c690f493c5be2267093b2e70992191cd0e12",
+        "renderContentKey": "38230c7a06dd46c9a9e3892a34cf83a7c83cab3666ca3fbc1218a5a11f974b14",
+        "weightedFidelity": 0.20438575237049736,
+        "definingCoverage": 0,
+        "gateCertified": false,
+        "failedInvariantIds": [
+          "zoom.scale",
+          "zoom.motion",
+          "zoom.recovery"
+        ]
+      },
+      "finalRealAe": {
+        "evidenceRef": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2-pass02-evidence.json",
+        "evidenceSha256": "2cac4b0221cc053b1ba6aa4c44520848101583ec9da1f2f190452879a912c6e5",
+        "renderContentKey": "c2f3da7791a528dd5b57ed821bdeb4af430988156b33b19f62d53f7308b2c307",
+        "videoRef": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2-pass02.mp4",
+        "videoSha256": "7fc9d3ea833e97ebd743ebae7ce37fe128d863fa2b21fc027d77040104f21f14",
+        "readbackRef": "proofs/diagnostics/m6-zoom-impact-smooth-zoom-z63-auto-correction-v2-pass02-readback.txt",
+        "readbackSha256": "62c5324d2af4ee966571479a398fbfebc69c6ab8a33df85118f04145bc3dd7c4",
+        "weightedFidelity": 1,
+        "definingCoverage": 1,
+        "gateOutcome": "PASS",
+        "gateCertified": true,
+        "weakerSubstitutionDetected": false,
+        "transactionState": "COMMITTED",
+        "cleanupRestored": true,
+        "appliedDefiningActuationIds": [
+          "actuate:zoom.motion:scale_rate"
+        ],
+        "unsupportedInstructionIds": []
+      },
+      "correction": {
+        "renderedAttemptCount": 2,
+        "causalBaselineCleanupRestored": true,
+        "synthesisEscalation": null,
+        "residualInvariantIds": []
+      },
+      "transferAxesRequired": [
+        "subject",
+        "aspect-ratio"
+      ],
+      "directAbRef": "proofs/diagnostics/m6-zoom-impact-canonical-direct-ab-v1.png",
+      "directAbSha256": "175288b84f16832d233ba2620ac5cd43408042dd0592de24650dbf4413405701",
+      "missingForBenchmarkPromotion": [
+        "TRANSFER_SUBJECT",
+        "TRANSFER_ASPECT_RATIO",
+        "SECOND_INDEPENDENT_PROFESSIONAL_CASE"
+      ]
+    },
     {
       "caseId": "m6:displacement_warp:canonical",
       "family": "DISPLACEMENT_WARP",
@@ -451,7 +541,7 @@
     "evaluator": "packages/visual-effects-intelligence/src/benchmark.ts",
     "evaluatorSha256": "7410bf2589e413758df84c42accff73523d4c4cdf40eb2dee2393170b055031a",
     "generator": "scripts/proofs/m6-professional-benchmark-inventory.mjs",
-    "generatorSha256": "e8298d8afd4eb09db7c2849e2f8e6fa466b5250aa3bc5a193848baaa9eac6eb8"
+    "generatorSha256": "5695b4778920857d915b7ecee7312e3061867a4cce7fba8eff4a12ebecf0d0f0"
   },
   "nextRequiredForShutterCanonical": [],
   "noOverclaim": "M6.9 is not certified until all 24 canonical/held-out cases satisfy retained artifact, transfer, degraded-control, and maturity gates."

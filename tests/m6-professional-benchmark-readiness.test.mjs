@@ -98,6 +98,60 @@ test("M6.9 Zoom source admission rejects scale drift without promoting benchmark
   assert.equal(manifest.casesWithRetainedEvidence, 2);
 });
 
+test("M6.9 Zoom retains a canonical Reference-Faithful proof without transfer overclaim", async () => {
+  const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
+  const admission = manifest.sourceAdmissionDiagnostics.find((item) =>
+    item.caseId === "m6:zoom_impact:canonical" && item.result === "ADMITTED"
+  );
+  assert.equal(admission?.family, "ZOOM_IMPACT");
+  assert.equal(admission?.definingCoverage, 1);
+  assert.equal(admission?.weightedContractScore, 1);
+  assert.deepEqual(admission?.failedInvariantIds, []);
+  assert.equal(admission?.sha256, await sha256(admission.ref));
+  assert.equal(admission?.sourceEvidenceSha256, await sha256(admission.sourceEvidenceRef));
+
+  const diagnostic = manifest.referenceFidelityDiagnostics.find((item) =>
+    item.caseId === "m6:zoom_impact:canonical"
+  );
+  assert.equal(diagnostic?.authority, "SINGLE_PROFESSIONAL_REFERENCE_FAITHFUL_NOT_M6_9_CERTIFIED");
+  assert.equal(diagnostic?.maturityCeiling, "REFERENCE_FAITHFUL");
+  assert.equal(diagnostic?.benchmarkPromoted, false);
+  assert.deepEqual(diagnostic?.proofWindow, { durationMs: 1600, eventMs: 1150 });
+  assert.equal(diagnostic?.sourceAdmissionSha256, await sha256(diagnostic.sourceAdmissionRef));
+  assert.equal(diagnostic?.referenceEvidenceSha256, await sha256(diagnostic.referenceEvidenceRef));
+  assert.equal(diagnostic?.correctionProofSha256, await sha256(diagnostic.correctionProofRef));
+  assert.equal(diagnostic?.canonicalFidelitySha256, await sha256(diagnostic.canonicalFidelityRef));
+  assert.equal(diagnostic?.canonicalDegradedSha256, await sha256(diagnostic.canonicalDegradedRef));
+  assert.equal(diagnostic?.directAbSha256, await sha256(diagnostic.directAbRef));
+  assert.equal(diagnostic?.degradedSeed.gateCertified, false);
+  assert.equal(diagnostic?.degradedSeed.definingCoverage, 0);
+  assert.equal(diagnostic?.finalRealAe.weightedFidelity, 1);
+  assert.equal(diagnostic?.finalRealAe.definingCoverage, 1);
+  assert.equal(diagnostic?.finalRealAe.gateOutcome, "PASS");
+  assert.equal(diagnostic?.finalRealAe.gateCertified, true);
+  assert.equal(diagnostic?.finalRealAe.weakerSubstitutionDetected, false);
+  assert.equal(diagnostic?.finalRealAe.transactionState, "COMMITTED");
+  assert.equal(diagnostic?.finalRealAe.cleanupRestored, true);
+  assert.deepEqual(diagnostic?.finalRealAe.appliedDefiningActuationIds, [
+    "actuate:zoom.motion:scale_rate",
+  ]);
+  assert.deepEqual(diagnostic?.finalRealAe.unsupportedInstructionIds, []);
+  assert.equal(diagnostic?.correction.causalBaselineCleanupRestored, true);
+  assert.deepEqual(diagnostic?.correction.residualInvariantIds, []);
+  assert.deepEqual(diagnostic?.transferAxesRequired, ["subject", "aspect-ratio"]);
+  assert.deepEqual(diagnostic?.missingForBenchmarkPromotion, [
+    "TRANSFER_SUBJECT",
+    "TRANSFER_ASPECT_RATIO",
+    "SECOND_INDEPENDENT_PROFESSIONAL_CASE",
+  ]);
+  assert.equal(
+    manifest.retainedCases.some((item) => item.caseId === "m6:zoom_impact:canonical"),
+    false,
+  );
+  assert.equal(manifest.casesWithRetainedEvidence, 2);
+  assert.equal(manifest.result.passedCases, 2);
+});
+
 test("M6.9 Displacement Warp promotes retained duration/intensity transfer to Level 6 without completing M6.9", async () => {
   const manifest = await load("proofs/manifests/m6-professional-benchmark-readiness-v1.json");
   const admission = manifest.sourceAdmissionDiagnostics.find((item) =>
