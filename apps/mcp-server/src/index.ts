@@ -71,3 +71,16 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   m3LatestHostProtocol: "2.0.0_TRANSFER_ACCEPTED",
   trackingIsolation: "POINT_TRACKING_NEXT",
 });
+
+export {
+  EditFlowModeControllerV1,
+  PRACTICE_UI_CONTRACT_V1,
+  PracticeHomeworkEngineV1,
+  PracticeLearningMemoryV1,
+} from "../../../packages/practice-homework/src/index.js";
+export type {
+  EditFlowOperatingModeV1,
+  PracticeHomeworkAdaptersV1,
+  PracticeSessionRequestV1,
+  PracticeSessionResultV1,
+} from "../../../packages/practice-homework/src/index.js";

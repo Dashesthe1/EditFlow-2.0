@@ -1,0 +1,25 @@
+{
+  "sessionId": "practice-spiderman-001",
+  "mode": "PRACTICE",
+  "finish": {
+    "mediaId": "finish-reference",
+    "role": "FINISH_REFERENCE",
+    "uri": "file:///reference.mp4"
+  },
+  "start": [
+    {
+      "mediaId": "movie-1",
+      "role": "START_SOURCE",
+      "uri": "file:///movie-1.mp4"
+    },
+    {
+      "mediaId": "movie-2",
+      "role": "START_SOURCE",
+      "uri": "file:///movie-2.mp4"
+    }
+  ],
+  "minimumSimilarity": 0.95,
+  "stretchSimilarity": 0.99,
+  "maxAttempts": 48,
+  "exactSceneConfidence": 0.95
+}

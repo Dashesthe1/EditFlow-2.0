@@ -1,0 +1,10 @@
+{
+  "sessionId": "practice-invalid",
+  "mode": "PRACTICE",
+  "finish": {
+    "mediaId": "not-a-finish-reference",
+    "role": "START_SOURCE",
+    "uri": "file:///reference.mp4"
+  },
+  "start": []
+}

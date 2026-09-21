@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/schema/practice-session-v1.json",
+  "title": "EditFlow Practice Homework Session V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sessionId", "mode", "finish", "start"],
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "const": "PRACTICE"
+    },
+    "finish": {
+      "$ref": "#/$defs/finishMedia"
+    },
+    "start": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/startMedia"
+      }
+    },
+    "minimumSimilarity": {
+      "type": "number",
+      "minimum": 0.95,
+      "maximum": 0.99
+    },
+    "stretchSimilarity": {
+      "type": "number",
+      "minimum": 0.95,
+      "maximum": 0.99
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "exactSceneConfidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "$defs": {
+    "baseMedia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mediaId", "role", "uri"],
+      "properties": {
+        "mediaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checksum": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "finishMedia": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseMedia"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "FINISH_REFERENCE"
+            }
+          }
+        }
+      ]
+    },
+    "startMedia": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/baseMedia"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "START_SOURCE"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -33,5 +33,7 @@
   {"schema":"spec/ae-development-proof-result.schema.json","fixture":"spec/fixtures/ae-development-proof-result.valid.json","valid":true},
   {"schema":"spec/ae-development-proof-result.schema.json","fixture":"spec/fixtures/ae-development-proof-result.invalid.json","valid":false},
   {"schema":"spec/tutorial-analysis-packet-v0.schema.json","fixture":"spec/fixtures/tutorial-analysis-packet-v0.valid.json","valid":true},
-  {"schema":"spec/tutorial-analysis-packet-v0.schema.json","fixture":"spec/fixtures/tutorial-analysis-packet-v0.invalid.json","valid":false}
+  {"schema":"spec/tutorial-analysis-packet-v0.schema.json","fixture":"spec/fixtures/tutorial-analysis-packet-v0.invalid.json","valid":false},
+  {"schema":"spec/practice-session-v1.schema.json","fixture":"spec/fixtures/practice-session-v1.valid.json","valid":true},
+  {"schema":"spec/practice-session-v1.schema.json","fixture":"spec/fixtures/practice-session-v1.invalid.json","valid":false}
 ]
