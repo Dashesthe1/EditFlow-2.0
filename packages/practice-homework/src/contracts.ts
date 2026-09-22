@@ -1,5 +1,6 @@
 export type EditFlowOperatingModeV1 = "PRACTICE" | "PRO_CREATION";
 export type PracticeMediaRoleV1 = "FINISH_REFERENCE" | "START_SOURCE";
+export type PracticeMediaKindV1 = "VIDEO" | "AUDIO";
 export type PracticeSessionStatusV1 =
   | "READY"
   | "ANALYZING"
@@ -12,6 +13,7 @@ export type PracticeSessionStatusV1 =
 export interface PracticeMediaInputV1 {
   readonly mediaId: string;
   readonly role: PracticeMediaRoleV1;
+  readonly mediaKind: PracticeMediaKindV1;
   readonly uri: string;
   readonly checksum?: string;
   readonly durationMs?: number;
@@ -43,6 +45,8 @@ export interface PracticeReferenceAnalysisV1 {
 export interface PracticeSourceIndexV1 {
   readonly indexId: string;
   readonly sourceIds: readonly string[];
+  readonly videoSourceIds: readonly string[];
+  readonly audioSourceIds: readonly string[];
   readonly evidenceRefs: readonly string[];
 }
 
@@ -61,11 +65,34 @@ export interface PracticeSceneMatchV1 {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface PracticeAudioSegmentMatchV1 {
+  readonly segmentId: string;
+  readonly referenceStartMs: number;
+  readonly referenceEndMs: number;
+  readonly sourceStartMs: number;
+  readonly sourceEndMs: number;
+  readonly playbackRate: number;
+  readonly correlation: number;
+  readonly confidence: number;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeAudioMatchV1 {
+  readonly matchId: string;
+  readonly sourceId: string;
+  readonly sourcePath?: string;
+  readonly segments: readonly PracticeAudioSegmentMatchV1[];
+  readonly overallConfidence: number;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeContentBaselineV1 {
   readonly baselineId: string;
   readonly timelineRef: string;
+  readonly audioTimelineRef?: string;
   readonly evidenceRefs: readonly string[];
 }
+
 export interface PracticeSimilarityBreakdownV1 {
   readonly sceneIdentity: number;
   readonly temporalAlignment: number;
@@ -90,13 +117,25 @@ export interface PracticeSimilarityReportV1 {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface PracticeSemanticPatchV1 {
+  readonly patchId: string;
+  readonly invariantId: string;
+  readonly nodeId: string;
+  readonly parameter: string;
+  readonly previousValue: number;
+  readonly nextValue: number;
+  readonly rationale: string;
+}
+
 export interface PracticeDecisionTraceV1 {
   readonly decisionId: string;
   readonly shotId?: string;
   readonly cueIds: readonly string[];
   readonly constructionIds: readonly string[];
   readonly rationaleCodes: readonly string[];
+  readonly semanticPatches?: readonly PracticeSemanticPatchV1[];
 }
+
 export interface PracticeReconstructionOutputV1 {
   readonly renderRef: string;
   readonly decisionTraces: readonly PracticeDecisionTraceV1[];
@@ -108,36 +147,97 @@ export interface PracticeAttemptV1 {
   readonly renderRef: string;
   readonly report: PracticeSimilarityReportV1;
   readonly decisionTraces: readonly PracticeDecisionTraceV1[];
+  readonly elapsedMs: number;
   readonly evidenceRefs: readonly string[];
 }
 
 export interface PracticeEpisodeV1 {
   readonly sessionId: string;
+  readonly selectedEditTypeId: string;
+  readonly allocatedEditTypeId?: string;
   readonly styleFingerprint: string;
   readonly baselineId: string;
   readonly matches: readonly PracticeSceneMatchV1[];
+  readonly audioMatch: PracticeAudioMatchV1 | null;
   readonly attempts: readonly PracticeAttemptV1[];
   readonly mastered: boolean;
   readonly bestAttempt: PracticeAttemptV1 | null;
 }
 
+export type EditTypeBehaviorOutcomeV1 =
+  | "MASTERED_SUPPORT"
+  | "FAILED_ATTEMPT"
+  | "HUMAN_REVIEW";
+
+export interface EditTypeBehaviorEvidenceV1 {
+  readonly evidenceId: string;
+  readonly sessionId: string;
+  readonly attempt: number;
+  readonly outcome: EditTypeBehaviorOutcomeV1;
+  readonly cueIds: readonly string[];
+  readonly constructionIds: readonly string[];
+  readonly rationaleCodes: readonly string[];
+  readonly semanticPatches: readonly PracticeSemanticPatchV1[];
+  readonly overallSimilarity: number;
+  readonly definingEffectCoverage: number;
+  readonly elapsedMs: number;
+}
+
+export interface EditTypeProfileV1 {
+  readonly schema: "editflow.edit-type-profile.v1";
+  readonly editTypeId: string;
+  readonly title: string;
+  readonly choiceWords: readonly string[];
+  readonly description?: string;
+  readonly revision: number;
+  readonly sessionIds: readonly string[];
+  readonly masteredSessionIds: readonly string[];
+  readonly behaviorEvidence: readonly EditTypeBehaviorEvidenceV1[];
+}
+
+export interface EditTypeKnowledgeSnapshotV1 {
+  readonly editTypeId: string;
+  readonly title: string;
+  readonly revision: number;
+  readonly masteredSessionCount: number;
+  readonly totalSessionCount: number;
+  readonly successfulConstructionIds: readonly string[];
+  readonly failedConstructionIds: readonly string[];
+  readonly successfulSemanticPatches: readonly PracticeSemanticPatchV1[];
+  readonly failedSemanticPatches: readonly PracticeSemanticPatchV1[];
+  readonly behaviorEvidence: readonly EditTypeBehaviorEvidenceV1[];
+}
+
+export interface PracticeLearningAllocationPromptV1 {
+  readonly id: "allocate-practice-learning";
+  readonly required: true;
+  readonly defaultEditTypeId: string;
+  readonly sessionId: string;
+  readonly message: string;
+}
+
 export interface PracticeSessionRequestV1 {
   readonly sessionId: string;
   readonly mode: EditFlowOperatingModeV1;
+  readonly editTypeId: string;
   readonly finish: PracticeMediaInputV1;
   readonly start: readonly PracticeMediaInputV1[];
   readonly minimumSimilarity?: number;
   readonly stretchSimilarity?: number;
   readonly maxAttempts?: number;
   readonly exactSceneConfidence?: number;
+  readonly minimumAudioConfidence?: number;
 }
+
 export interface PracticeSessionResultV1 {
   readonly schema: "editflow.practice-session-result.v1";
   readonly sessionId: string;
+  readonly editTypeId: string;
   readonly status: PracticeSessionStatusV1;
   readonly reference: PracticeReferenceAnalysisV1 | null;
   readonly sourceIndex: PracticeSourceIndexV1 | null;
   readonly matches: readonly PracticeSceneMatchV1[];
+  readonly audioMatch: PracticeAudioMatchV1 | null;
   readonly baseline: PracticeContentBaselineV1 | null;
   readonly attempts: readonly PracticeAttemptV1[];
   readonly bestAttempt: PracticeAttemptV1 | null;
@@ -145,6 +245,7 @@ export interface PracticeSessionResultV1 {
   readonly stretchSimilarity: number;
   readonly evidenceRefs: readonly string[];
   readonly reasons: readonly string[];
+  readonly allocationPrompt: PracticeLearningAllocationPromptV1 | null;
 }
 
 export interface PracticeHomeworkAdaptersV1 {
@@ -159,12 +260,20 @@ export interface PracticeHomeworkAdaptersV1 {
     readonly sourceIndex: PracticeSourceIndexV1;
     readonly minimumConfidence: number;
   }): Promise<readonly PracticeSceneMatchV1[]>;
+  matchAudio?(input: {
+    readonly reference: PracticeReferenceAnalysisV1;
+    readonly sourceIndex: PracticeSourceIndexV1;
+    readonly minimumConfidence: number;
+  }): Promise<PracticeAudioMatchV1 | null>;
   buildContentBaseline(input: {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly matches: readonly PracticeSceneMatchV1[];
+    readonly audioMatch: PracticeAudioMatchV1 | null;
   }): Promise<PracticeContentBaselineV1>;
   reconstruct(input: {
     readonly sessionId: string;
+    readonly editTypeId: string;
+    readonly editTypeKnowledge: EditTypeKnowledgeSnapshotV1;
     readonly attempt: number;
     readonly reference: PracticeReferenceAnalysisV1;
     readonly baseline: PracticeContentBaselineV1;
@@ -177,4 +286,28 @@ export interface PracticeHomeworkAdaptersV1 {
     readonly minimumSimilarity: number;
   }): Promise<PracticeSimilarityReportV1>;
   recordEpisode?(episode: PracticeEpisodeV1): Promise<void>;
+}
+
+export interface PracticeLearningAllocationResultV1 {
+  readonly sessionId: string;
+  readonly allocatedEditTypeId: string;
+  readonly profileRevision: number;
+  readonly evidenceCount: number;
+}
+
+export interface ProCreationSessionRequestV1 {
+  readonly sessionId: string;
+  readonly mode: "PRO_CREATION";
+  readonly editTypeId: string;
+  readonly start: readonly PracticeMediaInputV1[];
+}
+
+export interface ProCreationPreparationResultV1 {
+  readonly schema: "editflow.pro-creation-preparation.v1";
+  readonly sessionId: string;
+  readonly status: "READY" | "BLOCKED";
+  readonly editTypeId: string;
+  readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
+  readonly start: readonly PracticeMediaInputV1[];
+  readonly reasons: readonly string[];
 }

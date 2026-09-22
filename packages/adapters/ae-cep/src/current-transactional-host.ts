@@ -22,6 +22,13 @@ import {
   type AeCompositeTransportV13,
 } from "./protocol-v1_3.js";
 import {
+  AE_LAYER_CONTROLS_ROUTE_ID_V16,
+  capabilityForLayerControlsCommandV16,
+  isAeLayerControlsCommandV16,
+  type AeLayerControlsTransportV16,
+} from "./protocol-v1_6.js";
+import { buildLayerControlsRequestV16 } from "./m3-layer-controls.js";
+import {
   AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
   capabilityForTemporalInterpolationCommandV17,
   isAeTemporalInterpolationCommandV17,
@@ -70,6 +77,7 @@ import {
 export type CurrentAeCepTransactionalTransportV1 =
   AeAdapterTransportV11
   & AeCompositeTransportV13
+  & AeLayerControlsTransportV16
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
   & AeMarkerMotionTransportV20
@@ -822,6 +830,27 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         this.#effectIndexByBindingId.set(effectBindingId, Number(effectIndex));
       }
       return this.#accept(response, parsed.command);
+    }
+
+    if (isAeLayerControlsCommandV16(parsed.command)) {
+      assertBinding(
+        operation,
+        capabilityForLayerControlsCommandV16(parsed.command),
+        AE_LAYER_CONTROLS_ROUTE_ID_V16,
+      );
+      const response = await this.transport.dispatch(
+        buildLayerControlsRequestV16({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: String(operation.operationId),
+          command: parsed.command,
+          expectedHostProjectRevision:
+            parsed.command === "layer.controls.readback" ? null : revision,
+          payload: parsed.payload,
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      return this.#accept(response as unknown as CommonResponse, parsed.command);
     }
 
     if (isAeTemporalInterpolationCommandV17(parsed.command)) {

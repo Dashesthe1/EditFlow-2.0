@@ -9,6 +9,9 @@ import {
   AE_ADAPTER_ROUTE_ID_V11,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import {
+  AE_LAYER_CONTROLS_ROUTE_ID_V16,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_6.js";
+import {
   AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
 import {
@@ -267,6 +270,17 @@ const currentOperations = () => [
     },
   }),
   operation({
+    id: "OP_LAYER_SWITCHES",
+    capabilityId: "ae.layer.switches.set",
+    routeId: AE_LAYER_CONTROLS_ROUTE_ID_V16,
+    command: "layer.switches.set",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      switches: { audioEnabled: false },
+    },
+  }),
+  operation({
     id: "OP_KEYS",
     capabilityId: "ae.keyframe.set",
     routeId: AE_ADAPTER_ROUTE_ID_V11,
@@ -314,16 +328,17 @@ test("current AE host streams mixed protocols from one boundary observation", as
     "project.inspect",
     "layers.precompose",
     "layer.time_remap.enable",
+    "layer.switches.set",
     "property.set_keyframes",
     "property.temporal_interpolation.set",
     "property.temporal_ease.set",
   ]);
   assert.deepEqual(
     transport.requests.slice(2).map((request) => request.expectedHostProjectRevision),
-    [20, 21, 22, 23, 24],
+    [20, 21, 22, 23, 24, 25],
   );
 
-  await host.restoreRecoverySnapshot(snapshot, 5);
+  await host.restoreRecoverySnapshot(snapshot, 6);
   const after = await host.readState();
   assert.equal(after.projectFingerprint, baseline.projectFingerprint);
   assert.equal(after.environmentFingerprint, baseline.environmentFingerprint);
@@ -332,10 +347,10 @@ test("current AE host streams mixed protocols from one boundary observation", as
   const undoRequests = transport.requests.filter(
     (request) => request.command === "transaction.undo_last",
   );
-  assert.equal(undoRequests.length, 5);
+  assert.equal(undoRequests.length, 6);
   assert.deepEqual(
     undoRequests.map((request) => request.expectedHostProjectRevision),
-    [25, 26, 27, 28, 29],
+    [26, 27, 28, 29, 30, 31],
   );
 });
 

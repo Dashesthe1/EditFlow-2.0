@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   EditFlowModeControllerV1,
+  EditTypeRegistryV1,
   PracticeHomeworkEngineV1,
   PracticeLearningMemoryV1,
   finalizePracticeSimilarityReportV1,
@@ -88,6 +89,12 @@ const makeAdapters = (evaluations, options = {}) => {
         return {
           indexId: "index:start",
           sourceIds: start.map((item) => item.mediaId),
+          videoSourceIds: start
+            .filter((item) => item.mediaKind === "VIDEO")
+            .map((item) => item.mediaId),
+          audioSourceIds: start
+            .filter((item) => item.mediaKind === "AUDIO")
+            .map((item) => item.mediaId),
           evidenceRefs: ["start:index"],
         };
       },
@@ -165,17 +172,30 @@ const makeAdapters = (evaluations, options = {}) => {
     },
   };
 };
+const makeEditTypes = () => {
+  const editTypes = new EditTypeRegistryV1();
+  editTypes.create({
+    editTypeId: "high-potency-reference-edit",
+    title: "High Potency Reference Edit",
+    choiceWords: ["high potency", "reference faithful"],
+  });
+  return editTypes;
+};
+
 const request = {
   sessionId: "practice:001",
   mode: "PRACTICE",
+  editTypeId: "high-potency-reference-edit",
   finish: {
     mediaId: "finish:pro-edit",
     role: "FINISH_REFERENCE",
+    mediaKind: "VIDEO",
     uri: "file:///finish.mp4",
   },
   start: [{
     mediaId: "movie:a",
     role: "START_SOURCE",
+    mediaKind: "VIDEO",
     uri: "file:///movie-a.mp4",
   }],
   minimumSimilarity: 0.95,
@@ -190,7 +210,7 @@ test("homework loop repeats until the reconstruction satisfies the supervised ga
     report(0.98, { breakdown: breakdown(0.98, { sceneIdentity: 0.999 }) }),
   ]);
   const memory = new PracticeLearningMemoryV1();
-  const engine = new PracticeHomeworkEngineV1(fixtures.adapters, memory);
+  const engine = new PracticeHomeworkEngineV1(fixtures.adapters, memory, makeEditTypes());
   const result = await engine.run(request);
   assert.equal(result.status, "MASTERED");
   assert.equal(result.attempts.length, 3);
@@ -203,7 +223,11 @@ test("homework loop repeats until the reconstruction satisfies the supervised ga
 
 test("homework cannot begin reconstruction until every reference shot is source-matched", async () => {
   const fixtures = makeAdapters([report(0.99)], { missingMatch: true });
-  const engine = new PracticeHomeworkEngineV1(fixtures.adapters);
+  const engine = new PracticeHomeworkEngineV1(
+    fixtures.adapters,
+    new PracticeLearningMemoryV1(),
+    makeEditTypes(),
+  );
   const result = await engine.run(request);
   assert.equal(result.status, "BLOCKED");
   assert.equal(result.attempts.length, 0);
@@ -212,7 +236,11 @@ test("homework cannot begin reconstruction until every reference shot is source-
 
 test("Pro Creation requests do not accidentally execute the Practice homework loop", async () => {
   const fixtures = makeAdapters([report(0.99)]);
-  const engine = new PracticeHomeworkEngineV1(fixtures.adapters);
+  const engine = new PracticeHomeworkEngineV1(
+    fixtures.adapters,
+    new PracticeLearningMemoryV1(),
+    makeEditTypes(),
+  );
   const result = await engine.run({ ...request, mode: "PRO_CREATION" });
   assert.equal(result.status, "BLOCKED");
   assert.equal(result.reference, null);

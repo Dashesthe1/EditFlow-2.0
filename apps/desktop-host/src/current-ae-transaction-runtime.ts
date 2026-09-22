@@ -23,6 +23,9 @@ import {
   M3_COMPOSITE_CAPABILITIES_V13,
 } from "../../../packages/adapters/ae-cep/src/m3-composite.js";
 import {
+  M3_LAYER_CONTROLS_CAPABILITIES_V16,
+} from "../../../packages/adapters/ae-cep/src/m3-layer-controls.js";
+import {
   M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
 } from "../../../packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
 import {
@@ -61,6 +64,7 @@ export const createCurrentAeTransactionRegistryV1 = (
   registry.registerStatic([
     ...applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
     ...M3_COMPOSITE_CAPABILITIES_V13,
+    ...M3_LAYER_CONTROLS_CAPABILITIES_V16,
     ...M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
     ...M3_TEMPORAL_EASE_CAPABILITIES_V18,
     ...M3_MARKER_MOTION_CAPABILITIES_V20,

@@ -141,3 +141,64 @@ test("disk-backed Practice learning memory survives process-memory loss", async 
     await rm(directory, { recursive: true, force: true });
   }
 });
+const audioMatch = {
+  matchId: "audio-match:full-song",
+  sourceId: "song:full",
+  sourcePath: "C:\\Media\\full-song.wav",
+  segments: [{
+    segmentId: "song-segment:001",
+    referenceStartMs: 500,
+    referenceEndMs: 2000,
+    sourceStartMs: 45000,
+    sourceEndMs: 46500,
+    playbackRate: 1,
+    correlation: 0.998,
+    confidence: 0.997,
+    evidenceRefs: ["audio:segment:001"],
+  }],
+  overallConfidence: 0.997,
+  evidenceRefs: ["audio:match"],
+};
+
+test("AE baseline cuts a full-song source to the matched Finish soundtrack range", async () => {
+  const plan = compilePracticeAeBaselinePlanV1({
+    reference,
+    matches,
+    audioMatch,
+  });
+  assert.equal(plan.audioMatchId, audioMatch.matchId);
+  assert.equal(
+    plan.operations.filter((item) => item.command === "media.import").length,
+    2,
+  );
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.deepEqual(timings.at(-1), {
+    startTime: -44.5,
+    inPoint: 0.5,
+    outPoint: 2,
+    stretch: 100,
+  });
+
+  const switches = plan.operations
+    .filter((item) => item.command === "layer.switches.set")
+    .map((item) => item.payload.switches);
+  assert.deepEqual(switches.slice(0, 2), [
+    { audioEnabled: false },
+    { audioEnabled: false },
+  ]);
+  assert.deepEqual(switches.at(-1), { audioEnabled: true });
+
+  const builder = new PracticeAeBaselineBuilderV1({
+    async execute() {
+      return {};
+    },
+  });
+  const baseline = await builder.buildContentBaseline({
+    reference,
+    matches,
+    audioMatch,
+  });
+  assert.match(baseline.audioTimelineRef, /#audio:audio-match:full-song$/);
+});

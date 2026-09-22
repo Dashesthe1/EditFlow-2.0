@@ -1,0 +1,19 @@
+{
+  "sessionId": "pro-create-001",
+  "mode": "PRO_CREATION",
+  "editTypeId": "character-amv",
+  "start": [
+    {
+      "mediaId": "movie-1",
+      "role": "START_SOURCE",
+      "mediaKind": "VIDEO",
+      "uri": "file:///movie-1.mp4"
+    },
+    {
+      "mediaId": "song-1",
+      "role": "START_SOURCE",
+      "mediaKind": "AUDIO",
+      "uri": "file:///song.wav"
+    }
+  ]
+}

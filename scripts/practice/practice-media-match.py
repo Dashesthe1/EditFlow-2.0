@@ -726,9 +726,312 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
     return payload
 
 
+def resolve_ffmpeg(explicit=None):
+    import os
+    import shutil
+
+    candidates = []
+    if explicit:
+        candidates.append(explicit)
+    env_value = os.environ.get("EDITFLOW_FFMPEG_PATH")
+    if env_value:
+        candidates.append(env_value)
+    path_value = shutil.which("ffmpeg")
+    if path_value:
+        candidates.append(path_value)
+    for candidate in candidates:
+        path = Path(candidate).expanduser()
+        if path.is_file():
+            return str(path.resolve())
+    try:
+        import imageio_ffmpeg
+        bundled = Path(imageio_ffmpeg.get_ffmpeg_exe())
+        if bundled.is_file():
+            return str(bundled.resolve())
+    except Exception:
+        pass
+    raise RuntimeError(
+        "Practice audio matching requires FFmpeg. Configure --ffmpeg, "
+        "EDITFLOW_FFMPEG_PATH, PATH, or imageio-ffmpeg."
+    )
+
+
+def decode_audio_f32(media_path, ffmpeg_exe, sample_rate=11025):
+    import subprocess
+
+    command = [
+        ffmpeg_exe,
+        "-v", "error",
+        "-i", str(media_path),
+        "-vn",
+        "-ac", "1",
+        "-ar", str(sample_rate),
+        "-f", "f32le",
+        "pipe:1",
+    ]
+    completed = subprocess.run(
+        command,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode != 0:
+        message = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError("FFmpeg audio decode failed: " + message)
+    samples = np.frombuffer(completed.stdout, dtype="<f4").astype(np.float32, copy=False)
+    if samples.size < sample_rate // 2:
+        raise RuntimeError("Decoded audio is too short for Practice matching.")
+    samples = np.nan_to_num(samples, nan=0.0, posinf=0.0, neginf=0.0)
+    peak = float(np.max(np.abs(samples)))
+    if peak > 1e-8:
+        samples = samples / peak
+    return samples
+
+
+def active_audio_range(samples, sample_rate):
+    block = max(64, int(round(sample_rate * 0.10)))
+    count = int(math.ceil(samples.size / block))
+    rms = []
+    for index in range(count):
+        chunk = samples[index * block:(index + 1) * block]
+        if chunk.size == 0:
+            continue
+        rms.append(float(np.sqrt(np.mean(chunk * chunk) + 1e-12)))
+    values = np.asarray(rms, dtype=np.float32)
+    if values.size == 0:
+        return 0, samples.size
+    threshold = max(0.004, float(np.max(values)) * 0.035)
+    active = np.flatnonzero(values >= threshold)
+    if active.size == 0:
+        return 0, samples.size
+    start = max(0, int(active[0]) * block - block)
+    end = min(samples.size, (int(active[-1]) + 2) * block)
+    if end - start < sample_rate:
+        return 0, samples.size
+    return start, end
+
+
+def zscore(values):
+    values = np.asarray(values, dtype=np.float32)
+    mean = np.mean(values, axis=0, keepdims=True)
+    std = np.std(values, axis=0, keepdims=True)
+    return (values - mean) / np.maximum(std, 1e-5)
+
+
+def audio_feature_series(samples, sample_rate):
+    frame_size = 2048
+    hop = 512
+    if samples.size < frame_size * 2:
+        raise RuntimeError("Audio is too short for spectral matching.")
+    window = np.hanning(frame_size).astype(np.float32)
+    rows = []
+    previous_mag = None
+    boundaries = np.asarray([0, 120, 300, 700, 1500, 3000, sample_rate / 2], dtype=np.float32)
+    frequencies = np.fft.rfftfreq(frame_size, d=1.0 / sample_rate)
+    for start in range(0, samples.size - frame_size + 1, hop):
+        frame = samples[start:start + frame_size] * window
+        magnitude = np.abs(np.fft.rfft(frame)).astype(np.float32)
+        total = float(np.sum(magnitude)) + 1e-8
+        bands = []
+        for low, high in zip(boundaries[:-1], boundaries[1:]):
+            mask = (frequencies >= low) & (frequencies < high)
+            bands.append(float(np.sum(magnitude[mask])) / total)
+        energy = math.log1p(float(np.sqrt(np.mean(frame * frame) + 1e-12)) * 30.0)
+        if previous_mag is None:
+            flux = 0.0
+        else:
+            delta = magnitude - previous_mag
+            flux = float(np.sum(np.maximum(delta, 0.0))) / total
+        previous_mag = magnitude
+        rows.append([energy, flux, *bands])
+    matrix = np.asarray(rows, dtype=np.float32)
+    if matrix.shape[0] < 8:
+        raise RuntimeError("Audio produced too few analysis frames.")
+    energy_delta = np.diff(matrix[:, 0], prepend=matrix[0, 0])
+    flux = matrix[:, 1]
+    band_delta = np.linalg.norm(
+        np.diff(matrix[:, 2:], axis=0, prepend=matrix[0:1, 2:]),
+        axis=1,
+    )
+    features = np.column_stack((energy_delta, flux, band_delta))
+    return zscore(features), hop
+
+
+def resample_feature_series(features, target_length):
+    if target_length < 4:
+        raise ValueError("Audio template length is too small.")
+    if target_length == features.shape[0]:
+        return features
+    source_axis = np.linspace(0.0, 1.0, features.shape[0], dtype=np.float32)
+    target_axis = np.linspace(0.0, 1.0, target_length, dtype=np.float32)
+    columns = [
+        np.interp(target_axis, source_axis, features[:, index])
+        for index in range(features.shape[1])
+    ]
+    return zscore(np.column_stack(columns).astype(np.float32))
+
+
+def normalized_valid_correlation(source, template):
+    if source.shape[0] < template.shape[0]:
+        return np.zeros(0, dtype=np.float32)
+    channel_scores = []
+    length = template.shape[0]
+    ones = np.ones(length, dtype=np.float32)
+    for channel in range(template.shape[1]):
+        source_values = source[:, channel].astype(np.float32)
+        template_values = template[:, channel].astype(np.float32)
+        template_values = template_values - float(np.mean(template_values))
+        template_norm = float(np.linalg.norm(template_values))
+        if template_norm <= 1e-8:
+            continue
+        numerator = np.correlate(source_values, template_values, mode="valid")
+        sums = np.convolve(source_values, ones, mode="valid")
+        sums_sq = np.convolve(source_values * source_values, ones, mode="valid")
+        variance_sum = np.maximum(1e-8, sums_sq - ((sums * sums) / float(length)))
+        denominator = np.sqrt(variance_sum) * template_norm
+        channel_scores.append(np.clip(numerator / denominator, -1.0, 1.0))
+    if not channel_scores:
+        return np.zeros(source.shape[0] - length + 1, dtype=np.float32)
+    return np.mean(np.vstack(channel_scores), axis=0).astype(np.float32)
+
+
+AUDIO_RATE_GRID = (0.50, 0.667, 0.75, 0.80, 0.90, 1.0, 1.10, 1.20, 1.25, 1.50, 2.0)
+
+
+def audio_candidate(reference_features, source_features, rate):
+    target_length = max(4, int(round(reference_features.shape[0] * float(rate))))
+    if target_length > source_features.shape[0]:
+        return None
+    template = resample_feature_series(reference_features, target_length)
+    scores = normalized_valid_correlation(source_features, template)
+    if scores.size == 0:
+        return None
+    best_index = int(np.argmax(scores))
+    best_corr = float(scores[best_index])
+    exclusion = max(2, target_length // 6)
+    masked = scores.copy()
+    left = max(0, best_index - exclusion)
+    right = min(masked.size, best_index + exclusion + 1)
+    masked[left:right] = -1.0
+    second_corr = float(np.max(masked)) if masked.size > right - left else -1.0
+    similarity = clamp01((best_corr + 1.0) * 0.5)
+    uniqueness = clamp01((best_corr - second_corr) / 0.20)
+    confidence = clamp01((0.88 * similarity) + (0.12 * uniqueness))
+    return {
+        "rate": float(rate),
+        "startFrame": best_index,
+        "templateFrames": target_length,
+        "correlation": best_corr,
+        "similarity": similarity,
+        "confidence": confidence,
+        "uniqueness": uniqueness,
+    }
+
+
+def parse_audio_source(value):
+    parts = value.split("|||", 1)
+    if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+        raise ValueError("--source-audio must use sourceId|||path format.")
+    return parts[0].strip(), parts[1].strip()
+
+
+def match_reference_audio(reference_media, reference_id, source_values, output_path, explicit_ffmpeg=None):
+    sample_rate = 11025
+    ffmpeg_exe = resolve_ffmpeg(explicit_ffmpeg)
+    reference_samples = decode_audio_f32(reference_media, ffmpeg_exe, sample_rate)
+    active_start, active_end = active_audio_range(reference_samples, sample_rate)
+    active_reference = reference_samples[active_start:active_end]
+    reference_features, hop = audio_feature_series(active_reference, sample_rate)
+
+    candidates = []
+    for source_value in source_values:
+        source_id, source_path = parse_audio_source(source_value)
+        samples = decode_audio_f32(source_path, ffmpeg_exe, sample_rate)
+        source_features, source_hop = audio_feature_series(samples, sample_rate)
+        if source_hop != hop:
+            raise RuntimeError("Practice audio feature hop mismatch.")
+        for rate in AUDIO_RATE_GRID:
+            candidate = audio_candidate(reference_features, source_features, rate)
+            if candidate is None:
+                continue
+            candidate.update({
+                "sourceId": source_id,
+                "sourcePath": str(Path(source_path).resolve()),
+                "sourceSha256": sha256_file(source_path),
+            })
+            candidates.append(candidate)
+
+    candidates.sort(key=lambda item: (item["confidence"], item["similarity"]), reverse=True)
+    best = candidates[0] if candidates else None
+    if best is None:
+        payload = {
+            "schema": "editflow.practice-audio-match.v1",
+            "referenceId": reference_id,
+            "match": None,
+            "evidenceRefs": [
+                f"practice-audio-analyzer:sha256:{analyzer_fingerprint()}",
+            ],
+        }
+    else:
+        source_start_ms = (best["startFrame"] * hop * 1000.0) / sample_rate
+        reference_start_ms = active_start * 1000.0 / sample_rate
+        reference_end_ms = active_end * 1000.0 / sample_rate
+        reference_duration_ms = reference_end_ms - reference_start_ms
+        source_end_ms = source_start_ms + (reference_duration_ms * best["rate"])
+        match_material = (
+            reference_id
+            + "|" + best["sourceId"]
+            + "|" + f"{source_start_ms:.3f}"
+            + "|" + f"{source_end_ms:.3f}"
+            + "|" + f"{best['rate']:.6f}"
+        )
+        match_id = "practice-audio-match:" + hashlib.sha256(
+            match_material.encode("utf-8")
+        ).hexdigest()[:20]
+        segment_id = match_id + ":segment:001"
+        evidence = [
+            f"practice-audio-analyzer:sha256:{analyzer_fingerprint()}",
+            f"source-audio:sha256:{best['sourceSha256']}",
+            f"audio-correlation:{best['correlation']:.6f}",
+            f"audio-uniqueness:{best['uniqueness']:.6f}",
+            f"audio-playback-rate:{best['rate']:.6f}",
+        ]
+        payload = {
+            "schema": "editflow.practice-audio-match.v1",
+            "referenceId": reference_id,
+            "analysis": {
+                "algorithmId": "editflow.practice-audio-match.v1",
+                "analyzerFingerprint": analyzer_fingerprint(),
+                "sampleRate": sample_rate,
+                "ffmpegExecutable": Path(ffmpeg_exe).name,
+            },
+            "match": {
+                "matchId": match_id,
+                "sourceId": best["sourceId"],
+                "sourcePath": best["sourcePath"],
+                "segments": [{
+                    "segmentId": segment_id,
+                    "referenceStartMs": float(reference_start_ms),
+                    "referenceEndMs": float(reference_end_ms),
+                    "sourceStartMs": float(source_start_ms),
+                    "sourceEndMs": float(source_end_ms),
+                    "playbackRate": float(best["rate"]),
+                    "correlation": float(best["correlation"]),
+                    "confidence": float(best["confidence"]),
+                    "evidenceRefs": evidence,
+                }],
+                "overallConfidence": float(best["confidence"]),
+                "evidenceRefs": evidence,
+            },
+            "evidenceRefs": evidence,
+        }
+    Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
+    return payload
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="EditFlow Practice reference decomposition, source indexing, and scene matching."
+        description="EditFlow Practice reference decomposition, source indexing, scene matching, and audio matching."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -750,6 +1053,13 @@ def build_parser():
     match.add_argument("--source-index-json", action="append", required=True)
     match.add_argument("--output", required=True)
     match.add_argument("--coarse-limit", type=int, default=16)
+
+    audio = subparsers.add_parser("audio-match")
+    audio.add_argument("--reference-media", required=True)
+    audio.add_argument("--reference-id", required=True)
+    audio.add_argument("--source-audio", action="append", required=True)
+    audio.add_argument("--output", required=True)
+    audio.add_argument("--ffmpeg")
     return parser
 
 
@@ -785,7 +1095,7 @@ def main():
             "sampleCount": len(payload["samples"]),
             "sourceSha256": payload["sourceSha256"],
         }))
-    else:
+    elif args.command == "match":
         if args.coarse_limit < 2 or args.coarse_limit > 64:
             raise ValueError("--coarse-limit must be in [2, 64].")
         payload = match_reference(
@@ -799,6 +1109,24 @@ def main():
             "command": "match",
             "output": str(Path(args.output).resolve()),
             "matchCount": len(payload["matches"]),
+        }))
+    else:
+        payload = match_reference_audio(
+            args.reference_media,
+            args.reference_id,
+            args.source_audio,
+            args.output,
+            args.ffmpeg,
+        )
+        print(json.dumps({
+            "ok": True,
+            "command": "audio-match",
+            "output": str(Path(args.output).resolve()),
+            "matched": payload["match"] is not None,
+            "confidence": (
+                None if payload["match"] is None
+                else payload["match"]["overallConfidence"]
+            ),
         }))
 
 

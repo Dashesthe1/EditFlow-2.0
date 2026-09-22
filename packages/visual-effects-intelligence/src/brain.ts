@@ -81,11 +81,31 @@ export class VisualEffectsBrainV1 {
     }
 
     const family = classifyEffectFamilyV1(reference);
-    let graph: ConstructionGraphV1;
+    let graph: ConstructionGraphV1 | null = null;
     let synthesis: UnknownEffectSynthesisV1 | null = null;
     let dna: TransitionDnaV1;
     if (family === "UNKNOWN") {
-      synthesis = synthesizeUnknownEffectV1({ evidence: reference, availableCapabilities: request.availableCapabilities });
+      dna = decomposeUnknownEffectV1(reference).dna;
+    } else {
+      dna = deriveEffectAnatomyV1(reference, family).dna;
+    }
+
+    if (request.learnedGraph !== undefined
+      && request.learnedGraph.family === dna.family) {
+      const learnedCompilation = compileConstructionGraphV1(
+        request.learnedGraph,
+        request.availableCapabilities,
+      );
+      if (learnedCompilation.recipe !== null) {
+        graph = request.learnedGraph;
+      }
+    }
+
+    if (graph === null && family === "UNKNOWN") {
+      synthesis = synthesizeUnknownEffectV1({
+        evidence: reference,
+        availableCapabilities: request.availableCapabilities,
+      });
       if (synthesis.selected === null) {
         return {
           schema: "editflow.m6-production-result.v1",
@@ -97,11 +117,11 @@ export class VisualEffectsBrainV1 {
         };
       }
       graph = synthesis.selected.graph;
-      dna = decomposeUnknownEffectV1(reference).dna;
-    } else {
-      const anatomy = deriveEffectAnatomyV1(reference, family);
-      graph = buildConstructionGraphV1(anatomy);
-      dna = anatomy.dna;
+    } else if (graph === null && family !== "UNKNOWN") {
+      graph = buildConstructionGraphV1(deriveEffectAnatomyV1(reference, family));
+    }
+    if (graph === null) {
+      throw new TypeError("M6 failed to resolve a construction graph for the reference effect.");
     }
 
     const memoryKey = family === "UNKNOWN" ? dna.dnaId : family;

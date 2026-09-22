@@ -1,25 +1,30 @@
 {
   "sessionId": "practice-spiderman-001",
   "mode": "PRACTICE",
+  "editTypeId": "character-amv",
   "finish": {
     "mediaId": "finish-reference",
     "role": "FINISH_REFERENCE",
+    "mediaKind": "VIDEO",
     "uri": "file:///reference.mp4"
   },
   "start": [
     {
       "mediaId": "movie-1",
       "role": "START_SOURCE",
+      "mediaKind": "VIDEO",
       "uri": "file:///movie-1.mp4"
     },
     {
-      "mediaId": "movie-2",
+      "mediaId": "song-1",
       "role": "START_SOURCE",
-      "uri": "file:///movie-2.mp4"
+      "mediaKind": "AUDIO",
+      "uri": "file:///song.wav"
     }
   ],
   "minimumSimilarity": 0.95,
   "stretchSimilarity": 0.99,
   "maxAttempts": 48,
-  "exactSceneConfidence": 0.95
+  "exactSceneConfidence": 0.95,
+  "minimumAudioConfidence": 0.9
 }

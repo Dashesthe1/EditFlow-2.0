@@ -4,6 +4,7 @@
   "finish": {
     "mediaId": "not-a-finish-reference",
     "role": "START_SOURCE",
+    "mediaKind": "AUDIO",
     "uri": "file:///reference.mp4"
   },
   "start": []

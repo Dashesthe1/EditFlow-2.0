@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type {
+  PracticeAudioMatchV1,
+  PracticeAudioSegmentMatchV1,
   PracticeContentBaselineV1,
   PracticeReferenceAnalysisV1,
   PracticeSceneMatchV1,
@@ -10,7 +12,8 @@ export type PracticeAeBaselineCommandV1 =
   | "media.import"
   | "comp.create"
   | "layer.add_media"
-  | "layer.set_timing";
+  | "layer.set_timing"
+  | "layer.switches.set";
 
 export interface PracticeAeBaselineOperationV1 {
   readonly operationId: string;
@@ -19,7 +22,8 @@ export interface PracticeAeBaselineOperationV1 {
     | "ae.media.import"
     | "ae.comp.create"
     | "ae.layer.create"
-    | "ae.layer.timing.set";
+    | "ae.layer.timing.set"
+    | "ae.layer.switches.set";
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
@@ -30,6 +34,7 @@ export interface PracticeAeBaselinePlanV1 {
   readonly compStableId: string;
   readonly durationMs: number;
   readonly frameRate: number;
+  readonly audioMatchId: string | null;
   readonly operations: readonly PracticeAeBaselineOperationV1[];
   readonly evidenceRefs: readonly string[];
 }
@@ -56,6 +61,7 @@ const commandCapability = (
     case "comp.create": return "ae.comp.create";
     case "layer.add_media": return "ae.layer.create";
     case "layer.set_timing": return "ae.layer.timing.set";
+    case "layer.switches.set": return "ae.layer.switches.set";
   }
 };
 
@@ -65,7 +71,7 @@ const operation = (
   command: PracticeAeBaselineCommandV1,
   payload: Readonly<Record<string, unknown>>,
 ): PracticeAeBaselineOperationV1 => ({
-  operationId: `${baselineId}:op:${String(ordinal).padStart(3, "0")}`,
+  operationId: baselineId + ":op:" + String(ordinal).padStart(3, "0"),
   command,
   capabilityId: commandCapability(command),
   payload,
@@ -76,7 +82,7 @@ const timingForMatch = (
   match: PracticeSceneMatchV1,
 ): Readonly<Record<string, number>> => {
   if (!Number.isFinite(match.playbackRate) || match.playbackRate <= 0) {
-    throw new TypeError(`Invalid playback rate for ${match.shotId}.`);
+    throw new TypeError("Invalid playback rate for " + match.shotId + ".");
   }
   const refStart = shot.referenceStartMs / 1000;
   const refEnd = shot.referenceEndMs / 1000;
@@ -88,9 +94,26 @@ const timingForMatch = (
   const sourceAtReferenceStart = match.direction === "FORWARD"
     ? sourceStart
     : sourceEnd;
-  const startTime = refStart - (sourceAtReferenceStart / slope);
   return {
-    startTime,
+    startTime: refStart - (sourceAtReferenceStart / slope),
+    inPoint: refStart,
+    outPoint: refEnd,
+    stretch: 100 / slope,
+  };
+};
+
+const timingForAudioSegment = (
+  segment: PracticeAudioSegmentMatchV1,
+): Readonly<Record<string, number>> => {
+  if (!Number.isFinite(segment.playbackRate) || segment.playbackRate <= 0) {
+    throw new TypeError("Invalid audio playback rate for " + segment.segmentId + ".");
+  }
+  const refStart = segment.referenceStartMs / 1000;
+  const refEnd = segment.referenceEndMs / 1000;
+  const sourceStart = segment.sourceStartMs / 1000;
+  const slope = segment.playbackRate;
+  return {
+    startTime: refStart - (sourceStart / slope),
     inPoint: refStart,
     outPoint: refEnd,
     stretch: 100 / slope,
@@ -100,9 +123,11 @@ const timingForMatch = (
 export const compilePracticeAeBaselinePlanV1 = (input: {
   readonly reference: PracticeReferenceAnalysisV1;
   readonly matches: readonly PracticeSceneMatchV1[];
+  readonly audioMatch?: PracticeAudioMatchV1 | null;
   readonly compName?: string;
 }): PracticeAeBaselinePlanV1 => {
   const { reference } = input;
+  const audioMatch = input.audioMatch ?? null;
   if (reference.video === undefined) {
     throw new TypeError("Practice AE baseline requires reference video metadata.");
   }
@@ -118,7 +143,7 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
 
   const identityMaterial = orderedShots.map((shot) => {
     const match = byShot.get(shot.shotId);
-    if (match === undefined) throw new TypeError(`Missing source match for ${shot.shotId}.`);
+    if (match === undefined) throw new TypeError("Missing source match for " + shot.shotId + ".");
     return {
       shotId: shot.shotId,
       referenceStartMs: shot.referenceStartMs,
@@ -131,28 +156,52 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
       playbackRate: match.playbackRate,
     };
   });
+  const audioIdentity = audioMatch === null ? null : {
+    matchId: audioMatch.matchId,
+    sourceId: audioMatch.sourceId,
+    sourcePath: audioMatch.sourcePath ?? null,
+    segments: audioMatch.segments.map((segment) => ({
+      segmentId: segment.segmentId,
+      referenceStartMs: segment.referenceStartMs,
+      referenceEndMs: segment.referenceEndMs,
+      sourceStartMs: segment.sourceStartMs,
+      sourceEndMs: segment.sourceEndMs,
+      playbackRate: segment.playbackRate,
+    })),
+  };
   const shortHash = digest({
     referenceId: reference.referenceId,
     styleFingerprint: reference.styleFingerprint,
     identityMaterial,
+    audioIdentity,
   }).slice(0, 16);
-  const baselineId = `practice-baseline:${shortHash}`;
-  const compStableId = `PRACTICE_BASELINE_COMP_${shortHash}`;
+  const baselineId = "practice-baseline:" + shortHash;
+  const compStableId = "PRACTICE_BASELINE_COMP_" + shortHash;
 
   const sourcePaths = new Map<string, string>();
   for (const match of input.matches) {
     if (match.sourcePath === undefined || match.sourcePath.trim().length === 0) {
       throw new TypeError(
-        `Practice AE baseline requires a resolved local source path for ${match.sourceId}.`,
+        "Practice AE baseline requires a resolved local source path for " + match.sourceId + ".",
       );
     }
     const prior = sourcePaths.get(match.sourceId);
     if (prior !== undefined && prior !== match.sourcePath) {
-      throw new TypeError(
-        `Source id ${match.sourceId} resolved to more than one local path.`,
-      );
+      throw new TypeError("Source id " + match.sourceId + " resolved to more than one local path.");
     }
     sourcePaths.set(match.sourceId, match.sourcePath);
+  }
+  if (audioMatch !== null) {
+    if (audioMatch.sourcePath === undefined || audioMatch.sourcePath.trim().length === 0) {
+      throw new TypeError("Practice AE baseline requires a resolved source path for matched audio.");
+    }
+    const prior = sourcePaths.get(audioMatch.sourceId);
+    if (prior !== undefined && prior !== audioMatch.sourcePath) {
+      throw new TypeError(
+        "Audio source id " + audioMatch.sourceId + " conflicts with an existing media path.",
+      );
+    }
+    sourcePaths.set(audioMatch.sourceId, audioMatch.sourcePath);
   }
 
   const sourceStableIds = new Map<string, string>();
@@ -160,7 +209,7 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
   let ordinal = 1;
   for (const [sourceId, sourcePath] of [...sourcePaths.entries()]
     .sort(([a], [b]) => a.localeCompare(b))) {
-    const sourceStableId = `PRACTICE_MEDIA_${shortHash}_${stableToken(sourceId)}`;
+    const sourceStableId = "PRACTICE_MEDIA_" + shortHash + "_" + stableToken(sourceId);
     sourceStableIds.set(sourceId, sourceStableId);
     operations.push(operation(baselineId, ordinal, "media.import", {
       path: sourcePath,
@@ -172,7 +221,7 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
 
   operations.push(operation(baselineId, ordinal, "comp.create", {
     stableId: compStableId,
-    name: input.compName ?? `Practice Baseline - ${reference.referenceId}`,
+    name: input.compName ?? ("Practice Baseline - " + reference.referenceId),
     width: reference.video.width,
     height: reference.video.height,
     pixelAspect: 1,
@@ -183,14 +232,13 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
 
   for (const shot of orderedShots) {
     const match = byShot.get(shot.shotId);
-    if (match === undefined) {
-      throw new TypeError(`Missing source match for ${shot.shotId}.`);
-    }
+    if (match === undefined) throw new TypeError("Missing source match for " + shot.shotId + ".");
     const sourceStableId = sourceStableIds.get(match.sourceId);
     if (sourceStableId === undefined) {
-      throw new TypeError(`No imported media identity exists for ${match.sourceId}.`);
+      throw new TypeError("No imported media identity exists for " + match.sourceId + ".");
     }
-    const layerStableId = `PRACTICE_SHOT_${shortHash}_${String(shot.order + 1).padStart(4, "0")}`;
+    const layerStableId = "PRACTICE_SHOT_" + shortHash + "_"
+      + String(shot.order + 1).padStart(4, "0");
     operations.push(operation(baselineId, ordinal, "layer.add_media", {
       stableId: layerStableId,
       comp: { stableId: compStableId },
@@ -203,6 +251,41 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
       timing: timingForMatch(shot, match),
     }));
     ordinal += 1;
+    operations.push(operation(baselineId, ordinal, "layer.switches.set", {
+      comp: { stableId: compStableId },
+      layer: { stableId: layerStableId },
+      switches: { audioEnabled: false },
+    }));
+    ordinal += 1;
+  }
+
+  if (audioMatch !== null) {
+    const sourceStableId = sourceStableIds.get(audioMatch.sourceId);
+    if (sourceStableId === undefined) {
+      throw new TypeError("Matched Practice audio source was not imported.");
+    }
+    for (const [index, segment] of audioMatch.segments.entries()) {
+      const layerStableId = "PRACTICE_AUDIO_" + shortHash + "_"
+        + String(index + 1).padStart(3, "0");
+      operations.push(operation(baselineId, ordinal, "layer.add_media", {
+        stableId: layerStableId,
+        comp: { stableId: compStableId },
+        item: { stableId: sourceStableId },
+      }));
+      ordinal += 1;
+      operations.push(operation(baselineId, ordinal, "layer.set_timing", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+        timing: timingForAudioSegment(segment),
+      }));
+      ordinal += 1;
+      operations.push(operation(baselineId, ordinal, "layer.switches.set", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+        switches: { audioEnabled: true },
+      }));
+      ordinal += 1;
+    }
   }
 
   return {
@@ -212,11 +295,13 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
     compStableId,
     durationMs: reference.video.durationMs,
     frameRate: reference.video.fps,
+    audioMatchId: audioMatch?.matchId ?? null,
     operations,
     evidenceRefs: [
       ...reference.evidenceRefs,
       ...input.matches.flatMap((match) => match.evidenceRefs),
-      `practice-baseline-plan:sha256:${digest(operations)}`,
+      ...(audioMatch?.evidenceRefs ?? []),
+      "practice-baseline-plan:sha256:" + digest(operations),
     ],
   };
 };
@@ -237,20 +322,24 @@ export class PracticeAeBaselineBuilderV1 {
   buildContentBaseline = async (input: {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly matches: readonly PracticeSceneMatchV1[];
+    readonly audioMatch?: PracticeAudioMatchV1 | null;
   }): Promise<PracticeContentBaselineV1> => {
     const plan = compilePracticeAeBaselinePlanV1(input);
     const evidenceRefs = [...plan.evidenceRefs];
-    for (const operation of plan.operations) {
-      const result = await this.runner.execute(operation);
+    for (const operationValue of plan.operations) {
+      const result = await this.runner.execute(operationValue);
       evidenceRefs.push(
-        `practice-ae-operation:${operation.operationId}`,
+        "practice-ae-operation:" + operationValue.operationId,
         ...(result.evidenceRefs ?? []),
       );
     }
     this.#plans.set(plan.baselineId, plan);
     return {
       baselineId: plan.baselineId,
-      timelineRef: `ae:comp:${plan.compStableId}`,
+      timelineRef: "ae:comp:" + plan.compStableId,
+      ...(plan.audioMatchId === null
+        ? {}
+        : { audioTimelineRef: "ae:comp:" + plan.compStableId + "#audio:" + plan.audioMatchId }),
       evidenceRefs: [...new Set(evidenceRefs)],
     };
   };
