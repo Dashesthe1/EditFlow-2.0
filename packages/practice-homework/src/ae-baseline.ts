@@ -45,6 +45,16 @@ export interface PracticeAeBaselineCommandRunnerV1 {
   }>;
 }
 
+export interface PracticeAeBaselineBatchRunnerV1 {
+  executePlan(plan: PracticeAeBaselinePlanV1): Promise<{
+    readonly evidenceRefs?: readonly string[];
+  }>;
+}
+
+export type PracticeAeBaselineRunnerV1 =
+  | PracticeAeBaselineCommandRunnerV1
+  | PracticeAeBaselineBatchRunnerV1;
+
 const digest = (value: unknown): string =>
   createHash("sha256")
     .update(JSON.stringify(value))
@@ -307,10 +317,10 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
 };
 
 export class PracticeAeBaselineBuilderV1 {
-  readonly runner: PracticeAeBaselineCommandRunnerV1;
+  readonly runner: PracticeAeBaselineRunnerV1;
   readonly #plans = new Map<string, PracticeAeBaselinePlanV1>();
 
-  constructor(runner: PracticeAeBaselineCommandRunnerV1) {
+  constructor(runner: PracticeAeBaselineRunnerV1) {
     this.runner = runner;
   }
 
@@ -326,12 +336,20 @@ export class PracticeAeBaselineBuilderV1 {
   }): Promise<PracticeContentBaselineV1> => {
     const plan = compilePracticeAeBaselinePlanV1(input);
     const evidenceRefs = [...plan.evidenceRefs];
-    for (const operationValue of plan.operations) {
-      const result = await this.runner.execute(operationValue);
+    if ("executePlan" in this.runner) {
+      const result = await this.runner.executePlan(plan);
       evidenceRefs.push(
-        "practice-ae-operation:" + operationValue.operationId,
+        "practice-ae-plan:" + plan.baselineId,
         ...(result.evidenceRefs ?? []),
       );
+    } else {
+      for (const operationValue of plan.operations) {
+        const result = await this.runner.execute(operationValue);
+        evidenceRefs.push(
+          "practice-ae-operation:" + operationValue.operationId,
+          ...(result.evidenceRefs ?? []),
+        );
+      }
     }
     this.#plans.set(plan.baselineId, plan);
     return {

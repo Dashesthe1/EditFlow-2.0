@@ -202,3 +202,21 @@ test("AE baseline cuts a full-song source to the matched Finish soundtrack range
   });
   assert.match(baseline.audioTimelineRef, /#audio:audio-match:full-song$/);
 });
+
+test("AE baseline builder prefers one atomic batch transaction when available", async () => {
+  const executedPlans = [];
+  const builder = new PracticeAeBaselineBuilderV1({
+    async executePlan(plan) {
+      executedPlans.push(plan);
+      return { evidenceRefs: ["runner:atomic-baseline"] };
+    },
+  });
+  const baseline = await builder.buildContentBaseline({ reference, matches, audioMatch });
+  assert.equal(executedPlans.length, 1);
+  assert.equal(executedPlans[0].baselineId, baseline.baselineId);
+  assert.equal(executedPlans[0].operations.length > 0, true);
+  assert.ok(baseline.evidenceRefs.includes("runner:atomic-baseline"));
+  assert.ok(
+    baseline.evidenceRefs.includes("practice-ae-plan:" + baseline.baselineId),
+  );
+});

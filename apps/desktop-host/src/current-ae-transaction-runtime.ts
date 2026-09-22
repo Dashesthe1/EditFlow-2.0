@@ -15,6 +15,7 @@ import {
 } from "../../../packages/adapters/ae-cep/src/current-transactional-host.js";
 import {
   AE_CEP_PUBLIC_CAPABILITIES_V11,
+  AeFilesystemPolicyV11,
 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import {
   applyM2AcceptedProofEvidence,
@@ -169,6 +170,7 @@ export class CurrentAeTransactionRuntimeV1 {
   readonly maxOperations: number;
   readonly correctionMaxOperations: number;
   readonly stabilization: CurrentAeStabilizationRuntimeV1 | null;
+  readonly filesystemPolicy: AeFilesystemPolicyV11;
 
   #executor: AsyncTransactionExecutor | null = null;
   #environmentFingerprint: EnvironmentFingerprint | null = null;
@@ -180,6 +182,7 @@ export class CurrentAeTransactionRuntimeV1 {
     maxOperations = CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1,
     stabilization: CurrentAeStabilizationRuntimeV1 | null = null,
     correctionMaxOperations = CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1,
+    filesystemPolicy = new AeFilesystemPolicyV11([]),
   ) {
     if (!Number.isInteger(maxOperations) || maxOperations < 1) {
       throw new TypeError("Current AE transaction maxOperations must be a positive integer.");
@@ -197,6 +200,7 @@ export class CurrentAeTransactionRuntimeV1 {
     this.maxOperations = maxOperations;
     this.correctionMaxOperations = correctionMaxOperations;
     this.stabilization = stabilization;
+    this.filesystemPolicy = filesystemPolicy;
   }
 
   async execute(planInput: unknown): Promise<ExecutionResult> {
@@ -227,7 +231,7 @@ export class CurrentAeTransactionRuntimeV1 {
       this.projectId,
       transactionId,
       () => `current-ae-runtime-${++this.#requestCounter}`,
-      undefined,
+      this.filesystemPolicy,
       this.stabilization?.visualDriver ?? null,
     );
     const observed = await host.readState();

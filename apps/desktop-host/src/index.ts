@@ -38,6 +38,12 @@ export interface DesktopAeSessionOptions {
   readonly m5RotoBrushRuntimeEvidenceFile?: M5RotoBrushRuntimeEvidenceFileV1 | null;
 }
 
+export {
+  PracticeCurrentAeBaselineRunnerV1,
+  compilePracticeAeBaselineExecutionPlanV1,
+  createPracticeCurrentAeBaselineRunnerV1,
+} from "./practice-training-runtime.js";
+
 export const createDesktopAeSession = async (
   adapter: AeCepAdapterClient,
   projectId = "after-effects-project",

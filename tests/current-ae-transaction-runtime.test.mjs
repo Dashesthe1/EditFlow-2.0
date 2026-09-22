@@ -7,6 +7,10 @@ import {
   createCurrentAeTransactionRegistryV1,
 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
 import {
+  compilePracticeAeBaselineExecutionPlanV1,
+  createPracticeCurrentAeBaselineRunnerV1,
+} from "../.tmp/runtime/apps/desktop-host/src/practice-training-runtime.js";
+import {
   AeCepCurrentTransactionalHostV1,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/current-transactional-host.js";
 import {
@@ -16,6 +20,9 @@ import {
 import {
   AE_COMPOSITE_ROUTE_ID_V13,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_3.js";
+import {
+  AE_LAYER_CONTROLS_ROUTE_ID_V16,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_6.js";
 import {
   AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
@@ -550,4 +557,152 @@ test("current Shadow daemon exposes typed mixed-protocol transaction execution",
   assert.match(source, /EditGptStabilizationVisualDriverV1/);
   assert.match(source, /supportedProtocolVersions.*2\.3\.0/s);
   assert.match(source, /result\.state === "COMMITTED"/);
+});
+
+const practiceBaselinePlan = () => ({
+  schema: "editflow.practice-ae-baseline-plan.v1",
+  baselineId: "practice-baseline:test-runtime",
+  referenceId: "finish:test-runtime",
+  compStableId: "PRACTICE_COMP_TEST",
+  durationMs: 2500,
+  frameRate: 24,
+  audioMatchId: null,
+  operations: [
+    {
+      operationId: "PRACTICE_OP_001",
+      command: "media.import",
+      capabilityId: "ae.media.import",
+      payload: {
+        path: "C:\\Media\\movie.mp4",
+        stableId: "PRACTICE_MEDIA_TEST",
+        sequence: false,
+      },
+    },
+    {
+      operationId: "PRACTICE_OP_002",
+      command: "comp.create",
+      capabilityId: "ae.comp.create",
+      payload: {
+        stableId: "PRACTICE_COMP_TEST",
+        name: "Practice Test",
+        width: 320,
+        height: 180,
+        pixelAspect: 1,
+        duration: 2.5,
+        frameRate: 24,
+      },
+    },
+    {
+      operationId: "PRACTICE_OP_003",
+      command: "layer.add_media",
+      capabilityId: "ae.layer.create",
+      payload: {
+        stableId: "PRACTICE_LAYER_TEST",
+        comp: { stableId: "PRACTICE_COMP_TEST" },
+        item: { stableId: "PRACTICE_MEDIA_TEST" },
+      },
+    },
+    {
+      operationId: "PRACTICE_OP_004",
+      command: "layer.set_timing",
+      capabilityId: "ae.layer.timing.set",
+      payload: {
+        comp: { stableId: "PRACTICE_COMP_TEST" },
+        layer: { stableId: "PRACTICE_LAYER_TEST" },
+        timing: {
+          startTime: 0,
+          inPoint: 0,
+          outPoint: 2.5,
+          stretch: 100,
+        },
+      },
+    },
+    {
+      operationId: "PRACTICE_OP_005",
+      command: "layer.switches.set",
+      capabilityId: "ae.layer.switches.set",
+      payload: {
+        comp: { stableId: "PRACTICE_COMP_TEST" },
+        layer: { stableId: "PRACTICE_LAYER_TEST" },
+        switches: { audioEnabled: false },
+      },
+    },
+  ],
+  evidenceRefs: ["practice:test-runtime"],
+});
+
+test("Practice baseline compiles to the current mixed-protocol AE transaction surface", async () => {
+  const transport = new RuntimeTransport();
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "practice-runtime-project",
+    "practice-runtime-observe",
+    () => "practice-runtime-observe-request",
+  );
+  const observed = await observer.readState();
+  const execution = compilePracticeAeBaselineExecutionPlanV1(
+    practiceBaselinePlan(),
+    observed,
+  );
+
+  assert.equal(execution.operations.length, 5);
+  assert.equal(
+    String(execution.operations[0].routeId),
+    AE_ADAPTER_ROUTE_ID_V11,
+  );
+  assert.equal(
+    String(execution.operations.at(-1).routeId),
+    AE_LAYER_CONTROLS_ROUTE_ID_V16,
+  );
+  assert.equal(execution.rollbackBoundaries.length, 1);
+  assert.equal(
+    execution.rollbackBoundaries[0].strategy,
+    "RESTORE_SNAPSHOT",
+  );
+  assert.deepEqual(
+    execution.operations.slice(1).map((operation) =>
+      operation.dependsOn.map(String)),
+    [["PRACTICE_OP_001"], ["PRACTICE_OP_002"], ["PRACTICE_OP_003"], ["PRACTICE_OP_004"]],
+  );
+});
+
+test("Practice baseline executes atomically through the current AE runtime", async () => {
+  const transport = new RuntimeTransport();
+  const runner = createPracticeCurrentAeBaselineRunnerV1({
+    transport,
+    projectId: "practice-runtime-project",
+    mediaRoots: ["C:\\Media"],
+  });
+  const result = await runner.executePlan(practiceBaselinePlan());
+
+  assert.equal(transport.mutationCount, 5);
+  assert.ok(
+    result.evidenceRefs.includes(
+      "practice-ae-transaction:practice-ae:practice-baseline:test-runtime:COMMITTED",
+    ),
+  );
+  assert.ok(
+    transport.requests.some((request) =>
+      request.command === "layer.switches.set"),
+  );
+});
+
+test("Practice baseline refuses oversized atomic construction before contacting AE", async () => {
+  const transport = new RuntimeTransport();
+  const runner = createPracticeCurrentAeBaselineRunnerV1({
+    transport,
+    projectId: "practice-runtime-project",
+    mediaRoots: ["C:\\Media"],
+  });
+  const base = practiceBaselinePlan();
+  const operations = Array.from({ length: 65 }, (_, index) => ({
+    ...base.operations[0],
+    operationId: `PRACTICE_OVERSIZED_${String(index + 1).padStart(3, "0")}`,
+  }));
+
+  await assert.rejects(
+    runner.executePlan({ ...base, operations }),
+    /PRACTICE_BASELINE_TRANSACTION_LIMIT/,
+  );
+  assert.equal(transport.requests.length, 0);
 });
