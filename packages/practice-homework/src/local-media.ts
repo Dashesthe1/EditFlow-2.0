@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import type {
   PracticeAudioMatchV1,
@@ -14,8 +13,6 @@ import type {
   PracticeSourceIndexV1,
 } from "./contracts.js";
 
-const execFileAsync = promisify(execFile);
-
 interface PythonRuntimeV1 {
   readonly executable: string;
   readonly prefixArgs: readonly string[];
@@ -23,6 +20,7 @@ interface PythonRuntimeV1 {
 
 export interface LocalPracticeMediaMatcherConfigV1 {
   readonly artifactDir: string;
+  readonly analysisCacheDir?: string;
   readonly scriptPath: string;
   readonly python?: PythonRuntimeV1;
   readonly ffmpegPath?: string;
@@ -30,6 +28,8 @@ export interface LocalPracticeMediaMatcherConfigV1 {
   readonly minimumShotMs?: number;
   readonly sampleStepMs?: number;
   readonly coarseCandidateLimit?: number;
+  readonly analysisProxyFps?: number;
+  readonly analysisTimeoutMs?: number;
 }
 
 interface ReferenceArtifactV1 {
@@ -90,13 +90,17 @@ const defaultPython = (): PythonRuntimeV1 =>
     ? { executable: "py", prefixArgs: ["-3.12"] }
     : { executable: "python3", prefixArgs: [] };
 
-const mediaPath = (uri: string): string => {
+export const resolvePracticeLocalMediaPathV1 = (uri: string): string => {
   if (uri.startsWith("file:")) return fileURLToPath(uri);
+  if (path.isAbsolute(uri)) return path.resolve(uri);
+  if (path.win32.isAbsolute(uri)) return path.win32.normalize(uri);
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(uri)) {
     throw new TypeError("Practice local media matcher accepts only local file media.");
   }
   return path.resolve(uri);
 };
+
+const mediaPath = resolvePracticeLocalMediaPathV1;
 
 const safeStem = (value: string): string =>
   value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "media";
@@ -116,6 +120,45 @@ const fileExists = async (filePathValue: string): Promise<boolean> => {
   }
 };
 
+const terminateProcessTree = (child: ChildProcess): void => {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  if (process.platform === "win32") {
+    const killer = execFile(
+      "taskkill",
+      ["/PID", String(pid), "/T", "/F"],
+      { windowsHide: true },
+    );
+    killer.once("error", () => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // The process may already have exited.
+      }
+    });
+    return;
+  }
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // The process may already have exited.
+    }
+  }
+};
+
+const appendBoundedProcessOutput = (
+  current: string,
+  chunk: Buffer | string,
+  limitBytes = 8 * 1024 * 1024,
+): string => {
+  const next = current + String(chunk);
+  if (Buffer.byteLength(next, "utf8") <= limitBytes) return next;
+  return next.slice(Math.max(0, next.length - Math.floor(limitBytes / 2)));
+};
+
 export class LocalPracticeMediaMatcherV1 {
   readonly config: Required<Omit<LocalPracticeMediaMatcherConfigV1, "python" | "ffmpegPath">> & {
     readonly python: PythonRuntimeV1;
@@ -131,6 +174,9 @@ export class LocalPracticeMediaMatcherV1 {
   constructor(config: LocalPracticeMediaMatcherConfigV1) {
     this.config = {
       artifactDir: path.resolve(config.artifactDir),
+      analysisCacheDir: path.resolve(
+        config.analysisCacheDir ?? path.join(config.artifactDir, "analysis-cache"),
+      ),
       scriptPath: path.resolve(config.scriptPath),
       python: config.python ?? defaultPython(),
       ffmpegPath: config.ffmpegPath?.trim() || null,
@@ -138,6 +184,8 @@ export class LocalPracticeMediaMatcherV1 {
       minimumShotMs: config.minimumShotMs ?? 180,
       sampleStepMs: config.sampleStepMs ?? 750,
       coarseCandidateLimit: config.coarseCandidateLimit ?? 16,
+      analysisProxyFps: config.analysisProxyFps ?? 12,
+      analysisTimeoutMs: config.analysisTimeoutMs ?? 60 * 60 * 1000,
     };
   }
 
@@ -167,9 +215,49 @@ export class LocalPracticeMediaMatcherV1 {
 
   async #run(args: readonly string[]): Promise<void> {
     const invocation = [...this.config.python.prefixArgs, this.config.scriptPath, ...args];
-    await execFileAsync(this.config.python.executable, invocation, {
-      windowsHide: true,
-      maxBuffer: 8 * 1024 * 1024,
+    await new Promise<void>((resolve, reject) => {
+      let timedOut = false;
+      let stderr = "";
+      const child = spawn(this.config.python.executable, invocation, {
+        windowsHide: true,
+        shell: false,
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      const timer = setTimeout(() => {
+        timedOut = true;
+        terminateProcessTree(child);
+      }, this.config.analysisTimeoutMs);
+
+      child.stderr.on("data", (chunk: Buffer | string) => {
+        stderr = appendBoundedProcessOutput(stderr, chunk);
+      });
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.once("close", (code, signal) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          reject(new Error(
+            "Practice media analysis timed out after "
+            + String(this.config.analysisTimeoutMs)
+            + " ms; the analyzer process tree was terminated.",
+          ));
+          return;
+        }
+        if (code !== 0) {
+          const detail = stderr.trim();
+          reject(new Error(
+            "Practice media analysis command failed"
+            + (code === null ? "" : " with exit code " + String(code))
+            + (signal === null ? "" : " (" + signal + ")")
+            + (detail.length === 0 ? "." : ": " + detail),
+          ));
+          return;
+        }
+        resolve();
+      });
     });
   }
 
@@ -213,6 +301,7 @@ export class LocalPracticeMediaMatcherV1 {
     this.#referenceMediaPathById.set(artifact.referenceId, localPath);
     return {
       referenceId: artifact.referenceId,
+      sourcePath: artifact.sourcePath,
       styleFingerprint: artifact.styleFingerprint,
       video: artifact.video,
       shots: artifact.shots.map((shot) => ({
@@ -250,6 +339,8 @@ export class LocalPracticeMediaMatcherV1 {
         const key = await this.#mediaCacheKey(input, [
           "source-index",
           String(this.config.sampleStepMs),
+          String(this.config.analysisProxyFps),
+          this.config.ffmpegPath ?? "ffmpeg:auto",
         ]);
         const artifactPath = path.join(
           directory,
@@ -262,6 +353,11 @@ export class LocalPracticeMediaMatcherV1 {
             "--source-id", input.mediaId,
             "--output", artifactPath,
             "--sample-step-ms", String(this.config.sampleStepMs),
+            "--analysis-fps", String(this.config.analysisProxyFps),
+            "--proxy-dir", path.join(this.config.analysisCacheDir, "proxies"),
+            ...(this.config.ffmpegPath === null
+              ? []
+              : ["--ffmpeg", this.config.ffmpegPath]),
           ]);
         }
         const artifact = await jsonFile<SourceArtifactV1>(artifactPath);

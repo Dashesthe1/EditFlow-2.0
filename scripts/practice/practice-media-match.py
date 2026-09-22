@@ -4,6 +4,8 @@ import bisect
 import hashlib
 import json
 import math
+import os
+import subprocess
 from pathlib import Path
 
 import cv2
@@ -11,6 +13,10 @@ import numpy as np
 
 ALGORITHM_ID = "editflow.practice-media-match.v1"
 DEFAULT_ANALYSIS_SIZE = 320
+DEFAULT_ANALYSIS_PROXY_FPS = 12.0
+DEFAULT_ANALYSIS_PROXY_MAX_DIMENSION = 360
+
+cv2.setNumThreads(1)
 
 
 def clamp01(value):
@@ -136,6 +142,69 @@ def video_metadata(capture):
     return fps, frame_count, width, height, duration_ms
 
 
+def ensure_analysis_proxy(
+    video_path,
+    proxy_path,
+    explicit_ffmpeg=None,
+    analysis_fps=DEFAULT_ANALYSIS_PROXY_FPS,
+    max_dimension=DEFAULT_ANALYSIS_PROXY_MAX_DIMENSION,
+):
+    video_path = Path(video_path).resolve()
+    proxy_path = Path(proxy_path).resolve()
+    proxy_path.parent.mkdir(parents=True, exist_ok=True)
+    if proxy_path.is_file() and proxy_path.stat().st_size > 0:
+        capture = cv2.VideoCapture(str(proxy_path))
+        try:
+            if capture.isOpened():
+                fps, frame_count, _width, _height, _duration_ms = video_metadata(capture)
+                if frame_count > 0 and abs(fps - float(analysis_fps)) <= 0.5:
+                    return proxy_path
+        except RuntimeError:
+            pass
+        finally:
+            capture.release()
+
+    ffmpeg_exe = resolve_ffmpeg(explicit_ffmpeg)
+    temporary = proxy_path.with_name(
+        proxy_path.stem + ".partial-" + str(os.getpid()) + proxy_path.suffix
+    )
+    if temporary.exists():
+        temporary.unlink()
+    scale_filter = (
+        "fps=" + str(float(analysis_fps))
+        + ",scale=w=if(gte(iw\\,ih)\\," + str(int(max_dimension))
+        + "\\,-2):h=if(gte(iw\\,ih)\\,-2\\," + str(int(max_dimension)) + ")"
+    )
+    command = [
+        ffmpeg_exe,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", str(video_path),
+        "-map", "0:v:0",
+        "-an",
+        "-vf", scale_filter,
+        "-fps_mode", "cfr",
+        "-c:v", "mjpeg",
+        "-q:v", "4",
+        "-f", "avi",
+        "-y", str(temporary),
+    ]
+    completed = subprocess.run(
+        command,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size <= 0:
+        if temporary.exists():
+            temporary.unlink()
+        message = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError("Practice analysis proxy creation failed: " + message)
+    temporary.replace(proxy_path)
+    return proxy_path
+
+
 class FrameReader:
     def __init__(self, path):
         self.path = str(path)
@@ -163,7 +232,18 @@ class FrameReader:
 
 
 _SIFT = cv2.SIFT_create(nfeatures=600)
+_FRAME_DESCRIPTOR_CACHE = {}
 _FRAME_FEATURE_CACHE = {}
+
+
+def cached_descriptor(frame):
+    key = id(frame)
+    cached = _FRAME_DESCRIPTOR_CACHE.get(key)
+    if cached is not None:
+        return cached
+    descriptor = frame_descriptor(frame)
+    _FRAME_DESCRIPTOR_CACHE[key] = descriptor
+    return descriptor
 
 
 def cached_features(frame):
@@ -171,7 +251,7 @@ def cached_features(frame):
     cached = _FRAME_FEATURE_CACHE.get(key)
     if cached is not None:
         return cached
-    descriptor = frame_descriptor(frame)
+    descriptor = cached_descriptor(frame)
     gray = cv2.cvtColor(resize_longest(frame, 360), cv2.COLOR_BGR2GRAY)
     keypoints, sift = _SIFT.detectAndCompute(gray, None)
     result = (descriptor, keypoints or [], sift)
@@ -344,13 +424,40 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
     return payload
 
 
-def index_source(video_path, source_id, output_path, sample_step_ms):
+def index_source(
+    video_path,
+    source_id,
+    output_path,
+    sample_step_ms,
+    explicit_ffmpeg=None,
+    proxy_dir=None,
+    analysis_fps=DEFAULT_ANALYSIS_PROXY_FPS,
+):
     video_path = Path(video_path).resolve()
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
+    original_capture = cv2.VideoCapture(str(video_path))
+    if not original_capture.isOpened():
         raise RuntimeError(f"Could not open source video: {video_path}")
-    fps, frame_count, width, height, duration_ms = video_metadata(capture)
-    step_frames = max(1, int(round((sample_step_ms / 1000.0) * fps)))
+    try:
+        fps, frame_count, width, height, duration_ms = video_metadata(original_capture)
+    finally:
+        original_capture.release()
+
+    source_sha = sha256_file(video_path)
+    proxy_root = Path(proxy_dir).resolve() if proxy_dir else Path(output_path).resolve().parent / "proxies"
+    proxy_path = proxy_root / (
+        source_sha[:24] + "-" + str(int(round(float(analysis_fps) * 1000.0))) + ".avi"
+    )
+    proxy_path = ensure_analysis_proxy(
+        video_path,
+        proxy_path,
+        explicit_ffmpeg=explicit_ffmpeg,
+        analysis_fps=analysis_fps,
+    )
+    capture = cv2.VideoCapture(str(proxy_path))
+    if not capture.isOpened():
+        raise RuntimeError(f"Could not open Practice analysis proxy: {proxy_path}")
+    proxy_fps, _proxy_frame_count, proxy_width, proxy_height, _proxy_duration_ms = video_metadata(capture)
+    step_frames = max(1, int(round((sample_step_ms / 1000.0) * proxy_fps)))
     samples = []
     frame_index = 0
     next_sample = 0
@@ -360,7 +467,7 @@ def index_source(video_path, source_id, output_path, sample_step_ms):
             break
         if frame_index >= next_sample:
             samples.append({
-                "timeMs": frame_index * 1000.0 / fps,
+                "timeMs": frame_index * 1000.0 / proxy_fps,
                 "frameIndex": frame_index,
                 "descriptor": frame_descriptor(frame),
             })
@@ -370,12 +477,13 @@ def index_source(video_path, source_id, output_path, sample_step_ms):
     if not samples:
         raise RuntimeError(f"No frames were indexed from {video_path}")
 
-    source_sha = sha256_file(video_path)
+    proxy_sha = sha256_file(proxy_path)
     payload = {
         "schema": "editflow.practice-source-index.v1",
         "sourceId": source_id,
         "sourcePath": str(video_path),
         "sourceSha256": source_sha,
+        "analysisProxyPath": str(proxy_path),
         "video": {
             "fps": fps,
             "frameCount": frame_count,
@@ -388,10 +496,16 @@ def index_source(video_path, source_id, output_path, sample_step_ms):
             "analyzerFingerprint": analyzer_fingerprint(),
             "sampleStepMs": sample_step_ms,
             "sampleCount": len(samples),
+            "analysisProxyFps": proxy_fps,
+            "analysisProxyWidth": proxy_width,
+            "analysisProxyHeight": proxy_height,
+            "analysisProxySha256": proxy_sha,
         },
         "samples": samples,
         "evidenceRefs": [
             f"video:sha256:{source_sha}",
+            f"practice-analysis-proxy:sha256:{proxy_sha}",
+            f"practice-analysis-proxy-fps:{proxy_fps:.6f}",
             f"practice-analyzer:sha256:{analyzer_fingerprint()}",
         ],
     }
@@ -472,7 +586,7 @@ def candidate_center_times(sample_time_ms, sample_step_ms):
 RATE_GRID = (0.25, 0.333333, 0.5, 0.666667, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0)
 
 
-def refine_candidate(shot, candidate, reference_reader, source_reader):
+def refine_candidate(shot, candidate, reference_reader, source_reader, local_refine=False):
     anchors = shot["anchors"]
     center_anchor = anchors[len(anchors) // 2]
     reference_center = reference_reader.read_ms(center_anchor["timeMs"])
@@ -481,14 +595,27 @@ def refine_candidate(shot, candidate, reference_reader, source_reader):
 
     sample_time = float(candidate["sample"]["timeMs"])
     sample_step = float(candidate["index"]["analysis"]["sampleStepMs"])
-    best_center = None
+    fast_centers = []
     for center_time in candidate_center_times(sample_time, sample_step):
         source_center = source_reader.read_ms(center_time)
         if source_center is None:
             continue
+        fast_centers.append({
+            "timeMs": center_time,
+            "score": descriptor_similarity(
+                cached_descriptor(reference_center),
+                cached_descriptor(source_center),
+            ),
+        })
+    fast_centers.sort(key=lambda item: item["score"], reverse=True)
+    best_center = None
+    for center in fast_centers[:3]:
+        source_center = source_reader.read_ms(center["timeMs"])
+        if source_center is None:
+            continue
         score = feature_similarity(reference_center, source_center)
         if best_center is None or score > best_center["score"]:
-            best_center = {"timeMs": center_time, "score": score}
+            best_center = {"timeMs": center["timeMs"], "score": score}
     if best_center is None:
         return None
 
@@ -502,6 +629,7 @@ def refine_candidate(shot, candidate, reference_reader, source_reader):
 
     best_mapping = None
     center_reference_ms = float(center_anchor["timeMs"])
+    fast_mappings = []
     for direction in (1.0, -1.0):
         for rate in RATE_GRID:
             slope = direction * rate
@@ -520,26 +648,51 @@ def refine_candidate(shot, candidate, reference_reader, source_reader):
                 if source_frame is None:
                     valid = False
                     break
-                similarities.append(feature_similarity(reference_frame, source_frame))
+                similarities.append(descriptor_similarity(
+                    cached_descriptor(reference_frame),
+                    cached_descriptor(source_frame),
+                ))
             if not valid or not similarities:
                 continue
             average = float(np.mean(similarities))
             minimum = float(np.min(similarities))
             consistency = clamp01(1.0 - float(np.std(similarities)) * 1.8)
-            score = clamp01((0.72 * average) + (0.18 * minimum) + (0.10 * consistency))
-            item = {
-                "score": score,
-                "appearance": average,
-                "minimum": minimum,
-                "consistency": consistency,
+            fast_mappings.append({
+                "score": clamp01((0.72 * average) + (0.18 * minimum) + (0.10 * consistency)),
                 "slope": slope,
                 "centerSourceMs": best_center["timeMs"],
-                "anchorSimilarities": similarities,
-            }
-            if best_mapping is None or item["score"] > best_mapping["score"]:
-                best_mapping = item
+            })
 
-    if best_mapping is None or len(anchors) < 2:
+    fast_mappings.sort(key=lambda item: item["score"], reverse=True)
+    for fast_mapping in fast_mappings[:4]:
+        similarities = []
+        slope = fast_mapping["slope"]
+        for anchor in anchors:
+            reference_frame = reference_frames[anchor["timeMs"]]
+            source_time = best_center["timeMs"] + slope * (anchor["timeMs"] - center_reference_ms)
+            source_frame = source_reader.read_ms(source_time)
+            if source_frame is None:
+                similarities = []
+                break
+            similarities.append(feature_similarity(reference_frame, source_frame))
+        if not similarities:
+            continue
+        average = float(np.mean(similarities))
+        minimum = float(np.min(similarities))
+        consistency = clamp01(1.0 - float(np.std(similarities)) * 1.8)
+        item = {
+            "score": clamp01((0.72 * average) + (0.18 * minimum) + (0.10 * consistency)),
+            "appearance": average,
+            "minimum": minimum,
+            "consistency": consistency,
+            "slope": slope,
+            "centerSourceMs": best_center["timeMs"],
+            "anchorSimilarities": similarities,
+        }
+        if best_mapping is None or item["score"] > best_mapping["score"]:
+            best_mapping = item
+
+    if best_mapping is None or not local_refine or len(anchors) < 2:
         return best_mapping
 
     selected_times = []
@@ -637,7 +790,9 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
 
     reference_reader = FrameReader(reference["sourcePath"])
     source_readers = {
-        source_index["sourceId"]: FrameReader(source_index["sourcePath"])
+        source_index["sourceId"]: FrameReader(
+            source_index.get("analysisProxyPath") or source_index["sourcePath"]
+        )
         for source_index in source_indexes
     }
     matches = []
@@ -651,6 +806,7 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 if mapping is None:
                     continue
                 refined.append({
+                    "candidate": candidate,
                     "index": candidate["index"],
                     "sample": candidate["sample"],
                     "coarseScore": candidate["score"],
@@ -660,6 +816,35 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             if not refined:
                 continue
 
+            detailed_seeds = list(refined[:min(6, len(refined))])
+            represented_sources = {item["index"]["sourceId"] for item in detailed_seeds}
+            for item in refined[len(detailed_seeds):]:
+                source_id = item["index"]["sourceId"]
+                if source_id in represented_sources:
+                    continue
+                detailed_seeds.append(item)
+                represented_sources.add(source_id)
+                if len(detailed_seeds) >= min(8, len(refined)):
+                    break
+
+            detailed = []
+            for item in detailed_seeds:
+                reader = source_readers[item["index"]["sourceId"]]
+                mapping = refine_candidate(
+                    shot,
+                    item["candidate"],
+                    reference_reader,
+                    reader,
+                    local_refine=True,
+                )
+                if mapping is None:
+                    continue
+                detailed.append({**item, "mapping": mapping})
+            detailed.sort(key=lambda item: item["mapping"]["score"], reverse=True)
+            if not detailed:
+                continue
+
+            refined = detailed
             best = refined[0]
             second_score = distinct_second_score(refined, best)
             mapping = best["mapping"]
@@ -709,6 +894,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "algorithmId": ALGORITHM_ID,
             "analyzerFingerprint": analyzer_fingerprint(),
             "coarseCandidateLimit": coarse_limit,
+            "refinementMode": "PROXY_PROGRESSIVE_V1",
+            "detailedCandidateLimit": min(8, coarse_limit),
         },
         "sourceIndexIds": [item["sourceId"] for item in source_indexes],
         "matches": matches,
@@ -720,6 +907,7 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 for ref in source_index.get("evidenceRefs", [])
             ],
             f"practice-analyzer:sha256:{analyzer_fingerprint()}",
+            "practice-scene-match-mode:PROXY_PROGRESSIVE_V1",
         ],
     }
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
@@ -1029,6 +1217,265 @@ def match_reference_audio(reference_media, reference_id, source_values, output_p
     return payload
 
 
+def _mean(values, fallback=0.0):
+    finite = [float(value) for value in values if math.isfinite(float(value))]
+    return float(sum(finite) / len(finite)) if finite else float(fallback)
+
+
+def _frame_pair_similarity(reference_frame, render_frame):
+    if reference_frame is None or render_frame is None:
+        return None
+    height, width = reference_frame.shape[:2]
+    render_frame = cv2.resize(render_frame, (width, height), interpolation=cv2.INTER_AREA)
+    scene_identity = feature_similarity(reference_frame, render_frame)
+
+    ref_descriptor = frame_descriptor(reference_frame)
+    render_descriptor = frame_descriptor(render_frame)
+    global_similarity = descriptor_similarity(ref_descriptor, render_descriptor)
+
+    ref_gray = cv2.cvtColor(reference_frame, cv2.COLOR_BGR2GRAY)
+    render_gray = cv2.cvtColor(render_frame, cv2.COLOR_BGR2GRAY)
+    ref_gray = cv2.resize(ref_gray, (128, 72), interpolation=cv2.INTER_AREA)
+    render_gray = cv2.resize(render_gray, (128, 72), interpolation=cv2.INTER_AREA)
+    pixel_similarity = clamp01(1.0 - float(np.mean(cv2.absdiff(ref_gray, render_gray))) / 255.0)
+
+    ref_edges = cv2.Canny(ref_gray, 60, 150)
+    render_edges = cv2.Canny(render_gray, 60, 150)
+    edge_similarity = clamp01(
+        1.0 - float(np.mean(cv2.absdiff(ref_edges, render_edges))) / 255.0
+    )
+
+    ref_hsv = cv2.cvtColor(
+        cv2.resize(reference_frame, (96, 54), interpolation=cv2.INTER_AREA),
+        cv2.COLOR_BGR2HSV,
+    )
+    render_hsv = cv2.cvtColor(
+        cv2.resize(render_frame, (96, 54), interpolation=cv2.INTER_AREA),
+        cv2.COLOR_BGR2HSV,
+    )
+    ref_hist = cv2.calcHist([ref_hsv], [0, 1], None, [16, 8], [0, 180, 0, 256])
+    render_hist = cv2.calcHist([render_hsv], [0, 1], None, [16, 8], [0, 180, 0, 256])
+    cv2.normalize(ref_hist, ref_hist, alpha=1, norm_type=cv2.NORM_L1)
+    cv2.normalize(render_hist, render_hist, alpha=1, norm_type=cv2.NORM_L1)
+    color_similarity = clamp01(float(np.minimum(ref_hist, render_hist).sum()))
+
+    return {
+        "sceneIdentity": scene_identity,
+        "framing": clamp01((0.60 * scene_identity) + (0.25 * global_similarity) + (0.15 * edge_similarity)),
+        "colorFinish": color_similarity,
+        "pixelStructure": clamp01((0.55 * pixel_similarity) + (0.45 * edge_similarity)),
+    }
+
+
+def _flow_signature(first_frame, second_frame):
+    if first_frame is None or second_frame is None:
+        return None
+    first = cv2.cvtColor(
+        cv2.resize(first_frame, (128, 72), interpolation=cv2.INTER_AREA),
+        cv2.COLOR_BGR2GRAY,
+    )
+    second = cv2.cvtColor(
+        cv2.resize(second_frame, (128, 72), interpolation=cv2.INTER_AREA),
+        cv2.COLOR_BGR2GRAY,
+    )
+    flow = cv2.calcOpticalFlowFarneback(
+        first, second, None, 0.5, 3, 15, 3, 5, 1.2, 0,
+    )
+    x = float(np.median(flow[..., 0]))
+    y = float(np.median(flow[..., 1]))
+    magnitude = float(np.median(np.sqrt(np.square(flow[..., 0]) + np.square(flow[..., 1]))))
+    return x, y, magnitude
+
+
+def _flow_similarity(reference_flow, render_flow):
+    if reference_flow is None or render_flow is None:
+        return 0.0
+    rx, ry, rm = reference_flow
+    ax, ay, am = render_flow
+    magnitude_scale = max(0.25, rm, am)
+    magnitude_similarity = clamp01(1.0 - abs(rm - am) / magnitude_scale)
+    rnorm = math.hypot(rx, ry)
+    anorm = math.hypot(ax, ay)
+    if rnorm <= 1e-5 and anorm <= 1e-5:
+        direction_similarity = 1.0
+    elif rnorm <= 1e-5 or anorm <= 1e-5:
+        direction_similarity = 0.5
+    else:
+        cosine = ((rx * ax) + (ry * ay)) / (rnorm * anorm)
+        direction_similarity = clamp01((cosine + 1.0) * 0.5)
+    return clamp01((0.65 * magnitude_similarity) + (0.35 * direction_similarity))
+
+
+def _detect_cut_times(video_path, cut_threshold, minimum_gap_ms):
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        raise RuntimeError(f"Could not open video for cut comparison: {video_path}")
+    fps, _count, _width, _height, duration_ms = video_metadata(capture)
+    scores = []
+    previous = None
+    frame_index = 0
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        analysis_frame = resize_longest(frame, 192)
+        if previous is not None:
+            score = cut_score(previous, analysis_frame)
+            scores.append({
+                "frame": frame_index,
+                "timeMs": frame_index * 1000.0 / fps,
+                "score": score,
+            })
+        previous = analysis_frame
+        frame_index += 1
+    capture.release()
+    candidates = []
+    for index, item in enumerate(scores):
+        if item["score"] < cut_threshold:
+            continue
+        lo = max(0, index - 2)
+        hi = min(len(scores), index + 3)
+        if item["score"] >= max(entry["score"] for entry in scores[lo:hi]):
+            candidates.append(item)
+    cuts = merge_cut_candidates(candidates, minimum_gap_ms)
+    return [float(item["timeMs"]) for item in cuts], float(duration_ms), float(fps)
+
+
+def compare_render_to_reference(
+    reference_json,
+    reference_video,
+    render_video,
+    output_path,
+    cut_threshold=0.42,
+):
+    reference = load_artifact(reference_json, "editflow.practice-reference-analysis.v1")
+    reference_video = Path(reference_video).resolve()
+    render_video = Path(render_video).resolve()
+    if not reference_video.is_file() or not render_video.is_file():
+        raise ValueError("Reference/render comparison requires existing video files.")
+
+    reference_reader = FrameReader(reference_video)
+    render_reader = FrameReader(render_video)
+    per_shot = []
+    motion_scores = []
+    try:
+        for shot in reference["shots"]:
+            sample_times = interior_anchor_times(
+                float(shot["referenceStartMs"]),
+                float(shot["referenceEndMs"]),
+            )
+            samples = []
+            prior_time = None
+            prior_reference = None
+            prior_render = None
+            for time_ms in sample_times:
+                ref_frame = reference_reader.read_ms(time_ms)
+                render_frame = render_reader.read_ms(time_ms)
+                similarity = _frame_pair_similarity(ref_frame, render_frame)
+                if similarity is not None:
+                    samples.append(similarity)
+                if prior_time is not None:
+                    motion_scores.append(_flow_similarity(
+                        _flow_signature(prior_reference, ref_frame),
+                        _flow_signature(prior_render, render_frame),
+                    ))
+                prior_time = time_ms
+                prior_reference = ref_frame
+                prior_render = render_frame
+            per_shot.append({
+                "shotId": shot["shotId"],
+                "sceneIdentity": _mean([item["sceneIdentity"] for item in samples]),
+                "framing": _mean([item["framing"] for item in samples]),
+                "colorFinish": _mean([item["colorFinish"] for item in samples]),
+                "pixelStructure": _mean([item["pixelStructure"] for item in samples]),
+                "sampleCount": len(samples),
+            })
+    finally:
+        reference_reader.close()
+        render_reader.close()
+
+    expected_cuts = [
+        float(shot["referenceStartMs"])
+        for shot in reference["shots"][1:]
+    ]
+    minimum_gap_ms = max(120.0, float(reference["analysis"]["minimumShotMs"]) * 0.65)
+    render_cuts, render_duration_ms, render_fps = _detect_cut_times(
+        render_video,
+        cut_threshold,
+        minimum_gap_ms,
+    )
+    tolerance_ms = max(42.0, 2.0 * 1000.0 / max(render_fps, 1.0))
+    errors = []
+    matched_render_indexes = set()
+    for expected in expected_cuts:
+        if not render_cuts:
+            errors.append(tolerance_ms * 4.0)
+            continue
+        index, observed = min(
+            enumerate(render_cuts),
+            key=lambda entry: abs(entry[1] - expected),
+        )
+        matched_render_indexes.add(index)
+        errors.append(abs(observed - expected))
+    mean_cut_error = _mean(errors, tolerance_ms * 4.0)
+    cut_timing = math.exp(-mean_cut_error / max(tolerance_ms, 1.0))
+    cut_count_penalty = abs(len(render_cuts) - len(expected_cuts)) / max(1, len(expected_cuts))
+    cut_timing = clamp01(cut_timing * (1.0 - min(0.75, 0.35 * cut_count_penalty)))
+
+    reference_duration_ms = float(reference["video"]["durationMs"])
+    duration_error_ratio = abs(render_duration_ms - reference_duration_ms) / max(reference_duration_ms, 1.0)
+    temporal_alignment = clamp01(
+        (0.55 * math.exp(-duration_error_ratio / 0.01))
+        + (0.45 * cut_timing)
+    )
+
+    shot_scene_scores = [item["sceneIdentity"] for item in per_shot]
+    wrong_scene_count = sum(1 for score in shot_scene_scores if score < 0.55)
+    unmatched_scene_count = sum(
+        1 for item in per_shot if item["sampleCount"] == 0 or item["sceneIdentity"] < 0.35
+    )
+    evidence = [
+        f"practice-render-compare:sha256:{analyzer_fingerprint()}",
+        f"reference-video:sha256:{sha256_file(reference_video)}",
+        f"render-video:sha256:{sha256_file(render_video)}",
+    ]
+    payload = {
+        "schema": "editflow.practice-content-structure-evaluation.v1",
+        "referenceId": reference["referenceId"],
+        "renderPath": str(render_video),
+        "breakdown": {
+            "sceneIdentity": _mean([item["sceneIdentity"] for item in per_shot]),
+            "temporalAlignment": temporal_alignment,
+            "cutTiming": cut_timing,
+            "framing": _mean([item["framing"] for item in per_shot]),
+            "motion": _mean(motion_scores, 1.0),
+            "colorFinish": _mean([item["colorFinish"] for item in per_shot]),
+            "pixelStructure": _mean([item["pixelStructure"] for item in per_shot]),
+        },
+        "wrongSceneCount": wrong_scene_count,
+        "unmatchedSceneCount": unmatched_scene_count,
+        "cutDiagnostics": {
+            "expectedCutsMs": expected_cuts,
+            "renderCutsMs": render_cuts,
+            "meanAbsoluteErrorMs": mean_cut_error,
+            "toleranceMs": tolerance_ms,
+            "matchedRenderCutCount": len(matched_render_indexes),
+        },
+        "shots": per_shot,
+        "analysis": {
+            "algorithmId": "editflow.practice-render-compare.v1",
+            "analyzerFingerprint": analyzer_fingerprint(),
+        },
+        "evidenceRefs": evidence,
+    }
+    Path(output_path).write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return payload
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="EditFlow Practice reference decomposition, source indexing, scene matching, and audio matching."
@@ -1047,6 +1494,9 @@ def build_parser():
     source.add_argument("--source-id", required=True)
     source.add_argument("--output", required=True)
     source.add_argument("--sample-step-ms", type=float, default=750.0)
+    source.add_argument("--analysis-fps", type=float, default=DEFAULT_ANALYSIS_PROXY_FPS)
+    source.add_argument("--proxy-dir")
+    source.add_argument("--ffmpeg")
 
     match = subparsers.add_parser("match")
     match.add_argument("--reference-json", required=True)
@@ -1060,6 +1510,13 @@ def build_parser():
     audio.add_argument("--source-audio", action="append", required=True)
     audio.add_argument("--output", required=True)
     audio.add_argument("--ffmpeg")
+
+    compare = subparsers.add_parser("compare-render")
+    compare.add_argument("--reference-json", required=True)
+    compare.add_argument("--reference-video", required=True)
+    compare.add_argument("--render-video", required=True)
+    compare.add_argument("--output", required=True)
+    compare.add_argument("--cut-threshold", type=float, default=0.42)
     return parser
 
 
@@ -1087,13 +1544,24 @@ def main():
     elif args.command == "index":
         if args.sample_step_ms < 100 or args.sample_step_ms > 5000:
             raise ValueError("--sample-step-ms must be in [100, 5000].")
-        payload = index_source(args.video, args.source_id, args.output, args.sample_step_ms)
+        if args.analysis_fps < 4 or args.analysis_fps > 30:
+            raise ValueError("--analysis-fps must be in [4, 30].")
+        payload = index_source(
+            args.video,
+            args.source_id,
+            args.output,
+            args.sample_step_ms,
+            explicit_ffmpeg=args.ffmpeg,
+            proxy_dir=args.proxy_dir,
+            analysis_fps=args.analysis_fps,
+        )
         print(json.dumps({
             "ok": True,
             "command": "index",
             "output": str(Path(args.output).resolve()),
             "sampleCount": len(payload["samples"]),
             "sourceSha256": payload["sourceSha256"],
+            "analysisProxyPath": payload["analysisProxyPath"],
         }))
     elif args.command == "match":
         if args.coarse_limit < 2 or args.coarse_limit > 64:
@@ -1110,7 +1578,7 @@ def main():
             "output": str(Path(args.output).resolve()),
             "matchCount": len(payload["matches"]),
         }))
-    else:
+    elif args.command == "audio-match":
         payload = match_reference_audio(
             args.reference_media,
             args.reference_id,
@@ -1127,6 +1595,24 @@ def main():
                 None if payload["match"] is None
                 else payload["match"]["overallConfidence"]
             ),
+        }))
+    else:
+        if not (0.1 <= args.cut_threshold <= 0.95):
+            raise ValueError("--cut-threshold must be in [0.1, 0.95].")
+        payload = compare_render_to_reference(
+            args.reference_json,
+            args.reference_video,
+            args.render_video,
+            args.output,
+            args.cut_threshold,
+        )
+        print(json.dumps({
+            "ok": True,
+            "command": "compare-render",
+            "output": str(Path(args.output).resolve()),
+            "sceneIdentity": payload["breakdown"]["sceneIdentity"],
+            "cutTiming": payload["breakdown"]["cutTiming"],
+            "wrongSceneCount": payload["wrongSceneCount"],
         }))
 
 

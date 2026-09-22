@@ -26,8 +26,11 @@ export class ProCreationPreparationEngineV1 {
     const knowledge = this.editTypes.knowledge(request.editTypeId);
     if (knowledge === null) {
       reasons.push("A registered Edit Type must be selected before Pro Creation can start.");
-    } else if (knowledge.totalSessionCount === 0) {
-      reasons.push("The selected Edit Type has no allocated Practice learning yet.");
+    } else if (knowledge.masteredSessionCount === 0) {
+      reasons.push(
+        "The selected Edit Type has no mastered Practice success path yet. "
+          + "Complete at least one successful GPT-orchestrated Practice session first.",
+      );
     }
 
     return {

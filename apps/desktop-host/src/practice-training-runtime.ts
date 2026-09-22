@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type {
   ExecutionPlan,
   ExecutionPlanOperation,
@@ -24,12 +26,39 @@ import {
 import {
   AE_LAYER_CONTROLS_ROUTE_ID_V16,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_6.js";
-import type {
-  PracticeAeBaselineBatchRunnerV1,
-  PracticeAeBaselineCommandV1,
-  PracticeAeBaselinePlanV1,
+import {
+  PracticeAeBaselineBuilderV1,
+  type PracticeAeBaselineBatchRunnerV1,
+  type PracticeAeBaselineCommandV1,
+  type PracticeAeBaselinePlanV1,
 } from "../../../packages/practice-homework/src/ae-baseline.js";
+import {
+  LocalPracticeMediaMatcherV1,
+} from "../../../packages/practice-homework/src/local-media.js";
+import {
+  PracticeM6ExecutionBridgeV1,
+  composePracticeM6ExecutionAdaptersV1,
+} from "../../../packages/practice-homework/src/m6-practice.js";
+import type {
+  EditTypeProfileV1,
+  PracticeHomeworkAdaptersV1,
+  PracticeLearningAllocationResultV1,
+  PracticeSessionRequestV1,
+  PracticeSessionResultV1,
+  ProCreationPreparationResultV1,
+  ProCreationSessionRequestV1,
+} from "../../../packages/practice-homework/src/contracts.js";
+import { PracticeHomeworkEngineV1 } from "../../../packages/practice-homework/src/engine.js";
+import {
+  EditTypeRegistryFileV1,
+  type CreateEditTypeInputV1,
+} from "../../../packages/practice-homework/src/edit-types.js";
+import { PracticeLearningMemoryFileV1 } from "../../../packages/practice-homework/src/persistent-memory.js";
+import { ProCreationPreparationEngineV1 } from "../../../packages/practice-homework/src/pro-creation.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
+import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
+import { PracticeM6CurrentAeRuntimeV1 } from "./practice-m6-current-ae-runtime.js";
+import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
 const routeForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): string => command === "layer.switches.set"
@@ -190,4 +219,203 @@ export const createPracticeCurrentAeBaselineRunnerV1 = (input: {
       new AeFilesystemPolicyV11(input.mediaRoots),
     ),
   );
+};
+
+export interface PracticeM6CurrentAeAssemblyV1 {
+  readonly adapters: PracticeHomeworkAdaptersV1;
+  readonly transaction: CurrentAeTransactionRuntimeV1;
+  readonly baselineBuilder: PracticeAeBaselineBuilderV1;
+  readonly mediaMatcher: LocalPracticeMediaMatcherV1;
+  readonly mediaAnalyzer: PracticeM6LocalMediaAnalyzerV1;
+  readonly renderDriver: PracticeM6AeRenderDriverCurrentV1;
+  readonly m6Runtime: PracticeM6CurrentAeRuntimeV1;
+  readonly bridge: PracticeM6ExecutionBridgeV1;
+}
+
+export interface PracticeM6CurrentAeAssemblyConfigV1 {
+  readonly transport: CurrentAeCepTransactionalTransportV1;
+  readonly projectId: string;
+  readonly repositoryRoot: string;
+  readonly artifactDir: string;
+  readonly mediaRoots: readonly string[];
+  readonly ffmpegPath?: string;
+  readonly renderTimeoutMs?: number;
+  readonly recordEpisode?: NonNullable<PracticeHomeworkAdaptersV1["recordEpisode"]>;
+}
+
+export const createPracticeM6CurrentAeAssemblyV1 = (
+  input: PracticeM6CurrentAeAssemblyConfigV1,
+): PracticeM6CurrentAeAssemblyV1 => {
+  if (input.mediaRoots.length === 0) {
+    throw new TypeError(
+      "Practice M6 current-AE assembly requires at least one allowed media root.",
+    );
+  }
+  const repositoryRoot = path.resolve(input.repositoryRoot);
+  const artifactDir = path.resolve(input.artifactDir);
+  const transaction = new CurrentAeTransactionRuntimeV1(
+    input.transport,
+    input.projectId,
+    undefined,
+    null,
+    undefined,
+    new AeFilesystemPolicyV11(input.mediaRoots),
+  );
+  const baselineBuilder = new PracticeAeBaselineBuilderV1(
+    new PracticeCurrentAeBaselineRunnerV1(transaction),
+  );
+  const mediaMatcher = new LocalPracticeMediaMatcherV1({
+    artifactDir: path.join(artifactDir, "media"),
+    analysisCacheDir: path.join(
+      repositoryRoot,
+      "proofs",
+      "artifacts",
+      "practice-media-cache",
+    ),
+    scriptPath: path.join(
+      repositoryRoot,
+      "scripts",
+      "practice",
+      "practice-media-match.py",
+    ),
+    ...(input.ffmpegPath === undefined ? {} : { ffmpegPath: input.ffmpegPath }),
+  });
+  const mediaAnalyzer = new PracticeM6LocalMediaAnalyzerV1({
+    repositoryRoot,
+    artifactDir: path.join(artifactDir, "m6-analysis"),
+  });
+  const renderDriver = new PracticeM6AeRenderDriverCurrentV1({
+    transport: input.transport,
+    projectId: input.projectId,
+    artifactDir: path.join(artifactDir, "renders"),
+    ...(input.renderTimeoutMs === undefined
+      ? {}
+      : { renderTimeoutMs: input.renderTimeoutMs }),
+  });
+  const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
+    transaction,
+    baselineBuilder,
+    media: mediaAnalyzer,
+    renderDriver,
+  });
+  const bridge = new PracticeM6ExecutionBridgeV1(m6Runtime);
+  const adapters = composePracticeM6ExecutionAdaptersV1(bridge, {
+    analyzeFinish: (finish) => mediaMatcher.analyzeFinish(finish),
+    indexStart: (start) => mediaMatcher.indexStart(start),
+    matchScenes: (value) => mediaMatcher.matchScenes(value),
+    matchAudio: (value) => mediaMatcher.matchAudio(value),
+    buildContentBaseline: (value) => baselineBuilder.buildContentBaseline(value),
+    ...(input.recordEpisode === undefined
+      ? {}
+      : { recordEpisode: (episode) => input.recordEpisode?.(episode) ?? Promise.resolve() }),
+  });
+
+  return {
+    adapters,
+    transaction,
+    baselineBuilder,
+    mediaMatcher,
+    mediaAnalyzer,
+    renderDriver,
+    m6Runtime,
+    bridge,
+  };
+};
+
+export interface PracticeM6CurrentAeTrainingRuntimeConfigV1
+extends PracticeM6CurrentAeAssemblyConfigV1 {
+  readonly learningMemoryFilePath: string;
+  readonly editTypeRegistryFilePath: string;
+}
+
+export class PracticeM6CurrentAeTrainingRuntimeV1 {
+  readonly assembly: PracticeM6CurrentAeAssemblyV1;
+  readonly engine: PracticeHomeworkEngineV1;
+  readonly proCreation: ProCreationPreparationEngineV1;
+  readonly learningMemoryFile: PracticeLearningMemoryFileV1;
+  readonly editTypeRegistryFile: EditTypeRegistryFileV1;
+
+  constructor(input: {
+    readonly assembly: PracticeM6CurrentAeAssemblyV1;
+    readonly engine: PracticeHomeworkEngineV1;
+    readonly learningMemoryFile: PracticeLearningMemoryFileV1;
+    readonly editTypeRegistryFile: EditTypeRegistryFileV1;
+  }) {
+    this.assembly = input.assembly;
+    this.engine = input.engine;
+    this.proCreation = new ProCreationPreparationEngineV1(input.engine.editTypes);
+    this.learningMemoryFile = input.learningMemoryFile;
+    this.editTypeRegistryFile = input.editTypeRegistryFile;
+  }
+  async run(
+    request: PracticeSessionRequestV1,
+  ): Promise<PracticeSessionResultV1> {
+    return await this.engine.run(request);
+  }
+
+  async createEditType(
+    input: CreateEditTypeInputV1,
+  ): Promise<EditTypeProfileV1> {
+    const profile = this.engine.editTypes.create(input);
+    await this.editTypeRegistryFile.save(this.engine.editTypes);
+    return profile;
+  }
+
+  async allocateLearning(input: {
+    readonly sessionId: string;
+    readonly editTypeId: string;
+  }): Promise<PracticeLearningAllocationResultV1> {
+    const result = await this.engine.allocateLearning(input);
+    await this.editTypeRegistryFile.save(this.engine.editTypes);
+    return result;
+  }
+
+  prepareProCreation(
+    request: ProCreationSessionRequestV1,
+  ): ProCreationPreparationResultV1 {
+    return this.proCreation.prepare(request);
+  }
+}
+export const createPracticeM6CurrentAeTrainingRuntimeV1 = async (
+  input: PracticeM6CurrentAeTrainingRuntimeConfigV1,
+): Promise<PracticeM6CurrentAeTrainingRuntimeV1> => {
+  const learningMemoryFile = new PracticeLearningMemoryFileV1(
+    input.learningMemoryFilePath,
+  );
+  const editTypeRegistryFile = new EditTypeRegistryFileV1(
+    input.editTypeRegistryFilePath,
+  );
+  const [memory, editTypes] = await Promise.all([
+    learningMemoryFile.load(),
+    editTypeRegistryFile.load(),
+  ]);
+
+  const assembly = createPracticeM6CurrentAeAssemblyV1({
+    transport: input.transport,
+    projectId: input.projectId,
+    repositoryRoot: input.repositoryRoot,
+    artifactDir: input.artifactDir,
+    mediaRoots: input.mediaRoots,
+    ...(input.ffmpegPath === undefined
+      ? {}
+      : { ffmpegPath: input.ffmpegPath }),
+    ...(input.renderTimeoutMs === undefined
+      ? {}
+      : { renderTimeoutMs: input.renderTimeoutMs }),
+    recordEpisode: async (episode) => {
+      await learningMemoryFile.recordEpisode(episode);
+      await input.recordEpisode?.(episode);
+    },
+  });
+  const engine = new PracticeHomeworkEngineV1(
+    assembly.adapters,
+    memory,
+    editTypes,
+  );
+  return new PracticeM6CurrentAeTrainingRuntimeV1({
+    assembly,
+    engine,
+    learningMemoryFile,
+    editTypeRegistryFile,
+  });
 };

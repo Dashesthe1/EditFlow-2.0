@@ -1,16 +1,28 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   EditTypeRegistryV1,
+  GptOrchestrationStoreV1,
   PracticeM6ExecutionBridgeV1,
   ProCreationPreparationEngineV1,
+  composePracticeM6ExecutionAdaptersV1,
+  resolvePracticeLocalMediaPathV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import {
   buildConstructionGraphV1,
   classifyEffectFamilyV1,
   deriveEffectAnatomyV1,
 } from "../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
+import {
+  PracticeM6AeRenderDriverCurrentV1,
+  PracticeM6CurrentAeRuntimeV1,
+  createPracticeM6CurrentAeAssemblyV1,
+  createPracticeM6CurrentAeTrainingRuntimeV1,
+} from "../.tmp/runtime/apps/desktop-host/src/index.js";
 
 const passedReport = (value = 0.98) => ({
   schema: "editflow.practice-similarity.v1",
@@ -345,4 +357,655 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
     .find((item) => item.nodeId === nodeId);
   assert.ok(learnedNode);
   assert.ok(learnedNode.parameters[invariant.metric] > prior);
+});
+
+test("M6 Practice composition preserves raw-audio matching", async () => {
+  const expected = {
+    matchId: "audio:match:1",
+    sourceId: "song:raw",
+    segments: [],
+    overallConfidence: 0.99,
+    evidenceRefs: ["audio:matched"],
+  };
+  const adapters = composePracticeM6ExecutionAdaptersV1(
+    {
+      async reconstruct() { throw new Error("not used"); },
+      async evaluate() { throw new Error("not used"); },
+    },
+    {
+      async analyzeFinish() { throw new Error("not used"); },
+      async indexStart() { throw new Error("not used"); },
+      async matchScenes() { return []; },
+      async matchAudio() { return expected; },
+      async buildContentBaseline() { throw new Error("not used"); },
+    },
+  );
+  assert.equal(typeof adapters.matchAudio, "function");
+  const actual = await adapters.matchAudio({});
+  assert.equal(actual?.sourceId, "song:raw");
+  assert.equal(actual?.overallConfidence, 0.99);
+});
+
+test("Practice M6 current-AE runtime lowers a reference graph onto the matched shot layer", async () => {
+  const family = classifyEffectFamilyV1(referenceEvidence);
+  const graph = buildConstructionGraphV1(
+    deriveEffectAnatomyV1(referenceEvidence, family),
+  );
+  const runtimeReference = {
+    ...reference,
+    sourcePath: "C:\\Finish\\reference.mp4",
+    video: {
+      fps: 30,
+      frameCount: 16,
+      width: 640,
+      height: 360,
+      durationMs: 500,
+    },
+  };
+  const match = {
+    shotId: "shot:001",
+    sourceId: "raw:movie",
+    sourcePath: "C:\\Media\\movie.mp4",
+    sourceStartMs: 1000,
+    sourceEndMs: 1500,
+    direction: "FORWARD",
+    playbackRate: 1,
+    appearanceSimilarity: 1,
+    temporalSimilarity: 1,
+    motionSimilarity: 1,
+    confidence: 1,
+    evidenceRefs: ["match:exact"],
+  };
+  const baselinePlan = {
+    schema: "editflow.practice-ae-baseline-plan.v1",
+    baselineId: "baseline:native",
+    referenceId: runtimeReference.referenceId,
+    compStableId: "PRACTICE_BASELINE_COMP_NATIVE",
+    durationMs: 500,
+    frameRate: 30,
+    audioMatchId: null,
+    operations: [{
+      operationId: "baseline:native:op:001",
+      command: "layer.add_media",
+      capabilityId: "ae.layer.create",
+      payload: { stableId: "PRACTICE_SHOT_NATIVE_0001" },
+    }],
+    evidenceRefs: ["baseline:native"],
+  };
+  const baseline = {
+    baselineId: baselinePlan.baselineId,
+    timelineRef: "ae:comp:" + baselinePlan.compStableId,
+    evidenceRefs: ["baseline:native"],
+  };
+
+  let capturedPlan = null;
+  const transaction = {
+    maxOperations: 64,
+    async observe() {
+      return {
+        projectId: "project",
+        projectRevision: "1",
+        projectFingerprint: "project-fingerprint",
+        environmentFingerprint: "environment-fingerprint",
+      };
+    },
+    async execute(plan) {
+      capturedPlan = plan;
+      return {
+        transactionId: "tx:native",
+        state: "COMMITTED",
+        recovered: false,
+        appliedOperations: plan.operations.length,
+      };
+    },
+    async executeCorrection(plan) {
+      capturedPlan = plan;
+      return {
+        transactionId: "tx:native:correction",
+        state: "COMMITTED",
+        recovered: false,
+        appliedOperations: plan.operations.length,
+      };
+    },
+  };
+  const mediaCalls = [];
+  const media = {
+    async analyzeVideo(input) {
+      mediaCalls.push(input);
+      return { ...referenceEvidence, sourceId: input.sourceId, sourceKind: input.sourceKind };
+    },
+    async compareContentStructure() { throw new Error("not used"); },
+  };
+
+  const renderDriver = {
+    async prepareAttempt() {
+      return { evidenceRefs: ["render-driver:prepared"] };
+    },
+    async renderWindow() {
+      return {
+        renderPath: "C:\\Renders\\practice-window.mp4",
+        evidenceRefs: ["render-driver:window"],
+      };
+    },
+    async renderFullEdit() {
+      return {
+        renderPath: "C:\\Renders\\practice-full.mp4",
+        evidenceRefs: ["render-driver:full"],
+      };
+    },
+  };
+  const runtime = new PracticeM6CurrentAeRuntimeV1({
+    transaction,
+    baselineBuilder: {
+      plan(id) { return id === baselinePlan.baselineId ? baselinePlan : null; },
+    },
+    media,
+    renderDriver,
+    availableCapabilities: [...new Set(
+      graph.nodes.flatMap((node) => node.capabilityCandidates),
+    )],
+  });
+
+  await runtime.prepareAttempt({
+    sessionId: "practice:native",
+    editTypeId: "spider-man-high-potency",
+    editTypeKnowledge: {},
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    matches: [match],
+    priorAttempts: [],
+  });
+  const window = {
+    windowId: "window:native",
+    startIndex: 0,
+    endIndex: 6,
+    anchorIndex: 3,
+    startMs: 0,
+    endMs: 200,
+    anchorMs: 100,
+    peakEnergy: 0.5,
+    evidence: referenceEvidence,
+  };
+  await runtime.applyWindowGraph({
+    sessionId: "practice:native",
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    window,
+    graph,
+  });
+
+  assert.ok(capturedPlan);
+  assert.ok(capturedPlan.operations.length > 0);
+  assert.match(String(capturedPlan.planId), /^practice-m6:practice:native:1:window:native:/);
+  assert.match(JSON.stringify(capturedPlan), /PRACTICE_BASELINE_COMP_NATIVE/);
+  assert.match(JSON.stringify(capturedPlan), /PRACTICE_SHOT_NATIVE_0001/);
+
+  const rendered = await runtime.renderWindowEvidence({
+    sessionId: "practice:native",
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    window,
+    graph,
+  });
+  assert.equal(rendered.sourceKind, "RENDER");
+  assert.equal(mediaCalls.at(-1)?.videoPath, "C:\\Renders\\practice-window.mp4");
+  assert.equal(mediaCalls.at(-1)?.startMs, 0);
+  assert.equal(mediaCalls.at(-1)?.endMs, 200);
+});
+
+test("Practice M6 current-AE assembly connects media, baseline, M6, render, and audio adapters", () => {
+  const assembly = createPracticeM6CurrentAeAssemblyV1({
+    transport: {
+      async dispatch() {
+        throw new Error("constructor test must not contact AE");
+      },
+    },
+    projectId: "after-effects-project",
+    repositoryRoot: "C:\\EditFlow-2.0",
+    artifactDir: "C:\\EditFlow-2.0\\.tmp\\practice",
+    mediaRoots: ["C:\\Media"],
+  });
+  assert.equal(typeof assembly.adapters.analyzeFinish, "function");
+  assert.equal(typeof assembly.adapters.matchAudio, "function");
+  assert.equal(typeof assembly.adapters.reconstruct, "function");
+  assert.equal(typeof assembly.adapters.evaluate, "function");
+  assert.equal(assembly.m6Runtime.renderDriver, assembly.renderDriver);
+  assert.equal(assembly.m6Runtime.baselineBuilder, assembly.baselineBuilder);
+  assert.equal(assembly.mediaMatcher.config.analysisProxyFps, 12);
+  assert.equal(assembly.mediaMatcher.config.analysisTimeoutMs, 60 * 60 * 1000);
+  assert.match(
+    assembly.mediaMatcher.config.analysisCacheDir,
+    /proofs[\\/]artifacts[\\/]practice-media-cache$/,
+  );
+});
+
+const practiceRenderResponse = (request, overrides = {}) => ({
+  protocolVersion: "1.1.0",
+  requestId: request.requestId,
+  transactionId: request.transactionId,
+  operationId: request.operationId,
+  capabilityId: request.capabilityId,
+  command: request.command,
+  outcome: "NO_OP",
+  error: null,
+  affectedObjects: [],
+  readback: null,
+  projectSnapshot: null,
+  environmentProbe: null,
+  hostProjectRevision: null,
+  diagnostics: {
+    adapterProtocolVersion: "1.1.0",
+    adapterBuild: "0.1.0-dev.3",
+    command: request.command,
+  },
+  proofArtifactRefs: [],
+  ...overrides,
+});
+
+const practiceBaselineComp = (hostId, stableId) => ({
+  hostId,
+  stableId,
+  kind: "COMPOSITION",
+  name: stableId,
+  parentHostId: null,
+  comment: "[[EDITFLOW2_STABLE:" + stableId + "]]",
+  composition: {
+    hostId,
+    stableId,
+    name: stableId,
+    width: 640,
+    height: 360,
+    pixelAspect: 1,
+    duration: 0.5,
+    frameRate: 30,
+    displayStartTime: 0,
+    layers: [],
+  },
+});
+
+class PracticeAttemptRestoreTransport {
+  constructor(compStableId) {
+    this.requests = [];
+    this.undoStack = [];
+    this.project = {
+      hostRevision: 30,
+      filePath: "C:/EditFlow/practice.aep",
+      activeItemHostId: 501,
+      itemCount: 1,
+      items: [practiceBaselineComp(501, compStableId)],
+    };
+  }
+  mutateAfterAttempt() {
+    this.undoStack.push(structuredClone(this.project));
+    this.project.items.push(practiceBaselineComp(502, "ATTEMPT_TEMP_COMP"));
+    this.project.itemCount = this.project.items.length;
+    this.project.activeItemHostId = 502;
+    this.project.hostRevision += 1;
+  }
+
+  async dispatch(request) {
+    this.requests.push(structuredClone(request));
+    if (request.command === "host.probe") {
+      return practiceRenderResponse(request, {
+        environmentProbe: {
+          adapterProtocolVersion: "1.1.0",
+          adapterBuild: "0.1.0-dev.3",
+          hostName: "Adobe After Effects",
+          hostVersion: "26.0-test",
+          hostBuild: "test-build",
+          os: "Windows test",
+          projectOpen: true,
+        },
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
+    if (request.command === "project.inspect") {
+      return practiceRenderResponse(request, {
+        projectSnapshot: structuredClone(this.project),
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
+    if (request.command === "transaction.undo_last") {
+      const previous = this.undoStack.pop();
+      if (previous === undefined) {
+        return practiceRenderResponse(request, {
+          outcome: "FAILED",
+          error: {
+            category: "ROLLBACK_FAILURE",
+            code: "NO_UNDO_AVAILABLE",
+            message: "Nothing to undo.",
+          },
+          hostProjectRevision: this.project.hostRevision,
+        });
+      }
+      const revision = this.project.hostRevision + 1;
+      this.project = previous;
+      this.project.hostRevision = revision;
+      return practiceRenderResponse(request, {
+        outcome: "APPLIED",
+        readback: { undone: true },
+        hostProjectRevision: revision,
+      });
+    }
+    throw new Error("Unhandled Practice render request: " + request.command);
+  }
+}
+
+test("Practice M6 retry restores the exact AE baseline and preserves matched-audio identity", async () => {
+  const compStableId = "PRACTICE_BASELINE_COMP_RETRY";
+  const transport = new PracticeAttemptRestoreTransport(compStableId);
+  const driver = new PracticeM6AeRenderDriverCurrentV1({
+    transport,
+    projectId: "after-effects-project",
+    artifactDir: "C:\\EditFlow\\.tmp\\practice-renders",
+  });
+  const baselinePlan = {
+    schema: "editflow.practice-ae-baseline-plan.v1",
+    baselineId: "baseline:retry",
+    referenceId: "finish:retry",
+    compStableId,
+    durationMs: 500,
+    frameRate: 30,
+    audioMatchId: "audio:match:retry",
+    operations: [],
+    evidenceRefs: ["baseline:retry"],
+  };
+
+  const first = await driver.prepareAttempt({
+    sessionId: "practice:retry",
+    attempt: 1,
+    baselinePlan,
+  });
+  assert.ok(
+    first.evidenceRefs?.includes(
+      "practice-attempt-audio-preserved:audio:match:retry",
+    ),
+  );
+
+  transport.mutateAfterAttempt();
+  driver.recordAppliedOperations({
+    sessionId: "practice:retry",
+    attempt: 1,
+    count: 1,
+  });
+  assert.equal(transport.project.itemCount, 2);
+
+  const second = await driver.prepareAttempt({
+    sessionId: "practice:retry",
+    attempt: 2,
+    baselinePlan,
+  });
+
+  assert.equal(transport.project.itemCount, 1);
+  assert.equal(
+    transport.project.items[0]?.stableId,
+    compStableId,
+  );
+  assert.ok(
+    second.evidenceRefs?.includes(
+      "practice-attempt-restore-undo-count:1",
+    ),
+  );
+  assert.ok(
+    transport.requests.some((request) =>
+      request.command === "transaction.undo_last"),
+  );
+});
+
+test("Practice Current-AE training runtime persists Edit Type allocation across restart", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-practice-runtime-"));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const learningMemoryFilePath = path.join(root, "practice-learning.json");
+  const editTypeRegistryFilePath = path.join(root, "edit-types.json");
+  const baseConfig = {
+    transport: {
+      async dispatch() {
+        throw new Error("persistence test must not contact AE");
+      },
+    },
+    projectId: "after-effects-project",
+    repositoryRoot: process.cwd(),
+    artifactDir: path.join(root, "artifacts"),
+    mediaRoots: [root],
+    learningMemoryFilePath,
+    editTypeRegistryFilePath,
+  };
+
+  const runtime = await createPracticeM6CurrentAeTrainingRuntimeV1(baseConfig);
+  await runtime.createEditType({
+    editTypeId: "high-potency-character-edit",
+    title: "High Potency Character Edit",
+    choiceWords: ["character potency"],
+  });
+  runtime.engine.memory.remember({
+    sessionId: "practice:persistent:001",
+    selectedEditTypeId: "high-potency-character-edit",
+    styleFingerprint: "style:persistent",
+    baselineId: "baseline:persistent",
+    matches: [],
+    audioMatch: null,
+    attempts: [],
+    mastered: false,
+    bestAttempt: null,
+  });
+
+  const allocation = await runtime.allocateLearning({
+    sessionId: "practice:persistent:001",
+    editTypeId: "high-potency-character-edit",
+  });
+  assert.equal(allocation.profileRevision, 2);
+
+  const reloaded = await createPracticeM6CurrentAeTrainingRuntimeV1(baseConfig);
+  const retainedProfile = reloaded.engine.editTypes.get(
+    "high-potency-character-edit",
+  );
+  assert.ok(retainedProfile);
+  assert.deepEqual(
+    retainedProfile.sessionIds,
+    ["practice:persistent:001"],
+  );
+  assert.equal(
+    reloaded.engine.memory.get("practice:persistent:001")
+      ?.allocatedEditTypeId,
+    "high-potency-character-edit",
+  );
+
+  const proCreation = reloaded.prepareProCreation({
+    sessionId: "pro:persistent:001",
+    mode: "PRO_CREATION",
+    editTypeId: "high-potency-character-edit",
+    start: [{
+      mediaId: "raw:video:001",
+      uri: path.join(root, "raw-video.mp4"),
+      mediaKind: "VIDEO",
+      role: "START_SOURCE",
+    }],
+  });
+  assert.equal(proCreation.status, "BLOCKED");
+  assert.ok(
+    proCreation.reasons.some((reason) => /no mastered Practice success path/.test(reason)),
+  );
+  assert.equal(
+    proCreation.knowledge?.totalSessionCount,
+    1,
+  );
+});
+
+test("Practice local media path resolver accepts Windows drive paths without treating C: as a URI scheme", () => {
+  const windowsPath = "C:\\Users\\Shadow\\Downloads\\clip [2012].mp4";
+  assert.equal(
+    resolvePracticeLocalMediaPathV1(windowsPath),
+    path.win32.normalize(windowsPath),
+  );
+  assert.throws(
+    () => resolvePracticeLocalMediaPathV1("https://example.com/clip.mp4"),
+    /accepts only local file media/,
+  );
+});
+
+
+test("GPT Practice assignment persists the full learning trajectory under its Edit Type", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-gpt-practice-"));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const storePath = path.join(root, "gpt-orchestration.json");
+  const store = new GptOrchestrationStoreV1(storePath);
+  const registry = new EditTypeRegistryV1();
+  registry.create({
+    editTypeId: "high-potency",
+    title: "High Potency",
+  });
+  const sessionId = "practice:gpt:001";
+  registry.beginGptLearningSession("high-potency", sessionId, "PRACTICE");
+  const finish = {
+    mediaId: "finish:1",
+    role: "FINISH_REFERENCE",
+    mediaKind: "VIDEO",
+    uri: "C:\\Media\\finish.mp4",
+  };
+  const start = [{
+    mediaId: "video:1",
+    role: "START_SOURCE",
+    mediaKind: "VIDEO",
+    uri: "C:\\Media\\raw.mp4",
+  }];
+  const assignment = await store.createAssignment({
+    sessionId,
+    mode: "PRACTICE",
+    editTypeId: "high-potency",
+    finish,
+    start,
+    artifactDir: path.join(root, "artifacts"),
+    knowledge: registry.knowledge("high-potency"),
+  });
+  assert.equal(assignment.status, "PENDING");
+  assert.match(assignment.chatMessage, /GPT is the orchestrator, creative reasoner, and learner/);
+  assert.match(assignment.chatMessage, /all editorial cutting, retiming, remodeling/i);
+  assert.match(assignment.chatMessage, /OBSERVATION -> INTERPRETATION -> HYPOTHESIS/);
+  assert.match(assignment.chatMessage, /C:\\Media\\finish\.mp4/);
+
+  const claimed = await store.claim(assignment.assignmentId, "chatgpt-work");
+  assert.equal(claimed.status, "RUNNING");
+  const failure = await store.appendEvent({
+    assignmentId: assignment.assignmentId,
+    attempt: 1,
+    stage: "LESSON",
+    outcome: "FAILURE",
+    summary: "Static flash failed to reproduce spatial deformation.",
+    avoidRepeat: "Do not replace motion-led impacts with luminance-only flashes.",
+    developmentPattern: "Observe spatial persistence before selecting effect families.",
+    evidenceRefs: ["render:attempt:1"],
+  });
+  registry.recordGptLearningEvent(failure);
+  const success = await store.appendEvent({
+    assignmentId: assignment.assignmentId,
+    attempt: 2,
+    stage: "LESSON",
+    outcome: "SUCCESS",
+    summary: "Layered displacement and smear matched the reference behavior.",
+    reusableLesson: "Scale directional smear and recovery to shot velocity and duration.",
+    developmentPattern: "Match source and timing before layering transition behavior.",
+    evidenceRefs: ["render:attempt:2", "comparison:attempt:2"],
+  });
+  registry.recordGptLearningEvent(success);
+  const completed = await store.complete(assignment.assignmentId, {
+    success: true,
+    finalRenderRef: "render:mastered",
+    finalSummary: "Reference reconstructed at the proof gate.",
+  });
+  registry.completeGptLearningSession({
+    editTypeId: "high-potency",
+    sessionId,
+    mode: "PRACTICE",
+    mastered: completed.status === "COMPLETED",
+  });
+
+  const knowledge = registry.knowledge("high-potency");
+  assert.equal(knowledge.masteredSessionCount, 1);
+  assert.deepEqual(
+    knowledge.gptLearning.failureAvoidanceLessons,
+    ["Do not replace motion-led impacts with luminance-only flashes."],
+  );
+  assert.deepEqual(
+    knowledge.gptLearning.successLessons,
+    ["Scale directional smear and recovery to shot velocity and duration."],
+  );
+  assert.equal(knowledge.gptLearning.developmentPatterns.length, 2);
+
+  const preparation = new ProCreationPreparationEngineV1(registry).prepare({
+    sessionId: "pro:gpt:001",
+    mode: "PRO_CREATION",
+    editTypeId: "high-potency",
+    start,
+  });
+  assert.equal(preparation.status, "READY");
+  assert.equal(preparation.knowledge.gptLearning.eventCount, 2);
+
+  const reloaded = new GptOrchestrationStoreV1(storePath);
+  assert.equal(
+    (await reloaded.getAssignment(assignment.assignmentId)).status,
+    "COMPLETED",
+  );
+  assert.equal((await reloaded.eventsForSession(sessionId)).length, 2);
+});
+
+
+test("GPT cancellation is immediate while queued and cooperative after AE work starts", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-gpt-cancel-"));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const store = new GptOrchestrationStoreV1(
+    path.join(root, "gpt-orchestration.json"),
+  );
+  const start = [{
+    mediaId: "video:1",
+    role: "START_SOURCE",
+    mediaKind: "VIDEO",
+    uri: "C:\\Media\\raw.mp4",
+  }];
+  const queued = await store.createAssignment({
+    sessionId: "pro:queued",
+    mode: "PRO_CREATION",
+    editTypeId: "high-potency",
+    finish: null,
+    start,
+    artifactDir: path.join(root, "queued"),
+    knowledge: null,
+  });
+  const queuedCancelled = await store.requestCancel(queued.assignmentId);
+  assert.equal(queuedCancelled.status, "CANCELLED");
+  assert.match(queuedCancelled.finalSummary, /before GPT claimed/);
+
+  const running = await store.createAssignment({
+    sessionId: "pro:running",
+    mode: "PRO_CREATION",
+    editTypeId: "high-potency",
+    finish: null,
+    start,
+    artifactDir: path.join(root, "running"),
+    knowledge: null,
+  });
+  await store.claim(running.assignmentId, "chatgpt-work");
+  const requested = await store.requestCancel(running.assignmentId);
+  assert.equal(requested.status, "CANCEL_REQUESTED");
+  assert.ok(requested.cancelRequestedAt);
+
+  const stopped = await store.complete(running.assignmentId, {
+    success: true,
+    finalRenderRef: "render:must-not-be-certified",
+    finalSummary: "Stopped after restoring the last safe AE checkpoint.",
+  });
+  assert.equal(stopped.status, "CANCELLED");
+  assert.equal(stopped.finalRenderRef, null);
+  assert.match(stopped.finalSummary, /safe AE checkpoint/);
+
+  const idempotent = await store.requestCancel(running.assignmentId);
+  assert.equal(idempotent.status, "CANCELLED");
 });

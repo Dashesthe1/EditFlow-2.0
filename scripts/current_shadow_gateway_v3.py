@@ -5,10 +5,45 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
 CONTROL = "http://127.0.0.1:32146"
+
+
+def _practice_config() -> tuple[str, str]:
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    config_path = os.path.join(local_app_data, "EditFlow2", "bridge-config.json")
+    with open(config_path, "r", encoding="utf-8-sig") as handle:
+        config = json.load(handle)
+    port = int(config.get("productPort") or (int(config["port"]) + 1))
+    token = str(config["token"])
+    return f"http://127.0.0.1:{port}", token
+
+
+def _practice_http(
+    method: str,
+    path: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    base, token = _practice_config()
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        base + path,
+        data=data,
+        method=method,
+        headers={
+            "Content-Type": "application/json",
+            "X-EditFlow-Token": token,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=35) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Practice bridge error {exc.code}: {detail}") from exc
 
 
 def _http(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -126,6 +161,9 @@ def build_server():
                 "probe_after_effects", "get_production_status", "list_adaptive_capabilities",
                 "triage_error", "remember_error_resolution", "get_error_memory", "record_error_outcome",
                 "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_batch", "fast_ae_refresh",
+                "get_next_gpt_assignment", "get_gpt_assignment", "claim_gpt_assignment",
+                "record_gpt_learning_event", "complete_gpt_assignment", "fail_gpt_assignment",
+                "acknowledge_gpt_assignment_cancelled", "get_editflow_run", "cancel_editflow_run",
             ],
         }
 
@@ -143,7 +181,8 @@ def build_server():
             "capabilities": [
                 "CURRENT_AE_STATE", "WARM_CEP_PROBE", "CONTINUOUS_FAST_LOOP",
                 "ROUTINE_DECISION_ENGINE", "LOCAL_BATCH_RUNTIME", "ERROR_TRIAGE_MEMORY",
-                "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN",
+                "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN", "GPT_PRACTICE_ORCHESTRATION",
+                "EDIT_TYPE_LEARNING_TRACE", "PRACTICE_PRO_CREATION_CANCELLATION",
             ],
         }
 
@@ -209,6 +248,126 @@ def build_server():
     def fast_ae_refresh() -> dict[str, Any]:
         """Refresh the current AE world model at a meaningful checkpoint."""
         return _http("GET", "/state")
+
+    @mcp.tool()
+    def get_next_gpt_assignment() -> dict[str, Any]:
+        """Get the next Practice or Pro Creation assignment created for ChatGPT by the AE panel."""
+        return _practice_http("GET", "/v1/product/gpt/assignments/next")
+
+    @mcp.tool()
+    def get_gpt_assignment(assignment_id: str) -> dict[str, Any]:
+        """Read one GPT assignment, its complete editing brief, learning trace, and cancellation state."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}")
+
+    @mcp.tool()
+    def claim_gpt_assignment(
+        assignment_id: str,
+        claimed_by: str = "chatgpt-work",
+    ) -> dict[str, Any]:
+        """Claim a queued EditFlow assignment before GPT begins reasoning or mutating After Effects."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http(
+            "POST",
+            f"/v1/product/gpt/assignments/{safe_id}/claim",
+            {"claimedBy": claimed_by},
+        )
+
+    @mcp.tool()
+    def record_gpt_learning_event(
+        assignment_id: str,
+        stage: str,
+        summary: str,
+        outcome: str = "NEUTRAL",
+        attempt: int = 0,
+        detail: str = "",
+        development_pattern: str = "",
+        reusable_lesson: str = "",
+        avoid_repeat: str = "",
+        evidence_refs_json: str = "[]",
+    ) -> dict[str, Any]:
+        """Record one observation-to-lesson event under the assignment's selected Edit Type."""
+        evidence_refs = json.loads(evidence_refs_json)
+        if not isinstance(evidence_refs, list) or any(not isinstance(item, str) for item in evidence_refs):
+            raise ValueError("evidence_refs_json must decode to a string array")
+        payload: dict[str, Any] = {
+            "stage": stage,
+            "summary": summary,
+            "outcome": outcome,
+            "evidenceRefs": evidence_refs,
+        }
+        if attempt > 0:
+            payload["attempt"] = int(attempt)
+        if detail:
+            payload["detail"] = detail
+        if development_pattern:
+            payload["developmentPattern"] = development_pattern
+        if reusable_lesson:
+            payload["reusableLesson"] = reusable_lesson
+        if avoid_repeat:
+            payload["avoidRepeat"] = avoid_repeat
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http(
+            "POST",
+            f"/v1/product/gpt/assignments/{safe_id}/events",
+            payload,
+        )
+
+    @mcp.tool()
+    def complete_gpt_assignment(
+        assignment_id: str,
+        success: bool,
+        final_summary: str,
+        final_render_ref: str = "",
+    ) -> dict[str, Any]:
+        """Complete GPT's assignment; cancelled assignments cannot be certified as successful."""
+        payload: dict[str, Any] = {
+            "success": bool(success),
+            "finalSummary": final_summary,
+        }
+        if final_render_ref:
+            payload["finalRenderRef"] = final_render_ref
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http(
+            "POST",
+            f"/v1/product/gpt/assignments/{safe_id}/complete",
+            payload,
+        )
+
+    @mcp.tool()
+    def fail_gpt_assignment(assignment_id: str, error: str) -> dict[str, Any]:
+        """Fail an EditFlow GPT assignment with an actionable error."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http(
+            "POST",
+            f"/v1/product/gpt/assignments/{safe_id}/fail",
+            {"error": error},
+        )
+
+    @mcp.tool()
+    def acknowledge_gpt_assignment_cancelled(
+        assignment_id: str,
+        summary: str = "GPT stopped safely at an EditFlow checkpoint.",
+    ) -> dict[str, Any]:
+        """Acknowledge that GPT stopped AE work after observing a cancellation request."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http(
+            "POST",
+            f"/v1/product/gpt/assignments/{safe_id}/cancelled",
+            {"summary": summary},
+        )
+
+    @mcp.tool()
+    def get_editflow_run(session_id: str) -> dict[str, Any]:
+        """Read current Practice or Pro Creation progress for cancellation and UI synchronization."""
+        safe_id = urllib.parse.quote(session_id, safe="")
+        return _practice_http("GET", f"/v1/product/runs/{safe_id}")
+
+    @mcp.tool()
+    def cancel_editflow_run(session_id: str) -> dict[str, Any]:
+        """Request a safe stop for a Practice or Pro Creation session."""
+        safe_id = urllib.parse.quote(session_id, safe="")
+        return _practice_http("POST", f"/v1/product/runs/{safe_id}/cancel", {})
 
     return mcp
 

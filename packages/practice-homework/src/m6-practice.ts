@@ -574,11 +574,14 @@ export const composePracticeM6ExecutionAdaptersV1 = (
   other: Pick<
     PracticeHomeworkAdaptersV1,
     "analyzeFinish" | "indexStart" | "matchScenes" | "buildContentBaseline"
-  > & Partial<Pick<PracticeHomeworkAdaptersV1, "recordEpisode">>,
+  > & Partial<Pick<PracticeHomeworkAdaptersV1, "matchAudio" | "recordEpisode">>,
 ): PracticeHomeworkAdaptersV1 => ({
   analyzeFinish: (finish) => other.analyzeFinish(finish),
   indexStart: (start) => other.indexStart(start),
   matchScenes: (input) => other.matchScenes(input),
+  ...(other.matchAudio === undefined
+    ? {}
+    : { matchAudio: (input) => other.matchAudio?.(input) ?? Promise.resolve(null) }),
   buildContentBaseline: (input) => other.buildContentBaseline(input),
   reconstruct: (input) => bridge.reconstruct(input),
   evaluate: (input) => bridge.evaluate(input),

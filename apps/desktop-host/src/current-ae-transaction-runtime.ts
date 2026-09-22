@@ -203,6 +203,18 @@ export class CurrentAeTransactionRuntimeV1 {
     this.filesystemPolicy = filesystemPolicy;
   }
 
+  async observe(): Promise<ObservedProjectState> {
+    const host = new AeCepCurrentTransactionalHostV1(
+      this.transport,
+      this.projectId,
+      `current-ae:observe:${++this.#requestCounter}`,
+      () => `current-ae-runtime-${++this.#requestCounter}`,
+      this.filesystemPolicy,
+      this.stabilization?.visualDriver ?? null,
+    );
+    return await host.readState();
+  }
+
   async execute(planInput: unknown): Promise<ExecutionResult> {
     const plan = requireExecutionPlan(planInput);
     if (plan.operations.length > this.maxOperations) {

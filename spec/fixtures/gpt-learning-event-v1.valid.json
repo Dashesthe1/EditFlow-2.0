@@ -1,0 +1,15 @@
+{
+  "schema": "editflow.gpt-learning-event.v1",
+  "eventId": "gpt-learning-event:fixture",
+  "sessionId": "practice:fixture",
+  "editTypeId": "high-potency",
+  "mode": "PRACTICE",
+  "attempt": 2,
+  "stage": "LESSON",
+  "outcome": "SUCCESS",
+  "summary": "Layered motion matched the reference.",
+  "developmentPattern": "Match source before effect reconstruction.",
+  "reusableLesson": "Scale recovery duration to shot velocity.",
+  "evidenceRefs": ["render:attempt:2"],
+  "createdAt": "2026-09-22T20:05:00.000Z"
+}

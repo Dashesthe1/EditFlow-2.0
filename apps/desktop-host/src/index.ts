@@ -40,9 +40,38 @@ export interface DesktopAeSessionOptions {
 
 export {
   PracticeCurrentAeBaselineRunnerV1,
+  PracticeM6CurrentAeTrainingRuntimeV1,
   compilePracticeAeBaselineExecutionPlanV1,
   createPracticeCurrentAeBaselineRunnerV1,
+  createPracticeM6CurrentAeAssemblyV1,
+  createPracticeM6CurrentAeTrainingRuntimeV1,
 } from "./practice-training-runtime.js";
+export type {
+  PracticeM6CurrentAeAssemblyV1,
+  PracticeM6CurrentAeAssemblyConfigV1,
+  PracticeM6CurrentAeTrainingRuntimeConfigV1,
+} from "./practice-training-runtime.js";
+export {
+  PRACTICE_M6_NATIVE_CAPABILITIES_V1,
+  PracticeM6CurrentAeRuntimeV1,
+} from "./practice-m6-current-ae-runtime.js";
+export type {
+  PracticeM6AeRenderDriverV1,
+  PracticeM6CurrentAeTransactionV1,
+} from "./practice-m6-current-ae-runtime.js";
+export {
+  PracticeM6AeRenderDriverCurrentV1,
+} from "./practice-m6-ae-render-driver.js";
+export type {
+  PracticeM6AeRenderDriverConfigV1,
+} from "./practice-m6-ae-render-driver.js";
+export {
+  PracticePanelServerV1,
+} from "./practice-panel-server.js";
+export type {
+  PracticePanelRunSnapshotV1,
+  PracticePanelServerConfigV1,
+} from "./practice-panel-server.js";
 
 export const createDesktopAeSession = async (
   adapter: AeCepAdapterClient,

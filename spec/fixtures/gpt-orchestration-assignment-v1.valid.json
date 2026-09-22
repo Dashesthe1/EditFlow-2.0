@@ -1,0 +1,31 @@
+{
+  "schema": "editflow.gpt-orchestration-assignment.v1",
+  "assignmentId": "gpt-assignment:fixture",
+  "sessionId": "practice:fixture",
+  "mode": "PRACTICE",
+  "editTypeId": "high-potency",
+  "status": "RUNNING",
+  "finish": {
+    "mediaId": "finish:1",
+    "role": "FINISH_REFERENCE",
+    "mediaKind": "VIDEO",
+    "uri": "C:/Media/finish.mp4"
+  },
+  "start": [{
+    "mediaId": "video:1",
+    "role": "START_SOURCE",
+    "mediaKind": "VIDEO",
+    "uri": "C:/Media/raw.mp4"
+  }],
+  "artifactDir": "C:/EditFlow/artifacts/practice-fixture",
+  "chatMessage": "GPT controls EditFlow for this assignment.",
+  "createdAt": "2026-09-22T20:00:00.000Z",
+  "claimedAt": "2026-09-22T20:00:01.000Z",
+  "claimedBy": "chatgpt-work",
+  "startedAt": "2026-09-22T20:00:01.000Z",
+  "completedAt": null,
+  "cancelRequestedAt": null,
+  "finalRenderRef": null,
+  "finalSummary": null,
+  "error": null
+}

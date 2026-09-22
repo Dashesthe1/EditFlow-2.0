@@ -1,6 +1,6 @@
 # EditFlow 2.0 Practice / Homework System Contract
 
-Status: **V1 orchestration foundation implemented**
+Status: **V1 runtime and local CEP Practice panel implemented**
 
 ## Purpose
 
@@ -19,8 +19,10 @@ EditFlow exposes two explicit modes:
 1. PRACTICE - supervised reconstruction with a known finished reference.
 2. PRO_CREATION - autonomous production using retained learning and experience.
 
-V1 implements the Practice orchestration contract. Pro Creation is represented in
-the mode controller but intentionally does not execute through the homework engine.
+V1 exposes a durable GPT assignment control plane through the local After Effects
+CEP panel. Practice and Pro Creation both create a structured assignment for GPT rather
+than entering a local rule-driven editing loop. Pro Creation remains blocked until its
+selected Edit Type contains at least one mastered GPT Practice success path.
 ## Practice user surface
 
 The stable V1 UI contract is:
@@ -30,6 +32,27 @@ The stable V1 UI contract is:
 - **Proceed to do homework** - begins the supervised reconstruction session.
 
 The JSON contract is spec/practice-session-v1.schema.json.
+
+### Running the local panel
+
+1. Install or refresh the extension with `scripts/windows/install-editflow-cep.ps1`.
+2. Start the persistent product service with `scripts/windows/run-practice-panel.ps1`
+   or `npm run practice:panel`.
+3. In After Effects, open **Window > Extensions > EditFlow 2.0 Bridge**.
+4. Create or select an Edit Type, choose the Finish and Start media, and proceed.
+
+The service binds only to authenticated loopback ports. Practice remains disabled
+until both the product service and the AE CEP bridge are connected. Pressing the primary
+action creates a persistent GPT assignment containing the media, selected Edit Type,
+retained knowledge, artifact location, and governing editing instructions. The Shadow
+connector exposes assignment claim, trace recording, completion, failure, status, and
+cancellation tools so GPT can orchestrate EditFlow's Eyes, Brain, AE hands, and Desktop
+Commander from one control loop.
+
+Practice learning is allocated to the selected Edit Type automatically as GPT records
+events. A Practice session becomes a mastered source for Pro Creation only when GPT
+completes it successfully; queued, failed, human-review, and cancelled runs cannot certify
+the Edit Type.
 
 ## Non-negotiable practice sequence
 
@@ -185,14 +208,33 @@ The baseline compiler lowers matched source ranges through EditFlow's existing t
 
 Practice episodes can now be stored in a disk-backed JSON memory with atomic replacement, session deduplication, and reload into PracticeLearningMemoryV1. Full attempt histories, including failures, therefore survive process or chat restarts and can later become retrieval evidence for Pro Creation.
 
+## GPT orchestration and cancellation
+
+The durable orchestration store retains assignments and learning events independently of
+the chat process. GPT records the meaningful trajectory as:
+
+OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER ->
+COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.
+
+Reusable successes, failure-avoidance lessons, and development patterns are distilled into
+the selected Edit Type while the event history remains available as evidence. Pro Creation
+loads that knowledge but must adapt it to the new footage rather than replaying literal values.
+
+Practice and Pro Creation expose the same Cancel control. Cancellation is immediate while an
+assignment is queued. After GPT has begun work it becomes a cooperative safe-stop request:
+GPT checks state between meaningful operations, stops starting new work, restores or retains
+the last safe AE checkpoint, and acknowledges cancellation. A cancellation request wins over
+a simultaneous success completion, so cancelled work cannot be certified as mastered.
+
 ## Integration boundary still open
 
-The remaining production integration is narrower:
+1. deploy a continuously available authenticated ChatGPT worker/trigger that claims new
+   assignments without requiring a user message in an existing chat;
+2. broaden GPT-facing Eyes and Hands tools beyond the current Shadow connector surface;
+3. benchmark full-length real movies and difficult references, then tune indexing evidence;
+4. add best-attempt playback, richer human grading, and restart recovery to the CEP panel.
 
-1. connect per-shot/reference-window decomposition to the existing M6 dense-effect evidence pipeline;
-2. connect reconstruction attempts to the existing M6 VisualEffectsBrain, Recipe Compiler, and live AE transaction runner;
-3. render each attempt and convert M6 semantic/reference comparisons into the aggregate Practice similarity report;
-4. benchmark full-length real movies and difficult references, then tune indexing/refinement confidence gates;
-5. add the shipping EditFlow visual panel/drop zones for Finish, Start, mode selection, progress, best-attempt preview, and human grading.
-
-These are implementation/proof gaps, not reasons to weaken the Practice contract or certify an unverified reconstruction.
+The assignment queue, connector control surface, Edit Type learning trace, Pro Creation
+mastery gate, and Practice/Pro Creation cancellation lifecycle are implemented. The remaining
+items are deployment and proof gaps; the local deterministic M6 loop is retained as GPT's
+toolkit and is no longer the governing creative decision-maker.

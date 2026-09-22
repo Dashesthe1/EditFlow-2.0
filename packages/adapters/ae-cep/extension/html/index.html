@@ -3,21 +3,84 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:*; connect-src http://127.0.0.1:*; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
-  <title>EditFlow 2.0 Bridge</title>
+  <title>EditFlow 2.0</title>
   <link rel="stylesheet" href="../client/bridge.css" />
 </head>
 <body>
   <main>
-    <h1>EditFlow 2.0 Bridge</h1>
-    <div id="status" data-state="starting">Starting bridge…</div>
-    <dl>
-      <dt>Protocol</dt><dd id="protocol">1.1.0</dd>
-      <dt>Broker</dt><dd id="broker">Not connected</dd>
-      <dt>Host</dt><dd id="host">After Effects</dd>
-    </dl>
-    <p class="note">This panel accepts only authenticated local EditFlow requests and invokes the fixed EditFlow2 dispatcher.</p>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">EDITFLOW 2.0</p>
+        <h1>Create with learned editing intelligence</h1>
+      </div>
+      <div id="status" data-state="starting">Connecting…</div>
+    </header>
+
+    <nav class="mode-tabs" aria-label="EditFlow mode">
+      <button class="mode-tab is-active" type="button" data-mode="PRACTICE">Practice</button>
+      <button class="mode-tab" type="button" data-mode="PRO_CREATION">Pro Creation</button>
+    </nav>
+
+    <section class="workspace-card">
+      <div class="field">
+        <div class="field-heading">
+          <label for="edit-type">Edit Type</label>
+          <button id="new-edit-type" class="text-button" type="button">+ New</button>
+        </div>
+        <select id="edit-type">
+          <option value="">Choose an Edit Type</option>
+        </select>
+        <p class="hint">GPT records Practice successes, failures, and development patterns under this Edit Type automatically.</p>
+      </div>
+
+      <div id="finish-field" class="field">
+        <label>Finish</label>
+        <button id="choose-finish" class="drop-zone" type="button">
+          <span class="drop-title">Choose finished reference</span>
+          <span id="finish-summary" class="drop-detail">One professional edit · video</span>
+        </button>
+      </div>
+
+      <div class="field">
+        <label>Start</label>
+        <button id="choose-start" class="drop-zone" type="button">
+          <span class="drop-title">Choose raw source media</span>
+          <span id="start-summary" class="drop-detail">One or more videos, plus optional audio</span>
+        </button>
+        <div id="start-files" class="file-list" aria-live="polite"></div>
+      </div>
+
+      <div class="run-actions">
+        <button id="primary-action" class="primary-action" type="button" disabled>
+          Proceed to do homework
+        </button>
+        <button id="cancel-action" class="cancel-action" type="button" hidden>
+          Cancel
+        </button>
+      </div>
+    </section>
+
+    <section class="activity-card" aria-live="polite">
+      <div class="activity-heading">
+        <h2>Session</h2>
+        <span id="run-state" class="state-pill">Idle</span>
+      </div>
+      <p id="activity-message">Start the local Practice service, then choose your media.</p>
+      <div id="result-metrics" class="metrics" hidden></div>
+    </section>
+
+    <details class="bridge-details">
+      <summary>Connection details</summary>
+      <dl>
+        <dt>Protocol</dt><dd id="protocol">1.1.0</dd>
+        <dt>Broker</dt><dd id="broker">Not connected</dd>
+        <dt>Host</dt><dd>After Effects</dd>
+      </dl>
+    </details>
   </main>
+
   <script src="../client/runtime-config.js"></script>
   <script src="../client/bridge.js"></script>
+  <script src="../client/practice-panel.js"></script>
 </body>
 </html>

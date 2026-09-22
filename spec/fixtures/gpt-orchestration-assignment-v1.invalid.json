@@ -1,0 +1,21 @@
+{
+  "schema": "editflow.gpt-orchestration-assignment.v1",
+  "assignmentId": "gpt-assignment:invalid",
+  "sessionId": "practice:invalid",
+  "mode": "PRACTICE",
+  "editTypeId": "high-potency",
+  "status": "EDITING_FOREVER",
+  "finish": null,
+  "start": [],
+  "artifactDir": "",
+  "chatMessage": "",
+  "createdAt": "not-a-date",
+  "claimedAt": null,
+  "claimedBy": null,
+  "startedAt": null,
+  "completedAt": null,
+  "cancelRequestedAt": null,
+  "finalRenderRef": null,
+  "finalSummary": null,
+  "error": null
+}

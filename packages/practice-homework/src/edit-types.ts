@@ -4,8 +4,11 @@ import path from "node:path";
 
 import type {
   EditTypeBehaviorEvidenceV1,
+  EditTypeGptLearningSummaryV1,
   EditTypeKnowledgeSnapshotV1,
   EditTypeProfileV1,
+  GptLearningEventV1,
+  GptOrchestrationModeV1,
   PracticeEpisodeV1,
 } from "./contracts.js";
 
@@ -14,6 +17,31 @@ const normalizeChoice = (value: string): string =>
 
 const uniqueStrings = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+
+const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
+  practiceSessionIds: [],
+  proCreationSessionIds: [],
+  masteredPracticeSessionIds: [],
+  eventCount: 0,
+  successLessons: [],
+  failureAvoidanceLessons: [],
+  developmentPatterns: [],
+});
+
+const normalizedGptLearning = (
+  value: EditTypeGptLearningSummaryV1 | undefined,
+): EditTypeGptLearningSummaryV1 => value === undefined
+  ? emptyGptLearning()
+  : {
+    practiceSessionIds: uniqueStrings(value.practiceSessionIds),
+    proCreationSessionIds: uniqueStrings(value.proCreationSessionIds),
+    masteredPracticeSessionIds: uniqueStrings(value.masteredPracticeSessionIds),
+    eventCount: Math.max(0, Math.floor(value.eventCount)),
+    successLessons: uniqueStrings(value.successLessons),
+    failureAvoidanceLessons: uniqueStrings(value.failureAvoidanceLessons),
+    developmentPatterns: uniqueStrings(value.developmentPatterns),
+    ...(value.lastUpdatedAt === undefined ? {} : { lastUpdatedAt: value.lastUpdatedAt }),
+  };
 
 const evidenceId = (material: unknown): string =>
   "edit-type-evidence:" + createHash("sha256")
@@ -92,6 +120,7 @@ export class EditTypeRegistryV1 {
       sessionIds: [],
       masteredSessionIds: [],
       behaviorEvidence: [],
+      gptLearning: emptyGptLearning(),
     };
     this.#assertChoicesAvailable(profile);
     this.#profiles.set(editTypeId, profile);
@@ -107,6 +136,7 @@ export class EditTypeRegistryV1 {
         ...item,
         semanticPatches: structuredClone(item.semanticPatches ?? []),
       })),
+      gptLearning: normalizedGptLearning(profile.gptLearning),
     };
     this.#assertChoicesAvailable(normalized, normalized.editTypeId);
     this.#profiles.set(normalized.editTypeId, structuredClone(normalized));
@@ -156,6 +186,98 @@ export class EditTypeRegistryV1 {
     return [...this.#profiles.values()]
       .sort((a, b) => a.title.localeCompare(b.title))
       .map((profile) => structuredClone(profile));
+  }
+
+  beginGptLearningSession(
+    editTypeId: string,
+    sessionId: string,
+    mode: GptOrchestrationModeV1,
+  ): EditTypeProfileV1 {
+    const profile = this.#profiles.get(editTypeId);
+    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + editTypeId);
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const nextLearning: EditTypeGptLearningSummaryV1 = mode === "PRACTICE"
+      ? {
+        ...learning,
+        practiceSessionIds: uniqueStrings([...learning.practiceSessionIds, sessionId]),
+        lastUpdatedAt: new Date().toISOString(),
+      }
+      : {
+        ...learning,
+        proCreationSessionIds: uniqueStrings([...learning.proCreationSessionIds, sessionId]),
+        lastUpdatedAt: new Date().toISOString(),
+      };
+    const updated: EditTypeProfileV1 = {
+      ...profile,
+      revision: profile.revision + 1,
+      sessionIds: mode === "PRACTICE"
+        ? uniqueStrings([...profile.sessionIds, sessionId])
+        : profile.sessionIds,
+      gptLearning: nextLearning,
+    };
+    this.#profiles.set(editTypeId, updated);
+    return structuredClone(updated);
+  }
+
+  recordGptLearningEvent(event: GptLearningEventV1): EditTypeProfileV1 {
+    const profile = this.#profiles.get(event.editTypeId);
+    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + event.editTypeId);
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const successLesson = event.reusableLesson?.trim() ?? "";
+    const failureLesson = event.avoidRepeat?.trim()
+      || ((event.outcome === "FAILURE" || event.outcome === "REGRESSED")
+        ? event.reusableLesson?.trim() ?? ""
+        : "");
+    const developmentPattern = event.developmentPattern?.trim() ?? "";
+    const updated: EditTypeProfileV1 = {
+      ...profile,
+      revision: profile.revision + 1,
+      gptLearning: {
+        ...learning,
+        eventCount: learning.eventCount + 1,
+        successLessons: event.outcome === "SUCCESS" || event.outcome === "IMPROVED"
+          ? uniqueStrings([...learning.successLessons, successLesson])
+          : learning.successLessons,
+        failureAvoidanceLessons: failureLesson.length > 0
+          ? uniqueStrings([...learning.failureAvoidanceLessons, failureLesson])
+          : learning.failureAvoidanceLessons,
+        developmentPatterns: developmentPattern.length > 0
+          ? uniqueStrings([...learning.developmentPatterns, developmentPattern])
+          : learning.developmentPatterns,
+        lastUpdatedAt: event.createdAt,
+      },
+    };
+    this.#profiles.set(event.editTypeId, updated);
+    return structuredClone(updated);
+  }
+
+  completeGptLearningSession(input: {
+    readonly editTypeId: string;
+    readonly sessionId: string;
+    readonly mode: GptOrchestrationModeV1;
+    readonly mastered: boolean;
+  }): EditTypeProfileV1 {
+    const profile = this.#profiles.get(input.editTypeId);
+    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + input.editTypeId);
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const masteredPracticeSessionIds = input.mode === "PRACTICE" && input.mastered
+      ? uniqueStrings([...learning.masteredPracticeSessionIds, input.sessionId])
+      : learning.masteredPracticeSessionIds;
+    const masteredSessionIds = input.mode === "PRACTICE" && input.mastered
+      ? uniqueStrings([...profile.masteredSessionIds, input.sessionId])
+      : profile.masteredSessionIds;
+    const updated: EditTypeProfileV1 = {
+      ...profile,
+      revision: profile.revision + 1,
+      masteredSessionIds,
+      gptLearning: {
+        ...learning,
+        masteredPracticeSessionIds,
+        lastUpdatedAt: new Date().toISOString(),
+      },
+    };
+    this.#profiles.set(input.editTypeId, updated);
+    return structuredClone(updated);
   }
 
   allocateEpisode(
@@ -213,6 +335,7 @@ export class EditTypeRegistryV1 {
       successfulSemanticPatches: structuredClone(successfulSemanticPatches),
       failedSemanticPatches: structuredClone(failedSemanticPatches),
       behaviorEvidence: structuredClone(profile.behaviorEvidence),
+      gptLearning: structuredClone(normalizedGptLearning(profile.gptLearning)),
     };
   }
 }

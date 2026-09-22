@@ -149,6 +149,7 @@ $Config = [ordered]@{
   schemaVersion = 1
   host = "127.0.0.1"
   port = $Port
+  productPort = $Port + 1
   token = $Token
   protocolVersion = "1.1.0"
   supportedProtocolVersions = @("2.7.0", "2.6.0", "2.5.0", "2.4.0", "2.3.0", "2.2.0", "2.1.0", "2.0.0", "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0", "1.4.0", "1.3.0", "1.2.0", "1.1.0")
@@ -179,6 +180,7 @@ Write-Host "Runtime config: $ConfigPath"
 Write-Host "Panel protocols advertised: 2.7.0, 2.6.0, 2.5.0, 2.4.0, 2.3.0, 2.2.0, 2.1.0, 2.0.0, 1.9.0, 1.8.0, 1.7.0, 1.6.0, 1.5.0, 1.4.0, 1.3.0, 1.2.0, 1.1.0"
 Write-Host "Each local broker narrows that set to the protocol tranches its current proof/runtime supports."
 Write-Host "Broker: 127.0.0.1:$Port"
+Write-Host "Practice service: 127.0.0.1:$($Port + 1)"
 if (-not $SkipDebugMode) { Write-Host "CEP 12 PlayerDebugMode enabled for this Windows user." }
 if ($TokenWasPreserved) {
   Write-Host "Authentication token preserved from the existing local EditFlow config."

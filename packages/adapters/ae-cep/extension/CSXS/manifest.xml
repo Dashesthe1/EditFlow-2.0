@@ -33,16 +33,16 @@
           <Menu>EditFlow 2.0 Bridge</Menu>
           <Geometry>
             <Size>
-              <Height>220</Height>
-              <Width>360</Width>
+              <Height>680</Height>
+              <Width>440</Width>
             </Size>
             <MinSize>
-              <Height>160</Height>
-              <Width>300</Width>
+              <Height>480</Height>
+              <Width>340</Width>
             </MinSize>
             <MaxSize>
-              <Height>600</Height>
-              <Width>900</Width>
+              <Height>1200</Height>
+              <Width>1000</Width>
             </MaxSize>
           </Geometry>
         </UI>

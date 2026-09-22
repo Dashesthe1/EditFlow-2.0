@@ -1,0 +1,13 @@
+{
+  "schema": "editflow.gpt-learning-event.v1",
+  "eventId": "",
+  "sessionId": "practice:fixture",
+  "editTypeId": "high-potency",
+  "mode": "PRACTICE",
+  "attempt": 0,
+  "stage": "GUESSING",
+  "outcome": "MAYBE",
+  "summary": "",
+  "evidenceRefs": ["render:1", "render:1"],
+  "createdAt": "yesterday"
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/schema/gpt-orchestration-assignment-v1.json",
+  "title": "EditFlow GPT Orchestration Assignment V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "assignmentId", "sessionId", "mode", "editTypeId", "status",
+    "finish", "start", "artifactDir", "chatMessage", "createdAt", "claimedAt",
+    "claimedBy", "startedAt", "completedAt", "cancelRequestedAt",
+    "finalRenderRef", "finalSummary", "error"
+  ],
+  "properties": {
+    "schema": { "const": "editflow.gpt-orchestration-assignment.v1" },
+    "assignmentId": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "mode": { "enum": ["PRACTICE", "PRO_CREATION"] },
+    "editTypeId": { "type": "string", "minLength": 1 },
+    "status": {
+      "enum": [
+        "PENDING", "CLAIMED", "RUNNING", "CANCEL_REQUESTED",
+        "CANCELLED", "COMPLETED", "FAILED"
+      ]
+    },
+    "finish": {
+      "anyOf": [
+        { "$ref": "#/$defs/media" },
+        { "type": "null" }
+      ]
+    },
+    "start": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/media" }
+    },
+    "artifactDir": { "type": "string", "minLength": 1 },
+    "chatMessage": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "claimedAt": { "$ref": "#/$defs/nullableDate" },
+    "claimedBy": { "$ref": "#/$defs/nullableString" },
+    "startedAt": { "$ref": "#/$defs/nullableDate" },
+    "completedAt": { "$ref": "#/$defs/nullableDate" },
+    "cancelRequestedAt": { "$ref": "#/$defs/nullableDate" },
+    "finalRenderRef": { "$ref": "#/$defs/nullableString" },
+    "finalSummary": { "$ref": "#/$defs/nullableString" },
+    "error": { "$ref": "#/$defs/nullableString" }
+  },
+  "$defs": {
+    "nullableString": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "nullableDate": {
+      "anyOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mediaId", "role", "mediaKind", "uri"],
+      "properties": {
+        "mediaId": { "type": "string", "minLength": 1 },
+        "role": { "enum": ["FINISH_REFERENCE", "START_SOURCE"] },
+        "mediaKind": { "enum": ["VIDEO", "AUDIO"] },
+        "uri": { "type": "string", "minLength": 1 },
+        "checksum": { "type": "string" },
+        "durationMs": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}

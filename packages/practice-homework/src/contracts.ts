@@ -36,6 +36,7 @@ export interface PracticeReferenceVideoV1 {
 
 export interface PracticeReferenceAnalysisV1 {
   readonly referenceId: string;
+  readonly sourcePath?: string;
   readonly shots: readonly PracticeReferenceShotV1[];
   readonly styleFingerprint: string;
   readonly video?: PracticeReferenceVideoV1;
@@ -183,6 +184,17 @@ export interface EditTypeBehaviorEvidenceV1 {
   readonly elapsedMs: number;
 }
 
+export interface EditTypeGptLearningSummaryV1 {
+  readonly practiceSessionIds: readonly string[];
+  readonly proCreationSessionIds: readonly string[];
+  readonly masteredPracticeSessionIds: readonly string[];
+  readonly eventCount: number;
+  readonly successLessons: readonly string[];
+  readonly failureAvoidanceLessons: readonly string[];
+  readonly developmentPatterns: readonly string[];
+  readonly lastUpdatedAt?: string;
+}
+
 export interface EditTypeProfileV1 {
   readonly schema: "editflow.edit-type-profile.v1";
   readonly editTypeId: string;
@@ -193,6 +205,7 @@ export interface EditTypeProfileV1 {
   readonly sessionIds: readonly string[];
   readonly masteredSessionIds: readonly string[];
   readonly behaviorEvidence: readonly EditTypeBehaviorEvidenceV1[];
+  readonly gptLearning?: EditTypeGptLearningSummaryV1;
 }
 
 export interface EditTypeKnowledgeSnapshotV1 {
@@ -206,6 +219,7 @@ export interface EditTypeKnowledgeSnapshotV1 {
   readonly successfulSemanticPatches: readonly PracticeSemanticPatchV1[];
   readonly failedSemanticPatches: readonly PracticeSemanticPatchV1[];
   readonly behaviorEvidence: readonly EditTypeBehaviorEvidenceV1[];
+  readonly gptLearning: EditTypeGptLearningSummaryV1;
 }
 
 export interface PracticeLearningAllocationPromptV1 {
@@ -310,4 +324,80 @@ export interface ProCreationPreparationResultV1 {
   readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
   readonly reasons: readonly string[];
+}
+
+export type GptOrchestrationModeV1 = "PRACTICE" | "PRO_CREATION";
+export type GptAssignmentStatusV1 =
+  | "PENDING"
+  | "CLAIMED"
+  | "RUNNING"
+  | "CANCEL_REQUESTED"
+  | "CANCELLED"
+  | "COMPLETED"
+  | "FAILED";
+
+export type GptLearningStageV1 =
+  | "OBSERVATION"
+  | "INTERPRETATION"
+  | "HYPOTHESIS"
+  | "PLAN"
+  | "AE_ACTION"
+  | "RENDER"
+  | "COMPARISON"
+  | "DIAGNOSIS"
+  | "CORRECTION"
+  | "RESULT"
+  | "LESSON";
+
+export type GptLearningOutcomeV1 =
+  | "NEUTRAL"
+  | "SUCCESS"
+  | "FAILURE"
+  | "IMPROVED"
+  | "REGRESSED";
+
+export interface GptLearningEventV1 {
+  readonly schema: "editflow.gpt-learning-event.v1";
+  readonly eventId: string;
+  readonly sessionId: string;
+  readonly editTypeId: string;
+  readonly mode: GptOrchestrationModeV1;
+  readonly attempt?: number;
+  readonly stage: GptLearningStageV1;
+  readonly outcome: GptLearningOutcomeV1;
+  readonly summary: string;
+  readonly detail?: string;
+  readonly developmentPattern?: string;
+  readonly reusableLesson?: string;
+  readonly avoidRepeat?: string;
+  readonly evidenceRefs: readonly string[];
+  readonly createdAt: string;
+}
+
+export interface GptOrchestrationAssignmentV1 {
+  readonly schema: "editflow.gpt-orchestration-assignment.v1";
+  readonly assignmentId: string;
+  readonly sessionId: string;
+  readonly mode: GptOrchestrationModeV1;
+  readonly editTypeId: string;
+  readonly status: GptAssignmentStatusV1;
+  readonly finish: PracticeMediaInputV1 | null;
+  readonly start: readonly PracticeMediaInputV1[];
+  readonly artifactDir: string;
+  readonly chatMessage: string;
+  readonly createdAt: string;
+  readonly claimedAt: string | null;
+  readonly claimedBy: string | null;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+  readonly cancelRequestedAt: string | null;
+  readonly finalRenderRef: string | null;
+  readonly finalSummary: string | null;
+  readonly error: string | null;
+}
+
+export interface GptAssignmentCompletionV1 {
+  readonly success: boolean;
+  readonly finalRenderRef?: string;
+  readonly finalSummary: string;
 }
