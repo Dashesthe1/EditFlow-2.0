@@ -222,8 +222,8 @@ const optionalResearchSources = (
     return {
       sourceId: requiredString(record, "sourceId"),
       kind: requiredEnum(record, "kind", [
-        "ADOBE_DOCUMENTATION", "INSTALLED_ADOBE_FEATURE", "PLUGIN_DOCUMENTATION",
-        "PROFESSIONAL_TUTORIAL", "WEB", "INTERNAL_EVIDENCE",
+        "TUTORIAL_DRIVE", "ADOBE_DOCUMENTATION", "INSTALLED_ADOBE_FEATURE",
+        "PLUGIN_DOCUMENTATION", "PROFESSIONAL_TUTORIAL", "WEB", "INTERNAL_EVIDENCE",
       ] as const),
       title: requiredString(record, "title"),
       ...(optionalString(record, "uri") === undefined ? {} : { uri: optionalString(record, "uri")! }),
