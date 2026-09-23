@@ -5,6 +5,9 @@ import {
   AeCepCurrentTransactionalHostV1,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/current-transactional-host.js";
 import {
+  AeFilesystemPolicyV11,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
+import {
   AE_ADAPTER_PROTOCOL_VERSION_V11,
   AE_ADAPTER_ROUTE_ID_V11,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
@@ -20,6 +23,9 @@ import {
 import {
   AE_MARKER_MOTION_ROUTE_ID_V20,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
+import {
+  AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_5.js";
 import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
@@ -164,6 +170,28 @@ class StatefulMixedProtocolTransport {
             { index: 1, time: 0, value: 0 },
             { index: 2, time: 3, value: 3 },
           ],
+        },
+        hostProjectRevision: this.project.hostRevision,
+      });
+    }
+    if (request.command === "media.sequence.readback") {
+      return responseFor(request, {
+        outcome: "NO_OP",
+        readback: {
+          stableId: request.payload.item?.stableId ?? "MASK_SEQUENCE",
+          hostId: 9001,
+          name: "Mask Sequence",
+          path: "C:\\Proof\\mask_0001.png",
+          width: 640,
+          height: 360,
+          duration: 0.5,
+          frameRate: 12,
+          frameDuration: 1 / 12,
+          nativeFrameRate: 12,
+          conformFrameRate: 12,
+          displayFrameRate: 12,
+          isStill: false,
+          frameCount: 6,
         },
         hostProjectRevision: this.project.hostRevision,
       });
@@ -890,4 +918,43 @@ test("current AE host resolves semantic effect binding ids to runtime effect ind
     })),
     /No runtime effect index is bound/,
   );
+});
+
+test("current AE host admits protocol 2.5 media sequences only through the bounded filesystem route", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-media-sequence",
+    () => `req-media-sequence-${++requestCounter}`,
+    new AeFilesystemPolicyV11(["C:\\Proof"]),
+  );
+  await host.readState();
+
+  await host.apply(operation({
+    id: "OP_MEDIA_SEQUENCE_IMPORT",
+    capabilityId: "ae.media.sequence.import",
+    routeId: AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+    command: "media.sequence.import",
+    payload: { path: "C:\\Proof\\mask_0001.png", stableId: "MASK_SEQUENCE", frameRate: 12, expectedFrameCount: 6 },
+  }));
+  await host.apply(operation({
+    id: "OP_MEDIA_SEQUENCE_READBACK",
+    capabilityId: "ae.media.sequence.readback",
+    routeId: AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+    command: "media.sequence.readback",
+    payload: { item: { stableId: "MASK_SEQUENCE" } },
+  }));
+
+  const requests = transport.requests.filter((request) => request.command.startsWith("media.sequence."));
+  assert.deepEqual(requests.map((request) => request.protocolVersion), ["2.5.0", "2.5.0"]);
+  assert.deepEqual(requests.map((request) => request.expectedHostProjectRevision), [20, null]);
+  await assert.rejects(host.apply(operation({
+    id: "OP_MEDIA_SEQUENCE_ESCAPE",
+    capabilityId: "ae.media.sequence.import",
+    routeId: AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+    command: "media.sequence.import",
+    payload: { path: "C:\\Outside\\mask_0001.png", stableId: "ESCAPE", frameRate: 12, expectedFrameCount: 6 },
+  })), /FILESYSTEM_PATH_NOT_ALLOWED/);
 });

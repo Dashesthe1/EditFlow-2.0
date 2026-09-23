@@ -1,7 +1,12 @@
 import type {
+  CapabilityRecord,
   ExecutionPlan,
   EnvironmentFingerprint,
   ObservedProjectState,
+} from "../../../packages/core-contracts/src/index.js";
+import {
+  asCapabilityId,
+  asRouteId,
 } from "../../../packages/core-contracts/src/index.js";
 import { CapabilityRegistry } from "../../../packages/capability-registry/src/index.js";
 import {
@@ -36,6 +41,12 @@ import {
   M3_MARKER_MOTION_CAPABILITIES_V20,
 } from "../../../packages/adapters/ae-cep/src/m3-marker-motion.js";
 import {
+  AE_MEDIA_SEQUENCE_ADAPTER_BUILD_V25,
+  AE_MEDIA_SEQUENCE_COMMANDS_V25,
+  AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+  capabilityForMediaSequenceCommandV25,
+} from "../../../packages/adapters/ae-cep/src/protocol-v2_5.js";
+import {
   M5_TIME_REMAP_CAPABILITIES_V27,
 } from "../../../packages/adapters/ae-cep/src/m5-time-remap.js";
 import {
@@ -54,6 +65,38 @@ export interface CurrentAeStabilizationRuntimeV1 {
   readonly visualDriver: StabilizationVisualDriverV1 | null;
 }
 
+export const CURRENT_AE_MEDIA_SEQUENCE_CAPABILITIES_V25: readonly CapabilityRecord[] =
+  AE_MEDIA_SEQUENCE_COMMANDS_V25.map((command): CapabilityRecord => ({
+    id: asCapabilityId(capabilityForMediaSequenceCommandV25(command)),
+    domain: "tracking",
+    description: command === "media.sequence.import"
+      ? "Import an integrity-verified numbered segmentation sequence into After Effects."
+      : "Read back native After Effects sequence identity, cadence, geometry, and frame count.",
+    status: "FULL",
+    proofMaturity: "TRANSFER",
+    routes: [{
+      routeId: asRouteId(AE_MEDIA_SEQUENCE_ROUTE_ID_V25),
+      kind: "HOST_ADAPTER",
+      available: true,
+      adapterVersion: AE_MEDIA_SEQUENCE_ADAPTER_BUILD_V25,
+      limitations: command === "media.sequence.import"
+        ? ["Import paths are restricted by the current EditFlow filesystem policy."]
+        : [],
+    }],
+    readbackStrategy: "PROTOCOL_2_5_EXACT_MEDIA_SEQUENCE_READBACK",
+    visualProofProfile: command === "media.sequence.import"
+      ? "SEGMENTATION_SEQUENCE_MATTE_CHECKPOINT"
+      : null,
+    rollbackStrategy: command === "media.sequence.import"
+      ? "AE_TRANSACTION_UNDO"
+      : "NONE_REQUIRED",
+    riskClass: command === "media.sequence.import" ? "R2_STRUCTURAL" : "R0_READ_ONLY",
+    limitations: [
+      "Sequence import is exact and fail-closed; creative segmentation inference remains upstream.",
+    ],
+    fallbackPolicy: "FORBID",
+  }));
+
 export const createCurrentAeTransactionRegistryV1 = (
   environmentFingerprint: EnvironmentFingerprint,
   generatedAt?: string,
@@ -69,6 +112,7 @@ export const createCurrentAeTransactionRegistryV1 = (
     ...M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
     ...M3_TEMPORAL_EASE_CAPABILITIES_V18,
     ...M3_MARKER_MOTION_CAPABILITIES_V20,
+    ...CURRENT_AE_MEDIA_SEQUENCE_CAPABILITIES_V25,
     ...M5_TIME_REMAP_CAPABILITIES_V27,
     ...(stabilization?.protocolV23Available
       ? [

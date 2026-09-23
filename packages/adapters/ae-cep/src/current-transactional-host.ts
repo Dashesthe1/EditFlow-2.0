@@ -47,6 +47,13 @@ import {
   type AeMarkerMotionTransportV20,
 } from "./protocol-v2_0.js";
 import {
+  AE_MEDIA_SEQUENCE_PROTOCOL_VERSION_V25,
+  AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+  capabilityForMediaSequenceCommandV25,
+  isAeMediaSequenceCommandV25,
+  type AeMediaSequenceTransportV25,
+} from "./protocol-v2_5.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
   capabilityForTimeRemapCommandV27,
   isAeTimeRemapCommandV27,
@@ -81,6 +88,7 @@ export type CurrentAeCepTransactionalTransportV1 =
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
   & AeMarkerMotionTransportV20
+  & AeMediaSequenceTransportV25
   & AeTimeRemapTransportV27
   & AeStabilizationTransportV23;
 
@@ -919,6 +927,34 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       );
       return this.#accept(response as unknown as CommonResponse, parsed.command);
     }
+    if (isAeMediaSequenceCommandV25(parsed.command)) {
+      assertBinding(
+        operation,
+        capabilityForMediaSequenceCommandV25(parsed.command),
+        AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
+      );
+      if (parsed.command === "media.sequence.import") {
+        const importPath = parsed.payload["path"];
+        if (typeof importPath !== "string" || importPath.trim().length === 0) {
+          throw new TypeError("media.sequence.import requires a non-empty path.");
+        }
+        this.client.filesystemPolicy.assertAllowed(importPath);
+      }
+      const response = await this.transport.dispatch({
+        protocolVersion: AE_MEDIA_SEQUENCE_PROTOCOL_VERSION_V25,
+        requestId: this.requestIdFactory(),
+        transactionId: this.transactionId,
+        operationId: String(operation.operationId),
+        capabilityId: capabilityForMediaSequenceCommandV25(parsed.command),
+        command: parsed.command,
+        expectedHostProjectRevision:
+          parsed.command === "media.sequence.import" ? revision : null,
+        payload: parsed.payload,
+        readbackProfile: parsed.readbackProfile,
+      });
+      return this.#accept(response as unknown as CommonResponse, parsed.command);
+    }
+
     if (isAeTimeRemapCommandV27(parsed.command)) {
       assertBinding(
         operation,
