@@ -59,6 +59,27 @@ materially different Finish and Start source set promotes the Edit Type to
 TRANSFER_VERIFIED. Queued, failed, human-review, cancelled, self-declared, and legacy
 unverified completions cannot certify the Edit Type or unlock Pro Creation.
 
+Practice maturity is explicit and proof-derived:
+
+OBSERVED -> RECONSTRUCTED -> VISUAL_MATCH_VERIFIED -> TRANSFER_VERIFIED ->
+OBJECT_AWARE_VERIFIED -> ROBUST.
+
+The first two stages describe retained observation/reconstruction evidence. A machine
+mastery proof is required for VISUAL_MATCH_VERIFIED. Materially different Finish and
+Start fingerprints are required for TRANSFER_VERIFIED. OBJECT_AWARE_VERIFIED and ROBUST
+must come from retained held-out benchmark reports; GPT cannot assign those labels.
+
+Pro Creation receives a TRANSFER_VERIFIED_ONLY knowledge snapshot. Unverified behavior
+evidence, single-reference success lessons, development patterns, and non-transferred
+skills are not exposed as authoritative production memory. Open/blocked capability gaps
+remain visible so Pro Creation does not silently assume absent capabilities exist.
+
+The robust Practice benchmark is fail-closed over a 20-30 case held-out proof window.
+Cases must use material pairs not seen in the training mastery set, retain unique
+reference/source fingerprints and effect-family evidence, pass the configured visual
+floors, retain proof evidence, and include object-aware verification before ROBUST can
+be recorded. Reused training material or a failed case invalidates the robust result.
+
 ## Non-negotiable practice sequence
 
 A Practice session runs:
