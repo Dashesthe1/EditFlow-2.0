@@ -8,7 +8,7 @@
   "stage": "SKILL_COMMIT",
   "outcome": "SUCCESS",
   "summary": "Temporal rewind was researched, built, and proven in AE.",
-  "developmentPattern": "Research missing temporal behavior before accepting a fallback.",
+  "developmentPattern": "Search Tutorial Drive for the closest missing temporal behavior first, then use Adobe documentation to confirm native semantics before proof.",
   "reusableLesson": "A real rewind replays source frames backward; effect recovery is not equivalent.",
   "capabilityGap": {
     "gapId": "gap:temporal-rewind",
@@ -17,9 +17,19 @@
     "missingCapabilityIds": [],
     "status": "RESOLVED",
     "resolutionSkillId": "skill:temporal-rewind:v1",
-    "evidenceRefs": ["reference:rewind", "render:rewind-proof"]
+    "evidenceRefs": [
+      "reference:rewind",
+      "render:rewind-proof"
+    ]
   },
   "researchSources": [
+    {
+      "sourceId": "tutorial-drive:smoothest-reverse-edit",
+      "kind": "TUTORIAL_DRIVE",
+      "title": "How To Make The Smoothest Reverse Edit? | After Effects Tutorial",
+      "uri": "https://drive.google.com/file/d/1XDrENfZUf36F2MYvMn62e8gDDUA1IzS6/view?usp=drivesdk",
+      "notes": "Tutorial-first construction reference for real reverse playback."
+    },
     {
       "sourceId": "adobe:time-remapping",
       "kind": "ADOBE_DOCUMENTATION",
@@ -34,9 +44,19 @@
     "requestedBehavior": "Replay the just-played frames backward before the transition exits.",
     "maturity": "AE_PROVEN",
     "constructionPattern": "Use Time Remap keyframes with a descending source-time segment.",
-    "capabilityIds": ["ae.layer.time_remap.enable", "ae.keyframe.set"],
+    "capabilityIds": [
+      "ae.layer.time_remap.enable",
+      "ae.keyframe.set"
+    ],
     "adaptationNotes": "Adapt source-frame span, duration, speed, and exit behavior to the reference.",
     "researchSources": [
+      {
+        "sourceId": "tutorial-drive:smoothest-reverse-edit",
+        "kind": "TUTORIAL_DRIVE",
+        "title": "How To Make The Smoothest Reverse Edit? | After Effects Tutorial",
+        "uri": "https://drive.google.com/file/d/1XDrENfZUf36F2MYvMn62e8gDDUA1IzS6/view?usp=drivesdk",
+        "notes": "Tutorial-first construction reference for real reverse playback."
+      },
       {
         "sourceId": "adobe:time-remapping",
         "kind": "ADOBE_DOCUMENTATION",
@@ -44,9 +64,15 @@
         "uri": "https://helpx.adobe.com/after-effects/desktop/animate-in-after-effects/time-stretching-and-time-remapping/time-stretching-time-remapping.html"
       }
     ],
-    "evidenceRefs": ["render:rewind-proof", "comparison:source-time-direction"],
+    "evidenceRefs": [
+      "render:rewind-proof",
+      "comparison:source-time-direction"
+    ],
     "learnedAt": "2026-09-22T20:04:00.000Z"
   },
-  "evidenceRefs": ["render:rewind-proof", "comparison:source-time-direction"],
+  "evidenceRefs": [
+    "render:rewind-proof",
+    "comparison:source-time-direction"
+  ],
   "createdAt": "2026-09-22T20:05:00.000Z"
 }
