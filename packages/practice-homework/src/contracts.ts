@@ -187,6 +187,7 @@ export interface EditTypeBehaviorEvidenceV1 {
 export type GptCapabilityGapKindV1 = "RECIPE_SKILL" | "EXECUTION_CAPABILITY";
 export type GptCapabilityGapStatusV1 = "OPEN" | "RESOLVED" | "BLOCKED";
 export type GptResearchSourceKindV1 =
+  | "TUTORIAL_DRIVE"
   | "ADOBE_DOCUMENTATION"
   | "INSTALLED_ADOBE_FEATURE"
   | "PLUGIN_DOCUMENTATION"
