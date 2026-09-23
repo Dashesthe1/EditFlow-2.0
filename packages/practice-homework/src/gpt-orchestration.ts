@@ -39,7 +39,14 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
       || !Array.isArray(parsed.events)) {
       throw new TypeError("GPT orchestration store has an unsupported schema.");
     }
-    return parsed as GptOrchestrationStorePayloadV1;
+    const payload = parsed as GptOrchestrationStorePayloadV1;
+    return {
+      ...payload,
+      assignments: payload.assignments.map((assignment) => ({
+        ...assignment,
+        chatMessage: applyCurrentResearchPriority(assignment.chatMessage),
+      })),
+    };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return structuredClone(EMPTY_STORE);
@@ -57,9 +64,36 @@ const nonEmpty = (value: string, name: string): string => {
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 
-const isOnlineResearchSource = (source: GptResearchSourceV1): boolean =>
-  ["ADOBE_DOCUMENTATION", "PLUGIN_DOCUMENTATION", "PROFESSIONAL_TUTORIAL", "WEB"]
-    .includes(source.kind)
+export const EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 =
+  "https://drive.google.com/drive/folders/1eP2O7OwoCL1uP3OaA4euewUAZFU-VsL7";
+export const EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 =
+  "https://drive.google.com/drive/folders/183rOt8jpMghRA3Gtu-ZKxZ2NSkJF5S-G";
+export const EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 =
+  "https://drive.google.com/drive/folders/19RI8JpZQvmD7R5_4Ub1E_JBodcx7MtGZ";
+
+const LEGACY_RESEARCH_POLICY_LINE =
+  "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.";
+
+const RESEARCH_PRIORITY_LINES = [
+  "- Tutorial Drive is the mandatory first research source whenever EditFlow does not know how to reproduce a visible reference behavior, is stuck on a construction, or discovers a missing fundamental skill.",
+  "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
+  "- Use the matching tutorial video or videos to learn both WHAT the effect is doing and HOW to construct it in After Effects. Extract transferable construction logic and adaptation rules rather than copying literal values.",
+  "- If no sufficiently relevant Tutorial Drive match exists, record the Tutorial Drive search/query and no-match result in RESEARCH provenance before escalating.",
+  "- Second priority is official Adobe documentation/resources and the installed Adobe feature/plugin surface.",
+  "- Third priority is external professional tutorials and plugin/vendor documentation; broader web/internet research is last.",
+] as const;
+
+const applyCurrentResearchPriority = (message: string): string => {
+  if (message.includes(RESEARCH_PRIORITY_LINES[0])) return message;
+  if (!message.includes(LEGACY_RESEARCH_POLICY_LINE)) return message;
+  return message.replace(
+    LEGACY_RESEARCH_POLICY_LINE,
+    RESEARCH_PRIORITY_LINES.join("\n"),
+  );
+};
+
+const isTutorialDriveResearchSource = (source: GptResearchSourceV1 | undefined): boolean =>
+  source?.kind === "TUTORIAL_DRIVE"
   && typeof source.uri === "string"
   && source.uri.trim().length > 0;
 
@@ -118,7 +152,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "- All editorial cutting, retiming, remodeling, effects, transitions, compositing, and final construction must exist in After Effects.",
     "- Never replace an unfamiliar reference behavior with a weaker known effect. Reverse-engineer it and synthesize a construction when capabilities permit.",
     "- If a fundamental skill is missing, distinguish a RECIPE_SKILL gap from an EXECUTION_CAPABILITY gap instead of degrading the reference.",
-    "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.",
+    ...RESEARCH_PRIORITY_LINES,
     "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
     "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
     "- If existing primitives can express the behavior, synthesize and prove a new reusable skill. If an execution capability is genuinely absent, implement/prove the missing EditFlow route when development access permits; otherwise mark the exact gap BLOCKED.",
@@ -346,8 +380,10 @@ export class GptOrchestrationStoreV1 {
         if (input.researchSources === undefined || input.researchSources.length === 0) {
           throw new TypeError("RESEARCH requires researchSources.");
         }
-        if (!input.researchSources.some(isOnlineResearchSource)) {
-          throw new TypeError("RESEARCH requires at least one online source with a URI.");
+        if (!isTutorialDriveResearchSource(input.researchSources[0])) {
+          throw new TypeError(
+            "RESEARCH must begin with Tutorial Drive provenance with a URI before Adobe or broader web sources.",
+          );
         }
       }
       if (input.stage === "CAPABILITY_PROOF") {
@@ -358,8 +394,8 @@ export class GptOrchestrationStoreV1 {
           .flatMap((event) => event.researchSources ?? []);
         const priorImplementation = sessionEvents.some((event) =>
           event.stage === "CAPABILITY_IMPLEMENTATION" && event.outcome !== "FAILURE");
-        if (!priorResearch.some(isOnlineResearchSource)) {
-          throw new TypeError("CAPABILITY_PROOF requires prior online research provenance.");
+        if (!priorResearch.some(isTutorialDriveResearchSource)) {
+          throw new TypeError("CAPABILITY_PROOF requires prior Tutorial Drive research provenance.");
         }
         if (!priorImplementation) {
           throw new TypeError("CAPABILITY_PROOF requires a prior CAPABILITY_IMPLEMENTATION event.");
@@ -386,8 +422,8 @@ export class GptOrchestrationStoreV1 {
           && event.outcome === "SUCCESS"
           && event.evidenceRefs.length > 0);
         if (!gapWasOpened) throw new TypeError("SKILL_COMMIT requires a prior CAPABILITY_GAP event.");
-        if (!research.some(isOnlineResearchSource)) {
-          throw new TypeError("SKILL_COMMIT requires prior online research provenance.");
+        if (!research.some(isTutorialDriveResearchSource)) {
+          throw new TypeError("SKILL_COMMIT requires prior Tutorial Drive research provenance.");
         }
         if (!proofSucceeded) {
           throw new TypeError("SKILL_COMMIT requires a successful prior CAPABILITY_PROOF event.");
