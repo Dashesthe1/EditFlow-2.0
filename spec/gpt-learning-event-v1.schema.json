@@ -13,8 +13,8 @@
         "sourceId": { "type": "string", "minLength": 1 },
         "kind": {
           "enum": [
-            "ADOBE_DOCUMENTATION", "INSTALLED_ADOBE_FEATURE", "PLUGIN_DOCUMENTATION",
-            "PROFESSIONAL_TUTORIAL", "WEB", "INTERNAL_EVIDENCE"
+            "TUTORIAL_DRIVE", "ADOBE_DOCUMENTATION", "INSTALLED_ADOBE_FEATURE",
+            "PLUGIN_DOCUMENTATION", "PROFESSIONAL_TUTORIAL", "WEB", "INTERNAL_EVIDENCE"
           ]
         },
         "title": { "type": "string", "minLength": 1 },
