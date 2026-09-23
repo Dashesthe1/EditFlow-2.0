@@ -134,31 +134,37 @@ test("Practice can discover, prove, and retain a previously missing editing skil
   );
 
   const researchSources = [{
-    sourceId: "tutorial-drive:temporal-rewind-search",
+    sourceId: "tutorial-drive:smoothest-reverse-edit",
     kind: "TUTORIAL_DRIVE",
-    title: "Tutorial Drive search: temporal rewind / reverse playback",
-    uri: "https://drive.google.com/drive/folders/183rOt8jpMghRA3Gtu-ZKxZ2NSkJF5S-G",
-    notes: "Searched Adobe Effect Tutorials first for temporal rewind, reverse playback, time remap, and reverse-transition construction. No sufficiently close tutorial match was found, so the search provenance is retained before escalating to official Adobe resources.",
+    title: "How To Make The Smoothest Reverse Edit? | After Effects Tutorial",
+    uri: "https://drive.google.com/file/d/1XDrENfZUf36F2MYvMn62e8gDDUA1IzS6/view?usp=drivesdk",
+    notes: "Closest Tutorial Drive match for the reference's actual backward source-time replay. Use it to extract the reverse-edit construction and timing logic before consulting Adobe documentation.",
+  }, {
+    sourceId: "tutorial-drive:smooth-zoom-reverse",
+    kind: "TUTORIAL_DRIVE",
+    title: "Smooth Zoom + Reverse Effect Tutorial | After Effects",
+    uri: "https://drive.google.com/file/d/18VN6VBc8Bsig2D5itq3_zfG4PTuc6vSq/view?usp=drivesdk",
+    notes: "Secondary Tutorial Drive match for combining reverse playback with transition motion and recovery, relevant to the reference's reverse exit behavior.",
   }, {
     sourceId: "adobe:time-remapping",
     kind: "ADOBE_DOCUMENTATION",
     title: "Time-stretching and time-remapping",
     uri: "https://helpx.adobe.com/after-effects/desktop/animate-in-after-effects/time-stretching-and-time-remapping/time-stretching-time-remapping.html",
-    notes: "Time Remap can play footage forward, replay a bounded span backward, then resume forward when the reference requires it.",
+    notes: "Second-priority official semantics for implementing the tutorial-derived reverse construction with native Time Remap.",
   }, {
     sourceId: "adobe:timewarp",
     kind: "ADOBE_DOCUMENTATION",
     title: "Using time effects in After Effects",
     uri: "https://helpx.adobe.com/after-effects/desktop/apply-effects-and-animation-presets/list-of-effects/time-effects.html",
-    notes: "Timewarp can animate source-frame or speed control when the reference needs higher-quality or more complex retiming than a basic remap.",
+    notes: "Second-priority official fallback when the tutorial-derived construction needs higher-quality or more complex retiming than a basic remap.",
   }];
   const researchEvent = await store.appendEvent({
     assignmentId: assignment.assignmentId,
     stage: "RESEARCH",
     outcome: "SUCCESS",
-    summary: "Tutorial Drive was searched first; after no sufficiently close match, Adobe-native Time Remap provided a construction path for the missing temporal rewind, with source-time direction controlled by keyframe values.",
+    summary: "Tutorial Drive was searched first and produced direct reverse-edit matches; Adobe documentation was then used only to confirm native Time Remap semantics for implementing the tutorial-derived construction.",
     researchSources,
-    evidenceRefs: ["research:tutorial-drive-first", "research:adobe-time-remap", "research:adobe-timewarp"],
+    evidenceRefs: ["research:tutorial-drive-smoothest-reverse", "research:tutorial-drive-smooth-zoom-reverse", "research:adobe-time-remap", "research:adobe-timewarp"],
   });
   registry.recordGptLearningEvent(researchEvent);
   await assert.rejects(
@@ -260,8 +266,10 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       "SKILL_COMMIT",
     ],
   );
-  assert.equal(events[1].researchSources.length, 3);
+  assert.equal(events[1].researchSources.length, 4);
   assert.equal(events[1].researchSources[0].kind, "TUTORIAL_DRIVE");
-  assert.match(events[1].researchSources[0].notes, /No sufficiently close tutorial match/);
+  assert.equal(events[1].researchSources[1].kind, "TUTORIAL_DRIVE");
+  assert.match(events[1].researchSources[0].title, /Smoothest Reverse Edit/);
+  assert.match(events[1].researchSources[1].title, /Smooth Zoom \+ Reverse Effect/);
   assert.equal(events[4].learnedSkill.skillId, learnedSkill.skillId);
 });
