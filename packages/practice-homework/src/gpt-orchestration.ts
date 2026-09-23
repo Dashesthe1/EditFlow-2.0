@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -15,6 +15,7 @@ import type {
   GptOrchestrationModeV1,
   GptResearchSourceV1,
   PracticeMediaInputV1,
+  PracticeVerificationPolicyV1,
 } from "./contracts.js";
 
 interface GptOrchestrationStorePayloadV1 {
@@ -29,6 +30,34 @@ const EMPTY_STORE: GptOrchestrationStorePayloadV1 = {
   events: [],
 };
 
+export const DEFAULT_PRACTICE_VERIFICATION_POLICY_V1: PracticeVerificationPolicyV1 = {
+  minimumSimilarity: 0.95,
+  exactSceneConfidence: 0.95,
+  minimumAudioConfidence: 0.90,
+};
+
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+export const normalizePracticeVerificationPolicyV1 = (
+  value?: Partial<PracticeVerificationPolicyV1> | null,
+): PracticeVerificationPolicyV1 => ({
+  minimumSimilarity: Math.max(
+    DEFAULT_PRACTICE_VERIFICATION_POLICY_V1.minimumSimilarity,
+    clamp01(value?.minimumSimilarity
+      ?? DEFAULT_PRACTICE_VERIFICATION_POLICY_V1.minimumSimilarity),
+  ),
+  exactSceneConfidence: Math.max(
+    DEFAULT_PRACTICE_VERIFICATION_POLICY_V1.exactSceneConfidence,
+    clamp01(value?.exactSceneConfidence
+      ?? DEFAULT_PRACTICE_VERIFICATION_POLICY_V1.exactSceneConfidence),
+  ),
+  minimumAudioConfidence: Math.max(
+    DEFAULT_PRACTICE_VERIFICATION_POLICY_V1.minimumAudioConfidence,
+    clamp01(value?.minimumAudioConfidence
+      ?? DEFAULT_PRACTICE_VERIFICATION_POLICY_V1.minimumAudioConfidence),
+  ),
+});
+
 const readStore = async (filePath: string): Promise<GptOrchestrationStorePayloadV1> => {
   try {
     const parsed = JSON.parse(
@@ -42,10 +71,19 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
     const payload = parsed as GptOrchestrationStorePayloadV1;
     return {
       ...payload,
-      assignments: payload.assignments.map((assignment) => ({
-        ...assignment,
-        chatMessage: applyCurrentResearchPriority(assignment.chatMessage),
-      })),
+      assignments: payload.assignments.map((assignment) => {
+        const practicePolicy = assignment.mode === "PRACTICE"
+          ? normalizePracticeVerificationPolicyV1(assignment.practicePolicy)
+          : null;
+        const researchMessage = applyCurrentResearchPriority(assignment.chatMessage);
+        return {
+          ...assignment,
+          practicePolicy,
+          chatMessage: practicePolicy === null
+            ? researchMessage
+            : applyCurrentMasteryPolicy(researchMessage, practicePolicy),
+        };
+      }),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -79,7 +117,7 @@ const LEGACY_RESEARCH_POLICY_LINES = [
 const RESEARCH_PRIORITY_LINES = [
   "- Tutorial Drive is the mandatory first research source whenever EditFlow does not know how to reproduce a visible reference behavior, is stuck on a construction, or discovers a missing fundamental skill.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
-  "- Use the matching tutorial video or videos to learn both WHAT the effect is doing and HOW to construct it in After Effects. Extract transferable construction logic and adaptation rules rather than copying literal values.",
+  "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
   "- If no sufficiently relevant Tutorial Drive match exists, record the Tutorial Drive search/query and no-match result in RESEARCH provenance before escalating.",
   "- Second priority is official Adobe documentation/resources and the installed Adobe feature/plugin surface.",
   "- Third priority is external professional tutorials and plugin/vendor documentation; broader web/internet research is last.",
@@ -95,10 +133,58 @@ const applyCurrentResearchPriority = (message: string): string => {
   return message;
 };
 
+const MASTERY_POLICY_MARKER =
+  "- GPT completion is not Practice mastery.";
+
+const applyCurrentMasteryPolicy = (
+  message: string,
+  policy: PracticeVerificationPolicyV1,
+): string => {
+  if (message.includes(MASTERY_POLICY_MARKER)) return message;
+  return [
+    message,
+    "",
+    "Practice certification policy (current):",
+    MASTERY_POLICY_MARKER
+      + " EditFlow independently re-analyzes the actual final render before certification.",
+    "- Certification requires exact source matching, 100% defining effect/transition behavior coverage, "
+      + "and weighted/effect/transition fidelity >= " + policy.minimumSimilarity.toFixed(3) + ".",
+    "- Exact-scene confidence must be >= " + policy.exactSceneConfidence.toFixed(3)
+      + "; raw-audio confidence, when applicable, must be >= "
+      + policy.minimumAudioConfidence.toFixed(3) + ".",
+    "- A machine-passing first reconstruction is REFERENCE_VERIFIED; Pro Creation remains blocked "
+      + "until materially different Finish and Start video content also passes as TRANSFER_VERIFIED.",
+    "- HUMAN_REVIEW_REQUIRED is not mastery and must not be written into authoritative training memory.",
+  ].join("\n");
+};
+
 const isTutorialDriveResearchSource = (source: GptResearchSourceV1 | undefined): boolean =>
   source?.kind === "TUTORIAL_DRIVE"
   && typeof source.uri === "string"
   && /^https:\/\/drive\.google\.com\/(?:file\/d\/|drive\/folders\/)/.test(source.uri.trim());
+
+const hasStructuredTutorialTechnique = (source: GptResearchSourceV1 | undefined): boolean => {
+  if (!isTutorialDriveResearchSource(source) || source?.tutorialTechnique === undefined) return false;
+  const technique = source.tutorialTechnique;
+  return [
+    technique.what,
+    technique.whenWhy,
+    technique.how,
+    technique.access,
+    technique.proof,
+    technique.transfer,
+  ].every((value) => typeof value === "string" && value.trim().length > 0);
+};
+
+const isTutorialDriveFolderSearch = (source: GptResearchSourceV1 | undefined): boolean =>
+  isTutorialDriveResearchSource(source)
+  && typeof source?.uri === "string"
+  && /^https:\/\/drive\.google\.com\/drive\/folders\//.test(source.uri.trim());
+
+const hasResearchLearningPath = (sources: readonly GptResearchSourceV1[]): boolean =>
+  sources.some(hasStructuredTutorialTechnique)
+  || (sources.some(isTutorialDriveFolderSearch)
+    && sources.some((source) => source.kind !== "TUTORIAL_DRIVE" && source.kind !== "INTERNAL_EVIDENCE"));
 
 const researchPriority = (source: GptResearchSourceV1): number | null => {
   switch (source.kind) {
@@ -136,6 +222,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   readonly editTypeId: string;
   readonly finish: PracticeMediaInputV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
+  readonly practicePolicy: PracticeVerificationPolicyV1 | null;
   readonly artifactDir: string;
   readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
 }): string => {
@@ -143,7 +230,10 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   const successLessons = learned?.gptLearning.successLessons ?? [];
   const failureLessons = learned?.gptLearning.failureAvoidanceLessons ?? [];
   const patterns = learned?.gptLearning.developmentPatterns ?? [];
-  const learnedSkills = learned?.gptLearning.learnedSkills ?? [];
+  const allLearnedSkills = learned?.gptLearning.learnedSkills ?? [];
+  const learnedSkills = input.mode === "PRO_CREATION"
+    ? allLearnedSkills.filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
+    : allLearnedSkills;
   const openGaps = (learned?.gptLearning.capabilityGaps ?? [])
     .filter((gap) => gap.status !== "RESOLVED");
   const skillLines = learnedSkills.slice(-12).map((skill) =>
@@ -152,6 +242,9 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   const gapLines = openGaps.slice(-12).map((gap) =>
     gap.gapId + " [" + gap.kind + "/" + gap.status + "] " + gap.requestedBehavior
   );
+  const practicePolicy = input.mode === "PRACTICE"
+    ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
+    : null;
   const modeInstruction = input.mode === "PRACTICE"
     ? [
       "This is supervised Practice. The Finish video is the answer key.",
@@ -162,6 +255,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     : [
       "This is Pro Creation. There is no Finish answer key.",
       "Create a new professional edit from the Start media by applying the selected Edit Type's successful Practice development patterns.",
+      "Treat only TRANSFER_VERIFIED learned skills as authoritative Pro Creation skill memory; AE_PROVEN single-reference skills remain Practice-only until separately transferred.",
       "Use successful lessons as guidance and actively avoid failures retained from Practice.",
       "The result must be original to the supplied footage while following the learned professional visual language.",
     ];
@@ -187,6 +281,16 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
     "- If existing primitives can express the behavior, synthesize and prove a new reusable skill. If an execution capability is genuinely absent, implement/prove the missing EditFlow route when development access permits; otherwise mark the exact gap BLOCKED.",
     "- Research is hypothesis evidence, not proof. Resume the edit only after AE construction/readback/render evidence supports the new skill or capability.",
+    "- GPT completion is not Practice mastery. On completion, EditFlow independently re-analyzes the actual final render against Finish, re-checks exact source matches, M6 defining behavior coverage, effect/transition fidelity, and the configured Practice proof gate.",
+    ...(practicePolicy === null ? [] : [
+      "- Practice certification thresholds: weighted/effect/transition fidelity >= " + practicePolicy.minimumSimilarity.toFixed(3)
+        + ", exact-scene confidence >= " + practicePolicy.exactSceneConfidence.toFixed(3)
+        + ", raw-audio confidence >= " + practicePolicy.minimumAudioConfidence.toFixed(3)
+        + ". These thresholds can be strengthened per session but never weakened below the product floor.",
+    ]),
+    "- A Practice run that misses any hard gate remains HUMAN_REVIEW_REQUIRED even if GPT believes the edit is successful. Never self-certify or substitute prose confidence for retained comparison evidence.",
+    "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",
+    "- When an existing AE_PROVEN skill is successfully re-proven on a materially different Practice reference/source set, emit a fresh SKILL_COMMIT with AE_PROVEN maturity. EditFlow promotes that skill to TRANSFER_VERIFIED only after the overall machine transfer gate passes.",
     "- Check cancellation state between meaningful operations and stop safely when cancellation is requested.",
     "",
     "Learning trace contract:",
@@ -201,6 +305,8 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Artifact directory: " + input.artifactDir,
     "",
     "Retained Edit Type knowledge:",
+    "Maturity: " + (learned?.maturityStage ?? "UNPROVEN"),
+    "Trust scope: " + (learned?.knowledgeScope ?? "NONE"),
     "Successful lessons: " + (successLessons.length === 0 ? "(none yet)" : successLessons.join(" | ")),
     "Failures to avoid: " + (failureLessons.length === 0 ? "(none yet)" : failureLessons.join(" | ")),
     "Development patterns: " + (patterns.length === 0 ? "(none yet)" : patterns.join(" | ")),
@@ -223,7 +329,14 @@ export class GptOrchestrationStoreV1 {
     this.#sequence += 1;
     const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence);
     await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", "utf8");
-    await rename(temporary, this.filePath);
+    try {
+      await rename(temporary, this.filePath);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error;
+      await copyFile(temporary, this.filePath);
+      await unlink(temporary);
+    }
   }
 
   async #mutate<T>(
@@ -249,6 +362,7 @@ export class GptOrchestrationStoreV1 {
     readonly editTypeId: string;
     readonly finish: PracticeMediaInputV1 | null;
     readonly start: readonly PracticeMediaInputV1[];
+    readonly practicePolicy?: Partial<PracticeVerificationPolicyV1> | null;
     readonly artifactDir: string;
     readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
   }): Promise<GptOrchestrationAssignmentV1> {
@@ -260,6 +374,9 @@ export class GptOrchestrationStoreV1 {
     }
     const assignmentId = "gpt-assignment:" + randomUUID();
     const artifactDir = path.resolve(input.artifactDir);
+    const practicePolicy = input.mode === "PRACTICE"
+      ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
+      : null;
     const assignment: GptOrchestrationAssignmentV1 = {
       schema: "editflow.gpt-orchestration-assignment.v1",
       assignmentId,
@@ -269,6 +386,7 @@ export class GptOrchestrationStoreV1 {
       status: "PENDING",
       finish: input.finish === null ? null : structuredClone(input.finish),
       start: structuredClone(input.start),
+      practicePolicy,
       artifactDir,
       chatMessage: buildGptOrchestrationChatMessageV1({
         sessionId,
@@ -276,6 +394,7 @@ export class GptOrchestrationStoreV1 {
         editTypeId,
         finish: input.finish,
         start: input.start,
+        practicePolicy,
         artifactDir,
         knowledge: input.knowledge,
       }),
@@ -420,6 +539,15 @@ export class GptOrchestrationStoreV1 {
             "RESEARCH sources must preserve priority order: Tutorial Drive -> Adobe/resources -> external professional/plugin sources -> broader web.",
           );
         }
+        for (const source of input.researchSources) {
+          if (isTutorialDriveResearchSource(source)
+            && !isTutorialDriveFolderSearch(source)
+            && !hasStructuredTutorialTechnique(source)) {
+            throw new TypeError(
+              "A matched Tutorial Drive tutorial must retain WHAT, WHEN/WHY, HOW, ACCESS, PROOF, and TRANSFER technique fields before it can support Practice learning.",
+            );
+          }
+        }
       }
       if (input.stage === "CAPABILITY_PROOF") {
         if (unique(input.evidenceRefs ?? []).length === 0) {
@@ -431,6 +559,11 @@ export class GptOrchestrationStoreV1 {
           event.stage === "CAPABILITY_IMPLEMENTATION" && event.outcome !== "FAILURE");
         if (!priorResearch.some(isTutorialDriveResearchSource)) {
           throw new TypeError("CAPABILITY_PROOF requires prior Tutorial Drive research provenance.");
+        }
+        if (!hasResearchLearningPath(priorResearch)) {
+          throw new TypeError(
+            "CAPABILITY_PROOF requires either a structured Tutorial Drive technique record or a retained Tutorial Drive no-match folder search followed by an escalated authoritative source.",
+          );
         }
         if (!priorImplementation) {
           throw new TypeError("CAPABILITY_PROOF requires a prior CAPABILITY_IMPLEMENTATION event.");
@@ -445,8 +578,13 @@ export class GptOrchestrationStoreV1 {
         if (gap.status !== "RESOLVED" || gap.resolutionSkillId !== skill.skillId) {
           throw new TypeError("SKILL_COMMIT must resolve the gap with the committed skill.");
         }
-        if (!["AE_PROVEN", "TRANSFER_VERIFIED"].includes(skill.maturity)) {
-          throw new TypeError("SKILL_COMMIT requires AE_PROVEN or TRANSFER_VERIFIED maturity.");
+        if (skill.maturity !== "AE_PROVEN") {
+          throw new TypeError(
+            "SKILL_COMMIT requires AE_PROVEN maturity. TRANSFER_VERIFIED is assigned only after a machine-verified transfer Practice completion.",
+          );
+        }
+        if (skill.adaptationNotes === undefined || skill.adaptationNotes.trim().length === 0) {
+          throw new TypeError("SKILL_COMMIT requires explicit transfer/adaptation rules.");
         }
         const gapWasOpened = sessionEvents.some((event) =>
           event.stage === "CAPABILITY_GAP" && event.capabilityGap?.gapId === gap.gapId);
@@ -459,6 +597,11 @@ export class GptOrchestrationStoreV1 {
         if (!gapWasOpened) throw new TypeError("SKILL_COMMIT requires a prior CAPABILITY_GAP event.");
         if (!research.some(isTutorialDriveResearchSource)) {
           throw new TypeError("SKILL_COMMIT requires prior Tutorial Drive research provenance.");
+        }
+        if (!hasResearchLearningPath(research)) {
+          throw new TypeError(
+            "SKILL_COMMIT requires a structured Tutorial Drive technique record or a retained Tutorial Drive no-match search followed by an escalated authoritative source.",
+          );
         }
         if (!proofSucceeded) {
           throw new TypeError("SKILL_COMMIT requires a successful prior CAPABILITY_PROOF event.");

@@ -165,6 +165,24 @@ export interface PracticeEpisodeV1 {
   readonly bestAttempt: PracticeAttemptV1 | null;
 }
 
+export interface PracticeMasteryProofV1 {
+  readonly schema: "editflow.practice-mastery-proof.v1";
+  readonly sessionId: string;
+  readonly editTypeId: string;
+  readonly referenceId: string;
+  readonly sourceIndexId: string;
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly finalRenderRef: string;
+  readonly minimumSimilarity: number;
+  readonly exactSceneConfidence: number;
+  readonly report: PracticeSimilarityReportV1;
+  readonly matches: readonly PracticeSceneMatchV1[];
+  readonly audioMatch: PracticeAudioMatchV1 | null;
+  readonly evidenceRefs: readonly string[];
+  readonly verifiedAt: string;
+}
+
 export type EditTypeBehaviorOutcomeV1 =
   | "MASTERED_SUPPORT"
   | "FAILED_ATTEMPT"
@@ -200,12 +218,22 @@ export type GptSkillMaturityV1 =
   | "AE_PROVEN"
   | "TRANSFER_VERIFIED";
 
+export interface GptTutorialTechniqueV1 {
+  readonly what: string;
+  readonly whenWhy: string;
+  readonly how: string;
+  readonly access: string;
+  readonly proof: string;
+  readonly transfer: string;
+}
+
 export interface GptResearchSourceV1 {
   readonly sourceId: string;
   readonly kind: GptResearchSourceKindV1;
   readonly title: string;
   readonly uri?: string;
   readonly notes?: string;
+  readonly tutorialTechnique?: GptTutorialTechniqueV1;
 }
 
 export interface GptCapabilityGapV1 {
@@ -231,10 +259,68 @@ export interface GptLearnedSkillV1 {
   readonly learnedAt: string;
 }
 
+export type PracticeMasteryScopeV1 =
+  | "REFERENCE_VERIFIED"
+  | "TRANSFER_VERIFIED";
+
+export interface PracticeMasteryRecordV1 {
+  readonly sessionId: string;
+  readonly scope: PracticeMasteryScopeV1;
+  readonly proofRef: string;
+  readonly referenceId: string;
+  readonly sourceIndexId: string;
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly finalRenderRef: string;
+  readonly overallSimilarity: number;
+  readonly definingEffectCoverage: number;
+  readonly verifiedAt: string;
+}
+
+export interface PracticeHeldOutBenchmarkCaseV1 {
+  readonly caseId: string;
+  readonly sessionId: string;
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly effectFamilyIds: readonly string[];
+  readonly objectAwareVerified: boolean;
+  readonly overallSimilarity: number;
+  readonly definingEffectCoverage: number;
+  readonly passed: boolean;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeHeldOutBenchmarkPolicyV1 {
+  readonly minimumCases: number;
+  readonly maximumCases: number;
+  readonly minimumSimilarity: number;
+  readonly minimumDefiningEffectCoverage: number;
+  readonly minimumObjectAwareCases: number;
+}
+
+export interface PracticeHeldOutBenchmarkReportV1 {
+  readonly schema: "editflow.practice-held-out-benchmark.v1";
+  readonly editTypeId: string;
+  readonly policy: PracticeHeldOutBenchmarkPolicyV1;
+  readonly caseCount: number;
+  readonly passedCaseCount: number;
+  readonly distinctMaterialPairCount: number;
+  readonly distinctEffectFamilyCount: number;
+  readonly objectAwareCaseCount: number;
+  readonly objectAwareVerified: boolean;
+  readonly robust: boolean;
+  readonly reasons: readonly string[];
+  readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
+  readonly evidenceRefs: readonly string[];
+  readonly evaluatedAt: string;
+}
+
 export interface EditTypeGptLearningSummaryV1 {
   readonly practiceSessionIds: readonly string[];
   readonly proCreationSessionIds: readonly string[];
   readonly masteredPracticeSessionIds: readonly string[];
+  readonly masteryRecords: readonly PracticeMasteryRecordV1[];
+  readonly heldOutBenchmarks: readonly PracticeHeldOutBenchmarkReportV1[];
   readonly eventCount: number;
   readonly successLessons: readonly string[];
   readonly failureAvoidanceLessons: readonly string[];
@@ -257,11 +343,25 @@ export interface EditTypeProfileV1 {
   readonly gptLearning?: EditTypeGptLearningSummaryV1;
 }
 
+export type PracticeMaturityStageV1 =
+  | "OBSERVED"
+  | "RECONSTRUCTED"
+  | "VISUAL_MATCH_VERIFIED"
+  | "TRANSFER_VERIFIED"
+  | "OBJECT_AWARE_VERIFIED"
+  | "ROBUST";
+
+export type EditTypeKnowledgeScopeV1 = "ALL_RETAINED" | "TRANSFER_VERIFIED_ONLY";
+
 export interface EditTypeKnowledgeSnapshotV1 {
   readonly editTypeId: string;
   readonly title: string;
   readonly revision: number;
+  readonly maturityStage: PracticeMaturityStageV1 | null;
+  readonly knowledgeScope: EditTypeKnowledgeScopeV1;
   readonly masteredSessionCount: number;
+  readonly referenceVerifiedPracticeSessionCount: number;
+  readonly transferVerifiedPracticeSessionCount: number;
   readonly totalSessionCount: number;
   readonly successfulConstructionIds: readonly string[];
   readonly failedConstructionIds: readonly string[];
@@ -375,6 +475,12 @@ export interface ProCreationPreparationResultV1 {
   readonly reasons: readonly string[];
 }
 
+export interface PracticeVerificationPolicyV1 {
+  readonly minimumSimilarity: number;
+  readonly exactSceneConfidence: number;
+  readonly minimumAudioConfidence: number;
+}
+
 export type GptOrchestrationModeV1 = "PRACTICE" | "PRO_CREATION";
 export type GptAssignmentStatusV1 =
   | "PENDING"
@@ -440,6 +546,7 @@ export interface GptOrchestrationAssignmentV1 {
   readonly status: GptAssignmentStatusV1;
   readonly finish: PracticeMediaInputV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
+  readonly practicePolicy: PracticeVerificationPolicyV1 | null;
   readonly artifactDir: string;
   readonly chatMessage: string;
   readonly createdAt: string;

@@ -116,13 +116,18 @@ implements PracticeM6AeRenderDriverV1 {
 
   readonly #baselineBySession = new Map<string, PracticeAttemptBaselineV1>();
   readonly #appliedOperationsBySession = new Map<string, number>();
+  readonly #finalizedAttemptBySession = new Map<string, {
+    readonly projectFingerprint: string;
+    readonly itemCount: number;
+    readonly operationCount: number;
+  }>();
   #operationCounter = 0;
 
   constructor(config: PracticeM6AeRenderDriverConfigV1) {
     this.projectId = config.projectId;
     this.artifactDir = path.resolve(config.artifactDir);
     this.renderTimeoutMs = config.renderTimeoutMs ?? 60_000;
-    this.restoreUndoLimit = config.restoreUndoLimit ?? 128;
+    this.restoreUndoLimit = config.restoreUndoLimit ?? 384;
     if (!Number.isInteger(this.restoreUndoLimit) || this.restoreUndoLimit < 1) {
       throw new TypeError("Practice render restoreUndoLimit must be a positive integer.");
     }
@@ -147,6 +152,17 @@ implements PracticeM6AeRenderDriverV1 {
       );
     }
     let current = await this.client.observe(this.projectId);
+    if (undoCount > 0) {
+      const finalized = this.#finalizedAttemptBySession.get(sessionId);
+      if (finalized === undefined
+        || finalized.operationCount !== undoCount
+        || finalized.projectFingerprint !== current.observed.projectFingerprint
+        || finalized.itemCount !== current.project.itemCount) {
+        throw new Error(
+          "PRACTICE_ATTEMPT_BASELINE_DRIFT: the completed Practice attempt no longer matches the current AE project; unrelated edits will not be undone.",
+        );
+      }
+    }
     for (let index = 0; index < undoCount; index += 1) {
       const response = await this.client.undoLast({
         transactionId: "practice-m6:restore:" + sessionId,
@@ -170,6 +186,7 @@ implements PracticeM6AeRenderDriverV1 {
       );
     }
     this.#appliedOperationsBySession.set(sessionId, 0);
+    this.#finalizedAttemptBySession.delete(sessionId);
     return undoCount;
   }
 
@@ -194,6 +211,7 @@ implements PracticeM6AeRenderDriverV1 {
         compStableId: input.baselinePlan.compStableId,
       });
       this.#appliedOperationsBySession.set(input.sessionId, 0);
+      this.#finalizedAttemptBySession.delete(input.sessionId);
     } else {
       if (existing.compStableId !== input.baselinePlan.compStableId) {
         throw new Error(
@@ -229,6 +247,18 @@ implements PracticeM6AeRenderDriverV1 {
     }
     const previous = this.#appliedOperationsBySession.get(input.sessionId) ?? 0;
     this.#appliedOperationsBySession.set(input.sessionId, previous + input.count);
+  }
+
+  async finalizeAttempt(sessionId: string): Promise<void> {
+    if (!this.#baselineBySession.has(sessionId)) {
+      throw new Error("PRACTICE_ATTEMPT_FINALIZE_WITHOUT_BASELINE");
+    }
+    const observed = await this.client.observe(this.projectId);
+    this.#finalizedAttemptBySession.set(sessionId, {
+      projectFingerprint: observed.observed.projectFingerprint,
+      itemCount: observed.project.itemCount,
+      operationCount: this.#appliedOperationsBySession.get(sessionId) ?? 0,
+    });
   }
 
   async #render(input: {
@@ -323,7 +353,7 @@ implements PracticeM6AeRenderDriverV1 {
     readonly compStableId: string;
     readonly durationMs: number;
   }): Promise<{ readonly renderPath: string; readonly evidenceRefs?: readonly string[] }> {
-    return await this.#render({
+    const rendered = await this.#render({
       sessionId: input.sessionId,
       attempt: input.attempt,
       compStableId: input.compStableId,
@@ -331,5 +361,7 @@ implements PracticeM6AeRenderDriverV1 {
       startMs: 0,
       durationMs: input.durationMs,
     });
+    await this.finalizeAttempt(input.sessionId);
+    return rendered;
   }
 }

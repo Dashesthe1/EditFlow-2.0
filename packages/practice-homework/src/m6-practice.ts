@@ -255,7 +255,7 @@ const learnedGraphForWindow = (input: {
   };
 };
 
-const compareAlignedWindows = (
+export const comparePracticeM6AlignedWindowsV1 = (
   reference: DenseEffectSequenceV1,
   render: DenseEffectSequenceV1,
 ): Readonly<{
@@ -519,7 +519,10 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         throw new TypeError("Practice M6 render analysis must return RENDER dense evidence.");
       }
       const renderSequence = detectDenseEffectWindowsV1(renderEvidence);
-      const compared = compareAlignedWindows(attempt.referenceSequence, renderSequence);
+      const compared = comparePracticeM6AlignedWindowsV1(
+        attempt.referenceSequence,
+        renderSequence,
+      );
       effectFidelity = compared.effectFidelity;
       transitionFidelity = compared.transitionFidelity;
       definingEffectCoverage = compared.definingCoverage;

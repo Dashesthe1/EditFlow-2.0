@@ -27,6 +27,9 @@ import {
   AE_LAYER_CONTROLS_ROUTE_ID_V16,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_6.js";
 import {
+  AE_TIME_REMAP_ROUTE_ID_V27,
+} from "../../../packages/adapters/ae-cep/src/protocol-v2_7.js";
+import {
   PracticeAeBaselineBuilderV1,
   type PracticeAeBaselineBatchRunnerV1,
   type PracticeAeBaselineCommandV1,
@@ -63,11 +66,14 @@ const routeForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): string => command === "layer.switches.set"
   ? AE_LAYER_CONTROLS_ROUTE_ID_V16
-  : AE_ADAPTER_ROUTE_ID_V11;
+  : command === "layer.time_remap.enable"
+    ? AE_TIME_REMAP_ROUTE_ID_V27
+    : AE_ADAPTER_ROUTE_ID_V11;
 
 const riskForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): RiskClass => command === "layer.set_timing"
+  || command === "property.set_keyframes"
   || command === "layer.switches.set"
   ? "R1_REVERSIBLE"
   : "R2_STRUCTURAL";
@@ -153,6 +159,8 @@ export class PracticeCurrentAeBaselineRunnerV1
 implements PracticeAeBaselineBatchRunnerV1 {
   readonly runtime: CurrentAeTransactionRuntimeV1;
   #observationCounter = 0;
+  readonly #requestScope = `${process.pid}:${Date.now()}`;
+  #requestCounter = 0;
 
   constructor(runtime: CurrentAeTransactionRuntimeV1) {
     this.runtime = runtime;
@@ -173,7 +181,7 @@ implements PracticeAeBaselineBatchRunnerV1 {
       this.runtime.transport,
       this.runtime.projectId,
       `practice-baseline-observe:${plan.baselineId}:${observationId}`,
-      () => `practice-baseline-observe-request:${observationId}`,
+      () => `practice-baseline-observe-request:${this.#requestScope}:${++this.#requestCounter}`,
     );
     const observed = await observer.readState();
     const executionPlan = compilePracticeAeBaselineExecutionPlanV1(
@@ -184,7 +192,8 @@ implements PracticeAeBaselineBatchRunnerV1 {
     if (result.state !== "COMMITTED") {
       throw new Error(
         `PRACTICE_BASELINE_TRANSACTION_${result.state}: `
-        + `applied ${result.appliedOperations} operations and recovered=${result.recovered}.`,
+        + `applied ${result.appliedOperations} operations and recovered=${result.recovered}.`
+        + (result.error === undefined ? "" : ` Cause: ${result.error}`),
       );
     }
 
@@ -240,6 +249,7 @@ export interface PracticeM6CurrentAeAssemblyConfigV1 {
   readonly mediaRoots: readonly string[];
   readonly ffmpegPath?: string;
   readonly renderTimeoutMs?: number;
+  readonly restoreUndoLimit?: number;
   readonly recordEpisode?: NonNullable<PracticeHomeworkAdaptersV1["recordEpisode"]>;
 }
 
@@ -291,6 +301,9 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     ...(input.renderTimeoutMs === undefined
       ? {}
       : { renderTimeoutMs: input.renderTimeoutMs }),
+    ...(input.restoreUndoLimit === undefined
+      ? {}
+      : { restoreUndoLimit: input.restoreUndoLimit }),
   });
   const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,

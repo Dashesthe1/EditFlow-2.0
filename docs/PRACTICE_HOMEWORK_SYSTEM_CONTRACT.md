@@ -21,8 +21,9 @@ EditFlow exposes two explicit modes:
 
 V1 exposes a durable GPT assignment control plane through the local After Effects
 CEP panel. Practice and Pro Creation both create a structured assignment for GPT rather
-than entering a local rule-driven editing loop. Pro Creation remains blocked until its
-selected Edit Type contains at least one mastered GPT Practice success path.
+than entering a local rule-driven editing loop. GPT completion is not mastery. Pro
+Creation remains blocked until the selected Edit Type contains machine-verified Practice
+knowledge that has also passed transfer on materially different reference/source footage.
 ## Practice user surface
 
 The stable V1 UI contract is:
@@ -50,9 +51,13 @@ cancellation tools so GPT can orchestrate EditFlow's Eyes, Brain, AE hands, and 
 Commander from one control loop.
 
 Practice learning is allocated to the selected Edit Type automatically as GPT records
-events. A Practice session becomes a mastered source for Pro Creation only when GPT
-completes it successfully; queued, failed, human-review, and cancelled runs cannot certify
-the Edit Type.
+events. A successful GPT completion is only a request for certification. EditFlow must
+independently re-analyze the actual final render, re-check exact scene matches, apply the
+Practice similarity/anti-shortcut gate, and retain the resulting mastery proof. The first
+passing reconstruction is REFERENCE_VERIFIED. A later passing Practice session using a
+materially different Finish and Start source set promotes the Edit Type to
+TRANSFER_VERIFIED. Queued, failed, human-review, cancelled, self-declared, and legacy
+unverified completions cannot certify the Edit Type or unlock Pro Creation.
 
 ## Non-negotiable practice sequence
 
@@ -206,6 +211,36 @@ violations, then maximize weighted similarity.
 
 If the configured attempt budget is exhausted below target, the strongest attempt is
 returned as HUMAN_REVIEW_REQUIRED rather than falsely certified.
+
+### Machine mastery certification
+
+GPT assignment lifecycle completion and Practice mastery are separate authorities.
+A Practice assignment may reach COMPLETED because GPT finished its work, but that does
+not certify the Edit Type. Completion triggers an independent verifier that re-runs:
+
+- Finish reference decomposition;
+- Start-source indexing and exact scene matching;
+- raw-audio matching when supplied;
+- final-render content/cut/timing comparison;
+- M6 dense effect-window analysis and defining-behavior comparison;
+- the standard Practice similarity and anti-shortcut gate.
+
+The verifier writes practice-mastery-proof.json, which is governed by
+spec/practice-mastery-proof-v1.schema.json. The product floor cannot be weakened:
+weighted/effect/transition similarity is at least 0.95, exact-scene confidence is at
+least 0.95, and raw-audio confidence is at least 0.90. A session may request stronger
+thresholds and those stronger values persist in the GPT assignment across restart.
+
+The first passing reference reconstruction is REFERENCE_VERIFIED. Transfer is not
+inferred from session IDs, cache paths, filenames, or changed audio. TRANSFER_VERIFIED
+requires a later machine-passing Practice session whose Finish video content fingerprint
+and matched Start-video content fingerprint are both different from a prior verified
+session. Stable SHA-derived media identity is authoritative. Pro Creation remains blocked
+until the selected Edit Type has at least one TRANSFER_VERIFIED Practice record.
+
+Unresolved capability gaps, missing render/comparison/result/lesson evidence, missing
+final render, or a failed similarity hard gate prevent mastery and produce
+HUMAN_REVIEW_REQUIRED rather than authoritative training memory.
 
 ## Practice Learning Memory
 

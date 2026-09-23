@@ -8,6 +8,8 @@ import {
   EditTypeRegistryV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  buildGptOrchestrationChatMessageV1,
+  normalizePracticeVerificationPolicyV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 
 const finish = {
@@ -22,6 +24,41 @@ const start = [{
   mediaKind: "VIDEO",
   uri: "C:\\Media\\raw.mp4",
 }];
+
+const transferMasteryRecord = (sessionId) => ({
+  sessionId,
+  scope: "TRANSFER_VERIFIED",
+  proofRef: "proof:mastery:" + sessionId,
+  referenceId: "finish:transfer",
+  sourceIndexId: "practice-source-set:transfer",
+  referenceFingerprint: "reference-sha:transfer",
+  sourceFingerprint: "source-sha-set:transfer",
+  finalRenderRef: "render:mastered",
+  overallSimilarity: 0.98,
+  definingEffectCoverage: 1,
+  verifiedAt: "2026-09-23T12:00:00.000Z",
+});
+
+test("Practice verification policy has non-weakenable product floors", () => {
+  assert.deepEqual(normalizePracticeVerificationPolicyV1({
+    minimumSimilarity: 0.2,
+    exactSceneConfidence: 0.4,
+    minimumAudioConfidence: 0.1,
+  }), {
+    minimumSimilarity: 0.95,
+    exactSceneConfidence: 0.95,
+    minimumAudioConfidence: 0.90,
+  });
+  assert.deepEqual(normalizePracticeVerificationPolicyV1({
+    minimumSimilarity: 0.985,
+    exactSceneConfidence: 0.975,
+    minimumAudioConfidence: 0.96,
+  }), {
+    minimumSimilarity: 0.985,
+    exactSceneConfidence: 0.975,
+    minimumAudioConfidence: 0.96,
+  });
+});
 
 test("legacy GPT assignments inherit the current Tutorial Drive-first research policy on read", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "editflow-research-policy-migration-"));
@@ -60,7 +97,14 @@ test("legacy GPT assignments inherit the current Tutorial Drive-first research p
   const migrated = await store.getAssignment("gpt-assignment:legacy");
   assert.ok(migrated);
   assert.match(migrated.chatMessage, /Tutorial Drive is the mandatory first research source/);
+  assert.deepEqual(migrated.practicePolicy, {
+    minimumSimilarity: 0.95,
+    exactSceneConfidence: 0.95,
+    minimumAudioConfidence: 0.90,
+  });
   assert.match(migrated.chatMessage, /Adobe Effect Tutorials/);
+  assert.match(migrated.chatMessage, /GPT completion is not Practice mastery/);
+  assert.match(migrated.chatMessage, /weighted\/effect\/transition fidelity >= 0\.950/);
   assert.match(migrated.chatMessage, /Second priority is official Adobe documentation\/resources/);
   assert.doesNotMatch(migrated.chatMessage, /online research is required before accepting a fallback/);
 });
@@ -212,18 +256,49 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     /preserve priority order/,
   );
 
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "RESEARCH",
+      summary: "A matched Tutorial Drive file cannot become learning evidence without structured technique semantics.",
+      researchSources: [{
+        sourceId: "tutorial-drive:unstructured-match",
+        kind: "TUTORIAL_DRIVE",
+        title: "Unstructured reverse tutorial",
+        uri: "https://drive.google.com/file/d/unstructured-reverse/view",
+      }],
+    }),
+    /WHAT, WHEN\/WHY, HOW, ACCESS, PROOF, and TRANSFER/,
+  );
+
   const researchSources = [{
     sourceId: "tutorial-drive:smoothest-reverse-edit",
     kind: "TUTORIAL_DRIVE",
     title: "How To Make The Smoothest Reverse Edit? | After Effects Tutorial",
     uri: "https://drive.google.com/file/d/1XDrENfZUf36F2MYvMn62e8gDDUA1IzS6/view?usp=drivesdk",
     notes: "Closest Tutorial Drive match for the reference's actual backward source-time replay. Use it to extract the reverse-edit construction and timing logic before consulting Adobe documentation.",
+    tutorialTechnique: {
+      what: "A short backward replay of the source frames that were just shown, integrated into the transition rather than merely reversing parameter animation.",
+      whenWhy: "Use when the reference visibly rewinds recent source-time motion to create a recoil/return beat before the transition exits.",
+      how: "Enable Time Remap and shape a descending source-time segment over the measured rewind span, then combine it with the reference-defined transition motion.",
+      access: "Requires source handles plus AE Time Remap/keyframe control; optional higher-order retiming can use a proven alternative only when native remap is insufficient.",
+      proof: "Verify source-time direction from AE readback and rendered frame correspondence showing the same recently played frames moving backward.",
+      transfer: "Adapt rewind span, speed, interpolation, and exit behavior to new footage from measured source motion and available handles instead of copying tutorial constants.",
+    },
   }, {
     sourceId: "tutorial-drive:smooth-zoom-reverse",
     kind: "TUTORIAL_DRIVE",
     title: "Smooth Zoom + Reverse Effect Tutorial | After Effects",
     uri: "https://drive.google.com/file/d/18VN6VBc8Bsig2D5itq3_zfG4PTuc6vSq/view?usp=drivesdk",
     notes: "Secondary Tutorial Drive match for combining reverse playback with transition motion and recovery, relevant to the reference's reverse exit behavior.",
+    tutorialTechnique: {
+      what: "A zoom/motion transition layered with reverse playback so the temporal rewind and spatial transition read as one gesture.",
+      whenWhy: "Use when a reference couples a rewind beat to a camera-like push/pull and the spatial motion must recover with the temporal event.",
+      how: "Bind the reverse source-time segment and the zoom/reframe envelope to the same measured transition anchor, using shot-specific transform values.",
+      access: "Requires proven Time Remap plus transform/easing controls; plugin-specific warp is optional and cannot be assumed.",
+      proof: "Compare temporal direction, transition anchor, scale/position trajectory, and rendered recovery against the reference window.",
+      transfer: "Scale the motion envelope and rewind timing to the new shot's duration, motion energy, subject framing, and usable source handles.",
+    },
   }, {
     sourceId: "adobe:time-remapping",
     kind: "ADOBE_DOCUMENTATION",
@@ -292,6 +367,18 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     resolutionSkillId: learnedSkill.skillId,
     evidenceRefs: [...gapOpen.evidenceRefs, ...learnedSkill.evidenceRefs],
   };
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "SKILL_COMMIT",
+      outcome: "SUCCESS",
+      summary: "A single Practice session cannot self-assign transfer maturity.",
+      capabilityGap: resolvedGap,
+      learnedSkill: { ...learnedSkill, maturity: "TRANSFER_VERIFIED" },
+      evidenceRefs: learnedSkill.evidenceRefs,
+    }),
+    /TRANSFER_VERIFIED is assigned only after a machine-verified transfer Practice completion/,
+  );
   const commitEvent = await store.appendEvent({
     assignmentId: assignment.assignmentId,
     stage: "SKILL_COMMIT",
@@ -315,6 +402,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     sessionId,
     mode: "PRACTICE",
     mastered: completed.status === "COMPLETED",
+    masteryRecord: transferMasteryRecord(sessionId),
   });
 
   const knowledge = registry.knowledge("microwave-edit");
@@ -332,7 +420,71 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     start,
   });
   assert.equal(pro.status, "READY");
-  assert.equal(pro.knowledge.gptLearning.learnedSkills[0].skillId, learnedSkill.skillId);
+  assert.equal(pro.knowledge.knowledgeScope, "TRANSFER_VERIFIED_ONLY");
+  assert.equal(pro.knowledge.gptLearning.learnedSkills.length, 0);
+
+  const proMessage = buildGptOrchestrationChatMessageV1({
+    sessionId: "pro:capability-discovery:chat:001",
+    mode: "PRO_CREATION",
+    editTypeId: "microwave-edit",
+    finish: null,
+    start,
+    practicePolicy: null,
+    artifactDir: "C:\\EditFlow\\artifacts\\pro-capability-discovery",
+    knowledge,
+  });
+  assert.doesNotMatch(proMessage, /skill:temporal-rewind:v1/);
+  assert.match(proMessage, /only TRANSFER_VERIFIED learned skills/i);
+
+  const referenceOnlySkillSession = "practice:skill-reference-only:002";
+  registry.beginGptLearningSession("microwave-edit", referenceOnlySkillSession, "PRACTICE");
+  assert.throws(
+    () => registry.completeGptLearningSession({
+      editTypeId: "microwave-edit",
+      sessionId: referenceOnlySkillSession,
+      mode: "PRACTICE",
+      mastered: true,
+      masteryRecord: {
+        ...transferMasteryRecord(referenceOnlySkillSession),
+        scope: "REFERENCE_VERIFIED",
+      },
+      transferVerifiedSkillIds: [learnedSkill.skillId],
+    }),
+    /only after a machine-verified transfer Practice completion/,
+  );
+
+  const transferSkillSession = "practice:skill-transfer:003";
+  registry.beginGptLearningSession("microwave-edit", transferSkillSession, "PRACTICE");
+  registry.completeGptLearningSession({
+    editTypeId: "microwave-edit",
+    sessionId: transferSkillSession,
+    mode: "PRACTICE",
+    mastered: true,
+    masteryRecord: transferMasteryRecord(transferSkillSession),
+    transferVerifiedSkillIds: [learnedSkill.skillId],
+  });
+  const transferKnowledge = registry.knowledge("microwave-edit");
+  assert.equal(transferKnowledge.gptLearning.learnedSkills[0].maturity, "TRANSFER_VERIFIED");
+  const promotedPro = new ProCreationPreparationEngineV1(registry).prepare({
+    sessionId: "pro:capability-discovery:002",
+    mode: "PRO_CREATION",
+    editTypeId: "microwave-edit",
+    start,
+  });
+  assert.equal(promotedPro.status, "READY");
+  assert.equal(promotedPro.knowledge.knowledgeScope, "TRANSFER_VERIFIED_ONLY");
+  assert.equal(promotedPro.knowledge.gptLearning.learnedSkills[0].skillId, learnedSkill.skillId);
+  const transferredMessage = buildGptOrchestrationChatMessageV1({
+    sessionId: "pro:capability-discovery:chat:002",
+    mode: "PRO_CREATION",
+    editTypeId: "microwave-edit",
+    finish: null,
+    start,
+    practicePolicy: null,
+    artifactDir: "C:\\EditFlow\\artifacts\\pro-capability-discovery",
+    knowledge: transferKnowledge,
+  });
+  assert.match(transferredMessage, /skill:temporal-rewind:v1/);
 
   const events = await store.eventsForSession(sessionId);
   assert.deepEqual(

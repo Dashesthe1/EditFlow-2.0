@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/schema/practice-mastery-proof-v1.json",
+  "title": "EditFlow Practice Mastery Proof V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "sessionId", "editTypeId", "referenceId", "sourceIndexId",
+    "referenceFingerprint", "sourceFingerprint", "finalRenderRef",
+    "minimumSimilarity", "exactSceneConfidence", "report", "matches",
+    "audioMatch", "evidenceRefs", "verifiedAt"
+  ],
+  "properties": {
+    "schema": { "const": "editflow.practice-mastery-proof.v1" },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "editTypeId": { "type": "string", "minLength": 1 },
+    "referenceId": { "type": "string", "minLength": 1 },
+    "sourceIndexId": { "type": "string", "minLength": 1 },
+    "referenceFingerprint": { "type": "string", "minLength": 16 },
+    "sourceFingerprint": { "type": "string", "minLength": 16 },
+    "finalRenderRef": { "type": "string", "minLength": 1 },
+    "minimumSimilarity": { "type": "number", "minimum": 0.95, "maximum": 1 },
+    "exactSceneConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "report": { "$ref": "#/$defs/report" },
+    "matches": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/match" }
+    },
+    "audioMatch": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/audioMatch" }
+      ]
+    },
+    "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" },
+    "verifiedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "evidenceRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sceneIdentity", "temporalAlignment", "cutTiming", "framing",
+        "motion", "effectFidelity", "transitionFidelity", "colorFinish",
+        "pixelStructure"
+      ],
+      "properties": {
+        "sceneIdentity": { "$ref": "#/$defs/score" },
+        "temporalAlignment": { "$ref": "#/$defs/score" },
+        "cutTiming": { "$ref": "#/$defs/score" },
+        "framing": { "$ref": "#/$defs/score" },
+        "motion": { "$ref": "#/$defs/score" },
+        "effectFidelity": { "$ref": "#/$defs/score" },
+        "transitionFidelity": { "$ref": "#/$defs/score" },
+        "colorFinish": { "$ref": "#/$defs/score" },
+        "pixelStructure": { "$ref": "#/$defs/score" }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "breakdown", "definingEffectCoverage", "wrongSceneCount",
+        "unmatchedSceneCount", "overallSimilarity", "passed", "reasons",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "schema": { "const": "editflow.practice-similarity.v1" },
+        "breakdown": { "$ref": "#/$defs/breakdown" },
+        "definingEffectCoverage": { "$ref": "#/$defs/score" },
+        "wrongSceneCount": { "type": "integer", "minimum": 0 },
+        "unmatchedSceneCount": { "type": "integer", "minimum": 0 },
+        "overallSimilarity": { "$ref": "#/$defs/score" },
+        "passed": { "type": "boolean" },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shotId", "sourceId", "sourceStartMs", "sourceEndMs", "direction",
+        "playbackRate", "appearanceSimilarity", "temporalSimilarity",
+        "motionSimilarity", "confidence", "evidenceRefs"
+      ],
+      "properties": {
+        "shotId": { "type": "string", "minLength": 1 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sourceStartMs": { "type": "number", "minimum": 0 },
+        "sourceEndMs": { "type": "number", "exclusiveMinimum": 0 },
+        "direction": { "enum": ["FORWARD", "REVERSE"] },
+        "playbackRate": { "type": "number", "exclusiveMinimum": 0 },
+        "appearanceSimilarity": { "$ref": "#/$defs/score" },
+        "temporalSimilarity": { "$ref": "#/$defs/score" },
+        "motionSimilarity": { "$ref": "#/$defs/score" },
+        "confidence": { "$ref": "#/$defs/score" },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+    "audioSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segmentId", "referenceStartMs", "referenceEndMs", "sourceStartMs",
+        "sourceEndMs", "playbackRate", "correlation", "confidence", "evidenceRefs"
+      ],
+      "properties": {
+        "segmentId": { "type": "string", "minLength": 1 },
+        "referenceStartMs": { "type": "number", "minimum": 0 },
+        "referenceEndMs": { "type": "number", "exclusiveMinimum": 0 },
+        "sourceStartMs": { "type": "number", "minimum": 0 },
+        "sourceEndMs": { "type": "number", "exclusiveMinimum": 0 },
+        "playbackRate": { "type": "number", "exclusiveMinimum": 0 },
+        "correlation": { "type": "number", "minimum": -1, "maximum": 1 },
+        "confidence": { "$ref": "#/$defs/score" },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+    "audioMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matchId", "sourceId", "segments", "overallConfidence", "evidenceRefs"],
+      "properties": {
+        "matchId": { "type": "string", "minLength": 1 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/audioSegment" }
+        },
+        "overallConfidence": { "$ref": "#/$defs/score" },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    }
+  }
+}

@@ -187,7 +187,10 @@ select {
 .state-pill[data-state="WAITING_FOR_GPT"],
 .state-pill[data-state="RUNNING"] { color: #d5caff; background: #332b51; }
 .state-pill[data-state="COMPLETED"],
-.state-pill[data-state="MASTERED"] { color: var(--good); background: #203c30; }
+.state-pill[data-state="MASTERED"],
+.state-pill[data-state="REFERENCE_VERIFIED"],
+.state-pill[data-state="TRANSFER_VERIFIED"] { color: var(--good); background: #203c30; }
+.state-pill[data-state="HUMAN_REVIEW_REQUIRED"],
 .state-pill[data-state="CANCEL_REQUESTED"] { color: #ffd89a; background: #4b3a20; }
 .state-pill[data-state="CANCELLED"] { color: #c3cad6; background: #303541; }
 .state-pill[data-state="BLOCKED"],

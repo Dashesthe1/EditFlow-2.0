@@ -348,7 +348,8 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     if (result.state !== "COMMITTED") {
       throw new Error(
         "PRACTICE_M6_NATIVE_TRANSACTION_" + result.state
-          + ": recovered=" + String(result.recovered),
+          + ": recovered=" + String(result.recovered)
+          + (result.error === undefined ? "" : "; cause=" + result.error),
       );
     }
     this.renderDriver.recordAppliedOperations?.({

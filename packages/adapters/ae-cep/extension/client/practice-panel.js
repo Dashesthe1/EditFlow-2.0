@@ -149,7 +149,10 @@
     editTypes.forEach(function (profile) {
       var option = document.createElement("option");
       option.value = profile.editTypeId;
-      option.textContent = profile.title + " · " + profile.sessionIds.length + " sessions";
+      var maturity = profile.knowledge && profile.knowledge.maturityStage
+        ? profile.knowledge.maturityStage.replace(/_/g, " ")
+        : "UNPROVEN";
+      option.textContent = profile.title + " | " + profile.sessionIds.length + " sessions | " + maturity;
       editTypeEl.appendChild(option);
     });
     if (selected) editTypeEl.value = selected;
@@ -223,10 +226,27 @@
       metricsEl.hidden = true;
     }
     var label = run.mode === "PRACTICE" ? "Practice" : "Pro Creation";
-    setRunState(
-      "COMPLETED",
-      run.finalSummary || (label + " completed by GPT.")
-    );
+    if (run.mode === "PRACTICE") {
+      if (run.masteryScope) {
+        setRunState(
+          run.masteryScope,
+          run.finalSummary || ("Practice certified " + run.masteryScope.replace(/_/g, " ").toLowerCase() + ".")
+        );
+      } else {
+        var reasons = run.masteryReasons && run.masteryReasons.length
+          ? " " + run.masteryReasons.join(" ")
+          : "";
+        setRunState(
+          "HUMAN_REVIEW_REQUIRED",
+          run.finalSummary || ("Practice completed, but machine mastery proof did not pass." + reasons)
+        );
+      }
+    } else {
+      setRunState(
+        "COMPLETED",
+        run.finalSummary || (label + " completed by GPT.")
+      );
+    }
     refreshEditTypes();
   }
 

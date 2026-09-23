@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
   EditTypeBehaviorEvidenceV1,
   EditTypeGptLearningSummaryV1,
+  EditTypeKnowledgeScopeV1,
   EditTypeKnowledgeSnapshotV1,
   EditTypeProfileV1,
   GptCapabilityGapV1,
@@ -12,7 +13,10 @@ import type {
   GptLearningEventV1,
   GptOrchestrationModeV1,
   PracticeEpisodeV1,
+  PracticeHeldOutBenchmarkReportV1,
+  PracticeMasteryRecordV1,
 } from "./contracts.js";
+import { derivePracticeMaturityStageV1 } from "./mastery.js";
 
 const normalizeChoice = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -24,6 +28,8 @@ const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   practiceSessionIds: [],
   proCreationSessionIds: [],
   masteredPracticeSessionIds: [],
+  masteryRecords: [],
+  heldOutBenchmarks: [],
   eventCount: 0,
   successLessons: [],
   failureAvoidanceLessons: [],
@@ -40,6 +46,8 @@ const normalizedGptLearning = (
     practiceSessionIds: uniqueStrings(value.practiceSessionIds),
     proCreationSessionIds: uniqueStrings(value.proCreationSessionIds),
     masteredPracticeSessionIds: uniqueStrings(value.masteredPracticeSessionIds),
+    masteryRecords: (value.masteryRecords ?? []).map((record) => structuredClone(record)),
+    heldOutBenchmarks: (value.heldOutBenchmarks ?? []).map((report) => structuredClone(report)),
     eventCount: Math.max(0, Math.floor(value.eventCount)),
     successLessons: uniqueStrings(value.successLessons),
     failureAvoidanceLessons: uniqueStrings(value.failureAvoidanceLessons),
@@ -74,6 +82,16 @@ const upsertLearnedSkill = (
 ): readonly GptLearnedSkillV1[] => {
   const normalized = structuredClone(skill);
   const index = values.findIndex((value) => value.skillId === skill.skillId);
+  if (index < 0) return [...values, normalized];
+  return values.map((value, offset) => offset === index ? normalized : value);
+};
+
+const upsertMasteryRecord = (
+  values: readonly PracticeMasteryRecordV1[],
+  record: PracticeMasteryRecordV1,
+): readonly PracticeMasteryRecordV1[] => {
+  const normalized = structuredClone(record);
+  const index = values.findIndex((value) => value.sessionId === record.sessionId);
   if (index < 0) return [...values, normalized];
   return values.map((value, offset) => offset === index ? normalized : value);
 };
@@ -297,13 +315,46 @@ export class EditTypeRegistryV1 {
     readonly sessionId: string;
     readonly mode: GptOrchestrationModeV1;
     readonly mastered: boolean;
+    readonly masteryRecord?: PracticeMasteryRecordV1;
+    readonly transferVerifiedSkillIds?: readonly string[];
   }): EditTypeProfileV1 {
     const profile = this.#profiles.get(input.editTypeId);
     if (profile === undefined) throw new TypeError("Unknown Edit Type: " + input.editTypeId);
+    if (input.mastered && input.mode === "PRACTICE" && input.masteryRecord === undefined) {
+      throw new TypeError("GPT Practice mastery requires a machine-verified mastery record.");
+    }
+    if (input.masteryRecord !== undefined && input.masteryRecord.sessionId !== input.sessionId) {
+      throw new TypeError("Practice mastery record session does not match the completed session.");
+    }
     const learning = normalizedGptLearning(profile.gptLearning);
-    const masteredPracticeSessionIds = input.mode === "PRACTICE" && input.mastered
-      ? uniqueStrings([...learning.masteredPracticeSessionIds, input.sessionId])
-      : learning.masteredPracticeSessionIds;
+    const transferVerifiedSkillIds = uniqueStrings(input.transferVerifiedSkillIds ?? []);
+    if (transferVerifiedSkillIds.length > 0
+      && (input.mode !== "PRACTICE"
+        || !input.mastered
+        || input.masteryRecord?.scope !== "TRANSFER_VERIFIED")) {
+      throw new TypeError(
+        "Learned skills can become TRANSFER_VERIFIED only after a machine-verified transfer Practice completion.",
+      );
+    }
+    const unknownTransferSkills = transferVerifiedSkillIds.filter((skillId) =>
+      !learning.learnedSkills.some((skill) => skill.skillId === skillId));
+    if (unknownTransferSkills.length > 0) {
+      throw new TypeError(
+        "Transfer verification referenced unknown learned skills: " + unknownTransferSkills.join(", "),
+      );
+    }
+    const learnedSkills = learning.learnedSkills.map((skill) =>
+      transferVerifiedSkillIds.includes(skill.skillId)
+        ? { ...skill, maturity: "TRANSFER_VERIFIED" as const }
+        : skill);
+    const masteryRecords = input.mode !== "PRACTICE"
+      ? learning.masteryRecords
+      : input.mastered && input.masteryRecord !== undefined
+        ? upsertMasteryRecord(learning.masteryRecords, input.masteryRecord)
+        : learning.masteryRecords.filter((record) => record.sessionId !== input.sessionId);
+    const masteredPracticeSessionIds = uniqueStrings(
+      masteryRecords.map((record) => record.sessionId),
+    );
     const masteredSessionIds = input.mode === "PRACTICE" && input.mastered
       ? uniqueStrings([...profile.masteredSessionIds, input.sessionId])
       : profile.masteredSessionIds;
@@ -314,10 +365,37 @@ export class EditTypeRegistryV1 {
       gptLearning: {
         ...learning,
         masteredPracticeSessionIds,
+        masteryRecords,
+        learnedSkills,
         lastUpdatedAt: new Date().toISOString(),
       },
     };
     this.#profiles.set(input.editTypeId, updated);
+    return structuredClone(updated);
+  }
+
+  recordHeldOutBenchmark(report: PracticeHeldOutBenchmarkReportV1): EditTypeProfileV1 {
+    const profile = this.#profiles.get(report.editTypeId);
+    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + report.editTypeId);
+    if (report.schema !== "editflow.practice-held-out-benchmark.v1") {
+      throw new TypeError("Unsupported Practice held-out benchmark schema.");
+    }
+    if (report.robust && !report.objectAwareVerified) {
+      throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
+    }
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const retained = learning.heldOutBenchmarks.filter((item) =>
+      item.evaluatedAt !== report.evaluatedAt);
+    const updated: EditTypeProfileV1 = {
+      ...profile,
+      revision: profile.revision + 1,
+      gptLearning: {
+        ...learning,
+        heldOutBenchmarks: [...retained, structuredClone(report)],
+        lastUpdatedAt: report.evaluatedAt,
+      },
+    };
+    this.#profiles.set(report.editTypeId, updated);
     return structuredClone(updated);
   }
 
@@ -350,34 +428,89 @@ export class EditTypeRegistryV1 {
     return structuredClone(updated);
   }
 
-  knowledge(editTypeId: string): EditTypeKnowledgeSnapshotV1 | null {
-    const profile = this.#profiles.get(editTypeId);
-    if (profile === undefined) return null;
-    const success = profile.behaviorEvidence
+  #knowledgeSnapshot(
+    profile: EditTypeProfileV1,
+    behaviorEvidence: readonly EditTypeBehaviorEvidenceV1[],
+    gptLearning: EditTypeGptLearningSummaryV1,
+    knowledgeScope: EditTypeKnowledgeScopeV1,
+  ): EditTypeKnowledgeSnapshotV1 {
+    const success = behaviorEvidence
       .filter((item) => item.outcome === "MASTERED_SUPPORT")
       .flatMap((item) => item.constructionIds);
-    const failed = profile.behaviorEvidence
+    const failed = behaviorEvidence
       .filter((item) => item.outcome !== "MASTERED_SUPPORT")
       .flatMap((item) => item.constructionIds);
-    const successfulSemanticPatches = profile.behaviorEvidence
+    const successfulSemanticPatches = behaviorEvidence
       .filter((item) => item.outcome === "MASTERED_SUPPORT")
       .flatMap((item) => item.semanticPatches);
-    const failedSemanticPatches = profile.behaviorEvidence
+    const failedSemanticPatches = behaviorEvidence
       .filter((item) => item.outcome !== "MASTERED_SUPPORT")
       .flatMap((item) => item.semanticPatches);
+    const allLearning = normalizedGptLearning(profile.gptLearning);
     return {
       editTypeId: profile.editTypeId,
       title: profile.title,
       revision: profile.revision,
-      masteredSessionCount: profile.masteredSessionIds.length,
+      maturityStage: derivePracticeMaturityStageV1(profile),
+      knowledgeScope,
+      masteredSessionCount: knowledgeScope === "TRANSFER_VERIFIED_ONLY"
+        ? gptLearning.masteryRecords.length
+        : profile.masteredSessionIds.length,
+      referenceVerifiedPracticeSessionCount: allLearning.masteryRecords.length,
+      transferVerifiedPracticeSessionCount: allLearning.masteryRecords
+        .filter((record) => record.scope === "TRANSFER_VERIFIED").length,
       totalSessionCount: profile.sessionIds.length,
       successfulConstructionIds: uniqueStrings(success),
       failedConstructionIds: uniqueStrings(failed),
       successfulSemanticPatches: structuredClone(successfulSemanticPatches),
       failedSemanticPatches: structuredClone(failedSemanticPatches),
-      behaviorEvidence: structuredClone(profile.behaviorEvidence),
-      gptLearning: structuredClone(normalizedGptLearning(profile.gptLearning)),
+      behaviorEvidence: structuredClone(behaviorEvidence),
+      gptLearning: structuredClone(gptLearning),
     };
+  }
+
+  knowledge(editTypeId: string): EditTypeKnowledgeSnapshotV1 | null {
+    const profile = this.#profiles.get(editTypeId);
+    if (profile === undefined) return null;
+    return this.#knowledgeSnapshot(
+      profile,
+      profile.behaviorEvidence,
+      normalizedGptLearning(profile.gptLearning),
+      "ALL_RETAINED",
+    );
+  }
+
+  transferableKnowledge(editTypeId: string): EditTypeKnowledgeSnapshotV1 | null {
+    const profile = this.#profiles.get(editTypeId);
+    if (profile === undefined) return null;
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const transferRecords = learning.masteryRecords
+      .filter((record) => record.scope === "TRANSFER_VERIFIED");
+    if (transferRecords.length === 0) return null;
+    const transferSessionIds = new Set(transferRecords.map((record) => record.sessionId));
+    const behaviorEvidence = profile.behaviorEvidence
+      .filter((item) => transferSessionIds.has(item.sessionId));
+    const transferLearning: EditTypeGptLearningSummaryV1 = {
+      practiceSessionIds: transferRecords.map((record) => record.sessionId),
+      proCreationSessionIds: learning.proCreationSessionIds,
+      masteredPracticeSessionIds: transferRecords.map((record) => record.sessionId),
+      masteryRecords: transferRecords,
+      heldOutBenchmarks: learning.heldOutBenchmarks,
+      eventCount: learning.eventCount,
+      successLessons: [],
+      failureAvoidanceLessons: [],
+      developmentPatterns: [],
+      capabilityGaps: learning.capabilityGaps.filter((gap) => gap.status !== "RESOLVED"),
+      learnedSkills: learning.learnedSkills
+        .filter((skill) => skill.maturity === "TRANSFER_VERIFIED"),
+      ...(learning.lastUpdatedAt === undefined ? {} : { lastUpdatedAt: learning.lastUpdatedAt }),
+    };
+    return this.#knowledgeSnapshot(
+      profile,
+      behaviorEvidence,
+      transferLearning,
+      "TRANSFER_VERIFIED_ONLY",
+    );
   }
 }
 interface EditTypeRegistryFilePayloadV1 {
@@ -425,6 +558,13 @@ export class EditTypeRegistryFileV1 {
     this.#sequence += 1;
     const temporaryPath = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence);
     await writeFile(temporaryPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
-    await rename(temporaryPath, this.filePath);
+    try {
+      await rename(temporaryPath, this.filePath);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error;
+      await copyFile(temporaryPath, this.filePath);
+      await unlink(temporaryPath);
+    }
   }
 }

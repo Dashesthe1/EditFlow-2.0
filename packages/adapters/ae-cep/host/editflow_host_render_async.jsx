@@ -17,7 +17,7 @@
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderasync5";
+  var BUILD = "0.1.0-dev.4-renderasync7-start-grace30s";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -198,8 +198,11 @@
       }
     } catch (_) {}
 
-    if (!statusDone && job.renderAsyncReturnedAtMs !== null
-        && nowMs() - job.renderAsyncReturnedAtMs < 2000) {
+    var renderGraceAnchorMs = job.renderAsyncReturnedAtMs !== null
+      ? job.renderAsyncReturnedAtMs
+      : job.startedAtMs;
+    if (!statusDone && renderGraceAnchorMs !== null
+        && nowMs() - renderGraceAnchorMs < 30000) {
       return "RUNNING";
     }
 

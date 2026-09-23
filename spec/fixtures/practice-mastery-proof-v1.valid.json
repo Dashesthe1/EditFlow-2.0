@@ -1,0 +1,60 @@
+{
+  "schema": "editflow.practice-mastery-proof.v1",
+  "sessionId": "practice:fixture:001",
+  "editTypeId": "microwave-edit",
+  "referenceId": "finish:fixture",
+  "sourceIndexId": "practice-source-set:fixture",
+  "referenceFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "finalRenderRef": "C:\\proofs\\practice-fixture\\final.mp4",
+  "minimumSimilarity": 0.95,
+  "exactSceneConfidence": 0.95,
+  "report": {
+    "schema": "editflow.practice-similarity.v1",
+    "breakdown": {
+      "sceneIdentity": 0.999,
+      "temporalAlignment": 0.99,
+      "cutTiming": 0.99,
+      "framing": 0.98,
+      "motion": 0.97,
+      "effectFidelity": 0.96,
+      "transitionFidelity": 0.96,
+      "colorFinish": 0.97,
+      "pixelStructure": 0.96
+    },
+    "definingEffectCoverage": 1,
+    "wrongSceneCount": 0,
+    "unmatchedSceneCount": 0,
+    "overallSimilarity": 0.977,
+    "passed": true,
+    "reasons": [],
+    "evidenceRefs": [
+      "comparison:fixture",
+      "m6:fixture"
+    ]
+  },
+  "matches": [
+    {
+      "shotId": "shot:0001",
+      "sourceId": "video:1",
+      "sourcePath": "C:\\media\\raw.mp4",
+      "sourceStartMs": 1000,
+      "sourceEndMs": 2200,
+      "direction": "FORWARD",
+      "playbackRate": 1,
+      "appearanceSimilarity": 0.99,
+      "temporalSimilarity": 0.98,
+      "motionSimilarity": 0.97,
+      "confidence": 0.98,
+      "evidenceRefs": [
+        "source-video:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      ]
+    }
+  ],
+  "audioMatch": null,
+  "evidenceRefs": [
+    "comparison:fixture",
+    "m6:fixture"
+  ],
+  "verifiedAt": "2026-09-23T16:00:00.000Z"
+}

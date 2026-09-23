@@ -17,6 +17,11 @@
     "mediaKind": "VIDEO",
     "uri": "C:/Media/raw.mp4"
   }],
+  "practicePolicy": {
+    "minimumSimilarity": 0.95,
+    "exactSceneConfidence": 0.95,
+    "minimumAudioConfidence": 0.9
+  },
   "artifactDir": "C:/EditFlow/artifacts/practice-fixture",
   "chatMessage": "GPT controls EditFlow for this assignment.",
   "createdAt": "2026-09-22T20:00:00.000Z",

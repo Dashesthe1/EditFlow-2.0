@@ -76,7 +76,9 @@ test("Practice panel product API is authenticated and preserves readiness gates"
   assert.equal(preparation.status, 200);
   const result = (await preparation.json()).preparation;
   assert.equal(result.status, "BLOCKED");
-  assert.ok(result.reasons.some((reason) => /no mastered Practice success path/.test(reason)));
+  assert.ok(
+    result.reasons.some((reason) => /no transfer-verified GPT Practice knowledge/.test(reason)),
+  );
 
   const practice = await fetch(base + "/v1/product/practice", {
     method: "POST",

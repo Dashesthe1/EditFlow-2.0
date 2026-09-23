@@ -65,6 +65,25 @@ Recipes progress through:
 
 A recipe cannot be production-ready if any required human action maps to an unavailable or silently approximated capability.
 
+## Practice mastery authority
+
+GPT orchestration completion is lifecycle evidence, not capability or learning proof.
+A Practice result may enter authoritative Edit Type mastery only after an independent
+machine verification of the actual final render passes the Practice anti-shortcut gate.
+The retained mastery proof must bind the final render, stable Finish-video fingerprint,
+stable matched Start-video fingerprint, scene/source matches, comparison evidence, and
+the exact certification thresholds.
+
+A first passing reconstruction is reference verification only. Transfer requires a
+second passing reconstruction on materially different Finish video and matched Start
+video content. Session IDs, filenames, cache paths, different encodes of the same
+underlying source, or a changed song cannot by themselves establish transfer.
+
+Pro Creation may use only transfer-verified Edit Type mastery as its entry authority.
+Individual learned skills keep their own maturity: an Edit Type transfer pass does not
+automatically promote an unrelated AE_PROVEN skill unless that skill has separate
+transfer evidence.
+
 ## Proof fixture requirements
 
 Every material capability family should have:

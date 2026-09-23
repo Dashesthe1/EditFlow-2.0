@@ -23,13 +23,15 @@ export class ProCreationPreparationEngineV1 {
     if (!request.start.some((item) => item.mediaKind === "VIDEO")) {
       reasons.push("Pro Creation requires at least one raw video source.");
     }
-    const knowledge = this.editTypes.knowledge(request.editTypeId);
-    if (knowledge === null) {
+    const retainedKnowledge = this.editTypes.knowledge(request.editTypeId);
+    const knowledge = this.editTypes.transferableKnowledge(request.editTypeId);
+    if (retainedKnowledge === null) {
       reasons.push("A registered Edit Type must be selected before Pro Creation can start.");
-    } else if (knowledge.masteredSessionCount === 0) {
+    } else if (knowledge === null) {
       reasons.push(
-        "The selected Edit Type has no mastered Practice success path yet. "
-          + "Complete at least one successful GPT-orchestrated Practice session first.",
+        "The selected Edit Type has no transfer-verified GPT Practice knowledge yet. "
+          + "A single-reference reconstruction is not enough for Pro Creation; "
+          + "pass the Practice proof gate on materially different reference/source footage first.",
       );
     }
 
@@ -38,7 +40,7 @@ export class ProCreationPreparationEngineV1 {
       sessionId: request.sessionId,
       status: reasons.length === 0 ? "READY" : "BLOCKED",
       editTypeId: request.editTypeId,
-      knowledge,
+      knowledge: knowledge ?? retainedKnowledge,
       start: request.start,
       reasons,
     };

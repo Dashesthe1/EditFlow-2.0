@@ -13,6 +13,8 @@ export type PracticeAeBaselineCommandV1 =
   | "comp.create"
   | "layer.add_media"
   | "layer.set_timing"
+  | "layer.time_remap.enable"
+  | "property.set_keyframes"
   | "layer.switches.set";
 
 export interface PracticeAeBaselineOperationV1 {
@@ -23,6 +25,8 @@ export interface PracticeAeBaselineOperationV1 {
     | "ae.comp.create"
     | "ae.layer.create"
     | "ae.layer.timing.set"
+    | "ae.layer.time_remap.enable"
+    | "ae.keyframe.set"
     | "ae.layer.switches.set";
   readonly payload: Readonly<Record<string, unknown>>;
 }
@@ -71,6 +75,8 @@ const commandCapability = (
     case "comp.create": return "ae.comp.create";
     case "layer.add_media": return "ae.layer.create";
     case "layer.set_timing": return "ae.layer.timing.set";
+    case "layer.time_remap.enable": return "ae.layer.time_remap.enable";
+    case "property.set_keyframes": return "ae.keyframe.set";
     case "layer.switches.set": return "ae.layer.switches.set";
   }
 };
@@ -87,10 +93,20 @@ const operation = (
   payload,
 });
 
-const timingForMatch = (
+const AE_LAYER_START_TIME_LIMIT_SECONDS = 10800;
+
+interface PracticeMatchTimingPlanV1 {
+  readonly timing: Readonly<Record<string, number>>;
+  readonly timeRemapKeyframes: readonly {
+    readonly time: number;
+    readonly value: number;
+  }[] | null;
+}
+
+const timingPlanForMatch = (
   shot: PracticeReferenceAnalysisV1["shots"][number],
   match: PracticeSceneMatchV1,
-): Readonly<Record<string, number>> => {
+): PracticeMatchTimingPlanV1 => {
   if (!Number.isFinite(match.playbackRate) || match.playbackRate <= 0) {
     throw new TypeError("Invalid playback rate for " + match.shotId + ".");
   }
@@ -104,11 +120,36 @@ const timingForMatch = (
   const sourceAtReferenceStart = match.direction === "FORWARD"
     ? sourceStart
     : sourceEnd;
+  const directStartTime = refStart - (sourceAtReferenceStart / slope);
+  if (Math.abs(directStartTime) <= AE_LAYER_START_TIME_LIMIT_SECONDS) {
+    return {
+      timing: {
+        startTime: directStartTime,
+        inPoint: refStart,
+        outPoint: refEnd,
+        stretch: 100 / slope,
+      },
+      timeRemapKeyframes: null,
+    };
+  }
+
   return {
-    startTime: refStart - (sourceAtReferenceStart / slope),
-    inPoint: refStart,
-    outPoint: refEnd,
-    stretch: 100 / slope,
+    timing: {
+      startTime: refStart,
+      inPoint: refStart,
+      outPoint: refEnd,
+      stretch: 100,
+    },
+    timeRemapKeyframes: [
+      {
+        time: refStart,
+        value: sourceAtReferenceStart,
+      },
+      {
+        time: refEnd,
+        value: match.direction === "FORWARD" ? sourceEnd : sourceStart,
+      },
+    ],
   };
 };
 
@@ -249,6 +290,7 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
     }
     const layerStableId = "PRACTICE_SHOT_" + shortHash + "_"
       + String(shot.order + 1).padStart(4, "0");
+    const timingPlan = timingPlanForMatch(shot, match);
     operations.push(operation(baselineId, ordinal, "layer.add_media", {
       stableId: layerStableId,
       comp: { stableId: compStableId },
@@ -258,9 +300,23 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
     operations.push(operation(baselineId, ordinal, "layer.set_timing", {
       comp: { stableId: compStableId },
       layer: { stableId: layerStableId },
-      timing: timingForMatch(shot, match),
+      timing: timingPlan.timing,
     }));
     ordinal += 1;
+    if (timingPlan.timeRemapKeyframes !== null) {
+      operations.push(operation(baselineId, ordinal, "layer.time_remap.enable", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+      }));
+      ordinal += 1;
+      operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+        propertyPath: ["ADBE Time Remapping"],
+        keyframes: timingPlan.timeRemapKeyframes,
+      }));
+      ordinal += 1;
+    }
     operations.push(operation(baselineId, ordinal, "layer.switches.set", {
       comp: { stableId: compStableId },
       layer: { stableId: layerStableId },

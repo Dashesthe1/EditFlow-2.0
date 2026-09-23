@@ -13,14 +13,18 @@ import {
   EditTypeRegistryFileV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  classifyPracticeMasteryScopeV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
+  type GptLearningEventV1,
   type GptLearningOutcomeV1,
   type GptLearningStageV1,
   type GptOrchestrationAssignmentV1,
   type GptOrchestrationModeV1,
   type GptResearchSourceV1,
   type PracticeLearningAllocationResultV1,
+  type PracticeMasteryRecordV1,
+  type PracticeMasteryScopeV1,
   type PracticeMediaInputV1,
   type PracticeSessionResultV1,
   type ProCreationPreparationResultV1,
@@ -32,6 +36,7 @@ import {
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
+import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
 
 export interface PracticePanelServerConfigV1 {
   readonly port: number;
@@ -68,6 +73,9 @@ export interface PracticePanelRunSnapshotV1 {
   readonly audioPaths: readonly string[];
   readonly result: PracticeSessionResultV1 | null;
   readonly allocation: PracticeLearningAllocationResultV1 | null;
+  readonly masteryScope: PracticeMasteryScopeV1 | null;
+  readonly masteryProofRef: string | null;
+  readonly masteryReasons: readonly string[];
   readonly finalRenderRef: string | null;
   readonly finalSummary: string | null;
   readonly error: string | null;
@@ -219,6 +227,7 @@ const optionalResearchSources = (
       throw new HttpError(400, name + "[" + String(index) + "] must be an object.");
     }
     const record = source as Record<string, unknown>;
+    const technique = optionalRecord(record, "tutorialTechnique");
     return {
       sourceId: requiredString(record, "sourceId"),
       kind: requiredEnum(record, "kind", [
@@ -228,6 +237,16 @@ const optionalResearchSources = (
       title: requiredString(record, "title"),
       ...(optionalString(record, "uri") === undefined ? {} : { uri: optionalString(record, "uri")! }),
       ...(optionalString(record, "notes") === undefined ? {} : { notes: optionalString(record, "notes")! }),
+      ...(technique === undefined ? {} : {
+        tutorialTechnique: {
+          what: requiredString(technique, "what"),
+          whenWhy: requiredString(technique, "whenWhy"),
+          how: requiredString(technique, "how"),
+          access: requiredString(technique, "access"),
+          proof: requiredString(technique, "proof"),
+          transfer: requiredString(technique, "transfer"),
+        },
+      }),
     };
   });
 };
@@ -321,6 +340,32 @@ const mediaInputs = (
 const snapshot = (run: PracticePanelRunSnapshotV1): PracticePanelRunSnapshotV1 =>
   structuredClone(run);
 
+const practiceLearningTraceReasons = (
+  events: readonly GptLearningEventV1[],
+): readonly string[] => {
+  const reasons: string[] = [];
+  const requiredStages: readonly GptLearningStageV1[] = [
+    "RENDER", "COMPARISON", "RESULT", "LESSON",
+  ];
+  for (const stage of requiredStages) {
+    if (!events.some((event) => event.stage === stage)) {
+      reasons.push("Practice mastery requires a retained " + stage + " learning event.");
+    }
+  }
+  const latestGapById = new Map<string, GptCapabilityGapV1>();
+  for (const event of events) {
+    if (event.capabilityGap !== undefined) {
+      latestGapById.set(event.capabilityGap.gapId, event.capabilityGap);
+    }
+  }
+  for (const gap of latestGapById.values()) {
+    if (gap.status !== "RESOLVED") {
+      reasons.push("Unresolved Practice capability gap blocks mastery: " + gap.gapId + ".");
+    }
+  }
+  return [...new Set(reasons)];
+};
+
 export class PracticePanelServerV1 {
   readonly config: PracticePanelServerConfigV1;
   #server: Server | null = null;
@@ -328,6 +373,7 @@ export class PracticePanelServerV1 {
   #activeRunId: string | null = null;
   readonly #runs = new Map<string, PracticePanelRunSnapshotV1>();
   readonly #gptStore: GptOrchestrationStoreV1;
+  readonly #masteryVerifier: PracticeMasteryVerifierV1;
   readonly #transactionRuntime: CurrentAeTransactionRuntimeV1;
   #fastRuntime: LocalFastRuntimeV1 | null = null;
   #fastRuntimePromise: Promise<LocalFastRuntimeV1> | null = null;
@@ -345,6 +391,10 @@ export class PracticePanelServerV1 {
       config.gptOrchestrationFilePath
         ?? path.join(config.artifactDir, "state", "gpt-orchestration.json"),
     );
+    this.#masteryVerifier = new PracticeMasteryVerifierV1({
+      repositoryRoot: config.repositoryRoot,
+      ...(config.ffmpegPath === undefined ? {} : { ffmpegPath: config.ffmpegPath }),
+    });
     this.#transactionRuntime = new CurrentAeTransactionRuntimeV1(
       config.broker,
       "practice-gpt-controller",
@@ -510,6 +560,17 @@ export class PracticePanelServerV1 {
       editTypeId: editType.editTypeId,
       finish,
       start,
+      practicePolicy: {
+        ...(request.minimumSimilarity === undefined
+          ? {}
+          : { minimumSimilarity: request.minimumSimilarity }),
+        ...(request.exactSceneConfidence === undefined
+          ? {}
+          : { exactSceneConfidence: request.exactSceneConfidence }),
+        ...(request.minimumAudioConfidence === undefined
+          ? {}
+          : { minimumAudioConfidence: request.minimumAudioConfidence }),
+      },
       artifactDir,
       knowledge: registry.knowledge(editType.editTypeId),
     });
@@ -530,6 +591,9 @@ export class PracticePanelServerV1 {
       audioPaths: request.audioPaths ?? [],
       result: null,
       allocation: null,
+      masteryScope: null,
+      masteryProofRef: null,
+      masteryReasons: [],
       finalRenderRef: null,
       finalSummary: null,
       error: null,
@@ -630,8 +694,11 @@ export class PracticePanelServerV1 {
         || capabilityGap.resolutionSkillId !== learnedSkill.skillId) {
         throw new HttpError(400, "SKILL_COMMIT must resolve the gap with the committed skill.");
       }
-      if (!["AE_PROVEN", "TRANSFER_VERIFIED"].includes(learnedSkill.maturity)) {
-        throw new HttpError(400, "SKILL_COMMIT requires AE_PROVEN or TRANSFER_VERIFIED maturity.");
+      if (learnedSkill.maturity !== "AE_PROVEN") {
+        throw new HttpError(
+          400,
+          "SKILL_COMMIT requires AE_PROVEN maturity. TRANSFER_VERIFIED is assigned only after machine-verified transfer Practice completion.",
+        );
       }
     }
     const event = await this.#gptStore.appendEvent({
@@ -662,21 +729,110 @@ export class PracticePanelServerV1 {
   ): Promise<PracticePanelRunSnapshotV1> {
     const success = body["success"];
     if (typeof success !== "boolean") throw new HttpError(400, "success must be boolean.");
-    const finalRenderRef = optionalString(body, "finalRenderRef");
-    const assignment = await this.#gptStore.complete(assignmentId, {
-      success,
-      finalSummary: requiredString(body, "finalSummary"),
-      ...(finalRenderRef === undefined ? {} : { finalRenderRef }),
-    });
+    const requestedSummary = requiredString(body, "finalSummary");
+    const requestedRenderRef = optionalString(body, "finalRenderRef");
+    const pending = await this.#gptStore.getAssignment(assignmentId);
+    if (pending === null) throw new HttpError(404, "GPT assignment not found.");
+
     const file = await this.#editTypes();
     const registry = await file.load();
+    const sessionEvents = await this.#gptStore.eventsForSession(pending.sessionId);
+    let masteryRecord: PracticeMasteryRecordV1 | undefined;
+    let masteryScope: PracticeMasteryScopeV1 | null = null;
+    let masteryProofRef: string | null = null;
+    let masteryReasons: readonly string[] = [];
+    let finalRenderRef = requestedRenderRef;
+
+    if (success && pending.mode === "PRACTICE" && pending.status === "RUNNING") {
+      if (requestedRenderRef === undefined) {
+        masteryReasons = ["Practice mastery requires a final render reference."];
+      } else {
+        try {
+          const verification = await this.#masteryVerifier.verify({
+            assignment: pending,
+            finalRenderRef: requestedRenderRef,
+            ...(pending.practicePolicy === null ? {} : {
+              minimumSimilarity: pending.practicePolicy.minimumSimilarity,
+              exactSceneConfidence: pending.practicePolicy.exactSceneConfidence,
+              minimumAudioConfidence: pending.practicePolicy.minimumAudioConfidence,
+            }),
+          });
+          masteryProofRef = verification.proofRef;
+          finalRenderRef = verification.proof.finalRenderRef;
+          const traceReasons = practiceLearningTraceReasons(sessionEvents);
+          masteryReasons = [...new Set([
+            ...verification.proof.report.reasons,
+            ...traceReasons,
+          ])];
+          if (verification.proof.report.passed && traceReasons.length === 0) {
+            const priorRecords = registry.knowledge(pending.editTypeId)
+              ?.gptLearning.masteryRecords ?? [];
+            masteryScope = classifyPracticeMasteryScopeV1(
+              priorRecords,
+              verification.proof,
+            );
+            masteryRecord = {
+              sessionId: pending.sessionId,
+              scope: masteryScope,
+              proofRef: verification.proofRef,
+              referenceId: verification.proof.referenceId,
+              sourceIndexId: verification.proof.sourceIndexId,
+              referenceFingerprint: verification.proof.referenceFingerprint,
+              sourceFingerprint: verification.proof.sourceFingerprint,
+              finalRenderRef: verification.proof.finalRenderRef,
+              overallSimilarity: verification.proof.report.overallSimilarity,
+              definingEffectCoverage: verification.proof.report.definingEffectCoverage,
+              verifiedAt: verification.proof.verifiedAt,
+            };
+            masteryReasons = [];
+          }
+        } catch (error) {
+          masteryReasons = [
+            "Practice mastery verification failed closed: "
+              + (error instanceof Error ? error.message : String(error)),
+          ];
+        }
+      }
+    }
+
+    const summary = pending.mode !== "PRACTICE" || !success
+      ? requestedSummary
+      : masteryRecord === undefined
+        ? requestedSummary + " Practice proof gate: HUMAN_REVIEW_REQUIRED. "
+          + masteryReasons.join(" ")
+        : requestedSummary + " Practice proof gate: " + masteryRecord.scope + ".";
+    const assignment = await this.#gptStore.complete(assignmentId, {
+      success,
+      finalSummary: summary,
+      ...(finalRenderRef === undefined ? {} : { finalRenderRef }),
+    });
+    const transferVerifiedSkillIds = masteryRecord?.scope === "TRANSFER_VERIFIED"
+      ? [...new Set(sessionEvents.flatMap((event) =>
+        event.stage === "SKILL_COMMIT"
+          && event.outcome === "SUCCESS"
+          && event.learnedSkill !== undefined
+          ? [event.learnedSkill.skillId]
+          : []))]
+      : [];
     registry.completeGptLearningSession({
       editTypeId: assignment.editTypeId,
       sessionId: assignment.sessionId,
       mode: assignment.mode,
-      mastered: success && assignment.status === "COMPLETED",
+      mastered: assignment.status === "COMPLETED" && masteryRecord !== undefined,
+      ...(masteryRecord === undefined ? {} : { masteryRecord }),
+      ...(transferVerifiedSkillIds.length === 0 ? {} : { transferVerifiedSkillIds }),
     });
     await file.save(registry);
+
+    const run = this.#runs.get(assignment.sessionId);
+    if (run !== undefined) {
+      this.#runs.set(assignment.sessionId, {
+        ...run,
+        masteryScope,
+        masteryProofRef,
+        masteryReasons,
+      });
+    }
     return await this.#syncRun(assignment.sessionId);
   }
 
@@ -766,6 +922,9 @@ export class PracticePanelServerV1 {
       audioPaths: request.audioPaths ?? [],
       result: null,
       allocation: null,
+      masteryScope: null,
+      masteryProofRef: null,
+      masteryReasons: [],
       finalRenderRef: null,
       finalSummary: null,
       error: null,
@@ -824,7 +983,12 @@ export class PracticePanelServerV1 {
       if (req.method === "GET" && url.pathname === "/v1/product/edit-types") {
         const file = await this.#editTypes();
         const registry = await file.load();
-        jsonResponse(res, 200, { editTypes: registry.list() });
+        jsonResponse(res, 200, {
+          editTypes: registry.list().map((profile) => ({
+            ...profile,
+            knowledge: registry.knowledge(profile.editTypeId),
+          })),
+        });
         return;
       }
       if (req.method === "POST" && url.pathname === "/v1/product/edit-types") {

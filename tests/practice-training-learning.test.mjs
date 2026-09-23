@@ -9,7 +9,9 @@ import {
   GptOrchestrationStoreV1,
   PracticeM6ExecutionBridgeV1,
   ProCreationPreparationEngineV1,
+  classifyPracticeMasteryScopeV1,
   composePracticeM6ExecutionAdaptersV1,
+  evaluatePracticeHeldOutBenchmarkV1,
   resolvePracticeLocalMediaPathV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import {
@@ -50,6 +52,25 @@ const failedReport = () => ({
   ...passedReport(0.7),
   passed: false,
   definingEffectCoverage: 0.5,
+});
+
+const masteryRecord = (
+  sessionId,
+  scope = "TRANSFER_VERIFIED",
+  referenceId = "finish:verified",
+  sourceIndexId = "practice-source-set:verified",
+) => ({
+  sessionId,
+  scope,
+  proofRef: "proof:mastery:" + sessionId,
+  referenceId,
+  sourceIndexId,
+  referenceFingerprint: "reference-fingerprint:" + referenceId,
+  sourceFingerprint: "source-fingerprint:" + sourceIndexId,
+  finalRenderRef: "render:mastered:" + sessionId,
+  overallSimilarity: 0.98,
+  definingEffectCoverage: 1,
+  verifiedAt: "2026-09-23T12:00:00.000Z",
 });
 
 const samplePatch = {
@@ -129,7 +150,76 @@ test("Edit Type allocation retains success, failure, efficiency, and semantic co
   assert.equal(knowledge.failedSemanticPatches.length, 1);
   assert.equal(knowledge.behaviorEvidence[0].elapsedMs, 1200);
 });
-test("Pro Creation stays blocked until its Edit Type has allocated Practice learning", () => {
+test("Practice transfer classification uses stable media fingerprints instead of session-local ids", () => {
+  const prior = masteryRecord(
+    "practice:fingerprint:001",
+    "REFERENCE_VERIFIED",
+    "finish:id:one",
+    "source-index:id:one",
+  );
+  const baseProof = {
+    schema: "editflow.practice-mastery-proof.v1",
+    sessionId: "practice:fingerprint:002",
+    editTypeId: "proof-gated",
+    referenceId: "finish:id:two",
+    sourceIndexId: "source-index:id:two",
+    referenceFingerprint: prior.referenceFingerprint,
+    sourceFingerprint: prior.sourceFingerprint,
+    finalRenderRef: "render:two",
+    minimumSimilarity: 0.95,
+    exactSceneConfidence: 0.95,
+    report: passedReport(),
+    matches: [],
+    audioMatch: null,
+    evidenceRefs: ["proof:comparison"],
+    verifiedAt: "2026-09-23T12:01:00.000Z",
+  };
+
+  assert.equal(
+    classifyPracticeMasteryScopeV1([prior], baseProof),
+    "REFERENCE_VERIFIED",
+  );
+  assert.equal(
+    classifyPracticeMasteryScopeV1([prior], {
+      ...baseProof,
+      referenceFingerprint: "reference-fingerprint:different",
+      sourceFingerprint: "source-fingerprint:different",
+    }),
+    "TRANSFER_VERIFIED",
+  );
+  assert.equal(
+    classifyPracticeMasteryScopeV1([prior], {
+      ...baseProof,
+      sourceFingerprint: "source-fingerprint:different-only",
+    }),
+    "REFERENCE_VERIFIED",
+  );
+});
+
+test("GPT Practice cannot promote itself to mastery without a machine proof record", () => {
+  const registry = new EditTypeRegistryV1();
+  registry.create({
+    editTypeId: "proof-gated",
+    title: "Proof Gated",
+  });
+  const sessionId = "practice:proof-gated:001";
+  registry.beginGptLearningSession("proof-gated", sessionId, "PRACTICE");
+  assert.throws(
+    () => registry.completeGptLearningSession({
+      editTypeId: "proof-gated",
+      sessionId,
+      mode: "PRACTICE",
+      mastered: true,
+    }),
+    /machine-verified mastery record/,
+  );
+  assert.equal(
+    registry.knowledge("proof-gated").referenceVerifiedPracticeSessionCount,
+    0,
+  );
+});
+
+test("Pro Creation stays blocked until Practice knowledge is transfer-verified", () => {
   const registry = new EditTypeRegistryV1();
   registry.create({
     editTypeId: "spider-man-high-potency",
@@ -158,10 +248,108 @@ test("Pro Creation stays blocked until its Edit Type has allocated Practice lear
 
   assert.equal(engine.prepare(request).status, "BLOCKED");
   registry.allocateEpisode(episode, "spider-man-high-potency");
+  assert.equal(engine.prepare(request).status, "BLOCKED");
+
+  const firstSession = "practice:verified:001";
+  registry.beginGptLearningSession("spider-man-high-potency", firstSession, "PRACTICE");
+  registry.completeGptLearningSession({
+    editTypeId: "spider-man-high-potency",
+    sessionId: firstSession,
+    mode: "PRACTICE",
+    mastered: true,
+    masteryRecord: masteryRecord(
+      firstSession,
+      "REFERENCE_VERIFIED",
+      "finish:one",
+      "practice-source-set:one",
+    ),
+  });
+  assert.equal(engine.prepare(request).status, "BLOCKED");
+
+  const transferSession = "practice:verified:002";
+  registry.beginGptLearningSession("spider-man-high-potency", transferSession, "PRACTICE");
+  registry.completeGptLearningSession({
+    editTypeId: "spider-man-high-potency",
+    sessionId: transferSession,
+    mode: "PRACTICE",
+    mastered: true,
+    masteryRecord: masteryRecord(
+      transferSession,
+      "TRANSFER_VERIFIED",
+      "finish:two",
+      "practice-source-set:two",
+    ),
+  });
   const ready = engine.prepare(request);
   assert.equal(ready.status, "READY");
-  assert.equal(ready.knowledge?.totalSessionCount, 1);
+  assert.equal(ready.knowledge?.transferVerifiedPracticeSessionCount, 1);
+  assert.equal(ready.knowledge?.knowledgeScope, "TRANSFER_VERIFIED_ONLY");
+  assert.equal(ready.knowledge?.maturityStage, "TRANSFER_VERIFIED");
+  assert.deepEqual(ready.knowledge?.successfulConstructionIds, []);
+  assert.equal(
+    ready.knowledge?.behaviorEvidence.some((item) =>
+      item.sessionId === episode.sessionId),
+    false,
+  );
   assert.equal(ready.start.some((item) => item.mediaKind === "AUDIO"), true);
+});
+
+test("held-out benchmark is fail-closed and can advance maturity only from retained proof", () => {
+  const registry = new EditTypeRegistryV1();
+  registry.create({ editTypeId: "benchmark-gated", title: "Benchmark Gated" });
+  const transferSession = "practice:benchmark:transfer";
+  registry.beginGptLearningSession("benchmark-gated", transferSession, "PRACTICE");
+  const prior = masteryRecord(
+    transferSession,
+    "TRANSFER_VERIFIED",
+    "finish:training",
+    "source:training",
+  );
+  registry.completeGptLearningSession({
+    editTypeId: "benchmark-gated",
+    sessionId: transferSession,
+    mode: "PRACTICE",
+    mastered: true,
+    masteryRecord: prior,
+  });
+  assert.equal(registry.knowledge("benchmark-gated").maturityStage, "TRANSFER_VERIFIED");
+
+  const cases = Array.from({ length: 20 }, (_, index) => ({
+    caseId: "held-out:" + String(index + 1),
+    sessionId: "practice:held-out:" + String(index + 1),
+    referenceFingerprint: "reference:held-out:" + String(index + 1),
+    sourceFingerprint: "source:held-out:" + String(index + 1),
+    effectFamilyIds: [index % 2 === 0 ? "SHUTTER_FRAGMENTATION" : "MOTION_WARP"],
+    objectAwareVerified: index === 0,
+    overallSimilarity: 0.97,
+    definingEffectCoverage: 1,
+    passed: true,
+    evidenceRefs: ["proof:held-out:" + String(index + 1)],
+  }));
+  const report = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases,
+    priorMasteryRecords: [prior],
+  });
+  assert.equal(report.caseCount, 20);
+  assert.equal(report.passedCaseCount, 20);
+  assert.equal(report.distinctMaterialPairCount, 20);
+  assert.equal(report.distinctEffectFamilyCount, 2);
+  assert.equal(report.objectAwareVerified, true);
+  assert.equal(report.robust, true);
+  assert.deepEqual(report.reasons, []);
+  registry.recordHeldOutBenchmark(report);
+  assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
+
+  const contaminated = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases: cases.map((item, index) => index === 3
+      ? { ...item, referenceFingerprint: prior.referenceFingerprint }
+      : item),
+    priorMasteryRecords: [prior],
+  });
+  assert.equal(contaminated.robust, false);
+  assert.ok(contaminated.reasons.some((reason) => /training reference fingerprint/.test(reason)));
 });
 
 const summary = {
@@ -732,6 +920,24 @@ test("Practice M6 retry restores the exact AE baseline and preserves matched-aud
     count: 1,
   });
   assert.equal(transport.project.itemCount, 2);
+  await driver.finalizeAttempt("practice:retry");
+
+  transport.mutateAfterAttempt();
+  await assert.rejects(
+    driver.prepareAttempt({
+      sessionId: "practice:retry",
+      attempt: 2,
+      baselinePlan,
+    }),
+    /PRACTICE_ATTEMPT_BASELINE_DRIFT/,
+  );
+  assert.equal(transport.project.itemCount, 3);
+  assert.equal(
+    transport.requests.filter((request) =>
+      request.command === "transaction.undo_last").length,
+    0,
+  );
+  transport.project = transport.undoStack.pop();
 
   const second = await driver.prepareAttempt({
     sessionId: "practice:retry",
@@ -828,7 +1034,7 @@ test("Practice Current-AE training runtime persists Edit Type allocation across 
   });
   assert.equal(proCreation.status, "BLOCKED");
   assert.ok(
-    proCreation.reasons.some((reason) => /no mastered Practice success path/.test(reason)),
+    proCreation.reasons.some((reason) => /no transfer-verified GPT Practice knowledge/.test(reason)),
   );
   assert.equal(
     proCreation.knowledge?.totalSessionCount,
@@ -924,10 +1130,13 @@ test("GPT Practice assignment persists the full learning trajectory under its Ed
     sessionId,
     mode: "PRACTICE",
     mastered: completed.status === "COMPLETED",
+    masteryRecord: masteryRecord(sessionId),
   });
 
   const knowledge = registry.knowledge("high-potency");
   assert.equal(knowledge.masteredSessionCount, 1);
+  assert.equal(knowledge.referenceVerifiedPracticeSessionCount, 1);
+  assert.equal(knowledge.transferVerifiedPracticeSessionCount, 1);
   assert.deepEqual(
     knowledge.gptLearning.failureAvoidanceLessons,
     ["Do not replace motion-led impacts with luminance-only flashes."],

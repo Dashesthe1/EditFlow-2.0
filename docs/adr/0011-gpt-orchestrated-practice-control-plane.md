@@ -30,8 +30,12 @@ comparison, diagnosis, correction, result, and lesson.
 
 Each learning event is retained in the orchestration store. Transferable success,
 failure-avoidance, and development-pattern fields are also distilled into the Edit
-Type profile. Pro Creation requires a mastered GPT Practice session and receives the
-same retained knowledge without a Finish reference.
+Type profile. GPT cannot certify its own Practice success: completion triggers an
+independent final-render verification pass using the source matcher, content comparator,
+and M6 semantic effect/transition evidence. Passing one reference creates
+REFERENCE_VERIFIED knowledge; Pro Creation requires TRANSFER_VERIFIED knowledge from
+a later materially different reference/source set before it can receive that Edit Type
+without a Finish reference.
 
 The UI has one cancellation lifecycle for Practice and Pro Creation. Queued work is
 cancelled immediately. Running work moves to CANCEL_REQUESTED; GPT must stop at a
@@ -65,7 +69,9 @@ truthfully displays WAITING_FOR_GPT rather than pretending local rules are GPT.
 
 GPT can reason about unfamiliar effects, source parallelism, pacing, and correction
 causally while retaining evidence across sessions. Typed AE execution and comparison
-remain proof obligations; prose reasoning alone cannot certify mastery.
+remain proof obligations; prose reasoning alone cannot certify mastery. Assignment
+COMPLETED and Practice MASTERED are intentionally separate states of truth: completion
+describes controller lifecycle, while retained machine evidence determines certification.
 
 ## Research priority
 

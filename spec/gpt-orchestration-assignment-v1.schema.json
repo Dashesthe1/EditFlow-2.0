@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schema", "assignmentId", "sessionId", "mode", "editTypeId", "status",
-    "finish", "start", "artifactDir", "chatMessage", "createdAt", "claimedAt",
+    "finish", "start", "practicePolicy", "artifactDir", "chatMessage", "createdAt", "claimedAt",
     "claimedBy", "startedAt", "completedAt", "cancelRequestedAt",
     "finalRenderRef", "finalSummary", "error"
   ],
@@ -33,6 +33,12 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/media" }
     },
+    "practicePolicy": {
+      "anyOf": [
+        { "$ref": "#/$defs/practicePolicy" },
+        { "type": "null" }
+      ]
+    },
     "artifactDir": { "type": "string", "minLength": 1 },
     "chatMessage": { "type": "string", "minLength": 1 },
     "createdAt": { "type": "string", "format": "date-time" },
@@ -46,6 +52,18 @@
     "error": { "$ref": "#/$defs/nullableString" }
   },
   "$defs": {
+    "practicePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimumSimilarity", "exactSceneConfidence", "minimumAudioConfidence"
+      ],
+      "properties": {
+        "minimumSimilarity": { "type": "number", "minimum": 0.95, "maximum": 1 },
+        "exactSceneConfidence": { "type": "number", "minimum": 0.95, "maximum": 1 },
+        "minimumAudioConfidence": { "type": "number", "minimum": 0.90, "maximum": 1 }
+      }
+    },
     "nullableString": {
       "anyOf": [
         { "type": "string", "minLength": 1 },

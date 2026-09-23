@@ -39,5 +39,7 @@
   {"schema":"spec/gpt-orchestration-assignment-v1.schema.json","fixture":"spec/fixtures/gpt-orchestration-assignment-v1.valid.json","valid":true},
   {"schema":"spec/gpt-orchestration-assignment-v1.schema.json","fixture":"spec/fixtures/gpt-orchestration-assignment-v1.invalid.json","valid":false},
   {"schema":"spec/gpt-learning-event-v1.schema.json","fixture":"spec/fixtures/gpt-learning-event-v1.valid.json","valid":true},
-  {"schema":"spec/gpt-learning-event-v1.schema.json","fixture":"spec/fixtures/gpt-learning-event-v1.invalid.json","valid":false}
+  {"schema":"spec/gpt-learning-event-v1.schema.json","fixture":"spec/fixtures/gpt-learning-event-v1.invalid.json","valid":false},
+  {"schema":"spec/practice-mastery-proof-v1.schema.json","fixture":"spec/fixtures/practice-mastery-proof-v1.valid.json","valid":true},
+  {"schema":"spec/practice-mastery-proof-v1.schema.json","fixture":"spec/fixtures/practice-mastery-proof-v1.invalid.json","valid":false}
 ]
