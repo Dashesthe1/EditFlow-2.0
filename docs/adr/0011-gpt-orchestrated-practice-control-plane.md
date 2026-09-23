@@ -67,6 +67,20 @@ GPT can reason about unfamiliar effects, source parallelism, pacing, and correct
 causally while retaining evidence across sessions. Typed AE execution and comparison
 remain proof obligations; prose reasoning alone cannot certify mastery.
 
+## Research priority
+
+For unfamiliar or poorly understood reference behavior, the Tutorial Drive is the
+first research surface for GPT-orchestrated Practice and Pro Creation. GPT searches the
+tutorial library for the closest matching technique and learns the demonstrated
+construction before consulting external sources. Official Adobe documentation/resources
+and the installed Adobe feature/plugin surface are second priority. External
+professional tutorials and plugin/vendor documentation follow; broader web/internet
+research is last.
+
+Tutorial research remains discovery evidence rather than proof. A learned technique is
+not certified until its After Effects construction has retained readback/render evidence
+and, where applicable, comparison evidence against the Finish reference.
+
 ## Safety and rollback impact
 
 Only registered EditFlow/AE execution routes may mutate After Effects. Cancellation
