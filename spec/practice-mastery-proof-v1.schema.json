@@ -109,6 +109,40 @@
         "sourceEndMs": { "type": "number", "exclusiveMinimum": 0 },
         "direction": { "enum": ["FORWARD", "REVERSE"] },
         "playbackRate": { "type": "number", "exclusiveMinimum": 0 },
+        "trajectory": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["referenceTimeMs", "sourceTimeMs", "similarity"],
+            "properties": {
+              "referenceTimeMs": { "type": "number", "minimum": 0 },
+              "sourceTimeMs": { "type": "number", "minimum": 0 },
+              "similarity": { "$ref": "#/$defs/score" }
+            }
+          }
+        },
+        "temporalBehavior": {
+          "enum": ["FORWARD", "REVERSE", "FORWARD_THEN_REWIND", "COMPLEX"]
+        },
+        "rewind": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "detected", "referenceStartMs", "referenceEndMs", "sourceStartMs",
+            "sourceEndMs", "rewindSpanMs", "confidence"
+          ],
+          "properties": {
+            "detected": { "const": true },
+            "referenceStartMs": { "type": "number", "minimum": 0 },
+            "referenceEndMs": { "type": "number", "minimum": 0 },
+            "sourceStartMs": { "type": "number", "minimum": 0 },
+            "sourceEndMs": { "type": "number", "minimum": 0 },
+            "rewindSpanMs": { "type": "number", "exclusiveMinimum": 0 },
+            "confidence": { "$ref": "#/$defs/score" }
+          }
+        },
         "appearanceSimilarity": { "$ref": "#/$defs/score" },
         "temporalSimilarity": { "$ref": "#/$defs/score" },
         "motionSimilarity": { "$ref": "#/$defs/score" },

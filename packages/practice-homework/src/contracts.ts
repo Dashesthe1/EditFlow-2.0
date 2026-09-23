@@ -51,6 +51,28 @@ export interface PracticeSourceIndexV1 {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface PracticeSceneSourceTimePointV1 {
+  readonly referenceTimeMs: number;
+  readonly sourceTimeMs: number;
+  readonly similarity: number;
+}
+
+export type PracticeSceneTemporalBehaviorV1 =
+  | "FORWARD"
+  | "REVERSE"
+  | "FORWARD_THEN_REWIND"
+  | "COMPLEX";
+
+export interface PracticeTemporalRewindV1 {
+  readonly detected: true;
+  readonly referenceStartMs: number;
+  readonly referenceEndMs: number;
+  readonly sourceStartMs: number;
+  readonly sourceEndMs: number;
+  readonly rewindSpanMs: number;
+  readonly confidence: number;
+}
+
 export interface PracticeSceneMatchV1 {
   readonly shotId: string;
   readonly sourceId: string;
@@ -59,10 +81,78 @@ export interface PracticeSceneMatchV1 {
   readonly sourceEndMs: number;
   readonly direction: "FORWARD" | "REVERSE";
   readonly playbackRate: number;
+  readonly trajectory?: readonly PracticeSceneSourceTimePointV1[];
+  readonly temporalBehavior?: PracticeSceneTemporalBehaviorV1;
+  readonly rewind?: PracticeTemporalRewindV1;
   readonly appearanceSimilarity: number;
   readonly temporalSimilarity: number;
   readonly motionSimilarity: number;
   readonly confidence: number;
+  readonly evidenceRefs: readonly string[];
+}
+
+export type PracticeReferenceWindowRelationV1 =
+  | "SHOT_INTERIOR"
+  | "CUT_IN"
+  | "CUT_OUT"
+  | "CUT_SPAN";
+
+export interface PracticeReferenceMotionEnvelopeV1 {
+  readonly peakEnergy: number;
+  readonly motionPeakPhase: number;
+  readonly accelerationPeak: number;
+  readonly displacementPeak: number;
+  readonly displacementDirection: Readonly<{ x: number; y: number }>;
+  readonly blurPeak: number;
+  readonly distortionPeak: number;
+  readonly scaleRange: number;
+  readonly rotationRange: number;
+  readonly recoveryDurationMs: number;
+}
+
+export interface PracticeReferenceObjectCueV1 {
+  readonly objectAware: boolean;
+  readonly subjectSeparationPeak: number;
+  readonly maskCoveragePeak: number;
+  readonly occlusionPeak: number;
+}
+
+export interface PracticeReferenceTemporalCueV1 {
+  readonly behavior: PracticeSceneTemporalBehaviorV1;
+  readonly rewind: PracticeTemporalRewindV1 | null;
+  readonly evidenceShotIds: readonly string[];
+}
+
+export interface PracticeReferenceEffectWindowV1 {
+  readonly windowId: string;
+  readonly effectFamilyId: string;
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly anchorMs: number;
+  readonly shotIds: readonly string[];
+  readonly relation: PracticeReferenceWindowRelationV1;
+  readonly transitionBoundaryMs: number | null;
+  readonly motion: PracticeReferenceMotionEnvelopeV1;
+  readonly objectCue: PracticeReferenceObjectCueV1;
+  readonly temporalCue: PracticeReferenceTemporalCueV1;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeReferenceCutV1 {
+  readonly cutId: string;
+  readonly atMs: number;
+  readonly outgoingShotId: string;
+  readonly incomingShotId: string;
+  readonly transitionWindowIds: readonly string[];
+}
+
+export interface PracticeReferenceAnatomyV1 {
+  readonly schema: "editflow.practice-reference-anatomy.v1";
+  readonly referenceId: string;
+  readonly cuts: readonly PracticeReferenceCutV1[];
+  readonly effectWindows: readonly PracticeReferenceEffectWindowV1[];
+  readonly rewindShotIds: readonly string[];
+  readonly objectAwareWindowIds: readonly string[];
   readonly evidenceRefs: readonly string[];
 }
 

@@ -92,6 +92,53 @@ test("AE baseline compiler maps forward and reverse source time into reference t
   });
 });
 
+test("AE baseline compiles a measured forward-then-rewind trajectory into Time Remap keys", () => {
+  const rewindMatches = [
+    matches[0],
+    {
+      ...matches[1],
+      direction: "FORWARD",
+      temporalBehavior: "FORWARD_THEN_REWIND",
+      trajectory: [
+        { referenceTimeMs: 1120, sourceTimeMs: 7120, similarity: 0.98 },
+        { referenceTimeMs: 1450, sourceTimeMs: 7450, similarity: 0.99 },
+        { referenceTimeMs: 1800, sourceTimeMs: 7800, similarity: 0.99 },
+        { referenceTimeMs: 2150, sourceTimeMs: 7520, similarity: 0.98 },
+        { referenceTimeMs: 2380, sourceTimeMs: 7290, similarity: 0.97 },
+      ],
+      rewind: {
+        detected: true,
+        referenceStartMs: 1800,
+        referenceEndMs: 2380,
+        sourceStartMs: 7800,
+        sourceEndMs: 7290,
+        rewindSpanMs: 510,
+        confidence: 0.98,
+      },
+    },
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: rewindMatches });
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.deepEqual(timings[1], {
+    startTime: 1,
+    inPoint: 1,
+    outPoint: 2.5,
+    stretch: 100,
+  });
+  const remap = plan.operations.find((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0002"));
+  assert.ok(remap);
+  const keyframes = remap.payload.keyframes;
+  assert.ok(keyframes.length >= 5);
+  const values = keyframes.map((item) => item.value);
+  const peakIndex = values.indexOf(Math.max(...values));
+  assert.ok(peakIndex > 0 && peakIndex < values.length - 1);
+  assert.ok(values.at(-1) < values[peakIndex]);
+});
+
 test("AE baseline builder executes the deterministic plan in order", async () => {
   const executed = [];
   const builder = new PracticeAeBaselineBuilderV1({

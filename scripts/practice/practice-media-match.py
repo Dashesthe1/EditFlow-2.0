@@ -285,10 +285,12 @@ def interior_anchor_times(start_ms, end_ms):
     duration = end_ms - start_ms
     if duration <= 0:
         return []
-    if duration < 900:
-        phases = [0.25, 0.50, 0.75]
+    if duration < 700:
+        phases = [0.18, 0.42, 0.66, 0.88]
+    elif duration < 1400:
+        phases = [0.12, 0.30, 0.48, 0.66, 0.82, 0.94]
     else:
-        phases = [0.18, 0.38, 0.62, 0.82]
+        phases = [0.08, 0.24, 0.40, 0.56, 0.70, 0.82, 0.92, 0.97]
     return [start_ms + duration * phase for phase in phases]
 
 
@@ -586,6 +588,63 @@ def candidate_center_times(sample_time_ms, sample_step_ms):
 RATE_GRID = (0.25, 0.333333, 0.5, 0.666667, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0)
 
 
+def classify_source_time_trajectory(points):
+    ordered = sorted(points, key=lambda item: item["referenceTimeMs"])
+    if len(ordered) < 2:
+        return {"behavior": "COMPLEX", "rewind": None}
+    meaningful = []
+    for index in range(1, len(ordered)):
+        previous = ordered[index - 1]
+        current = ordered[index]
+        reference_delta = float(current["referenceTimeMs"] - previous["referenceTimeMs"])
+        source_delta = float(current["sourceTimeMs"] - previous["sourceTimeMs"])
+        if reference_delta <= 1e-6 or abs(source_delta) < max(18.0, reference_delta * 0.04):
+            continue
+        meaningful.append({
+            "index": index,
+            "sourceDeltaMs": source_delta,
+            "referenceDeltaMs": reference_delta,
+        })
+    if not meaningful:
+        return {"behavior": "COMPLEX", "rewind": None}
+    signs = [1 if item["sourceDeltaMs"] > 0 else -1 for item in meaningful]
+    if all(value > 0 for value in signs):
+        return {"behavior": "FORWARD", "rewind": None}
+    if all(value < 0 for value in signs):
+        return {"behavior": "REVERSE", "rewind": None}
+
+    first_negative = next((index for index, value in enumerate(signs) if value < 0), None)
+    if first_negative is not None and first_negative > 0:
+        preceding = signs[:first_negative]
+        trailing = signs[first_negative:]
+        if all(value > 0 for value in preceding) and all(value < 0 for value in trailing):
+            transition_point_index = meaningful[first_negative]["index"] - 1
+            start = ordered[max(0, transition_point_index)]
+            end = ordered[-1]
+            rewind_span = max(0.0, float(start["sourceTimeMs"] - end["sourceTimeMs"]))
+            reference_span = max(1.0, float(end["referenceTimeMs"] - start["referenceTimeMs"]))
+            average_similarity = float(np.mean([
+                float(item.get("similarity", 0.0))
+                for item in ordered[max(0, transition_point_index):]
+            ]))
+            motion_strength = clamp01(rewind_span / max(90.0, reference_span * 0.35))
+            confidence = clamp01((0.72 * average_similarity) + (0.28 * motion_strength))
+            if rewind_span >= 55.0 and confidence >= 0.55:
+                return {
+                    "behavior": "FORWARD_THEN_REWIND",
+                    "rewind": {
+                        "detected": True,
+                        "referenceStartMs": float(start["referenceTimeMs"]),
+                        "referenceEndMs": float(end["referenceTimeMs"]),
+                        "sourceStartMs": float(start["sourceTimeMs"]),
+                        "sourceEndMs": float(end["sourceTimeMs"]),
+                        "rewindSpanMs": float(rewind_span),
+                        "confidence": confidence,
+                    },
+                }
+    return {"behavior": "COMPLEX", "rewind": None}
+
+
 def refine_candidate(shot, candidate, reference_reader, source_reader, local_refine=False):
     anchors = shot["anchors"]
     center_anchor = anchors[len(anchors) // 2]
@@ -723,6 +782,22 @@ def refine_candidate(shot, candidate, reference_reader, source_reader, local_ref
     if len(selected_times) < 2:
         return best_mapping
 
+    trajectory = [
+        {
+            "referenceTimeMs": float(reference_time),
+            "sourceTimeMs": float(source_time),
+            "similarity": float(score),
+        }
+        for (reference_time, source_time), score in zip(selected_times, selected_scores)
+    ]
+    trajectory_result = classify_source_time_trajectory(trajectory)
+    enriched_best = {
+        **best_mapping,
+        "trajectory": trajectory,
+        "temporalBehavior": trajectory_result["behavior"],
+        "rewind": trajectory_result["rewind"],
+    }
+
     x = np.asarray([item[0] - center_reference_ms for item in selected_times], dtype=np.float64)
     y = np.asarray([item[1] for item in selected_times], dtype=np.float64)
     matrix = np.column_stack((x, np.ones_like(x)))
@@ -734,7 +809,7 @@ def refine_candidate(shot, candidate, reference_reader, source_reader, local_ref
         or abs(float(fitted_slope)) > 4.5
         or math.copysign(1.0, float(fitted_slope)) != math.copysign(1.0, best_mapping["slope"])
     ):
-        return best_mapping
+        return enriched_best
 
     residual = y - (fitted_slope * x + fitted_center)
     fit_consistency = clamp01(1.0 - float(np.sqrt(np.mean(residual * residual))) / max(search_radius, 1.0))
@@ -753,10 +828,13 @@ def refine_candidate(shot, candidate, reference_reader, source_reader, local_ref
         "slope": float(fitted_slope),
         "centerSourceMs": float(fitted_center),
         "anchorSimilarities": selected_scores,
+        "trajectory": trajectory,
+        "temporalBehavior": trajectory_result["behavior"],
+        "rewind": trajectory_result["rewind"],
     }
     if fitted_score >= best_mapping["score"] - 0.015:
         return fitted
-    return best_mapping
+    return enriched_best
 
 
 def confidence_from_result(best, second_score):
@@ -856,11 +934,17 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 shot["referenceEndMs"] - center_reference
             )
             source_duration = float(best["index"]["video"]["durationMs"])
-            source_start = min(mapped_start, mapped_end)
-            source_end = max(mapped_start, mapped_end)
+            trajectory = mapping.get("trajectory") or []
+            trajectory_source_times = [float(item["sourceTimeMs"]) for item in trajectory]
+            source_start = min([mapped_start, mapped_end, *trajectory_source_times])
+            source_end = max([mapped_start, mapped_end, *trajectory_source_times])
             source_start = max(0.0, source_start)
             source_end = min(source_duration, source_end)
             confidence = confidence_from_result(best, second_score)
+            temporal_behavior = mapping.get("temporalBehavior") or (
+                "FORWARD" if mapping["slope"] >= 0 else "REVERSE"
+            )
+            rewind = mapping.get("rewind")
             matches.append({
                 "shotId": shot["shotId"],
                 "sourceId": best["index"]["sourceId"],
@@ -869,6 +953,9 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 "sourceEndMs": float(source_end),
                 "direction": "FORWARD" if mapping["slope"] >= 0 else "REVERSE",
                 "playbackRate": float(abs(mapping["slope"])),
+                "trajectory": trajectory,
+                "temporalBehavior": temporal_behavior,
+                **({"rewind": rewind} if rewind is not None else {}),
                 "appearanceSimilarity": float(mapping["appearance"]),
                 "temporalSimilarity": float(mapping["consistency"]),
                 "motionSimilarity": float(mapping["minimum"]),
@@ -879,6 +966,11 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     f"practice-analyzer:sha256:{analyzer_fingerprint()}",
                     f"coarse-score:{best['coarseScore']:.6f}",
                     f"refined-score:{mapping['score']:.6f}",
+                    f"practice-temporal-behavior:{temporal_behavior}",
+                    *(
+                        [f"practice-rewind-span-ms:{rewind['rewindSpanMs']:.3f}"]
+                        if rewind is not None else []
+                    ),
                 ],
             })
     finally:
@@ -1341,14 +1433,135 @@ def _detect_cut_times(video_path, cut_threshold, minimum_gap_ms):
     return [float(item["timeMs"]) for item in cuts], float(duration_ms), float(fps)
 
 
+def _expected_source_time_for_match(shot, match, reference_time_ms):
+    trajectory = sorted(
+        match.get("trajectory") or [],
+        key=lambda item: float(item["referenceTimeMs"]),
+    )
+    if len(trajectory) >= 2:
+        if reference_time_ms <= float(trajectory[0]["referenceTimeMs"]):
+            left, right = trajectory[0], trajectory[1]
+        elif reference_time_ms >= float(trajectory[-1]["referenceTimeMs"]):
+            left, right = trajectory[-2], trajectory[-1]
+        else:
+            left, right = trajectory[0], trajectory[1]
+            for index in range(1, len(trajectory)):
+                candidate = trajectory[index]
+                if reference_time_ms <= float(candidate["referenceTimeMs"]):
+                    left, right = trajectory[index - 1], candidate
+                    break
+        ref_delta = float(right["referenceTimeMs"]) - float(left["referenceTimeMs"])
+        if abs(ref_delta) <= 1e-6:
+            return float(left["sourceTimeMs"])
+        phase = (reference_time_ms - float(left["referenceTimeMs"])) / ref_delta
+        return float(left["sourceTimeMs"]) + phase * (
+            float(right["sourceTimeMs"]) - float(left["sourceTimeMs"])
+        )
+
+    reference_start = float(shot["referenceStartMs"])
+    rate = float(match.get("playbackRate", 1.0))
+    if match.get("direction") == "REVERSE":
+        return float(match["sourceEndMs"]) - rate * (reference_time_ms - reference_start)
+    return float(match["sourceStartMs"]) + rate * (reference_time_ms - reference_start)
+
+
+def _measure_render_source_trajectory(shot, match, render_reader, source_reader):
+    trajectory = match.get("trajectory") or []
+    sample_times = [
+        float(item["referenceTimeMs"])
+        for item in trajectory
+        if float(shot["referenceStartMs"]) <= float(item["referenceTimeMs"])
+        <= float(shot["referenceEndMs"])
+    ]
+    if len(sample_times) < 3:
+        sample_times = interior_anchor_times(
+            float(shot["referenceStartMs"]),
+            float(shot["referenceEndMs"]),
+        )
+    sample_times = sorted(set(round(value, 3) for value in sample_times))
+    duration = float(shot["referenceEndMs"]) - float(shot["referenceStartMs"])
+    radius = min(320.0, max(120.0, duration * 0.18))
+    observed = []
+    for reference_time in sample_times:
+        render_frame = render_reader.read_ms(reference_time)
+        if render_frame is None:
+            continue
+        expected_source = _expected_source_time_for_match(shot, match, reference_time)
+        best = None
+        for delta in np.arange(-radius, radius + 1.0, 40.0):
+            source_time = expected_source + float(delta)
+            if source_time < 0 or source_time >= source_reader.duration_ms:
+                continue
+            source_frame = source_reader.read_ms(source_time)
+            if source_frame is None:
+                continue
+            similarity = feature_similarity(render_frame, source_frame)
+            if best is None or similarity > best["similarity"]:
+                best = {
+                    "referenceTimeMs": float(reference_time),
+                    "sourceTimeMs": float(source_time),
+                    "similarity": float(similarity),
+                }
+        if best is not None:
+            observed.append(best)
+    result = classify_source_time_trajectory(observed)
+    expected_behavior = match.get("temporalBehavior") or (
+        "REVERSE" if match.get("direction") == "REVERSE" else "FORWARD"
+    )
+    observed_behavior = result["behavior"]
+    score = 1.0 if observed_behavior == expected_behavior else 0.0
+    reasons = []
+    expected_rewind = match.get("rewind")
+    observed_rewind = result.get("rewind")
+    if expected_behavior == "FORWARD_THEN_REWIND":
+        if observed_rewind is None:
+            score = 0.0
+            reasons.append("Measured source-time rewind was not reproduced.")
+        else:
+            expected_span = max(1.0, float(expected_rewind["rewindSpanMs"]))
+            observed_span = float(observed_rewind["rewindSpanMs"])
+            span_score = math.exp(-abs(observed_span - expected_span) / expected_span)
+            timing_error = (
+                abs(float(observed_rewind["referenceStartMs"]) - float(expected_rewind["referenceStartMs"]))
+                + abs(float(observed_rewind["referenceEndMs"]) - float(expected_rewind["referenceEndMs"]))
+            ) / 2.0
+            timing_score = math.exp(-timing_error / max(90.0, duration * 0.12))
+            score = clamp01((0.55 * span_score) + (0.45 * timing_score))
+            if observed_behavior != "FORWARD_THEN_REWIND":
+                score *= 0.4
+            if score < 0.78:
+                reasons.append("Measured rewind span/timing diverges from the Finish source-time trajectory.")
+    elif expected_behavior in ("FORWARD", "REVERSE") and observed_behavior == "COMPLEX":
+        score = 0.45
+    return {
+        "shotId": shot["shotId"],
+        "sourceId": match["sourceId"],
+        "expectedBehavior": expected_behavior,
+        "observedBehavior": observed_behavior,
+        "score": clamp01(score),
+        "expectedRewind": expected_rewind,
+        "observedRewind": observed_rewind,
+        "sampleCount": len(observed),
+        "meanSourceSimilarity": _mean([item["similarity"] for item in observed], 0.0),
+        "reasons": reasons,
+    }
+
+
 def compare_render_to_reference(
     reference_json,
     reference_video,
     render_video,
     output_path,
     cut_threshold=0.42,
+    matches_json=None,
 ):
     reference = load_artifact(reference_json, "editflow.practice-reference-analysis.v1")
+    expected_matches = []
+    if matches_json is not None:
+        matches_payload = json.loads(Path(matches_json).read_text(encoding="utf-8"))
+        if matches_payload.get("schema") != "editflow.practice-expected-scene-matches.v1":
+            raise ValueError("Expected-scene match artifact has an unsupported schema.")
+        expected_matches = matches_payload.get("matches") or []
     reference_video = Path(reference_video).resolve()
     render_video = Path(render_video).resolve()
     if not reference_video.is_file() or not render_video.is_file():
@@ -1394,6 +1607,64 @@ def compare_render_to_reference(
         reference_reader.close()
         render_reader.close()
 
+    temporal_diagnostics = []
+    if expected_matches:
+        matches_by_shot = {item["shotId"]: item for item in expected_matches}
+        temporal_render_reader = FrameReader(render_video)
+        source_readers = {}
+        try:
+            for shot in reference["shots"]:
+                match = matches_by_shot.get(shot["shotId"])
+                if match is None or not match.get("sourcePath"):
+                    continue
+                source_path = str(Path(match["sourcePath"]).resolve())
+                if source_path not in source_readers:
+                    if not Path(source_path).is_file():
+                        continue
+                    source_readers[source_path] = FrameReader(source_path)
+                temporal_diagnostics.append(_measure_render_source_trajectory(
+                    shot,
+                    match,
+                    temporal_render_reader,
+                    source_readers[source_path],
+                ))
+        finally:
+            temporal_render_reader.close()
+            for reader in source_readers.values():
+                reader.close()
+
+    source_temporal_alignment = _mean(
+        [item["score"] for item in temporal_diagnostics],
+        1.0,
+    )
+    required_rewind_shot_ids = [
+        item["shotId"]
+        for item in expected_matches
+        if item.get("temporalBehavior") == "FORWARD_THEN_REWIND"
+        or item.get("rewind", {}).get("detected") is True
+    ]
+    verified_rewind_shot_ids = [
+        item["shotId"]
+        for item in temporal_diagnostics
+        if item["shotId"] in required_rewind_shot_ids
+        and item["observedBehavior"] == "FORWARD_THEN_REWIND"
+        and item["score"] >= 0.78
+    ]
+    temporal_behavior_reasons = [
+        f"{item['shotId']}: {reason}"
+        for item in temporal_diagnostics
+        for reason in item["reasons"]
+        if item["shotId"] in required_rewind_shot_ids
+    ]
+    missing_rewind_shots = sorted(
+        set(required_rewind_shot_ids) - set(verified_rewind_shot_ids)
+    )
+    for shot_id in missing_rewind_shots:
+        message = f"{shot_id}: required Finish rewind is not machine-verified in the final render."
+        if message not in temporal_behavior_reasons:
+            temporal_behavior_reasons.append(message)
+    temporal_behavior_passed = len(missing_rewind_shots) == 0
+
     expected_cuts = [
         float(shot["referenceStartMs"])
         for shot in reference["shots"][1:]
@@ -1424,9 +1695,13 @@ def compare_render_to_reference(
 
     reference_duration_ms = float(reference["video"]["durationMs"])
     duration_error_ratio = abs(render_duration_ms - reference_duration_ms) / max(reference_duration_ms, 1.0)
+    duration_alignment = math.exp(-duration_error_ratio / 0.01)
     temporal_alignment = clamp01(
-        (0.55 * math.exp(-duration_error_ratio / 0.01))
-        + (0.45 * cut_timing)
+        (0.35 * duration_alignment)
+        + (0.30 * cut_timing)
+        + (0.35 * source_temporal_alignment)
+    ) if temporal_diagnostics else clamp01(
+        (0.55 * duration_alignment) + (0.45 * cut_timing)
     )
 
     shot_scene_scores = [item["sceneIdentity"] for item in per_shot]
@@ -1438,6 +1713,9 @@ def compare_render_to_reference(
         f"practice-render-compare:sha256:{analyzer_fingerprint()}",
         f"reference-video:sha256:{sha256_file(reference_video)}",
         f"render-video:sha256:{sha256_file(render_video)}",
+        f"practice-source-temporal-alignment:{source_temporal_alignment:.6f}",
+        f"practice-required-rewind-shots:{len(required_rewind_shot_ids)}",
+        f"practice-verified-rewind-shots:{len(verified_rewind_shot_ids)}",
     ]
     payload = {
         "schema": "editflow.practice-content-structure-evaluation.v1",
@@ -1454,6 +1732,14 @@ def compare_render_to_reference(
         },
         "wrongSceneCount": wrong_scene_count,
         "unmatchedSceneCount": unmatched_scene_count,
+        "temporalBehaviorProof": {
+            "sourceTemporalAlignment": source_temporal_alignment,
+            "requiredRewindShotIds": required_rewind_shot_ids,
+            "verifiedRewindShotIds": verified_rewind_shot_ids,
+            "passed": temporal_behavior_passed,
+            "reasons": temporal_behavior_reasons,
+            "diagnostics": temporal_diagnostics,
+        },
         "cutDiagnostics": {
             "expectedCutsMs": expected_cuts,
             "renderCutsMs": render_cuts,
@@ -1515,6 +1801,7 @@ def build_parser():
     compare.add_argument("--reference-json", required=True)
     compare.add_argument("--reference-video", required=True)
     compare.add_argument("--render-video", required=True)
+    compare.add_argument("--matches-json")
     compare.add_argument("--output", required=True)
     compare.add_argument("--cut-threshold", type=float, default=0.42)
     return parser
@@ -1605,6 +1892,7 @@ def main():
             args.render_video,
             args.output,
             args.cut_threshold,
+            args.matches_json,
         )
         print(json.dumps({
             "ok": True,

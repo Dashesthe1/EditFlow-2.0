@@ -30,10 +30,12 @@ import type {
   PracticeHomeworkAdaptersV1,
   PracticeReconstructionOutputV1,
   PracticeReferenceAnalysisV1,
+  PracticeReferenceAnatomyV1,
   PracticeSceneMatchV1,
   PracticeSemanticPatchV1,
   PracticeSimilarityReportV1,
 } from "./contracts.js";
+import { buildPracticeReferenceAnatomyV1 } from "./reference-anatomy.js";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -47,6 +49,14 @@ export interface PracticeContentStructureEvaluationV1 {
   readonly pixelStructure: number;
   readonly wrongSceneCount: number;
   readonly unmatchedSceneCount: number;
+  readonly temporalBehaviorProof?: Readonly<{
+    sourceTemporalAlignment: number;
+    requiredRewindShotIds: readonly string[];
+    verifiedRewindShotIds: readonly string[];
+    passed: boolean;
+    reasons: readonly string[];
+    evidenceRefs: readonly string[];
+  }>;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -114,6 +124,7 @@ interface PracticeM6AttemptStateV1 {
   readonly matches: readonly PracticeSceneMatchV1[];
   readonly referenceEvidence: DenseEffectEvidenceV1;
   readonly referenceSequence: DenseEffectSequenceV1;
+  readonly referenceAnatomy: PracticeReferenceAnatomyV1;
   readonly windowResults: readonly M6ProductionResultV1[];
 }
 
@@ -382,17 +393,25 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
     readonly priorAttempts: readonly PracticeAttemptV1[];
   }): Promise<PracticeReconstructionOutputV1> => {
     const analysis = await this.#referenceAnalysis(input.reference);
+    const referenceAnatomy = buildPracticeReferenceAnatomyV1({
+      reference: input.reference,
+      sequence: analysis.sequence,
+      matches: input.matches,
+    });
     await this.runtime.prepareAttempt(input);
 
     const decisionTraces: PracticeDecisionTraceV1[] = [];
     const evidenceRefs: string[] = [
       ...analysis.evidence.evidenceRefs,
       ...analysis.sequence.evidenceRefs,
+      ...referenceAnatomy.evidenceRefs,
     ];
     const windowResults: M6ProductionResultV1[] = [];
 
     for (const window of analysis.sequence.windows) {
       const family = classifyEffectFamilyV1(window.evidence);
+      const windowAnatomy = referenceAnatomy.effectWindows.find((item) =>
+        item.windowId === window.windowId);
       const learned = learnedGraphForWindow({
         evidence: window.evidence,
         family,
@@ -448,12 +467,29 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         cueIds: [
           `effect-window:${window.windowId}`,
           `effect-family:${family}`,
+          ...(windowAnatomy === undefined ? [] : [
+            `window-relation:${windowAnatomy.relation}`,
+            `window-shots:${windowAnatomy.shotIds.join(",")}`,
+            `temporal-behavior:${windowAnatomy.temporalCue.behavior}`,
+            ...(windowAnatomy.transitionBoundaryMs === null
+              ? []
+              : [`transition-boundary-ms:${windowAnatomy.transitionBoundaryMs.toFixed(3)}`]),
+            ...(windowAnatomy.objectCue.objectAware ? ["object-aware:true"] : []),
+            ...(windowAnatomy.temporalCue.rewind === null
+              ? []
+              : [`rewind-span-ms:${windowAnatomy.temporalCue.rewind.rewindSpanMs.toFixed(3)}`]),
+          ]),
         ],
         constructionIds: graphId === null ? [] : [graphId],
         rationaleCodes: [
           `M6_ROUTE_${result.route}`,
           `M6_STATUS_${result.status}`,
           `M6_FAMILY_${family}`,
+          ...(windowAnatomy === undefined ? [] : [
+            `REFERENCE_${windowAnatomy.relation}`,
+            ...(windowAnatomy.objectCue.objectAware ? ["REFERENCE_OBJECT_AWARE"] : []),
+            ...(windowAnatomy.temporalCue.rewind === null ? [] : ["REFERENCE_REWIND_MEASURED"]),
+          ]),
           ...(learned === null ? [] : ["EDIT_TYPE_TRANSFER_APPLIED"]),
         ],
         semanticPatches: result.correction?.learnedPatches ?? [],
@@ -475,6 +511,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       matches: input.matches,
       referenceEvidence: analysis.evidence,
       referenceSequence: analysis.sequence,
+      referenceAnatomy,
       windowResults,
     });
 
@@ -509,6 +546,12 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
     let definingEffectCoverage = 0;
     const reasons: string[] = [];
     const evidenceRefs: string[] = [...content.evidenceRefs];
+    if (content.temporalBehaviorProof !== undefined) {
+      evidenceRefs.push(...content.temporalBehaviorProof.evidenceRefs);
+      if (!content.temporalBehaviorProof.passed) {
+        reasons.push(...content.temporalBehaviorProof.reasons);
+      }
+    }
 
     try {
       const renderEvidence = await this.runtime.analyzeRender({

@@ -57,6 +57,17 @@ test("practice similarity refuses missing defining effect behavior", () => {
   assert.equal(gated.passed, false);
   assert.ok(gated.reasons.some((reason) => /defining effect/.test(reason)));
 });
+
+test("practice similarity cannot pass while a retained semantic diagnosis remains", () => {
+  const measured = report(0.999);
+  const gated = finalizePracticeSimilarityReportV1({
+    ...measured,
+    reasons: ["Measured source-time rewind was not reproduced."],
+  }, 0.95);
+  assert.ok(gated.overallSimilarity > 0.99);
+  assert.equal(gated.passed, false);
+  assert.match(gated.reasons[0], /rewind was not reproduced/);
+});
 const makeAdapters = (evaluations, options = {}) => {
   const recorded = [];
   return {

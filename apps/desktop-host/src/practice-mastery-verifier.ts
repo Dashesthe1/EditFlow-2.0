@@ -136,6 +136,65 @@ export const validatePracticeSceneMatchesV1 = (
     if (!Number.isFinite(match.playbackRate) || match.playbackRate <= 0) {
       reasons.push("Source match for " + shotId + " has an invalid playback rate.");
     }
+    const trajectory = [...(match.trajectory ?? [])]
+      .sort((a, b) => a.referenceTimeMs - b.referenceTimeMs);
+    if (trajectory.some((point) =>
+      !Number.isFinite(point.referenceTimeMs)
+      || !Number.isFinite(point.sourceTimeMs)
+      || !Number.isFinite(point.similarity)
+      || point.similarity < 0
+      || point.similarity > 1)) {
+      reasons.push("Source-time trajectory for " + shotId + " contains invalid measurements.");
+    }
+    if (trajectory.some((point, index) =>
+      index > 0 && point.referenceTimeMs <= trajectory[index - 1]!.referenceTimeMs)) {
+      reasons.push("Source-time trajectory for " + shotId + " is not strictly ordered.");
+    }
+    if (match.temporalBehavior === "FORWARD_THEN_REWIND") {
+      if (match.rewind?.detected !== true || trajectory.length < 3) {
+        reasons.push(
+          "Source match for " + shotId
+            + " claims a rewind without retained multi-point source-time evidence.",
+        );
+      } else {
+        const sourceDeltas = trajectory.slice(1).map((point, index) =>
+          point.sourceTimeMs - trajectory[index]!.sourceTimeMs);
+        const firstNegative = sourceDeltas.findIndex((value) => value < -18);
+        const hasForwardBefore = firstNegative > 0
+          && sourceDeltas.slice(0, firstNegative).some((value) => value > 18);
+        const hasReverseAfter = firstNegative >= 0
+          && sourceDeltas.slice(firstNegative).every((value) => value < 18);
+        if (!hasForwardBefore || !hasReverseAfter) {
+          reasons.push(
+            "Source match for " + shotId
+              + " claims a rewind but its retained trajectory does not travel forward then backward.",
+          );
+        }
+      }
+    }
+    if (match.rewind !== undefined) {
+      const rewind = match.rewind;
+      if (match.temporalBehavior !== "FORWARD_THEN_REWIND"
+        || !Number.isFinite(rewind.referenceStartMs)
+        || !Number.isFinite(rewind.referenceEndMs)
+        || rewind.referenceEndMs <= rewind.referenceStartMs
+        || !Number.isFinite(rewind.sourceStartMs)
+        || !Number.isFinite(rewind.sourceEndMs)
+        || rewind.sourceStartMs <= rewind.sourceEndMs
+        || !Number.isFinite(rewind.rewindSpanMs)
+        || rewind.rewindSpanMs <= 0
+        || !Number.isFinite(rewind.confidence)
+        || rewind.confidence < 0.55
+        || rewind.confidence > 1) {
+        reasons.push("Source match for " + shotId + " has invalid measured rewind evidence.");
+      } else {
+        const measuredSpan = rewind.sourceStartMs - rewind.sourceEndMs;
+        const tolerance = Math.max(30, rewind.rewindSpanMs * 0.2);
+        if (Math.abs(measuredSpan - rewind.rewindSpanMs) > tolerance) {
+          reasons.push("Source match for " + shotId + " has inconsistent rewind span evidence.");
+        }
+      }
+    }
   }
   return unique(reasons);
 };
@@ -263,6 +322,10 @@ export class PracticeMasteryVerifierV1 {
       renderPath: finalRenderRef,
       matches,
     });
+    const temporalBehaviorReasons = content.temporalBehaviorProof === undefined
+      || content.temporalBehaviorProof.passed
+      ? []
+      : content.temporalBehaviorProof.reasons;
     if (reference.sourcePath === undefined) {
       throw new TypeError("Practice mastery verification requires the local Finish source path.");
     }
@@ -327,6 +390,7 @@ export class PracticeMasteryVerifierV1 {
           ? ["Content comparison produced no retained evidence."]
           : []),
         ...compared.diagnoses,
+        ...temporalBehaviorReasons,
         ...matchReasons,
         ...audioReasons,
       ]),
@@ -336,6 +400,7 @@ export class PracticeMasteryVerifierV1 {
         ...matches.flatMap((match) => match.evidenceRefs),
         ...(audioMatch?.evidenceRefs ?? []),
         ...content.evidenceRefs,
+        ...(content.temporalBehaviorProof?.evidenceRefs ?? []),
         ...compared.evidenceRefs,
       ]),
     };
@@ -344,7 +409,11 @@ export class PracticeMasteryVerifierV1 {
       minimumSimilarity,
     );
 
-    const blockingReasons = unique([...matchReasons, ...audioReasons]);
+    const blockingReasons = unique([
+      ...matchReasons,
+      ...audioReasons,
+      ...temporalBehaviorReasons,
+    ]);
     const report: PracticeSimilarityReportV1 = {
       ...finalized,
       passed: finalized.passed && blockingReasons.length === 0

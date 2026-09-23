@@ -68,6 +68,13 @@ interface PracticeContentStructureArtifactV1 {
   };
   readonly wrongSceneCount: number;
   readonly unmatchedSceneCount: number;
+  readonly temporalBehaviorProof?: {
+    readonly sourceTemporalAlignment: number;
+    readonly requiredRewindShotIds: readonly string[];
+    readonly verifiedRewindShotIds: readonly string[];
+    readonly passed: boolean;
+    readonly reasons: readonly string[];
+  };
   readonly evidenceRefs: readonly string[];
 }
 
@@ -312,9 +319,24 @@ export class PracticeM6LocalMediaAnalyzerV1 {
     const directory = path.join(this.artifactDir, "content-comparison");
     await mkdir(directory, { recursive: true });
     const renderDigest = (await sha256File(renderPath)).slice(0, 20);
+    const matchesPayload = JSON.stringify({
+      schema: "editflow.practice-expected-scene-matches.v1",
+      referenceId: input.reference.referenceId,
+      matches: input.matches,
+    }, null, 2) + "\n";
+    const matchesDigest = createHash("sha256")
+      .update(matchesPayload, "utf8")
+      .digest("hex")
+      .slice(0, 16);
+    const matchesPath = path.join(
+      directory,
+      safeStem(input.reference.referenceId) + "-" + matchesDigest + "-matches.json",
+    );
+    await writeFile(matchesPath, matchesPayload, "utf8");
     const outputPath = path.join(
       directory,
-      safeStem(input.reference.referenceId) + "-" + renderDigest + ".json",
+      safeStem(input.reference.referenceId)
+        + "-" + renderDigest + "-" + matchesDigest + ".json",
     );
     if (!(await fileExists(outputPath))) {
       await this.#runPython(this.practiceMediaScriptPath, [
@@ -322,6 +344,7 @@ export class PracticeM6LocalMediaAnalyzerV1 {
         "--reference-json", artifactPath,
         "--reference-video", path.resolve(referencePath),
         "--render-video", renderPath,
+        "--matches-json", matchesPath,
         "--output", outputPath,
         "--cut-threshold", String(this.cutThreshold),
       ]);
@@ -352,6 +375,31 @@ export class PracticeM6LocalMediaAnalyzerV1 {
         missingMatchCount,
         Math.max(0, Math.trunc(artifact.unmatchedSceneCount)),
       ),
+      ...(artifact.temporalBehaviorProof === undefined ? {} : {
+        temporalBehaviorProof: {
+          sourceTemporalAlignment: finite01(
+            artifact.temporalBehaviorProof.sourceTemporalAlignment,
+            "sourceTemporalAlignment",
+          ),
+          requiredRewindShotIds: [...new Set(
+            artifact.temporalBehaviorProof.requiredRewindShotIds
+              .filter((value) => typeof value === "string" && value.trim().length > 0),
+          )],
+          verifiedRewindShotIds: [...new Set(
+            artifact.temporalBehaviorProof.verifiedRewindShotIds
+              .filter((value) => typeof value === "string" && value.trim().length > 0),
+          )],
+          passed: artifact.temporalBehaviorProof.passed === true,
+          reasons: [...new Set(
+            artifact.temporalBehaviorProof.reasons
+              .filter((value) => typeof value === "string" && value.trim().length > 0),
+          )],
+          evidenceRefs: artifact.evidenceRefs.filter((ref) =>
+            ref.startsWith("practice-source-temporal-alignment:")
+            || ref.startsWith("practice-required-rewind-shots:")
+            || ref.startsWith("practice-verified-rewind-shots:")),
+        },
+      }),
       evidenceRefs: [
         ...artifact.evidenceRefs,
         "practice-content-comparison-artifact:" + outputPath,

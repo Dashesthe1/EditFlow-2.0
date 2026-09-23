@@ -8,6 +8,7 @@ export * from "./local-media.js";
 export * from "./persistent-memory.js";
 export * from "./ae-baseline.js";
 export * from "./m6-practice.js";
+export * from "./reference-anatomy.js";
 export * from "./pro-creation.js";
 export * from "./gpt-orchestration.js";
 export * from "./mastery.js";

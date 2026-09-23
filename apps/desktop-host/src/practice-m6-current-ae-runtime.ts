@@ -106,14 +106,16 @@ const nonEmptyString = (value: unknown): string | null =>
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.filter((value) => value.trim().length > 0))];
 
-const shotForWindow = (
+const shotsForWindow = (
   reference: PracticeReferenceAnalysisV1,
   window: DenseEffectWindowV1,
-): PracticeReferenceAnalysisV1["shots"][number] => {
-  const containing = reference.shots.find((shot) =>
-    window.anchorMs >= shot.referenceStartMs
-    && window.anchorMs <= shot.referenceEndMs);
-  if (containing !== undefined) return containing;
+): readonly PracticeReferenceAnalysisV1["shots"][number][] => {
+  const intersecting = [...reference.shots]
+    .sort((a, b) => a.order - b.order)
+    .filter((shot) =>
+      Math.min(window.endMs, shot.referenceEndMs)
+        - Math.max(window.startMs, shot.referenceStartMs) > 0.5);
+  if (intersecting.length > 0) return intersecting;
   const ordered = [...reference.shots].sort((left, right) => {
     const leftCenter = (left.referenceStartMs + left.referenceEndMs) / 2;
     const rightCenter = (right.referenceStartMs + right.referenceEndMs) / 2;
@@ -124,7 +126,7 @@ const shotForWindow = (
   if (nearest === undefined) {
     throw new TypeError("Practice M6 runtime requires at least one reference shot.");
   }
-  return nearest;
+  return [nearest];
 };
 
 const shotLayerMap = (
@@ -299,71 +301,107 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           + compilation.capabilityGaps.join(", "),
       );
     }
-    const shot = shotForWindow(input.reference, input.window);
-    const layerId = prepared.shotLayerById.get(shot.shotId);
-    if (layerId === undefined) {
-      throw new TypeError("Practice M6 could not bind effect window to baseline shot layer.");
-    }
-    const context = buildM6MotionPeakCompilerContextV1({
-      reference: input.window.evidence,
-      compId: prepared.plan.compStableId,
-      targetRangeMs: {
-        startMs: input.window.startMs,
-        endMs: input.window.endMs,
-      },
-      roleBindings: [{ role: "hero", layerIds: [layerId] }],
-    });
-    const observed = await this.transaction.observe();
-    const native = compileConstructionThroughNativeAeV1(
-      compilation,
-      prepared.project,
-      context,
-      {
-        planId: [
-          "practice-m6",
-          input.sessionId,
-          String(input.attempt),
-          input.window.windowId,
-          String(++this.#applyCounter),
-        ].join(":"),
-        observedState: observed,
-        curveBindingMode: "LIVE_ADAPTIVE",
-        creativeObjective:
-          "Reconstruct the defining visual behavior of this Practice reference window.",
-        recipeRefs: [
-          input.graph.graphId,
-          prepared.plan.baselineId,
-          input.window.windowId,
-        ],
-      },
-    );
-    if (!native.compiled || native.plan === null) {
-      throw new Error(
-        "PRACTICE_M6_NATIVE_LOWERING_FAILED: " + native.issues.join(", "),
+    const shots = shotsForWindow(input.reference, input.window);
+    let committedTargets = 0;
+    for (const shot of shots) {
+      const layerId = prepared.shotLayerById.get(shot.shotId);
+      if (layerId === undefined) {
+        throw new TypeError(
+          "Practice M6 could not bind effect window to baseline shot layer "
+            + shot.shotId + ".",
+        );
+      }
+
+      let targetStartMs = Math.max(input.window.startMs, shot.referenceStartMs);
+      let targetEndMs = Math.min(input.window.endMs, shot.referenceEndMs);
+      if (targetEndMs <= targetStartMs) {
+        const frameMs = Math.max(1, input.window.evidence.summary.frameIntervalMs);
+        const spanMs = Math.min(
+          shot.referenceEndMs - shot.referenceStartMs,
+          Math.max(frameMs * 2, 2),
+        );
+        targetStartMs = Math.max(
+          shot.referenceStartMs,
+          Math.min(input.window.anchorMs - spanMs / 2, shot.referenceEndMs - spanMs),
+        );
+        targetEndMs = Math.min(shot.referenceEndMs, targetStartMs + spanMs);
+      }
+      if (targetEndMs <= targetStartMs) continue;
+
+      const context = buildM6MotionPeakCompilerContextV1({
+        reference: input.window.evidence,
+        compId: prepared.plan.compStableId,
+        targetRangeMs: {
+          startMs: targetStartMs,
+          endMs: targetEndMs,
+        },
+        roleBindings: [{ role: "hero", layerIds: [layerId] }],
+      });
+      const observed = await this.transaction.observe();
+      const native = compileConstructionThroughNativeAeV1(
+        compilation,
+        prepared.project,
+        context,
+        {
+          planId: [
+            "practice-m6",
+            input.sessionId,
+            String(input.attempt),
+            input.window.windowId,
+            shot.shotId,
+            String(++this.#applyCounter),
+          ].join(":"),
+          observedState: observed,
+          curveBindingMode: "LIVE_ADAPTIVE",
+          creativeObjective:
+            "Reconstruct the defining visual behavior of this Practice reference window "
+              + "over the measured overlap with " + shot.shotId + ".",
+          recipeRefs: [
+            input.graph.graphId,
+            prepared.plan.baselineId,
+            input.window.windowId,
+            shot.shotId,
+          ],
+        },
+      );
+      if (!native.compiled || native.plan === null) {
+        throw new Error(
+          "PRACTICE_M6_NATIVE_LOWERING_FAILED:" + shot.shotId + ": "
+            + native.issues.join(", "),
+        );
+      }
+      const result = native.plan.operations.length <= this.transaction.maxOperations
+        ? await this.transaction.execute(native.plan)
+        : await this.transaction.executeCorrection(native.plan);
+      if (result.state !== "COMMITTED") {
+        throw new Error(
+          "PRACTICE_M6_NATIVE_TRANSACTION_" + result.state
+            + ":" + shot.shotId
+            + ": recovered=" + String(result.recovered)
+            + (result.error === undefined ? "" : "; cause=" + result.error),
+        );
+      }
+      committedTargets += 1;
+      this.renderDriver.recordAppliedOperations?.({
+        sessionId: input.sessionId,
+        attempt: input.attempt,
+        count: result.appliedOperations,
+      });
+      prepared.evidenceRefs.push(
+        "practice-m6-native-plan:" + String(native.plan.planId),
+        "practice-m6-native-transaction:" + String(result.transactionId) + ":" + result.state,
+        "practice-m6-native-applied:" + String(result.appliedOperations),
+        "practice-m6-window:" + input.window.windowId,
+        "practice-m6-target-shot:" + shot.shotId,
+        "practice-m6-window-overlap:" + shot.shotId + ":"
+          + targetStartMs.toFixed(3) + "-" + targetEndMs.toFixed(3),
       );
     }
-    const result = native.plan.operations.length <= this.transaction.maxOperations
-      ? await this.transaction.execute(native.plan)
-      : await this.transaction.executeCorrection(native.plan);
-    if (result.state !== "COMMITTED") {
-      throw new Error(
-        "PRACTICE_M6_NATIVE_TRANSACTION_" + result.state
-          + ": recovered=" + String(result.recovered)
-          + (result.error === undefined ? "" : "; cause=" + result.error),
+    if (committedTargets === 0) {
+      throw new TypeError(
+        "Practice M6 effect window did not overlap any reconstructable reference shot.",
       );
     }
-    this.renderDriver.recordAppliedOperations?.({
-      sessionId: input.sessionId,
-      attempt: input.attempt,
-      count: result.appliedOperations,
-    });
-    prepared.evidenceRefs.push(
-      "practice-m6-native-plan:" + String(native.plan.planId),
-      "practice-m6-native-transaction:" + String(result.transactionId) + ":" + result.state,
-      "practice-m6-native-applied:" + String(result.appliedOperations),
-      "practice-m6-window:" + input.window.windowId,
-      "practice-m6-target-shot:" + shot.shotId,
-    );
   }
 
   async renderWindowEvidence(

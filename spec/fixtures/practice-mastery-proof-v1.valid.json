@@ -43,6 +43,22 @@
       "sourceEndMs": 2200,
       "direction": "FORWARD",
       "playbackRate": 1,
+      "trajectory": [
+        { "referenceTimeMs": 100, "sourceTimeMs": 1100, "similarity": 0.98 },
+        { "referenceTimeMs": 500, "sourceTimeMs": 1500, "similarity": 0.99 },
+        { "referenceTimeMs": 800, "sourceTimeMs": 1800, "similarity": 0.99 },
+        { "referenceTimeMs": 1000, "sourceTimeMs": 1650, "similarity": 0.98 }
+      ],
+      "temporalBehavior": "FORWARD_THEN_REWIND",
+      "rewind": {
+        "detected": true,
+        "referenceStartMs": 800,
+        "referenceEndMs": 1000,
+        "sourceStartMs": 1800,
+        "sourceEndMs": 1650,
+        "rewindSpanMs": 150,
+        "confidence": 0.96
+      },
       "appearanceSimilarity": 0.99,
       "temporalSimilarity": 0.98,
       "motionSimilarity": 0.97,

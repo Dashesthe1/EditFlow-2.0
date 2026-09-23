@@ -103,6 +103,68 @@ interface PracticeMatchTimingPlanV1 {
   }[] | null;
 }
 
+const trajectoryTimeRemapKeyframes = (
+  shot: PracticeReferenceAnalysisV1["shots"][number],
+  match: PracticeSceneMatchV1,
+): PracticeMatchTimingPlanV1["timeRemapKeyframes"] => {
+  if (match.rewind?.detected !== true
+    || match.temporalBehavior !== "FORWARD_THEN_REWIND") return null;
+  const trajectory = [...(match.trajectory ?? [])]
+    .filter((point) =>
+      Number.isFinite(point.referenceTimeMs)
+      && Number.isFinite(point.sourceTimeMs)
+      && Number.isFinite(point.similarity)
+      && point.referenceTimeMs >= shot.referenceStartMs
+      && point.referenceTimeMs <= shot.referenceEndMs)
+    .sort((a, b) => a.referenceTimeMs - b.referenceTimeMs);
+  if (trajectory.length < 3) return null;
+
+  const uniqueTrajectory = trajectory.filter((point, index) =>
+    index === 0 || Math.abs(point.referenceTimeMs - trajectory[index - 1]!.referenceTimeMs) > 1e-3);
+  if (uniqueTrajectory.length < 3) return null;
+  const first = uniqueTrajectory[0]!;
+  const second = uniqueTrajectory[1]!;
+  const penultimate = uniqueTrajectory[uniqueTrajectory.length - 2]!;
+  const last = uniqueTrajectory[uniqueTrajectory.length - 1]!;
+  const sourceMinimum = Math.min(match.sourceStartMs, ...uniqueTrajectory.map((point) => point.sourceTimeMs));
+  const sourceMaximum = Math.max(match.sourceEndMs, ...uniqueTrajectory.map((point) => point.sourceTimeMs));
+  const sourceAt = (
+    referenceTimeMs: number,
+    left: typeof first,
+    right: typeof first,
+  ): number => {
+    const referenceDelta = right.referenceTimeMs - left.referenceTimeMs;
+    const slope = Math.abs(referenceDelta) <= 1e-6
+      ? 0
+      : (right.sourceTimeMs - left.sourceTimeMs) / referenceDelta;
+    return Math.min(
+      sourceMaximum,
+      Math.max(sourceMinimum, left.sourceTimeMs + slope * (referenceTimeMs - left.referenceTimeMs)),
+    );
+  };
+  const points = [
+    {
+      referenceTimeMs: shot.referenceStartMs,
+      sourceTimeMs: sourceAt(shot.referenceStartMs, first, second),
+    },
+    ...uniqueTrajectory.map((point) => ({
+      referenceTimeMs: point.referenceTimeMs,
+      sourceTimeMs: point.sourceTimeMs,
+    })),
+    {
+      referenceTimeMs: shot.referenceEndMs,
+      sourceTimeMs: sourceAt(shot.referenceEndMs, penultimate, last),
+    },
+  ];
+  return points
+    .filter((point, index) =>
+      index === 0 || Math.abs(point.referenceTimeMs - points[index - 1]!.referenceTimeMs) > 1e-3)
+    .map((point) => ({
+      time: point.referenceTimeMs / 1000,
+      value: point.sourceTimeMs / 1000,
+    }));
+};
+
 const timingPlanForMatch = (
   shot: PracticeReferenceAnalysisV1["shots"][number],
   match: PracticeSceneMatchV1,
@@ -114,6 +176,18 @@ const timingPlanForMatch = (
   const refEnd = shot.referenceEndMs / 1000;
   const sourceStart = match.sourceStartMs / 1000;
   const sourceEnd = match.sourceEndMs / 1000;
+  const measuredTrajectory = trajectoryTimeRemapKeyframes(shot, match);
+  if (measuredTrajectory !== null) {
+    return {
+      timing: {
+        startTime: refStart,
+        inPoint: refStart,
+        outPoint: refEnd,
+        stretch: 100,
+      },
+      timeRemapKeyframes: measuredTrajectory,
+    };
+  }
   const slope = match.direction === "FORWARD"
     ? match.playbackRate
     : -match.playbackRate;
@@ -205,6 +279,9 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
       sourceEndMs: match.sourceEndMs,
       direction: match.direction,
       playbackRate: match.playbackRate,
+      temporalBehavior: match.temporalBehavior ?? null,
+      rewind: match.rewind ?? null,
+      trajectory: match.trajectory ?? [],
     };
   });
   const audioIdentity = audioMatch === null ? null : {

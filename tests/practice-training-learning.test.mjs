@@ -812,6 +812,164 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.equal(mediaCalls.at(-1)?.endMs, 200);
 });
 
+test("Practice M6 applies a cut-spanning transition to both participating shot layers", async () => {
+  const family = classifyEffectFamilyV1(referenceEvidence);
+  const graph = buildConstructionGraphV1(
+    deriveEffectAnatomyV1(referenceEvidence, family),
+  );
+  const runtimeReference = {
+    ...reference,
+    shots: [
+      {
+        shotId: "shot:001",
+        order: 0,
+        referenceStartMs: 0,
+        referenceEndMs: 250,
+        evidenceRefs: ["shot:001"],
+      },
+      {
+        shotId: "shot:002",
+        order: 1,
+        referenceStartMs: 250,
+        referenceEndMs: 500,
+        evidenceRefs: ["shot:002"],
+      },
+    ],
+    sourcePath: "C:\\Finish\\reference.mp4",
+    video: {
+      fps: 30,
+      frameCount: 16,
+      width: 640,
+      height: 360,
+      durationMs: 500,
+    },
+  };
+  const makeMatch = (shotId, sourceId, sourcePath, startMs) => ({
+    shotId,
+    sourceId,
+    sourcePath,
+    sourceStartMs: startMs,
+    sourceEndMs: startMs + 250,
+    direction: "FORWARD",
+    playbackRate: 1,
+    appearanceSimilarity: 1,
+    temporalSimilarity: 1,
+    motionSimilarity: 1,
+    confidence: 1,
+    evidenceRefs: ["match:" + shotId],
+  });
+  const matches = [
+    makeMatch("shot:001", "raw:a", "C:\\Media\\a.mp4", 1000),
+    makeMatch("shot:002", "raw:b", "C:\\Media\\b.mp4", 2000),
+  ];
+  const baselinePlan = {
+    schema: "editflow.practice-ae-baseline-plan.v1",
+    baselineId: "baseline:cut-span",
+    referenceId: runtimeReference.referenceId,
+    compStableId: "PRACTICE_BASELINE_COMP_CUT_SPAN",
+    durationMs: 500,
+    frameRate: 30,
+    audioMatchId: null,
+    operations: [
+      {
+        operationId: "baseline:cut-span:op:001",
+        command: "layer.add_media",
+        capabilityId: "ae.layer.create",
+        payload: { stableId: "PRACTICE_SHOT_CUT_0001" },
+      },
+      {
+        operationId: "baseline:cut-span:op:002",
+        command: "layer.add_media",
+        capabilityId: "ae.layer.create",
+        payload: { stableId: "PRACTICE_SHOT_CUT_0002" },
+      },
+    ],
+    evidenceRefs: ["baseline:cut-span"],
+  };
+  const baseline = {
+    baselineId: baselinePlan.baselineId,
+    timelineRef: "ae:comp:" + baselinePlan.compStableId,
+    evidenceRefs: ["baseline:cut-span"],
+  };
+
+  const capturedPlans = [];
+  const transaction = {
+    maxOperations: 64,
+    async observe() {
+      return {
+        projectId: "project",
+        projectRevision: String(capturedPlans.length + 1),
+        projectFingerprint: "project-fingerprint-" + String(capturedPlans.length),
+        environmentFingerprint: "environment-fingerprint",
+      };
+    },
+    async execute(plan) {
+      capturedPlans.push(plan);
+      return {
+        transactionId: "tx:cut:" + String(capturedPlans.length),
+        state: "COMMITTED",
+        recovered: false,
+        appliedOperations: plan.operations.length,
+      };
+    },
+    async executeCorrection(plan) {
+      return this.execute(plan);
+    },
+  };
+  const runtime = new PracticeM6CurrentAeRuntimeV1({
+    transaction,
+    baselineBuilder: {
+      plan(id) { return id === baselinePlan.baselineId ? baselinePlan : null; },
+    },
+    media: {
+      async analyzeVideo() { return referenceEvidence; },
+      async compareContentStructure() { throw new Error("not used"); },
+    },
+    renderDriver: {
+      async prepareAttempt() { return {}; },
+      async renderWindow() { throw new Error("not used"); },
+      async renderFullEdit() { throw new Error("not used"); },
+    },
+    availableCapabilities: [...new Set(
+      graph.nodes.flatMap((node) => node.capabilityCandidates),
+    )],
+  });
+  await runtime.prepareAttempt({
+    sessionId: "practice:cut-span",
+    editTypeId: "spider-man-high-potency",
+    editTypeKnowledge: {},
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    matches,
+    priorAttempts: [],
+  });
+  await runtime.applyWindowGraph({
+    sessionId: "practice:cut-span",
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    window: {
+      windowId: "window:cut-span",
+      startIndex: 0,
+      endIndex: 6,
+      anchorIndex: 3,
+      startMs: 100,
+      endMs: 400,
+      anchorMs: 250,
+      peakEnergy: 0.5,
+      evidence: referenceEvidence,
+    },
+    graph,
+  });
+
+  assert.equal(capturedPlans.length, 2);
+  assert.match(JSON.stringify(capturedPlans[0]), /PRACTICE_SHOT_CUT_0001/);
+  assert.match(JSON.stringify(capturedPlans[1]), /PRACTICE_SHOT_CUT_0002/);
+  assert.match(String(capturedPlans[0].planId), /shot:001/);
+  assert.match(String(capturedPlans[1].planId), /shot:002/);
+});
+
 test("Practice M6 current-AE assembly connects media, baseline, M6, render, and audio adapters", () => {
   const assembly = createPracticeM6CurrentAeAssemblyV1({
     transport: {

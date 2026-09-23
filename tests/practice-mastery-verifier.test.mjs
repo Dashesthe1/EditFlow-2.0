@@ -84,3 +84,57 @@ test("Practice mastery requires one content-addressed indexed source per shot", 
   );
   assert.ok(identityReasons.some((reason) => /content-addressed video identity/.test(reason)));
 });
+
+test("Practice mastery accepts only a trajectory-proven forward-then-rewind claim", () => {
+  const base = match("shot:1");
+  const proven = {
+    ...base,
+    temporalBehavior: "FORWARD_THEN_REWIND",
+    trajectory: [
+      { referenceTimeMs: 100, sourceTimeMs: 200, similarity: 0.98 },
+      { referenceTimeMs: 400, sourceTimeMs: 500, similarity: 0.99 },
+      { referenceTimeMs: 700, sourceTimeMs: 800, similarity: 0.99 },
+      { referenceTimeMs: 900, sourceTimeMs: 620, similarity: 0.98 },
+    ],
+    rewind: {
+      detected: true,
+      referenceStartMs: 700,
+      referenceEndMs: 900,
+      sourceStartMs: 800,
+      sourceEndMs: 620,
+      rewindSpanMs: 180,
+      confidence: 0.96,
+    },
+  };
+  assert.deepEqual(
+    validatePracticeSceneMatchesV1(["shot:1"], [proven], 0.95, ["video:raw"]),
+    [],
+  );
+
+  const fabricated = {
+    ...proven,
+    trajectory: proven.trajectory.map((point, index) => ({
+      ...point,
+      sourceTimeMs: 200 + index * 200,
+    })),
+  };
+  const fabricatedReasons = validatePracticeSceneMatchesV1(
+    ["shot:1"],
+    [fabricated],
+    0.95,
+    ["video:raw"],
+  );
+  assert.ok(fabricatedReasons.some((reason) => /does not travel forward then backward/.test(reason)));
+
+  const inconsistent = {
+    ...proven,
+    rewind: { ...proven.rewind, rewindSpanMs: 700 },
+  };
+  const inconsistentReasons = validatePracticeSceneMatchesV1(
+    ["shot:1"],
+    [inconsistent],
+    0.95,
+    ["video:raw"],
+  );
+  assert.ok(inconsistentReasons.some((reason) => /inconsistent rewind span/.test(reason)));
+});

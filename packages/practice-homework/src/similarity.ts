@@ -34,6 +34,9 @@ export const finalizePracticeSimilarityReportV1 = (
 ): PracticeSimilarityReportV1 => {
   const minimum = clamp01(minimumSimilarity);
   const overallSimilarity = scorePracticeSimilarityV1(report.breakdown);
+  const retainedReasons = [...new Set(
+    report.reasons.map((reason) => reason.trim()).filter(Boolean),
+  )];
   const reasons: string[] = [];
 
   if (report.wrongSceneCount > 0) {
@@ -67,7 +70,7 @@ export const finalizePracticeSimilarityReportV1 = (
   return {
     ...report,
     overallSimilarity,
-    passed: reasons.length === 0,
-    reasons: [...new Set([...report.reasons, ...reasons])],
+    passed: retainedReasons.length === 0 && reasons.length === 0,
+    reasons: [...new Set([...retainedReasons, ...reasons])],
   };
 };
