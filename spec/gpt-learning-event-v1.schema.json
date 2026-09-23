@@ -5,6 +5,54 @@
   "type": "object",
   "additionalProperties": false,
   "$defs": {
+    "tutorialTechnique": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["what", "whenWhy", "how", "access", "proof", "transfer"],
+      "properties": {
+        "what": { "type": "string", "minLength": 1 },
+        "whenWhy": { "type": "string", "minLength": 1 },
+        "how": { "type": "string", "minLength": 1 },
+        "access": { "type": "string", "minLength": 1 },
+        "proof": { "type": "string", "minLength": 1 },
+        "transfer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tutorialCompilation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "compilerVersion", "targetSkillId", "tutorialId", "tutorialSkillId",
+        "sourceRef", "analysisFingerprint", "constructionPattern", "capabilityIds",
+        "adaptationNotes", "causalModel", "evidenceRefs"
+      ],
+      "properties": {
+        "schema": { "const": "editflow.gpt-tutorial-causal-compilation.v1" },
+        "compilerVersion": { "const": 1 },
+        "targetSkillId": { "type": "string", "minLength": 1 },
+        "tutorialId": { "type": "string", "minLength": 1 },
+        "tutorialSkillId": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string", "minLength": 1 },
+        "analysisFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "constructionPattern": { "type": "string", "minLength": 1 },
+        "capabilityIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "adaptationNotes": { "type": "string", "minLength": 1 },
+        "causalModel": { "$ref": "#/$defs/causalModel" },
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
     "researchSource": {
       "type": "object",
       "additionalProperties": false,
@@ -19,7 +67,9 @@
         },
         "title": { "type": "string", "minLength": 1 },
         "uri": { "type": "string", "minLength": 1 },
-        "notes": { "type": "string" }
+        "notes": { "type": "string" },
+        "tutorialTechnique": { "$ref": "#/$defs/tutorialTechnique" },
+        "tutorialCompilation": { "$ref": "#/$defs/tutorialCompilation" }
       },
       "allOf": [
         {
@@ -36,6 +86,30 @@
                 "pattern": "^https://drive\\.google\\.com/(?:file/d/|drive/folders/)"
               }
             }
+          }
+        },
+        {
+          "if": { "required": ["tutorialCompilation"] },
+          "then": {
+            "required": ["tutorialTechnique"],
+            "properties": {
+              "kind": { "const": "TUTORIAL_DRIVE" }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["kind", "uri"],
+            "properties": {
+              "kind": { "const": "TUTORIAL_DRIVE" },
+              "uri": {
+                "type": "string",
+                "pattern": "^https://drive\\.google\\.com/file/d/"
+              }
+            }
+          },
+          "then": {
+            "required": ["tutorialTechnique", "tutorialCompilation"]
           }
         }
       ]

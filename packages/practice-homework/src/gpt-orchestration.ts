@@ -18,6 +18,7 @@ import type {
   PracticeRunRoleV1,
   PracticeVerificationPolicyV1,
 } from "./contracts.js";
+import { applyCompiledTutorialCausalModelV1 } from "./tutorial-causal-compiler.js";
 
 interface GptOrchestrationStorePayloadV1 {
   readonly schema: "editflow.gpt-orchestration-store.v1";
@@ -109,18 +110,19 @@ const nonEmpty = (value: string, name: string): string => {
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 
-const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean => {
-  const model = skill.causalModel;
-  if (model === undefined) return false;
-  return [
-    model.triggerConditions,
-    model.invariants,
-    model.adaptationAxes,
-    model.failureSignals,
-    model.repairStrategies,
-    model.transferCriteria,
-  ].every((values) => unique(values ?? []).length > 0);
-};
+const hasCompleteCausalModel = (
+  model: GptLearnedSkillV1["causalModel"],
+): boolean => model !== undefined && [
+  model.triggerConditions,
+  model.invariants,
+  model.adaptationAxes,
+  model.failureSignals,
+  model.repairStrategies,
+  model.transferCriteria,
+].every((values) => unique(values ?? []).length > 0);
+
+const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean =>
+  hasCompleteCausalModel(skill.causalModel);
 
 export const EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 =
   "https://drive.google.com/drive/folders/1eP2O7OwoCL1uP3OaA4euewUAZFU-VsL7";
@@ -138,13 +140,20 @@ const RESEARCH_PRIORITY_LINES = [
   "- Tutorial Drive is the mandatory first research source whenever EditFlow does not know how to reproduce a visible reference behavior, is stuck on a construction, or discovers a missing fundamental skill.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
+  "- Every matched Tutorial Drive tutorial file must be deep-analyzed and compiled through EditFlow's tutorial causal compiler before it can support Practice learning. The compiler-derived construction pattern, capabilities, triggers, invariants, adaptation axes, failure/repair logic, and transfer criteria are authoritative; do not hand-author substitutes for those fields.",
   "- If no sufficiently relevant Tutorial Drive match exists, record the Tutorial Drive search/query and no-match result in RESEARCH provenance before escalating.",
   "- Second priority is official Adobe documentation/resources and the installed Adobe feature/plugin surface.",
   "- Third priority is external professional tutorials and plugin/vendor documentation; broader web/internet research is last.",
 ] as const;
 
 const applyCurrentResearchPriority = (message: string): string => {
-  if (message.includes(RESEARCH_PRIORITY_LINES[0])) return message;
+  if (message.includes(RESEARCH_PRIORITY_LINES[3])) return message;
+  if (message.includes(RESEARCH_PRIORITY_LINES[2])) {
+    return message.replace(
+      RESEARCH_PRIORITY_LINES[2],
+      RESEARCH_PRIORITY_LINES[2] + "\n" + RESEARCH_PRIORITY_LINES[3],
+    );
+  }
   for (const legacyLine of LEGACY_RESEARCH_POLICY_LINES) {
     if (message.includes(legacyLine)) {
       return message.replace(legacyLine, RESEARCH_PRIORITY_LINES.join("\n"));
@@ -196,13 +205,32 @@ const hasStructuredTutorialTechnique = (source: GptResearchSourceV1 | undefined)
   ].every((value) => typeof value === "string" && value.trim().length > 0);
 };
 
+const hasValidTutorialCompilation = (source: GptResearchSourceV1 | undefined): boolean => {
+  const compilation = source?.tutorialCompilation;
+  if (compilation === undefined) return true;
+  return isTutorialDriveResearchSource(source)
+    && hasStructuredTutorialTechnique(source)
+    && compilation.schema === "editflow.gpt-tutorial-causal-compilation.v1"
+    && compilation.compilerVersion === 1
+    && compilation.targetSkillId.trim().length > 0
+    && compilation.tutorialId.trim().length > 0
+    && compilation.tutorialSkillId.trim().length > 0
+    && compilation.sourceRef.trim().length > 0
+    && compilation.analysisFingerprint.trim().length > 0
+    && compilation.constructionPattern.trim().length > 0
+    && compilation.adaptationNotes.trim().length > 0
+    && hasCompleteCausalModel(compilation.causalModel)
+    && unique(compilation.evidenceRefs ?? []).length > 0;
+};
+
 const isTutorialDriveFolderSearch = (source: GptResearchSourceV1 | undefined): boolean =>
   isTutorialDriveResearchSource(source)
   && typeof source?.uri === "string"
   && /^https:\/\/drive\.google\.com\/drive\/folders\//.test(source.uri.trim());
 
 const hasResearchLearningPath = (sources: readonly GptResearchSourceV1[]): boolean =>
-  sources.some(hasStructuredTutorialTechnique)
+  sources.some((source) =>
+    source.tutorialCompilation !== undefined && hasValidTutorialCompilation(source))
   || (sources.some(isTutorialDriveFolderSearch)
     && sources.some((source) => source.kind !== "TUTORIAL_DRIVE" && source.kind !== "INTERNAL_EVIDENCE"));
 
@@ -613,6 +641,9 @@ export class GptOrchestrationStoreV1 {
         }
       }
       const sessionEvents = payload.events.filter((event) => event.sessionId === assignment.sessionId);
+      let retainedLearnedSkill = input.learnedSkill === undefined
+        ? undefined
+        : structuredClone(input.learnedSkill);
       if (input.stage === "CAPABILITY_GAP" && input.capabilityGap === undefined) {
         throw new TypeError("CAPABILITY_GAP requires capabilityGap.");
       }
@@ -631,11 +662,23 @@ export class GptOrchestrationStoreV1 {
           );
         }
         for (const source of input.researchSources) {
+          if (!hasValidTutorialCompilation(source)) {
+            throw new TypeError(
+              "Tutorial causal compilations must be compiler-backed Tutorial Drive records with structured technique, complete causal semantics, and retained analysis evidence.",
+            );
+          }
           if (isTutorialDriveResearchSource(source)
             && !isTutorialDriveFolderSearch(source)
             && !hasStructuredTutorialTechnique(source)) {
             throw new TypeError(
               "A matched Tutorial Drive tutorial must retain WHAT, WHEN/WHY, HOW, ACCESS, PROOF, and TRANSFER technique fields before it can support Practice learning.",
+            );
+          }
+          if (isTutorialDriveResearchSource(source)
+            && !isTutorialDriveFolderSearch(source)
+            && source.tutorialCompilation === undefined) {
+            throw new TypeError(
+              "A matched Tutorial Drive tutorial file must be deep-analyzed and compiled by EditFlow before it can support Practice learning.",
             );
           }
         }
@@ -653,7 +696,7 @@ export class GptOrchestrationStoreV1 {
         }
         if (!hasResearchLearningPath(priorResearch)) {
           throw new TypeError(
-            "CAPABILITY_PROOF requires either a structured Tutorial Drive technique record or a retained Tutorial Drive no-match folder search followed by an escalated authoritative source.",
+            "CAPABILITY_PROOF requires either a compiler-backed Tutorial Drive technique record or a retained Tutorial Drive no-match folder search followed by an escalated authoritative source.",
           );
         }
         if (!priorImplementation) {
@@ -662,7 +705,15 @@ export class GptOrchestrationStoreV1 {
       }
       if (input.stage === "SKILL_COMMIT") {
         const gap = input.capabilityGap;
-        const skill = input.learnedSkill;
+        const research = sessionEvents.filter((event) => event.stage === "RESEARCH")
+          .flatMap((event) => event.researchSources ?? []);
+        if (retainedLearnedSkill !== undefined) {
+          retainedLearnedSkill = applyCompiledTutorialCausalModelV1(
+            retainedLearnedSkill,
+            research,
+          );
+        }
+        const skill = retainedLearnedSkill;
         if (gap === undefined || skill === undefined) {
           throw new TypeError("SKILL_COMMIT requires learnedSkill and resolved capabilityGap.");
         }
@@ -684,8 +735,6 @@ export class GptOrchestrationStoreV1 {
         }
         const gapWasOpened = sessionEvents.some((event) =>
           event.stage === "CAPABILITY_GAP" && event.capabilityGap?.gapId === gap.gapId);
-        const research = sessionEvents.filter((event) => event.stage === "RESEARCH")
-          .flatMap((event) => event.researchSources ?? []);
         const proofSucceeded = sessionEvents.some((event) =>
           event.stage === "CAPABILITY_PROOF"
           && event.outcome === "SUCCESS"
@@ -696,7 +745,7 @@ export class GptOrchestrationStoreV1 {
         }
         if (!hasResearchLearningPath(research)) {
           throw new TypeError(
-            "SKILL_COMMIT requires a structured Tutorial Drive technique record or a retained Tutorial Drive no-match search followed by an escalated authoritative source.",
+            "SKILL_COMMIT requires a compiler-backed Tutorial Drive technique record or a retained Tutorial Drive no-match search followed by an escalated authoritative source.",
           );
         }
         if (!proofSucceeded) {
@@ -727,9 +776,9 @@ export class GptOrchestrationStoreV1 {
         ...(input.researchSources === undefined
           ? {}
           : { researchSources: structuredClone(input.researchSources) }),
-        ...(input.learnedSkill === undefined
+        ...(retainedLearnedSkill === undefined
           ? {}
-          : { learnedSkill: structuredClone(input.learnedSkill) }),
+          : { learnedSkill: structuredClone(retainedLearnedSkill) }),
         evidenceRefs: unique(input.evidenceRefs ?? []),
         createdAt: new Date().toISOString(),
       };

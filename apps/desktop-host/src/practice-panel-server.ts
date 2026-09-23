@@ -13,6 +13,7 @@ import {
   EditTypeRegistryFileV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  compileGptTutorialResearchSourceV1,
   buildPracticeHeldOutBenchmarkCaseV1,
   classifyPracticeMasteryScopeV1,
   evaluatePracticeHeldOutBenchmarkV1,
@@ -24,6 +25,7 @@ import {
   type GptOrchestrationAssignmentV1,
   type GptOrchestrationModeV1,
   type GptResearchSourceV1,
+  type GptSkillCausalModelV1,
   type PracticeLearningAllocationResultV1,
   type PracticeMasteryRecordV1,
   type PracticeMasteryScopeV1,
@@ -32,6 +34,7 @@ import {
   type PracticeSessionResultV1,
   type ProCreationPreparationResultV1,
 } from "../../../packages/practice-homework/src/index.js";
+import type { TutorialDeepAnalysisPacketV1 } from "../../../packages/tutorial-learning/src/index.js";
 import {
   AeCepAdapterClientV11,
   AeFilesystemPolicyV11,
@@ -220,6 +223,22 @@ const requiredEnum = <T extends string>(
   return value as T;
 };
 
+const requiredCausalModel = (
+  body: Record<string, unknown>,
+  name: string,
+): GptSkillCausalModelV1 => {
+  const record = optionalRecord(body, name);
+  if (record === undefined) throw new HttpError(400, name + " is required.");
+  return {
+    triggerConditions: stringArray(record, "triggerConditions", true),
+    invariants: stringArray(record, "invariants", true),
+    adaptationAxes: stringArray(record, "adaptationAxes", true),
+    failureSignals: stringArray(record, "failureSignals", true),
+    repairStrategies: stringArray(record, "repairStrategies", true),
+    transferCriteria: stringArray(record, "transferCriteria", true),
+  };
+};
+
 const optionalResearchSources = (
   body: Record<string, unknown>,
   name: string,
@@ -233,6 +252,10 @@ const optionalResearchSources = (
     }
     const record = source as Record<string, unknown>;
     const technique = optionalRecord(record, "tutorialTechnique");
+    const compilation = optionalRecord(record, "tutorialCompilation");
+    if (compilation !== undefined && compilation["compilerVersion"] !== 1) {
+      throw new HttpError(400, "tutorialCompilation.compilerVersion must be 1.");
+    }
     return {
       sourceId: requiredString(record, "sourceId"),
       kind: requiredEnum(record, "kind", [
@@ -250,6 +273,26 @@ const optionalResearchSources = (
           access: requiredString(technique, "access"),
           proof: requiredString(technique, "proof"),
           transfer: requiredString(technique, "transfer"),
+        },
+      }),
+      ...(compilation === undefined ? {} : {
+        tutorialCompilation: {
+          schema: requiredEnum(
+            compilation,
+            "schema",
+            ["editflow.gpt-tutorial-causal-compilation.v1"] as const,
+          ),
+          compilerVersion: 1 as const,
+          targetSkillId: requiredString(compilation, "targetSkillId"),
+          tutorialId: requiredString(compilation, "tutorialId"),
+          tutorialSkillId: requiredString(compilation, "tutorialSkillId"),
+          sourceRef: requiredString(compilation, "sourceRef"),
+          analysisFingerprint: requiredString(compilation, "analysisFingerprint"),
+          constructionPattern: requiredString(compilation, "constructionPattern"),
+          capabilityIds: stringArray(compilation, "capabilityIds", false),
+          adaptationNotes: requiredString(compilation, "adaptationNotes"),
+          causalModel: requiredCausalModel(compilation, "causalModel"),
+          evidenceRefs: stringArray(compilation, "evidenceRefs", true),
         },
       }),
     };
@@ -689,6 +732,60 @@ export class PracticePanelServerV1 {
     return assignment;
   }
 
+  async #compileTutorialResearch(
+    assignmentId: string,
+    body: Record<string, unknown>,
+  ): Promise<{
+    readonly assignment: GptOrchestrationAssignmentV1;
+    readonly researchSource: GptResearchSourceV1;
+  }> {
+    const tutorialAnalysis = optionalRecord(body, "tutorialAnalysis");
+    if (tutorialAnalysis === undefined) {
+      throw new HttpError(400, "tutorialAnalysis is required.");
+    }
+    let researchSource: GptResearchSourceV1;
+    try {
+      researchSource = compileGptTutorialResearchSourceV1({
+        packet: tutorialAnalysis as unknown as TutorialDeepAnalysisPacketV1,
+        tutorialSkillId: requiredString(body, "tutorialSkillId"),
+        targetSkillId: requiredString(body, "targetSkillId"),
+        tutorialDriveUri: requiredString(body, "tutorialDriveUri"),
+        ...(optionalString(body, "sourceId") === undefined
+          ? {}
+          : { sourceId: optionalString(body, "sourceId")! }),
+        ...(optionalString(body, "notes") === undefined
+          ? {}
+          : { notes: optionalString(body, "notes")! }),
+      });
+    } catch (error) {
+      throw new HttpError(
+        400,
+        "Tutorial causal compilation failed: "
+          + (error instanceof Error ? error.message : String(error)),
+      );
+    }
+    const additionalResearchSources =
+      optionalResearchSources(body, "additionalResearchSources") ?? [];
+    const event = await this.#gptStore.appendEvent({
+      assignmentId,
+      stage: "RESEARCH",
+      outcome: "SUCCESS",
+      summary: optionalString(body, "summary")
+        ?? "Compiled deep Tutorial Drive analysis into deterministic causal skill semantics.",
+      researchSources: [researchSource, ...additionalResearchSources],
+      evidenceRefs: researchSource.tutorialCompilation?.evidenceRefs ?? [],
+    });
+    const assignment = await this.#gptStore.getAssignment(assignmentId);
+    if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
+    if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
+      const file = await this.#editTypes();
+      const registry = await file.load();
+      registry.recordGptLearningEvent(event);
+      await file.save(registry);
+    }
+    return { assignment, researchSource };
+  }
+
   async #recordLearningEvent(
     assignmentId: string,
     body: Record<string, unknown>,
@@ -723,6 +820,13 @@ export class PracticePanelServerV1 {
     }
     if (stage === "RESEARCH" && (researchSources === undefined || researchSources.length === 0)) {
       throw new HttpError(400, "RESEARCH requires at least one research source.");
+    }
+    if (stage === "RESEARCH"
+      && researchSources?.some((source) => source.tutorialCompilation !== undefined)) {
+      throw new HttpError(
+        400,
+        "Compiler-backed Tutorial Drive research must use the tutorial-compilations endpoint.",
+      );
     }
     if (stage === "CAPABILITY_PROOF" && evidenceRefs.length === 0) {
       throw new HttpError(400, "CAPABILITY_PROOF requires evidenceRefs.");
@@ -1174,6 +1278,17 @@ export class PracticePanelServerV1 {
         jsonResponse(res, 200, {
           assignment: await this.#claimAssignment(id, await readJson(req)),
         });
+        return;
+      }
+      const tutorialCompilationMatch =
+        /^\/v1\/product\/gpt\/assignments\/([^/]+)\/tutorial-compilations$/.exec(url.pathname);
+      if (req.method === "POST" && tutorialCompilationMatch !== null) {
+        const id = decodeURIComponent(tutorialCompilationMatch[1] ?? "");
+        jsonResponse(
+          res,
+          201,
+          await this.#compileTutorialResearch(id, await readJson(req)),
+        );
         return;
       }
       const eventMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/events$/.exec(url.pathname);

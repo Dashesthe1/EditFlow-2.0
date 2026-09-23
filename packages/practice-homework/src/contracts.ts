@@ -359,6 +359,21 @@ export interface GptTutorialTechniqueV1 {
   readonly transfer: string;
 }
 
+export interface GptTutorialCausalCompilationV1 {
+  readonly schema: "editflow.gpt-tutorial-causal-compilation.v1";
+  readonly compilerVersion: 1;
+  readonly targetSkillId: string;
+  readonly tutorialId: string;
+  readonly tutorialSkillId: string;
+  readonly sourceRef: string;
+  readonly analysisFingerprint: string;
+  readonly constructionPattern: string;
+  readonly capabilityIds: readonly string[];
+  readonly adaptationNotes: string;
+  readonly causalModel: GptSkillCausalModelV1;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface GptResearchSourceV1 {
   readonly sourceId: string;
   readonly kind: GptResearchSourceKindV1;
@@ -366,6 +381,7 @@ export interface GptResearchSourceV1 {
   readonly uri?: string;
   readonly notes?: string;
   readonly tutorialTechnique?: GptTutorialTechniqueV1;
+  readonly tutorialCompilation?: GptTutorialCausalCompilationV1;
 }
 
 export interface GptCapabilityGapV1 {

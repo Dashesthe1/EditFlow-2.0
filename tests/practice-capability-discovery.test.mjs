@@ -106,6 +106,7 @@ test("legacy GPT assignments inherit the current Tutorial Drive-first research p
   assert.match(migrated.chatMessage, /GPT completion is not Practice mastery/);
   assert.match(migrated.chatMessage, /weighted\/effect\/transition fidelity >= 0\.950/);
   assert.match(migrated.chatMessage, /Second priority is official Adobe documentation\/resources/);
+  assert.match(migrated.chatMessage, /tutorial causal compiler/);
   assert.doesNotMatch(migrated.chatMessage, /online research is required before accepting a fallback/);
 });
 
@@ -270,6 +271,62 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     }),
     /WHAT, WHEN\/WHY, HOW, ACCESS, PROOF, and TRANSFER/,
   );
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "RESEARCH",
+      summary: "Structured prose without the deep compiler cannot become matched tutorial evidence.",
+      researchSources: [{
+        sourceId: "tutorial-drive:manual-lookalike",
+        kind: "TUTORIAL_DRIVE",
+        title: "Manual lookalike",
+        uri: "https://drive.google.com/file/d/manual-lookalike/view",
+        tutorialTechnique: {
+          what: "Reverse recent frames.",
+          whenWhy: "Use on a visible rewind.",
+          how: "Use Time Remap.",
+          access: "Use native time controls.",
+          proof: "Verify backward source time.",
+          transfer: "Adapt the rewind span.",
+        },
+      }],
+    }),
+    /deep-analyzed and compiled by EditFlow/,
+  );
+
+  const reverseCompilation = (tutorialId, tutorialSkillId, fingerprintChar) => ({
+    schema: "editflow.gpt-tutorial-causal-compilation.v1",
+    compilerVersion: 1,
+    targetSkillId: "skill:temporal-rewind:v1",
+    tutorialId,
+    tutorialSkillId,
+    sourceRef: "drive://tutorial/" + tutorialId,
+    analysisFingerprint: fingerprintChar.repeat(64),
+    constructionPattern: "Enable Time Remap, preserve the forward source-time path, add a bounded descending source-time segment that replays the just-shown frames backward, then cut or resume according to the reference.",
+    capabilityIds: ["ae.layer.time_remap.enable", "ae.keyframe.set", "ae.keyframe.temporal_ease"],
+    adaptationNotes: "Adapt rewind duration, source-frame span, playback rate, interpolation, and whether playback resumes forward or cuts directly into the next shot.",
+    causalModel: {
+      triggerConditions: [
+        "The reference visibly replays source frames that were just shown before the transition exits.",
+      ],
+      invariants: [
+        "Source time descends during the rewind phase while the replayed frame sequence remains temporally coherent.",
+      ],
+      adaptationAxes: [
+        "Rewind duration, source-frame span, playback rate, interpolation, and exit behavior.",
+      ],
+      failureSignals: [
+        "Source time remains monotonic forward, or the construction replays the wrong source-frame span.",
+      ],
+      repairStrategies: [
+        "Re-measure the reference source-time trajectory and retime the descending Time Remap keys to the observed span and duration.",
+      ],
+      transferCriteria: [
+        "On materially different footage, preserve the negative source-time replay invariant while adapting span, duration, and exit behavior to the new reference.",
+      ],
+    },
+    evidenceRefs: ["tutorial-analysis:sha256:" + fingerprintChar.repeat(64)],
+  });
 
   const researchSources = [{
     sourceId: "tutorial-drive:smoothest-reverse-edit",
@@ -285,6 +342,11 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       proof: "Verify source-time direction from AE readback and rendered frame correspondence showing the same recently played frames moving backward.",
       transfer: "Adapt rewind span, speed, interpolation, and exit behavior to new footage from measured source motion and available handles instead of copying tutorial constants.",
     },
+    tutorialCompilation: reverseCompilation(
+      "tutorial.smoothest-reverse",
+      "tutorial-skill.reverse-playback",
+      "a",
+    ),
   }, {
     sourceId: "tutorial-drive:smooth-zoom-reverse",
     kind: "TUTORIAL_DRIVE",
@@ -299,6 +361,11 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       proof: "Compare temporal direction, transition anchor, scale/position trajectory, and rendered recovery against the reference window.",
       transfer: "Scale the motion envelope and rewind timing to the new shot's duration, motion energy, subject framing, and usable source handles.",
     },
+    tutorialCompilation: reverseCompilation(
+      "tutorial.smooth-zoom-reverse",
+      "tutorial-skill.smooth-zoom-reverse",
+      "b",
+    ),
   }, {
     sourceId: "adobe:time-remapping",
     kind: "ADOBE_DOCUMENTATION",
@@ -399,29 +466,28 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     }),
     /TRANSFER_VERIFIED is assigned only after a machine-verified transfer Practice completion/,
   );
-  await assert.rejects(
-    store.appendEvent({
-      assignmentId: assignment.assignmentId,
-      stage: "SKILL_COMMIT",
-      outcome: "SUCCESS",
-      summary: "A learned skill without causal transfer semantics must not become reusable knowledge.",
-      capabilityGap: resolvedGap,
-      learnedSkill: { ...learnedSkill, causalModel: undefined },
-      evidenceRefs: learnedSkill.evidenceRefs,
-    }),
-    /complete causal transfer model/,
-  );
   const commitEvent = await store.appendEvent({
     assignmentId: assignment.assignmentId,
     stage: "SKILL_COMMIT",
     outcome: "SUCCESS",
     summary: "Committed the AE-proven temporal-rewind skill to microwave-edit.",
     capabilityGap: resolvedGap,
-    learnedSkill,
+    learnedSkill: {
+      ...learnedSkill,
+      constructionPattern: "GPT placeholder that must be replaced by compiled tutorial semantics.",
+      capabilityIds: [],
+      adaptationNotes: undefined,
+      causalModel: undefined,
+      researchSources: [],
+    },
     reusableLesson: "When the reference replays recently shown frames backward, reproduce actual reverse source-time motion; reversing effect parameters or merely decaying the transition is not equivalent.",
     developmentPattern: "Detect missing temporal behavior, search the Tutorial Drive for the closest matching construction first, escalate to Adobe only when needed, prove source-time direction plus rendered appearance in AE, then retain the transferable construction.",
     evidenceRefs: learnedSkill.evidenceRefs,
   });
+  assert.doesNotMatch(commitEvent.learnedSkill.constructionPattern, /GPT placeholder/);
+  assert.deepEqual(commitEvent.learnedSkill.capabilityIds, learnedSkill.capabilityIds);
+  assert.equal(commitEvent.learnedSkill.causalModel.transferCriteria.length, 1);
+  assert.equal(commitEvent.learnedSkill.researchSources[0].kind, "TUTORIAL_DRIVE");
   registry.recordGptLearningEvent(commitEvent);
 
   const completed = await store.complete(assignment.assignmentId, {

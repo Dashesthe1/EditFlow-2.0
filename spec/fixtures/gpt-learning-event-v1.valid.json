@@ -28,7 +28,36 @@
       "kind": "TUTORIAL_DRIVE",
       "title": "How To Make The Smoothest Reverse Edit? | After Effects Tutorial",
       "uri": "https://drive.google.com/file/d/1XDrENfZUf36F2MYvMn62e8gDDUA1IzS6/view?usp=drivesdk",
-      "notes": "Tutorial-first construction reference for real reverse playback."
+      "notes": "Tutorial-first construction reference for real reverse playback.",
+      "tutorialTechnique": {
+        "what": "Replay recently shown source frames backward before the transition exits.",
+        "whenWhy": "Use when the reference visibly retraces recent motion as a transition accent.",
+        "how": "Build a bounded descending source-time segment with Time Remap.",
+        "access": "Requires native time-remap and keyframe control.",
+        "proof": "Rendered source-time direction must become negative over the measured rewind window.",
+        "transfer": "Preserve backward replay while adapting span, duration, speed, and exit behavior."
+      },
+      "tutorialCompilation": {
+        "schema": "editflow.gpt-tutorial-causal-compilation.v1",
+        "compilerVersion": 1,
+        "targetSkillId": "skill:temporal-rewind:v1",
+        "tutorialId": "tutorial:reverse-edit",
+        "tutorialSkillId": "skill.reverse-playback",
+        "sourceRef": "drive://tutorial/reverse-edit",
+        "analysisFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "constructionPattern": "Use Time Remap keyframes with a descending source-time segment.",
+        "capabilityIds": ["ae.layer.time_remap.enable", "ae.keyframe.set"],
+        "adaptationNotes": "Adapt source-frame span, duration, speed, and exit behavior to the reference.",
+        "causalModel": {
+          "triggerConditions": ["The reference visibly replays source frames that were just shown."],
+          "invariants": ["Source time descends during the rewind phase."],
+          "adaptationAxes": ["Rewind duration and source-frame span."],
+          "failureSignals": ["Source time remains monotonic forward."],
+          "repairStrategies": ["Re-measure and retime the descending Time Remap keys."],
+          "transferCriteria": ["Preserve negative source-time replay on materially different footage."]
+        },
+        "evidenceRefs": ["tutorial-analysis:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+      }
     },
     {
       "sourceId": "adobe:time-remapping",
@@ -75,7 +104,36 @@
         "kind": "TUTORIAL_DRIVE",
         "title": "How To Make The Smoothest Reverse Edit? | After Effects Tutorial",
         "uri": "https://drive.google.com/file/d/1XDrENfZUf36F2MYvMn62e8gDDUA1IzS6/view?usp=drivesdk",
-        "notes": "Tutorial-first construction reference for real reverse playback."
+        "notes": "Tutorial-first construction reference for real reverse playback.",
+        "tutorialTechnique": {
+          "what": "Replay recently shown source frames backward before the transition exits.",
+          "whenWhy": "Use when the reference visibly retraces recent motion as a transition accent.",
+          "how": "Build a bounded descending source-time segment with Time Remap.",
+          "access": "Requires native time-remap and keyframe control.",
+          "proof": "Rendered source-time direction must become negative over the measured rewind window.",
+          "transfer": "Preserve backward replay while adapting span, duration, speed, and exit behavior."
+        },
+        "tutorialCompilation": {
+          "schema": "editflow.gpt-tutorial-causal-compilation.v1",
+          "compilerVersion": 1,
+          "targetSkillId": "skill:temporal-rewind:v1",
+          "tutorialId": "tutorial:reverse-edit",
+          "tutorialSkillId": "skill.reverse-playback",
+          "sourceRef": "drive://tutorial/reverse-edit",
+          "analysisFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "constructionPattern": "Use Time Remap keyframes with a descending source-time segment.",
+          "capabilityIds": ["ae.layer.time_remap.enable", "ae.keyframe.set"],
+          "adaptationNotes": "Adapt source-frame span, duration, speed, and exit behavior to the reference.",
+          "causalModel": {
+            "triggerConditions": ["The reference visibly replays source frames that were just shown."],
+            "invariants": ["Source time descends during the rewind phase."],
+            "adaptationAxes": ["Rewind duration and source-frame span."],
+            "failureSignals": ["Source time remains monotonic forward."],
+            "repairStrategies": ["Re-measure and retime the descending Time Remap keys."],
+            "transferCriteria": ["Preserve negative source-time replay on materially different footage."]
+          },
+          "evidenceRefs": ["tutorial-analysis:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+        }
       },
       {
         "sourceId": "adobe:time-remapping",
