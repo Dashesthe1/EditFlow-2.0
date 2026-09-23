@@ -116,7 +116,7 @@ constructions, and rationales produced the result.
 
 Failed attempts are training evidence, not disposable failures.
 
-### Capability discovery and online research loop
+### Capability discovery and tutorial-first research loop
 
 Practice is not restricted to techniques already stored in EditFlow. When GPT cannot
 faithfully explain or reproduce a defining reference behavior, it must open either a
@@ -127,12 +127,29 @@ For a missing or poorly understood technique, Practice records:
 
 `CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT`.
 
-Research must include at least one online source with retained provenance. First-party
-Adobe documentation is preferred for AE semantics, supplemented by professional
-tutorials, plugin documentation, and broader web sources where they add useful technique
-knowledge. Installed-feature inspection and internal evidence can supplement online
-research but cannot replace it for a newly discovered skill. Research establishes a
-hypothesis only; it cannot certify a capability without AE readback/render evidence.
+The Tutorial Drive is the mandatory first research source. Before consulting Adobe
+documentation or the public internet, GPT must search the available tutorial library for
+the closest matching visible behavior, editing technique, transition, retiming pattern,
+effect family, or beat/music workflow. The primary tutorial folders are
+`Adobe Effect Tutorials` and `Adobe Effect Music + Beat Tutorials`.
+
+A Tutorial Drive lookup is not satisfied by a folder-level glance. GPT should use the
+observed reference behavior to search semantically related tutorial titles and techniques,
+including useful synonyms, then inspect the best matching tutorial or tutorials to learn
+both WHAT the professional construction is doing and HOW it is built in After Effects.
+The retained lesson must extract transferable construction logic and adaptation rules,
+not merely copy literal parameter values.
+
+If no sufficiently relevant Tutorial Drive match exists, the RESEARCH trace must retain
+the tutorial query or matching attempt and the no-match result before escalation.
+Official Adobe documentation/resources and the installed Adobe feature/plugin surface
+are second priority. External professional tutorials and plugin/vendor documentation are
+third priority. Broader web/internet research is last.
+
+Every newly discovered skill must therefore retain Tutorial Drive provenance as the first
+RESEARCH source. Additional Adobe or external sources can supplement it when necessary.
+Research establishes a hypothesis only; it cannot certify a capability without AE
+readback/render evidence.
 
 A committed learned skill must resolve its gap, be at least `AE_PROVEN`, retain the
 research sources and proof evidence, and store transferable construction/adaptation
