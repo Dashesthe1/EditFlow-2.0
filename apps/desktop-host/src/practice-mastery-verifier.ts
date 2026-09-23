@@ -356,6 +356,18 @@ export class PracticeMasteryVerifierV1 {
         definingCoverage: 1,
         effectFidelity: 1,
         transitionFidelity: 1,
+        objectAwareProof: {
+          schema: "editflow.practice-object-aware-proof.v1" as const,
+          required: false,
+          referenceWindowCount: 0,
+          matchedWindowCount: 0,
+          passedWindowCount: 0,
+          overallScore: 1,
+          verified: false,
+          windows: [],
+          reasons: [],
+          evidenceRefs: [],
+        },
         diagnoses: [] as readonly string[],
         evidenceRefs: unique([
           ...referenceSequence.evidenceRefs,
@@ -409,10 +421,15 @@ export class PracticeMasteryVerifierV1 {
       minimumSimilarity,
     );
 
+    const objectAwareReasons = compared.objectAwareProof.required
+      && !compared.objectAwareProof.verified
+      ? compared.objectAwareProof.reasons
+      : [];
     const blockingReasons = unique([
       ...matchReasons,
       ...audioReasons,
       ...temporalBehaviorReasons,
+      ...objectAwareReasons,
     ]);
     const report: PracticeSimilarityReportV1 = {
       ...finalized,
@@ -432,6 +449,7 @@ export class PracticeMasteryVerifierV1 {
       minimumSimilarity,
       exactSceneConfidence,
       effectFamilyIds,
+      objectAwareProof: compared.objectAwareProof,
       report,
       matches,
       audioMatch,

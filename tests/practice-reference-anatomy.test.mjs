@@ -172,6 +172,10 @@ test("reference anatomy binds a cut-spanning effect to both shots and retains re
   assert.equal(window.transitionBoundaryMs, 500);
   assert.equal(window.effectFamilyId, "SUBJECT_ISOLATED_TRANSITION");
   assert.equal(window.objectCue.objectAware, true);
+  assert.equal(window.objectCue.relation, "SUBJECT_DOMINANT");
+  assert.equal(window.objectCue.subjectBackgroundDivergencePeak, 0.18);
+  assert.equal(window.objectCue.evidencePersistence, 1);
+  assert.ok(window.evidenceRefs.includes("practice-object-relation:SUBJECT_DOMINANT"));
   assert.equal(window.temporalCue.behavior, "FORWARD_THEN_REWIND");
   assert.equal(window.temporalCue.rewind.rewindSpanMs, 80);
   assert.deepEqual(anatomy.rewindShotIds, ["shot:001"]);

@@ -12,6 +12,23 @@ import {
 
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 
+test("M6.1 v11 real-pixel probe derives object motion only after camera compensation", async () => {
+  const source = await readFile("scripts/proofs/m6-dense-video-probe.py", "utf8");
+  assert.match(source, /PROBE_ALGORITHM_ID = "editflow\.m6\.dense-video-probe\.v11"/);
+  assert.match(source, /def independent_motion_observation\(flow, matrix\):/);
+  assert.match(source, /predicted = np\.stack/);
+  assert.match(source, /cv2\.connectedComponentsWithStats/);
+  assert.match(source, /object_motion = independent_motion_observation\(flow, matrix\)/);
+  assert.match(source, /semantic\["subjectCentroid"\] = object_motion\["subjectCentroid"\]/);
+  assert.match(source, /semantic\["backgroundCentroid"\] = \{/);
+  assert.match(source, /semantic\["maskCoverage"\] = object_motion\["maskCoverage"\]/);
+  assert.doesNotMatch(
+    source,
+    /semantic\["occlusion"\]\s*=\s*active/,
+    "whole-frame residual coverage must never be promoted directly to foreground occlusion",
+  );
+});
+
 test("M6.1 retained microwave evidence is dense, real-pixel, and source-keyed", async () => {
   const reference = await readJson("proofs/diagnostics/m6-microwave-reference-cut1-evidence.json");
   const render = await readJson("proofs/diagnostics/m6-live-ae-microwave-cut1-evidence.json");

@@ -91,6 +91,7 @@ const FAMILY_CONTRACTS: Readonly<Record<Exclude<EffectFamilyV1, "UNKNOWN">, read
   SUBJECT_ISOLATED_TRANSITION: [
     invariant("isolation.separation", "ISOLATION", "subjectSeparationPeak", "MIN", 0.3, 0.06, true, "Foreground and background require materially different behavior."),
     invariant("isolation.mask", "ISOLATION", "maskCoveragePeak", "MIN", 0.06, 0.02, true, "A subject matte or equivalent separation must be evidenced."),
+    invariant("isolation.motion-divergence", "ISOLATION", "subjectBackgroundDivergencePeak", "MIN", 0.08, 0.03, false, "Subject and background motion should preserve their measured independence when the reference exhibits it."),
   ],
   WHIP_SMEAR: [
     invariant("whip.motion", "SPATIAL", "displacementPeak", "MIN", 0.18, 0.04, true, "Large directional displacement defines a whip."),
@@ -209,7 +210,9 @@ const dimensionsForEvidence = (evidence: DenseEffectEvidenceV1): readonly Visual
   const dimensions: VisualDimensionV1[] = [];
   if (s.displacementPeak > 0.025 || (s.stateSeparationPeak ?? 0) > 0.015 || s.scaleRange > 0.025 || s.rotationRange > 2) dimensions.push("SPATIAL");
   if (s.temporalStateCountPeak > 1 || s.temporalPersistence > 0.2) dimensions.push("TEMPORAL");
-  if (s.subjectSeparationPeak > 0.12 || maxFrame(evidence, "maskCoverage") > 0.05) dimensions.push("ISOLATION");
+  if (s.subjectSeparationPeak > 0.12
+    || maxFrame(evidence, "maskCoverage") > 0.05
+    || maxFrame(evidence, "subjectBackgroundDivergence") > 0.08) dimensions.push("ISOLATION");
   if (s.blurPeak > 0.12 || s.exposurePeak > 0.55 || maxFrame(evidence, "chromaticSeparation") > 0.08) dimensions.push("OPTICAL");
   if (s.distortionPeak > 0.12) dimensions.push("DISTORTION");
   if (s.overlapDensityPeak > 0.1 || s.occlusionPeak > 0.1) dimensions.push("COMPOSITING");
@@ -232,6 +235,9 @@ const observedMetricValue = (
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (metric === "displacementDirection") return evidence.summary.displacementDirection;
   if (metric === "maskCoveragePeak") return maxFrame(evidence, "maskCoverage");
+  if (metric === "subjectBackgroundDivergencePeak") {
+    return maxFrame(evidence, "subjectBackgroundDivergence");
+  }
   if (metric === "chromaticSeparationPeak") return maxFrame(evidence, "chromaticSeparation");
   if (metric === "stateSeparationPeak") return stateSeparation(evidence);
   if (metric === "fragmentationCoherencePeak") return fragmentation.peak;

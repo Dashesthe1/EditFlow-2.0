@@ -26,6 +26,7 @@
       "items": { "type": "string", "minLength": 1 },
       "uniqueItems": true
     },
+    "objectAwareProof": { "$ref": "#/$defs/objectAwareProof" },
     "report": { "$ref": "#/$defs/report" },
     "matches": {
       "type": "array",
@@ -67,6 +68,75 @@
         "transitionFidelity": { "$ref": "#/$defs/score" },
         "colorFinish": { "$ref": "#/$defs/score" },
         "pixelStructure": { "$ref": "#/$defs/score" }
+      }
+    },
+    "objectAwareWindowProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "referenceWindowId", "renderWindowId", "effectFamilyId", "relation",
+        "relationMatched", "score", "passed", "reasons", "evidenceRefs"
+      ],
+      "properties": {
+        "referenceWindowId": { "type": "string", "minLength": 1 },
+        "renderWindowId": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "effectFamilyId": { "type": "string", "minLength": 1 },
+        "relation": {
+          "enum": [
+            "CO_MOVING", "SUBJECT_DOMINANT", "BACKGROUND_DOMINANT",
+            "DIVERGENT", "MASK_DRIVEN", "OCCLUSION_DRIVEN"
+          ]
+        },
+        "relationMatched": { "type": "boolean" },
+        "score": { "$ref": "#/$defs/score" },
+        "passed": { "type": "boolean" },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "objectAwareProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "required", "referenceWindowCount", "matchedWindowCount",
+        "passedWindowCount", "overallScore", "verified", "windows", "reasons",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "schema": { "const": "editflow.practice-object-aware-proof.v1" },
+        "required": { "type": "boolean" },
+        "referenceWindowCount": { "type": "integer", "minimum": 0 },
+        "matchedWindowCount": { "type": "integer", "minimum": 0 },
+        "passedWindowCount": { "type": "integer", "minimum": 0 },
+        "overallScore": { "$ref": "#/$defs/score" },
+        "verified": { "type": "boolean" },
+        "windows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/objectAwareWindowProof" }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
       }
     },
     "report": {

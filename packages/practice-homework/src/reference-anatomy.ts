@@ -4,6 +4,7 @@ import {
   type DenseEffectWindowV1,
 } from "../../visual-effects-intelligence/src/index.js";
 import type {
+  PracticeObjectMotionRelationV1,
   PracticeReferenceAnalysisV1,
   PracticeReferenceAnatomyV1,
   PracticeReferenceCutV1,
@@ -21,6 +22,54 @@ const maxFrame = (
   window: DenseEffectWindowV1,
   key: "maskCoverage" | "occlusion",
 ): number => Math.max(0, ...window.evidence.frames.map((frame) => frame[key]));
+
+const objectMetricsForWindow = (window: DenseEffectWindowV1) => {
+  const frames = window.evidence.frames;
+  const peakFrame = [...frames].sort((a, b) =>
+    b.subjectBackgroundDivergence - a.subjectBackgroundDivergence)[0];
+  const subjectMotionPeak = Math.max(
+    0,
+    ...frames.map((frame) => Math.hypot(frame.subjectMotion.x, frame.subjectMotion.y)),
+  );
+  const backgroundMotionPeak = Math.max(
+    0,
+    ...frames.map((frame) => Math.hypot(frame.backgroundMotion.x, frame.backgroundMotion.y)),
+  );
+  const evidencePersistence = frames.length === 0 ? 0 : frames.filter((frame) =>
+    frame.subjectSeparation >= 0.08
+    || frame.maskCoverage >= 0.03
+    || frame.occlusion >= 0.12
+    || frame.subjectBackgroundDivergence >= 0.05).length / frames.length;
+  return {
+    divergencePeak: Math.max(0, ...frames.map((frame) => frame.subjectBackgroundDivergence)),
+    evidencePersistence,
+    subjectMotionPeak,
+    backgroundMotionPeak,
+    subjectMotionDirection: peakFrame?.subjectMotion ?? { x: 0, y: 0 },
+    backgroundMotionDirection: peakFrame?.backgroundMotion ?? { x: 0, y: 0 },
+  };
+};
+
+const objectRelationFor = (input: {
+  readonly maskCoveragePeak: number;
+  readonly occlusionPeak: number;
+  readonly divergencePeak: number;
+  readonly subjectMotionPeak: number;
+  readonly backgroundMotionPeak: number;
+}): PracticeObjectMotionRelationV1 => {
+  if (input.occlusionPeak >= 0.65) return "OCCLUSION_DRIVEN";
+  if (input.maskCoveragePeak >= 0.12) return "MASK_DRIVEN";
+  if (input.divergencePeak >= 0.08) {
+    if (input.subjectMotionPeak >= Math.max(0.04, input.backgroundMotionPeak * 1.35)) {
+      return "SUBJECT_DOMINANT";
+    }
+    if (input.backgroundMotionPeak >= Math.max(0.04, input.subjectMotionPeak * 1.35)) {
+      return "BACKGROUND_DOMINANT";
+    }
+    return "DIVERGENT";
+  }
+  return "CO_MOVING";
+};
 
 const orderedShots = (reference: PracticeReferenceAnalysisV1) =>
   [...reference.shots].sort((a, b) => a.order - b.order);
@@ -153,9 +202,22 @@ const anatomyWindow = (
   const summary = window.evidence.summary;
   const maskCoveragePeak = maxFrame(window, "maskCoverage");
   const occlusionPeak = Math.max(summary.occlusionPeak, maxFrame(window, "occlusion"));
-  const objectAware = summary.subjectSeparationPeak >= 0.12
+  const objectMotion = objectMetricsForWindow(window);
+  const persistentObjectEvidence = objectMotion.evidencePersistence
+    >= (window.evidence.frames.length <= 4 ? 0.25 : 0.2);
+  const objectAware = persistentObjectEvidence && (
+    summary.subjectSeparationPeak >= 0.12
     || maskCoveragePeak >= 0.05
-    || occlusionPeak >= 0.18;
+    || occlusionPeak >= 0.18
+    || objectMotion.divergencePeak >= 0.08
+  );
+  const objectRelation = objectRelationFor({
+    maskCoveragePeak,
+    occlusionPeak,
+    divergencePeak: objectMotion.divergencePeak,
+    subjectMotionPeak: objectMotion.subjectMotionPeak,
+    backgroundMotionPeak: objectMotion.backgroundMotionPeak,
+  });
   const temporalCue = temporalCueFor(familyId, shotIds, matches);
   return {
     windowId: window.windowId,
@@ -180,7 +242,14 @@ const anatomyWindow = (
     },
     objectCue: {
       objectAware,
+      relation: objectRelation,
+      evidencePersistence: objectMotion.evidencePersistence,
       subjectSeparationPeak: summary.subjectSeparationPeak,
+      subjectBackgroundDivergencePeak: objectMotion.divergencePeak,
+      subjectMotionPeak: objectMotion.subjectMotionPeak,
+      backgroundMotionPeak: objectMotion.backgroundMotionPeak,
+      subjectMotionDirection: objectMotion.subjectMotionDirection,
+      backgroundMotionDirection: objectMotion.backgroundMotionDirection,
       maskCoveragePeak,
       occlusionPeak,
     },
@@ -193,7 +262,12 @@ const anatomyWindow = (
       "practice-window-relation:" + relation,
       "practice-effect-family:" + familyId,
       "practice-temporal-behavior:" + temporalCue.behavior,
-      ...(objectAware ? ["practice-object-aware-window:" + window.windowId] : []),
+      ...(objectAware ? [
+        "practice-object-aware-window:" + window.windowId,
+        "practice-object-relation:" + objectRelation,
+        "practice-object-divergence:" + objectMotion.divergencePeak.toFixed(6),
+        "practice-object-persistence:" + objectMotion.evidencePersistence.toFixed(6),
+      ] : []),
       ...(temporalCue.rewind === null
         ? []
         : ["practice-rewind-span-ms:" + temporalCue.rewind.rewindSpanMs.toFixed(3)]),

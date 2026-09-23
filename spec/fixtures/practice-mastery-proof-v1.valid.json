@@ -10,6 +10,18 @@
   "minimumSimilarity": 0.95,
   "exactSceneConfidence": 0.95,
   "effectFamilyIds": ["SHUTTER_FRAGMENTATION"],
+  "objectAwareProof": {
+    "schema": "editflow.practice-object-aware-proof.v1",
+    "required": false,
+    "referenceWindowCount": 0,
+    "matchedWindowCount": 0,
+    "passedWindowCount": 0,
+    "overallScore": 1,
+    "verified": false,
+    "windows": [],
+    "reasons": [],
+    "evidenceRefs": []
+  },
   "report": {
     "schema": "editflow.practice-similarity.v1",
     "breakdown": {

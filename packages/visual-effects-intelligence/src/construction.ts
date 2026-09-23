@@ -54,7 +54,9 @@ const templateFor = (
     return { kind: "TEMPORAL_DUPLICATES", dimension: "SPATIAL",
       capabilities: ["ae.layer.duplicate", "ae.layer.time.offset", "ae.layer.opacity.set", "ae.layer.transform.set"] };
   }
-  if (invariant.metric === "subjectSeparationPeak" || invariant.metric === "maskCoveragePeak") {
+  if (invariant.metric === "subjectSeparationPeak"
+    || invariant.metric === "maskCoveragePeak"
+    || invariant.metric === "subjectBackgroundDivergencePeak") {
     return { kind: "SUBJECT_ISOLATION", dimension: "ISOLATION",
       capabilities: ["ae.subject.isolate", "ae.layer.matte.set"] };
   }

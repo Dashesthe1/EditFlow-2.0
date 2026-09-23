@@ -110,9 +110,24 @@ export interface PracticeReferenceMotionEnvelopeV1 {
   readonly recoveryDurationMs: number;
 }
 
+export type PracticeObjectMotionRelationV1 =
+  | "CO_MOVING"
+  | "SUBJECT_DOMINANT"
+  | "BACKGROUND_DOMINANT"
+  | "DIVERGENT"
+  | "MASK_DRIVEN"
+  | "OCCLUSION_DRIVEN";
+
 export interface PracticeReferenceObjectCueV1 {
   readonly objectAware: boolean;
+  readonly relation: PracticeObjectMotionRelationV1;
+  readonly evidencePersistence: number;
   readonly subjectSeparationPeak: number;
+  readonly subjectBackgroundDivergencePeak: number;
+  readonly subjectMotionPeak: number;
+  readonly backgroundMotionPeak: number;
+  readonly subjectMotionDirection: Readonly<{ x: number; y: number }>;
+  readonly backgroundMotionDirection: Readonly<{ x: number; y: number }>;
   readonly maskCoveragePeak: number;
   readonly occlusionPeak: number;
 }
@@ -255,6 +270,31 @@ export interface PracticeEpisodeV1 {
   readonly bestAttempt: PracticeAttemptV1 | null;
 }
 
+export interface PracticeObjectAwareWindowProofV1 {
+  readonly referenceWindowId: string;
+  readonly renderWindowId: string | null;
+  readonly effectFamilyId: string;
+  readonly relation: PracticeObjectMotionRelationV1;
+  readonly relationMatched: boolean;
+  readonly score: number;
+  readonly passed: boolean;
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeObjectAwareProofV1 {
+  readonly schema: "editflow.practice-object-aware-proof.v1";
+  readonly required: boolean;
+  readonly referenceWindowCount: number;
+  readonly matchedWindowCount: number;
+  readonly passedWindowCount: number;
+  readonly overallScore: number;
+  readonly verified: boolean;
+  readonly windows: readonly PracticeObjectAwareWindowProofV1[];
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeMasteryProofV1 {
   readonly schema: "editflow.practice-mastery-proof.v1";
   readonly sessionId: string;
@@ -267,6 +307,7 @@ export interface PracticeMasteryProofV1 {
   readonly minimumSimilarity: number;
   readonly exactSceneConfidence: number;
   readonly effectFamilyIds: readonly string[];
+  readonly objectAwareProof?: PracticeObjectAwareProofV1;
   readonly report: PracticeSimilarityReportV1;
   readonly matches: readonly PracticeSceneMatchV1[];
   readonly audioMatch: PracticeAudioMatchV1 | null;

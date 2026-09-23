@@ -27,6 +27,8 @@ import type {
   PracticeAttemptV1,
   PracticeContentBaselineV1,
   PracticeDecisionTraceV1,
+  PracticeObjectAwareProofV1,
+  PracticeObjectMotionRelationV1,
   PracticeHomeworkAdaptersV1,
   PracticeReconstructionOutputV1,
   PracticeReferenceAnalysisV1,
@@ -266,6 +268,298 @@ const learnedGraphForWindow = (input: {
   };
 };
 
+interface PracticeObjectWindowMetricsV1 {
+  readonly frameCount: number;
+  readonly evidencePersistence: number;
+  readonly subjectSeparationPeak: number;
+  readonly maskCoveragePeak: number;
+  readonly occlusionPeak: number;
+  readonly subjectBackgroundDivergencePeak: number;
+  readonly subjectMotionPeak: number;
+  readonly backgroundMotionPeak: number;
+  readonly subjectMotionDirection: Readonly<{ x: number; y: number }>;
+  readonly backgroundMotionDirection: Readonly<{ x: number; y: number }>;
+  readonly relation: PracticeObjectMotionRelationV1;
+}
+
+const objectWindowMetrics = (
+  window: DenseEffectWindowV1,
+): PracticeObjectWindowMetricsV1 => {
+  const frames = window.evidence.frames;
+  const maxScalar = (
+    getter: (frame: DenseEffectEvidenceV1["frames"][number]) => number,
+  ): number => Math.max(0, ...frames.map(getter));
+  const peakFrame = [...frames].sort((a, b) =>
+    b.subjectBackgroundDivergence - a.subjectBackgroundDivergence)[0];
+  const subjectMotionPeak = maxScalar((frame) =>
+    Math.hypot(frame.subjectMotion.x, frame.subjectMotion.y));
+  const backgroundMotionPeak = maxScalar((frame) =>
+    Math.hypot(frame.backgroundMotion.x, frame.backgroundMotion.y));
+  const evidencePersistence = frames.length === 0 ? 0 : frames.filter((frame) =>
+    frame.subjectSeparation >= 0.08
+    || frame.maskCoverage >= 0.03
+    || frame.occlusion >= 0.12
+    || frame.subjectBackgroundDivergence >= 0.05).length / frames.length;
+  const subjectBackgroundDivergencePeak = maxScalar(
+    (frame) => frame.subjectBackgroundDivergence,
+  );
+  const maskCoveragePeak = maxScalar((frame) => frame.maskCoverage);
+  const occlusionPeak = Math.max(
+    window.evidence.summary.occlusionPeak,
+    maxScalar((frame) => frame.occlusion),
+  );
+  const relation: PracticeObjectMotionRelationV1 = occlusionPeak >= 0.65
+    ? "OCCLUSION_DRIVEN"
+    : maskCoveragePeak >= 0.12
+      ? "MASK_DRIVEN"
+      : subjectBackgroundDivergencePeak >= 0.08
+        ? subjectMotionPeak >= Math.max(0.04, backgroundMotionPeak * 1.35)
+          ? "SUBJECT_DOMINANT"
+          : backgroundMotionPeak >= Math.max(0.04, subjectMotionPeak * 1.35)
+            ? "BACKGROUND_DOMINANT"
+            : "DIVERGENT"
+        : "CO_MOVING";
+  return {
+    frameCount: frames.length,
+    evidencePersistence,
+    subjectSeparationPeak: window.evidence.summary.subjectSeparationPeak,
+    maskCoveragePeak,
+    occlusionPeak,
+    subjectBackgroundDivergencePeak,
+    subjectMotionPeak,
+    backgroundMotionPeak,
+    subjectMotionDirection: peakFrame?.subjectMotion ?? { x: 0, y: 0 },
+    backgroundMotionDirection: peakFrame?.backgroundMotion ?? { x: 0, y: 0 },
+    relation,
+  };
+};
+
+const objectAwareRequired = (metrics: PracticeObjectWindowMetricsV1): boolean => {
+  const persistenceFloor = metrics.frameCount <= 4 ? 0.25 : 0.2;
+  return metrics.evidencePersistence >= persistenceFloor && (
+    metrics.subjectSeparationPeak >= 0.12
+    || metrics.maskCoveragePeak >= 0.05
+    || metrics.occlusionPeak >= 0.18
+    || metrics.subjectBackgroundDivergencePeak >= 0.08
+  );
+};
+
+const relativeObjectScore = (
+  referenceValue: number,
+  renderValue: number,
+  floor = 0.05,
+): number => clamp01(
+  Math.exp(-Math.abs(renderValue - referenceValue) / Math.max(referenceValue, floor)),
+);
+
+const directionObjectScore = (
+  referenceValue: Readonly<{ x: number; y: number }>,
+  renderValue: Readonly<{ x: number; y: number }>,
+): number => {
+  const referenceMagnitude = Math.hypot(referenceValue.x, referenceValue.y);
+  const renderMagnitude = Math.hypot(renderValue.x, renderValue.y);
+  if (referenceMagnitude < 0.02 && renderMagnitude < 0.02) return 1;
+  if (referenceMagnitude < 0.02 || renderMagnitude < 0.02) return 0;
+  const cosine = clampRange(
+    (referenceValue.x * renderValue.x + referenceValue.y * renderValue.y)
+      / (referenceMagnitude * renderMagnitude),
+    -1,
+    1,
+  );
+  return clamp01((cosine + 1) / 2);
+};
+
+export const comparePracticeObjectAwareWindowsV1 = (
+  reference: DenseEffectSequenceV1,
+  render: DenseEffectSequenceV1,
+): PracticeObjectAwareProofV1 => {
+  const alignment = alignDenseEffectSequencesV1(reference, render);
+  const pairByReference = new Map(
+    alignment.pairs.map((pair) => [pair.referenceIndex, pair] as const),
+  );
+  const windows: PracticeObjectAwareProofV1["windows"][number][] = [];
+  const reasons: string[] = [];
+  const evidenceRefs: string[] = [];
+  let matchedWindowCount = 0;
+  let passedWindowCount = 0;
+
+  reference.windows.forEach((referenceWindow, referenceIndex) => {
+    const referenceMetrics = objectWindowMetrics(referenceWindow);
+    if (!objectAwareRequired(referenceMetrics)) return;
+    const pair = pairByReference.get(referenceIndex);
+    const effectFamilyId = classifyEffectFamilyV1(referenceWindow.evidence);
+    if (pair === undefined) {
+      const reason = "Object-aware reference window "
+        + referenceWindow.windowId + " has no aligned rendered window.";
+      reasons.push(reason);
+      windows.push({
+        referenceWindowId: referenceWindow.windowId,
+        renderWindowId: null,
+        effectFamilyId,
+        relation: referenceMetrics.relation,
+        relationMatched: false,
+        score: 0,
+        passed: false,
+        reasons: [reason],
+        evidenceRefs: [...referenceWindow.evidence.evidenceRefs],
+      });
+      evidenceRefs.push(...referenceWindow.evidence.evidenceRefs);
+      return;
+    }
+
+    const renderWindow = render.windows[pair.renderIndex];
+    if (renderWindow === undefined) return;
+    matchedWindowCount += 1;
+    const renderMetrics = objectWindowMetrics(renderWindow);
+    const metricScores: Array<Readonly<{ label: string; score: number }>> = [{
+      label: "object evidence persistence",
+      score: relativeObjectScore(
+        referenceMetrics.evidencePersistence,
+        renderMetrics.evidencePersistence,
+        0.2,
+      ),
+    }];
+    if (referenceMetrics.subjectSeparationPeak >= 0.12) {
+      metricScores.push({
+        label: "subject separation",
+        score: relativeObjectScore(
+          referenceMetrics.subjectSeparationPeak,
+          renderMetrics.subjectSeparationPeak,
+          0.12,
+        ),
+      });
+    }
+    if (referenceMetrics.maskCoveragePeak >= 0.05) {
+      metricScores.push({
+        label: "mask coverage",
+        score: relativeObjectScore(
+          referenceMetrics.maskCoveragePeak,
+          renderMetrics.maskCoveragePeak,
+          0.05,
+        ),
+      });
+    }
+    if (referenceMetrics.occlusionPeak >= 0.18) {
+      metricScores.push({
+        label: "occlusion",
+        score: relativeObjectScore(
+          referenceMetrics.occlusionPeak,
+          renderMetrics.occlusionPeak,
+          0.18,
+        ),
+      });
+    }
+    if (referenceMetrics.subjectBackgroundDivergencePeak >= 0.08) {
+      metricScores.push({
+        label: "subject/background divergence",
+        score: relativeObjectScore(
+          referenceMetrics.subjectBackgroundDivergencePeak,
+          renderMetrics.subjectBackgroundDivergencePeak,
+          0.08,
+        ),
+      });
+      if (referenceMetrics.subjectMotionPeak >= 0.04) {
+        metricScores.push({
+          label: "subject motion",
+          score: relativeObjectScore(
+            referenceMetrics.subjectMotionPeak,
+            renderMetrics.subjectMotionPeak,
+            0.04,
+          ),
+        });
+        metricScores.push({
+          label: "subject motion direction",
+          score: directionObjectScore(
+            referenceMetrics.subjectMotionDirection,
+            renderMetrics.subjectMotionDirection,
+          ),
+        });
+      }
+      if (referenceMetrics.backgroundMotionPeak >= 0.04) {
+        metricScores.push({
+          label: "background motion",
+          score: relativeObjectScore(
+            referenceMetrics.backgroundMotionPeak,
+            renderMetrics.backgroundMotionPeak,
+            0.04,
+          ),
+        });
+        metricScores.push({
+          label: "background motion direction",
+          score: directionObjectScore(
+            referenceMetrics.backgroundMotionDirection,
+            renderMetrics.backgroundMotionDirection,
+          ),
+        });
+      }
+    }
+    const relationMatched = referenceMetrics.relation === renderMetrics.relation;
+    const score = clamp01(mean([
+      ...metricScores.map((item) => item.score),
+      relationMatched ? 1 : 0,
+    ], relationMatched ? 1 : 0));
+    const failedMetrics = metricScores.filter((item) => item.score < 0.72);
+    const windowReasons = [
+      ...(relationMatched
+        ? []
+        : ["Object relation changed from " + referenceMetrics.relation
+          + " to " + renderMetrics.relation + "."]),
+      ...failedMetrics.map((item) =>
+        "Object-aware " + item.label + " fidelity is below the proof floor."),
+    ];
+    const passed = relationMatched && failedMetrics.length === 0 && score >= 0.8;
+    if (passed) passedWindowCount += 1;
+    reasons.push(...windowReasons.map((reason) =>
+      referenceWindow.windowId + ": " + reason));
+    const windowEvidence = unique([
+      ...referenceWindow.evidence.evidenceRefs,
+      ...renderWindow.evidence.evidenceRefs,
+      "practice-object-reference-relation:" + referenceMetrics.relation,
+      "practice-object-render-relation:" + renderMetrics.relation,
+      "practice-object-window-score:" + score.toFixed(6),
+      "practice-object-reference-persistence:"
+        + referenceMetrics.evidencePersistence.toFixed(6),
+      "practice-object-render-persistence:"
+        + renderMetrics.evidencePersistence.toFixed(6),
+    ]);
+    evidenceRefs.push(...windowEvidence);
+    windows.push({
+      referenceWindowId: referenceWindow.windowId,
+      renderWindowId: renderWindow.windowId,
+      effectFamilyId,
+      relation: referenceMetrics.relation,
+      relationMatched,
+      score,
+      passed,
+      reasons: windowReasons,
+      evidenceRefs: windowEvidence,
+    });
+  });
+
+  const referenceWindowCount = windows.length;
+  const required = referenceWindowCount > 0;
+  const overallScore = required ? mean(windows.map((item) => item.score), 0) : 1;
+  const verified = required
+    && matchedWindowCount === referenceWindowCount
+    && passedWindowCount === referenceWindowCount
+    && overallScore >= 0.8;
+  if (required && !verified && reasons.length === 0) {
+    reasons.push("Object-aware reference behavior did not satisfy the retained proof gate.");
+  }
+  return {
+    schema: "editflow.practice-object-aware-proof.v1",
+    required,
+    referenceWindowCount,
+    matchedWindowCount,
+    passedWindowCount,
+    overallScore,
+    verified,
+    windows,
+    reasons: unique(reasons),
+    evidenceRefs: unique(evidenceRefs),
+  };
+};
+
 export const comparePracticeM6AlignedWindowsV1 = (
   reference: DenseEffectSequenceV1,
   render: DenseEffectSequenceV1,
@@ -274,10 +568,12 @@ export const comparePracticeM6AlignedWindowsV1 = (
   definingCoverage: number;
   effectFidelity: number;
   transitionFidelity: number;
+  objectAwareProof: PracticeObjectAwareProofV1;
   diagnoses: readonly string[];
   evidenceRefs: readonly string[];
 }> => {
   const alignment = alignDenseEffectSequencesV1(reference, render);
+  const objectAwareProof = comparePracticeObjectAwareWindowsV1(reference, render);
   const comparisons: FidelityComparisonV1[] = [];
   const diagnoses: string[] = [];
   let definingPassed = 0;
@@ -334,10 +630,17 @@ export const comparePracticeM6AlignedWindowsV1 = (
       0,
     ) * referenceRecall),
     transitionFidelity: clamp01(sequenceCoverage * semanticSequenceScore),
-    diagnoses,
+    objectAwareProof,
+    diagnoses: unique([
+      ...diagnoses,
+      ...(objectAwareProof.required && !objectAwareProof.verified
+        ? objectAwareProof.reasons
+        : []),
+    ]),
     evidenceRefs: unique([
       ...reference.evidenceRefs,
       ...render.evidenceRefs,
+      ...objectAwareProof.evidenceRefs,
       ...comparisons.flatMap((comparison) => [
         `m6-reference-evidence:${comparison.referenceEvidenceKey}`,
         `m6-render-evidence:${comparison.renderEvidenceKey}`,
@@ -474,7 +777,14 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ...(windowAnatomy.transitionBoundaryMs === null
               ? []
               : [`transition-boundary-ms:${windowAnatomy.transitionBoundaryMs.toFixed(3)}`]),
-            ...(windowAnatomy.objectCue.objectAware ? ["object-aware:true"] : []),
+            ...(windowAnatomy.objectCue.objectAware ? [
+              "object-aware:true",
+              `object-relation:${windowAnatomy.objectCue.relation}`,
+              `object-divergence:${windowAnatomy.objectCue.subjectBackgroundDivergencePeak.toFixed(6)}`,
+              `object-persistence:${windowAnatomy.objectCue.evidencePersistence.toFixed(6)}`,
+              `subject-motion-peak:${windowAnatomy.objectCue.subjectMotionPeak.toFixed(6)}`,
+              `background-motion-peak:${windowAnatomy.objectCue.backgroundMotionPeak.toFixed(6)}`,
+            ] : []),
             ...(windowAnatomy.temporalCue.rewind === null
               ? []
               : [`rewind-span-ms:${windowAnatomy.temporalCue.rewind.rewindSpanMs.toFixed(3)}`]),
@@ -487,7 +797,10 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           `M6_FAMILY_${family}`,
           ...(windowAnatomy === undefined ? [] : [
             `REFERENCE_${windowAnatomy.relation}`,
-            ...(windowAnatomy.objectCue.objectAware ? ["REFERENCE_OBJECT_AWARE"] : []),
+            ...(windowAnatomy.objectCue.objectAware ? [
+              "REFERENCE_OBJECT_AWARE",
+              `REFERENCE_OBJECT_RELATION_${windowAnatomy.objectCue.relation}`,
+            ] : []),
             ...(windowAnatomy.temporalCue.rewind === null ? [] : ["REFERENCE_REWIND_MEASURED"]),
           ]),
           ...(learned === null ? [] : ["EDIT_TYPE_TRANSFER_APPLIED"]),

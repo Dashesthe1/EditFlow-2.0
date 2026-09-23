@@ -40,10 +40,14 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
   readonly proof: PracticeMasteryProofV1;
   readonly proofRef: string;
   readonly traceReasons?: readonly string[];
-  readonly objectAwareVerified?: boolean;
 }): PracticeHeldOutBenchmarkCaseV1 => {
+  const objectProofReasons = input.proof.objectAwareProof?.required === true
+    && !input.proof.objectAwareProof.verified
+    ? input.proof.objectAwareProof.reasons
+    : [];
   const reasons = [...new Set([
     ...input.proof.report.reasons,
+    ...objectProofReasons,
     ...(input.traceReasons ?? []),
   ].map((value) => value.trim()).filter(Boolean))];
   return {
@@ -52,7 +56,8 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     referenceFingerprint: input.proof.referenceFingerprint,
     sourceFingerprint: input.proof.sourceFingerprint,
     effectFamilyIds: [...input.proof.effectFamilyIds],
-    objectAwareVerified: input.objectAwareVerified ?? false,
+    objectAwareVerified: input.proof.objectAwareProof?.required === true
+      && input.proof.objectAwareProof.verified,
     overallSimilarity: input.proof.report.overallSimilarity,
     definingEffectCoverage: input.proof.report.definingEffectCoverage,
     passed: input.proof.report.passed && reasons.length === 0,
@@ -60,6 +65,7 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     evidenceRefs: [...new Set([
       input.proofRef,
       ...input.proof.evidenceRefs,
+      ...(input.proof.objectAwareProof?.evidenceRefs ?? []),
     ].map((value) => value.trim()).filter(Boolean))],
   };
 };
@@ -182,14 +188,13 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       const normalized = ref.trim();
       if (normalized.length > 0) evidenceRefs.add(normalized);
     }
-    if (item.objectAwareVerified) objectAwareCaseCount += 1;
-    if (item.passed
+    const caseMeetsMachineGate = item.passed
       && item.overallSimilarity >= policy.minimumSimilarity
       && item.definingEffectCoverage >= policy.minimumDefiningEffectCoverage
       && item.effectFamilyIds.length > 0
-      && item.evidenceRefs.length > 0) {
-      passedCaseCount += 1;
-    }
+      && item.evidenceRefs.length > 0;
+    if (item.objectAwareVerified && caseMeetsMachineGate) objectAwareCaseCount += 1;
+    if (caseMeetsMachineGate) passedCaseCount += 1;
   }
 
   const objectAwareVerified = objectAwareCaseCount >= policy.minimumObjectAwareCases;

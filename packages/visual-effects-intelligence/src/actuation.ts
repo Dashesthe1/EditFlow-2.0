@@ -33,6 +33,7 @@ const CONTROL_BY_METRIC: Readonly<Record<string, readonly ConstructionControlKin
   distortionPeak: ["DISTORTION_STRENGTH", "DISTORTION_SIZE", "DISTORTION_COMPLEXITY", "DISTORTION_EVOLUTION"],
   subjectSeparationPeak: ["SUBJECT_ISOLATION"],
   maskCoveragePeak: ["SUBJECT_ISOLATION"],
+  subjectBackgroundDivergencePeak: ["SUBJECT_ISOLATION"],
   occlusionPeak: ["OCCLUSION_COVERAGE"],
   chromaticSeparationPeak: ["CHROMATIC_SEPARATION"],
   scaleRange: ["SCALE_PULSE"],

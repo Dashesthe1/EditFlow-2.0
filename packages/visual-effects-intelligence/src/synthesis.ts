@@ -341,6 +341,15 @@ export const decomposeUnknownEffectV1 = (evidence: DenseEffectEvidenceV1): Effec
       add(defining, rangeInvariant("unknown.isolation", "ISOLATION", "subjectSeparationPeak",
         s.subjectSeparationPeak), s.subjectSeparationPeak);
     }
+    const subjectBackgroundDivergence = maxFrame(evidence, "subjectBackgroundDivergence");
+    if (subjectBackgroundDivergence > 0.08) {
+      add(defining, rangeInvariant(
+        "unknown.subject-background-divergence",
+        "ISOLATION",
+        "subjectBackgroundDivergencePeak",
+        subjectBackgroundDivergence,
+      ), subjectBackgroundDivergence);
+    }
     if (s.overlapDensityPeak > 0.12) {
       add(defining, rangeInvariant("unknown.overlap", "COMPOSITING", "overlapDensityPeak",
         s.overlapDensityPeak), s.overlapDensityPeak);

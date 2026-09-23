@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v10"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v11"
 
 
 def analyzer_fingerprint():
@@ -175,6 +175,99 @@ def motion_compensated_residual(previous, current, matrix):
     p90 = float(np.percentile(residual, 90) / 255.0)
     active = float(np.mean(residual >= 28))
     return mean, p90, active
+
+
+def independent_motion_observation(flow, matrix):
+    height, width = flow.shape[:2]
+    if height < 8 or width < 8:
+        return None
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float32)
+    predicted_x = matrix[0, 0] * xx + matrix[0, 1] * yy + matrix[0, 2]
+    predicted_y = matrix[1, 0] * xx + matrix[1, 1] * yy + matrix[1, 2]
+    predicted = np.stack((predicted_x - xx, predicted_y - yy), axis=-1)
+    residual = flow.astype(np.float32) - predicted
+    residual_mag = np.linalg.norm(residual, axis=2)
+    finite = np.isfinite(residual_mag)
+    values = residual_mag[finite]
+    if values.size < max(64, int(height * width * 0.25)):
+        return None
+
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(values - median)))
+    p75 = float(np.percentile(values, 75))
+    p90 = float(np.percentile(values, 90))
+    threshold = max(0.75, p75, median + 2.5 * max(mad, 0.15))
+    if p90 < threshold * 1.12:
+        return None
+
+    mask = ((residual_mag >= threshold) & finite).astype(np.uint8) * 255
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
+    total = float(height * width)
+    candidates = []
+    for label in range(1, count):
+        area = float(stats[label, cv2.CC_STAT_AREA])
+        coverage = area / total
+        if coverage < 0.008 or coverage > 0.48:
+            continue
+        component = labels == label
+        component_residual = residual_mag[component]
+        if component_residual.size == 0:
+            continue
+        strength = float(np.median(component_residual))
+        contrast = strength / max(median + mad, 0.35)
+        score = coverage * min(4.0, contrast)
+        candidates.append((score, label, coverage, strength))
+    if not candidates:
+        return None
+
+    _score, label, coverage, strength = max(candidates, key=lambda item: item[0])
+    component = labels == label
+    residual_vectors = residual[component]
+    if residual_vectors.size == 0:
+        return None
+    relative_vector = np.median(residual_vectors, axis=0)
+    centroid = centroids[label]
+    subject_centroid = {
+        "x": clamp01(float(centroid[0]) / max(width - 1, 1)),
+        "y": clamp01(float(centroid[1]) / max(height - 1, 1)),
+    }
+    relative_motion = {
+        "x": float(relative_vector[0]) / max(width, 1),
+        "y": float(relative_vector[1]) / max(height, 1),
+    }
+    relative_magnitude = math.hypot(relative_motion["x"], relative_motion["y"])
+    separation = clamp01(relative_magnitude * 5.0)
+    border = max(2, int(round(min(width, height) * 0.035)))
+    border_mask = np.zeros((height, width), dtype=bool)
+    border_mask[:border, :] = True
+    border_mask[-border:, :] = True
+    border_mask[:, :border] = True
+    border_mask[:, -border:] = True
+    edge_contact = float(np.mean(component[border_mask])) if np.any(border_mask) else 0.0
+    occlusion = clamp01(
+        max(0.0, coverage - 0.18) * 1.8
+        * min(1.0, edge_contact * 8.0)
+    )
+    confidence = clamp01(
+        (0.55 * min(1.0, strength / max(threshold * 1.5, 1e-6)))
+        + (0.30 * min(1.0, coverage / 0.12))
+        + (0.15 * min(1.0, p90 / max(threshold * 2.0, 1e-6)))
+    )
+    if confidence < 0.45 or separation < 0.025:
+        return None
+    return {
+        "subjectCentroid": subject_centroid,
+        "relativeMotion": relative_motion,
+        "maskCoverage": clamp01(coverage),
+        "subjectSeparation": separation,
+        "occlusion": occlusion,
+        "confidence": confidence,
+        "thresholdPixels": threshold,
+        "residualP90Pixels": p90,
+    }
 
 
 def edge_echo_surface(gray):
@@ -352,6 +445,8 @@ def analyze_frames(frames, fps):
     sharp_reference = max(float(np.percentile(sharpness, 90)), 1e-6)
     cumulative_scale = 1.0
     cumulative_rotation = 0.0
+    background_centroid_x = 0.5
+    background_centroid_y = 0.5
     output = []
     for offset, ((source_index, frame), gray) in enumerate(zip(frames, grays)):
         state_count, echo_strength, overlap_density, state_separation = edge_echo_metrics(
@@ -382,6 +477,10 @@ def analyze_frames(frames, fps):
             "motionCompensatedResidualMean": 0.0,
             "motionCompensatedResidualP90": 0.0,
             "motionCompensatedResidualCoverage": 0.0,
+            "objectMotionDetected": 0.0,
+            "objectMotionConfidence": 0.0,
+            "objectMaskCoverage": 0.0,
+            "objectRelativeMotion": 0.0,
         }
         if offset > 0:
             previous = grays[offset - 1]
@@ -405,6 +504,27 @@ def analyze_frames(frames, fps):
                 cumulative_rotation += step_rotation
                 semantic["scale"] = float(cumulative_scale)
                 semantic["rotationDegrees"] = float(cumulative_rotation)
+                background_centroid_x = clamp01(background_centroid_x + tx / max(width, 1))
+                background_centroid_y = clamp01(background_centroid_y + ty / max(height, 1))
+                object_motion = independent_motion_observation(flow, matrix)
+                if object_motion is not None:
+                    semantic["subjectCentroid"] = object_motion["subjectCentroid"]
+                    semantic["backgroundCentroid"] = {
+                        "x": float(background_centroid_x),
+                        "y": float(background_centroid_y),
+                    }
+                    semantic["subjectSeparation"] = object_motion["subjectSeparation"]
+                    semantic["maskCoverage"] = object_motion["maskCoverage"]
+                    semantic["occlusion"] = object_motion["occlusion"]
+                    diagnostics["objectMotionDetected"] = 1.0
+                    diagnostics["objectMotionConfidence"] = object_motion["confidence"]
+                    diagnostics["objectMaskCoverage"] = object_motion["maskCoverage"]
+                    diagnostics["objectRelativeMotion"] = math.hypot(
+                        object_motion["relativeMotion"]["x"],
+                        object_motion["relativeMotion"]["y"],
+                    )
+                    diagnostics["objectResidualThresholdPixels"] = object_motion["thresholdPixels"]
+                    diagnostics["objectResidualP90Pixels"] = object_motion["residualP90Pixels"]
                 residual_mean, residual_p90, active = motion_compensated_residual(
                     previous, gray, matrix
                 )
@@ -414,8 +534,9 @@ def analyze_frames(frames, fps):
                     + (flow_residual / diagonal) * 3.0
                 )
                 semantic["distortionStrength"] = nonrigid
-                # Residual coverage is recorded diagnostically, not mislabeled as
-                # foreground occlusion. Occlusion requires a matte/depth cue.
+                # Whole-frame residual coverage remains diagnostic. Foreground
+                # occlusion is emitted only by the bounded independent-motion
+                # component heuristic above, never by residual coverage alone.
                 diagnostics["affineInlierRatio"] = inlier_ratio
                 diagnostics["motionCompensatedResidualMean"] = residual_mean
                 diagnostics["motionCompensatedResidualP90"] = residual_p90

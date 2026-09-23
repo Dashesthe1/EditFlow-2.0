@@ -11,6 +11,7 @@ import {
   ProCreationPreparationEngineV1,
   buildPracticeHeldOutBenchmarkCaseV1,
   classifyPracticeMasteryScopeV1,
+  comparePracticeObjectAwareWindowsV1,
   composePracticeM6ExecutionAdaptersV1,
   evaluatePracticeHeldOutBenchmarkV1,
   resolvePracticeLocalMediaPathV1,
@@ -499,6 +500,142 @@ const reference = {
   }],
   evidenceRefs: ["reference:analysis"],
 };
+
+const oneWindowSequence = (sourceId, evidence) => ({
+  schema: "editflow.dense-effect-sequence.v1",
+  sourceId,
+  windows: [{
+    windowId: "window:object-aware",
+    startIndex: 0,
+    endIndex: 6,
+    anchorIndex: 3,
+    startMs: 0,
+    endMs: 200,
+    anchorMs: 100,
+    peakEnergy: 0.5,
+    evidence,
+  }],
+  evidenceRefs: ["sequence:" + sourceId],
+});
+
+test("object-aware proof preserves subject/background relation and fails when it collapses", () => {
+  const referenceSequence = oneWindowSequence("reference:object-aware", referenceEvidence);
+  const matchingRenderEvidence = {
+    ...referenceEvidence,
+    sourceId: "render:object-aware:matching",
+    sourceKind: "RENDER",
+    contentKey: "fixture-content:render-matching",
+    evidenceRefs: ["fixture:render:matching"],
+  };
+  const passed = comparePracticeObjectAwareWindowsV1(
+    referenceSequence,
+    oneWindowSequence("render:object-aware:matching", matchingRenderEvidence),
+  );
+  assert.equal(passed.required, true);
+  assert.equal(passed.referenceWindowCount, 1);
+  assert.equal(passed.verified, true);
+  assert.equal(passed.windows[0].relationMatched, true);
+  assert.ok(passed.overallScore >= 0.8);
+
+  const collapsedFrames = referenceEvidence.frames.map((item) => ({
+    ...item,
+    subjectMotion: { x: 0.02, y: 0 },
+    backgroundMotion: { x: 0.02, y: 0 },
+    subjectBackgroundDivergence: 0,
+    subjectSeparation: 0.02,
+    maskCoverage: 0.01,
+  }));
+  const collapsedRenderEvidence = {
+    ...referenceEvidence,
+    sourceId: "render:object-aware:collapsed",
+    sourceKind: "RENDER",
+    contentKey: "fixture-content:render-collapsed",
+    frames: collapsedFrames,
+    summary: {
+      ...referenceEvidence.summary,
+      subjectSeparationPeak: 0.02,
+    },
+    evidenceRefs: ["fixture:render:collapsed"],
+  };
+  const failed = comparePracticeObjectAwareWindowsV1(
+    referenceSequence,
+    oneWindowSequence("render:object-aware:collapsed", collapsedRenderEvidence),
+  );
+  assert.equal(failed.required, true);
+  assert.equal(failed.verified, false);
+  assert.equal(failed.windows[0].passed, false);
+  assert.ok(failed.reasons.some((reason) => /Object relation changed/.test(reason)));
+});
+
+test("held-out object-aware maturity is derived from machine proof and failed cases do not count", () => {
+  const proof = {
+    schema: "editflow.practice-mastery-proof.v1",
+    sessionId: "practice:object-aware:held-out",
+    editTypeId: "object-aware-edit",
+    referenceId: "finish:object-aware",
+    sourceIndexId: "source-index:object-aware",
+    referenceFingerprint: "reference-object-aware-0001",
+    sourceFingerprint: "source-object-aware-0001",
+    finalRenderRef: "render:object-aware",
+    minimumSimilarity: 0.95,
+    exactSceneConfidence: 0.95,
+    effectFamilyIds: ["SUBJECT_ISOLATED_TRANSITION"],
+    objectAwareProof: {
+      schema: "editflow.practice-object-aware-proof.v1",
+      required: true,
+      referenceWindowCount: 1,
+      matchedWindowCount: 1,
+      passedWindowCount: 1,
+      overallScore: 0.94,
+      verified: true,
+      windows: [],
+      reasons: [],
+      evidenceRefs: ["proof:object-aware"],
+    },
+    report: passedReport(0.98),
+    matches: [],
+    audioMatch: null,
+    evidenceRefs: ["proof:machine"],
+    verifiedAt: "2026-09-23T17:00:00.000Z",
+  };
+  const heldOutCase = buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: proof.sessionId,
+    proof,
+    proofRef: "proof:bundle",
+  });
+  assert.equal(heldOutCase.objectAwareVerified, true);
+
+  const failedProof = {
+    ...proof,
+    sessionId: "practice:failed-object",
+    referenceFingerprint: "reference-object-aware-0002",
+    sourceFingerprint: "source-object-aware-0002",
+    objectAwareProof: {
+      ...proof.objectAwareProof,
+      passedWindowCount: 0,
+      overallScore: 0.42,
+      verified: false,
+      reasons: ["Object relation collapsed."],
+      evidenceRefs: ["proof:object-aware:failed"],
+    },
+  };
+  const failedCase = buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: failedProof.sessionId,
+    proof: failedProof,
+    proofRef: "proof:failed-object:bundle",
+  });
+  assert.equal(failedCase.passed, false);
+  assert.equal(failedCase.objectAwareVerified, false);
+  assert.ok(failedCase.reasons.some((reason) => /Object relation collapsed/.test(reason)));
+  const benchmark = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "object-aware-edit",
+    cases: [failedCase],
+    policy: { minimumCases: 1, maximumCases: 30, minimumObjectAwareCases: 1 },
+  });
+  assert.equal(benchmark.objectAwareCaseCount, 0);
+  assert.equal(benchmark.objectAwareVerified, false);
+});
+
 test("M6 Practice seeds a new reference with transferable Edit Type corrections", async () => {
   const family = classifyEffectFamilyV1(referenceEvidence);
   assert.notEqual(family, "UNKNOWN");
