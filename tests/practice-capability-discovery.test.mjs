@@ -47,7 +47,11 @@ test("Practice can discover, prove, and retain a previously missing editing skil
   });
 
   assert.match(assignment.chatMessage, /CAPABILITY_GAP -> RESEARCH/);
-  assert.match(assignment.chatMessage, /online research is required/);
+  assert.match(assignment.chatMessage, /Tutorial Drive is the mandatory first research source/);
+  assert.match(assignment.chatMessage, /Adobe Effect Tutorials/);
+  assert.match(assignment.chatMessage, /Adobe Effect Music \+ Beat Tutorials/);
+  assert.match(assignment.chatMessage, /Second priority is official Adobe documentation\/resources/);
+  assert.match(assignment.chatMessage, /broader web\/internet research is last/);
   assert.match(assignment.chatMessage, /TEMPORAL_REWIND \/ REVERSE_PLAYBACK/);
   assert.match(assignment.chatMessage, /implement\/prove the missing EditFlow route/);
   await store.claim(assignment.assignmentId, "chatgpt-test");
@@ -76,17 +80,24 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     store.appendEvent({
       assignmentId: assignment.assignmentId,
       stage: "RESEARCH",
-      summary: "Internal evidence alone is not enough to discover a new Practice skill.",
+      summary: "Adobe documentation cannot be consulted before the Tutorial Drive priority pass.",
       researchSources: [{
-        sourceId: "internal:prior-recipe",
-        kind: "INTERNAL_EVIDENCE",
-        title: "Prior recipe evidence",
+        sourceId: "adobe:time-remapping:premature",
+        kind: "ADOBE_DOCUMENTATION",
+        title: "Time-stretching and time-remapping",
+        uri: "https://helpx.adobe.com/after-effects/desktop/animate-in-after-effects/time-stretching-and-time-remapping/time-stretching-time-remapping.html",
       }],
     }),
-    /online source with a URI/,
+    /begin with Tutorial Drive provenance/,
   );
 
   const researchSources = [{
+    sourceId: "tutorial-drive:temporal-rewind-search",
+    kind: "TUTORIAL_DRIVE",
+    title: "Tutorial Drive search: temporal rewind / reverse playback",
+    uri: "https://drive.google.com/drive/folders/183rOt8jpMghRA3Gtu-ZKxZ2NSkJF5S-G",
+    notes: "Searched Adobe Effect Tutorials first for temporal rewind, reverse playback, time remap, and reverse-transition construction. No sufficiently close tutorial match was found, so the search provenance is retained before escalating to official Adobe resources.",
+  }, {
     sourceId: "adobe:time-remapping",
     kind: "ADOBE_DOCUMENTATION",
     title: "Time-stretching and time-remapping",
@@ -103,9 +114,9 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     assignmentId: assignment.assignmentId,
     stage: "RESEARCH",
     outcome: "SUCCESS",
-    summary: "Adobe-native Time Remap provides a construction path for the missing temporal rewind, with source-time direction controlled by keyframe values.",
+    summary: "Tutorial Drive was searched first; after no sufficiently close match, Adobe-native Time Remap provided a construction path for the missing temporal rewind, with source-time direction controlled by keyframe values.",
     researchSources,
-    evidenceRefs: ["research:adobe-time-remap", "research:adobe-timewarp"],
+    evidenceRefs: ["research:tutorial-drive-first", "research:adobe-time-remap", "research:adobe-timewarp"],
   });
   registry.recordGptLearningEvent(researchEvent);
   await assert.rejects(
@@ -162,7 +173,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     capabilityGap: resolvedGap,
     learnedSkill,
     reusableLesson: "When the reference replays recently shown frames backward, reproduce actual reverse source-time motion; reversing effect parameters or merely decaying the transition is not equivalent.",
-    developmentPattern: "Detect missing temporal behavior, research authoritative/native controls, prove source-time direction plus rendered appearance in AE, then retain the transferable construction.",
+    developmentPattern: "Detect missing temporal behavior, search the Tutorial Drive for the closest matching construction first, escalate to Adobe only when needed, prove source-time direction plus rendered appearance in AE, then retain the transferable construction.",
     evidenceRefs: learnedSkill.evidenceRefs,
   });
   registry.recordGptLearningEvent(commitEvent);
@@ -207,6 +218,8 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       "SKILL_COMMIT",
     ],
   );
-  assert.equal(events[1].researchSources.length, 2);
+  assert.equal(events[1].researchSources.length, 3);
+  assert.equal(events[1].researchSources[0].kind, "TUTORIAL_DRIVE");
+  assert.match(events[1].researchSources[0].notes, /No sufficiently close tutorial match/);
   assert.equal(events[4].learnedSkill.skillId, learnedSkill.skillId);
 });
