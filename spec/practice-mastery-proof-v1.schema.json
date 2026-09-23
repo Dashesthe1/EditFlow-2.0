@@ -70,6 +70,61 @@
         "pixelStructure": { "$ref": "#/$defs/score" }
       }
     },
+    "subjectIdentitySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tracked", "continuityVerified", "dominantSemanticId", "semanticIdentityCount",
+        "identitySwitchCount", "frameCount", "trackedFrameCount", "observedFrameCount",
+        "predictedFrameCount", "lostFrameCount", "identityCoverage", "observedCoverage",
+        "meanIdentityConfidence", "lowMotionFrameCount", "lowMotionSurvived",
+        "occlusionFrameCount", "occlusionSurvived", "validatedMaskFrameCount",
+        "validatedMaskCoverage", "validatedMaskSources", "reasons", "evidenceRefs"
+      ],
+      "properties": {
+        "tracked": { "type": "boolean" },
+        "continuityVerified": { "type": "boolean" },
+        "dominantSemanticId": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "semanticIdentityCount": { "type": "integer", "minimum": 0 },
+        "identitySwitchCount": { "type": "integer", "minimum": 0 },
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "trackedFrameCount": { "type": "integer", "minimum": 0 },
+        "observedFrameCount": { "type": "integer", "minimum": 0 },
+        "predictedFrameCount": { "type": "integer", "minimum": 0 },
+        "lostFrameCount": { "type": "integer", "minimum": 0 },
+        "identityCoverage": { "$ref": "#/$defs/score" },
+        "observedCoverage": { "$ref": "#/$defs/score" },
+        "meanIdentityConfidence": { "$ref": "#/$defs/score" },
+        "lowMotionFrameCount": { "type": "integer", "minimum": 0 },
+        "lowMotionSurvived": { "type": "boolean" },
+        "occlusionFrameCount": { "type": "integer", "minimum": 0 },
+        "occlusionSurvived": { "type": "boolean" },
+        "validatedMaskFrameCount": { "type": "integer", "minimum": 0 },
+        "validatedMaskCoverage": { "$ref": "#/$defs/score" },
+        "validatedMaskSources": {
+          "type": "array",
+          "items": {
+            "enum": ["SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH"]
+          },
+          "uniqueItems": true
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
     "objectAwareWindowProof": {
       "type": "object",
       "additionalProperties": false,
@@ -93,6 +148,17 @@
           ]
         },
         "relationMatched": { "type": "boolean" },
+        "subjectIdentityRequired": { "type": "boolean" },
+        "subjectIdentityVerified": { "type": "boolean" },
+        "maskTruthRequired": { "type": "boolean" },
+        "maskTruthVerified": { "type": "boolean" },
+        "referenceSubjectIdentity": { "$ref": "#/$defs/subjectIdentitySummary" },
+        "renderSubjectIdentity": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/subjectIdentitySummary" }
+          ]
+        },
         "score": { "$ref": "#/$defs/score" },
         "passed": { "type": "boolean" },
         "reasons": {

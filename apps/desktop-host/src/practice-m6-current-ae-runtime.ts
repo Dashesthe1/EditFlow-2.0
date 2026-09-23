@@ -42,7 +42,6 @@ export const PRACTICE_M6_NATIVE_CAPABILITIES_V1 = [
   "ae.effect.exposure",
   "ae.effect.channel-shift",
   "ae.layer.blend_mode.set",
-  "ae.subject.isolate",
   "ae.layer.matte.set",
   "ae.layer.order.set",
   "ae.precompose.layers",
@@ -53,6 +52,37 @@ export interface PracticeM6CurrentAeTransactionV1 {
   observe(): Promise<ObservedProjectState>;
   execute(plan: ExecutionPlan): Promise<ExecutionResult>;
   executeCorrection(plan: ExecutionPlan): Promise<ExecutionResult>;
+}
+
+export type PracticeM6VerifiedSubjectIsolationSourceV1 =
+  | "SEGMENTATION"
+  | "AE_TRACKED_MASK"
+  | "ROTO_BRUSH";
+
+export interface PracticeM6VerifiedSubjectIsolationV1 {
+  readonly verified: true;
+  readonly routeId: string;
+  readonly referenceSemanticId: string;
+  readonly sourceSemanticId: string;
+  readonly crossSourceIdentityVerified: true;
+  readonly maskSource: PracticeM6VerifiedSubjectIsolationSourceV1;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeM6SubjectIsolationRouteV1 {
+  prepare(input: {
+    readonly sessionId: string;
+    readonly attempt: number;
+    readonly reference: PracticeReferenceAnalysisV1;
+    readonly sourceMatch: PracticeSceneMatchV1;
+    readonly window: DenseEffectWindowV1;
+    readonly shotId: string;
+    readonly compStableId: string;
+    readonly layerId: string;
+    readonly startMs: number;
+    readonly endMs: number;
+    readonly referenceSemanticId: string;
+  }): Promise<PracticeM6VerifiedSubjectIsolationV1>;
 }
 
 export interface PracticeM6AeRenderDriverV1 {
@@ -105,6 +135,27 @@ const nonEmptyString = (value: unknown): string | null =>
 
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.filter((value) => value.trim().length > 0))];
+
+const subjectSemanticIdsForWindow = (
+  window: DenseEffectWindowV1,
+): readonly string[] => unique(window.evidence.frames
+  .filter((frame) =>
+    frame.subjectTrackState !== "UNOBSERVED"
+    && frame.subjectTrackState !== "LOST")
+  .map((frame) => frame.subjectSemanticId ?? ""));
+
+const acceptedSubjectIsolationProof = (
+  proof: PracticeM6VerifiedSubjectIsolationV1,
+  referenceSemanticId: string,
+): boolean =>
+  proof?.verified === true
+  && proof.crossSourceIdentityVerified === true
+  && proof.referenceSemanticId === referenceSemanticId
+  && nonEmptyString(proof.sourceSemanticId) !== null
+  && nonEmptyString(proof.routeId) !== null
+  && ["SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH"].includes(proof.maskSource)
+  && Array.isArray(proof.evidenceRefs)
+  && unique(proof.evidenceRefs).length > 0;
 
 const shotsForWindow = (
   reference: PracticeReferenceAnalysisV1,
@@ -199,6 +250,7 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
   readonly baselineBuilder: PracticeAeBaselineBuilderV1;
   readonly media: PracticeM6LocalMediaAnalyzerV1;
   readonly renderDriver: PracticeM6AeRenderDriverV1;
+  readonly subjectIsolationRoute: PracticeM6SubjectIsolationRouteV1 | null;
   readonly availableCapabilities: readonly string[];
 
   readonly #prepared = new Map<string, PreparedAttemptV1>();
@@ -209,15 +261,20 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     readonly baselineBuilder: PracticeAeBaselineBuilderV1;
     readonly media: PracticeM6LocalMediaAnalyzerV1;
     readonly renderDriver: PracticeM6AeRenderDriverV1;
+    readonly subjectIsolationRoute?: PracticeM6SubjectIsolationRouteV1 | null;
     readonly availableCapabilities?: readonly string[];
   }) {
     this.transaction = input.transaction;
     this.baselineBuilder = input.baselineBuilder;
     this.media = input.media;
     this.renderDriver = input.renderDriver;
-    this.availableCapabilities = unique(
-      input.availableCapabilities ?? PRACTICE_M6_NATIVE_CAPABILITIES_V1,
-    );
+    this.subjectIsolationRoute = input.subjectIsolationRoute ?? null;
+    const declaredCapabilities = input.availableCapabilities
+      ?? PRACTICE_M6_NATIVE_CAPABILITIES_V1;
+    this.availableCapabilities = unique([
+      ...declaredCapabilities,
+      ...(this.subjectIsolationRoute === null ? [] : ["ae.subject.isolate"]),
+    ]);
     if (this.availableCapabilities.length === 0) {
       throw new TypeError("Practice M6 runtime requires at least one available capability.");
     }
@@ -291,6 +348,25 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     input: Parameters<PracticeM6RuntimeV1["applyWindowGraph"]>[0],
   ): Promise<void> {
     const prepared = this.#requirePrepared(input.sessionId, input.attempt);
+    const requiresSubjectIsolation = input.graph.nodes.some((node) =>
+      node.kind === "SUBJECT_ISOLATION");
+    const referenceSubjectIds = requiresSubjectIsolation
+      ? subjectSemanticIdsForWindow(input.window)
+      : [];
+    if (requiresSubjectIsolation && referenceSubjectIds.length !== 1) {
+      throw new Error(
+        "PRACTICE_M6_SUBJECT_IDENTITY_UNVERIFIED: subject isolation requires exactly "
+          + "one persistent reference semantic identity; found "
+          + String(referenceSubjectIds.length) + ".",
+      );
+    }
+    if (requiresSubjectIsolation && this.subjectIsolationRoute === null) {
+      throw new Error(
+        "PRACTICE_M6_SUBJECT_ISOLATION_ROUTE_UNVERIFIED: the construction graph "
+          + "requires subject isolation, but no validated segmentation/tracked-mask/"
+          + "Roto Brush route is registered.",
+      );
+    }
     const compilation = compileConstructionGraphV1(
       input.graph,
       this.availableCapabilities,
@@ -327,6 +403,43 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         targetEndMs = Math.min(shot.referenceEndMs, targetStartMs + spanMs);
       }
       if (targetEndMs <= targetStartMs) continue;
+
+      if (requiresSubjectIsolation) {
+        const route = this.subjectIsolationRoute;
+        const referenceSemanticId = referenceSubjectIds[0];
+        const sourceMatch = prepared.matches.find((match) => match.shotId === shot.shotId);
+        if (route === null || referenceSemanticId === undefined || sourceMatch === undefined) {
+          throw new Error(
+            "PRACTICE_M6_SUBJECT_ISOLATION_BINDING_MISSING:" + shot.shotId,
+          );
+        }
+        const isolation = await route.prepare({
+          sessionId: input.sessionId,
+          attempt: input.attempt,
+          reference: input.reference,
+          sourceMatch,
+          window: input.window,
+          shotId: shot.shotId,
+          compStableId: prepared.plan.compStableId,
+          layerId,
+          startMs: targetStartMs,
+          endMs: targetEndMs,
+          referenceSemanticId,
+        });
+        if (!acceptedSubjectIsolationProof(isolation, referenceSemanticId)) {
+          throw new Error(
+            "PRACTICE_M6_SUBJECT_ISOLATION_PROOF_REJECTED:" + shot.shotId,
+          );
+        }
+        prepared.evidenceRefs.push(
+          ...isolation.evidenceRefs,
+          "practice-subject-isolation-route:" + isolation.routeId,
+          "practice-subject-reference-id:" + isolation.referenceSemanticId,
+          "practice-subject-source-id:" + isolation.sourceSemanticId,
+          "practice-subject-cross-source-identity:true",
+          "practice-subject-mask-source:" + isolation.maskSource,
+        );
+      }
 
       const context = buildM6MotionPeakCompilerContextV1({
         reference: input.window.evidence,

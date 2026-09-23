@@ -37,9 +37,37 @@ export interface NormalizedPointV1 {
   readonly y: number;
 }
 
+export type DenseSubjectTrackStateV1 =
+  | "UNOBSERVED"
+  | "OBSERVED"
+  | "PREDICTED_LOW_MOTION"
+  | "PREDICTED_OCCLUDED"
+  | "LOST";
+
+export type DenseSubjectMaskSourceV1 =
+  | "NONE"
+  | "MOTION_COMPONENT"
+  | "SEGMENTATION"
+  | "AE_TRACKED_MASK"
+  | "ROTO_BRUSH";
+
 export interface DenseFrameSemanticObservationV1 {
   readonly subjectCentroid?: NormalizedPointV1;
   readonly backgroundCentroid?: NormalizedPointV1;
+  /** Stable within-source semantic subject identity. Never inferred across unrelated sources. */
+  readonly subjectSemanticId?: string;
+  readonly subjectTrackState?: DenseSubjectTrackStateV1;
+  readonly subjectIdentityConfidence?: number;
+  readonly subjectVisibility?: number;
+  /** Normalized [x, y, width, height] bounds for the bound subject. */
+  readonly subjectBoundingBox?: readonly [number, number, number, number];
+  readonly subjectMaskSource?: DenseSubjectMaskSourceV1;
+  /**
+   * True only when mask/isolation truth comes from a validated segmentation, tracked-mask,
+   * or Roto Brush artifact. Motion-component heuristics must leave this false.
+   */
+  readonly subjectMaskValidated?: boolean;
+  readonly subjectEvidenceIds?: readonly string[];
   readonly displacement?: NormalizedPointV1;
   readonly scale?: number;
   readonly rotationDegrees?: number;
@@ -82,6 +110,14 @@ export interface DenseFrameMetricsV1 {
   readonly subjectMotion: NormalizedPointV1;
   readonly backgroundMotion: NormalizedPointV1;
   readonly subjectBackgroundDivergence: number;
+  readonly subjectSemanticId?: string;
+  readonly subjectTrackState?: DenseSubjectTrackStateV1;
+  readonly subjectIdentityConfidence?: number;
+  readonly subjectVisibility?: number;
+  readonly subjectBoundingBox?: readonly [number, number, number, number];
+  readonly subjectMaskSource?: DenseSubjectMaskSourceV1;
+  readonly subjectMaskValidated?: boolean;
+  readonly subjectEvidenceIds?: readonly string[];
   readonly displacementMagnitude: number;
   readonly scale: number;
   readonly rotationDegrees: number;

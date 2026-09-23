@@ -15,6 +15,7 @@ import {
   composePracticeM6ExecutionAdaptersV1,
   evaluatePracticeHeldOutBenchmarkV1,
   resolvePracticeLocalMediaPathV1,
+  summarizePracticeSubjectIdentityV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import {
   buildConstructionGraphV1,
@@ -461,6 +462,14 @@ const frame = (index) => ({
   subjectMotion: { x: 0.2, y: 0 },
   backgroundMotion: { x: 0.02, y: 0 },
   subjectBackgroundDivergence: index === 3 ? 0.18 : 0,
+  subjectSemanticId: "subject:primary:v1",
+  subjectTrackState: "OBSERVED",
+  subjectIdentityConfidence: 0.91,
+  subjectVisibility: 0.96,
+  subjectBoundingBox: [0.25, 0.18, 0.42, 0.7],
+  subjectMaskSource: "SEGMENTATION",
+  subjectMaskValidated: true,
+  subjectEvidenceIds: ["fixture:subject:primary:v1", "fixture:subject:frame:" + index],
   displacementMagnitude: index === 3 ? 0.16 : 0.01,
   scale: 1,
   rotationDegrees: 0,
@@ -486,6 +495,23 @@ const referenceEvidence = {
   frames: Array.from({ length: 7 }, (_, index) => frame(index)),
   summary,
   evidenceRefs: ["fixture:reference"],
+};
+
+const verifiedSubjectIsolationRoute = {
+  async prepare(input) {
+    return {
+      verified: true,
+      routeId: "test.segmentation.subject-isolation.v1",
+      referenceSemanticId: input.referenceSemanticId,
+      sourceSemanticId: "source-subject:" + input.shotId,
+      crossSourceIdentityVerified: true,
+      maskSource: "SEGMENTATION",
+      evidenceRefs: [
+        "test:subject-isolation:" + input.shotId,
+        "test:cross-source-identity:" + input.referenceSemanticId,
+      ],
+    };
+  },
 };
 
 const reference = {
@@ -565,6 +591,38 @@ test("object-aware proof preserves subject/background relation and fails when it
   assert.equal(failed.verified, false);
   assert.equal(failed.windows[0].passed, false);
   assert.ok(failed.reasons.some((reason) => /Object relation changed/.test(reason)));
+});
+
+test("subject identity proof survives bounded low-motion and occlusion gaps but rejects identity switches", () => {
+  const continuityFrames = referenceEvidence.frames.map((item, index) => ({
+    ...item,
+    subjectTrackState: index === 4
+      ? "PREDICTED_LOW_MOTION"
+      : index === 5
+        ? "PREDICTED_OCCLUDED"
+        : "OBSERVED",
+    subjectIdentityConfidence: index === 4 ? 0.72 : index === 5 ? 0.61 : 0.91,
+    subjectVisibility: index === 5 ? 0.3 : 0.9,
+    occlusion: index === 5 ? 0.35 : 0,
+  }));
+  const continuous = summarizePracticeSubjectIdentityV1(continuityFrames);
+  assert.equal(continuous.tracked, true);
+  assert.equal(continuous.continuityVerified, true);
+  assert.equal(continuous.identitySwitchCount, 0);
+  assert.equal(continuous.lowMotionFrameCount > 0, true);
+  assert.equal(continuous.lowMotionSurvived, true);
+  assert.equal(continuous.occlusionFrameCount > 0, true);
+  assert.equal(continuous.occlusionSurvived, true);
+  assert.equal(continuous.validatedMaskFrameCount, continuityFrames.length);
+
+  const switched = summarizePracticeSubjectIdentityV1(
+    continuityFrames.map((item, index) => index < 5
+      ? item
+      : { ...item, subjectSemanticId: "subject:wrong:v2" }),
+  );
+  assert.equal(switched.continuityVerified, false);
+  assert.equal(switched.identitySwitchCount > 0, true);
+  assert.ok(switched.reasons.some((reason) => /switched/i.test(reason)));
 });
 
 test("held-out object-aware maturity is derived from machine proof and failed cases do not count", () => {
@@ -894,6 +952,7 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     },
     media,
     renderDriver,
+    subjectIsolationRoute: verifiedSubjectIsolationRoute,
     availableCapabilities: [...new Set(
       graph.nodes.flatMap((node) => node.capabilityCandidates),
     )],
@@ -947,6 +1006,56 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.equal(mediaCalls.at(-1)?.videoPath, "C:\\Renders\\practice-window.mp4");
   assert.equal(mediaCalls.at(-1)?.startMs, 0);
   assert.equal(mediaCalls.at(-1)?.endMs, 200);
+
+  const isolationGraph = {
+    ...graph,
+    graphId: graph.graphId + ":subject-isolation-gate",
+    nodes: [
+      ...graph.nodes,
+      {
+        nodeId: "test:subject-isolation",
+        kind: "SUBJECT_ISOLATION",
+        dimension: "ISOLATION",
+        dependsOn: [],
+        requiredInvariantIds: [],
+        capabilityCandidates: ["ae.subject.isolate", "ae.layer.matte.set"],
+        parameters: {},
+        optional: false,
+      },
+    ],
+  };
+  const blockedRuntime = new PracticeM6CurrentAeRuntimeV1({
+    transaction,
+    baselineBuilder: {
+      plan(id) { return id === baselinePlan.baselineId ? baselinePlan : null; },
+    },
+    media,
+    renderDriver,
+    availableCapabilities: [...new Set(
+      isolationGraph.nodes.flatMap((node) => node.capabilityCandidates),
+    )],
+  });
+  await blockedRuntime.prepareAttempt({
+    sessionId: "practice:native:blocked",
+    editTypeId: "spider-man-high-potency",
+    editTypeKnowledge: {},
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    matches: [match],
+    priorAttempts: [],
+  });
+  await assert.rejects(
+    () => blockedRuntime.applyWindowGraph({
+      sessionId: "practice:native:blocked",
+      attempt: 1,
+      reference: runtimeReference,
+      baseline,
+      window,
+      graph: isolationGraph,
+    }),
+    /PRACTICE_M6_SUBJECT_ISOLATION_ROUTE_UNVERIFIED/,
+  );
 });
 
 test("Practice M6 applies a cut-spanning transition to both participating shot layers", async () => {
@@ -1067,6 +1176,7 @@ test("Practice M6 applies a cut-spanning transition to both participating shot l
       async renderWindow() { throw new Error("not used"); },
       async renderFullEdit() { throw new Error("not used"); },
     },
+    subjectIsolationRoute: verifiedSubjectIsolationRoute,
     availableCapabilities: [...new Set(
       graph.nodes.flatMap((node) => node.capabilityCandidates),
     )],

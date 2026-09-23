@@ -38,6 +38,10 @@ import type {
   PracticeSimilarityReportV1,
 } from "./contracts.js";
 import { buildPracticeReferenceAnatomyV1 } from "./reference-anatomy.js";
+import {
+  practiceSubjectMaskTruthVerifiedV1,
+  summarizePracticeSubjectIdentityV1,
+} from "./subject-identity.js";
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -273,6 +277,7 @@ interface PracticeObjectWindowMetricsV1 {
   readonly evidencePersistence: number;
   readonly subjectSeparationPeak: number;
   readonly maskCoveragePeak: number;
+  readonly validatedMaskCoveragePeak: number;
   readonly occlusionPeak: number;
   readonly subjectBackgroundDivergencePeak: number;
   readonly subjectMotionPeak: number;
@@ -304,13 +309,15 @@ const objectWindowMetrics = (
     (frame) => frame.subjectBackgroundDivergence,
   );
   const maskCoveragePeak = maxScalar((frame) => frame.maskCoverage);
+  const validatedMaskCoveragePeak = maxScalar((frame) =>
+    frame.subjectMaskValidated === true ? frame.maskCoverage : 0);
   const occlusionPeak = Math.max(
     window.evidence.summary.occlusionPeak,
     maxScalar((frame) => frame.occlusion),
   );
   const relation: PracticeObjectMotionRelationV1 = occlusionPeak >= 0.65
     ? "OCCLUSION_DRIVEN"
-    : maskCoveragePeak >= 0.12
+    : validatedMaskCoveragePeak >= 0.12
       ? "MASK_DRIVEN"
       : subjectBackgroundDivergencePeak >= 0.08
         ? subjectMotionPeak >= Math.max(0.04, backgroundMotionPeak * 1.35)
@@ -324,6 +331,7 @@ const objectWindowMetrics = (
     evidencePersistence,
     subjectSeparationPeak: window.evidence.summary.subjectSeparationPeak,
     maskCoveragePeak,
+    validatedMaskCoveragePeak,
     occlusionPeak,
     subjectBackgroundDivergencePeak,
     subjectMotionPeak,
@@ -338,7 +346,7 @@ const objectAwareRequired = (metrics: PracticeObjectWindowMetricsV1): boolean =>
   const persistenceFloor = metrics.frameCount <= 4 ? 0.25 : 0.2;
   return metrics.evidencePersistence >= persistenceFloor && (
     metrics.subjectSeparationPeak >= 0.12
-    || metrics.maskCoveragePeak >= 0.05
+    || metrics.validatedMaskCoveragePeak >= 0.05
     || metrics.occlusionPeak >= 0.18
     || metrics.subjectBackgroundDivergencePeak >= 0.08
   );
@@ -386,8 +394,14 @@ export const comparePracticeObjectAwareWindowsV1 = (
   reference.windows.forEach((referenceWindow, referenceIndex) => {
     const referenceMetrics = objectWindowMetrics(referenceWindow);
     if (!objectAwareRequired(referenceMetrics)) return;
+    const referenceSubjectIdentity = summarizePracticeSubjectIdentityV1(
+      referenceWindow.evidence.frames,
+    );
     const pair = pairByReference.get(referenceIndex);
     const effectFamilyId = classifyEffectFamilyV1(referenceWindow.evidence);
+    const maskTruthRequired = referenceMetrics.relation === "MASK_DRIVEN"
+      || effectFamilyId === "SUBJECT_ISOLATED_TRANSITION"
+      || effectFamilyId === "MASK_REVEAL";
     if (pair === undefined) {
       const reason = "Object-aware reference window "
         + referenceWindow.windowId + " has no aligned rendered window.";
@@ -398,10 +412,19 @@ export const comparePracticeObjectAwareWindowsV1 = (
         effectFamilyId,
         relation: referenceMetrics.relation,
         relationMatched: false,
+        subjectIdentityRequired: true,
+        subjectIdentityVerified: false,
+        maskTruthRequired,
+        maskTruthVerified: false,
+        referenceSubjectIdentity,
+        renderSubjectIdentity: null,
         score: 0,
         passed: false,
-        reasons: [reason],
-        evidenceRefs: [...referenceWindow.evidence.evidenceRefs],
+        reasons: unique([reason, ...referenceSubjectIdentity.reasons]),
+        evidenceRefs: unique([
+          ...referenceWindow.evidence.evidenceRefs,
+          ...referenceSubjectIdentity.evidenceRefs,
+        ]),
       });
       evidenceRefs.push(...referenceWindow.evidence.evidenceRefs);
       return;
@@ -411,7 +434,47 @@ export const comparePracticeObjectAwareWindowsV1 = (
     if (renderWindow === undefined) return;
     matchedWindowCount += 1;
     const renderMetrics = objectWindowMetrics(renderWindow);
+    const renderSubjectIdentity = summarizePracticeSubjectIdentityV1(
+      renderWindow.evidence.frames,
+    );
+    const minimumRenderIdentityCoverage = Math.max(
+      0.45,
+      referenceSubjectIdentity.identityCoverage - 0.2,
+    );
+    const lowMotionIdentityMatched = referenceSubjectIdentity.lowMotionFrameCount === 0
+      || (renderSubjectIdentity.continuityVerified
+        && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage);
+    const occlusionIdentityMatched = referenceSubjectIdentity.occlusionFrameCount === 0
+      || (renderSubjectIdentity.continuityVerified
+        && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage);
+    const subjectIdentityVerified = referenceSubjectIdentity.continuityVerified
+      && renderSubjectIdentity.continuityVerified
+      && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage
+      && lowMotionIdentityMatched
+      && occlusionIdentityMatched;
+    const maskTruthVerified = !maskTruthRequired
+      || (
+        practiceSubjectMaskTruthVerifiedV1(referenceSubjectIdentity)
+        && practiceSubjectMaskTruthVerifiedV1(renderSubjectIdentity)
+      );
+    const subjectIdentityScore = subjectIdentityVerified
+      ? mean([
+        relativeObjectScore(
+          referenceSubjectIdentity.identityCoverage,
+          renderSubjectIdentity.identityCoverage,
+          0.45,
+        ),
+        relativeObjectScore(
+          referenceSubjectIdentity.meanIdentityConfidence,
+          renderSubjectIdentity.meanIdentityConfidence,
+          0.35,
+        ),
+      ], 1)
+      : 0;
     const metricScores: Array<Readonly<{ label: string; score: number }>> = [{
+      label: "subject identity continuity",
+      score: subjectIdentityScore,
+    }, {
       label: "object evidence persistence",
       score: relativeObjectScore(
         referenceMetrics.evidencePersistence,
@@ -429,12 +492,12 @@ export const comparePracticeObjectAwareWindowsV1 = (
         ),
       });
     }
-    if (referenceMetrics.maskCoveragePeak >= 0.05) {
+    if (referenceMetrics.validatedMaskCoveragePeak >= 0.05) {
       metricScores.push({
-        label: "mask coverage",
+        label: "validated mask coverage",
         score: relativeObjectScore(
-          referenceMetrics.maskCoveragePeak,
-          renderMetrics.maskCoveragePeak,
+          referenceMetrics.validatedMaskCoveragePeak,
+          renderMetrics.validatedMaskCoveragePeak,
           0.05,
         ),
       });
@@ -504,16 +567,44 @@ export const comparePracticeObjectAwareWindowsV1 = (
         ? []
         : ["Object relation changed from " + referenceMetrics.relation
           + " to " + renderMetrics.relation + "."]),
+      ...(!referenceSubjectIdentity.continuityVerified
+        ? referenceSubjectIdentity.reasons.map((reason) => "Reference: " + reason)
+        : []),
+      ...(!renderSubjectIdentity.continuityVerified
+        ? renderSubjectIdentity.reasons.map((reason) => "Render: " + reason)
+        : []),
+      ...(referenceSubjectIdentity.lowMotionFrameCount > 0 && !lowMotionIdentityMatched
+        ? ["The rendered subject identity did not survive the reference low-motion interval."]
+        : []),
+      ...(referenceSubjectIdentity.occlusionFrameCount > 0 && !occlusionIdentityMatched
+        ? ["The rendered subject identity did not survive the reference occlusion interval."]
+        : []),
+      ...(maskTruthRequired && !maskTruthVerified
+        ? ["Validated segmentation/tracked-mask/Roto Brush truth is required for this isolation window."]
+        : []),
       ...failedMetrics.map((item) =>
         "Object-aware " + item.label + " fidelity is below the proof floor."),
     ];
-    const passed = relationMatched && failedMetrics.length === 0 && score >= 0.8;
+    const passed = relationMatched
+      && subjectIdentityVerified
+      && maskTruthVerified
+      && failedMetrics.length === 0
+      && score >= 0.8;
     if (passed) passedWindowCount += 1;
     reasons.push(...windowReasons.map((reason) =>
       referenceWindow.windowId + ": " + reason));
     const windowEvidence = unique([
       ...referenceWindow.evidence.evidenceRefs,
       ...renderWindow.evidence.evidenceRefs,
+      ...referenceSubjectIdentity.evidenceRefs,
+      ...renderSubjectIdentity.evidenceRefs,
+      "practice-subject-reference-continuity:"
+        + String(referenceSubjectIdentity.continuityVerified),
+      "practice-subject-render-continuity:"
+        + String(renderSubjectIdentity.continuityVerified),
+      "practice-subject-identity-score:" + subjectIdentityScore.toFixed(6),
+      "practice-subject-mask-truth-required:" + String(maskTruthRequired),
+      "practice-subject-mask-truth-verified:" + String(maskTruthVerified),
       "practice-object-reference-relation:" + referenceMetrics.relation,
       "practice-object-render-relation:" + renderMetrics.relation,
       "practice-object-window-score:" + score.toFixed(6),
@@ -529,6 +620,12 @@ export const comparePracticeObjectAwareWindowsV1 = (
       effectFamilyId,
       relation: referenceMetrics.relation,
       relationMatched,
+      subjectIdentityRequired: true,
+      subjectIdentityVerified,
+      maskTruthRequired,
+      maskTruthVerified,
+      referenceSubjectIdentity,
+      renderSubjectIdentity,
       score,
       passed,
       reasons: windowReasons,

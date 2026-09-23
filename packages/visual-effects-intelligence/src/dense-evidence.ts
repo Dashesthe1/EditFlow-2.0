@@ -23,6 +23,24 @@ const subtract = (a: NormalizedPointV1, b: NormalizedPointV1): NormalizedPointV1
   y: a.y - b.y,
 });
 const phase = (index: number, count: number): number => count <= 1 ? 0 : index / (count - 1);
+const SUBJECT_TRACK_STATES = new Set([
+  "UNOBSERVED", "OBSERVED", "PREDICTED_LOW_MOTION", "PREDICTED_OCCLUDED", "LOST",
+]);
+const SUBJECT_MASK_SOURCES = new Set([
+  "NONE", "MOTION_COMPONENT", "SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH",
+]);
+const normalizedBox = (
+  value: readonly [number, number, number, number] | undefined,
+): readonly [number, number, number, number] | undefined => {
+  if (value === undefined || value.length !== 4) return undefined;
+  const [x, y, width, height] = value;
+  if (![x, y, width, height].every((item) => Number.isFinite(item) && item >= 0 && item <= 1)
+    || width <= 0 || height <= 0 || x + width > 1 + Number.EPSILON
+    || y + height > 1 + Number.EPSILON) {
+    return undefined;
+  }
+  return [x, y, width, height];
+};
 const median = (values: readonly number[]): number => {
   if (values.length === 0) return 0;
   const ordered = [...values].sort((a, b) => a - b);
@@ -675,6 +693,32 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
     const blur = semantic?.blurStrength ?? clamp01(1 - current.sharpness);
     const distortion = semantic?.distortionStrength
       ?? clamp01(Math.abs((current.edgeDensity - (previous?.edgeDensity ?? current.edgeDensity))) * 4);
+    const subjectSemanticId = typeof semantic?.subjectSemanticId === "string"
+      && semantic.subjectSemanticId.trim().length > 0
+      ? semantic.subjectSemanticId.trim()
+      : undefined;
+    const subjectTrackState = typeof semantic?.subjectTrackState === "string"
+      && SUBJECT_TRACK_STATES.has(semantic.subjectTrackState)
+      ? semantic.subjectTrackState
+      : undefined;
+    const subjectMaskSource = typeof semantic?.subjectMaskSource === "string"
+      && SUBJECT_MASK_SOURCES.has(semantic.subjectMaskSource)
+      ? semantic.subjectMaskSource
+      : undefined;
+    const subjectIdentityConfidence = typeof semantic?.subjectIdentityConfidence === "number"
+      && Number.isFinite(semantic.subjectIdentityConfidence)
+      ? clamp01(semantic.subjectIdentityConfidence)
+      : undefined;
+    const subjectVisibility = typeof semantic?.subjectVisibility === "number"
+      && Number.isFinite(semantic.subjectVisibility)
+      ? clamp01(semantic.subjectVisibility)
+      : undefined;
+    const subjectBoundingBox = normalizedBox(semantic?.subjectBoundingBox);
+    const subjectEvidenceIds = Array.isArray(semantic?.subjectEvidenceIds)
+      ? [...new Set(semantic.subjectEvidenceIds
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim()))]
+      : undefined;
     metrics.push({
       timeMs: frame.timeMs,
       lumaMean: current.lumaMean,
@@ -692,6 +736,16 @@ export const analyzeDenseEffectEvidenceV1 = (input: {
       subjectMotion,
       backgroundMotion,
       subjectBackgroundDivergence: magnitude(subtract(subjectMotion, backgroundMotion)),
+      ...(subjectSemanticId === undefined ? {} : { subjectSemanticId }),
+      ...(subjectTrackState === undefined ? {} : { subjectTrackState }),
+      ...(subjectIdentityConfidence === undefined ? {} : { subjectIdentityConfidence }),
+      ...(subjectVisibility === undefined ? {} : { subjectVisibility }),
+      ...(subjectBoundingBox === undefined ? {} : { subjectBoundingBox }),
+      ...(subjectMaskSource === undefined ? {} : { subjectMaskSource }),
+      ...(semantic?.subjectMaskValidated === undefined
+        ? {}
+        : { subjectMaskValidated: semantic.subjectMaskValidated === true }),
+      ...(subjectEvidenceIds === undefined ? {} : { subjectEvidenceIds }),
       displacementMagnitude: magnitude(displacement),
       scale: finite(semantic?.scale ?? 1, "semantic.scale"),
       rotationDegrees: finite(semantic?.rotationDegrees ?? 0, "semantic.rotationDegrees"),

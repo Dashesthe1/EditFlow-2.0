@@ -14,6 +14,10 @@ import type {
   PracticeSceneTemporalBehaviorV1,
   PracticeTemporalRewindV1,
 } from "./contracts.js";
+import {
+  practiceSubjectMaskTruthVerifiedV1,
+  summarizePracticeSubjectIdentityV1,
+} from "./subject-identity.js";
 
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.filter((value) => value.trim().length > 0))];
@@ -51,14 +55,14 @@ const objectMetricsForWindow = (window: DenseEffectWindowV1) => {
 };
 
 const objectRelationFor = (input: {
-  readonly maskCoveragePeak: number;
+  readonly validatedMaskCoveragePeak: number;
   readonly occlusionPeak: number;
   readonly divergencePeak: number;
   readonly subjectMotionPeak: number;
   readonly backgroundMotionPeak: number;
 }): PracticeObjectMotionRelationV1 => {
   if (input.occlusionPeak >= 0.65) return "OCCLUSION_DRIVEN";
-  if (input.maskCoveragePeak >= 0.12) return "MASK_DRIVEN";
+  if (input.validatedMaskCoveragePeak >= 0.12) return "MASK_DRIVEN";
   if (input.divergencePeak >= 0.08) {
     if (input.subjectMotionPeak >= Math.max(0.04, input.backgroundMotionPeak * 1.35)) {
       return "SUBJECT_DOMINANT";
@@ -201,18 +205,25 @@ const anatomyWindow = (
   const familyId = classifyEffectFamilyV1(window.evidence);
   const summary = window.evidence.summary;
   const maskCoveragePeak = maxFrame(window, "maskCoverage");
+  const validatedMaskCoveragePeak = Math.max(
+    0,
+    ...window.evidence.frames.map((frame) =>
+      frame.subjectMaskValidated === true ? frame.maskCoverage : 0),
+  );
+  const subjectIdentity = summarizePracticeSubjectIdentityV1(window.evidence.frames);
+  const maskTruthValidated = practiceSubjectMaskTruthVerifiedV1(subjectIdentity);
   const occlusionPeak = Math.max(summary.occlusionPeak, maxFrame(window, "occlusion"));
   const objectMotion = objectMetricsForWindow(window);
   const persistentObjectEvidence = objectMotion.evidencePersistence
     >= (window.evidence.frames.length <= 4 ? 0.25 : 0.2);
   const objectAware = persistentObjectEvidence && (
     summary.subjectSeparationPeak >= 0.12
-    || maskCoveragePeak >= 0.05
+    || validatedMaskCoveragePeak >= 0.05
     || occlusionPeak >= 0.18
     || objectMotion.divergencePeak >= 0.08
   );
   const objectRelation = objectRelationFor({
-    maskCoveragePeak,
+    validatedMaskCoveragePeak,
     occlusionPeak,
     divergencePeak: objectMotion.divergencePeak,
     subjectMotionPeak: objectMotion.subjectMotionPeak,
@@ -251,11 +262,16 @@ const anatomyWindow = (
       subjectMotionDirection: objectMotion.subjectMotionDirection,
       backgroundMotionDirection: objectMotion.backgroundMotionDirection,
       maskCoveragePeak,
+      validatedMaskCoveragePeak,
+      maskTruthValidated,
+      subjectIdentityContinuityVerified: subjectIdentity.continuityVerified,
+      subjectIdentityCoverage: subjectIdentity.identityCoverage,
       occlusionPeak,
     },
     temporalCue,
     evidenceRefs: unique([
       ...window.evidence.evidenceRefs,
+      ...subjectIdentity.evidenceRefs,
       ...matches
         .filter((match) => shotIds.includes(match.shotId))
         .flatMap((match) => match.evidenceRefs),
@@ -267,6 +283,11 @@ const anatomyWindow = (
         "practice-object-relation:" + objectRelation,
         "practice-object-divergence:" + objectMotion.divergencePeak.toFixed(6),
         "practice-object-persistence:" + objectMotion.evidencePersistence.toFixed(6),
+        "practice-subject-identity-continuity:"
+          + String(subjectIdentity.continuityVerified),
+        "practice-subject-identity-coverage:"
+          + subjectIdentity.identityCoverage.toFixed(6),
+        "practice-subject-mask-truth:" + String(maskTruthValidated),
       ] : []),
       ...(temporalCue.rewind === null
         ? []

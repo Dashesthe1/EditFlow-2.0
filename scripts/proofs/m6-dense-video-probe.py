@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 
-PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v11"
+PROBE_ALGORITHM_ID = "editflow.m6.dense-video-probe.v12"
 
 
 def analyzer_fingerprint():
@@ -225,6 +225,20 @@ def independent_motion_observation(flow, matrix):
 
     _score, label, coverage, strength = max(candidates, key=lambda item: item[0])
     component = labels == label
+    left = int(stats[label, cv2.CC_STAT_LEFT])
+    top = int(stats[label, cv2.CC_STAT_TOP])
+    box_width = int(stats[label, cv2.CC_STAT_WIDTH])
+    box_height = int(stats[label, cv2.CC_STAT_HEIGHT])
+    bounding_box = [
+        clamp01(float(left) / max(width, 1)),
+        clamp01(float(top) / max(height, 1)),
+        clamp01(float(box_width) / max(width, 1)),
+        clamp01(float(box_height) / max(height, 1)),
+    ]
+    # Clamp width/height against the normalized origin so floating-point
+    # roundoff cannot produce a box that extends outside [0, 1].
+    bounding_box[2] = min(bounding_box[2], 1.0 - bounding_box[0])
+    bounding_box[3] = min(bounding_box[3], 1.0 - bounding_box[1])
     residual_vectors = residual[component]
     if residual_vectors.size == 0:
         return None
@@ -260,6 +274,7 @@ def independent_motion_observation(flow, matrix):
         return None
     return {
         "subjectCentroid": subject_centroid,
+        "boundingBox": bounding_box,
         "relativeMotion": relative_motion,
         "maskCoverage": clamp01(coverage),
         "subjectSeparation": separation,
@@ -268,6 +283,168 @@ def independent_motion_observation(flow, matrix):
         "thresholdPixels": threshold,
         "residualP90Pixels": p90,
     }
+
+
+def bbox_iou(left, right):
+    lx, ly, lw, lh = [float(value) for value in left]
+    rx, ry, rw, rh = [float(value) for value in right]
+    ix1 = max(lx, rx)
+    iy1 = max(ly, ry)
+    ix2 = min(lx + lw, rx + rw)
+    iy2 = min(ly + lh, ry + rh)
+    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    union = max(0.0, lw * lh + rw * rh - intersection)
+    return 0.0 if union <= 1e-9 else intersection / union
+
+
+def bbox_centroid(box):
+    x, y, width, height = [float(value) for value in box]
+    return {"x": clamp01(x + width * 0.5), "y": clamp01(y + height * 0.5)}
+
+
+def bbox_centroid_distance(left, right):
+    a = bbox_centroid(left)
+    b = bbox_centroid(right)
+    return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+
+
+def bbox_touches_edge(box, margin=0.025):
+    x, y, width, height = [float(value) for value in box]
+    return (
+        x <= margin
+        or y <= margin
+        or x + width >= 1.0 - margin
+        or y + height >= 1.0 - margin
+    )
+
+
+def predict_bbox(box, matrix, width, height):
+    if matrix is None:
+        return [float(value) for value in box]
+    x, y, box_width, box_height = [float(value) for value in box]
+    corners = np.array([
+        [x * width, y * height, 1.0],
+        [(x + box_width) * width, y * height, 1.0],
+        [x * width, (y + box_height) * height, 1.0],
+        [(x + box_width) * width, (y + box_height) * height, 1.0],
+    ], dtype=np.float32)
+    transformed = corners @ matrix.T
+    left = clamp01(float(np.min(transformed[:, 0])) / max(width, 1))
+    top = clamp01(float(np.min(transformed[:, 1])) / max(height, 1))
+    right = clamp01(float(np.max(transformed[:, 0])) / max(width, 1))
+    bottom = clamp01(float(np.max(transformed[:, 1])) / max(height, 1))
+    predicted_width = max(1.0 / max(width, 1), right - left)
+    predicted_height = max(1.0 / max(height, 1), bottom - top)
+    predicted_width = min(predicted_width, 1.0 - left)
+    predicted_height = min(predicted_height, 1.0 - top)
+    return [left, top, predicted_width, predicted_height]
+
+
+def bind_subject_identity(semantic, diagnostics, track, observation, matrix, width, height, source_index, max_gap_frames):
+    """
+    Maintain one fail-closed primary semantic identity inside this analyzed source.
+
+    Independent-motion components are observations, not semantic segmentation masks.
+    They may seed and refresh identity, but they never set subjectMaskValidated=True.
+    During short low-motion/edge-occlusion gaps, the existing identity is predicted
+    through the accepted camera affine. A spatially contradictory new component is
+    not silently rebound to the old identity.
+    """
+    if observation is not None:
+        candidate_box = observation["boundingBox"]
+        candidate_confidence = float(observation["confidence"])
+        if track is None or track.get("state") == "LOST":
+            serial = 1 if track is None else int(track.get("serial", 0)) + 1
+            track = {
+                "semanticId": f"subject:primary:v{serial}",
+                "serial": serial,
+                "box": list(candidate_box),
+                "confidence": candidate_confidence,
+                "gapFrames": 0,
+                "ageFrames": 1,
+                "lastOcclusion": float(observation["occlusion"]),
+                "state": "OBSERVED",
+            }
+        else:
+            prior_box = track["box"]
+            overlap = bbox_iou(prior_box, candidate_box)
+            centroid_distance = bbox_centroid_distance(prior_box, candidate_box)
+            prior_area = max(1e-6, float(prior_box[2]) * float(prior_box[3]))
+            candidate_area = max(1e-6, float(candidate_box[2]) * float(candidate_box[3]))
+            area_ratio = max(prior_area, candidate_area) / min(prior_area, candidate_area)
+            same_identity = (
+                overlap >= 0.03
+                or (
+                    centroid_distance <= 0.24
+                    and area_ratio <= 5.0
+                    and int(track.get("gapFrames", 0)) <= max_gap_frames
+                )
+            )
+            if same_identity:
+                track["box"] = list(candidate_box)
+                track["confidence"] = candidate_confidence
+                track["gapFrames"] = 0
+                track["ageFrames"] = int(track.get("ageFrames", 0)) + 1
+                track["lastOcclusion"] = float(observation["occlusion"])
+                track["state"] = "OBSERVED"
+            else:
+                # Preserve the established identity for the bounded gap instead of
+                # rebinding an unrelated foreground component.
+                diagnostics["objectIdentityConflict"] = 1.0
+                observation = None
+
+    if observation is None and track is not None and track.get("state") != "LOST":
+        gap = int(track.get("gapFrames", 0)) + 1
+        track["gapFrames"] = gap
+        track["ageFrames"] = int(track.get("ageFrames", 0)) + 1
+        track["box"] = predict_bbox(track["box"], matrix, width, height)
+        if gap <= max_gap_frames:
+            occluded = float(track.get("lastOcclusion", 0.0)) >= 0.12 or bbox_touches_edge(track["box"])
+            track["state"] = "PREDICTED_OCCLUDED" if occluded else "PREDICTED_LOW_MOTION"
+            track["confidence"] = clamp01(float(track.get("confidence", 0.0)) * 0.82)
+        else:
+            track["state"] = "LOST"
+            track["confidence"] = 0.0
+
+    if track is None:
+        semantic["subjectTrackState"] = "UNOBSERVED"
+        semantic["subjectMaskSource"] = "NONE"
+        semantic["subjectMaskValidated"] = False
+        diagnostics["subjectIdentityBound"] = 0.0
+        return None
+
+    semantic_id = str(track["semanticId"])
+    state = str(track["state"])
+    box = [float(value) for value in track["box"]]
+    confidence = clamp01(float(track.get("confidence", 0.0)))
+    semantic["subjectSemanticId"] = semantic_id
+    semantic["subjectTrackState"] = state
+    semantic["subjectIdentityConfidence"] = confidence
+    semantic["subjectBoundingBox"] = box
+    semantic["subjectCentroid"] = bbox_centroid(box)
+    semantic["subjectMaskValidated"] = False
+    semantic["subjectEvidenceIds"] = [
+        f"dense-subject-track:{semantic_id}",
+        f"dense-subject-frame:{source_index}",
+        f"dense-subject-state:{state}",
+    ]
+    if state == "OBSERVED" and observation is not None:
+        semantic["subjectMaskSource"] = "MOTION_COMPONENT"
+        semantic["subjectVisibility"] = clamp01(0.55 + 0.45 * confidence)
+    elif state == "PREDICTED_OCCLUDED":
+        semantic["subjectMaskSource"] = "NONE"
+        semantic["subjectVisibility"] = clamp01(0.15 + 0.25 * confidence)
+    elif state == "PREDICTED_LOW_MOTION":
+        semantic["subjectMaskSource"] = "NONE"
+        semantic["subjectVisibility"] = clamp01(0.40 + 0.35 * confidence)
+    else:
+        semantic["subjectMaskSource"] = "NONE"
+        semantic["subjectVisibility"] = 0.0
+    diagnostics["subjectIdentityBound"] = 0.0 if state in {"UNOBSERVED", "LOST"} else 1.0
+    diagnostics["subjectIdentityConfidence"] = confidence
+    diagnostics["subjectTrackGapFrames"] = float(track.get("gapFrames", 0))
+    diagnostics["subjectTrackAgeFrames"] = float(track.get("ageFrames", 0))
+    return track
 
 
 def edge_echo_surface(gray):
@@ -447,6 +624,8 @@ def analyze_frames(frames, fps):
     cumulative_rotation = 0.0
     background_centroid_x = 0.5
     background_centroid_y = 0.5
+    subject_track = None
+    max_subject_gap_frames = max(2, min(12, int(round(fps * 0.20))))
     output = []
     for offset, ((source_index, frame), gray) in enumerate(zip(frames, grays)):
         state_count, echo_strength, overlap_density, state_separation = edge_echo_metrics(
@@ -481,7 +660,15 @@ def analyze_frames(frames, fps):
             "objectMotionConfidence": 0.0,
             "objectMaskCoverage": 0.0,
             "objectRelativeMotion": 0.0,
+            "objectIdentityConflict": 0.0,
+            "subjectIdentityBound": 0.0,
+            "subjectIdentityConfidence": 0.0,
+            "subjectTrackGapFrames": 0.0,
+            "subjectTrackAgeFrames": 0.0,
         }
+        affine_matrix = None
+        object_motion = None
+        height, width = gray.shape
         if offset > 0:
             previous = grays[offset - 1]
             flow = farneback_flow(previous, gray)
@@ -500,19 +687,20 @@ def analyze_frames(frames, fps):
                     diagnostics["affineFallbackUsed"] = 1.0
             if affine is not None:
                 matrix, step_scale, step_rotation, tx, ty, inlier_ratio = affine
+                affine_matrix = matrix
                 cumulative_scale *= step_scale
                 cumulative_rotation += step_rotation
                 semantic["scale"] = float(cumulative_scale)
                 semantic["rotationDegrees"] = float(cumulative_rotation)
                 background_centroid_x = clamp01(background_centroid_x + tx / max(width, 1))
                 background_centroid_y = clamp01(background_centroid_y + ty / max(height, 1))
+                semantic["backgroundCentroid"] = {
+                    "x": float(background_centroid_x),
+                    "y": float(background_centroid_y),
+                }
                 object_motion = independent_motion_observation(flow, matrix)
                 if object_motion is not None:
                     semantic["subjectCentroid"] = object_motion["subjectCentroid"]
-                    semantic["backgroundCentroid"] = {
-                        "x": float(background_centroid_x),
-                        "y": float(background_centroid_y),
-                    }
                     semantic["subjectSeparation"] = object_motion["subjectSeparation"]
                     semantic["maskCoverage"] = object_motion["maskCoverage"]
                     semantic["occlusion"] = object_motion["occlusion"]
@@ -552,6 +740,27 @@ def analyze_frames(frames, fps):
             diagnostics["flowP90Pixels"] = p90_mag
             diagnostics["flowCoherence"] = coherence
             diagnostics["flowResidualP90Pixels"] = flow_residual
+
+        subject_track = bind_subject_identity(
+            semantic,
+            diagnostics,
+            subject_track,
+            object_motion,
+            affine_matrix,
+            width,
+            height,
+            source_index,
+            max_subject_gap_frames,
+        )
+        if diagnostics["objectIdentityConflict"] >= 1.0:
+            # A rejected component is not allowed to contribute subject/mask truth.
+            semantic.pop("subjectSeparation", None)
+            semantic.pop("maskCoverage", None)
+            semantic["occlusion"] = 0.0
+            diagnostics["objectMotionDetected"] = 0.0
+            diagnostics["objectMotionConfidence"] = 0.0
+            diagnostics["objectMaskCoverage"] = 0.0
+            diagnostics["objectRelativeMotion"] = 0.0
         output.append(
             {
                 "sourceFrameIndex": source_index,
@@ -672,6 +881,7 @@ def main():
                 "RANSAC estimateAffinePartial2D",
                 "dense-flow affine fallback",
                 "motion-compensated residual",
+                "fail-closed persistent primary-subject identity tracker",
                 "edge autocorrelation echo detector",
                 "Laplacian sharpness proxy",
             ],

@@ -129,6 +129,10 @@ export interface PracticeReferenceObjectCueV1 {
   readonly subjectMotionDirection: Readonly<{ x: number; y: number }>;
   readonly backgroundMotionDirection: Readonly<{ x: number; y: number }>;
   readonly maskCoveragePeak: number;
+  readonly validatedMaskCoveragePeak?: number;
+  readonly maskTruthValidated?: boolean;
+  readonly subjectIdentityContinuityVerified?: boolean;
+  readonly subjectIdentityCoverage?: number;
   readonly occlusionPeak: number;
 }
 
@@ -270,12 +274,43 @@ export interface PracticeEpisodeV1 {
   readonly bestAttempt: PracticeAttemptV1 | null;
 }
 
+export interface PracticeSubjectIdentitySummaryV1 {
+  readonly tracked: boolean;
+  readonly continuityVerified: boolean;
+  readonly dominantSemanticId: string | null;
+  readonly semanticIdentityCount: number;
+  readonly identitySwitchCount: number;
+  readonly frameCount: number;
+  readonly trackedFrameCount: number;
+  readonly observedFrameCount: number;
+  readonly predictedFrameCount: number;
+  readonly lostFrameCount: number;
+  readonly identityCoverage: number;
+  readonly observedCoverage: number;
+  readonly meanIdentityConfidence: number;
+  readonly lowMotionFrameCount: number;
+  readonly lowMotionSurvived: boolean;
+  readonly occlusionFrameCount: number;
+  readonly occlusionSurvived: boolean;
+  readonly validatedMaskFrameCount: number;
+  readonly validatedMaskCoverage: number;
+  readonly validatedMaskSources: readonly string[];
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeObjectAwareWindowProofV1 {
   readonly referenceWindowId: string;
   readonly renderWindowId: string | null;
   readonly effectFamilyId: string;
   readonly relation: PracticeObjectMotionRelationV1;
   readonly relationMatched: boolean;
+  readonly subjectIdentityRequired?: boolean;
+  readonly subjectIdentityVerified?: boolean;
+  readonly maskTruthRequired?: boolean;
+  readonly maskTruthVerified?: boolean;
+  readonly referenceSubjectIdentity?: PracticeSubjectIdentitySummaryV1;
+  readonly renderSubjectIdentity?: PracticeSubjectIdentitySummaryV1 | null;
   readonly score: number;
   readonly passed: boolean;
   readonly reasons: readonly string[];
