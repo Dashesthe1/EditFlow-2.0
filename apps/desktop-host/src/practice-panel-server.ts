@@ -13,7 +13,9 @@ import {
   EditTypeRegistryFileV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  buildPracticeHeldOutBenchmarkCaseV1,
   classifyPracticeMasteryScopeV1,
+  evaluatePracticeHeldOutBenchmarkV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -26,6 +28,7 @@ import {
   type PracticeMasteryRecordV1,
   type PracticeMasteryScopeV1,
   type PracticeMediaInputV1,
+  type PracticeRunRoleV1,
   type PracticeSessionResultV1,
   type ProCreationPreparationResultV1,
 } from "../../../packages/practice-homework/src/index.js";
@@ -63,6 +66,7 @@ export interface PracticePanelRunSnapshotV1 {
   readonly sessionId: string;
   readonly assignmentId: string;
   readonly mode: GptOrchestrationModeV1;
+  readonly practiceRole: PracticeRunRoleV1 | null;
   readonly editTypeId: string;
   readonly state: PracticePanelRunStateV1;
   readonly stage: GptLearningStageV1 | null;
@@ -84,6 +88,7 @@ export interface PracticePanelRunSnapshotV1 {
 interface PracticeRunBody {
   readonly editTypeId: string;
   readonly editTypeTitle?: string;
+  readonly practiceRole: PracticeRunRoleV1;
   readonly finishPath: string;
   readonly videoPaths: readonly string[];
   readonly audioPaths?: readonly string[];
@@ -342,11 +347,12 @@ const snapshot = (run: PracticePanelRunSnapshotV1): PracticePanelRunSnapshotV1 =
 
 const practiceLearningTraceReasons = (
   events: readonly GptLearningEventV1[],
+  practiceRole: PracticeRunRoleV1 = "LEARNING",
 ): readonly string[] => {
   const reasons: string[] = [];
-  const requiredStages: readonly GptLearningStageV1[] = [
-    "RENDER", "COMPARISON", "RESULT", "LESSON",
-  ];
+  const requiredStages: readonly GptLearningStageV1[] = practiceRole === "HELD_OUT_CERTIFICATION"
+    ? ["RENDER", "COMPARISON", "RESULT"]
+    : ["RENDER", "COMPARISON", "RESULT", "LESSON"];
   for (const stage of requiredStages) {
     if (!events.some((event) => event.stage === stage)) {
       reasons.push("Practice mastery requires a retained " + stage + " learning event.");
@@ -359,7 +365,9 @@ const practiceLearningTraceReasons = (
     }
   }
   for (const gap of latestGapById.values()) {
-    if (gap.status !== "RESOLVED") {
+    if (practiceRole === "HELD_OUT_CERTIFICATION") {
+      reasons.push("Held-out certification encountered a capability gap: " + gap.gapId + ".");
+    } else if (gap.status !== "RESOLVED") {
       reasons.push("Unresolved Practice capability gap blocks mastery: " + gap.gapId + ".");
     }
   }
@@ -500,6 +508,11 @@ export class PracticePanelServerV1 {
         .map((value) => ensureFile(value, "Start audio")),
     );
     const editTypeTitle = optionalString(body, "editTypeTitle");
+    const practiceRoleValue = optionalString(body, "practiceRole") ?? "LEARNING";
+    if (practiceRoleValue !== "LEARNING" && practiceRoleValue !== "HELD_OUT_CERTIFICATION") {
+      throw new HttpError(400, "practiceRole must be LEARNING or HELD_OUT_CERTIFICATION.");
+    }
+    const practiceRole = practiceRoleValue as PracticeRunRoleV1;
     const minimumSimilarity = optionalNumber(body, "minimumSimilarity", 0, 1);
     const stretchSimilarity = optionalNumber(body, "stretchSimilarity", 0, 1);
     const maxAttempts = optionalNumber(body, "maxAttempts", 1, 20, true);
@@ -508,6 +521,7 @@ export class PracticePanelServerV1 {
     return {
       editTypeId: requiredString(body, "editTypeId"),
       ...(editTypeTitle === undefined ? {} : { editTypeTitle }),
+      practiceRole,
       finishPath: await ensureFile(requiredString(body, "finishPath"), "Finish reference"),
       videoPaths,
       audioPaths,
@@ -531,6 +545,9 @@ export class PracticePanelServerV1 {
     const registry = await editTypesFile.load();
     let editType = registry.get(request.editTypeId);
     if (editType === null) {
+      if (request.practiceRole === "HELD_OUT_CERTIFICATION") {
+        throw new HttpError(409, "Held-out certification requires an existing transfer-verified Edit Type.");
+      }
       if (request.editTypeTitle === undefined) {
         throw new HttpError(400, "Unknown Edit Type: " + request.editTypeId);
       }
@@ -554,9 +571,19 @@ export class PracticePanelServerV1 {
       this.config.artifactDir,
       sessionId.replace(/[:]/g, "-"),
     );
+    const knowledge = request.practiceRole === "HELD_OUT_CERTIFICATION"
+      ? registry.transferableKnowledge(editType.editTypeId)
+      : registry.knowledge(editType.editTypeId);
+    if (request.practiceRole === "HELD_OUT_CERTIFICATION" && knowledge === null) {
+      throw new HttpError(
+        409,
+        "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
+      );
+    }
     const assignment = await this.#gptStore.createAssignment({
       sessionId,
       mode: "PRACTICE",
+      practiceRole: request.practiceRole,
       editTypeId: editType.editTypeId,
       finish,
       start,
@@ -572,15 +599,18 @@ export class PracticePanelServerV1 {
           : { minimumAudioConfidence: request.minimumAudioConfidence }),
       },
       artifactDir,
-      knowledge: registry.knowledge(editType.editTypeId),
+      knowledge,
     });
-    registry.beginGptLearningSession(editType.editTypeId, sessionId, "PRACTICE");
-    await editTypesFile.save(registry);
+    if (request.practiceRole === "LEARNING") {
+      registry.beginGptLearningSession(editType.editTypeId, sessionId, "PRACTICE");
+      await editTypesFile.save(registry);
+    }
 
     const run: PracticePanelRunSnapshotV1 = {
       sessionId,
       assignmentId: assignment.assignmentId,
       mode: "PRACTICE",
+      practiceRole: request.practiceRole,
       editTypeId: editType.editTypeId,
       state: "WAITING_FOR_GPT",
       stage: null,
@@ -716,11 +746,15 @@ export class PracticePanelServerV1 {
       ...(learnedSkill === undefined ? {} : { learnedSkill }),
       evidenceRefs,
     });
-    const file = await this.#editTypes();
-    const registry = await file.load();
-    registry.recordGptLearningEvent(event);
-    await file.save(registry);
-    return (await this.#gptStore.getAssignment(assignmentId))!;
+    const assignment = await this.#gptStore.getAssignment(assignmentId);
+    if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
+    if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
+      const file = await this.#editTypes();
+      const registry = await file.load();
+      registry.recordGptLearningEvent(event);
+      await file.save(registry);
+    }
+    return assignment;
   }
 
   async #completeAssignment(
@@ -741,11 +775,24 @@ export class PracticePanelServerV1 {
     let masteryScope: PracticeMasteryScopeV1 | null = null;
     let masteryProofRef: string | null = null;
     let masteryReasons: readonly string[] = [];
+    let heldOutCasePassed: boolean | null = null;
+    let heldOutBenchmarkRobust: boolean | null = null;
+    let heldOutBenchmarkCaseCount = 0;
     let finalRenderRef = requestedRenderRef;
 
-    if (success && pending.mode === "PRACTICE" && pending.status === "RUNNING") {
+    if (pending.mode === "PRACTICE" && pending.status === "RUNNING") {
+      const practiceRole = pending.practiceRole ?? "LEARNING";
       if (requestedRenderRef === undefined) {
-        masteryReasons = ["Practice mastery requires a final render reference."];
+        masteryReasons = [
+          practiceRole === "HELD_OUT_CERTIFICATION"
+            ? "Held-out certification requires a final render reference."
+            : "Practice mastery requires a final render reference.",
+        ];
+        if (practiceRole === "HELD_OUT_CERTIFICATION") {
+          heldOutCasePassed = false;
+          heldOutBenchmarkCaseCount = registry.knowledge(pending.editTypeId)
+            ?.gptLearning.heldOutCases.length ?? 0;
+        }
       } else {
         try {
           const verification = await this.#masteryVerifier.verify({
@@ -759,12 +806,38 @@ export class PracticePanelServerV1 {
           });
           masteryProofRef = verification.proofRef;
           finalRenderRef = verification.proof.finalRenderRef;
-          const traceReasons = practiceLearningTraceReasons(sessionEvents);
+          const traceReasons = practiceLearningTraceReasons(sessionEvents, practiceRole);
           masteryReasons = [...new Set([
             ...verification.proof.report.reasons,
             ...traceReasons,
           ])];
-          if (verification.proof.report.passed && traceReasons.length === 0) {
+
+          if (practiceRole === "HELD_OUT_CERTIFICATION") {
+            const heldOutCase = buildPracticeHeldOutBenchmarkCaseV1({
+              sessionId: pending.sessionId,
+              proof: verification.proof,
+              proofRef: verification.proofRef,
+              traceReasons,
+            });
+            registry.recordHeldOutCase(pending.editTypeId, heldOutCase);
+            const retained = registry.knowledge(pending.editTypeId);
+            if (retained === null) {
+              throw new TypeError("Held-out certification lost its Edit Type registry entry.");
+            }
+            const benchmark = evaluatePracticeHeldOutBenchmarkV1({
+              editTypeId: pending.editTypeId,
+              cases: retained.gptLearning.heldOutCases,
+              priorMasteryRecords: retained.gptLearning.masteryRecords,
+            });
+            registry.recordHeldOutBenchmark(benchmark);
+            heldOutCasePassed = heldOutCase.passed;
+            heldOutBenchmarkRobust = benchmark.robust;
+            heldOutBenchmarkCaseCount = benchmark.caseCount;
+            masteryReasons = [...new Set([
+              ...heldOutCase.reasons,
+              ...benchmark.reasons,
+            ])];
+          } else if (verification.proof.report.passed && traceReasons.length === 0) {
             const priorRecords = registry.knowledge(pending.editTypeId)
               ?.gptLearning.masteryRecords ?? [];
             masteryScope = classifyPracticeMasteryScopeV1(
@@ -782,11 +855,15 @@ export class PracticePanelServerV1 {
               finalRenderRef: verification.proof.finalRenderRef,
               overallSimilarity: verification.proof.report.overallSimilarity,
               definingEffectCoverage: verification.proof.report.definingEffectCoverage,
+              effectFamilyIds: verification.proof.effectFamilyIds,
               verifiedAt: verification.proof.verifiedAt,
             };
             masteryReasons = [];
           }
         } catch (error) {
+          if ((pending.practiceRole ?? "LEARNING") === "HELD_OUT_CERTIFICATION") {
+            heldOutCasePassed = false;
+          }
           masteryReasons = [
             "Practice mastery verification failed closed: "
               + (error instanceof Error ? error.message : String(error)),
@@ -795,14 +872,28 @@ export class PracticePanelServerV1 {
       }
     }
 
-    const summary = pending.mode !== "PRACTICE" || !success
+    const practiceCompletionPassed = pending.mode !== "PRACTICE"
+      ? success
+      : (pending.practiceRole ?? "LEARNING") === "HELD_OUT_CERTIFICATION"
+        ? heldOutCasePassed === true
+        : masteryRecord !== undefined;
+    const summary = pending.mode !== "PRACTICE"
       ? requestedSummary
-      : masteryRecord === undefined
-        ? requestedSummary + " Practice proof gate: HUMAN_REVIEW_REQUIRED. "
-          + masteryReasons.join(" ")
-        : requestedSummary + " Practice proof gate: " + masteryRecord.scope + ".";
+      : (pending.practiceRole ?? "LEARNING") === "HELD_OUT_CERTIFICATION"
+        ? requestedSummary
+          + " Held-out certification case: "
+          + (heldOutCasePassed === true ? "PASS" : "FAIL")
+          + ". Benchmark: "
+          + String(heldOutBenchmarkCaseCount)
+          + " retained case(s), "
+          + (heldOutBenchmarkRobust === true ? "ROBUST." : "not yet ROBUST.")
+          + (masteryReasons.length === 0 ? "" : " " + masteryReasons.join(" "))
+        : masteryRecord === undefined
+          ? requestedSummary + " Practice proof gate: HUMAN_REVIEW_REQUIRED. "
+            + masteryReasons.join(" ")
+          : requestedSummary + " Practice proof gate: " + masteryRecord.scope + ".";
     const assignment = await this.#gptStore.complete(assignmentId, {
-      success,
+      success: practiceCompletionPassed,
       finalSummary: summary,
       ...(finalRenderRef === undefined ? {} : { finalRenderRef }),
     });
@@ -814,14 +905,16 @@ export class PracticePanelServerV1 {
           ? [event.learnedSkill.skillId]
           : []))]
       : [];
-    registry.completeGptLearningSession({
-      editTypeId: assignment.editTypeId,
-      sessionId: assignment.sessionId,
-      mode: assignment.mode,
-      mastered: assignment.status === "COMPLETED" && masteryRecord !== undefined,
-      ...(masteryRecord === undefined ? {} : { masteryRecord }),
-      ...(transferVerifiedSkillIds.length === 0 ? {} : { transferVerifiedSkillIds }),
-    });
+    if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
+      registry.completeGptLearningSession({
+        editTypeId: assignment.editTypeId,
+        sessionId: assignment.sessionId,
+        mode: assignment.mode,
+        mastered: assignment.status === "COMPLETED" && masteryRecord !== undefined,
+        ...(masteryRecord === undefined ? {} : { masteryRecord }),
+        ...(transferVerifiedSkillIds.length === 0 ? {} : { transferVerifiedSkillIds }),
+      });
+    }
     await file.save(registry);
 
     const run = this.#runs.get(assignment.sessionId);
@@ -912,6 +1005,7 @@ export class PracticePanelServerV1 {
       sessionId,
       assignmentId: assignment.assignmentId,
       mode: "PRO_CREATION",
+      practiceRole: null,
       editTypeId: request.editTypeId,
       state: "WAITING_FOR_GPT",
       stage: null,

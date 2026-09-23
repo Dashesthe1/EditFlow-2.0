@@ -9,6 +9,7 @@
   "finalRenderRef": "C:\\proofs\\practice-fixture\\final.mp4",
   "minimumSimilarity": 0.95,
   "exactSceneConfidence": 0.95,
+  "effectFamilyIds": ["SHUTTER_FRAGMENTATION"],
   "report": {
     "schema": "editflow.practice-similarity.v1",
     "breakdown": {

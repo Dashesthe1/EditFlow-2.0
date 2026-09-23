@@ -3,6 +3,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  classifyEffectFamilyV1,
   detectDenseEffectWindowsV1,
 } from "../../../packages/visual-effects-intelligence/src/index.js";
 import {
@@ -282,6 +283,11 @@ export class PracticeMasteryVerifierV1 {
 
     const referenceSequence = detectDenseEffectWindowsV1(referenceEvidence);
     const renderSequence = detectDenseEffectWindowsV1(renderEvidence);
+    const effectFamilyIds = unique(
+      referenceSequence.windows
+        .map((window) => classifyEffectFamilyV1(window.evidence))
+        .filter((family) => family !== "UNKNOWN"),
+    );
     const compared = referenceSequence.windows.length === 0
       ? {
         definingCoverage: 1,
@@ -356,6 +362,7 @@ export class PracticeMasteryVerifierV1 {
       finalRenderRef,
       minimumSimilarity,
       exactSceneConfidence,
+      effectFamilyIds,
       report,
       matches,
       audioMatch,

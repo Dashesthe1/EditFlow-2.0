@@ -110,11 +110,16 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(html, />Finish</);
   assert.match(html, />Start</);
   assert.match(html, /Proceed to do homework/);
+  assert.match(html, /HELD_OUT_CERTIFICATION/);
+  assert.match(html, /Held-out certification/);
   assert.match(html, /practice-panel\.js/);
 
   assert.match(client, /finishPath/);
   assert.match(client, /videoPaths/);
   assert.match(client, /audioPaths/);
+  assert.match(client, /practiceRole: selectedPracticeRole\(\)/);
+  assert.match(client, /frozen transfer-verified knowledge/i);
+  assert.match(client, /Failed machine-proven cases remain in the benchmark/);
   assert.match(html, /id="cancel-action"/);
   assert.match(client, /\/v1\/product\/pro-creation/);
   assert.match(client, /\/v1\/product\/runs\//);

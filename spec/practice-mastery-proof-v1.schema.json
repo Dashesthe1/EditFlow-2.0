@@ -7,7 +7,7 @@
   "required": [
     "schema", "sessionId", "editTypeId", "referenceId", "sourceIndexId",
     "referenceFingerprint", "sourceFingerprint", "finalRenderRef",
-    "minimumSimilarity", "exactSceneConfidence", "report", "matches",
+    "minimumSimilarity", "exactSceneConfidence", "effectFamilyIds", "report", "matches",
     "audioMatch", "evidenceRefs", "verifiedAt"
   ],
   "properties": {
@@ -21,6 +21,11 @@
     "finalRenderRef": { "type": "string", "minLength": 1 },
     "minimumSimilarity": { "type": "number", "minimum": 0.95, "maximum": 1 },
     "exactSceneConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "effectFamilyIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
     "report": { "$ref": "#/$defs/report" },
     "matches": {
       "type": "array",

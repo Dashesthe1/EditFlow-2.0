@@ -15,6 +15,7 @@ import type {
   GptOrchestrationModeV1,
   GptResearchSourceV1,
   PracticeMediaInputV1,
+  PracticeRunRoleV1,
   PracticeVerificationPolicyV1,
 } from "./contracts.js";
 
@@ -75,9 +76,15 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
         const practicePolicy = assignment.mode === "PRACTICE"
           ? normalizePracticeVerificationPolicyV1(assignment.practicePolicy)
           : null;
+        const practiceRole: PracticeRunRoleV1 | null = assignment.mode === "PRACTICE"
+          ? assignment.practiceRole === "HELD_OUT_CERTIFICATION"
+            ? "HELD_OUT_CERTIFICATION"
+            : "LEARNING"
+          : null;
         const researchMessage = applyCurrentResearchPriority(assignment.chatMessage);
         return {
           ...assignment,
+          practiceRole,
           practicePolicy,
           chatMessage: practicePolicy === null
             ? researchMessage
@@ -219,6 +226,7 @@ const mediaLine = (input: PracticeMediaInputV1): string =>
 export const buildGptOrchestrationChatMessageV1 = (input: {
   readonly sessionId: string;
   readonly mode: GptOrchestrationModeV1;
+  readonly practiceRole: PracticeRunRoleV1 | null;
   readonly editTypeId: string;
   readonly finish: PracticeMediaInputV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
@@ -246,12 +254,21 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
     : null;
   const modeInstruction = input.mode === "PRACTICE"
-    ? [
-      "This is supervised Practice. The Finish video is the answer key.",
-      "Study the Finish, find the matching raw material, and reconstruct it from scratch in After Effects.",
-      "Continue render -> compare -> diagnose -> correct cycles until the reference is replicated to the accepted proof gate.",
-      "Record the full learning trajectory, including failed hypotheses and why they failed, under the selected Edit Type.",
-    ]
+    ? input.practiceRole === "HELD_OUT_CERTIFICATION"
+      ? [
+        "This is held-out Practice certification. The Finish video is an unseen answer key.",
+        "Use only the frozen TRANSFER_VERIFIED Edit Type snapshot supplied with this assignment.",
+        "Study the Finish, find the matching raw material, and reconstruct it from scratch in After Effects.",
+        "Continue render -> compare -> diagnose -> correct cycles until the reference is replicated to the accepted proof gate.",
+        "Do not teach, research, implement new capabilities, commit skills, or retain lessons during this run. If frozen knowledge/capabilities are insufficient, record the failure and let the held-out case fail closed.",
+        "Assignment events are audit trace only and must not mutate Edit Type learning memory.",
+      ]
+      : [
+        "This is supervised Practice learning. The Finish video is the answer key.",
+        "Study the Finish, find the matching raw material, and reconstruct it from scratch in After Effects.",
+        "Continue render -> compare -> diagnose -> correct cycles until the reference is replicated to the accepted proof gate.",
+        "Record the full learning trajectory, including failed hypotheses and why they failed, under the selected Edit Type.",
+      ]
     : [
       "This is Pro Creation. There is no Finish answer key.",
       "Create a new professional edit from the Start media by applying the selected Edit Type's successful Practice development patterns.",
@@ -263,6 +280,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "EDITFLOW 2.0 GPT ORCHESTRATION ASSIGNMENT",
     "Session: " + input.sessionId,
     "Mode: " + input.mode,
+    ...(input.mode === "PRACTICE" ? ["Practice role: " + (input.practiceRole ?? "LEARNING")] : []),
     "Edit Type: " + input.editTypeId,
     "",
     ...modeInstruction,
@@ -276,11 +294,23 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "- All editorial cutting, retiming, remodeling, effects, transitions, compositing, and final construction must exist in After Effects.",
     "- Never replace an unfamiliar reference behavior with a weaker known effect. Reverse-engineer it and synthesize a construction when capabilities permit.",
     "- If a fundamental skill is missing, distinguish a RECIPE_SKILL gap from an EXECUTION_CAPABILITY gap instead of degrading the reference.",
-    ...RESEARCH_PRIORITY_LINES,
-    "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
+    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
+      ? [
+        "- Held-out certification is inference-only: do not research or implement a missing skill inside the case. Record the exact missing behavior/capability in the audit trace and allow the case to fail.",
+      ]
+      : [
+        ...RESEARCH_PRIORITY_LINES,
+        "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
+      ]),
     "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
-    "- If existing primitives can express the behavior, synthesize and prove a new reusable skill. If an execution capability is genuinely absent, implement/prove the missing EditFlow route when development access permits; otherwise mark the exact gap BLOCKED.",
-    "- Research is hypothesis evidence, not proof. Resume the edit only after AE construction/readback/render evidence supports the new skill or capability.",
+    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
+      ? [
+        "- Do not synthesize or retain a new reusable skill during certification. A missing execution route is a certification failure, not an invitation to widen the system under test.",
+      ]
+      : [
+        "- If existing primitives can express the behavior, synthesize and prove a new reusable skill. If an execution capability is genuinely absent, implement/prove the missing EditFlow route when development access permits; otherwise mark the exact gap BLOCKED.",
+        "- Research is hypothesis evidence, not proof. Resume the edit only after AE construction/readback/render evidence supports the new skill or capability.",
+      ]),
     "- GPT completion is not Practice mastery. On completion, EditFlow independently re-analyzes the actual final render against Finish, re-checks exact source matches, M6 defining behavior coverage, effect/transition fidelity, and the configured Practice proof gate.",
     ...(practicePolicy === null ? [] : [
       "- Practice certification thresholds: weighted/effect/transition fidelity >= " + practicePolicy.minimumSimilarity.toFixed(3)
@@ -289,14 +319,27 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
         + ". These thresholds can be strengthened per session but never weakened below the product floor.",
     ]),
     "- A Practice run that misses any hard gate remains HUMAN_REVIEW_REQUIRED even if GPT believes the edit is successful. Never self-certify or substitute prose confidence for retained comparison evidence.",
-    "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",
-    "- When an existing AE_PROVEN skill is successfully re-proven on a materially different Practice reference/source set, emit a fresh SKILL_COMMIT with AE_PROVEN maturity. EditFlow promotes that skill to TRANSFER_VERIFIED only after the overall machine transfer gate passes.",
+    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
+      ? [
+        "- A passing held-out case is certification evidence only. It must not become a mastery/training record or alter TRANSFER_VERIFIED skills.",
+      ]
+      : [
+        "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",
+        "- When an existing AE_PROVEN skill is successfully re-proven on a materially different Practice reference/source set, emit a fresh SKILL_COMMIT with AE_PROVEN maturity. EditFlow promotes that skill to TRANSFER_VERIFIED only after the overall machine transfer gate passes.",
+      ]),
     "- Check cancellation state between meaningful operations and stop safely when cancellation is requested.",
     "",
-    "Learning trace contract:",
-    "Normal loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.",
-    "When a missing fundamental skill/capability is discovered, insert CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT, then return to the normal AE/render/compare loop.",
-    "A lesson or committed skill should capture transferable reasons and adaptation rules, not only literal parameter values.",
+    input.practiceRole === "HELD_OUT_CERTIFICATION" ? "Certification audit trace contract:" : "Learning trace contract:",
+    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
+      ? [
+        "Inference loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT.",
+        "Do not emit RESEARCH, CAPABILITY_IMPLEMENTATION, CAPABILITY_PROOF, SKILL_COMMIT, or LESSON during held-out certification.",
+      ]
+      : [
+        "Normal loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.",
+        "When a missing fundamental skill/capability is discovered, insert CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT, then return to the normal AE/render/compare loop.",
+        "A lesson or committed skill should capture transferable reasons and adaptation rules, not only literal parameter values.",
+      ]),
     "",
     "Start media:",
     ...input.start.map(mediaLine),
@@ -359,6 +402,7 @@ export class GptOrchestrationStoreV1 {
   async createAssignment(input: {
     readonly sessionId: string;
     readonly mode: GptOrchestrationModeV1;
+    readonly practiceRole?: PracticeRunRoleV1 | null;
     readonly editTypeId: string;
     readonly finish: PracticeMediaInputV1 | null;
     readonly start: readonly PracticeMediaInputV1[];
@@ -372,6 +416,15 @@ export class GptOrchestrationStoreV1 {
     if (input.mode === "PRACTICE" && input.finish === null) {
       throw new TypeError("GPT Practice assignment requires a Finish reference.");
     }
+    const practiceRole: PracticeRunRoleV1 | null = input.mode === "PRACTICE"
+      ? input.practiceRole === "HELD_OUT_CERTIFICATION"
+        ? "HELD_OUT_CERTIFICATION"
+        : "LEARNING"
+      : null;
+    if (practiceRole === "HELD_OUT_CERTIFICATION"
+      && input.knowledge?.knowledgeScope !== "TRANSFER_VERIFIED_ONLY") {
+      throw new TypeError("Held-out Practice certification requires a frozen TRANSFER_VERIFIED_ONLY knowledge snapshot.");
+    }
     const assignmentId = "gpt-assignment:" + randomUUID();
     const artifactDir = path.resolve(input.artifactDir);
     const practicePolicy = input.mode === "PRACTICE"
@@ -382,6 +435,7 @@ export class GptOrchestrationStoreV1 {
       assignmentId,
       sessionId,
       mode: input.mode,
+      practiceRole,
       editTypeId,
       status: "PENDING",
       finish: input.finish === null ? null : structuredClone(input.finish),
@@ -391,6 +445,7 @@ export class GptOrchestrationStoreV1 {
       chatMessage: buildGptOrchestrationChatMessageV1({
         sessionId,
         mode: input.mode,
+        practiceRole,
         editTypeId,
         finish: input.finish,
         start: input.start,
@@ -520,6 +575,20 @@ export class GptOrchestrationStoreV1 {
       if (assignment === undefined) throw new TypeError("Unknown GPT assignment: " + input.assignmentId);
       if (!["RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)) {
         throw new TypeError("GPT learning events require a running assignment.");
+      }
+      if (assignment.practiceRole === "HELD_OUT_CERTIFICATION") {
+        const forbiddenStages: readonly GptLearningStageV1[] = [
+          "RESEARCH", "CAPABILITY_IMPLEMENTATION", "CAPABILITY_PROOF", "SKILL_COMMIT", "LESSON",
+        ];
+        if (forbiddenStages.includes(input.stage)) {
+          throw new TypeError("Held-out Practice certification is inference-only and forbids learning/mutation stages.");
+        }
+        if (input.developmentPattern !== undefined
+          || input.reusableLesson !== undefined
+          || input.avoidRepeat !== undefined
+          || input.learnedSkill !== undefined) {
+          throw new TypeError("Held-out Practice certification cannot retain lessons, patterns, or learned skills.");
+        }
       }
       const sessionEvents = payload.events.filter((event) => event.sessionId === assignment.sessionId);
       if (input.stage === "CAPABILITY_GAP" && input.capabilityGap === undefined) {

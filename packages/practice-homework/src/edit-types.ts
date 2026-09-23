@@ -13,6 +13,7 @@ import type {
   GptLearningEventV1,
   GptOrchestrationModeV1,
   PracticeEpisodeV1,
+  PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkReportV1,
   PracticeMasteryRecordV1,
 } from "./contracts.js";
@@ -29,6 +30,7 @@ const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   proCreationSessionIds: [],
   masteredPracticeSessionIds: [],
   masteryRecords: [],
+  heldOutCases: [],
   heldOutBenchmarks: [],
   eventCount: 0,
   successLessons: [],
@@ -46,7 +48,14 @@ const normalizedGptLearning = (
     practiceSessionIds: uniqueStrings(value.practiceSessionIds),
     proCreationSessionIds: uniqueStrings(value.proCreationSessionIds),
     masteredPracticeSessionIds: uniqueStrings(value.masteredPracticeSessionIds),
-    masteryRecords: (value.masteryRecords ?? []).map((record) => structuredClone(record)),
+    masteryRecords: (value.masteryRecords ?? []).map((record) => ({
+      ...structuredClone(record),
+      effectFamilyIds: uniqueStrings(record.effectFamilyIds ?? []),
+    })),
+    heldOutCases: (value.heldOutCases ?? []).map((item) => ({
+      ...structuredClone(item),
+      reasons: uniqueStrings(item.reasons ?? []),
+    })),
     heldOutBenchmarks: (value.heldOutBenchmarks ?? []).map((report) => structuredClone(report)),
     eventCount: Math.max(0, Math.floor(value.eventCount)),
     successLessons: uniqueStrings(value.successLessons),
@@ -374,6 +383,44 @@ export class EditTypeRegistryV1 {
     return structuredClone(updated);
   }
 
+  recordHeldOutCase(
+    editTypeId: string,
+    item: PracticeHeldOutBenchmarkCaseV1,
+  ): EditTypeProfileV1 {
+    const profile = this.#profiles.get(editTypeId);
+    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + editTypeId);
+    if (item.evidenceRefs.length === 0) {
+      throw new TypeError("Held-out certification requires retained machine evidence, including failed cases.");
+    }
+    const learning = normalizedGptLearning(profile.gptLearning);
+    if (learning.masteryRecords.some((record) =>
+      record.referenceFingerprint === item.referenceFingerprint
+      || record.sourceFingerprint === item.sourceFingerprint)) {
+      throw new TypeError("Held-out certification material overlaps retained Practice training material.");
+    }
+    const retained = learning.heldOutCases.filter((existing) => existing.sessionId !== item.sessionId);
+    if (retained.some((existing) =>
+      existing.referenceFingerprint === item.referenceFingerprint
+      || existing.sourceFingerprint === item.sourceFingerprint)) {
+      throw new TypeError("Held-out certification requires novel reference and source fingerprints per case.");
+    }
+    if (retained.length >= 30) {
+      throw new TypeError("Held-out certification already contains the maximum 30 cases.");
+    }
+    const now = new Date().toISOString();
+    const updated: EditTypeProfileV1 = {
+      ...profile,
+      revision: profile.revision + 1,
+      gptLearning: {
+        ...learning,
+        heldOutCases: [...retained, structuredClone(item)],
+        lastUpdatedAt: now,
+      },
+    };
+    this.#profiles.set(editTypeId, updated);
+    return structuredClone(updated);
+  }
+
   recordHeldOutBenchmark(report: PracticeHeldOutBenchmarkReportV1): EditTypeProfileV1 {
     const profile = this.#profiles.get(report.editTypeId);
     if (profile === undefined) throw new TypeError("Unknown Edit Type: " + report.editTypeId);
@@ -495,6 +542,7 @@ export class EditTypeRegistryV1 {
       proCreationSessionIds: learning.proCreationSessionIds,
       masteredPracticeSessionIds: transferRecords.map((record) => record.sessionId),
       masteryRecords: transferRecords,
+      heldOutCases: learning.heldOutCases,
       heldOutBenchmarks: learning.heldOutBenchmarks,
       eventCount: learning.eventCount,
       successLessons: [],

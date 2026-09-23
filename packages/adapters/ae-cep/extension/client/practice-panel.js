@@ -13,6 +13,9 @@
   var pollTimer = null;
 
   var editTypeEl = document.getElementById("edit-type");
+  var practiceRoleFieldEl = document.getElementById("practice-role-field");
+  var practiceRoleEl = document.getElementById("practice-role");
+  var practiceRoleHintEl = document.getElementById("practice-role-hint");
   var finishFieldEl = document.getElementById("finish-field");
   var finishSummaryEl = document.getElementById("finish-summary");
   var startSummaryEl = document.getElementById("start-summary");
@@ -63,10 +66,37 @@
     return editTypeEl.value;
   }
 
+  function selectedPracticeRole() {
+    return practiceRoleEl && practiceRoleEl.value === "HELD_OUT_CERTIFICATION"
+      ? "HELD_OUT_CERTIFICATION"
+      : "LEARNING";
+  }
+
+  function selectedEditTypeMaturity() {
+    var option = editTypeEl.options[editTypeEl.selectedIndex];
+    return option ? option.getAttribute("data-maturity") || "UNPROVEN" : "UNPROVEN";
+  }
+
+  function heldOutReady() {
+    if (selectedPracticeRole() !== "HELD_OUT_CERTIFICATION") return true;
+    return ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(selectedEditTypeMaturity()) >= 0;
+  }
+
+  function updatePracticeRoleUi() {
+    if (!practiceRoleEl || !practiceRoleHintEl) return;
+    var heldOut = selectedPracticeRole() === "HELD_OUT_CERTIFICATION";
+    practiceRoleHintEl.textContent = heldOut
+      ? "Certification freezes transfer-verified knowledge: no research, new skills, or retained lessons. Failed machine-proven cases remain in the benchmark."
+      : "Learning may research, correct, and retain proven lessons under the selected Edit Type.";
+    if (mode === "PRACTICE") {
+      actionEl.textContent = heldOut ? "Run held-out certification" : "Proceed to do homework";
+    }
+  }
+
   function updateAction() {
     var hasVideo = startFiles.some(function (item) { return item.kind === "VIDEO"; });
     var valid = serviceReady && !activeRunId && selectedEditType() && hasVideo && panelConnected;
-    if (mode === "PRACTICE") valid = valid && Boolean(finishPath);
+    if (mode === "PRACTICE") valid = valid && Boolean(finishPath) && heldOutReady();
     actionEl.disabled = !valid;
     cancelEl.hidden = !activeRunId;
     cancelEl.disabled = !activeRunId;
@@ -149,9 +179,11 @@
     editTypes.forEach(function (profile) {
       var option = document.createElement("option");
       option.value = profile.editTypeId;
-      var maturity = profile.knowledge && profile.knowledge.maturityStage
-        ? profile.knowledge.maturityStage.replace(/_/g, " ")
+      var maturityId = profile.knowledge && profile.knowledge.maturityStage
+        ? profile.knowledge.maturityStage
         : "UNPROVEN";
+      var maturity = maturityId.replace(/_/g, " ");
+      option.setAttribute("data-maturity", maturityId);
       option.textContent = profile.title + " | " + profile.sessionIds.length + " sessions | " + maturity;
       editTypeEl.appendChild(option);
     });
@@ -297,12 +329,18 @@
     var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
       .map(function (item) { return item.path; });
     metricsEl.hidden = true;
-    setRunState("WAITING_FOR_GPT", "Validating media and creating a GPT Practice assignment…");
+    setRunState(
+      "WAITING_FOR_GPT",
+      selectedPracticeRole() === "HELD_OUT_CERTIFICATION"
+        ? "Validating unseen media and creating a frozen held-out certification assignment…"
+        : "Validating media and creating a GPT Practice learning assignment…"
+    );
     actionEl.disabled = true;
     productRequest("/v1/product/practice", {
       method: "POST",
       body: JSON.stringify({
         editTypeId: selectedEditType(),
+        practiceRole: selectedPracticeRole(),
         finishPath: finishPath,
         videoPaths: videos,
         audioPaths: audio
@@ -310,7 +348,12 @@
     }).then(function (value) {
       activeRunId = value.run.sessionId;
       updateAction();
-      setRunState("WAITING_FOR_GPT", "Practice assignment created. Waiting for GPT to claim it.");
+      setRunState(
+        "WAITING_FOR_GPT",
+        selectedPracticeRole() === "HELD_OUT_CERTIFICATION"
+          ? "Held-out certification assignment created with frozen transfer-verified knowledge. Waiting for GPT to claim it."
+          : "Practice learning assignment created. Waiting for GPT to claim it."
+      );
       pollRun();
     }).catch(function (error) {
       setRunState("FAILED", error.message);
@@ -355,9 +398,9 @@
         item.classList.toggle("is-active", item === tab);
       });
       finishFieldEl.hidden = mode !== "PRACTICE";
-      actionEl.textContent = mode === "PRACTICE"
-        ? "Proceed to do homework"
-        : "Create pro edit";
+      practiceRoleFieldEl.hidden = mode !== "PRACTICE";
+      actionEl.textContent = mode === "PRACTICE" ? actionEl.textContent : "Create pro edit";
+      updatePracticeRoleUi();
       metricsEl.hidden = true;
       setRunState("IDLE", mode === "PRACTICE"
         ? "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
@@ -367,6 +410,20 @@
   });
 
   editTypeEl.addEventListener("change", updateAction);
+  practiceRoleEl.addEventListener("change", function () {
+    updatePracticeRoleUi();
+    if (selectedPracticeRole() === "HELD_OUT_CERTIFICATION" && !heldOutReady()) {
+      setRunState("BLOCKED", "Held-out certification requires an Edit Type with TRANSFER VERIFIED Practice knowledge.");
+    } else if (!activeRunId && mode === "PRACTICE") {
+      setRunState(
+        "IDLE",
+        selectedPracticeRole() === "HELD_OUT_CERTIFICATION"
+          ? "Choose an unseen finished reference and raw source media. This run will use frozen transfer-verified knowledge only."
+          : "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
+      );
+    }
+    updateAction();
+  });
   document.getElementById("choose-finish").addEventListener("click", function () {
     var paths = chooseFiles(false, "Choose finished reference", ["mp4", "mov", "m4v", "avi", "mkv"]);
     if (paths.length) {
@@ -447,6 +504,7 @@
     if (pollTimer) clearTimeout(pollTimer);
   });
 
+  updatePracticeRoleUi();
   renderFiles();
   checkService();
   statusTimer = setInterval(checkService, 2000);

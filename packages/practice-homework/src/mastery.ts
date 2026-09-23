@@ -35,6 +35,35 @@ export const classifyPracticeMasteryScopeV1 = (
   return hasMaterialTransfer ? "TRANSFER_VERIFIED" : "REFERENCE_VERIFIED";
 };
 
+export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
+  readonly sessionId: string;
+  readonly proof: PracticeMasteryProofV1;
+  readonly proofRef: string;
+  readonly traceReasons?: readonly string[];
+  readonly objectAwareVerified?: boolean;
+}): PracticeHeldOutBenchmarkCaseV1 => {
+  const reasons = [...new Set([
+    ...input.proof.report.reasons,
+    ...(input.traceReasons ?? []),
+  ].map((value) => value.trim()).filter(Boolean))];
+  return {
+    caseId: "held-out:" + input.sessionId,
+    sessionId: input.sessionId,
+    referenceFingerprint: input.proof.referenceFingerprint,
+    sourceFingerprint: input.proof.sourceFingerprint,
+    effectFamilyIds: [...input.proof.effectFamilyIds],
+    objectAwareVerified: input.objectAwareVerified ?? false,
+    overallSimilarity: input.proof.report.overallSimilarity,
+    definingEffectCoverage: input.proof.report.definingEffectCoverage,
+    passed: input.proof.report.passed && reasons.length === 0,
+    reasons,
+    evidenceRefs: [...new Set([
+      input.proofRef,
+      ...input.proof.evidenceRefs,
+    ].map((value) => value.trim()).filter(Boolean))],
+  };
+};
+
 export const DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1: PracticeHeldOutBenchmarkPolicyV1 = {
   minimumCases: 20,
   maximumCases: 30,
@@ -90,6 +119,8 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     (input.priorMasteryRecords ?? []).map((record) => record.sourceFingerprint),
   );
   const materialPairs = new Set<string>();
+  const heldOutReferences = new Set<string>();
+  const heldOutSources = new Set<string>();
   const effectFamilies = new Set<string>();
   const evidenceRefs = new Set<string>();
   let passedCaseCount = 0;
@@ -108,6 +139,14 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       reasons.push("Held-out benchmark reuses a reference/source material pair: " + item.caseId + ".");
     }
     materialPairs.add(pairKey);
+    if (heldOutReferences.has(item.referenceFingerprint)) {
+      reasons.push("Held-out benchmark reuses a reference fingerprint: " + item.caseId + ".");
+    }
+    heldOutReferences.add(item.referenceFingerprint);
+    if (heldOutSources.has(item.sourceFingerprint)) {
+      reasons.push("Held-out benchmark reuses a source fingerprint: " + item.caseId + ".");
+    }
+    heldOutSources.add(item.sourceFingerprint);
     if (trainingReferences.has(item.referenceFingerprint)) {
       reasons.push("Held-out case reuses a training reference fingerprint: " + item.caseId + ".");
     }
@@ -116,6 +155,12 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     }
     if (!item.passed) {
       reasons.push("Held-out case did not pass its machine proof gate: " + item.caseId + ".");
+    }
+    for (const reason of item.reasons ?? []) {
+      const normalized = reason.trim();
+      if (normalized.length > 0) {
+        reasons.push("Held-out case " + item.caseId + ": " + normalized);
+      }
     }
     if (item.overallSimilarity < policy.minimumSimilarity) {
       reasons.push("Held-out case is below the similarity floor: " + item.caseId + ".");

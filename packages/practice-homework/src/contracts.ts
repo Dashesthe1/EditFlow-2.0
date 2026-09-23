@@ -176,6 +176,7 @@ export interface PracticeMasteryProofV1 {
   readonly finalRenderRef: string;
   readonly minimumSimilarity: number;
   readonly exactSceneConfidence: number;
+  readonly effectFamilyIds: readonly string[];
   readonly report: PracticeSimilarityReportV1;
   readonly matches: readonly PracticeSceneMatchV1[];
   readonly audioMatch: PracticeAudioMatchV1 | null;
@@ -274,6 +275,7 @@ export interface PracticeMasteryRecordV1 {
   readonly finalRenderRef: string;
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
+  readonly effectFamilyIds: readonly string[];
   readonly verifiedAt: string;
 }
 
@@ -287,6 +289,7 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
   readonly passed: boolean;
+  readonly reasons: readonly string[];
   readonly evidenceRefs: readonly string[];
 }
 
@@ -320,6 +323,7 @@ export interface EditTypeGptLearningSummaryV1 {
   readonly proCreationSessionIds: readonly string[];
   readonly masteredPracticeSessionIds: readonly string[];
   readonly masteryRecords: readonly PracticeMasteryRecordV1[];
+  readonly heldOutCases: readonly PracticeHeldOutBenchmarkCaseV1[];
   readonly heldOutBenchmarks: readonly PracticeHeldOutBenchmarkReportV1[];
   readonly eventCount: number;
   readonly successLessons: readonly string[];
@@ -482,6 +486,7 @@ export interface PracticeVerificationPolicyV1 {
 }
 
 export type GptOrchestrationModeV1 = "PRACTICE" | "PRO_CREATION";
+export type PracticeRunRoleV1 = "LEARNING" | "HELD_OUT_CERTIFICATION";
 export type GptAssignmentStatusV1 =
   | "PENDING"
   | "CLAIMED"
@@ -542,6 +547,7 @@ export interface GptOrchestrationAssignmentV1 {
   readonly assignmentId: string;
   readonly sessionId: string;
   readonly mode: GptOrchestrationModeV1;
+  readonly practiceRole: PracticeRunRoleV1 | null;
   readonly editTypeId: string;
   readonly status: GptAssignmentStatusV1;
   readonly finish: PracticeMediaInputV1 | null;
