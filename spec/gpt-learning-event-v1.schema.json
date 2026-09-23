@@ -4,6 +4,84 @@
   "title": "EditFlow GPT Learning Event V1",
   "type": "object",
   "additionalProperties": false,
+  "$defs": {
+    "researchSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "kind", "title"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": [
+            "ADOBE_DOCUMENTATION", "INSTALLED_ADOBE_FEATURE", "PLUGIN_DOCUMENTATION",
+            "PROFESSIONAL_TUTORIAL", "WEB", "INTERNAL_EVIDENCE"
+          ]
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "uri": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      }
+    },
+    "capabilityGap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gapId", "kind", "requestedBehavior", "missingCapabilityIds",
+        "status", "evidenceRefs"
+      ],
+      "properties": {
+        "gapId": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["RECIPE_SKILL", "EXECUTION_CAPABILITY"] },
+        "requestedBehavior": { "type": "string", "minLength": 1 },
+        "missingCapabilityIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "status": { "enum": ["OPEN", "RESOLVED", "BLOCKED"] },
+        "resolutionSkillId": { "type": "string", "minLength": 1 },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "learnedSkill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "skillId", "title", "requestedBehavior", "maturity",
+        "constructionPattern", "capabilityIds", "researchSources",
+        "evidenceRefs", "learnedAt"
+      ],
+      "properties": {
+        "skillId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "requestedBehavior": { "type": "string", "minLength": 1 },
+        "maturity": {
+          "enum": ["HYPOTHESIS", "RECONSTRUCTED", "AE_PROVEN", "TRANSFER_VERIFIED"]
+        },
+        "constructionPattern": { "type": "string", "minLength": 1 },
+        "capabilityIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "adaptationNotes": { "type": "string" },
+        "researchSources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/researchSource" }
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "learnedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
   "required": [
     "schema", "eventId", "sessionId", "editTypeId", "mode", "stage",
     "outcome", "summary", "evidenceRefs", "createdAt"
@@ -17,8 +95,10 @@
     "attempt": { "type": "integer", "minimum": 1 },
     "stage": {
       "enum": [
-        "OBSERVATION", "INTERPRETATION", "HYPOTHESIS", "PLAN", "AE_ACTION",
-        "RENDER", "COMPARISON", "DIAGNOSIS", "CORRECTION", "RESULT", "LESSON"
+        "OBSERVATION", "INTERPRETATION", "HYPOTHESIS", "PLAN",
+        "CAPABILITY_GAP", "RESEARCH", "CAPABILITY_IMPLEMENTATION",
+        "CAPABILITY_PROOF", "SKILL_COMMIT", "AE_ACTION", "RENDER",
+        "COMPARISON", "DIAGNOSIS", "CORRECTION", "RESULT", "LESSON"
       ]
     },
     "outcome": {
@@ -29,6 +109,12 @@
     "developmentPattern": { "type": "string" },
     "reusableLesson": { "type": "string" },
     "avoidRepeat": { "type": "string" },
+    "capabilityGap": { "$ref": "#/$defs/capabilityGap" },
+    "researchSources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/researchSource" }
+    },
+    "learnedSkill": { "$ref": "#/$defs/learnedSkill" },
     "evidenceRefs": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },

@@ -6,11 +6,14 @@ import type {
   EditTypeKnowledgeSnapshotV1,
   GptAssignmentCompletionV1,
   GptAssignmentStatusV1,
+  GptCapabilityGapV1,
+  GptLearnedSkillV1,
   GptLearningEventV1,
   GptLearningOutcomeV1,
   GptLearningStageV1,
   GptOrchestrationAssignmentV1,
   GptOrchestrationModeV1,
+  GptResearchSourceV1,
   PracticeMediaInputV1,
 } from "./contracts.js";
 
@@ -54,6 +57,12 @@ const nonEmpty = (value: string, name: string): string => {
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 
+const isOnlineResearchSource = (source: GptResearchSourceV1): boolean =>
+  ["ADOBE_DOCUMENTATION", "PLUGIN_DOCUMENTATION", "PROFESSIONAL_TUTORIAL", "WEB"]
+    .includes(source.kind)
+  && typeof source.uri === "string"
+  && source.uri.trim().length > 0;
+
 const mediaLine = (input: PracticeMediaInputV1): string =>
   "- " + input.mediaKind + " " + input.mediaId + ": " + input.uri;
 
@@ -70,6 +79,15 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   const successLessons = learned?.gptLearning.successLessons ?? [];
   const failureLessons = learned?.gptLearning.failureAvoidanceLessons ?? [];
   const patterns = learned?.gptLearning.developmentPatterns ?? [];
+  const learnedSkills = learned?.gptLearning.learnedSkills ?? [];
+  const openGaps = (learned?.gptLearning.capabilityGaps ?? [])
+    .filter((gap) => gap.status !== "RESOLVED");
+  const skillLines = learnedSkills.slice(-12).map((skill) =>
+    skill.skillId + " [" + skill.maturity + "] " + skill.title + ": " + skill.constructionPattern
+  );
+  const gapLines = openGaps.slice(-12).map((gap) =>
+    gap.gapId + " [" + gap.kind + "/" + gap.status + "] " + gap.requestedBehavior
+  );
   const modeInstruction = input.mode === "PRACTICE"
     ? [
       "This is supervised Practice. The Finish video is the answer key.",
@@ -99,11 +117,18 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "- Desktop Commander is the system-level hand for files, processes, recovery, and environment operations.",
     "- All editorial cutting, retiming, remodeling, effects, transitions, compositing, and final construction must exist in After Effects.",
     "- Never replace an unfamiliar reference behavior with a weaker known effect. Reverse-engineer it and synthesize a construction when capabilities permit.",
+    "- If a fundamental skill is missing, distinguish a RECIPE_SKILL gap from an EXECUTION_CAPABILITY gap instead of degrading the reference.",
+    "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.",
+    "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
+    "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
+    "- If existing primitives can express the behavior, synthesize and prove a new reusable skill. If an execution capability is genuinely absent, implement/prove the missing EditFlow route when development access permits; otherwise mark the exact gap BLOCKED.",
+    "- Research is hypothesis evidence, not proof. Resume the edit only after AE construction/readback/render evidence supports the new skill or capability.",
     "- Check cancellation state between meaningful operations and stop safely when cancellation is requested.",
     "",
     "Learning trace contract:",
-    "Record meaningful OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON events.",
-    "A lesson should capture transferable reasons, not only literal parameter values.",
+    "Normal loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.",
+    "When a missing fundamental skill/capability is discovered, insert CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT, then return to the normal AE/render/compare loop.",
+    "A lesson or committed skill should capture transferable reasons and adaptation rules, not only literal parameter values.",
     "",
     "Start media:",
     ...input.start.map(mediaLine),
@@ -115,6 +140,8 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Successful lessons: " + (successLessons.length === 0 ? "(none yet)" : successLessons.join(" | ")),
     "Failures to avoid: " + (failureLessons.length === 0 ? "(none yet)" : failureLessons.join(" | ")),
     "Development patterns: " + (patterns.length === 0 ? "(none yet)" : patterns.join(" | ")),
+    "Learned skills: " + (skillLines.length === 0 ? "(none yet)" : skillLines.join(" | ")),
+    "Open/blocked capability gaps: " + (gapLines.length === 0 ? "(none)" : gapLines.join(" | ")),
   ].join("\n");
 };
 
@@ -299,6 +326,9 @@ export class GptOrchestrationStoreV1 {
     readonly developmentPattern?: string;
     readonly reusableLesson?: string;
     readonly avoidRepeat?: string;
+    readonly capabilityGap?: GptCapabilityGapV1;
+    readonly researchSources?: readonly GptResearchSourceV1[];
+    readonly learnedSkill?: GptLearnedSkillV1;
     readonly evidenceRefs?: readonly string[];
   }): Promise<GptLearningEventV1> {
     const summary = nonEmpty(input.summary, "summary");
@@ -307,6 +337,61 @@ export class GptOrchestrationStoreV1 {
       if (assignment === undefined) throw new TypeError("Unknown GPT assignment: " + input.assignmentId);
       if (!["RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)) {
         throw new TypeError("GPT learning events require a running assignment.");
+      }
+      const sessionEvents = payload.events.filter((event) => event.sessionId === assignment.sessionId);
+      if (input.stage === "CAPABILITY_GAP" && input.capabilityGap === undefined) {
+        throw new TypeError("CAPABILITY_GAP requires capabilityGap.");
+      }
+      if (input.stage === "RESEARCH") {
+        if (input.researchSources === undefined || input.researchSources.length === 0) {
+          throw new TypeError("RESEARCH requires researchSources.");
+        }
+        if (!input.researchSources.some(isOnlineResearchSource)) {
+          throw new TypeError("RESEARCH requires at least one online source with a URI.");
+        }
+      }
+      if (input.stage === "CAPABILITY_PROOF") {
+        if (unique(input.evidenceRefs ?? []).length === 0) {
+          throw new TypeError("CAPABILITY_PROOF requires retained evidenceRefs.");
+        }
+        const priorResearch = sessionEvents.filter((event) => event.stage === "RESEARCH")
+          .flatMap((event) => event.researchSources ?? []);
+        const priorImplementation = sessionEvents.some((event) =>
+          event.stage === "CAPABILITY_IMPLEMENTATION" && event.outcome !== "FAILURE");
+        if (!priorResearch.some(isOnlineResearchSource)) {
+          throw new TypeError("CAPABILITY_PROOF requires prior online research provenance.");
+        }
+        if (!priorImplementation) {
+          throw new TypeError("CAPABILITY_PROOF requires a prior CAPABILITY_IMPLEMENTATION event.");
+        }
+      }
+      if (input.stage === "SKILL_COMMIT") {
+        const gap = input.capabilityGap;
+        const skill = input.learnedSkill;
+        if (gap === undefined || skill === undefined) {
+          throw new TypeError("SKILL_COMMIT requires learnedSkill and resolved capabilityGap.");
+        }
+        if (gap.status !== "RESOLVED" || gap.resolutionSkillId !== skill.skillId) {
+          throw new TypeError("SKILL_COMMIT must resolve the gap with the committed skill.");
+        }
+        if (!["AE_PROVEN", "TRANSFER_VERIFIED"].includes(skill.maturity)) {
+          throw new TypeError("SKILL_COMMIT requires AE_PROVEN or TRANSFER_VERIFIED maturity.");
+        }
+        const gapWasOpened = sessionEvents.some((event) =>
+          event.stage === "CAPABILITY_GAP" && event.capabilityGap?.gapId === gap.gapId);
+        const research = sessionEvents.filter((event) => event.stage === "RESEARCH")
+          .flatMap((event) => event.researchSources ?? []);
+        const proofSucceeded = sessionEvents.some((event) =>
+          event.stage === "CAPABILITY_PROOF"
+          && event.outcome === "SUCCESS"
+          && event.evidenceRefs.length > 0);
+        if (!gapWasOpened) throw new TypeError("SKILL_COMMIT requires a prior CAPABILITY_GAP event.");
+        if (!research.some(isOnlineResearchSource)) {
+          throw new TypeError("SKILL_COMMIT requires prior online research provenance.");
+        }
+        if (!proofSucceeded) {
+          throw new TypeError("SKILL_COMMIT requires a successful prior CAPABILITY_PROOF event.");
+        }
       }
       const event: GptLearningEventV1 = {
         schema: "editflow.gpt-learning-event.v1",
@@ -326,6 +411,15 @@ export class GptOrchestrationStoreV1 {
           ? {}
           : { reusableLesson: input.reusableLesson.trim() }),
         ...(input.avoidRepeat === undefined ? {} : { avoidRepeat: input.avoidRepeat.trim() }),
+        ...(input.capabilityGap === undefined
+          ? {}
+          : { capabilityGap: structuredClone(input.capabilityGap) }),
+        ...(input.researchSources === undefined
+          ? {}
+          : { researchSources: structuredClone(input.researchSources) }),
+        ...(input.learnedSkill === undefined
+          ? {}
+          : { learnedSkill: structuredClone(input.learnedSkill) }),
         evidenceRefs: unique(input.evidenceRefs ?? []),
         createdAt: new Date().toISOString(),
       };

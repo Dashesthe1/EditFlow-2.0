@@ -13,10 +13,13 @@ import {
   EditTypeRegistryFileV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  type GptCapabilityGapV1,
+  type GptLearnedSkillV1,
   type GptLearningOutcomeV1,
   type GptLearningStageV1,
   type GptOrchestrationAssignmentV1,
   type GptOrchestrationModeV1,
+  type GptResearchSourceV1,
   type PracticeLearningAllocationResultV1,
   type PracticeMediaInputV1,
   type PracticeSessionResultV1,
@@ -178,6 +181,101 @@ const optionalNumber = (
     throw new HttpError(400, name + " is outside its accepted range.");
   }
   return value;
+};
+
+const optionalRecord = (
+  body: Record<string, unknown>,
+  name: string,
+): Record<string, unknown> | undefined => {
+  const value = body[name];
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new HttpError(400, name + " must be a JSON object.");
+  }
+  return value as Record<string, unknown>;
+};
+
+const requiredEnum = <T extends string>(
+  body: Record<string, unknown>,
+  name: string,
+  allowed: readonly T[],
+): T => {
+  const value = requiredString(body, name);
+  if (!allowed.includes(value as T)) {
+    throw new HttpError(400, name + " has an unsupported value.");
+  }
+  return value as T;
+};
+
+const optionalResearchSources = (
+  body: Record<string, unknown>,
+  name: string,
+): readonly GptResearchSourceV1[] | undefined => {
+  const value = body[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new HttpError(400, name + " must be an array.");
+  return value.map((source, index) => {
+    if (source === null || typeof source !== "object" || Array.isArray(source)) {
+      throw new HttpError(400, name + "[" + String(index) + "] must be an object.");
+    }
+    const record = source as Record<string, unknown>;
+    return {
+      sourceId: requiredString(record, "sourceId"),
+      kind: requiredEnum(record, "kind", [
+        "ADOBE_DOCUMENTATION", "INSTALLED_ADOBE_FEATURE", "PLUGIN_DOCUMENTATION",
+        "PROFESSIONAL_TUTORIAL", "WEB", "INTERNAL_EVIDENCE",
+      ] as const),
+      title: requiredString(record, "title"),
+      ...(optionalString(record, "uri") === undefined ? {} : { uri: optionalString(record, "uri")! }),
+      ...(optionalString(record, "notes") === undefined ? {} : { notes: optionalString(record, "notes")! }),
+    };
+  });
+};
+
+const optionalCapabilityGap = (
+  body: Record<string, unknown>,
+  name: string,
+): GptCapabilityGapV1 | undefined => {
+  const record = optionalRecord(body, name);
+  if (record === undefined) return undefined;
+  const kind = requiredEnum(record, "kind", ["RECIPE_SKILL", "EXECUTION_CAPABILITY"] as const);
+  const missingCapabilityIds = stringArray(record, "missingCapabilityIds", false);
+  if (kind === "EXECUTION_CAPABILITY" && missingCapabilityIds.length === 0) {
+    throw new HttpError(400, name + ".missingCapabilityIds is required for EXECUTION_CAPABILITY.");
+  }
+  const resolutionSkillId = optionalString(record, "resolutionSkillId");
+  return {
+    gapId: requiredString(record, "gapId"),
+    kind,
+    requestedBehavior: requiredString(record, "requestedBehavior"),
+    missingCapabilityIds,
+    status: requiredEnum(record, "status", ["OPEN", "RESOLVED", "BLOCKED"] as const),
+    ...(resolutionSkillId === undefined ? {} : { resolutionSkillId }),
+    evidenceRefs: stringArray(record, "evidenceRefs", false),
+  };
+};
+
+const optionalLearnedSkill = (
+  body: Record<string, unknown>,
+  name: string,
+): GptLearnedSkillV1 | undefined => {
+  const record = optionalRecord(body, name);
+  if (record === undefined) return undefined;
+  const adaptationNotes = optionalString(record, "adaptationNotes");
+  return {
+    skillId: requiredString(record, "skillId"),
+    title: requiredString(record, "title"),
+    requestedBehavior: requiredString(record, "requestedBehavior"),
+    maturity: requiredEnum(record, "maturity", [
+      "HYPOTHESIS", "RECONSTRUCTED", "AE_PROVEN", "TRANSFER_VERIFIED",
+    ] as const),
+    constructionPattern: requiredString(record, "constructionPattern"),
+    capabilityIds: stringArray(record, "capabilityIds", false),
+    ...(adaptationNotes === undefined ? {} : { adaptationNotes }),
+    researchSources: optionalResearchSources(record, "researchSources") ?? [],
+    evidenceRefs: stringArray(record, "evidenceRefs", false),
+    learnedAt: optionalString(record, "learnedAt") ?? new Date().toISOString(),
+  };
 };
 
 const ensureFile = async (filePath: string, label: string): Promise<string> => {
@@ -492,8 +590,10 @@ export class PracticePanelServerV1 {
   ): Promise<GptOrchestrationAssignmentV1> {
     const stage = requiredString(body, "stage") as GptLearningStageV1;
     const allowedStages: readonly GptLearningStageV1[] = [
-      "OBSERVATION", "INTERPRETATION", "HYPOTHESIS", "PLAN", "AE_ACTION",
-      "RENDER", "COMPARISON", "DIAGNOSIS", "CORRECTION", "RESULT", "LESSON",
+      "OBSERVATION", "INTERPRETATION", "HYPOTHESIS", "PLAN",
+      "CAPABILITY_GAP", "RESEARCH", "CAPABILITY_IMPLEMENTATION",
+      "CAPABILITY_PROOF", "SKILL_COMMIT", "AE_ACTION", "RENDER",
+      "COMPARISON", "DIAGNOSIS", "CORRECTION", "RESULT", "LESSON",
     ];
     if (!allowedStages.includes(stage)) throw new HttpError(400, "Invalid GPT learning stage.");
     const outcome = (optionalString(body, "outcome") ?? "NEUTRAL") as GptLearningOutcomeV1;
@@ -510,6 +610,30 @@ export class PracticePanelServerV1 {
     const developmentPattern = optionalString(body, "developmentPattern");
     const reusableLesson = optionalString(body, "reusableLesson");
     const avoidRepeat = optionalString(body, "avoidRepeat");
+    const capabilityGap = optionalCapabilityGap(body, "capabilityGap");
+    const researchSources = optionalResearchSources(body, "researchSources");
+    const learnedSkill = optionalLearnedSkill(body, "learnedSkill");
+    if (stage === "CAPABILITY_GAP" && capabilityGap === undefined) {
+      throw new HttpError(400, "CAPABILITY_GAP requires capabilityGap.");
+    }
+    if (stage === "RESEARCH" && (researchSources === undefined || researchSources.length === 0)) {
+      throw new HttpError(400, "RESEARCH requires at least one research source.");
+    }
+    if (stage === "CAPABILITY_PROOF" && evidenceRefs.length === 0) {
+      throw new HttpError(400, "CAPABILITY_PROOF requires evidenceRefs.");
+    }
+    if (stage === "SKILL_COMMIT") {
+      if (learnedSkill === undefined || capabilityGap === undefined) {
+        throw new HttpError(400, "SKILL_COMMIT requires learnedSkill and resolved capabilityGap.");
+      }
+      if (capabilityGap.status !== "RESOLVED"
+        || capabilityGap.resolutionSkillId !== learnedSkill.skillId) {
+        throw new HttpError(400, "SKILL_COMMIT must resolve the gap with the committed skill.");
+      }
+      if (!["AE_PROVEN", "TRANSFER_VERIFIED"].includes(learnedSkill.maturity)) {
+        throw new HttpError(400, "SKILL_COMMIT requires AE_PROVEN or TRANSFER_VERIFIED maturity.");
+      }
+    }
     const event = await this.#gptStore.appendEvent({
       assignmentId,
       stage,
@@ -520,6 +644,9 @@ export class PracticePanelServerV1 {
       ...(developmentPattern === undefined ? {} : { developmentPattern }),
       ...(reusableLesson === undefined ? {} : { reusableLesson }),
       ...(avoidRepeat === undefined ? {} : { avoidRepeat }),
+      ...(capabilityGap === undefined ? {} : { capabilityGap }),
+      ...(researchSources === undefined ? {} : { researchSources }),
+      ...(learnedSkill === undefined ? {} : { learnedSkill }),
       evidenceRefs,
     });
     const file = await this.#editTypes();

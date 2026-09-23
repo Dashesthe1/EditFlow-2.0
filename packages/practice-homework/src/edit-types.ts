@@ -7,6 +7,8 @@ import type {
   EditTypeGptLearningSummaryV1,
   EditTypeKnowledgeSnapshotV1,
   EditTypeProfileV1,
+  GptCapabilityGapV1,
+  GptLearnedSkillV1,
   GptLearningEventV1,
   GptOrchestrationModeV1,
   PracticeEpisodeV1,
@@ -26,6 +28,8 @@ const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   successLessons: [],
   failureAvoidanceLessons: [],
   developmentPatterns: [],
+  capabilityGaps: [],
+  learnedSkills: [],
 });
 
 const normalizedGptLearning = (
@@ -40,8 +44,39 @@ const normalizedGptLearning = (
     successLessons: uniqueStrings(value.successLessons),
     failureAvoidanceLessons: uniqueStrings(value.failureAvoidanceLessons),
     developmentPatterns: uniqueStrings(value.developmentPatterns),
+    capabilityGaps: (value.capabilityGaps ?? []).map((gap) => ({
+      ...structuredClone(gap),
+      missingCapabilityIds: uniqueStrings(gap.missingCapabilityIds ?? []),
+      evidenceRefs: uniqueStrings(gap.evidenceRefs ?? []),
+    })),
+    learnedSkills: (value.learnedSkills ?? []).map((skill) => ({
+      ...structuredClone(skill),
+      capabilityIds: uniqueStrings(skill.capabilityIds ?? []),
+      evidenceRefs: uniqueStrings(skill.evidenceRefs ?? []),
+      researchSources: structuredClone(skill.researchSources ?? []),
+    })),
     ...(value.lastUpdatedAt === undefined ? {} : { lastUpdatedAt: value.lastUpdatedAt }),
   };
+
+const upsertCapabilityGap = (
+  values: readonly GptCapabilityGapV1[],
+  gap: GptCapabilityGapV1,
+): readonly GptCapabilityGapV1[] => {
+  const normalized = structuredClone(gap);
+  const index = values.findIndex((value) => value.gapId === gap.gapId);
+  if (index < 0) return [...values, normalized];
+  return values.map((value, offset) => offset === index ? normalized : value);
+};
+
+const upsertLearnedSkill = (
+  values: readonly GptLearnedSkillV1[],
+  skill: GptLearnedSkillV1,
+): readonly GptLearnedSkillV1[] => {
+  const normalized = structuredClone(skill);
+  const index = values.findIndex((value) => value.skillId === skill.skillId);
+  if (index < 0) return [...values, normalized];
+  return values.map((value, offset) => offset === index ? normalized : value);
+};
 
 const evidenceId = (material: unknown): string =>
   "edit-type-evidence:" + createHash("sha256")
@@ -244,6 +279,12 @@ export class EditTypeRegistryV1 {
         developmentPatterns: developmentPattern.length > 0
           ? uniqueStrings([...learning.developmentPatterns, developmentPattern])
           : learning.developmentPatterns,
+        capabilityGaps: event.capabilityGap === undefined
+          ? learning.capabilityGaps
+          : upsertCapabilityGap(learning.capabilityGaps, event.capabilityGap),
+        learnedSkills: event.learnedSkill === undefined
+          ? learning.learnedSkills
+          : upsertLearnedSkill(learning.learnedSkills, event.learnedSkill),
         lastUpdatedAt: event.createdAt,
       },
     };

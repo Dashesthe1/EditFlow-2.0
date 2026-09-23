@@ -5,11 +5,48 @@
   "editTypeId": "high-potency",
   "mode": "PRACTICE",
   "attempt": 2,
-  "stage": "LESSON",
+  "stage": "SKILL_COMMIT",
   "outcome": "SUCCESS",
-  "summary": "Layered motion matched the reference.",
-  "developmentPattern": "Match source before effect reconstruction.",
-  "reusableLesson": "Scale recovery duration to shot velocity.",
-  "evidenceRefs": ["render:attempt:2"],
+  "summary": "Temporal rewind was researched, built, and proven in AE.",
+  "developmentPattern": "Research missing temporal behavior before accepting a fallback.",
+  "reusableLesson": "A real rewind replays source frames backward; effect recovery is not equivalent.",
+  "capabilityGap": {
+    "gapId": "gap:temporal-rewind",
+    "kind": "RECIPE_SKILL",
+    "requestedBehavior": "Replay the just-played frames backward before the transition exits.",
+    "missingCapabilityIds": [],
+    "status": "RESOLVED",
+    "resolutionSkillId": "skill:temporal-rewind:v1",
+    "evidenceRefs": ["reference:rewind", "render:rewind-proof"]
+  },
+  "researchSources": [
+    {
+      "sourceId": "adobe:time-remapping",
+      "kind": "ADOBE_DOCUMENTATION",
+      "title": "Time-stretching and time-remapping",
+      "uri": "https://helpx.adobe.com/after-effects/desktop/animate-in-after-effects/time-stretching-and-time-remapping/time-stretching-time-remapping.html",
+      "notes": "Time Remap can replay a bounded source-frame span backward."
+    }
+  ],
+  "learnedSkill": {
+    "skillId": "skill:temporal-rewind:v1",
+    "title": "Temporal Rewind / Reverse Playback",
+    "requestedBehavior": "Replay the just-played frames backward before the transition exits.",
+    "maturity": "AE_PROVEN",
+    "constructionPattern": "Use Time Remap keyframes with a descending source-time segment.",
+    "capabilityIds": ["ae.layer.time_remap.enable", "ae.keyframe.set"],
+    "adaptationNotes": "Adapt source-frame span, duration, speed, and exit behavior to the reference.",
+    "researchSources": [
+      {
+        "sourceId": "adobe:time-remapping",
+        "kind": "ADOBE_DOCUMENTATION",
+        "title": "Time-stretching and time-remapping",
+        "uri": "https://helpx.adobe.com/after-effects/desktop/animate-in-after-effects/time-stretching-and-time-remapping/time-stretching-time-remapping.html"
+      }
+    ],
+    "evidenceRefs": ["render:rewind-proof", "comparison:source-time-direction"],
+    "learnedAt": "2026-09-22T20:04:00.000Z"
+  },
+  "evidenceRefs": ["render:rewind-proof", "comparison:source-time-direction"],
   "createdAt": "2026-09-22T20:05:00.000Z"
 }

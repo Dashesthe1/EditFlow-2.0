@@ -115,6 +115,38 @@ The attempt must emit a rendered artifact plus decision traces describing which 
 constructions, and rationales produced the result.
 
 Failed attempts are training evidence, not disposable failures.
+
+### Capability discovery and online research loop
+
+Practice is not restricted to techniques already stored in EditFlow. When GPT cannot
+faithfully explain or reproduce a defining reference behavior, it must open either a
+`RECIPE_SKILL` gap (the AE primitives exist but the construction is not yet learned) or
+an `EXECUTION_CAPABILITY` gap (EditFlow cannot yet perform a required AE operation).
+
+For a missing or poorly understood technique, Practice records:
+
+`CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT`.
+
+Research must include at least one online source with retained provenance. First-party
+Adobe documentation is preferred for AE semantics, supplemented by professional
+tutorials, plugin documentation, and broader web sources where they add useful technique
+knowledge. Installed-feature inspection and internal evidence can supplement online
+research but cannot replace it for a newly discovered skill. Research establishes a
+hypothesis only; it cannot certify a capability without AE readback/render evidence.
+
+A committed learned skill must resolve its gap, be at least `AE_PROVEN`, retain the
+research sources and proof evidence, and store transferable construction/adaptation
+rules under the selected Edit Type. Pro Creation can then retrieve that skill without
+blindly replaying literal values.
+
+A short replay of frames that have just played forward is specifically classified as
+`TEMPORAL_REWIND` / `REVERSE_PLAYBACK`. Practice must not misread this as an effect
+parameter returning to baseline or as a failed construction. The proof must establish
+actual source-time reversal: which source frames are replayed, the rewind duration and
+rate, and whether the reference then resumes forward playback or cuts to the next shot.
+Native AE Time Remap plus keyframe control is the default construction candidate; other
+retiming methods may be researched and proven when the reference requires them.
+
 ## Phase 5: Similarity and anti-shortcut gates
 
 Practice similarity is multi-dimensional:
@@ -215,6 +247,13 @@ the chat process. GPT records the meaningful trajectory as:
 
 OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER ->
 COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.
+
+When the attempt exposes a missing technique or execution surface, the trajectory branches through:
+
+CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT,
+
+then returns to the normal render/compare/correction loop. Research provenance, resolved gaps,
+and AE-proven learned skills are retained with the selected Edit Type.
 
 Reusable successes, failure-avoidance lessons, and development patterns are distilled into
 the selected Edit Type while the event history remains available as evidence. Pro Creation

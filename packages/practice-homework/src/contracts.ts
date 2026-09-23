@@ -184,6 +184,52 @@ export interface EditTypeBehaviorEvidenceV1 {
   readonly elapsedMs: number;
 }
 
+export type GptCapabilityGapKindV1 = "RECIPE_SKILL" | "EXECUTION_CAPABILITY";
+export type GptCapabilityGapStatusV1 = "OPEN" | "RESOLVED" | "BLOCKED";
+export type GptResearchSourceKindV1 =
+  | "ADOBE_DOCUMENTATION"
+  | "INSTALLED_ADOBE_FEATURE"
+  | "PLUGIN_DOCUMENTATION"
+  | "PROFESSIONAL_TUTORIAL"
+  | "WEB"
+  | "INTERNAL_EVIDENCE";
+export type GptSkillMaturityV1 =
+  | "HYPOTHESIS"
+  | "RECONSTRUCTED"
+  | "AE_PROVEN"
+  | "TRANSFER_VERIFIED";
+
+export interface GptResearchSourceV1 {
+  readonly sourceId: string;
+  readonly kind: GptResearchSourceKindV1;
+  readonly title: string;
+  readonly uri?: string;
+  readonly notes?: string;
+}
+
+export interface GptCapabilityGapV1 {
+  readonly gapId: string;
+  readonly kind: GptCapabilityGapKindV1;
+  readonly requestedBehavior: string;
+  readonly missingCapabilityIds: readonly string[];
+  readonly status: GptCapabilityGapStatusV1;
+  readonly resolutionSkillId?: string;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface GptLearnedSkillV1 {
+  readonly skillId: string;
+  readonly title: string;
+  readonly requestedBehavior: string;
+  readonly maturity: GptSkillMaturityV1;
+  readonly constructionPattern: string;
+  readonly capabilityIds: readonly string[];
+  readonly adaptationNotes?: string;
+  readonly researchSources: readonly GptResearchSourceV1[];
+  readonly evidenceRefs: readonly string[];
+  readonly learnedAt: string;
+}
+
 export interface EditTypeGptLearningSummaryV1 {
   readonly practiceSessionIds: readonly string[];
   readonly proCreationSessionIds: readonly string[];
@@ -192,6 +238,8 @@ export interface EditTypeGptLearningSummaryV1 {
   readonly successLessons: readonly string[];
   readonly failureAvoidanceLessons: readonly string[];
   readonly developmentPatterns: readonly string[];
+  readonly capabilityGaps: readonly GptCapabilityGapV1[];
+  readonly learnedSkills: readonly GptLearnedSkillV1[];
   readonly lastUpdatedAt?: string;
 }
 
@@ -341,6 +389,11 @@ export type GptLearningStageV1 =
   | "INTERPRETATION"
   | "HYPOTHESIS"
   | "PLAN"
+  | "CAPABILITY_GAP"
+  | "RESEARCH"
+  | "CAPABILITY_IMPLEMENTATION"
+  | "CAPABILITY_PROOF"
+  | "SKILL_COMMIT"
   | "AE_ACTION"
   | "RENDER"
   | "COMPARISON"
@@ -370,6 +423,9 @@ export interface GptLearningEventV1 {
   readonly developmentPattern?: string;
   readonly reusableLesson?: string;
   readonly avoidRepeat?: string;
+  readonly capabilityGap?: GptCapabilityGapV1;
+  readonly researchSources?: readonly GptResearchSourceV1[];
+  readonly learnedSkill?: GptLearnedSkillV1;
   readonly evidenceRefs: readonly string[];
   readonly createdAt: string;
 }
