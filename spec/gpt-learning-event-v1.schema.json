@@ -20,7 +20,25 @@
         "title": { "type": "string", "minLength": 1 },
         "uri": { "type": "string", "minLength": 1 },
         "notes": { "type": "string" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "TUTORIAL_DRIVE" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["uri"],
+            "properties": {
+              "uri": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^https://drive\\.google\\.com/(?:file/d/|drive/folders/)"
+              }
+            }
+          }
+        }
+      ]
     },
     "capabilityGap": {
       "type": "object",

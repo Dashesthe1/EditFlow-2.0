@@ -98,7 +98,34 @@ const applyCurrentResearchPriority = (message: string): string => {
 const isTutorialDriveResearchSource = (source: GptResearchSourceV1 | undefined): boolean =>
   source?.kind === "TUTORIAL_DRIVE"
   && typeof source.uri === "string"
-  && source.uri.trim().length > 0;
+  && /^https:\/\/drive\.google\.com\/(?:file\/d\/|drive\/folders\/)/.test(source.uri.trim());
+
+const researchPriority = (source: GptResearchSourceV1): number | null => {
+  switch (source.kind) {
+    case "TUTORIAL_DRIVE": return 0;
+    case "ADOBE_DOCUMENTATION":
+    case "INSTALLED_ADOBE_FEATURE":
+      return 1;
+    case "PLUGIN_DOCUMENTATION":
+    case "PROFESSIONAL_TUTORIAL":
+      return 2;
+    case "WEB": return 3;
+    case "INTERNAL_EVIDENCE": return null;
+  }
+};
+
+const researchSourcesFollowPriority = (
+  sources: readonly GptResearchSourceV1[],
+): boolean => {
+  let highest = -1;
+  for (const source of sources) {
+    const priority = researchPriority(source);
+    if (priority === null) continue;
+    if (priority < highest) return false;
+    highest = Math.max(highest, priority);
+  }
+  return true;
+};
 
 const mediaLine = (input: PracticeMediaInputV1): string =>
   "- " + input.mediaKind + " " + input.mediaId + ": " + input.uri;
@@ -385,7 +412,12 @@ export class GptOrchestrationStoreV1 {
         }
         if (!isTutorialDriveResearchSource(input.researchSources[0])) {
           throw new TypeError(
-            "RESEARCH must begin with Tutorial Drive provenance with a URI before Adobe or broader web sources.",
+            "RESEARCH must begin with Tutorial Drive provenance using a Google Drive tutorial/file or recorded folder search before Adobe or broader web sources.",
+          );
+        }
+        if (!researchSourcesFollowPriority(input.researchSources)) {
+          throw new TypeError(
+            "RESEARCH sources must preserve priority order: Tutorial Drive -> Adobe/resources -> external professional/plugin sources -> broader web.",
           );
         }
       }

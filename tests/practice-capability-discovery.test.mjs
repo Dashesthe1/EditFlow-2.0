@@ -173,6 +173,44 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     }),
     /begin with Tutorial Drive provenance/,
   );
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "RESEARCH",
+      summary: "A Tutorial Drive label cannot point at a non-Drive source.",
+      researchSources: [{
+        sourceId: "tutorial-drive:spoofed",
+        kind: "TUTORIAL_DRIVE",
+        title: "Spoofed tutorial source",
+        uri: "https://example.com/reverse-tutorial",
+      }],
+    }),
+    /Google Drive tutorial\/file or recorded folder search/,
+  );
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "RESEARCH",
+      summary: "Broader web research cannot jump ahead of Adobe and then return to Adobe.",
+      researchSources: [{
+        sourceId: "tutorial-drive:reverse",
+        kind: "TUTORIAL_DRIVE",
+        title: "Reverse tutorial",
+        uri: "https://drive.google.com/file/d/tutorial-reverse/view",
+      }, {
+        sourceId: "web:reverse",
+        kind: "WEB",
+        title: "Broader web reverse article",
+        uri: "https://example.com/reverse",
+      }, {
+        sourceId: "adobe:time-remapping:late",
+        kind: "ADOBE_DOCUMENTATION",
+        title: "Time-stretching and time-remapping",
+        uri: "https://helpx.adobe.com/after-effects/desktop/animate-in-after-effects/time-stretching-and-time-remapping/time-stretching-time-remapping.html",
+      }],
+    }),
+    /preserve priority order/,
+  );
 
   const researchSources = [{
     sourceId: "tutorial-drive:smoothest-reverse-edit",
