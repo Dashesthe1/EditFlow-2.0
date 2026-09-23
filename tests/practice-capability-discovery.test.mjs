@@ -357,6 +357,26 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     constructionPattern: "Enable Time Remap, preserve the forward source-time path, add a bounded descending source-time segment that replays the just-shown frames backward, then cut or resume according to the reference.",
     capabilityIds: ["ae.layer.time_remap.enable", "ae.keyframe.set", "ae.keyframe.temporal_ease"],
     adaptationNotes: "Adapt rewind duration, source-frame span, playback rate, interpolation, and whether playback resumes forward or cuts directly into the next shot.",
+    causalModel: {
+      triggerConditions: [
+        "The reference visibly replays source frames that were just shown before the transition exits.",
+      ],
+      invariants: [
+        "Source time descends during the rewind phase while the replayed frame sequence remains temporally coherent.",
+      ],
+      adaptationAxes: [
+        "Rewind duration, source-frame span, playback rate, interpolation, and exit behavior.",
+      ],
+      failureSignals: [
+        "Source time remains monotonic forward, or the construction replays the wrong source-frame span.",
+      ],
+      repairStrategies: [
+        "Re-measure the reference source-time trajectory and retime the descending Time Remap keys to the observed span and duration.",
+      ],
+      transferCriteria: [
+        "On materially different footage, preserve the negative source-time replay invariant while adapting span, duration, and exit behavior to the new reference.",
+      ],
+    },
     researchSources,
     evidenceRefs: ["render:temporal-rewind-proof", "comparison:temporal-rewind-source-time-proof"],
     learnedAt: new Date().toISOString(),
@@ -378,6 +398,18 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       evidenceRefs: learnedSkill.evidenceRefs,
     }),
     /TRANSFER_VERIFIED is assigned only after a machine-verified transfer Practice completion/,
+  );
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "SKILL_COMMIT",
+      outcome: "SUCCESS",
+      summary: "A learned skill without causal transfer semantics must not become reusable knowledge.",
+      capabilityGap: resolvedGap,
+      learnedSkill: { ...learnedSkill, causalModel: undefined },
+      evidenceRefs: learnedSkill.evidenceRefs,
+    }),
+    /complete causal transfer model/,
   );
   const commitEvent = await store.appendEvent({
     assignmentId: assignment.assignmentId,
@@ -455,6 +487,29 @@ test("Practice can discover, prove, and retain a previously missing editing skil
 
   const transferSkillSession = "practice:skill-transfer:003";
   registry.beginGptLearningSession("microwave-edit", transferSkillSession, "PRACTICE");
+  assert.throws(
+    () => registry.completeGptLearningSession({
+      editTypeId: "microwave-edit",
+      sessionId: transferSkillSession,
+      mode: "PRACTICE",
+      mastered: true,
+      masteryRecord: transferMasteryRecord(transferSkillSession),
+      transferVerifiedSkillIds: [learnedSkill.skillId],
+    }),
+    /fresh AE-proven SKILL_COMMIT in the current materially different Practice session/,
+  );
+  registry.recordGptLearningEvent({
+    ...commitEvent,
+    eventId: "gpt-learning-event:transfer-reproof",
+    sessionId: transferSkillSession,
+    summary: "Re-proved the temporal-rewind causal model on materially different reference/source footage.",
+    evidenceRefs: ["render:temporal-rewind-transfer-proof", "comparison:temporal-rewind-transfer-proof"],
+    createdAt: new Date().toISOString(),
+    learnedSkill: {
+      ...learnedSkill,
+      evidenceRefs: ["render:temporal-rewind-transfer-proof", "comparison:temporal-rewind-transfer-proof"],
+    },
+  });
   registry.completeGptLearningSession({
     editTypeId: "microwave-edit",
     sessionId: transferSkillSession,
@@ -465,6 +520,14 @@ test("Practice can discover, prove, and retain a previously missing editing skil
   });
   const transferKnowledge = registry.knowledge("microwave-edit");
   assert.equal(transferKnowledge.gptLearning.learnedSkills[0].maturity, "TRANSFER_VERIFIED");
+  assert.deepEqual(
+    transferKnowledge.gptLearning.learnedSkills[0].provenSessionIds,
+    [sessionId, transferSkillSession],
+  );
+  assert.equal(
+    transferKnowledge.gptLearning.learnedSkills[0].causalModel.transferCriteria.length,
+    1,
+  );
   const promotedPro = new ProCreationPreparationEngineV1(registry).prepare({
     sessionId: "pro:capability-discovery:002",
     mode: "PRO_CREATION",

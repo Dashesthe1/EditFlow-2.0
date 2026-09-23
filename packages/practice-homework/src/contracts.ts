@@ -378,6 +378,15 @@ export interface GptCapabilityGapV1 {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface GptSkillCausalModelV1 {
+  readonly triggerConditions: readonly string[];
+  readonly invariants: readonly string[];
+  readonly adaptationAxes: readonly string[];
+  readonly failureSignals: readonly string[];
+  readonly repairStrategies: readonly string[];
+  readonly transferCriteria: readonly string[];
+}
+
 export interface GptLearnedSkillV1 {
   readonly skillId: string;
   readonly title: string;
@@ -386,6 +395,8 @@ export interface GptLearnedSkillV1 {
   readonly constructionPattern: string;
   readonly capabilityIds: readonly string[];
   readonly adaptationNotes?: string;
+  readonly causalModel?: GptSkillCausalModelV1;
+  readonly provenSessionIds?: readonly string[];
   readonly researchSources: readonly GptResearchSourceV1[];
   readonly evidenceRefs: readonly string[];
   readonly learnedAt: string;

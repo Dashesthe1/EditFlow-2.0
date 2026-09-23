@@ -65,12 +65,46 @@
         }
       }
     },
+    "causalModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "triggerConditions", "invariants", "adaptationAxes",
+        "failureSignals", "repairStrategies", "transferCriteria"
+      ],
+      "properties": {
+        "triggerConditions": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "invariants": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "adaptationAxes": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "failureSignals": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "repairStrategies": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "transferCriteria": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "learnedSkill": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "skillId", "title", "requestedBehavior", "maturity",
-        "constructionPattern", "capabilityIds", "researchSources",
+        "constructionPattern", "capabilityIds", "causalModel", "researchSources",
         "evidenceRefs", "learnedAt"
       ],
       "properties": {
@@ -87,6 +121,7 @@
           "uniqueItems": true
         },
         "adaptationNotes": { "type": "string" },
+        "causalModel": { "$ref": "#/$defs/causalModel" },
         "researchSources": {
           "type": "array",
           "items": { "$ref": "#/$defs/researchSource" }

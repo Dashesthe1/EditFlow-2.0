@@ -286,6 +286,7 @@ const optionalLearnedSkill = (
   const record = optionalRecord(body, name);
   if (record === undefined) return undefined;
   const adaptationNotes = optionalString(record, "adaptationNotes");
+  const causalModel = optionalRecord(record, "causalModel");
   return {
     skillId: requiredString(record, "skillId"),
     title: requiredString(record, "title"),
@@ -296,6 +297,16 @@ const optionalLearnedSkill = (
     constructionPattern: requiredString(record, "constructionPattern"),
     capabilityIds: stringArray(record, "capabilityIds", false),
     ...(adaptationNotes === undefined ? {} : { adaptationNotes }),
+    ...(causalModel === undefined ? {} : {
+      causalModel: {
+        triggerConditions: stringArray(causalModel, "triggerConditions", true),
+        invariants: stringArray(causalModel, "invariants", true),
+        adaptationAxes: stringArray(causalModel, "adaptationAxes", true),
+        failureSignals: stringArray(causalModel, "failureSignals", true),
+        repairStrategies: stringArray(causalModel, "repairStrategies", true),
+        transferCriteria: stringArray(causalModel, "transferCriteria", true),
+      },
+    }),
     researchSources: optionalResearchSources(record, "researchSources") ?? [],
     evidenceRefs: stringArray(record, "evidenceRefs", false),
     learnedAt: optionalString(record, "learnedAt") ?? new Date().toISOString(),

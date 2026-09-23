@@ -109,6 +109,19 @@ const nonEmpty = (value: string, name: string): string => {
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 
+const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean => {
+  const model = skill.causalModel;
+  if (model === undefined) return false;
+  return [
+    model.triggerConditions,
+    model.invariants,
+    model.adaptationAxes,
+    model.failureSignals,
+    model.repairStrategies,
+    model.transferCriteria,
+  ].every((values) => unique(values ?? []).length > 0);
+};
+
 export const EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 =
   "https://drive.google.com/drive/folders/1eP2O7OwoCL1uP3OaA4euewUAZFU-VsL7";
 export const EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 =
@@ -244,9 +257,17 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     : allLearnedSkills;
   const openGaps = (learned?.gptLearning.capabilityGaps ?? [])
     .filter((gap) => gap.status !== "RESOLVED");
-  const skillLines = learnedSkills.slice(-12).map((skill) =>
-    skill.skillId + " [" + skill.maturity + "] " + skill.title + ": " + skill.constructionPattern
-  );
+  const skillLines = learnedSkills.slice(-12).map((skill) => {
+    const causal = skill.causalModel;
+    const causalSummary = causal === undefined
+      ? " causal-model=UNRECORDED"
+      : " triggers={" + causal.triggerConditions.join("; ") + "}"
+        + " invariants={" + causal.invariants.join("; ") + "}"
+        + " adapt={" + causal.adaptationAxes.join("; ") + "}"
+        + " transfer={" + causal.transferCriteria.join("; ") + "}";
+    return skill.skillId + " [" + skill.maturity + "] " + skill.title + ": "
+      + skill.constructionPattern + causalSummary;
+  });
   const gapLines = openGaps.slice(-12).map((gap) =>
     gap.gapId + " [" + gap.kind + "/" + gap.status + "] " + gap.requestedBehavior
   );
@@ -339,6 +360,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
         "Normal loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.",
         "When a missing fundamental skill/capability is discovered, insert CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT, then return to the normal AE/render/compare loop.",
         "A lesson or committed skill should capture transferable reasons and adaptation rules, not only literal parameter values.",
+        "Every SKILL_COMMIT must retain a causal transfer model: trigger conditions, visual/temporal invariants, adaptation axes, failure signals, repair strategies, and explicit transfer criteria. A later materially different Practice run must re-prove and re-commit that skill before EditFlow can promote it to TRANSFER_VERIFIED.",
       ]),
     "",
     "Start media:",
@@ -654,6 +676,11 @@ export class GptOrchestrationStoreV1 {
         }
         if (skill.adaptationNotes === undefined || skill.adaptationNotes.trim().length === 0) {
           throw new TypeError("SKILL_COMMIT requires explicit transfer/adaptation rules.");
+        }
+        if (!hasCausalTransferModel(skill)) {
+          throw new TypeError(
+            "SKILL_COMMIT requires a complete causal transfer model with triggers, invariants, adaptation axes, failure signals, repair strategies, and transfer criteria.",
+          );
         }
         const gapWasOpened = sessionEvents.some((event) =>
           event.stage === "CAPABILITY_GAP" && event.capabilityGap?.gapId === gap.gapId);

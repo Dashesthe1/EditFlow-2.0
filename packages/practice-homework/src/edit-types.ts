@@ -25,6 +25,19 @@ const normalizeChoice = (value: string): string =>
 const uniqueStrings = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 
+const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean => {
+  const model = skill.causalModel;
+  if (model === undefined) return false;
+  return [
+    model.triggerConditions,
+    model.invariants,
+    model.adaptationAxes,
+    model.failureSignals,
+    model.repairStrategies,
+    model.transferCriteria,
+  ].every((values) => uniqueStrings(values ?? []).length > 0);
+};
+
 const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   practiceSessionIds: [],
   proCreationSessionIds: [],
@@ -70,6 +83,17 @@ const normalizedGptLearning = (
       ...structuredClone(skill),
       capabilityIds: uniqueStrings(skill.capabilityIds ?? []),
       evidenceRefs: uniqueStrings(skill.evidenceRefs ?? []),
+      provenSessionIds: uniqueStrings(skill.provenSessionIds ?? []),
+      ...(skill.causalModel === undefined ? {} : {
+        causalModel: {
+          triggerConditions: uniqueStrings(skill.causalModel.triggerConditions ?? []),
+          invariants: uniqueStrings(skill.causalModel.invariants ?? []),
+          adaptationAxes: uniqueStrings(skill.causalModel.adaptationAxes ?? []),
+          failureSignals: uniqueStrings(skill.causalModel.failureSignals ?? []),
+          repairStrategies: uniqueStrings(skill.causalModel.repairStrategies ?? []),
+          transferCriteria: uniqueStrings(skill.causalModel.transferCriteria ?? []),
+        },
+      }),
       researchSources: structuredClone(skill.researchSources ?? []),
     })),
     ...(value.lastUpdatedAt === undefined ? {} : { lastUpdatedAt: value.lastUpdatedAt }),
@@ -91,8 +115,19 @@ const upsertLearnedSkill = (
 ): readonly GptLearnedSkillV1[] => {
   const normalized = structuredClone(skill);
   const index = values.findIndex((value) => value.skillId === skill.skillId);
-  if (index < 0) return [...values, normalized];
-  return values.map((value, offset) => offset === index ? normalized : value);
+  if (index < 0) return [...values, {
+    ...normalized,
+    provenSessionIds: uniqueStrings(normalized.provenSessionIds ?? []),
+  }];
+  return values.map((value, offset) => offset === index
+    ? {
+      ...normalized,
+      provenSessionIds: uniqueStrings([
+        ...(value.provenSessionIds ?? []),
+        ...(normalized.provenSessionIds ?? []),
+      ]),
+    }
+    : value);
 };
 
 const upsertMasteryRecord = (
@@ -311,7 +346,18 @@ export class EditTypeRegistryV1 {
           : upsertCapabilityGap(learning.capabilityGaps, event.capabilityGap),
         learnedSkills: event.learnedSkill === undefined
           ? learning.learnedSkills
-          : upsertLearnedSkill(learning.learnedSkills, event.learnedSkill),
+          : upsertLearnedSkill(
+            learning.learnedSkills,
+            event.stage === "SKILL_COMMIT"
+              ? {
+                ...event.learnedSkill,
+                provenSessionIds: uniqueStrings([
+                  ...(event.learnedSkill.provenSessionIds ?? []),
+                  event.sessionId,
+                ]),
+              }
+              : event.learnedSkill,
+          ),
         lastUpdatedAt: event.createdAt,
       },
     };
@@ -350,6 +396,26 @@ export class EditTypeRegistryV1 {
     if (unknownTransferSkills.length > 0) {
       throw new TypeError(
         "Transfer verification referenced unknown learned skills: " + unknownTransferSkills.join(", "),
+      );
+    }
+    const transferSkills = learning.learnedSkills.filter((skill) =>
+      transferVerifiedSkillIds.includes(skill.skillId));
+    const missingCausalModels = transferSkills
+      .filter((skill) => !hasCausalTransferModel(skill))
+      .map((skill) => skill.skillId);
+    if (missingCausalModels.length > 0) {
+      throw new TypeError(
+        "Transfer verification requires a complete causal transfer model for learned skills: "
+          + missingCausalModels.join(", "),
+      );
+    }
+    const notReprovenInSession = transferSkills
+      .filter((skill) => !(skill.provenSessionIds ?? []).includes(input.sessionId))
+      .map((skill) => skill.skillId);
+    if (notReprovenInSession.length > 0) {
+      throw new TypeError(
+        "Transfer verification requires a fresh AE-proven SKILL_COMMIT in the current materially different Practice session: "
+          + notReprovenInSession.join(", "),
       );
     }
     const learnedSkills = learning.learnedSkills.map((skill) =>

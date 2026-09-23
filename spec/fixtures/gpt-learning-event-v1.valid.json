@@ -49,6 +49,26 @@
       "ae.keyframe.set"
     ],
     "adaptationNotes": "Adapt source-frame span, duration, speed, and exit behavior to the reference.",
+    "causalModel": {
+      "triggerConditions": [
+        "The reference visibly replays source frames that were just shown."
+      ],
+      "invariants": [
+        "Source time must descend during the rewind phase and the replayed frames must preserve recognizable temporal continuity."
+      ],
+      "adaptationAxes": [
+        "Rewind duration, source-frame span, playback rate, interpolation, and exit behavior."
+      ],
+      "failureSignals": [
+        "Effect parameters recover while source time continues forward, or the rewind replays the wrong frame span."
+      ],
+      "repairStrategies": [
+        "Re-measure the reference source-time trajectory and move the descending Time Remap keys to the observed frame span and duration."
+      ],
+      "transferCriteria": [
+        "On different footage, the same temporal invariant survives while duration and frame span are adapted to the new reference."
+      ]
+    },
     "researchSources": [
       {
         "sourceId": "tutorial-drive:smoothest-reverse-edit",
