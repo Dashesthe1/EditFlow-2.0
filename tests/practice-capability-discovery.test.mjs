@@ -65,6 +65,47 @@ test("legacy GPT assignments inherit the current Tutorial Drive-first research p
   assert.doesNotMatch(migrated.chatMessage, /online research is required before accepting a fallback/);
 });
 
+test("earlier capability-discovery assignments also migrate to Tutorial Drive-first policy", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-research-policy-migration-v0-"));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const storePath = path.join(root, "orchestration.json");
+  const legacyPolicy = "- For a missing skill/capability, research the live Capability Registry, installed Adobe features/plugins, Adobe documentation, professional tutorials, and the web when useful.";
+  await writeFile(storePath, JSON.stringify({
+    schema: "editflow.gpt-orchestration-store.v1",
+    assignments: [{
+      schema: "editflow.gpt-orchestration-assignment.v1",
+      assignmentId: "gpt-assignment:legacy-v0",
+      sessionId: "practice:legacy-v0",
+      mode: "PRACTICE",
+      editTypeId: "microwave-edit",
+      status: "RUNNING",
+      finish,
+      start,
+      artifactDir: path.join(root, "artifacts"),
+      chatMessage: ["legacy assignment", legacyPolicy, "retained tail"].join("\n"),
+      createdAt: "2026-09-22T00:00:00.000Z",
+      claimedAt: "2026-09-22T00:00:01.000Z",
+      claimedBy: "chatgpt",
+      startedAt: "2026-09-22T00:00:01.000Z",
+      completedAt: null,
+      cancelRequestedAt: null,
+      finalRenderRef: null,
+      finalSummary: null,
+      error: null,
+    }],
+    events: [],
+  }, null, 2) + "\n", "utf8");
+
+  const store = new GptOrchestrationStoreV1(storePath);
+  const migrated = await store.getAssignment("gpt-assignment:legacy-v0");
+  assert.ok(migrated);
+  assert.match(migrated.chatMessage, /Tutorial Drive is the mandatory first research source/);
+  assert.match(migrated.chatMessage, /broader web\/internet research is last/);
+  assert.doesNotMatch(migrated.chatMessage, /For a missing skill\/capability, research the live Capability Registry/);
+});
+
 test("Practice can discover, prove, and retain a previously missing editing skill", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "editflow-capability-discovery-"));
   t.after(async () => {

@@ -71,8 +71,10 @@ export const EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 =
 export const EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 =
   "https://drive.google.com/drive/folders/19RI8JpZQvmD7R5_4Ub1E_JBodcx7MtGZ";
 
-const LEGACY_RESEARCH_POLICY_LINE =
-  "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.";
+const LEGACY_RESEARCH_POLICY_LINES = [
+  "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.",
+  "- For a missing skill/capability, research the live Capability Registry, installed Adobe features/plugins, Adobe documentation, professional tutorials, and the web when useful.",
+] as const;
 
 const RESEARCH_PRIORITY_LINES = [
   "- Tutorial Drive is the mandatory first research source whenever EditFlow does not know how to reproduce a visible reference behavior, is stuck on a construction, or discovers a missing fundamental skill.",
@@ -85,11 +87,12 @@ const RESEARCH_PRIORITY_LINES = [
 
 const applyCurrentResearchPriority = (message: string): string => {
   if (message.includes(RESEARCH_PRIORITY_LINES[0])) return message;
-  if (!message.includes(LEGACY_RESEARCH_POLICY_LINE)) return message;
-  return message.replace(
-    LEGACY_RESEARCH_POLICY_LINE,
-    RESEARCH_PRIORITY_LINES.join("\n"),
-  );
+  for (const legacyLine of LEGACY_RESEARCH_POLICY_LINES) {
+    if (message.includes(legacyLine)) {
+      return message.replace(legacyLine, RESEARCH_PRIORITY_LINES.join("\n"));
+    }
+  }
+  return message;
 };
 
 const isTutorialDriveResearchSource = (source: GptResearchSourceV1 | undefined): boolean =>
