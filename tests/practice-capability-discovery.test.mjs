@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -22,6 +22,48 @@ const start = [{
   mediaKind: "VIDEO",
   uri: "C:\\Media\\raw.mp4",
 }];
+
+test("legacy GPT assignments inherit the current Tutorial Drive-first research policy on read", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-research-policy-migration-"));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const storePath = path.join(root, "orchestration.json");
+  const legacyPolicy = "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.";
+  await writeFile(storePath, JSON.stringify({
+    schema: "editflow.gpt-orchestration-store.v1",
+    assignments: [{
+      schema: "editflow.gpt-orchestration-assignment.v1",
+      assignmentId: "gpt-assignment:legacy",
+      sessionId: "practice:legacy",
+      mode: "PRACTICE",
+      editTypeId: "microwave-edit",
+      status: "RUNNING",
+      finish,
+      start,
+      artifactDir: path.join(root, "artifacts"),
+      chatMessage: ["legacy assignment", legacyPolicy, "retained tail"].join("\n"),
+      createdAt: "2026-09-22T00:00:00.000Z",
+      claimedAt: "2026-09-22T00:00:01.000Z",
+      claimedBy: "chatgpt",
+      startedAt: "2026-09-22T00:00:01.000Z",
+      completedAt: null,
+      cancelRequestedAt: null,
+      finalRenderRef: null,
+      finalSummary: null,
+      error: null,
+    }],
+    events: [],
+  }, null, 2) + "\n", "utf8");
+
+  const store = new GptOrchestrationStoreV1(storePath);
+  const migrated = await store.getAssignment("gpt-assignment:legacy");
+  assert.ok(migrated);
+  assert.match(migrated.chatMessage, /Tutorial Drive is the mandatory first research source/);
+  assert.match(migrated.chatMessage, /Adobe Effect Tutorials/);
+  assert.match(migrated.chatMessage, /Second priority is official Adobe documentation\/resources/);
+  assert.doesNotMatch(migrated.chatMessage, /online research is required before accepting a fallback/);
+});
 
 test("Practice can discover, prove, and retain a previously missing editing skill", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "editflow-capability-discovery-"));
