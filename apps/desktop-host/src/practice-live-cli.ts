@@ -5,6 +5,7 @@ import { AE_ADAPTER_PROTOCOL_VERSION_V11 } from "../../../packages/adapters/ae-c
 import type { PracticeMediaInputV1 } from "../../../packages/practice-homework/src/contracts.js";
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { createPracticeM6CurrentAeTrainingRuntimeV1 } from "./practice-training-runtime.js";
+import { evaluatePracticeLiveIsolationProofV1 } from "./practice-live-isolation-proof.js";
 
 interface BridgeConfigFile {
   readonly schemaVersion: 1;
@@ -129,6 +130,11 @@ const main = async (): Promise<void> => {
   const stretchSimilarity = numberArgument("--stretch-similarity", 0.99, 0);  const exactSceneConfidence = numberArgument("--exact-scene-confidence", 0.95, 0);
   const minimumAudioConfidence = numberArgument("--minimum-audio-confidence", 0.90, 0);
   const timeoutMs = integerArgument("--timeout-ms", 90_000, 1_000);
+  const requireSubjectIsolationProof = hasFlag("--require-subject-isolation-proof");
+  const requiredIsolationBackends = argumentsFor("--require-isolation-backend")
+    .filter((value) => value.trim().length > 0);
+  const requiredFallbackAfter = argumentsFor("--require-fallback-after")
+    .filter((value) => value.trim().length > 0);
   if ([minimumSimilarity, stretchSimilarity, exactSceneConfidence, minimumAudioConfidence]
     .some((value) => value > 1)) {
     throw new Error("Similarity/confidence arguments must be <= 1.");
@@ -218,6 +224,11 @@ const main = async (): Promise<void> => {
       exactSceneConfidence,
       minimumAudioConfidence,
     });
+    const isolationProof = evaluatePracticeLiveIsolationProofV1(result, {
+      required: requireSubjectIsolationProof,
+      requiredBackendIds: requiredIsolationBackends,
+      requiredFallbackAfterIds: requiredFallbackAfter,
+    });
 
     let allocation = null;
     if (hasFlag("--allocate") && result.attempts.length > 0) {
@@ -251,7 +262,8 @@ const main = async (): Promise<void> => {
       startedAt,
       completedAt: new Date().toISOString(),
       status: result.status,
-      ok: result.status === "MASTERED" || result.status === "HUMAN_REVIEW_REQUIRED",
+      ok: (result.status === "MASTERED" || result.status === "HUMAN_REVIEW_REQUIRED")
+        && isolationProof.verified,
       panel,
       sessionId,
       editType: {
@@ -272,6 +284,7 @@ const main = async (): Promise<void> => {
         minimumAudioConfidence,
       },
       result,
+      isolationProof,
       allocation,
       reloadProof,
       persistence: {
@@ -284,6 +297,9 @@ const main = async (): Promise<void> => {
     if (hasFlag("--allocate")
       && (!reloadProof.allocationRestored || !reloadProof.editTypeContainsSession)) {
       process.exitCode = 4;
+    }
+    if (isolationProof.required && !isolationProof.verified) {
+      process.exitCode = 5;
     }
   } catch (error) {
     await writeJson(resultPath, {

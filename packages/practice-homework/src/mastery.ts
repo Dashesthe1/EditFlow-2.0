@@ -234,9 +234,20 @@ export const derivePracticeMaturityStageV1 = (
   const learning = profile.gptLearning;
   const records = learning?.masteryRecords ?? [];
   const benchmarks = learning?.heldOutBenchmarks ?? [];
-  if (benchmarks.some((report) => report.robust)) return "ROBUST";
-  if (benchmarks.some((report) => report.objectAwareVerified)) {
-    return "OBJECT_AWARE_VERIFIED";
+  const heldOutCases = learning?.heldOutCases ?? [];
+  if (benchmarks.length > 0) {
+    const latest = [...benchmarks].sort((left, right) =>
+      left.evaluatedAt.localeCompare(right.evaluatedAt)).at(-1);
+    if (latest !== undefined) {
+      const canonical = evaluatePracticeHeldOutBenchmarkV1({
+        editTypeId: profile.editTypeId,
+        cases: heldOutCases,
+        priorMasteryRecords: records,
+        policy: latest.policy,
+      });
+      if (canonical.robust) return "ROBUST";
+      if (canonical.objectAwareVerified) return "OBJECT_AWARE_VERIFIED";
+    }
   }
   if (records.some((record) => record.scope === "TRANSFER_VERIFIED")) {
     return "TRANSFER_VERIFIED";

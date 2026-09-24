@@ -13,6 +13,7 @@ import {
   classifyPracticeMasteryScopeV1,
   comparePracticeObjectAwareWindowsV1,
   composePracticeM6ExecutionAdaptersV1,
+  derivePracticeMaturityStageV1,
   evaluatePracticeHeldOutBenchmarkV1,
   resolvePracticeLocalMediaPathV1,
   summarizePracticeSubjectIdentityV1,
@@ -74,6 +75,47 @@ const masteryRecord = (
   overallSimilarity: 0.98,
   definingEffectCoverage: 1,
   effectFamilyIds: ["SHUTTER_FRAGMENTATION"],
+  verifiedAt: "2026-09-23T12:00:00.000Z",
+});
+
+const heldOutProof = ({
+  sessionId,
+  editTypeId,
+  referenceFingerprint,
+  sourceFingerprint,
+  effectFamilyIds = ["SHUTTER_FRAGMENTATION"],
+  objectAwareVerified = false,
+  report = passedReport(0.97),
+}) => ({
+  schema: "editflow.practice-mastery-proof.v1",
+  sessionId,
+  editTypeId,
+  referenceId: "finish:" + sessionId,
+  sourceIndexId: "source-index:" + sessionId,
+  referenceFingerprint,
+  sourceFingerprint,
+  finalRenderRef: "render:" + sessionId,
+  minimumSimilarity: 0.95,
+  exactSceneConfidence: 0.95,
+  effectFamilyIds,
+  ...(objectAwareVerified ? {
+    objectAwareProof: {
+      schema: "editflow.practice-object-aware-proof.v1",
+      required: true,
+      referenceWindowCount: 1,
+      matchedWindowCount: 1,
+      passedWindowCount: 1,
+      overallScore: 0.97,
+      verified: true,
+      windows: [],
+      reasons: [],
+      evidenceRefs: ["proof:object-aware:" + sessionId],
+    },
+  } : {}),
+  report,
+  matches: [],
+  audioMatch: null,
+  evidenceRefs: ["proof:machine:" + sessionId],
   verifiedAt: "2026-09-23T12:00:00.000Z",
 });
 
@@ -319,17 +361,18 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   });
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "TRANSFER_VERIFIED");
 
-  const cases = Array.from({ length: 20 }, (_, index) => ({
-    caseId: "held-out:" + String(index + 1),
+  const heldOutProofs = Array.from({ length: 20 }, (_, index) => heldOutProof({
     sessionId: "practice:held-out:" + String(index + 1),
+    editTypeId: "benchmark-gated",
     referenceFingerprint: "reference:held-out:" + String(index + 1),
     sourceFingerprint: "source:held-out:" + String(index + 1),
     effectFamilyIds: [index % 2 === 0 ? "SHUTTER_FRAGMENTATION" : "MOTION_WARP"],
     objectAwareVerified: index === 0,
-    overallSimilarity: 0.97,
-    definingEffectCoverage: 1,
-    passed: true,
-    evidenceRefs: ["proof:held-out:" + String(index + 1)],
+  }));
+  const cases = heldOutProofs.map((proof) => buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: proof.sessionId,
+    proof,
+    proofRef: "proof:held-out:" + proof.sessionId,
   }));
   const report = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
@@ -343,6 +386,14 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.objectAwareVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
+  for (const proof of heldOutProofs) {
+    registry.recordHeldOutProof({
+      editTypeId: "benchmark-gated",
+      sessionId: proof.sessionId,
+      proof,
+      proofRef: "proof:held-out:" + proof.sessionId,
+    });
+  }
   registry.recordHeldOutBenchmark(report);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
@@ -355,6 +406,96 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   });
   assert.equal(contaminated.robust, false);
   assert.ok(contaminated.reasons.some((reason) => /training reference fingerprint/.test(reason)));
+});
+
+test("held-out benchmark recording re-derives authority from retained cases", () => {
+  const registry = new EditTypeRegistryV1();
+  registry.create({ editTypeId: "benchmark-authority", title: "Benchmark Authority" });
+  const prior = masteryRecord("practice:benchmark-authority:train", "TRANSFER_VERIFIED");
+  registry.beginGptLearningSession("benchmark-authority", prior.sessionId, "PRACTICE");
+  registry.completeGptLearningSession({
+    editTypeId: "benchmark-authority", sessionId: prior.sessionId,
+    mode: "PRACTICE", mastered: true, masteryRecord: prior,
+  });
+  const authorityProof = heldOutProof({
+    sessionId: "practice:authority:1",
+    editTypeId: "benchmark-authority",
+    referenceFingerprint: "reference:authority:1",
+    sourceFingerprint: "source:authority:1",
+    report: passedReport(0.98),
+  });
+  const retainedCase = registry.recordHeldOutProof({
+    editTypeId: "benchmark-authority",
+    sessionId: authorityProof.sessionId,
+    proof: authorityProof,
+    proofRef: "proof:authority:1",
+  }).item;
+  const machine = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-authority", cases: [retainedCase], priorMasteryRecords: [prior],
+  });
+  registry.recordHeldOutBenchmark({
+    ...machine, caseCount: 20, passedCaseCount: 20,
+    objectAwareVerified: true, robust: true, reasons: [],
+  });
+  const knowledge = registry.knowledge("benchmark-authority");
+  assert.equal(knowledge.maturityStage, "TRANSFER_VERIFIED");
+  const stored = knowledge.gptLearning.heldOutBenchmarks.at(-1);
+  assert.equal(stored.robust, false);
+  assert.ok(stored.reasons.some((reason) => /fewer than 20 cases/.test(reason)));
+});
+
+test("held-out retention accepts only a matching machine mastery proof", () => {
+  const registry = new EditTypeRegistryV1();
+  registry.create({ editTypeId: "proof-bound-held-out", title: "Proof Bound Held Out" });
+  const proof = heldOutProof({
+    sessionId: "practice:proof-bound:001",
+    editTypeId: "proof-bound-held-out",
+    referenceFingerprint: "reference:proof-bound:001",
+    sourceFingerprint: "source:proof-bound:001",
+  });
+  assert.equal(typeof registry.recordHeldOutCase, "undefined");
+  assert.throws(
+    () => registry.recordHeldOutProof({
+      editTypeId: "proof-bound-held-out",
+      sessionId: "practice:proof-bound:wrong-session",
+      proof,
+      proofRef: "proof:proof-bound:001",
+    }),
+    /proof identity does not match/,
+  );
+  assert.throws(
+    () => registry.recordHeldOutProof({
+      editTypeId: "proof-bound-held-out",
+      sessionId: proof.sessionId,
+      proof,
+      proofRef: "",
+    }),
+    /machine proof identity/,
+  );
+});
+
+test("maturity derivation rejects forged persisted ROBUST flags", () => {
+  const registry = new EditTypeRegistryV1();
+  registry.create({ editTypeId: "persisted-forgery", title: "Persisted Forgery" });
+  const prior = masteryRecord("practice:persisted-forgery:train", "TRANSFER_VERIFIED");
+  registry.beginGptLearningSession("persisted-forgery", prior.sessionId, "PRACTICE");
+  registry.completeGptLearningSession({
+    editTypeId: "persisted-forgery", sessionId: prior.sessionId,
+    mode: "PRACTICE", mastered: true, masteryRecord: prior,
+  });
+  const profile = registry.get("persisted-forgery");
+  assert.ok(profile?.gptLearning);
+  const baseline = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "persisted-forgery", cases: [], priorMasteryRecords: [prior],
+  });
+  const forgedProfile = {
+    ...profile,
+    gptLearning: {
+      ...profile.gptLearning,
+      heldOutBenchmarks: [{ ...baseline, objectAwareVerified: true, robust: true, reasons: [] }],
+    },
+  };
+  assert.equal(derivePracticeMaturityStageV1(forgedProfile), "TRANSFER_VERIFIED");
 });
 
 test("held-out certification retains failed machine cases instead of cherry-picking passes", () => {
@@ -399,14 +540,14 @@ test("held-out certification retains failed machine cases instead of cherry-pick
     evidenceRefs: ["proof:held-out-failed:machine"],
     verifiedAt: "2026-09-23T13:00:00.000Z",
   };
-  const heldOutCase = buildPracticeHeldOutBenchmarkCaseV1({
+  const heldOutCase = registry.recordHeldOutProof({
+    editTypeId: "held-out-failures",
     sessionId: proof.sessionId,
     proof,
     proofRef: "proof:held-out-failed:bundle",
-  });
+  }).item;
   assert.equal(heldOutCase.passed, false);
   assert.ok(heldOutCase.reasons.some((reason) => /not reproduced/.test(reason)));
-  registry.recordHeldOutCase("held-out-failures", heldOutCase);
 
   const retained = registry.knowledge("held-out-failures");
   assert.equal(retained.gptLearning.heldOutCases.length, 1);

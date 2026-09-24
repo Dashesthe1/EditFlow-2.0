@@ -14,7 +14,6 @@ import {
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
   compileGptTutorialResearchSourceV1,
-  buildPracticeHeldOutBenchmarkCaseV1,
   classifyPracticeMasteryScopeV1,
   evaluatePracticeHeldOutBenchmarkV1,
   type GptCapabilityGapV1,
@@ -928,13 +927,13 @@ export class PracticePanelServerV1 {
           ])];
 
           if (practiceRole === "HELD_OUT_CERTIFICATION") {
-            const heldOutCase = buildPracticeHeldOutBenchmarkCaseV1({
+            const heldOutCase = registry.recordHeldOutProof({
+              editTypeId: pending.editTypeId,
               sessionId: pending.sessionId,
               proof: verification.proof,
               proofRef: verification.proofRef,
               traceReasons,
-            });
-            registry.recordHeldOutCase(pending.editTypeId, heldOutCase);
+            }).item;
             const retained = registry.knowledge(pending.editTypeId);
             if (retained === null) {
               throw new TypeError("Held-out certification lost its Edit Type registry entry.");

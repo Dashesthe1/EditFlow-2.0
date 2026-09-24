@@ -79,6 +79,12 @@ Cases must use material pairs not seen in the training mastery set, retain uniqu
 reference/source fingerprints and effect-family evidence, pass the configured visual
 floors, retain proof evidence, and include object-aware verification before ROBUST can
 be recorded. Reused training material or a failed case invalidates the robust result.
+Held-out benchmark reports are summaries, not authority: the registry re-evaluates the
+currently retained held-out cases when a report is recorded, and maturity derivation
+re-checks the latest benchmark against those cases instead of trusting stored ROBUST or
+object-aware flags. Held-out cases themselves enter the registry only through a matching
+Practice mastery-proof identity; the free-form case-retention API is not an authority
+surface.
 
 ## Non-negotiable practice sequence
 

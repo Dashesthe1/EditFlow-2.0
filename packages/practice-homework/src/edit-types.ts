@@ -15,9 +15,14 @@ import type {
   PracticeEpisodeV1,
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkReportV1,
+  PracticeMasteryProofV1,
   PracticeMasteryRecordV1,
 } from "./contracts.js";
-import { derivePracticeMaturityStageV1 } from "./mastery.js";
+import {
+  buildPracticeHeldOutBenchmarkCaseV1,
+  derivePracticeMaturityStageV1,
+  evaluatePracticeHeldOutBenchmarkV1,
+} from "./mastery.js";
 
 const normalizeChoice = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -449,12 +454,35 @@ export class EditTypeRegistryV1 {
     return structuredClone(updated);
   }
 
-  recordHeldOutCase(
-    editTypeId: string,
-    item: PracticeHeldOutBenchmarkCaseV1,
-  ): EditTypeProfileV1 {
-    const profile = this.#profiles.get(editTypeId);
-    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + editTypeId);
+  recordHeldOutProof(input: {
+    readonly editTypeId: string;
+    readonly sessionId: string;
+    readonly proof: PracticeMasteryProofV1;
+    readonly proofRef: string;
+    readonly traceReasons?: readonly string[];
+  }): {
+    readonly profile: EditTypeProfileV1;
+    readonly item: PracticeHeldOutBenchmarkCaseV1;
+  } {
+    const profile = this.#profiles.get(input.editTypeId);
+    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + input.editTypeId);
+    if (input.proof.schema !== "editflow.practice-mastery-proof.v1") {
+      throw new TypeError("Held-out certification requires a Practice mastery proof.");
+    }
+    if (input.proof.editTypeId !== input.editTypeId || input.proof.sessionId !== input.sessionId) {
+      throw new TypeError("Held-out mastery proof identity does not match the retained Practice case.");
+    }
+    if (input.proofRef.trim().length === 0
+      || input.proof.referenceFingerprint.trim().length === 0
+      || input.proof.sourceFingerprint.trim().length === 0) {
+      throw new TypeError("Held-out certification requires content-addressed machine proof identity.");
+    }
+    const item = buildPracticeHeldOutBenchmarkCaseV1({
+      sessionId: input.sessionId,
+      proof: input.proof,
+      proofRef: input.proofRef,
+      ...(input.traceReasons === undefined ? {} : { traceReasons: input.traceReasons }),
+    });
     if (item.evidenceRefs.length === 0) {
       throw new TypeError("Held-out certification requires retained machine evidence, including failed cases.");
     }
@@ -483,8 +511,8 @@ export class EditTypeRegistryV1 {
         lastUpdatedAt: now,
       },
     };
-    this.#profiles.set(editTypeId, updated);
-    return structuredClone(updated);
+    this.#profiles.set(input.editTypeId, updated);
+    return { profile: structuredClone(updated), item: structuredClone(item) };
   }
 
   recordHeldOutBenchmark(report: PracticeHeldOutBenchmarkReportV1): EditTypeProfileV1 {
@@ -493,10 +521,13 @@ export class EditTypeRegistryV1 {
     if (report.schema !== "editflow.practice-held-out-benchmark.v1") {
       throw new TypeError("Unsupported Practice held-out benchmark schema.");
     }
-    if (report.robust && !report.objectAwareVerified) {
-      throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
-    }
     const learning = normalizedGptLearning(profile.gptLearning);
+    const canonical = evaluatePracticeHeldOutBenchmarkV1({
+      editTypeId: report.editTypeId,
+      cases: learning.heldOutCases,
+      priorMasteryRecords: learning.masteryRecords,
+      policy: report.policy,
+    });
     const retained = learning.heldOutBenchmarks.filter((item) =>
       item.evaluatedAt !== report.evaluatedAt);
     const updated: EditTypeProfileV1 = {
@@ -504,8 +535,8 @@ export class EditTypeRegistryV1 {
       revision: profile.revision + 1,
       gptLearning: {
         ...learning,
-        heldOutBenchmarks: [...retained, structuredClone(report)],
-        lastUpdatedAt: report.evaluatedAt,
+        heldOutBenchmarks: [...retained, canonical],
+        lastUpdatedAt: canonical.evaluatedAt,
       },
     };
     this.#profiles.set(report.editTypeId, updated);

@@ -11,7 +11,10 @@ param(
   [double]$ExactSceneConfidence = 0.95,
   [double]$MinimumAudioConfidence = 0.90,
   [int]$TimeoutSeconds = 180,
-  [switch]$Allocate
+  [switch]$Allocate,
+  [switch]$RequireSubjectIsolationProof,
+  [string[]]$RequireIsolationBackend = @(),
+  [string[]]$RequireFallbackAfter = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -65,6 +68,19 @@ try {
     $NodeArgs += @("--start-audio", (Resolve-Path -LiteralPath $audio).Path)
   }
   if ($Allocate) { $NodeArgs += "--allocate" }
+  if ($RequireSubjectIsolationProof) {
+    $NodeArgs += "--require-subject-isolation-proof"
+  }
+  foreach ($backend in $RequireIsolationBackend) {
+    if (-not [string]::IsNullOrWhiteSpace($backend)) {
+      $NodeArgs += @("--require-isolation-backend", $backend)
+    }
+  }
+  foreach ($backend in $RequireFallbackAfter) {
+    if (-not [string]::IsNullOrWhiteSpace($backend)) {
+      $NodeArgs += @("--require-fallback-after", $backend)
+    }
+  }
 
   Write-Host ("Starting live Practice proof session " + $SessionId)
   & node @NodeArgs
@@ -75,6 +91,14 @@ try {
   }
   $Result = Get-Content $ResultPath -Raw | ConvertFrom-Json
   Write-Host ("Practice live proof status: " + $Result.status)
+  if ($null -ne $Result.isolationProof) {
+    Write-Host ("Subject isolation proof verified: " + $Result.isolationProof.verified)
+    if ($Result.isolationProof.reasons.Count -gt 0) {
+      foreach ($reason in $Result.isolationProof.reasons) {
+        Write-Host ("  isolation: " + $reason)
+      }
+    }
+  }
   Write-Host ("Result artifact: " + $ResultPath)
   if ($ExitCode -ne 0) { exit $ExitCode }
 } finally {
