@@ -18,6 +18,9 @@ import {
   AE_ADAPTER_ROUTE_ID_V11,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import {
+  AE_MASK_ROUTE_ID_V12,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_2.js";
+import {
   AE_COMPOSITE_ROUTE_ID_V13,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_3.js";
 import {
@@ -316,6 +319,46 @@ test("current AE transaction runtime executes and recovers one mixed-protocol pl
 
   assert.equal(runtime.status().recoveryLedgerEntries, 1);
   assert.equal(runtime.status().maxOperations, 64);
+});
+
+test("current AE transactional host dispatches protocol 1.2 mask mutations through the typed mask route", async () => {
+  const transport = new RuntimeTransport();
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "mask-route-project",
+    "mask-route-transaction",
+    () => `mask-route-request-${transport.requests.length + 1}`,
+  );
+  await host.readState();
+
+  const createMask = {
+    ...op("OP_MASK_CREATE", "ae.mask.create", AE_MASK_ROUTE_ID_V12, "mask.create"),
+    riskClass: "R2_STRUCTURAL",
+    input: {
+      command: "mask.create",
+      payload: {
+        comp: { stableId: "comp" },
+        layer: { stableId: "hero" },
+        stableId: "PRACTICE_MASK_TEST",
+        name: "Practice Mask",
+        shape: {
+          closed: true,
+          vertices: [[10, 10], [90, 10], [90, 90], [10, 90]],
+          inTangents: [[0, 0], [0, 0], [0, 0], [0, 0]],
+          outTangents: [[0, 0], [0, 0], [0, 0], [0, 0]],
+        },
+        properties: { mode: "ADD" },
+      },
+    },
+  };
+
+  assert.equal((await host.apply(createMask)).outcome, "APPLIED");
+  const request = transport.requests.findLast((item) => item.command === "mask.create");
+  assert.ok(request);
+  assert.equal(request.protocolVersion, "1.2.0");
+  assert.equal(request.capabilityId, "ae.mask.create");
+  assert.equal(request.expectedHostProjectRevision, 30);
+  assert.equal(request.payload.stableId, "PRACTICE_MASK_TEST");
 });
 
 test("current AE transactional host resolves effect-bound property expressions through the runtime effect index", async () => {

@@ -72,6 +72,9 @@ import {
   createRetainedPracticeRotoBrushSubjectIsolationRouteV1,
 } from "./practice-m6-roto-brush-subject-isolation.js";
 import {
+  createRetainedPracticeTrackedMaskSubjectIsolationRouteV1,
+} from "./practice-m6-tracked-mask-subject-isolation.js";
+import {
   createPracticeM6SubjectIsolationRouterV1,
 } from "./practice-m6-subject-isolation-router.js";
 const routeForCommand = (
@@ -274,6 +277,11 @@ export interface PracticeM6CurrentAeAssemblyConfigV1 {
   readonly rotoBrushRuntimeEvidencePath?: string;
   readonly rotoBrushRuntimeEvidenceSha256Path?: string;
   readonly rotoBrushVisualTimeoutMs?: number;
+  readonly trackedMaskPythonPath?: string;
+  readonly trackedMaskVisualWorkingDirectory?: string;
+  readonly trackedMaskRuntimeEvidencePath?: string;
+  readonly trackedMaskVisualTimeoutMs?: number;
+  readonly trackedMaskMaxAnalysisWindowSeconds?: number;
   readonly recordEpisode?: NonNullable<PracticeHomeworkAdaptersV1["recordEpisode"]>;
 }
 
@@ -411,6 +419,43 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
         ? {}
         : { visualTimeoutMs: input.rotoBrushVisualTimeoutMs }),
     });
+  const trackedMaskSubjectIsolationRoute =
+    createRetainedPracticeTrackedMaskSubjectIsolationRouteV1({
+      transaction,
+      media: mediaAnalyzer,
+      transport: input.transport,
+      repositoryRoot,
+      artifactDir: path.join(artifactDir, "subject-isolation", "tracked-mask"),
+      pythonPath: path.resolve(
+        input.trackedMaskPythonPath
+          ?? input.rotoBrushPythonPath
+          ?? path.join(profileRoot, "editgpt", ".venv", "Scripts", "python.exe"),
+      ),
+      visualWorkingDirectory: path.resolve(
+        input.trackedMaskVisualWorkingDirectory
+          ?? input.rotoBrushVisualWorkingDirectory
+          ?? path.join(repositoryRoot, "packages", "adapters", "ae-cep", "runtime"),
+      ),
+      afterFxPath: path.resolve(
+        input.afterFxPath
+          ?? "C:\\Program Files\\Adobe\\Adobe After Effects 2025\\Support Files\\AfterFX.exe",
+      ),
+      runtimeEvidencePath: path.resolve(
+        input.trackedMaskRuntimeEvidencePath
+          ?? path.join(
+            repositoryRoot,
+            "proofs",
+            "diagnostics",
+            "m4-mask-tracking-forward-live-acceptance.json",
+          ),
+      ),
+      ...(input.trackedMaskVisualTimeoutMs === undefined
+        ? {}
+        : { visualTimeoutMs: input.trackedMaskVisualTimeoutMs }),
+      ...(input.trackedMaskMaxAnalysisWindowSeconds === undefined
+        ? {}
+        : { maxAnalysisWindowSeconds: input.trackedMaskMaxAnalysisWindowSeconds }),
+    });
   const subjectIsolationRoute = createPracticeM6SubjectIsolationRouterV1([
     sam31SubjectIsolationRoute === null
       ? null
@@ -418,6 +463,9 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     rotoBrushSubjectIsolationRoute === null
       ? null
       : { id: "ROTO_BRUSH_TRACK_MATTE", route: rotoBrushSubjectIsolationRoute },
+    trackedMaskSubjectIsolationRoute === null
+      ? null
+      : { id: "AE_TRACKED_MASK", route: trackedMaskSubjectIsolationRoute },
   ]);
   const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,

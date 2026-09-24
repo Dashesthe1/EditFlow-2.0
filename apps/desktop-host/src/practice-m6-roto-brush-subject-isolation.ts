@@ -60,6 +60,9 @@ import type {
 import type {
   PracticeM6LocalMediaAnalyzerV1,
 } from "./practice-m6-media.js";
+import {
+  PracticeSubjectIsolationBackendFailureV1,
+} from "./practice-m6-subject-isolation-router.js";
 export const PRACTICE_M6_ROTO_BRUSH_SUBJECT_ISOLATION_ROUTE_ID_V1 =
   "practice-m6.roto-brush-track-matte.v1" as const;
 
@@ -582,7 +585,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
     input: Parameters<PracticeM6SubjectIsolationRouteV1["prepare"]>[0],
     stableIds: readonly string[],
     identity: string,
-  ): Promise<void> {
+  ): Promise<number> {
     const response: AeAdapterResponseV11 = await this.transport.dispatch(
       v11InspectRequest("CLEANUP_" + identity),
     );
@@ -593,7 +596,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
       item.kind === "COMPOSITION" && item.stableId === input.compStableId);
     const existing = stableIds.filter((stableId) =>
       comp?.composition?.layers.some((layer) => layer.stableId === stableId));
-    if (existing.length === 0) return;
+    if (existing.length === 0) return 0;
     const operations: PlannedMutationV1[] = existing.map((stableId) => ({
       protocolVersion: "1.1.0",
       capabilityId: "ae.layer.remove",
@@ -604,7 +607,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
       },
       riskClass: "R2_STRUCTURAL",
     }));
-    await executeMutationPlan(
+    return await executeMutationPlan(
       this.transaction,
       "practice-roto-cleanup:" + identity,
       operations,
@@ -666,6 +669,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
     let workingCreatedOperations = 0;
     let seedUndoEntries = 0;
     let exportUndoEntries = 0;
+    let finalOperations = 0;
     const evidence: string[] = [
       ...runtimeEvidence,
       ...binding.evidenceRefs,
@@ -895,7 +899,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
         "practice-roto-export-undo-entry:1",
       );
 
-      const finalOperations = await executeMutationPlan(
+      finalOperations = await executeMutationPlan(
         this.transaction,
         "practice-roto-bind-matte:" + token,
         [
@@ -954,15 +958,42 @@ implements PracticeM6SubjectIsolationRouteV1 {
     } catch (error) {
       if (!finalCommitted) {
         try {
-          await this.#cleanupOwnedLayers(
+          const cleanupOperations = await this.#cleanupOwnedLayers(
             input,
             [matteLayerStableId, workingLayerStableId],
             token,
           );
+          const failedUndoEntries = workingCreatedOperations
+            + seedUndoEntries
+            + exportUndoEntries
+            + finalOperations
+            + cleanupOperations;
+          throw new PracticeSubjectIsolationBackendFailureV1(
+            "PRACTICE_ROTO_BACKEND_REJECTED:" + String(error),
+            failedUndoEntries,
+            [
+              ...evidence,
+              "practice-roto-cleanup-confirmed:true",
+              "practice-roto-failed-undo-entries:" + String(failedUndoEntries),
+            ],
+            true,
+          );
         } catch (cleanupError) {
-          throw new Error(
+          if (cleanupError instanceof PracticeSubjectIsolationBackendFailureV1) {
+            throw cleanupError;
+          }
+          throw new PracticeSubjectIsolationBackendFailureV1(
             "PRACTICE_ROTO_FAILURE_WITH_CLEANUP_FAILURE:"
             + String(error) + ":cleanup=" + String(cleanupError),
+            workingCreatedOperations
+              + seedUndoEntries
+              + exportUndoEntries
+              + finalOperations,
+            [
+              ...evidence,
+              "practice-roto-cleanup-confirmed:false",
+            ],
+            false,
           );
         }
       }

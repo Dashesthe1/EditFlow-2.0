@@ -3,10 +3,8 @@ import {
   asRouteId,
   type CapabilityRecord,
 } from "../../../core-contracts/src/index.js";
-import {
-  buildMaskRequestV12,
-  type CepEvalScriptMaskTransportV12,
-} from "./m3-mask.js";
+import { buildMaskRequestV12 } from "./m3-mask.js";
+import type { AeMaskTransportV12 } from "./protocol-v1_2.js";
 
 export type MaskTrackingDirectionV1 = "FORWARD" | "BACKWARD";
 export type MaskTrackingEscalationV1 =
@@ -126,7 +124,7 @@ const maskTruth = (value: unknown, expectedStableId: string): MaskPathTruthV1 | 
   return { stableId, name, keyCount: frames.length, lastKeyTime };
 };
 const readMaskTruth = async (
-  transport: CepEvalScriptMaskTransportV12,
+  transport: AeMaskTransportV12,
   input: { compHostId: number; layerHostId: number; maskStableId: string },
   suffix: string,
 ): Promise<MaskPathTruthV1 | null> => {
@@ -148,10 +146,10 @@ const readMaskTruth = async (
 };
 
 export class GuardedMaskTrackingControllerV1 {
-  readonly transport: CepEvalScriptMaskTransportV12;
+  readonly transport: AeMaskTransportV12;
   readonly visualDriver: MaskVisualTrackingDriverV1 | null;
 
-  constructor(transport: CepEvalScriptMaskTransportV12, visualDriver: MaskVisualTrackingDriverV1 | null = null) {
+  constructor(transport: AeMaskTransportV12, visualDriver: MaskVisualTrackingDriverV1 | null = null) {
     this.transport = transport;
     this.visualDriver = visualDriver;
   }

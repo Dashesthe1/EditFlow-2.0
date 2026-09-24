@@ -16,6 +16,12 @@ import {
   type AeAdapterTransportV11,
 } from "./protocol-v1_1.js";
 import {
+  AE_MASK_ROUTE_ID_V12,
+  capabilityForMaskCommandV12,
+  isAeMaskCommandV12,
+  type AeMaskTransportV12,
+} from "./protocol-v1_2.js";
+import {
   AE_COMPOSITE_ROUTE_ID_V13,
   capabilityForCompositeCommandV13,
   isAeCompositeCommandV13,
@@ -67,6 +73,7 @@ import {
   type StabilizationTruthCountsV1,
   type StabilizationVisualDriverV1,
 } from "./m4-stabilization.js";
+import { buildMaskRequestV12 } from "./m3-mask.js";
 import { buildCompositeRequestV13 } from "./m3-composite.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
@@ -84,6 +91,7 @@ import {
 
 export type CurrentAeCepTransactionalTransportV1 =
   AeAdapterTransportV11
+  & AeMaskTransportV12
   & AeCompositeTransportV13
   & AeLayerControlsTransportV16
   & AeTemporalInterpolationTransportV17
@@ -748,6 +756,27 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
           visualEvidenceId: result.visualEvidenceId,
         },
       };
+    }
+
+    if (isAeMaskCommandV12(parsed.command)) {
+      assertBinding(
+        operation,
+        capabilityForMaskCommandV12(parsed.command),
+        AE_MASK_ROUTE_ID_V12,
+      );
+      const response = await this.transport.dispatch(
+        buildMaskRequestV12({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: String(operation.operationId),
+          command: parsed.command,
+          expectedHostProjectRevision:
+            parsed.command === "mask.readback" ? null : revision,
+          payload: parsed.payload,
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      return this.#accept(response as unknown as CommonResponse, parsed.command);
     }
 
     if (isAeCompositeCommandV13(parsed.command)) {

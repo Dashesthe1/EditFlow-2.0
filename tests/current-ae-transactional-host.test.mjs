@@ -12,6 +12,9 @@ import {
   AE_ADAPTER_ROUTE_ID_V11,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import {
+  AE_MASK_ROUTE_ID_V12,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_2.js";
+import {
   AE_LAYER_CONTROLS_ROUTE_ID_V16,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_6.js";
 import {
@@ -957,4 +960,43 @@ test("current AE host admits protocol 2.5 media sequences only through the bound
     command: "media.sequence.import",
     payload: { path: "C:\\Outside\\mask_0001.png", stableId: "ESCAPE", frameRate: 12, expectedFrameCount: 6 },
   })), /FILESYSTEM_PATH_NOT_ALLOWED/);
+});
+
+test("current AE host dispatches protocol 1.2 mask mutations through the transactional boundary", async () => {
+  const transport = new StatefulMixedProtocolTransport();
+  let requestCounter = 0;
+  const host = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "current-host-project",
+    "tx-mask-current",
+    () => `req-mask-${++requestCounter}`,
+  );
+  await host.readState();
+
+  const result = await host.apply(operation({
+    id: "OP_MASK_CREATE",
+    capabilityId: "ae.mask.create",
+    routeId: AE_MASK_ROUTE_ID_V12,
+    command: "mask.create",
+    payload: {
+      comp: { stableId: "COMP" },
+      layer: { stableId: "LAYER" },
+      stableId: "PRACTICE_MASK_TEST",
+      name: "Practice Mask",
+      shape: {
+        closed: true,
+        vertices: [[10, 10], [90, 10], [90, 90], [10, 90]],
+        inTangents: [[0, 0], [0, 0], [0, 0], [0, 0]],
+        outTangents: [[0, 0], [0, 0], [0, 0], [0, 0]],
+      },
+    },
+  }));
+
+  assert.equal(result.outcome, "APPLIED");
+  const request = transport.requests.at(-1);
+  assert.equal(request.command, "mask.create");
+  assert.equal(request.protocolVersion, "1.2.0");
+  assert.equal(request.capabilityId, "ae.mask.create");
+  assert.equal(request.expectedHostProjectRevision, 20);
+  assert.equal(request.payload.stableId, "PRACTICE_MASK_TEST");
 });
