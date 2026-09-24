@@ -17,6 +17,7 @@ import {
 import type {
   EditTypeKnowledgeSnapshotV1,
   PracticeReferenceAnalysisV1,
+  PracticeReferenceEffectWindowV1,
   PracticeSceneMatchV1,
   PracticeSubjectIdentityMemoryV1,
 } from "../../../packages/practice-homework/src/contracts.js";
@@ -144,6 +145,44 @@ const nonEmptyString = (value: unknown): string | null =>
 
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.filter((value) => value.trim().length > 0))];
+
+const beatTimingObjective = (
+  referenceWindow: PracticeReferenceEffectWindowV1 | undefined,
+): string => {
+  if (referenceWindow === undefined) return "";
+  const cues = [
+    referenceWindow.anchorBeatCue === undefined
+      ? ""
+      : " Preserve the Finish effect anchor at "
+        + referenceWindow.anchorBeatCue.eventMs.toFixed(3) + " ms with its measured "
+        + referenceWindow.anchorBeatCue.alignment + " beat relationship (signed offset "
+        + referenceWindow.anchorBeatCue.offsetMs.toFixed(3) + " ms, "
+        + referenceWindow.anchorBeatCue.offsetBeats.toFixed(6) + " beats).",
+    referenceWindow.transitionBeatCue === undefined
+      ? ""
+      : " Preserve the Finish transition boundary at "
+        + referenceWindow.transitionBeatCue.eventMs.toFixed(3) + " ms with its measured "
+        + referenceWindow.transitionBeatCue.alignment + " beat relationship (signed offset "
+        + referenceWindow.transitionBeatCue.offsetMs.toFixed(3) + " ms, "
+        + referenceWindow.transitionBeatCue.offsetBeats.toFixed(6) + " beats).",
+  ].filter((value) => value.length > 0);
+  return cues.length === 0
+    ? ""
+    : cues.join("") + " Do not snap an intentionally offset reference event to a beat.";
+};
+
+const beatTimingRefs = (
+  referenceWindow: PracticeReferenceEffectWindowV1 | undefined,
+): readonly string[] => unique([
+  ...(referenceWindow?.anchorBeatCue === undefined ? [] : [
+    "beat-anchor:" + referenceWindow.anchorBeatCue.alignment
+      + ":" + referenceWindow.anchorBeatCue.offsetMs.toFixed(3),
+  ]),
+  ...(referenceWindow?.transitionBeatCue === undefined ? [] : [
+    "beat-transition:" + referenceWindow.transitionBeatCue.alignment
+      + ":" + referenceWindow.transitionBeatCue.offsetMs.toFixed(3),
+  ]),
+]);
 
 const subjectSemanticIdsForWindow = (
   window: DenseEffectWindowV1,
@@ -360,6 +399,12 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     input: Parameters<PracticeM6RuntimeV1["applyWindowGraph"]>[0],
   ): Promise<void> {
     const prepared = this.#requirePrepared(input.sessionId, input.attempt);
+    const referenceWindow = input.referenceWindow;
+    if (referenceWindow !== undefined && referenceWindow.windowId !== input.window.windowId) {
+      throw new TypeError("Practice M6 reference-window timing identity mismatch.");
+    }
+    const timingObjective = beatTimingObjective(referenceWindow);
+    const timingRefs = beatTimingRefs(referenceWindow);
     const requiresSubjectIsolation = input.graph.nodes.some((node) =>
       node.kind === "SUBJECT_ISOLATION");
     const referenceSubjectIds = requiresSubjectIsolation
@@ -498,12 +543,14 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           curveBindingMode: "LIVE_ADAPTIVE",
           creativeObjective:
             "Reconstruct the defining visual behavior of this Practice reference window "
-              + "over the measured overlap with " + shot.shotId + ".",
+              + "over the measured overlap with " + shot.shotId + "."
+              + timingObjective,
           recipeRefs: [
             input.graph.graphId,
             prepared.plan.baselineId,
             input.window.windowId,
             shot.shotId,
+            ...timingRefs,
           ],
         },
       );
@@ -538,6 +585,19 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         "practice-m6-target-shot:" + shot.shotId,
         "practice-m6-window-overlap:" + shot.shotId + ":"
           + targetStartMs.toFixed(3) + "-" + targetEndMs.toFixed(3),
+        ...timingRefs.map((ref) => "practice-m6-" + ref),
+        ...(referenceWindow?.anchorBeatCue === undefined ? [] : [
+          "practice-effect-anchor-beat-event-ms:"
+            + referenceWindow.anchorBeatCue.eventMs.toFixed(3),
+          "practice-effect-anchor-beat-offset-ms:"
+            + referenceWindow.anchorBeatCue.offsetMs.toFixed(3),
+        ]),
+        ...(referenceWindow?.transitionBeatCue === undefined ? [] : [
+          "practice-transition-beat-event-ms:"
+            + referenceWindow.transitionBeatCue.eventMs.toFixed(3),
+          "practice-transition-beat-offset-ms:"
+            + referenceWindow.transitionBeatCue.offsetMs.toFixed(3),
+        ]),
       );
     }
     if (committedTargets === 0) {

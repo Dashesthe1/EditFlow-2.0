@@ -81,8 +81,10 @@ const exactGeometry = {
 
 const makeAdapters = (evaluations, options = {}) => {
   const recorded = [];
+  const reconstructed = [];
   return {
     recorded,
+    reconstructed,
     adapters: {
       async analyzeFinish(finish) {
         return {
@@ -168,6 +170,9 @@ const makeAdapters = (evaluations, options = {}) => {
           },
         ];
       },
+      async matchAudio() {
+        return options.audioMatch ?? null;
+      },
       async buildContentBaseline() {
         return {
           baselineId: "baseline:content-lock",
@@ -175,7 +180,9 @@ const makeAdapters = (evaluations, options = {}) => {
           evidenceRefs: ["baseline:assembled"],
         };
       },
-      async reconstruct({ attempt }) {
+      async reconstruct(input) {
+        reconstructed.push(structuredClone(input));
+        const { attempt } = input;
         return {
           renderRef: `render:attempt:${attempt}`,
           decisionTraces: [{
@@ -244,6 +251,64 @@ test("homework loop repeats until the reconstruction satisfies the supervised ga
   assert.equal(memory.size, 1);
   assert.equal(memory.successfulExamples("style:pro-edit-a").length, 1);
   assert.equal(fixtures.recorded.length, 3);
+});
+
+test("Practice forwards the matched audio beat grid into reconstruction", async () => {
+  const audioMatch = {
+    matchId: "audio:beat-forwarding",
+    sourceId: "song:a",
+    segments: [{
+      segmentId: "audio:beat-forwarding:segment:001",
+      referenceStartMs: 0,
+      referenceEndMs: 2000,
+      sourceStartMs: 5000,
+      sourceEndMs: 7000,
+      playbackRate: 1,
+      correlation: 0.99,
+      confidence: 0.99,
+      evidenceRefs: ["audio:segment:exact"],
+    }],
+    beatGrid: {
+      beatTimesMs: [0, 500, 1000, 1500, 2000],
+      estimatedBpm: 120,
+      confidence: 0.97,
+      evidenceRefs: ["audio:beat-grid:forwarded"],
+    },
+    overallConfidence: 0.99,
+    evidenceRefs: ["audio:match:exact"],
+  };
+  const fixtures = makeAdapters([
+    report(0.98, { breakdown: breakdown(0.98, { sceneIdentity: 0.999 }) }),
+  ], { audioMatch });
+  const engine = new PracticeHomeworkEngineV1(
+    fixtures.adapters,
+    new PracticeLearningMemoryV1(),
+    makeEditTypes(),
+  );
+  const result = await engine.run({
+    ...request,
+    sessionId: "practice:beat-forwarding",
+    start: [
+      ...request.start,
+      {
+        mediaId: "song:a",
+        role: "START_SOURCE",
+        mediaKind: "AUDIO",
+        uri: "file:///song-a.wav",
+      },
+    ],
+  });
+  assert.equal(result.status, "MASTERED");
+  assert.equal(fixtures.reconstructed.length, 1);
+  assert.equal(fixtures.reconstructed[0].audioMatch?.matchId, audioMatch.matchId);
+  assert.deepEqual(
+    fixtures.reconstructed[0].audioMatch?.beatGrid?.beatTimesMs,
+    audioMatch.beatGrid.beatTimesMs,
+  );
+  assert.ok(
+    fixtures.reconstructed[0].audioMatch?.beatGrid?.evidenceRefs
+      .includes("audio:beat-grid:forwarded"),
+  );
 });
 
 test("held-out execution uses frozen knowledge without retaining an episode", async () => {
