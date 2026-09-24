@@ -70,6 +70,39 @@ This prevents a sparse exploratory index from being silently reused as a denser 
 EditFlow iterate on retrieval evidence without comparing a new matcher against incompatible
 analysis artifacts.
 
+## Retained truth corpus assembly
+
+`scripts/practice/practice-retained-corpus.py` combines independently retained per-case truth-suite
+manifests into the 20-30 case corpus used for certification runs. It re-hashes every Finish and
+Start file before assembly, resolves media paths against the source manifest, and rejects stale
+media bytes before any certification claim can be emitted.
+
+`inventory` reports case count, distinct Finish identities, independent/full-length truth counts,
+real matcher-observation readiness, and coverage across the retained hard-case categories. It is a
+recruitment/preflight report only; `readyForCertificationRun` means the corpus is eligible to run the
+canonical evaluator, not that Practice has passed or been certified.
+
+`assemble --mode CERTIFICATION` is fail-closed. It requires 20-30 cases, unique case IDs, unique
+Finish reference IDs, unique Finish SHA-256 identities, at least four hard-case categories, at least
+98% retained shot-truth coverage per case, independent truth evidence, and non-placeholder matcher
+observation evidence. An incomplete corpus may still be assembled in `MEASURE_ONLY` mode so failures
+remain visible without being mistaken for certification authority.
+
+Example:
+
+```powershell
+python scripts/practice/practice-retained-corpus.py inventory `
+  --manifest proofs/practice/case-01-retained-suite.json `
+  --manifest proofs/practice/case-02-retained-suite.json
+
+python scripts/practice/practice-retained-corpus.py assemble `
+  --mode CERTIFICATION `
+  --manifest proofs/practice/case-01-retained-suite.json `
+  --manifest proofs/practice/case-02-retained-suite.json `
+  --output proofs/practice/retained-truth-corpus.json `
+  --inventory-output proofs/practice/retained-truth-corpus-inventory.json
+```
+
 ## Benchmark manifest
 
 Each case declares a Finish reference and one or more candidate Start videos. Paths may be
