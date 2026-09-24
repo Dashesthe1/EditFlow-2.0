@@ -270,6 +270,10 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     calls.append(kwargs)
                     review_dir = Path(kwargs["output_dir"])
                     source_id = next(iter(kwargs["source_paths_by_id"]))
+                    source_path = Path(kwargs["source_paths_by_id"][source_id])
+                    source_hash = sha256_bytes(source_path.read_bytes())
+                    finish_path = Path(kwargs["finish_path"])
+                    finish_hash = sha256_bytes(finish_path.read_bytes())
                     atlas_dir = review_dir / "source-atlas" / "fixture"
                     atlas_dir.mkdir(parents=True, exist_ok=True)
                     preview = atlas_dir / "0001.png"
@@ -284,6 +288,12 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     )
                     manifest = {
                         "schema": tool.REVIEW_PACK_SCHEMA,
+                        "finish": {"path": str(finish_path), "sha256": finish_hash},
+                        "sources": [{
+                            "sourceId": source_id,
+                            "path": str(source_path),
+                            "sha256": source_hash,
+                        }],
                         "previews": [{
                             "shotId": "shot:1",
                             "previewPaths": [
@@ -292,6 +302,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                         }],
                         "sourceAtlas": [{
                             "sourceId": source_id,
+                            "sourceSha256": source_hash,
                             "samples": [{
                                 "timeMs": 1000.0,
                                 "previewPath": str(Path("source-atlas") / "fixture" / "0001.png"),
@@ -314,11 +325,28 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(skipped["skippedCount"], 1)
             self.assertEqual(len(calls), 1)
 
+            source_path = root / case["sourceMedia"][0]["path"]
+            source_path.write_bytes(b"source-mutated")
+            refreshed_identity = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(refreshed_identity["preparedCount"], 1)
+            self.assertEqual(refreshed_identity["skippedCount"], 0)
+            self.assertEqual(len(calls), 2)
+
+            finish_path = root / case["finishPath"]
+            finish_path.write_bytes(b"finish-mutated")
+            refreshed_finish_identity = tool.prepare_review_packs(
+                plan,
+                media_truth=FakeTruthTool(),
+            )
+            self.assertEqual(refreshed_finish_identity["preparedCount"], 1)
+            self.assertEqual(refreshed_finish_identity["skippedCount"], 0)
+            self.assertEqual(len(calls), 3)
+
             preview_path = root / case["reviewPackDir"] / "source-atlas" / "fixture" / "0001.png"
             preview_path.unlink()
             refreshed = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
             self.assertEqual(refreshed["preparedCount"], 1)
-            self.assertEqual(len(calls), 2)
+            self.assertEqual(len(calls), 4)
 
             finish_preview_path = (
                 root / case["reviewPackDir"] / "finish-previews" / "shot-1.png"
@@ -326,7 +354,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             finish_preview_path.unlink()
             refreshed = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
             self.assertEqual(refreshed["preparedCount"], 1)
-            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(calls), 5)
 
     def test_prepare_review_packs_scaffolds_missing_truth_draft(self):
         with TemporaryDirectory() as temporary:

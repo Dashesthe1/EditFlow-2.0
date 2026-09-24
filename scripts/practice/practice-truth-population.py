@@ -202,7 +202,7 @@ def worksheet_complete(path, draft=None, reference=None):
     return True
 
 
-def review_pack_has_source_atlas(review_dir, expected_source_ids):
+def review_pack_has_source_atlas(review_dir, expected_source_ids, expected_source_sha256=None):
     review_dir = Path(review_dir)
     manifest_path = review_dir / "review-pack.json"
     if not manifest_path.is_file():
@@ -223,7 +223,18 @@ def review_pack_has_source_atlas(review_dir, expected_source_ids):
     }
     if sorted(by_source) != sorted(expected_source_ids):
         return False
+    expected_hashes = {
+        str(source_id).strip(): str(source_sha256).strip().lower()
+        for source_id, source_sha256 in (expected_source_sha256 or {}).items()
+    }
+    if expected_hashes and set(expected_hashes) != set(expected_source_ids):
+        return False
     for source_id in expected_source_ids:
+        atlas_source_sha256 = str(
+            by_source[source_id].get("sourceSha256", "")
+        ).strip().lower()
+        if expected_hashes and atlas_source_sha256 != expected_hashes[source_id]:
+            return False
         samples = by_source[source_id].get("samples")
         if not isinstance(samples, list) or not samples:
             return False
@@ -234,7 +245,13 @@ def review_pack_has_source_atlas(review_dir, expected_source_ids):
     return True
 
 
-def review_pack_preparation_complete(review_dir, expected_source_ids, require_source_atlas=True):
+def review_pack_preparation_complete(
+    review_dir,
+    expected_source_ids,
+    expected_source_sha256=None,
+    expected_finish_sha256=None,
+    require_source_atlas=True,
+):
     review_dir = Path(review_dir)
     manifest_path = review_dir / "review-pack.json"
     worksheet_path = review_dir / "annotations.csv"
@@ -246,6 +263,37 @@ def review_pack_preparation_complete(review_dir, expected_source_ids, require_so
         return False
     if pack.get("schema") != REVIEW_PACK_SCHEMA:
         return False
+    expected_hashes = {
+        str(source_id).strip(): str(source_sha256).strip().lower()
+        for source_id, source_sha256 in (expected_source_sha256 or {}).items()
+    }
+    if expected_hashes:
+        sources = pack.get("sources")
+        if not isinstance(sources, list):
+            return False
+        by_source = {
+            str(item.get("sourceId", "")).strip(): item
+            for item in sources
+            if isinstance(item, dict) and str(item.get("sourceId", "")).strip()
+        }
+        if (
+            set(by_source) != set(expected_source_ids)
+            or set(expected_hashes) != set(expected_source_ids)
+        ):
+            return False
+        for source_id in expected_source_ids:
+            pack_source_sha256 = str(
+                by_source[source_id].get("sha256", "")
+            ).strip().lower()
+            if pack_source_sha256 != expected_hashes[source_id]:
+                return False
+    if expected_finish_sha256:
+        finish = pack.get("finish")
+        if not isinstance(finish, dict):
+            return False
+        pack_finish_sha256 = str(finish.get("sha256", "")).strip().lower()
+        if pack_finish_sha256 != str(expected_finish_sha256).strip().lower():
+            return False
     previews = pack.get("previews")
     if not isinstance(previews, list) or not previews:
         return False
@@ -255,7 +303,11 @@ def review_pack_preparation_complete(review_dir, expected_source_ids, require_so
             return False
         if any(not (review_dir / str(path)).is_file() for path in preview_paths):
             return False
-    if require_source_atlas and not review_pack_has_source_atlas(review_dir, expected_source_ids):
+    if require_source_atlas and not review_pack_has_source_atlas(
+        review_dir,
+        expected_source_ids,
+        expected_source_sha256=expected_hashes,
+    ):
         return False
     return True
 
@@ -557,41 +609,46 @@ def prepare_review_packs(
         review_dir = artifact_path(case, plan_path, "reviewPackDir")
         expected_source_ids = source_ids(case)
         needs_atlas = interval_ms > 0.0
-        if review_dir is None:
-            results.append({"caseId": case_id, "status": "FAILED", "reason": "reviewPackDir is missing."})
-            continue
-        if not force and review_pack_preparation_complete(
-            review_dir,
-            expected_source_ids,
-            require_source_atlas=needs_atlas,
-        ):
-            results.append({
-                "caseId": case_id,
-                "status": "SKIPPED",
-                "reason": "Review pack already satisfies requested preparation.",
-            })
-            continue
         try:
+            if review_dir is None:
+                raise ValueError("reviewPackDir is missing.")
             finish_path = artifact_path(case, plan_path, "finishPath")
             reference_path = artifact_path(case, plan_path, "referenceAnalysis")
             draft_path = artifact_path(case, plan_path, "truthDraft")
             if finish_path is None or not finish_path.is_file():
                 raise ValueError("Finish media is missing.")
+            source_paths = _case_source_paths(case, plan_path)
+            source_hashes = {}
+            cached_hasher = getattr(media_truth, "sha256_file_cached", sha256_file)
+            for source_id, source_path in source_paths.items():
+                source_key = str(Path(source_path).resolve())
+                if source_key not in source_sha_cache:
+                    source_sha_cache[source_key] = cached_hasher(source_key)
+                source_hashes[source_id] = source_sha_cache[source_key]
+            finish_key = str(Path(finish_path).resolve())
+            if finish_key not in source_sha_cache:
+                source_sha_cache[finish_key] = cached_hasher(finish_key)
+            finish_sha256 = source_sha_cache[finish_key]
+            if not force and review_pack_preparation_complete(
+                review_dir,
+                expected_source_ids,
+                expected_source_sha256=source_hashes,
+                expected_finish_sha256=finish_sha256,
+                require_source_atlas=needs_atlas,
+            ):
+                results.append({
+                    "caseId": case_id,
+                    "status": "SKIPPED",
+                    "reason": "Review pack already satisfies requested preparation and media identities.",
+                })
+                continue
             if reference_path is None or not reference_path.is_file():
                 raise ValueError("Reference analysis is missing.")
             if draft_path is None:
                 raise ValueError("truthDraft path is missing from the population case.")
             reference = load_json(reference_path)
-            source_paths = _case_source_paths(case, plan_path)
             scaffold_created = False
             if not draft_path.is_file():
-                source_hashes = {}
-                for source_id, source_path in source_paths.items():
-                    source_key = str(Path(source_path).resolve())
-                    if source_key not in source_sha_cache:
-                        cached_hasher = getattr(media_truth, "sha256_file_cached", sha256_file)
-                        source_sha_cache[source_key] = cached_hasher(source_key)
-                    source_hashes[source_id] = source_sha_cache[source_key]
                 draft = media_truth.scaffold(reference, sorted(source_paths), source_hashes)
                 draft_path.parent.mkdir(parents=True, exist_ok=True)
                 draft_path.write_text(
