@@ -151,8 +151,16 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
         runner_up = item("source-b", 200.0, 200.0, 0.75, 0.75)
         original = matcher.mapping_geometric_proof
 
-        def full_proof(_shot, mapping, _reference_reader, _source_reader, max_anchors=None):
+        def full_proof(
+            _shot,
+            mapping,
+            _reference_reader,
+            _source_reader,
+            max_anchors=None,
+            normalize_for_effects=False,
+        ):
             self.assertIsNone(max_anchors)
+            self.assertFalse(normalize_for_effects)
             if float(mapping["centerSourceMs"]) == 100.0:
                 return {
                     "anchorCount": 6,
@@ -186,6 +194,102 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
             matcher.candidate_rank_score(best["mapping"]),
             matcher.candidate_rank_score(second["mapping"]),
         )
+
+    def test_effect_normalization_recovers_heavy_grade_zoom_and_blur_geometry(self):
+        rng = np.random.default_rng(42)
+        source = np.zeros((360, 640, 3), dtype=np.uint8)
+        for _ in range(140):
+            x = int(rng.integers(10, 630))
+            y = int(rng.integers(10, 350))
+            radius = int(rng.integers(2, 9))
+            color = tuple(int(v) for v in rng.integers(50, 255, size=3))
+            matcher.cv2.circle(source, (x, y), radius, color, -1)
+        for _ in range(35):
+            start = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            end = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            matcher.cv2.line(source, start, end, (255, 255, 255), 1)
+
+        zoomed = matcher.cv2.resize(
+            source, None, fx=1.45, fy=1.45, interpolation=matcher.cv2.INTER_CUBIC
+        )
+        top = (zoomed.shape[0] - 360) // 2
+        left = (zoomed.shape[1] - 640) // 2
+        reference = zoomed[top:top + 360, left:left + 640].copy()
+        reference = matcher.cv2.GaussianBlur(reference, (0, 0), 5.0)
+        reference = np.clip(reference.astype(np.float32) * 0.14 + 105.0, 0, 255).astype(np.uint8)
+        reference = np.clip(
+            reference.astype(np.float32) * np.array([0.55, 1.10, 1.35]) + np.array([18, 0, 6]),
+            0,
+            255,
+        ).astype(np.uint8)
+
+        raw = matcher.feature_match_evidence(reference, source)
+        normalized = matcher.feature_match_evidence(
+            matcher.normalized_rescue_frame(reference),
+            matcher.normalized_rescue_frame(source),
+        )
+        self.assertLess(raw["inlierCount"], 6)
+        self.assertGreaterEqual(normalized["inlierCount"], 6)
+        self.assertGreaterEqual(normalized["inlierRatio"], 0.45)
+        self.assertGreaterEqual(normalized["geometrySupport"], 0.60)
+
+    def test_rescue_finalist_receives_full_effect_normalized_geometry(self):
+        rescue = {
+            "index": {
+                "sourceId": "source-a",
+                "analysis": {"sampleStepMs": 250.0},
+            },
+            "sample": {"timeMs": 100.0},
+            "mapping": {
+                "score": 0.86,
+                "appearance": 0.78,
+                "consistency": 0.92,
+                "slope": 1.0,
+                "centerSourceMs": 100.0,
+                "rescueScore": 0.86,
+                "geometricProof": {
+                    "anchorCount": 3,
+                    "strongAnchorCount": 2,
+                    "strongAnchorFraction": 2.0 / 3.0,
+                    "meanSupport": 0.82,
+                },
+            },
+        }
+        original = matcher.mapping_geometric_proof
+        calls = []
+
+        def full_proof(
+            _shot,
+            _mapping,
+            _reference_reader,
+            _source_reader,
+            max_anchors=None,
+            normalize_for_effects=False,
+        ):
+            self.assertIsNone(max_anchors)
+            calls.append(normalize_for_effects)
+            return {
+                "anchorCount": 6,
+                "strongAnchorCount": 4,
+                "strongAnchorFraction": 4.0 / 6.0,
+                "meanSupport": 0.84,
+            }
+
+        try:
+            matcher.mapping_geometric_proof = full_proof
+            ordered = matcher.finalize_candidate_geometry(
+                {"shotId": "shot:rescue"},
+                [rescue],
+                object(),
+                {"source-a": object()},
+            )
+        finally:
+            matcher.mapping_geometric_proof = original
+
+        self.assertEqual(calls, [True])
+        proof = ordered[0]["mapping"]["geometricProof"]
+        self.assertEqual(proof["anchorCount"], 6)
+        self.assertEqual(proof["strongAnchorCount"], 4)
 
     def test_continuity_prior_requires_verified_previous_scene_identity(self):
         weak_geometry = {

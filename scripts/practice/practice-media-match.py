@@ -1132,6 +1132,7 @@ def mapping_geometric_proof(
     reference_reader,
     source_reader,
     max_anchors=None,
+    normalize_for_effects=False,
 ):
     anchors = shot["anchors"]
     center_reference_ms = float(anchors[len(anchors) // 2]["timeMs"])
@@ -1158,7 +1159,13 @@ def mapping_geometric_proof(
         source_frame = source_reader.read_ms(source_time)
         if reference_frame is None or source_frame is None:
             continue
-        item = feature_match_evidence(reference_frame, source_frame)
+        if normalize_for_effects:
+            item = feature_match_evidence(
+                normalized_rescue_frame(reference_frame),
+                normalized_rescue_frame(source_frame),
+            )
+        else:
+            item = feature_match_evidence(reference_frame, source_frame)
         item = {**item, "referenceTimeMs": reference_time, "sourceTimeMs": source_time}
         evidence.append(item)
 
@@ -1533,11 +1540,7 @@ def finalize_candidate_geometry(
     if not results:
         return []
 
-    fully_verified = {
-        candidate_item_key(item)
-        for item in results
-        if item["mapping"].get("rescueScore") is not None
-    }
+    fully_verified = set()
 
     # Full geometry can lower a provisional candidate that looked strongest
     # under the three-anchor screen. Stabilize both the actual selection winner
@@ -1558,7 +1561,6 @@ def finalize_candidate_geometry(
             item
             for item in targets
             if candidate_item_key(item) not in fully_verified
-            and item["mapping"].get("rescueScore") is None
         ]
         if not pending:
             break
@@ -1572,6 +1574,9 @@ def finalize_candidate_geometry(
                     item["mapping"],
                     reference_reader,
                     reader,
+                    normalize_for_effects=(
+                        item["mapping"].get("rescueScore") is not None
+                    ),
                 ),
             }
             fully_verified.add(candidate_item_key(item))
@@ -1987,6 +1992,7 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                         [
                             f"practice-geometric-rescue-score:{mapping['rescueScore']:.6f}",
                             f"practice-geometric-rescue-residual-ms:{mapping.get('rescueResidualMs', 0.0):.3f}",
+                            "practice-geometric-rescue-full-verification:CLAHE_ALL_ANCHORS_V1",
                         ]
                         if mapping.get("rescueScore") is not None
                         else []
@@ -2033,6 +2039,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "geometricRankingSampledAnchors": 3,
             "geometricRescueMode": "BOUNDED_THREE_ANCHOR_COHERENT_PATH_V1",
             "geometricRescuePhotometricNormalization": "CLAHE_V1",
+            "geometricRescueFullVerificationMode": "CLAHE_ALL_ANCHORS_V1",
+            "geometricRescueExactSceneGate": "THREE_STRONG_ANCHORS_SCORE_0_82_MARGIN_0_08_V1",
             "geometricRescueMaximumSamplesPerSource": 480,
             "geometricRescueMinimumStrongAnchors": 2,
             "geometricRescueMinimumMeanSupport": 0.60,
