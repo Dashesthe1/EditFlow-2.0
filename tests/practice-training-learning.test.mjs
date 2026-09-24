@@ -452,11 +452,11 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     subjectContinuityHardCaseVerified: index < 3,
     subjectContinuityChallengeWindowCount: index < 3 ? 1 : 0,
     subjectContinuityChallenges: index === 0
-      ? ["LOW_MOTION"]
+      ? ["LOW_MOTION", "BACKGROUND_MOTION"]
       : index === 1
-        ? ["OCCLUSION"]
+        ? ["OCCLUSION", "IDENTITY_AMBIGUITY"]
         : index === 2
-          ? ["LOW_MOTION", "OCCLUSION"]
+          ? ["LOW_MOTION", "OCCLUSION", "BACKGROUND_MOTION", "IDENTITY_AMBIGUITY"]
           : [],
     overallSimilarity: 0.97,
     definingEffectCoverage: 1,
@@ -489,8 +489,11 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.subjectRelativeDirectionDiversityVerified, true);
   assert.equal(report.subjectContinuityHardCaseCount, 3);
   assert.equal(report.subjectContinuityHardCaseVerified, true);
-  assert.equal(report.subjectContinuityChallengeKindCount, 2);
-  assert.deepEqual(report.subjectContinuityChallenges, ["LOW_MOTION", "OCCLUSION"]);
+  assert.equal(report.subjectContinuityChallengeKindCount, 4);
+  assert.deepEqual(
+    report.subjectContinuityChallenges,
+    ["LOW_MOTION", "OCCLUSION", "BACKGROUND_MOTION", "IDENTITY_AMBIGUITY"],
+  );
   assert.equal(report.subjectContinuityChallengeDiversityVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
@@ -562,6 +565,28 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(lowMotionOnly.robust, false);
   assert.ok(lowMotionOnly.reasons.some((reason) => /challenge kinds/i.test(reason)));
 
+  const legacyTwoChallengeOnly = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases: cases.map((item, index) => ({
+      ...item,
+      subjectContinuityChallenges: item.subjectContinuityHardCaseVerified
+        ? index % 2 === 0
+          ? ["LOW_MOTION"]
+          : ["OCCLUSION"]
+        : [],
+    })),
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(legacyTwoChallengeOnly.subjectContinuityChallengeKindCount, 2);
+  assert.deepEqual(
+    legacyTwoChallengeOnly.subjectContinuityChallenges,
+    ["LOW_MOTION", "OCCLUSION"],
+  );
+  assert.equal(legacyTwoChallengeOnly.subjectContinuityChallengeDiversityVerified, false);
+  assert.equal(legacyTwoChallengeOnly.robust, false);
+  assert.ok(legacyTwoChallengeOnly.reasons.some((reason) => /challenge kinds/i.test(reason)));
+
   const practiceOnly = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
     cases,
@@ -622,11 +647,11 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
     subjectContinuityHardCaseVerified: index < 3,
     subjectContinuityChallengeWindowCount: index < 3 ? 1 : 0,
     subjectContinuityChallenges: index === 0
-      ? ["LOW_MOTION"]
+      ? ["LOW_MOTION", "BACKGROUND_MOTION"]
       : index === 1
-        ? ["OCCLUSION"]
+        ? ["OCCLUSION", "IDENTITY_AMBIGUITY"]
         : index === 2
-          ? ["LOW_MOTION", "OCCLUSION"]
+          ? ["LOW_MOTION", "OCCLUSION", "BACKGROUND_MOTION", "IDENTITY_AMBIGUITY"]
           : [],
     overallSimilarity: 0.98,
     definingEffectCoverage: 1,
@@ -1030,7 +1055,7 @@ test("cross-source subject proof binds Finish identity to the matched raw Start 
     /Finish-to-Start subject binding failed/.test(reason)));
 });
 
-test("subject identity proof survives bounded low-motion and occlusion gaps but rejects identity switches", () => {
+test("subject identity proof survives low-motion, occlusion, camera-motion, and ambiguity stress but rejects identity switches", () => {
   const continuityFrames = referenceEvidence.frames.map((item, index) => ({
     ...item,
     subjectTrackState: index === 4
@@ -1038,8 +1063,15 @@ test("subject identity proof survives bounded low-motion and occlusion gaps but 
       : index === 5
         ? "PREDICTED_OCCLUDED"
         : "OBSERVED",
-    subjectIdentityConfidence: index === 4 ? 0.72 : index === 5 ? 0.61 : 0.91,
+    subjectIdentityConfidence: index === 2
+      ? 0.58
+      : index === 4
+        ? 0.72
+        : index === 5
+          ? 0.61
+          : 0.91,
     subjectVisibility: index === 5 ? 0.3 : 0.9,
+    backgroundMotion: index === 3 ? { x: 0.24, y: 0 } : item.backgroundMotion,
     occlusion: index === 5 ? 0.35 : 0,
   }));
   const continuous = summarizePracticeSubjectIdentityV1(continuityFrames);
@@ -1050,6 +1082,10 @@ test("subject identity proof survives bounded low-motion and occlusion gaps but 
   assert.equal(continuous.lowMotionSurvived, true);
   assert.equal(continuous.occlusionFrameCount > 0, true);
   assert.equal(continuous.occlusionSurvived, true);
+  assert.equal(continuous.backgroundMotionStressFrameCount > 0, true);
+  assert.equal(continuous.backgroundMotionStressSurvived, true);
+  assert.equal(continuous.identityAmbiguityFrameCount > 0, true);
+  assert.equal(continuous.identityAmbiguitySurvived, true);
   assert.equal(continuous.validatedMaskFrameCount, continuityFrames.length);
 
   const switched = summarizePracticeSubjectIdentityV1(
@@ -1094,12 +1130,20 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
           lowMotionSurvived: true,
           occlusionFrameCount: 1,
           occlusionSurvived: true,
+          backgroundMotionStressFrameCount: 1,
+          backgroundMotionStressSurvived: true,
+          identityAmbiguityFrameCount: 1,
+          identityAmbiguitySurvived: true,
         },
         renderSubjectIdentity: {
           lowMotionFrameCount: 2,
           lowMotionSurvived: true,
           occlusionFrameCount: 1,
           occlusionSurvived: true,
+          backgroundMotionStressFrameCount: 1,
+          backgroundMotionStressSurvived: true,
+          identityAmbiguityFrameCount: 1,
+          identityAmbiguitySurvived: true,
         },
         passed: true,
       }],
@@ -1137,8 +1181,30 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.equal(heldOutCase.subjectContinuityChallengeWindowCount, 1);
   assert.deepEqual(
     heldOutCase.subjectContinuityChallenges,
-    ["LOW_MOTION", "OCCLUSION"],
+    ["LOW_MOTION", "OCCLUSION", "BACKGROUND_MOTION", "IDENTITY_AMBIGUITY"],
   );
+
+  const missingCameraStressCase = buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: "practice:object-aware:missing-camera-stress",
+    proof: {
+      ...proof,
+      sessionId: "practice:object-aware:missing-camera-stress",
+      objectAwareProof: {
+        ...proof.objectAwareProof,
+        windows: proof.objectAwareProof.windows.map((window) => ({
+          ...window,
+          renderSubjectIdentity: {
+            ...window.renderSubjectIdentity,
+            backgroundMotionStressFrameCount: 0,
+          },
+        })),
+      },
+    },
+    proofRef: "proof:missing-camera-stress:bundle",
+  });
+  assert.equal(missingCameraStressCase.subjectContinuityHardCaseVerified, false);
+  assert.equal(missingCameraStressCase.subjectContinuityChallengeWindowCount, 1);
+  assert.deepEqual(missingCameraStressCase.subjectContinuityChallenges, []);
 
   const nondirectionalCase = buildPracticeHeldOutBenchmarkCaseV1({
     sessionId: "practice:object-aware:nondirectional",

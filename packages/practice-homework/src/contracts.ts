@@ -414,6 +414,10 @@ export interface PracticeSubjectIdentitySummaryV1 {
   readonly lowMotionSurvived: boolean;
   readonly occlusionFrameCount: number;
   readonly occlusionSurvived: boolean;
+  readonly backgroundMotionStressFrameCount?: number;
+  readonly backgroundMotionStressSurvived?: boolean;
+  readonly identityAmbiguityFrameCount?: number;
+  readonly identityAmbiguitySurvived?: boolean;
   readonly validatedMaskFrameCount: number;
   readonly validatedMaskCoverage: number;
   readonly validatedMaskSources: readonly string[];
@@ -728,7 +732,11 @@ export type PracticeSubjectRelativeDirectionBucketV1 =
   | "UP"
   | "UP_RIGHT";
 
-export type PracticeSubjectContinuityChallengeV1 = "LOW_MOTION" | "OCCLUSION";
+export type PracticeSubjectContinuityChallengeV1 =
+  | "LOW_MOTION"
+  | "OCCLUSION"
+  | "BACKGROUND_MOTION"
+  | "IDENTITY_AMBIGUITY";
 
 export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly caseId: string;
