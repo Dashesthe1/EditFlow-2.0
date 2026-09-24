@@ -273,6 +273,152 @@ test("Practice subject isolation binds raw identity, accepts temporal SAM proof,
     item.includes("tx:subject-isolation:COMMITTED")));
 });
 
+test("Practice subject isolation keeps a temporal SAM matte locked to measured shot framing", async () => {
+  const framedBaseline = {
+    ...baselinePlan,
+    operations: [
+      ...baselinePlan.operations,
+      {
+        operationId: "baseline:subject-isolation:position",
+        command: "property.set_keyframes",
+        capabilityId: "ae.keyframe.set",
+        payload: {
+          comp: { stableId: "PRACTICE_COMP_ISOLATION" },
+          layer: { stableId: "PRACTICE_SHOT_ISOLATION_0001" },
+          propertyPath: ["ADBE Transform Group", "ADBE Position"],
+          keyframes: [
+            { time: 0, value: [540, 540] },
+            { time: 0.25, value: [590, 520] },
+            { time: 0.5, value: [640, 500] },
+          ],
+        },
+      },
+      {
+        operationId: "baseline:subject-isolation:scale",
+        command: "property.set_keyframes",
+        capabilityId: "ae.keyframe.set",
+        payload: {
+          comp: { stableId: "PRACTICE_COMP_ISOLATION" },
+          layer: { stableId: "PRACTICE_SHOT_ISOLATION_0001" },
+          propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+          keyframes: [
+            { time: 0, value: [100, 100] },
+            { time: 0.25, value: [112, 112] },
+            { time: 0.5, value: [124, 124] },
+          ],
+        },
+      },
+      {
+        operationId: "baseline:subject-isolation:rotation",
+        command: "property.set_keyframes",
+        capabilityId: "ae.keyframe.set",
+        payload: {
+          comp: { stableId: "PRACTICE_COMP_ISOLATION" },
+          layer: { stableId: "PRACTICE_SHOT_ISOLATION_0001" },
+          propertyPath: ["ADBE Transform Group", "ADBE Rotate Z"],
+          keyframes: [
+            { time: 0, value: 0 },
+            { time: 0.25, value: 1.5 },
+            { time: 0.5, value: 3 },
+          ],
+        },
+      },
+      {
+        operationId: "baseline:subject-isolation:position-spatial",
+        command: "property.spatial_graph.set",
+        capabilityId: "ae.property.spatial_graph.set",
+        payload: {
+          comp: { stableId: "PRACTICE_COMP_ISOLATION" },
+          layer: { stableId: "PRACTICE_SHOT_ISOLATION_0001" },
+          propertyPath: ["ADBE Transform Group", "ADBE Position"],
+          keyIndex: 2,
+          state: {
+            mode: "MANUAL",
+            inTangent: [-18, 8],
+            outTangent: [24, -10],
+            continuous: true,
+            roving: false,
+          },
+        },
+      },
+      {
+        operationId: "baseline:subject-isolation:scale-interpolation",
+        command: "property.temporal_interpolation.set",
+        capabilityId: "ae.property.temporal_interpolation.set",
+        payload: {
+          comp: { stableId: "PRACTICE_COMP_ISOLATION" },
+          layer: { stableId: "PRACTICE_SHOT_ISOLATION_0001" },
+          propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+          keyIndex: 2,
+          interpolation: {
+            inType: "BEZIER",
+            outType: "BEZIER",
+            temporalContinuous: false,
+            temporalAutoBezier: false,
+          },
+        },
+      },
+      {
+        operationId: "baseline:subject-isolation:scale-ease",
+        command: "property.temporal_ease.set",
+        capabilityId: "ae.property.temporal_ease.set",
+        payload: {
+          comp: { stableId: "PRACTICE_COMP_ISOLATION" },
+          layer: { stableId: "PRACTICE_SHOT_ISOLATION_0001" },
+          propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+          keyIndex: 2,
+          easeIntent: {
+            inEase: { speed: 72, influence: 61 },
+            outEase: { speed: 54, influence: 73 },
+          },
+        },
+      },
+    ],
+  };
+  const harness = makeRoute({ baselineOverride: framedBaseline });
+  const proof = await harness.route.prepare(prepareInput(framedBaseline));
+
+  const syncOperations = harness.capturedPlan.operations.slice(5);
+  assert.deepEqual(
+    syncOperations.map((operation) => operation.input.command),
+    [
+      "property.set_keyframes",
+      "property.set_keyframes",
+      "property.set_keyframes",
+      "property.spatial_graph.set",
+      "property.temporal_interpolation.set",
+      "property.temporal_ease.set",
+    ],
+  );
+  assert.equal(syncOperations.length, 6);
+  assert.ok(syncOperations.every((operation) =>
+    operation.input.payload.layer.stableId.startsWith("PRACTICE_MATTE_LAYER_")));
+  assert.ok(syncOperations.every((operation) =>
+    operation.input.payload.layer.stableId !== "PRACTICE_SHOT_ISOLATION_0001"));
+  assert.deepEqual(
+    syncOperations[0].input.payload.keyframes,
+    framedBaseline.operations[1].payload.keyframes,
+  );
+  assert.deepEqual(
+    syncOperations[3].input.payload.state,
+    framedBaseline.operations[4].payload.state,
+  );
+  assert.deepEqual(
+    syncOperations[5].input.payload.easeIntent,
+    framedBaseline.operations[6].payload.easeIntent,
+  );
+  assert.ok(harness.capturedPlan.requiredCapabilities.includes("ae.keyframe.set"));
+  assert.ok(harness.capturedPlan.requiredCapabilities.includes(
+    "ae.property.spatial_graph.set",
+  ));
+  assert.ok(proof.evidenceRefs.includes(
+    "practice-subject-isolation-framing-sync-count:6",
+  ));
+  assert.ok(proof.evidenceRefs.includes(
+    "practice-subject-isolation-framing-sync:baseline:subject-isolation:position",
+  ));
+});
+
 test("Practice subject isolation rejects unverified Finish-to-raw identity before SAM or AE mutation", async () => {
   const harness = makeRoute({
     bindingOverride: {

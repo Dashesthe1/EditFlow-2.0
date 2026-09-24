@@ -17,6 +17,9 @@ import {
 } from "../../../packages/core-contracts/src/index.js";
 import { AE_ADAPTER_ROUTE_ID_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
 import { AE_COMPOSITE_ROUTE_ID_V13 } from "../../../packages/adapters/ae-cep/src/protocol-v1_3.js";
+import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../../../packages/adapters/ae-cep/src/protocol-v1_7.js";
+import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../../../packages/adapters/ae-cep/src/protocol-v1_8.js";
+import { AE_SPATIAL_GRAPH_ROUTE_ID_V19 } from "../../../packages/adapters/ae-cep/src/protocol-v1_9.js";
 import { AE_MEDIA_SEQUENCE_ROUTE_ID_V25 } from "../../../packages/adapters/ae-cep/src/protocol-v2_5.js";
 import {
   buildSegmentationSequenceMatteMaterializationPlanV1,
@@ -33,7 +36,10 @@ import {
   type SubjectSegmentationSequenceRequestV1,
   type SubjectSegmentationSequenceResultV1,
 } from "../../../packages/tracking-state/src/index.js";
-import type { PracticeAeBaselinePlanV1 } from "../../../packages/practice-homework/src/ae-baseline.js";
+import type {
+  PracticeAeBaselineOperationV1,
+  PracticeAeBaselinePlanV1,
+} from "../../../packages/practice-homework/src/ae-baseline.js";
 import type {
   PracticeReferenceAnalysisV1,
   PracticeSceneMatchV1,
@@ -213,14 +219,68 @@ const assertNoTimeRemap = (
   }
 };
 
+const framingPropertyLeaf = (
+  payload: Readonly<Record<string, unknown>>,
+): "ADBE Position" | "ADBE Scale" | "ADBE Rotate Z" | null => {
+  const pathValue = payload["propertyPath"];
+  if (!Array.isArray(pathValue) || pathValue.length !== 2
+    || pathValue[0] !== "ADBE Transform Group") return null;
+  const leaf = pathValue[1];
+  return leaf === "ADBE Position" || leaf === "ADBE Scale" || leaf === "ADBE Rotate Z"
+    ? leaf
+    : null;
+};
+
+const framingSyncOperationsForLayer = (
+  baselinePlan: PracticeAeBaselinePlanV1,
+  layerId: string,
+): readonly PracticeAeBaselineOperationV1[] => baselinePlan.operations.filter((operation) =>
+  layerStableId(operation.payload) === layerId
+  && framingPropertyLeaf(operation.payload) !== null
+  && (
+    operation.command === "property.set_keyframes"
+    || operation.command === "property.temporal_interpolation.set"
+    || operation.command === "property.temporal_ease.set"
+    || operation.command === "property.spatial_graph.set"
+  ));
+
+const routeForFramingSyncCommand = (
+  command: PracticeAeBaselineOperationV1["command"],
+): string => {
+  switch (command) {
+    case "property.set_keyframes": return AE_ADAPTER_ROUTE_ID_V11;
+    case "property.temporal_interpolation.set": return AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17;
+    case "property.temporal_ease.set": return AE_TEMPORAL_EASE_ROUTE_ID_V18;
+    case "property.spatial_graph.set": return AE_SPATIAL_GRAPH_ROUTE_ID_V19;
+    default:
+      throw new TypeError("Unsupported Practice subject-isolation framing sync command: " + command);
+  }
+};
+
+const fullFrameTemporalMatte = (
+  accepted: ReturnType<typeof acceptSubjectSegmentationSequenceResultV1>,
+  width: number,
+  height: number,
+): boolean => accepted !== null && accepted.frames.every((frame) => {
+  const bounds = frame.mask.boundsNormalized;
+  return frame.mask.width === width
+    && frame.mask.height === height
+    && bounds.length === 4
+    && Math.abs(bounds[0] ?? 1) <= 1e-9
+    && Math.abs(bounds[1] ?? 1) <= 1e-9
+    && Math.abs((bounds[2] ?? 0) - 1) <= 1e-9
+    && Math.abs((bounds[3] ?? 0) - 1) <= 1e-9;
+});
+
 const compileMaterializationExecutionPlan = (
   materialization: SegmentationSequenceMatteMaterializationPlanV1,
+  framingSyncOperations: readonly PracticeAeBaselineOperationV1[],
   observed: ObservedProjectState,
   identity: string,
   evidenceRefs: readonly string[],
 ): ExecutionPlan => {
   const rollbackBoundaryId = asRollbackBoundaryId(identity + ":rollback");
-  const operations: ExecutionPlanOperation[] = materialization.operations.map(
+  const materializationOperations: ExecutionPlanOperation[] = materialization.operations.map(
     (operation, index) => ({
       operationId: asOperationId(identity + ":op:" + String(index + 1).padStart(2, "0")),
       capabilityId: asCapabilityId(operation.capabilityId),
@@ -241,6 +301,32 @@ const compileMaterializationExecutionPlan = (
       rollbackBoundaryId,
     }),
   );
+  const framingOperations: ExecutionPlanOperation[] = framingSyncOperations.map(
+    (sourceOperation, index) => {
+      const sequenceIndex = materialization.operations.length + index + 1;
+      const previousIndex = sequenceIndex - 1;
+      return {
+        operationId: asOperationId(identity + ":op:" + String(sequenceIndex).padStart(2, "0")),
+        capabilityId: asCapabilityId(sourceOperation.capabilityId),
+        routeId: asRouteId(routeForFramingSyncCommand(sourceOperation.command)),
+        dependsOn: previousIndex <= 0
+          ? []
+          : [asOperationId(identity + ":op:" + String(previousIndex).padStart(2, "0"))],
+        idempotency: "CHECK_THEN_APPLY",
+        riskClass: "R1_REVERSIBLE",
+        input: {
+          command: sourceOperation.command,
+          payload: {
+            ...sourceOperation.payload,
+            layer: { stableId: materialization.matteLayerStableId },
+          },
+          readbackProfile: "PRACTICE_SUBJECT_ISOLATION_FRAMING_SYNC",
+        },
+        rollbackBoundaryId,
+      };
+    },
+  );
+  const operations = [...materializationOperations, ...framingOperations];
   const finalOperation = operations.at(-1);
   if (finalOperation === undefined) {
     throw new TypeError("Practice subject isolation materialization produced no operations.");
@@ -252,23 +338,29 @@ const compileMaterializationExecutionPlan = (
     projectFingerprint: observed.projectFingerprint,
     environmentFingerprint: observed.environmentFingerprint,
     creativeObjective:
-      "Materialize the verified matched raw subject as a temporal native AE track matte.",
+      "Materialize the verified matched raw subject as a temporal native AE track matte "
+      + "and preserve the measured Practice shot framing motion.",
     recipeRefs: [
       materialization.semanticId,
       materialization.sourceId,
       ...evidenceRefs,
       ...materialization.evidenceIds,
+      ...framingSyncOperations.map((operation) =>
+        "practice-subject-isolation-framing-source:" + operation.operationId),
     ],
-    requiredCapabilities: [...new Set(
-      materialization.operations.map((operation) => operation.capabilityId),
-    )].map(asCapabilityId),
+    requiredCapabilities: [...new Set([
+      ...materialization.operations.map((operation) => operation.capabilityId),
+      ...framingSyncOperations.map((operation) => operation.capabilityId),
+    ])].map(asCapabilityId),
     bindings: [],
     operations,
     checkpoints: [{
       checkpointId: identity + ":structural",
       afterOperationIds: [finalOperation.operationId],
       kind: "STRUCTURAL",
-      profile: "PRACTICE_SUBJECT_ISOLATION_STRUCTURAL",
+      profile: framingSyncOperations.length === 0
+        ? "PRACTICE_SUBJECT_ISOLATION_STRUCTURAL"
+        : "PRACTICE_SUBJECT_ISOLATION_FRAMING_SYNC",
     }],
     invariants: {
       structural: [{
@@ -277,13 +369,14 @@ const compileMaterializationExecutionPlan = (
         matteLayerStableId: materialization.matteLayerStableId,
         frameCount: materialization.frameCount,
         frameRate: materialization.frameRate,
+        framingSyncOperationCount: framingSyncOperations.length,
       }],
       visual: [],
     },
     rollbackBoundaries: [{
       id: rollbackBoundaryId,
       strategy: "RESTORE_SNAPSHOT",
-      notes: "Temporal subject-isolation materialization is atomic and fail-closed.",
+      notes: "Temporal subject-isolation materialization and framing sync are atomic and fail-closed.",
     }],
   };
 };
@@ -430,6 +523,22 @@ implements PracticeM6SubjectIsolationRouteV1 {
       || material.frameCount !== request.frameCount) {
       throw new Error("PRACTICE_SUBJECT_ISOLATION_SEGMENTATION_MATERIAL_MISSING:" + input.shotId);
     }
+    const framingSyncOperations = framingSyncOperationsForLayer(
+      input.baselinePlan,
+      input.layerId,
+    );
+    if (framingSyncOperations.length > 0
+      && !fullFrameTemporalMatte(
+        accepted,
+        binding.sourceVideo.width,
+        binding.sourceVideo.height,
+      )) {
+      throw new Error(
+        "PRACTICE_SUBJECT_ISOLATION_FRAMING_SYNC_GEOMETRY_UNSUPPORTED:"
+        + input.shotId
+        + ": measured shot framing requires a full-frame temporal matte.",
+      );
+    }
     const targetTiming = timingStateForLayer(input.baselinePlan, input.layerId);
     const importItemStableId = "PRACTICE_MATTE_MEDIA_" + requestToken.toUpperCase();
     const matteLayerStableId = "PRACTICE_MATTE_LAYER_" + requestToken.toUpperCase();
@@ -485,6 +594,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
     ].join(":");
     const executionPlan = compileMaterializationExecutionPlan(
       materialization,
+      framingSyncOperations,
       observed,
       executionIdentity,
       [
@@ -519,6 +629,10 @@ implements PracticeM6SubjectIsolationRouteV1 {
           ...accepted.evidenceIds,
           ...material.evidenceIds,
           ...materialization.evidenceIds,
+          ...framingSyncOperations.map((operation) =>
+            "practice-subject-isolation-framing-sync:" + operation.operationId),
+          "practice-subject-isolation-framing-sync-count:"
+            + String(framingSyncOperations.length),
           "practice-subject-isolation-request:" + request.requestId,
           "practice-subject-isolation-frame-count:" + String(frameCount),
           "practice-subject-isolation-transaction:"
