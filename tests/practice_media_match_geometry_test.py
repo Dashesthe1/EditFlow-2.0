@@ -138,6 +138,65 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
         self.assertLess(ambiguous, 0.95)
         self.assertGreaterEqual(distinct, 0.95)
 
+    def test_source_stratified_retrieval_retains_two_timing_hypotheses_per_source(self):
+        def item(source_id, sample_ms, score):
+            return {
+                "index": {"sourceId": source_id},
+                "sample": {"timeMs": float(sample_ms)},
+                "mapping": {"score": float(score)},
+            }
+
+        candidates = [
+            item("source-a", 100.0, 0.99),
+            item("source-a", 900.0, 0.96),
+            item("source-a", 1800.0, 0.40),
+            item("source-b", 200.0, 0.98),
+            item("source-b", 1100.0, 0.95),
+            item("source-b", 2000.0, 0.30),
+        ]
+        selected = matcher.source_stratified_candidates(
+            candidates,
+            per_source_limit=2,
+            global_limit=0,
+        )
+        retained = {
+            (item["index"]["sourceId"], item["sample"]["timeMs"])
+            for item in selected
+        }
+        self.assertEqual(
+            retained,
+            {
+                ("source-a", 100.0),
+                ("source-a", 900.0),
+                ("source-b", 200.0),
+                ("source-b", 1100.0),
+            },
+        )
+
+    def test_ambiguous_repeated_geometry_collision_is_fail_closed(self):
+        def item(source_id, score, support, fraction=1.0):
+            return {
+                "index": {
+                    "sourceId": source_id,
+                    "analysis": {"sampleStepMs": 250.0},
+                },
+                "sample": {"timeMs": 100.0},
+                "mapping": {
+                    "score": float(score),
+                    "geometricProof": {
+                        "strongAnchorCount": 3,
+                        "strongAnchorFraction": float(fraction),
+                        "meanSupport": float(support),
+                    },
+                },
+            }
+
+        best = item("source-a", 0.80, 0.82)
+        ambiguous = item("source-b", 0.77, 0.79)
+        distinct = item("source-b", 0.60, 0.45, fraction=0.50)
+        self.assertTrue(matcher.ambiguous_geometric_collision(best, ambiguous))
+        self.assertFalse(matcher.ambiguous_geometric_collision(best, distinct))
+
     def test_full_geometry_reranks_a_provisional_winner_that_drops_below_runner_up(self):
         def item(source_id, sample_ms, center_ms, score, support):
             return {

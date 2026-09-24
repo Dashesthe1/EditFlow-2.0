@@ -2238,6 +2238,58 @@ def candidate_selection_score(item, continuity_source_id=None, continuity_bonus=
     return score
 
 
+def source_stratified_candidates(items, per_source_limit=2, global_limit=4):
+    selected = []
+    selected_keys = set()
+    grouped = {}
+    for item in items:
+        grouped.setdefault(item["index"]["sourceId"], []).append(item)
+    for source_id in sorted(grouped):
+        ranked = sorted(
+            grouped[source_id],
+            key=lambda candidate: float(candidate["mapping"]["score"]),
+            reverse=True,
+        )
+        for item in ranked[:max(1, int(per_source_limit))]:
+            key = candidate_item_key(item)
+            if key in selected_keys:
+                continue
+            selected.append(item)
+            selected_keys.add(key)
+    for item in sorted(
+        items,
+        key=lambda candidate: float(candidate["mapping"]["score"]),
+        reverse=True,
+    )[:max(0, int(global_limit))]:
+        key = candidate_item_key(item)
+        if key in selected_keys:
+            continue
+        selected.append(item)
+        selected_keys.add(key)
+    return selected
+
+
+def ambiguous_geometric_collision(best, second, margin_threshold=0.08):
+    if second is None:
+        return False
+    margin = candidate_rank_score(best["mapping"]) - candidate_rank_score(second["mapping"])
+    if margin >= float(margin_threshold):
+        return False
+    best_proof = best["mapping"].get("geometricProof") or {}
+    second_proof = second["mapping"].get("geometricProof") or {}
+    best_strong = int(best_proof.get("strongAnchorCount", 0))
+    second_strong = int(second_proof.get("strongAnchorCount", 0))
+    if best_strong < 2 or second_strong < 2:
+        return False
+    best_support = float(best_proof.get("meanSupport", 0.0))
+    second_support = float(second_proof.get("meanSupport", 0.0))
+    support_advantage = best_support - second_support
+    best_fraction = float(best_proof.get("strongAnchorFraction", 0.0))
+    second_fraction = float(second_proof.get("strongAnchorFraction", 0.0))
+    fraction_advantage = best_fraction - second_fraction
+    return support_advantage < 0.12 and fraction_advantage < 0.20
+
+
 def distinct_second_result(results, best):
     ordered = sorted(
         results,
@@ -2472,35 +2524,15 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             if not refined:
                 continue
 
-            detailed_limit = min(
-                len(refined),
-                max(8, min(16, len(source_indexes) * 2)),
+            # Retain multiple timing hypotheses per source before local refinement.
+            # The retained truth suite explicitly separates WRONG_SOURCE from
+            # SOURCE_RANGE_MISMATCH; keeping only one seed per source can turn a
+            # recoverable timing ambiguity into a false source/timing claim.
+            detailed_seeds = source_stratified_candidates(
+                refined,
+                per_source_limit=2,
+                global_limit=4,
             )
-            detailed_seeds = []
-            retained_seed_keys = set()
-            for source_index in source_indexes:
-                source_id = source_index["sourceId"]
-                source_best = next(
-                    (item for item in refined if item["index"]["sourceId"] == source_id),
-                    None,
-                )
-                if source_best is None:
-                    continue
-                detailed_seeds.append(source_best)
-                retained_seed_keys.add(
-                    (source_id, float(source_best["sample"]["timeMs"]))
-                )
-            for item in refined:
-                key = (
-                    item["index"]["sourceId"],
-                    float(item["sample"]["timeMs"]),
-                )
-                if key in retained_seed_keys:
-                    continue
-                detailed_seeds.append(item)
-                retained_seed_keys.add(key)
-                if len(detailed_seeds) >= detailed_limit:
-                    break
 
             detailed = []
             for item in detailed_seeds:
@@ -2557,41 +2589,15 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             if not detailed:
                 continue
 
-            geometry_candidates = []
-            geometry_keys = set()
-            for source_index in source_indexes:
-                source_id = source_index["sourceId"]
-                source_items = [
-                    item for item in detailed
-                    if item["index"]["sourceId"] == source_id
-                ]
-                if not source_items:
-                    continue
-                source_best = max(
-                    source_items,
-                    key=lambda item: float(item["mapping"]["score"]),
-                )
-                key = (
-                    source_id,
-                    float(source_best["sample"]["timeMs"]),
-                )
-                if key not in geometry_keys:
-                    geometry_candidates.append(source_best)
-                    geometry_keys.add(key)
-
-            for item in sorted(
+            # Give the best two timing hypotheses from every source a geometric
+            # screen, then keep a few global leaders. This prevents repeated
+            # scenery or near-duplicate sources from winning merely because the
+            # correct within-source timing hypothesis was pruned before geometry.
+            geometry_candidates = source_stratified_candidates(
                 detailed,
-                key=lambda candidate: float(candidate["mapping"]["score"]),
-                reverse=True,
-            )[:4]:
-                key = (
-                    item["index"]["sourceId"],
-                    float(item["sample"]["timeMs"]),
-                )
-                if key in geometry_keys:
-                    continue
-                geometry_candidates.append(item)
-                geometry_keys.add(key)
+                per_source_limit=2,
+                global_limit=4,
+            )
 
             for item in geometry_candidates:
                 reader = source_readers[item["index"]["sourceId"]]
@@ -2658,7 +2664,13 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 ),
             )
             mapping = best["mapping"]
-            second_score = distinct_second_score(refined, best)
+            second = distinct_second_result(refined, best)
+            second_score = (
+                0.0
+                if second is None
+                else candidate_rank_score(second["mapping"])
+            )
+            collision_risk = ambiguous_geometric_collision(best, second)
             center_reference = shot["anchors"][len(shot["anchors"]) // 2]["timeMs"]
             mapped_start = mapping["centerSourceMs"] + mapping["slope"] * (
                 shot["referenceStartMs"] - center_reference
@@ -2674,6 +2686,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             source_start = max(0.0, source_start)
             source_end = min(source_duration, source_end)
             confidence = confidence_from_result(best, second_score)
+            if collision_risk:
+                confidence = min(confidence, 0.949)
             temporal_behavior = mapping.get("temporalBehavior") or (
                 "FORWARD" if mapping["slope"] >= 0 else "REVERSE"
             )
@@ -2736,6 +2750,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     f"practice-candidate-score:{candidate_score:.6f}",
                     f"practice-runner-up-score:{second_score:.6f}",
                     f"practice-candidate-margin:{candidate_margin:.6f}",
+                    "practice-source-stratified-retrieval:v1",
+                    f"practice-ambiguous-geometric-collision:{str(collision_risk).lower()}",
                     f"practice-scene-selection-mode:{selection_mode}",
                     *(
                         [
