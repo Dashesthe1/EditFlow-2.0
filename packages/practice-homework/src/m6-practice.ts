@@ -47,6 +47,21 @@ import {
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
+export const practiceProactiveSubjectRelativeIsolationRequiredV1 = (
+  referenceWindow: PracticeReferenceEffectWindowV1 | undefined,
+  track: PracticeReferenceAnatomyV1["subjectMotionTracks"][number] | undefined,
+): boolean => {
+  const cue = referenceWindow?.objectCue;
+  if (cue === undefined || cue.objectAware !== true) return false;
+  if (track === undefined || !track.usableForReconstruction) return false;
+  if (cue.subjectIdentityContinuityVerified === false) return false;
+  return cue.relation !== "CO_MOVING"
+    || cue.subjectSeparationPeak >= 0.12
+    || (cue.validatedMaskCoveragePeak ?? 0) >= 0.05
+    || cue.occlusionPeak >= 0.18
+    || cue.subjectBackgroundDivergencePeak >= 0.08;
+};
+
 export interface PracticeContentStructureEvaluationV1 {
   readonly sceneIdentity: number;
   readonly temporalAlignment: number;
@@ -827,6 +842,8 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       const windowSubjectMotionTracks = referenceAnatomy.subjectMotionTracks.filter((track) =>
         track.usableForReconstruction
         && (windowAnatomy?.shotIds.includes(track.shotId) ?? false));
+      const proactiveSubjectRelativeTracks = windowSubjectMotionTracks.filter((track) =>
+        practiceProactiveSubjectRelativeIsolationRequiredV1(windowAnatomy, track));
       const learned = learnedGraphForWindow({
         evidence: window.evidence,
         family,
@@ -856,6 +873,12 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           ...windowSubjectMotionTracks.flatMap((track) => track.evidenceRefs),
           "practice-subject-motion-tracks-before-effect:"
             + String(windowSubjectMotionTracks.length),
+          "practice-proactive-subject-relative-tracks-before-effect:"
+            + String(proactiveSubjectRelativeTracks.length),
+          ...proactiveSubjectRelativeTracks.flatMap((track) => [
+            "practice-proactive-subject-relative-track:" + track.trackId,
+            "practice-proactive-subject-relative-semantic:" + track.semanticId,
+          ]),
           ...(learned === null
             ? []
             : [`practice-edit-type-transferred-patches:${learned.patches.length}`]),
@@ -914,6 +937,8 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
                 + track.relativeMotionDirection.x.toFixed(6) + ","
                 + track.relativeMotionDirection.y.toFixed(6),
             ]),
+            ...proactiveSubjectRelativeTracks.map((track) =>
+              "subject-relative-proactive-isolation:" + track.trackId),
             ...(windowAnatomy.objectCue.objectAware ? [
               "object-aware:true",
               `object-relation:${windowAnatomy.objectCue.relation}`,
@@ -943,6 +968,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ...(windowSubjectMotionTracks.length === 0
               ? []
               : ["REFERENCE_SUBJECT_MOTION_TRACK_RETAINED"]),
+            ...(proactiveSubjectRelativeTracks.length === 0
+              ? []
+              : ["REFERENCE_PROACTIVE_SUBJECT_RELATIVE_ISOLATION"]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "REFERENCE_OBJECT_AWARE",
               `REFERENCE_OBJECT_RELATION_${windowAnatomy.objectCue.relation}`,

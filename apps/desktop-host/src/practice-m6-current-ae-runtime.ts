@@ -29,9 +29,10 @@ import type {
   PracticeAeBaselinePlanV1,
   PracticeAeBaselineBuilderV1,
 } from "../../../packages/practice-homework/src/ae-baseline.js";
-import type {
-  PracticeContentStructureEvaluationV1,
-  PracticeM6RuntimeV1,
+import {
+  practiceProactiveSubjectRelativeIsolationRequiredV1,
+  type PracticeContentStructureEvaluationV1,
+  type PracticeM6RuntimeV1,
 } from "../../../packages/practice-homework/src/m6-practice.js";
 import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
 
@@ -435,19 +436,19 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     }
     const timingObjective = beatTimingObjective(referenceWindow);
     const timingRefs = beatTimingRefs(referenceWindow);
-    const requiresSubjectIsolation = input.graph.nodes.some((node) =>
+    const graphRequiresSubjectIsolation = input.graph.nodes.some((node) =>
       node.kind === "SUBJECT_ISOLATION");
-    const referenceSubjectIds = requiresSubjectIsolation
+    const referenceSubjectIds = graphRequiresSubjectIsolation
       ? subjectSemanticIdsForWindow(input.window)
       : [];
-    if (requiresSubjectIsolation && referenceSubjectIds.length !== 1) {
+    if (graphRequiresSubjectIsolation && referenceSubjectIds.length !== 1) {
       throw new Error(
         "PRACTICE_M6_SUBJECT_IDENTITY_UNVERIFIED: subject isolation requires exactly "
           + "one persistent reference semantic identity; found "
           + String(referenceSubjectIds.length) + ".",
       );
     }
-    if (requiresSubjectIsolation && this.subjectIsolationRoute === null) {
+    if (graphRequiresSubjectIsolation && this.subjectIsolationRoute === null) {
       throw new Error(
         "PRACTICE_M6_SUBJECT_ISOLATION_ROUTE_UNVERIFIED: the construction graph "
           + "requires subject isolation, but no validated segmentation/tracked-mask/"
@@ -492,11 +493,30 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
       }
       if (targetEndMs <= targetStartMs) continue;
 
-      if (requiresSubjectIsolation) {
+      const proactiveSubjectRelativeIsolation =
+        !graphRequiresSubjectIsolation
+        && practiceProactiveSubjectRelativeIsolationRequiredV1(
+          referenceWindow,
+          subjectMotionTrack,
+        );
+      const needsSubjectIsolation =
+        graphRequiresSubjectIsolation || proactiveSubjectRelativeIsolation;
+      if (needsSubjectIsolation) {
         const route = this.subjectIsolationRoute;
-        const referenceSemanticId = referenceSubjectIds[0];
+        if (route === null) {
+          throw new Error(
+            proactiveSubjectRelativeIsolation
+              ? "PRACTICE_M6_PROACTIVE_SUBJECT_ISOLATION_ROUTE_UNVERIFIED:"
+                + shot.shotId
+              : "PRACTICE_M6_SUBJECT_ISOLATION_ROUTE_UNVERIFIED:"
+                + shot.shotId,
+          );
+        }
+        const referenceSemanticId = graphRequiresSubjectIsolation
+          ? referenceSubjectIds[0]
+          : subjectMotionTrack?.semanticId;
         const sourceMatch = prepared.matches.find((match) => match.shotId === shot.shotId);
-        if (route === null || referenceSemanticId === undefined || sourceMatch === undefined) {
+        if (referenceSemanticId === undefined || sourceMatch === undefined) {
           throw new Error(
             "PRACTICE_M6_SUBJECT_ISOLATION_BINDING_MISSING:" + shot.shotId,
           );
@@ -544,6 +564,17 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           "practice-subject-source-id:" + isolation.sourceSemanticId,
           "practice-subject-cross-source-identity:true",
           "practice-subject-mask-source:" + isolation.maskSource,
+          "practice-subject-relative-isolation-mode:"
+            + (proactiveSubjectRelativeIsolation ? "PROACTIVE" : "GRAPH_REQUIRED"),
+          ...(proactiveSubjectRelativeIsolation && subjectMotionTrack !== undefined
+            ? [
+              "practice-proactive-subject-relative-track:" + subjectMotionTrack.trackId,
+              "practice-proactive-subject-relative-semantic:"
+                + subjectMotionTrack.semanticId,
+              "practice-proactive-subject-relative-relation:"
+                + (referenceWindow?.objectCue.relation ?? "UNKNOWN"),
+            ]
+            : []),
         );
       }
 

@@ -1177,13 +1177,28 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
   assert.ok(capturedRequest.evidenceRefs.includes(
     "practice-subject-motion-tracks-before-effect:1",
   ));
+  assert.ok(capturedRequest.evidenceRefs.includes(
+    "practice-proactive-subject-relative-tracks-before-effect:1",
+  ));
+  assert.ok(
+    capturedRequest.evidenceRefs.some((item) =>
+      item.startsWith("practice-proactive-subject-relative-track:subject-track:shot:001:")),
+  );
   assert.ok(
     reconstruction.decisionTraces[0].cueIds.some((item) =>
       item.startsWith("subject-motion-track:subject-track:shot:001:")),
   );
   assert.ok(
+    reconstruction.decisionTraces[0].cueIds.some((item) =>
+      item.startsWith("subject-relative-proactive-isolation:subject-track:shot:001:")),
+  );
+  assert.ok(
     reconstruction.decisionTraces[0].rationaleCodes
       .includes("REFERENCE_SUBJECT_MOTION_TRACK_RETAINED"),
+  );
+  assert.ok(
+    reconstruction.decisionTraces[0].rationaleCodes
+      .includes("REFERENCE_PROACTIVE_SUBJECT_RELATIVE_ISOLATION"),
   );
   assert.ok(reconstruction.decisionTraces[0].cueIds.includes("effect-anchor-beat:ON_BEAT"));
   assert.ok(reconstruction.decisionTraces[0].cueIds.includes("effect-anchor-beat-offset-ms:0.000"));
@@ -1333,6 +1348,7 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
       };
     },
   };
+  const subjectIsolationInputs = [];
   const runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,
     baselineBuilder: {
@@ -1340,7 +1356,15 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     },
     media,
     renderDriver,
-    subjectIsolationRoute: verifiedSubjectIsolationRoute,
+    subjectIsolationRoute: {
+      async prepare(input) {
+        subjectIsolationInputs.push(input);
+        return {
+          ...(await verifiedSubjectIsolationRoute.prepare(input)),
+          appliedOperations: 1,
+        };
+      },
+    },
     availableCapabilities: [...new Set(
       graph.nodes.flatMap((node) => node.capabilityCandidates),
     )],
@@ -1395,6 +1419,23 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     window,
     referenceWindow: {
       windowId: "window:native",
+      objectCue: {
+        objectAware: true,
+        relation: "SUBJECT_DOMINANT",
+        evidencePersistence: 1,
+        subjectSeparationPeak: 0.42,
+        subjectBackgroundDivergencePeak: 0.18,
+        subjectMotionPeak: 0.18,
+        backgroundMotionPeak: 0.01,
+        subjectMotionDirection: { x: 0.18, y: 0 },
+        backgroundMotionDirection: { x: 0.01, y: 0 },
+        maskCoveragePeak: 0.25,
+        validatedMaskCoveragePeak: 0.25,
+        maskTruthValidated: true,
+        subjectIdentityContinuityVerified: true,
+        subjectIdentityCoverage: 1,
+        occlusionPeak: 0,
+      },
       anchorBeatCue: {
         eventMs: 100,
         nearestBeatMs: 600,
@@ -1409,6 +1450,9 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     graph,
   });
 
+  assert.equal(subjectIsolationInputs.length, 1);
+  assert.equal(subjectIsolationInputs[0].shotId, "shot:001");
+  assert.equal(subjectIsolationInputs[0].referenceSemanticId, retainedSubjectMotionTrack.semanticId);
   assert.ok(capturedPlan);
   assert.ok(capturedPlan.operations.length > 0);
   assert.match(String(capturedPlan.planId), /^practice-m6:practice:native:1:window:native:/);
@@ -1448,6 +1492,15 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   ));
   assert.ok(fullRender.evidenceRefs.includes(
     "practice-m6-subject-relative-motion-peak:0.180000",
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-subject-relative-isolation-mode:PROACTIVE",
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-proactive-subject-relative-track:" + retainedSubjectMotionTrack.trackId,
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-proactive-subject-relative-relation:SUBJECT_DOMINANT",
   ));
 
   const isolationGraph = {
