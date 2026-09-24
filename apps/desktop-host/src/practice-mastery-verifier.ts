@@ -130,6 +130,13 @@ export const validatePracticeSceneMatchesV1 = (
           + " lacks repeated geometric proof required by the exact-scene gate.",
       );
     }
+    if (match.candidateMargin !== undefined
+      && (!Number.isFinite(match.candidateMargin) || match.candidateMargin < 0.02)) {
+      reasons.push(
+        "Source match for " + shotId
+          + " is too ambiguous against its retained runner-up for exact-scene certification.",
+      );
+    }
     if (!knownSources.has(match.sourceId)) {
       reasons.push("Source match for " + shotId + " does not belong to the indexed Start video set.");
     }

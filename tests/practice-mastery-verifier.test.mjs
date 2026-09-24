@@ -114,6 +114,23 @@ test("Practice mastery requires repeated geometric evidence for an exact scene c
     .some((reason) => /repeated geometric proof/.test(reason)));
 });
 
+test("Practice mastery rejects a geometrically strong but source-ambiguous scene claim", () => {
+  const ambiguous = {
+    ...match("shot:1"),
+    candidateScore: 0.82,
+    runnerUpScore: 0.81,
+    candidateMargin: 0.01,
+  };
+  assert.ok(validatePracticeSceneMatchesV1(["shot:1"], [ambiguous], 0.95, ["video:raw"])
+    .some((reason) => /too ambiguous/.test(reason)));
+
+  const distinct = { ...ambiguous, candidateMargin: 0.04 };
+  assert.deepEqual(
+    validatePracticeSceneMatchesV1(["shot:1"], [distinct], 0.95, ["video:raw"]),
+    [],
+  );
+});
+
 test("Practice mastery accepts only a trajectory-proven forward-then-rewind claim", () => {
   const base = match("shot:1");
   const proven = {
