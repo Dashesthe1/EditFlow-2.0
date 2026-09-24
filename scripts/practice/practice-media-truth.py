@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -629,19 +630,36 @@ def source_atlas_cache_key(source_sha256, duration_ms, interval_ms, max_frames):
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _materialize_cached_preview(cache_path, output_path):
+def _materialize_cached_preview(cache_path, output_path, attempts=5):
     cache_path = Path(cache_path)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path.is_file():
-        same_size = output_path.stat().st_size == cache_path.stat().st_size
-        if same_size and sha256_file(output_path) == sha256_file(cache_path):
+    attempts = max(1, int(attempts))
+    for attempt in range(attempts):
+        try:
+            if output_path.is_file():
+                same_size = output_path.stat().st_size == cache_path.stat().st_size
+                if same_size and sha256_file(output_path) == sha256_file(cache_path):
+                    return
+                output_path.unlink()
+            try:
+                os.link(cache_path, output_path)
+            except OSError as link_error:
+                if (
+                    getattr(link_error, "winerror", None) in {32, 33}
+                    or getattr(link_error, "errno", None) in {13}
+                ):
+                    raise
+                shutil.copy2(cache_path, output_path)
             return
-        output_path.unlink()
-    try:
-        os.link(cache_path, output_path)
-    except OSError:
-        shutil.copy2(cache_path, output_path)
+        except OSError as error:
+            transient_lock = (
+                getattr(error, "winerror", None) in {32, 33}
+                or getattr(error, "errno", None) in {13}
+            )
+            if not transient_lock or attempt + 1 >= attempts:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def build_source_atlas(

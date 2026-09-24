@@ -501,6 +501,30 @@ class PracticeMediaTruthTest(unittest.TestCase):
             self.assertEqual([item["sourceId"] for item in rows], ["", ""])
             self.assertFalse(pack["policy"]["matcherSuggestionsAllowed"])
 
+    def test_cached_preview_materialization_retries_transient_file_lock(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            cache_path = root / "cache.png"
+            output_path = root / "review" / "frame.png"
+            cache_path.write_bytes(b"cached-frame")
+            original_link = truth_tool.os.link
+            calls = []
+
+            def flaky_link(source, target):
+                calls.append((str(source), str(target)))
+                if len(calls) == 1:
+                    raise PermissionError(13, "transient file lock")
+                return original_link(source, target)
+
+            truth_tool.os.link = flaky_link
+            try:
+                truth_tool._materialize_cached_preview(cache_path, output_path)
+            finally:
+                truth_tool.os.link = original_link
+
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(output_path.read_bytes(), b"cached-frame")
+
     def test_source_atlas_cache_reuses_exact_source_bytes_across_review_packs(self):
         with TemporaryDirectory() as root:
             root = Path(root)
