@@ -456,6 +456,8 @@ def build_retained_suite_manifest(
 
 
 REVIEW_PACK_SCHEMA = "editflow.practice-truth-review-pack.v1"
+DEFAULT_SOURCE_ATLAS_INTERVAL_MS = 120000.0
+DEFAULT_SOURCE_ATLAS_MAX_FRAMES = 120
 REVIEW_FIELDS = (
     "shotId",
     "referenceStartMs",
@@ -501,7 +503,7 @@ def require_pristine_truth_draft(draft, reference):
             )
 
 
-def _opencv_preview_capture(video_path, cv2):
+def _opencv_media_capture(video_path, cv2, purpose="review media"):
     video_path = Path(video_path).expanduser().resolve()
     capture = cv2.VideoCapture(str(video_path))
     if capture.isOpened():
@@ -524,7 +526,11 @@ def _opencv_preview_capture(video_path, cv2):
     if capture.isOpened():
         return capture
     capture.release()
-    raise RuntimeError(f"Could not open Finish media for review preview: {video_path}")
+    raise RuntimeError(f"Could not open {purpose}: {video_path}")
+
+
+def _opencv_preview_capture(video_path, cv2):
+    return _opencv_media_capture(video_path, cv2, "Finish media for review preview")
 
 
 def extract_preview_frame(video_path, time_ms, output_path):
@@ -550,6 +556,81 @@ def extract_preview_frame(video_path, time_ms, output_path):
         capture.release()
 
 
+def review_media_duration_ms(video_path):
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError(
+            "OpenCV is required to inspect independent review media duration."
+        ) from exc
+    capture = _opencv_media_capture(video_path, cv2, "review media")
+    try:
+        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+        frame_count = float(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)
+        if not math.isfinite(fps) or not math.isfinite(frame_count) or fps <= 0.0 or frame_count <= 0.0:
+            raise RuntimeError(f"Could not determine review media duration: {video_path}")
+        duration_ms = (frame_count / fps) * 1000.0
+        if not math.isfinite(duration_ms) or duration_ms <= 0.0:
+            raise RuntimeError(f"Could not determine review media duration: {video_path}")
+        return duration_ms
+    finally:
+        capture.release()
+
+
+def source_atlas_sample_times(duration_ms, interval_ms, max_frames):
+    duration_ms = float(duration_ms)
+    interval_ms = float(interval_ms)
+    max_frames = int(max_frames)
+    if not math.isfinite(duration_ms) or duration_ms <= 0.0:
+        raise ValueError("Source-atlas duration must be positive and finite.")
+    if not math.isfinite(interval_ms) or interval_ms <= 0.0:
+        raise ValueError("Source-atlas interval must be positive and finite.")
+    if max_frames < 1:
+        raise ValueError("Source-atlas max frame count must be at least 1.")
+    requested_count = max(1, int(math.ceil(duration_ms / interval_ms)))
+    sample_count = min(max_frames, requested_count)
+    step_ms = duration_ms / sample_count
+    return [
+        min(max(0.0, duration_ms - 1.0), step_ms * (index + 0.5))
+        for index in range(sample_count)
+    ]
+
+
+def build_source_atlas(
+    source_id,
+    source_path,
+    output_dir,
+    interval_ms,
+    max_frames,
+    preview_writer=None,
+    duration_reader=None,
+):
+    duration_reader = duration_reader or review_media_duration_ms
+    preview_writer = preview_writer or extract_preview_frame
+    duration_ms = float(duration_reader(source_path))
+    times_ms = source_atlas_sample_times(duration_ms, interval_ms, max_frames)
+    safe_source = re.sub(r"[^A-Za-z0-9._-]+", "_", str(source_id))
+    atlas_dir = Path(output_dir) / "source-atlas" / safe_source
+    atlas_dir.mkdir(parents=True, exist_ok=True)
+    samples = []
+    for index, time_ms in enumerate(times_ms, start=1):
+        name = f"{index:04d}-{int(round(time_ms)):010d}ms.png"
+        output_path = atlas_dir / name
+        preview_writer(source_path, time_ms, output_path)
+        samples.append({
+            "timeMs": float(time_ms),
+            "previewPath": str(Path("source-atlas") / safe_source / name),
+        })
+    return {
+        "sourceId": str(source_id),
+        "durationMs": duration_ms,
+        "requestedIntervalMs": float(interval_ms),
+        "maxFrames": int(max_frames),
+        "sampleCount": len(samples),
+        "samples": samples,
+    }
+
+
 def build_review_pack(
     reference,
     draft,
@@ -557,6 +638,10 @@ def build_review_pack(
     source_paths_by_id,
     output_dir,
     preview_writer=None,
+    source_atlas_interval_ms=None,
+    source_atlas_max_frames=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    source_preview_writer=None,
+    source_duration_reader=None,
 ):
     require_pristine_truth_draft(draft, reference)
     source_ids = sorted(
@@ -592,6 +677,18 @@ def build_review_pack(
     preview_dir = target_dir / "finish-previews"
     target_dir.mkdir(parents=True, exist_ok=True)
     preview_dir.mkdir(parents=True, exist_ok=True)
+    source_atlas_entries = []
+    if source_atlas_interval_ms is not None:
+        for source_id in source_ids:
+            source_atlas_entries.append(build_source_atlas(
+                source_id=source_id,
+                source_path=normalized_sources[source_id]["path"],
+                output_dir=target_dir,
+                interval_ms=source_atlas_interval_ms,
+                max_frames=source_atlas_max_frames,
+                preview_writer=source_preview_writer,
+                duration_reader=source_duration_reader,
+            ))
     writer = preview_writer or extract_preview_frame
     worksheet_rows = []
     preview_entries = []
@@ -660,6 +757,7 @@ def build_review_pack(
         ],
         "worksheet": str(worksheet_path),
         "previews": preview_entries,
+        "sourceAtlas": source_atlas_entries,
         "policy": {
             "matcherSuggestionsAllowed": False,
             "matcherOutputMayBecomeTruth": False,
@@ -673,11 +771,12 @@ def build_review_pack(
     instructions = (
         "EditFlow Practice independent truth review pack\n\n"
         "1. Review each Finish shot using the three still previews.\n"
-        "2. Inspect only the declared Start media directly; do not use EditFlow matcher predictions.\n"
-        "3. Fill sourceId, sourceStartMs, sourceEndMs, and direction in annotations.csv.\n"
-        "4. Keep sourceStartMs/sourceEndMs ascending even for REVERSE playback.\n"
-        "5. Optionally set toleranceMs and notes.\n"
-        "6. Run practice-media-truth.py import-review, then retain with the real independent annotation origin.\n"
+        "2. If source-atlas/ exists, use its deterministic timecoded Start thumbnails only to locate coarse source windows.\n"
+        "3. Inspect the declared Start media directly to refine exact source bounds; do not use EditFlow matcher predictions.\n"
+        "4. Fill sourceId, sourceStartMs, sourceEndMs, and direction in annotations.csv.\n"
+        "5. Keep sourceStartMs/sourceEndMs ascending even for REVERSE playback.\n"
+        "6. Optionally set toleranceMs and notes.\n"
+        "7. Run practice-media-truth.py import-review, then retain with the real independent annotation origin.\n"
     )
     (target_dir / "INSTRUCTIONS.txt").write_text(
         instructions,
@@ -775,6 +874,17 @@ def build_parser():
     review_parser.add_argument("--finish", required=True)
     review_parser.add_argument("--source", action="append", required=True)
     review_parser.add_argument("--output-dir", required=True)
+    review_parser.add_argument(
+        "--source-atlas-interval-ms",
+        type=float,
+        default=0.0,
+        help="Generate matcher-blind Start thumbnails at this approximate interval; 0 disables.",
+    )
+    review_parser.add_argument(
+        "--source-atlas-max-frames",
+        type=int,
+        default=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    )
 
     import_review_parser = sub.add_parser("import-review")
     import_review_parser.add_argument("--reference-analysis", required=True)
@@ -835,6 +945,10 @@ def main():
             finish_path=args.finish,
             source_paths_by_id=source_paths_by_id,
             output_dir=args.output_dir,
+            source_atlas_interval_ms=(
+                None if args.source_atlas_interval_ms == 0.0 else args.source_atlas_interval_ms
+            ),
+            source_atlas_max_frames=args.source_atlas_max_frames,
         )
         print(json.dumps({
             "ok": True,

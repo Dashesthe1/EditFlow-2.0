@@ -452,6 +452,63 @@ class PracticeMediaTruthTest(unittest.TestCase):
             )
             self.assertEqual(retained["status"], "RETAINED")
 
+    def test_review_pack_can_add_matcher_blind_source_atlas(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-review-media")
+            source_path.write_bytes(b"source-review-media")
+            ref = reference()
+            ref["sourceSha256"] = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+
+            def fake_preview_writer(_video_path, time_ms, output_path):
+                Path(output_path).write_bytes(str(round(float(time_ms), 3)).encode("utf-8"))
+
+            pack_dir = root / "review-pack"
+            pack = truth_tool.build_review_pack(
+                reference=ref,
+                draft=draft,
+                finish_path=finish_path,
+                source_paths_by_id={"video:movie": str(source_path)},
+                output_dir=pack_dir,
+                preview_writer=fake_preview_writer,
+                source_atlas_interval_ms=120000.0,
+                source_atlas_max_frames=3,
+                source_preview_writer=fake_preview_writer,
+                source_duration_reader=lambda _path: 600000.0,
+            )
+            self.assertEqual(len(pack["sourceAtlas"]), 1)
+            atlas = pack["sourceAtlas"][0]
+            self.assertEqual(atlas["sourceId"], "video:movie")
+            self.assertEqual(atlas["sampleCount"], 3)
+            self.assertEqual(
+                [round(item["timeMs"]) for item in atlas["samples"]],
+                [100000, 300000, 500000],
+            )
+            self.assertEqual(
+                len(list((pack_dir / "source-atlas" / "video_movie").glob("*.png"))),
+                3,
+            )
+            with (pack_dir / "annotations.csv").open("r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual([item["sourceId"] for item in rows], ["", ""])
+            self.assertFalse(pack["policy"]["matcherSuggestionsAllowed"])
+
+    def test_source_atlas_sampling_is_bounded_and_fail_closed(self):
+        times = truth_tool.source_atlas_sample_times(600000.0, 120000.0, 3)
+        self.assertEqual([round(item) for item in times], [100000, 300000, 500000])
+        with self.assertRaisesRegex(ValueError, "interval"):
+            truth_tool.source_atlas_sample_times(600000.0, 0.0, 3)
+        with self.assertRaisesRegex(ValueError, "max frame"):
+            truth_tool.source_atlas_sample_times(600000.0, 120000.0, 0)
+
     def test_review_pack_rejects_prefilled_or_changed_start_media(self):
         with TemporaryDirectory() as root:
             root = Path(root)
