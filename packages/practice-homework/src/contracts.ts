@@ -150,6 +150,19 @@ export type PracticeReferenceWindowRelationV1 =
   | "CUT_OUT"
   | "CUT_SPAN";
 
+export type PracticeBeatAlignmentV1 = "ON_BEAT" | "NEAR_BEAT" | "OFF_BEAT";
+
+export interface PracticeReferenceBeatCueV1 {
+  readonly eventMs: number;
+  readonly nearestBeatMs: number;
+  readonly beatIntervalMs: number;
+  readonly offsetMs: number;
+  readonly offsetBeats: number;
+  readonly alignment: PracticeBeatAlignmentV1;
+  readonly confidence: number;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeReferenceMotionEnvelopeV1 {
   readonly peakEnergy: number;
   readonly motionPeakPhase: number;
@@ -204,6 +217,8 @@ export interface PracticeReferenceEffectWindowV1 {
   readonly shotIds: readonly string[];
   readonly relation: PracticeReferenceWindowRelationV1;
   readonly transitionBoundaryMs: number | null;
+  readonly anchorBeatCue?: PracticeReferenceBeatCueV1;
+  readonly transitionBeatCue?: PracticeReferenceBeatCueV1;
   readonly motion: PracticeReferenceMotionEnvelopeV1;
   readonly objectCue: PracticeReferenceObjectCueV1;
   readonly temporalCue: PracticeReferenceTemporalCueV1;
@@ -216,6 +231,7 @@ export interface PracticeReferenceCutV1 {
   readonly outgoingShotId: string;
   readonly incomingShotId: string;
   readonly transitionWindowIds: readonly string[];
+  readonly beatCue?: PracticeReferenceBeatCueV1;
 }
 
 export interface PracticeReferenceAnatomyV1 {
@@ -845,6 +861,7 @@ export interface PracticeHomeworkAdaptersV1 {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly baseline: PracticeContentBaselineV1;
     readonly matches: readonly PracticeSceneMatchV1[];
+    readonly audioMatch?: PracticeAudioMatchV1 | null;
     readonly priorAttempts: readonly PracticeAttemptV1[];
   }): Promise<PracticeReconstructionOutputV1>;
   evaluate(input: {

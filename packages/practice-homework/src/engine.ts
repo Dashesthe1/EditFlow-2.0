@@ -377,6 +377,7 @@ export class PracticeHomeworkEngineV1 {
         reference,
         baseline,
         matches,
+        audioMatch,
         priorAttempts: attempts,
       });
       const measured = await this.adapters.evaluate({

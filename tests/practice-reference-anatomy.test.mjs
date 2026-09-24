@@ -139,6 +139,13 @@ const matches = [
   },
 ];
 
+const beatGrid = {
+  beatTimesMs: [0, 500, 1000],
+  estimatedBpm: 120,
+  confidence: 0.97,
+  evidenceRefs: ["audio:beat-grid"],
+};
+
 test("reference anatomy binds a cut-spanning effect to both shots and retains rewind/object cues", () => {
   const sequence = {
     schema: "editflow.dense-effect-sequence.v1",
@@ -161,15 +168,24 @@ test("reference anatomy binds a cut-spanning effect to both shots and retains re
     reference,
     sequence,
     matches,
+    beatGrid,
   });
   assert.equal(anatomy.cuts.length, 1);
   assert.equal(anatomy.cuts[0].atMs, 500);
   assert.deepEqual(anatomy.cuts[0].transitionWindowIds, ["window:cut"]);
+  assert.equal(anatomy.cuts[0].beatCue?.alignment, "ON_BEAT");
+  assert.equal(anatomy.cuts[0].beatCue?.offsetMs, 0);
 
   const window = anatomy.effectWindows[0];
   assert.equal(window.relation, "CUT_SPAN");
   assert.deepEqual(window.shotIds, ["shot:001", "shot:002"]);
   assert.equal(window.transitionBoundaryMs, 500);
+  assert.equal(window.anchorBeatCue?.alignment, "ON_BEAT");
+  assert.equal(window.anchorBeatCue?.eventMs, 500);
+  assert.equal(window.anchorBeatCue?.offsetMs, 0);
+  assert.equal(window.transitionBeatCue?.alignment, "ON_BEAT");
+  assert.equal(window.transitionBeatCue?.eventMs, 500);
+  assert.equal(window.transitionBeatCue?.offsetMs, 0);
   assert.equal(window.effectFamilyId, "SUBJECT_ISOLATED_TRANSITION");
   assert.equal(window.objectCue.objectAware, true);
   assert.equal(window.objectCue.relation, "SUBJECT_DOMINANT");
@@ -181,4 +197,44 @@ test("reference anatomy binds a cut-spanning effect to both shots and retains re
   assert.deepEqual(anatomy.rewindShotIds, ["shot:001"]);
   assert.deepEqual(anatomy.objectAwareWindowIds, ["window:cut"]);
   assert.ok(anatomy.evidenceRefs.includes("practice-reference-cuts:1"));
+});
+
+test("reference anatomy preserves an intentional off-beat cut/effect anchor instead of snapping", () => {
+  const sequence = {
+    schema: "editflow.dense-effect-sequence.v1",
+    sourceId: reference.referenceId,
+    windows: [{
+      windowId: "window:off-beat",
+      startIndex: 0,
+      endIndex: 2,
+      anchorIndex: 1,
+      startMs: 420,
+      endMs: 620,
+      anchorMs: 500,
+      peakEnergy: 0.35,
+      evidence,
+    }],
+    evidenceRefs: ["sequence:off-beat"],
+  };
+  const anatomy = buildPracticeReferenceAnatomyV1({
+    reference,
+    sequence,
+    matches,
+    beatGrid: {
+      beatTimesMs: [0, 1000, 2000],
+      estimatedBpm: 60,
+      confidence: 0.96,
+      evidenceRefs: ["audio:slow-beat-grid"],
+    },
+  });
+  const cutCue = anatomy.cuts[0].beatCue;
+  const windowCue = anatomy.effectWindows[0].anchorBeatCue;
+  assert.equal(anatomy.cuts[0].atMs, 500);
+  assert.equal(cutCue?.eventMs, 500);
+  assert.equal(cutCue?.alignment, "OFF_BEAT");
+  assert.equal(Math.abs(cutCue?.offsetMs ?? 0), 500);
+  assert.equal(anatomy.effectWindows[0].anchorMs, 500);
+  assert.equal(windowCue?.eventMs, 500);
+  assert.equal(windowCue?.alignment, "OFF_BEAT");
+  assert.equal(Math.abs(windowCue?.offsetMs ?? 0), 500);
 });

@@ -4,9 +4,11 @@ import {
   type DenseEffectWindowV1,
 } from "../../visual-effects-intelligence/src/index.js";
 import type {
+  PracticeAudioBeatGridV1,
   PracticeObjectMotionRelationV1,
   PracticeReferenceAnalysisV1,
   PracticeReferenceAnatomyV1,
+  PracticeReferenceBeatCueV1,
   PracticeReferenceCutV1,
   PracticeReferenceEffectWindowV1,
   PracticeReferenceWindowRelationV1,
@@ -21,6 +23,66 @@ import {
 
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.filter((value) => value.trim().length > 0))];
+
+const median = (values: readonly number[]): number => {
+  if (values.length === 0) return 0;
+  const ordered = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  if ((ordered.length % 2) === 1) return ordered[middle]!;
+  return (ordered[middle - 1]! + ordered[middle]!) / 2;
+};
+
+const beatCueFor = (
+  eventMs: number,
+  beatGrid: PracticeAudioBeatGridV1 | undefined,
+  frameIntervalMs: number,
+): PracticeReferenceBeatCueV1 | undefined => {
+  if (beatGrid === undefined || beatGrid.confidence < 0.30) return undefined;
+  const beats = [...beatGrid.beatTimesMs]
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (beats.length < 3 || !Number.isFinite(eventMs)) return undefined;
+  const intervals = beats.slice(1)
+    .map((value, index) => value - beats[index]!)
+    .filter((value) => value > 1e-3);
+  const beatIntervalMs = median(intervals);
+  if (!Number.isFinite(beatIntervalMs) || beatIntervalMs <= 1e-3) return undefined;
+  const nearestBeatMs = [...beats].sort((a, b) =>
+    Math.abs(eventMs - a) - Math.abs(eventMs - b))[0]!;
+  const offsetMs = eventMs - nearestBeatMs;
+  const absoluteOffsetMs = Math.abs(offsetMs);
+  const validFrameIntervalMs = Number.isFinite(frameIntervalMs) && frameIntervalMs > 0
+    ? frameIntervalMs
+    : 1000 / 30;
+  const onBeatToleranceMs = Math.max(
+    validFrameIntervalMs * 1.5,
+    Math.min(80, beatIntervalMs * 0.12),
+  );
+  const nearBeatToleranceMs = Math.max(
+    validFrameIntervalMs * 3,
+    Math.min(160, beatIntervalMs * 0.30),
+  );
+  const alignment = absoluteOffsetMs <= onBeatToleranceMs
+    ? "ON_BEAT"
+    : absoluteOffsetMs <= nearBeatToleranceMs ? "NEAR_BEAT" : "OFF_BEAT";
+  return {
+    eventMs,
+    nearestBeatMs,
+    beatIntervalMs,
+    offsetMs,
+    offsetBeats: offsetMs / beatIntervalMs,
+    alignment,
+    confidence: beatGrid.confidence,
+    evidenceRefs: unique([
+      ...beatGrid.evidenceRefs,
+      "practice-beat-alignment:" + alignment,
+      "practice-beat-event-ms:" + eventMs.toFixed(3),
+      "practice-beat-nearest-ms:" + nearestBeatMs.toFixed(3),
+      "practice-beat-offset-ms:" + offsetMs.toFixed(3),
+      "practice-beat-offset-beats:" + (offsetMs / beatIntervalMs).toFixed(6),
+    ]),
+  };
+};
 
 const maxFrame = (
   window: DenseEffectWindowV1,
@@ -80,16 +142,22 @@ const orderedShots = (reference: PracticeReferenceAnalysisV1) =>
 
 const buildCuts = (
   reference: PracticeReferenceAnalysisV1,
+  beatGrid: PracticeAudioBeatGridV1 | undefined,
 ): readonly PracticeReferenceCutV1[] => {
   const shots = orderedShots(reference);
+  const frameIntervalMs = reference.video?.fps !== undefined && reference.video.fps > 0
+    ? 1000 / reference.video.fps
+    : 1000 / 30;
   return shots.slice(0, -1).map((outgoing, index) => {
     const incoming = shots[index + 1]!;
+    const beatCue = beatCueFor(incoming.referenceStartMs, beatGrid, frameIntervalMs);
     return {
       cutId: "cut:" + String(index + 1).padStart(4, "0"),
       atMs: incoming.referenceStartMs,
       outgoingShotId: outgoing.shotId,
       incomingShotId: incoming.shotId,
       transitionWindowIds: [],
+      ...(beatCue === undefined ? {} : { beatCue }),
     };
   });
 };
@@ -198,6 +266,7 @@ const anatomyWindow = (
   window: DenseEffectWindowV1,
   cuts: readonly PracticeReferenceCutV1[],
   matches: readonly PracticeSceneMatchV1[],
+  beatGrid: PracticeAudioBeatGridV1 | undefined,
 ): PracticeReferenceEffectWindowV1 => {
   const shots = shotsForWindow(reference, window);
   const shotIds = shots.map((shot) => shot.shotId);
@@ -230,6 +299,11 @@ const anatomyWindow = (
     backgroundMotionPeak: objectMotion.backgroundMotionPeak,
   });
   const temporalCue = temporalCueFor(familyId, shotIds, matches);
+  const transitionBoundaryMs = transitionBoundaryFor(window, relation, shotIds, cuts);
+  const anchorBeatCue = beatCueFor(window.anchorMs, beatGrid, summary.frameIntervalMs);
+  const transitionBeatCue = transitionBoundaryMs === null
+    ? undefined
+    : beatCueFor(transitionBoundaryMs, beatGrid, summary.frameIntervalMs);
   return {
     windowId: window.windowId,
     effectFamilyId: familyId,
@@ -238,7 +312,9 @@ const anatomyWindow = (
     anchorMs: window.anchorMs,
     shotIds,
     relation,
-    transitionBoundaryMs: transitionBoundaryFor(window, relation, shotIds, cuts),
+    transitionBoundaryMs,
+    ...(anchorBeatCue === undefined ? {} : { anchorBeatCue }),
+    ...(transitionBeatCue === undefined ? {} : { transitionBeatCue }),
     motion: {
       peakEnergy: window.peakEnergy,
       motionPeakPhase: summary.motionPeakPhase,
@@ -278,6 +354,14 @@ const anatomyWindow = (
       "practice-window-relation:" + relation,
       "practice-effect-family:" + familyId,
       "practice-temporal-behavior:" + temporalCue.behavior,
+      ...(anchorBeatCue?.evidenceRefs ?? []),
+      ...(transitionBeatCue?.evidenceRefs ?? []),
+      ...(anchorBeatCue === undefined ? [] : [
+        "practice-effect-anchor-beat-alignment:" + anchorBeatCue.alignment,
+      ]),
+      ...(transitionBeatCue === undefined ? [] : [
+        "practice-transition-beat-alignment:" + transitionBeatCue.alignment,
+      ]),
       ...(objectAware ? [
         "practice-object-aware-window:" + window.windowId,
         "practice-object-relation:" + objectRelation,
@@ -300,10 +384,11 @@ export const buildPracticeReferenceAnatomyV1 = (input: {
   readonly reference: PracticeReferenceAnalysisV1;
   readonly sequence: DenseEffectSequenceV1;
   readonly matches: readonly PracticeSceneMatchV1[];
+  readonly beatGrid?: PracticeAudioBeatGridV1;
 }): PracticeReferenceAnatomyV1 => {
-  const baseCuts = buildCuts(input.reference);
+  const baseCuts = buildCuts(input.reference, input.beatGrid);
   const effectWindows = input.sequence.windows.map((window) =>
-    anatomyWindow(input.reference, window, baseCuts, input.matches));
+    anatomyWindow(input.reference, window, baseCuts, input.matches, input.beatGrid));
   const cuts = baseCuts.map((cut) => ({
     ...cut,
     transitionWindowIds: effectWindows
@@ -327,7 +412,12 @@ export const buildPracticeReferenceAnatomyV1 = (input: {
       ...input.reference.evidenceRefs,
       ...input.sequence.evidenceRefs,
       ...input.matches.flatMap((match) => match.evidenceRefs),
+      ...(input.beatGrid?.evidenceRefs ?? []),
+      ...cuts.flatMap((cut) => cut.beatCue?.evidenceRefs ?? []),
       ...effectWindows.flatMap((window) => window.evidenceRefs),
+      "practice-reference-beat-grid:" + String(input.beatGrid !== undefined),
+      "practice-reference-beat-cued-cuts:"
+        + String(cuts.filter((cut) => cut.beatCue !== undefined).length),
       "practice-reference-cuts:" + String(cuts.length),
       "practice-reference-effect-windows:" + String(effectWindows.length),
       "practice-reference-rewind-shots:" + String(rewindShotIds.length),

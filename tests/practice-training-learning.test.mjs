@@ -1125,7 +1125,7 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
   };
 
   const bridge = new PracticeM6ExecutionBridgeV1(runtime, brain);
-  await bridge.reconstruct({
+  const reconstruction = await bridge.reconstruct({
     sessionId: "practice:new",
     editTypeId: knowledge.editTypeId,
     editTypeKnowledge: knowledge,
@@ -1137,6 +1137,19 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
       evidenceRefs: ["baseline:new"],
     },
     matches: [],
+    audioMatch: {
+      matchId: "audio:beat-aware",
+      sourceId: "song:raw",
+      segments: [],
+      beatGrid: {
+        beatTimesMs: [100, 600, 1100],
+        estimatedBpm: 120,
+        confidence: 0.98,
+        evidenceRefs: ["audio:beat-aware:grid"],
+      },
+      overallConfidence: 0.99,
+      evidenceRefs: ["audio:beat-aware"],
+    },
     priorAttempts: [],
   });
 
@@ -1147,6 +1160,13 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
   assert.ok(
     capturedRequest.evidenceRefs.some((item) =>
       item === "practice-edit-type-transferred-patches:1"),
+  );
+  assert.ok(capturedRequest.evidenceRefs.includes("audio:beat-aware:grid"));
+  assert.ok(reconstruction.decisionTraces[0].cueIds.includes("effect-anchor-beat:ON_BEAT"));
+  assert.ok(reconstruction.decisionTraces[0].cueIds.includes("effect-anchor-beat-offset-ms:0.000"));
+  assert.ok(
+    reconstruction.decisionTraces[0].rationaleCodes
+      .includes("REFERENCE_EFFECT_ANCHOR_ON_BEAT"),
   );
 
   const learnedNode = capturedRequest.learnedGraph.nodes
@@ -1330,6 +1350,19 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     reference: runtimeReference,
     baseline,
     window,
+    referenceWindow: {
+      windowId: "window:native",
+      anchorBeatCue: {
+        eventMs: 100,
+        nearestBeatMs: 600,
+        beatIntervalMs: 1000,
+        offsetMs: -500,
+        offsetBeats: -0.5,
+        alignment: "OFF_BEAT",
+        confidence: 0.98,
+        evidenceRefs: ["test:beat-anchor:off-beat"],
+      },
+    },
     graph,
   });
 
@@ -1351,6 +1384,16 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.equal(mediaCalls.at(-1)?.videoPath, "C:\\Renders\\practice-window.mp4");
   assert.equal(mediaCalls.at(-1)?.startMs, 0);
   assert.equal(mediaCalls.at(-1)?.endMs, 200);
+
+  const fullRender = await runtime.renderFullEdit({
+    sessionId: "practice:native",
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+  });
+  assert.ok(fullRender.evidenceRefs.includes("practice-m6-beat-anchor:OFF_BEAT:-500.000"));
+  assert.ok(fullRender.evidenceRefs.includes("practice-effect-anchor-beat-event-ms:100.000"));
+  assert.ok(fullRender.evidenceRefs.includes("practice-effect-anchor-beat-offset-ms:-500.000"));
 
   const isolationGraph = {
     ...graph,

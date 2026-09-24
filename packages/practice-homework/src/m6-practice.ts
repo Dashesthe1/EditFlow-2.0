@@ -25,6 +25,7 @@ import {
 import type {
   EditTypeKnowledgeSnapshotV1,
   PracticeAttemptV1,
+  PracticeAudioMatchV1,
   PracticeContentBaselineV1,
   PracticeDecisionTraceV1,
   PracticeObjectAwareProofV1,
@@ -33,6 +34,7 @@ import type {
   PracticeReconstructionOutputV1,
   PracticeReferenceAnalysisV1,
   PracticeReferenceAnatomyV1,
+  PracticeReferenceEffectWindowV1,
   PracticeSceneMatchV1,
   PracticeSemanticPatchV1,
   PracticeSimilarityReportV1,
@@ -87,6 +89,7 @@ export interface PracticeM6RuntimeV1 {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly baseline: PracticeContentBaselineV1;
     readonly window: DenseEffectWindowV1;
+    readonly referenceWindow?: PracticeReferenceEffectWindowV1;
     readonly graph: ConstructionGraphV1;
   }): Promise<void>;
   renderWindowEvidence(input: {
@@ -790,6 +793,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly baseline: PracticeContentBaselineV1;
     readonly matches: readonly PracticeSceneMatchV1[];
+    readonly audioMatch?: PracticeAudioMatchV1 | null;
     readonly priorAttempts: readonly PracticeAttemptV1[];
   }): Promise<PracticeReconstructionOutputV1> => {
     const analysis = await this.#referenceAnalysis(input.reference);
@@ -797,6 +801,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       reference: input.reference,
       sequence: analysis.sequence,
       matches: input.matches,
+      ...(input.audioMatch?.beatGrid === undefined
+        ? {}
+        : { beatGrid: input.audioMatch.beatGrid }),
     });
     await this.runtime.prepareAttempt(input);
 
@@ -836,6 +843,8 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           `practice-window:${window.windowId}`,
           `practice-edit-type:${input.editTypeId}`,
           `practice-edit-type-revision:${input.editTypeKnowledge.revision}`,
+          ...(windowAnatomy?.anchorBeatCue?.evidenceRefs ?? []),
+          ...(windowAnatomy?.transitionBeatCue?.evidenceRefs ?? []),
           ...(learned === null
             ? []
             : [`practice-edit-type-transferred-patches:${learned.patches.length}`]),
@@ -846,6 +855,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           reference: input.reference,
           baseline: input.baseline,
           window,
+          ...(windowAnatomy === undefined ? {} : { referenceWindow: windowAnatomy }),
           graph,
         }),
         renderWindow: async (graph) => this.runtime.renderWindowEvidence({
@@ -874,6 +884,16 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ...(windowAnatomy.transitionBoundaryMs === null
               ? []
               : [`transition-boundary-ms:${windowAnatomy.transitionBoundaryMs.toFixed(3)}`]),
+            ...(windowAnatomy.anchorBeatCue === undefined ? [] : [
+              `effect-anchor-beat:${windowAnatomy.anchorBeatCue.alignment}`,
+              `effect-anchor-beat-offset-ms:${windowAnatomy.anchorBeatCue.offsetMs.toFixed(3)}`,
+              `effect-anchor-beat-offset-beats:${windowAnatomy.anchorBeatCue.offsetBeats.toFixed(6)}`,
+            ]),
+            ...(windowAnatomy.transitionBeatCue === undefined ? [] : [
+              `transition-beat:${windowAnatomy.transitionBeatCue.alignment}`,
+              `transition-beat-offset-ms:${windowAnatomy.transitionBeatCue.offsetMs.toFixed(3)}`,
+              `transition-beat-offset-beats:${windowAnatomy.transitionBeatCue.offsetBeats.toFixed(6)}`,
+            ]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "object-aware:true",
               `object-relation:${windowAnatomy.objectCue.relation}`,
@@ -894,6 +914,12 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           `M6_FAMILY_${family}`,
           ...(windowAnatomy === undefined ? [] : [
             `REFERENCE_${windowAnatomy.relation}`,
+            ...(windowAnatomy.anchorBeatCue === undefined ? [] : [
+              `REFERENCE_EFFECT_ANCHOR_${windowAnatomy.anchorBeatCue.alignment}`,
+            ]),
+            ...(windowAnatomy.transitionBeatCue === undefined ? [] : [
+              `REFERENCE_TRANSITION_${windowAnatomy.transitionBeatCue.alignment}`,
+            ]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "REFERENCE_OBJECT_AWARE",
               `REFERENCE_OBJECT_RELATION_${windowAnatomy.objectCue.relation}`,
