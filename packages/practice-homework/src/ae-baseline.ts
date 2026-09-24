@@ -17,6 +17,7 @@ export type PracticeAeBaselineCommandV1 =
   | "layer.time_remap.enable"
   | "property.set_keyframes"
   | "property.temporal_interpolation.set"
+  | "property.temporal_ease.set"
   | "layer.switches.set";
 
 export interface PracticeAeBaselineOperationV1 {
@@ -30,6 +31,7 @@ export interface PracticeAeBaselineOperationV1 {
     | "ae.layer.time_remap.enable"
     | "ae.keyframe.set"
     | "ae.property.temporal_interpolation.set"
+    | "ae.property.temporal_ease.set"
     | "ae.layer.switches.set";
   readonly payload: Readonly<Record<string, unknown>>;
 }
@@ -82,6 +84,8 @@ const commandCapability = (
     case "property.set_keyframes": return "ae.keyframe.set";
     case "property.temporal_interpolation.set":
       return "ae.property.temporal_interpolation.set";
+    case "property.temporal_ease.set":
+      return "ae.property.temporal_ease.set";
     case "layer.switches.set": return "ae.layer.switches.set";
   }
 };
@@ -362,6 +366,10 @@ interface PracticeFramingCurveKeyV1 {
   readonly propertyLeaf: PracticeFramingPropertyLeafV1;
   readonly keyIndex: number;
   readonly strength: number;
+  readonly inSpeed: number;
+  readonly outSpeed: number;
+  readonly inInfluence: number;
+  readonly outInfluence: number;
 }
 
 interface PracticeFramingKeyframePlanV1 {
@@ -409,7 +417,9 @@ const measuredFramingCurveCandidates = (
       (value - (values[index - 1]![axis] ?? value)) / beforeSeconds);
     const outgoing = values[index + 1]!.map((value, axis) =>
       (value - (values[index]![axis] ?? value)) / afterSeconds);
-    const peakSpeed = Math.max(vectorMagnitude(incoming), vectorMagnitude(outgoing));
+    const incomingSpeed = vectorMagnitude(incoming);
+    const outgoingSpeed = vectorMagnitude(outgoing);
+    const peakSpeed = Math.max(incomingSpeed, outgoingSpeed);
     if (peakSpeed <= 1e-6) continue;
     const velocityChange = outgoing.map((value, axis) => value - (incoming[axis] ?? value));
     const confidence = Math.min(
@@ -418,7 +428,22 @@ const measuredFramingCurveCandidates = (
       points[index + 1]!.confidence,
     );
     const strength = (vectorMagnitude(velocityChange) / peakSpeed) * confidence;
-    if (strength >= 0.28) candidates.push({ propertyLeaf, keyIndex: index + 1, strength });
+    if (strength < 0.28) continue;
+    const directionDot = incoming.reduce((sum, value, axis) =>
+      sum + (value * (outgoing[axis] ?? 0)), 0);
+    const directionCosine = incomingSpeed > 1e-6 && outgoingSpeed > 1e-6
+      ? directionDot / (incomingSpeed * outgoingSpeed)
+      : 1;
+    const turnaround = directionCosine <= -0.15;
+    candidates.push({
+      propertyLeaf,
+      keyIndex: index + 1,
+      strength,
+      inSpeed: turnaround ? 0 : incomingSpeed,
+      outSpeed: turnaround ? 0 : outgoingSpeed,
+      inInfluence: 100 / 3,
+      outInfluence: 100 / 3,
+    });
   }
   return candidates;
 };
@@ -740,8 +765,30 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
             interpolation: {
               inType: "BEZIER",
               outType: "BEZIER",
-              temporalContinuous: true,
-              temporalAutoBezier: true,
+              temporalContinuous: false,
+              temporalAutoBezier: false,
+            },
+          },
+        ));
+        ordinal += 1;
+        operations.push(operation(
+          baselineId,
+          ordinal,
+          "property.temporal_ease.set",
+          {
+            comp: { stableId: compStableId },
+            layer: { stableId: layerStableId },
+            propertyPath: ["ADBE Transform Group", curveKey.propertyLeaf],
+            keyIndex: curveKey.keyIndex,
+            easeIntent: {
+              inEase: {
+                speed: curveKey.inSpeed,
+                influence: curveKey.inInfluence,
+              },
+              outEase: {
+                speed: curveKey.outSpeed,
+                influence: curveKey.outInfluence,
+              },
             },
           },
         ));

@@ -714,7 +714,7 @@ test("Practice baseline compiles to the current mixed-protocol AE transaction su
   );
 });
 
-test("Practice framing curves route through temporal interpolation as reversible AE work", async () => {
+test("Practice framing curves route interpolation and measured ease as reversible AE work", async () => {
   const transport = new RuntimeTransport();
   const observer = new AeCepCurrentTransactionalHostV1(
     transport,
@@ -736,8 +736,23 @@ test("Practice framing curves route through temporal interpolation as reversible
       interpolation: {
         inType: "BEZIER",
         outType: "BEZIER",
-        temporalContinuous: true,
-        temporalAutoBezier: true,
+        temporalContinuous: false,
+        temporalAutoBezier: false,
+      },
+    },
+  };
+  const easeOperation = {
+    operationId: "PRACTICE_OP_EASE",
+    command: "property.temporal_ease.set",
+    capabilityId: "ae.property.temporal_ease.set",
+    payload: {
+      comp: { stableId: "PRACTICE_COMP_TEST" },
+      layer: { stableId: "PRACTICE_LAYER_TEST" },
+      propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+      keyIndex: 2,
+      easeIntent: {
+        inEase: { speed: 10, influence: 100 / 3 },
+        outEase: { speed: 65, influence: 100 / 3 },
       },
     },
   };
@@ -746,17 +761,25 @@ test("Practice framing curves route through temporal interpolation as reversible
     operations: [
       ...base.operations.slice(0, -1),
       curveOperation,
+      easeOperation,
       base.operations.at(-1),
     ],
   }, observed);
   const curve = execution.operations.find((operation) =>
     String(operation.operationId) === "PRACTICE_OP_CURVE");
+  const ease = execution.operations.find((operation) =>
+    String(operation.operationId) === "PRACTICE_OP_EASE");
 
   assert.ok(curve);
   assert.equal(String(curve.routeId), AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17);
   assert.equal(curve.riskClass, "R1_REVERSIBLE");
+  assert.ok(ease);
+  assert.equal(String(ease.routeId), AE_TEMPORAL_EASE_ROUTE_ID_V18);
+  assert.equal(ease.riskClass, "R1_REVERSIBLE");
   assert.ok(execution.requiredCapabilities.map(String)
     .includes("ae.property.temporal_interpolation.set"));
+  assert.ok(execution.requiredCapabilities.map(String)
+    .includes("ae.property.temporal_ease.set"));
 });
 
 test("Practice baseline executes atomically through the current AE runtime", async () => {

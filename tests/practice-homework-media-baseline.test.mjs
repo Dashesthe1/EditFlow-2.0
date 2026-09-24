@@ -467,8 +467,74 @@ test("AE baseline preserves measured dynamic framing as transform trajectories",
     item.capabilityId === "ae.property.temporal_interpolation.set"
       && item.payload.interpolation?.inType === "BEZIER"
       && item.payload.interpolation?.outType === "BEZIER"
-      && item.payload.interpolation?.temporalContinuous === true
-      && item.payload.interpolation?.temporalAutoBezier === true));
+      && item.payload.interpolation?.temporalContinuous === false
+      && item.payload.interpolation?.temporalAutoBezier === false));
+  const easeOps = plan.operations.filter((item) =>
+    item.command === "property.temporal_ease.set"
+      && item.payload.layer?.stableId?.endsWith("_0001"));
+  assert.equal(easeOps.length, 2);
+  assert.deepEqual(easeOps.map((item) => item.payload.propertyPath?.at(-1)), [
+    "ADBE Scale",
+    "ADBE Scale",
+  ]);
+  assert.deepEqual(easeOps.map((item) => item.payload.keyIndex), [2, 4]);
+  assert.ok(easeOps.every((item) =>
+    item.capabilityId === "ae.property.temporal_ease.set"
+      && Math.abs(item.payload.easeIntent?.inEase?.influence - (100 / 3)) < 1e-9
+      && Math.abs(item.payload.easeIntent?.outEase?.influence - (100 / 3)) < 1e-9));
+  assert.ok(Math.abs(easeOps[0].payload.easeIntent.inEase.speed - 10) < 1e-9);
+  assert.ok(Math.abs(easeOps[0].payload.easeIntent.outEase.speed - 65) < 1e-9);
+  assert.ok(Math.abs(easeOps[1].payload.easeIntent.inEase.speed - 65) < 1e-9);
+  assert.ok(Math.abs(easeOps[1].payload.easeIntent.outEase.speed - 10) < 1e-9);
+});
+
+test("AE baseline preserves a framing turnaround as zero-speed temporal ease", () => {
+  const turnaroundMatches = [
+    {
+      ...matches[0],
+      geometricProof: {
+        framing: {
+          stable: false,
+          dynamic: true,
+          anchorCount: 3,
+          stableAnchorCount: 0,
+          stableAnchorFraction: 0,
+          positionX: 205,
+          positionY: 95,
+          scalePercent: 100,
+          rotationDegrees: 0,
+          confidence: 0.94,
+          dynamicConfidence: 0.96,
+          trajectory: [
+            { referenceTimeMs: 100, positionX: 180, positionY: 95, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.95 },
+            { referenceTimeMs: 500, positionX: 220, positionY: 95, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.96 },
+            { referenceTimeMs: 900, positionX: 195, positionY: 95, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.94 },
+          ],
+        },
+      },
+    },
+    matches[1],
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: turnaroundMatches });
+  const curveOps = plan.operations.filter((item) =>
+    item.command === "property.temporal_interpolation.set"
+      && item.payload.propertyPath?.at(-1) === "ADBE Position"
+      && item.payload.layer?.stableId?.endsWith("_0001"));
+  const easeOps = plan.operations.filter((item) =>
+    item.command === "property.temporal_ease.set"
+      && item.payload.propertyPath?.at(-1) === "ADBE Position"
+      && item.payload.layer?.stableId?.endsWith("_0001"));
+
+  assert.equal(curveOps.length, 1);
+  assert.equal(curveOps[0].payload.keyIndex, 2);
+  assert.equal(curveOps[0].payload.interpolation.temporalAutoBezier, false);
+  assert.equal(easeOps.length, 1);
+  assert.equal(easeOps[0].payload.keyIndex, 2);
+  assert.equal(easeOps[0].payload.easeIntent.inEase.speed, 0);
+  assert.equal(easeOps[0].payload.easeIntent.outEase.speed, 0);
 });
 
 test("AE baseline refuses unstable framing evidence", () => {

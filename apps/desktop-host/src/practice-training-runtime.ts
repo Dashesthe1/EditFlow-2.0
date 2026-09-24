@@ -30,6 +30,9 @@ import {
   AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_7.js";
 import {
+  AE_TEMPORAL_EASE_ROUTE_ID_V18,
+} from "../../../packages/adapters/ae-cep/src/protocol-v1_8.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../../../packages/adapters/ae-cep/src/protocol-v2_7.js";
 import {
@@ -89,13 +92,16 @@ const routeForCommand = (
     ? AE_TIME_REMAP_ROUTE_ID_V27
     : command === "property.temporal_interpolation.set"
       ? AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17
-      : AE_ADAPTER_ROUTE_ID_V11;
+      : command === "property.temporal_ease.set"
+        ? AE_TEMPORAL_EASE_ROUTE_ID_V18
+        : AE_ADAPTER_ROUTE_ID_V11;
 
 const riskForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): RiskClass => command === "layer.set_timing"
   || command === "property.set_keyframes"
   || command === "property.temporal_interpolation.set"
+  || command === "property.temporal_ease.set"
   || command === "layer.switches.set"
   ? "R1_REVERSIBLE"
   : "R2_STRUCTURAL";
