@@ -96,6 +96,25 @@ def load_media_truth_tool():
     return module
 
 
+def load_media_match_tool():
+    script = Path(__file__).with_name("practice-media-match.py")
+    spec = importlib.util.spec_from_file_location("practice_media_match", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def finish_perceptual_signature(path, signature_provider=None):
+    if signature_provider is not None:
+        return signature_provider(Path(path))
+    media_match = load_media_match_tool()
+    reader = media_match.FrameReader(path)
+    try:
+        return media_match.perceptual_signature_from_reader(reader, reader.duration_ms)
+    finally:
+        reader.close()
+
+
 def require_plan(path):
     payload = load_json(path)
     if payload.get("schema") != POPULATION_SCHEMA:
@@ -607,7 +626,14 @@ def prepare_review_packs(
     }
 
 
-def discover_finish_candidates(plan_path, finish_dirs):
+def discover_finish_candidates(
+    plan_path,
+    finish_dirs,
+    *,
+    perceptual_screen=False,
+    recursive=True,
+    signature_provider=None,
+):
     plan = require_plan(plan_path)
     scan_dirs = []
     for value in finish_dirs or []:
@@ -619,16 +645,42 @@ def discover_finish_candidates(plan_path, finish_dirs):
         raise ValueError("At least one Finish discovery directory is required.")
 
     planned_by_sha = {}
+    planned_signatures = []
     for case in plan["cases"]:
         finish = artifact_path(case, plan_path, "finishPath")
         if finish is None or not finish.is_file():
             continue
-        planned_by_sha.setdefault(sha256_file(finish), str(case.get("caseId", "")).strip())
+        case_id = str(case.get("caseId", "")).strip()
+        finish_sha = sha256_file(finish)
+        planned_by_sha.setdefault(finish_sha, case_id)
+        if not perceptual_screen:
+            continue
+        signature = None
+        reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+        if reference_path is not None and reference_path.is_file():
+            try:
+                reference = load_json(reference_path)
+                if reference.get("schema") == REFERENCE_SCHEMA:
+                    signature = reference.get("perceptualSignature")
+            except (OSError, ValueError, json.JSONDecodeError):
+                signature = None
+        if not perceptual_signature_parts(signature):
+            try:
+                signature = finish_perceptual_signature(finish, signature_provider)
+            except Exception:
+                signature = None
+        if perceptual_signature_parts(signature):
+            planned_signatures.append({
+                "caseId": case_id,
+                "path": str(finish),
+                "signature": signature,
+            })
 
     media_paths = []
     seen_paths = set()
     for directory in scan_dirs:
-        for path in sorted(directory.iterdir(), key=lambda item: item.name.lower()):
+        iterator = directory.rglob("*") if recursive else directory.iterdir()
+        for path in sorted(iterator, key=lambda item: str(item).lower()):
             if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
                 continue
             resolved = path.resolve()
@@ -638,7 +690,7 @@ def discover_finish_candidates(plan_path, finish_dirs):
             seen_paths.add(key)
             media_paths.append(resolved)
 
-    unused = []
+    exact_unique = []
     duplicates = []
     discovered_by_sha = {}
     for path in media_paths:
@@ -664,7 +716,7 @@ def discover_finish_candidates(plan_path, finish_dirs):
             })
             continue
         discovered_by_sha[finish_sha] = str(path)
-        unused.append({
+        exact_unique.append({
             "path": str(path),
             "fileName": path.name,
             "sha256": finish_sha,
@@ -674,19 +726,101 @@ def discover_finish_candidates(plan_path, finish_dirs):
             "requiresPerceptualScreening": True,
         })
 
+    unused = []
+    perceptual_duplicates = []
+    screening_failures = []
+    accepted_signatures = []
+    for candidate in exact_unique:
+        if not perceptual_screen:
+            unused.append(candidate)
+            continue
+        try:
+            signature = finish_perceptual_signature(candidate["path"], signature_provider)
+        except Exception as exc:
+            failed = dict(candidate)
+            failed["perceptualScreeningError"] = str(exc)
+            screening_failures.append({
+                "path": candidate["path"],
+                "fileName": candidate["fileName"],
+                "reason": str(exc),
+            })
+            unused.append(failed)
+            continue
+        if not perceptual_signature_parts(signature):
+            failed = dict(candidate)
+            failed["perceptualScreeningError"] = "Finish perceptual signature is unavailable or invalid."
+            screening_failures.append({
+                "path": candidate["path"],
+                "fileName": candidate["fileName"],
+                "reason": failed["perceptualScreeningError"],
+            })
+            unused.append(failed)
+            continue
+
+        duplicate = None
+        for planned in planned_signatures:
+            similarity = perceptual_similarity(signature, planned["signature"])
+            if similarity is not None and similarity >= PERCEPTUAL_DUPLICATE_SIMILARITY:
+                duplicate = {
+                    "path": candidate["path"],
+                    "fileName": candidate["fileName"],
+                    "sha256": candidate["sha256"],
+                    "similarity": similarity,
+                    "duplicateOfCaseId": planned["caseId"],
+                    "duplicateOfCandidatePath": None,
+                }
+                break
+        if duplicate is None:
+            for accepted in accepted_signatures:
+                similarity = perceptual_similarity(signature, accepted["signature"])
+                if similarity is not None and similarity >= PERCEPTUAL_DUPLICATE_SIMILARITY:
+                    duplicate = {
+                        "path": candidate["path"],
+                        "fileName": candidate["fileName"],
+                        "sha256": candidate["sha256"],
+                        "similarity": similarity,
+                        "duplicateOfCaseId": None,
+                        "duplicateOfCandidatePath": accepted["path"],
+                    }
+                    break
+        if duplicate is not None:
+            perceptual_duplicates.append(duplicate)
+            continue
+
+        screened = dict(candidate)
+        screened["requiresPerceptualScreening"] = False
+        screened["perceptualSignature"] = signature
+        unused.append(screened)
+        accepted_signatures.append({"path": candidate["path"], "signature": signature})
+
     cases_needed = max(0, MIN_CASES - len(plan["cases"]))
+    screened_unique_count = (
+        sum(not item.get("requiresPerceptualScreening", True) for item in unused)
+        if perceptual_screen else None
+    )
     return {
         "schema": DISCOVERY_SCHEMA,
         "editTypeId": str(plan["editTypeId"]).strip(),
         "plannedCaseCount": len(plan["cases"]),
         "casesNeededForMinimum": cases_needed,
         "scanDirectories": [str(path) for path in scan_dirs],
+        "scanRecursive": bool(recursive),
         "scannedVideoCount": len(media_paths),
-        "exactUniqueUnusedFinishCount": len(unused),
+        "exactUniqueUnusedFinishCount": len(exact_unique),
         "exactDuplicateFinishCount": len(duplicates),
-        "canReachMinimumByExactUniqueFinishCount": len(unused) >= cases_needed,
+        "canReachMinimumByExactUniqueFinishCount": len(exact_unique) >= cases_needed,
+        "perceptualScreeningEnabled": bool(perceptual_screen),
+        "perceptuallyUniqueUnusedFinishCount": screened_unique_count,
+        "perceptualDuplicateFinishCount": len(perceptual_duplicates),
+        "perceptualScreeningFailureCount": len(screening_failures),
+        "canReachMinimumByScreenedUniqueFinishCount": (
+            screened_unique_count >= cases_needed
+            if screened_unique_count is not None else None
+        ),
         "candidates": unused,
         "duplicates": duplicates,
+        "perceptualDuplicates": perceptual_duplicates,
+        "perceptualScreeningFailures": screening_failures,
     }
 
 
@@ -729,6 +863,16 @@ def build_parser():
         required=True,
         help="Directory containing candidate professional Finish videos; repeat as needed.",
     )
+    discover.add_argument(
+        "--no-recursive-scan",
+        action="store_true",
+        help="Scan only the direct children of each Finish directory.",
+    )
+    discover.add_argument(
+        "--skip-perceptual-screen",
+        action="store_true",
+        help="Skip near-duplicate Finish screening; production discovery screens by default.",
+    )
     discover.add_argument("--output")
     return parser
 
@@ -747,7 +891,12 @@ def main():
             case_ids=args.case_id,
         )
     else:
-        payload = discover_finish_candidates(args.manifest, args.finish_dir)
+        payload = discover_finish_candidates(
+            args.manifest,
+            args.finish_dir,
+            perceptual_screen=not args.skip_perceptual_screen,
+            recursive=not args.no_recursive_scan,
+        )
     if args.output:
         target = Path(args.output)
         target.parent.mkdir(parents=True, exist_ok=True)

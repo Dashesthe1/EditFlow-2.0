@@ -431,6 +431,68 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertTrue(candidate["requiresSourceBinding"])
             self.assertTrue(candidate["requiresPerceptualScreening"])
 
+    def test_finish_discovery_recurses_and_perceptually_rejects_near_duplicates(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scan = root / "finish-library"
+            nested = scan / "nested"
+            nested.mkdir(parents=True)
+            case = self._base_case(root)
+            write_json(root / case["referenceAnalysis"], {
+                "schema": tool.REFERENCE_SCHEMA,
+                "referenceId": "reference:planned",
+                "perceptualSignature": perceptual_signature("0000000000000000"),
+            })
+            plan = self._plan(root, [case])
+            (nested / "near.mp4").write_bytes(b"near")
+            (nested / "distinct.mp4").write_bytes(b"distinct")
+
+            signatures = {
+                "near.mp4": perceptual_signature("0000000000000001"),
+                "distinct.mp4": perceptual_signature("ffffffffffffffff"),
+            }
+            result = tool.discover_finish_candidates(
+                plan,
+                [scan],
+                perceptual_screen=True,
+                signature_provider=lambda path: signatures[path.name],
+            )
+
+            self.assertTrue(result["scanRecursive"])
+            self.assertTrue(result["perceptualScreeningEnabled"])
+            self.assertEqual(result["scannedVideoCount"], 2)
+            self.assertEqual(result["exactUniqueUnusedFinishCount"], 2)
+            self.assertEqual(result["perceptualDuplicateFinishCount"], 1)
+            self.assertEqual(result["perceptualScreeningFailureCount"], 0)
+            self.assertEqual(result["perceptuallyUniqueUnusedFinishCount"], 1)
+            self.assertEqual(result["candidates"][0]["fileName"], "distinct.mp4")
+            self.assertFalse(result["candidates"][0]["requiresPerceptualScreening"])
+            duplicate = result["perceptualDuplicates"][0]
+            self.assertEqual(duplicate["fileName"], "near.mp4")
+            self.assertEqual(duplicate["duplicateOfCaseId"], case["caseId"])
+            self.assertGreaterEqual(duplicate["similarity"], tool.PERCEPTUAL_DUPLICATE_SIMILARITY)
+
+    def test_finish_discovery_fails_closed_when_perceptual_screening_cannot_read_media(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scan = root / "finish-library"
+            scan.mkdir()
+            case = self._base_case(root)
+            plan = self._plan(root, [case])
+            (scan / "unreadable.mp4").write_bytes(b"candidate")
+
+            result = tool.discover_finish_candidates(
+                plan,
+                [scan],
+                perceptual_screen=True,
+                signature_provider=lambda _path: (_ for _ in ()).throw(RuntimeError("decode failed")),
+            )
+
+            self.assertEqual(result["perceptualScreeningFailureCount"], 1)
+            self.assertEqual(result["perceptuallyUniqueUnusedFinishCount"], 0)
+            self.assertTrue(result["candidates"][0]["requiresPerceptualScreening"])
+            self.assertIn("decode failed", result["candidates"][0]["perceptualScreeningError"])
+
     def test_complete_single_case_reaches_corpus_ready_without_certifying_population(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
