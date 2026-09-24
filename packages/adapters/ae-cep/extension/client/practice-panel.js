@@ -67,9 +67,8 @@
   }
 
   function selectedPracticeRole() {
-    return practiceRoleEl && practiceRoleEl.value === "HELD_OUT_CERTIFICATION"
-      ? "HELD_OUT_CERTIFICATION"
-      : "LEARNING";
+    if (!practiceRoleEl) return "AUTO";
+    return practiceRoleEl.value || "AUTO";
   }
 
   function selectedEditTypeMaturity() {
@@ -77,17 +76,33 @@
     return option ? option.getAttribute("data-maturity") || "UNPROVEN" : "UNPROVEN";
   }
 
+  function transferVerifiedReady() {
+    return ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(selectedEditTypeMaturity()) >= 0;
+  }
+
+  function effectivePracticeRole() {
+    var selected = selectedPracticeRole();
+    if (selected !== "AUTO") return selected;
+    return transferVerifiedReady() ? "HELD_OUT_CERTIFICATION" : "LEARNING";
+  }
+
   function heldOutReady() {
     if (selectedPracticeRole() !== "HELD_OUT_CERTIFICATION") return true;
-    return ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(selectedEditTypeMaturity()) >= 0;
+    return transferVerifiedReady();
   }
 
   function updatePracticeRoleUi() {
     if (!practiceRoleEl || !practiceRoleHintEl) return;
-    var heldOut = selectedPracticeRole() === "HELD_OUT_CERTIFICATION";
-    practiceRoleHintEl.textContent = heldOut
-      ? "Certification freezes transfer-verified knowledge: no research, new skills, or retained lessons. Failed machine-proven cases remain in the benchmark."
-      : "Learning may research, correct, and retain proven lessons under the selected Edit Type.";
+    var selected = selectedPracticeRole();
+    var effective = effectivePracticeRole();
+    var heldOut = effective === "HELD_OUT_CERTIFICATION";
+    practiceRoleHintEl.textContent = selected === "AUTO"
+      ? (heldOut
+        ? "Automatic progression: TRANSFER VERIFIED knowledge is frozen. The next Practice run is a held-out certification on genuinely unseen Finish/Start material."
+        : "Automatic progression: continue learning and machine-verifying new reconstructions until a materially different pair promotes this Edit Type to TRANSFER VERIFIED.")
+      : heldOut
+        ? "Forced certification freezes transfer-verified knowledge: no research, new skills, or retained lessons. Failed machine-proven cases remain in the benchmark."
+        : "Forced learning may research, correct, and retain proven lessons under the selected Edit Type.";
     if (mode === "PRACTICE") {
       actionEl.textContent = heldOut ? "Run held-out certification" : "Proceed to do homework";
     }
@@ -188,6 +203,7 @@
       editTypeEl.appendChild(option);
     });
     if (selected) editTypeEl.value = selected;
+    updatePracticeRoleUi();
     updateAction();
   }
 
@@ -329,9 +345,10 @@
     var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
       .map(function (item) { return item.path; });
     metricsEl.hidden = true;
+    var effectiveRole = effectivePracticeRole();
     setRunState(
       "WAITING_FOR_GPT",
-      selectedPracticeRole() === "HELD_OUT_CERTIFICATION"
+      effectiveRole === "HELD_OUT_CERTIFICATION"
         ? "Validating unseen media and creating a frozen held-out certification assignment…"
         : "Validating media and creating a GPT Practice learning assignment…"
     );
@@ -350,7 +367,7 @@
       updateAction();
       setRunState(
         "WAITING_FOR_GPT",
-        selectedPracticeRole() === "HELD_OUT_CERTIFICATION"
+        value.run.practiceRole === "HELD_OUT_CERTIFICATION"
           ? "Held-out certification assignment created with frozen transfer-verified knowledge. Waiting for GPT to claim it."
           : "Practice learning assignment created. Waiting for GPT to claim it."
       );
@@ -409,7 +426,10 @@
     });
   });
 
-  editTypeEl.addEventListener("change", updateAction);
+  editTypeEl.addEventListener("change", function () {
+    updatePracticeRoleUi();
+    updateAction();
+  });
   practiceRoleEl.addEventListener("change", function () {
     updatePracticeRoleUi();
     if (selectedPracticeRole() === "HELD_OUT_CERTIFICATION" && !heldOutReady()) {
@@ -417,7 +437,7 @@
     } else if (!activeRunId && mode === "PRACTICE") {
       setRunState(
         "IDLE",
-        selectedPracticeRole() === "HELD_OUT_CERTIFICATION"
+        effectivePracticeRole() === "HELD_OUT_CERTIFICATION"
           ? "Choose an unseen finished reference and raw source media. This run will use frozen transfer-verified knowledge only."
           : "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
       );

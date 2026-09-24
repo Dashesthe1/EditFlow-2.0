@@ -90,7 +90,7 @@ export interface PracticePanelRunSnapshotV1 {
 interface PracticeRunBody {
   readonly editTypeId: string;
   readonly editTypeTitle?: string;
-  readonly practiceRole: PracticeRunRoleV1;
+  readonly practiceRole: PracticeRunRoleV1 | null;
   readonly finishPath: string;
   readonly videoPaths: readonly string[];
   readonly audioPaths?: readonly string[];
@@ -106,6 +106,12 @@ interface ProCreationBody {
   readonly videoPaths: readonly string[];
   readonly audioPaths?: readonly string[];
 }
+
+export const resolvePracticeRunRoleV1 = (
+  requestedRole: PracticeRunRoleV1 | null,
+  transferVerified: boolean,
+): PracticeRunRoleV1 => requestedRole
+  ?? (transferVerified ? "HELD_OUT_CERTIFICATION" : "LEARNING");
 
 class HttpError extends Error {
   readonly status: number;
@@ -561,11 +567,18 @@ export class PracticePanelServerV1 {
         .map((value) => ensureFile(value, "Start audio")),
     );
     const editTypeTitle = optionalString(body, "editTypeTitle");
-    const practiceRoleValue = optionalString(body, "practiceRole") ?? "LEARNING";
-    if (practiceRoleValue !== "LEARNING" && practiceRoleValue !== "HELD_OUT_CERTIFICATION") {
-      throw new HttpError(400, "practiceRole must be LEARNING or HELD_OUT_CERTIFICATION.");
+    const practiceRoleValue = optionalString(body, "practiceRole") ?? "AUTO";
+    if (practiceRoleValue !== "AUTO"
+      && practiceRoleValue !== "LEARNING"
+      && practiceRoleValue !== "HELD_OUT_CERTIFICATION") {
+      throw new HttpError(
+        400,
+        "practiceRole must be AUTO, LEARNING, or HELD_OUT_CERTIFICATION.",
+      );
     }
-    const practiceRole = practiceRoleValue as PracticeRunRoleV1;
+    const practiceRole = practiceRoleValue === "AUTO"
+      ? null
+      : practiceRoleValue as PracticeRunRoleV1;
     const minimumSimilarity = optionalNumber(body, "minimumSimilarity", 0, 1);
     const stretchSimilarity = optionalNumber(body, "stretchSimilarity", 0, 1);
     const maxAttempts = optionalNumber(body, "maxAttempts", 1, 20, true);
@@ -624,10 +637,15 @@ export class PracticePanelServerV1 {
       this.config.artifactDir,
       sessionId.replace(/[:]/g, "-"),
     );
-    const knowledge = request.practiceRole === "HELD_OUT_CERTIFICATION"
-      ? registry.transferableKnowledge(editType.editTypeId)
+    const transferableKnowledge = registry.transferableKnowledge(editType.editTypeId);
+    const practiceRole = resolvePracticeRunRoleV1(
+      request.practiceRole,
+      transferableKnowledge !== null,
+    );
+    const knowledge = practiceRole === "HELD_OUT_CERTIFICATION"
+      ? transferableKnowledge
       : registry.knowledge(editType.editTypeId);
-    if (request.practiceRole === "HELD_OUT_CERTIFICATION" && knowledge === null) {
+    if (practiceRole === "HELD_OUT_CERTIFICATION" && knowledge === null) {
       throw new HttpError(
         409,
         "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
@@ -636,7 +654,7 @@ export class PracticePanelServerV1 {
     const assignment = await this.#gptStore.createAssignment({
       sessionId,
       mode: "PRACTICE",
-      practiceRole: request.practiceRole,
+      practiceRole,
       editTypeId: editType.editTypeId,
       finish,
       start,
@@ -654,7 +672,7 @@ export class PracticePanelServerV1 {
       artifactDir,
       knowledge,
     });
-    if (request.practiceRole === "LEARNING") {
+    if (practiceRole === "LEARNING") {
       registry.beginGptLearningSession(editType.editTypeId, sessionId, "PRACTICE");
       await editTypesFile.save(registry);
     }
@@ -663,7 +681,7 @@ export class PracticePanelServerV1 {
       sessionId,
       assignmentId: assignment.assignmentId,
       mode: "PRACTICE",
-      practiceRole: request.practiceRole,
+      practiceRole,
       editTypeId: editType.editTypeId,
       state: "WAITING_FOR_GPT",
       stage: null,

@@ -128,3 +128,43 @@ test("shared held-out recorder rejects unverified or mismatched certification", 
     /proof session/,
   );
 });
+
+test("held-out certification rejects training and repeated material fingerprints", () => {
+  const editTypeId = "held-out-novelty";
+  const registry = transferVerifiedRegistry(editTypeId);
+  const overlapSession = "practice:held-out:training-overlap";
+  assert.throws(
+    () => recordPracticeHeldOutCertificationV1({
+      registry,
+      editTypeId,
+      sessionId: overlapSession,
+      proof: {
+        ...proof(overlapSession, editTypeId),
+        referenceFingerprint: "reference:training",
+      },
+      proofRef: "proof:training-overlap",
+    }),
+    /overlaps retained Practice training material/,
+  );
+
+  const firstSession = "practice:held-out:novel-001";
+  recordPracticeHeldOutCertificationV1({
+    registry,
+    editTypeId,
+    sessionId: firstSession,
+    proof: proof(firstSession, editTypeId),
+    proofRef: "proof:novel-001",
+  });
+
+  const repeatedSession = "practice:held-out:novel-002";
+  assert.throws(
+    () => recordPracticeHeldOutCertificationV1({
+      registry,
+      editTypeId,
+      sessionId: repeatedSession,
+      proof: proof(repeatedSession, editTypeId),
+      proofRef: "proof:novel-002",
+    }),
+    /novel reference and source fingerprints/,
+  );
+});
