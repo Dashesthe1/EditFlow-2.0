@@ -1,5 +1,6 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import {
   createServer,
@@ -25,6 +26,7 @@ import {
   type GptOrchestrationModeV1,
   type GptResearchSourceV1,
   type GptSkillCausalModelV1,
+  type PracticeHeldOutBenchmarkCaseV1,
   type PracticeLearningAllocationResultV1,
   type PracticeMasteryRecordV1,
   type PracticeMasteryScopeV1,
@@ -128,6 +130,86 @@ export const resolvePracticeRunRoleV1 = (
   transferVerified: boolean,
 ): PracticeRunRoleV1 => requestedRole
   ?? (transferVerified ? "HELD_OUT_CERTIFICATION" : "LEARNING");
+
+export interface PracticeHeldOutMaterialFingerprintV1 {
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly sourceMediaSha256: readonly string[];
+  readonly duplicateStartMedia: boolean;
+}
+
+const sha256FileStream = async (filePath: string): Promise<string> =>
+  await new Promise<string>((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+
+const sourceSetFingerprintFromSha256V1 = (
+  sourceMediaSha256: readonly string[],
+): string => {
+  const identities = [...new Set(sourceMediaSha256)]
+    .sort()
+    .map((value) => "source-video:sha256:" + value);
+  return createHash("sha256").update(identities.join("\n"), "utf8").digest("hex");
+};
+
+export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
+  readonly finishPath: string;
+  readonly videoPaths: readonly string[];
+}): Promise<PracticeHeldOutMaterialFingerprintV1> => {
+  const referenceFingerprint = await sha256FileStream(input.finishPath);
+  const rawSourceHashes: string[] = [];
+  for (const videoPath of input.videoPaths) {
+    rawSourceHashes.push(await sha256FileStream(videoPath));
+  }
+  const sourceMediaSha256 = [...new Set(rawSourceHashes)].sort();
+  if (sourceMediaSha256.length === 0) {
+    throw new TypeError("Held-out certification requires at least one Start video.");
+  }
+  return {
+    referenceFingerprint,
+    sourceFingerprint: sourceSetFingerprintFromSha256V1(sourceMediaSha256),
+    sourceMediaSha256,
+    duplicateStartMedia: sourceMediaSha256.length !== rawSourceHashes.length,
+  };
+};
+
+export const validatePracticeHeldOutMaterialNoveltyV1 = (input: {
+  readonly material: PracticeHeldOutMaterialFingerprintV1;
+  readonly masteryRecords: readonly PracticeMasteryRecordV1[];
+  readonly heldOutCases: readonly PracticeHeldOutBenchmarkCaseV1[];
+}): readonly string[] => {
+  const reasons: string[] = [];
+  const currentSources = new Set(input.material.sourceMediaSha256);
+  if (input.material.duplicateStartMedia) {
+    reasons.push("Held-out Start inputs contain duplicate media bytes.");
+  }
+  const sourceOverlap = (values: readonly string[] | undefined): boolean =>
+    (values ?? []).some((value) => currentSources.has(value));
+
+  for (const record of input.masteryRecords) {
+    if (record.referenceFingerprint === input.material.referenceFingerprint) {
+      reasons.push("Finish reference reuses retained Practice training media.");
+    }
+    if (record.sourceFingerprint === input.material.sourceFingerprint
+      || sourceOverlap(record.sourceMediaSha256)) {
+      reasons.push("Start source reuses retained Practice training media.");
+    }
+  }
+  for (const heldOutCase of input.heldOutCases) {
+    if (heldOutCase.referenceFingerprint === input.material.referenceFingerprint) {
+      reasons.push("Finish reference reuses prior held-out certification media.");
+    }
+    if (heldOutCase.sourceFingerprint === input.material.sourceFingerprint
+      || sourceOverlap(heldOutCase.sourceMediaSha256)) {
+      reasons.push("Start source reuses prior held-out certification media.");
+    }
+  }
+  return [...new Set(reasons)];
+};
 
 class HttpError extends Error {
   readonly status: number;
@@ -752,6 +834,28 @@ export class PracticePanelServerV1 {
         "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
       );
     }
+    if (practiceRole === "HELD_OUT_CERTIFICATION") {
+      const retained = registry.knowledge(editType.editTypeId);
+      if (retained === null) {
+        throw new HttpError(409, "Held-out certification lost its retained Edit Type knowledge.");
+      }
+      const material = await fingerprintPracticeHeldOutMaterialV1({
+        finishPath: request.finishPath,
+        videoPaths: request.videoPaths,
+      });
+      const noveltyReasons = validatePracticeHeldOutMaterialNoveltyV1({
+        material,
+        masteryRecords: retained.gptLearning.masteryRecords,
+        heldOutCases: retained.gptLearning.heldOutCases,
+      });
+      if (noveltyReasons.length > 0) {
+        throw new HttpError(
+          409,
+          "Held-out certification requires genuinely unseen Finish/Start media. "
+            + noveltyReasons.join(" "),
+        );
+      }
+    }
     const assignment = await this.#gptStore.createAssignment({
       sessionId,
       mode: "PRACTICE",
@@ -1141,6 +1245,9 @@ export class PracticePanelServerV1 {
               sourceIndexId: verification.proof.sourceIndexId,
               referenceFingerprint: verification.proof.referenceFingerprint,
               sourceFingerprint: verification.proof.sourceFingerprint,
+              ...(verification.proof.sourceMediaSha256 === undefined
+                ? {}
+                : { sourceMediaSha256: [...verification.proof.sourceMediaSha256] }),
               finalRenderRef: verification.proof.finalRenderRef,
               overallSimilarity: verification.proof.report.overallSimilarity,
               definingEffectCoverage: verification.proof.report.definingEffectCoverage,

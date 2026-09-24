@@ -49,6 +49,7 @@ const masteryRecord = (sessionId) => ({
   sourceIndexId: "source-index:training",
   referenceFingerprint: "reference:training",
   sourceFingerprint: "source:training",
+  sourceMediaSha256: ["sha256:training-source"],
   finalRenderRef: "render:training",
   overallSimilarity: 0.98,
   definingEffectCoverage: 1,
@@ -63,6 +64,7 @@ const proof = (sessionId, editTypeId) => ({
   sourceIndexId: "source-index:held-out",
   referenceFingerprint: "reference:held-out",
   sourceFingerprint: "source:held-out",
+  sourceMediaSha256: ["sha256:held-out-source"],
   finalRenderRef: "render:held-out",
   minimumSimilarity: 0.95,
   exactSceneConfidence: 0.95,
@@ -213,6 +215,22 @@ test("held-out certification rejects training and repeated material fingerprints
         referenceFingerprint: "reference:training",
       },
       proofRef: "proof:training-overlap",
+    }),
+    /overlaps retained Practice training material/,
+  );
+
+  const sourceOverlapSession = "practice:held-out:source-overlap";
+  assert.throws(
+    () => recordPracticeHeldOutCertificationV1({
+      registry,
+      editTypeId,
+      sessionId: sourceOverlapSession,
+      proof: {
+        ...proof(sourceOverlapSession, editTypeId),
+        sourceFingerprint: "source:different-aggregate",
+        sourceMediaSha256: ["sha256:training-source", "sha256:extra-source"],
+      },
+      proofRef: "proof:source-overlap",
     }),
     /overlaps retained Practice training material/,
   );

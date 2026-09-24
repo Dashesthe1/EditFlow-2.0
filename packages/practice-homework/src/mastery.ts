@@ -73,6 +73,9 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     sessionId: input.sessionId,
     referenceFingerprint: input.proof.referenceFingerprint,
     sourceFingerprint: input.proof.sourceFingerprint,
+    ...(input.proof.sourceMediaSha256 === undefined
+      ? {}
+      : { sourceMediaSha256: [...input.proof.sourceMediaSha256] }),
     effectFamilyIds: [...input.proof.effectFamilyIds],
     objectAwareVerified: objectAwareRequired
       && input.proof.objectAwareProof!.verified

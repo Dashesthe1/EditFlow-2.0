@@ -402,6 +402,7 @@ export interface PracticeMasteryProofV1 {
   readonly sourceIndexId: string;
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
+  readonly sourceMediaSha256?: readonly string[];
   readonly finalRenderRef: string;
   readonly minimumSimilarity: number;
   readonly exactSceneConfidence: number;
@@ -530,6 +531,7 @@ export interface PracticeMasteryRecordV1 {
   readonly sourceIndexId: string;
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
+  readonly sourceMediaSha256?: readonly string[];
   readonly finalRenderRef: string;
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
@@ -542,6 +544,7 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly sessionId: string;
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
+  readonly sourceMediaSha256?: readonly string[];
   readonly effectFamilyIds: readonly string[];
   readonly objectAwareVerified: boolean;
   readonly overallSimilarity: number;

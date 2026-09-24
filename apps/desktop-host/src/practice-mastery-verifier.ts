@@ -50,17 +50,23 @@ const oneEvidenceFingerprint = (
   return values[0]!;
 };
 
+export const practiceSourceMediaSha256FromMatchesV1 = (
+  matches: readonly PracticeSceneMatchV1[],
+): readonly string[] => [...unique(
+  matches
+    .flatMap((match) => match.evidenceRefs)
+    .filter((ref) => ref.startsWith("source-video:sha256:"))
+    .map((ref) => ref.slice("source-video:sha256:".length)),
+)].sort();
+
 const sourceSetFingerprint = (
   matches: readonly PracticeSceneMatchV1[],
 ): string => {
-  const identities = [...unique(
-    matches
-      .flatMap((match) => match.evidenceRefs)
-      .filter((ref) => ref.startsWith("source-video:sha256:")),
-  )].sort();
-  if (identities.length === 0) {
+  const sourceMediaSha256 = practiceSourceMediaSha256FromMatchesV1(matches);
+  if (sourceMediaSha256.length === 0) {
     throw new TypeError("Practice mastery requires content-addressed Start video evidence.");
   }
+  const identities = sourceMediaSha256.map((value) => "source-video:sha256:" + value);
   return createHash("sha256").update(identities.join("\n"), "utf8").digest("hex");
 };
 
@@ -329,6 +335,7 @@ export class PracticeMasteryVerifierV1 {
       "video:sha256:",
       "Finish reference",
     );
+    const sourceMediaSha256 = practiceSourceMediaSha256FromMatchesV1(matches);
     const sourceFingerprint = sourceSetFingerprint(matches);
 
     const content = await analyzer.compareContentStructure({
@@ -478,6 +485,7 @@ export class PracticeMasteryVerifierV1 {
       sourceIndexId: sourceIndex.indexId,
       referenceFingerprint,
       sourceFingerprint,
+      sourceMediaSha256,
       finalRenderRef,
       minimumSimilarity,
       exactSceneConfidence,

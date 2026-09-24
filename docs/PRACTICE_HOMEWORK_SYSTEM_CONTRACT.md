@@ -106,10 +106,16 @@ Normal Practice defaults to an AUTO lifecycle. Before transfer verification, AUT
 to LEARNING so GPT can research, reconstruct, diagnose, revise, and retain machine-proven
 lessons. Once a materially different Finish/source pair passes and promotes the Edit Type
 to TRANSFER_VERIFIED, AUTO resolves subsequent Practice runs to HELD_OUT_CERTIFICATION.
-Those runs freeze the transfer-verified knowledge snapshot and reject Finish or source
-fingerprints that overlap training mastery material or an earlier held-out case. Explicit
-LEARNING and HELD_OUT_CERTIFICATION overrides remain available for deliberate development
-or certification work, but the normal panel path does not require manual lifecycle choice.
+Those runs freeze the transfer-verified knowledge snapshot. Before a held-out GPT assignment
+is created, the panel streams SHA-256 over the selected Finish and Start files and rejects
+exact Finish reuse, exact legacy source-set reuse, duplicate Start media, or any individual
+Start video whose retained SHA-256 overlaps training mastery material or an earlier held-out
+case. New mastery proofs retain the individual Start-video SHA-256 identities in addition to
+the aggregate source-set fingerprint, so adding unrelated footage cannot disguise reuse of a
+training source. The post-render certification gate repeats the retained fingerprint checks.
+Explicit LEARNING and HELD_OUT_CERTIFICATION overrides remain available for deliberate
+development or certification work, but the normal panel path does not require manual
+lifecycle choice.
 
 The standalone Current-AE proof runner can execute the same held-out certification path
 as the Practice panel. By default both surfaces resolve one worktree-independent persistent

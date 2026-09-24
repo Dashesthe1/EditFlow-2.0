@@ -459,15 +459,20 @@ export class EditTypeRegistryV1 {
       throw new TypeError("Held-out certification requires retained machine evidence, including failed cases.");
     }
     const learning = normalizedGptLearning(profile.gptLearning);
+    const itemSourceMediaSha256 = new Set(item.sourceMediaSha256 ?? []);
+    const overlapsSourceMedia = (values: readonly string[] | undefined): boolean =>
+      (values ?? []).some((value) => itemSourceMediaSha256.has(value));
     if (learning.masteryRecords.some((record) =>
       record.referenceFingerprint === item.referenceFingerprint
-      || record.sourceFingerprint === item.sourceFingerprint)) {
+      || record.sourceFingerprint === item.sourceFingerprint
+      || overlapsSourceMedia(record.sourceMediaSha256))) {
       throw new TypeError("Held-out certification material overlaps retained Practice training material.");
     }
     const retained = learning.heldOutCases.filter((existing) => existing.sessionId !== item.sessionId);
     if (retained.some((existing) =>
       existing.referenceFingerprint === item.referenceFingerprint
-      || existing.sourceFingerprint === item.sourceFingerprint)) {
+      || existing.sourceFingerprint === item.sourceFingerprint
+      || overlapsSourceMedia(existing.sourceMediaSha256))) {
       throw new TypeError("Held-out certification requires novel reference and source fingerprints per case.");
     }
     if (retained.length >= 30) {
