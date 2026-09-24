@@ -526,6 +526,98 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
         self.assertIs(result, rescue)
         self.assertEqual(len(low_calls), 1)
 
+    def test_strict_orb_runs_only_after_sift_paths_fail_certification(self):
+        weak = self._evidence(0.50, 4, 0.40, 0.64)
+        orb_rescue = self._evidence(0.88, 18, 0.72, 0.80)
+        originals = (
+            matcher.normalized_rescue_frame,
+            matcher.softened_rescue_frame,
+            matcher.feature_match_evidence,
+            matcher.low_contrast_feature_match_evidence,
+            matcher.orb_feature_match_evidence,
+        )
+        orb_calls = []
+        try:
+            matcher.normalized_rescue_frame = lambda frame: ("base", frame)
+            matcher.softened_rescue_frame = lambda frame: ("soft", frame)
+            matcher.feature_match_evidence = lambda _ref, _src: dict(weak)
+            matcher.low_contrast_feature_match_evidence = lambda _ref, _src: dict(weak)
+            matcher.orb_feature_match_evidence = lambda ref, src: (
+                orb_calls.append((ref, src)) or orb_rescue
+            )
+            result = matcher.effect_tolerant_feature_match_evidence("ref", "src")
+        finally:
+            (
+                matcher.normalized_rescue_frame,
+                matcher.softened_rescue_frame,
+                matcher.feature_match_evidence,
+                matcher.low_contrast_feature_match_evidence,
+                matcher.orb_feature_match_evidence,
+            ) = originals
+
+        self.assertIs(result, orb_rescue)
+        self.assertEqual(result["effectFeatureMode"], "CLAHE_ORB_V1")
+        self.assertEqual(len(orb_calls), 1)
+        self.assertTrue(matcher.orb_rescue_certifiable(result))
+
+    def test_certifiable_low_contrast_path_skips_orb(self):
+        weak = self._evidence(0.50, 4, 0.40, 0.64)
+        low_rescue = self._evidence(0.82, 10, 0.66, 0.79)
+        originals = (
+            matcher.normalized_rescue_frame,
+            matcher.softened_rescue_frame,
+            matcher.feature_match_evidence,
+            matcher.low_contrast_feature_match_evidence,
+            matcher.orb_feature_match_evidence,
+        )
+        orb_calls = []
+        try:
+            matcher.normalized_rescue_frame = lambda frame: ("base", frame)
+            matcher.softened_rescue_frame = lambda frame: ("soft", frame)
+            matcher.feature_match_evidence = lambda _ref, _src: dict(weak)
+            matcher.low_contrast_feature_match_evidence = lambda _ref, _src: low_rescue
+            matcher.orb_feature_match_evidence = lambda ref, src: orb_calls.append((ref, src))
+            result = matcher.effect_tolerant_feature_match_evidence("ref", "src")
+        finally:
+            (
+                matcher.normalized_rescue_frame,
+                matcher.softened_rescue_frame,
+                matcher.feature_match_evidence,
+                matcher.low_contrast_feature_match_evidence,
+                matcher.orb_feature_match_evidence,
+            ) = originals
+
+        self.assertIs(result, low_rescue)
+        self.assertEqual(result["effectFeatureMode"], "CLAHE_LOW_CONTRAST_SIFT_V1")
+        self.assertEqual(orb_calls, [])
+
+    def test_orb_extractor_certifies_heavy_trail_blur_identity(self):
+        source = self._synthetic_scene(57)
+        shifted = []
+        for offset in (12, 24, 36):
+            matrix = np.float32([[1, 0, offset], [0, 1, 0]])
+            shifted.append(matcher.cv2.warpAffine(
+                source,
+                matrix,
+                (640, 360),
+                borderMode=matcher.cv2.BORDER_REFLECT,
+            ))
+        reference = np.clip(
+            0.45 * source.astype(np.float32)
+            + 0.25 * shifted[0].astype(np.float32)
+            + 0.18 * shifted[1].astype(np.float32)
+            + 0.12 * shifted[2].astype(np.float32),
+            0,
+            255,
+        ).astype(np.uint8)
+        reference = matcher.cv2.GaussianBlur(reference, (0, 0), 4.5)
+        reference = np.clip(reference.astype(np.float32) * 0.14 + 92.0, 0, 255).astype(np.uint8)
+        evidence = matcher.orb_feature_match_evidence(
+            matcher.normalized_rescue_frame(reference),
+            matcher.normalized_rescue_frame(source),
+        )
+        self.assertTrue(matcher.orb_rescue_certifiable(evidence), evidence)
+
     def test_low_contrast_extractor_recovers_trail_blur_identity(self):
         source = self._synthetic_scene(31)
         attempts = []
