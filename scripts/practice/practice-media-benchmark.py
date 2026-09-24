@@ -11,6 +11,9 @@ SUITE_SCHEMA = "editflow.practice-media-benchmark-suite.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 REPORT_SCHEMA = "editflow.practice-media-benchmark-report.v1"
 DEFAULT_CONFIDENCE = 0.95
+MIN_CERTIFIED_CASES = 20
+MIN_DISTINCT_CERTIFIED_REFERENCES = 20
+RECOMMENDED_MAX_CERTIFICATION_CASES = 30
 
 
 def clamp01(value):
@@ -418,6 +421,66 @@ def run_case(matcher, case, base_dir, output_root):
     return result
 
 
+def summarize_suite(results):
+    results = list(results or [])
+    case_count = len(results)
+    pass_count = sum(1 for item in results if item.get("status") == "PASS")
+    fail_count = sum(1 for item in results if item.get("status") == "FAIL")
+    measure_only_count = sum(
+        1 for item in results if item.get("status") == "MEASURE_ONLY"
+    )
+    benchmark_ids = [
+        str(item.get("benchmarkId", "")).strip()
+        for item in results
+    ]
+    reference_ids = [
+        str(item.get("referenceId", "")).strip()
+        for item in results
+    ]
+    distinct_benchmark_ids = sorted({item for item in benchmark_ids if item})
+    distinct_reference_ids = sorted({item for item in reference_ids if item})
+
+    reasons = []
+    if case_count < MIN_CERTIFIED_CASES:
+        reasons.append(
+            f"caseCount {case_count} is below the generalization floor "
+            f"of {MIN_CERTIFIED_CASES}."
+        )
+    if len(distinct_reference_ids) < MIN_DISTINCT_CERTIFIED_REFERENCES:
+        reasons.append(
+            "distinctReferenceCount "
+            f"{len(distinct_reference_ids)} is below the generalization floor "
+            f"of {MIN_DISTINCT_CERTIFIED_REFERENCES}."
+        )
+    if len(distinct_benchmark_ids) != case_count:
+        reasons.append("Benchmark IDs must be unique across the certification suite.")
+    if fail_count:
+        reasons.append(f"{fail_count} benchmark case(s) failed retained truth gates.")
+    if measure_only_count:
+        reasons.append(
+            f"{measure_only_count} benchmark case(s) are MEASURE_ONLY and cannot certify."
+        )
+    if pass_count != case_count:
+        reasons.append("Every certification case must finish with PASS status.")
+
+    certified = bool(results) and not reasons
+    return {
+        "caseCount": case_count,
+        "passCount": pass_count,
+        "failCount": fail_count,
+        "measureOnlyCount": measure_only_count,
+        "certified": certified,
+        "generalizationGate": {
+            "minimumCaseCount": MIN_CERTIFIED_CASES,
+            "recommendedMaximumCaseCount": RECOMMENDED_MAX_CERTIFICATION_CASES,
+            "minimumDistinctReferenceCount": MIN_DISTINCT_CERTIFIED_REFERENCES,
+            "distinctBenchmarkCount": len(distinct_benchmark_ids),
+            "distinctReferenceCount": len(distinct_reference_ids),
+            "reasons": reasons,
+        },
+    }
+
+
 def run_suite(manifest_path, output_root):
     manifest_path = Path(manifest_path).resolve()
     suite = load_json(manifest_path)
@@ -439,13 +502,7 @@ def run_suite(manifest_path, output_root):
             raise RuntimeError(
                 "Practice matcher changed during the benchmark; retained artifacts are invalid."
             )
-    summary = {
-        "caseCount": len(results),
-        "passCount": sum(1 for item in results if item["status"] == "PASS"),
-        "failCount": sum(1 for item in results if item["status"] == "FAIL"),
-        "measureOnlyCount": sum(1 for item in results if item["status"] == "MEASURE_ONLY"),
-        "certified": bool(results) and all(item["status"] == "PASS" for item in results),
-    }
+    summary = summarize_suite(results)
     return {
         "schema": REPORT_SCHEMA,
         "suiteId": str(suite.get("suiteId", manifest_path.stem)),

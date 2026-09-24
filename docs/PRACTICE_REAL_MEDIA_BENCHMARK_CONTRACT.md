@@ -45,6 +45,14 @@ The default certification gates are intentionally strict:
 - 100% of truth-labeled shots at or above the 0.95 retained-confidence gate;
 - zero high-confidence false scene claims.
 
+Passing one case is not enough to certify Practice generalization. Suite-level certification also
+requires at least 20 truth-retained cases, at least 20 distinct Finish reference identities, unique
+benchmark IDs, and PASS status for every case. A 20-30 case retained suite is the normal maturity
+target; more than 30 cases are allowed and remain certifiable. Repeating the same Finish reference
+under different case IDs cannot satisfy the breadth gate, and any `MEASURE_ONLY` or failed case keeps
+`summary.certified` false. The report records the observed breadth and exact blocking reasons under
+`summary.generalizationGate`.
+
 Per-shot timing uses interval overlap plus an explicit boundary-error tolerance. A truth row can
 override `toleranceMs` and `minimumIou` when a speed-ramped or transformed shot requires a
 different retained tolerance.
