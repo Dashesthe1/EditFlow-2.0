@@ -151,8 +151,16 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
         runner_up = item("source-b", 200.0, 200.0, 0.75, 0.75)
         original = matcher.mapping_geometric_proof
 
-        def full_proof(_shot, mapping, _reference_reader, _source_reader, max_anchors=None):
+        def full_proof(
+            _shot,
+            mapping,
+            _reference_reader,
+            _source_reader,
+            max_anchors=None,
+            normalize_for_effects=False,
+        ):
             self.assertIsNone(max_anchors)
+            self.assertFalse(normalize_for_effects)
             if float(mapping["centerSourceMs"]) == 100.0:
                 return {
                     "anchorCount": 6,
@@ -186,6 +194,64 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
             matcher.candidate_rank_score(best["mapping"]),
             matcher.candidate_rank_score(second["mapping"]),
         )
+
+    def test_rescue_finalist_receives_full_effect_normalized_geometry(self):
+        rescue = {
+            "index": {
+                "sourceId": "source-a",
+                "analysis": {"sampleStepMs": 250.0},
+            },
+            "sample": {"timeMs": 100.0},
+            "mapping": {
+                "score": 0.86,
+                "appearance": 0.78,
+                "consistency": 0.92,
+                "slope": 1.0,
+                "centerSourceMs": 100.0,
+                "rescueScore": 0.86,
+                "geometricProof": {
+                    "anchorCount": 3,
+                    "strongAnchorCount": 2,
+                    "strongAnchorFraction": 2.0 / 3.0,
+                    "meanSupport": 0.82,
+                },
+            },
+        }
+        original = matcher.mapping_geometric_proof
+        calls = []
+
+        def full_proof(
+            _shot,
+            _mapping,
+            _reference_reader,
+            _source_reader,
+            max_anchors=None,
+            normalize_for_effects=False,
+        ):
+            self.assertIsNone(max_anchors)
+            calls.append(normalize_for_effects)
+            return {
+                "anchorCount": 6,
+                "strongAnchorCount": 4,
+                "strongAnchorFraction": 4.0 / 6.0,
+                "meanSupport": 0.84,
+            }
+
+        try:
+            matcher.mapping_geometric_proof = full_proof
+            ordered = matcher.finalize_candidate_geometry(
+                {"shotId": "shot:rescue"},
+                [rescue],
+                object(),
+                {"source-a": object()},
+            )
+        finally:
+            matcher.mapping_geometric_proof = original
+
+        self.assertEqual(calls, [True])
+        proof = ordered[0]["mapping"]["geometricProof"]
+        self.assertEqual(proof["anchorCount"], 6)
+        self.assertEqual(proof["strongAnchorCount"], 4)
 
     def test_continuity_prior_requires_verified_previous_scene_identity(self):
         weak_geometry = {
@@ -345,6 +411,66 @@ class PracticeGeometricRescueCertificationTests(unittest.TestCase):
         self.assertFalse(matcher.scene_identity_verified(match))
         match["confidence"] = 0.96
         self.assertTrue(matcher.scene_identity_verified(match))
+
+
+class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def _evidence(support, inliers, ratio, score):
+        return {
+            "geometrySupport": float(support),
+            "inlierCount": int(inliers),
+            "inlierRatio": float(ratio),
+            "score": float(score),
+            "referenceCoverage": 0.08,
+            "sourceCoverage": 0.08,
+        }
+
+    def test_softened_variant_can_strengthen_weak_effect_treated_geometry(self):
+        weak = self._evidence(0.52, 5, 0.50, 0.66)
+        strong = self._evidence(0.86, 12, 0.72, 0.81)
+        originals = (
+            matcher.normalized_rescue_frame,
+            matcher.softened_rescue_frame,
+            matcher.feature_match_evidence,
+        )
+        try:
+            matcher.normalized_rescue_frame = lambda frame: ("base", frame)
+            matcher.softened_rescue_frame = lambda frame: ("soft", frame)
+            matcher.feature_match_evidence = lambda ref, _src: (
+                strong if ref[0] == "soft" else weak
+            )
+            result = matcher.effect_tolerant_feature_match_evidence("ref", "src")
+        finally:
+            (
+                matcher.normalized_rescue_frame,
+                matcher.softened_rescue_frame,
+                matcher.feature_match_evidence,
+            ) = originals
+
+        self.assertIs(result, strong)
+
+    def test_strong_base_geometry_skips_softened_fallback(self):
+        strong = self._evidence(0.84, 10, 0.68, 0.82)
+        originals = (
+            matcher.normalized_rescue_frame,
+            matcher.softened_rescue_frame,
+            matcher.feature_match_evidence,
+        )
+        softened_calls = []
+        try:
+            matcher.normalized_rescue_frame = lambda frame: ("base", frame)
+            matcher.softened_rescue_frame = lambda frame: softened_calls.append(frame)
+            matcher.feature_match_evidence = lambda _ref, _src: strong
+            result = matcher.effect_tolerant_feature_match_evidence("ref", "src")
+        finally:
+            (
+                matcher.normalized_rescue_frame,
+                matcher.softened_rescue_frame,
+                matcher.feature_match_evidence,
+            ) = originals
+
+        self.assertIs(result, strong)
+        self.assertEqual(softened_calls, [])
 
 
 if __name__ == "__main__":

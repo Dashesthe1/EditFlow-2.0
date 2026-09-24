@@ -354,6 +354,7 @@ _RESCUE_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 _FRAME_DESCRIPTOR_CACHE = {}
 _FRAME_FEATURE_CACHE = {}
 _RESCUE_NORMALIZED_FRAME_CACHE = {}
+_RESCUE_SOFT_FRAME_CACHE = {}
 
 
 def cached_descriptor(frame):
@@ -388,6 +389,17 @@ def normalized_rescue_frame(frame):
     normalized = _RESCUE_CLAHE.apply(gray)
     result = cv2.cvtColor(normalized, cv2.COLOR_GRAY2BGR)
     _RESCUE_NORMALIZED_FRAME_CACHE[key] = result
+    return result
+
+
+def softened_rescue_frame(frame):
+    key = id(frame)
+    cached = _RESCUE_SOFT_FRAME_CACHE.get(key)
+    if cached is not None:
+        return cached
+    normalized = normalized_rescue_frame(frame)
+    result = cv2.GaussianBlur(normalized, (0, 0), sigmaX=1.35, sigmaY=1.35)
+    _RESCUE_SOFT_FRAME_CACHE[key] = result
     return result
 
 
@@ -463,6 +475,32 @@ def feature_match_evidence(reference_frame, source_frame):
 
 def feature_similarity(reference_frame, source_frame):
     return feature_match_evidence(reference_frame, source_frame)["score"]
+
+
+def rescue_evidence_rank(item):
+    return (
+        float(item.get("geometrySupport", 0.0)),
+        int(item.get("inlierCount", 0)),
+        float(item.get("score", 0.0)),
+    )
+
+
+def effect_tolerant_feature_match_evidence(reference_frame, source_frame):
+    base = feature_match_evidence(
+        normalized_rescue_frame(reference_frame),
+        normalized_rescue_frame(source_frame),
+    )
+    if (
+        int(base.get("inlierCount", 0)) >= 8
+        and float(base.get("inlierRatio", 0.0)) >= 0.55
+        and float(base.get("geometrySupport", 0.0)) >= 0.78
+    ):
+        return base
+    softened = feature_match_evidence(
+        softened_rescue_frame(reference_frame),
+        softened_rescue_frame(source_frame),
+    )
+    return max((base, softened), key=rescue_evidence_rank)
 
 
 def interior_anchor_times(start_ms, end_ms):
@@ -1132,6 +1170,7 @@ def mapping_geometric_proof(
     reference_reader,
     source_reader,
     max_anchors=None,
+    normalize_for_effects=False,
 ):
     anchors = shot["anchors"]
     center_reference_ms = float(anchors[len(anchors) // 2]["timeMs"])
@@ -1158,7 +1197,13 @@ def mapping_geometric_proof(
         source_frame = source_reader.read_ms(source_time)
         if reference_frame is None or source_frame is None:
             continue
-        item = feature_match_evidence(reference_frame, source_frame)
+        if normalize_for_effects:
+            item = feature_match_evidence(
+                normalized_rescue_frame(reference_frame),
+                normalized_rescue_frame(source_frame),
+            )
+        else:
+            item = feature_match_evidence(reference_frame, source_frame)
         item = {**item, "referenceTimeMs": reference_time, "sourceTimeMs": source_time}
         evidence.append(item)
 
@@ -1355,6 +1400,50 @@ def geometric_rescue_candidate(
     if not paths:
         return None
     best = max(paths, key=lambda item: item["score"])
+
+    refined_path_evidence = []
+    for reference_frame, source_time in zip(reference_frames, best["pathTimes"]):
+        source_frame = source_reader.read_ms(source_time)
+        if source_frame is None:
+            refined_path_evidence = []
+            break
+        refined_path_evidence.append(
+            effect_tolerant_feature_match_evidence(reference_frame, source_frame)
+        )
+    if len(refined_path_evidence) == len(best["pathEvidence"]):
+        refined_strong = [
+            item
+            for item in refined_path_evidence
+            if int(item["inlierCount"]) >= 6
+            and float(item["inlierRatio"]) >= 0.45
+            and min(
+                float(item["referenceCoverage"]),
+                float(item["sourceCoverage"]),
+            ) >= 0.015
+        ]
+        refined_mean_support = float(np.mean([
+            float(item["geometrySupport"])
+            for item in refined_path_evidence
+        ]))
+        refined_mean_feature = float(np.mean([
+            float(item["score"])
+            for item in refined_path_evidence
+        ]))
+        refined_score = clamp01(
+            (0.62 * refined_mean_support)
+            + (0.23 * refined_mean_feature)
+            + (0.15 * float(best["fitConsistency"]))
+        )
+        if refined_score >= float(best["score"]):
+            best = {
+                **best,
+                "score": refined_score,
+                "strongAnchorCount": len(refined_strong),
+                "meanSupport": refined_mean_support,
+                "meanFeature": refined_mean_feature,
+                "pathEvidence": refined_path_evidence,
+            }
+
     rate = abs(float(best["slope"]))
     if (
         int(best["strongAnchorCount"]) < 2
@@ -1522,6 +1611,16 @@ def distinct_second_score(results, best):
     return 0.0 if second is None else candidate_rank_score(second["mapping"])
 
 
+def rescue_needs_effect_normalized_full_geometry(mapping):
+    if mapping.get("rescueScore") is None:
+        return False
+    proof = mapping.get("geometricProof") or {}
+    return (
+        int(proof.get("strongAnchorCount", 0)) == 2
+        and float(mapping.get("rescueScore", 0.0)) >= 0.82
+    )
+
+
 def finalize_candidate_geometry(
     shot,
     results,
@@ -1536,7 +1635,10 @@ def finalize_candidate_geometry(
     fully_verified = {
         candidate_item_key(item)
         for item in results
-        if item["mapping"].get("rescueScore") is not None
+        if (
+            item["mapping"].get("rescueScore") is not None
+            and not rescue_needs_effect_normalized_full_geometry(item["mapping"])
+        )
     }
 
     # Full geometry can lower a provisional candidate that looked strongest
@@ -1558,7 +1660,6 @@ def finalize_candidate_geometry(
             item
             for item in targets
             if candidate_item_key(item) not in fully_verified
-            and item["mapping"].get("rescueScore") is None
         ]
         if not pending:
             break
@@ -1572,6 +1673,9 @@ def finalize_candidate_geometry(
                     item["mapping"],
                     reference_reader,
                     reader,
+                    normalize_for_effects=(
+                        item["mapping"].get("rescueScore") is not None
+                    ),
                 ),
             }
             fully_verified.add(candidate_item_key(item))
