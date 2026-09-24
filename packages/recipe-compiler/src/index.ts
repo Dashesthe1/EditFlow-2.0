@@ -1189,6 +1189,29 @@ const compileM6TemporalDuplication = (
   const duplicateOpacityScale = typeof opacityScaleRaw === "number" && Number.isFinite(opacityScaleRaw)
     ? Math.max(0.35, Math.min(1.5, opacityScaleRaw))
     : 1;
+  const separationRaw =
+    parameters["fragmentationStateSeparationPeak"] ?? parameters["stateSeparationPeak"];
+  const subjectRelativeDirectionRaw = context.parameterValues[
+    recipeParameterKeyV1(node.nodeId, "fragmentationStateSeparationDirection")
+  ];
+  const subjectRelativeDirectionValid = Array.isArray(subjectRelativeDirectionRaw)
+    && subjectRelativeDirectionRaw.length === 2
+    && subjectRelativeDirectionRaw.every((entry) =>
+      typeof entry === "number" && Number.isFinite(entry))
+    && Math.hypot(
+      Number(subjectRelativeDirectionRaw[0]),
+      Number(subjectRelativeDirectionRaw[1]),
+    ) > 1e-6;
+  const directionalTrail = typeof separationRaw === "number"
+    && Number.isFinite(separationRaw)
+    && separationRaw > 0
+    && subjectRelativeDirectionValid
+    ? {
+      separation: separationRaw,
+      x: Number(subjectRelativeDirectionRaw[0]),
+      y: Number(subjectRelativeDirectionRaw[1]),
+    }
+    : null;
   const persistenceRaw = parameters["temporalPersistence"];
   const persistenceTarget = typeof persistenceRaw === "number" && Number.isFinite(persistenceRaw)
     ? Math.max(0, Math.min(1, persistenceRaw))
@@ -1264,6 +1287,35 @@ const compileM6TemporalDuplication = (
           "else{linear(f,0,post,peak*0.4,0)}",
         ].join(""),
       });
+      if (directionalTrail !== null) {
+        const directionMagnitude = Math.hypot(directionalTrail.x, directionalTrail.y);
+        const normalizedX = directionalTrail.x / directionMagnitude;
+        const normalizedY = directionalTrail.y / directionMagnitude;
+        const stateScale = state / Math.max(1, count - 1);
+        operations.push({
+          type: "SET_EXPRESSION",
+          compId: context.compId,
+          layerId,
+          propertyPath: "Transform.Position",
+          expression: [
+            `var event=${eventSeconds};`,
+            "var f=(time-event)/thisComp.frameDuration;",
+            `var pre=${preFrames};`,
+            `var post=${postFrames};`,
+            `var directionX=${normalizedX};`,
+            `var directionY=${normalizedY};`,
+            `var amplitude=${directionalTrail.separation}*Math.max(thisComp.width,thisComp.height);`,
+            `var stateScale=${stateScale};`,
+            "var envelope=0;",
+            "if(f<=-pre||f>=post){envelope=0;}",
+            "else if(f<0){envelope=linear(f,-pre,0,0,1);}",
+            "else{envelope=linear(f,0,post,1,0);}",
+            "var dx=-directionX*amplitude*stateScale*envelope;",
+            "var dy=-directionY*amplitude*stateScale*envelope;",
+            "value.length>2?[value[0]+dx,value[1]+dy,value[2]]:value+[dx,dy];",
+          ].join(""),
+        });
+      }
       windows.set(layerId, { ...sourceWindow });
       outputs.push(layerId);
     }
@@ -1558,7 +1610,9 @@ const compileM6SemanticVisualState = (
     const blurStrengthScale = typeof blurScaleRaw === "number" && Number.isFinite(blurScaleRaw)
       ? Math.max(0.25, Math.min(4, blurScaleRaw))
       : 1;
-    const directionRaw = parameters["blurDirectionVector"];
+    const directionRaw = context.parameterValues[
+      recipeParameterKeyV1(node.nodeId, "blurDirectionVector")
+    ] ?? parameters["blurDirectionVector"];
     const directionDegrees = Array.isArray(directionRaw)
       && directionRaw.length === 2
       && directionRaw.every((value) => typeof value === "number" && Number.isFinite(value))
