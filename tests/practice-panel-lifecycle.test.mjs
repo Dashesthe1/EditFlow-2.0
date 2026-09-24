@@ -7,8 +7,10 @@ import test from "node:test";
 
 import {
   fingerprintPracticeHeldOutMaterialV1,
+  resolvePracticeAutoLifecycleStageV1,
   resolvePracticeRunRoleV1,
   validatePracticeHeldOutMaterialNoveltyV1,
+  validatePracticeTransferLearningMaterialV1,
 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 
 test("Practice AUTO lifecycle learns before transfer verification", () => {
@@ -28,6 +30,75 @@ test("explicit Practice lifecycle overrides remain deliberate", () => {
     resolvePracticeRunRoleV1("HELD_OUT_CERTIFICATION", false),
     "HELD_OUT_CERTIFICATION",
   );
+});
+
+test("Practice AUTO lifecycle exposes reference, transfer, then held-out phases", () => {
+  assert.equal(resolvePracticeAutoLifecycleStageV1([]), "REFERENCE_LEARNING");
+  assert.equal(
+    resolvePracticeAutoLifecycleStageV1([{ scope: "REFERENCE_VERIFIED" }]),
+    "TRANSFER_LEARNING",
+  );
+  assert.equal(
+    resolvePracticeAutoLifecycleStageV1([{ scope: "TRANSFER_VERIFIED" }]),
+    "HELD_OUT_CERTIFICATION",
+  );
+});
+
+test("AUTO transfer preflight rejects reused training material before AE work", () => {
+  const reasons = validatePracticeTransferLearningMaterialV1({
+    material: {
+      referenceFingerprint: "finish:training",
+      sourceFingerprint: "aggregate:new-plus-trained",
+      sourceMediaSha256: ["source:trained", "source:new"],
+      duplicateStartMedia: false,
+    },
+    masteryRecords: [{
+      sessionId: "practice:training",
+      scope: "REFERENCE_VERIFIED",
+      proofRef: "proof:training",
+      referenceId: "finish:training",
+      sourceIndexId: "source-index:training",
+      referenceFingerprint: "finish:training",
+      sourceFingerprint: "aggregate:training",
+      sourceMediaSha256: ["source:trained"],
+      finalRenderRef: "render:training",
+      overallSimilarity: 0.99,
+      definingEffectCoverage: 1,
+      effectFamilyIds: ["SHUTTER_TRAIL"],
+      verifiedAt: "2026-09-23T00:00:00.000Z",
+    }],
+  });
+  assert.deepEqual(reasons, [
+    "Transfer learning must use a different Finish reference.",
+    "Transfer learning must use different Start video content.",
+  ]);
+});
+
+test("AUTO transfer preflight accepts materially different Finish and Start media", () => {
+  const reasons = validatePracticeTransferLearningMaterialV1({
+    material: {
+      referenceFingerprint: "finish:transfer",
+      sourceFingerprint: "aggregate:transfer",
+      sourceMediaSha256: ["source:transfer"],
+      duplicateStartMedia: false,
+    },
+    masteryRecords: [{
+      sessionId: "practice:training",
+      scope: "REFERENCE_VERIFIED",
+      proofRef: "proof:training",
+      referenceId: "finish:training",
+      sourceIndexId: "source-index:training",
+      referenceFingerprint: "finish:training",
+      sourceFingerprint: "aggregate:training",
+      sourceMediaSha256: ["source:training"],
+      finalRenderRef: "render:training",
+      overallSimilarity: 0.99,
+      definingEffectCoverage: 1,
+      effectFamilyIds: ["SHUTTER_TRAIL"],
+      verifiedAt: "2026-09-23T00:00:00.000Z",
+    }],
+  });
+  assert.deepEqual(reasons, []);
 });
 
 test("held-out preflight fingerprints exact media bytes and detects duplicate Start content", async (t) => {

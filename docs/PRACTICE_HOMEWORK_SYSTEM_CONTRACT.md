@@ -119,13 +119,18 @@ as no professional evidence, while malformed, duplicate, or unknown evidence fai
 Reused training material, a missing mastered family, a missing retained learned skill,
 missing M6 authority, or a failed case invalidates the robust result.
 
-Normal Practice defaults to an AUTO lifecycle. Before transfer verification, AUTO resolves
-to LEARNING so GPT can research, reconstruct, diagnose, revise, and retain machine-proven
-lessons. Once a materially different Finish/source pair passes and promotes the Edit Type
-to TRANSFER_VERIFIED, AUTO resolves subsequent Practice runs to HELD_OUT_CERTIFICATION.
-Material transfer requires different Finish and aggregate Start fingerprints plus retained
-individual Start-file SHA-256 identities with zero overlap against the prior mastery case;
-missing file-level identities fail closed rather than counting as unseen transfer.
+Normal Practice defaults to an AUTO lifecycle. AUTO now distinguishes the first
+REFERENCE_LEARNING proof from the later TRANSFER_LEARNING proof while both execute through
+the LEARNING orchestration role. After the first machine-passing reference reconstruction,
+AUTO fingerprints the next selected Finish and Start files before AE work begins and rejects
+reused Finish bytes, reused aggregate Start content, overlapping Start-file SHA-256 identities,
+or duplicate Start media. This prevents an expensive second reconstruction from running when
+it cannot possibly qualify as material transfer. Once a materially different Finish/source
+pair passes and promotes the Edit Type to TRANSFER_VERIFIED, AUTO resolves subsequent Practice
+runs to HELD_OUT_CERTIFICATION. Explicit LEARNING remains available for deliberate same-reference
+development. Material transfer requires different Finish and aggregate Start fingerprints plus
+retained individual Start-file SHA-256 identities with zero overlap against the prior mastery
+case; missing file-level identities fail closed rather than counting as unseen transfer.
 Those runs freeze the transfer-verified knowledge snapshot. Before a held-out GPT assignment
 is created, the panel streams SHA-256 over the selected Finish and Start files and rejects
 exact Finish reuse, exact legacy source-set reuse, duplicate Start media, or any individual

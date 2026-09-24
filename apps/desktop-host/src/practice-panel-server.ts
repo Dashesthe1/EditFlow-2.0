@@ -133,6 +133,20 @@ export const resolvePracticeRunRoleV1 = (
 ): PracticeRunRoleV1 => requestedRole
   ?? (transferVerified ? "HELD_OUT_CERTIFICATION" : "LEARNING");
 
+export type PracticeAutoLifecycleStageV1 =
+  | "REFERENCE_LEARNING"
+  | "TRANSFER_LEARNING"
+  | "HELD_OUT_CERTIFICATION";
+
+export const resolvePracticeAutoLifecycleStageV1 = (
+  masteryRecords: readonly PracticeMasteryRecordV1[],
+): PracticeAutoLifecycleStageV1 => {
+  if (masteryRecords.some((record) => record.scope === "TRANSFER_VERIFIED")) {
+    return "HELD_OUT_CERTIFICATION";
+  }
+  return masteryRecords.length > 0 ? "TRANSFER_LEARNING" : "REFERENCE_LEARNING";
+};
+
 export interface PracticeHeldOutMaterialFingerprintV1 {
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
@@ -177,6 +191,36 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
     sourceMediaSha256,
     duplicateStartMedia: sourceMediaSha256.length !== rawSourceHashes.length,
   };
+};
+
+export const validatePracticeTransferLearningMaterialV1 = (input: {
+  readonly material: PracticeHeldOutMaterialFingerprintV1;
+  readonly masteryRecords: readonly PracticeMasteryRecordV1[];
+}): readonly string[] => {
+  const reasons: string[] = [];
+  const currentSources = new Set(input.material.sourceMediaSha256);
+  if (input.material.duplicateStartMedia) {
+    reasons.push("Transfer learning Start inputs contain duplicate media bytes.");
+  }
+  const comparableRecords = input.masteryRecords.filter((record) =>
+    (record.sourceMediaSha256 ?? []).length > 0);
+  if (input.masteryRecords.length > 0 && comparableRecords.length === 0) {
+    reasons.push(
+      "Retained Practice mastery lacks Start SHA-256 identities required for material transfer.",
+    );
+  }
+  const sourceOverlap = (values: readonly string[] | undefined): boolean =>
+    (values ?? []).some((value) => currentSources.has(value));
+  for (const record of input.masteryRecords) {
+    if (record.referenceFingerprint === input.material.referenceFingerprint) {
+      reasons.push("Transfer learning must use a different Finish reference.");
+    }
+    if (record.sourceFingerprint === input.material.sourceFingerprint
+      || sourceOverlap(record.sourceMediaSha256)) {
+      reasons.push("Transfer learning must use different Start video content.");
+    }
+  }
+  return [...new Set(reasons)];
 };
 
 export const validatePracticeHeldOutMaterialNoveltyV1 = (input: {
@@ -884,23 +928,43 @@ export class PracticePanelServerV1 {
       this.config.artifactDir,
       sessionId.replace(/[:]/g, "-"),
     );
+    const retainedKnowledge = registry.knowledge(editType.editTypeId);
     const transferableKnowledge = registry.transferableKnowledge(editType.editTypeId);
+    const autoLifecycleStage = resolvePracticeAutoLifecycleStageV1(
+      retainedKnowledge?.gptLearning.masteryRecords ?? [],
+    );
     const practiceRole = resolvePracticeRunRoleV1(
       request.practiceRole,
       transferableKnowledge !== null,
     );
     const knowledge = practiceRole === "HELD_OUT_CERTIFICATION"
       ? transferableKnowledge
-      : registry.knowledge(editType.editTypeId);
+      : retainedKnowledge;
     if (practiceRole === "HELD_OUT_CERTIFICATION" && knowledge === null) {
       throw new HttpError(
         409,
         "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
       );
     }
+    if (request.practiceRole === null && autoLifecycleStage === "TRANSFER_LEARNING") {
+      const material = await fingerprintPracticeHeldOutMaterialV1({
+        finishPath: request.finishPath,
+        videoPaths: request.videoPaths,
+      });
+      const noveltyReasons = validatePracticeTransferLearningMaterialV1({
+        material,
+        masteryRecords: retainedKnowledge?.gptLearning.masteryRecords ?? [],
+      });
+      if (noveltyReasons.length > 0) {
+        throw new HttpError(
+          409,
+          "Practice AUTO transfer learning requires materially different Finish/Start media. "
+            + noveltyReasons.join(" "),
+        );
+      }
+    }
     if (practiceRole === "HELD_OUT_CERTIFICATION") {
-      const retained = registry.knowledge(editType.editTypeId);
-      if (retained === null) {
+      if (retainedKnowledge === null) {
         throw new HttpError(409, "Held-out certification lost its retained Edit Type knowledge.");
       }
       const material = await fingerprintPracticeHeldOutMaterialV1({
@@ -909,8 +973,8 @@ export class PracticePanelServerV1 {
       });
       const noveltyReasons = validatePracticeHeldOutMaterialNoveltyV1({
         material,
-        masteryRecords: retained.gptLearning.masteryRecords,
-        heldOutCases: retained.gptLearning.heldOutCases,
+        masteryRecords: retainedKnowledge.gptLearning.masteryRecords,
+        heldOutCases: retainedKnowledge.gptLearning.heldOutCases,
       });
       if (noveltyReasons.length > 0) {
         throw new HttpError(
