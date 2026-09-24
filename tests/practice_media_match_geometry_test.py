@@ -425,6 +425,54 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
             "sourceCoverage": 0.08,
         }
 
+    def test_orb_fallback_recovers_trail_blur_low_contrast_geometry(self):
+        rng = np.random.default_rng(31)
+        source = np.zeros((360, 640, 3), dtype=np.uint8)
+        for _ in range(180):
+            x = int(rng.integers(12, 628))
+            y = int(rng.integers(12, 348))
+            radius = int(rng.integers(2, 10))
+            color = tuple(int(v) for v in rng.integers(40, 255, size=3))
+            matcher.cv2.circle(source, (x, y), radius, color, -1)
+        for _ in range(35):
+            start = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            end = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            matcher.cv2.line(source, start, end, (255, 255, 255), 2)
+
+        def shifted(dx):
+            matrix = np.float32([[1, 0, dx], [0, 1, 0]])
+            return matcher.cv2.warpAffine(
+                source,
+                matrix,
+                (640, 360),
+                borderMode=matcher.cv2.BORDER_REFLECT,
+            )
+
+        reference = np.clip(
+            (0.45 * source)
+            + (0.25 * shifted(12))
+            + (0.18 * shifted(24))
+            + (0.12 * shifted(36)),
+            0,
+            255,
+        ).astype(np.uint8)
+        reference = matcher.cv2.GaussianBlur(reference, (0, 0), 4.5)
+        reference = np.clip(
+            reference.astype(np.float32) * 0.14 + 92.0,
+            0,
+            255,
+        ).astype(np.uint8)
+
+        robust = matcher.effect_tolerant_feature_match_evidence(reference, source)
+        self.assertEqual(robust["effectFeatureMode"], "CLAHE_ORB_V1")
+        self.assertTrue(matcher.geometry_evidence_is_strong(
+            robust,
+            minimum_inliers=12,
+            minimum_ratio=0.55,
+            minimum_coverage=0.02,
+            minimum_support=0.72,
+        ))
+
     def test_softened_variant_can_strengthen_weak_effect_treated_geometry(self):
         weak = self._evidence(0.52, 5, 0.50, 0.66)
         strong = self._evidence(0.86, 12, 0.72, 0.81)
