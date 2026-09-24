@@ -486,6 +486,12 @@ export class PracticeMasteryVerifierV1 {
       referenceFingerprint,
       sourceFingerprint,
       sourceMediaSha256,
+      ...(reference.perceptualSignature === undefined
+        ? {}
+        : { referencePerceptualSignature: reference.perceptualSignature }),
+      ...(sourceIndex.videoPerceptualSignatures === undefined
+        ? {}
+        : { sourcePerceptualSignatures: [...sourceIndex.videoPerceptualSignatures] }),
       finalRenderRef,
       minimumSimilarity,
       exactSceneConfidence,

@@ -327,6 +327,28 @@ class FrameReader:
         return frame
 
 
+def perceptual_signature_from_reader(reader, duration_ms, sample_count=16):
+    hashes = []
+    duration = max(1.0, float(duration_ms))
+    for index in range(sample_count):
+        time_ms = duration * ((index + 0.5) / sample_count)
+        frame = reader.read_ms(time_ms)
+        if frame is not None:
+            hashes.append(frame_descriptor(frame)["dhash"])
+    return ",".join(hashes) if len(hashes) >= 8 else None
+
+
+def perceptual_signature_from_samples(samples, sample_count=16):
+    if not samples:
+        return None
+    hashes = []
+    for index in range(sample_count):
+        position = int(round(((index + 0.5) * len(samples) / sample_count) - 0.5))
+        position = min(max(0, position), len(samples) - 1)
+        hashes.append(samples[position]["descriptor"]["dhash"])
+    return ",".join(hashes)
+
+
 _SIFT = cv2.SIFT_create(nfeatures=600)
 _RESCUE_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 _FRAME_DESCRIPTOR_CACHE = {}
@@ -577,6 +599,13 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
     style_fingerprint = hashlib.sha256(
         json.dumps(style_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+    perceptual_reader = FrameReader(video_path)
+    try:
+        perceptual_signature = perceptual_signature_from_reader(
+            perceptual_reader, content_duration_ms
+        )
+    finally:
+        perceptual_reader.close()
     payload = {
         "schema": "editflow.practice-reference-analysis.v1",
         "referenceId": reference_id,
@@ -598,6 +627,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
             "excludedTailRangeCount": len(excluded_ranges),
         },
         "styleFingerprint": style_fingerprint,
+        "perceptualSignature": perceptual_signature,
         "shots": shots,
         "excludedRanges": excluded_ranges,
         "evidenceRefs": [
@@ -667,11 +697,13 @@ def index_source(
         raise RuntimeError(f"No frames were indexed from {video_path}")
 
     proxy_sha = sha256_file(proxy_path)
+    perceptual_signature = perceptual_signature_from_samples(samples)
     payload = {
         "schema": "editflow.practice-source-index.v1",
         "sourceId": source_id,
         "sourcePath": str(video_path),
         "sourceSha256": source_sha,
+        "perceptualSignature": perceptual_signature,
         "analysisProxyPath": str(proxy_path),
         "video": {
             "fps": fps,

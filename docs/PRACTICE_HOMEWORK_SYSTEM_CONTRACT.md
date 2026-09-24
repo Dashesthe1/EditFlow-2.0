@@ -131,6 +131,11 @@ runs to HELD_OUT_CERTIFICATION. Explicit LEARNING remains available for delibera
 development. Material transfer requires different Finish and aggregate Start fingerprints plus
 retained individual Start-file SHA-256 identities with zero overlap against the prior mastery
 case; missing file-level identities fail closed rather than counting as unseen transfer.
+Machine mastery proofs also retain ordered perceptual signatures built from 16 evenly spaced
+frame dHashes. Transfer scope, per-skill transfer promotion, and held-out case ingestion reject
+near-identical perceptual signatures at 0.96 similarity even when a re-encode changes every
+file SHA-256. Exact hashes remain the authoritative byte identity; perceptual signatures close
+the derivative/re-encode loophole rather than replacing content addressing.
 Those runs freeze the transfer-verified knowledge snapshot. Before a held-out GPT assignment
 is created, the panel streams SHA-256 over the selected Finish and Start files and rejects
 exact Finish reuse, exact legacy source-set reuse, duplicate Start media, or any individual

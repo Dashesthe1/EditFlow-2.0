@@ -51,6 +51,7 @@ export interface PracticeReferenceAnalysisV1 {
   readonly sourcePath?: string;
   readonly shots: readonly PracticeReferenceShotV1[];
   readonly styleFingerprint: string;
+  readonly perceptualSignature?: string;
   readonly video?: PracticeReferenceVideoV1;
   readonly excludedRanges?: readonly PracticeReferenceExcludedRangeV1[];
   readonly evidenceRefs: readonly string[];
@@ -61,6 +62,7 @@ export interface PracticeSourceIndexV1 {
   readonly sourceIds: readonly string[];
   readonly videoSourceIds: readonly string[];
   readonly audioSourceIds: readonly string[];
+  readonly videoPerceptualSignatures?: readonly string[];
   readonly evidenceRefs: readonly string[];
 }
 
@@ -412,6 +414,8 @@ export interface PracticeMasteryProofV1 {
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
   readonly sourceMediaSha256?: readonly string[];
+  readonly referencePerceptualSignature?: string;
+  readonly sourcePerceptualSignatures?: readonly string[];
   readonly finalRenderRef: string;
   readonly minimumSimilarity: number;
   readonly exactSceneConfidence: number;
@@ -604,6 +608,8 @@ export interface PracticeMasteryRecordV1 {
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
   readonly sourceMediaSha256?: readonly string[];
+  readonly referencePerceptualSignature?: string;
+  readonly sourcePerceptualSignatures?: readonly string[];
   readonly finalRenderRef: string;
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
@@ -628,6 +634,8 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
   readonly sourceMediaSha256?: readonly string[];
+  readonly referencePerceptualSignature?: string;
+  readonly sourcePerceptualSignatures?: readonly string[];
   readonly effectFamilyIds: readonly string[];
   /** Non-authoritative GPT audit claims retained for diagnostics only. */
   readonly appliedSkillIds: readonly string[];

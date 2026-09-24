@@ -21,6 +21,10 @@ import type {
   PracticeMaturityStageV1,
 } from "./contracts.js";
 import { buildPracticeSubjectIdentityMemoriesV1 } from "./subject-identity-memory.js";
+import {
+  practicePerceptualSetOverlapsV1,
+  practicePerceptualSignatureMatchesV1,
+} from "./material-novelty.js";
 
 const nonEmpty = (value: string | undefined): string | null => {
   const normalized = value?.trim() ?? "";
@@ -187,6 +191,8 @@ export const classifyPracticeMasteryScopeV1 = (
   const referenceFingerprint = nonEmpty(proof.referenceFingerprint);
   const sourceFingerprint = nonEmpty(proof.sourceFingerprint);
   const sourceMediaSha256 = uniqueNonEmpty(proof.sourceMediaSha256 ?? []);
+  const referencePerceptualSignature = nonEmpty(proof.referencePerceptualSignature) ?? undefined;
+  const sourcePerceptualSignatures = uniqueNonEmpty(proof.sourcePerceptualSignatures ?? []);
   if (referenceFingerprint === null
     || sourceFingerprint === null
     || sourceMediaSha256.length === 0) {
@@ -198,10 +204,20 @@ export const classifyPracticeMasteryScopeV1 = (
     const priorReference = nonEmpty(record.referenceFingerprint);
     const priorSource = nonEmpty(record.sourceFingerprint);
     const priorSourceMedia = uniqueNonEmpty(record.sourceMediaSha256 ?? []);
+    const sameReferencePerceptually = practicePerceptualSignatureMatchesV1(
+      referencePerceptualSignature,
+      nonEmpty(record.referencePerceptualSignature) ?? undefined,
+    );
+    const sourceOverlapPerceptually = practicePerceptualSetOverlapsV1(
+      sourcePerceptualSignatures,
+      uniqueNonEmpty(record.sourcePerceptualSignatures ?? []),
+    );
     return priorReference !== null
       && priorSource !== null
       && priorReference !== referenceFingerprint
       && priorSource !== sourceFingerprint
+      && !sameReferencePerceptually
+      && !sourceOverlapPerceptually
       && priorSourceMedia.length > 0
       && priorSourceMedia.every((sha256) => !currentSourceMedia.has(sha256));
   });
@@ -242,6 +258,12 @@ export const buildPracticeMasteryRecordV1 = (input: {
     ...(input.proof.sourceMediaSha256 === undefined
       ? {}
       : { sourceMediaSha256: [...input.proof.sourceMediaSha256] }),
+    ...(input.proof.referencePerceptualSignature === undefined
+      ? {}
+      : { referencePerceptualSignature: input.proof.referencePerceptualSignature }),
+    ...(input.proof.sourcePerceptualSignatures === undefined
+      ? {}
+      : { sourcePerceptualSignatures: [...input.proof.sourcePerceptualSignatures] }),
     finalRenderRef: input.proof.finalRenderRef,
     overallSimilarity: input.proof.report.overallSimilarity,
     definingEffectCoverage: input.proof.report.definingEffectCoverage,
@@ -302,6 +324,12 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     ...(input.proof.sourceMediaSha256 === undefined
       ? {}
       : { sourceMediaSha256: [...input.proof.sourceMediaSha256] }),
+    ...(input.proof.referencePerceptualSignature === undefined
+      ? {}
+      : { referencePerceptualSignature: input.proof.referencePerceptualSignature }),
+    ...(input.proof.sourcePerceptualSignatures === undefined
+      ? {}
+      : { sourcePerceptualSignatures: [...input.proof.sourcePerceptualSignatures] }),
     effectFamilyIds: [...input.proof.effectFamilyIds],
     appliedSkillIds,
     verifiedSkillUseIds,
@@ -373,15 +401,17 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
 }): PracticeHeldOutBenchmarkReportV1 => {
   const policy = benchmarkPolicy(input.policy);
   const reasons: string[] = [];
+  const trainingRecords = input.priorMasteryRecords ?? [];
   const trainingReferences = new Set(
-    (input.priorMasteryRecords ?? []).map((record) => record.referenceFingerprint),
+    trainingRecords.map((record) => record.referenceFingerprint),
   );
   const trainingSources = new Set(
-    (input.priorMasteryRecords ?? []).map((record) => record.sourceFingerprint),
+    trainingRecords.map((record) => record.sourceFingerprint),
   );
   const materialPairs = new Set<string>();
   const heldOutReferences = new Set<string>();
   const heldOutSources = new Set<string>();
+  const priorHeldOutCases: PracticeHeldOutBenchmarkCaseV1[] = [];
   const requiredEffectFamilies = new Set(
     (input.priorMasteryRecords ?? [])
       .filter((record) => record.scope === "TRANSFER_VERIFIED")
@@ -428,6 +458,31 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     if (trainingSources.has(item.sourceFingerprint)) {
       reasons.push("Held-out case reuses a training source fingerprint: " + item.caseId + ".");
     }
+    if (trainingRecords.some((record) => practicePerceptualSignatureMatchesV1(
+      item.referencePerceptualSignature,
+      record.referencePerceptualSignature,
+    ))) {
+      reasons.push("Held-out case perceptually reuses a training reference: " + item.caseId + ".");
+    }
+    if (trainingRecords.some((record) => practicePerceptualSetOverlapsV1(
+      item.sourcePerceptualSignatures,
+      record.sourcePerceptualSignatures,
+    ))) {
+      reasons.push("Held-out case perceptually reuses training source content: " + item.caseId + ".");
+    }
+    if (priorHeldOutCases.some((prior) => practicePerceptualSignatureMatchesV1(
+      item.referencePerceptualSignature,
+      prior.referencePerceptualSignature,
+    ))) {
+      reasons.push("Held-out benchmark perceptually reuses a reference: " + item.caseId + ".");
+    }
+    if (priorHeldOutCases.some((prior) => practicePerceptualSetOverlapsV1(
+      item.sourcePerceptualSignatures,
+      prior.sourcePerceptualSignatures,
+    ))) {
+      reasons.push("Held-out benchmark perceptually reuses source content: " + item.caseId + ".");
+    }
+    priorHeldOutCases.push(item);
     if (!item.passed) {
       reasons.push("Held-out case did not pass its machine proof gate: " + item.caseId + ".");
     }

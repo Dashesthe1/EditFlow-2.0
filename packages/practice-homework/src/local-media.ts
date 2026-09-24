@@ -37,6 +37,7 @@ interface ReferenceArtifactV1 {
   readonly referenceId: string;
   readonly sourcePath: string;
   readonly styleFingerprint: string;
+  readonly perceptualSignature?: string;
   readonly video: {
     readonly fps: number;
     readonly frameCount: number;
@@ -67,6 +68,7 @@ interface SourceArtifactV1 {
   readonly sourceId: string;
   readonly sourcePath: string;
   readonly sourceSha256: string;
+  readonly perceptualSignature?: string;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -311,6 +313,9 @@ export class LocalPracticeMediaMatcherV1 {
       referenceId: artifact.referenceId,
       sourcePath: artifact.sourcePath,
       styleFingerprint: artifact.styleFingerprint,
+      ...(artifact.perceptualSignature === undefined
+        ? {}
+        : { perceptualSignature: artifact.perceptualSignature }),
       video: artifact.video,
       shots: artifact.shots.map((shot) => ({
         shotId: shot.shotId,
@@ -348,6 +353,7 @@ export class LocalPracticeMediaMatcherV1 {
     const sourceIds: string[] = [];
     const videoSourceIds: string[] = [];
     const audioSourceIds: string[] = [];
+    const videoPerceptualSignatures: string[] = [];
     const evidenceRefs: string[] = [];
     const identityParts: string[] = [];
 
@@ -386,6 +392,9 @@ export class LocalPracticeMediaMatcherV1 {
         }
         videoArtifactPaths.push(artifactPath);
         videoSourceIds.push(artifact.sourceId);
+        if (artifact.perceptualSignature !== undefined) {
+          videoPerceptualSignatures.push(artifact.perceptualSignature);
+        }
         identityParts.push("video:" + artifactPath);
         evidenceRefs.push(
           ...artifact.evidenceRefs,
@@ -417,6 +426,9 @@ export class LocalPracticeMediaMatcherV1 {
       sourceIds,
       videoSourceIds,
       audioSourceIds,
+      ...(videoPerceptualSignatures.length === 0
+        ? {}
+        : { videoPerceptualSignatures: [...new Set(videoPerceptualSignatures)].sort() }),
       evidenceRefs: [...new Set(evidenceRefs)],
     };
   }

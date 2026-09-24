@@ -19,6 +19,10 @@ import type {
   PracticeSkillUseAttestationV1,
 } from "./contracts.js";
 import { derivePracticeMaturityStageV1 } from "./mastery.js";
+import {
+  practicePerceptualSetOverlapsV1,
+  practicePerceptualSignatureMatchesV1,
+} from "./material-novelty.js";
 
 const normalizeChoice = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -60,6 +64,14 @@ const hasMateriallyDifferentSkillProof = (
     const priorSource = record.sourceFingerprint.trim();
     if (priorReference.length === 0 || priorSource.length === 0) return false;
     if (priorReference === currentReference || priorSource === currentSource) return false;
+    if (practicePerceptualSignatureMatchesV1(
+      currentMasteryRecord.referencePerceptualSignature,
+      record.referencePerceptualSignature,
+    )) return false;
+    if (practicePerceptualSetOverlapsV1(
+      currentMasteryRecord.sourcePerceptualSignatures,
+      record.sourcePerceptualSignatures,
+    )) return false;
     const priorSourceMedia = uniqueStrings(record.sourceMediaSha256 ?? []);
     return currentSourceMedia.size > 0
       && priorSourceMedia.length > 0
@@ -574,17 +586,25 @@ export class EditTypeRegistryV1 {
     const itemSourceMediaSha256 = new Set(item.sourceMediaSha256 ?? []);
     const overlapsSourceMedia = (values: readonly string[] | undefined): boolean =>
       (values ?? []).some((value) => itemSourceMediaSha256.has(value));
+    const overlapsReferencePerceptually = (value: string | undefined): boolean =>
+      practicePerceptualSignatureMatchesV1(item.referencePerceptualSignature, value);
+    const overlapsSourcePerceptually = (values: readonly string[] | undefined): boolean =>
+      practicePerceptualSetOverlapsV1(item.sourcePerceptualSignatures, values);
     if (learning.masteryRecords.some((record) =>
       record.referenceFingerprint === item.referenceFingerprint
       || record.sourceFingerprint === item.sourceFingerprint
-      || overlapsSourceMedia(record.sourceMediaSha256))) {
+      || overlapsSourceMedia(record.sourceMediaSha256)
+      || overlapsReferencePerceptually(record.referencePerceptualSignature)
+      || overlapsSourcePerceptually(record.sourcePerceptualSignatures))) {
       throw new TypeError("Held-out certification material overlaps retained Practice training material.");
     }
     const retained = learning.heldOutCases.filter((existing) => existing.sessionId !== item.sessionId);
     if (retained.some((existing) =>
       existing.referenceFingerprint === item.referenceFingerprint
       || existing.sourceFingerprint === item.sourceFingerprint
-      || overlapsSourceMedia(existing.sourceMediaSha256))) {
+      || overlapsSourceMedia(existing.sourceMediaSha256)
+      || overlapsReferencePerceptually(existing.referencePerceptualSignature)
+      || overlapsSourcePerceptually(existing.sourcePerceptualSignatures))) {
       throw new TypeError("Held-out certification requires novel reference and source fingerprints per case.");
     }
     if (retained.length >= 30) {

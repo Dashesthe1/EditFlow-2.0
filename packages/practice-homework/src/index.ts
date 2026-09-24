@@ -15,3 +15,4 @@ export * from "./tutorial-causal-compiler.js";
 export * from "./subject-identity.js";
 export * from "./subject-identity-memory.js";
 export * from "./mastery.js";
+export * from "./material-novelty.js";
