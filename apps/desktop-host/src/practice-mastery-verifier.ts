@@ -9,6 +9,7 @@ import {
 import {
   LocalPracticeMediaMatcherV1,
   comparePracticeM6AlignedWindowsV1,
+  hasRepeatedSceneGeometryV1,
   finalizePracticeSimilarityReportV1,
   resolvePracticeLocalMediaPathV1,
   type GptOrchestrationAssignmentV1,
@@ -123,6 +124,11 @@ export const validatePracticeSceneMatchesV1 = (
     const match = values[0]!;
     if (match.confidence < minimumConfidence) {
       reasons.push("Source match confidence for " + shotId + " is below the exact-scene gate.");
+    } else if (!hasRepeatedSceneGeometryV1(match)) {
+      reasons.push(
+        "Source match for " + shotId
+          + " lacks repeated geometric proof required by the exact-scene gate.",
+      );
     }
     if (!knownSources.has(match.sourceId)) {
       reasons.push("Source match for " + shotId + " does not belong to the indexed Start video set.");

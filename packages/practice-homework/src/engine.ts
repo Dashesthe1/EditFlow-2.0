@@ -59,6 +59,30 @@ const selectBestAttempt = (
 const uniqueRefs = (refs: readonly string[]): readonly string[] =>
   [...new Set(refs.filter((ref) => ref.trim().length > 0))];
 
+export const hasRepeatedSceneGeometryV1 = (match: PracticeSceneMatchV1): boolean => {
+  const proof = match.geometricProof;
+  if (proof === undefined) return false;
+  const values = [
+    proof.anchorCount,
+    proof.strongAnchorCount,
+    proof.strongAnchorFraction,
+    proof.meanSupport,
+    proof.minimumSupport,
+    proof.maximumInlierCount,
+    proof.meanInlierRatio,
+    proof.meanCoverage,
+  ];
+  if (values.some((value) => !Number.isFinite(value))) return false;
+  if (proof.anchorCount < 2 || proof.strongAnchorCount < 2) return false;
+  if (proof.strongAnchorCount > proof.anchorCount) return false;
+  if (proof.strongAnchorFraction < 0 || proof.strongAnchorFraction > 1) return false;
+  if (proof.meanSupport < 0 || proof.meanSupport > 1) return false;
+  if (proof.minimumSupport < 0 || proof.minimumSupport > 1) return false;
+  if (proof.meanInlierRatio < 0 || proof.meanInlierRatio > 1) return false;
+  if (proof.meanCoverage < 0 || proof.meanCoverage > 1) return false;
+  return true;
+};
+
 const validateMatches = (
   shotIds: readonly string[],
   matches: readonly PracticeSceneMatchV1[],
@@ -74,6 +98,11 @@ const validateMatches = (
     }
     if (match.confidence < minimumConfidence) {
       reasons.push("Source match confidence for " + shotId + " is below the exact-scene gate.");
+    } else if (!hasRepeatedSceneGeometryV1(match)) {
+      reasons.push(
+        "Source match for " + shotId
+          + " lacks repeated geometric proof required by the exact-scene gate.",
+      );
     }
     if (match.sourceEndMs <= match.sourceStartMs) {
       reasons.push("Source match for " + shotId + " has an invalid time range.");

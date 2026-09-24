@@ -26,12 +26,24 @@ export interface PracticeReferenceShotV1 {
   readonly referenceEndMs: number;
   readonly evidenceRefs: readonly string[];
 }
+
+export interface PracticeReferenceExcludedRangeV1 {
+  readonly kind: "STATIC_LOW_INFORMATION_TAIL";
+  readonly referenceStartMs: number;
+  readonly referenceEndMs: number;
+  readonly confidence: number;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeReferenceVideoV1 {
   readonly fps: number;
   readonly frameCount: number;
   readonly width: number;
   readonly height: number;
+  /** Effective edit-content duration after confidently excluded appended tail artifacts. */
   readonly durationMs: number;
+  /** Original Finish media duration before any retained tail-artifact exclusion. */
+  readonly sourceDurationMs?: number;
 }
 
 export interface PracticeReferenceAnalysisV1 {
@@ -40,6 +52,7 @@ export interface PracticeReferenceAnalysisV1 {
   readonly shots: readonly PracticeReferenceShotV1[];
   readonly styleFingerprint: string;
   readonly video?: PracticeReferenceVideoV1;
+  readonly excludedRanges?: readonly PracticeReferenceExcludedRangeV1[];
   readonly evidenceRefs: readonly string[];
 }
 
@@ -73,6 +86,21 @@ export interface PracticeTemporalRewindV1 {
   readonly confidence: number;
 }
 
+export type PracticeSceneSelectionModeV1 =
+  | "VISUAL_BEST"
+  | "REFERENCE_CONTINUITY_PRIOR";
+
+export interface PracticeSceneGeometricProofV1 {
+  readonly anchorCount: number;
+  readonly strongAnchorCount: number;
+  readonly strongAnchorFraction: number;
+  readonly meanSupport: number;
+  readonly minimumSupport: number;
+  readonly maximumInlierCount: number;
+  readonly meanInlierRatio: number;
+  readonly meanCoverage: number;
+}
+
 export interface PracticeSceneMatchV1 {
   readonly shotId: string;
   readonly sourceId: string;
@@ -87,7 +115,13 @@ export interface PracticeSceneMatchV1 {
   readonly appearanceSimilarity: number;
   readonly temporalSimilarity: number;
   readonly motionSimilarity: number;
+  readonly geometricProof?: PracticeSceneGeometricProofV1;
   readonly confidence: number;
+  readonly candidateScore?: number;
+  readonly runnerUpScore?: number;
+  readonly candidateMargin?: number;
+  readonly referenceBoundaryContinuity?: number;
+  readonly selectionMode?: PracticeSceneSelectionModeV1;
   readonly evidenceRefs: readonly string[];
 }
 

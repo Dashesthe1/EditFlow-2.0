@@ -43,12 +43,20 @@ interface ReferenceArtifactV1 {
     readonly width: number;
     readonly height: number;
     readonly durationMs: number;
+    readonly sourceDurationMs?: number;
   };
   readonly shots: readonly {
     readonly shotId: string;
     readonly order: number;
     readonly referenceStartMs: number;
     readonly referenceEndMs: number;
+    readonly evidenceRefs: readonly string[];
+  }[];
+  readonly excludedRanges?: readonly {
+    readonly kind: "STATIC_LOW_INFORMATION_TAIL";
+    readonly referenceStartMs: number;
+    readonly referenceEndMs: number;
+    readonly confidence: number;
     readonly evidenceRefs: readonly string[];
   }[];
   readonly evidenceRefs: readonly string[];
@@ -182,7 +190,7 @@ export class LocalPracticeMediaMatcherV1 {
       ffmpegPath: config.ffmpegPath?.trim() || null,
       cutThreshold: config.cutThreshold ?? 0.42,
       minimumShotMs: config.minimumShotMs ?? 180,
-      sampleStepMs: config.sampleStepMs ?? 750,
+      sampleStepMs: config.sampleStepMs ?? 250,
       coarseCandidateLimit: config.coarseCandidateLimit ?? 16,
       analysisProxyFps: config.analysisProxyFps ?? 12,
       analysisTimeoutMs: config.analysisTimeoutMs ?? 60 * 60 * 1000,
@@ -311,6 +319,17 @@ export class LocalPracticeMediaMatcherV1 {
         referenceEndMs: shot.referenceEndMs,
         evidenceRefs: shot.evidenceRefs,
       })),
+      ...(artifact.excludedRanges === undefined
+        ? {}
+        : {
+          excludedRanges: artifact.excludedRanges.map((range) => ({
+            kind: range.kind,
+            referenceStartMs: range.referenceStartMs,
+            referenceEndMs: range.referenceEndMs,
+            confidence: range.confidence,
+            evidenceRefs: range.evidenceRefs,
+          })),
+        }),
       evidenceRefs: [
         ...artifact.evidenceRefs,
         "practice-reference-artifact:" + artifactPath,

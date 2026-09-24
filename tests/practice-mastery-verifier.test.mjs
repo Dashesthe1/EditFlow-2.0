@@ -23,6 +23,16 @@ const match = (shotId, sourceId = "video:raw") => ({
   appearanceSimilarity: 0.99,
   temporalSimilarity: 0.99,
   motionSimilarity: 0.99,
+  geometricProof: {
+    anchorCount: 4,
+    strongAnchorCount: 3,
+    strongAnchorFraction: 0.75,
+    meanSupport: 0.92,
+    minimumSupport: 0.81,
+    maximumInlierCount: 18,
+    meanInlierRatio: 0.78,
+    meanCoverage: 0.21,
+  },
   confidence: 0.99,
   evidenceRefs: ["source-video:sha256:abc123"],
 });
@@ -83,6 +93,25 @@ test("Practice mastery requires one content-addressed indexed source per shot", 
     ["video:raw"],
   );
   assert.ok(identityReasons.some((reason) => /content-addressed video identity/.test(reason)));
+});
+
+test("Practice mastery requires repeated geometric evidence for an exact scene claim", () => {
+  const strong = match("shot:1");
+  assert.deepEqual(
+    validatePracticeSceneMatchesV1(["shot:1"], [strong], 0.95, ["video:raw"]),
+    [],
+  );
+
+  const missing = { ...strong, geometricProof: undefined };
+  assert.ok(validatePracticeSceneMatchesV1(["shot:1"], [missing], 0.95, ["video:raw"])
+    .some((reason) => /repeated geometric proof/.test(reason)));
+
+  const oneAnchor = {
+    ...strong,
+    geometricProof: { ...strong.geometricProof, strongAnchorCount: 1, strongAnchorFraction: 0.25 },
+  };
+  assert.ok(validatePracticeSceneMatchesV1(["shot:1"], [oneAnchor], 0.95, ["video:raw"])
+    .some((reason) => /repeated geometric proof/.test(reason)));
 });
 
 test("Practice mastery accepts only a trajectory-proven forward-then-rewind claim", () => {

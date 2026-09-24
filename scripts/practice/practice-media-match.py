@@ -131,6 +131,102 @@ def cut_score(previous, current):
     return clamp01((0.72 * hist_distance) + (0.28 * pixel_delta))
 
 
+def reference_tail_metrics(frames):
+    grays = []
+    saturations = []
+    entropies = []
+    edges = []
+    for frame in frames:
+        small = cv2.resize(frame, (160, 90), interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        edge = cv2.Canny(gray, 60, 150)
+        hist = cv2.calcHist([gray], [0], None, [32], [0, 256]).reshape(-1)
+        total = float(hist.sum())
+        if total > 0:
+            probabilities = hist / total
+            positive = probabilities[probabilities > 0]
+            entropy = float(-(positive * np.log2(positive)).sum() / 5.0)
+        else:
+            entropy = 0.0
+        grays.append(gray)
+        saturations.append(float(np.mean(hsv[:, :, 1]) / 255.0))
+        entropies.append(clamp01(entropy))
+        edges.append(float(np.mean(edge) / 255.0))
+
+    motions = [
+        float(np.mean(cv2.absdiff(grays[index - 1], grays[index])) / 255.0)
+        for index in range(1, len(grays))
+    ]
+    return {
+        "sampleCount": len(grays),
+        "meanMotion": float(np.mean(motions)) if motions else 0.0,
+        "maxMotion": float(np.max(motions)) if motions else 0.0,
+        "meanSaturation": float(np.mean(saturations)) if saturations else 0.0,
+        "meanEntropy": float(np.mean(entropies)) if entropies else 0.0,
+        "meanEdgeDensity": float(np.mean(edges)) if edges else 0.0,
+    }
+
+
+def classify_static_tail_artifact(shot, previous_shot, source_duration_ms):
+    metrics = shot.get("_tailMetrics", {})
+    previous = previous_shot.get("_tailMetrics", {})
+    shot_duration = float(shot["referenceEndMs"] - shot["referenceStartMs"])
+    start_fraction = float(shot["referenceStartMs"]) / max(float(source_duration_ms), 1.0)
+    if (
+        int(metrics.get("sampleCount", 0)) < 4
+        or shot_duration < 1000.0
+        or start_fraction < 0.55
+        or float(metrics.get("meanMotion", 1.0)) > 0.008
+        or float(metrics.get("maxMotion", 1.0)) > 0.020
+        or float(metrics.get("meanSaturation", 1.0)) > 0.050
+        or float(metrics.get("meanEntropy", 1.0)) > 0.350
+        or float(metrics.get("meanEdgeDensity", 1.0)) > 0.060
+    ):
+        return None
+
+    preceding_content_signal = (
+        float(previous.get("meanMotion", 0.0)) >= 0.020
+        or float(previous.get("meanSaturation", 0.0)) >= 0.120
+        or float(previous.get("meanEntropy", 0.0)) >= 0.450
+    )
+    if not preceding_content_signal:
+        return None
+
+    staticness = clamp01(1.0 - float(metrics["meanMotion"]) / 0.008)
+    desaturation = clamp01(1.0 - float(metrics["meanSaturation"]) / 0.050)
+    low_entropy = clamp01(1.0 - float(metrics["meanEntropy"]) / 0.350)
+    low_edges = clamp01(1.0 - float(metrics["meanEdgeDensity"]) / 0.060)
+    duration_support = clamp01((shot_duration - 1000.0) / 1400.0)
+    confidence = clamp01(
+        0.76
+        + (0.08 * staticness)
+        + (0.05 * desaturation)
+        + (0.04 * low_entropy)
+        + (0.03 * low_edges)
+        + (0.04 * duration_support)
+    )
+    metrics_ref = (
+        "practice-tail-artifact-metrics:"
+        + f"motion={metrics['meanMotion']:.6f};"
+        + f"maxMotion={metrics['maxMotion']:.6f};"
+        + f"saturation={metrics['meanSaturation']:.6f};"
+        + f"entropy={metrics['meanEntropy']:.6f};"
+        + f"edges={metrics['meanEdgeDensity']:.6f}"
+    )
+    return {
+        "kind": "STATIC_LOW_INFORMATION_TAIL",
+        "referenceStartMs": float(shot["referenceStartMs"]),
+        "referenceEndMs": float(shot["referenceEndMs"]),
+        "confidence": confidence,
+        "evidenceRefs": [
+            *shot["evidenceRefs"],
+            metrics_ref,
+            f"practice-tail-artifact-confidence:{confidence:.6f}",
+        ],
+    }
+
+
 def video_metadata(capture):
     fps = float(capture.get(cv2.CAP_PROP_FPS))
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -259,26 +355,78 @@ def cached_features(frame):
     return result
 
 
-def feature_similarity(reference_frame, source_frame):
+def feature_match_evidence(reference_frame, source_frame):
     ref_global, ref_keypoints, ref_desc = cached_features(reference_frame)
     src_global, src_keypoints, src_desc = cached_features(source_frame)
     global_score = descriptor_similarity(ref_global, src_global)
+    empty = {
+        "score": clamp01(global_score * 0.88),
+        "globalScore": global_score,
+        "goodMatchCount": 0,
+        "inlierCount": 0,
+        "inlierRatio": 0.0,
+        "referenceCoverage": 0.0,
+        "sourceCoverage": 0.0,
+        "geometrySupport": 0.0,
+    }
     if ref_desc is None or src_desc is None or len(ref_desc) < 4 or len(src_desc) < 4:
-        return clamp01(global_score * 0.88)
+        return empty
 
     matcher = cv2.BFMatcher(cv2.NORM_L2)
     pairs = matcher.knnMatch(ref_desc, src_desc, k=2)
-    good = [m for m, n in pairs if m.distance < 0.75 * n.distance]
+    good = [
+        pair[0]
+        for pair in pairs
+        if len(pair) >= 2 and pair[0].distance < 0.75 * pair[1].distance
+    ]
     if len(good) < 4:
-        return clamp01(global_score * 0.90)
+        return {**empty, "score": clamp01(global_score * 0.90), "goodMatchCount": len(good)}
 
-    source_points = np.float32([ref_keypoints[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-    target_points = np.float32([src_keypoints[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
-    _matrix, mask = cv2.findHomography(source_points, target_points, cv2.RANSAC, 4.0)
-    inlier_ratio = float(np.mean(mask.reshape(-1) > 0)) if mask is not None else 0.0
+    reference_points = np.float32([ref_keypoints[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+    source_points = np.float32([src_keypoints[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+    _matrix, mask = cv2.findHomography(reference_points, source_points, cv2.RANSAC, 4.0)
+    if mask is None:
+        return {**empty, "score": clamp01(global_score * 0.90), "goodMatchCount": len(good)}
+
+    flags = mask.reshape(-1) > 0
+    inlier_count = int(np.sum(flags))
+    inlier_ratio = float(np.mean(flags)) if len(flags) else 0.0
+
+    def point_coverage(points, width, height):
+        if len(points) < 3:
+            return 0.0
+        hull = cv2.convexHull(np.asarray(points, dtype=np.float32))
+        return clamp01(float(cv2.contourArea(hull)) / max(1.0, float(width * height)))
+
+    ref_gray = cv2.cvtColor(resize_longest(reference_frame, 360), cv2.COLOR_BGR2GRAY)
+    src_gray = cv2.cvtColor(resize_longest(source_frame, 360), cv2.COLOR_BGR2GRAY)
+    ref_inliers = [ref_keypoints[good[index].queryIdx].pt for index, value in enumerate(flags) if value]
+    src_inliers = [src_keypoints[good[index].trainIdx].pt for index, value in enumerate(flags) if value]
+    reference_coverage = point_coverage(ref_inliers, ref_gray.shape[1], ref_gray.shape[0])
+    source_coverage = point_coverage(src_inliers, src_gray.shape[1], src_gray.shape[0])
+
     match_strength = clamp01(len(good) / 30.0)
     feature_score = clamp01((0.58 * inlier_ratio) + (0.42 * match_strength))
-    return clamp01((0.42 * global_score) + (0.58 * feature_score))
+    geometry_support = clamp01(
+        (0.36 * clamp01(inlier_count / 12.0))
+        + (0.32 * clamp01(inlier_ratio / 0.70))
+        + (0.16 * clamp01(reference_coverage / 0.18))
+        + (0.16 * clamp01(source_coverage / 0.18))
+    )
+    return {
+        "score": clamp01((0.42 * global_score) + (0.58 * feature_score)),
+        "globalScore": global_score,
+        "goodMatchCount": len(good),
+        "inlierCount": inlier_count,
+        "inlierRatio": inlier_ratio,
+        "referenceCoverage": reference_coverage,
+        "sourceCoverage": source_coverage,
+        "geometrySupport": geometry_support,
+    }
+
+
+def feature_similarity(reference_frame, source_frame):
+    return feature_match_evidence(reference_frame, source_frame)["score"]
 
 
 def interior_anchor_times(start_ms, end_ms):
@@ -363,6 +511,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
             start_ms = boundaries[index]
             end_ms = boundaries[index + 1]
             anchors = []
+            artifact_frames = []
             for time_ms in interior_anchor_times(start_ms, end_ms):
                 frame = reader.read_ms(time_ms)
                 if frame is None:
@@ -371,6 +520,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
                     "timeMs": float(time_ms),
                     "descriptor": frame_descriptor(frame),
                 })
+                artifact_frames.append(frame)
             if not anchors:
                 continue
             shots.append({
@@ -379,6 +529,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
                 "referenceStartMs": float(start_ms),
                 "referenceEndMs": float(end_ms),
                 "anchors": anchors,
+                "_tailMetrics": reference_tail_metrics(artifact_frames),
                 "evidenceRefs": [
                     f"reference-video:sha256:{sha256_file(video_path)}",
                     f"reference-range-ms:{round(start_ms)}-{round(end_ms)}",
@@ -386,6 +537,21 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
             })
     finally:
         reader.close()
+
+    excluded_ranges = []
+    content_duration_ms = float(duration_ms)
+    while len(shots) >= 2:
+        artifact = classify_static_tail_artifact(shots[-1], shots[-2], duration_ms)
+        if artifact is None:
+            break
+        excluded_ranges.insert(0, artifact)
+        content_duration_ms = float(shots[-1]["referenceStartMs"])
+        shots.pop()
+
+    if not shots:
+        raise RuntimeError("Reference analysis excluded every shot; refusing an empty Practice target.")
+    for shot in shots:
+        shot.pop("_tailMetrics", None)
 
     style_material = [
         {
@@ -407,19 +573,26 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
             "frameCount": frame_count,
             "width": width,
             "height": height,
-            "durationMs": duration_ms,
+            "durationMs": content_duration_ms,
+            "sourceDurationMs": duration_ms,
         },
         "analysis": {
             "algorithmId": ALGORITHM_ID,
             "analyzerFingerprint": analyzer_fingerprint(),
             "cutThreshold": cut_threshold,
             "minimumShotMs": minimum_shot_ms,
+            "excludedTailRangeCount": len(excluded_ranges),
         },
         "styleFingerprint": style_fingerprint,
         "shots": shots,
+        "excludedRanges": excluded_ranges,
         "evidenceRefs": [
             f"video:sha256:{sha256_file(video_path)}",
             f"practice-analyzer:sha256:{analyzer_fingerprint()}",
+            *[
+                f"practice-reference-excluded-range-ms:{round(item['referenceStartMs'])}-{round(item['referenceEndMs'])}:{item['kind']}"
+                for item in excluded_ranges
+            ],
         ],
     }
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
@@ -558,19 +731,89 @@ def dedupe_coarse_candidates(candidates, limit):
     return output
 
 
-def coarse_candidates_for_shot(shot, source_indexes, limit=16):
+COARSE_RATE_GRID = (0.25, 0.5, 1.0, 2.0, 4.0)
+
+
+def coarse_temporal_candidate_score(shot, source_index, sample):
     anchors = shot["anchors"]
-    anchor = anchors[len(anchors) // 2]
-    candidates = []
+    center_anchor = anchors[len(anchors) // 2]
+    selected = [anchors[0], center_anchor, anchors[-1]]
+    selected = list({float(anchor["timeMs"]): anchor for anchor in selected}.values())
+    sample_time = float(sample["timeMs"])
+    source_duration = float(source_index["video"]["durationMs"])
+    sample_step = float(source_index["analysis"]["sampleStepMs"])
+    best = 0.0
+
+    for direction in (1.0, -1.0):
+        for rate in COARSE_RATE_GRID:
+            slope = direction * rate
+            similarities = []
+            valid = True
+            for anchor in selected:
+                source_time = sample_time + slope * (
+                    float(anchor["timeMs"]) - float(center_anchor["timeMs"])
+                )
+                if source_time < 0.0 or source_time >= source_duration:
+                    valid = False
+                    break
+                source_sample = nearest_sample(source_index, source_time)
+                if (
+                    source_sample is None
+                    or abs(float(source_sample["timeMs"]) - source_time) > max(450.0, sample_step * 0.80)
+                ):
+                    valid = False
+                    break
+                similarities.append(
+                    descriptor_similarity(anchor["descriptor"], source_sample["descriptor"])
+                )
+            if not valid or not similarities:
+                continue
+            average = float(np.mean(similarities))
+            minimum = float(np.min(similarities))
+            consistency = clamp01(1.0 - float(np.std(similarities)) * 1.6)
+            score = clamp01((0.68 * average) + (0.18 * minimum) + (0.14 * consistency))
+            best = max(best, score)
+
+    if best > 0.0:
+        return best
+    return descriptor_similarity(center_anchor["descriptor"], sample["descriptor"])
+
+
+def coarse_candidates_for_shot(shot, source_indexes, limit=16):
+    all_candidates = []
+    per_source = []
+    source_count = max(1, len(source_indexes))
+    per_source_quota = max(1, min(3, int(limit) // source_count))
+    effective_limit = max(int(limit), source_count * per_source_quota)
+
     for source_index in source_indexes:
+        source_candidates = []
         for sample in source_index["samples"]:
-            score = descriptor_similarity(anchor["descriptor"], sample["descriptor"])
-            candidates.append({
+            score = coarse_temporal_candidate_score(shot, source_index, sample)
+            item = {
                 "score": score,
                 "sample": sample,
                 "index": source_index,
-            })
-    return dedupe_coarse_candidates(candidates, limit)
+            }
+            source_candidates.append(item)
+            all_candidates.append(item)
+        per_source.extend(dedupe_coarse_candidates(source_candidates, per_source_quota))
+
+    retained = list(per_source)
+    retained_keys = {
+        (item["index"]["sourceId"], float(item["sample"]["timeMs"]))
+        for item in retained
+    }
+    for item in dedupe_coarse_candidates(all_candidates, effective_limit):
+        key = (item["index"]["sourceId"], float(item["sample"]["timeMs"]))
+        if key in retained_keys:
+            continue
+        retained.append(item)
+        retained_keys.add(key)
+        if len(retained) >= effective_limit:
+            break
+
+    return sorted(retained, key=lambda entry: entry["score"], reverse=True)
 
 
 def candidate_center_times(sample_time_ms, sample_step_ms):
@@ -837,24 +1080,194 @@ def refine_candidate(shot, candidate, reference_reader, source_reader, local_ref
     return enriched_best
 
 
+def mapping_geometric_proof(
+    shot,
+    mapping,
+    reference_reader,
+    source_reader,
+    max_anchors=None,
+):
+    anchors = shot["anchors"]
+    center_reference_ms = float(anchors[len(anchors) // 2]["timeMs"])
+    selected_anchors = anchors
+    if max_anchors is not None and len(anchors) > int(max_anchors):
+        indexes = np.linspace(0, len(anchors) - 1, int(max_anchors))
+        selected_anchors = [anchors[int(round(index))] for index in indexes]
+    trajectory = mapping.get("trajectory") or []
+    trajectory_by_reference = {
+        round(float(item["referenceTimeMs"]), 3): float(item["sourceTimeMs"])
+        for item in trajectory
+    }
+    evidence = []
+    for anchor in selected_anchors:
+        reference_time = float(anchor["timeMs"])
+        source_time = trajectory_by_reference.get(round(reference_time, 3))
+        if source_time is None:
+            source_time = float(mapping["centerSourceMs"]) + float(mapping["slope"]) * (
+                reference_time - center_reference_ms
+            )
+        if source_time < 0.0 or source_time >= source_reader.duration_ms:
+            continue
+        reference_frame = reference_reader.read_ms(reference_time)
+        source_frame = source_reader.read_ms(source_time)
+        if reference_frame is None or source_frame is None:
+            continue
+        item = feature_match_evidence(reference_frame, source_frame)
+        item = {**item, "referenceTimeMs": reference_time, "sourceTimeMs": source_time}
+        evidence.append(item)
+
+    supports = [float(item["geometrySupport"]) for item in evidence]
+    coverages = [
+        min(float(item["referenceCoverage"]), float(item["sourceCoverage"]))
+        for item in evidence
+    ]
+    strong = [
+        item
+        for item in evidence
+        if int(item["inlierCount"]) >= 6
+        and float(item["inlierRatio"]) >= 0.45
+        and min(float(item["referenceCoverage"]), float(item["sourceCoverage"])) >= 0.015
+    ]
+    anchor_count = len(evidence)
+    strong_count = len(strong)
+    return {
+        "anchorCount": anchor_count,
+        "strongAnchorCount": strong_count,
+        "strongAnchorFraction": (strong_count / anchor_count) if anchor_count else 0.0,
+        "meanSupport": float(np.mean(supports)) if supports else 0.0,
+        "minimumSupport": float(np.min(supports)) if supports else 0.0,
+        "maximumInlierCount": max([int(item["inlierCount"]) for item in evidence], default=0),
+        "meanInlierRatio": float(np.mean([item["inlierRatio"] for item in evidence])) if evidence else 0.0,
+        "meanCoverage": float(np.mean(coverages)) if coverages else 0.0,
+    }
+
+
+def candidate_rank_score(mapping):
+    proof = mapping.get("geometricProof") or {}
+    strong_count = int(proof.get("strongAnchorCount", 0))
+    if strong_count < 2:
+        return float(mapping["score"])
+    repeated_geometry = clamp01(
+        (0.62 * float(proof.get("meanSupport", 0.0)))
+        + (0.38 * float(proof.get("strongAnchorFraction", 0.0)))
+    )
+    return float(mapping["score"]) + (0.18 * repeated_geometry)
+
+
 def confidence_from_result(best, second_score):
-    appearance = float(best["mapping"]["appearance"])
+    mapping = best["mapping"]
+    appearance = float(mapping["appearance"])
     base = 1.0 / (1.0 + math.exp(-14.0 * (appearance - 0.60)))
-    margin = max(0.0, float(best["mapping"]["score"]) - float(second_score))
+    margin = max(0.0, candidate_rank_score(mapping) - float(second_score))
     uniqueness = clamp01(margin / 0.12)
-    consistency = float(best["mapping"]["consistency"])
-    return clamp01((0.90 * base) + (0.05 * uniqueness) + (0.05 * consistency))
+    consistency = float(mapping["consistency"])
+    proof = mapping.get("geometricProof") or {}
+    geometry_certainty = 0.0
+    if int(proof.get("strongAnchorCount", 0)) >= 2:
+        repeated_geometry = clamp01(
+            (0.62 * float(proof.get("meanSupport", 0.0)))
+            + (0.38 * float(proof.get("strongAnchorFraction", 0.0)))
+        )
+        geometry_certainty = clamp01((repeated_geometry - 0.35) / 0.65)
+    evidence_union = 1.0 - ((1.0 - base) * (1.0 - geometry_certainty))
+    confidence = clamp01(
+        (0.88 * evidence_union)
+        + (0.06 * uniqueness)
+        + (0.06 * consistency)
+    )
+    # An exact-scene claim must be backed by repeated spatial correspondence.
+    # Appearance/temporal similarity alone may rank a candidate, but cannot
+    # cross the default 0.95 exact-scene gate.
+    if int(proof.get("strongAnchorCount", 0)) < 2:
+        confidence = min(confidence, 0.949)
+    return confidence
 
 
 def distinct_second_score(results, best):
-    for item in results[1:]:
+    for item in results:
+        if item is best:
+            continue
         if item["index"]["sourceId"] != best["index"]["sourceId"]:
-            return item["mapping"]["score"]
+            return candidate_rank_score(item["mapping"])
         delta = abs(item["mapping"]["centerSourceMs"] - best["mapping"]["centerSourceMs"])
         step = float(best["index"]["analysis"]["sampleStepMs"])
         if delta >= max(800.0, step * 1.5):
-            return item["mapping"]["score"]
+            return candidate_rank_score(item["mapping"])
     return 0.0
+
+
+def reference_boundary_continuity(reference_reader, previous_shot, shot):
+    boundary_ms = float(shot["referenceStartMs"])
+    offset_ms = min(
+        100.0,
+        max(35.0, (boundary_ms - float(previous_shot["referenceStartMs"])) * 0.18),
+        max(35.0, (float(shot["referenceEndMs"]) - boundary_ms) * 0.18),
+    )
+    before = reference_reader.read_ms(max(float(previous_shot["referenceStartMs"]), boundary_ms - offset_ms))
+    after = reference_reader.read_ms(min(float(shot["referenceEndMs"]), boundary_ms + offset_ms))
+    if before is None or after is None:
+        return None
+    descriptor = descriptor_similarity(cached_descriptor(before), cached_descriptor(after))
+    feature = feature_similarity(before, after)
+    score = clamp01((0.45 * descriptor) + (0.55 * feature))
+    return {
+        "score": score,
+        "descriptor": descriptor,
+        "feature": feature,
+        "offsetMs": offset_ms,
+    }
+
+
+def scene_identity_verified(match):
+    if match is None or float(match.get("confidence", 0.0)) < 0.80:
+        return False
+    proof = match.get("geometricProof") or {}
+    return (
+        int(proof.get("strongAnchorCount", 0)) >= 2
+        and float(proof.get("strongAnchorFraction", 0.0)) >= 0.30
+        and float(proof.get("meanSupport", 0.0)) >= 0.45
+        and int(proof.get("maximumInlierCount", 0)) >= 6
+    )
+
+
+def source_continuity_bonus(boundary):
+    if boundary is None:
+        return 0.0
+    score = float(boundary["score"])
+    if score < 0.70:
+        return 0.0
+    return 0.06 * clamp01((score - 0.70) / 0.25)
+
+
+def continuity_candidates(shot, source_index, reference_reader, source_reader, limit=4):
+    ranked = []
+    for sample in source_index["samples"]:
+        score = coarse_temporal_candidate_score(shot, source_index, sample)
+        ranked.append({
+            "score": score,
+            "sample": sample,
+            "index": source_index,
+        })
+    ranked.sort(key=lambda item: item["score"], reverse=True)
+    output = []
+    for candidate in ranked[:max(1, int(limit))]:
+        mapping = refine_candidate(
+            shot,
+            candidate,
+            reference_reader,
+            source_reader,
+            local_refine=True,
+        )
+        if mapping is None:
+            continue
+        output.append({
+            "candidate": candidate,
+            "index": source_index,
+            "sample": candidate["sample"],
+            "coarseScore": candidate["score"],
+            "mapping": mapping,
+        })
+    return output
 
 
 def match_reference(reference_path, source_index_paths, output_path, coarse_limit):
@@ -875,7 +1288,26 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
     }
     matches = []
     try:
-        for shot in reference["shots"]:
+        for shot_index, shot in enumerate(reference["shots"]):
+            previous_shot = reference["shots"][shot_index - 1] if shot_index > 0 else None
+            previous_match = (
+                matches[-1]
+                if previous_shot is not None
+                and matches
+                and matches[-1]["shotId"] == previous_shot["shotId"]
+                else None
+            )
+            boundary = (
+                reference_boundary_continuity(reference_reader, previous_shot, shot)
+                if previous_shot is not None
+                else None
+            )
+            continuity_bonus = (
+                source_continuity_bonus(boundary)
+                if scene_identity_verified(previous_match)
+                else 0.0
+            )
+
             coarse = coarse_candidates_for_shot(shot, source_indexes, coarse_limit)
             refined = []
             for candidate in coarse:
@@ -894,15 +1326,34 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             if not refined:
                 continue
 
-            detailed_seeds = list(refined[:min(6, len(refined))])
-            represented_sources = {item["index"]["sourceId"] for item in detailed_seeds}
-            for item in refined[len(detailed_seeds):]:
-                source_id = item["index"]["sourceId"]
-                if source_id in represented_sources:
+            detailed_limit = min(
+                len(refined),
+                max(8, min(16, len(source_indexes) * 2)),
+            )
+            detailed_seeds = []
+            retained_seed_keys = set()
+            for source_index in source_indexes:
+                source_id = source_index["sourceId"]
+                source_best = next(
+                    (item for item in refined if item["index"]["sourceId"] == source_id),
+                    None,
+                )
+                if source_best is None:
+                    continue
+                detailed_seeds.append(source_best)
+                retained_seed_keys.add(
+                    (source_id, float(source_best["sample"]["timeMs"]))
+                )
+            for item in refined:
+                key = (
+                    item["index"]["sourceId"],
+                    float(item["sample"]["timeMs"]),
+                )
+                if key in retained_seed_keys:
                     continue
                 detailed_seeds.append(item)
-                represented_sources.add(source_id)
-                if len(detailed_seeds) >= min(8, len(refined)):
+                retained_seed_keys.add(key)
+                if len(detailed_seeds) >= detailed_limit:
                     break
 
             detailed = []
@@ -918,14 +1369,128 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 if mapping is None:
                     continue
                 detailed.append({**item, "mapping": mapping})
-            detailed.sort(key=lambda item: item["mapping"]["score"], reverse=True)
+            continuity_source_id = (
+                previous_match["sourceId"]
+                if previous_match is not None and continuity_bonus > 0.0
+                else None
+            )
+            if continuity_source_id is not None:
+                continuity_index = next(
+                    (
+                        item
+                        for item in source_indexes
+                        if item["sourceId"] == continuity_source_id
+                    ),
+                    None,
+                )
+                if continuity_index is not None:
+                    continuity_reader = source_readers[continuity_source_id]
+                    continuity_items = continuity_candidates(
+                        shot,
+                        continuity_index,
+                        reference_reader,
+                        continuity_reader,
+                    )
+                    existing_keys = {
+                        (
+                            item["index"]["sourceId"],
+                            float(item["sample"]["timeMs"]),
+                        )
+                        for item in detailed
+                    }
+                    for item in continuity_items:
+                        key = (
+                            item["index"]["sourceId"],
+                            float(item["sample"]["timeMs"]),
+                        )
+                        if key in existing_keys:
+                            continue
+                        detailed.append(item)
+                        existing_keys.add(key)
+
             if not detailed:
                 continue
 
+            geometry_candidates = []
+            geometry_keys = set()
+            for source_index in source_indexes:
+                source_id = source_index["sourceId"]
+                source_items = [
+                    item for item in detailed
+                    if item["index"]["sourceId"] == source_id
+                ]
+                if not source_items:
+                    continue
+                source_best = max(
+                    source_items,
+                    key=lambda item: float(item["mapping"]["score"]),
+                )
+                key = (
+                    source_id,
+                    float(source_best["sample"]["timeMs"]),
+                )
+                if key not in geometry_keys:
+                    geometry_candidates.append(source_best)
+                    geometry_keys.add(key)
+
+            for item in sorted(
+                detailed,
+                key=lambda candidate: float(candidate["mapping"]["score"]),
+                reverse=True,
+            )[:4]:
+                key = (
+                    item["index"]["sourceId"],
+                    float(item["sample"]["timeMs"]),
+                )
+                if key in geometry_keys:
+                    continue
+                geometry_candidates.append(item)
+                geometry_keys.add(key)
+
+            for item in geometry_candidates:
+                reader = source_readers[item["index"]["sourceId"]]
+                item["mapping"] = {
+                    **item["mapping"],
+                    "geometricProof": mapping_geometric_proof(
+                        shot,
+                        item["mapping"],
+                        reference_reader,
+                        reader,
+                        max_anchors=3,
+                    ),
+                }
+
+            detailed.sort(
+                key=lambda item: candidate_rank_score(item["mapping"]),
+                reverse=True,
+            )
+
             refined = detailed
-            best = refined[0]
-            second_score = distinct_second_score(refined, best)
+            best = max(
+                refined,
+                key=lambda item: (
+                    candidate_rank_score(item["mapping"])
+                    + (
+                        continuity_bonus
+                        if continuity_source_id is not None
+                        and item["index"]["sourceId"] == continuity_source_id
+                        else 0.0
+                    )
+                ),
+            )
             mapping = best["mapping"]
+            best_reader = source_readers[best["index"]["sourceId"]]
+            mapping = {
+                **mapping,
+                "geometricProof": mapping_geometric_proof(
+                    shot,
+                    mapping,
+                    reference_reader,
+                    best_reader,
+                ),
+            }
+            best["mapping"] = mapping
+            second_score = distinct_second_score(refined, best)
             center_reference = shot["anchors"][len(shot["anchors"]) // 2]["timeMs"]
             mapped_start = mapping["centerSourceMs"] + mapping["slope"] * (
                 shot["referenceStartMs"] - center_reference
@@ -945,6 +1510,25 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 "FORWARD" if mapping["slope"] >= 0 else "REVERSE"
             )
             rewind = mapping.get("rewind")
+            continuity_applied = (
+                continuity_source_id is not None
+                and continuity_bonus > 0.0
+                and best["index"]["sourceId"] == continuity_source_id
+            )
+            candidate_score = candidate_rank_score(mapping)
+            candidate_margin = candidate_score - float(second_score)
+            selection_mode = (
+                "REFERENCE_CONTINUITY_PRIOR" if continuity_applied else "VISUAL_BEST"
+            )
+            boundary_evidence = (
+                [
+                    f"practice-reference-boundary-continuity:{boundary['score']:.6f}",
+                    f"practice-reference-boundary-descriptor:{boundary['descriptor']:.6f}",
+                    f"practice-reference-boundary-feature:{boundary['feature']:.6f}",
+                ]
+                if boundary is not None
+                else []
+            )
             matches.append({
                 "shotId": shot["shotId"],
                 "sourceId": best["index"]["sourceId"],
@@ -959,14 +1543,41 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 "appearanceSimilarity": float(mapping["appearance"]),
                 "temporalSimilarity": float(mapping["consistency"]),
                 "motionSimilarity": float(mapping["minimum"]),
+                "geometricProof": mapping.get("geometricProof", {}),
                 "confidence": confidence,
+                "candidateScore": float(candidate_score),
+                "runnerUpScore": float(second_score),
+                "candidateMargin": float(candidate_margin),
+                **(
+                    {"referenceBoundaryContinuity": float(boundary["score"])}
+                    if boundary is not None else {}
+                ),
+                "selectionMode": selection_mode,
                 "evidenceRefs": [
                     f"reference-shot:{shot['shotId']}",
                     f"source-video:sha256:{best['index']['sourceSha256']}",
                     f"practice-analyzer:sha256:{analyzer_fingerprint()}",
                     f"coarse-score:{best['coarseScore']:.6f}",
                     f"refined-score:{mapping['score']:.6f}",
+                    f"practice-candidate-score:{candidate_score:.6f}",
+                    f"practice-runner-up-score:{second_score:.6f}",
+                    f"practice-candidate-margin:{candidate_margin:.6f}",
+                    f"practice-scene-selection-mode:{selection_mode}",
+                    f"practice-geometric-mean-support:{mapping.get('geometricProof', {}).get('meanSupport', 0.0):.6f}",
+                    f"practice-geometric-strong-anchors:{mapping.get('geometricProof', {}).get('strongAnchorCount', 0)}",
+                    f"practice-geometric-strong-fraction:{mapping.get('geometricProof', {}).get('strongAnchorFraction', 0.0):.6f}",
+                    f"practice-geometric-max-inliers:{mapping.get('geometricProof', {}).get('maximumInlierCount', 0)}",
+                    f"practice-geometric-mean-coverage:{mapping.get('geometricProof', {}).get('meanCoverage', 0.0):.6f}",
                     f"practice-temporal-behavior:{temporal_behavior}",
+                    *boundary_evidence,
+                    *(
+                        [
+                            f"practice-source-continuity-prior:{continuity_source_id}",
+                            f"practice-source-continuity-bonus:{continuity_bonus:.6f}",
+                        ]
+                        if continuity_applied
+                        else []
+                    ),
                     *(
                         [f"practice-rewind-span-ms:{rewind['rewindSpanMs']:.3f}"]
                         if rewind is not None else []
@@ -986,8 +1597,19 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "algorithmId": ALGORITHM_ID,
             "analyzerFingerprint": analyzer_fingerprint(),
             "coarseCandidateLimit": coarse_limit,
-            "refinementMode": "PROXY_PROGRESSIVE_V1",
-            "detailedCandidateLimit": min(8, coarse_limit),
+            "coarseCandidateStrategy": "SOURCE_BALANCED_TEMPORAL_V2",
+            "refinementMode": "PROXY_PROGRESSIVE_SOURCE_BALANCED_GEOMETRIC_V3",
+            "geometricVerificationMode": "SOURCE_BEST_PLUS_TOP4_THREE_ANCHOR_THEN_FULL_WINNER_V1",
+            "geometricRankingMinimumStrongAnchors": 2,
+            "geometricRankingSampledAnchors": 3,
+            "sourceContinuityMode": "REFERENCE_BOUNDARY_V1",
+            "sourceContinuityIdentityGate": "CONFIDENCE_0_80_PLUS_REPEATED_GEOMETRY_V1",
+            "sourceContinuityThreshold": 0.70,
+            "sourceContinuityMaximumBonus": 0.06,
+            "detailedCandidateLimit": max(
+                8,
+                min(16, len(source_indexes) * 2),
+            ),
         },
         "sourceIndexIds": [item["sourceId"] for item in source_indexes],
         "matches": matches,
@@ -999,7 +1621,7 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 for ref in source_index.get("evidenceRefs", [])
             ],
             f"practice-analyzer:sha256:{analyzer_fingerprint()}",
-            "practice-scene-match-mode:PROXY_PROGRESSIVE_V1",
+            "practice-scene-match-mode:PROXY_PROGRESSIVE_SOURCE_BALANCED_GEOMETRIC_V3",
         ],
     }
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
@@ -1779,7 +2401,7 @@ def build_parser():
     source.add_argument("--video", required=True)
     source.add_argument("--source-id", required=True)
     source.add_argument("--output", required=True)
-    source.add_argument("--sample-step-ms", type=float, default=750.0)
+    source.add_argument("--sample-step-ms", type=float, default=250.0)
     source.add_argument("--analysis-fps", type=float, default=DEFAULT_ANALYSIS_PROXY_FPS)
     source.add_argument("--proxy-dir")
     source.add_argument("--ffmpeg")
