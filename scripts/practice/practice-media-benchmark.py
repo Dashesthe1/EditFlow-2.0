@@ -1,0 +1,375 @@
+#!/usr/bin/env python3
+import argparse
+import importlib.util
+import json
+import math
+import os
+import re
+from pathlib import Path
+
+SUITE_SCHEMA = "editflow.practice-media-benchmark-suite.v1"
+TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
+REPORT_SCHEMA = "editflow.practice-media-benchmark-report.v1"
+DEFAULT_CONFIDENCE = 0.95
+
+
+def clamp01(value):
+    return max(0.0, min(1.0, float(value)))
+
+
+def load_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def write_json(path, payload):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
+def resolve_path(base_dir, value):
+    expanded = os.path.expandvars(os.path.expanduser(str(value)))
+    path = Path(expanded)
+    if not path.is_absolute():
+        path = Path(base_dir) / path
+    return path.resolve()
+
+
+def safe_name(value):
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", str(value)).strip("-") or "case"
+
+
+def exact_geometry(match):
+    proof = (match or {}).get("geometricProof") or {}
+    return (
+        int(proof.get("strongAnchorCount", 0)) >= 2
+        and float(proof.get("strongAnchorFraction", 0.0)) >= 0.30
+        and float(proof.get("meanSupport", 0.0)) >= 0.45
+        and int(proof.get("maximumInlierCount", 0)) >= 6
+    )
+
+
+def interval_metrics(match, truth):
+    actual_start = float(match.get("sourceStartMs", 0.0))
+    actual_end = float(match.get("sourceEndMs", 0.0))
+    truth_start = float(truth["sourceStartMs"])
+    truth_end = float(truth["sourceEndMs"])
+    actual_low, actual_high = sorted((actual_start, actual_end))
+    truth_low, truth_high = sorted((truth_start, truth_end))
+    overlap = max(0.0, min(actual_high, truth_high) - max(actual_low, truth_low))
+    union = max(actual_high, truth_high) - min(actual_low, truth_low)
+    iou = overlap / union if union > 1e-9 else 1.0
+    center_error = abs(
+        ((actual_low + actual_high) / 2.0)
+        - ((truth_low + truth_high) / 2.0)
+    )
+    boundary_error = max(
+        abs(actual_low - truth_low),
+        abs(actual_high - truth_high),
+    )
+    truth_duration = max(1.0, truth_high - truth_low)
+    default_tolerance = max(300.0, min(1000.0, truth_duration * 0.35))
+    tolerance = float(truth.get("toleranceMs", default_tolerance))
+    correct = boundary_error <= tolerance and iou >= float(truth.get("minimumIou", 0.50))
+    return {
+        "intervalIou": clamp01(iou),
+        "centerErrorMs": center_error,
+        "maximumBoundaryErrorMs": boundary_error,
+        "toleranceMs": tolerance,
+        "correct": bool(correct),
+    }
+def mean(values):
+    return float(sum(values) / len(values)) if values else 0.0
+
+
+def evaluate_case(case, reference, matches_payload, truth_payload=None):
+    reference_shots = list(reference.get("shots") or [])
+    reference_ids = [str(item["shotId"]) for item in reference_shots]
+    matches = list(matches_payload.get("matches") or [])
+    matches_by_shot = {str(item["shotId"]): item for item in matches}
+    truth_shots = list((truth_payload or {}).get("shots") or [])
+    truth_by_shot = {str(item["shotId"]): item for item in truth_shots}
+    confidence_gate = float(case.get("minimumConfidence", DEFAULT_CONFIDENCE))
+
+    per_shot = []
+    false_high_confidence = 0
+    for shot_id in reference_ids:
+        match = matches_by_shot.get(shot_id)
+        truth = truth_by_shot.get(shot_id)
+        if truth is None:
+            per_shot.append({
+                "shotId": shot_id,
+                "truthAvailable": False,
+                "matched": match is not None,
+                "confidence": float((match or {}).get("confidence", 0.0)),
+                "certified": False,
+            })
+            continue
+        timing = interval_metrics(match or {}, truth) if match is not None else {
+            "intervalIou": 0.0,
+            "centerErrorMs": math.inf,
+            "maximumBoundaryErrorMs": math.inf,
+            "toleranceMs": float(truth.get("toleranceMs", 0.0)),
+            "correct": False,
+        }
+        source_correct = (
+            match is not None
+            and str(match.get("sourceId")) == str(truth["sourceId"])
+        )
+        expected_direction = truth.get("direction")
+        direction_correct = (
+            match is not None
+            and (
+                expected_direction is None
+                or str(match.get("direction")) == str(expected_direction)
+            )
+        )
+        geometry_correct = match is not None and exact_geometry(match)
+        confidence = float((match or {}).get("confidence", 0.0))
+        truth_correct = source_correct and timing["correct"] and direction_correct
+        if confidence >= confidence_gate and not truth_correct:
+            false_high_confidence += 1
+        per_shot.append({
+            "shotId": shot_id,
+            "truthAvailable": True,
+            "matched": match is not None,
+            "sourceIdentityCorrect": bool(source_correct),
+            "directionCorrect": bool(direction_correct),
+            "geometricProofCorrect": bool(geometry_correct),
+            "confidence": confidence,
+            "retainedConfidence": confidence >= confidence_gate,
+            **timing,
+            "certified": bool(
+                truth_correct
+                and geometry_correct
+                and confidence >= confidence_gate
+            ),
+        })
+
+    truth_rows = [item for item in per_shot if item["truthAvailable"]]
+    direction_rows = [
+        item for item in truth_rows
+        if truth_by_shot[item["shotId"]].get("direction") is not None
+    ]
+    shot_count = len(reference_ids)
+    metrics = {
+        "referenceShotCount": shot_count,
+        "matchedShotCount": sum(1 for item in per_shot if item["matched"]),
+        "coverageRate": mean([1.0 if item["matched"] else 0.0 for item in per_shot]),
+        "truthShotCount": len(truth_rows),
+        "truthCoverageRate": (len(truth_rows) / shot_count) if shot_count else 0.0,
+        "sourceIdentityAccuracy": mean([
+            1.0 if item["sourceIdentityCorrect"] else 0.0 for item in truth_rows
+        ]),
+        "timingAccuracy": mean([1.0 if item["correct"] else 0.0 for item in truth_rows]),
+        "directionAccuracy": mean([
+            1.0 if item["directionCorrect"] else 0.0 for item in direction_rows
+        ]) if direction_rows else 1.0,
+        "geometricProofRate": mean([
+            1.0 if item["geometricProofCorrect"] else 0.0 for item in truth_rows
+        ]),
+        "retainedConfidenceRate": mean([
+            1.0 if item["retainedConfidence"] else 0.0 for item in truth_rows
+        ]),
+        "meanConfidence": mean([item["confidence"] for item in per_shot]),
+        "meanIntervalIou": mean([item["intervalIou"] for item in truth_rows]),
+        "meanCenterErrorMs": mean([
+            item["centerErrorMs"] for item in truth_rows if math.isfinite(item["centerErrorMs"])
+        ]),
+        "falseHighConfidenceCount": false_high_confidence,
+    }
+
+    reasons = []
+    complete_truth = shot_count > 0 and metrics["truthCoverageRate"] >= 1.0
+    if not complete_truth:
+        reasons.append("Retained shot-level truth does not cover the full reference.")
+    gates = {
+        "minimumCoverageRate": float(case.get("minimumCoverageRate", 1.0)),
+        "minimumSourceIdentityAccuracy": float(case.get("minimumSourceIdentityAccuracy", 1.0)),
+        "minimumTimingAccuracy": float(case.get("minimumTimingAccuracy", 0.95)),
+        "minimumDirectionAccuracy": float(case.get("minimumDirectionAccuracy", 1.0)),
+        "minimumGeometricProofRate": float(case.get("minimumGeometricProofRate", 1.0)),
+        "minimumRetainedConfidenceRate": float(case.get("minimumRetainedConfidenceRate", 1.0)),
+        "maximumFalseHighConfidenceCount": int(case.get("maximumFalseHighConfidenceCount", 0)),
+    }
+    checks = [
+        ("coverageRate", metrics["coverageRate"], gates["minimumCoverageRate"]),
+        ("sourceIdentityAccuracy", metrics["sourceIdentityAccuracy"], gates["minimumSourceIdentityAccuracy"]),
+        ("timingAccuracy", metrics["timingAccuracy"], gates["minimumTimingAccuracy"]),
+        ("directionAccuracy", metrics["directionAccuracy"], gates["minimumDirectionAccuracy"]),
+        ("geometricProofRate", metrics["geometricProofRate"], gates["minimumGeometricProofRate"]),
+        ("retainedConfidenceRate", metrics["retainedConfidenceRate"], gates["minimumRetainedConfidenceRate"]),
+    ]
+    for name, observed, required in checks:
+        if complete_truth and observed + 1e-12 < required:
+            reasons.append(f"{name} {observed:.4f} is below required {required:.4f}.")
+    if complete_truth and false_high_confidence > gates["maximumFalseHighConfidenceCount"]:
+        reasons.append(
+            "falseHighConfidenceCount "
+            f"{false_high_confidence} exceeds allowed {gates['maximumFalseHighConfidenceCount']}."
+        )
+
+    if not complete_truth:
+        status = "MEASURE_ONLY"
+    else:
+        status = "PASS" if not reasons else "FAIL"
+    return {
+        "benchmarkId": str(case["benchmarkId"]),
+        "referenceId": str(reference.get("referenceId", case.get("referenceId", ""))),
+        "status": status,
+        "metrics": metrics,
+        "gates": gates,
+        "reasons": reasons,
+        "perShot": per_shot,
+    }
+def load_matcher():
+    script = Path(__file__).with_name("practice-media-match.py")
+    spec = importlib.util.spec_from_file_location("editflow_practice_media_match", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load matcher from {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def valid_cached(matcher, path, schema):
+    path = Path(path)
+    if not path.is_file():
+        return False
+    try:
+        matcher.load_artifact(path, schema)
+        return True
+    except Exception:
+        return False
+
+
+def run_case(matcher, case, base_dir, output_root):
+    benchmark_id = str(case["benchmarkId"])
+    case_dir = Path(output_root) / safe_name(benchmark_id)
+    case_dir.mkdir(parents=True, exist_ok=True)
+    reference_video = resolve_path(base_dir, case["referenceVideo"])
+    reference_json = case_dir / "reference-analysis.json"
+    reference_id = str(case.get("referenceId", benchmark_id))
+    if not valid_cached(matcher, reference_json, "editflow.practice-reference-analysis.v1"):
+        matcher.analyze_reference(
+            reference_video,
+            reference_id,
+            reference_json,
+            float(case.get("cutThreshold", 0.42)),
+            float(case.get("minimumShotMs", 180.0)),
+        )
+    reference = matcher.load_artifact(
+        reference_json,
+        "editflow.practice-reference-analysis.v1",
+    )
+
+    source_indexes = []
+    for source in case.get("sources") or []:
+        source_id = str(source["sourceId"])
+        source_video = resolve_path(base_dir, source["video"])
+        source_json = case_dir / f"source-{safe_name(source_id)}.json"
+        if not valid_cached(matcher, source_json, "editflow.practice-source-index.v1"):
+            matcher.index_source(
+                source_video,
+                source_id,
+                source_json,
+                float(source.get("sampleStepMs", case.get("sampleStepMs", 500.0))),
+                explicit_ffmpeg=case.get("ffmpeg"),
+                proxy_dir=case_dir / "proxy",
+                analysis_fps=float(source.get("analysisFps", case.get("analysisFps", 6.0))),
+            )
+        source_indexes.append(source_json)
+
+    matches_json = case_dir / "scene-matches.json"
+    matches_payload = matcher.match_reference(
+        reference_json,
+        source_indexes,
+        matches_json,
+        int(case.get("coarseLimit", 16)),
+    )
+    truth_payload = None
+    if case.get("truthFile"):
+        truth_path = resolve_path(base_dir, case["truthFile"])
+        truth_payload = load_json(truth_path)
+        if truth_payload.get("schema") != TRUTH_SCHEMA:
+            raise ValueError(f"{truth_path} must use {TRUTH_SCHEMA}")
+        if str(truth_payload.get("referenceId")) != str(reference_id):
+            raise ValueError(
+                f"Truth referenceId {truth_payload.get('referenceId')} "
+                f"does not match {reference_id}."
+            )
+
+    result = evaluate_case(case, reference, matches_payload, truth_payload)
+    result["artifacts"] = {
+        "referenceAnalysis": str(reference_json),
+        "sceneMatches": str(matches_json),
+        "sourceIndexes": [str(item) for item in source_indexes],
+        **(
+            {"truth": str(resolve_path(base_dir, case["truthFile"]))}
+            if case.get("truthFile")
+            else {}
+        ),
+    }
+    write_json(case_dir / "benchmark-result.json", result)
+    return result
+
+
+def run_suite(manifest_path, output_root):
+    manifest_path = Path(manifest_path).resolve()
+    suite = load_json(manifest_path)
+    if suite.get("schema") != SUITE_SCHEMA:
+        raise ValueError(f"Benchmark manifest must use {SUITE_SCHEMA}")
+    cases = list(suite.get("cases") or [])
+    if not cases:
+        raise ValueError("Benchmark manifest must contain at least one case.")
+    matcher = load_matcher()
+    starting_fingerprint = matcher.analyzer_fingerprint()
+    results = []
+    for case in cases:
+        if matcher.analyzer_fingerprint() != starting_fingerprint:
+            raise RuntimeError(
+                "Practice matcher changed during the benchmark; restart from stable code."
+            )
+        results.append(run_case(matcher, case, manifest_path.parent, output_root))
+        if matcher.analyzer_fingerprint() != starting_fingerprint:
+            raise RuntimeError(
+                "Practice matcher changed during the benchmark; retained artifacts are invalid."
+            )
+    summary = {
+        "caseCount": len(results),
+        "passCount": sum(1 for item in results if item["status"] == "PASS"),
+        "failCount": sum(1 for item in results if item["status"] == "FAIL"),
+        "measureOnlyCount": sum(1 for item in results if item["status"] == "MEASURE_ONLY"),
+        "certified": bool(results) and all(item["status"] == "PASS" for item in results),
+    }
+    return {
+        "schema": REPORT_SCHEMA,
+        "suiteId": str(suite.get("suiteId", manifest_path.stem)),
+        "matcherAlgorithmId": matcher.ALGORITHM_ID,
+        "matcherAnalyzerFingerprint": matcher.analyzer_fingerprint(),
+        "summary": summary,
+        "cases": results,
+    }
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Run truth-retained Practice media benchmarks against long-form sources."
+    )
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--report", required=True)
+    return parser
+def main():
+    args = build_parser().parse_args()
+    report = run_suite(args.manifest, args.output_dir)
+    write_json(args.report, report)
+    print(json.dumps({
+        "ok": True,
+        "report": str(Path(args.report).resolve()),
+        "summary": report["summary"],
+    }))
+    if report["summary"]["failCount"] > 0:
+        raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    main()
