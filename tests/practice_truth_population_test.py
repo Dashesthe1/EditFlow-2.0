@@ -194,6 +194,53 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "IMPORT_AND_RETAIN_TRUTH",
             )
 
+    def test_prepare_review_packs_refreshes_missing_source_atlas_and_then_skips(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            plan = self._plan(root, [case])
+            calls = []
+
+            class FakeTruthTool:
+                @staticmethod
+                def build_review_pack(**kwargs):
+                    calls.append(kwargs)
+                    review_dir = Path(kwargs["output_dir"])
+                    source_id = next(iter(kwargs["source_paths_by_id"]))
+                    atlas_dir = review_dir / "source-atlas" / "fixture"
+                    atlas_dir.mkdir(parents=True, exist_ok=True)
+                    preview = atlas_dir / "0001.png"
+                    preview.write_bytes(b"atlas")
+                    manifest = {
+                        "schema": tool.REVIEW_PACK_SCHEMA,
+                        "sourceAtlas": [{
+                            "sourceId": source_id,
+                            "samples": [{
+                                "timeMs": 1000.0,
+                                "previewPath": str(Path("source-atlas") / "fixture" / "0001.png"),
+                            }],
+                        }],
+                    }
+                    write_json(review_dir / "review-pack.json", manifest)
+                    return manifest
+
+            prepared = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(prepared["preparedCount"], 1)
+            self.assertEqual(prepared["failedCount"], 0)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]["source_atlas_interval_ms"], tool.DEFAULT_SOURCE_ATLAS_INTERVAL_MS)
+
+            skipped = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(skipped["skippedCount"], 1)
+            self.assertEqual(len(calls), 1)
+
+            preview_path = root / case["reviewPackDir"] / "source-atlas" / "fixture" / "0001.png"
+            preview_path.unlink()
+            refreshed = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(refreshed["preparedCount"], 1)
+            self.assertEqual(len(calls), 2)
+
     def test_complete_single_case_reaches_corpus_ready_without_certifying_population(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

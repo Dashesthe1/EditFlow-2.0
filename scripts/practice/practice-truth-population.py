@@ -25,6 +25,9 @@ MIN_CASES = 20
 MAX_CASES = 30
 MIN_DIFFICULTY_KINDS = 4
 PERCEPTUAL_DUPLICATE_SIMILARITY = 0.96
+PREPARE_SCHEMA = "editflow.practice-truth-review-preparation.v1"
+DEFAULT_SOURCE_ATLAS_INTERVAL_MS = 300000.0
+DEFAULT_SOURCE_ATLAS_MAX_FRAMES = 30
 
 
 def sha256_file(path):
@@ -82,6 +85,14 @@ def load_corpus_tool():
     return module
 
 
+def load_media_truth_tool():
+    script = Path(__file__).with_name("practice-media-truth.py")
+    spec = importlib.util.spec_from_file_location("practice_media_truth", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def require_plan(path):
     payload = load_json(path)
     if payload.get("schema") != POPULATION_SCHEMA:
@@ -121,6 +132,39 @@ def worksheet_complete(path):
         except ValueError:
             return False
     return True
+
+
+def review_pack_has_source_atlas(review_dir, expected_source_ids):
+    review_dir = Path(review_dir)
+    manifest_path = review_dir / "review-pack.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        pack = load_json(manifest_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if pack.get("schema") != REVIEW_PACK_SCHEMA:
+        return False
+    atlas = pack.get("sourceAtlas")
+    if not isinstance(atlas, list):
+        return False
+    by_source = {
+        str(item.get("sourceId", "")).strip(): item
+        for item in atlas
+        if isinstance(item, dict) and str(item.get("sourceId", "")).strip()
+    }
+    if sorted(by_source) != sorted(expected_source_ids):
+        return False
+    for source_id in expected_source_ids:
+        samples = by_source[source_id].get("samples")
+        if not isinstance(samples, list) or not samples:
+            return False
+        for sample in samples:
+            preview = sample.get("previewPath") if isinstance(sample, dict) else None
+            if not preview or not (review_dir / str(preview)).is_file():
+                return False
+    return True
+
 
 def artifact_path(case, manifest_path, key):
     return resolve_path(manifest_path, case.get(key))
@@ -318,6 +362,92 @@ def build_status(plan_path):
         "cases": results,
     }
 
+
+def _case_source_paths(case, manifest_path):
+    paths = {}
+    for item in case.get("sourceMedia") or []:
+        if not isinstance(item, dict):
+            continue
+        source_id = str(item.get("sourceId", "")).strip()
+        source_path = resolve_path(manifest_path, item.get("path"))
+        if not source_id or source_path is None or not source_path.is_file():
+            raise ValueError("Start source media is missing or invalid.")
+        if source_id in paths:
+            raise ValueError(f"Duplicate Start source id in population case: {source_id}")
+        paths[source_id] = str(source_path)
+    if not paths:
+        raise ValueError("Population case contains no Start source media.")
+    return paths
+
+
+def prepare_review_packs(
+    plan_path,
+    source_atlas_interval_ms=DEFAULT_SOURCE_ATLAS_INTERVAL_MS,
+    source_atlas_max_frames=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    force=False,
+    media_truth=None,
+):
+    plan = require_plan(plan_path)
+    media_truth = media_truth or load_media_truth_tool()
+    interval_ms = float(source_atlas_interval_ms)
+    max_frames = int(source_atlas_max_frames)
+    if interval_ms < 0.0:
+        raise ValueError("Source-atlas interval cannot be negative.")
+    if max_frames < 1:
+        raise ValueError("Source-atlas max frame count must be at least 1.")
+
+    results = []
+    for case in plan["cases"]:
+        case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
+        review_dir = artifact_path(case, plan_path, "reviewPackDir")
+        expected_source_ids = source_ids(case)
+        needs_atlas = interval_ms > 0.0
+        if review_dir is None:
+            results.append({"caseId": case_id, "status": "FAILED", "reason": "reviewPackDir is missing."})
+            continue
+        if not force and (review_dir / "review-pack.json").is_file():
+            if not needs_atlas or review_pack_has_source_atlas(review_dir, expected_source_ids):
+                results.append({"caseId": case_id, "status": "SKIPPED", "reason": "Review pack already satisfies requested preparation."})
+                continue
+        try:
+            finish_path = artifact_path(case, plan_path, "finishPath")
+            reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+            draft_path = artifact_path(case, plan_path, "truthDraft")
+            if finish_path is None or not finish_path.is_file():
+                raise ValueError("Finish media is missing.")
+            if reference_path is None or not reference_path.is_file():
+                raise ValueError("Reference analysis is missing.")
+            if draft_path is None or not draft_path.is_file():
+                raise ValueError("Truth draft is missing.")
+            manifest = media_truth.build_review_pack(
+                reference=load_json(reference_path),
+                draft=load_json(draft_path),
+                finish_path=str(finish_path),
+                source_paths_by_id=_case_source_paths(case, plan_path),
+                output_dir=review_dir,
+                source_atlas_interval_ms=(interval_ms if needs_atlas else None),
+                source_atlas_max_frames=max_frames,
+            )
+            results.append({
+                "caseId": case_id,
+                "status": "PREPARED",
+                "reviewPack": str(review_dir / "review-pack.json"),
+                "sourceAtlasCount": len(manifest.get("sourceAtlas") or []),
+            })
+        except Exception as exc:
+            results.append({"caseId": case_id, "status": "FAILED", "reason": str(exc)})
+
+    counts = Counter(item["status"] for item in results)
+    return {
+        "schema": PREPARE_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "preparedCount": counts.get("PREPARED", 0),
+        "skippedCount": counts.get("SKIPPED", 0),
+        "failedCount": counts.get("FAILED", 0),
+        "cases": results,
+    }
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Track population of the 20-30 case independent Practice truth suite."
@@ -326,12 +456,34 @@ def build_parser():
     status = sub.add_parser("status")
     status.add_argument("--manifest", required=True)
     status.add_argument("--output")
+    prepare = sub.add_parser("prepare-review-packs")
+    prepare.add_argument("--manifest", required=True)
+    prepare.add_argument(
+        "--source-atlas-interval-ms",
+        type=float,
+        default=DEFAULT_SOURCE_ATLAS_INTERVAL_MS,
+    )
+    prepare.add_argument(
+        "--source-atlas-max-frames",
+        type=int,
+        default=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    )
+    prepare.add_argument("--force", action="store_true")
+    prepare.add_argument("--output")
     return parser
 
 
 def main():
     args = build_parser().parse_args()
-    payload = build_status(args.manifest)
+    if args.command == "status":
+        payload = build_status(args.manifest)
+    else:
+        payload = prepare_review_packs(
+            args.manifest,
+            source_atlas_interval_ms=args.source_atlas_interval_ms,
+            source_atlas_max_frames=args.source_atlas_max_frames,
+            force=args.force,
+        )
     if args.output:
         target = Path(args.output)
         target.parent.mkdir(parents=True, exist_ok=True)
