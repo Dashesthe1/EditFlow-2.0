@@ -82,7 +82,12 @@ output uses `editflow.practice-truth-population-status.v1`.
 
 Each case is fail-closed at the first missing proof stage: media intake, Finish reference analysis,
 truth scaffold, matcher-blind review pack, independent worksheet completion, retained truth, matcher
-observation, or per-case retained-suite manifest. A case becomes `READY_FOR_CORPUS` only after the
+observation, or per-case retained-suite manifest. Before matcher observation is allowed, the
+population controller re-runs the canonical retained-truth validator against the current Finish
+analysis, exact current Start source-ID set, and freshly hashed Start media bytes. An independent
+label alone is therefore insufficient: stale media, incomplete shot coverage, mismatched Finish
+identity/analyzer evidence, invalid source ranges or directions, or a non-independent annotation
+origin sends the case back to `TRUTH_RETENTION`. A case becomes `READY_FOR_CORPUS` only after the
 existing retained-corpus preflight accepts its per-case manifest. The population-level
 `populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, distinct
 Finish media identities, and at least four hard-case categories. Finish identity is fail-closed in

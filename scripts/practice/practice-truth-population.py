@@ -316,6 +316,23 @@ def artifact_path(case, manifest_path, key):
     return resolve_path(manifest_path, case.get(key))
 
 
+def retained_truth_validation_reasons(case, manifest_path, reference, retained, media_truth=None):
+    media_truth = media_truth or load_media_truth_tool()
+    source_paths = _case_source_paths(case, manifest_path)
+    cached_hasher = getattr(media_truth, "sha256_file_cached", sha256_file)
+    source_hashes = {
+        source_id: cached_hasher(source_path)
+        for source_id, source_path in source_paths.items()
+    }
+    return media_truth.validate_truth(
+        retained,
+        reference,
+        allowed_source_ids=sorted(source_paths),
+        allowed_source_sha256_by_id=source_hashes,
+        require_retained=True,
+    )
+
+
 def inspect_case(case, manifest_path, corpus):
     case_id = str(case.get("caseId", "")).strip()
     tags = [str(item).strip() for item in case.get("difficultyTags") or [] if str(item).strip()]
@@ -392,9 +409,29 @@ def inspect_case(case, manifest_path, corpus):
     if retained.get("schema") != TRUTH_SCHEMA or retained.get("status") != "RETAINED":
         return case_result(case_id, tags, "TRUTH_RETENTION", "RETAIN_TRUTH",
                            ["Retained truth artifact is invalid or not retained."])
-    if retained.get("annotationOrigin") not in {"INDEPENDENT_HUMAN", "INDEPENDENT_EXTERNAL_TOOL"}:
-        return case_result(case_id, tags, "TRUTH_RETENTION", "RETAIN_TRUTH",
-                           ["Retained truth does not have an independent annotation origin."])
+    try:
+        truth_reasons = retained_truth_validation_reasons(
+            case,
+            manifest_path,
+            reference,
+            retained,
+        )
+    except Exception as exc:
+        return case_result(
+            case_id,
+            tags,
+            "TRUTH_RETENTION",
+            "REBUILD_RETAINED_TRUTH",
+            ["Retained truth could not be revalidated: " + str(exc)],
+        )
+    if truth_reasons:
+        return case_result(
+            case_id,
+            tags,
+            "TRUTH_RETENTION",
+            "REBUILD_RETAINED_TRUTH",
+            ["Retained truth validation: " + reason for reason in truth_reasons],
+        )
 
     matches_path = artifact_path(case, manifest_path, "matches")
     if matches_path is None or not matches_path.is_file():

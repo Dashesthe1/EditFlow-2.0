@@ -188,6 +188,30 @@ class PracticeTruthPopulationTest(unittest.TestCase):
         })
         return reference
 
+    def _write_valid_retained_truth(self, root, case, reference):
+        source_id = case["sourceMedia"][0]["sourceId"]
+        source = root / case["sourceMedia"][0]["path"]
+        retained = {
+            "schema": tool.TRUTH_SCHEMA,
+            "status": "RETAINED",
+            "referenceId": reference["referenceId"],
+            "referenceFingerprint": reference["styleFingerprint"],
+            "referenceSourceSha256": reference["sourceSha256"],
+            "referenceAnalyzerFingerprint": reference["analysis"]["analyzerFingerprint"],
+            "allowedSourceIds": [source_id],
+            "allowedSourceSha256": {source_id: sha256_bytes(source.read_bytes())},
+            "annotationOrigin": "INDEPENDENT_HUMAN",
+            "shots": [{
+                "shotId": "shot:1",
+                "sourceId": source_id,
+                "sourceStartMs": 1000.0,
+                "sourceEndMs": 2000.0,
+                "direction": "FORWARD",
+            }],
+        }
+        write_json(root / case["retainedTruth"], retained)
+        return retained
+
     def test_review_pack_waits_for_independent_worksheet_completion(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -255,6 +279,65 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(result["stage"], "INDEPENDENT_REVIEW")
             self.assertEqual(result["nextAction"], "COMPLETE_INDEPENDENT_REVIEW")
             self.assertTrue(any("sourceId must be one of" in reason for reason in result["reasons"]))
+
+    def test_retained_truth_is_revalidated_before_matcher_observation(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            write_json(root / case["retainedTruth"], {
+                "schema": tool.TRUTH_SCHEMA,
+                "status": "RETAINED",
+                "referenceId": "reference:fixture",
+                "annotationOrigin": "INDEPENDENT_HUMAN",
+            })
+
+            status = tool.build_status(self._plan(root, [case]))
+            result = status["cases"][0]
+            self.assertEqual(result["stage"], "TRUTH_RETENTION")
+            self.assertEqual(result["nextAction"], "REBUILD_RETAINED_TRUTH")
+            self.assertTrue(any(
+                "truth shots must cover every reference shot" in reason
+                for reason in result["reasons"]
+            ))
+
+    def test_retained_truth_is_bound_to_current_start_media_bytes(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            reference = self._write_reference_and_draft(root, case)
+            self._write_valid_retained_truth(root, case, reference)
+
+            status = tool.build_status(self._plan(root, [case]))
+            self.assertEqual(status["cases"][0]["stage"], "MATCHER_OBSERVATION")
+
+            source = root / case["sourceMedia"][0]["path"]
+            source.write_bytes(b"mutated-start-media")
+            status = tool.build_status(self._plan(root, [case]))
+            result = status["cases"][0]
+            self.assertEqual(result["stage"], "TRUTH_RETENTION")
+            self.assertEqual(result["nextAction"], "REBUILD_RETAINED_TRUTH")
+            self.assertTrue(any(
+                "exact benchmark Start media bytes" in reason
+                for reason in result["reasons"]
+            ))
+
+    def test_retained_truth_requires_independent_annotation_origin(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            reference = self._write_reference_and_draft(root, case)
+            retained = self._write_valid_retained_truth(root, case, reference)
+            retained["annotationOrigin"] = "EDITFLOW_MATCHER"
+            write_json(root / case["retainedTruth"], retained)
+
+            status = tool.build_status(self._plan(root, [case]))
+            result = status["cases"][0]
+            self.assertEqual(result["stage"], "TRUTH_RETENTION")
+            self.assertTrue(any(
+                "annotationOrigin must be independent" in reason
+                for reason in result["reasons"]
+            ))
 
     def test_prepare_review_packs_refreshes_missing_source_atlas_and_then_skips(self):
         with TemporaryDirectory() as temporary:
@@ -550,13 +633,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             finish_sha = sha256_bytes(finish.read_bytes())
             source_sha = sha256_bytes(source.read_bytes())
             source_id = case["sourceMedia"][0]["sourceId"]
-            retained = {
-                "schema": tool.TRUTH_SCHEMA,
-                "status": "RETAINED",
-                "referenceId": "reference:fixture",
-                "annotationOrigin": "INDEPENDENT_HUMAN",
-            }
-            write_json(root / case["retainedTruth"], retained)
+            self._write_valid_retained_truth(root, case, reference)
             write_json(root / case["matches"], {
                 "schema": tool.MATCH_SCHEMA,
                 "matches": [],
