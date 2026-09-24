@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import unittest
 from pathlib import Path
 
@@ -648,6 +649,88 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
                 self.assertGreater(rescued["geometrySupport"], base["geometrySupport"])
                 return
         self.fail(attempts)
+
+    def test_repeated_geometry_recovers_stable_source_to_finish_framing(self):
+        source = self._synthetic_scene(73)
+        scale = 1.18
+        angle = math.radians(4.5)
+        center = np.asarray([320.0, 180.0], dtype=np.float64)
+        target = np.asarray([362.0, 158.0], dtype=np.float64)
+        linear = np.asarray([
+            [scale * math.cos(angle), -scale * math.sin(angle)],
+            [scale * math.sin(angle), scale * math.cos(angle)],
+        ], dtype=np.float32)
+        translation = target - (linear @ center)
+        transform = np.column_stack((linear, translation.astype(np.float32)))
+        reference = matcher.cv2.warpAffine(
+            source,
+            transform,
+            (640, 360),
+            flags=matcher.cv2.INTER_CUBIC,
+            borderMode=matcher.cv2.BORDER_REFLECT,
+        )
+
+        class FixedReader:
+            duration_ms = 10000.0
+
+            def __init__(self, frame):
+                self.frame = frame
+
+            def read_ms(self, _time_ms):
+                return self.frame
+
+        shot = {
+            "anchors": [
+                {"timeMs": 100.0},
+                {"timeMs": 350.0},
+                {"timeMs": 650.0},
+                {"timeMs": 900.0},
+            ],
+        }
+        mapping = {
+            "centerSourceMs": 5000.0,
+            "slope": 1.0,
+            "trajectory": [],
+        }
+        proof = matcher.mapping_geometric_proof(
+            shot,
+            mapping,
+            FixedReader(reference),
+            FixedReader(source),
+        )
+        framing = proof.get("framing")
+        self.assertIsNotNone(framing, proof)
+        self.assertTrue(framing["stable"], framing)
+        self.assertGreaterEqual(framing["stableAnchorCount"], 2)
+        self.assertAlmostEqual(framing["positionX"], target[0], delta=10.0)
+        self.assertAlmostEqual(framing["positionY"], target[1], delta=10.0)
+        self.assertAlmostEqual(framing["scalePercent"], scale * 100.0, delta=5.0)
+        self.assertAlmostEqual(framing["rotationDegrees"], math.degrees(angle), delta=2.0)
+        self.assertGreaterEqual(framing["confidence"], 0.72)
+
+    def test_inconsistent_geometry_does_not_certify_static_framing(self):
+        evidence = []
+        for position_x, scale_percent, rotation in (
+            (90.0, 100.0, -12.0),
+            (260.0, 135.0, 4.0),
+            (490.0, 82.0, 17.0),
+            (710.0, 170.0, -28.0),
+        ):
+            item = self._evidence(0.90, 18, 0.82, 0.91)
+            item["framing"] = {
+                "positionX": position_x,
+                "positionY": 180.0,
+                "scalePercent": scale_percent,
+                "rotationDegrees": rotation,
+                "confidence": 0.94,
+                "referenceWidth": 640,
+                "referenceHeight": 360,
+            }
+            evidence.append(item)
+        framing = matcher.aggregate_framing_proof(evidence)
+        self.assertIsNotNone(framing)
+        self.assertFalse(framing["stable"], framing)
+        self.assertEqual(framing["stableAnchorCount"], 0)
 
     def test_low_contrast_extractor_rejects_unrelated_scene(self):
         left = matcher.normalized_rescue_frame(self._synthetic_scene(31))

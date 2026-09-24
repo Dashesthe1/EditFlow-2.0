@@ -463,6 +463,74 @@ def softened_rescue_frame(frame):
     return identity_cache_set(_RESCUE_SOFT_FRAME_CACHE, frame, result)
 
 
+def similarity_framing_candidate(
+    reference_points,
+    source_points,
+    homography_flags,
+    reference_shape,
+    source_shape,
+):
+    flags = np.asarray(homography_flags, dtype=bool).reshape(-1)
+    ref_all = np.asarray(reference_points, dtype=np.float32).reshape(-1, 2)
+    src_all = np.asarray(source_points, dtype=np.float32).reshape(-1, 2)
+    if len(flags) != len(ref_all) or len(flags) != len(src_all):
+        return None
+    ref_inliers = ref_all[flags]
+    src_inliers = src_all[flags]
+    if len(ref_inliers) < 4:
+        return None
+    matrix, affine_mask = cv2.estimateAffinePartial2D(
+        src_inliers.reshape(-1, 1, 2),
+        ref_inliers.reshape(-1, 1, 2),
+        method=cv2.RANSAC,
+        ransacReprojThreshold=4.0,
+        maxIters=2000,
+        confidence=0.99,
+        refineIters=10,
+    )
+    if matrix is None or affine_mask is None:
+        return None
+    affine_flags = affine_mask.reshape(-1) > 0
+    affine_inlier_count = int(np.sum(affine_flags))
+    if affine_inlier_count < 4:
+        return None
+    source_height, source_width = source_shape[:2]
+    reference_height, reference_width = reference_shape[:2]
+    source_longest = float(max(source_width, source_height))
+    reference_longest = float(max(reference_width, reference_height))
+    if source_longest <= 0 or reference_longest <= 0:
+        return None
+    linear_scale = math.hypot(float(matrix[0, 0]), float(matrix[1, 0]))
+    scale_on_longest = linear_scale * source_longest / reference_longest
+    if not math.isfinite(scale_on_longest) or scale_on_longest <= 0.02 or scale_on_longest > 20.0:
+        return None
+    source_center = np.asarray(
+        [source_width * 0.5, source_height * 0.5, 1.0],
+        dtype=np.float64,
+    )
+    mapped_center = matrix @ source_center
+    predicted = cv2.transform(src_inliers.reshape(-1, 1, 2), matrix).reshape(-1, 2)
+    errors = np.linalg.norm(predicted - ref_inliers, axis=1)
+    mean_error = float(np.mean(errors[affine_flags])) if affine_inlier_count else float("inf")
+    error_longest = mean_error / reference_longest
+    affine_inlier_ratio = affine_inlier_count / max(1, len(ref_inliers))
+    confidence = clamp01(
+        (0.45 * affine_inlier_ratio)
+        + (0.30 * clamp01(affine_inlier_count / 12.0))
+        + (0.25 * (1.0 - clamp01(error_longest / 0.02)))
+    )
+    return {
+        "positionLongestX": float(mapped_center[0]) / reference_longest,
+        "positionLongestY": float(mapped_center[1]) / reference_longest,
+        "scaleOnLongest": float(scale_on_longest),
+        "rotationDegrees": float(math.degrees(math.atan2(matrix[1, 0], matrix[0, 0]))),
+        "affineInlierCount": affine_inlier_count,
+        "affineInlierRatio": float(affine_inlier_ratio),
+        "reprojectionErrorLongest": float(error_longest),
+        "confidence": confidence,
+    }
+
+
 def feature_match_evidence(reference_frame, source_frame):
     ref_global, ref_keypoints, ref_desc = cached_features(reference_frame)
     src_global, src_keypoints, src_desc = cached_features(source_frame)
@@ -512,6 +580,13 @@ def feature_match_evidence(reference_frame, source_frame):
     src_inliers = [src_keypoints[good[index].trainIdx].pt for index, value in enumerate(flags) if value]
     reference_coverage = point_coverage(ref_inliers, ref_gray.shape[1], ref_gray.shape[0])
     source_coverage = point_coverage(src_inliers, src_gray.shape[1], src_gray.shape[0])
+    framing_candidate = similarity_framing_candidate(
+        reference_points,
+        source_points,
+        flags,
+        ref_gray.shape,
+        src_gray.shape,
+    )
 
     match_strength = clamp01(len(good) / 30.0)
     feature_score = clamp01((0.58 * inlier_ratio) + (0.42 * match_strength))
@@ -530,6 +605,7 @@ def feature_match_evidence(reference_frame, source_frame):
         "referenceCoverage": reference_coverage,
         "sourceCoverage": source_coverage,
         "geometrySupport": geometry_support,
+        **({"framingCandidate": framing_candidate} if framing_candidate is not None else {}),
     }
 
 
@@ -582,6 +658,13 @@ def low_contrast_feature_match_evidence(reference_frame, source_frame):
     src_inliers = [src_keypoints[good[index].trainIdx].pt for index, value in enumerate(flags) if value]
     reference_coverage = point_coverage(ref_inliers, ref_gray.shape[1], ref_gray.shape[0])
     source_coverage = point_coverage(src_inliers, src_gray.shape[1], src_gray.shape[0])
+    framing_candidate = similarity_framing_candidate(
+        reference_points,
+        source_points,
+        flags,
+        ref_gray.shape,
+        src_gray.shape,
+    )
 
     match_strength = clamp01(len(good) / 30.0)
     feature_score = clamp01((0.58 * inlier_ratio) + (0.42 * match_strength))
@@ -600,6 +683,7 @@ def low_contrast_feature_match_evidence(reference_frame, source_frame):
         "referenceCoverage": reference_coverage,
         "sourceCoverage": source_coverage,
         "geometrySupport": geometry_support,
+        **({"framingCandidate": framing_candidate} if framing_candidate is not None else {}),
     }
 
 
@@ -652,6 +736,13 @@ def orb_feature_match_evidence(reference_frame, source_frame):
     src_inliers = [src_keypoints[good[index].trainIdx].pt for index, value in enumerate(flags) if value]
     reference_coverage = point_coverage(ref_inliers, ref_gray.shape[1], ref_gray.shape[0])
     source_coverage = point_coverage(src_inliers, src_gray.shape[1], src_gray.shape[0])
+    framing_candidate = similarity_framing_candidate(
+        reference_points,
+        source_points,
+        flags,
+        ref_gray.shape,
+        src_gray.shape,
+    )
 
     match_strength = clamp01(len(good) / 30.0)
     feature_score = clamp01((0.58 * inlier_ratio) + (0.42 * match_strength))
@@ -670,6 +761,7 @@ def orb_feature_match_evidence(reference_frame, source_frame):
         "referenceCoverage": reference_coverage,
         "sourceCoverage": source_coverage,
         "geometrySupport": geometry_support,
+        **({"framingCandidate": framing_candidate} if framing_candidate is not None else {}),
     }
 
 
@@ -1408,6 +1500,150 @@ def refine_candidate(shot, candidate, reference_reader, source_reader, local_ref
     return enriched_best
 
 
+def framing_for_reference_space(candidate, reference_frame, source_frame, geometry_support):
+    if candidate is None:
+        return None
+    reference_height, reference_width = reference_frame.shape[:2]
+    source_height, source_width = source_frame.shape[:2]
+    reference_longest = float(max(reference_width, reference_height))
+    source_longest = float(max(source_width, source_height))
+    if reference_longest <= 0 or source_longest <= 0:
+        return None
+    scale_percent = (
+        float(candidate["scaleOnLongest"])
+        * (reference_longest / source_longest)
+        * 100.0
+    )
+    position_x = float(candidate["positionLongestX"]) * reference_longest
+    position_y = float(candidate["positionLongestY"]) * reference_longest
+    rotation_degrees = float(candidate["rotationDegrees"])
+    values = [position_x, position_y, scale_percent, rotation_degrees]
+    if not all(math.isfinite(value) for value in values):
+        return None
+    if scale_percent <= 1.0 or scale_percent > 5000.0:
+        return None
+    confidence = clamp01(
+        (0.55 * float(candidate.get("confidence", 0.0)))
+        + (0.45 * float(geometry_support))
+    )
+    return {
+        "positionX": position_x,
+        "positionY": position_y,
+        "scalePercent": scale_percent,
+        "rotationDegrees": rotation_degrees,
+        "confidence": confidence,
+        "referenceWidth": int(reference_width),
+        "referenceHeight": int(reference_height),
+        "sourceWidth": int(source_width),
+        "sourceHeight": int(source_height),
+        "affineInlierCount": int(candidate.get("affineInlierCount", 0)),
+        "affineInlierRatio": float(candidate.get("affineInlierRatio", 0.0)),
+        "reprojectionErrorLongest": float(candidate.get("reprojectionErrorLongest", 1.0)),
+    }
+
+
+def angular_distance_degrees(left, right):
+    return abs(((float(left) - float(right) + 180.0) % 360.0) - 180.0)
+
+
+def aggregate_framing_proof(evidence):
+    rows = [
+        item["framing"]
+        for item in evidence
+        if item.get("framing") is not None
+        and rescue_geometry_certifiable(item)
+        and float(item["framing"].get("confidence", 0.0)) >= 0.55
+    ]
+    if not rows:
+        return None
+
+    position_x = float(np.median([row["positionX"] for row in rows]))
+    position_y = float(np.median([row["positionY"] for row in rows]))
+    scale_percent = float(np.median([row["scalePercent"] for row in rows]))
+    base_rotation = float(rows[0]["rotationDegrees"])
+    unwrapped_rotations = [
+        base_rotation
+        + (((float(row["rotationDegrees"]) - base_rotation + 180.0) % 360.0) - 180.0)
+        for row in rows
+    ]
+    rotation_degrees = float(np.median(unwrapped_rotations))
+    reference_width = float(np.median([row["referenceWidth"] for row in rows]))
+    reference_height = float(np.median([row["referenceHeight"] for row in rows]))
+    reference_diagonal = math.hypot(reference_width, reference_height)
+    position_tolerance = max(12.0, reference_diagonal * 0.04)
+    scale_tolerance = max(3.0, abs(scale_percent) * 0.08)
+    rotation_tolerance = 3.5
+
+    stable_rows = []
+    for row in rows:
+        position_drift = math.hypot(
+            float(row["positionX"]) - position_x,
+            float(row["positionY"]) - position_y,
+        )
+        scale_drift = abs(float(row["scalePercent"]) - scale_percent)
+        rotation_drift = angular_distance_degrees(row["rotationDegrees"], rotation_degrees)
+        if (
+            position_drift <= position_tolerance
+            and scale_drift <= scale_tolerance
+            and rotation_drift <= rotation_tolerance
+        ):
+            stable_rows.append(row)
+
+    retained = stable_rows if stable_rows else rows
+    final_x = float(np.median([row["positionX"] for row in retained]))
+    final_y = float(np.median([row["positionY"] for row in retained]))
+    final_scale = float(np.median([row["scalePercent"] for row in retained]))
+    final_rotation = float(np.median([
+        rotation_degrees
+        + (((float(row["rotationDegrees"]) - rotation_degrees + 180.0) % 360.0) - 180.0)
+        for row in retained
+    ]))
+    position_drifts = [
+        math.hypot(float(row["positionX"]) - final_x, float(row["positionY"]) - final_y)
+        for row in retained
+    ]
+    scale_drifts = [abs(float(row["scalePercent"]) - final_scale) for row in retained]
+    rotation_drifts = [
+        angular_distance_degrees(row["rotationDegrees"], final_rotation)
+        for row in retained
+    ]
+    max_position_drift = max(position_drifts, default=0.0)
+    max_scale_drift = max(scale_drifts, default=0.0)
+    max_rotation_drift = max(rotation_drifts, default=0.0)
+    stable_fraction = len(stable_rows) / max(1, len(evidence))
+    mean_confidence = float(np.mean([row["confidence"] for row in retained]))
+    consistency = (
+        (1.0 - clamp01(max_position_drift / max(position_tolerance, 1.0)))
+        + (1.0 - clamp01(max_scale_drift / max(scale_tolerance, 1.0)))
+        + (1.0 - clamp01(max_rotation_drift / rotation_tolerance))
+    ) / 3.0
+    confidence = clamp01(
+        (0.45 * mean_confidence)
+        + (0.35 * stable_fraction)
+        + (0.20 * consistency)
+    )
+    required_stable = max(2, int(math.ceil(max(1, len(evidence)) * 0.40)))
+    stable = (
+        len(stable_rows) >= required_stable
+        and confidence >= 0.72
+        and 1.0 < final_scale <= 5000.0
+    )
+    return {
+        "stable": bool(stable),
+        "anchorCount": len(rows),
+        "stableAnchorCount": len(stable_rows),
+        "stableAnchorFraction": float(stable_fraction),
+        "positionX": final_x,
+        "positionY": final_y,
+        "scalePercent": final_scale,
+        "rotationDegrees": final_rotation,
+        "maxPositionDriftPx": float(max_position_drift),
+        "maxScaleDeviationPercent": float(max_scale_drift),
+        "maxRotationDeviationDegrees": float(max_rotation_drift),
+        "confidence": confidence,
+    }
+
+
 def mapping_geometric_proof(
     shot,
     mapping,
@@ -1448,7 +1684,18 @@ def mapping_geometric_proof(
             )
         else:
             item = feature_match_evidence(reference_frame, source_frame)
-        item = {**item, "referenceTimeMs": reference_time, "sourceTimeMs": source_time}
+        framing = framing_for_reference_space(
+            item.get("framingCandidate"),
+            reference_frame,
+            source_frame,
+            item.get("geometrySupport", 0.0),
+        )
+        item = {
+            **item,
+            "referenceTimeMs": reference_time,
+            "sourceTimeMs": source_time,
+            **({"framing": framing} if framing is not None else {}),
+        }
         evidence.append(item)
 
     supports = [float(item["geometrySupport"]) for item in evidence]
@@ -1470,6 +1717,7 @@ def mapping_geometric_proof(
         for item in evidence
         if item.get("effectFeatureMode")
     })
+    framing_proof = aggregate_framing_proof(evidence)
     return {
         "anchorCount": anchor_count,
         "strongAnchorCount": strong_count,
@@ -1480,6 +1728,7 @@ def mapping_geometric_proof(
         "meanInlierRatio": float(np.mean([item["inlierRatio"] for item in evidence])) if evidence else 0.0,
         "meanCoverage": float(np.mean(coverages)) if coverages else 0.0,
         "effectFeatureModes": effect_feature_modes,
+        **({"framing": framing_proof} if framing_proof is not None else {}),
     }
 
 
@@ -2361,6 +2610,18 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     f"practice-geometric-strong-fraction:{mapping.get('geometricProof', {}).get('strongAnchorFraction', 0.0):.6f}",
                     f"practice-geometric-max-inliers:{mapping.get('geometricProof', {}).get('maximumInlierCount', 0)}",
                     f"practice-geometric-mean-coverage:{mapping.get('geometricProof', {}).get('meanCoverage', 0.0):.6f}",
+                    *(
+                        [
+                            f"practice-framing-stable:{str(mapping['geometricProof']['framing']['stable']).lower()}",
+                            f"practice-framing-confidence:{mapping['geometricProof']['framing']['confidence']:.6f}",
+                            f"practice-framing-stable-anchors:{mapping['geometricProof']['framing']['stableAnchorCount']}",
+                            f"practice-framing-position:{mapping['geometricProof']['framing']['positionX']:.3f},{mapping['geometricProof']['framing']['positionY']:.3f}",
+                            f"practice-framing-scale-percent:{mapping['geometricProof']['framing']['scalePercent']:.6f}",
+                            f"practice-framing-rotation-deg:{mapping['geometricProof']['framing']['rotationDegrees']:.6f}",
+                        ]
+                        if mapping.get("geometricProof", {}).get("framing") is not None
+                        else []
+                    ),
                     f"practice-temporal-behavior:{temporal_behavior}",
                     *boundary_evidence,
                     *(

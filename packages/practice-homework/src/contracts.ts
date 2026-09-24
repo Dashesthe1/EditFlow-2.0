@@ -93,6 +93,21 @@ export type PracticeSceneSelectionModeV1 =
   | "REFERENCE_CONTINUITY_PRIOR"
   | "GEOMETRIC_RESCUE";
 
+export interface PracticeSceneFramingProofV1 {
+  readonly stable: boolean;
+  readonly anchorCount: number;
+  readonly stableAnchorCount: number;
+  readonly stableAnchorFraction: number;
+  readonly positionX: number;
+  readonly positionY: number;
+  readonly scalePercent: number;
+  readonly rotationDegrees: number;
+  readonly maxPositionDriftPx: number;
+  readonly maxScaleDeviationPercent: number;
+  readonly maxRotationDeviationDegrees: number;
+  readonly confidence: number;
+}
+
 export interface PracticeSceneGeometricProofV1 {
   readonly anchorCount: number;
   readonly strongAnchorCount: number;
@@ -102,6 +117,7 @@ export interface PracticeSceneGeometricProofV1 {
   readonly maximumInlierCount: number;
   readonly meanInlierRatio: number;
   readonly meanCoverage: number;
+  readonly framing?: PracticeSceneFramingProofV1;
 }
 
 export interface PracticeSceneMatchV1 {

@@ -332,6 +332,94 @@ test("AE baseline keeps near-linear measured trajectories on the stretch fast pa
   assert.equal(remap, undefined);
 });
 
+test("AE baseline applies only stable retained framing to matched video layers", () => {
+  const framedMatches = [
+    {
+      ...matches[0],
+      geometricProof: {
+        anchorCount: 4,
+        strongAnchorCount: 4,
+        strongAnchorFraction: 1,
+        meanSupport: 0.94,
+        minimumSupport: 0.90,
+        maximumInlierCount: 28,
+        meanInlierRatio: 0.88,
+        meanCoverage: 0.22,
+        framing: {
+          stable: true,
+          anchorCount: 4,
+          stableAnchorCount: 4,
+          stableAnchorFraction: 1,
+          positionX: 188,
+          positionY: 95,
+          scalePercent: 126,
+          rotationDegrees: -3.5,
+          maxPositionDriftPx: 4.2,
+          maxScaleDeviationPercent: 1.8,
+          maxRotationDeviationDegrees: 0.8,
+          confidence: 0.94,
+        },
+      },
+    },
+    matches[1],
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: framedMatches });
+  const transforms = plan.operations.filter((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0001")
+      && item.payload.propertyPath?.[0] === "ADBE Transform Group");
+  assert.equal(transforms.length, 3);
+  const byLeaf = new Map(transforms.map((item) => [item.payload.propertyPath.at(-1), item]));
+  assert.deepEqual(byLeaf.get("ADBE Position")?.payload.keyframes, [
+    { time: 0, value: [188, 95] },
+  ]);
+  assert.deepEqual(byLeaf.get("ADBE Scale")?.payload.keyframes, [
+    { time: 0, value: [126, 126] },
+  ]);
+  assert.deepEqual(byLeaf.get("ADBE Rotate Z")?.payload.keyframes, [
+    { time: 0, value: -3.5 },
+  ]);
+});
+
+test("AE baseline refuses unstable framing evidence", () => {
+  const unstableMatches = [
+    {
+      ...matches[0],
+      geometricProof: {
+        anchorCount: 4,
+        strongAnchorCount: 4,
+        strongAnchorFraction: 1,
+        meanSupport: 0.94,
+        minimumSupport: 0.90,
+        maximumInlierCount: 28,
+        meanInlierRatio: 0.88,
+        meanCoverage: 0.22,
+        framing: {
+          stable: false,
+          anchorCount: 4,
+          stableAnchorCount: 1,
+          stableAnchorFraction: 0.25,
+          positionX: 188,
+          positionY: 95,
+          scalePercent: 126,
+          rotationDegrees: -3.5,
+          maxPositionDriftPx: 120,
+          maxScaleDeviationPercent: 35,
+          maxRotationDeviationDegrees: 18,
+          confidence: 0.91,
+        },
+      },
+    },
+    matches[1],
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: unstableMatches });
+  const transforms = plan.operations.filter((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0001")
+      && item.payload.propertyPath?.[0] === "ADBE Transform Group");
+  assert.deepEqual(transforms, []);
+});
+
 test("AE baseline builder executes the deterministic plan in order", async () => {
   const executed = [];
   const builder = new PracticeAeBaselineBuilderV1({
