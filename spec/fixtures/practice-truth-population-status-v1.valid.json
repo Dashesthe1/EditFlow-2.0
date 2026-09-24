@@ -1,0 +1,20 @@
+{
+  "schema": "editflow.practice-truth-population-status.v1",
+  "editTypeId": "edit-type:fixture",
+  "candidateCaseCount": 1,
+  "readyForCorpusCount": 0,
+  "populationWindowReached": false,
+  "populationReasons": ["Population has fewer than 20 candidate cases."],
+  "difficultyCounts": {"FAST_CUTS": 1},
+  "stageCounts": {"REFERENCE_ANALYSIS": 1},
+  "cases": [
+    {
+      "caseId": "case-01",
+      "difficultyTags": ["FAST_CUTS"],
+      "stage": "REFERENCE_ANALYSIS",
+      "nextAction": "ANALYZE_REFERENCE",
+      "readyForCorpus": false,
+      "reasons": []
+    }
+  ]
+}

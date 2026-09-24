@@ -1,0 +1,11 @@
+{
+  "schema": "editflow.practice-truth-population-status.v1",
+  "editTypeId": "",
+  "candidateCaseCount": 31,
+  "readyForCorpusCount": -1,
+  "populationWindowReached": "no",
+  "populationReasons": [],
+  "difficultyCounts": {},
+  "stageCounts": {},
+  "cases": []
+}

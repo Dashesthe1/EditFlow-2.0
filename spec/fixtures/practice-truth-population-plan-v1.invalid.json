@@ -1,0 +1,11 @@
+{
+  "schema": "editflow.practice-truth-population-plan.v1",
+  "editTypeId": "edit-type:fixture",
+  "cases": [
+    {
+      "caseId": "case-01",
+      "difficultyTags": [],
+      "finishPath": "media/finish-01.mp4"
+    }
+  ]
+}

@@ -74,6 +74,28 @@ self-promotes it to retained truth. On Windows, use the same CV-capable runtime 
 (`py -3.12`); the product's local-media adapters already pin that interpreter instead of relying on
 the workstation's default `python` command.
 
+### Truth population status
+
+`scripts/practice/practice-truth-population.py` tracks the 20-30 difficult real-media candidates
+before corpus assembly. Its input uses `editflow.practice-truth-population-plan.v1` and its status
+output uses `editflow.practice-truth-population-status.v1`.
+
+Each case is fail-closed at the first missing proof stage: media intake, Finish reference analysis,
+truth scaffold, matcher-blind review pack, independent worksheet completion, retained truth, matcher
+observation, or per-case retained-suite manifest. A case becomes `READY_FOR_CORPUS` only after the
+existing retained-corpus preflight accepts its per-case manifest. The population-level
+`populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, and at least
+four hard-case categories. It is intentionally separate from `readyForCorpusCount` and is never a
+certification claim.
+
+Example:
+
+```powershell
+py -3.12 scripts/practice/practice-truth-population.py status `
+  --manifest proofs/practice/truth-population.json `
+  --output proofs/practice/truth-population-status.json
+```
+
 ## Long-form cache behavior
 
 Long movie indexes are retained only while the production matcher accepts their algorithm ID

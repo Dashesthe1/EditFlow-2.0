@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://editflow.local/schema/practice-truth-population-status-v1.json",
+  "title": "EditFlow Practice Truth Population Status V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "editTypeId", "candidateCaseCount", "readyForCorpusCount",
+    "populationWindowReached", "populationReasons", "difficultyCounts",
+    "stageCounts", "cases"
+  ],
+  "properties": {
+    "schema": { "const": "editflow.practice-truth-population-status.v1" },
+    "editTypeId": { "type": "string", "minLength": 1 },
+    "candidateCaseCount": { "type": "integer", "minimum": 0, "maximum": 30 },
+    "readyForCorpusCount": { "type": "integer", "minimum": 0, "maximum": 30 },
+    "populationWindowReached": { "type": "boolean" },
+    "populationReasons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "difficultyCounts": { "$ref": "#/$defs/counts" },
+    "stageCounts": { "$ref": "#/$defs/counts" },
+    "cases": { "type": "array", "items": { "$ref": "#/$defs/caseStatus" } }
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "caseStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId", "difficultyTags", "stage", "nextAction", "readyForCorpus", "reasons"
+      ],
+      "properties": {
+        "caseId": { "type": "string" },
+        "difficultyTags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "stage": {
+          "enum": [
+            "MEDIA_INTAKE", "REFERENCE_ANALYSIS", "TRUTH_SCAFFOLD", "REVIEW_PACK",
+            "INDEPENDENT_REVIEW", "TRUTH_RETENTION", "MATCHER_OBSERVATION",
+            "SUITE_MANIFEST", "READY_FOR_CORPUS"
+          ]
+        },
+        "nextAction": { "type": "string", "minLength": 1 },
+        "readyForCorpus": { "type": "boolean" },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

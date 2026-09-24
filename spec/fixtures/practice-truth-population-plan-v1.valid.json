@@ -1,0 +1,20 @@
+{
+  "schema": "editflow.practice-truth-population-plan.v1",
+  "editTypeId": "edit-type:fixture",
+  "cases": [
+    {
+      "caseId": "case-01",
+      "difficultyTags": ["FAST_CUTS"],
+      "finishPath": "media/finish-01.mp4",
+      "sourceMedia": [
+        {"sourceId": "video:movie", "path": "media/movie.mp4"}
+      ],
+      "referenceAnalysis": "analysis/reference-01.json",
+      "truthDraft": "truth/case-01-draft.json",
+      "reviewPackDir": "review/case-01",
+      "retainedTruth": "truth/case-01-retained.json",
+      "matches": "matches/case-01.json",
+      "suiteManifest": "suite/case-01.json"
+    }
+  ]
+}
