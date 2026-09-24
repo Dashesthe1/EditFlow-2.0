@@ -38,6 +38,34 @@ const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean => {
   ].every((values) => uniqueStrings(values ?? []).length > 0);
 };
 
+const hasMateriallyDifferentSkillProof = (
+  skill: GptLearnedSkillV1,
+  priorMasteryRecords: readonly PracticeMasteryRecordV1[],
+  currentMasteryRecord: PracticeMasteryRecordV1,
+): boolean => {
+  const currentReference = currentMasteryRecord.referenceFingerprint.trim();
+  const currentSource = currentMasteryRecord.sourceFingerprint.trim();
+  if (currentReference.length === 0 || currentSource.length === 0) return false;
+  const priorSkillSessions = new Set(
+    uniqueStrings(skill.provenSessionIds ?? [])
+      .filter((sessionId) => sessionId !== currentMasteryRecord.sessionId),
+  );
+  const currentSourceMedia = new Set(
+    uniqueStrings(currentMasteryRecord.sourceMediaSha256 ?? []),
+  );
+  return priorMasteryRecords.some((record) => {
+    if (!priorSkillSessions.has(record.sessionId)) return false;
+    const priorReference = record.referenceFingerprint.trim();
+    const priorSource = record.sourceFingerprint.trim();
+    if (priorReference.length === 0 || priorSource.length === 0) return false;
+    if (priorReference === currentReference || priorSource === currentSource) return false;
+    const priorSourceMedia = uniqueStrings(record.sourceMediaSha256 ?? []);
+    return currentSourceMedia.size === 0
+      || priorSourceMedia.length === 0
+      || priorSourceMedia.every((sha256) => !currentSourceMedia.has(sha256));
+  });
+};
+
 const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   practiceSessionIds: [],
   proCreationSessionIds: [],
@@ -416,6 +444,22 @@ export class EditTypeRegistryV1 {
       throw new TypeError(
         "Transfer verification requires a fresh AE-proven SKILL_COMMIT in the current materially different Practice session: "
           + notReprovenInSession.join(", "),
+      );
+    }
+    const currentMasteryRecord = input.masteryRecord;
+    const missingMaterialTransferProof = currentMasteryRecord === undefined
+      ? transferSkills.map((skill) => skill.skillId)
+      : transferSkills
+        .filter((skill) => !hasMateriallyDifferentSkillProof(
+          skill,
+          learning.masteryRecords,
+          currentMasteryRecord,
+        ))
+        .map((skill) => skill.skillId);
+    if (missingMaterialTransferProof.length > 0) {
+      throw new TypeError(
+        "Transfer verification requires a prior machine-verified AE proof for the same learned skill on materially different Finish and Start footage: "
+          + missingMaterialTransferProof.join(", "),
       );
     }
     const learnedSkills = learning.learnedSkills.map((skill) =>

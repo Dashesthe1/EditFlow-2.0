@@ -25,14 +25,15 @@ const start = [{
   uri: "C:\\Media\\raw.mp4",
 }];
 
-const transferMasteryRecord = (sessionId) => ({
+const transferMasteryRecord = (sessionId, materialId = "transfer") => ({
   sessionId,
   scope: "TRANSFER_VERIFIED",
   proofRef: "proof:mastery:" + sessionId,
-  referenceId: "finish:transfer",
-  sourceIndexId: "practice-source-set:transfer",
-  referenceFingerprint: "reference-sha:transfer",
-  sourceFingerprint: "source-sha-set:transfer",
+  referenceId: "finish:" + materialId,
+  sourceIndexId: "practice-source-set:" + materialId,
+  referenceFingerprint: "reference-sha:" + materialId,
+  sourceFingerprint: "source-sha-set:" + materialId,
+  sourceMediaSha256: ["source-media-sha:" + materialId],
   finalRenderRef: "render:mastered",
   overallSimilarity: 0.98,
   definingEffectCoverage: 1,
@@ -503,7 +504,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     sessionId,
     mode: "PRACTICE",
     mastered: completed.status === "COMPLETED",
-    masteryRecord: transferMasteryRecord(sessionId),
+    masteryRecord: transferMasteryRecord(sessionId, "skill-base"),
   });
 
   const knowledge = registry.knowledge("microwave-edit");
@@ -579,12 +580,23 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       evidenceRefs: ["render:temporal-rewind-transfer-proof", "comparison:temporal-rewind-transfer-proof"],
     },
   });
+  assert.throws(
+    () => registry.completeGptLearningSession({
+      editTypeId: "microwave-edit",
+      sessionId: transferSkillSession,
+      mode: "PRACTICE",
+      mastered: true,
+      masteryRecord: transferMasteryRecord(transferSkillSession, "skill-base"),
+      transferVerifiedSkillIds: [learnedSkill.skillId],
+    }),
+    /prior machine-verified AE proof for the same learned skill on materially different Finish and Start footage/,
+  );
   registry.completeGptLearningSession({
     editTypeId: "microwave-edit",
     sessionId: transferSkillSession,
     mode: "PRACTICE",
     mastered: true,
-    masteryRecord: transferMasteryRecord(transferSkillSession),
+    masteryRecord: transferMasteryRecord(transferSkillSession, "skill-transfer"),
     transferVerifiedSkillIds: [learnedSkill.skillId],
   });
   const transferKnowledge = registry.knowledge("microwave-edit");

@@ -24,6 +24,11 @@ CEP panel. Practice and Pro Creation both create a structured assignment for GPT
 than entering a local rule-driven editing loop. GPT completion is not mastery. Pro
 Creation remains blocked until the selected Edit Type contains machine-verified Practice
 knowledge that has also passed transfer on materially different reference/source footage.
+Learned skills are promoted independently: a skill can become TRANSFER_VERIFIED only when
+it is freshly AE-proven in the current Practice session and also has a prior machine-verified
+proof for that same skill on different Finish and Start material. Reused raw-source media
+also blocks promotion when retained media SHA evidence exposes the overlap.
+
 ## Practice user surface
 
 The stable V1 UI contract is:
