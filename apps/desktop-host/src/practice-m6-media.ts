@@ -30,9 +30,31 @@ export interface PracticeM6LocalMediaConfigV1 {
   readonly python?: PracticeM6PythonRuntimeV1;
   readonly denseProbeScriptPath?: string;
   readonly practiceMediaScriptPath?: string;
+  readonly subjectBindScriptPath?: string;
   readonly denseEvidenceSourcePath?: string;
   readonly analysisLongestEdge?: number;
   readonly cutThreshold?: number;
+}
+
+export interface PracticeCrossSourceSubjectBindingV1 {
+  readonly schema: "editflow.practice-cross-source-subject-binding.v1";
+  readonly algorithmId: string;
+  readonly verified: boolean;
+  readonly reason: string | null;
+  readonly referenceSemanticId: string;
+  readonly sourceSemanticId: string | null;
+  readonly referenceSubjectBox: readonly [number, number, number, number];
+  readonly sourceSubjectBox: readonly [number, number, number, number] | null;
+  readonly sourceVideo: {
+    readonly fps: number;
+    readonly frameCount: number;
+    readonly width: number;
+    readonly height: number;
+    readonly durationMs: number;
+    readonly sampleTimeMs: number;
+  };
+  readonly confidence: number;
+  readonly evidenceRefs: readonly string[];
 }
 
 interface DenseProbeV1 {
@@ -123,6 +145,7 @@ export class PracticeM6LocalMediaAnalyzerV1 {
   readonly python: PracticeM6PythonRuntimeV1;
   readonly denseProbeScriptPath: string;
   readonly practiceMediaScriptPath: string;
+  readonly subjectBindScriptPath: string;
   readonly denseEvidenceSourcePath: string;
   readonly analysisLongestEdge: number;
   readonly cutThreshold: number;
@@ -138,6 +161,10 @@ export class PracticeM6LocalMediaAnalyzerV1 {
     this.practiceMediaScriptPath = path.resolve(
       config.practiceMediaScriptPath
         ?? path.join(this.repositoryRoot, "scripts", "practice", "practice-media-match.py"),
+    );
+    this.subjectBindScriptPath = path.resolve(
+      config.subjectBindScriptPath
+        ?? path.join(this.repositoryRoot, "scripts", "practice", "practice-subject-bind.py"),
     );
     this.denseEvidenceSourcePath = path.resolve(
       config.denseEvidenceSourcePath
@@ -296,6 +323,100 @@ export class PracticeM6LocalMediaAnalyzerV1 {
     });
     await writeFile(evidencePath, JSON.stringify(evidence, null, 2) + "\n", "utf8");
     return evidence;
+  }
+
+  async bindCrossSourceSubject(input: {
+    readonly referenceVideoPath: string;
+    readonly sourceVideoPath: string;
+    readonly referenceTimeMs: number;
+    readonly sourceTimeMs: number;
+    readonly referenceSubjectBox: readonly [number, number, number, number];
+    readonly referenceSemanticId: string;
+    readonly sourceId: string;
+    readonly shotId: string;
+  }): Promise<PracticeCrossSourceSubjectBindingV1> {
+    if (!Number.isFinite(input.referenceTimeMs) || !Number.isFinite(input.sourceTimeMs)
+      || input.referenceTimeMs < 0 || input.sourceTimeMs < 0) {
+      throw new TypeError("Practice subject binding requires finite non-negative frame times.");
+    }
+    if (input.referenceSubjectBox.length !== 4
+      || input.referenceSubjectBox.some((value) => !Number.isFinite(value))) {
+      throw new TypeError("Practice subject binding requires a finite normalized reference box.");
+    }
+    const referenceVideoPath = path.resolve(input.referenceVideoPath);
+    const sourceVideoPath = path.resolve(input.sourceVideoPath);
+    if (!(await fileExists(referenceVideoPath)) || !(await fileExists(sourceVideoPath))) {
+      throw new TypeError("Practice subject binding requires existing local reference and source videos.");
+    }
+    const [referenceStat, sourceStat, scriptDigest] = await Promise.all([
+      stat(referenceVideoPath),
+      stat(sourceVideoPath),
+      sha256File(this.subjectBindScriptPath),
+    ]);
+    const key = createHash("sha256").update(JSON.stringify({
+      referenceVideoPath,
+      referenceSize: referenceStat.size,
+      referenceMtimeMs: referenceStat.mtimeMs,
+      sourceVideoPath,
+      sourceSize: sourceStat.size,
+      sourceMtimeMs: sourceStat.mtimeMs,
+      referenceTimeMs: input.referenceTimeMs,
+      sourceTimeMs: input.sourceTimeMs,
+      referenceSubjectBox: input.referenceSubjectBox,
+      referenceSemanticId: input.referenceSemanticId,
+      sourceId: input.sourceId,
+      shotId: input.shotId,
+      scriptDigest,
+    }), "utf8").digest("hex").slice(0, 24);
+    const directory = path.join(this.artifactDir, "subject-bindings");
+    await mkdir(directory, { recursive: true });
+    const outputPath = path.join(
+      directory,
+      safeStem(input.shotId) + "-" + key + ".json",
+    );
+    if (!(await fileExists(outputPath))) {
+      await this.#runPython(this.subjectBindScriptPath, [
+        "--reference-video", referenceVideoPath,
+        "--source-video", sourceVideoPath,
+        "--reference-ms", String(input.referenceTimeMs),
+        "--source-ms", String(input.sourceTimeMs),
+        "--reference-box", ...input.referenceSubjectBox.map(String),
+        "--reference-semantic-id", input.referenceSemanticId,
+        "--source-id", input.sourceId,
+        "--shot-id", input.shotId,
+        "--output", outputPath,
+      ]);
+    }
+    const artifact = JSON.parse(
+      await readFile(outputPath, "utf8"),
+    ) as PracticeCrossSourceSubjectBindingV1;
+    if (artifact.schema !== "editflow.practice-cross-source-subject-binding.v1"
+      || artifact.referenceSemanticId !== input.referenceSemanticId
+      || artifact.sourceVideo === undefined
+      || !Number.isFinite(artifact.sourceVideo.fps)
+      || artifact.sourceVideo.fps <= 0
+      || !Array.isArray(artifact.evidenceRefs)
+      || artifact.evidenceRefs.length === 0) {
+      throw new TypeError("Practice subject binder returned an invalid correlated artifact.");
+    }
+    if (artifact.verified) {
+      if (artifact.sourceSemanticId === null || artifact.sourceSemanticId.trim().length === 0
+        || artifact.sourceSubjectBox === null
+        || artifact.sourceSubjectBox.length !== 4) {
+        throw new TypeError("Verified Practice subject binding lost its source identity or bounds.");
+      }
+      finite01(artifact.confidence, "Practice subject binding confidence");
+    }
+    return {
+      ...artifact,
+      evidenceRefs: [
+        ...new Set([
+          ...artifact.evidenceRefs,
+          "practice-subject-binding-artifact:" + outputPath,
+          "practice-subject-binding-script:sha256:" + scriptDigest,
+        ]),
+      ],
+    };
   }
 
   async compareContentStructure(input: {

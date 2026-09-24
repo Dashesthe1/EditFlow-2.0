@@ -75,6 +75,7 @@ export interface PracticeM6SubjectIsolationRouteV1 {
     readonly attempt: number;
     readonly reference: PracticeReferenceAnalysisV1;
     readonly sourceMatch: PracticeSceneMatchV1;
+    readonly baselinePlan: PracticeAeBaselinePlanV1;
     readonly window: DenseEffectWindowV1;
     readonly shotId: string;
     readonly compStableId: string;
@@ -418,6 +419,7 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           attempt: input.attempt,
           reference: input.reference,
           sourceMatch,
+          baselinePlan: prepared.plan,
           window: input.window,
           shotId: shot.shotId,
           compStableId: prepared.plan.compStableId,

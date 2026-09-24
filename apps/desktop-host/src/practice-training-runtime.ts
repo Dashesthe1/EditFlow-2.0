@@ -62,6 +62,10 @@ import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.
 import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
 import { PracticeM6CurrentAeRuntimeV1 } from "./practice-m6-current-ae-runtime.js";
 import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
+import {
+  createRetainedSam31PracticeSubjectIsolationRouteV1,
+  type PracticeM6SegmentationSubjectIsolationRouteV1,
+} from "./practice-m6-subject-isolation.js";
 const routeForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): string => command === "layer.switches.set"
@@ -237,6 +241,7 @@ export interface PracticeM6CurrentAeAssemblyV1 {
   readonly mediaMatcher: LocalPracticeMediaMatcherV1;
   readonly mediaAnalyzer: PracticeM6LocalMediaAnalyzerV1;
   readonly renderDriver: PracticeM6AeRenderDriverCurrentV1;
+  readonly subjectIsolationRoute: PracticeM6SegmentationSubjectIsolationRouteV1 | null;
   readonly m6Runtime: PracticeM6CurrentAeRuntimeV1;
   readonly bridge: PracticeM6ExecutionBridgeV1;
 }
@@ -250,6 +255,11 @@ export interface PracticeM6CurrentAeAssemblyConfigV1 {
   readonly ffmpegPath?: string;
   readonly renderTimeoutMs?: number;
   readonly restoreUndoLimit?: number;
+  readonly sam31PythonPath?: string;
+  readonly sam31WorkingDirectory?: string;
+  readonly sam31CheckpointPath?: string;
+  readonly sam31RuntimeEvidencePath?: string;
+  readonly sam31RuntimeEvidenceSha256Path?: string;
   readonly recordEpisode?: NonNullable<PracticeHomeworkAdaptersV1["recordEpisode"]>;
 }
 
@@ -269,7 +279,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     undefined,
     null,
     undefined,
-    new AeFilesystemPolicyV11(input.mediaRoots),
+    new AeFilesystemPolicyV11([...input.mediaRoots, artifactDir]),
   );
   const baselineBuilder = new PracticeAeBaselineBuilderV1(
     new PracticeCurrentAeBaselineRunnerV1(transaction),
@@ -305,11 +315,55 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
       ? {}
       : { restoreUndoLimit: input.restoreUndoLimit }),
   });
+  const profileRoot = process.env.USERPROFILE?.trim()
+    ? path.resolve(process.env.USERPROFILE)
+    : path.dirname(repositoryRoot);
+  const sam31RuntimeRoot = path.join(profileRoot, "sam3-runtime");
+  const subjectIsolationRoute = createRetainedSam31PracticeSubjectIsolationRouteV1({
+    transaction,
+    media: mediaAnalyzer,
+    repositoryRoot,
+    artifactDir: path.join(artifactDir, "subject-isolation"),
+    pythonPath: path.resolve(
+      input.sam31PythonPath
+        ?? path.join(sam31RuntimeRoot, ".venv", "Scripts", "python.exe"),
+    ),
+    workingDirectory: path.resolve(
+      input.sam31WorkingDirectory
+        ?? path.join(sam31RuntimeRoot, "sam3-src"),
+    ),
+    checkpointPath: path.resolve(
+      input.sam31CheckpointPath
+        ?? path.join(
+          sam31RuntimeRoot,
+          "checkpoints",
+          "sam3.1",
+          "sam3.1_multiplex.pt",
+        ),
+    ),
+    runtimeEvidencePath: path.resolve(
+      input.sam31RuntimeEvidencePath
+        ?? path.join(
+          repositoryRoot,
+          "proofs",
+          "diagnostics",
+          "m4-segmentation-runtime-evidence-live.json",
+        ),
+    ),
+    ...(input.sam31RuntimeEvidenceSha256Path === undefined
+      ? {}
+      : {
+          runtimeEvidenceSha256Path: path.resolve(
+            input.sam31RuntimeEvidenceSha256Path,
+          ),
+        }),
+  });
   const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,
     baselineBuilder,
     media: mediaAnalyzer,
     renderDriver,
+    subjectIsolationRoute,
   });
   const bridge = new PracticeM6ExecutionBridgeV1(m6Runtime);
   const adapters = composePracticeM6ExecutionAdaptersV1(bridge, {
@@ -330,6 +384,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     mediaMatcher,
     mediaAnalyzer,
     renderDriver,
+    subjectIsolationRoute,
     m6Runtime,
     bridge,
   };
