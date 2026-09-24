@@ -72,6 +72,29 @@ class PracticeMediaTruthTest(unittest.TestCase):
                 {"video:movie": "not-a-sha256"},
             )
 
+    def test_retain_rejects_start_bytes_changed_since_scaffold(self):
+        draft = truth_tool.scaffold(reference(), ["video:movie"], SOURCE_HASHES)
+        with self.assertRaisesRegex(ValueError, "changed since"):
+            truth_tool.retain(
+                draft,
+                reference(),
+                ["video:movie"],
+                {"video:movie": CHANGED_SOURCE_SHA256},
+                "INDEPENDENT_HUMAN",
+            )
+
+    def test_source_sha_cli_bindings_reject_malformed_hashes(self):
+        self.assertEqual(
+            truth_tool.parse_source_sha256_args([
+                "video:movie=" + SOURCE_SHA256,
+            ]),
+            SOURCE_HASHES,
+        )
+        with self.assertRaisesRegex(ValueError, "64-character"):
+            truth_tool.parse_source_sha256_args([
+                "video:movie=not-a-sha256",
+            ])
+
     def test_incomplete_draft_cannot_be_retained(self):
         draft = truth_tool.scaffold(reference(), ["video:movie"], SOURCE_HASHES)
         with self.assertRaisesRegex(ValueError, "Truth cannot be retained"):

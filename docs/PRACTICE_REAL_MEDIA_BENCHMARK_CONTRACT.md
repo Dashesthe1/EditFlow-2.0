@@ -29,9 +29,11 @@ context only. It deliberately leaves source identity, source timing, and playbac
 truth origin. Retained truth is bound to the exact Finish style fingerprint, Finish media SHA-256,
 analyzer fingerprint, benchmark source-ID set, and the SHA-256 of every Start source. Scaffold,
 validate, and retain commands therefore require `--source-sha256 SOURCE_ID=SHA256` bindings for the
-declared source set. The benchmark recomputes those hashes from the current Start files and rejects
-stale, DRAFT, incomplete, source-set-mismatched, or source-byte-mismatched truth before source
-indexing or scene matching.
+declared source set. Retention also verifies that the current hashes still equal the hashes captured
+when the draft was scaffolded; changed Start media requires a new scaffold and independent
+re-annotation. The benchmark recomputes those hashes from the current Start files and rejects stale,
+DRAFT, incomplete, source-set-mismatched, or source-byte-mismatched truth before source indexing or
+scene matching.
 
 The default certification gates are intentionally strict:
 

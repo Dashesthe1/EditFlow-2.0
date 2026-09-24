@@ -252,10 +252,19 @@ def retain(
         source_ids,
         allowed_source_sha256_by_id,
     )
+    draft_source_sha256_by_id = require_source_sha256_bindings(
+        source_ids,
+        draft.get("allowedSourceSha256"),
+    )
+    if draft_source_sha256_by_id != source_sha256_by_id:
+        raise ValueError(
+            "Start media bytes changed since this truth draft was scaffolded; "
+            "re-scaffold and re-annotate against the current media."
+        )
     value = json.loads(json.dumps(draft))
     value["annotationOrigin"] = annotation_origin
     value["allowedSourceIds"] = source_ids
-    value["allowedSourceSha256"] = source_sha256_by_id
+    value["allowedSourceSha256"] = draft_source_sha256_by_id
     value["status"] = RETAINED_STATUS
     value["retainedAt"] = now_iso()
     errors = validate_truth(
