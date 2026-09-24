@@ -7,6 +7,9 @@ import type {
 } from "../../../packages/executor/src/index.js";
 import type { VirtualAeProjectV1 } from "../../../packages/virtual-ae/src/index.js";
 import {
+  recipeParameterKeyV1,
+} from "../../../packages/recipe-compiler/src/index.js";
+import {
   buildM6MotionPeakCompilerContextV1,
   compileConstructionGraphV1,
   compileConstructionThroughNativeAeV1,
@@ -32,6 +35,7 @@ import type {
 import {
   practiceProactiveSubjectRelativeIsolationRequiredV1,
   practiceSubjectRelativeEffectAnchorV1,
+  practiceSubjectRelativeEffectSteeringV1,
   type PracticeContentStructureEvaluationV1,
   type PracticeM6RuntimeV1,
 } from "../../../packages/practice-homework/src/m6-practice.js";
@@ -585,6 +589,16 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         startMs: targetStartMs,
         endMs: targetEndMs,
       });
+      const subjectRelativeEffectSteering = practiceSubjectRelativeEffectSteeringV1({
+        graph: input.graph,
+        anchor: subjectRelativeEffectAnchor,
+      });
+      const subjectRelativeParameterValues = Object.fromEntries(
+        (subjectRelativeEffectSteering?.overrides ?? []).map((override) => [
+          recipeParameterKeyV1(override.nodeId, override.parameter),
+          structuredClone(override.value),
+        ]),
+      );
       const genericContext = buildM6MotionPeakCompilerContextV1({
         reference: input.window.evidence,
         compId: prepared.plan.compStableId,
@@ -604,6 +618,7 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           },
           parameterValues: {
             ...genericContext.parameterValues,
+            ...subjectRelativeParameterValues,
             "practice.subjectRelativeMotionPeak": subjectRelativeEffectAnchor.magnitude,
             "practice.subjectRelativeMotionX": subjectRelativeEffectAnchor.direction.x,
             "practice.subjectRelativeMotionY": subjectRelativeEffectAnchor.direction.y,
@@ -637,7 +652,14 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
                   + "motion peak at " + subjectRelativeEffectAnchor.timeMs.toFixed(3)
                   + " ms (phase " + subjectRelativeEffectAnchor.phase.toFixed(6)
                   + ", magnitude " + subjectRelativeEffectAnchor.magnitude.toFixed(6)
-                  + ") instead of the generic whole-frame motion peak."),
+                  + ") instead of the generic whole-frame motion peak.")
+              + (subjectRelativeEffectSteering === null
+                ? ""
+                : " Steer " + String(subjectRelativeEffectSteering.overrides.length)
+                  + " native directional parameters with the retained subject-relative "
+                  + "direction (" + subjectRelativeEffectSteering.normalizedDirection.x.toFixed(6)
+                  + ", " + subjectRelativeEffectSteering.normalizedDirection.y.toFixed(6)
+                  + ") while preserving the reference effect amplitudes."),
           recipeRefs: [
             input.graph.graphId,
             prepared.plan.baselineId,
@@ -648,6 +670,10 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
               ? []
               : ["practice-subject-relative-effect-anchor:"
                 + subjectRelativeEffectAnchor.trackId]),
+            ...(subjectRelativeEffectSteering === null
+              ? []
+              : ["practice-subject-relative-effect-steering:"
+                + subjectRelativeEffectSteering.trackId]),
             ...timingRefs,
           ],
         },
@@ -702,6 +728,14 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           "practice-m6-subject-relative-effect-anchor-direction:"
             + subjectRelativeEffectAnchor.direction.x.toFixed(6) + ","
             + subjectRelativeEffectAnchor.direction.y.toFixed(6),
+        ]),
+        ...(subjectRelativeEffectSteering === null ? [] : [
+          ...subjectRelativeEffectSteering.evidenceRefs,
+          "practice-m6-subject-relative-effect-steering-direction:"
+            + subjectRelativeEffectSteering.normalizedDirection.x.toFixed(6) + ","
+            + subjectRelativeEffectSteering.normalizedDirection.y.toFixed(6),
+          "practice-m6-subject-relative-effect-steering-count:"
+            + String(subjectRelativeEffectSteering.overrides.length),
         ]),
         ...timingRefs.map((ref) => "practice-m6-" + ref),
         ...(referenceWindow?.anchorBeatCue === undefined ? [] : [
