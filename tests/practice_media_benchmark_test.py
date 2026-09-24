@@ -137,6 +137,141 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
             "movie-sha-b",
         ))
 
+    def test_shared_source_cache_identity_is_case_independent_and_parameter_sensitive(self):
+        with tempfile.TemporaryDirectory() as root:
+            source = Path(root) / "movie.mp4"
+            source.write_bytes(b"movie-bytes")
+            source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+            first, first_proxy = benchmark.shared_source_cache_paths(
+                Path(root) / "out",
+                source,
+                "video:movie",
+                source_sha256,
+                1500.0,
+                4.0,
+            )
+            second, second_proxy = benchmark.shared_source_cache_paths(
+                Path(root) / "out",
+                source,
+                "video:movie",
+                source_sha256,
+                1500.0,
+                4.0,
+            )
+            denser, denser_proxy = benchmark.shared_source_cache_paths(
+                Path(root) / "out",
+                source,
+                "video:movie",
+                source_sha256,
+                500.0,
+                4.0,
+            )
+            self.assertEqual(first, second)
+            self.assertEqual(first_proxy, second_proxy)
+            self.assertNotEqual(first, denser)
+            self.assertNotEqual(first_proxy, denser_proxy)
+            self.assertEqual(first.parent.name, "source-indexes")
+            self.assertEqual(first.parent.parent.name, "_shared")
+
+    def test_run_case_reuses_one_long_source_index_across_finish_cases(self):
+        class FakeMatcher:
+            def __init__(self):
+                self.index_calls = 0
+
+            @staticmethod
+            def sha256_file(path):
+                return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+            @staticmethod
+            def load_artifact(path, schema):
+                payload = json.loads(Path(path).read_text(encoding="utf-8"))
+                if payload.get("schema") != schema:
+                    raise ValueError("unexpected fixture schema")
+                return payload
+
+            def analyze_reference(
+                self,
+                reference_video,
+                reference_id,
+                output,
+                cut_threshold,
+                minimum_shot_ms,
+            ):
+                payload = {
+                    "schema": "editflow.practice-reference-analysis.v1",
+                    "referenceId": reference_id,
+                    "sourcePath": str(Path(reference_video).resolve()),
+                    "sourceSha256": self.sha256_file(reference_video),
+                    "analysis": {
+                        "cutThreshold": cut_threshold,
+                        "minimumShotMs": minimum_shot_ms,
+                    },
+                    "shots": [{"shotId": "shot:1"}],
+                }
+                benchmark.write_json(output, payload)
+
+            def index_source(
+                self,
+                source_video,
+                source_id,
+                output,
+                sample_step_ms,
+                explicit_ffmpeg=None,
+                proxy_dir=None,
+                analysis_fps=6.0,
+            ):
+                self.index_calls += 1
+                payload = {
+                    "schema": "editflow.practice-source-index.v1",
+                    "sourceId": source_id,
+                    "sourcePath": str(Path(source_video).resolve()),
+                    "sourceSha256": self.sha256_file(source_video),
+                    "analysis": {
+                        "sampleStepMs": sample_step_ms,
+                        "analysisProxyFps": analysis_fps,
+                    },
+                    "samples": [],
+                }
+                benchmark.write_json(output, payload)
+                return payload
+
+            @staticmethod
+            def match_reference(reference_json, source_indexes, output, coarse_limit):
+                payload = {"matches": []}
+                benchmark.write_json(output, payload)
+                return payload
+
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            source = root_path / "movie.mp4"
+            source.write_bytes(b"shared-long-source")
+            finish_a = root_path / "finish-a.mp4"
+            finish_b = root_path / "finish-b.mp4"
+            finish_a.write_bytes(b"finish-a")
+            finish_b.write_bytes(b"finish-b")
+            matcher = FakeMatcher()
+            output_root = root_path / "out"
+            for case_id, finish in (("case:a", finish_a), ("case:b", finish_b)):
+                benchmark.run_case(
+                    matcher,
+                    {
+                        "benchmarkId": case_id,
+                        "referenceId": f"ref:{case_id}",
+                        "referenceVideo": str(finish),
+                        "sources": [{
+                            "sourceId": "video:movie",
+                            "video": str(source),
+                        }],
+                        "sampleStepMs": 1500.0,
+                        "analysisFps": 4.0,
+                    },
+                    root_path,
+                    output_root,
+                )
+            self.assertEqual(matcher.index_calls, 1)
+            shared_indexes = list((output_root / "_shared" / "source-indexes").glob("*.json"))
+            self.assertEqual(len(shared_indexes), 1)
+
     def test_reference_cache_requires_requested_segmentation(self):
         artifact = {
             "referenceId": "ref:1",

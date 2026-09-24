@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import importlib.util
 import json
 import math
@@ -38,6 +39,32 @@ def resolve_path(base_dir, value):
 
 def safe_name(value):
     return re.sub(r"[^A-Za-z0-9._-]+", "-", str(value)).strip("-") or "case"
+
+
+def shared_source_cache_paths(
+    output_root,
+    source_video,
+    source_id,
+    source_sha256,
+    sample_step_ms,
+    analysis_fps,
+):
+    identity = json.dumps({
+        "sourcePath": str(Path(source_video).resolve()),
+        "sourceId": str(source_id),
+        "sourceSha256": str(source_sha256).lower(),
+        "sampleStepMs": float(sample_step_ms),
+        "analysisFps": float(analysis_fps),
+    }, sort_keys=True, separators=(",", ":"))
+    cache_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+    shared_root = Path(output_root) / "_shared"
+    index_path = (
+        shared_root
+        / "source-indexes"
+        / f"{safe_name(source_id)}-{cache_id}.json"
+    )
+    proxy_dir = shared_root / "proxy" / cache_id
+    return index_path, proxy_dir
 
 
 def exact_geometry(match):
@@ -419,9 +446,18 @@ def run_case(matcher, case, base_dir, output_root):
 
     source_indexes = []
     for source, source_id, source_video, source_sha256 in source_descriptors:
-        source_json = case_dir / f"source-{safe_name(source_id)}.json"
         sample_step_ms = float(source.get("sampleStepMs", case.get("sampleStepMs", 500.0)))
         analysis_fps = float(source.get("analysisFps", case.get("analysisFps", 6.0)))
+        source_json, proxy_dir = shared_source_cache_paths(
+            output_root,
+            source_video,
+            source_id,
+            source_sha256,
+            sample_step_ms,
+            analysis_fps,
+        )
+        source_json.parent.mkdir(parents=True, exist_ok=True)
+        proxy_dir.mkdir(parents=True, exist_ok=True)
         source_index = cached_artifact(
             matcher,
             source_json,
@@ -441,7 +477,7 @@ def run_case(matcher, case, base_dir, output_root):
                 source_json,
                 sample_step_ms,
                 explicit_ffmpeg=case.get("ffmpeg"),
-                proxy_dir=case_dir / "proxy",
+                proxy_dir=proxy_dir,
                 analysis_fps=analysis_fps,
             )
         source_indexes.append(source_json)
