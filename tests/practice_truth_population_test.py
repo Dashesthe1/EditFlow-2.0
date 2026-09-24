@@ -167,6 +167,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             "referenceId": "reference:fixture",
             "styleFingerprint": "style",
             "sourceSha256": sha256_bytes(finish.read_bytes()),
+            "video": {"durationMs": 1000.0},
             "analysis": {"analyzerFingerprint": "analyzer"},
             "shots": [{"shotId": "shot:1", "referenceStartMs": 0, "referenceEndMs": 1000}],
         }
@@ -211,6 +212,33 @@ class PracticeTruthPopulationTest(unittest.TestCase):
         }
         write_json(root / case["retainedTruth"], retained)
         return retained
+
+    def _valid_match(self, root, case, *, confidence=0.99, source_sha=None):
+        source_id = case["sourceMedia"][0]["sourceId"]
+        source = root / case["sourceMedia"][0]["path"]
+        retained_sha = source_sha or sha256_bytes(source.read_bytes())
+        return {
+            "shotId": "shot:1",
+            "sourceId": source_id,
+            "sourceStartMs": 1000.0,
+            "sourceEndMs": 2000.0,
+            "confidence": confidence,
+            "candidateMargin": 0.20,
+            "geometricProof": {"strongAnchorCount": 3},
+            "evidenceRefs": [
+                "source-video:sha256:" + retained_sha,
+                "practice-candidate-margin:0.2",
+            ],
+        }
+
+    def _write_valid_matches(self, root, case):
+        payload = {
+            "schema": tool.MATCH_SCHEMA,
+            "matches": [self._valid_match(root, case)],
+            "evidenceRefs": ["matcher:fixture"],
+        }
+        write_json(root / case["matches"], payload)
+        return payload
 
     def test_review_pack_waits_for_independent_worksheet_completion(self):
         with TemporaryDirectory() as temporary:
@@ -336,6 +364,54 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(result["stage"], "TRUTH_RETENTION")
             self.assertTrue(any(
                 "annotationOrigin must be independent" in reason
+                for reason in result["reasons"]
+            ))
+
+    def test_matcher_observation_requires_exact_scene_source_binding(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            reference = self._write_reference_and_draft(root, case)
+            self._write_valid_retained_truth(root, case, reference)
+            weak = self._valid_match(root, case, confidence=0.94)
+            write_json(root / case["matches"], {
+                "schema": tool.MATCH_SCHEMA,
+                "matches": [weak],
+                "evidenceRefs": ["matcher:fixture"],
+            })
+
+            status = tool.build_status(self._plan(root, [case]))
+            result = status["cases"][0]
+            self.assertEqual(result["stage"], "MATCHER_OBSERVATION")
+            self.assertEqual(result["nextAction"], "IMPROVE_SOURCE_BINDING")
+            self.assertTrue(any(
+                "confidence below exact-scene binding gate" in reason
+                for reason in result["reasons"]
+            ))
+            self.assertTrue(any(
+                "qualified exact-scene coverage" in reason
+                for reason in result["reasons"]
+            ))
+
+    def test_source_binding_hash_must_match_declared_current_start_media(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            reference = self._write_reference_and_draft(root, case)
+            self._write_valid_retained_truth(root, case, reference)
+            wrong_hash = "f" * 64
+            write_json(root / case["matches"], {
+                "schema": tool.MATCH_SCHEMA,
+                "matches": [self._valid_match(root, case, source_sha=wrong_hash)],
+                "evidenceRefs": ["matcher:fixture"],
+            })
+
+            status = tool.build_status(self._plan(root, [case]))
+            result = status["cases"][0]
+            self.assertEqual(result["stage"], "MATCHER_OBSERVATION")
+            self.assertEqual(result["nextAction"], "IMPROVE_SOURCE_BINDING")
+            self.assertTrue(any(
+                "does not match current Start media bytes" in reason
                 for reason in result["reasons"]
             ))
 
@@ -634,11 +710,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             source_sha = sha256_bytes(source.read_bytes())
             source_id = case["sourceMedia"][0]["sourceId"]
             self._write_valid_retained_truth(root, case, reference)
-            write_json(root / case["matches"], {
-                "schema": tool.MATCH_SCHEMA,
-                "matches": [],
-                "evidenceRefs": ["matcher:fixture"],
-            })
+            matches_payload = self._write_valid_matches(root, case)
 
             suite = {
                 "schema": tool.RETAINED_SUITE_SCHEMA,
@@ -671,7 +743,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
 
                     "observation": {
                         "caseId": case["caseId"],
-                        "matches": [],
+                        "matches": matches_payload["matches"],
                         "evidenceRefs": ["practice-match-observation:sha256:" + ("a" * 64)],
                     },
                 }],

@@ -87,7 +87,12 @@ population controller re-runs the canonical retained-truth validator against the
 analysis, exact current Start source-ID set, and freshly hashed Start media bytes. An independent
 label alone is therefore insufficient: stale media, incomplete shot coverage, mismatched Finish
 identity/analyzer evidence, invalid source ranges or directions, or a non-independent annotation
-origin sends the case back to `TRUTH_RETENTION`. A case becomes `READY_FOR_CORPUS` only after the
+origin sends the case back to `TRUTH_RETENTION`. Only after that independent truth gate passes does
+the matcher observation receive a separate exact-scene source-binding gate. The binding must cover
+at least 98% of the Finish timeline using one retained match per covered shot, confidence at least
+0.95, candidate margin at least 0.02, at least two strong geometric anchors, and a retained source
+SHA-256 that equals the current declared Start file. Binding evidence is never copied into the
+review worksheet or retained truth. A case becomes `READY_FOR_CORPUS` only after the
 existing retained-corpus preflight accepts its per-case manifest. The population-level
 `populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, distinct
 Finish media identities, and at least four hard-case categories. Finish identity is fail-closed in

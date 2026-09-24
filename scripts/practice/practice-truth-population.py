@@ -105,6 +105,14 @@ def load_media_match_tool():
     return module
 
 
+def load_source_binding_tool():
+    script = Path(__file__).with_name("practice-source-binding.py")
+    spec = importlib.util.spec_from_file_location("practice_source_binding", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def finish_perceptual_signature(path, signature_provider=None):
     if signature_provider is not None:
         return signature_provider(Path(path))
@@ -316,7 +324,7 @@ def artifact_path(case, manifest_path, key):
     return resolve_path(manifest_path, case.get(key))
 
 
-def retained_truth_validation_reasons(case, manifest_path, reference, retained, media_truth=None):
+def current_source_media_identity(case, manifest_path, media_truth=None):
     media_truth = media_truth or load_media_truth_tool()
     source_paths = _case_source_paths(case, manifest_path)
     cached_hasher = getattr(media_truth, "sha256_file_cached", sha256_file)
@@ -324,13 +332,65 @@ def retained_truth_validation_reasons(case, manifest_path, reference, retained, 
         source_id: cached_hasher(source_path)
         for source_id, source_path in source_paths.items()
     }
+    return source_paths, source_hashes
+
+
+def retained_truth_validation_reasons(
+    case,
+    manifest_path,
+    reference,
+    retained,
+    media_truth=None,
+    source_hashes=None,
+):
+    media_truth = media_truth or load_media_truth_tool()
+    if source_hashes is None:
+        _source_paths, source_hashes = current_source_media_identity(
+            case,
+            manifest_path,
+            media_truth=media_truth,
+        )
     return media_truth.validate_truth(
         retained,
         reference,
-        allowed_source_ids=sorted(source_paths),
+        allowed_source_ids=source_ids(case),
         allowed_source_sha256_by_id=source_hashes,
         require_retained=True,
     )
+
+
+def source_binding_validation_reasons(
+    case,
+    manifest_path,
+    reference,
+    matches,
+    source_hashes=None,
+    source_binding=None,
+):
+    source_binding = source_binding or load_source_binding_tool()
+    if source_hashes is None:
+        _source_paths, source_hashes = current_source_media_identity(case, manifest_path)
+    result = source_binding.evaluate_binding(reference, matches)
+    reasons = list(result.get("reasons") or [])
+    if result.get("status") != "BOUND":
+        for rejected in result.get("rejectedShots") or []:
+            shot_id = str(rejected.get("shotId", "")).strip() or "<unknown-shot>"
+            for reason in rejected.get("reasons") or []:
+                reasons.append(f"{shot_id}: {reason}")
+
+    if str(result.get("referenceId", "")).strip() != str(reference.get("referenceId", "")).strip():
+        reasons.append("Source binding reference identity does not match current Finish analysis.")
+    for binding in result.get("sourceBindings") or []:
+        source_id = str(binding.get("sourceId", "")).strip()
+        source_sha = str(binding.get("sourceSha256", "")).strip().lower()
+        expected_sha = str(source_hashes.get(source_id, "")).strip().lower()
+        if not expected_sha:
+            reasons.append(f"Source binding uses undeclared Start source id: {source_id or '<missing>'}.")
+        elif source_sha != expected_sha:
+            reasons.append(
+                f"Source binding SHA-256 for {source_id} does not match current Start media bytes."
+            )
+    return list(dict.fromkeys(str(reason) for reason in reasons if str(reason).strip()))
 
 
 def inspect_case(case, manifest_path, corpus):
@@ -410,11 +470,19 @@ def inspect_case(case, manifest_path, corpus):
         return case_result(case_id, tags, "TRUTH_RETENTION", "RETAIN_TRUTH",
                            ["Retained truth artifact is invalid or not retained."])
     try:
+        media_truth = load_media_truth_tool()
+        _source_paths, current_source_hashes = current_source_media_identity(
+            case,
+            manifest_path,
+            media_truth=media_truth,
+        )
         truth_reasons = retained_truth_validation_reasons(
             case,
             manifest_path,
             reference,
             retained,
+            media_truth=media_truth,
+            source_hashes=current_source_hashes,
         )
     except Exception as exc:
         return case_result(
@@ -441,6 +509,30 @@ def inspect_case(case, manifest_path, corpus):
     if matches.get("schema") != MATCH_SCHEMA:
         return case_result(case_id, tags, "MATCHER_OBSERVATION", "RERUN_MATCHER_OBSERVATION",
                            ["Matcher observation schema is invalid."])
+    try:
+        binding_reasons = source_binding_validation_reasons(
+            case,
+            manifest_path,
+            reference,
+            matches,
+            source_hashes=current_source_hashes,
+        )
+    except Exception as exc:
+        return case_result(
+            case_id,
+            tags,
+            "MATCHER_OBSERVATION",
+            "IMPROVE_SOURCE_BINDING",
+            ["Source binding could not be evaluated: " + str(exc)],
+        )
+    if binding_reasons:
+        return case_result(
+            case_id,
+            tags,
+            "MATCHER_OBSERVATION",
+            "IMPROVE_SOURCE_BINDING",
+            ["Source binding validation: " + reason for reason in binding_reasons],
+        )
 
     suite_path = artifact_path(case, manifest_path, "suiteManifest")
     if suite_path is None or not suite_path.is_file():
