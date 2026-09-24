@@ -451,6 +451,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
         "- Skill-use credit is derived independently from the exact persisted Practice attempt that produced the certified render. Every causal invariant must satisfy the retained machineUseSignature using actual cue IDs, rationale codes, construction IDs, proof effect-family/object evidence, or retained AE/runtime evidence refs.",
         "- A retained skill with no machineUseSignature, a render-mismatched/missing attempt, missing construction IDs, or an unsatisfied causal invariant earns no held-out skill credit. Do not try to compensate with prose or extra appliedSkillIds claims.",
         "- Skill-level certification is cumulative across held-out cases: ROBUST requires machine-attested passing held-out coverage for every retained TRANSFER_VERIFIED learned skill, not merely aggregate effect-family coverage.",
+        "- ROBUST also requires a separate certified retained real-media truth suite: 20-30 byte-distinct Finish cases with independent full-length shot truth, hard-case diversity, and zero retained scene errors. A held-out benchmark by itself cannot promote ROBUST.",
       ]
       : [
         "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",

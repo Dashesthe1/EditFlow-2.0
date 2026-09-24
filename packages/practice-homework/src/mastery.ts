@@ -953,7 +953,23 @@ export const derivePracticeMaturityStageV1 = (
   const learning = profile.gptLearning;
   const records = learning?.masteryRecords ?? [];
   const benchmarks = learning?.heldOutBenchmarks ?? [];
-  if (benchmarks.some((report) =>
+  const retainedTruthSuites = learning?.retainedTruthSuiteReports ?? [];
+  const realMediaTruthCertified = retainedTruthSuites.some((report) =>
+    report.certified === true
+    && report.mode === "CERTIFICATION"
+    && report.caseCount >= 20
+    && report.caseCount <= 30
+    && report.passedCaseCount === report.caseCount
+    && report.distinctCaseIdCount === report.caseCount
+    && report.distinctReferenceCount === report.caseCount
+    && report.distinctFinishSha256Count === report.caseCount
+    && report.independentTruthCaseCount === report.caseCount
+    && report.fullLengthTruthCaseCount === report.caseCount
+    && report.difficultyKindCount >= report.policy.minimumDifficultyKinds
+    && report.sceneErrorCount === 0
+    && report.reasons.length === 0
+    && report.evidenceRefs.length > 0);
+  if (realMediaTruthCertified && benchmarks.some((report) =>
     report.robust
     && report.objectAwareVerified
     && report.subjectRelativeDirectionVerified === true

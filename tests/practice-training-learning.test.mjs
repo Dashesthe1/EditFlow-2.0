@@ -15,6 +15,7 @@ import {
   comparePracticeObjectAwareWindowsV1,
   composePracticeM6ExecutionAdaptersV1,
   evaluatePracticeHeldOutBenchmarkV1,
+  evaluatePracticeRetainedTruthSuiteV1,
   resolvePracticeLocalMediaPathV1,
   summarizePracticeSubjectIdentityV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
@@ -87,6 +88,69 @@ const professionalBenchmarkEvidenceFor = (...families) =>
       degradedCaseRejected: true,
       degradedCaseEvidenceRef: "proof:degraded:" + item.caseId,
     }));
+
+const retainedTruthCertificationReport = (editTypeId) => {
+  const difficultyKinds = [
+    "FAST_CUTS",
+    "NEAR_DUPLICATE_SOURCES",
+    "REVERSE_OR_REWIND",
+    "IDENTITY_AMBIGUITY",
+  ];
+  const cases = Array.from({ length: 20 }, (_, index) => {
+    const caseId = "truth:robust-gate:" + String(index + 1);
+    const sourceId = "source:robust-gate:" + String(index + 1);
+    const finishSha256 = (index + 1).toString(16).padStart(64, "0");
+    const sourceSha256 = (1000 + index).toString(16).padStart(64, "0");
+    return {
+      truth: {
+        caseId,
+        referenceId: "finish:robust-gate:" + String(index + 1),
+        finishSha256,
+        referenceDurationMs: 1000,
+        sourceMediaSha256: [sourceSha256],
+        truthAuthority: "INDEPENDENT_VERIFIER",
+        difficultyTags: [difficultyKinds[index % difficultyKinds.length]],
+        shots: [{
+          shotId: "shot:0001",
+          order: 0,
+          referenceStartMs: 0,
+          referenceEndMs: 1000,
+          expectedSourceId: sourceId,
+          expectedSourceStartMs: 4000,
+          expectedSourceEndMs: 5000,
+          expectedDirection: "FORWARD",
+          truthEvidenceRefs: ["truth:evidence:" + caseId],
+        }],
+        evidenceRefs: ["truth:case:" + caseId],
+      },
+      observation: {
+        caseId,
+        matches: [{
+          shotId: "shot:0001",
+          sourceId,
+          sourceStartMs: 4000,
+          sourceEndMs: 5000,
+          direction: "FORWARD",
+          playbackRate: 1,
+          appearanceSimilarity: 0.98,
+          temporalSimilarity: 0.98,
+          motionSimilarity: 0.98,
+          confidence: 0.98,
+          candidateScore: 0.98,
+          runnerUpScore: 0.72,
+          candidateMargin: 0.26,
+          evidenceRefs: ["machine:evidence:" + caseId],
+        }],
+        evidenceRefs: ["machine:case:" + caseId],
+      },
+    };
+  });
+  return evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId,
+    mode: "CERTIFICATION",
+    cases,
+  });
+};
 
 const masteryRecord = (
   sessionId,
@@ -598,6 +662,13 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.ok(practiceOnly.reasons.some((reason) => /M6 professional benchmark authority/.test(reason)));
 
   registry.recordHeldOutBenchmark(report);
+  assert.equal(
+    registry.knowledge("benchmark-gated").maturityStage,
+    "OBJECT_AWARE_VERIFIED",
+  );
+  const retainedTruthReport = retainedTruthCertificationReport("benchmark-gated");
+  assert.equal(retainedTruthReport.certified, true);
+  registry.recordRetainedTruthSuite(retainedTruthReport);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
   const contaminated = evaluatePracticeHeldOutBenchmarkV1({

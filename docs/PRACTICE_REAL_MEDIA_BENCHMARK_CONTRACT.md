@@ -80,7 +80,9 @@ media bytes before any certification claim can be emitted.
 `inventory` reports case count, distinct Finish identities, independent/full-length truth counts,
 real matcher-observation readiness, and coverage across the retained hard-case categories. It is a
 recruitment/preflight report only; `readyForCertificationRun` means the corpus is eligible to run the
-canonical evaluator, not that Practice has passed or been certified.
+canonical evaluator, not that Practice has passed or been certified. Practice maturity is also
+fail-closed: a held-out benchmark cannot promote an Edit Type to `ROBUST` unless the Edit Type
+registry retains a certified real-media truth-suite report satisfying these corpus gates.
 
 `assemble --mode CERTIFICATION` is fail-closed. It requires 20-30 cases, unique case IDs, unique
 Finish reference IDs, unique Finish SHA-256 identities, at least four hard-case categories, at least
