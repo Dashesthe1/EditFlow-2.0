@@ -50,6 +50,8 @@ const SUBJECT_RELATIVE_DIRECTION_BUCKETS = [
 const SUBJECT_CONTINUITY_CHALLENGES = [
   "LOW_MOTION",
   "OCCLUSION",
+  "BACKGROUND_MOTION",
+  "IDENTITY_AMBIGUITY",
 ] as const satisfies readonly PracticeSubjectContinuityChallengeV1[];
 
 const subjectRelativeDirectionBucket = (
@@ -358,7 +360,10 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
   const subjectContinuityChallengeWindows = input.proof.objectAwareProof?.windows.filter((window) => {
     const reference = window.referenceSubjectIdentity;
     return reference !== undefined
-      && (reference.lowMotionFrameCount > 0 || reference.occlusionFrameCount > 0);
+      && (reference.lowMotionFrameCount > 0
+        || reference.occlusionFrameCount > 0
+        || (reference.backgroundMotionStressFrameCount ?? 0) > 0
+        || (reference.identityAmbiguityFrameCount ?? 0) > 0);
   }) ?? [];
   const verifiedSubjectContinuityChallengeWindows = subjectContinuityChallengeWindows.filter((window) => {
     const reference = window.referenceSubjectIdentity;
@@ -366,10 +371,25 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     if (reference === undefined || render === undefined || render === null) return false;
     if (!window.passed || window.subjectIdentityVerified !== true) return false;
     const lowMotionVerified = reference.lowMotionFrameCount === 0
-      || (reference.lowMotionSurvived && render.lowMotionSurvived);
+      || (reference.lowMotionSurvived
+        && render.lowMotionFrameCount > 0
+        && render.lowMotionSurvived);
     const occlusionVerified = reference.occlusionFrameCount === 0
-      || (reference.occlusionSurvived && render.occlusionSurvived);
-    return lowMotionVerified && occlusionVerified;
+      || (reference.occlusionSurvived
+        && render.occlusionFrameCount > 0
+        && render.occlusionSurvived);
+    const backgroundMotionVerified = (reference.backgroundMotionStressFrameCount ?? 0) === 0
+      || (reference.backgroundMotionStressSurvived === true
+        && (render.backgroundMotionStressFrameCount ?? 0) > 0
+        && render.backgroundMotionStressSurvived === true);
+    const identityAmbiguityVerified = (reference.identityAmbiguityFrameCount ?? 0) === 0
+      || (reference.identityAmbiguitySurvived === true
+        && (render.identityAmbiguityFrameCount ?? 0) > 0
+        && render.identityAmbiguitySurvived === true);
+    return lowMotionVerified
+      && occlusionVerified
+      && backgroundMotionVerified
+      && identityAmbiguityVerified;
   });
   const subjectContinuityHardCaseVerified = objectAwareRequired
     && input.proof.objectAwareProof?.verified === true
@@ -384,11 +404,25 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       if (reference === undefined || render === undefined || render === null) return [];
       const challenges: PracticeSubjectContinuityChallengeV1[] = [];
       if (reference.lowMotionFrameCount > 0
+        && render.lowMotionFrameCount > 0
         && reference.lowMotionSurvived
         && render.lowMotionSurvived) challenges.push("LOW_MOTION");
       if (reference.occlusionFrameCount > 0
+        && render.occlusionFrameCount > 0
         && reference.occlusionSurvived
         && render.occlusionSurvived) challenges.push("OCCLUSION");
+      if ((reference.backgroundMotionStressFrameCount ?? 0) > 0
+        && reference.backgroundMotionStressSurvived === true
+        && (render.backgroundMotionStressFrameCount ?? 0) > 0
+        && render.backgroundMotionStressSurvived === true) {
+        challenges.push("BACKGROUND_MOTION");
+      }
+      if ((reference.identityAmbiguityFrameCount ?? 0) > 0
+        && reference.identityAmbiguitySurvived === true
+        && (render.identityAmbiguityFrameCount ?? 0) > 0
+        && render.identityAmbiguitySurvived === true) {
+        challenges.push("IDENTITY_AMBIGUITY");
+      }
       return challenges;
     }),
   )];
@@ -449,7 +483,7 @@ export const DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1: PracticeHeldOutBench
   minimumSubjectRelativeDirectionCases: 3,
   minimumSubjectRelativeDirectionBuckets: 3,
   minimumSubjectContinuityHardCases: 3,
-  minimumSubjectContinuityChallengeKinds: 2,
+  minimumSubjectContinuityChallengeKinds: 4,
 };
 
 const benchmarkPolicy = (

@@ -666,17 +666,49 @@ export const comparePracticeObjectAwareWindowsV1 = (
       0.45,
       referenceSubjectIdentity.identityCoverage - 0.2,
     );
-    const lowMotionIdentityMatched = referenceSubjectIdentity.lowMotionFrameCount === 0
-      || (renderSubjectIdentity.continuityVerified
-        && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage);
-    const occlusionIdentityMatched = referenceSubjectIdentity.occlusionFrameCount === 0
-      || (renderSubjectIdentity.continuityVerified
-        && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage);
+    const challengeMatched = (
+      referenceFrameCount: number,
+      referenceSurvived: boolean,
+      renderFrameCount: number,
+      renderSurvived: boolean,
+    ): boolean => referenceFrameCount === 0 || (
+      referenceSurvived
+      && renderFrameCount > 0
+      && renderSurvived
+      && renderSubjectIdentity.continuityVerified
+      && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage
+    );
+    const lowMotionIdentityMatched = challengeMatched(
+      referenceSubjectIdentity.lowMotionFrameCount,
+      referenceSubjectIdentity.lowMotionSurvived,
+      renderSubjectIdentity.lowMotionFrameCount,
+      renderSubjectIdentity.lowMotionSurvived,
+    );
+    const occlusionIdentityMatched = challengeMatched(
+      referenceSubjectIdentity.occlusionFrameCount,
+      referenceSubjectIdentity.occlusionSurvived,
+      renderSubjectIdentity.occlusionFrameCount,
+      renderSubjectIdentity.occlusionSurvived,
+    );
+    const backgroundMotionIdentityMatched = challengeMatched(
+      referenceSubjectIdentity.backgroundMotionStressFrameCount ?? 0,
+      referenceSubjectIdentity.backgroundMotionStressSurvived ?? false,
+      renderSubjectIdentity.backgroundMotionStressFrameCount ?? 0,
+      renderSubjectIdentity.backgroundMotionStressSurvived ?? false,
+    );
+    const identityAmbiguityMatched = challengeMatched(
+      referenceSubjectIdentity.identityAmbiguityFrameCount ?? 0,
+      referenceSubjectIdentity.identityAmbiguitySurvived ?? false,
+      renderSubjectIdentity.identityAmbiguityFrameCount ?? 0,
+      renderSubjectIdentity.identityAmbiguitySurvived ?? false,
+    );
     const subjectIdentityVerified = referenceSubjectIdentity.continuityVerified
       && renderSubjectIdentity.continuityVerified
       && renderSubjectIdentity.identityCoverage >= minimumRenderIdentityCoverage
       && lowMotionIdentityMatched
-      && occlusionIdentityMatched;
+      && occlusionIdentityMatched
+      && backgroundMotionIdentityMatched
+      && identityAmbiguityMatched;
     const maskTruthVerified = !maskTruthRequired
       || (
         practiceSubjectMaskTruthVerifiedV1(referenceSubjectIdentity)
@@ -810,6 +842,14 @@ export const comparePracticeObjectAwareWindowsV1 = (
       ...(referenceSubjectIdentity.occlusionFrameCount > 0 && !occlusionIdentityMatched
         ? ["The rendered subject identity did not survive the reference occlusion interval."]
         : []),
+      ...((referenceSubjectIdentity.backgroundMotionStressFrameCount ?? 0) > 0
+        && !backgroundMotionIdentityMatched
+        ? ["The rendered subject identity did not survive the reference strong background/camera-motion challenge."]
+        : []),
+      ...((referenceSubjectIdentity.identityAmbiguityFrameCount ?? 0) > 0
+        && !identityAmbiguityMatched
+        ? ["The rendered subject identity did not survive the reference identity-ambiguity challenge."]
+        : []),
       ...(maskTruthRequired && !maskTruthVerified
         ? ["Validated segmentation/tracked-mask/Roto Brush truth is required for this isolation window."]
         : []),
@@ -834,6 +874,22 @@ export const comparePracticeObjectAwareWindowsV1 = (
       "practice-subject-render-continuity:"
         + String(renderSubjectIdentity.continuityVerified),
       "practice-subject-identity-score:" + subjectIdentityScore.toFixed(6),
+      "practice-subject-reference-low-motion-count:"
+        + String(referenceSubjectIdentity.lowMotionFrameCount),
+      "practice-subject-render-low-motion-count:"
+        + String(renderSubjectIdentity.lowMotionFrameCount),
+      "practice-subject-reference-occlusion-count:"
+        + String(referenceSubjectIdentity.occlusionFrameCount),
+      "practice-subject-render-occlusion-count:"
+        + String(renderSubjectIdentity.occlusionFrameCount),
+      "practice-subject-reference-background-motion-stress-count:"
+        + String(referenceSubjectIdentity.backgroundMotionStressFrameCount ?? 0),
+      "practice-subject-render-background-motion-stress-count:"
+        + String(renderSubjectIdentity.backgroundMotionStressFrameCount ?? 0),
+      "practice-subject-reference-identity-ambiguity-count:"
+        + String(referenceSubjectIdentity.identityAmbiguityFrameCount ?? 0),
+      "practice-subject-render-identity-ambiguity-count:"
+        + String(renderSubjectIdentity.identityAmbiguityFrameCount ?? 0),
       "practice-subject-mask-truth-required:" + String(maskTruthRequired),
       "practice-subject-mask-truth-verified:" + String(maskTruthVerified),
       "practice-object-reference-relation:" + referenceMetrics.relation,

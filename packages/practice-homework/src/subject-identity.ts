@@ -44,6 +44,29 @@ const occlusionFrame = (frame: DenseFrameMetricsV1): boolean =>
   frame.subjectTrackState === "PREDICTED_OCCLUDED"
   || frame.occlusion >= 0.18;
 
+const backgroundMotionStressFrame = (frame: DenseFrameMetricsV1): boolean => {
+  if (!identityActive(frame)) return false;
+  const backgroundMagnitude = Math.hypot(
+    frame.backgroundMotion.x,
+    frame.backgroundMotion.y,
+  );
+  return backgroundMagnitude >= 0.12
+    && frame.motionEnergy >= 0.2
+    && frame.subjectBackgroundDivergence >= 0.08;
+};
+
+const identityAmbiguityFrame = (frame: DenseFrameMetricsV1): boolean => {
+  if (!identityActive(frame) || frame.subjectTrackState !== "OBSERVED") return false;
+  const confidence = clamp01(frame.subjectIdentityConfidence ?? 0);
+  const visibility = clamp01(frame.subjectVisibility ?? 1);
+  // Keep ambiguity distinct from occlusion: the subject remains visibly observed,
+  // but identity confidence is materially degraded while staying above the proof floor.
+  return confidence >= 0.35
+    && confidence < 0.65
+    && visibility >= 0.5
+    && frame.occlusion < 0.18;
+};
+
 const validatedMaskFrame = (frame: DenseFrameMetricsV1): boolean =>
   frame.subjectMaskValidated === true
   && frame.subjectMaskSource !== undefined
@@ -106,6 +129,8 @@ export const summarizePracticeSubjectIdentityV1 = (
   const lostFrames = frames.filter((frame) => frame.subjectTrackState === "LOST");
   const lowMotionFrames = frames.filter(lowMotionFrame);
   const occlusionFrames = frames.filter(occlusionFrame);
+  const backgroundMotionStressFrames = frames.filter(backgroundMotionStressFrame);
+  const identityAmbiguityFrames = frames.filter(identityAmbiguityFrame);
   const maskFrames = frames.filter(validatedMaskFrame);
   const dominant = dominantIdentity(frames);
   const switches = identitySwitchCount(frames);
@@ -120,6 +145,16 @@ export const summarizePracticeSubjectIdentityV1 = (
   const validatedMaskCoverage = frameCount === 0 ? 0 : maskFrames.length / frameCount;
   const lowMotionSurvived = eventSurvived(frames, lowMotionFrame, dominant.id);
   const occlusionSurvived = eventSurvived(frames, occlusionFrame, dominant.id);
+  const backgroundMotionStressSurvived = eventSurvived(
+    frames,
+    backgroundMotionStressFrame,
+    dominant.id,
+  );
+  const identityAmbiguitySurvived = eventSurvived(
+    frames,
+    identityAmbiguityFrame,
+    dominant.id,
+  );
   const dominantCoverage = activeFrames.length === 0
     ? 0
     : dominant.count / activeFrames.length;
@@ -149,6 +184,12 @@ export const summarizePracticeSubjectIdentityV1 = (
   if (!occlusionSurvived) {
     reasons.push("The bound subject identity did not survive the occlusion interval.");
   }
+  if (!backgroundMotionStressSurvived) {
+    reasons.push("The bound subject identity did not survive strong background/camera motion.");
+  }
+  if (!identityAmbiguitySurvived) {
+    reasons.push("The bound subject identity did not survive an ambiguous-identity interval.");
+  }
   const continuityVerified = reasons.length === 0;
   return {
     tracked,
@@ -168,6 +209,10 @@ export const summarizePracticeSubjectIdentityV1 = (
     lowMotionSurvived,
     occlusionFrameCount: occlusionFrames.length,
     occlusionSurvived,
+    backgroundMotionStressFrameCount: backgroundMotionStressFrames.length,
+    backgroundMotionStressSurvived,
+    identityAmbiguityFrameCount: identityAmbiguityFrames.length,
+    identityAmbiguitySurvived,
     validatedMaskFrameCount: maskFrames.length,
     validatedMaskCoverage,
     validatedMaskSources: unique(maskFrames
