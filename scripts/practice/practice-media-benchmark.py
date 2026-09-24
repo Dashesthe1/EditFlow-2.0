@@ -217,6 +217,7 @@ def evaluate_case(case, reference, matches_payload, truth_payload=None):
     return {
         "benchmarkId": str(case["benchmarkId"]),
         "referenceId": str(reference.get("referenceId", case.get("referenceId", ""))),
+        "referenceSourceSha256": str(reference.get("sourceSha256", "")),
         "status": status,
         "metrics": metrics,
         "gates": gates,
@@ -437,8 +438,13 @@ def summarize_suite(results):
         str(item.get("referenceId", "")).strip()
         for item in results
     ]
+    reference_sha256 = [
+        str(item.get("referenceSourceSha256", "")).strip().lower()
+        for item in results
+    ]
     distinct_benchmark_ids = sorted({item for item in benchmark_ids if item})
     distinct_reference_ids = sorted({item for item in reference_ids if item})
+    distinct_reference_sha256 = sorted({item for item in reference_sha256 if item})
 
     reasons = []
     if case_count < MIN_CERTIFIED_CASES:
@@ -450,6 +456,12 @@ def summarize_suite(results):
         reasons.append(
             "distinctReferenceCount "
             f"{len(distinct_reference_ids)} is below the generalization floor "
+            f"of {MIN_DISTINCT_CERTIFIED_REFERENCES}."
+        )
+    if len(distinct_reference_sha256) < MIN_DISTINCT_CERTIFIED_REFERENCES:
+        reasons.append(
+            "distinctReferenceSha256Count "
+            f"{len(distinct_reference_sha256)} is below the generalization floor "
             f"of {MIN_DISTINCT_CERTIFIED_REFERENCES}."
         )
     if len(distinct_benchmark_ids) != case_count:
@@ -474,8 +486,10 @@ def summarize_suite(results):
             "minimumCaseCount": MIN_CERTIFIED_CASES,
             "recommendedMaximumCaseCount": RECOMMENDED_MAX_CERTIFICATION_CASES,
             "minimumDistinctReferenceCount": MIN_DISTINCT_CERTIFIED_REFERENCES,
+            "minimumDistinctReferenceSha256Count": MIN_DISTINCT_CERTIFIED_REFERENCES,
             "distinctBenchmarkCount": len(distinct_benchmark_ids),
             "distinctReferenceCount": len(distinct_reference_ids),
+            "distinctReferenceSha256Count": len(distinct_reference_sha256),
             "reasons": reasons,
         },
     }
