@@ -103,6 +103,29 @@ def suite_result(
 
 
 class PracticeMediaBenchmarkTest(unittest.TestCase):
+    def test_suite_media_sha_cache_hashes_stable_media_once_and_fails_on_drift(self):
+        class FakeMatcher:
+            def __init__(self):
+                self.calls = 0
+
+            def sha256_file(self, path):
+                self.calls += 1
+                return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+        with tempfile.TemporaryDirectory() as root:
+            media = Path(root) / "movie.mp4"
+            media.write_bytes(b"stable-media")
+            matcher = FakeMatcher()
+            cache = {}
+            first = benchmark.cached_media_sha256(matcher, media, cache)
+            second = benchmark.cached_media_sha256(matcher, media, cache)
+            self.assertEqual(first, second)
+            self.assertEqual(matcher.calls, 1)
+            media.write_bytes(b"changed-media-with-new-size")
+            with self.assertRaisesRegex(RuntimeError, "media changed during the suite"):
+                benchmark.cached_media_sha256(matcher, media, cache)
+            self.assertEqual(matcher.calls, 1)
+
     def test_source_cache_requires_requested_density(self):
         artifact = {
             "sourceId": "video:movie",
@@ -177,9 +200,10 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
         class FakeMatcher:
             def __init__(self):
                 self.index_calls = 0
+                self.sha_calls = 0
 
-            @staticmethod
-            def sha256_file(path):
+            def sha256_file(self, path):
+                self.sha_calls += 1
                 return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
             @staticmethod
@@ -199,12 +223,13 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                 explicit_ffmpeg=None,
                 proxy_dir=None,
                 analysis_fps=12.0,
+                source_sha256=None,
             ):
                 payload = {
                     "schema": "editflow.practice-reference-analysis.v1",
                     "referenceId": reference_id,
                     "sourcePath": str(Path(reference_video).resolve()),
-                    "sourceSha256": self.sha256_file(reference_video),
+                    "sourceSha256": source_sha256 or self.sha256_file(reference_video),
                     "analysis": {
                         "cutThreshold": cut_threshold,
                         "minimumShotMs": minimum_shot_ms,
@@ -224,13 +249,14 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                 explicit_ffmpeg=None,
                 proxy_dir=None,
                 analysis_fps=6.0,
+                source_sha256=None,
             ):
                 self.index_calls += 1
                 payload = {
                     "schema": "editflow.practice-source-index.v1",
                     "sourceId": source_id,
                     "sourcePath": str(Path(source_video).resolve()),
-                    "sourceSha256": self.sha256_file(source_video),
+                    "sourceSha256": source_sha256 or self.sha256_file(source_video),
                     "analysis": {
                         "sampleStepMs": sample_step_ms,
                         "analysisProxyFps": analysis_fps,
@@ -256,6 +282,7 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
             finish_b.write_bytes(b"finish-b")
             matcher = FakeMatcher()
             output_root = root_path / "out"
+            media_sha256_cache = {}
             for case_id, finish in (("case:a", finish_a), ("case:b", finish_b)):
                 benchmark.run_case(
                     matcher,
@@ -272,8 +299,10 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                     },
                     root_path,
                     output_root,
+                    media_sha256_cache=media_sha256_cache,
                 )
             self.assertEqual(matcher.index_calls, 1)
+            self.assertEqual(matcher.sha_calls, 3)
             shared_indexes = list((output_root / "_shared" / "source-indexes").glob("*.json"))
             self.assertEqual(len(shared_indexes), 1)
 
@@ -425,12 +454,13 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                 explicit_ffmpeg=None,
                 proxy_dir=None,
                 analysis_fps=12.0,
+                source_sha256=None,
             ):
                 payload = {
                     "schema": "editflow.practice-reference-analysis.v1",
                     "referenceId": reference_id,
                     "sourcePath": str(Path(reference_video).resolve()),
-                    "sourceSha256": self.sha256_file(reference_video),
+                    "sourceSha256": source_sha256 or self.sha256_file(reference_video),
                     "styleFingerprint": "fixture-style",
                     "analysis": {
                         "analyzerFingerprint": "fixture-analyzer",

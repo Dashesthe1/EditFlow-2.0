@@ -876,6 +876,7 @@ def analyze_reference(
     explicit_ffmpeg=None,
     proxy_dir=None,
     analysis_fps=DEFAULT_ANALYSIS_PROXY_FPS,
+    source_sha256=None,
 ):
     video_path = Path(video_path).resolve()
     original_capture = cv2.VideoCapture(str(video_path))
@@ -886,7 +887,7 @@ def analyze_reference(
     finally:
         original_capture.release()
 
-    source_sha = sha256_file(video_path)
+    source_sha = str(source_sha256) if source_sha256 else sha256_file(video_path)
     proxy_root = (
         Path(proxy_dir).resolve()
         if proxy_dir
@@ -1067,6 +1068,7 @@ def index_source(
     explicit_ffmpeg=None,
     proxy_dir=None,
     analysis_fps=DEFAULT_ANALYSIS_PROXY_FPS,
+    source_sha256=None,
 ):
     video_path = Path(video_path).resolve()
     original_capture = cv2.VideoCapture(str(video_path))
@@ -1077,7 +1079,7 @@ def index_source(
     finally:
         original_capture.release()
 
-    source_sha = sha256_file(video_path)
+    source_sha = str(source_sha256) if source_sha256 else sha256_file(video_path)
     proxy_root = Path(proxy_dir).resolve() if proxy_dir else Path(output_path).resolve().parent / "proxies"
     proxy_path = proxy_root / (
         source_sha[:24] + "-" + str(int(round(float(analysis_fps) * 1000.0))) + ".avi"

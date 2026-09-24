@@ -41,6 +41,39 @@ def safe_name(value):
     return re.sub(r"[^A-Za-z0-9._-]+", "-", str(value)).strip("-") or "case"
 
 
+def cached_media_sha256(matcher, media_path, cache=None):
+    media_path = Path(media_path).resolve()
+    if cache is None:
+        return matcher.sha256_file(media_path)
+    stat_before = media_path.stat()
+    key = str(media_path)
+    retained = cache.get(key)
+    if retained is not None:
+        if (
+            int(retained["size"]) != int(stat_before.st_size)
+            or int(retained["mtimeNs"]) != int(stat_before.st_mtime_ns)
+        ):
+            raise RuntimeError(
+                "Practice benchmark media changed during the suite: " + key
+            )
+        return str(retained["sha256"])
+    digest = matcher.sha256_file(media_path)
+    stat_after = media_path.stat()
+    if (
+        int(stat_after.st_size) != int(stat_before.st_size)
+        or int(stat_after.st_mtime_ns) != int(stat_before.st_mtime_ns)
+    ):
+        raise RuntimeError(
+            "Practice benchmark media changed while SHA-256 was being computed: " + key
+        )
+    cache[key] = {
+        "size": int(stat_after.st_size),
+        "mtimeNs": int(stat_after.st_mtime_ns),
+        "sha256": str(digest),
+    }
+    return str(digest)
+
+
 def shared_source_cache_paths(
     output_root,
     source_video,
@@ -373,7 +406,7 @@ def source_cache_compatible(
     )
 
 
-def run_case(matcher, case, base_dir, output_root):
+def run_case(matcher, case, base_dir, output_root, media_sha256_cache=None):
     benchmark_id = str(case["benchmarkId"])
     case_dir = Path(output_root) / safe_name(benchmark_id)
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -383,7 +416,9 @@ def run_case(matcher, case, base_dir, output_root):
     cut_threshold = float(case.get("cutThreshold", 0.42))
     minimum_shot_ms = float(case.get("minimumShotMs", 180.0))
     reference_analysis_fps = float(case.get("referenceAnalysisFps", 12.0))
-    reference_sha256 = matcher.sha256_file(reference_video)
+    reference_sha256 = cached_media_sha256(
+        matcher, reference_video, media_sha256_cache
+    )
     reference = cached_artifact(
         matcher,
         reference_json,
@@ -407,6 +442,7 @@ def run_case(matcher, case, base_dir, output_root):
             explicit_ffmpeg=case.get("ffmpeg"),
             proxy_dir=case_dir / "reference-proxy",
             analysis_fps=reference_analysis_fps,
+            source_sha256=reference_sha256,
         )
         reference = matcher.load_artifact(
             reference_json,
@@ -423,7 +459,9 @@ def run_case(matcher, case, base_dir, output_root):
             raise ValueError(f"{benchmark_id}: duplicate sourceId {source_id}.")
         seen_source_ids.add(source_id)
         source_video = resolve_path(base_dir, source["video"])
-        source_sha256 = matcher.sha256_file(source_video)
+        source_sha256 = cached_media_sha256(
+            matcher, source_video, media_sha256_cache
+        )
         source_descriptors.append((source, source_id, source_video, source_sha256))
     if not source_descriptors:
         raise ValueError(f"{benchmark_id}: at least one Start source is required.")
@@ -487,6 +525,7 @@ def run_case(matcher, case, base_dir, output_root):
                 explicit_ffmpeg=case.get("ffmpeg"),
                 proxy_dir=proxy_dir,
                 analysis_fps=analysis_fps,
+                source_sha256=source_sha256,
             )
         source_indexes.append(source_json)
 
@@ -616,13 +655,20 @@ def run_suite(manifest_path, output_root):
         raise ValueError("Benchmark manifest must contain at least one case.")
     matcher = load_matcher()
     starting_fingerprint = matcher.analyzer_fingerprint()
+    media_sha256_cache = {}
     results = []
     for case in cases:
         if matcher.analyzer_fingerprint() != starting_fingerprint:
             raise RuntimeError(
                 "Practice matcher changed during the benchmark; restart from stable code."
             )
-        results.append(run_case(matcher, case, manifest_path.parent, output_root))
+        results.append(run_case(
+            matcher,
+            case,
+            manifest_path.parent,
+            output_root,
+            media_sha256_cache=media_sha256_cache,
+        ))
         if matcher.analyzer_fingerprint() != starting_fingerprint:
             raise RuntimeError(
                 "Practice matcher changed during the benchmark; retained artifacts are invalid."

@@ -69,6 +69,10 @@ proxy mode, and reference-analysis FPS. If those values, the media bytes, matche
 NumPy, FFmpeg decode path, or proxy evidence change, the runner rebuilds the stale artifact before
 measuring the case.
 
+Within one suite run, exact media SHA-256 values are memoized by resolved path plus stable file
+size/mtime evidence, so repeated full-length Start movies are hashed once. Any file-stat drift during
+the suite fails closed instead of mixing evidence from changed bytes.
+
 This prevents a sparse exploratory index from being silently reused as a denser proof run and lets
 EditFlow iterate on retrieval evidence without comparing a new matcher against incompatible
 analysis artifacts.
