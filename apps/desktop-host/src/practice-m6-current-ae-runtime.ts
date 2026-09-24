@@ -66,6 +66,7 @@ export interface PracticeM6VerifiedSubjectIsolationV1 {
   readonly sourceSemanticId: string;
   readonly crossSourceIdentityVerified: true;
   readonly maskSource: PracticeM6VerifiedSubjectIsolationSourceV1;
+  readonly appliedOperations: number;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -155,6 +156,8 @@ const acceptedSubjectIsolationProof = (
   && nonEmptyString(proof.sourceSemanticId) !== null
   && nonEmptyString(proof.routeId) !== null
   && ["SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH"].includes(proof.maskSource)
+  && Number.isInteger(proof.appliedOperations)
+  && proof.appliedOperations > 0
   && Array.isArray(proof.evidenceRefs)
   && unique(proof.evidenceRefs).length > 0;
 
@@ -433,6 +436,11 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
             "PRACTICE_M6_SUBJECT_ISOLATION_PROOF_REJECTED:" + shot.shotId,
           );
         }
+        this.renderDriver.recordAppliedOperations?.({
+          sessionId: input.sessionId,
+          attempt: input.attempt,
+          count: isolation.appliedOperations,
+        });
         prepared.evidenceRefs.push(
           ...isolation.evidenceRefs,
           "practice-subject-isolation-route:" + isolation.routeId,

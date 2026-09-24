@@ -60,12 +60,20 @@ import { PracticeLearningMemoryFileV1 } from "../../../packages/practice-homewor
 import { ProCreationPreparationEngineV1 } from "../../../packages/practice-homework/src/pro-creation.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
-import { PracticeM6CurrentAeRuntimeV1 } from "./practice-m6-current-ae-runtime.js";
+import {
+  PracticeM6CurrentAeRuntimeV1,
+  type PracticeM6SubjectIsolationRouteV1,
+} from "./practice-m6-current-ae-runtime.js";
 import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
 import {
   createRetainedSam31PracticeSubjectIsolationRouteV1,
-  type PracticeM6SegmentationSubjectIsolationRouteV1,
 } from "./practice-m6-subject-isolation.js";
+import {
+  createRetainedPracticeRotoBrushSubjectIsolationRouteV1,
+} from "./practice-m6-roto-brush-subject-isolation.js";
+import {
+  createPracticeM6SubjectIsolationRouterV1,
+} from "./practice-m6-subject-isolation-router.js";
 const routeForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): string => command === "layer.switches.set"
@@ -241,7 +249,7 @@ export interface PracticeM6CurrentAeAssemblyV1 {
   readonly mediaMatcher: LocalPracticeMediaMatcherV1;
   readonly mediaAnalyzer: PracticeM6LocalMediaAnalyzerV1;
   readonly renderDriver: PracticeM6AeRenderDriverCurrentV1;
-  readonly subjectIsolationRoute: PracticeM6SegmentationSubjectIsolationRouteV1 | null;
+  readonly subjectIsolationRoute: PracticeM6SubjectIsolationRouteV1 | null;
   readonly m6Runtime: PracticeM6CurrentAeRuntimeV1;
   readonly bridge: PracticeM6ExecutionBridgeV1;
 }
@@ -260,6 +268,12 @@ export interface PracticeM6CurrentAeAssemblyConfigV1 {
   readonly sam31CheckpointPath?: string;
   readonly sam31RuntimeEvidencePath?: string;
   readonly sam31RuntimeEvidenceSha256Path?: string;
+  readonly afterFxPath?: string;
+  readonly rotoBrushPythonPath?: string;
+  readonly rotoBrushVisualWorkingDirectory?: string;
+  readonly rotoBrushRuntimeEvidencePath?: string;
+  readonly rotoBrushRuntimeEvidenceSha256Path?: string;
+  readonly rotoBrushVisualTimeoutMs?: number;
   readonly recordEpisode?: NonNullable<PracticeHomeworkAdaptersV1["recordEpisode"]>;
 }
 
@@ -319,7 +333,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     ? path.resolve(process.env.USERPROFILE)
     : path.dirname(repositoryRoot);
   const sam31RuntimeRoot = path.join(profileRoot, "sam3-runtime");
-  const subjectIsolationRoute = createRetainedSam31PracticeSubjectIsolationRouteV1({
+  const sam31SubjectIsolationRoute = createRetainedSam31PracticeSubjectIsolationRouteV1({
     transaction,
     media: mediaAnalyzer,
     repositoryRoot,
@@ -358,6 +372,53 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
           ),
         }),
   });
+  const rotoBrushSubjectIsolationRoute =
+    createRetainedPracticeRotoBrushSubjectIsolationRouteV1({
+      transaction,
+      media: mediaAnalyzer,
+      transport: input.transport,
+      repositoryRoot,
+      artifactDir: path.join(artifactDir, "subject-isolation", "roto-brush"),
+      pythonPath: path.resolve(
+        input.rotoBrushPythonPath
+          ?? path.join(profileRoot, "editgpt", ".venv", "Scripts", "python.exe"),
+      ),
+      visualWorkingDirectory: path.resolve(
+        input.rotoBrushVisualWorkingDirectory
+          ?? path.join(repositoryRoot, "packages", "adapters", "ae-cep", "runtime"),
+      ),
+      afterFxPath: path.resolve(
+        input.afterFxPath
+          ?? "C:\\Program Files\\Adobe\\Adobe After Effects 2025\\Support Files\\AfterFX.exe",
+      ),
+      runtimeEvidencePath: path.resolve(
+        input.rotoBrushRuntimeEvidencePath
+          ?? path.join(
+            repositoryRoot,
+            "proofs",
+            "diagnostics",
+            "m5-roto-brush-runtime-evidence-live.json",
+          ),
+      ),
+      ...(input.rotoBrushRuntimeEvidenceSha256Path === undefined
+        ? {}
+        : {
+            runtimeEvidenceSha256Path: path.resolve(
+              input.rotoBrushRuntimeEvidenceSha256Path,
+            ),
+          }),
+      ...(input.rotoBrushVisualTimeoutMs === undefined
+        ? {}
+        : { visualTimeoutMs: input.rotoBrushVisualTimeoutMs }),
+    });
+  const subjectIsolationRoute = createPracticeM6SubjectIsolationRouterV1([
+    sam31SubjectIsolationRoute === null
+      ? null
+      : { id: "SAM31_TEMPORAL_MATTE", route: sam31SubjectIsolationRoute },
+    rotoBrushSubjectIsolationRoute === null
+      ? null
+      : { id: "ROTO_BRUSH_TRACK_MATTE", route: rotoBrushSubjectIsolationRoute },
+  ]);
   const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,
     baselineBuilder,

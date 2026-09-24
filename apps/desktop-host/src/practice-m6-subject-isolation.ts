@@ -98,9 +98,13 @@ const routeForProtocol = (
 const subjectFrameForWindow = (
   window: DenseEffectWindowV1,
   semanticId: string,
+  startMs: number,
+  endMs: number,
 ): DenseEffectWindowV1["evidence"]["frames"][number] | null => {
   const candidates = window.evidence.frames.filter((frame) =>
-    frame.subjectSemanticId === semanticId
+    frame.timeMs >= startMs - 0.5
+    && frame.timeMs <= endMs + 0.5
+    && frame.subjectSemanticId === semanticId
     && frame.subjectBoundingBox !== undefined
     && frame.subjectTrackState !== "LOST"
     && frame.subjectTrackState !== "UNOBSERVED");
@@ -324,7 +328,12 @@ implements PracticeM6SubjectIsolationRouteV1 {
       throw new Error("PRACTICE_SUBJECT_ISOLATION_LOCAL_MEDIA_REQUIRED:" + input.shotId);
     }
     this.registerSource?.(input.sourceMatch);
-    const subjectFrame = subjectFrameForWindow(input.window, input.referenceSemanticId);
+    const subjectFrame = subjectFrameForWindow(
+      input.window,
+      input.referenceSemanticId,
+      input.startMs,
+      input.endMs,
+    );
     if (subjectFrame === null || subjectFrame.subjectBoundingBox === undefined) {
       throw new Error("PRACTICE_SUBJECT_ISOLATION_REFERENCE_BOX_MISSING:" + input.shotId);
     }
@@ -499,6 +508,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
       sourceSemanticId: binding.sourceSemanticId,
       crossSourceIdentityVerified: true,
       maskSource: "SEGMENTATION",
+      appliedOperations: transactionResult.appliedOperations,
       evidenceRefs: [
         ...new Set([
           ...runtimeEvidenceRefs,

@@ -72,6 +72,7 @@ import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolatio
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
 import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
 import { buildTimeRemapRequestV27 } from "./m5-time-remap.js";
+import type { AeRotoBrushTransportV26 } from "./protocol-v2_6.js";
 import {
   isNativeAeLiveCurveIntentV1,
   materializeCameraPushV1,
@@ -89,6 +90,7 @@ export type CurrentAeCepTransactionalTransportV1 =
   & AeTemporalEaseTransportV18
   & AeMarkerMotionTransportV20
   & AeMediaSequenceTransportV25
+  & AeRotoBrushTransportV26
   & AeTimeRemapTransportV27
   & AeStabilizationTransportV23;
 
