@@ -105,6 +105,60 @@ interface PracticeMatchTimingPlanV1 {
 
 type PracticeTrajectoryPointV1 = NonNullable<PracticeSceneMatchV1["trajectory"]>[number];
 
+const monotonicTrajectorySubset = (
+  match: PracticeSceneMatchV1,
+  trajectory: readonly PracticeTrajectoryPointV1[],
+): readonly PracticeTrajectoryPointV1[] | null => {
+  const behavior = match.temporalBehavior ?? match.direction;
+  if (behavior !== "FORWARD" && behavior !== "REVERSE") return trajectory;
+  if (trajectory.length < 3) return null;
+
+  const expectedSign = behavior === "FORWARD" ? 1 : -1;
+  const scores = trajectory.map((point) => 0.35 + Math.max(0, Math.min(1, point.similarity)));
+  const counts = trajectory.map(() => 1);
+  const previous = trajectory.map(() => -1);
+
+  for (let right = 0; right < trajectory.length; right += 1) {
+    for (let left = 0; left < right; left += 1) {
+      const sourceDelta = trajectory[right]!.sourceTimeMs - trajectory[left]!.sourceTimeMs;
+      if ((expectedSign * sourceDelta) <= 1e-3) continue;
+      const candidateScore = scores[left]! + 0.35
+        + Math.max(0, Math.min(1, trajectory[right]!.similarity));
+      const candidateCount = counts[left]! + 1;
+      if (candidateScore > scores[right]! + 1e-9
+        || (Math.abs(candidateScore - scores[right]!) <= 1e-9
+          && candidateCount > counts[right]!)) {
+        scores[right] = candidateScore;
+        counts[right] = candidateCount;
+        previous[right] = left;
+      }
+    }
+  }
+
+  let bestIndex = 0;
+  for (let index = 1; index < trajectory.length; index += 1) {
+    if (scores[index]! > scores[bestIndex]! + 1e-9
+      || (Math.abs(scores[index]! - scores[bestIndex]!) <= 1e-9
+        && counts[index]! > counts[bestIndex]!)) bestIndex = index;
+  }
+  const retained: PracticeTrajectoryPointV1[] = [];
+  for (let index = bestIndex; index >= 0; index = previous[index]!) {
+    retained.push(trajectory[index]!);
+    if (previous[index] === -1) break;
+  }
+  retained.reverse();
+  if (retained.length < 3) return null;
+
+  const originalSpan = trajectory[trajectory.length - 1]!.referenceTimeMs
+    - trajectory[0]!.referenceTimeMs;
+  const retainedSpan = retained[retained.length - 1]!.referenceTimeMs
+    - retained[0]!.referenceTimeMs;
+  const retainedFraction = retained.length / trajectory.length;
+  const spanCoverage = originalSpan <= 1e-6 ? 1 : retainedSpan / originalSpan;
+  if (retainedFraction < 0.60 || spanCoverage < 0.65) return null;
+  return retained;
+};
+
 const trajectoryNeedsVariableRateRemap = (
   shot: PracticeReferenceAnalysisV1["shots"][number],
   match: PracticeSceneMatchV1,
@@ -174,14 +228,18 @@ const trajectoryTimeRemapKeyframes = (
   const uniqueTrajectory = trajectory.filter((point, index) =>
     index === 0 || Math.abs(point.referenceTimeMs - trajectory[index - 1]!.referenceTimeMs) > 1e-3);
   if (uniqueTrajectory.length < 3) return null;
+  const preparedTrajectory = preserveMeasuredRewind
+    ? uniqueTrajectory
+    : monotonicTrajectorySubset(match, uniqueTrajectory);
+  if (preparedTrajectory === null || preparedTrajectory.length < 3) return null;
   if (!preserveMeasuredRewind
-    && !trajectoryNeedsVariableRateRemap(shot, match, uniqueTrajectory)) return null;
-  const first = uniqueTrajectory[0]!;
-  const second = uniqueTrajectory[1]!;
-  const penultimate = uniqueTrajectory[uniqueTrajectory.length - 2]!;
-  const last = uniqueTrajectory[uniqueTrajectory.length - 1]!;
-  const sourceMinimum = Math.min(match.sourceStartMs, ...uniqueTrajectory.map((point) => point.sourceTimeMs));
-  const sourceMaximum = Math.max(match.sourceEndMs, ...uniqueTrajectory.map((point) => point.sourceTimeMs));
+    && !trajectoryNeedsVariableRateRemap(shot, match, preparedTrajectory)) return null;
+  const first = preparedTrajectory[0]!;
+  const second = preparedTrajectory[1]!;
+  const penultimate = preparedTrajectory[preparedTrajectory.length - 2]!;
+  const last = preparedTrajectory[preparedTrajectory.length - 1]!;
+  const sourceMinimum = Math.min(match.sourceStartMs, ...preparedTrajectory.map((point) => point.sourceTimeMs));
+  const sourceMaximum = Math.max(match.sourceEndMs, ...preparedTrajectory.map((point) => point.sourceTimeMs));
   const sourceAt = (
     referenceTimeMs: number,
     left: typeof first,
@@ -201,7 +259,7 @@ const trajectoryTimeRemapKeyframes = (
       referenceTimeMs: shot.referenceStartMs,
       sourceTimeMs: sourceAt(shot.referenceStartMs, first, second),
     },
-    ...uniqueTrajectory.map((point) => ({
+    ...preparedTrajectory.map((point) => ({
       referenceTimeMs: point.referenceTimeMs,
       sourceTimeMs: point.sourceTimeMs,
     })),
