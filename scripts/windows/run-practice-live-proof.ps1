@@ -26,9 +26,16 @@ if ([string]::IsNullOrWhiteSpace($SessionId)) {
 }
 $PracticeLiveRoot = Join-Path $RepoRoot "proofs\artifacts\practice-live"
 $ArtifactDir = Join-Path $PracticeLiveRoot $SessionId
-if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
-  $StateDir = [System.IO.Path]::GetFullPath($StateDir)
+if ([string]::IsNullOrWhiteSpace($StateDir)) {
+  if (-not [string]::IsNullOrWhiteSpace($env:EDITFLOW_PRACTICE_STATE_DIR)) {
+    $StateDir = $env:EDITFLOW_PRACTICE_STATE_DIR
+  } elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $StateDir = Join-Path $env:LOCALAPPDATA "EditFlow2\practice-state"
+  } else {
+    $StateDir = Join-Path $HOME ".editflow2\practice-state"
+  }
 }
+$StateDir = [System.IO.Path]::GetFullPath($StateDir)
 $ResultPath = Join-Path $ArtifactDir "result.json"
 if (-not (Test-Path $ConfigPath -PathType Leaf)) {
   throw "EditFlow CEP runtime config is missing. Run install-editflow-cep.ps1 first."
@@ -41,6 +48,16 @@ if ($HeldOutCertification -and $Allocate) {
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+$PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow2-panel.jsx"
+$AfterFxPath = ""
+if (Test-Path $PanelBootstrap -PathType Leaf) {
+  $AfterFxCandidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.Responding -and -not [string]::IsNullOrWhiteSpace($_.Path) } catch { $false }
+  })
+  if ($AfterFxCandidates.Count -eq 1) {
+    $AfterFxPath = $AfterFxCandidates[0].Path
+  }
+}
 Push-Location $RepoRoot
 try {
   npm run build:test-runtime
@@ -69,6 +86,9 @@ try {
   )
   if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
     $NodeArgs += @("--state-dir", $StateDir)
+  }
+  if (-not [string]::IsNullOrWhiteSpace($AfterFxPath)) {
+    $NodeArgs += @("--afterfx-path", $AfterFxPath, "--panel-bootstrap", $PanelBootstrap)
   }
   if (-not [string]::IsNullOrWhiteSpace($EditTypeTitle)) {
     $NodeArgs += @("--edit-type-title", $EditTypeTitle)

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -116,6 +117,27 @@ const writeJson = async (filePath: string, value: unknown): Promise<void> => {
   await writeFile(filePath, JSON.stringify(value, null, 2) + "\n", "utf8");
 };
 
+const isPanelRegistrationTimeout = (error: unknown): boolean =>
+  error instanceof Error && error.message === "CEP_PANEL_REGISTRATION_TIMEOUT";
+
+const invokeAePanelBootstrap = async (
+  afterFxPath: string,
+  panelBootstrapPath: string,
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(afterFxPath, ["-r", panelBootstrapPath], {
+      stdio: "ignore",
+      windowsHide: false,
+      detached: false,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+};
+
 const main = async (): Promise<void> => {
   const configPath = path.resolve(requireArgument("--config"));
   const repositoryRoot = path.resolve(requireArgument("--repository-root"));
@@ -148,6 +170,17 @@ const main = async (): Promise<void> => {
   const stretchSimilarity = numberArgument("--stretch-similarity", 0.99, 0);  const exactSceneConfidence = numberArgument("--exact-scene-confidence", 0.95, 0);
   const minimumAudioConfidence = numberArgument("--minimum-audio-confidence", 0.90, 0);
   const timeoutMs = integerArgument("--timeout-ms", 90_000, 1_000);
+  const afterFxArgument = argument("--afterfx-path");
+  const panelBootstrapArgument = argument("--panel-bootstrap");
+  if ((afterFxArgument === null) !== (panelBootstrapArgument === null)) {
+    throw new Error("--afterfx-path and --panel-bootstrap must be supplied together.");
+  }
+  const afterFxPath = afterFxArgument === null
+    ? null
+    : await ensureFile(afterFxArgument, "After Effects executable");
+  const panelBootstrapPath = panelBootstrapArgument === null
+    ? null
+    : await ensureFile(panelBootstrapArgument, "CEP panel bootstrap script");
   if ([minimumSimilarity, stretchSimilarity, exactSceneConfidence, minimumAudioConfidence]
     .some((value) => value > 1)) {
     throw new Error("Similarity/confidence arguments must be <= 1.");
@@ -169,7 +202,21 @@ const main = async (): Promise<void> => {
     if (boundPort !== config.port) {
       throw new Error("CEP broker bound unexpected port " + String(boundPort) + ".");
     }
-    const panel = await broker.waitForPanel(timeoutMs);
+    const reconnectGraceMs = Math.min(2_000, Math.max(250, Math.floor(timeoutMs / 4)));
+    let panelBootstrapInvoked = false;
+    let panel = broker.panelSession;
+    if (panel === null) {
+      try {
+        panel = await broker.waitForPanel(reconnectGraceMs);
+      } catch (error) {
+        if (!isPanelRegistrationTimeout(error)) throw error;
+        if (afterFxPath !== null && panelBootstrapPath !== null) {
+          await invokeAePanelBootstrap(afterFxPath, panelBootstrapPath);
+          panelBootstrapInvoked = true;
+        }
+        panel = await broker.waitForPanel(Math.max(1_000, timeoutMs - reconnectGraceMs));
+      }
+    }
     if (panel.extensionVersion !== config.extensionVersion) {
       throw new Error(
         "Registered CEP panel version " + panel.extensionVersion
@@ -371,6 +418,11 @@ const main = async (): Promise<void> => {
       status: result.status,
       ok: accepted,
       panel,
+      panelBootstrap: {
+        invoked: panelBootstrapInvoked,
+        afterFxPath,
+        panelBootstrapPath,
+      },
       sessionId,
       practiceRole,
       editType: {
