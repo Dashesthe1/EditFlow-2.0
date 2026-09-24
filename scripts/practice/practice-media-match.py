@@ -357,10 +357,17 @@ _EFFECT_SIFT = cv2.SIFT_create(
     edgeThreshold=18,
     sigma=0.8,
 )
+_RESCUE_ORB = cv2.ORB_create(
+    nfeatures=3000,
+    scaleFactor=1.15,
+    nlevels=12,
+    fastThreshold=5,
+)
 _RESCUE_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 _FRAME_DESCRIPTOR_CACHE = {}
 _FRAME_FEATURE_CACHE = {}
 _EFFECT_FEATURE_CACHE = {}
+_RESCUE_ORB_FEATURE_CACHE = {}
 _RESCUE_NORMALIZED_FRAME_CACHE = {}
 _RESCUE_SOFT_FRAME_CACHE = {}
 
@@ -424,6 +431,17 @@ def cached_effect_features(frame):
     keypoints, sift = _EFFECT_SIFT.detectAndCompute(gray, None)
     result = (descriptor, keypoints or [], sift)
     return identity_cache_set(_EFFECT_FEATURE_CACHE, frame, result)
+
+
+def cached_rescue_orb_features(frame):
+    cached = identity_cache_get(_RESCUE_ORB_FEATURE_CACHE, frame)
+    if cached is not None:
+        return cached
+    descriptor = cached_descriptor(frame)
+    gray = cv2.cvtColor(resize_longest(frame, 360), cv2.COLOR_BGR2GRAY)
+    keypoints, orb = _RESCUE_ORB.detectAndCompute(gray, None)
+    result = (descriptor, keypoints or [], orb)
+    return identity_cache_set(_RESCUE_ORB_FEATURE_CACHE, frame, result)
 
 
 def normalized_rescue_frame(frame):
@@ -585,6 +603,76 @@ def low_contrast_feature_match_evidence(reference_frame, source_frame):
     }
 
 
+def orb_feature_match_evidence(reference_frame, source_frame):
+    ref_global, ref_keypoints, ref_desc = cached_rescue_orb_features(reference_frame)
+    src_global, src_keypoints, src_desc = cached_rescue_orb_features(source_frame)
+    global_score = descriptor_similarity(ref_global, src_global)
+    empty = {
+        "score": clamp01(global_score * 0.88),
+        "globalScore": global_score,
+        "goodMatchCount": 0,
+        "inlierCount": 0,
+        "inlierRatio": 0.0,
+        "referenceCoverage": 0.0,
+        "sourceCoverage": 0.0,
+        "geometrySupport": 0.0,
+    }
+    if ref_desc is None or src_desc is None or len(ref_desc) < 4 or len(src_desc) < 4:
+        return empty
+
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+    pairs = matcher.knnMatch(ref_desc, src_desc, k=2)
+    good = [
+        pair[0]
+        for pair in pairs
+        if len(pair) >= 2 and pair[0].distance < 0.82 * pair[1].distance
+    ]
+    if len(good) < 4:
+        return {**empty, "score": clamp01(global_score * 0.90), "goodMatchCount": len(good)}
+
+    reference_points = np.float32([ref_keypoints[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+    source_points = np.float32([src_keypoints[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+    _matrix, mask = cv2.findHomography(reference_points, source_points, cv2.RANSAC, 5.0)
+    if mask is None:
+        return {**empty, "score": clamp01(global_score * 0.90), "goodMatchCount": len(good)}
+
+    flags = mask.reshape(-1) > 0
+    inlier_count = int(np.sum(flags))
+    inlier_ratio = float(np.mean(flags)) if len(flags) else 0.0
+
+    def point_coverage(points, width, height):
+        if len(points) < 3:
+            return 0.0
+        hull = cv2.convexHull(np.asarray(points, dtype=np.float32))
+        return clamp01(float(cv2.contourArea(hull)) / max(1.0, float(width * height)))
+
+    ref_gray = cv2.cvtColor(resize_longest(reference_frame, 360), cv2.COLOR_BGR2GRAY)
+    src_gray = cv2.cvtColor(resize_longest(source_frame, 360), cv2.COLOR_BGR2GRAY)
+    ref_inliers = [ref_keypoints[good[index].queryIdx].pt for index, value in enumerate(flags) if value]
+    src_inliers = [src_keypoints[good[index].trainIdx].pt for index, value in enumerate(flags) if value]
+    reference_coverage = point_coverage(ref_inliers, ref_gray.shape[1], ref_gray.shape[0])
+    source_coverage = point_coverage(src_inliers, src_gray.shape[1], src_gray.shape[0])
+
+    match_strength = clamp01(len(good) / 30.0)
+    feature_score = clamp01((0.58 * inlier_ratio) + (0.42 * match_strength))
+    geometry_support = clamp01(
+        (0.36 * clamp01(inlier_count / 12.0))
+        + (0.32 * clamp01(inlier_ratio / 0.70))
+        + (0.16 * clamp01(reference_coverage / 0.18))
+        + (0.16 * clamp01(source_coverage / 0.18))
+    )
+    return {
+        "score": clamp01((0.42 * global_score) + (0.58 * feature_score)),
+        "globalScore": global_score,
+        "goodMatchCount": len(good),
+        "inlierCount": inlier_count,
+        "inlierRatio": inlier_ratio,
+        "referenceCoverage": reference_coverage,
+        "sourceCoverage": source_coverage,
+        "geometrySupport": geometry_support,
+    }
+
+
 def feature_similarity(reference_frame, source_frame):
     return feature_match_evidence(reference_frame, source_frame)["score"]
 
@@ -608,20 +696,35 @@ def rescue_geometry_certifiable(item):
     )
 
 
+def orb_rescue_certifiable(item):
+    return (
+        int(item.get("inlierCount", 0)) >= 12
+        and float(item.get("inlierRatio", 0.0)) >= 0.55
+        and min(
+            float(item.get("referenceCoverage", 0.0)),
+            float(item.get("sourceCoverage", 0.0)),
+        ) >= 0.02
+        and float(item.get("geometrySupport", 0.0)) >= 0.72
+    )
+
+
 def effect_tolerant_feature_match_evidence(reference_frame, source_frame):
     normalized_reference = normalized_rescue_frame(reference_frame)
     normalized_source = normalized_rescue_frame(source_frame)
     base = feature_match_evidence(normalized_reference, normalized_source)
+    base["effectFeatureMode"] = "CLAHE_SIFT_V1"
     if (
         int(base.get("inlierCount", 0)) >= 8
         and float(base.get("inlierRatio", 0.0)) >= 0.55
         and float(base.get("geometrySupport", 0.0)) >= 0.78
     ):
         return base
+
     softened = feature_match_evidence(
         softened_rescue_frame(reference_frame),
         softened_rescue_frame(source_frame),
     )
+    softened["effectFeatureMode"] = "CLAHE_SOFT_SIFT_V1"
     best = max((base, softened), key=rescue_evidence_rank)
     if rescue_geometry_certifiable(best):
         return best
@@ -630,9 +733,18 @@ def effect_tolerant_feature_match_evidence(reference_frame, source_frame):
         normalized_reference,
         normalized_source,
     )
-    if not rescue_geometry_certifiable(low_contrast):
-        return best
-    return max((best, low_contrast), key=rescue_evidence_rank)
+    low_contrast["effectFeatureMode"] = "CLAHE_LOW_CONTRAST_SIFT_V1"
+    if rescue_geometry_certifiable(low_contrast):
+        return max((best, low_contrast), key=rescue_evidence_rank)
+
+    orb = orb_feature_match_evidence(
+        normalized_reference,
+        normalized_source,
+    )
+    orb["effectFeatureMode"] = "CLAHE_ORB_V1"
+    if orb_rescue_certifiable(orb):
+        return orb
+    return best
 
 
 def interior_anchor_times(start_ms, end_ms):
@@ -1330,9 +1442,9 @@ def mapping_geometric_proof(
         if reference_frame is None or source_frame is None:
             continue
         if normalize_for_effects:
-            item = feature_match_evidence(
-                normalized_rescue_frame(reference_frame),
-                normalized_rescue_frame(source_frame),
+            item = effect_tolerant_feature_match_evidence(
+                reference_frame,
+                source_frame,
             )
         else:
             item = feature_match_evidence(reference_frame, source_frame)
@@ -1353,6 +1465,11 @@ def mapping_geometric_proof(
     ]
     anchor_count = len(evidence)
     strong_count = len(strong)
+    effect_feature_modes = sorted({
+        item.get("effectFeatureMode")
+        for item in evidence
+        if item.get("effectFeatureMode")
+    })
     return {
         "anchorCount": anchor_count,
         "strongAnchorCount": strong_count,
@@ -1362,6 +1479,7 @@ def mapping_geometric_proof(
         "maximumInlierCount": max([int(item["inlierCount"]) for item in evidence], default=0),
         "meanInlierRatio": float(np.mean([item["inlierRatio"] for item in evidence])) if evidence else 0.0,
         "meanCoverage": float(np.mean(coverages)) if coverages else 0.0,
+        "effectFeatureModes": effect_feature_modes,
     }
 
 
@@ -1596,6 +1714,11 @@ def geometric_rescue_candidate(
         )
         for item in path_evidence
     ]
+    effect_feature_modes = sorted({
+        item.get("effectFeatureMode")
+        for item in path_evidence
+        if item.get("effectFeatureMode")
+    })
     geometric_proof = {
         "anchorCount": anchor_count,
         "strongAnchorCount": strong_count,
@@ -1614,6 +1737,7 @@ def geometric_rescue_candidate(
             for item in path_evidence
         ])),
         "meanCoverage": float(np.mean(coverages)),
+        "effectFeatureModes": effect_feature_modes,
     }
     trajectory = [
         {
@@ -2223,10 +2347,15 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                         [
                             f"practice-geometric-rescue-score:{mapping['rescueScore']:.6f}",
                             f"practice-geometric-rescue-residual-ms:{mapping.get('rescueResidualMs', 0.0):.3f}",
+                            "practice-geometric-rescue-full-verification:CLAHE_SIFT_SOFT_SIFT_LOW_CONTRAST_SIFT_PLUS_STRICT_ORB_ALL_ANCHORS_V4",
                         ]
                         if mapping.get("rescueScore") is not None
                         else []
                     ),
+                    *[
+                        f"practice-geometric-effect-feature-mode:{mode}"
+                        for mode in mapping.get("geometricProof", {}).get("effectFeatureModes", [])
+                    ],
                     f"practice-geometric-mean-support:{mapping.get('geometricProof', {}).get('meanSupport', 0.0):.6f}",
                     f"practice-geometric-strong-anchors:{mapping.get('geometricProof', {}).get('strongAnchorCount', 0)}",
                     f"practice-geometric-strong-fraction:{mapping.get('geometricProof', {}).get('strongAnchorFraction', 0.0):.6f}",
@@ -2269,6 +2398,12 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "geometricRankingSampledAnchors": 3,
             "geometricRescueMode": "BOUNDED_THREE_ANCHOR_COHERENT_PATH_V1",
             "geometricRescuePhotometricNormalization": "CLAHE_V1",
+            "geometricRescueEffectEvidenceMode": "CLAHE_SIFT_SOFT_SIFT_LOW_CONTRAST_SIFT_PLUS_STRICT_ORB_FALLBACK_V1",
+            "geometricRescueOrbMinimumInliers": 12,
+            "geometricRescueOrbMinimumInlierRatio": 0.55,
+            "geometricRescueOrbMinimumCoverage": 0.02,
+            "geometricRescueOrbMinimumSupport": 0.72,
+            "geometricRescueFullVerificationMode": "CLAHE_SIFT_SOFT_SIFT_LOW_CONTRAST_SIFT_PLUS_STRICT_ORB_ALL_ANCHORS_V4",
             "geometricRescueMaximumSamplesPerSource": 480,
             "geometricRescueMinimumStrongAnchors": 2,
             "geometricRescueMinimumMeanSupport": 0.60,
