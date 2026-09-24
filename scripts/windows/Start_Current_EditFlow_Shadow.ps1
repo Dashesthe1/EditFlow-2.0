@@ -1,3 +1,7 @@
+param(
+  [switch]$LocalOnly
+)
+
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $LogRoot = Join-Path $Root ".tmp\current-shadow"
@@ -32,31 +36,38 @@ function Open-WarmCepBridge {
 
 $Node = (Get-Command node.exe -ErrorAction Stop).Source
 $Npm = (Get-Command npm.cmd -ErrorAction Stop).Source
-$Tailscale = (Get-Command tailscale.exe -ErrorAction Stop).Source
+$TailscaleCommand = Get-Command tailscale.exe -ErrorAction SilentlyContinue
+$Tailscale = if ($null -ne $TailscaleCommand) { $TailscaleCommand.Source } else { "" }
+if (-not $LocalOnly -and [string]::IsNullOrWhiteSpace($Tailscale)) {
+  throw "Tailscale is required for the public Current Shadow tunnel. Install Tailscale or rerun with -LocalOnly for local CEP/AE proof work."
+}
 $GatewayPython = Join-Path $env:USERPROFILE "editgpt\.venv\Scripts\python.exe"
 if (-not (Test-Path $GatewayPython)) {
   $GatewayPython = (Get-Command python.exe -ErrorAction Stop).Source
 }
 $PublicPathFile = Join-Path $LogRoot "public-path.txt"
-$PublicPath = [string]$env:EDITFLOW_SHADOW_PUBLIC_PATH
-if ([string]::IsNullOrWhiteSpace($PublicPath) -and (Test-Path $PublicPathFile)) {
-  $PublicPath = (Get-Content -Raw $PublicPathFile).Trim()
-}
-if ([string]::IsNullOrWhiteSpace($PublicPath)) {
-  throw "Set EDITFLOW_SHADOW_PUBLIC_PATH or create $PublicPathFile before exposing the Shadow MCP tunnel."
-}
-if (-not $PublicPath.StartsWith("/")) {
-  throw "EDITFLOW_SHADOW_PUBLIC_PATH must begin with '/'."
-}
+$PublicPath = ""
+if (-not $LocalOnly) {
+  $PublicPath = [string]$env:EDITFLOW_SHADOW_PUBLIC_PATH
+  if ([string]::IsNullOrWhiteSpace($PublicPath) -and (Test-Path $PublicPathFile)) {
+    $PublicPath = (Get-Content -Raw $PublicPathFile).Trim()
+  }
+  if ([string]::IsNullOrWhiteSpace($PublicPath)) {
+    throw "Set EDITFLOW_SHADOW_PUBLIC_PATH or create $PublicPathFile before exposing the Shadow MCP tunnel."
+  }
+  if (-not $PublicPath.StartsWith("/")) {
+    throw "EDITFLOW_SHADOW_PUBLIC_PATH must begin with '/'."
+  }
 
-if ([string]::IsNullOrWhiteSpace($env:EDITFLOW_SHADOW_ALLOWED_HOSTS)) {
-  try {
-    $ts = (& $Tailscale status --json | ConvertFrom-Json)
-    $dnsName = [string]$ts.Self.DNSName
-    if (-not [string]::IsNullOrWhiteSpace($dnsName)) {
-      $env:EDITFLOW_SHADOW_ALLOWED_HOSTS = $dnsName.TrimEnd('.')
-    }
-  } catch {}
+  if ([string]::IsNullOrWhiteSpace($env:EDITFLOW_SHADOW_ALLOWED_HOSTS)) {
+    try {
+      $ts = (& $Tailscale status --json | ConvertFrom-Json)
+      $dnsName = [string]$ts.Self.DNSName
+      if (-not [string]::IsNullOrWhiteSpace($dnsName)) {
+        $env:EDITFLOW_SHADOW_ALLOWED_HOSTS = $dnsName.TrimEnd('.')
+      }
+    } catch {}
+  }
 }
 
 $Compiled = Join-Path $Root ".tmp\runtime\apps\desktop-host\src\loopback-cep.js"
@@ -115,8 +126,12 @@ if (-not (Test-Listening 8770)) {
   if (-not (Test-Listening 8770)) { throw "Current Shadow MCP gateway did not start on 8770." }
 }
 
-& $Tailscale funnel --bg --yes --set-path=$PublicPath "http://127.0.0.1:8770/mcp" | Out-Null
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host "EditFlow Current Shadow path is ready."
+if ($LocalOnly) {
+  Write-Host "EditFlow Current Shadow local control plane is ready; public tunnel skipped."
+} else {
+  & $Tailscale funnel --bg --yes --set-path=$PublicPath "http://127.0.0.1:8770/mcp" | Out-Null
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  Write-Host "EditFlow Current Shadow path is ready."
+}
 Write-Host ("Execution mode: " + $health.executionMode)
 Write-Host ("AE host revision: " + $health.hostRevision)

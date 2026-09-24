@@ -16,3 +16,14 @@ test("current Shadow launcher reopens only the CEP bridge in a healthy running A
   assert.match(source, /Start-Process -FilePath \$Candidates\[0\]\.Path/);
   assert.doesNotMatch(source, /Stop-Process.*AfterFX/);
 });
+
+test("current Shadow launcher can bootstrap local AE proof without requiring Tailscale", async () => {
+  const source = await readFile(new URL("../scripts/windows/Start_Current_EditFlow_Shadow.ps1", import.meta.url), "utf8");
+  assert.match(source, /\[switch\]\$LocalOnly/);
+  assert.match(source, /Get-Command tailscale\.exe -ErrorAction SilentlyContinue/);
+  assert.match(source, /-not \$LocalOnly -and \[string\]::IsNullOrWhiteSpace\(\$Tailscale\)/);
+  assert.match(source, /rerun with -LocalOnly for local CEP\/AE proof work/);
+  assert.match(source, /if \(-not \$LocalOnly\)/);
+  assert.match(source, /if \(\$LocalOnly\)[\s\S]*public tunnel skipped/);
+  assert.match(source, /else \{[\s\S]*\$Tailscale funnel/);
+});
