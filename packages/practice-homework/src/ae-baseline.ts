@@ -5,6 +5,7 @@ import type {
   PracticeAudioSegmentMatchV1,
   PracticeContentBaselineV1,
   PracticeReferenceAnalysisV1,
+  PracticeSceneFramingPointV1,
   PracticeSceneMatchV1,
 } from "./contracts.js";
 
@@ -15,6 +16,7 @@ export type PracticeAeBaselineCommandV1 =
   | "layer.set_timing"
   | "layer.time_remap.enable"
   | "property.set_keyframes"
+  | "property.temporal_interpolation.set"
   | "layer.switches.set";
 
 export interface PracticeAeBaselineOperationV1 {
@@ -27,6 +29,7 @@ export interface PracticeAeBaselineOperationV1 {
     | "ae.layer.timing.set"
     | "ae.layer.time_remap.enable"
     | "ae.keyframe.set"
+    | "ae.property.temporal_interpolation.set"
     | "ae.layer.switches.set";
   readonly payload: Readonly<Record<string, unknown>>;
 }
@@ -77,6 +80,8 @@ const commandCapability = (
     case "layer.set_timing": return "ae.layer.timing.set";
     case "layer.time_remap.enable": return "ae.layer.time_remap.enable";
     case "property.set_keyframes": return "ae.keyframe.set";
+    case "property.temporal_interpolation.set":
+      return "ae.property.temporal_interpolation.set";
     case "layer.switches.set": return "ae.layer.switches.set";
   }
 };
@@ -348,8 +353,20 @@ const timingPlanForMatch = (
   };
 };
 
+type PracticeFramingPropertyLeafV1 =
+  | "ADBE Position"
+  | "ADBE Scale"
+  | "ADBE Rotate Z";
+
+interface PracticeFramingCurveKeyV1 {
+  readonly propertyLeaf: PracticeFramingPropertyLeafV1;
+  readonly keyIndex: number;
+  readonly strength: number;
+}
+
 interface PracticeFramingKeyframePlanV1 {
   readonly mode: "STATIC" | "DYNAMIC";
+  readonly curveKeys: readonly PracticeFramingCurveKeyV1[];
   readonly position: readonly {
     readonly time: number;
     readonly value: readonly [number, number];
@@ -363,6 +380,48 @@ interface PracticeFramingKeyframePlanV1 {
     readonly value: number;
   }[];
 }
+
+const vectorMagnitude = (values: readonly number[]): number =>
+  Math.sqrt(values.reduce((sum, value) => sum + (value * value), 0));
+
+const measuredFramingCurveCandidates = (
+  points: readonly PracticeSceneFramingPointV1[],
+  propertyLeaf: PracticeFramingPropertyLeafV1,
+  components: (point: PracticeSceneFramingPointV1) => readonly number[],
+  movementFloor: number,
+): readonly PracticeFramingCurveKeyV1[] => {
+  if (points.length < 3) return [];
+  const values = points.map(components);
+  const dimensions = values[0]?.length ?? 0;
+  if (dimensions === 0 || values.some((value) => value.length !== dimensions)) return [];
+  const ranges = Array.from({ length: dimensions }, (_, axis) => {
+    const samples = values.map((value) => value[axis] ?? 0);
+    return Math.max(...samples) - Math.min(...samples);
+  });
+  if (vectorMagnitude(ranges) < movementFloor) return [];
+
+  const candidates: PracticeFramingCurveKeyV1[] = [];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const beforeSeconds = (points[index]!.referenceTimeMs - points[index - 1]!.referenceTimeMs) / 1000;
+    const afterSeconds = (points[index + 1]!.referenceTimeMs - points[index]!.referenceTimeMs) / 1000;
+    if (beforeSeconds <= 1e-6 || afterSeconds <= 1e-6) continue;
+    const incoming = values[index]!.map((value, axis) =>
+      (value - (values[index - 1]![axis] ?? value)) / beforeSeconds);
+    const outgoing = values[index + 1]!.map((value, axis) =>
+      (value - (values[index]![axis] ?? value)) / afterSeconds);
+    const peakSpeed = Math.max(vectorMagnitude(incoming), vectorMagnitude(outgoing));
+    if (peakSpeed <= 1e-6) continue;
+    const velocityChange = outgoing.map((value, axis) => value - (incoming[axis] ?? value));
+    const confidence = Math.min(
+      points[index - 1]!.confidence,
+      points[index]!.confidence,
+      points[index + 1]!.confidence,
+    );
+    const strength = (vectorMagnitude(velocityChange) / peakSpeed) * confidence;
+    if (strength >= 0.28) candidates.push({ propertyLeaf, keyIndex: index + 1, strength });
+  }
+  return candidates;
+};
 
 const executableFramingForMatch = (
   shot: PracticeReferenceAnalysisV1["shots"][number],
@@ -418,8 +477,33 @@ const executableFramingForMatch = (
       ? 0
       : points[points.length - 1]!.referenceTimeMs - points[0]!.referenceTimeMs;
     if (points.length >= 3 && spanMs >= 80) {
+      const curveKeys = [
+        ...measuredFramingCurveCandidates(
+          points,
+          "ADBE Position",
+          (point) => [point.positionX, point.positionY],
+          4,
+        ),
+        ...measuredFramingCurveCandidates(
+          points,
+          "ADBE Scale",
+          (point) => [point.scalePercent],
+          1.5,
+        ),
+        ...measuredFramingCurveCandidates(
+          points,
+          "ADBE Rotate Z",
+          (point) => [point.rotationDegrees],
+          0.75,
+        ),
+      ].sort((left, right) =>
+        (right.strength - left.strength)
+        || left.propertyLeaf.localeCompare(right.propertyLeaf)
+        || (left.keyIndex - right.keyIndex))
+        .slice(0, 2);
       return {
         mode: "DYNAMIC",
+        curveKeys,
         position: points.map((point) => ({
           time: point.referenceTimeMs / 1000,
           value: [point.positionX, point.positionY],
@@ -442,6 +526,7 @@ const executableFramingForMatch = (
   const framingTime = shot.referenceStartMs / 1000;
   return {
     mode: "STATIC",
+    curveKeys: [],
     position: [{ time: framingTime, value: [framing.positionX, framing.positionY] }],
     scale: [{
       time: framingTime,
@@ -642,6 +727,26 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
         keyframes: framing.rotation,
       }));
       ordinal += 1;
+      for (const curveKey of framing.curveKeys) {
+        operations.push(operation(
+          baselineId,
+          ordinal,
+          "property.temporal_interpolation.set",
+          {
+            comp: { stableId: compStableId },
+            layer: { stableId: layerStableId },
+            propertyPath: ["ADBE Transform Group", curveKey.propertyLeaf],
+            keyIndex: curveKey.keyIndex,
+            interpolation: {
+              inType: "BEZIER",
+              outType: "BEZIER",
+              temporalContinuous: true,
+              temporalAutoBezier: true,
+            },
+          },
+        ));
+        ordinal += 1;
+      }
     }
     operations.push(operation(baselineId, ordinal, "layer.switches.set", {
       comp: { stableId: compStableId },

@@ -27,6 +27,9 @@ import {
   AE_LAYER_CONTROLS_ROUTE_ID_V16,
 } from "../../../packages/adapters/ae-cep/src/protocol-v1_6.js";
 import {
+  AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
+} from "../../../packages/adapters/ae-cep/src/protocol-v1_7.js";
+import {
   AE_TIME_REMAP_ROUTE_ID_V27,
 } from "../../../packages/adapters/ae-cep/src/protocol-v2_7.js";
 import {
@@ -84,12 +87,15 @@ const routeForCommand = (
   ? AE_LAYER_CONTROLS_ROUTE_ID_V16
   : command === "layer.time_remap.enable"
     ? AE_TIME_REMAP_ROUTE_ID_V27
-    : AE_ADAPTER_ROUTE_ID_V11;
+    : command === "property.temporal_interpolation.set"
+      ? AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17
+      : AE_ADAPTER_ROUTE_ID_V11;
 
 const riskForCommand = (
   command: PracticeAeBaselineCommandV1,
 ): RiskClass => command === "layer.set_timing"
   || command === "property.set_keyframes"
+  || command === "property.temporal_interpolation.set"
   || command === "layer.switches.set"
   ? "R1_REVERSIBLE"
   : "R2_STRUCTURAL";

@@ -714,6 +714,51 @@ test("Practice baseline compiles to the current mixed-protocol AE transaction su
   );
 });
 
+test("Practice framing curves route through temporal interpolation as reversible AE work", async () => {
+  const transport = new RuntimeTransport();
+  const observer = new AeCepCurrentTransactionalHostV1(
+    transport,
+    "practice-runtime-project",
+    "practice-runtime-observe-curves",
+    () => "practice-runtime-observe-curves-request",
+  );
+  const observed = await observer.readState();
+  const base = practiceBaselinePlan();
+  const curveOperation = {
+    operationId: "PRACTICE_OP_CURVE",
+    command: "property.temporal_interpolation.set",
+    capabilityId: "ae.property.temporal_interpolation.set",
+    payload: {
+      comp: { stableId: "PRACTICE_COMP_TEST" },
+      layer: { stableId: "PRACTICE_LAYER_TEST" },
+      propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+      keyIndex: 2,
+      interpolation: {
+        inType: "BEZIER",
+        outType: "BEZIER",
+        temporalContinuous: true,
+        temporalAutoBezier: true,
+      },
+    },
+  };
+  const execution = compilePracticeAeBaselineExecutionPlanV1({
+    ...base,
+    operations: [
+      ...base.operations.slice(0, -1),
+      curveOperation,
+      base.operations.at(-1),
+    ],
+  }, observed);
+  const curve = execution.operations.find((operation) =>
+    String(operation.operationId) === "PRACTICE_OP_CURVE");
+
+  assert.ok(curve);
+  assert.equal(String(curve.routeId), AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17);
+  assert.equal(curve.riskClass, "R1_REVERSIBLE");
+  assert.ok(execution.requiredCapabilities.map(String)
+    .includes("ae.property.temporal_interpolation.set"));
+});
+
 test("Practice baseline executes atomically through the current AE runtime", async () => {
   const transport = new RuntimeTransport();
   const runner = createPracticeCurrentAeBaselineRunnerV1({
