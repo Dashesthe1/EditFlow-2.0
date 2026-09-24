@@ -501,6 +501,91 @@ class PracticeMediaTruthTest(unittest.TestCase):
             self.assertEqual([item["sourceId"] for item in rows], ["", ""])
             self.assertFalse(pack["policy"]["matcherSuggestionsAllowed"])
 
+    def test_source_atlas_cache_reuses_exact_source_bytes_across_review_packs(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-cache-media")
+            source_path.write_bytes(b"source-cache-media")
+            ref = reference()
+            ref["sourceSha256"] = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+            source_writes = []
+
+            def fake_finish_writer(_video_path, time_ms, output_path):
+                Path(output_path).write_bytes(str(round(float(time_ms), 3)).encode("utf-8"))
+
+            def fake_source_writer(_video_path, time_ms, output_path):
+                source_writes.append(float(time_ms))
+                Path(output_path).write_bytes(("source:" + str(round(float(time_ms), 3))).encode("utf-8"))
+
+            cache_dir = root / "atlas-cache"
+            first_dir = root / "review-first"
+            second_dir = root / "review-second"
+            common = {
+                "reference": ref,
+                "draft": draft,
+                "finish_path": finish_path,
+                "source_paths_by_id": {"video:movie": str(source_path)},
+                "preview_writer": fake_finish_writer,
+                "source_atlas_interval_ms": 120000.0,
+                "source_atlas_max_frames": 3,
+                "source_preview_writer": fake_source_writer,
+                "source_duration_reader": lambda _path: 600000.0,
+                "source_atlas_cache_dir": cache_dir,
+            }
+            first = truth_tool.build_review_pack(output_dir=first_dir, **common)
+            second = truth_tool.build_review_pack(output_dir=second_dir, **common)
+
+            self.assertEqual(len(source_writes), 3)
+            self.assertFalse(first["sourceAtlas"][0]["cacheHit"])
+            self.assertTrue(second["sourceAtlas"][0]["cacheHit"])
+            self.assertEqual(
+                first["sourceAtlas"][0]["cacheKey"],
+                second["sourceAtlas"][0]["cacheKey"],
+            )
+            self.assertEqual(
+                len(list((first_dir / "source-atlas" / "video_movie").glob("*.png"))),
+                3,
+            )
+            self.assertEqual(
+                len(list((second_dir / "source-atlas" / "video_movie").glob("*.png"))),
+                3,
+            )
+
+    def test_source_hash_cache_reuses_stable_file_and_invalidates_on_change(self):
+        with TemporaryDirectory() as root:
+            source_path = Path(root) / "source.bin"
+            source_path.write_bytes(b"stable-source")
+            original_sha256_file = truth_tool.sha256_file
+            calls = []
+
+            def counted_sha256_file(path):
+                calls.append(str(path))
+                return original_sha256_file(path)
+
+            truth_tool._SHA256_FILE_CACHE.clear()
+            truth_tool.sha256_file = counted_sha256_file
+            try:
+                first = truth_tool.sha256_file_cached(source_path)
+                second = truth_tool.sha256_file_cached(source_path)
+                self.assertEqual(first, second)
+                self.assertEqual(len(calls), 1)
+
+                source_path.write_bytes(b"changed-source-with-new-size")
+                third = truth_tool.sha256_file_cached(source_path)
+                self.assertNotEqual(first, third)
+                self.assertEqual(len(calls), 2)
+            finally:
+                truth_tool.sha256_file = original_sha256_file
+                truth_tool._SHA256_FILE_CACHE.clear()
+
     def test_source_atlas_sampling_is_bounded_and_fail_closed(self):
         times = truth_tool.source_atlas_sample_times(600000.0, 120000.0, 3)
         self.assertEqual([round(item) for item in times], [100000, 300000, 500000])

@@ -31,6 +31,7 @@ ALLOWED_DIFFICULTIES = {
     "REPEATED_SCENERY",
 }
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_SHA256_FILE_CACHE = {}
 
 
 def load_json(path):
@@ -92,6 +93,24 @@ def sha256_file(path):
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_file_cached(path):
+    resolved = Path(path).expanduser().resolve()
+    stat = resolved.stat()
+    cache_key = (str(resolved), int(stat.st_size), int(stat.st_mtime_ns))
+    cached = _SHA256_FILE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    stale_keys = [
+        key for key in _SHA256_FILE_CACHE
+        if key[0] == str(resolved) and key != cache_key
+    ]
+    for key in stale_keys:
+        _SHA256_FILE_CACHE.pop(key, None)
+    digest = sha256_file(resolved)
+    _SHA256_FILE_CACHE[cache_key] = digest
+    return digest
 
 
 def parse_source_path_args(values):
@@ -596,6 +615,35 @@ def source_atlas_sample_times(duration_ms, interval_ms, max_frames):
     ]
 
 
+def source_atlas_cache_key(source_sha256, duration_ms, interval_ms, max_frames):
+    source_sha256 = str(source_sha256 or "").strip().lower()
+    if not SHA256_PATTERN.fullmatch(source_sha256):
+        raise ValueError("Source-atlas cache requires a valid source SHA-256.")
+    payload = {
+        "sourceSha256": source_sha256,
+        "durationMs": round(float(duration_ms), 6),
+        "intervalMs": round(float(interval_ms), 6),
+        "maxFrames": int(max_frames),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _materialize_cached_preview(cache_path, output_path):
+    cache_path = Path(cache_path)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file():
+        same_size = output_path.stat().st_size == cache_path.stat().st_size
+        if same_size and sha256_file(output_path) == sha256_file(cache_path):
+            return
+        output_path.unlink()
+    try:
+        os.link(cache_path, output_path)
+    except OSError:
+        shutil.copy2(cache_path, output_path)
+
+
 def build_source_atlas(
     source_id,
     source_path,
@@ -604,6 +652,8 @@ def build_source_atlas(
     max_frames,
     preview_writer=None,
     duration_reader=None,
+    cache_dir=None,
+    source_sha256=None,
 ):
     duration_reader = duration_reader or review_media_duration_ms
     preview_writer = preview_writer or extract_preview_frame
@@ -612,11 +662,47 @@ def build_source_atlas(
     safe_source = re.sub(r"[^A-Za-z0-9._-]+", "_", str(source_id))
     atlas_dir = Path(output_dir) / "source-atlas" / safe_source
     atlas_dir.mkdir(parents=True, exist_ok=True)
+    cache_entry_dir = None
+    cache_key = None
+    cache_hit = False
+    if cache_dir is not None:
+        normalized_sha256 = str(source_sha256 or "").strip().lower()
+        cache_key = source_atlas_cache_key(
+            normalized_sha256,
+            duration_ms,
+            interval_ms,
+            max_frames,
+        )
+        cache_entry_dir = (
+            Path(cache_dir).expanduser().resolve()
+            / normalized_sha256[:2]
+            / cache_key
+        )
+        cache_entry_dir.mkdir(parents=True, exist_ok=True)
+        expected_names = [
+            f"{index:04d}-{int(round(time_ms)):010d}ms.png"
+            for index, time_ms in enumerate(times_ms, start=1)
+        ]
+        cache_hit = all(
+            (cache_entry_dir / name).is_file()
+            and (cache_entry_dir / name).stat().st_size > 0
+            for name in expected_names
+        )
+
     samples = []
     for index, time_ms in enumerate(times_ms, start=1):
         name = f"{index:04d}-{int(round(time_ms)):010d}ms.png"
         output_path = atlas_dir / name
-        preview_writer(source_path, time_ms, output_path)
+        if cache_entry_dir is None:
+            preview_writer(source_path, time_ms, output_path)
+        else:
+            cache_path = cache_entry_dir / name
+            if not cache_path.is_file() or cache_path.stat().st_size <= 0:
+                if output_path.is_file() and output_path.stat().st_size > 0:
+                    _materialize_cached_preview(output_path, cache_path)
+                else:
+                    preview_writer(source_path, time_ms, cache_path)
+            _materialize_cached_preview(cache_path, output_path)
         samples.append({
             "timeMs": float(time_ms),
             "previewPath": str(Path("source-atlas") / safe_source / name),
@@ -628,6 +714,11 @@ def build_source_atlas(
         "maxFrames": int(max_frames),
         "sampleCount": len(samples),
         "samples": samples,
+        **({} if cache_key is None else {
+            "sourceSha256": str(source_sha256).strip().lower(),
+            "cacheKey": cache_key,
+            "cacheHit": cache_hit,
+        }),
     }
 
 
@@ -642,6 +733,7 @@ def build_review_pack(
     source_atlas_max_frames=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
     source_preview_writer=None,
     source_duration_reader=None,
+    source_atlas_cache_dir=None,
 ):
     require_pristine_truth_draft(draft, reference)
     source_ids = sorted(
@@ -663,7 +755,7 @@ def build_review_pack(
     normalized_sources = {}
     for source_id in source_ids:
         source_path = str(Path(source_paths_by_id[source_id]).expanduser().resolve())
-        source_sha256 = sha256_file(source_path)
+        source_sha256 = sha256_file_cached(source_path)
         if source_sha256 != expected_source_hashes[source_id]:
             raise ValueError(
                 f"Review-pack Start media bytes do not match the scaffold for source ID {source_id}."
@@ -688,6 +780,8 @@ def build_review_pack(
                 max_frames=source_atlas_max_frames,
                 preview_writer=source_preview_writer,
                 duration_reader=source_duration_reader,
+                cache_dir=source_atlas_cache_dir,
+                source_sha256=normalized_sources[source_id]["sha256"],
             ))
     writer = preview_writer or extract_preview_frame
     worksheet_rows = []
@@ -885,6 +979,10 @@ def build_parser():
         type=int,
         default=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
     )
+    review_parser.add_argument(
+        "--source-atlas-cache-dir",
+        help="Optional content-addressed cache for reusable Start thumbnails.",
+    )
 
     import_review_parser = sub.add_parser("import-review")
     import_review_parser.add_argument("--reference-analysis", required=True)
@@ -949,6 +1047,7 @@ def main():
                 None if args.source_atlas_interval_ms == 0.0 else args.source_atlas_interval_ms
             ),
             source_atlas_max_frames=args.source_atlas_max_frames,
+            source_atlas_cache_dir=args.source_atlas_cache_dir,
         )
         print(json.dumps({
             "ok": True,
