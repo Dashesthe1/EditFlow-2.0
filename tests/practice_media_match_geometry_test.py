@@ -233,6 +233,94 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
         self.assertGreaterEqual(normalized["inlierRatio"], 0.45)
         self.assertGreaterEqual(normalized["geometrySupport"], 0.60)
 
+    def test_effect_robust_orb_fallback_recovers_trail_blur_geometry(self):
+        rng = np.random.default_rng(31)
+        source = np.zeros((360, 640, 3), dtype=np.uint8)
+        for _ in range(180):
+            x = int(rng.integers(12, 628))
+            y = int(rng.integers(12, 348))
+            radius = int(rng.integers(2, 10))
+            color = tuple(int(v) for v in rng.integers(40, 255, size=3))
+            matcher.cv2.circle(source, (x, y), radius, color, -1)
+        for _ in range(35):
+            start = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            end = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            matcher.cv2.line(source, start, end, (255, 255, 255), 2)
+
+        def shifted(dx):
+            matrix = np.float32([[1, 0, dx], [0, 1, 0]])
+            return matcher.cv2.warpAffine(
+                source,
+                matrix,
+                (640, 360),
+                borderMode=matcher.cv2.BORDER_REFLECT,
+            )
+
+        reference = np.clip(
+            (0.45 * source)
+            + (0.25 * shifted(12))
+            + (0.18 * shifted(24))
+            + (0.12 * shifted(36)),
+            0,
+            255,
+        ).astype(np.uint8)
+        reference = matcher.cv2.GaussianBlur(reference, (0, 0), 2.5)
+        reference = np.clip(
+            reference.astype(np.float32) * 0.24 + 92.0,
+            0,
+            255,
+        ).astype(np.uint8)
+
+        base = matcher.feature_match_evidence(
+            matcher.normalized_rescue_frame(reference),
+            matcher.normalized_rescue_frame(source),
+        )
+        robust = matcher.effect_robust_feature_match_evidence(reference, source)
+        self.assertFalse(matcher.geometry_evidence_is_strong(base, minimum_support=0.75))
+        self.assertEqual(robust["effectFeatureMode"], "CLAHE_ORB_V1")
+        self.assertTrue(matcher.geometry_evidence_is_strong(
+            robust,
+            minimum_inliers=12,
+            minimum_ratio=0.55,
+            minimum_coverage=0.02,
+            minimum_support=0.72,
+        ))
+
+    def test_effect_robust_path_skips_orb_when_sift_is_already_strong(self):
+        strong = {
+            "score": 0.84,
+            "globalScore": 0.80,
+            "goodMatchCount": 16,
+            "inlierCount": 9,
+            "inlierRatio": 0.70,
+            "referenceCoverage": 0.12,
+            "sourceCoverage": 0.10,
+            "geometrySupport": 0.82,
+        }
+        originals = (
+            matcher.normalized_rescue_frame,
+            matcher.feature_match_evidence,
+        )
+        calls = []
+        try:
+            matcher.normalized_rescue_frame = lambda frame: frame
+
+            def fake_evidence(_reference, _source, **kwargs):
+                calls.append(kwargs)
+                return strong
+
+            matcher.feature_match_evidence = fake_evidence
+            result = matcher.effect_robust_feature_match_evidence(
+                np.zeros((8, 8, 3), dtype=np.uint8),
+                np.zeros((8, 8, 3), dtype=np.uint8),
+            )
+        finally:
+            matcher.normalized_rescue_frame, matcher.feature_match_evidence = originals
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0], {})
+        self.assertEqual(result["effectFeatureMode"], "CLAHE_SIFT_V1")
+
     def test_rescue_finalist_receives_full_effect_normalized_geometry(self):
         rescue = {
             "index": {
