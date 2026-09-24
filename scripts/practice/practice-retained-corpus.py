@@ -26,6 +26,7 @@ ALLOWED_DIFFICULTIES = (
 MIN_CASES = 20
 MAX_CASES = 30
 MIN_DIFFICULTY_KINDS = 4
+MIN_DISTINCT_SOURCE_SETS = 3
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PLACEHOLDER_OBSERVATION_REF = "practice-match-observation:not-yet-generated"
 
@@ -201,6 +202,13 @@ def build_inventory(edit_type_id, cases):
         for tag in unique_nonempty(item["truth"].get("difficultyTags"))
         if tag in ALLOWED_DIFFICULTIES
     )
+    source_set_counts = Counter(
+        "|".join(sorted(
+            value.lower()
+            for value in unique_nonempty(item["truth"].get("sourceMediaSha256"))
+        ))
+        for item in cases
+    )
     reasons = []
     if len(cases) < MIN_CASES:
         reasons.append(f"Retained corpus has fewer than {MIN_CASES} cases.")
@@ -214,6 +222,11 @@ def build_inventory(edit_type_id, cases):
         reasons.append("Retained corpus reuses Finish byte identity (SHA-256).")
     if len(difficulty_counts) < MIN_DIFFICULTY_KINDS:
         reasons.append(f"Retained corpus spans fewer than {MIN_DIFFICULTY_KINDS} hard-case categories.")
+    if len(source_set_counts) < MIN_DISTINCT_SOURCE_SETS:
+        reasons.append(
+            f"Retained corpus spans fewer than {MIN_DISTINCT_SOURCE_SETS} "
+            "distinct content-addressed Start source sets."
+        )
     for item in cases:
         reasons.extend(case_preflight_reasons(item))
     reasons = unique_nonempty(reasons)
@@ -233,6 +246,9 @@ def build_inventory(edit_type_id, cases):
         "distinctCaseIdCount": len(set(case_ids)),
         "distinctReferenceCount": len(set(reference_ids)),
         "distinctFinishSha256Count": len(set(finish_hashes)),
+        "distinctSourceSetCount": len(source_set_counts),
+        "minimumDistinctSourceSets": MIN_DISTINCT_SOURCE_SETS,
+        "sourceSetCounts": dict(sorted(source_set_counts.items())),
         "independentTruthCaseCount": independent_count,
         "fullLengthTruthCaseCount": full_truth_count,
         "observationReadyCaseCount": observation_ready_count,

@@ -123,6 +123,8 @@ class PracticeRetainedCorpusTest(unittest.TestCase):
             self.assertEqual(inventory["distinctCaseIdCount"], 20)
             self.assertEqual(inventory["distinctReferenceCount"], 20)
             self.assertEqual(inventory["distinctFinishSha256Count"], 20)
+            self.assertEqual(inventory["distinctSourceSetCount"], 20)
+            self.assertEqual(inventory["minimumDistinctSourceSets"], 3)
             self.assertEqual(inventory["independentTruthCaseCount"], 20)
             self.assertEqual(inventory["fullLengthTruthCaseCount"], 20)
             self.assertEqual(inventory["observationReadyCaseCount"], 20)
@@ -144,6 +146,27 @@ class PracticeRetainedCorpusTest(unittest.TestCase):
             self.assertFalse(inventory["readyForCertificationRun"])
             self.assertTrue(any(
                 "reuses Finish byte identity" in reason
+                for reason in inventory["reasons"]
+            ))
+            with self.assertRaisesRegex(ValueError, "not ready for a certification run"):
+                corpus.assemble(paths, "CERTIFICATION")
+
+    def test_repeated_start_source_set_blocks_certification_promotion(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = [
+                self._case_manifest(
+                    root,
+                    index,
+                    source_bytes=b"same-start-source-bytes",
+                )
+                for index in range(20)
+            ]
+            _, inventory = corpus.assemble(paths, "MEASURE_ONLY")
+            self.assertEqual(inventory["distinctSourceSetCount"], 1)
+            self.assertFalse(inventory["readyForCertificationRun"])
+            self.assertTrue(any(
+                "fewer than 3 distinct content-addressed Start source sets" in reason
                 for reason in inventory["reasons"]
             ))
             with self.assertRaisesRegex(ValueError, "not ready for a certification run"):
