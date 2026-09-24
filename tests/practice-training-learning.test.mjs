@@ -439,9 +439,16 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     referenceFingerprint: "reference:held-out:" + String(index + 1),
     sourceFingerprint: "source:held-out:" + String(index + 1),
     effectFamilyIds: [index % 2 === 0 ? "SHUTTER_FRAGMENTATION" : "MOTION_WARP"],
-    objectAwareVerified: index === 0,
-    subjectRelativeDirectionWindowCount: index === 0 ? 1 : 0,
-    subjectRelativeDirectionVerified: index === 0,
+    objectAwareVerified: index < 3,
+    subjectRelativeDirectionWindowCount: index < 3 ? 1 : 0,
+    subjectRelativeDirectionVerified: index < 3,
+    subjectRelativeDirectionBuckets: index === 0
+      ? ["RIGHT"]
+      : index === 1
+        ? ["UP"]
+        : index === 2
+          ? ["DOWN_LEFT"]
+          : [],
     overallSimilarity: 0.97,
     definingEffectCoverage: 1,
     passed: true,
@@ -466,8 +473,11 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.professionalBenchmarkCoverageVerified, true);
   assert.equal(report.professionalBenchmarkFailures.length, 0);
   assert.equal(report.objectAwareVerified, true);
-  assert.equal(report.subjectRelativeDirectionCaseCount, 1);
+  assert.equal(report.subjectRelativeDirectionCaseCount, 3);
   assert.equal(report.subjectRelativeDirectionVerified, true);
+  assert.equal(report.subjectRelativeDirectionBucketCount, 3);
+  assert.deepEqual(report.subjectRelativeDirectionBuckets, ["RIGHT", "DOWN_LEFT", "UP"]);
+  assert.equal(report.subjectRelativeDirectionDiversityVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
 
@@ -477,6 +487,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
       ...item,
       subjectRelativeDirectionWindowCount: 0,
       subjectRelativeDirectionVerified: false,
+      subjectRelativeDirectionBuckets: [],
     })),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
@@ -485,6 +496,23 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(nondirectional.subjectRelativeDirectionVerified, false);
   assert.equal(nondirectional.robust, false);
   assert.ok(nondirectional.reasons.some((reason) => /subject-relative direction cases/i.test(reason)));
+
+  const sameDirectionOnly = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases: cases.map((item) => ({
+      ...item,
+      subjectRelativeDirectionBuckets: item.subjectRelativeDirectionVerified ? ["RIGHT"] : [],
+    })),
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(sameDirectionOnly.subjectRelativeDirectionCaseCount, 3);
+  assert.equal(sameDirectionOnly.subjectRelativeDirectionVerified, true);
+  assert.equal(sameDirectionOnly.subjectRelativeDirectionBucketCount, 1);
+  assert.deepEqual(sameDirectionOnly.subjectRelativeDirectionBuckets, ["RIGHT"]);
+  assert.equal(sameDirectionOnly.subjectRelativeDirectionDiversityVerified, false);
+  assert.equal(sameDirectionOnly.robust, false);
+  assert.ok(sameDirectionOnly.reasons.some((reason) => /direction sectors/i.test(reason)));
 
   const practiceOnly = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
@@ -533,9 +561,16 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
     referenceFingerprint: "reference:family:" + String(index + 1),
     sourceFingerprint: "source:family:" + String(index + 1),
     effectFamilyIds: ["SHUTTER_FRAGMENTATION"],
-    objectAwareVerified: index === 0,
-    subjectRelativeDirectionWindowCount: index === 0 ? 1 : 0,
-    subjectRelativeDirectionVerified: index === 0,
+    objectAwareVerified: index < 3,
+    subjectRelativeDirectionWindowCount: index < 3 ? 1 : 0,
+    subjectRelativeDirectionVerified: index < 3,
+    subjectRelativeDirectionBuckets: index === 0
+      ? ["RIGHT"]
+      : index === 1
+        ? ["UP"]
+        : index === 2
+          ? ["DOWN_LEFT"]
+          : [],
     overallSimilarity: 0.98,
     definingEffectCoverage: 1,
     passed: true,
@@ -995,6 +1030,7 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
         subjectRelativeDirectionRequired: true,
         subjectRelativeDirectionVerified: true,
         subjectRelativeDirectionScore: 0.96,
+        referenceSubjectRelativeDirection: { x: 0.6, y: -0.8 },
       }],
       reasons: [],
       evidenceRefs: ["proof:object-aware"],
@@ -1025,6 +1061,7 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.equal(heldOutCase.objectAwareVerified, true);
   assert.equal(heldOutCase.subjectRelativeDirectionWindowCount, 1);
   assert.equal(heldOutCase.subjectRelativeDirectionVerified, true);
+  assert.deepEqual(heldOutCase.subjectRelativeDirectionBuckets, ["UP_RIGHT"]);
 
   const nondirectionalCase = buildPracticeHeldOutBenchmarkCaseV1({
     sessionId: "practice:object-aware:nondirectional",

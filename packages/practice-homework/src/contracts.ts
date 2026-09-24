@@ -718,6 +718,16 @@ export interface PracticeSkillUseAttestationV1 {
   readonly reasons: readonly string[];
 }
 
+export type PracticeSubjectRelativeDirectionBucketV1 =
+  | "RIGHT"
+  | "DOWN_RIGHT"
+  | "DOWN"
+  | "DOWN_LEFT"
+  | "LEFT"
+  | "UP_LEFT"
+  | "UP"
+  | "UP_RIGHT";
+
 export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly caseId: string;
   readonly sessionId: string;
@@ -735,6 +745,7 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly objectAwareVerified: boolean;
   readonly subjectRelativeDirectionWindowCount: number;
   readonly subjectRelativeDirectionVerified: boolean;
+  readonly subjectRelativeDirectionBuckets?: readonly PracticeSubjectRelativeDirectionBucketV1[];
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
   readonly passed: boolean;
@@ -749,6 +760,7 @@ export interface PracticeHeldOutBenchmarkPolicyV1 {
   readonly minimumDefiningEffectCoverage: number;
   readonly minimumObjectAwareCases: number;
   readonly minimumSubjectRelativeDirectionCases: number;
+  readonly minimumSubjectRelativeDirectionBuckets: number;
 }
 
 export interface PracticeHeldOutBenchmarkReportV1 {
@@ -782,6 +794,9 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly objectAwareVerified: boolean;
   readonly subjectRelativeDirectionCaseCount: number;
   readonly subjectRelativeDirectionVerified: boolean;
+  readonly subjectRelativeDirectionBucketCount: number;
+  readonly subjectRelativeDirectionBuckets: readonly PracticeSubjectRelativeDirectionBucketV1[];
+  readonly subjectRelativeDirectionDiversityVerified: boolean;
   readonly robust: boolean;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
