@@ -363,6 +363,18 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   const gapLines = openGaps.slice(-12).map((gap) =>
     gap.gapId + " [" + gap.kind + "/" + gap.status + "] " + gap.requestedBehavior
   );
+  const subjectMemoryLines = (learned?.gptLearning.masteryRecords ?? [])
+    .flatMap((record) => record.subjectIdentityMemories ?? [])
+    .slice(-12)
+    .map((memory) =>
+      memory.memoryId
+        + " shot=" + memory.shotId
+        + " source=" + memory.sourceId
+        + " ref-subject=" + memory.referenceSemanticId
+        + " raw-subject=" + memory.sourceSemanticId
+        + " confidence=" + memory.confidence.toFixed(3)
+        + " mask=" + memory.maskSources.join("+")
+    );
   const practicePolicy = input.mode === "PRACTICE"
     ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
     : null;
@@ -473,6 +485,9 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Failures to avoid: " + (failureLessons.length === 0 ? "(none yet)" : failureLessons.join(" | ")),
     "Development patterns: " + (patterns.length === 0 ? "(none yet)" : patterns.join(" | ")),
     "Learned skills: " + (skillLines.length === 0 ? "(none yet)" : skillLines.join(" | ")),
+    "Verified subject identity memory: "
+      + (subjectMemoryLines.length === 0 ? "(none yet)" : subjectMemoryLines.join(" | ")),
+    "Subject identity reuse rule: retained identity may be reused only on exact matching Finish/Start content and binding context; materially different footage requires fresh machine binding proof.",
     "Open/blocked capability gaps: " + (gapLines.length === 0 ? "(none)" : gapLines.join(" | ")),
   ].join("\n");
 };

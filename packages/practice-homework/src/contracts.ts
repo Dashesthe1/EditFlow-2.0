@@ -378,6 +378,15 @@ export interface PracticeCrossSourceSubjectBindingProofV1 {
   readonly confidence: number;
   readonly verified: boolean;
   readonly reason: string | null;
+  readonly algorithmId?: string;
+  readonly sourceVideo?: Readonly<{
+    fps: number;
+    frameCount: number;
+    width: number;
+    height: number;
+    durationMs: number;
+    sampleTimeMs: number;
+  }>;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -550,6 +559,42 @@ export type PracticeMasteryScopeV1 =
   | "REFERENCE_VERIFIED"
   | "TRANSFER_VERIFIED";
 
+export type PracticeVerifiedSubjectMaskSourceV1 =
+  | "SEGMENTATION"
+  | "AE_TRACKED_MASK"
+  | "ROTO_BRUSH";
+
+export interface PracticeSubjectIdentityMemoryV1 {
+  readonly memoryId: string;
+  readonly sessionId: string;
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly sourceMediaSha256: readonly string[];
+  readonly sourceVideoSha256: string;
+  readonly referenceWindowId: string;
+  readonly shotId: string;
+  readonly sourceId: string;
+  readonly referenceSemanticId: string;
+  readonly sourceSemanticId: string;
+  readonly referenceTimeMs: number;
+  readonly sourceTimeMs: number;
+  readonly referenceSubjectBox: readonly [number, number, number, number];
+  readonly sourceSubjectBox: readonly [number, number, number, number];
+  readonly confidence: number;
+  readonly algorithmId: string;
+  readonly sourceVideo: Readonly<{
+    fps: number;
+    frameCount: number;
+    width: number;
+    height: number;
+    durationMs: number;
+    sampleTimeMs: number;
+  }>;
+  readonly maskSources: readonly PracticeVerifiedSubjectMaskSourceV1[];
+  readonly evidenceRefs: readonly string[];
+  readonly verifiedAt: string;
+}
+
 export interface PracticeMasteryRecordV1 {
   readonly sessionId: string;
   readonly scope: PracticeMasteryScopeV1;
@@ -563,6 +608,7 @@ export interface PracticeMasteryRecordV1 {
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
   readonly effectFamilyIds: readonly string[];
+  readonly subjectIdentityMemories?: readonly PracticeSubjectIdentityMemoryV1[];
   readonly verifiedAt: string;
 }
 

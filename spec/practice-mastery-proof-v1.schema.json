@@ -18,6 +18,11 @@
     "sourceIndexId": { "type": "string", "minLength": 1 },
     "referenceFingerprint": { "type": "string", "minLength": 16 },
     "sourceFingerprint": { "type": "string", "minLength": 16 },
+    "sourceMediaSha256": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 16 },
+      "uniqueItems": true
+    },
     "finalRenderRef": { "type": "string", "minLength": 1 },
     "minimumSimilarity": { "type": "number", "minimum": 0.95, "maximum": 1 },
     "exactSceneConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
@@ -27,6 +32,7 @@
       "uniqueItems": true
     },
     "objectAwareProof": { "$ref": "#/$defs/objectAwareProof" },
+    "crossSourceSubjectProof": { "$ref": "#/$defs/crossSourceSubjectProof" },
     "report": { "$ref": "#/$defs/report" },
     "matches": {
       "type": "array",
@@ -203,6 +209,93 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         }
+      }
+    },
+    "crossSourceSubjectBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "referenceWindowId", "shotId", "sourceId", "referenceTimeMs", "sourceTimeMs",
+        "referenceSemanticId", "sourceSemanticId", "referenceSubjectBox",
+        "sourceSubjectBox", "confidence", "verified", "reason", "evidenceRefs"
+      ],
+      "properties": {
+        "referenceWindowId": { "type": "string", "minLength": 1 },
+        "shotId": { "type": "string", "minLength": 1 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "referenceTimeMs": { "type": "number", "minimum": 0 },
+        "sourceTimeMs": { "type": "number", "minimum": 0 },
+        "referenceSemanticId": { "type": "string", "minLength": 1 },
+        "sourceSemanticId": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "referenceSubjectBox": {
+          "type": "array", "minItems": 4, "maxItems": 4,
+          "items": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "sourceSubjectBox": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "array", "minItems": 4, "maxItems": 4,
+              "items": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          ]
+        },
+        "confidence": { "$ref": "#/$defs/score" },
+        "verified": { "type": "boolean" },
+        "reason": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "algorithmId": { "type": "string", "minLength": 1 },
+        "sourceVideo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fps", "frameCount", "width", "height", "durationMs", "sampleTimeMs"],
+          "properties": {
+            "fps": { "type": "number", "exclusiveMinimum": 0 },
+            "frameCount": { "type": "integer", "minimum": 1 },
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "durationMs": { "type": "number", "exclusiveMinimum": 0 },
+            "sampleTimeMs": { "type": "number", "minimum": 0 }
+          }
+        },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+    "crossSourceSubjectProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "required", "referenceWindowCount", "requiredBindingCount",
+        "verifiedBindingCount", "verifiedWindowCount", "verified", "bindings",
+        "reasons", "evidenceRefs"
+      ],
+      "properties": {
+        "schema": { "const": "editflow.practice-cross-source-subject-proof.v1" },
+        "required": { "type": "boolean" },
+        "referenceWindowCount": { "type": "integer", "minimum": 0 },
+        "requiredBindingCount": { "type": "integer", "minimum": 0 },
+        "verifiedBindingCount": { "type": "integer", "minimum": 0 },
+        "verifiedWindowCount": { "type": "integer", "minimum": 0 },
+        "verified": { "type": "boolean" },
+        "bindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/crossSourceSubjectBinding" }
+        },
+        "reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
       }
     },
     "report": {

@@ -92,6 +92,14 @@ const normalizedGptLearning = (
     masteryRecords: (value.masteryRecords ?? []).map((record) => ({
       ...structuredClone(record),
       effectFamilyIds: uniqueStrings(record.effectFamilyIds ?? []),
+      ...(record.subjectIdentityMemories === undefined ? {} : {
+        subjectIdentityMemories: record.subjectIdentityMemories.map((memory) => ({
+          ...structuredClone(memory),
+          sourceMediaSha256: uniqueStrings(memory.sourceMediaSha256 ?? []),
+          maskSources: [...new Set(memory.maskSources ?? [])],
+          evidenceRefs: uniqueStrings(memory.evidenceRefs ?? []),
+        })),
+      }),
     })),
     heldOutCases: (value.heldOutCases ?? []).map((item) => ({
       ...structuredClone(item),

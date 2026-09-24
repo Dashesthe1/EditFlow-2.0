@@ -15,9 +15,14 @@ import {
   type DenseEffectWindowV1,
 } from "../../../packages/visual-effects-intelligence/src/index.js";
 import type {
+  EditTypeKnowledgeSnapshotV1,
   PracticeReferenceAnalysisV1,
   PracticeSceneMatchV1,
+  PracticeSubjectIdentityMemoryV1,
 } from "../../../packages/practice-homework/src/contracts.js";
+import {
+  selectReusablePracticeSubjectIdentityMemoryV1,
+} from "../../../packages/practice-homework/src/subject-identity-memory.js";
 import type {
   PracticeAeBaselinePlanV1,
   PracticeAeBaselineBuilderV1,
@@ -84,6 +89,7 @@ export interface PracticeM6SubjectIsolationRouteV1 {
     readonly startMs: number;
     readonly endMs: number;
     readonly referenceSemanticId: string;
+    readonly retainedSubjectIdentity?: PracticeSubjectIdentityMemoryV1;
   }): Promise<PracticeM6VerifiedSubjectIsolationV1>;
 }
 
@@ -123,6 +129,7 @@ export interface PracticeM6AeRenderDriverV1 {
 interface PreparedAttemptV1 {
   readonly reference: PracticeReferenceAnalysisV1;
   readonly matches: readonly PracticeSceneMatchV1[];
+  readonly editTypeKnowledge: EditTypeKnowledgeSnapshotV1;
   readonly plan: PracticeAeBaselinePlanV1;
   readonly project: VirtualAeProjectV1;
   readonly shotLayerById: ReadonlyMap<string, string>;
@@ -328,6 +335,7 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     this.#prepared.set(attemptKey(input.sessionId, input.attempt), {
       reference: input.reference,
       matches: input.matches,
+      editTypeKnowledge: input.editTypeKnowledge,
       plan,
       project,
       shotLayerById: shotLayers,
@@ -417,6 +425,15 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
             "PRACTICE_M6_SUBJECT_ISOLATION_BINDING_MISSING:" + shot.shotId,
           );
         }
+        const retainedSubjectIdentity = selectReusablePracticeSubjectIdentityMemoryV1({
+          knowledge: prepared.editTypeKnowledge,
+          reference: input.reference,
+          matches: prepared.matches,
+          referenceWindowId: input.window.windowId,
+          shotId: shot.shotId,
+          sourceMatch,
+          referenceSemanticId,
+        });
         const isolation = await route.prepare({
           sessionId: input.sessionId,
           attempt: input.attempt,
@@ -430,6 +447,9 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           startMs: targetStartMs,
           endMs: targetEndMs,
           referenceSemanticId,
+          ...(retainedSubjectIdentity === null
+            ? {}
+            : { retainedSubjectIdentity }),
         });
         if (!acceptedSubjectIsolationProof(isolation, referenceSemanticId)) {
           throw new Error(

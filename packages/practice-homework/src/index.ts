@@ -13,4 +13,5 @@ export * from "./pro-creation.js";
 export * from "./gpt-orchestration.js";
 export * from "./tutorial-causal-compiler.js";
 export * from "./subject-identity.js";
+export * from "./subject-identity-memory.js";
 export * from "./mastery.js";

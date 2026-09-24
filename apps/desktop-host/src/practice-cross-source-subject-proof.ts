@@ -205,6 +205,8 @@ export const buildPracticeCrossSourceSubjectProofV1 = async (input: {
           confidence: binding.confidence,
           verified,
           reason: binding.reason,
+          algorithmId: binding.algorithmId,
+          sourceVideo: structuredClone(binding.sourceVideo),
           evidenceRefs: unique(binding.evidenceRefs),
         });
         evidenceRefs.push(...binding.evidenceRefs);

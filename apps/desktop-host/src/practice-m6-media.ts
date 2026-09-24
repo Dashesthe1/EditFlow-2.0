@@ -12,6 +12,7 @@ import {
 import type {
   PracticeReferenceAnalysisV1,
   PracticeSceneMatchV1,
+  PracticeSubjectIdentityMemoryV1,
 } from "../../../packages/practice-homework/src/contracts.js";
 import type {
   PracticeContentStructureEvaluationV1,
@@ -334,6 +335,7 @@ export class PracticeM6LocalMediaAnalyzerV1 {
     readonly referenceSemanticId: string;
     readonly sourceId: string;
     readonly shotId: string;
+    readonly retainedSubjectIdentity?: PracticeSubjectIdentityMemoryV1;
   }): Promise<PracticeCrossSourceSubjectBindingV1> {
     if (!Number.isFinite(input.referenceTimeMs) || !Number.isFinite(input.sourceTimeMs)
       || input.referenceTimeMs < 0 || input.sourceTimeMs < 0) {
@@ -347,6 +349,45 @@ export class PracticeM6LocalMediaAnalyzerV1 {
     const sourceVideoPath = path.resolve(input.sourceVideoPath);
     if (!(await fileExists(referenceVideoPath)) || !(await fileExists(sourceVideoPath))) {
       throw new TypeError("Practice subject binding requires existing local reference and source videos.");
+    }
+    const retained = input.retainedSubjectIdentity;
+    if (retained !== undefined) {
+      const frameToleranceMs = Math.max(
+        1,
+        1500 / Math.max(1, retained.sourceVideo.fps),
+      );
+      const referenceBoxDelta = Math.max(...input.referenceSubjectBox.map(
+        (value, index) => Math.abs(value - retained.referenceSubjectBox[index]!),
+      ));
+      const reusable = retained.referenceSemanticId === input.referenceSemanticId
+        && retained.sourceId === input.sourceId
+        && retained.shotId === input.shotId
+        && Math.abs(retained.referenceTimeMs - input.referenceTimeMs) <= frameToleranceMs
+        && Math.abs(retained.sourceTimeMs - input.sourceTimeMs) <= frameToleranceMs
+        && referenceBoxDelta <= 0.015
+        && retained.sourceSubjectBox.length === 4
+        && retained.evidenceRefs.length > 0
+        && retained.maskSources.length > 0;
+      if (reusable) {
+        finite01(retained.confidence, "Retained Practice subject identity confidence");
+        return {
+          schema: "editflow.practice-cross-source-subject-binding.v1",
+          algorithmId: retained.algorithmId,
+          verified: true,
+          reason: null,
+          referenceSemanticId: input.referenceSemanticId,
+          sourceSemanticId: retained.sourceSemanticId,
+          referenceSubjectBox: [...input.referenceSubjectBox],
+          sourceSubjectBox: [...retained.sourceSubjectBox],
+          sourceVideo: structuredClone(retained.sourceVideo),
+          confidence: retained.confidence,
+          evidenceRefs: [...new Set([
+            ...retained.evidenceRefs,
+            "practice-subject-memory-reuse:" + retained.memoryId,
+            "practice-subject-memory-origin-session:" + retained.sessionId,
+          ])],
+        };
+      }
     }
     const [referenceStat, sourceStat, scriptDigest] = await Promise.all([
       stat(referenceVideoPath),

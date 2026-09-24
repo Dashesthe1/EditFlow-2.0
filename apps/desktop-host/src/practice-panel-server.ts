@@ -17,6 +17,7 @@ import {
   ProCreationPreparationEngineV1,
   compileGptTutorialResearchSourceV1,
   classifyPracticeMasteryScopeV1,
+  buildPracticeSubjectIdentityMemoriesV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -1318,6 +1319,21 @@ export class PracticePanelServerV1 {
               priorRecords,
               verification.proof,
             );
+            const learningMemoryFile = new PracticeLearningMemoryFileV1(
+              this.config.learningMemoryFilePath,
+            );
+            const retainedEpisodes = await learningMemoryFile.snapshot();
+            const retainedEpisode = retainedEpisodes.find(
+              (episode) => episode.sessionId === pending.sessionId,
+            );
+            const masteredAttempt = retainedEpisode?.attempts.find(
+              (attempt) => attempt.renderRef === verification.proof.finalRenderRef,
+            ) ?? null;
+            const subjectIdentityMemories = buildPracticeSubjectIdentityMemoriesV1({
+              sessionId: pending.sessionId,
+              proof: verification.proof,
+              attempt: masteredAttempt,
+            });
             masteryRecord = {
               sessionId: pending.sessionId,
               scope: masteryScope,
@@ -1333,6 +1349,9 @@ export class PracticePanelServerV1 {
               overallSimilarity: verification.proof.report.overallSimilarity,
               definingEffectCoverage: verification.proof.report.definingEffectCoverage,
               effectFamilyIds: verification.proof.effectFamilyIds,
+              ...(subjectIdentityMemories.length === 0
+                ? {}
+                : { subjectIdentityMemories }),
               verifiedAt: verification.proof.verifiedAt,
             };
             masteryReasons = [];

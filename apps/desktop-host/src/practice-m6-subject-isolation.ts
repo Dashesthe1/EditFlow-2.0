@@ -351,6 +351,9 @@ implements PracticeM6SubjectIsolationRouteV1 {
       referenceSemanticId: input.referenceSemanticId,
       sourceId: input.sourceMatch.sourceId,
       shotId: input.shotId,
+      ...(input.retainedSubjectIdentity === undefined
+        ? {}
+        : { retainedSubjectIdentity: input.retainedSubjectIdentity }),
     });
     if (!binding.verified || binding.sourceSemanticId === null
       || binding.sourceSubjectBox === null) {
