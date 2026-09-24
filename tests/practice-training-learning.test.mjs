@@ -1383,9 +1383,9 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     meanIdentityConfidence: 0.91,
     continuityVerified: true,
     usableForReconstruction: true,
-    relativeMotionPeak: 0.18,
-    relativeMotionMean: 0.083333,
-    relativeMotionDirection: { x: 0.18, y: 0 },
+    relativeMotionPeak: 0.2,
+    relativeMotionMean: 0.09,
+    relativeMotionDirection: { x: 0.12, y: -0.16 },
     samples: [
       {
         timeMs: 50,
@@ -1403,9 +1403,9 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
         trackState: "OBSERVED",
         identityConfidence: 0.94,
         visibility: 0.98,
-        subjectMotion: { x: 0.2, y: 0 },
-        backgroundMotion: { x: 0.02, y: 0 },
-        relativeMotion: { x: 0.18, y: 0 },
+        subjectMotion: { x: 0.14, y: -0.17 },
+        backgroundMotion: { x: 0.02, y: -0.01 },
+        relativeMotion: { x: 0.12, y: -0.16 },
         subjectBoundingBox: [0.28, 0.18, 0.42, 0.7],
         evidenceRefs: ["test:subject-relative-sample:150"],
       },
@@ -1459,9 +1459,9 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
         evidencePersistence: 1,
         subjectSeparationPeak: 0.42,
         subjectBackgroundDivergencePeak: 0.18,
-        subjectMotionPeak: 0.18,
+        subjectMotionPeak: 0.2,
         backgroundMotionPeak: 0.01,
-        subjectMotionDirection: { x: 0.18, y: 0 },
+        subjectMotionDirection: { x: 0.12, y: -0.16 },
         backgroundMotionDirection: { x: 0.01, y: 0 },
         maskCoveragePeak: 0.25,
         validatedMaskCoveragePeak: 0.25,
@@ -1496,20 +1496,32 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.ok(capturedPlan.recipeRefs.includes(
     "practice-subject-relative-effect-anchor:" + retainedSubjectMotionTrack.trackId,
   ));
+  assert.ok(capturedPlan.recipeRefs.includes(
+    "practice-subject-relative-effect-steering:" + retainedSubjectMotionTrack.trackId,
+  ));
   assert.match(
     capturedPlan.creativeObjective,
     /Preserve the retained Finish subject-relative motion track/,
   );
-  assert.match(capturedPlan.creativeObjective, /relative-motion peak 0\.1800/);
+  assert.match(capturedPlan.creativeObjective, /relative-motion peak 0\.2000/);
   assert.match(
     capturedPlan.creativeObjective,
     /Anchor the native effect peak to the retained subject-relative motion peak at 150\.000 ms/,
+  );
+  assert.match(
+    capturedPlan.creativeObjective,
+    /direction \(0\.600000, -0\.800000\) while preserving the reference effect amplitudes/,
   );
   const nativeEventExpressions = capturedPlan.operations
     .filter((operation) => operation.input?.command === "property.set_expression")
     .map((operation) => operation.input?.payload?.expression)
     .filter((value) => typeof value === "string");
   assert.ok(nativeEventExpressions.some((value) => value.includes("var event=0.15;")));
+  assert.ok(nativeEventExpressions.some((value) =>
+    value.includes("var directionX=0.6;")
+      && value.includes("var directionY=-0.8;")
+      && value.includes("var dx=-directionX*amplitude*stateScale*envelope;")
+      && value.includes("var dy=-directionY*amplitude*stateScale*envelope;")));
 
   const rendered = await runtime.renderWindowEvidence({
     sessionId: "practice:native",
@@ -1537,7 +1549,7 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     "practice-m6-subject-motion-track:" + retainedSubjectMotionTrack.trackId,
   ));
   assert.ok(fullRender.evidenceRefs.includes(
-    "practice-m6-subject-relative-motion-peak:0.180000",
+    "practice-m6-subject-relative-motion-peak:0.200000",
   ));
   assert.ok(fullRender.evidenceRefs.includes(
     "practice-subject-relative-isolation-mode:PROACTIVE",
@@ -1555,7 +1567,19 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     "practice-m6-subject-relative-effect-anchor-phase:0.750000",
   ));
   assert.ok(fullRender.evidenceRefs.includes(
-    "practice-m6-subject-relative-effect-anchor-magnitude:0.180000",
+    "practice-m6-subject-relative-effect-anchor-magnitude:0.200000",
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-relative-effect-steering-direction:0.600000,-0.800000",
+  ));
+  assert.ok(fullRender.evidenceRefs.some((ref) =>
+    ref.startsWith("practice-subject-relative-effect-steering-parameter:")
+      && ref.endsWith(":fragmentationStateSeparationDirection")));
+  assert.ok(fullRender.evidenceRefs.some((ref) =>
+    ref.startsWith("practice-subject-relative-effect-steering-parameter:")
+      && ref.endsWith(":blurDirectionVector")));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-relative-effect-steering-count:2",
   ));
   assert.ok(fullRender.evidenceRefs.includes("test:subject-relative-sample:150"));
 
