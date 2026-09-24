@@ -4,7 +4,10 @@ import csv
 import hashlib
 import json
 import math
+import os
 import re
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -498,6 +501,32 @@ def require_pristine_truth_draft(draft, reference):
             )
 
 
+def _opencv_preview_capture(video_path, cv2):
+    video_path = Path(video_path).expanduser().resolve()
+    capture = cv2.VideoCapture(str(video_path))
+    if capture.isOpened():
+        return capture
+    capture.release()
+    stat = video_path.stat()
+    suffix = video_path.suffix.lower() if video_path.suffix and video_path.suffix.isascii() else ".mp4"
+    identity = f"{video_path}|{stat.st_size}|{stat.st_mtime_ns}".encode("utf-8")
+    alias_root = Path(tempfile.gettempdir()) / "editflow-practice-opencv"
+    alias_root.mkdir(parents=True, exist_ok=True)
+    alias_path = alias_root / (hashlib.sha256(identity).hexdigest()[:24] + suffix)
+    if not alias_path.is_file() or alias_path.stat().st_size != stat.st_size:
+        if alias_path.exists():
+            alias_path.unlink()
+        try:
+            os.link(video_path, alias_path)
+        except OSError:
+            shutil.copy2(video_path, alias_path)
+    capture = cv2.VideoCapture(str(alias_path))
+    if capture.isOpened():
+        return capture
+    capture.release()
+    raise RuntimeError(f"Could not open Finish media for review preview: {video_path}")
+
+
 def extract_preview_frame(video_path, time_ms, output_path):
     try:
         import cv2
@@ -505,10 +534,8 @@ def extract_preview_frame(video_path, time_ms, output_path):
         raise RuntimeError(
             "OpenCV is required to render independent Finish review previews."
         ) from exc
-    capture = cv2.VideoCapture(str(video_path))
+    capture = _opencv_preview_capture(video_path, cv2)
     try:
-        if not capture.isOpened():
-            raise RuntimeError(f"Could not open Finish media for review preview: {video_path}")
         capture.set(cv2.CAP_PROP_POS_MSEC, max(0.0, float(time_ms)))
         ok, frame = capture.read()
         if not ok or frame is None:

@@ -494,6 +494,35 @@ class PracticeMediaTruthTest(unittest.TestCase):
                     preview_writer=lambda *_args: None,
                 )
 
+    def test_preview_capture_retries_with_ascii_alias_for_unicode_finish_path(self):
+        with TemporaryDirectory() as root:
+            finish = Path(root) / "finish🔥.mp4"
+            finish.write_bytes(b"fixture")
+
+            class Capture:
+                def __init__(self, opened):
+                    self.opened = opened
+
+                def isOpened(self):
+                    return self.opened
+
+                def release(self):
+                    pass
+
+            class FakeCv2:
+                def __init__(self):
+                    self.paths = []
+
+                def VideoCapture(self, value):
+                    self.paths.append(str(value))
+                    return Capture(len(self.paths) > 1)
+
+            fake_cv2 = FakeCv2()
+            capture = truth_tool._opencv_preview_capture(finish, fake_cv2)
+            self.assertTrue(capture.isOpened())
+            self.assertEqual(fake_cv2.paths[0], str(finish.resolve()))
+            self.assertTrue(Path(fake_cv2.paths[1]).name.isascii())
+
     def test_source_interval_must_be_ascending_even_when_direction_is_reverse(self):
         draft = truth_tool.scaffold(reference(), ["video:movie"], SOURCE_HASHES)
         for row in draft["shots"]:

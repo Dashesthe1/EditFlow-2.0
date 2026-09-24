@@ -5,7 +5,9 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
+import tempfile
 import weakref
 from pathlib import Path
 
@@ -239,6 +241,39 @@ def video_metadata(capture):
     return fps, frame_count, width, height, duration_ms
 
 
+def ensure_opencv_path_alias(video_path):
+    video_path = Path(video_path).resolve()
+    stat = video_path.stat()
+    suffix = video_path.suffix.lower() if video_path.suffix and video_path.suffix.isascii() else ".mp4"
+    identity = f"{video_path}|{stat.st_size}|{stat.st_mtime_ns}".encode("utf-8")
+    alias_root = Path(tempfile.gettempdir()) / "editflow-practice-opencv"
+    alias_root.mkdir(parents=True, exist_ok=True)
+    alias_path = alias_root / (hashlib.sha256(identity).hexdigest()[:24] + suffix)
+    if alias_path.is_file() and alias_path.stat().st_size == stat.st_size:
+        return alias_path
+    if alias_path.exists():
+        alias_path.unlink()
+    try:
+        os.link(video_path, alias_path)
+    except OSError:
+        shutil.copy2(video_path, alias_path)
+    return alias_path
+
+
+def open_video_capture(video_path, purpose="video"):
+    video_path = Path(video_path).resolve()
+    capture = cv2.VideoCapture(str(video_path))
+    if capture.isOpened():
+        return capture
+    capture.release()
+    alias_path = ensure_opencv_path_alias(video_path)
+    capture = cv2.VideoCapture(str(alias_path))
+    if capture.isOpened():
+        return capture
+    capture.release()
+    raise RuntimeError(f"Could not open {purpose}: {video_path}")
+
+
 def ensure_analysis_proxy(
     video_path,
     proxy_path,
@@ -304,10 +339,8 @@ def ensure_analysis_proxy(
 
 class FrameReader:
     def __init__(self, path):
-        self.path = str(path)
-        self.capture = cv2.VideoCapture(self.path)
-        if not self.capture.isOpened():
-            raise RuntimeError(f"Could not open video: {path}")
+        self.path = str(Path(path).resolve())
+        self.capture = open_video_capture(self.path, "video")
         self.fps, self.frame_count, self.width, self.height, self.duration_ms = video_metadata(self.capture)
         self.cache = {}
 
@@ -869,9 +902,7 @@ def merge_cut_candidates(candidates, minimum_gap_ms):
 
 def analyze_reference(video_path, reference_id, output_path, cut_threshold, minimum_shot_ms):
     video_path = Path(video_path).resolve()
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise RuntimeError(f"Could not open reference video: {video_path}")
+    capture = open_video_capture(video_path, "reference video")
     fps, frame_count, width, height, duration_ms = video_metadata(capture)
 
     scores = []
@@ -1027,9 +1058,7 @@ def index_source(
     analysis_fps=DEFAULT_ANALYSIS_PROXY_FPS,
 ):
     video_path = Path(video_path).resolve()
-    original_capture = cv2.VideoCapture(str(video_path))
-    if not original_capture.isOpened():
-        raise RuntimeError(f"Could not open source video: {video_path}")
+    original_capture = open_video_capture(video_path, "source video")
     try:
         fps, frame_count, width, height, duration_ms = video_metadata(original_capture)
     finally:
@@ -3613,9 +3642,7 @@ def _flow_similarity(reference_flow, render_flow):
 
 
 def _detect_cut_times(video_path, cut_threshold, minimum_gap_ms):
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
-        raise RuntimeError(f"Could not open video for cut comparison: {video_path}")
+    capture = open_video_capture(video_path, "video for cut comparison")
     fps, _count, _width, _height, duration_ms = video_metadata(capture)
     scores = []
     previous = None
