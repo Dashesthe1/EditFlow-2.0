@@ -6,6 +6,25 @@
   "populationWindowReached": false,
   "populationReasons": ["Population has fewer than 20 candidate cases."],
   "difficultyCounts": {"FAST_CUTS": 1},
+  "coverage": {
+    "targetCaseWindow": {"min": 20, "max": 30},
+    "casesNeededForMinimum": 19,
+    "targetDifficultyKinds": 4,
+    "representedDifficultyKinds": ["FAST_CUTS"],
+    "difficultyKindsNeeded": 3,
+    "unrepresentedDifficultyKinds": [
+      "HEAVY_EFFECT_OBSCURATION",
+      "IDENTITY_AMBIGUITY",
+      "LOW_INFORMATION",
+      "NEAR_DUPLICATE_SOURCES",
+      "OCCLUSION",
+      "REPEATED_SCENERY",
+      "REVERSE_OR_REWIND",
+      "STRONG_CAMERA_MOTION"
+    ],
+    "distinctSourceSetCount": 1,
+    "sourceSetCounts": {"video:fixture": 1}
+  },
   "stageCounts": {"REFERENCE_ANALYSIS": 1},
   "cases": [
     {

@@ -328,6 +328,25 @@ def population_finish_identity_reasons(plan, plan_path):
     return reasons
 
 
+def population_coverage(plan, results, difficulty_counts):
+    source_set_counts = Counter()
+    for case in plan["cases"]:
+        ids = source_ids(case)
+        if ids:
+            source_set_counts["|".join(ids)] += 1
+    represented = sorted(difficulty_counts)
+    return {
+        "targetCaseWindow": {"min": MIN_CASES, "max": MAX_CASES},
+        "casesNeededForMinimum": max(0, MIN_CASES - len(results)),
+        "targetDifficultyKinds": MIN_DIFFICULTY_KINDS,
+        "representedDifficultyKinds": represented,
+        "difficultyKindsNeeded": max(0, MIN_DIFFICULTY_KINDS - len(represented)),
+        "unrepresentedDifficultyKinds": sorted(ALLOWED_DIFFICULTIES - set(represented)),
+        "distinctSourceSetCount": len(source_set_counts),
+        "sourceSetCounts": dict(sorted(source_set_counts.items())),
+    }
+
+
 def build_status(plan_path):
     plan = require_plan(plan_path)
     corpus = load_corpus_tool()
@@ -358,6 +377,7 @@ def build_status(plan_path):
         "populationWindowReached": not population_reasons,
         "populationReasons": population_reasons,
         "difficultyCounts": dict(sorted(difficulty_counts.items())),
+        "coverage": population_coverage(plan, results, difficulty_counts),
         "stageCounts": dict(sorted(stage_counts.items())),
         "cases": results,
     }

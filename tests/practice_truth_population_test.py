@@ -76,6 +76,22 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertFalse(status["cases"][0]["readyForCorpus"])
             self.assertFalse(status["populationWindowReached"])
 
+    def test_status_exposes_actionable_population_coverage_gaps(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            status = tool.build_status(self._plan(root, [case]))
+            coverage = status["coverage"]
+
+            self.assertEqual(coverage["targetCaseWindow"], {"min": 20, "max": 30})
+            self.assertEqual(coverage["casesNeededForMinimum"], 19)
+            self.assertEqual(coverage["targetDifficultyKinds"], 4)
+            self.assertEqual(coverage["representedDifficultyKinds"], ["FAST_CUTS"])
+            self.assertEqual(coverage["difficultyKindsNeeded"], 3)
+            self.assertIn("REVERSE_OR_REWIND", coverage["unrepresentedDifficultyKinds"])
+            self.assertEqual(coverage["distinctSourceSetCount"], 1)
+            self.assertEqual(coverage["sourceSetCounts"], {"video:00": 1})
+
     def test_twenty_candidate_window_is_separate_from_case_readiness(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

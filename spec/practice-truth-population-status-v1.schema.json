@@ -7,7 +7,7 @@
   "required": [
     "schema", "editTypeId", "candidateCaseCount", "readyForCorpusCount",
     "populationWindowReached", "populationReasons", "difficultyCounts",
-    "stageCounts", "cases"
+    "coverage", "stageCounts", "cases"
   ],
   "properties": {
     "schema": { "const": "editflow.practice-truth-population-status.v1" },
@@ -20,6 +20,7 @@
       "items": { "type": "string", "minLength": 1 }
     },
     "difficultyCounts": { "$ref": "#/$defs/counts" },
+    "coverage": { "$ref": "#/$defs/coverage" },
     "stageCounts": { "$ref": "#/$defs/counts" },
     "cases": { "type": "array", "items": { "$ref": "#/$defs/caseStatus" } }
   },
@@ -27,6 +28,41 @@
     "counts": {
       "type": "object",
       "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetCaseWindow", "casesNeededForMinimum", "targetDifficultyKinds",
+        "representedDifficultyKinds", "difficultyKindsNeeded",
+        "unrepresentedDifficultyKinds", "distinctSourceSetCount", "sourceSetCounts"
+      ],
+      "properties": {
+        "targetCaseWindow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "integer", "minimum": 1 },
+            "max": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "casesNeededForMinimum": { "type": "integer", "minimum": 0 },
+        "targetDifficultyKinds": { "type": "integer", "minimum": 1 },
+        "representedDifficultyKinds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "difficultyKindsNeeded": { "type": "integer", "minimum": 0 },
+        "unrepresentedDifficultyKinds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "distinctSourceSetCount": { "type": "integer", "minimum": 0 },
+        "sourceSetCounts": { "$ref": "#/$defs/counts" }
+      }
     },
     "caseStatus": {
       "type": "object",
