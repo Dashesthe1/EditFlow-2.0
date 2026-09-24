@@ -224,10 +224,6 @@ class PracticeGeometricRescuePathTests(unittest.TestCase):
         self.assertEqual(result["strongAnchorCount"], 3)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PracticeGeometricRescueCertificationTests(unittest.TestCase):
     @staticmethod
     def _mapping(strong=3, rescue_score=0.86):
@@ -290,3 +286,7 @@ class PracticeGeometricRescueCertificationTests(unittest.TestCase):
         self.assertFalse(matcher.scene_identity_verified(match))
         match["confidence"] = 0.96
         self.assertTrue(matcher.scene_identity_verified(match))
+
+
+if __name__ == "__main__":
+    unittest.main()

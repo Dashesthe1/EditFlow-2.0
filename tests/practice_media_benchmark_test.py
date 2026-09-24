@@ -1,4 +1,6 @@
+import hashlib
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -223,6 +225,98 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
         self.assertLess(result["metrics"]["geometricProofRate"], 1.0)
         row = next(item for item in result["perShot"] if item["shotId"] == "shot:1")
         self.assertFalse(row["certified"])
+
+    def test_run_case_rejects_truth_bound_to_different_start_bytes_before_indexing(self):
+        class FakeMatcher:
+            @staticmethod
+            def sha256_file(path):
+                return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+            @staticmethod
+            def load_artifact(path, schema):
+                payload = json.loads(Path(path).read_text(encoding="utf-8"))
+                if payload.get("schema") != schema:
+                    raise ValueError("unexpected fixture schema")
+                return payload
+
+            def analyze_reference(
+                self,
+                reference_video,
+                reference_id,
+                output,
+                cut_threshold,
+                minimum_shot_ms,
+            ):
+                payload = {
+                    "schema": "editflow.practice-reference-analysis.v1",
+                    "referenceId": reference_id,
+                    "sourcePath": str(Path(reference_video).resolve()),
+                    "sourceSha256": self.sha256_file(reference_video),
+                    "styleFingerprint": "fixture-style",
+                    "analysis": {
+                        "analyzerFingerprint": "fixture-analyzer",
+                        "cutThreshold": cut_threshold,
+                        "minimumShotMs": minimum_shot_ms,
+                    },
+                    "shots": [{
+                        "shotId": "shot:1",
+                        "referenceStartMs": 0.0,
+                        "referenceEndMs": 800.0,
+                    }],
+                }
+                benchmark.write_json(output, payload)
+
+            @staticmethod
+            def index_source(*_args, **_kwargs):
+                raise AssertionError("stale truth must fail before source indexing")
+
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            finish = root_path / "finish.mp4"
+            source = root_path / "movie.mp4"
+            finish.write_bytes(b"finish-fixture")
+            source.write_bytes(b"current-start-media")
+            finish_sha256 = hashlib.sha256(finish.read_bytes()).hexdigest()
+            truth_path = root_path / "truth.json"
+            truth_path.write_text(
+                json.dumps({
+                    "schema": benchmark.TRUTH_SCHEMA,
+                    "status": "RETAINED",
+                    "referenceId": "ref:fixture",
+                    "referenceFingerprint": "fixture-style",
+                    "referenceSourceSha256": finish_sha256,
+                    "referenceAnalyzerFingerprint": "fixture-analyzer",
+                    "allowedSourceIds": ["video:movie"],
+                    "allowedSourceSha256": {"video:movie": "0" * 64},
+                    "annotationOrigin": "INDEPENDENT_HUMAN",
+                    "shots": [{
+                        "shotId": "shot:1",
+                        "sourceId": "video:movie",
+                        "sourceStartMs": 1000.0,
+                        "sourceEndMs": 1800.0,
+                        "direction": "FORWARD",
+                        "minimumIou": 0.5,
+                    }],
+                }),
+                encoding="utf-8",
+            )
+            benchmark_case = {
+                "benchmarkId": "case:source-bytes",
+                "referenceId": "ref:fixture",
+                "referenceVideo": str(finish),
+                "sources": [{
+                    "sourceId": "video:movie",
+                    "video": str(source),
+                }],
+                "truthFile": str(truth_path),
+            }
+            with self.assertRaisesRegex(ValueError, "exact benchmark Start media bytes"):
+                benchmark.run_case(
+                    FakeMatcher(),
+                    benchmark_case,
+                    root_path,
+                    root_path / "out",
+                )
 
 
 if __name__ == "__main__":

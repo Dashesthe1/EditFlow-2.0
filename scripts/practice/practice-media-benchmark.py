@@ -328,16 +328,37 @@ def run_case(matcher, case, base_dir, output_root):
             "editflow.practice-reference-analysis.v1",
         )
 
+    source_descriptors = []
+    seen_source_ids = set()
+    for source in case.get("sources") or []:
+        source_id = str(source["sourceId"]).strip()
+        if not source_id:
+            raise ValueError(f"{benchmark_id}: sourceId must not be blank.")
+        if source_id in seen_source_ids:
+            raise ValueError(f"{benchmark_id}: duplicate sourceId {source_id}.")
+        seen_source_ids.add(source_id)
+        source_video = resolve_path(base_dir, source["video"])
+        source_sha256 = matcher.sha256_file(source_video)
+        source_descriptors.append((source, source_id, source_video, source_sha256))
+    if not source_descriptors:
+        raise ValueError(f"{benchmark_id}: at least one Start source is required.")
+
+    allowed_source_ids = [item[1] for item in source_descriptors]
+    allowed_source_sha256_by_id = {
+        item[1]: item[3]
+        for item in source_descriptors
+    }
+
     truth_payload = None
     if case.get("truthFile"):
         truth_path = resolve_path(base_dir, case["truthFile"])
         truth_payload = load_json(truth_path)
         truth_tool = load_truth_tool()
-        allowed_source_ids = [str(item["sourceId"]) for item in case.get("sources") or []]
         truth_errors = truth_tool.validate_truth(
             truth_payload,
             reference,
             allowed_source_ids=allowed_source_ids,
+            allowed_source_sha256_by_id=allowed_source_sha256_by_id,
             require_retained=True,
         )
         if truth_errors:
@@ -347,13 +368,10 @@ def run_case(matcher, case, base_dir, output_root):
             )
 
     source_indexes = []
-    for source in case.get("sources") or []:
-        source_id = str(source["sourceId"])
-        source_video = resolve_path(base_dir, source["video"])
+    for source, source_id, source_video, source_sha256 in source_descriptors:
         source_json = case_dir / f"source-{safe_name(source_id)}.json"
         sample_step_ms = float(source.get("sampleStepMs", case.get("sampleStepMs", 500.0)))
         analysis_fps = float(source.get("analysisFps", case.get("analysisFps", 6.0)))
-        source_sha256 = matcher.sha256_file(source_video)
         source_index = cached_artifact(
             matcher,
             source_json,

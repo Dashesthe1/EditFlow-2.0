@@ -2,6 +2,7 @@
 import argparse
 import json
 import math
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,6 +12,7 @@ DRAFT_STATUS = "DRAFT"
 RETAINED_STATUS = "RETAINED"
 ALLOWED_ORIGINS = {"INDEPENDENT_HUMAN", "INDEPENDENT_EXTERNAL_TOOL"}
 ALLOWED_DIRECTIONS = {"FORWARD", "REVERSE"}
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 def load_json(path):
@@ -35,10 +37,60 @@ def require_reference(path):
     if not shots:
         raise ValueError("Reference analysis contains no shots.")
     return payload
-def scaffold(reference, source_ids):
+
+
+def normalize_source_sha256_map(value):
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(source_id).strip(): str(source_sha256).strip().lower()
+        for source_id, source_sha256 in value.items()
+        if str(source_id).strip() and str(source_sha256).strip()
+    }
+
+
+def parse_source_sha256_args(values):
+    result = {}
+    for item in values or []:
+        if "=" not in str(item):
+            raise ValueError("--source-sha256 must use SOURCE_ID=SHA256")
+        source_id, source_sha256 = str(item).split("=", 1)
+        source_id = source_id.strip()
+        source_sha256 = source_sha256.strip().lower()
+        if not source_id or not source_sha256:
+            raise ValueError("--source-sha256 must use non-empty SOURCE_ID=SHA256")
+        if not SHA256_PATTERN.fullmatch(source_sha256):
+            raise ValueError("--source-sha256 must contain an exact 64-character SHA-256")
+        prior = result.get(source_id)
+        if prior is not None and prior != source_sha256:
+            raise ValueError(f"Conflicting SHA-256 bindings for source ID {source_id}")
+        result[source_id] = source_sha256
+    return result
+
+
+def require_source_sha256_bindings(source_ids, value):
+    source_set = {str(item).strip() for item in source_ids if str(item).strip()}
+    bindings = normalize_source_sha256_map(value)
+    if set(bindings) != source_set:
+        raise ValueError("Source SHA-256 bindings must cover the exact source-ID set.")
+    invalid = sorted(
+        source_id
+        for source_id, source_sha256 in bindings.items()
+        if not SHA256_PATTERN.fullmatch(source_sha256)
+    )
+    if invalid:
+        raise ValueError(
+            "Source SHA-256 bindings must contain exact 64-character hashes: "
+            + ", ".join(invalid)
+        )
+    return bindings
+
+
+def scaffold(reference, source_ids, source_sha256_by_id):
     source_ids = sorted({str(item).strip() for item in source_ids if str(item).strip()})
     if not source_ids:
         raise ValueError("At least one allowed source ID is required.")
+    source_sha256_by_id = require_source_sha256_bindings(source_ids, source_sha256_by_id)
     shots = []
     for item in reference.get("shots") or []:
         shots.append({
@@ -63,6 +115,7 @@ def scaffold(reference, source_ids):
             (reference.get("analysis") or {}).get("analyzerFingerprint", "")
         ),
         "allowedSourceIds": source_ids,
+        "allowedSourceSha256": source_sha256_by_id,
         "annotationOrigin": None,
         "createdAt": now_iso(),
         "retainedAt": None,
@@ -82,7 +135,13 @@ def finite_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
 
 
-def validate_truth(truth, reference, allowed_source_ids=None, require_retained=False):
+def validate_truth(
+    truth,
+    reference,
+    allowed_source_ids=None,
+    allowed_source_sha256_by_id=None,
+    require_retained=False,
+):
     errors = []
     if truth.get("schema") != TRUTH_SCHEMA:
         errors.append(f"schema must be {TRUTH_SCHEMA}")
@@ -123,6 +182,35 @@ def validate_truth(truth, reference, allowed_source_ids=None, require_retained=F
     if declared_sources != manifest_sources:
         errors.append("allowedSourceIds must exactly match the benchmark source set.")
 
+    raw_declared_hashes = truth.get("allowedSourceSha256")
+    if raw_declared_hashes is not None and not isinstance(raw_declared_hashes, dict):
+        errors.append("allowedSourceSha256 must be an object keyed by source ID.")
+    declared_hashes = normalize_source_sha256_map(raw_declared_hashes)
+    invalid_declared_hashes = sorted(
+        source_id
+        for source_id, source_sha256 in declared_hashes.items()
+        if not SHA256_PATTERN.fullmatch(source_sha256)
+    )
+    if invalid_declared_hashes:
+        errors.append(
+            "allowedSourceSha256 contains malformed SHA-256 values for: "
+            + ", ".join(invalid_declared_hashes)
+        )
+    if require_retained and set(declared_hashes) != declared_sources:
+        errors.append(
+            "allowedSourceSha256 must bind every retained source ID to its exact media SHA-256."
+        )
+    expected_hashes = normalize_source_sha256_map(allowed_source_sha256_by_id)
+    if allowed_source_sha256_by_id is not None:
+        if set(expected_hashes) != manifest_sources:
+            errors.append("benchmark source SHA-256 bindings must cover the exact source set.")
+        elif any(not SHA256_PATTERN.fullmatch(value) for value in expected_hashes.values()):
+            errors.append("benchmark source SHA-256 bindings contain malformed hashes.")
+        elif declared_hashes != expected_hashes:
+            errors.append(
+                "allowedSourceSha256 does not match the exact benchmark Start media bytes."
+            )
+
     for index, row in enumerate(rows):
         shot_id = str(row.get("shotId", f"index:{index}"))
         source_id = row.get("sourceId")
@@ -148,16 +236,33 @@ def validate_truth(truth, reference, allowed_source_ids=None, require_retained=F
         if not finite_number(minimum_iou) or not 0 < float(minimum_iou) <= 1:
             errors.append(f"{shot_id}: minimumIou must be in (0, 1].")
     return errors
-def retain(draft, reference, allowed_source_ids, annotation_origin):
+
+
+def retain(
+    draft,
+    reference,
+    allowed_source_ids,
+    allowed_source_sha256_by_id,
+    annotation_origin,
+):
+    source_ids = sorted(
+        {str(item).strip() for item in allowed_source_ids if str(item).strip()}
+    )
+    source_sha256_by_id = require_source_sha256_bindings(
+        source_ids,
+        allowed_source_sha256_by_id,
+    )
     value = json.loads(json.dumps(draft))
     value["annotationOrigin"] = annotation_origin
-    value["allowedSourceIds"] = sorted({str(item) for item in allowed_source_ids})
+    value["allowedSourceIds"] = source_ids
+    value["allowedSourceSha256"] = source_sha256_by_id
     value["status"] = RETAINED_STATUS
     value["retainedAt"] = now_iso()
     errors = validate_truth(
         value,
         reference,
-        allowed_source_ids=value["allowedSourceIds"],
+        allowed_source_ids=source_ids,
+        allowed_source_sha256_by_id=source_sha256_by_id,
         require_retained=True,
     )
     if errors:
@@ -174,37 +279,45 @@ def build_parser():
     scaffold_parser = sub.add_parser("scaffold")
     scaffold_parser.add_argument("--reference-analysis", required=True)
     scaffold_parser.add_argument("--source-id", action="append", required=True)
+    scaffold_parser.add_argument("--source-sha256", action="append", required=True)
     scaffold_parser.add_argument("--output", required=True)
 
     validate_parser = sub.add_parser("validate")
     validate_parser.add_argument("--reference-analysis", required=True)
     validate_parser.add_argument("--truth", required=True)
     validate_parser.add_argument("--source-id", action="append")
+    validate_parser.add_argument("--source-sha256", action="append", required=True)
     validate_parser.add_argument("--require-retained", action="store_true")
 
     retain_parser = sub.add_parser("retain")
     retain_parser.add_argument("--reference-analysis", required=True)
     retain_parser.add_argument("--draft", required=True)
     retain_parser.add_argument("--source-id", action="append", required=True)
+    retain_parser.add_argument("--source-sha256", action="append", required=True)
     retain_parser.add_argument("--annotation-origin", choices=sorted(ALLOWED_ORIGINS), required=True)
     retain_parser.add_argument("--output", required=True)
     return parser
+
+
 def main():
     args = build_parser().parse_args()
     reference = require_reference(args.reference_analysis)
 
     if args.command == "scaffold":
-        payload = scaffold(reference, args.source_id)
+        source_sha256_by_id = parse_source_sha256_args(args.source_sha256)
+        payload = scaffold(reference, args.source_id, source_sha256_by_id)
         write_json(args.output, payload)
         print(json.dumps({"ok": True, "status": DRAFT_STATUS, "output": str(Path(args.output).resolve())}))
         return
 
     if args.command == "validate":
         truth = load_json(args.truth)
+        source_sha256_by_id = parse_source_sha256_args(args.source_sha256)
         errors = validate_truth(
             truth,
             reference,
             allowed_source_ids=args.source_id,
+            allowed_source_sha256_by_id=source_sha256_by_id,
             require_retained=args.require_retained,
         )
         print(json.dumps({"ok": not errors, "errors": errors}))
@@ -214,7 +327,14 @@ def main():
 
     if args.command == "retain":
         draft = load_json(args.draft)
-        payload = retain(draft, reference, args.source_id, args.annotation_origin)
+        source_sha256_by_id = parse_source_sha256_args(args.source_sha256)
+        payload = retain(
+            draft,
+            reference,
+            args.source_id,
+            source_sha256_by_id,
+            args.annotation_origin,
+        )
         write_json(args.output, payload)
         print(json.dumps({"ok": True, "status": RETAINED_STATUS, "output": str(Path(args.output).resolve())}))
         return
