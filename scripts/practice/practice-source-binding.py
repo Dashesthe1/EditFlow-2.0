@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import importlib.util
 import json
 import math
+import re
 from pathlib import Path
 
 BINDING_SCHEMA = "editflow.practice-source-binding.v1"
@@ -25,6 +27,29 @@ def write_json(path, payload):
         encoding="utf-8",
         newline="\n",
     )
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def safe_stem(value):
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value).strip()).strip("-._")
+    return stem or "source"
+
+
+def parse_source_video(value):
+    source_id, separator, media_path = str(value).partition("=")
+    if not separator or not source_id.strip() or not media_path.strip():
+        raise ValueError("--source-video must use sourceId=path syntax.")
+    path = Path(media_path).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError("Start source media does not exist: " + str(path))
+    return source_id.strip(), path
 
 
 def unique_nonempty(values):
@@ -232,10 +257,48 @@ def load_matcher():
     return module
 
 
+def ensure_source_index(source_id, source_path, cache_dir, matcher=None):
+    matcher = matcher or load_matcher()
+    source_path = Path(source_path).resolve()
+    source_sha = sha256_file(source_path)
+    cache_dir = Path(cache_dir).resolve()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = cache_dir / (
+        safe_stem(source_id) + "-" + source_sha[:20] + ".json"
+    )
+    if artifact_path.is_file():
+        artifact = load_json(artifact_path)
+        if (
+            artifact.get("schema") == "editflow.practice-source-index.v1"
+            and artifact.get("sourceId") == source_id
+            and str(artifact.get("sourceSha256", "")).lower() == source_sha
+        ):
+            return str(artifact_path)
+
+    matcher.index_source(
+        str(source_path),
+        source_id,
+        str(artifact_path),
+        250.0,
+        proxy_dir=str(cache_dir / "proxies"),
+        analysis_fps=matcher.DEFAULT_ANALYSIS_PROXY_FPS,
+    )
+    artifact = load_json(artifact_path)
+    if (
+        artifact.get("schema") != "editflow.practice-source-index.v1"
+        or artifact.get("sourceId") != source_id
+        or str(artifact.get("sourceSha256", "")).lower() != source_sha
+    ):
+        raise ValueError("Practice source index does not match requested Start media.")
+    return str(artifact_path)
+
+
 def bind_sources(
     reference_path,
     output_path,
     source_index_paths=None,
+    source_video_specs=None,
+    index_cache_dir=None,
     matches_path=None,
     matches_output=None,
     coarse_limit=16,
@@ -246,21 +309,39 @@ def bind_sources(
         observation = load_json(matches_path)
         retained_matches_path = str(Path(matches_path).resolve())
     else:
-        if not source_index_paths:
-            raise ValueError(
-                "Source binding requires --matches-json or at least one --source-index-json."
-            )
         matcher = load_matcher()
+        effective_index_paths = list(source_index_paths or [])
+        if source_video_specs:
+            cache_dir = (
+                Path(index_cache_dir).resolve()
+                if index_cache_dir
+                else Path(output_path).resolve().parent / ".source-index-cache"
+            )
+            for spec in source_video_specs:
+                source_id, source_path = parse_source_video(spec)
+                effective_index_paths.append(
+                    ensure_source_index(
+                        source_id,
+                        source_path,
+                        cache_dir,
+                        matcher=matcher,
+                    )
+                )
+        if not effective_index_paths:
+            raise ValueError(
+                "Source binding requires --matches-json, --source-index-json, "
+                "or --source-video."
+            )
         retained_matches_path = str(
             Path(matches_output or (str(output_path) + ".matches.json")).resolve()
         )
         observation = matcher.match_reference(
             reference_path,
-            list(source_index_paths),
+            effective_index_paths,
             retained_matches_path,
             coarse_limit,
         )
-
+        source_index_paths = effective_index_paths
 
     result = evaluate_binding(
         reference,
@@ -285,6 +366,12 @@ def build_parser():
     )
     parser.add_argument("--reference-json", required=True)
     parser.add_argument("--source-index-json", action="append")
+    parser.add_argument(
+        "--source-video",
+        action="append",
+        help="Raw Start source in sourceId=path form; may be repeated.",
+    )
+    parser.add_argument("--index-cache-dir")
     parser.add_argument("--matches-json")
     parser.add_argument("--matches-output")
     parser.add_argument("--output", required=True)
@@ -299,9 +386,9 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
-    if args.matches_json and args.source_index_json:
+    if args.matches_json and (args.source_index_json or args.source_video):
         raise ValueError(
-            "Use either --matches-json or --source-index-json, not both."
+            "Use --matches-json by itself, or provide Start sources/indexes."
         )
     if args.coarse_limit < 2 or args.coarse_limit > 64:
         raise ValueError("--coarse-limit must be in [2, 64].")
@@ -312,6 +399,8 @@ def main():
         args.reference_json,
         args.output,
         source_index_paths=args.source_index_json,
+        source_video_specs=args.source_video,
+        index_cache_dir=args.index_cache_dir,
         matches_path=args.matches_json,
         matches_output=args.matches_output,
         coarse_limit=args.coarse_limit,

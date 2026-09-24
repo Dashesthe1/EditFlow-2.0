@@ -138,6 +138,52 @@ class PracticeSourceBindingTest(unittest.TestCase):
             for reason in result["reasons"]
         ))
 
+    def test_raw_start_index_cache_is_content_addressed_and_reused(self):
+        class FakeMatcher:
+            DEFAULT_ANALYSIS_PROXY_FPS = 12.0
+
+            def __init__(self):
+                self.calls = 0
+
+            def index_source(self, video, source_id, output, _step, **_kwargs):
+                self.calls += 1
+                Path(output).write_text(json.dumps({
+                    "schema": "editflow.practice-source-index.v1",
+                    "sourceId": source_id,
+                    "sourceSha256": tool.sha256_file(video),
+                }), encoding="utf-8")
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "movie.mp4"
+            source.write_bytes(b"version-one")
+            matcher = FakeMatcher()
+
+            first = tool.ensure_source_index(
+                "video:movie",
+                source,
+                root / "cache",
+                matcher=matcher,
+            )
+            second = tool.ensure_source_index(
+                "video:movie",
+                source,
+                root / "cache",
+                matcher=matcher,
+            )
+            self.assertEqual(first, second)
+            self.assertEqual(matcher.calls, 1)
+
+            source.write_bytes(b"version-two")
+            third = tool.ensure_source_index(
+                "video:movie",
+                source,
+                root / "cache",
+                matcher=matcher,
+            )
+            self.assertNotEqual(third, first)
+            self.assertEqual(matcher.calls, 2)
+
     def test_bind_sources_can_certify_existing_match_observation(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
