@@ -1,4 +1,5 @@
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -85,6 +86,12 @@ def case():
 
 
 class PracticeMediaBenchmarkTest(unittest.TestCase):
+    def test_manifest_loader_accepts_utf8_bom(self):
+        with tempfile.TemporaryDirectory() as root:
+            manifest = Path(root) / "manifest.json"
+            manifest.write_bytes(b"\xef\xbb\xbf{\"schema\":\"fixture\"}")
+            self.assertEqual(benchmark.load_json(manifest)["schema"], "fixture")
+
     def test_full_truth_correct_match_passes(self):
         matches = {
             "matches": [
