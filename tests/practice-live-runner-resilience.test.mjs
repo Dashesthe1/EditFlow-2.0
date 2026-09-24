@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const cliPath = "apps/desktop-host/src/practice-live-cli.ts";
 const runnerPath = "scripts/windows/run-practice-live-proof.ps1";
+const openerPath = "scripts/windows/open-editflow-bridge.jsx";
 
 test("Practice live runner defaults to canonical persistent state with an explicit override", async () => {
   const source = await readFile(runnerPath, "utf8");
@@ -15,13 +16,28 @@ test("Practice live runner defaults to canonical persistent state with an explic
   assert.match(source, /\$NodeArgs \+= @\("--state-dir", \$StateDir\)/);
 });
 
-test("Practice live runner can re-open the installed CEP panel through the active After Effects process", async () => {
+test("Practice live runner can cold-start or re-open the installed CEP panel", async () => {
   const source = await readFile(runnerPath, "utf8");
 
-  assert.match(source, /open-editflow2-panel\.jsx/);
+  assert.match(source, /open-editflow-bridge\.jsx/);
   assert.match(source, /Get-Process -Name "AfterFX"/);
   assert.match(source, /\$AfterFxCandidates\.Count -eq 1/);
+  assert.match(source, /\$AfterFxCandidates\.Count -eq 0/);
+  assert.match(source, /Adobe After Effects \*/);
+  assert.match(source, /Support Files\\AfterFX\.exe/);
+  assert.match(source, /\$InstalledAfterFx\.Count -gt 0/);
   assert.match(source, /"--afterfx-path", \$AfterFxPath, "--panel-bootstrap", \$PanelBootstrap/);
+});
+
+test("Practice AE bridge opener retries extension registration during cold start", async () => {
+  const source = await readFile(openerPath, "utf8");
+
+  assert.match(source, /var maxAttempts = 120/);
+  assert.match(source, /var retryDelayMs = 500/);
+  assert.match(source, /INITIAL_ATTEMPT_DIRECT/);
+  assert.match(source, /MENU_FOUND/);
+  assert.match(source, /app\.scheduleTask\("\$\.global\.EditFlow2_selfHostedOpenBridge\(\)"/);
+  assert.match(source, /RETRY_EXHAUSTED/);
 });
 
 test("Practice live CLI fails closed on incomplete bootstrap configuration and self-recovers after reconnect grace", async () => {

@@ -48,7 +48,7 @@ if ($HeldOutCertification -and $Allocate) {
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
-$PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow2-panel.jsx"
+$PanelBootstrap = Join-Path $RepoRoot "scripts\windows\open-editflow-bridge.jsx"
 $AfterFxPath = ""
 if (Test-Path $PanelBootstrap -PathType Leaf) {
   $AfterFxCandidates = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue | Where-Object {
@@ -56,6 +56,15 @@ if (Test-Path $PanelBootstrap -PathType Leaf) {
   })
   if ($AfterFxCandidates.Count -eq 1) {
     $AfterFxPath = $AfterFxCandidates[0].Path
+  } elseif ($AfterFxCandidates.Count -eq 0) {
+    $AdobeRoot = Join-Path $env:ProgramFiles "Adobe"
+    $InstalledAfterFx = @(Get-ChildItem -LiteralPath $AdobeRoot -Directory -Filter "Adobe After Effects *" -ErrorAction SilentlyContinue |
+      Sort-Object Name -Descending |
+      ForEach-Object { Join-Path $_.FullName "Support Files\AfterFX.exe" } |
+      Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+    if ($InstalledAfterFx.Count -gt 0) {
+      $AfterFxPath = $InstalledAfterFx[0]
+    }
   }
 }
 Push-Location $RepoRoot
