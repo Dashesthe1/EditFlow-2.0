@@ -136,6 +136,29 @@ const hasCompleteCausalModel = (
 const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean =>
   hasCompleteCausalModel(skill.causalModel);
 
+const hasCompleteMachineUseSignature = (skill: GptLearnedSkillV1): boolean => {
+  const invariants = unique(skill.causalModel?.invariants ?? []);
+  const signature = skill.machineUseSignature;
+  if (invariants.length === 0
+    || signature?.schema !== "editflow.gpt-skill-machine-use-signature.v1"
+    || signature.invariantRules.length === 0) {
+    return false;
+  }
+  const invariantSet = new Set(invariants);
+  if (signature.invariantRules.some((rule) =>
+    !invariantSet.has(rule.invariant.trim())
+    || rule.evidence.length === 0
+    || rule.evidence.some((predicate) => predicate.value.trim().length === 0))) {
+    return false;
+  }
+  const coversEveryInvariant = invariants.every((invariant) =>
+    signature.invariantRules.some((rule) =>
+      rule.invariant.trim() === invariant && rule.evidence.length > 0));
+  const bindsConstructionEvidence = signature.invariantRules.some((rule) =>
+    rule.evidence.some((predicate) => predicate.source === "CONSTRUCTION_ID"));
+  return coversEveryInvariant && bindsConstructionEvidence;
+};
+
 export const EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 =
   "https://drive.google.com/drive/folders/1eP2O7OwoCL1uP3OaA4euewUAZFU-VsL7";
 export const EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 =
@@ -323,8 +346,19 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
         + " invariants={" + causal.invariants.join("; ") + "}"
         + " adapt={" + causal.adaptationAxes.join("; ") + "}"
         + " transfer={" + causal.transferCriteria.join("; ") + "}";
+    const machineSignature = skill.machineUseSignature;
+    const machineSummary = machineSignature === undefined
+      ? " machine-use-signature=UNRECORDED"
+      : " machine-use-signature={"
+        + machineSignature.invariantRules.map((rule) =>
+          rule.invariant + "=>"
+            + rule.evidence.map((predicate) =>
+              predicate.source + ":" + predicate.match + ":" + predicate.value
+            ).join("&")
+        ).join(" | ")
+        + "}";
     return skill.skillId + " [" + skill.maturity + "] " + skill.title + ": "
-      + skill.constructionPattern + causalSummary;
+      + skill.constructionPattern + causalSummary + machineSummary;
   });
   const gapLines = openGaps.slice(-12).map((gap) =>
     gap.gapId + " [" + gap.kind + "/" + gap.status + "] " + gap.requestedBehavior
@@ -401,8 +435,10 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
       ? [
         "- A passing held-out case is certification evidence only. It must not become a mastery/training record or alter TRANSFER_VERIFIED skills.",
-        "- When you actually use a retained TRANSFER_VERIFIED learned skill, include its exact skillId in appliedSkillIds on a SUCCESS/IMPROVED AE_ACTION or RESULT audit event and retain evidenceRefs for that use. Never claim a skill that the case did not exercise.",
-        "- Skill-level certification is cumulative across held-out cases: ROBUST requires explicit passing held-out coverage for every retained TRANSFER_VERIFIED learned skill, not merely aggregate effect-family coverage.",
+        "- appliedSkillIds on SUCCESS/IMPROVED AE_ACTION or RESULT events are diagnostic audit claims only. They never earn certification credit by themselves.",
+        "- Skill-use credit is derived independently from the exact persisted Practice attempt that produced the certified render. Every causal invariant must satisfy the retained machineUseSignature using actual cue IDs, rationale codes, construction IDs, proof effect-family/object evidence, or retained AE/runtime evidence refs.",
+        "- A retained skill with no machineUseSignature, a render-mismatched/missing attempt, missing construction IDs, or an unsatisfied causal invariant earns no held-out skill credit. Do not try to compensate with prose or extra appliedSkillIds claims.",
+        "- Skill-level certification is cumulative across held-out cases: ROBUST requires machine-attested passing held-out coverage for every retained TRANSFER_VERIFIED learned skill, not merely aggregate effect-family coverage.",
       ]
       : [
         "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",
@@ -420,7 +456,8 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
         "Normal loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.",
         "When a missing fundamental skill/capability is discovered, insert CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT, then return to the normal AE/render/compare loop.",
         "A lesson or committed skill should capture transferable reasons and adaptation rules, not only literal parameter values.",
-        "Every SKILL_COMMIT must retain a causal transfer model: trigger conditions, visual/temporal invariants, adaptation axes, failure signals, repair strategies, and explicit transfer criteria. A later materially different Practice run must re-prove and re-commit that skill before EditFlow can promote it to TRANSFER_VERIFIED.",
+        "Every SKILL_COMMIT must retain a causal transfer model: trigger conditions, visual/temporal invariants, adaptation axes, failure signals, repair strategies, and explicit transfer criteria. It should also retain a machineUseSignature that maps every causal invariant to observable Practice/AE proof predicates (CUE_ID, RATIONALE_CODE, CONSTRUCTION_ID, EVIDENCE_REF, PROOF_EFFECT_FAMILY, or PROOF_OBJECT_AWARE; EXACT or PREFIX matching). Do not encode an invariant that cannot be independently observed.",
+        "A later materially different Practice run must re-prove and re-commit that skill before EditFlow can promote it to TRANSFER_VERIFIED.",
       ]),
     "",
     "Start media:",
@@ -821,6 +858,11 @@ export class GptOrchestrationStoreV1 {
         if (!hasCausalTransferModel(skill)) {
           throw new TypeError(
             "SKILL_COMMIT requires a complete causal transfer model with triggers, invariants, adaptation axes, failure signals, repair strategies, and transfer criteria.",
+          );
+        }
+        if (!hasCompleteMachineUseSignature(skill)) {
+          throw new TypeError(
+            "SKILL_COMMIT requires a machineUseSignature covering every causal invariant and binding at least one rule to persisted CONSTRUCTION_ID evidence.",
           );
         }
         const gapWasOpened = sessionEvents.some((event) =>

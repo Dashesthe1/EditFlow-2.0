@@ -448,6 +448,17 @@ test("Practice can discover, prove, and retain a previously missing editing skil
         "On materially different footage, preserve the negative source-time replay invariant while adapting span, duration, and exit behavior to the new reference.",
       ],
     },
+    machineUseSignature: {
+      schema: "editflow.gpt-skill-machine-use-signature.v1",
+      invariantRules: [{
+        invariant: "Source time descends during the rewind phase while the replayed frame sequence remains temporally coherent.",
+        evidence: [
+          { source: "RATIONALE_CODE", match: "EXACT", value: "REFERENCE_REWIND_MEASURED" },
+          { source: "CUE_ID", match: "PREFIX", value: "rewind-span-ms:" },
+          { source: "CONSTRUCTION_ID", match: "PREFIX", value: "construction:temporal-rewind:" },
+        ],
+      }],
+    },
     researchSources,
     evidenceRefs: ["render:temporal-rewind-proof", "comparison:temporal-rewind-source-time-proof"],
     learnedAt: new Date().toISOString(),
@@ -469,6 +480,18 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       evidenceRefs: learnedSkill.evidenceRefs,
     }),
     /TRANSFER_VERIFIED is assigned only after a machine-verified transfer Practice completion/,
+  );
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "SKILL_COMMIT",
+      outcome: "SUCCESS",
+      summary: "A reusable skill without invariant-to-machine-evidence bindings is not certifiable.",
+      capabilityGap: resolvedGap,
+      learnedSkill: { ...learnedSkill, machineUseSignature: undefined },
+      evidenceRefs: learnedSkill.evidenceRefs,
+    }),
+    /machineUseSignature/,
   );
   const commitEvent = await store.appendEvent({
     assignmentId: assignment.assignmentId,

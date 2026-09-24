@@ -3,9 +3,11 @@ import type {
 } from "../../../packages/visual-effects-intelligence/src/index.js";
 import { loadM6ProfessionalBenchmarkEvidenceV1 } from "./m6-professional-benchmark-evidence.js";
 import {
+  attestPracticeSkillUseV1,
   buildPracticeHeldOutBenchmarkCaseV1,
   evaluatePracticeHeldOutBenchmarkV1,
   type EditTypeRegistryV1,
+  type PracticeAttemptV1,
   type PracticeHeldOutBenchmarkCaseV1,
   type PracticeHeldOutBenchmarkReportV1,
   type PracticeMasteryProofV1,
@@ -23,6 +25,7 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
   readonly proof: PracticeMasteryProofV1;
   readonly proofRef: string;
   readonly appliedSkillIds?: readonly string[];
+  readonly attempt?: PracticeAttemptV1 | null;
   readonly repositoryRoot?: string;
   readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
   readonly traceReasons?: readonly string[];
@@ -59,11 +62,17 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
     );
   }
 
+  const skillUseAttestations = attestPracticeSkillUseV1({
+    skills: transferable.gptLearning.learnedSkills,
+    attempt: input.attempt ?? null,
+    proof: input.proof,
+  });
   const heldOutCase = buildPracticeHeldOutBenchmarkCaseV1({
     sessionId: input.sessionId,
     proof: input.proof,
     proofRef: input.proofRef,
     appliedSkillIds,
+    skillUseAttestations,
     ...(input.traceReasons === undefined ? {} : { traceReasons: input.traceReasons }),
   });
   input.registry.recordHeldOutCase(editTypeId, heldOutCase);

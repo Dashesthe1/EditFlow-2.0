@@ -120,7 +120,7 @@ const transferVerifiedRegistry = (editTypeId) => {
   return registry;
 };
 
-const transferVerifiedSkillRegistry = (editTypeId, skillId) => {
+const transferVerifiedSkillRegistry = (editTypeId, skillId, machineUseSignature) => {
   const registry = transferVerifiedRegistry(editTypeId);
   registry.recordGptLearningEvent({
     schema: "editflow.gpt-learning-event.v1",
@@ -147,6 +147,7 @@ const transferVerifiedSkillRegistry = (editTypeId, skillId) => {
         repairStrategies: ["Re-measure and correct the construction."],
         transferCriteria: ["Pass on materially different held-out media."],
       },
+      ...(machineUseSignature === undefined ? {} : { machineUseSignature }),
       provenSessionIds: ["practice:training:transfer", "practice:training:transfer-2"],
       researchSources: [],
       evidenceRefs: ["proof:retained-transfer-skill"],
@@ -157,6 +158,20 @@ const transferVerifiedSkillRegistry = (editTypeId, skillId) => {
   });
   return registry;
 };
+
+const machineAttestedAttempt = (renderRef = "render:held-out") => ({
+  attempt: 1,
+  renderRef,
+  report,
+  decisionTraces: [{
+    decisionId: "held-out:machine-attestation",
+    cueIds: ["effect-family:MOTION_WARP"],
+    constructionIds: ["graph:retained:motion-warp"],
+    rationaleCodes: ["EDIT_TYPE_TRANSFER_APPLIED"],
+  }],
+  elapsedMs: 1000,
+  evidenceRefs: ["readback:held-out:machine"],
+});
 
 test("shared held-out recorder retains machine proof and benchmark evidence", () => {
   const editTypeId = "held-out-live";
@@ -316,7 +331,7 @@ test("held-out benchmark requires exact learned-skill coverage beyond effect-fam
   assert.ok(recorded.benchmark.reasons.some((reason) => /learned skills/.test(reason)));
 });
 
-test("held-out certification credits only explicitly applied retained skills", () => {
+test("held-out certification does not credit an explicit skill claim without machine attestation", () => {
   const editTypeId = "held-out-skill-applied";
   const skillId = "skill:retained:shutter";
   const sessionId = "practice:held-out:skill-applied";
@@ -330,9 +345,12 @@ test("held-out certification credits only explicitly applied retained skills", (
     professionalBenchmarkEvidence: professionalEvidenceForShutter(),
   });
   assert.deepEqual(recorded.heldOutCase.appliedSkillIds, [skillId]);
-  assert.deepEqual(recorded.benchmark.verifiedLearnedSkillIds, [skillId]);
-  assert.deepEqual(recorded.benchmark.missingLearnedSkillIds, []);
-  assert.equal(recorded.benchmark.learnedSkillCoverageVerified, true);
+  assert.deepEqual(recorded.heldOutCase.verifiedSkillUseIds, []);
+  assert.equal(recorded.heldOutCase.passed, false);
+  assert.deepEqual(recorded.benchmark.verifiedLearnedSkillIds, []);
+  assert.deepEqual(recorded.benchmark.missingLearnedSkillIds, [skillId]);
+  assert.equal(recorded.benchmark.learnedSkillCoverageVerified, false);
+  assert.ok(recorded.heldOutCase.reasons.some((reason) => /lacks machine attestation/.test(reason)));
 
   assert.throws(() => recordPracticeHeldOutCertificationV1({
     registry: transferVerifiedSkillRegistry("held-out-skill-unknown", skillId),
@@ -342,6 +360,64 @@ test("held-out certification credits only explicitly applied retained skills", (
     proofRef: "proof:held-out:skill-unknown",
     appliedSkillIds: ["skill:not-retained"],
   }), /not retained as TRANSFER_VERIFIED/);
+});
+
+test("held-out certification credits a retained skill only from matching machine proof", () => {
+  const editTypeId = "held-out-skill-machine-attested";
+  const skillId = "skill:retained:motion-warp";
+  const sessionId = "practice:held-out:skill-machine-attested";
+  const machineUseSignature = {
+    schema: "editflow.gpt-skill-machine-use-signature.v1",
+    invariantRules: [{
+      invariant: "Preserve the defining visible behavior.",
+      evidence: [{
+        source: "PROOF_EFFECT_FAMILY",
+        match: "EXACT",
+        value: "MOTION_WARP",
+      }, {
+        source: "CONSTRUCTION_ID",
+        match: "PREFIX",
+        value: "construction:motion-warp:",
+      }],
+    }],
+  };
+  const certifiedAttempt = {
+    attempt: 1,
+    renderRef: "render:held-out",
+    report,
+    decisionTraces: [{
+      decisionId: "decision:machine-attested",
+      cueIds: ["effect-family:MOTION_WARP"],
+      constructionIds: [
+        "construction:motion-warp:held-out",
+        "construction:unrelated:held-out",
+      ],
+      rationaleCodes: ["M6_FAMILY_MOTION_WARP"],
+      semanticPatches: [],
+    }],
+    elapsedMs: 1200,
+    evidenceRefs: ["ae-readback:motion-warp:held-out"],
+  };
+  const recorded = recordPracticeHeldOutCertificationV1({
+    registry: transferVerifiedSkillRegistry(editTypeId, skillId, machineUseSignature),
+    editTypeId,
+    sessionId,
+    proof: proof(sessionId, editTypeId),
+    proofRef: "proof:held-out:skill-machine-attested",
+    appliedSkillIds: [skillId],
+    attempt: certifiedAttempt,
+    professionalBenchmarkEvidence: professionalEvidenceForShutter(),
+  });
+  assert.deepEqual(recorded.heldOutCase.appliedSkillIds, [skillId]);
+  assert.deepEqual(recorded.heldOutCase.verifiedSkillUseIds, [skillId]);
+  assert.equal(recorded.heldOutCase.skillUseAttestations[0].verified, true);
+  assert.deepEqual(
+    recorded.heldOutCase.skillUseAttestations[0].matchedConstructionIds,
+    ["construction:motion-warp:held-out"],
+  );
+  assert.deepEqual(recorded.benchmark.verifiedLearnedSkillIds, [skillId]);
+  assert.deepEqual(recorded.benchmark.missingLearnedSkillIds, []);
+  assert.equal(recorded.benchmark.learnedSkillCoverageVerified, true);
 });
 
 test("held-out audit binds applied skill claims to evidence-bearing inference events", async (t) => {

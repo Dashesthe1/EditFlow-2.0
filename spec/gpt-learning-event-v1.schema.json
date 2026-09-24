@@ -173,6 +173,45 @@
         }
       }
     },
+    "machineUseSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "invariantRules"],
+      "properties": {
+        "schema": { "const": "editflow.gpt-skill-machine-use-signature.v1" },
+        "invariantRules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["invariant", "evidence"],
+            "properties": {
+              "invariant": { "type": "string", "minLength": 1 },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["source", "match", "value"],
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "CUE_ID", "RATIONALE_CODE", "CONSTRUCTION_ID",
+                        "EVIDENCE_REF", "PROOF_EFFECT_FAMILY", "PROOF_OBJECT_AWARE"
+                      ]
+                    },
+                    "match": { "enum": ["EXACT", "PREFIX"] },
+                    "value": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "learnedSkill": {
       "type": "object",
       "additionalProperties": false,
@@ -196,6 +235,7 @@
         },
         "adaptationNotes": { "type": "string" },
         "causalModel": { "$ref": "#/$defs/causalModel" },
+        "machineUseSignature": { "$ref": "#/$defs/machineUseSignature" },
         "researchSources": {
           "type": "array",
           "items": { "$ref": "#/$defs/researchSource" }

@@ -367,6 +367,7 @@ const main = async (): Promise<void> => {
         proof: verification.proof,
         proofRef: verification.proofRef,
         appliedSkillIds,
+        attempt: result.bestAttempt,
         repositoryRoot,
       });
       await registryFile.save(registry);

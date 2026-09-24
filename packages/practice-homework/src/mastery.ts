@@ -9,10 +9,12 @@ import {
 import type {
   EditTypeProfileV1,
   GptLearnedSkillV1,
+  PracticeAttemptV1,
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkPolicyV1,
   PracticeHeldOutBenchmarkReportV1,
   PracticeMasteryProofV1,
+  PracticeSkillUseAttestationV1,
   PracticeMasteryRecordV1,
   PracticeMasteryScopeV1,
   PracticeMaturityStageV1,
@@ -22,6 +24,153 @@ const nonEmpty = (value: string | undefined): string | null => {
   const normalized = value?.trim() ?? "";
   return normalized.length === 0 ? null : normalized;
 };
+
+const uniqueNonEmpty = (values: readonly string[]): readonly string[] =>
+  [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+
+const machineEvidenceValues = (
+  source: string,
+  attempt: PracticeAttemptV1 | null,
+  proof: PracticeMasteryProofV1,
+): readonly string[] => {
+  const traces = attempt?.decisionTraces ?? [];
+  switch (source) {
+    case "CUE_ID":
+      return uniqueNonEmpty(traces.flatMap((trace) => trace.cueIds));
+    case "RATIONALE_CODE":
+      return uniqueNonEmpty(traces.flatMap((trace) => trace.rationaleCodes));
+    case "CONSTRUCTION_ID":
+      return uniqueNonEmpty(traces.flatMap((trace) => trace.constructionIds));
+    case "EVIDENCE_REF":
+      return uniqueNonEmpty([...(attempt?.evidenceRefs ?? []), ...proof.evidenceRefs]);
+    case "PROOF_EFFECT_FAMILY":
+      return uniqueNonEmpty(proof.effectFamilyIds);
+    case "PROOF_OBJECT_AWARE":
+      return [
+        proof.objectAwareProof?.required === true
+          && proof.objectAwareProof.verified
+          && proof.crossSourceSubjectProof?.required === true
+          && proof.crossSourceSubjectProof.verified
+          ? "VERIFIED"
+          : "NOT_VERIFIED",
+      ];
+    default:
+      return [];
+  }
+};
+
+const matchedMachineEvidenceValues = (
+  predicate: { readonly source: string; readonly match: string; readonly value: string },
+  attempt: PracticeAttemptV1 | null,
+  proof: PracticeMasteryProofV1,
+): readonly string[] => {
+  const expected = predicate.value.trim();
+  if (expected.length === 0) return [];
+  const values = machineEvidenceValues(predicate.source, attempt, proof);
+  return predicate.match === "PREFIX"
+    ? values.filter((value) => value.startsWith(expected))
+    : values.filter((value) => value === expected);
+};
+
+export const attestPracticeSkillUseV1 = (input: {
+  readonly skills: readonly GptLearnedSkillV1[];
+  readonly attempt: PracticeAttemptV1 | null;
+  readonly proof: PracticeMasteryProofV1;
+}): readonly PracticeSkillUseAttestationV1[] => input.skills.map((skill) => {
+  const reasons: string[] = [];
+  const attempt = input.attempt;
+  const causalModel = skill.causalModel;
+  const signature = skill.machineUseSignature;
+  const invariants = uniqueNonEmpty(causalModel?.invariants ?? []);
+  let matchedInvariantCount = 0;
+
+  if (skill.maturity !== "TRANSFER_VERIFIED") {
+    reasons.push("Skill is not retained as TRANSFER_VERIFIED.");
+  }
+  if (attempt === null) {
+    reasons.push("No persisted Practice attempt is available for machine skill-use attestation.");
+  } else if (attempt.renderRef !== input.proof.finalRenderRef) {
+    reasons.push("Persisted Practice attempt does not match the certified final render.");
+  }
+  if (causalModel === undefined || invariants.length === 0) {
+    reasons.push("Skill has no retained causal invariants to verify.");
+  }
+  if (signature === undefined
+    || signature.schema !== "editflow.gpt-skill-machine-use-signature.v1") {
+    reasons.push("Skill has no machine-use signature.");
+  }
+
+  const signatureHasConstructionBinding = signature?.invariantRules.some((rule) =>
+    rule.evidence.some((predicate) => predicate.source === "CONSTRUCTION_ID")) ?? false;
+  if (signature !== undefined && !signatureHasConstructionBinding) {
+    reasons.push(
+      "Machine-use signature does not bind the skill to persisted reconstruction construction evidence.",
+    );
+  }
+  if (attempt !== null && attempt.evidenceRefs.length === 0) {
+    reasons.push("Practice attempt contains no retained AE/runtime evidence refs.");
+  }
+
+  const matchedConstructionIds: string[] = [];
+  if (causalModel !== undefined && signature !== undefined) {
+    const invariantSet = new Set(invariants);
+    const malformedRules = signature.invariantRules.filter((rule) =>
+      !invariantSet.has(rule.invariant.trim()) || rule.evidence.length === 0);
+    if (malformedRules.length > 0) {
+      reasons.push("Machine-use signature contains malformed or non-causal invariant rules.");
+    }
+    for (const invariant of invariants) {
+      const rules = signature.invariantRules.filter(
+        (rule) => rule.invariant.trim() === invariant,
+      );
+      if (rules.length === 0) {
+        reasons.push("Machine-use signature has no rule for causal invariant: " + invariant);
+        continue;
+      }
+      const matchedRules = rules.map((rule) => ({
+        rule,
+        matchedValues: rule.evidence.map((predicate) =>
+          matchedMachineEvidenceValues(predicate, attempt, input.proof)),
+      })).filter((candidate) =>
+        candidate.matchedValues.every((values) => values.length > 0));
+      const selected = matchedRules.find((candidate) =>
+        candidate.rule.evidence.some((predicate) => predicate.source === "CONSTRUCTION_ID"))
+        ?? matchedRules[0];
+      if (selected === undefined) {
+        reasons.push("Causal invariant lacks matching machine evidence: " + invariant);
+        continue;
+      }
+      matchedInvariantCount += 1;
+      selected.rule.evidence.forEach((predicate, index) => {
+        if (predicate.source === "CONSTRUCTION_ID") {
+          matchedConstructionIds.push(...(selected.matchedValues[index] ?? []));
+        }
+      });
+    }
+  }
+
+  const boundConstructionIds = uniqueNonEmpty(matchedConstructionIds);
+  if (signature !== undefined && boundConstructionIds.length === 0) {
+    reasons.push("No machine-use rule matched persisted construction evidence for this skill.");
+  }
+  const evidenceRefs = uniqueNonEmpty([
+    ...(attempt?.evidenceRefs ?? []),
+    ...input.proof.evidenceRefs,
+  ]);
+  const verified = reasons.length === 0
+    && invariants.length > 0
+    && matchedInvariantCount === invariants.length
+    && boundConstructionIds.length > 0;
+  return {
+    skillId: skill.skillId,
+    verified,
+    matchedInvariantCount,
+    requiredInvariantCount: invariants.length,
+    matchedConstructionIds: verified ? boundConstructionIds : [],
+    evidenceRefs: verified ? evidenceRefs : [],
+    reasons: uniqueNonEmpty(reasons),
+  };
+});
 
 export const classifyPracticeMasteryScopeV1 = (
   prior: readonly PracticeMasteryRecordV1[],
@@ -49,8 +198,22 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
   readonly proof: PracticeMasteryProofV1;
   readonly proofRef: string;
   readonly appliedSkillIds?: readonly string[];
+  readonly skillUseAttestations?: readonly PracticeSkillUseAttestationV1[];
   readonly traceReasons?: readonly string[];
 }): PracticeHeldOutBenchmarkCaseV1 => {
+  const appliedSkillIds = uniqueNonEmpty(input.appliedSkillIds ?? []);
+  const skillUseAttestations = (input.skillUseAttestations ?? []).map((item) => ({
+    ...structuredClone(item),
+    evidenceRefs: uniqueNonEmpty(item.evidenceRefs),
+    reasons: uniqueNonEmpty(item.reasons),
+    matchedConstructionIds: uniqueNonEmpty(item.matchedConstructionIds),
+  }));
+  const verifiedSkillUseIds = uniqueNonEmpty(
+    skillUseAttestations.filter((item) => item.verified).map((item) => item.skillId),
+  );
+  const claimedWithoutMachineProof = appliedSkillIds
+    .filter((skillId) => !verifiedSkillUseIds.includes(skillId))
+    .map((skillId) => "Claimed skill use lacks machine attestation: " + skillId + ".");
   const objectAwareRequired = input.proof.objectAwareProof?.required === true;
   const objectProofReasons = objectAwareRequired
     && !input.proof.objectAwareProof!.verified
@@ -68,6 +231,7 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     ...input.proof.report.reasons,
     ...objectProofReasons,
     ...crossSourceSubjectReasons,
+    ...claimedWithoutMachineProof,
     ...(input.traceReasons ?? []),
   ].map((value) => value.trim()).filter(Boolean))];
   return {
@@ -79,9 +243,9 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       ? {}
       : { sourceMediaSha256: [...input.proof.sourceMediaSha256] }),
     effectFamilyIds: [...input.proof.effectFamilyIds],
-    appliedSkillIds: [...new Set((input.appliedSkillIds ?? [])
-      .map((skillId) => skillId.trim())
-      .filter(Boolean))],
+    appliedSkillIds,
+    verifiedSkillUseIds,
+    skillUseAttestations,
     objectAwareVerified: objectAwareRequired
       && input.proof.objectAwareProof!.verified
       && crossSourceSubjectVerified,
@@ -94,6 +258,7 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       ...input.proof.evidenceRefs,
       ...(input.proof.objectAwareProof?.evidenceRefs ?? []),
       ...(input.proof.crossSourceSubjectProof?.evidenceRefs ?? []),
+      ...skillUseAttestations.flatMap((item) => item.evidenceRefs),
     ].map((value) => value.trim()).filter(Boolean))],
   };
 };
@@ -228,13 +393,45 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       const normalized = ref.trim();
       if (normalized.length > 0) evidenceRefs.add(normalized);
     }
-    const appliedSkillIds = [...new Set((item.appliedSkillIds ?? [])
-      .map((skillId) => skillId.trim())
-      .filter(Boolean))];
-    for (const skillId of appliedSkillIds) {
+    const claimedSkillIds = uniqueNonEmpty(item.appliedSkillIds ?? []);
+    for (const skillId of claimedSkillIds) {
       if (!requiredLearnedSkills.has(skillId)) {
         reasons.push(
-          "Held-out case references a skill that is not retained as TRANSFER_VERIFIED: "
+          "Held-out case claims a skill that is not retained as TRANSFER_VERIFIED: "
+            + item.caseId + " -> " + skillId + ".",
+        );
+      }
+    }
+    const validAttestations = (item.skillUseAttestations ?? []).filter((attestation) => {
+      if (!attestation.verified) return false;
+      const structurallyValid = attestation.requiredInvariantCount > 0
+        && attestation.matchedInvariantCount === attestation.requiredInvariantCount
+        && attestation.matchedConstructionIds.length > 0
+        && attestation.evidenceRefs.length > 0
+        && attestation.reasons.length === 0;
+      if (!structurallyValid) {
+        reasons.push(
+          "Held-out case contains an invalid verified skill-use attestation: "
+            + item.caseId + " -> " + attestation.skillId + ".",
+        );
+      }
+      return structurallyValid;
+    });
+    const machineVerifiedSkillIds = uniqueNonEmpty(
+      validAttestations.map((attestation) => attestation.skillId),
+    );
+    const recordedVerifiedSkillIds = uniqueNonEmpty(item.verifiedSkillUseIds ?? []);
+    if (JSON.stringify([...machineVerifiedSkillIds].sort())
+      !== JSON.stringify([...recordedVerifiedSkillIds].sort())) {
+      reasons.push(
+        "Held-out case verified-skill index does not match its machine attestations: "
+          + item.caseId + ".",
+      );
+    }
+    for (const skillId of machineVerifiedSkillIds) {
+      if (!requiredLearnedSkills.has(skillId)) {
+        reasons.push(
+          "Held-out case machine-attests a skill that is not retained as TRANSFER_VERIFIED: "
             + item.caseId + " -> " + skillId + ".",
         );
       }
@@ -250,7 +447,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
         const normalized = family.trim();
         if (normalized.length > 0) verifiedEffectFamilies.add(normalized);
       }
-      for (const skillId of appliedSkillIds) {
+      for (const skillId of machineVerifiedSkillIds) {
         if (requiredLearnedSkills.has(skillId)) verifiedLearnedSkills.add(skillId);
       }
       if (item.objectAwareVerified) objectAwareCaseCount += 1;

@@ -26,6 +26,8 @@ import {
   type GptOrchestrationModeV1,
   type GptResearchSourceV1,
   type GptSkillCausalModelV1,
+  type GptSkillMachineUseSignatureV1,
+  PracticeLearningMemoryFileV1,
   type PracticeHeldOutBenchmarkCaseV1,
   type PracticeLearningAllocationResultV1,
   type PracticeMasteryRecordV1,
@@ -342,6 +344,66 @@ const requiredCausalModel = (
   };
 };
 
+const optionalMachineUseSignature = (
+  body: Record<string, unknown>,
+  name: string,
+): GptSkillMachineUseSignatureV1 | undefined => {
+  const record = optionalRecord(body, name);
+  if (record === undefined) return undefined;
+  const rawRules = record["invariantRules"];
+  if (!Array.isArray(rawRules) || rawRules.length === 0) {
+    throw new HttpError(400, name + ".invariantRules must contain at least one rule.");
+  }
+  return {
+    schema: requiredEnum(
+      record,
+      "schema",
+      ["editflow.gpt-skill-machine-use-signature.v1"] as const,
+    ),
+    invariantRules: rawRules.map((rule, ruleIndex) => {
+      if (rule === null || typeof rule !== "object" || Array.isArray(rule)) {
+        throw new HttpError(
+          400,
+          name + ".invariantRules[" + String(ruleIndex) + "] must be an object.",
+        );
+      }
+      const ruleRecord = rule as Record<string, unknown>;
+      const rawEvidence = ruleRecord["evidence"];
+      if (!Array.isArray(rawEvidence) || rawEvidence.length === 0) {
+        throw new HttpError(
+          400,
+          name + ".invariantRules[" + String(ruleIndex) + "].evidence must not be empty.",
+        );
+      }
+      return {
+        invariant: requiredString(ruleRecord, "invariant"),
+        evidence: rawEvidence.map((predicate, predicateIndex) => {
+          if (predicate === null || typeof predicate !== "object" || Array.isArray(predicate)) {
+            throw new HttpError(
+              400,
+              name + ".invariantRules[" + String(ruleIndex) + "].evidence["
+                + String(predicateIndex) + "] must be an object.",
+            );
+          }
+          const predicateRecord = predicate as Record<string, unknown>;
+          return {
+            source: requiredEnum(predicateRecord, "source", [
+              "CUE_ID",
+              "RATIONALE_CODE",
+              "CONSTRUCTION_ID",
+              "EVIDENCE_REF",
+              "PROOF_EFFECT_FAMILY",
+              "PROOF_OBJECT_AWARE",
+            ] as const),
+            match: requiredEnum(predicateRecord, "match", ["EXACT", "PREFIX"] as const),
+            value: requiredString(predicateRecord, "value"),
+          };
+        }),
+      };
+    }),
+  };
+};
+
 const optionalResearchSources = (
   body: Record<string, unknown>,
   name: string,
@@ -433,6 +495,7 @@ const optionalLearnedSkill = (
   if (record === undefined) return undefined;
   const adaptationNotes = optionalString(record, "adaptationNotes");
   const causalModel = optionalRecord(record, "causalModel");
+  const machineUseSignature = optionalMachineUseSignature(record, "machineUseSignature");
   return {
     skillId: requiredString(record, "skillId"),
     title: requiredString(record, "title"),
@@ -453,6 +516,7 @@ const optionalLearnedSkill = (
         transferCriteria: stringArray(causalModel, "transferCriteria", true),
       },
     }),
+    ...(machineUseSignature === undefined ? {} : { machineUseSignature }),
     researchSources: optionalResearchSources(record, "researchSources") ?? [],
     evidenceRefs: stringArray(record, "evidenceRefs", false),
     learnedAt: optionalString(record, "learnedAt") ?? new Date().toISOString(),
@@ -1219,6 +1283,16 @@ export class PracticePanelServerV1 {
             const appliedSkillIds = [...new Set(sessionEvents
               .filter((event) => event.outcome === "SUCCESS" || event.outcome === "IMPROVED")
               .flatMap((event) => event.appliedSkillIds ?? []))];
+            const learningMemoryFile = new PracticeLearningMemoryFileV1(
+              this.config.learningMemoryFilePath,
+            );
+            const retainedEpisodes = await learningMemoryFile.snapshot();
+            const retainedEpisode = retainedEpisodes.find(
+              (episode) => episode.sessionId === pending.sessionId,
+            );
+            const certifiedAttempt = retainedEpisode?.attempts.find(
+              (attempt) => attempt.renderRef === verification.proof.finalRenderRef,
+            ) ?? null;
             const certification = recordPracticeHeldOutCertificationV1({
               registry,
               editTypeId: pending.editTypeId,
@@ -1226,6 +1300,7 @@ export class PracticePanelServerV1 {
               proof: verification.proof,
               proofRef: verification.proofRef,
               appliedSkillIds,
+              attempt: certifiedAttempt,
               repositoryRoot: this.config.repositoryRoot,
               traceReasons,
             });

@@ -220,6 +220,13 @@ test("SKILL_COMMIT replaces GPT placeholders with compiler-backed tutorial seman
           repairStrategies: ["Adjust the construction."],
           transferCriteria: ["Verify on different footage."],
         },
+        machineUseSignature: {
+          schema: "editflow.gpt-skill-machine-use-signature.v1",
+          invariantRules: [{
+            invariant: "Preserve the visible result.",
+            evidence: [{ source: "CONSTRUCTION_ID", match: "PREFIX", value: "graph:" }],
+          }],
+        },
         researchSources: [],
         evidenceRefs: ["render:impact-push"],
         learnedAt: "2026-09-23T23:00:00.000Z",
@@ -247,6 +254,16 @@ test("SKILL_COMMIT replaces GPT placeholders with compiler-backed tutorial seman
       maturity: "AE_PROVEN",
       constructionPattern: "GPT placeholder that must not survive.",
       capabilityIds: [],
+      machineUseSignature: {
+        schema: "editflow.gpt-skill-machine-use-signature.v1",
+        invariantRules: source.tutorialCompilation.causalModel.invariants.map((invariant) => ({
+          invariant,
+          evidence: [
+            { source: "CUE_ID", match: "PREFIX", value: "object-relation:" },
+            { source: "CONSTRUCTION_ID", match: "PREFIX", value: "graph:" },
+          ],
+        })),
+      },
       researchSources: [],
       evidenceRefs: ["render:impact-push", "comparison:impact-push"],
       learnedAt: "2026-09-23T23:00:00.000Z",
@@ -260,6 +277,10 @@ test("SKILL_COMMIT replaces GPT placeholders with compiler-backed tutorial seman
   assert.ok(committed.learnedSkill.causalModel.triggerConditions.length > 0);
   assert.ok(committed.learnedSkill.causalModel.invariants.length > 0);
   assert.ok(committed.learnedSkill.causalModel.transferCriteria.length > 0);
+  assert.equal(
+    committed.learnedSkill.machineUseSignature.invariantRules[0].invariant,
+    "Transform target remains the intended hero layer.",
+  );
   assert.equal(committed.learnedSkill.researchSources[0].sourceId, source.sourceId);
   assert.ok(committed.learnedSkill.evidenceRefs.includes("render:impact-push"));
   assert.ok(committed.learnedSkill.evidenceRefs.includes("comparison:impact-push"));

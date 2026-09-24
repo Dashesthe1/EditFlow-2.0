@@ -101,11 +101,17 @@ floors, retain proof evidence, and include object-aware verification before ROBU
 be recorded. The benchmark also derives an effect-family target set from the Edit Type's
 TRANSFER_VERIFIED mastery records and requires at least one passing held-out case for every
 mastered family. It separately derives the retained TRANSFER_VERIFIED learned-skill target
-set. A held-out case credits a learned skill only when an evidence-bearing SUCCESS/IMPROVED
-`AE_ACTION` or `RESULT` audit event explicitly names that exact retained `skillId` via
-`appliedSkillIds`, and the case itself passes the machine gate. Unknown/unretained skill IDs
-fail closed; a failed case never counts as family or skill coverage. For each mastered
-family, the matching canonical M6.9 cases must also pass their exact-reference, direct-A/B,
+set. `appliedSkillIds` remain non-authoritative diagnostic claims only. A held-out case
+credits a learned skill only when the exact persisted Practice attempt that produced the
+certified render independently satisfies every retained causal invariant through that skill's
+`machineUseSignature`. Signature predicates can bind to decision-trace cue IDs, rationale
+codes, construction IDs, retained AE/runtime evidence refs, proof effect-family evidence, or
+object-aware proof. Verified use additionally requires retained construction IDs and evidence
+for that exact render. A missing signature, missing/render-mismatched attempt, unsatisfied
+invariant, malformed attestation, or unknown/unretained skill ID fails closed; prose claims
+cannot substitute for machine evidence. A failed case never counts as family or skill
+coverage. For each mastered family, the matching canonical M6.9 cases must also pass their
+exact-reference, direct-A/B,
 machine-comparison, transfer-axis, degraded-case-rejection, and proof-derived maturity gates.
 The panel and Current-AE runner load retained authority from
 `proofs/manifests/m6-professional-benchmark-evidence-v1.json`; an absent manifest is treated

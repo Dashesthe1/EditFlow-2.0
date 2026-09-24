@@ -504,6 +504,32 @@ export interface GptSkillCausalModelV1 {
   readonly transferCriteria: readonly string[];
 }
 
+export type GptSkillMachineEvidenceSourceV1 =
+  | "CUE_ID"
+  | "RATIONALE_CODE"
+  | "CONSTRUCTION_ID"
+  | "EVIDENCE_REF"
+  | "PROOF_EFFECT_FAMILY"
+  | "PROOF_OBJECT_AWARE";
+
+export type GptSkillMachineEvidenceMatchV1 = "EXACT" | "PREFIX";
+
+export interface GptSkillMachineEvidencePredicateV1 {
+  readonly source: GptSkillMachineEvidenceSourceV1;
+  readonly match: GptSkillMachineEvidenceMatchV1;
+  readonly value: string;
+}
+
+export interface GptSkillMachineInvariantRuleV1 {
+  readonly invariant: string;
+  readonly evidence: readonly GptSkillMachineEvidencePredicateV1[];
+}
+
+export interface GptSkillMachineUseSignatureV1 {
+  readonly schema: "editflow.gpt-skill-machine-use-signature.v1";
+  readonly invariantRules: readonly GptSkillMachineInvariantRuleV1[];
+}
+
 export interface GptLearnedSkillV1 {
   readonly skillId: string;
   readonly title: string;
@@ -513,6 +539,7 @@ export interface GptLearnedSkillV1 {
   readonly capabilityIds: readonly string[];
   readonly adaptationNotes?: string;
   readonly causalModel?: GptSkillCausalModelV1;
+  readonly machineUseSignature?: GptSkillMachineUseSignatureV1;
   readonly provenSessionIds?: readonly string[];
   readonly researchSources: readonly GptResearchSourceV1[];
   readonly evidenceRefs: readonly string[];
@@ -539,6 +566,16 @@ export interface PracticeMasteryRecordV1 {
   readonly verifiedAt: string;
 }
 
+export interface PracticeSkillUseAttestationV1 {
+  readonly skillId: string;
+  readonly verified: boolean;
+  readonly matchedInvariantCount: number;
+  readonly requiredInvariantCount: number;
+  readonly matchedConstructionIds: readonly string[];
+  readonly evidenceRefs: readonly string[];
+  readonly reasons: readonly string[];
+}
+
 export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly caseId: string;
   readonly sessionId: string;
@@ -546,8 +583,11 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly sourceFingerprint: string;
   readonly sourceMediaSha256?: readonly string[];
   readonly effectFamilyIds: readonly string[];
-  /** Exact retained TRANSFER_VERIFIED skills explicitly exercised in the held-out audit trace. */
+  /** Non-authoritative GPT audit claims retained for diagnostics only. */
   readonly appliedSkillIds: readonly string[];
+  /** TRANSFER_VERIFIED skills independently proven from persisted Practice/AE evidence. */
+  readonly verifiedSkillUseIds: readonly string[];
+  readonly skillUseAttestations: readonly PracticeSkillUseAttestationV1[];
   readonly objectAwareVerified: boolean;
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;

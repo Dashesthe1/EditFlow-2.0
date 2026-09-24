@@ -97,6 +97,13 @@ const normalizedGptLearning = (
       ...structuredClone(item),
       effectFamilyIds: uniqueStrings(item.effectFamilyIds ?? []),
       appliedSkillIds: uniqueStrings(item.appliedSkillIds ?? []),
+      verifiedSkillUseIds: uniqueStrings(item.verifiedSkillUseIds ?? []),
+      skillUseAttestations: (item.skillUseAttestations ?? []).map((attestation) => ({
+        ...structuredClone(attestation),
+        matchedConstructionIds: uniqueStrings(attestation.matchedConstructionIds ?? []),
+        evidenceRefs: uniqueStrings(attestation.evidenceRefs ?? []),
+        reasons: uniqueStrings(attestation.reasons ?? []),
+      })),
       reasons: uniqueStrings(item.reasons ?? []),
       evidenceRefs: uniqueStrings(item.evidenceRefs ?? []),
     })),
@@ -129,6 +136,19 @@ const normalizedGptLearning = (
           failureSignals: uniqueStrings(skill.causalModel.failureSignals ?? []),
           repairStrategies: uniqueStrings(skill.causalModel.repairStrategies ?? []),
           transferCriteria: uniqueStrings(skill.causalModel.transferCriteria ?? []),
+        },
+      }),
+      ...(skill.machineUseSignature === undefined ? {} : {
+        machineUseSignature: {
+          schema: "editflow.gpt-skill-machine-use-signature.v1" as const,
+          invariantRules: (skill.machineUseSignature.invariantRules ?? []).map((rule) => ({
+            invariant: rule.invariant.trim(),
+            evidence: (rule.evidence ?? []).map((predicate) => ({
+              source: predicate.source,
+              match: predicate.match,
+              value: predicate.value.trim(),
+            })),
+          })),
         },
       }),
       researchSources: structuredClone(skill.researchSources ?? []),
