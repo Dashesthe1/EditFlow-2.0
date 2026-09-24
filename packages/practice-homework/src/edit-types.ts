@@ -16,6 +16,7 @@ import type {
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkReportV1,
   PracticeMasteryRecordV1,
+  PracticeRetainedTruthSuiteReportV1,
   PracticeSkillUseAttestationV1,
 } from "./contracts.js";
 import { derivePracticeMaturityStageV1 } from "./mastery.js";
@@ -86,6 +87,7 @@ const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   masteryRecords: [],
   heldOutCases: [],
   heldOutBenchmarks: [],
+  retainedTruthSuiteReports: [],
   eventCount: 0,
   successLessons: [],
   failureAvoidanceLessons: [],
@@ -134,6 +136,16 @@ const normalizedGptLearning = (
       verifiedLearnedSkillIds: uniqueStrings(report.verifiedLearnedSkillIds ?? []),
       missingLearnedSkillIds: uniqueStrings(report.missingLearnedSkillIds ?? []),
       learnedSkillCoverageVerified: report.learnedSkillCoverageVerified === true,
+    })),
+    retainedTruthSuiteReports: (value.retainedTruthSuiteReports ?? []).map((report) => ({
+      ...structuredClone(report),
+      reasons: uniqueStrings(report.reasons ?? []),
+      evidenceRefs: uniqueStrings(report.evidenceRefs ?? []),
+      cases: (report.cases ?? []).map((item) => ({
+        ...structuredClone(item),
+        reasons: uniqueStrings(item.reasons ?? []),
+        evidenceRefs: uniqueStrings(item.evidenceRefs ?? []),
+      })),
     })),
     eventCount: Math.max(0, Math.floor(value.eventCount)),
     successLessons: uniqueStrings(value.successLessons),
@@ -679,6 +691,55 @@ export class EditTypeRegistryV1 {
     return structuredClone(updated);
   }
 
+  recordRetainedTruthSuite(
+    report: PracticeRetainedTruthSuiteReportV1,
+  ): EditTypeProfileV1 {
+    const profile = this.#profiles.get(report.editTypeId);
+    if (profile === undefined) {
+      throw new TypeError("Unknown Edit Type: " + report.editTypeId);
+    }
+    if (report.schema !== "editflow.practice-retained-truth-suite-report.v1") {
+      throw new TypeError("Unsupported Practice retained truth-suite schema.");
+    }
+    if (report.evidenceRefs.length === 0) {
+      throw new TypeError(
+        "Retained truth-suite evidence is required, including failed scene-match evidence.",
+      );
+    }
+    if (report.certified) {
+      const certificationIntegrity = report.mode === "CERTIFICATION"
+        && report.caseCount >= 20
+        && report.caseCount <= 30
+        && report.passedCaseCount === report.caseCount
+        && report.distinctCaseIdCount === report.caseCount
+        && report.distinctReferenceCount === report.caseCount
+        && report.distinctFinishSha256Count === report.caseCount
+        && report.independentTruthCaseCount === report.caseCount
+        && report.fullLengthTruthCaseCount === report.caseCount
+        && report.sceneErrorCount === 0
+        && report.reasons.length === 0;
+      if (!certificationIntegrity) {
+        throw new TypeError(
+          "Certified Practice truth-suite report does not satisfy fail-closed integrity gates.",
+        );
+      }
+    }
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const retained = learning.retainedTruthSuiteReports.filter((item) =>
+      item.evaluatedAt !== report.evaluatedAt);
+    const updated: EditTypeProfileV1 = {
+      ...profile,
+      revision: profile.revision + 1,
+      gptLearning: {
+        ...learning,
+        retainedTruthSuiteReports: [...retained, structuredClone(report)],
+        lastUpdatedAt: report.evaluatedAt,
+      },
+    };
+    this.#profiles.set(report.editTypeId, updated);
+    return structuredClone(updated);
+  }
+
   allocateEpisode(
     episode: PracticeEpisodeV1,
     editTypeId: string,
@@ -777,6 +838,7 @@ export class EditTypeRegistryV1 {
       masteryRecords: transferRecords,
       heldOutCases: learning.heldOutCases,
       heldOutBenchmarks: learning.heldOutBenchmarks,
+      retainedTruthSuiteReports: learning.retainedTruthSuiteReports,
       eventCount: learning.eventCount,
       successLessons: [],
       failureAvoidanceLessons: [],

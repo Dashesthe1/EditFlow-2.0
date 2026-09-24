@@ -46,6 +46,14 @@ export {
   createPracticeM6CurrentAeAssemblyV1,
   createPracticeM6CurrentAeTrainingRuntimeV1,
 } from "./practice-training-runtime.js";
+export {
+  evaluatePracticeRetainedTruthSuiteManifestV1,
+} from "./practice-retained-truth-suite.js";
+export type {
+  PracticeRetainedTruthManifestCaseV1,
+  PracticeRetainedTruthManifestSourceV1,
+  PracticeRetainedTruthSuiteManifestV1,
+} from "./practice-retained-truth-suite.js";
 export type {
   PracticeM6CurrentAeAssemblyV1,
   PracticeM6CurrentAeAssemblyConfigV1,

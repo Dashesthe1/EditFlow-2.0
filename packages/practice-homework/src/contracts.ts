@@ -824,6 +824,132 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly evaluatedAt: string;
 }
 
+export type PracticeRetainedTruthSuiteModeV1 = "CERTIFICATION" | "MEASURE_ONLY";
+
+export type PracticeRetainedTruthAuthorityV1 =
+  | "INDEPENDENT_HUMAN"
+  | "INDEPENDENT_VERIFIER";
+
+export type PracticeRetainedTruthDifficultyV1 =
+  | "FAST_CUTS"
+  | "NEAR_DUPLICATE_SOURCES"
+  | "REVERSE_OR_REWIND"
+  | "LOW_INFORMATION"
+  | "STRONG_CAMERA_MOTION"
+  | "OCCLUSION"
+  | "IDENTITY_AMBIGUITY"
+  | "HEAVY_EFFECT_OBSCURATION"
+  | "REPEATED_SCENERY";
+
+export type PracticeSceneTruthDiagnosticKindV1 =
+  | "MISSING_MATCH"
+  | "UNEXPECTED_MATCH"
+  | "DUPLICATE_MATCH"
+  | "WRONG_SOURCE"
+  | "SOURCE_RANGE_MISMATCH"
+  | "DIRECTION_MISMATCH"
+  | "HIGH_CONFIDENCE_FALSE_MATCH"
+  | "AMBIGUOUS_FALSE_MATCH";
+
+export interface PracticeRetainedShotTruthV1 {
+  readonly shotId: string;
+  readonly order: number;
+  readonly referenceStartMs: number;
+  readonly referenceEndMs: number;
+  readonly expectedSourceId: string;
+  readonly expectedSourceStartMs: number;
+  readonly expectedSourceEndMs: number;
+  readonly expectedDirection: "FORWARD" | "REVERSE";
+  readonly sourceToleranceMs?: number;
+  readonly truthEvidenceRefs: readonly string[];
+}
+
+export interface PracticeRetainedTruthCaseV1 {
+  readonly caseId: string;
+  readonly referenceId: string;
+  readonly finishSha256: string;
+  readonly referenceDurationMs: number;
+  readonly sourceMediaSha256: readonly string[];
+  readonly truthAuthority: PracticeRetainedTruthAuthorityV1;
+  readonly difficultyTags: readonly PracticeRetainedTruthDifficultyV1[];
+  readonly shots: readonly PracticeRetainedShotTruthV1[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeRetainedTruthObservationV1 {
+  readonly caseId: string;
+  readonly matches: readonly PracticeSceneMatchV1[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeRetainedTruthSuiteCaseInputV1 {
+  readonly truth: PracticeRetainedTruthCaseV1;
+  readonly observation: PracticeRetainedTruthObservationV1;
+}
+
+export interface PracticeSceneTruthDiagnosticV1 {
+  readonly kind: PracticeSceneTruthDiagnosticKindV1;
+  readonly caseId: string;
+  readonly shotId?: string;
+  readonly expectedSourceId?: string;
+  readonly observedSourceId?: string;
+  readonly observedConfidence?: number;
+  readonly message: string;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeRetainedTruthCaseReportV1 {
+  readonly caseId: string;
+  readonly referenceId: string;
+  readonly finishSha256: string;
+  readonly truthCoverage: number;
+  readonly fullLengthTruthVerified: boolean;
+  readonly independentTruthVerified: boolean;
+  readonly difficultyVerified: boolean;
+  readonly matchedTruthShotCount: number;
+  readonly sceneErrorCount: number;
+  readonly diagnostics: readonly PracticeSceneTruthDiagnosticV1[];
+  readonly passed: boolean;
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeRetainedTruthSuitePolicyV1 {
+  readonly minimumCases: number;
+  readonly maximumCases: number;
+  readonly minimumTruthCoverage: number;
+  readonly minimumDifficultyKinds: number;
+  readonly sourceRangeToleranceMs: number;
+  readonly highConfidenceFalseMatchThreshold: number;
+  readonly ambiguousFalseMatchMarginThreshold: number;
+}
+
+export interface PracticeRetainedTruthSuiteReportV1 {
+  readonly schema: "editflow.practice-retained-truth-suite-report.v1";
+  readonly editTypeId: string;
+  readonly mode: PracticeRetainedTruthSuiteModeV1;
+  readonly policy: PracticeRetainedTruthSuitePolicyV1;
+  readonly caseCount: number;
+  readonly passedCaseCount: number;
+  readonly distinctCaseIdCount: number;
+  readonly distinctReferenceCount: number;
+  readonly distinctFinishSha256Count: number;
+  readonly independentTruthCaseCount: number;
+  readonly fullLengthTruthCaseCount: number;
+  readonly difficultyKindCount: number;
+  readonly difficultyKinds: readonly PracticeRetainedTruthDifficultyV1[];
+  readonly sceneErrorCount: number;
+  readonly diagnosticCounts: readonly Readonly<{
+    kind: PracticeSceneTruthDiagnosticKindV1;
+    count: number;
+  }>[];
+  readonly certified: boolean;
+  readonly reasons: readonly string[];
+  readonly cases: readonly PracticeRetainedTruthCaseReportV1[];
+  readonly evidenceRefs: readonly string[];
+  readonly evaluatedAt: string;
+}
+
 export interface EditTypeGptLearningSummaryV1 {
   readonly practiceSessionIds: readonly string[];
   readonly proCreationSessionIds: readonly string[];
@@ -831,6 +957,7 @@ export interface EditTypeGptLearningSummaryV1 {
   readonly masteryRecords: readonly PracticeMasteryRecordV1[];
   readonly heldOutCases: readonly PracticeHeldOutBenchmarkCaseV1[];
   readonly heldOutBenchmarks: readonly PracticeHeldOutBenchmarkReportV1[];
+  readonly retainedTruthSuiteReports: readonly PracticeRetainedTruthSuiteReportV1[];
   readonly eventCount: number;
   readonly successLessons: readonly string[];
   readonly failureAvoidanceLessons: readonly string[];

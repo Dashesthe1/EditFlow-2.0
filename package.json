@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit --incremental --tsBuildInfoFile .tmp/typecheck.tsbuildinfo",
     "build:test-runtime": "tsc -p tsconfig.runtime.json --incremental --tsBuildInfoFile .tmp/runtime.tsbuildinfo",
     "practice:panel": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/run-practice-panel.ps1",
+    "practice:truth-suite": "npm run build:test-runtime && node .tmp/runtime/apps/desktop-host/src/practice-retained-truth-suite-cli.js",
     "test": "npm run build:test-runtime && node --test tests/*.test.mjs",
     "check": "npm run validate:schemas && npm run typecheck && npm test"
   },

@@ -16,3 +16,4 @@ export * from "./subject-identity.js";
 export * from "./subject-identity-memory.js";
 export * from "./mastery.js";
 export * from "./material-novelty.js";
+export * from "./retained-truth-suite.js";
