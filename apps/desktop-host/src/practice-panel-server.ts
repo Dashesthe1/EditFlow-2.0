@@ -15,6 +15,7 @@ import {
   EditTypeRegistryFileV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  attestPracticeSkillUseV1,
   compileGptTutorialResearchSourceV1,
   buildPracticeMasteryRecordV1,
   type GptCapabilityGapV1,
@@ -35,6 +36,7 @@ import {
   type PracticeMediaInputV1,
   type PracticeRunRoleV1,
   type PracticeSessionResultV1,
+  type PracticeSkillUseAttestationV1,
   type ProCreationPreparationResultV1,
 } from "../../../packages/practice-homework/src/index.js";
 import type { TutorialDeepAnalysisPacketV1 } from "../../../packages/tutorial-learning/src/index.js";
@@ -1303,6 +1305,7 @@ export class PracticePanelServerV1 {
     const registry = await file.load();
     const sessionEvents = await this.#gptStore.eventsForSession(pending.sessionId);
     let masteryRecord: PracticeMasteryRecordV1 | undefined;
+    let transferSkillUseAttestations: readonly PracticeSkillUseAttestationV1[] = [];
     let masteryScope: PracticeMasteryScopeV1 | null = null;
     let masteryProofRef: string | null = null;
     let masteryReasons: readonly string[] = [];
@@ -1395,6 +1398,18 @@ export class PracticePanelServerV1 {
               proofRef: verification.proofRef,
               attempt: masteredAttempt,
             });
+            if (masteryRecord.scope === "TRANSFER_VERIFIED") {
+              const transferCandidates = (
+                registry.knowledge(pending.editTypeId)?.gptLearning.learnedSkills ?? []
+              ).filter((skill) =>
+                skill.maturity === "AE_PROVEN" || skill.maturity === "TRANSFER_VERIFIED");
+              transferSkillUseAttestations = attestPracticeSkillUseV1({
+                skills: transferCandidates,
+                attempt: masteredAttempt,
+                proof: verification.proof,
+                acceptedMaturities: ["AE_PROVEN", "TRANSFER_VERIFIED"],
+              });
+            }
             masteryScope = masteryRecord.scope;
             masteryReasons = [];
           }
@@ -1435,14 +1450,6 @@ export class PracticePanelServerV1 {
       finalSummary: summary,
       ...(finalRenderRef === undefined ? {} : { finalRenderRef }),
     });
-    const transferVerifiedSkillIds = masteryRecord?.scope === "TRANSFER_VERIFIED"
-      ? [...new Set(sessionEvents.flatMap((event) =>
-        event.stage === "SKILL_COMMIT"
-          && event.outcome === "SUCCESS"
-          && event.learnedSkill !== undefined
-          ? [event.learnedSkill.skillId]
-          : []))]
-      : [];
     if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
       registry.completeGptLearningSession({
         editTypeId: assignment.editTypeId,
@@ -1450,7 +1457,9 @@ export class PracticePanelServerV1 {
         mode: assignment.mode,
         mastered: assignment.status === "COMPLETED" && masteryRecord !== undefined,
         ...(masteryRecord === undefined ? {} : { masteryRecord }),
-        ...(transferVerifiedSkillIds.length === 0 ? {} : { transferVerifiedSkillIds }),
+        ...(transferSkillUseAttestations.length === 0
+          ? {}
+          : { transferSkillUseAttestations }),
       });
     }
     await file.save(registry);

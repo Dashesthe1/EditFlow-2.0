@@ -9,6 +9,7 @@ import {
 import type {
   EditTypeProfileV1,
   GptLearnedSkillV1,
+  GptSkillMaturityV1,
   PracticeAttemptV1,
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkPolicyV1,
@@ -77,16 +78,22 @@ export const attestPracticeSkillUseV1 = (input: {
   readonly skills: readonly GptLearnedSkillV1[];
   readonly attempt: PracticeAttemptV1 | null;
   readonly proof: PracticeMasteryProofV1;
+  readonly acceptedMaturities?: readonly GptSkillMaturityV1[];
 }): readonly PracticeSkillUseAttestationV1[] => input.skills.map((skill) => {
   const reasons: string[] = [];
   const attempt = input.attempt;
   const causalModel = skill.causalModel;
   const signature = skill.machineUseSignature;
   const invariants = uniqueNonEmpty(causalModel?.invariants ?? []);
+  const acceptedMaturities: readonly GptSkillMaturityV1[] =
+    input.acceptedMaturities ?? ["TRANSFER_VERIFIED"];
   let matchedInvariantCount = 0;
 
-  if (skill.maturity !== "TRANSFER_VERIFIED") {
-    reasons.push("Skill is not retained as TRANSFER_VERIFIED.");
+  if (!acceptedMaturities.includes(skill.maturity)) {
+    reasons.push(
+      "Skill maturity is not eligible for machine skill-use attestation: "
+        + skill.maturity + ".",
+    );
   }
   if (attempt === null) {
     reasons.push("No persisted Practice attempt is available for machine skill-use attestation.");

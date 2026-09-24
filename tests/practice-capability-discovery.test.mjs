@@ -8,6 +8,7 @@ import {
   EditTypeRegistryV1,
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
+  attestPracticeSkillUseV1,
   buildGptOrchestrationChatMessageV1,
   normalizePracticeVerificationPolicyV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
@@ -561,6 +562,29 @@ test("Practice can discover, prove, and retain a previously missing editing skil
   assert.doesNotMatch(proMessage, /skill:temporal-rewind:v1/);
   assert.match(proMessage, /only TRANSFER_VERIFIED learned skills/i);
 
+  const [transferSkillUseAttestation] = attestPracticeSkillUseV1({
+    skills: [learnedSkill],
+    acceptedMaturities: ["AE_PROVEN", "TRANSFER_VERIFIED"],
+    attempt: {
+      renderRef: "render:mastered",
+      decisionTraces: [{
+        cueIds: ["rewind-span-ms:420"],
+        rationaleCodes: ["REFERENCE_REWIND_MEASURED"],
+        constructionIds: ["construction:temporal-rewind:transfer-proof"],
+      }],
+      evidenceRefs: [
+        "render:temporal-rewind-transfer-proof",
+        "comparison:temporal-rewind-transfer-proof",
+      ],
+    },
+    proof: {
+      finalRenderRef: "render:mastered",
+      effectFamilyIds: [],
+      evidenceRefs: ["proof:temporal-rewind-transfer-proof"],
+    },
+  });
+  assert.equal(transferSkillUseAttestation.verified, true);
+
   const referenceOnlySkillSession = "practice:skill-reference-only:002";
   registry.beginGptLearningSession("microwave-edit", referenceOnlySkillSession, "PRACTICE");
   assert.throws(
@@ -573,7 +597,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
         ...transferMasteryRecord(referenceOnlySkillSession),
         scope: "REFERENCE_VERIFIED",
       },
-      transferVerifiedSkillIds: [learnedSkill.skillId],
+      transferSkillUseAttestations: [transferSkillUseAttestation],
     }),
     /only after a machine-verified transfer Practice completion/,
   );
@@ -589,20 +613,8 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       masteryRecord: transferMasteryRecord(transferSkillSession),
       transferVerifiedSkillIds: [learnedSkill.skillId],
     }),
-    /fresh AE-proven SKILL_COMMIT in the current materially different Practice session/,
+    /machine-attested reconstruction evidence/,
   );
-  registry.recordGptLearningEvent({
-    ...commitEvent,
-    eventId: "gpt-learning-event:transfer-reproof",
-    sessionId: transferSkillSession,
-    summary: "Re-proved the temporal-rewind causal model on materially different reference/source footage.",
-    evidenceRefs: ["render:temporal-rewind-transfer-proof", "comparison:temporal-rewind-transfer-proof"],
-    createdAt: new Date().toISOString(),
-    learnedSkill: {
-      ...learnedSkill,
-      evidenceRefs: ["render:temporal-rewind-transfer-proof", "comparison:temporal-rewind-transfer-proof"],
-    },
-  });
   assert.throws(
     () => registry.completeGptLearningSession({
       editTypeId: "microwave-edit",
@@ -610,7 +622,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       mode: "PRACTICE",
       mastered: true,
       masteryRecord: transferMasteryRecord(transferSkillSession, "skill-base"),
-      transferVerifiedSkillIds: [learnedSkill.skillId],
+      transferSkillUseAttestations: [transferSkillUseAttestation],
     }),
     /prior machine-verified AE proof for the same learned skill on materially different Finish and Start footage/,
   );
@@ -620,7 +632,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     mode: "PRACTICE",
     mastered: true,
     masteryRecord: transferMasteryRecord(transferSkillSession, "skill-transfer"),
-    transferVerifiedSkillIds: [learnedSkill.skillId],
+    transferSkillUseAttestations: [transferSkillUseAttestation],
   });
   const transferKnowledge = registry.knowledge("microwave-edit");
   assert.equal(transferKnowledge.gptLearning.learnedSkills[0].maturity, "TRANSFER_VERIFIED");

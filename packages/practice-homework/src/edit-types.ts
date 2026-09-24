@@ -16,6 +16,7 @@ import type {
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkReportV1,
   PracticeMasteryRecordV1,
+  PracticeSkillUseAttestationV1,
 } from "./contracts.js";
 import { derivePracticeMaturityStageV1 } from "./mastery.js";
 
@@ -437,6 +438,7 @@ export class EditTypeRegistryV1 {
     readonly mastered: boolean;
     readonly masteryRecord?: PracticeMasteryRecordV1;
     readonly transferVerifiedSkillIds?: readonly string[];
+    readonly transferSkillUseAttestations?: readonly PracticeSkillUseAttestationV1[];
   }): EditTypeProfileV1 {
     const profile = this.#profiles.get(input.editTypeId);
     if (profile === undefined) throw new TypeError("Unknown Edit Type: " + input.editTypeId);
@@ -447,7 +449,38 @@ export class EditTypeRegistryV1 {
       throw new TypeError("Practice mastery record session does not match the completed session.");
     }
     const learning = normalizedGptLearning(profile.gptLearning);
-    const transferVerifiedSkillIds = uniqueStrings(input.transferVerifiedSkillIds ?? []);
+    const transferSkillUseAttestations = input.transferSkillUseAttestations ?? [];
+    const malformedTransferAttestations = transferSkillUseAttestations.filter((attestation) =>
+      attestation.verified
+      && (attestation.requiredInvariantCount <= 0
+        || attestation.matchedInvariantCount !== attestation.requiredInvariantCount
+        || attestation.matchedConstructionIds.length === 0
+        || attestation.evidenceRefs.length === 0
+        || attestation.reasons.length > 0));
+    if (malformedTransferAttestations.length > 0) {
+      throw new TypeError(
+        "Transfer verification requires complete machine skill-use attestations with causal invariant, construction, and evidence bindings: "
+          + malformedTransferAttestations.map((item) => item.skillId).join(", "),
+      );
+    }
+    const machineAttestedTransferSkillIds = uniqueStrings(
+      transferSkillUseAttestations
+        .filter((attestation) => attestation.verified)
+        .map((attestation) => attestation.skillId),
+    );
+    const claimedTransferSkillIds = uniqueStrings(input.transferVerifiedSkillIds ?? []);
+    const unattestedTransferClaims = claimedTransferSkillIds.filter((skillId) =>
+      !machineAttestedTransferSkillIds.includes(skillId));
+    if (unattestedTransferClaims.length > 0) {
+      throw new TypeError(
+        "Transfer verification skill claims require machine-attested reconstruction evidence: "
+          + unattestedTransferClaims.join(", "),
+      );
+    }
+    const transferVerifiedSkillIds = uniqueStrings([
+      ...claimedTransferSkillIds,
+      ...machineAttestedTransferSkillIds,
+    ]);
     if (transferVerifiedSkillIds.length > 0
       && (input.mode !== "PRACTICE"
         || !input.mastered
@@ -474,15 +507,6 @@ export class EditTypeRegistryV1 {
           + missingCausalModels.join(", "),
       );
     }
-    const notReprovenInSession = transferSkills
-      .filter((skill) => !(skill.provenSessionIds ?? []).includes(input.sessionId))
-      .map((skill) => skill.skillId);
-    if (notReprovenInSession.length > 0) {
-      throw new TypeError(
-        "Transfer verification requires a fresh AE-proven SKILL_COMMIT in the current materially different Practice session: "
-          + notReprovenInSession.join(", "),
-      );
-    }
     const currentMasteryRecord = input.masteryRecord;
     const missingMaterialTransferProof = currentMasteryRecord === undefined
       ? transferSkills.map((skill) => skill.skillId)
@@ -501,7 +525,14 @@ export class EditTypeRegistryV1 {
     }
     const learnedSkills = learning.learnedSkills.map((skill) =>
       transferVerifiedSkillIds.includes(skill.skillId)
-        ? { ...skill, maturity: "TRANSFER_VERIFIED" as const }
+        ? {
+          ...skill,
+          maturity: "TRANSFER_VERIFIED" as const,
+          provenSessionIds: uniqueStrings([
+            ...(skill.provenSessionIds ?? []),
+            input.sessionId,
+          ]),
+        }
         : skill);
     const masteryRecords = input.mode !== "PRACTICE"
       ? learning.masteryRecords

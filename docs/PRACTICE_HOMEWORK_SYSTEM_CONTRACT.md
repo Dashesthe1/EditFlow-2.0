@@ -277,8 +277,18 @@ originating capability gap, and `SKILL_COMMIT` may consume only proof evidence b
 that gap. When Tutorial Drive contains a matching tutorial, its causal compilation must
 target the committed skill ID; a compilation for another skill cannot certify it.
 The retained skill automatically includes the compiler evidence and same-gap AE proof
-evidence. Pro Creation can then retrieve that skill without blindly replaying literal
-values.
+evidence.
+
+`AE_PROVEN` is still single-reference knowledge. Promotion to `TRANSFER_VERIFIED`
+occurs only after a later machine-passing Practice reconstruction on materially different
+Finish and Start media. The transfer run re-evaluates each retained skill's causal
+invariants against the persisted attempt decision traces, construction IDs, AE/runtime
+evidence, and final mastery proof. Only skills with a complete machine-use signature and
+verified construction-bound attestation are promoted. A fresh GPT `SKILL_COMMIT` claim
+is neither required nor sufficient for transfer promotion; the reconstruction itself must
+prove the skill was actually used. The transfer session is then appended to that skill's
+`provenSessionIds`. Pro Creation can retrieve only these machine-transfer-verified skills
+without blindly replaying literal values.
 
 A short replay of frames that have just played forward is specifically classified as
 `TEMPORAL_REWIND` / `REVERSE_PLAYBACK`. Practice must not misread this as an effect

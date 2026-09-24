@@ -5,6 +5,7 @@ import path from "node:path";
 import { AE_ADAPTER_PROTOCOL_VERSION_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
 import {
   EditTypeRegistryFileV1,
+  attestPracticeSkillUseV1,
   buildPracticeMasteryRecordV1,
   type GptOrchestrationAssignmentV1,
   type PracticeMediaInputV1,
@@ -369,6 +370,16 @@ const main = async (): Promise<void> => {
             proofRef: verification.proofRef,
             attempt: result.bestAttempt,
           });
+          const transferSkillUseAttestations = masteryRecord.scope === "TRANSFER_VERIFIED"
+            ? attestPracticeSkillUseV1({
+              skills: (registry.knowledge(editTypeId)?.gptLearning.learnedSkills ?? [])
+                .filter((skill) =>
+                  skill.maturity === "AE_PROVEN" || skill.maturity === "TRANSFER_VERIFIED"),
+              attempt: result.bestAttempt,
+              proof: verification.proof,
+              acceptedMaturities: ["AE_PROVEN", "TRANSFER_VERIFIED"],
+            })
+            : [];
           registry.beginGptLearningSession(editTypeId, sessionId, "PRACTICE");
           registry.completeGptLearningSession({
             editTypeId,
@@ -376,6 +387,9 @@ const main = async (): Promise<void> => {
             mode: "PRACTICE",
             mastered: true,
             masteryRecord,
+            ...(transferSkillUseAttestations.length === 0
+              ? {}
+              : { transferSkillUseAttestations }),
           });
           await registryFile.save(registry);
           learningProof = {
