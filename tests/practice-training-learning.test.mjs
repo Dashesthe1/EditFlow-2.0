@@ -1521,7 +1521,8 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     value.includes("var directionX=0.6;")
       && value.includes("var directionY=-0.8;")
       && value.includes("var dx=-directionX*amplitude*stateScale*envelope;")
-      && value.includes("var dy=-directionY*amplitude*stateScale*envelope;")));
+      && value.includes("var dy=-directionY*amplitude*stateScale*envelope;")),
+  JSON.stringify(nativeEventExpressions));
 
   const rendered = await runtime.renderWindowEvidence({
     sessionId: "practice:native",
