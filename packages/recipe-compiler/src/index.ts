@@ -1149,6 +1149,7 @@ const compileM6TemporalDuplication = (
   windows: Map<string, LayerWindowV1>,
   operations: VirtualAeOperationV1[],
   issues: RecipeCompileIssueV1[],
+  positionExpressionRegistry: M6PositionExpressionRegistryV1,
   frameRate: number,
 ): readonly string[] => {
   const parameters = resolveParameterMap(
@@ -1292,29 +1293,41 @@ const compileM6TemporalDuplication = (
         const normalizedX = directionalTrail.x / directionMagnitude;
         const normalizedY = directionalTrail.y / directionMagnitude;
         const stateScale = state / Math.max(1, count - 1);
-        operations.push({
-          type: "SET_EXPRESSION",
-          compId: context.compId,
+        const trailBody = [
+          `var event=${eventSeconds};`,
+          "var f=(time-event)/thisComp.frameDuration;",
+          `var pre=${preFrames};`,
+          `var post=${postFrames};`,
+          `var directionX=${normalizedX};`,
+          `var directionY=${normalizedY};`,
+          `var amplitude=${directionalTrail.separation}*Math.max(thisComp.width,thisComp.height);`,
+          `var stateScale=${stateScale};`,
+          "var envelope=0;",
+          "if(f<=-pre||f>=post){envelope=0;}",
+          "else if(f<0){envelope=linear(f,-pre,0,0,1);}",
+          "else{envelope=linear(f,0,post,1,0);}",
+          "var dx=-directionX*amplitude*stateScale*envelope;",
+          "var dy=-directionY*amplitude*stateScale*envelope;",
+        ];
+        registerM6PositionExpressionV1(
+          context.compId,
           layerId,
-          propertyPath: "Transform.Position",
-          expression: [
-            `var event=${eventSeconds};`,
-            "var f=(time-event)/thisComp.frameDuration;",
-            `var pre=${preFrames};`,
-            `var post=${postFrames};`,
-            `var directionX=${normalizedX};`,
-            `var directionY=${normalizedY};`,
-            `var amplitude=${directionalTrail.separation}*Math.max(thisComp.width,thisComp.height);`,
-            `var stateScale=${stateScale};`,
-            "var envelope=0;",
-            "if(f<=-pre||f>=post){envelope=0;}",
-            "else if(f<0){envelope=linear(f,-pre,0,0,1);}",
-            "else{envelope=linear(f,0,post,1,0);}",
-            "var dx=-directionX*amplitude*stateScale*envelope;",
-            "var dy=-directionY*amplitude*stateScale*envelope;",
-            "value.length>2?[value[0]+dx,value[1]+dy,value[2]]:value+[dx,dy];",
-          ].join(""),
-        });
+          {
+            componentId: `${node.nodeId}:subject-relative-trail:${state}`,
+            deltaExpression: [
+              "(function(){",
+              ...trailBody,
+              "return [dx,dy];",
+              "})()",
+            ].join(""),
+            standaloneExpression: [
+              ...trailBody,
+              "value.length>2?[value[0]+dx,value[1]+dy,value[2]]:value+[dx,dy];",
+            ].join(""),
+          },
+          positionExpressionRegistry,
+          operations,
+        );
       }
       windows.set(layerId, { ...sourceWindow });
       outputs.push(layerId);
@@ -2089,6 +2102,7 @@ export const compileEditingIrRecipeToVirtualAeV1 = (
         windows,
         operations,
         issues,
+        positionExpressionRegistry,
         comp.frameRate,
       );
     } else if ([
