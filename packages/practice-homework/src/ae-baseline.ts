@@ -348,14 +348,29 @@ const timingPlanForMatch = (
   };
 };
 
+interface PracticeFramingKeyframePlanV1 {
+  readonly mode: "STATIC" | "DYNAMIC";
+  readonly position: readonly {
+    readonly time: number;
+    readonly value: readonly [number, number];
+  }[];
+  readonly scale: readonly {
+    readonly time: number;
+    readonly value: readonly [number, number];
+  }[];
+  readonly rotation: readonly {
+    readonly time: number;
+    readonly value: number;
+  }[];
+}
+
 const executableFramingForMatch = (
+  shot: PracticeReferenceAnalysisV1["shots"][number],
   match: PracticeSceneMatchV1,
-) => {
+): PracticeFramingKeyframePlanV1 | null => {
   const framing = match.geometricProof?.framing;
-  if (framing === undefined || framing.stable !== true || framing.confidence < 0.72) {
-    return null;
-  }
-  const values = [
+  if (framing === undefined) return null;
+  const summaryValues = [
     framing.positionX,
     framing.positionY,
     framing.scalePercent,
@@ -363,16 +378,77 @@ const executableFramingForMatch = (
     framing.anchorCount,
     framing.stableAnchorCount,
     framing.stableAnchorFraction,
+    framing.confidence,
   ];
-  if (values.some((value) => !Number.isFinite(value))) return null;
+  if (summaryValues.some((value) => !Number.isFinite(value))) return null;
   if (framing.anchorCount < 2
-    || framing.stableAnchorCount < 2
+    || framing.stableAnchorCount < 0
     || framing.stableAnchorCount > framing.anchorCount
     || framing.stableAnchorFraction < 0
     || framing.stableAnchorFraction > 1
     || framing.scalePercent <= 1
     || framing.scalePercent > 5000) return null;
-  return framing;
+
+  const dynamicConfidence = framing.dynamicConfidence ?? 0;
+  if (framing.dynamic === true
+    && Number.isFinite(dynamicConfidence)
+    && dynamicConfidence >= 0.72) {
+    const points = [...(framing.trajectory ?? [])]
+      .filter((point) => {
+        const values = [
+          point.referenceTimeMs,
+          point.positionX,
+          point.positionY,
+          point.scalePercent,
+          point.rotationDegrees,
+          point.confidence,
+        ];
+        return values.every((value) => Number.isFinite(value))
+          && point.referenceTimeMs >= shot.referenceStartMs - 1e-3
+          && point.referenceTimeMs <= shot.referenceEndMs + 1e-3
+          && point.scalePercent > 1
+          && point.scalePercent <= 5000
+          && point.confidence >= 0.55;
+      })
+      .sort((left, right) => left.referenceTimeMs - right.referenceTimeMs)
+      .filter((point, index, values) =>
+        index === 0
+          || Math.abs(point.referenceTimeMs - values[index - 1]!.referenceTimeMs) > 1e-3);
+    const spanMs = points.length < 2
+      ? 0
+      : points[points.length - 1]!.referenceTimeMs - points[0]!.referenceTimeMs;
+    if (points.length >= 3 && spanMs >= 80) {
+      return {
+        mode: "DYNAMIC",
+        position: points.map((point) => ({
+          time: point.referenceTimeMs / 1000,
+          value: [point.positionX, point.positionY],
+        })),
+        scale: points.map((point) => ({
+          time: point.referenceTimeMs / 1000,
+          value: [point.scalePercent, point.scalePercent],
+        })),
+        rotation: points.map((point) => ({
+          time: point.referenceTimeMs / 1000,
+          value: point.rotationDegrees,
+        })),
+      };
+    }
+  }
+
+  if (framing.stable !== true
+    || framing.confidence < 0.72
+    || framing.stableAnchorCount < 2) return null;
+  const framingTime = shot.referenceStartMs / 1000;
+  return {
+    mode: "STATIC",
+    position: [{ time: framingTime, value: [framing.positionX, framing.positionY] }],
+    scale: [{
+      time: framingTime,
+      value: [framing.scalePercent, framing.scalePercent],
+    }],
+    rotation: [{ time: framingTime, value: framing.rotationDegrees }],
+  };
 };
 
 const timingForAudioSegment = (
@@ -543,31 +619,27 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
       }));
       ordinal += 1;
     }
-    const framing = executableFramingForMatch(match);
+    const framing = executableFramingForMatch(shot, match);
     if (framing !== null) {
-      const framingTime = shot.referenceStartMs / 1000;
       operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
         comp: { stableId: compStableId },
         layer: { stableId: layerStableId },
         propertyPath: ["ADBE Transform Group", "ADBE Position"],
-        keyframes: [{ time: framingTime, value: [framing.positionX, framing.positionY] }],
+        keyframes: framing.position,
       }));
       ordinal += 1;
       operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
         comp: { stableId: compStableId },
         layer: { stableId: layerStableId },
         propertyPath: ["ADBE Transform Group", "ADBE Scale"],
-        keyframes: [{
-          time: framingTime,
-          value: [framing.scalePercent, framing.scalePercent],
-        }],
+        keyframes: framing.scale,
       }));
       ordinal += 1;
       operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
         comp: { stableId: compStableId },
         layer: { stableId: layerStableId },
         propertyPath: ["ADBE Transform Group", "ADBE Rotate Z"],
-        keyframes: [{ time: framingTime, value: framing.rotationDegrees }],
+        keyframes: framing.rotation,
       }));
       ordinal += 1;
     }
