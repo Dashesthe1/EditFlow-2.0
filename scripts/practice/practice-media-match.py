@@ -1482,17 +1482,105 @@ def confidence_from_result(best, second_score):
     return confidence
 
 
-def distinct_second_score(results, best):
-    for item in results:
+def candidate_item_key(item):
+    return (
+        item["index"]["sourceId"],
+        float(item["sample"]["timeMs"]),
+    )
+
+
+def candidate_selection_score(item, continuity_source_id=None, continuity_bonus=0.0):
+    score = candidate_rank_score(item["mapping"])
+    if (
+        continuity_source_id is not None
+        and item["index"]["sourceId"] == continuity_source_id
+    ):
+        score += float(continuity_bonus)
+    return score
+
+
+def distinct_second_result(results, best):
+    ordered = sorted(
+        results,
+        key=lambda item: candidate_rank_score(item["mapping"]),
+        reverse=True,
+    )
+    for item in ordered:
         if item is best:
             continue
         if item["index"]["sourceId"] != best["index"]["sourceId"]:
-            return candidate_rank_score(item["mapping"])
+            return item
         delta = abs(item["mapping"]["centerSourceMs"] - best["mapping"]["centerSourceMs"])
         step = float(best["index"]["analysis"]["sampleStepMs"])
         if delta >= max(800.0, step * 1.5):
-            return candidate_rank_score(item["mapping"])
-    return 0.0
+            return item
+    return None
+
+
+def distinct_second_score(results, best):
+    second = distinct_second_result(results, best)
+    return 0.0 if second is None else candidate_rank_score(second["mapping"])
+
+
+def finalize_candidate_geometry(
+    shot,
+    results,
+    reference_reader,
+    source_readers,
+    continuity_source_id=None,
+    continuity_bonus=0.0,
+):
+    if not results:
+        return []
+
+    fully_verified = {
+        candidate_item_key(item)
+        for item in results
+        if item["mapping"].get("rescueScore") is not None
+    }
+
+    # Full geometry can lower a provisional candidate that looked strongest
+    # under the three-anchor screen. Stabilize both the actual selection winner
+    # and its distinct runner-up so the final ordering and confidence margin are
+    # computed from comparable full-reference evidence.
+    for _ in range(max(2, len(results) * 2)):
+        best = max(
+            results,
+            key=lambda item: candidate_selection_score(
+                item,
+                continuity_source_id,
+                continuity_bonus,
+            ),
+        )
+        second = distinct_second_result(results, best)
+        targets = [best] + ([] if second is None else [second])
+        pending = [
+            item
+            for item in targets
+            if candidate_item_key(item) not in fully_verified
+            and item["mapping"].get("rescueScore") is None
+        ]
+        if not pending:
+            break
+
+        for item in pending:
+            reader = source_readers[item["index"]["sourceId"]]
+            item["mapping"] = {
+                **item["mapping"],
+                "geometricProof": mapping_geometric_proof(
+                    shot,
+                    item["mapping"],
+                    reference_reader,
+                    reader,
+                ),
+            }
+            fully_verified.add(candidate_item_key(item))
+
+    return sorted(
+        results,
+        key=lambda item: candidate_rank_score(item["mapping"]),
+        reverse=True,
+    )
 
 
 def reference_boundary_continuity(reference_reader, previous_shot, shot):
@@ -1799,37 +1887,23 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                         "mapping": rescue_mapping,
                     })
 
-            detailed.sort(
-                key=lambda item: candidate_rank_score(item["mapping"]),
-                reverse=True,
+            refined = finalize_candidate_geometry(
+                shot,
+                detailed,
+                reference_reader,
+                source_readers,
+                continuity_source_id,
+                continuity_bonus,
             )
-
-            refined = detailed
             best = max(
                 refined,
-                key=lambda item: (
-                    candidate_rank_score(item["mapping"])
-                    + (
-                        continuity_bonus
-                        if continuity_source_id is not None
-                        and item["index"]["sourceId"] == continuity_source_id
-                        else 0.0
-                    )
+                key=lambda item: candidate_selection_score(
+                    item,
+                    continuity_source_id,
+                    continuity_bonus,
                 ),
             )
             mapping = best["mapping"]
-            best_reader = source_readers[best["index"]["sourceId"]]
-            if mapping.get("rescueScore") is None:
-                mapping = {
-                    **mapping,
-                    "geometricProof": mapping_geometric_proof(
-                        shot,
-                        mapping,
-                        reference_reader,
-                        best_reader,
-                    ),
-                }
-            best["mapping"] = mapping
             second_score = distinct_second_score(refined, best)
             center_reference = shot["anchors"][len(shot["anchors"]) // 2]["timeMs"]
             mapped_start = mapping["centerSourceMs"] + mapping["slope"] * (
@@ -1953,7 +2027,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "coarseCandidateLimit": coarse_limit,
             "coarseCandidateStrategy": "SOURCE_BALANCED_TEMPORAL_V2",
             "refinementMode": "PROXY_PROGRESSIVE_SOURCE_BALANCED_GEOMETRIC_V3",
-            "geometricVerificationMode": "SOURCE_BEST_PLUS_TOP4_THREE_ANCHOR_THEN_FULL_WINNER_V1",
+            "geometricVerificationMode": "SOURCE_BEST_PLUS_TOP4_THREE_ANCHOR_THEN_STABLE_FULL_FINALISTS_V2",
+            "geometricFinalizationMode": "ITERATIVE_FULL_WINNER_DISTINCT_RUNNER_UP_V1",
             "geometricRankingMinimumStrongAnchors": 2,
             "geometricRankingSampledAnchors": 3,
             "geometricRescueMode": "BOUNDED_THREE_ANCHOR_COHERENT_PATH_V1",

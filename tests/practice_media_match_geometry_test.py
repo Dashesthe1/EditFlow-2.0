@@ -128,6 +128,65 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
         self.assertLess(ambiguous, 0.95)
         self.assertGreaterEqual(distinct, 0.95)
 
+    def test_full_geometry_reranks_a_provisional_winner_that_drops_below_runner_up(self):
+        def item(source_id, sample_ms, center_ms, score, support):
+            return {
+                "index": {
+                    "sourceId": source_id,
+                    "analysis": {"sampleStepMs": 250.0},
+                },
+                "sample": {"timeMs": float(sample_ms)},
+                "mapping": {
+                    "score": float(score),
+                    "centerSourceMs": float(center_ms),
+                    "geometricProof": {
+                        "strongAnchorCount": 3,
+                        "strongAnchorFraction": 1.0,
+                        "meanSupport": float(support),
+                    },
+                },
+            }
+
+        provisional = item("source-a", 100.0, 100.0, 0.72, 1.0)
+        runner_up = item("source-b", 200.0, 200.0, 0.75, 0.75)
+        original = matcher.mapping_geometric_proof
+
+        def full_proof(_shot, mapping, _reference_reader, _source_reader, max_anchors=None):
+            self.assertIsNone(max_anchors)
+            if float(mapping["centerSourceMs"]) == 100.0:
+                return {
+                    "anchorCount": 6,
+                    "strongAnchorCount": 0,
+                    "strongAnchorFraction": 0.0,
+                    "meanSupport": 0.10,
+                }
+            return {
+                "anchorCount": 6,
+                "strongAnchorCount": 6,
+                "strongAnchorFraction": 1.0,
+                "meanSupport": 0.95,
+            }
+
+        try:
+            matcher.mapping_geometric_proof = full_proof
+            ordered = matcher.finalize_candidate_geometry(
+                {"shotId": "shot:test"},
+                [provisional, runner_up],
+                object(),
+                {"source-a": object(), "source-b": object()},
+            )
+        finally:
+            matcher.mapping_geometric_proof = original
+
+        self.assertEqual(ordered[0]["index"]["sourceId"], "source-b")
+        best = ordered[0]
+        second = matcher.distinct_second_result(ordered, best)
+        self.assertIsNotNone(second)
+        self.assertGreaterEqual(
+            matcher.candidate_rank_score(best["mapping"]),
+            matcher.candidate_rank_score(second["mapping"]),
+        )
+
     def test_continuity_prior_requires_verified_previous_scene_identity(self):
         weak_geometry = {
             "confidence": 0.99,
