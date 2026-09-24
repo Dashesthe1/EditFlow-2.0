@@ -10,6 +10,7 @@
   var startFiles = [];
   var activeRunId = null;
   var completedRunId = null;
+  var lastRecoveredRunId = null;
   var statusTimer = null;
   var pollTimer = null;
 
@@ -217,6 +218,30 @@
       .then(function (value) { renderEditTypes(value.editTypes || []); });
   }
 
+  function recoverPanelSession(status) {
+    if (status.activeRunId) {
+      if (activeRunId !== status.activeRunId) {
+        activeRunId = status.activeRunId;
+        completedRunId = null;
+        lastRecoveredRunId = status.activeRunId;
+        setRunState("RUNNING", "Recovered active EditFlow run after service/panel restart.");
+        updateAction();
+        pollRun();
+      }
+      return;
+    }
+    if (!status.latestRunId || lastRecoveredRunId === status.latestRunId || activeRunId) return;
+    lastRecoveredRunId = status.latestRunId;
+    productRequest(
+      "/v1/product/runs/" + encodeURIComponent(status.latestRunId),
+      { method: "GET" }
+    ).then(function (value) {
+      if (!activeRunId && value.run) finishRun(value.run);
+    }).catch(function (error) {
+      setRunState("FAILED", "Could not restore the latest Practice run: " + error.message);
+    });
+  }
+
   function checkService() {
     productRequest("/v1/product/status", { method: "GET" })
       .then(function (value) {
@@ -225,12 +250,15 @@
         serviceReady = value.service === "READY";
         panelConnected = value.panelConnected === true;
         if (!wasReady && serviceReady) {
-          setRunState("IDLE", panelConnected
-            ? "Ready. Choose a mode, Edit Type, and media."
-            : "Service is ready; waiting for the AE panel bridge.");
+          if (!value.activeRunId && !value.latestRunId) {
+            setRunState("IDLE", panelConnected
+              ? "Ready. Choose a mode, Edit Type, and media."
+              : "Service is ready; waiting for the AE panel bridge.");
+          }
           refreshEditTypes().catch(function (error) {
             setRunState("FAILED", error.message);
           });
+          recoverPanelSession(value);
         } else if (!wasPanelConnected && panelConnected && !activeRunId) {
           setRunState("IDLE", "Ready. Choose a mode, Edit Type, and media.");
         }
@@ -292,6 +320,7 @@
 
   function finishRun(run) {
     activeRunId = null;
+    lastRecoveredRunId = run.sessionId;
     updateAction();
     if (run.state === "FAILED") {
       metricsEl.hidden = true;

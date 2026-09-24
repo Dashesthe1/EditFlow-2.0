@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -420,6 +420,20 @@ const mediaInputs = (
 const snapshot = (run: PracticePanelRunSnapshotV1): PracticePanelRunSnapshotV1 =>
   structuredClone(run);
 
+const assignmentRunState = (
+  status: GptOrchestrationAssignmentV1["status"],
+): PracticePanelRunStateV1 => status === "PENDING"
+  ? "WAITING_FOR_GPT"
+  : status === "CANCEL_REQUESTED"
+    ? "CANCEL_REQUESTED"
+    : status === "CANCELLED"
+      ? "CANCELLED"
+      : status === "COMPLETED"
+        ? "COMPLETED"
+        : status === "FAILED"
+          ? "FAILED"
+          : "RUNNING";
+
 const practiceLearningTraceReasons = (
   events: readonly GptLearningEventV1[],
   practiceRole: PracticeRunRoleV1 = "LEARNING",
@@ -496,6 +510,7 @@ export class PracticePanelServerV1 {
 
   async start(): Promise<number> {
     if (this.#server !== null) return this.#port;
+    await this.#recoverRuns();
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -571,6 +586,76 @@ export class PracticePanelServerV1 {
 
   async #editTypes(): Promise<EditTypeRegistryFileV1> {
     return new EditTypeRegistryFileV1(this.config.editTypeRegistryFilePath);
+  }
+
+  #humanReviewPath(sessionId: string): string {
+    const safeSession = sessionId.replace(/[^a-zA-Z0-9._-]+/g, "-");
+    return path.join(this.config.artifactDir, "human-reviews", safeSession + ".json");
+  }
+
+  async #loadHumanReview(sessionId: string): Promise<PracticeHumanReviewV1 | null> {
+    try {
+      const parsed = JSON.parse(await readFile(this.#humanReviewPath(sessionId), "utf8")) as unknown;
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+      const review = parsed as Partial<PracticeHumanReviewV1>;
+      if (review.schema !== "editflow.practice-human-review.v1"
+        || review.sessionId !== sessionId) return null;
+      return review as PracticeHumanReviewV1;
+    } catch {
+      return null;
+    }
+  }
+
+  async #recoverRuns(): Promise<void> {
+    const assignments = await this.#gptStore.listAssignments();
+    if (assignments.length === 0) {
+      this.#activeRunId = null;
+      return;
+    }
+    const editTypes = await this.#editTypes();
+    const registry = await editTypes.load();
+    let active: GptOrchestrationAssignmentV1 | null = null;
+    for (const assignment of assignments) {
+      const existing = this.#runs.get(assignment.sessionId);
+      if (existing === undefined) {
+        const events = await this.#gptStore.eventsForSession(assignment.sessionId);
+        const masteryRecord = registry.knowledge(assignment.editTypeId)
+          ?.gptLearning.masteryRecords.find((item) => item.sessionId === assignment.sessionId);
+        const startVideos = assignment.start
+          .filter((item) => item.mediaKind === "VIDEO")
+          .map((item) => item.uri);
+        const startAudio = assignment.start
+          .filter((item) => item.mediaKind === "AUDIO")
+          .map((item) => item.uri);
+        this.#runs.set(assignment.sessionId, {
+          sessionId: assignment.sessionId,
+          assignmentId: assignment.assignmentId,
+          mode: assignment.mode,
+          practiceRole: assignment.practiceRole,
+          editTypeId: assignment.editTypeId,
+          state: assignmentRunState(assignment.status),
+          stage: events.at(-1)?.stage ?? null,
+          startedAt: assignment.startedAt ?? assignment.createdAt,
+          completedAt: assignment.completedAt,
+          finishPath: assignment.finish?.uri ?? null,
+          videoPaths: startVideos,
+          audioPaths: startAudio,
+          result: null,
+          allocation: null,
+          masteryScope: masteryRecord?.scope ?? null,
+          masteryProofRef: masteryRecord?.proofRef ?? null,
+          masteryReasons: [],
+          finalRenderRef: assignment.finalRenderRef,
+          humanReview: await this.#loadHumanReview(assignment.sessionId),
+          finalSummary: assignment.finalSummary,
+          error: assignment.error,
+        });
+      }
+      if (!["CANCELLED", "COMPLETED", "FAILED"].includes(assignment.status)) {
+        active = assignment;
+      }
+    }
+    this.#activeRunId = active?.sessionId ?? null;
   }
 
   async #parsePractice(body: Record<string, unknown>): Promise<PracticeRunBody> {
@@ -728,17 +813,7 @@ export class PracticePanelServerV1 {
     if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
     const events = await this.#gptStore.eventsForSession(sessionId);
     const latestEvent = events.at(-1);
-    const state: PracticePanelRunStateV1 = assignment.status === "PENDING"
-      ? "WAITING_FOR_GPT"
-      : assignment.status === "CANCEL_REQUESTED"
-        ? "CANCEL_REQUESTED"
-        : assignment.status === "CANCELLED"
-          ? "CANCELLED"
-          : assignment.status === "COMPLETED"
-            ? "COMPLETED"
-            : assignment.status === "FAILED"
-              ? "FAILED"
-              : "RUNNING";
+    const state = assignmentRunState(assignment.status);
     const updated: PracticePanelRunSnapshotV1 = {
       ...run,
       state,
@@ -811,10 +886,8 @@ export class PracticePanelServerV1 {
         "practice-human-review-render:" + renderPath,
       ],
     };
-    const reviewDir = path.join(this.config.artifactDir, "human-reviews");
-    await mkdir(reviewDir, { recursive: true });
-    const safeSession = sessionId.replace(/[^a-zA-Z0-9._-]+/g, "-");
-    const reviewPath = path.join(reviewDir, safeSession + ".json");
+    const reviewPath = this.#humanReviewPath(sessionId);
+    await mkdir(path.dirname(reviewPath), { recursive: true });
     const temporary = reviewPath + ".tmp-" + randomUUID();
     await writeFile(temporary, JSON.stringify(review, null, 2) + "\n", "utf8");
     await rename(temporary, reviewPath);
@@ -1273,11 +1346,15 @@ export class PracticePanelServerV1 {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
       if (req.method === "GET" && url.pathname === "/v1/product/status") {
+        const latestRunId = [...this.#runs.values()]
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+          .at(-1)?.sessionId ?? null;
         jsonResponse(res, 200, {
           service: "READY",
           panelConnected: this.config.broker.panelSession !== null,
           gptOrchestration: "ASSIGNMENT_QUEUE_READY",
           activeRunId: this.#activeRunId,
+          latestRunId,
         });
         return;
       }
