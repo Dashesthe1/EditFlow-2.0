@@ -89,7 +89,9 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(coverage["representedDifficultyKinds"], ["FAST_CUTS"])
             self.assertEqual(coverage["difficultyKindsNeeded"], 3)
             self.assertIn("REVERSE_OR_REWIND", coverage["unrepresentedDifficultyKinds"])
+            self.assertEqual(coverage["targetDistinctSourceSets"], 3)
             self.assertEqual(coverage["distinctSourceSetCount"], 1)
+            self.assertEqual(coverage["sourceSetsNeeded"], 2)
             self.assertEqual(coverage["sourceSetCounts"], {"video:00": 1})
 
     def test_twenty_candidate_window_is_separate_from_case_readiness(self):
@@ -101,6 +103,23 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(status["candidateCaseCount"], 20)
             self.assertEqual(status["readyForCorpusCount"], 0)
             self.assertEqual(status["stageCounts"], {"REFERENCE_ANALYSIS": 20})
+
+    def test_candidate_window_rejects_single_source_set_population(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cases = [self._base_case(root, index) for index in range(20)]
+            shared_source = cases[0]["sourceMedia"]
+            for case in cases:
+                case["sourceMedia"] = shared_source
+
+            status = tool.build_status(self._plan(root, cases))
+            self.assertFalse(status["populationWindowReached"])
+            self.assertEqual(status["coverage"]["distinctSourceSetCount"], 1)
+            self.assertEqual(status["coverage"]["sourceSetsNeeded"], 2)
+            self.assertTrue(any(
+                "distinct Start source sets" in reason
+                for reason in status["populationReasons"]
+            ))
 
     def test_candidate_window_rejects_exact_finish_byte_reuse(self):
         with TemporaryDirectory() as temporary:

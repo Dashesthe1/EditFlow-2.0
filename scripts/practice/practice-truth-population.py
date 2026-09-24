@@ -25,6 +25,7 @@ ALLOWED_DIFFICULTIES = {
 MIN_CASES = 20
 MAX_CASES = 30
 MIN_DIFFICULTY_KINDS = 4
+MIN_DISTINCT_SOURCE_SETS = 3
 PERCEPTUAL_DUPLICATE_SIMILARITY = 0.96
 PREPARE_SCHEMA = "editflow.practice-truth-review-preparation.v1"
 DISCOVERY_SCHEMA = "editflow.practice-truth-finish-discovery.v1"
@@ -446,7 +447,9 @@ def population_coverage(plan, results, difficulty_counts):
         "representedDifficultyKinds": represented,
         "difficultyKindsNeeded": max(0, MIN_DIFFICULTY_KINDS - len(represented)),
         "unrepresentedDifficultyKinds": sorted(ALLOWED_DIFFICULTIES - set(represented)),
+        "targetDistinctSourceSets": MIN_DISTINCT_SOURCE_SETS,
         "distinctSourceSetCount": len(source_set_counts),
+        "sourceSetsNeeded": max(0, MIN_DISTINCT_SOURCE_SETS - len(source_set_counts)),
         "sourceSetCounts": dict(sorted(source_set_counts.items())),
     }
 
@@ -471,6 +474,11 @@ def build_status(plan_path):
         population_reasons.append(
             f"Population spans fewer than {MIN_DIFFICULTY_KINDS} hard-case categories."
         )
+    coverage = population_coverage(plan, results, difficulty_counts)
+    if coverage["distinctSourceSetCount"] < MIN_DISTINCT_SOURCE_SETS:
+        population_reasons.append(
+            f"Population spans fewer than {MIN_DISTINCT_SOURCE_SETS} distinct Start source sets."
+        )
     stage_counts = Counter(item["stage"] for item in results)
     ready_count = sum(item["readyForCorpus"] for item in results)
     return {
@@ -481,7 +489,7 @@ def build_status(plan_path):
         "populationWindowReached": not population_reasons,
         "populationReasons": population_reasons,
         "difficultyCounts": dict(sorted(difficulty_counts.items())),
-        "coverage": population_coverage(plan, results, difficulty_counts),
+        "coverage": coverage,
         "stageCounts": dict(sorted(stage_counts.items())),
         "cases": results,
     }
