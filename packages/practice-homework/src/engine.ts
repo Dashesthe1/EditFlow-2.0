@@ -83,7 +83,7 @@ export const hasRepeatedSceneGeometryV1 = (match: PracticeSceneMatchV1): boolean
   return true;
 };
 
-const validateMatches = (
+export const validatePracticeSceneMatchesV1 = (
   shotIds: readonly string[],
   matches: readonly PracticeSceneMatchV1[],
   minimumConfidence: number,
@@ -282,7 +282,7 @@ export class PracticeHomeworkEngineV1 {
       sourceIndex,
       minimumConfidence: exactSceneConfidence,
     });
-    const matchReasons = validateMatches(
+    const matchReasons = validatePracticeSceneMatchesV1(
       reference.shots.map((shot) => shot.shotId),
       matches,
       exactSceneConfidence,

@@ -18,6 +18,7 @@ import {
   attestPracticeSkillUseV1,
   compileGptTutorialResearchSourceV1,
   buildPracticeMasteryRecordV1,
+  hasRepeatedSceneGeometryV1,
   LocalPracticeMediaMatcherV1,
   practicePerceptualSetOverlapsV1,
   practicePerceptualSignatureMatchesV1,
@@ -41,6 +42,7 @@ import {
   type PracticeSessionResultV1,
   type PracticeSkillUseAttestationV1,
   type ProCreationPreparationResultV1,
+  validatePracticeSceneMatchesV1,
 } from "../../../packages/practice-homework/src/index.js";
 import type { TutorialDeepAnalysisPacketV1 } from "../../../packages/tutorial-learning/src/index.js";
 import {
@@ -152,6 +154,15 @@ export const resolvePracticeAutoLifecycleStageV1 = (
   return masteryRecords.length > 0 ? "TRANSFER_LEARNING" : "REFERENCE_LEARNING";
 };
 
+export interface PracticeSceneCompatibilityV1 {
+  readonly minimumConfidence: number;
+  readonly referenceShotCount: number;
+  readonly retainedMatchCount: number;
+  readonly exactMatchCount: number;
+  readonly passed: boolean;
+  readonly reasons: readonly string[];
+}
+
 export interface PracticeHeldOutMaterialFingerprintV1 {
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
@@ -160,6 +171,7 @@ export interface PracticeHeldOutMaterialFingerprintV1 {
   readonly sourcePerceptualSignatures?: readonly string[];
   readonly duplicateStartMedia: boolean;
   readonly duplicateStartPerceptualMedia?: boolean;
+  readonly sceneCompatibility?: PracticeSceneCompatibilityV1;
 }
 
 const sha256FileStream = async (filePath: string): Promise<string> =>
@@ -186,6 +198,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   readonly repositoryRoot?: string;
   readonly artifactDir?: string;
   readonly ffmpegPath?: string;
+  readonly exactSceneConfidence?: number;
 }): Promise<PracticeHeldOutMaterialFingerprintV1> => {
   const referenceFingerprint = await sha256FileStream(input.finishPath);
   const rawSourceHashes: string[] = [];
@@ -254,12 +267,74 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
       sourcePerceptualSignatures.slice(index + 1).some((other) =>
         practicePerceptualSignatureMatchesV1(value, other)));
 
+  let sceneCompatibility: PracticeSceneCompatibilityV1 | undefined;
+  if (input.exactSceneConfidence !== undefined) {
+    if (!Number.isFinite(input.exactSceneConfidence)
+      || input.exactSceneConfidence < 0
+      || input.exactSceneConfidence > 1) {
+      throw new TypeError("Practice exact-scene confidence must be between 0 and 1.");
+    }
+    const matches = await matcher.matchScenes({
+      reference,
+      sourceIndex,
+      minimumConfidence: input.exactSceneConfidence,
+    });
+    const shotIds = reference.shots.map((shot) => shot.shotId);
+    const reasons = validatePracticeSceneMatchesV1(
+      shotIds,
+      matches,
+      input.exactSceneConfidence,
+    );
+    const byShot = new Map(matches.map((match) => [match.shotId, match]));
+    const exactMatchCount = shotIds.filter((shotId) => {
+      const match = byShot.get(shotId);
+      return match !== undefined
+        && match.confidence >= input.exactSceneConfidence!
+        && hasRepeatedSceneGeometryV1(match)
+        && match.sourceEndMs > match.sourceStartMs
+        && Number.isFinite(match.playbackRate)
+        && match.playbackRate > 0;
+    }).length;
+    sceneCompatibility = {
+      minimumConfidence: input.exactSceneConfidence,
+      referenceShotCount: shotIds.length,
+      retainedMatchCount: matches.length,
+      exactMatchCount,
+      passed: reasons.length === 0,
+      reasons,
+    };
+  }
+
   return {
     ...base,
     referencePerceptualSignature,
     sourcePerceptualSignatures,
     duplicateStartPerceptualMedia,
+    ...(sceneCompatibility === undefined ? {} : { sceneCompatibility }),
   };
+};
+
+export const validatePracticePreAeSceneCompatibilityV1 = (input: {
+  readonly material: PracticeHeldOutMaterialFingerprintV1;
+}): readonly string[] => {
+  const compatibility = input.material.sceneCompatibility;
+  if (compatibility === undefined) {
+    return ["Practice pre-AE exact-scene compatibility proof is missing."];
+  }
+  const reasons = [...compatibility.reasons];
+  if (compatibility.referenceShotCount <= 0) {
+    reasons.push("Practice Finish contains no retained reference shots for exact-scene proof.");
+  }
+  if (compatibility.retainedMatchCount !== compatibility.referenceShotCount) {
+    reasons.push("Practice Start must retain exactly one scene match per Finish shot before AE work.");
+  }
+  if (compatibility.exactMatchCount !== compatibility.referenceShotCount) {
+    reasons.push("Practice Start does not exactly cover every retained Finish shot before AE work.");
+  }
+  if (!compatibility.passed && reasons.length === 0) {
+    reasons.push("Practice pre-AE exact-scene compatibility proof failed.");
+  }
+  return [...new Set(reasons)];
 };
 
 export const validatePracticeTransferLearningMaterialV1 = (input: {
@@ -1045,16 +1120,26 @@ export class PracticePanelServerV1 {
         "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
       );
     }
+    const exactSceneConfidence = request.exactSceneConfidence ?? 0.95;
+    const material = await fingerprintPracticeHeldOutMaterialV1({
+      finishPath: request.finishPath,
+      videoPaths: request.videoPaths,
+      repositoryRoot: this.config.repositoryRoot,
+      artifactDir,
+      exactSceneConfidence,
+      ...(this.config.ffmpegPath === undefined
+        ? {}
+        : { ffmpegPath: this.config.ffmpegPath }),
+    });
+    const compatibilityReasons = validatePracticePreAeSceneCompatibilityV1({ material });
+    if (compatibilityReasons.length > 0) {
+      throw new HttpError(
+        409,
+        "Practice Start footage does not exactly cover the retained Finish scenes; AE work was not started. "
+          + compatibilityReasons.join(" "),
+      );
+    }
     if (request.practiceRole === null && autoLifecycleStage === "TRANSFER_LEARNING") {
-      const material = await fingerprintPracticeHeldOutMaterialV1({
-        finishPath: request.finishPath,
-        videoPaths: request.videoPaths,
-        repositoryRoot: this.config.repositoryRoot,
-        artifactDir,
-        ...(this.config.ffmpegPath === undefined
-          ? {}
-          : { ffmpegPath: this.config.ffmpegPath }),
-      });
       const noveltyReasons = validatePracticeTransferLearningMaterialV1({
         material,
         masteryRecords: retainedKnowledge?.gptLearning.masteryRecords ?? [],
@@ -1071,15 +1156,6 @@ export class PracticePanelServerV1 {
       if (retainedKnowledge === null) {
         throw new HttpError(409, "Held-out certification lost its retained Edit Type knowledge.");
       }
-      const material = await fingerprintPracticeHeldOutMaterialV1({
-        finishPath: request.finishPath,
-        videoPaths: request.videoPaths,
-        repositoryRoot: this.config.repositoryRoot,
-        artifactDir,
-        ...(this.config.ffmpegPath === undefined
-          ? {}
-          : { ffmpegPath: this.config.ffmpegPath }),
-      });
       const noveltyReasons = validatePracticeHeldOutMaterialNoveltyV1({
         material,
         masteryRecords: retainedKnowledge.gptLearning.masteryRecords,

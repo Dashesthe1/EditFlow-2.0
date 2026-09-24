@@ -10,6 +10,7 @@ import {
   resolvePracticeAutoLifecycleStageV1,
   resolvePracticeRunRoleV1,
   validatePracticeHeldOutMaterialNoveltyV1,
+  validatePracticePreAeSceneCompatibilityV1,
   validatePracticeTransferLearningMaterialV1,
 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 
@@ -261,4 +262,63 @@ test("held-out preflight rejects perceptually reused Start media before AE work"
     heldOutCases: [],
   });
   assert.deepEqual(reasons, ["Start source reuses retained Practice training media."]);
+});
+
+test("pre-AE scene compatibility fails closed when proof is missing", () => {
+  const reasons = validatePracticePreAeSceneCompatibilityV1({
+    material: {
+      referenceFingerprint: "finish:missing-proof",
+      sourceFingerprint: "source:missing-proof",
+      sourceMediaSha256: ["source:missing-proof"],
+      duplicateStartMedia: false,
+    },
+  });
+  assert.deepEqual(reasons, [
+    "Practice pre-AE exact-scene compatibility proof is missing.",
+  ]);
+});
+
+test("pre-AE scene compatibility rejects partial Finish coverage", () => {
+  const reasons = validatePracticePreAeSceneCompatibilityV1({
+    material: {
+      referenceFingerprint: "finish:partial",
+      sourceFingerprint: "source:partial",
+      sourceMediaSha256: ["source:partial"],
+      duplicateStartMedia: false,
+      sceneCompatibility: {
+        minimumConfidence: 0.95,
+        referenceShotCount: 2,
+        retainedMatchCount: 2,
+        exactMatchCount: 1,
+        passed: false,
+        reasons: [
+          "Source match confidence for shot:2 is below the exact-scene gate.",
+        ],
+      },
+    },
+  });
+  assert.deepEqual(reasons, [
+    "Source match confidence for shot:2 is below the exact-scene gate.",
+    "Practice Start does not exactly cover every retained Finish shot before AE work.",
+  ]);
+});
+
+test("pre-AE scene compatibility accepts complete exact Finish coverage", () => {
+  const reasons = validatePracticePreAeSceneCompatibilityV1({
+    material: {
+      referenceFingerprint: "finish:complete",
+      sourceFingerprint: "source:complete",
+      sourceMediaSha256: ["source:complete"],
+      duplicateStartMedia: false,
+      sceneCompatibility: {
+        minimumConfidence: 0.95,
+        referenceShotCount: 3,
+        retainedMatchCount: 3,
+        exactMatchCount: 3,
+        passed: true,
+        reasons: [],
+      },
+    },
+  });
+  assert.deepEqual(reasons, []);
 });

@@ -20,6 +20,7 @@ import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
 import {
   fingerprintPracticeHeldOutMaterialV1,
   validatePracticeHeldOutMaterialNoveltyV1,
+  validatePracticePreAeSceneCompatibilityV1,
   validatePracticeTransferLearningMaterialV1,
 } from "./practice-panel-server.js";
 import { resolvePracticeStatePathsV1 } from "./practice-state-paths.js";
@@ -233,13 +234,21 @@ const main = async (): Promise<void> => {
     );
   }
   const preflightMasteryRecords = preflightKnowledge?.gptLearning.masteryRecords ?? [];
+  const material = await fingerprintPracticeHeldOutMaterialV1({
+    finishPath,
+    videoPaths,
+    repositoryRoot,
+    artifactDir,
+    exactSceneConfidence,
+  });
+  const compatibilityReasons = validatePracticePreAeSceneCompatibilityV1({ material });
+  if (compatibilityReasons.length > 0) {
+    throw new Error(
+      "Practice Start footage does not exactly cover the retained Finish scenes; AE connection was not opened. "
+        + compatibilityReasons.join(" "),
+    );
+  }
   if (heldOutCertification || preflightMasteryRecords.length > 0) {
-    const material = await fingerprintPracticeHeldOutMaterialV1({
-      finishPath,
-      videoPaths,
-      repositoryRoot,
-      artifactDir,
-    });
     const noveltyReasons = heldOutCertification
       ? validatePracticeHeldOutMaterialNoveltyV1({
         material,
