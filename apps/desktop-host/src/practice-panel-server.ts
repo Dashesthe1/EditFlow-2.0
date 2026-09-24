@@ -154,13 +154,32 @@ export const resolvePracticeAutoLifecycleStageV1 = (
   return masteryRecords.length > 0 ? "TRANSFER_LEARNING" : "REFERENCE_LEARNING";
 };
 
+export interface PracticeSceneCompatibilityShotV1 {
+  readonly shotId: string;
+  readonly sourceId: string | null;
+  readonly sourceStartMs: number | null;
+  readonly sourceEndMs: number | null;
+  readonly direction: "FORWARD" | "REVERSE" | null;
+  readonly playbackRate: number | null;
+  readonly confidence: number | null;
+  readonly repeatedGeometry: boolean;
+  readonly exact: boolean;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeSceneCompatibilityV1 {
+  readonly schema: "editflow.practice-pre-ae-scene-compatibility.v1";
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly proofFingerprint: string;
   readonly minimumConfidence: number;
   readonly referenceShotCount: number;
   readonly retainedMatchCount: number;
   readonly exactMatchCount: number;
+  readonly shots: readonly PracticeSceneCompatibilityShotV1[];
   readonly passed: boolean;
   readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
 }
 
 export interface PracticeHeldOutMaterialFingerprintV1 {
@@ -170,6 +189,7 @@ export interface PracticeHeldOutMaterialFingerprintV1 {
   readonly referencePerceptualSignature?: string;
   readonly sourcePerceptualSignatures?: readonly string[];
   readonly duplicateStartMedia: boolean;
+  readonly finishReusedAsStart?: boolean;
   readonly duplicateStartPerceptualMedia?: boolean;
   readonly sceneCompatibility?: PracticeSceneCompatibilityV1;
 }
@@ -191,6 +211,23 @@ const sourceSetFingerprintFromSha256V1 = (
     .map((value) => "source-video:sha256:" + value);
   return createHash("sha256").update(identities.join("\n"), "utf8").digest("hex");
 };
+
+const practiceSceneCompatibilityFingerprintV1 = (input: {
+  readonly referenceFingerprint: string;
+  readonly sourceFingerprint: string;
+  readonly minimumConfidence: number;
+  readonly shots: readonly PracticeSceneCompatibilityShotV1[];
+  readonly reasons: readonly string[];
+}): string => createHash("sha256")
+  .update(JSON.stringify({
+    schema: "editflow.practice-pre-ae-scene-compatibility.v1",
+    referenceFingerprint: input.referenceFingerprint,
+    sourceFingerprint: input.sourceFingerprint,
+    minimumConfidence: input.minimumConfidence,
+    shots: input.shots.map(({ evidenceRefs: _evidenceRefs, ...shot }) => shot),
+    reasons: input.reasons,
+  }), "utf8")
+  .digest("hex");
 
 export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   readonly finishPath: string;
@@ -215,7 +252,11 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
     sourceFingerprint: sourceSetFingerprintFromSha256V1(sourceMediaSha256),
     sourceMediaSha256,
     duplicateStartMedia: sourceMediaSha256.length !== rawSourceHashes.length,
+    finishReusedAsStart: sourceMediaSha256.includes(referenceFingerprint),
   };
+  if (input.exactSceneConfidence !== undefined && base.finishReusedAsStart === true) {
+    return base;
+  }
   if (input.repositoryRoot === undefined && input.artifactDir === undefined) return base;
   if (input.repositoryRoot === undefined || input.artifactDir === undefined) {
     throw new TypeError(
@@ -286,23 +327,61 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
       input.exactSceneConfidence,
     );
     const byShot = new Map(matches.map((match) => [match.shotId, match]));
-    const exactMatchCount = shotIds.filter((shotId) => {
+    const shots: PracticeSceneCompatibilityShotV1[] = shotIds.map((shotId) => {
       const match = byShot.get(shotId);
-      return match !== undefined
+      const repeatedGeometry = match === undefined ? false : hasRepeatedSceneGeometryV1(match);
+      const exact = match !== undefined
         && match.confidence >= input.exactSceneConfidence!
-        && hasRepeatedSceneGeometryV1(match)
+        && repeatedGeometry
         && match.sourceEndMs > match.sourceStartMs
         && Number.isFinite(match.playbackRate)
         && match.playbackRate > 0;
-    }).length;
+      return {
+        shotId,
+        sourceId: match?.sourceId ?? null,
+        sourceStartMs: match?.sourceStartMs ?? null,
+        sourceEndMs: match?.sourceEndMs ?? null,
+        direction: match?.direction ?? null,
+        playbackRate: match?.playbackRate ?? null,
+        confidence: match?.confidence ?? null,
+        repeatedGeometry,
+        exact,
+        evidenceRefs: match?.evidenceRefs ?? [],
+      };
+    });
+    const exactMatchCount = shots.filter((shot) => shot.exact).length;
+    const proofFingerprint = practiceSceneCompatibilityFingerprintV1({
+      referenceFingerprint: base.referenceFingerprint,
+      sourceFingerprint: base.sourceFingerprint,
+      minimumConfidence: input.exactSceneConfidence,
+      shots,
+      reasons,
+    });
+    const proofDirectory = path.join(input.artifactDir, "preflight");
+    await mkdir(proofDirectory, { recursive: true });
+    const proofPath = path.join(
+      proofDirectory,
+      "scene-compatibility-" + proofFingerprint.slice(0, 24) + ".json",
+    );
     sceneCompatibility = {
+      schema: "editflow.practice-pre-ae-scene-compatibility.v1",
+      referenceFingerprint: base.referenceFingerprint,
+      sourceFingerprint: base.sourceFingerprint,
+      proofFingerprint,
       minimumConfidence: input.exactSceneConfidence,
       referenceShotCount: shotIds.length,
       retainedMatchCount: matches.length,
       exactMatchCount,
+      shots,
       passed: reasons.length === 0,
       reasons,
+      evidenceRefs: ["practice-pre-ae-scene-compatibility:" + proofPath],
     };
+    await writeFile(
+      proofPath,
+      JSON.stringify(sceneCompatibility, null, 2) + "\n",
+      "utf8",
+    );
   }
 
   return {
@@ -317,13 +396,65 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
 export const validatePracticePreAeSceneCompatibilityV1 = (input: {
   readonly material: PracticeHeldOutMaterialFingerprintV1;
 }): readonly string[] => {
+  if (input.material.finishReusedAsStart === true) {
+    return [
+      "Practice Start reuses the Finish reference media bytes; raw-source proof requires independent Start footage.",
+    ];
+  }
   const compatibility = input.material.sceneCompatibility;
   if (compatibility === undefined) {
     return ["Practice pre-AE exact-scene compatibility proof is missing."];
   }
   const reasons = [...compatibility.reasons];
+  if (compatibility.schema !== "editflow.practice-pre-ae-scene-compatibility.v1") {
+    reasons.push("Practice pre-AE scene-compatibility proof schema is invalid.");
+  }
+  if (compatibility.referenceFingerprint !== input.material.referenceFingerprint) {
+    reasons.push("Practice pre-AE scene proof is not bound to the current Finish media.");
+  }
+  if (compatibility.sourceFingerprint !== input.material.sourceFingerprint) {
+    reasons.push("Practice pre-AE scene proof is not bound to the current Start media.");
+  }
+  const expectedFingerprint = practiceSceneCompatibilityFingerprintV1({
+    referenceFingerprint: compatibility.referenceFingerprint,
+    sourceFingerprint: compatibility.sourceFingerprint,
+    minimumConfidence: compatibility.minimumConfidence,
+    shots: compatibility.shots,
+    reasons: compatibility.reasons,
+  });
+  if (compatibility.proofFingerprint !== expectedFingerprint) {
+    reasons.push("Practice pre-AE scene-compatibility proof fingerprint is invalid.");
+  }
+  if (compatibility.evidenceRefs.length === 0) {
+    reasons.push("Practice pre-AE scene-compatibility proof has no retained evidence artifact.");
+  }
   if (compatibility.referenceShotCount <= 0) {
     reasons.push("Practice Finish contains no retained reference shots for exact-scene proof.");
+  }
+  if (compatibility.shots.length !== compatibility.referenceShotCount
+    || new Set(compatibility.shots.map((shot) => shot.shotId)).size !== compatibility.shots.length) {
+    reasons.push("Practice pre-AE scene proof must contain one unique row per Finish shot.");
+  }
+  const recomputedExactCount = compatibility.shots.filter((shot) => {
+    const exact = shot.sourceId !== null
+      && shot.confidence !== null
+      && shot.confidence >= compatibility.minimumConfidence
+      && shot.repeatedGeometry
+      && shot.sourceStartMs !== null
+      && shot.sourceEndMs !== null
+      && shot.sourceEndMs > shot.sourceStartMs
+      && shot.playbackRate !== null
+      && Number.isFinite(shot.playbackRate)
+      && shot.playbackRate > 0;
+    if (exact !== shot.exact) {
+      reasons.push(
+        "Practice pre-AE scene proof exactness is inconsistent for " + shot.shotId + ".",
+      );
+    }
+    return exact;
+  }).length;
+  if (recomputedExactCount !== compatibility.exactMatchCount) {
+    reasons.push("Practice pre-AE exact-scene count does not match retained shot evidence.");
   }
   if (compatibility.retainedMatchCount !== compatibility.referenceShotCount) {
     reasons.push("Practice Start must retain exactly one scene match per Finish shot before AE work.");

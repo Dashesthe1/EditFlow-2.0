@@ -19,6 +19,59 @@ const perceptualOriginal = signature("0000000000000000");
 const perceptualReencode = signature("0000000000000001");
 const perceptualDistinct = signature("ffffffffffffffff");
 
+const coverageShot = ({
+  shotId,
+  sourceId = "source:1",
+  confidence = 0.99,
+  exact = true,
+  repeatedGeometry = true,
+}) => ({
+  shotId,
+  sourceId,
+  sourceStartMs: sourceId === null ? null : 100,
+  sourceEndMs: sourceId === null ? null : 700,
+  direction: sourceId === null ? null : "FORWARD",
+  playbackRate: sourceId === null ? null : 1,
+  confidence: sourceId === null ? null : confidence,
+  repeatedGeometry,
+  exact,
+  evidenceRefs: sourceId === null ? [] : ["practice-match-artifact:test.json"],
+});
+
+const coverageProof = ({
+  referenceFingerprint,
+  sourceFingerprint,
+  shots,
+  reasons = [],
+  minimumConfidence = 0.95,
+  retainedMatchCount = shots.filter((shot) => shot.sourceId !== null).length,
+}) => {
+  const proofFingerprint = createHash("sha256")
+    .update(JSON.stringify({
+      schema: "editflow.practice-pre-ae-scene-compatibility.v1",
+      referenceFingerprint,
+      sourceFingerprint,
+      minimumConfidence,
+      shots: shots.map(({ evidenceRefs: _evidenceRefs, ...shot }) => shot),
+      reasons,
+    }), "utf8")
+    .digest("hex");
+  return {
+    schema: "editflow.practice-pre-ae-scene-compatibility.v1",
+    referenceFingerprint,
+    sourceFingerprint,
+    proofFingerprint,
+    minimumConfidence,
+    referenceShotCount: shots.length,
+    retainedMatchCount,
+    exactMatchCount: shots.filter((shot) => shot.exact).length,
+    shots,
+    passed: reasons.length === 0 && shots.every((shot) => shot.exact),
+    reasons,
+    evidenceRefs: ["practice-pre-ae-scene-compatibility:test-proof.json"],
+  };
+};
+
 test("Practice AUTO lifecycle learns before transfer verification", () => {
   assert.equal(resolvePracticeRunRoleV1(null, false), "LEARNING");
 });
@@ -131,6 +184,26 @@ test("held-out preflight fingerprints exact media bytes and detects duplicate St
   assert.deepEqual(fingerprint.sourceMediaSha256, [sourceSha]);
   assert.equal(fingerprint.sourceFingerprint, sourceSetFingerprint);
   assert.equal(fingerprint.duplicateStartMedia, true);
+});
+
+test("pre-AE coverage rejects Finish bytes reused as Start before media analysis", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-finish-leak-preflight-"));
+  t.after(async () => await rm(root, { recursive: true, force: true }));
+  const finishPath = path.join(root, "finish.mp4");
+  const leakedSourcePath = path.join(root, "leaked-source.mp4");
+  await writeFile(finishPath, "same-finished-edit-bytes", "utf8");
+  await writeFile(leakedSourcePath, "same-finished-edit-bytes", "utf8");
+
+  const material = await fingerprintPracticeHeldOutMaterialV1({
+    finishPath,
+    videoPaths: [leakedSourcePath],
+    exactSceneConfidence: 0.95,
+  });
+  assert.equal(material.finishReusedAsStart, true);
+  assert.equal(material.sceneCompatibility, undefined);
+  assert.deepEqual(validatePracticePreAeSceneCompatibilityV1({ material }), [
+    "Practice Start reuses the Finish reference media bytes; raw-source proof requires independent Start footage.",
+  ]);
 });
 
 test("held-out preflight rejects any Start media reused from training", () => {
@@ -279,22 +352,26 @@ test("pre-AE scene compatibility fails closed when proof is missing", () => {
 });
 
 test("pre-AE scene compatibility rejects partial Finish coverage", () => {
+  const referenceFingerprint = "finish:partial";
+  const sourceFingerprint = "source:partial";
+  const sceneCompatibility = coverageProof({
+    referenceFingerprint,
+    sourceFingerprint,
+    shots: [
+      coverageShot({ shotId: "shot:1" }),
+      coverageShot({ shotId: "shot:2", confidence: 0.80, exact: false }),
+    ],
+    reasons: [
+      "Source match confidence for shot:2 is below the exact-scene gate.",
+    ],
+  });
   const reasons = validatePracticePreAeSceneCompatibilityV1({
     material: {
-      referenceFingerprint: "finish:partial",
-      sourceFingerprint: "source:partial",
+      referenceFingerprint,
+      sourceFingerprint,
       sourceMediaSha256: ["source:partial"],
       duplicateStartMedia: false,
-      sceneCompatibility: {
-        minimumConfidence: 0.95,
-        referenceShotCount: 2,
-        retainedMatchCount: 2,
-        exactMatchCount: 1,
-        passed: false,
-        reasons: [
-          "Source match confidence for shot:2 is below the exact-scene gate.",
-        ],
-      },
+      sceneCompatibility,
     },
   });
   assert.deepEqual(reasons, [
@@ -304,21 +381,53 @@ test("pre-AE scene compatibility rejects partial Finish coverage", () => {
 });
 
 test("pre-AE scene compatibility accepts complete exact Finish coverage", () => {
+  const referenceFingerprint = "finish:complete";
+  const sourceFingerprint = "source:complete";
+  const sceneCompatibility = coverageProof({
+    referenceFingerprint,
+    sourceFingerprint,
+    shots: [
+      coverageShot({ shotId: "shot:1" }),
+      coverageShot({ shotId: "shot:2" }),
+      coverageShot({ shotId: "shot:3" }),
+    ],
+  });
   const reasons = validatePracticePreAeSceneCompatibilityV1({
     material: {
-      referenceFingerprint: "finish:complete",
-      sourceFingerprint: "source:complete",
+      referenceFingerprint,
+      sourceFingerprint,
       sourceMediaSha256: ["source:complete"],
       duplicateStartMedia: false,
-      sceneCompatibility: {
-        minimumConfidence: 0.95,
-        referenceShotCount: 3,
-        retainedMatchCount: 3,
-        exactMatchCount: 3,
-        passed: true,
-        reasons: [],
-      },
+      sceneCompatibility,
     },
   });
   assert.deepEqual(reasons, []);
+});
+
+test("pre-AE scene compatibility rejects proof tampering and material drift", () => {
+  const sceneCompatibility = coverageProof({
+    referenceFingerprint: "finish:bound",
+    sourceFingerprint: "source:bound",
+    shots: [coverageShot({ shotId: "shot:1" })],
+  });
+  const reasons = validatePracticePreAeSceneCompatibilityV1({
+    material: {
+      referenceFingerprint: "finish:bound",
+      sourceFingerprint: "source:changed",
+      sourceMediaSha256: ["source:changed"],
+      duplicateStartMedia: false,
+      sceneCompatibility: {
+        ...sceneCompatibility,
+        shots: sceneCompatibility.shots.map((shot) => ({
+          ...shot,
+          exact: false,
+        })),
+      },
+    },
+  });
+  assert.deepEqual(reasons, [
+    "Practice pre-AE scene proof is not bound to the current Start media.",
+    "Practice pre-AE scene-compatibility proof fingerprint is invalid.",
+    "Practice pre-AE scene proof exactness is inconsistent for shot:1.",
+  ]);
 });
