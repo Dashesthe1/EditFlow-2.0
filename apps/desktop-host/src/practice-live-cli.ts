@@ -360,6 +360,7 @@ const main = async (): Promise<void> => {
         sessionId,
         proof: verification.proof,
         proofRef: verification.proofRef,
+        repositoryRoot,
       });
       await registryFile.save(registry);
       heldOutProof = {

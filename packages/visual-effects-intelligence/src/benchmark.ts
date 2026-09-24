@@ -103,16 +103,31 @@ export const deriveProfessionalFidelityLevelV1 = (
   return robust ? "ROBUST" : "PROFESSIONAL_FIDELITY_VERIFIED";
 };
 
+export interface BenchmarkTransferAxisEvidenceV1 {
+  readonly axis: string;
+  readonly passed: boolean;
+  /** Retained machine/visual proof for this exact transfer variation. */
+  readonly evidenceRef: string;
+  /** Stable content/config fingerprint for the materially changed transfer variant. */
+  readonly variantFingerprint: string;
+}
+
 export interface BenchmarkCaseEvidenceV1 {
   readonly caseId: string;
+  /** Must bind to the exact reference declared by the benchmark case. */
+  readonly referenceEvidenceRef: string;
   /** Optional assertion retained only for audit; the evaluator derives authority from maturityProof. */
   readonly achievedLevel?: ProfessionalFidelityLevelV1;
   readonly maturityProof: ProfessionalMaturityProofV1;
   readonly directAbReferenceRef: string;
   readonly comparisonEvidenceRef: string;
-  readonly transferPassed: boolean;
+  readonly transferEvidence: readonly BenchmarkTransferAxisEvidenceV1[];
   readonly degradedCaseRejected: boolean;
+  readonly degradedCaseEvidenceRef: string;
 }
+
+const benchmarkFailureCode = (value: string): string =>
+  value.trim().replace(/[^A-Za-z0-9_.-]+/g, "_");
 
 export const evaluateProfessionalBenchmarkV1 = (
   cases: readonly ProfessionalBenchmarkCaseV1[],
@@ -121,41 +136,131 @@ export const evaluateProfessionalBenchmarkV1 = (
   if (cases.length < 20 || cases.length > 30) {
     throw new TypeError("M6 professional benchmark must contain 20-30 cases.");
   }
-  const evidenceByCase = new Map(evidence.map((item) => [item.caseId, item] as const));
+
   const failures: string[] = [];
+  const failedCaseIds = new Set<string>();
+  const failCase = (caseId: string, code: string): void => {
+    failedCaseIds.add(caseId);
+    failures.push(`${caseId}:${code}`);
+  };
+  const failBenchmark = (code: string): void => {
+    failures.push(`BENCHMARK:${code}`);
+  };
+
+  const declaredCaseIds = new Set<string>();
+  for (const item of cases) {
+    if (declaredCaseIds.has(item.caseId)) {
+      failCase(item.caseId, "DUPLICATE_CASE_ID");
+    }
+    declaredCaseIds.add(item.caseId);
+  }
+
+  const evidenceByCase = new Map<string, BenchmarkCaseEvidenceV1>();
+  for (const proof of evidence) {
+    if (!declaredCaseIds.has(proof.caseId)) {
+      failBenchmark(`UNKNOWN_EVIDENCE_${benchmarkFailureCode(proof.caseId)}`);
+      continue;
+    }
+    if (evidenceByCase.has(proof.caseId)) {
+      failCase(proof.caseId, "DUPLICATE_EVIDENCE");
+      continue;
+    }
+    evidenceByCase.set(proof.caseId, proof);
+  }
+
   for (const item of cases) {
     const proof = evidenceByCase.get(item.caseId);
     if (proof === undefined) {
-      failures.push(`${item.caseId}:MISSING_EVIDENCE`);
+      failCase(item.caseId, "MISSING_EVIDENCE");
       continue;
     }
-    if (proof.directAbReferenceRef.trim().length === 0 || proof.comparisonEvidenceRef.trim().length === 0) {
-      failures.push(`${item.caseId}:MISSING_DIRECT_AB_OR_MACHINE_COMPARISON`);
+    if (proof.referenceEvidenceRef.trim() !== item.referenceEvidenceRef.trim()) {
+      failCase(item.caseId, "REFERENCE_EVIDENCE_MISMATCH");
     }
+    if (proof.directAbReferenceRef.trim().length === 0 || proof.comparisonEvidenceRef.trim().length === 0) {
+      failCase(item.caseId, "MISSING_DIRECT_AB_OR_MACHINE_COMPARISON");
+    }
+
+    const requiredAxes = new Set(item.transferAxes.map((axis) => axis.trim()).filter(Boolean));
+    if (requiredAxes.size === 0) {
+      failCase(item.caseId, "NO_TRANSFER_AXES");
+    }
+    const transferByAxis = new Map<string, BenchmarkTransferAxisEvidenceV1>();
+    for (const transfer of proof.transferEvidence) {
+      const axis = transfer.axis.trim();
+      if (!requiredAxes.has(axis)) {
+        failCase(item.caseId, `UNDECLARED_TRANSFER_AXIS_${benchmarkFailureCode(axis || "EMPTY")}`);
+        continue;
+      }
+      if (transferByAxis.has(axis)) {
+        failCase(item.caseId, `DUPLICATE_TRANSFER_AXIS_${benchmarkFailureCode(axis)}`);
+        continue;
+      }
+      transferByAxis.set(axis, transfer);
+    }
+    for (const axis of requiredAxes) {
+      const transfer = transferByAxis.get(axis);
+      if (transfer === undefined) {
+        failCase(item.caseId, `MISSING_TRANSFER_AXIS_${benchmarkFailureCode(axis)}`);
+        continue;
+      }
+      if (!transfer.passed) {
+        failCase(item.caseId, `TRANSFER_AXIS_FAILED_${benchmarkFailureCode(axis)}`);
+      }
+      if (transfer.evidenceRef.trim().length === 0) {
+        failCase(item.caseId, `MISSING_TRANSFER_EVIDENCE_${benchmarkFailureCode(axis)}`);
+      }
+      if (transfer.variantFingerprint.trim().length === 0) {
+        failCase(item.caseId, `MISSING_TRANSFER_VARIANT_FINGERPRINT_${benchmarkFailureCode(axis)}`);
+      }
+    }
+
     let derivedLevel: ProfessionalFidelityLevelV1;
     try {
       derivedLevel = deriveProfessionalFidelityLevelV1(proof.maturityProof);
     } catch {
-      failures.push(`${item.caseId}:FUNCTIONALLY_ABSENT`);
+      failCase(item.caseId, "FUNCTIONALLY_ABSENT");
       continue;
     }
     if (proof.achievedLevel !== undefined && proof.achievedLevel !== derivedLevel) {
-      failures.push(`${item.caseId}:MATURITY_ASSERTION_MISMATCH_${proof.achievedLevel}_VS_${derivedLevel}`);
+      failCase(
+        item.caseId,
+        `MATURITY_ASSERTION_MISMATCH_${proof.achievedLevel}_VS_${derivedLevel}`,
+      );
     }
     if (maturityRank[derivedLevel] < maturityRank[item.expectedLevel]) {
-      failures.push(`${item.caseId}:MATURITY_${derivedLevel}`);
+      failCase(item.caseId, `MATURITY_${derivedLevel}`);
     }
-    if (!proof.transferPassed) failures.push(`${item.caseId}:TRANSFER_FAILED`);
-    if (!proof.degradedCaseRejected) failures.push(`${item.caseId}:DEGRADED_CASE_NOT_REJECTED`);
+    if (!proof.degradedCaseRejected) {
+      failCase(item.caseId, "DEGRADED_CASE_NOT_REJECTED");
+    }
+    if (proof.degradedCaseEvidenceRef.trim().length === 0) {
+      failCase(item.caseId, "MISSING_DEGRADED_CASE_EVIDENCE");
+    }
   }
+
   const familyCoverage = [...new Set(cases.map((item) => item.family))];
+  for (const family of families) {
+    if (!familyCoverage.includes(family)) {
+      failBenchmark(`MISSING_EFFECT_FAMILY_${family}`);
+    }
+  }
   const heldOutCases = cases.filter((item) => item.sourceKind === "HELD_OUT").length;
-  const transferAxes = [...new Set(cases.flatMap((item) => item.transferAxes))].sort();
+  if (heldOutCases < 10) {
+    failBenchmark("HELD_OUT_CASES_BELOW_10");
+  }
+  const transferAxes = [...new Set(cases.flatMap((item) => item.transferAxes).map((axis) => axis.trim()).filter(Boolean))].sort();
+  for (const axis of ROBUSTNESS_AXES_V1) {
+    if (!transferAxes.includes(axis)) {
+      failBenchmark(`MISSING_TRANSFER_AXIS_${benchmarkFailureCode(axis)}`);
+    }
+  }
+
   const passedCaseIds = new Set(cases.map((item) => item.caseId));
-  for (const failure of failures) passedCaseIds.delete(failure.split(":").slice(0, -1).join(":"));
+  for (const caseId of failedCaseIds) passedCaseIds.delete(caseId);
   return {
     schema: "editflow.professional-benchmark-result.v1",
-    passed: failures.length === 0 && familyCoverage.length === families.length && heldOutCases > 0,
+    passed: failures.length === 0,
     total: cases.length,
     passedCases: passedCaseIds.size,
     familyCoverage,

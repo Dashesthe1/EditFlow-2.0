@@ -67,7 +67,10 @@ OBJECT_AWARE_VERIFIED -> ROBUST.
 The first two stages describe retained observation/reconstruction evidence. A machine
 mastery proof is required for VISUAL_MATCH_VERIFIED. Materially different Finish and
 Start fingerprints are required for TRANSFER_VERIFIED. OBJECT_AWARE_VERIFIED and ROBUST
-must come from retained held-out benchmark reports; GPT cannot assign those labels.
+must come from retained held-out benchmark reports; GPT cannot assign those labels. ROBUST
+also requires M6.9 professional-benchmark authority for every effect family present in the
+Edit Type's TRANSFER_VERIFIED mastery records, so Practice cannot promote itself from its
+own held-out scores alone.
 
 Within-source semantic subject IDs never imply cross-source identity. When a Finish
 reference contains an object-aware effect window, mastery verification must independently
@@ -90,8 +93,14 @@ reference/source fingerprints and effect-family evidence, pass the configured vi
 floors, retain proof evidence, and include object-aware verification before ROBUST can
 be recorded. The benchmark also derives an effect-family target set from the Edit Type's
 TRANSFER_VERIFIED mastery records and requires at least one passing held-out case for every
-mastered family. A failed case never counts as family coverage. Reused training material,
-a missing mastered family, or a failed case invalidates the robust result.
+mastered family. A failed case never counts as family coverage. For each mastered family,
+the matching canonical M6.9 cases must also pass their exact-reference, direct-A/B,
+machine-comparison, transfer-axis, degraded-case-rejection, and proof-derived maturity gates.
+The panel and Current-AE runner load retained authority from
+`proofs/manifests/m6-professional-benchmark-evidence-v1.json`; an absent manifest is treated
+as no professional evidence, while malformed, duplicate, or unknown evidence fails closed.
+Reused training material, a missing mastered family, missing M6 authority, or a failed case
+invalidates the robust result.
 
 Normal Practice defaults to an AUTO lifecycle. Before transfer verification, AUTO resolves
 to LEARNING so GPT can research, reconstruct, diagnose, revise, and retain machine-proven

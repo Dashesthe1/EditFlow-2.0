@@ -69,6 +69,14 @@ export {
   buildPracticeCrossSourceSubjectProofV1,
 } from "./practice-cross-source-subject-proof.js";
 export {
+  loadM6ProfessionalBenchmarkEvidenceV1,
+  defaultM6ProfessionalBenchmarkEvidencePathV1,
+  M6_PROFESSIONAL_BENCHMARK_EVIDENCE_SCHEMA_V1,
+} from "./m6-professional-benchmark-evidence.js";
+export type {
+  M6ProfessionalBenchmarkEvidenceFileV1,
+} from "./m6-professional-benchmark-evidence.js";
+export {
   PracticePanelServerV1,
 } from "./practice-panel-server.js";
 export type {

@@ -20,6 +20,7 @@ import {
 import {
   buildConstructionGraphV1,
   classifyEffectFamilyV1,
+  createCanonicalProfessionalBenchmarkV1,
   deriveEffectAnatomyV1,
 } from "../.tmp/runtime/packages/visual-effects-intelligence/src/index.js";
 import {
@@ -57,6 +58,34 @@ const failedReport = () => ({
   passed: false,
   definingEffectCoverage: 0.5,
 });
+
+const professionalBenchmarkEvidenceFor = (...families) =>
+  createCanonicalProfessionalBenchmarkV1()
+    .filter((item) => families.includes(item.family))
+    .map((item) => ({
+      caseId: item.caseId,
+      achievedLevel: "PROFESSIONAL_FIDELITY_VERIFIED",
+      maturityProof: {
+        functionallyPresent: true,
+        structuralCoverageComplete: true,
+        visuallyRecognizable: true,
+        referenceFaithful: true,
+        transferVariantCount: 1,
+        professionalCasePassCount: 2,
+        robustnessAxesPassed: [],
+      },
+      referenceEvidenceRef: item.referenceEvidenceRef,
+      directAbReferenceRef: "proof:a-b:" + item.caseId,
+      comparisonEvidenceRef: "proof:comparison:" + item.caseId,
+      transferEvidence: item.transferAxes.map((axis, index) => ({
+        axis,
+        passed: true,
+        evidenceRef: "proof:transfer:" + item.caseId + ":" + axis,
+        variantFingerprint: "variant:" + item.caseId + ":" + String(index + 1),
+      })),
+      degradedCaseRejected: true,
+      degradedCaseEvidenceRef: "proof:degraded:" + item.caseId,
+    }));
 
 const masteryRecord = (
   sessionId,
@@ -336,6 +365,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     editTypeId: "benchmark-gated",
     cases,
     priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
   });
   assert.equal(report.caseCount, 20);
   assert.equal(report.passedCaseCount, 20);
@@ -345,9 +375,24 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.deepEqual(report.verifiedEffectFamilyIds, ["MOTION_WARP", "SHUTTER_FRAGMENTATION"]);
   assert.deepEqual(report.missingEffectFamilyIds, []);
   assert.equal(report.effectFamilyCoverageVerified, true);
+  assert.deepEqual(report.professionalBenchmarkVerifiedEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
+  assert.deepEqual(report.professionalBenchmarkMissingEffectFamilyIds, []);
+  assert.equal(report.professionalBenchmarkCoverageVerified, true);
+  assert.equal(report.professionalBenchmarkFailures.length, 0);
   assert.equal(report.objectAwareVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
+
+  const practiceOnly = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases,
+    priorMasteryRecords: [prior],
+  });
+  assert.equal(practiceOnly.effectFamilyCoverageVerified, true);
+  assert.equal(practiceOnly.professionalBenchmarkCoverageVerified, false);
+  assert.equal(practiceOnly.robust, false);
+  assert.ok(practiceOnly.reasons.some((reason) => /M6 professional benchmark authority/.test(reason)));
+
   registry.recordHeldOutBenchmark(report);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
@@ -357,6 +402,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
       ? { ...item, referenceFingerprint: prior.referenceFingerprint }
       : item),
     priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
   });
   assert.equal(contaminated.robust, false);
   assert.ok(contaminated.reasons.some((reason) => /training reference fingerprint/.test(reason)));
@@ -369,14 +415,14 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
     "finish:family-training:shutter",
     "source:family-training:shutter",
   );
-  const motionWarp = {
+  const displacementWarp = {
     ...masteryRecord(
-      "practice:family-training:motion-warp",
+      "practice:family-training:displacement-warp",
       "TRANSFER_VERIFIED",
-      "finish:family-training:motion-warp",
-      "source:family-training:motion-warp",
+      "finish:family-training:displacement-warp",
+      "source:family-training:displacement-warp",
     ),
-    effectFamilyIds: ["MOTION_WARP"],
+    effectFamilyIds: ["DISPLACEMENT_WARP"],
   };
   const shutterOnlyCases = Array.from({ length: 20 }, (_, index) => ({
     caseId: "held-out:family:" + String(index + 1),
@@ -395,28 +441,36 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
   const missingFamily = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "family-coverage",
     cases: shutterOnlyCases,
-    priorMasteryRecords: [shutter, motionWarp],
+    priorMasteryRecords: [shutter, displacementWarp],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor(
+      "SHUTTER_FRAGMENTATION",
+      "DISPLACEMENT_WARP",
+    ),
   });
   assert.equal(missingFamily.passedCaseCount, 20);
   assert.deepEqual(
     missingFamily.requiredEffectFamilyIds,
-    ["MOTION_WARP", "SHUTTER_FRAGMENTATION"],
+    ["DISPLACEMENT_WARP", "SHUTTER_FRAGMENTATION"],
   );
   assert.deepEqual(missingFamily.verifiedEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
-  assert.deepEqual(missingFamily.missingEffectFamilyIds, ["MOTION_WARP"]);
+  assert.deepEqual(missingFamily.missingEffectFamilyIds, ["DISPLACEMENT_WARP"]);
   assert.equal(missingFamily.effectFamilyCoverageVerified, false);
   assert.equal(missingFamily.robust, false);
   assert.ok(missingFamily.reasons.some((reason) =>
-    /missing passing transfer coverage.*MOTION_WARP/i.test(reason)));
+    /missing passing transfer coverage.*DISPLACEMENT_WARP/i.test(reason)));
 
   const coveredCases = shutterOnlyCases.map((item, index) =>
     index === shutterOnlyCases.length - 1
-      ? { ...item, effectFamilyIds: ["MOTION_WARP"] }
+      ? { ...item, effectFamilyIds: ["DISPLACEMENT_WARP"] }
       : item);
   const covered = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "family-coverage",
     cases: coveredCases,
-    priorMasteryRecords: [shutter, motionWarp],
+    priorMasteryRecords: [shutter, displacementWarp],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor(
+      "SHUTTER_FRAGMENTATION",
+      "DISPLACEMENT_WARP",
+    ),
   });
   assert.deepEqual(covered.missingEffectFamilyIds, []);
   assert.equal(covered.effectFamilyCoverageVerified, true);
@@ -429,10 +483,14 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
   const failedCoverage = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "family-coverage",
     cases: failedCoverageCases,
-    priorMasteryRecords: [shutter, motionWarp],
+    priorMasteryRecords: [shutter, displacementWarp],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor(
+      "SHUTTER_FRAGMENTATION",
+      "DISPLACEMENT_WARP",
+    ),
   });
   assert.deepEqual(failedCoverage.verifiedEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
-  assert.deepEqual(failedCoverage.missingEffectFamilyIds, ["MOTION_WARP"]);
+  assert.deepEqual(failedCoverage.missingEffectFamilyIds, ["DISPLACEMENT_WARP"]);
   assert.equal(failedCoverage.effectFamilyCoverageVerified, false);
   assert.equal(failedCoverage.robust, false);
 });

@@ -113,9 +113,14 @@ proof through `SynthesizedEffectMemoryV1`.
 
 `createCanonicalProfessionalBenchmarkV1()` declares 24 cases spanning all fourteen
 families, tutorial-based references, reference-only cases, ten held-out cases, and the
-required transfer axes. A case passes only with direct A/B evidence, machine comparison,
-transfer, degraded-case rejection, and the expected maturity. This commit defines and
-tests the benchmark contract; it does not fabricate the missing rendered case evidence.
+required transfer axes. A case passes only when its evidence is bound to the exact declared
+reference, retains direct A/B and machine-comparison proof, supplies passing evidence plus
+a material/config fingerprint for every declared transfer axis, retains degraded-case
+rejection evidence, and reaches the expected proof-derived maturity. Duplicate/unknown
+case evidence fails closed. The benchmark as a whole requires all fourteen families, at
+least ten held-out cases, and coverage of the six required transfer axes. This commit
+defines and tests the benchmark contract; it does not fabricate the missing rendered case
+evidence.
 
 ### M6.10 EditFlow Brain Integration
 

@@ -1,4 +1,12 @@
 import type {
+  BenchmarkCaseEvidenceV1,
+} from "../../visual-effects-intelligence/src/index.js";
+import {
+  createCanonicalProfessionalBenchmarkV1,
+  evaluateProfessionalBenchmarkV1,
+} from "../../visual-effects-intelligence/src/index.js";
+
+import type {
   EditTypeProfileV1,
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkPolicyV1,
@@ -126,6 +134,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   readonly editTypeId: string;
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
   readonly priorMasteryRecords?: readonly PracticeMasteryRecordV1[];
+  readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
   readonly policy?: Partial<PracticeHeldOutBenchmarkPolicyV1>;
 }): PracticeHeldOutBenchmarkReportV1 => {
   const policy = benchmarkPolicy(input.policy);
@@ -237,6 +246,67 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     );
   }
 
+  const professionalCases = createCanonicalProfessionalBenchmarkV1();
+  const professionalEvidence = input.professionalBenchmarkEvidence ?? [];
+  const professionalResult = evaluateProfessionalBenchmarkV1(
+    professionalCases,
+    professionalEvidence,
+  );
+  const professionalBenchmarkVerifiedEffectFamilyIds = requiredEffectFamilyIds.filter((family) => {
+    const familyCases = professionalCases.filter((item) => item.family === family);
+    return familyCases.length > 0 && familyCases.every((item) =>
+      !professionalResult.failures.some((failure) => failure.startsWith(item.caseId + ":")));
+  });
+  const professionalVerifiedSet = new Set(professionalBenchmarkVerifiedEffectFamilyIds);
+  const professionalBenchmarkMissingEffectFamilyIds = requiredEffectFamilyIds.filter(
+    (family) => !professionalVerifiedSet.has(family),
+  );
+  const professionalBenchmarkGlobalFailures = professionalResult.failures.filter((failure) =>
+    failure.startsWith("BENCHMARK:"));
+  const professionalBenchmarkCoverageVerified = requiredEffectFamilyIds.length > 0
+    && professionalBenchmarkMissingEffectFamilyIds.length === 0
+    && professionalBenchmarkGlobalFailures.length === 0;
+  const requiredProfessionalCaseIds = new Set(
+    professionalCases
+      .filter((item) => requiredEffectFamilies.has(item.family))
+      .map((item) => item.caseId),
+  );
+  const professionalBenchmarkFailures = professionalResult.failures.filter((failure) =>
+    failure.startsWith("BENCHMARK:")
+    || [...requiredProfessionalCaseIds].some((caseId) => failure.startsWith(caseId + ":")));
+  for (const family of professionalBenchmarkMissingEffectFamilyIds) {
+    if (!professionalCases.some((item) => item.family === family)) {
+      professionalBenchmarkFailures.push("practice:" + family + ":NOT_IN_M6_CANONICAL_BENCHMARK");
+    }
+  }
+  const professionalBenchmarkEvidenceRefs = [...new Set(
+    professionalEvidence
+      .filter((item) => requiredProfessionalCaseIds.has(item.caseId))
+      .flatMap((item) => [
+        item.referenceEvidenceRef,
+        item.directAbReferenceRef,
+        item.comparisonEvidenceRef,
+        item.degradedCaseEvidenceRef,
+        ...item.transferEvidence.map((transfer) => transfer.evidenceRef),
+      ])
+      .map((ref) => ref.trim())
+      .filter(Boolean),
+  )];
+  if (professionalBenchmarkMissingEffectFamilyIds.length > 0) {
+    reasons.push(
+      "M6 professional benchmark authority is missing for mastered effect families: "
+        + professionalBenchmarkMissingEffectFamilyIds.join(", ")
+        + ".",
+    );
+  }
+  if (professionalBenchmarkGlobalFailures.length > 0) {
+    reasons.push(
+      "M6 professional benchmark evidence has global integrity failures: "
+        + professionalBenchmarkGlobalFailures.join(", ")
+        + ".",
+    );
+  }
+
   const objectAwareVerified = objectAwareCaseCount >= policy.minimumObjectAwareCases;
   if (!objectAwareVerified) {
     reasons.push(
@@ -249,6 +319,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
     && effectFamilyCoverageVerified
+    && professionalBenchmarkCoverageVerified
     && objectAwareVerified;
 
   return {
@@ -263,6 +334,11 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     verifiedEffectFamilyIds,
     missingEffectFamilyIds,
     effectFamilyCoverageVerified,
+    professionalBenchmarkVerifiedEffectFamilyIds,
+    professionalBenchmarkMissingEffectFamilyIds,
+    professionalBenchmarkCoverageVerified,
+    professionalBenchmarkFailures: [...new Set(professionalBenchmarkFailures)],
+    professionalBenchmarkEvidenceRefs,
     objectAwareCaseCount,
     objectAwareVerified,
     robust,
@@ -282,7 +358,8 @@ export const derivePracticeMaturityStageV1 = (
   if (benchmarks.some((report) =>
     report.robust
     && report.objectAwareVerified
-    && report.effectFamilyCoverageVerified === true)) return "ROBUST";
+    && report.effectFamilyCoverageVerified === true
+    && report.professionalBenchmarkCoverageVerified === true)) return "ROBUST";
   if (benchmarks.some((report) => report.objectAwareVerified)) {
     return "OBJECT_AWARE_VERIFIED";
   }

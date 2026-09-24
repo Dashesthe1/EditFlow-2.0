@@ -1107,6 +1107,7 @@ export class PracticePanelServerV1 {
               sessionId: pending.sessionId,
               proof: verification.proof,
               proofRef: verification.proofRef,
+              repositoryRoot: this.config.repositoryRoot,
               traceReasons,
             });
             heldOutCasePassed = certification.heldOutCase.passed;

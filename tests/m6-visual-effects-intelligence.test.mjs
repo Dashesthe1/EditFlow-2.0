@@ -3232,10 +3232,17 @@ test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded r
       professionalCasePassCount: 2,
       robustnessAxesPassed: [],
     },
+    referenceEvidenceRef: item.referenceEvidenceRef,
     directAbReferenceRef: `proof:a-b:${item.caseId}`,
     comparisonEvidenceRef: `proof:comparison:${item.caseId}`,
-    transferPassed: true,
+    transferEvidence: item.transferAxes.map((axis, axisIndex) => ({
+      axis,
+      passed: true,
+      evidenceRef: `proof:transfer:${item.caseId}:${axis}`,
+      variantFingerprint: `variant:${item.caseId}:${axisIndex + 1}`,
+    })),
     degradedCaseRejected: true,
+    degradedCaseEvidenceRef: `proof:degraded:${item.caseId}`,
   }));
   const passed = evaluateProfessionalBenchmarkV1(cases, completeEvidence);
   assert.equal(passed.passed, true, passed.failures.join(", "));
@@ -3244,6 +3251,42 @@ test("M6.9 defines 24 canonical/held-out cases and requires transfer, degraded r
   const failed = evaluateProfessionalBenchmarkV1(cases, degraded);
   assert.equal(failed.passed, false);
   assert.ok(failed.failures.some((item) => /DEGRADED_CASE_NOT_REJECTED/.test(item)));
+
+  const missingAxisEvidence = completeEvidence.map((item, index) => index === 0
+    ? { ...item, transferEvidence: item.transferEvidence.slice(1) }
+    : item);
+  const missingAxis = evaluateProfessionalBenchmarkV1(cases, missingAxisEvidence);
+  assert.equal(missingAxis.passed, false);
+  assert.ok(missingAxis.failures.some((item) => /MISSING_TRANSFER_AXIS_subject/.test(item)));
+
+  const mismatchedReference = completeEvidence.map((item, index) => index === 0
+    ? { ...item, referenceEvidenceRef: "proof:wrong-reference" }
+    : item);
+  const referenceFailed = evaluateProfessionalBenchmarkV1(cases, mismatchedReference);
+  assert.equal(referenceFailed.passed, false);
+  assert.ok(referenceFailed.failures.some((item) => /REFERENCE_EVIDENCE_MISMATCH/.test(item)));
+
+  const missingDegradedProof = completeEvidence.map((item, index) => index === 0
+    ? { ...item, degradedCaseEvidenceRef: "" }
+    : item);
+  const degradedProofFailed = evaluateProfessionalBenchmarkV1(cases, missingDegradedProof);
+  assert.equal(degradedProofFailed.passed, false);
+  assert.ok(degradedProofFailed.failures.some((item) => /MISSING_DEGRADED_CASE_EVIDENCE/.test(item)));
+
+  const duplicateEvidence = evaluateProfessionalBenchmarkV1(
+    cases,
+    [...completeEvidence, completeEvidence[0]],
+  );
+  assert.equal(duplicateEvidence.passed, false);
+  assert.ok(duplicateEvidence.failures.some((item) => /DUPLICATE_EVIDENCE/.test(item)));
+
+  const underHeldOut = cases.map((item, index) => ({
+    ...item,
+    sourceKind: index < 9 ? "HELD_OUT" : "REFERENCE_ONLY",
+  }));
+  const underHeldOutResult = evaluateProfessionalBenchmarkV1(underHeldOut, completeEvidence);
+  assert.equal(underHeldOutResult.passed, false);
+  assert.ok(underHeldOutResult.failures.some((item) => /HELD_OUT_CASES_BELOW_10/.test(item)));
 
   assert.equal(deriveProfessionalFidelityLevelV1({
     functionallyPresent: true,

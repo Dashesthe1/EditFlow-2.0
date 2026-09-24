@@ -574,6 +574,12 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly verifiedEffectFamilyIds: readonly string[];
   readonly missingEffectFamilyIds: readonly string[];
   readonly effectFamilyCoverageVerified: boolean;
+  /** M6.9 professional-benchmark families that passed their canonical machine gates. */
+  readonly professionalBenchmarkVerifiedEffectFamilyIds: readonly string[];
+  readonly professionalBenchmarkMissingEffectFamilyIds: readonly string[];
+  readonly professionalBenchmarkCoverageVerified: boolean;
+  readonly professionalBenchmarkFailures: readonly string[];
+  readonly professionalBenchmarkEvidenceRefs: readonly string[];
   readonly objectAwareCaseCount: number;
   readonly objectAwareVerified: boolean;
   readonly robust: boolean;

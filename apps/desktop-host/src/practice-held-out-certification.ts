@@ -1,3 +1,7 @@
+import type {
+  BenchmarkCaseEvidenceV1,
+} from "../../../packages/visual-effects-intelligence/src/index.js";
+import { loadM6ProfessionalBenchmarkEvidenceV1 } from "./m6-professional-benchmark-evidence.js";
 import {
   buildPracticeHeldOutBenchmarkCaseV1,
   evaluatePracticeHeldOutBenchmarkV1,
@@ -18,6 +22,8 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
   readonly sessionId: string;
   readonly proof: PracticeMasteryProofV1;
   readonly proofRef: string;
+  readonly repositoryRoot?: string;
+  readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
   readonly traceReasons?: readonly string[];
 }): PracticeHeldOutCertificationRecordV1 => {
   const editTypeId = input.editTypeId.trim();
@@ -48,10 +54,17 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
   if (retained === null) {
     throw new TypeError("Held-out certification lost its Edit Type registry entry.");
   }
+  const professionalBenchmarkEvidence = input.professionalBenchmarkEvidence
+    ?? (input.repositoryRoot === undefined
+      ? undefined
+      : loadM6ProfessionalBenchmarkEvidenceV1(input.repositoryRoot));
   const benchmark = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId,
     cases: retained.gptLearning.heldOutCases,
     priorMasteryRecords: retained.gptLearning.masteryRecords,
+    ...(professionalBenchmarkEvidence === undefined
+      ? {}
+      : { professionalBenchmarkEvidence }),
   });
   input.registry.recordHeldOutBenchmark(benchmark);
   return { heldOutCase, benchmark };

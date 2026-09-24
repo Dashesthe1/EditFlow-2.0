@@ -501,6 +501,11 @@ export class EditTypeRegistryV1 {
         "ROBUST Practice maturity requires held-out coverage for every TRANSFER_VERIFIED effect family.",
       );
     }
+    if (report.robust && report.professionalBenchmarkCoverageVerified !== true) {
+      throw new TypeError(
+        "ROBUST Practice maturity requires M6 professional-benchmark authority for every TRANSFER_VERIFIED effect family.",
+      );
+    }
     const learning = normalizedGptLearning(profile.gptLearning);
     const retained = learning.heldOutBenchmarks.filter((item) =>
       item.evaluatedAt !== report.evaluatedAt);
