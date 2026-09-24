@@ -31,6 +31,7 @@ import type {
 } from "../../../packages/practice-homework/src/ae-baseline.js";
 import {
   practiceProactiveSubjectRelativeIsolationRequiredV1,
+  practiceSubjectRelativeEffectAnchorV1,
   type PracticeContentStructureEvaluationV1,
   type PracticeM6RuntimeV1,
 } from "../../../packages/practice-homework/src/m6-practice.js";
@@ -578,7 +579,13 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         );
       }
 
-      const context = buildM6MotionPeakCompilerContextV1({
+      const subjectRelativeEffectAnchor = practiceSubjectRelativeEffectAnchorV1({
+        referenceWindow,
+        track: subjectMotionTrack,
+        startMs: targetStartMs,
+        endMs: targetEndMs,
+      });
+      const genericContext = buildM6MotionPeakCompilerContextV1({
         reference: input.window.evidence,
         compId: prepared.plan.compStableId,
         targetRangeMs: {
@@ -587,6 +594,22 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         },
         roleBindings: [{ role: "hero", layerIds: [layerId] }],
       });
+      const context = subjectRelativeEffectAnchor === null
+        ? genericContext
+        : {
+          ...genericContext,
+          eventTimesMs: {
+            ...genericContext.eventTimesMs,
+            "m6.effectPeak": subjectRelativeEffectAnchor.timeMs,
+          },
+          parameterValues: {
+            ...genericContext.parameterValues,
+            "practice.subjectRelativeMotionPeak": subjectRelativeEffectAnchor.magnitude,
+            "practice.subjectRelativeMotionX": subjectRelativeEffectAnchor.direction.x,
+            "practice.subjectRelativeMotionY": subjectRelativeEffectAnchor.direction.y,
+            "practice.subjectRelativeMotionPhase": subjectRelativeEffectAnchor.phase,
+          },
+        };
       const observed = await this.transaction.observe();
       const native = compileConstructionThroughNativeAeV1(
         compilation,
@@ -607,13 +630,24 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
             "Reconstruct the defining visual behavior of this Practice reference window "
               + "over the measured overlap with " + shot.shotId + "."
               + timingObjective
-              + subjectMotionTrackObjective(subjectMotionTrack),
+              + subjectMotionTrackObjective(subjectMotionTrack)
+              + (subjectRelativeEffectAnchor === null
+                ? ""
+                : " Anchor the native effect peak to the retained subject-relative "
+                  + "motion peak at " + subjectRelativeEffectAnchor.timeMs.toFixed(3)
+                  + " ms (phase " + subjectRelativeEffectAnchor.phase.toFixed(6)
+                  + ", magnitude " + subjectRelativeEffectAnchor.magnitude.toFixed(6)
+                  + ") instead of the generic whole-frame motion peak."),
           recipeRefs: [
             input.graph.graphId,
             prepared.plan.baselineId,
             input.window.windowId,
             shot.shotId,
             ...(subjectMotionTrack === undefined ? [] : [subjectMotionTrack.trackId]),
+            ...(subjectRelativeEffectAnchor === null
+              ? []
+              : ["practice-subject-relative-effect-anchor:"
+                + subjectRelativeEffectAnchor.trackId]),
             ...timingRefs,
           ],
         },
@@ -656,6 +690,18 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           "practice-m6-subject-relative-motion-direction:"
             + subjectMotionTrack.relativeMotionDirection.x.toFixed(6) + ","
             + subjectMotionTrack.relativeMotionDirection.y.toFixed(6),
+        ]),
+        ...(subjectRelativeEffectAnchor === null ? [] : [
+          ...subjectRelativeEffectAnchor.evidenceRefs,
+          "practice-m6-subject-relative-effect-anchor-ms:"
+            + subjectRelativeEffectAnchor.timeMs.toFixed(3),
+          "practice-m6-subject-relative-effect-anchor-phase:"
+            + subjectRelativeEffectAnchor.phase.toFixed(6),
+          "practice-m6-subject-relative-effect-anchor-magnitude:"
+            + subjectRelativeEffectAnchor.magnitude.toFixed(6),
+          "practice-m6-subject-relative-effect-anchor-direction:"
+            + subjectRelativeEffectAnchor.direction.x.toFixed(6) + ","
+            + subjectRelativeEffectAnchor.direction.y.toFixed(6),
         ]),
         ...timingRefs.map((ref) => "practice-m6-" + ref),
         ...(referenceWindow?.anchorBeatCue === undefined ? [] : [

@@ -1377,16 +1377,50 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     semanticId: "subject:primary:v1",
     referenceStartMs: 0,
     referenceEndMs: 500,
-    sampleCount: 7,
+    sampleCount: 3,
     identityCoverage: 1,
     observedCoverage: 1,
     meanIdentityConfidence: 0.91,
     continuityVerified: true,
     usableForReconstruction: true,
     relativeMotionPeak: 0.18,
-    relativeMotionMean: 0.18,
+    relativeMotionMean: 0.083333,
     relativeMotionDirection: { x: 0.18, y: 0 },
-    samples: [],
+    samples: [
+      {
+        timeMs: 50,
+        trackState: "OBSERVED",
+        identityConfidence: 0.91,
+        visibility: 0.96,
+        subjectMotion: { x: 0.05, y: 0 },
+        backgroundMotion: { x: 0.01, y: 0 },
+        relativeMotion: { x: 0.04, y: 0 },
+        subjectBoundingBox: [0.25, 0.18, 0.42, 0.7],
+        evidenceRefs: ["test:subject-relative-sample:50"],
+      },
+      {
+        timeMs: 150,
+        trackState: "OBSERVED",
+        identityConfidence: 0.94,
+        visibility: 0.98,
+        subjectMotion: { x: 0.2, y: 0 },
+        backgroundMotion: { x: 0.02, y: 0 },
+        relativeMotion: { x: 0.18, y: 0 },
+        subjectBoundingBox: [0.28, 0.18, 0.42, 0.7],
+        evidenceRefs: ["test:subject-relative-sample:150"],
+      },
+      {
+        timeMs: 190,
+        trackState: "OBSERVED",
+        identityConfidence: 0.92,
+        visibility: 0.97,
+        subjectMotion: { x: 0.04, y: 0 },
+        backgroundMotion: { x: 0.01, y: 0 },
+        relativeMotion: { x: 0.03, y: 0 },
+        subjectBoundingBox: [0.31, 0.18, 0.42, 0.7],
+        evidenceRefs: ["test:subject-relative-sample:190"],
+      },
+    ],
     evidenceRefs: ["test:retained-subject-motion-track"],
   };
   await runtime.prepareAttempt({
@@ -1459,11 +1493,23 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.match(JSON.stringify(capturedPlan), /PRACTICE_BASELINE_COMP_NATIVE/);
   assert.match(JSON.stringify(capturedPlan), /PRACTICE_SHOT_NATIVE_0001/);
   assert.ok(capturedPlan.recipeRefs.includes(retainedSubjectMotionTrack.trackId));
+  assert.ok(capturedPlan.recipeRefs.includes(
+    "practice-subject-relative-effect-anchor:" + retainedSubjectMotionTrack.trackId,
+  ));
   assert.match(
     capturedPlan.creativeObjective,
     /Preserve the retained Finish subject-relative motion track/,
   );
   assert.match(capturedPlan.creativeObjective, /relative-motion peak 0\.1800/);
+  assert.match(
+    capturedPlan.creativeObjective,
+    /Anchor the native effect peak to the retained subject-relative motion peak at 150\.000 ms/,
+  );
+  const nativeEventExpressions = capturedPlan.operations
+    .filter((operation) => operation.input?.command === "property.set_expression")
+    .map((operation) => operation.input?.payload?.expression)
+    .filter((value) => typeof value === "string");
+  assert.ok(nativeEventExpressions.some((value) => value.includes("var event=0.15;")));
 
   const rendered = await runtime.renderWindowEvidence({
     sessionId: "practice:native",
@@ -1502,6 +1548,16 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.ok(fullRender.evidenceRefs.includes(
     "practice-proactive-subject-relative-relation:SUBJECT_DOMINANT",
   ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-relative-effect-anchor-ms:150.000",
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-relative-effect-anchor-phase:0.750000",
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-relative-effect-anchor-magnitude:0.180000",
+  ));
+  assert.ok(fullRender.evidenceRefs.includes("test:subject-relative-sample:150"));
 
   const isolationGraph = {
     ...graph,

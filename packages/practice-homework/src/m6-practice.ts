@@ -62,6 +62,71 @@ export const practiceProactiveSubjectRelativeIsolationRequiredV1 = (
     || cue.subjectBackgroundDivergencePeak >= 0.08;
 };
 
+export interface PracticeSubjectRelativeEffectAnchorV1 {
+  readonly trackId: string;
+  readonly semanticId: string;
+  readonly timeMs: number;
+  readonly phase: number;
+  readonly magnitude: number;
+  readonly direction: Readonly<{ x: number; y: number }>;
+  readonly evidenceRefs: readonly string[];
+}
+
+export const practiceSubjectRelativeEffectAnchorV1 = (input: {
+  readonly referenceWindow: PracticeReferenceEffectWindowV1 | undefined;
+  readonly track: PracticeReferenceAnatomyV1["subjectMotionTracks"][number] | undefined;
+  readonly startMs: number;
+  readonly endMs: number;
+}): PracticeSubjectRelativeEffectAnchorV1 | null => {
+  if (!practiceProactiveSubjectRelativeIsolationRequiredV1(
+    input.referenceWindow,
+    input.track,
+  )) return null;
+  const track = input.track;
+  if (track === undefined) return null;
+  if (!Number.isFinite(input.startMs) || !Number.isFinite(input.endMs)
+    || input.endMs <= input.startMs) return null;
+  const targetAnchorMs = input.referenceWindow?.anchorMs
+    ?? ((input.startMs + input.endMs) / 2);
+  const candidates = track.samples
+    .filter((sample) =>
+      Number.isFinite(sample.timeMs)
+      && sample.timeMs >= input.startMs - 0.5
+      && sample.timeMs <= input.endMs + 0.5
+      && Number.isFinite(sample.relativeMotion.x)
+      && Number.isFinite(sample.relativeMotion.y)
+      && sample.identityConfidence >= 0.5)
+    .map((sample) => ({
+      sample,
+      magnitude: Math.hypot(sample.relativeMotion.x, sample.relativeMotion.y),
+    }))
+    .filter((candidate) => candidate.magnitude >= 0.02)
+    .sort((left, right) =>
+      right.magnitude - left.magnitude
+      || Math.abs(left.sample.timeMs - targetAnchorMs)
+        - Math.abs(right.sample.timeMs - targetAnchorMs)
+      || right.sample.identityConfidence - left.sample.identityConfidence);
+  const peak = candidates[0];
+  if (peak === undefined) return null;
+  const phase = clamp01(
+    (peak.sample.timeMs - input.startMs) / (input.endMs - input.startMs),
+  );
+  return {
+    trackId: track.trackId,
+    semanticId: track.semanticId,
+    timeMs: peak.sample.timeMs,
+    phase,
+    magnitude: peak.magnitude,
+    direction: peak.sample.relativeMotion,
+    evidenceRefs: [...new Set([
+      ...track.evidenceRefs,
+      ...peak.sample.evidenceRefs,
+      "practice-subject-relative-effect-anchor:" + track.trackId,
+      "practice-subject-relative-effect-anchor-ms:" + peak.sample.timeMs.toFixed(3),
+    ])],
+  };
+};
+
 export interface PracticeContentStructureEvaluationV1 {
   readonly sceneIdentity: number;
   readonly temporalAlignment: number;
@@ -844,6 +909,18 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         && (windowAnatomy?.shotIds.includes(track.shotId) ?? false));
       const proactiveSubjectRelativeTracks = windowSubjectMotionTracks.filter((track) =>
         practiceProactiveSubjectRelativeIsolationRequiredV1(windowAnatomy, track));
+      const subjectRelativeEffectAnchors = proactiveSubjectRelativeTracks.flatMap((track) => {
+        const startMs = Math.max(window.startMs, track.referenceStartMs);
+        const endMs = Math.min(window.endMs, track.referenceEndMs);
+        if (endMs <= startMs) return [];
+        const anchor = practiceSubjectRelativeEffectAnchorV1({
+          referenceWindow: windowAnatomy,
+          track,
+          startMs,
+          endMs,
+        });
+        return anchor === null ? [] : [anchor];
+      });
       const learned = learnedGraphForWindow({
         evidence: window.evidence,
         family,
@@ -878,6 +955,17 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           ...proactiveSubjectRelativeTracks.flatMap((track) => [
             "practice-proactive-subject-relative-track:" + track.trackId,
             "practice-proactive-subject-relative-semantic:" + track.semanticId,
+          ]),
+          "practice-subject-relative-effect-anchors-before-effect:"
+            + String(subjectRelativeEffectAnchors.length),
+          ...subjectRelativeEffectAnchors.flatMap((anchor) => [
+            ...anchor.evidenceRefs,
+            "practice-subject-relative-effect-anchor-time-ms:"
+              + anchor.timeMs.toFixed(3),
+            "practice-subject-relative-effect-anchor-phase:"
+              + anchor.phase.toFixed(6),
+            "practice-subject-relative-effect-anchor-magnitude:"
+              + anchor.magnitude.toFixed(6),
           ]),
           ...(learned === null
             ? []
@@ -939,6 +1027,12 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ]),
             ...proactiveSubjectRelativeTracks.map((track) =>
               "subject-relative-proactive-isolation:" + track.trackId),
+            ...subjectRelativeEffectAnchors.flatMap((anchor) => [
+              "subject-relative-effect-anchor:" + anchor.trackId,
+              "subject-relative-effect-anchor-ms:" + anchor.timeMs.toFixed(3),
+              "subject-relative-effect-anchor-phase:" + anchor.phase.toFixed(6),
+              "subject-relative-effect-anchor-magnitude:" + anchor.magnitude.toFixed(6),
+            ]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "object-aware:true",
               `object-relation:${windowAnatomy.objectCue.relation}`,
@@ -971,6 +1065,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ...(proactiveSubjectRelativeTracks.length === 0
               ? []
               : ["REFERENCE_PROACTIVE_SUBJECT_RELATIVE_ISOLATION"]),
+            ...(subjectRelativeEffectAnchors.length === 0
+              ? []
+              : ["REFERENCE_SUBJECT_RELATIVE_EFFECT_ANCHOR"]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "REFERENCE_OBJECT_AWARE",
               `REFERENCE_OBJECT_RELATION_${windowAnatomy.objectCue.relation}`,
