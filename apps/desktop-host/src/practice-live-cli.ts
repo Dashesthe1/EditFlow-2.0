@@ -5,6 +5,7 @@ import path from "node:path";
 import { AE_ADAPTER_PROTOCOL_VERSION_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
 import {
   EditTypeRegistryFileV1,
+  buildPracticeMasteryRecordV1,
   type GptOrchestrationAssignmentV1,
   type PracticeMediaInputV1,
 } from "../../../packages/practice-homework/src/index.js";
@@ -309,12 +310,80 @@ const main = async (): Promise<void> => {
       ? { retainEpisode: false }
       : undefined);
 
+    const allocateLearning = hasFlag("--allocate");
     let allocation = null;
-    if (hasFlag("--allocate") && result.attempts.length > 0) {
+    if (allocateLearning && result.attempts.length > 0) {
       allocation = await runtime.allocateLearning({
         sessionId,
         editTypeId,
       });
+    }
+
+    let learningProof = null;
+    if (!heldOutCertification && allocateLearning) {
+      const finalRenderRef = result.bestAttempt?.renderRef ?? null;
+      if (finalRenderRef !== null) {
+        const assignment: GptOrchestrationAssignmentV1 = {
+          schema: "editflow.gpt-orchestration-assignment.v1",
+          assignmentId: "practice-live-learning:" + sessionId,
+          sessionId,
+          mode: "PRACTICE",
+          practiceRole: "LEARNING",
+          editTypeId,
+          status: "RUNNING",
+          finish,
+          start,
+          practicePolicy: {
+            minimumSimilarity,
+            exactSceneConfidence,
+            minimumAudioConfidence,
+          },
+          artifactDir,
+          chatMessage: "Standalone Current-AE learning verification.",
+          createdAt: startedAt,
+          claimedAt: startedAt,
+          claimedBy: "practice-live-cli",
+          startedAt,
+          completedAt: null,
+          cancelRequestedAt: null,
+          finalRenderRef: null,
+          finalSummary: null,
+          error: null,
+        };
+        const verifier = new PracticeMasteryVerifierV1({ repositoryRoot });
+        const verification = await verifier.verify({
+          assignment,
+          finalRenderRef,
+          minimumSimilarity,
+          exactSceneConfidence,
+          minimumAudioConfidence,
+        });
+        if (verification.proof.report.passed) {
+          const registryFile = new EditTypeRegistryFileV1(editTypeRegistryFilePath);
+          const registry = await registryFile.load();
+          const priorRecords = registry.knowledge(editTypeId)?.gptLearning.masteryRecords ?? [];
+          const masteryRecord = buildPracticeMasteryRecordV1({
+            sessionId,
+            priorRecords,
+            proof: verification.proof,
+            proofRef: verification.proofRef,
+            attempt: result.bestAttempt,
+          });
+          registry.beginGptLearningSession(editTypeId, sessionId, "PRACTICE");
+          registry.completeGptLearningSession({
+            editTypeId,
+            sessionId,
+            mode: "PRACTICE",
+            mastered: true,
+            masteryRecord,
+          });
+          await registryFile.save(registry);
+          learningProof = {
+            proofRef: verification.proofRef,
+            masteryRecord,
+          };
+        }
+      }
     }
 
     let heldOutProof = null;
@@ -390,12 +459,18 @@ const main = async (): Promise<void> => {
     });
     const reloadedEpisode = reloaded.engine.memory.get(sessionId);
     const reloadedEditType = reloaded.engine.editTypes.get(editTypeId);
+    const reloadedMasteryRecord = reloadedEditType?.gptLearning?.masteryRecords.find(
+      (record) => record.sessionId === sessionId,
+    ) ?? null;
     const learningMemoryAfter = reloaded.engine.memory.snapshot();
     const reloadProof = {
       episodeRestored: reloadedEpisode !== null,
       editTypeRestored: reloadedEditType !== null,
       allocationRestored: reloadedEpisode?.allocatedEditTypeId === editTypeId,
       editTypeContainsSession: reloadedEditType?.sessionIds.includes(sessionId) ?? false,
+      masteryRecordRestored: reloadedMasteryRecord !== null,
+      masteryScope: reloadedMasteryRecord?.scope ?? null,
+      masteryProofRef: reloadedMasteryRecord?.proofRef ?? null,
       learningMemoryUnchanged:
         JSON.stringify(learningMemoryAfter) === JSON.stringify(learningMemoryBefore),
       retainedAudioMatchId: reloadedEpisode?.audioMatch?.matchId ?? null,
@@ -416,9 +491,14 @@ const main = async (): Promise<void> => {
     const heldOutCasePassed = heldOutProof?.heldOutCase.passed ?? null;
     const liveRunAccepted = result.status === "MASTERED"
       || result.status === "HUMAN_REVIEW_REQUIRED";
+    const learningMasteryAccepted = !allocateLearning || heldOutCertification
+      || (learningProof !== null
+        && reloadProof.masteryRecordRestored
+        && reloadProof.masteryProofRef === learningProof.proofRef);
     const accepted = liveRunAccepted
       && persistenceAssertion.passed
       && isolationAssertion.passed
+      && learningMasteryAccepted
       && (!heldOutCertification || heldOutCasePassed === true);
     await writeJson(resultPath, {
       proofId: "PRACTICE_CURRENT_AE_LIVE_E2E_V1",
@@ -453,6 +533,7 @@ const main = async (): Promise<void> => {
       },
       result,
       allocation,
+      learningProof,
       heldOutProof,
       reloadProof,
       assertions: {
@@ -467,9 +548,12 @@ const main = async (): Promise<void> => {
     });
     if (result.status === "BLOCKED") process.exitCode = 2;
     if (!persistenceAssertion.passed) process.exitCode = 3;
-    if (hasFlag("--allocate")
+    if (allocateLearning
       && (!reloadProof.allocationRestored || !reloadProof.editTypeContainsSession)) {
       process.exitCode = 4;
+    }
+    if (allocateLearning && !heldOutCertification && !learningMasteryAccepted) {
+      process.exitCode = 7;
     }
     if (heldOutCertification && heldOutCasePassed !== true) {
       process.exitCode = 5;

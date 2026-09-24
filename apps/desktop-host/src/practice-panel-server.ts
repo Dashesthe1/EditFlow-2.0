@@ -16,8 +16,7 @@ import {
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
   compileGptTutorialResearchSourceV1,
-  classifyPracticeMasteryScopeV1,
-  buildPracticeSubjectIdentityMemoriesV1,
+  buildPracticeMasteryRecordV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -1315,10 +1314,6 @@ export class PracticePanelServerV1 {
           } else if (verification.proof.report.passed && traceReasons.length === 0) {
             const priorRecords = registry.knowledge(pending.editTypeId)
               ?.gptLearning.masteryRecords ?? [];
-            masteryScope = classifyPracticeMasteryScopeV1(
-              priorRecords,
-              verification.proof,
-            );
             const learningMemoryFile = new PracticeLearningMemoryFileV1(
               this.config.learningMemoryFilePath,
             );
@@ -1329,31 +1324,14 @@ export class PracticePanelServerV1 {
             const masteredAttempt = retainedEpisode?.attempts.find(
               (attempt) => attempt.renderRef === verification.proof.finalRenderRef,
             ) ?? null;
-            const subjectIdentityMemories = buildPracticeSubjectIdentityMemoriesV1({
+            masteryRecord = buildPracticeMasteryRecordV1({
               sessionId: pending.sessionId,
+              priorRecords,
               proof: verification.proof,
+              proofRef: verification.proofRef,
               attempt: masteredAttempt,
             });
-            masteryRecord = {
-              sessionId: pending.sessionId,
-              scope: masteryScope,
-              proofRef: verification.proofRef,
-              referenceId: verification.proof.referenceId,
-              sourceIndexId: verification.proof.sourceIndexId,
-              referenceFingerprint: verification.proof.referenceFingerprint,
-              sourceFingerprint: verification.proof.sourceFingerprint,
-              ...(verification.proof.sourceMediaSha256 === undefined
-                ? {}
-                : { sourceMediaSha256: [...verification.proof.sourceMediaSha256] }),
-              finalRenderRef: verification.proof.finalRenderRef,
-              overallSimilarity: verification.proof.report.overallSimilarity,
-              definingEffectCoverage: verification.proof.report.definingEffectCoverage,
-              effectFamilyIds: verification.proof.effectFamilyIds,
-              ...(subjectIdentityMemories.length === 0
-                ? {}
-                : { subjectIdentityMemories }),
-              verifiedAt: verification.proof.verifiedAt,
-            };
+            masteryScope = masteryRecord.scope;
             masteryReasons = [];
           }
         } catch (error) {

@@ -10,6 +10,7 @@ import {
   PracticeM6ExecutionBridgeV1,
   ProCreationPreparationEngineV1,
   buildPracticeHeldOutBenchmarkCaseV1,
+  buildPracticeMasteryRecordV1,
   classifyPracticeMasteryScopeV1,
   comparePracticeObjectAwareWindowsV1,
   composePracticeM6ExecutionAdaptersV1,
@@ -185,12 +186,15 @@ test("Edit Type allocation retains success, failure, efficiency, and semantic co
   assert.equal(knowledge.behaviorEvidence[0].elapsedMs, 1200);
 });
 test("Practice transfer classification uses stable media fingerprints instead of session-local ids", () => {
-  const prior = masteryRecord(
-    "practice:fingerprint:001",
-    "REFERENCE_VERIFIED",
-    "finish:id:one",
-    "source-index:id:one",
-  );
+  const prior = {
+    ...masteryRecord(
+      "practice:fingerprint:001",
+      "REFERENCE_VERIFIED",
+      "finish:id:one",
+      "source-index:id:one",
+    ),
+    sourceMediaSha256: ["source-sha:one"],
+  };
   const baseProof = {
     schema: "editflow.practice-mastery-proof.v1",
     sessionId: "practice:fingerprint:002",
@@ -199,6 +203,7 @@ test("Practice transfer classification uses stable media fingerprints instead of
     sourceIndexId: "source-index:id:two",
     referenceFingerprint: prior.referenceFingerprint,
     sourceFingerprint: prior.sourceFingerprint,
+    sourceMediaSha256: ["source-sha:one"],
     finalRenderRef: "render:two",
     minimumSimilarity: 0.95,
     exactSceneConfidence: 0.95,
@@ -219,6 +224,7 @@ test("Practice transfer classification uses stable media fingerprints instead of
       ...baseProof,
       referenceFingerprint: "reference-fingerprint:different",
       sourceFingerprint: "source-fingerprint:different",
+      sourceMediaSha256: ["source-sha:two"],
     }),
     "TRANSFER_VERIFIED",
   );
@@ -226,9 +232,87 @@ test("Practice transfer classification uses stable media fingerprints instead of
     classifyPracticeMasteryScopeV1([prior], {
       ...baseProof,
       sourceFingerprint: "source-fingerprint:different-only",
+      sourceMediaSha256: ["source-sha:two"],
     }),
     "REFERENCE_VERIFIED",
   );
+  assert.equal(
+    classifyPracticeMasteryScopeV1([prior], {
+      ...baseProof,
+      referenceFingerprint: "reference-fingerprint:different",
+      sourceFingerprint: "source-fingerprint:different-with-extra",
+      sourceMediaSha256: ["source-sha:one", "source-sha:extra"],
+    }),
+    "REFERENCE_VERIFIED",
+  );
+  assert.equal(
+    classifyPracticeMasteryScopeV1([prior], {
+      ...baseProof,
+      referenceFingerprint: "reference-fingerprint:different",
+      sourceFingerprint: "source-fingerprint:different",
+      sourceMediaSha256: undefined,
+    }),
+    "REFERENCE_VERIFIED",
+  );
+});
+
+test("shared mastery record builder binds proof authority and transfer scope", () => {
+  const prior = {
+    ...masteryRecord(
+      "practice:mastery-builder:001",
+      "REFERENCE_VERIFIED",
+      "finish:builder:one",
+      "source-index:builder:one",
+    ),
+    sourceMediaSha256: ["source-sha:builder:one"],
+  };
+  const proof = {
+    schema: "editflow.practice-mastery-proof.v1",
+    sessionId: "practice:mastery-builder:002",
+    editTypeId: "proof-gated",
+    referenceId: "finish:builder:two",
+    sourceIndexId: "source-index:builder:two",
+    referenceFingerprint: "reference-fingerprint:builder:two",
+    sourceFingerprint: "source-fingerprint:builder:two",
+    sourceMediaSha256: ["source-sha:builder:two"],
+    finalRenderRef: "render:builder:two",
+    minimumSimilarity: 0.95,
+    exactSceneConfidence: 0.95,
+    effectFamilyIds: ["SHUTTER_FRAGMENTATION"],
+    report: passedReport(),
+    matches: [],
+    audioMatch: null,
+    evidenceRefs: ["proof:builder:comparison"],
+    verifiedAt: "2026-09-23T12:02:00.000Z",
+  };
+
+  const record = buildPracticeMasteryRecordV1({
+    sessionId: proof.sessionId,
+    priorRecords: [prior],
+    proof,
+    proofRef: "proofs/practice/mastery-builder-002.json",
+    attempt: null,
+  });
+  assert.equal(record.scope, "TRANSFER_VERIFIED");
+  assert.equal(record.proofRef, "proofs/practice/mastery-builder-002.json");
+  assert.deepEqual(record.sourceMediaSha256, ["source-sha:builder:two"]);
+  assert.equal(record.finalRenderRef, proof.finalRenderRef);
+  assert.equal(record.subjectIdentityMemories, undefined);
+
+  assert.throws(() => buildPracticeMasteryRecordV1({
+    sessionId: proof.sessionId,
+    priorRecords: [prior],
+    proof: { ...proof, report: failedReport() },
+    proofRef: "proofs/practice/failed.json",
+    attempt: null,
+  }), /passing machine verification report/);
+  assert.throws(() => buildPracticeMasteryRecordV1({
+    sessionId: proof.sessionId,
+    priorRecords: [prior],
+    proof,
+    proofRef: "   ",
+    attempt: null,
+  }), /retained proof reference/);
 });
 
 test("GPT Practice cannot promote itself to mastery without a machine proof record", () => {

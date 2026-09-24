@@ -137,6 +137,11 @@ try {
   }
   $Result = Get-Content $ResultPath -Raw | ConvertFrom-Json
   Write-Host ("Practice live proof status: " + $Result.status)
+  if ($Allocate -and -not $HeldOutCertification -and $null -ne $Result.learningProof) {
+    Write-Host ("Learning mastery scope: " + $Result.learningProof.masteryRecord.scope)
+    Write-Host ("Learning mastery proof: " + $Result.learningProof.proofRef)
+    Write-Host ("Learning mastery restored: " + $Result.reloadProof.masteryRecordRestored)
+  }
   if ($HeldOutCertification -and $null -ne $Result.heldOutProof) {
     Write-Host ("Held-out case passed: " + $Result.heldOutProof.heldOutCase.passed)
     Write-Host ("Held-out benchmark cases retained: " + $Result.heldOutProof.benchmark.caseCount)

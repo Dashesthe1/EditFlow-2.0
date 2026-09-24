@@ -123,6 +123,9 @@ Normal Practice defaults to an AUTO lifecycle. Before transfer verification, AUT
 to LEARNING so GPT can research, reconstruct, diagnose, revise, and retain machine-proven
 lessons. Once a materially different Finish/source pair passes and promotes the Edit Type
 to TRANSFER_VERIFIED, AUTO resolves subsequent Practice runs to HELD_OUT_CERTIFICATION.
+Material transfer requires different Finish and aggregate Start fingerprints plus retained
+individual Start-file SHA-256 identities with zero overlap against the prior mastery case;
+missing file-level identities fail closed rather than counting as unseen transfer.
 Those runs freeze the transfer-verified knowledge snapshot. Before a held-out GPT assignment
 is created, the panel streams SHA-256 over the selected Finish and Start files and rejects
 exact Finish reuse, exact legacy source-set reuse, duplicate Start media, or any individual
@@ -134,9 +137,14 @@ Explicit LEARNING and HELD_OUT_CERTIFICATION overrides remain available for deli
 development or certification work, but the normal panel path does not require manual
 lifecycle choice.
 
-The standalone Current-AE proof runner can execute the same held-out certification path
-as the Practice panel. By default both surfaces resolve one worktree-independent persistent
-state root (`%LOCALAPPDATA%\EditFlow2\practice-state` on Windows, with
+The standalone Current-AE proof runner can execute the same learning mastery and held-out
+certification paths as the Practice panel. A learning run invoked with allocation enabled must
+machine-verify its retained final render, build the same authoritative mastery record used by
+the panel, save that record into the Edit Type registry, reload it from disk, and fail the live
+proof if the exact retained proof reference is not restored. This allows successive standalone
+runs on materially different media to advance from REFERENCE_VERIFIED to TRANSFER_VERIFIED
+without manufacturing state. By default both surfaces resolve one worktree-independent
+persistent state root (`%LOCALAPPDATA%\EditFlow2\practice-state` on Windows, with
 `EDITFLOW_PRACTICE_STATE_DIR` as an explicit environment override). `-StateDir` / `--state-dir`
 remains available for intentionally isolated proofs. The shared state directory persists
 Edit Type and Practice memory across branches, worktrees, panel restarts, and proof sessions.

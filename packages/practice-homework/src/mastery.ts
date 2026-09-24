@@ -19,6 +19,7 @@ import type {
   PracticeMasteryScopeV1,
   PracticeMaturityStageV1,
 } from "./contracts.js";
+import { buildPracticeSubjectIdentityMemoriesV1 } from "./subject-identity-memory.js";
 
 const nonEmpty = (value: string | undefined): string | null => {
   const normalized = value?.trim() ?? "";
@@ -178,19 +179,71 @@ export const classifyPracticeMasteryScopeV1 = (
 ): PracticeMasteryScopeV1 => {
   const referenceFingerprint = nonEmpty(proof.referenceFingerprint);
   const sourceFingerprint = nonEmpty(proof.sourceFingerprint);
-  if (referenceFingerprint === null || sourceFingerprint === null) {
+  const sourceMediaSha256 = uniqueNonEmpty(proof.sourceMediaSha256 ?? []);
+  if (referenceFingerprint === null
+    || sourceFingerprint === null
+    || sourceMediaSha256.length === 0) {
     return "REFERENCE_VERIFIED";
   }
+  const currentSourceMedia = new Set(sourceMediaSha256);
 
   const hasMaterialTransfer = prior.some((record) => {
     const priorReference = nonEmpty(record.referenceFingerprint);
     const priorSource = nonEmpty(record.sourceFingerprint);
+    const priorSourceMedia = uniqueNonEmpty(record.sourceMediaSha256 ?? []);
     return priorReference !== null
       && priorSource !== null
       && priorReference !== referenceFingerprint
-      && priorSource !== sourceFingerprint;
+      && priorSource !== sourceFingerprint
+      && priorSourceMedia.length > 0
+      && priorSourceMedia.every((sha256) => !currentSourceMedia.has(sha256));
   });
   return hasMaterialTransfer ? "TRANSFER_VERIFIED" : "REFERENCE_VERIFIED";
+};
+
+export const buildPracticeMasteryRecordV1 = (input: {
+  readonly sessionId: string;
+  readonly priorRecords: readonly PracticeMasteryRecordV1[];
+  readonly proof: PracticeMasteryProofV1;
+  readonly proofRef: string;
+  readonly attempt: PracticeAttemptV1 | null;
+}): PracticeMasteryRecordV1 => {
+  if (!input.proof.report.passed) {
+    throw new TypeError("Practice mastery record requires a passing machine verification report.");
+  }
+  if (input.proof.sessionId !== input.sessionId) {
+    throw new TypeError("Practice mastery proof session does not match the retained session.");
+  }
+  const proofRef = input.proofRef.trim();
+  if (proofRef.length === 0) {
+    throw new TypeError("Practice mastery record requires a retained proof reference.");
+  }
+  const scope = classifyPracticeMasteryScopeV1(input.priorRecords, input.proof);
+  const subjectIdentityMemories = buildPracticeSubjectIdentityMemoriesV1({
+    sessionId: input.sessionId,
+    proof: input.proof,
+    attempt: input.attempt,
+  });
+  return {
+    sessionId: input.sessionId,
+    scope,
+    proofRef,
+    referenceId: input.proof.referenceId,
+    sourceIndexId: input.proof.sourceIndexId,
+    referenceFingerprint: input.proof.referenceFingerprint,
+    sourceFingerprint: input.proof.sourceFingerprint,
+    ...(input.proof.sourceMediaSha256 === undefined
+      ? {}
+      : { sourceMediaSha256: [...input.proof.sourceMediaSha256] }),
+    finalRenderRef: input.proof.finalRenderRef,
+    overallSimilarity: input.proof.report.overallSimilarity,
+    definingEffectCoverage: input.proof.report.definingEffectCoverage,
+    effectFamilyIds: [...input.proof.effectFamilyIds],
+    ...(subjectIdentityMemories.length === 0
+      ? {}
+      : { subjectIdentityMemories }),
+    verifiedAt: input.proof.verifiedAt,
+  };
 };
 
 export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {

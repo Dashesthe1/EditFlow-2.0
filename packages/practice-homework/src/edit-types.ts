@@ -60,9 +60,9 @@ const hasMateriallyDifferentSkillProof = (
     if (priorReference.length === 0 || priorSource.length === 0) return false;
     if (priorReference === currentReference || priorSource === currentSource) return false;
     const priorSourceMedia = uniqueStrings(record.sourceMediaSha256 ?? []);
-    return currentSourceMedia.size === 0
-      || priorSourceMedia.length === 0
-      || priorSourceMedia.every((sha256) => !currentSourceMedia.has(sha256));
+    return currentSourceMedia.size > 0
+      && priorSourceMedia.length > 0
+      && priorSourceMedia.every((sha256) => !currentSourceMedia.has(sha256));
   });
 };
 
