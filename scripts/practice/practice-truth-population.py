@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import hashlib
 import importlib.util
 import json
 from collections import Counter
@@ -23,6 +24,42 @@ ALLOWED_DIFFICULTIES = {
 MIN_CASES = 20
 MAX_CASES = 30
 MIN_DIFFICULTY_KINDS = 4
+PERCEPTUAL_DUPLICATE_SIMILARITY = 0.96
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def perceptual_signature_parts(value):
+    parts = [part.strip().lower() for part in str(value or "").split(",") if part.strip()]
+    if len(parts) < 8:
+        return []
+    try:
+        if any(len(part) != 16 for part in parts):
+            return []
+        for part in parts:
+            int(part, 16)
+    except ValueError:
+        return []
+    return parts
+
+
+def perceptual_similarity(left, right):
+    left_parts = perceptual_signature_parts(left)
+    right_parts = perceptual_signature_parts(right)
+    if not left_parts or len(left_parts) != len(right_parts):
+        return None
+    similarity = 0.0
+    for left_part, right_part in zip(left_parts, right_parts):
+        distance = (int(left_part, 16) ^ int(right_part, 16)).bit_count()
+        similarity += 1.0 - distance / 64.0
+    return similarity / len(left_parts)
+
 
 def load_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8-sig"))
@@ -193,6 +230,60 @@ def case_result(case_id, tags, stage, next_action, reasons=None):
         "reasons": list(reasons or []),
     }
 
+
+def population_finish_identity_reasons(plan, plan_path):
+    identities = []
+    for case in plan["cases"]:
+        case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
+        finish = artifact_path(case, plan_path, "finishPath")
+        if finish is None or not finish.is_file():
+            continue
+        finish_sha = sha256_file(finish)
+        signature = None
+        reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+        if reference_path is not None and reference_path.is_file():
+            try:
+                reference = load_json(reference_path)
+                if reference.get("schema") == REFERENCE_SCHEMA:
+                    signature = reference.get("perceptualSignature")
+            except (OSError, ValueError, json.JSONDecodeError):
+                signature = None
+        identities.append((case_id, finish_sha, signature))
+
+    exact_seen = {}
+    exact_pairs = []
+    for case_id, finish_sha, _signature in identities:
+        previous = exact_seen.get(finish_sha)
+        if previous is not None:
+            exact_pairs.append((previous, case_id))
+        else:
+            exact_seen[finish_sha] = case_id
+
+    perceptual_pairs = []
+    for index, (left_id, left_sha, left_signature) in enumerate(identities):
+        for right_id, right_sha, right_signature in identities[index + 1:]:
+            if left_sha == right_sha:
+                continue
+            similarity = perceptual_similarity(left_signature, right_signature)
+            if similarity is not None and similarity >= PERCEPTUAL_DUPLICATE_SIMILARITY:
+                perceptual_pairs.append((left_id, right_id, similarity))
+
+    reasons = []
+    if exact_pairs:
+        examples = ", ".join(f"{left}/{right}" for left, right in exact_pairs[:3])
+        reasons.append("Population reuses exact Finish media bytes across distinct cases: " + examples + ".")
+    if perceptual_pairs:
+        examples = ", ".join(
+            f"{left}/{right}={similarity:.4f}"
+            for left, right, similarity in perceptual_pairs[:3]
+        )
+        reasons.append(
+            "Population reuses perceptually equivalent Finish material at or above "
+            f"{PERCEPTUAL_DUPLICATE_SIMILARITY:.2f} similarity: {examples}."
+        )
+    return reasons
+
+
 def build_status(plan_path):
     plan = require_plan(plan_path)
     corpus = load_corpus_tool()
@@ -208,6 +299,7 @@ def build_status(plan_path):
         population_reasons.append(f"Population exceeds the supported {MAX_CASES}-case window.")
     if len(case_ids) != len(set(case_ids)):
         population_reasons.append("Population reuses a case id.")
+    population_reasons.extend(population_finish_identity_reasons(plan, plan_path))
     if len(difficulty_counts) < MIN_DIFFICULTY_KINDS:
         population_reasons.append(
             f"Population spans fewer than {MIN_DIFFICULTY_KINDS} hard-case categories."

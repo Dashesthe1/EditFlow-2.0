@@ -31,6 +31,10 @@ def sha256_bytes(value):
     return hashlib.sha256(value).hexdigest()
 
 
+def perceptual_signature(part):
+    return ",".join([part] * 16)
+
+
 class PracticeTruthPopulationTest(unittest.TestCase):
     def _base_case(self, root, index=0):
         finish = root / f"finish-{index}.mp4"
@@ -81,6 +85,43 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(status["candidateCaseCount"], 20)
             self.assertEqual(status["readyForCorpusCount"], 0)
             self.assertEqual(status["stageCounts"], {"REFERENCE_ANALYSIS": 20})
+
+    def test_candidate_window_rejects_exact_finish_byte_reuse(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cases = [self._base_case(root, index) for index in range(20)]
+            original = root / cases[0]["finishPath"]
+            duplicate = root / cases[1]["finishPath"]
+            duplicate.write_bytes(original.read_bytes())
+
+            status = tool.build_status(self._plan(root, cases))
+            self.assertFalse(status["populationWindowReached"])
+            self.assertTrue(any(
+                "exact Finish media bytes" in reason
+                for reason in status["populationReasons"]
+            ))
+
+    def test_candidate_window_rejects_perceptual_finish_reencode_reuse(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cases = [self._base_case(root, index) for index in range(20)]
+            signatures = [
+                perceptual_signature("0000000000000000"),
+                perceptual_signature("0000000000000001"),
+            ]
+            for index, signature in enumerate(signatures):
+                write_json(root / cases[index]["referenceAnalysis"], {
+                    "schema": tool.REFERENCE_SCHEMA,
+                    "referenceId": f"reference:{index}",
+                    "perceptualSignature": signature,
+                })
+
+            status = tool.build_status(self._plan(root, cases))
+            self.assertFalse(status["populationWindowReached"])
+            self.assertTrue(any(
+                "perceptually equivalent Finish material" in reason
+                for reason in status["populationReasons"]
+            ))
 
     def _write_reference_and_draft(self, root, case):
         finish = root / case["finishPath"]

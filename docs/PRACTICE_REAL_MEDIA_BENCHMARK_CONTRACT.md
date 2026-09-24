@@ -84,9 +84,12 @@ Each case is fail-closed at the first missing proof stage: media intake, Finish 
 truth scaffold, matcher-blind review pack, independent worksheet completion, retained truth, matcher
 observation, or per-case retained-suite manifest. A case becomes `READY_FOR_CORPUS` only after the
 existing retained-corpus preflight accepts its per-case manifest. The population-level
-`populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, and at least
-four hard-case categories. It is intentionally separate from `readyForCorpusCount` and is never a
-certification claim.
+`populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, distinct
+Finish media identities, and at least four hard-case categories. Finish identity is fail-closed in
+two layers: exact SHA-256 reuse is rejected immediately, and once reference analysis exists,
+perceptual signatures at or above 0.96 similarity are rejected so a re-encode cannot inflate the
+population. It is intentionally separate from `readyForCorpusCount` and is never a certification
+claim.
 
 Example:
 
