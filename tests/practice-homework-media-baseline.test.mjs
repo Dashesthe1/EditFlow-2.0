@@ -139,6 +139,81 @@ test("AE baseline compiles a measured forward-then-rewind trajectory into Time R
   assert.ok(values.at(-1) < values[peakIndex]);
 });
 
+test("AE baseline compiles a measured forward speed ramp into Time Remap keys", () => {
+  const speedRampMatches = [
+    matches[0],
+    {
+      ...matches[1],
+      direction: "FORWARD",
+      sourceStartMs: 7000,
+      sourceEndMs: 9000,
+      playbackRate: 1.25,
+      temporalBehavior: "FORWARD",
+      trajectory: [
+        { referenceTimeMs: 1120, sourceTimeMs: 7100, similarity: 0.98 },
+        { referenceTimeMs: 1450, sourceTimeMs: 7280, similarity: 0.99 },
+        { referenceTimeMs: 1800, sourceTimeMs: 7700, similarity: 0.99 },
+        { referenceTimeMs: 2150, sourceTimeMs: 8350, similarity: 0.98 },
+        { referenceTimeMs: 2380, sourceTimeMs: 8850, similarity: 0.97 },
+      ],
+    },
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: speedRampMatches });
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.deepEqual(timings[1], {
+    startTime: 1,
+    inPoint: 1,
+    outPoint: 2.5,
+    stretch: 100,
+  });
+  const remap = plan.operations.find((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0002"));
+  assert.ok(remap);
+  const keyframes = remap.payload.keyframes;
+  assert.ok(keyframes.length >= 5);
+  const segmentRates = keyframes.slice(1).map((item, index) =>
+    Math.abs((item.value - keyframes[index].value) / (item.time - keyframes[index].time)));
+  assert.ok(Math.max(...segmentRates) / Math.min(...segmentRates) > 1.3);
+});
+
+test("AE baseline keeps near-linear measured trajectories on the stretch fast path", () => {
+  const linearMatches = [
+    matches[0],
+    {
+      ...matches[1],
+      direction: "FORWARD",
+      sourceStartMs: 7000,
+      sourceEndMs: 8500,
+      playbackRate: 1,
+      temporalBehavior: "FORWARD",
+      trajectory: [
+        { referenceTimeMs: 1120, sourceTimeMs: 7122, similarity: 0.98 },
+        { referenceTimeMs: 1450, sourceTimeMs: 7448, similarity: 0.99 },
+        { referenceTimeMs: 1800, sourceTimeMs: 7804, similarity: 0.99 },
+        { referenceTimeMs: 2150, sourceTimeMs: 8147, similarity: 0.98 },
+        { referenceTimeMs: 2380, sourceTimeMs: 8382, similarity: 0.97 },
+      ],
+    },
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: linearMatches });
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.deepEqual(timings[1], {
+    startTime: -6,
+    inPoint: 1,
+    outPoint: 2.5,
+    stretch: 100,
+  });
+  const remap = plan.operations.find((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0002"));
+  assert.equal(remap, undefined);
+});
+
 test("AE baseline builder executes the deterministic plan in order", async () => {
   const executed = [];
   const builder = new PracticeAeBaselineBuilderV1({
