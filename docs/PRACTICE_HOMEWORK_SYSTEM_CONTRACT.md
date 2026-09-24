@@ -177,6 +177,16 @@ its machine rejection code. Roto certification also requires retained cross-sour
 ROTO_BRUSH mask truth, the committed Roto route, native export host evidence, the final matte,
 working-layer cleanup, and applied undo accounting. Backend/fallback labels alone fail closed.
 
+Before standalone Current-AE reconstruction starts, the assembled runtime publishes the IDs of
+the subject-isolation backends whose retained runtime evidence was actually accepted. When a
+proof requests a specific backend or fallback chain, the live runner checks those registered
+IDs before `runtime.run`. A missing requested backend, a missing fallback source, or a
+self-fallback fails with
+`PRACTICE_CURRENT_AE_SUBJECT_ISOLATION_PREFLIGHT_FAILED` and a structured
+`subjectIsolationReadiness` assertion. This is only a readiness gate: successful certification
+still requires the post-run subject-isolation evidence above, so registration cannot substitute
+for proof that the backend was actually used.
+
 ## Non-negotiable practice sequence
 
 A Practice session runs:

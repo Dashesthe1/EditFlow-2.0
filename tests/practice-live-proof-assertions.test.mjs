@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   evaluatePracticeIsolationEvidenceV1,
+  evaluatePracticeIsolationReadinessV1,
   evaluatePracticeLivePersistenceV1,
 } from "../.tmp/runtime/apps/desktop-host/src/practice-live-proof-assertions.js";
 
@@ -53,6 +54,41 @@ test("held-out persistence proves the certification did not enter learning memor
   assert.match(leaked.reasons.join("\n"), /leaked an episode/);
   assert.match(leaked.reasons.join("\n"), /changed the Practice learning-memory/);
 });
+test("live isolation readiness proves the requested SAM-to-Roto path before reconstruction", () => {
+  const accepted = evaluatePracticeIsolationReadinessV1({
+    availableBackendIds: [
+      "SAM31_TEMPORAL_MATTE",
+      "ROTO_BRUSH_TRACK_MATTE",
+      "AE_TRACKED_MASK",
+    ],
+    expectedBackend: "ROTO_BRUSH_TRACK_MATTE",
+    expectedFallbackAfter: "SAM31_TEMPORAL_MATTE",
+  });
+  assert.equal(accepted.passed, true);
+  assert.deepEqual(accepted.availableBackendIds, [
+    "SAM31_TEMPORAL_MATTE",
+    "ROTO_BRUSH_TRACK_MATTE",
+    "AE_TRACKED_MASK",
+  ]);
+
+  const missing = evaluatePracticeIsolationReadinessV1({
+    availableBackendIds: ["AE_TRACKED_MASK"],
+    expectedBackend: "ROTO_BRUSH_TRACK_MATTE",
+    expectedFallbackAfter: "SAM31_TEMPORAL_MATTE",
+  });
+  assert.equal(missing.passed, false);
+  assert.match(missing.reasons.join("\n"), /ROTO_BRUSH_TRACK_MATTE/);
+  assert.match(missing.reasons.join("\n"), /SAM31_TEMPORAL_MATTE/);
+
+  const contradictory = evaluatePracticeIsolationReadinessV1({
+    availableBackendIds: ["ROTO_BRUSH_TRACK_MATTE"],
+    expectedBackend: "ROTO_BRUSH_TRACK_MATTE",
+    expectedFallbackAfter: "ROTO_BRUSH_TRACK_MATTE",
+  });
+  assert.equal(contradictory.passed, false);
+  assert.match(contradictory.reasons.join("\n"), /must be different/);
+});
+
 test("live isolation assertion can require a real SAM-to-Roto fallback trace", () => {
   const accepted = evaluatePracticeIsolationEvidenceV1({
     evidenceRefs: [

@@ -14,6 +14,7 @@ import { LoopbackCepBroker } from "./loopback-cep.js";
 import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
 import {
   evaluatePracticeIsolationEvidenceV1,
+  evaluatePracticeIsolationReadinessV1,
   evaluatePracticeLivePersistenceV1,
 } from "./practice-live-proof-assertions.js";
 import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
@@ -317,6 +318,30 @@ const main = async (): Promise<void> => {
       editTypeRegistryFilePath,
       renderTimeoutMs: timeoutMs,
     });
+    const isolationReadiness = evaluatePracticeIsolationReadinessV1({
+      availableBackendIds: runtime.assembly.subjectIsolationBackendIds,
+      expectedBackend: expectedIsolationBackend,
+      expectedFallbackAfter: expectedIsolationFallbackAfter,
+    });
+    if (!isolationReadiness.passed) {
+      await writeJson(resultPath, {
+        proofId: "PRACTICE_CURRENT_AE_LIVE_E2E_V1",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        status: "FAILED",
+        ok: false,
+        errorCode: "PRACTICE_CURRENT_AE_SUBJECT_ISOLATION_PREFLIGHT_FAILED",
+        sessionId,
+        practiceRole: heldOutCertification
+          ? "HELD_OUT_CERTIFICATION"
+          : "LEARNING",
+        assertions: {
+          subjectIsolationReadiness: isolationReadiness,
+        },
+      });
+      process.exitCode = 8;
+      return;
+    }
     const learningMemoryBefore = runtime.engine.memory.snapshot();
     let editType = runtime.engine.editTypes.get(editTypeId);
     if (editType === null) {
@@ -561,6 +586,7 @@ const main = async (): Promise<void> => {
         && reloadProof.masteryProofRef === learningProof.proofRef);
     const accepted = liveRunAccepted
       && persistenceAssertion.passed
+      && isolationReadiness.passed
       && isolationAssertion.passed
       && learningMasteryAccepted
       && (!heldOutCertification || heldOutCasePassed === true);
@@ -602,6 +628,7 @@ const main = async (): Promise<void> => {
       reloadProof,
       assertions: {
         persistence: persistenceAssertion,
+        subjectIsolationReadiness: isolationReadiness,
         subjectIsolation: isolationAssertion,
       },
       persistence: {
