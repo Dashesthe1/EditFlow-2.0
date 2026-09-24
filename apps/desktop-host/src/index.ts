@@ -66,6 +66,9 @@ export type {
   PracticeM6AeRenderDriverConfigV1,
 } from "./practice-m6-ae-render-driver.js";
 export {
+  buildPracticeCrossSourceSubjectProofV1,
+} from "./practice-cross-source-subject-proof.js";
+export {
   PracticePanelServerV1,
 } from "./practice-panel-server.js";
 export type {

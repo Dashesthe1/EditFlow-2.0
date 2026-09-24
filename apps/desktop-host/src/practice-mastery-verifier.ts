@@ -17,6 +17,7 @@ import {
   type PracticeSceneMatchV1,
   type PracticeSimilarityReportV1,
 } from "../../../packages/practice-homework/src/index.js";
+import { buildPracticeCrossSourceSubjectProofV1 } from "./practice-cross-source-subject-proof.js";
 import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
 
 export interface PracticeMasteryVerifierConfigV1 {
@@ -346,6 +347,12 @@ export class PracticeMasteryVerifierV1 {
 
     const referenceSequence = detectDenseEffectWindowsV1(referenceEvidence);
     const renderSequence = detectDenseEffectWindowsV1(renderEvidence);
+    const crossSourceSubjectProof = await buildPracticeCrossSourceSubjectProofV1({
+      reference,
+      sequence: referenceSequence,
+      matches,
+      binder: analyzer,
+    });
     const effectFamilyIds = unique(
       referenceSequence.windows
         .map((window) => classifyEffectFamilyV1(window.evidence))
@@ -376,6 +383,16 @@ export class PracticeMasteryVerifierV1 {
       }
       : comparePracticeM6AlignedWindowsV1(referenceSequence, renderSequence);
 
+    const crossSourceSubjectReasons = compared.objectAwareProof.required
+      ? !crossSourceSubjectProof.required
+        ? ["Object-aware proof requires Finish-to-Start subject binding, but no binding proof was generated."]
+        : crossSourceSubjectProof.verified
+          ? []
+          : crossSourceSubjectProof.reasons.length > 0
+            ? crossSourceSubjectProof.reasons
+            : ["Finish-to-Start subject binding did not satisfy the machine proof gate."]
+      : [];
+
     const rawReport: PracticeSimilarityReportV1 = {
       schema: "editflow.practice-similarity.v1",
       breakdown: {
@@ -402,6 +419,7 @@ export class PracticeMasteryVerifierV1 {
           ? ["Content comparison produced no retained evidence."]
           : []),
         ...compared.diagnoses,
+        ...crossSourceSubjectReasons,
         ...temporalBehaviorReasons,
         ...matchReasons,
         ...audioReasons,
@@ -414,6 +432,7 @@ export class PracticeMasteryVerifierV1 {
         ...content.evidenceRefs,
         ...(content.temporalBehaviorProof?.evidenceRefs ?? []),
         ...compared.evidenceRefs,
+        ...crossSourceSubjectProof.evidenceRefs,
       ]),
     };
     const finalized = finalizePracticeSimilarityReportV1(
@@ -430,6 +449,7 @@ export class PracticeMasteryVerifierV1 {
       ...audioReasons,
       ...temporalBehaviorReasons,
       ...objectAwareReasons,
+      ...crossSourceSubjectReasons,
     ]);
     const report: PracticeSimilarityReportV1 = {
       ...finalized,
@@ -450,6 +470,7 @@ export class PracticeMasteryVerifierV1 {
       exactSceneConfidence,
       effectFamilyIds,
       objectAwareProof: compared.objectAwareProof,
+      crossSourceSubjectProof,
       report,
       matches,
       audioMatch,

@@ -25,6 +25,7 @@ import {
 import {
   PracticeM6AeRenderDriverCurrentV1,
   PracticeM6CurrentAeRuntimeV1,
+  buildPracticeCrossSourceSubjectProofV1,
   createPracticeM6CurrentAeAssemblyV1,
   createPracticeM6CurrentAeTrainingRuntimeV1,
 } from "../.tmp/runtime/apps/desktop-host/src/index.js";
@@ -593,6 +594,103 @@ test("object-aware proof preserves subject/background relation and fails when it
   assert.ok(failed.reasons.some((reason) => /Object relation changed/.test(reason)));
 });
 
+test("cross-source subject proof binds Finish identity to the matched raw Start subject", async () => {
+  const bindingReference = {
+    ...reference,
+    sourcePath: "C:\\Finish\\reference.mp4",
+  };
+  const bindingMatch = {
+    shotId: "shot:001",
+    sourceId: "raw:movie",
+    sourcePath: "C:\\Raw\\movie.mp4",
+    sourceStartMs: 1000,
+    sourceEndMs: 1500,
+    direction: "FORWARD",
+    playbackRate: 1,
+    appearanceSimilarity: 0.99,
+    temporalSimilarity: 0.99,
+    motionSimilarity: 0.99,
+    confidence: 0.99,
+    evidenceRefs: ["source-video:sha256:binding-source"],
+  };
+  let capturedRequest = null;
+  const verified = await buildPracticeCrossSourceSubjectProofV1({
+    reference: bindingReference,
+    sequence: oneWindowSequence("reference:cross-source", referenceEvidence),
+    matches: [bindingMatch],
+    binder: {
+      async bindCrossSourceSubject(request) {
+        capturedRequest = request;
+        return {
+          schema: "editflow.practice-cross-source-subject-binding.v1",
+          algorithmId: "test.cross-source-binder.v1",
+          verified: true,
+          reason: null,
+          referenceSemanticId: request.referenceSemanticId,
+          sourceSemanticId: "practice-source-subject:raw:movie:verified",
+          referenceSubjectBox: request.referenceSubjectBox,
+          sourceSubjectBox: [0.24, 0.17, 0.43, 0.71],
+          sourceVideo: {
+            fps: 30,
+            frameCount: 300,
+            width: 1920,
+            height: 1080,
+            durationMs: 10000,
+            sampleTimeMs: request.sourceTimeMs,
+          },
+          confidence: 0.94,
+          evidenceRefs: ["proof:finish-to-start-binding"],
+        };
+      },
+    },
+  });
+  assert.equal(verified.required, true);
+  assert.equal(verified.referenceWindowCount, 1);
+  assert.equal(verified.requiredBindingCount, 1);
+  assert.equal(verified.verifiedBindingCount, 1);
+  assert.equal(verified.verifiedWindowCount, 1);
+  assert.equal(verified.verified, true);
+  assert.ok(capturedRequest);
+  assert.equal(capturedRequest.referenceSemanticId, "subject:primary:v1");
+  assert.equal(capturedRequest.sourceId, "raw:movie");
+  assert.ok(Math.abs(capturedRequest.sourceTimeMs - 1100) < 0.01);
+
+  const rejected = await buildPracticeCrossSourceSubjectProofV1({
+    reference: bindingReference,
+    sequence: oneWindowSequence("reference:cross-source:failed", referenceEvidence),
+    matches: [bindingMatch],
+    binder: {
+      async bindCrossSourceSubject(request) {
+        return {
+          schema: "editflow.practice-cross-source-subject-binding.v1",
+          algorithmId: "test.cross-source-binder.v1",
+          verified: false,
+          reason: "CROSS_SOURCE_IDENTITY_BELOW_PROOF_FLOOR",
+          referenceSemanticId: request.referenceSemanticId,
+          sourceSemanticId: null,
+          referenceSubjectBox: request.referenceSubjectBox,
+          sourceSubjectBox: null,
+          sourceVideo: {
+            fps: 30,
+            frameCount: 300,
+            width: 1920,
+            height: 1080,
+            durationMs: 10000,
+            sampleTimeMs: request.sourceTimeMs,
+          },
+          confidence: 0.2,
+          evidenceRefs: ["proof:finish-to-start-binding:rejected"],
+        };
+      },
+    },
+  });
+  assert.equal(rejected.required, true);
+  assert.equal(rejected.verified, false);
+  assert.equal(rejected.verifiedBindingCount, 0);
+  assert.ok(rejected.reasons.some((reason) =>
+    /Finish-to-Start subject binding failed/.test(reason)));
+});
+
 test("subject identity proof survives bounded low-motion and occlusion gaps but rejects identity switches", () => {
   const continuityFrames = referenceEvidence.frames.map((item, index) => ({
     ...item,
@@ -650,6 +748,18 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
       reasons: [],
       evidenceRefs: ["proof:object-aware"],
     },
+    crossSourceSubjectProof: {
+      schema: "editflow.practice-cross-source-subject-proof.v1",
+      required: true,
+      referenceWindowCount: 1,
+      requiredBindingCount: 1,
+      verifiedBindingCount: 1,
+      verifiedWindowCount: 1,
+      verified: true,
+      bindings: [],
+      reasons: [],
+      evidenceRefs: ["proof:cross-source-subject"],
+    },
     report: passedReport(0.98),
     matches: [],
     audioMatch: null,
@@ -662,6 +772,20 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
     proofRef: "proof:bundle",
   });
   assert.equal(heldOutCase.objectAwareVerified, true);
+
+  const missingBindingCase = buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: "practice:object-aware:no-binding",
+    proof: {
+      ...proof,
+      sessionId: "practice:object-aware:no-binding",
+      crossSourceSubjectProof: undefined,
+    },
+    proofRef: "proof:no-binding:bundle",
+  });
+  assert.equal(missingBindingCase.passed, false);
+  assert.equal(missingBindingCase.objectAwareVerified, false);
+  assert.ok(missingBindingCase.reasons.some((reason) =>
+    /Finish-to-Start subject binding/.test(reason)));
 
   const failedProof = {
     ...proof,

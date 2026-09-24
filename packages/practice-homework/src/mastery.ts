@@ -41,13 +41,23 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
   readonly proofRef: string;
   readonly traceReasons?: readonly string[];
 }): PracticeHeldOutBenchmarkCaseV1 => {
-  const objectProofReasons = input.proof.objectAwareProof?.required === true
-    && !input.proof.objectAwareProof.verified
-    ? input.proof.objectAwareProof.reasons
+  const objectAwareRequired = input.proof.objectAwareProof?.required === true;
+  const objectProofReasons = objectAwareRequired
+    && !input.proof.objectAwareProof!.verified
+    ? input.proof.objectAwareProof!.reasons
+    : [];
+  const crossSourceSubjectVerified = objectAwareRequired
+    && input.proof.crossSourceSubjectProof?.required === true
+    && input.proof.crossSourceSubjectProof.verified;
+  const crossSourceSubjectReasons = objectAwareRequired && !crossSourceSubjectVerified
+    ? input.proof.crossSourceSubjectProof?.reasons.length
+      ? input.proof.crossSourceSubjectProof.reasons
+      : ["Object-aware held-out proof lacks verified Finish-to-Start subject binding."]
     : [];
   const reasons = [...new Set([
     ...input.proof.report.reasons,
     ...objectProofReasons,
+    ...crossSourceSubjectReasons,
     ...(input.traceReasons ?? []),
   ].map((value) => value.trim()).filter(Boolean))];
   return {
@@ -56,8 +66,9 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     referenceFingerprint: input.proof.referenceFingerprint,
     sourceFingerprint: input.proof.sourceFingerprint,
     effectFamilyIds: [...input.proof.effectFamilyIds],
-    objectAwareVerified: input.proof.objectAwareProof?.required === true
-      && input.proof.objectAwareProof.verified,
+    objectAwareVerified: objectAwareRequired
+      && input.proof.objectAwareProof!.verified
+      && crossSourceSubjectVerified,
     overallSimilarity: input.proof.report.overallSimilarity,
     definingEffectCoverage: input.proof.report.definingEffectCoverage,
     passed: input.proof.report.passed && reasons.length === 0,
@@ -66,6 +77,7 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       input.proofRef,
       ...input.proof.evidenceRefs,
       ...(input.proof.objectAwareProof?.evidenceRefs ?? []),
+      ...(input.proof.crossSourceSubjectProof?.evidenceRefs ?? []),
     ].map((value) => value.trim()).filter(Boolean))],
   };
 };

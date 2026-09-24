@@ -69,6 +69,16 @@ mastery proof is required for VISUAL_MATCH_VERIFIED. Materially different Finish
 Start fingerprints are required for TRANSFER_VERIFIED. OBJECT_AWARE_VERIFIED and ROBUST
 must come from retained held-out benchmark reports; GPT cannot assign those labels.
 
+Within-source semantic subject IDs never imply cross-source identity. When a Finish
+reference contains an object-aware effect window, mastery verification must independently
+bind that window's retained Finish subject to the exact matched raw Start shot at the
+measured source time. The retained cross-source binding includes the Finish semantic ID,
+raw source ID, sampled times, subject bounds, binder confidence, and evidence provenance.
+Missing local media, missing subject bounds, ambiguous scene ownership, binder failure, or
+an unverified binding fails closed. A held-out case counts as object-aware verified only
+when both the Finish/render object-behavior proof and the Finish-to-Start subject-binding
+proof pass.
+
 Pro Creation receives a TRANSFER_VERIFIED_ONLY knowledge snapshot. Unverified behavior
 evidence, single-reference success lessons, development patterns, and non-transferred
 skills are not exposed as authoritative production memory. Open/blocked capability gaps

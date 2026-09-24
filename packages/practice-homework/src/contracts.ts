@@ -330,6 +330,35 @@ export interface PracticeObjectAwareProofV1 {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface PracticeCrossSourceSubjectBindingProofV1 {
+  readonly referenceWindowId: string;
+  readonly shotId: string;
+  readonly sourceId: string;
+  readonly referenceTimeMs: number;
+  readonly sourceTimeMs: number;
+  readonly referenceSemanticId: string;
+  readonly sourceSemanticId: string | null;
+  readonly referenceSubjectBox: readonly [number, number, number, number];
+  readonly sourceSubjectBox: readonly [number, number, number, number] | null;
+  readonly confidence: number;
+  readonly verified: boolean;
+  readonly reason: string | null;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeCrossSourceSubjectProofV1 {
+  readonly schema: "editflow.practice-cross-source-subject-proof.v1";
+  readonly required: boolean;
+  readonly referenceWindowCount: number;
+  readonly requiredBindingCount: number;
+  readonly verifiedBindingCount: number;
+  readonly verifiedWindowCount: number;
+  readonly verified: boolean;
+  readonly bindings: readonly PracticeCrossSourceSubjectBindingProofV1[];
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeMasteryProofV1 {
   readonly schema: "editflow.practice-mastery-proof.v1";
   readonly sessionId: string;
@@ -343,6 +372,7 @@ export interface PracticeMasteryProofV1 {
   readonly exactSceneConfidence: number;
   readonly effectFamilyIds: readonly string[];
   readonly objectAwareProof?: PracticeObjectAwareProofV1;
+  readonly crossSourceSubjectProof?: PracticeCrossSourceSubjectProofV1;
   readonly report: PracticeSimilarityReportV1;
   readonly matches: readonly PracticeSceneMatchV1[];
   readonly audioMatch: PracticeAudioMatchV1 | null;
