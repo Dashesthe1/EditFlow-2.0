@@ -309,6 +309,15 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       ? input.proof.crossSourceSubjectProof.reasons
       : ["Object-aware held-out proof lacks verified Finish-to-Start subject binding."]
     : [];
+  const subjectRelativeDirectionWindows = input.proof.objectAwareProof?.windows
+    .filter((window) => window.subjectRelativeDirectionRequired) ?? [];
+  const subjectRelativeDirectionVerified = objectAwareRequired
+    && input.proof.objectAwareProof?.verified === true
+    && crossSourceSubjectVerified
+    && subjectRelativeDirectionWindows.length > 0
+    && subjectRelativeDirectionWindows.every((window) =>
+      window.subjectRelativeDirectionVerified === true
+      && window.subjectRelativeDirectionScore >= 0.72);
   const reasons = [...new Set([
     ...input.proof.report.reasons,
     ...objectProofReasons,
@@ -337,6 +346,8 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     objectAwareVerified: objectAwareRequired
       && input.proof.objectAwareProof!.verified
       && crossSourceSubjectVerified,
+    subjectRelativeDirectionWindowCount: subjectRelativeDirectionWindows.length,
+    subjectRelativeDirectionVerified,
     overallSimilarity: input.proof.report.overallSimilarity,
     definingEffectCoverage: input.proof.report.definingEffectCoverage,
     passed: input.proof.report.passed && reasons.length === 0,
@@ -357,6 +368,7 @@ export const DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1: PracticeHeldOutBench
   minimumSimilarity: 0.95,
   minimumDefiningEffectCoverage: 1,
   minimumObjectAwareCases: 1,
+  minimumSubjectRelativeDirectionCases: 1,
 };
 
 const benchmarkPolicy = (
@@ -387,6 +399,13 @@ const benchmarkPolicy = (
     Math.floor(
       value?.minimumObjectAwareCases
         ?? DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumObjectAwareCases,
+    ),
+  ),
+  minimumSubjectRelativeDirectionCases: Math.max(
+    DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumSubjectRelativeDirectionCases,
+    Math.floor(
+      value?.minimumSubjectRelativeDirectionCases
+        ?? DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumSubjectRelativeDirectionCases,
     ),
   ),
 });
@@ -430,6 +449,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   const evidenceRefs = new Set<string>();
   let passedCaseCount = 0;
   let objectAwareCaseCount = 0;
+  let subjectRelativeDirectionCaseCount = 0;
 
   if (input.cases.length < policy.minimumCases) {
     reasons.push("Held-out benchmark has fewer than " + String(policy.minimumCases) + " cases.");
@@ -566,6 +586,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
         if (requiredLearnedSkills.has(skillId)) verifiedLearnedSkills.add(skillId);
       }
       if (item.objectAwareVerified) objectAwareCaseCount += 1;
+      if (item.subjectRelativeDirectionVerified) subjectRelativeDirectionCaseCount += 1;
     }
   }
 
@@ -672,13 +693,23 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
         + " object-aware verified cases.",
     );
   }
+  const subjectRelativeDirectionVerified = subjectRelativeDirectionCaseCount
+    >= policy.minimumSubjectRelativeDirectionCases;
+  if (!subjectRelativeDirectionVerified) {
+    reasons.push(
+      "Held-out benchmark has fewer than "
+        + String(policy.minimumSubjectRelativeDirectionCases)
+        + " verified subject-relative direction cases on unseen material.",
+    );
+  }
   const robust = reasons.length === 0
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
     && effectFamilyCoverageVerified
     && learnedSkillCoverageVerified
     && professionalBenchmarkCoverageVerified
-    && objectAwareVerified;
+    && objectAwareVerified
+    && subjectRelativeDirectionVerified;
 
   return {
     schema: "editflow.practice-held-out-benchmark.v1",
@@ -703,6 +734,8 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     professionalBenchmarkEvidenceRefs,
     objectAwareCaseCount,
     objectAwareVerified,
+    subjectRelativeDirectionCaseCount,
+    subjectRelativeDirectionVerified,
     robust,
     reasons: [...new Set(reasons)],
     cases: structuredClone(input.cases),
@@ -720,6 +753,7 @@ export const derivePracticeMaturityStageV1 = (
   if (benchmarks.some((report) =>
     report.robust
     && report.objectAwareVerified
+    && report.subjectRelativeDirectionVerified === true
     && report.effectFamilyCoverageVerified === true
     && report.learnedSkillCoverageVerified === true
     && report.professionalBenchmarkCoverageVerified === true)) return "ROBUST";

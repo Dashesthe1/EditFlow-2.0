@@ -461,6 +461,8 @@ interface PracticeObjectWindowMetricsV1 {
   readonly subjectBackgroundDivergencePeak: number;
   readonly subjectMotionPeak: number;
   readonly backgroundMotionPeak: number;
+  readonly subjectRelativeMotionPeak: number;
+  readonly subjectRelativeMotionDirection: Readonly<{ x: number; y: number }>;
   readonly subjectMotionDirection: Readonly<{ x: number; y: number }>;
   readonly backgroundMotionDirection: Readonly<{ x: number; y: number }>;
   readonly relation: PracticeObjectMotionRelationV1;
@@ -479,6 +481,33 @@ const objectWindowMetrics = (
     Math.hypot(frame.subjectMotion.x, frame.subjectMotion.y));
   const backgroundMotionPeak = maxScalar((frame) =>
     Math.hypot(frame.backgroundMotion.x, frame.backgroundMotion.y));
+  const relativePeakFrame = [...frames].sort((a, b) => {
+    const bMagnitude = Math.hypot(
+      b.subjectMotion.x - b.backgroundMotion.x,
+      b.subjectMotion.y - b.backgroundMotion.y,
+    );
+    const aMagnitude = Math.hypot(
+      a.subjectMotion.x - a.backgroundMotion.x,
+      a.subjectMotion.y - a.backgroundMotion.y,
+    );
+    return bMagnitude - aMagnitude;
+  })[0];
+  const relativeMotionVector = relativePeakFrame === undefined
+    ? { x: 0, y: 0 }
+    : {
+      x: relativePeakFrame.subjectMotion.x - relativePeakFrame.backgroundMotion.x,
+      y: relativePeakFrame.subjectMotion.y - relativePeakFrame.backgroundMotion.y,
+    };
+  const subjectRelativeMotionPeak = Math.hypot(
+    relativeMotionVector.x,
+    relativeMotionVector.y,
+  );
+  const subjectRelativeMotionDirection = subjectRelativeMotionPeak < 1e-9
+    ? { x: 0, y: 0 }
+    : {
+      x: relativeMotionVector.x / subjectRelativeMotionPeak,
+      y: relativeMotionVector.y / subjectRelativeMotionPeak,
+    };
   const evidencePersistence = frames.length === 0 ? 0 : frames.filter((frame) =>
     frame.subjectSeparation >= 0.08
     || frame.maskCoverage >= 0.03
@@ -515,6 +544,8 @@ const objectWindowMetrics = (
     subjectBackgroundDivergencePeak,
     subjectMotionPeak,
     backgroundMotionPeak,
+    subjectRelativeMotionPeak,
+    subjectRelativeMotionDirection,
     subjectMotionDirection: peakFrame?.subjectMotion ?? { x: 0, y: 0 },
     backgroundMotionDirection: peakFrame?.backgroundMotion ?? { x: 0, y: 0 },
     relation,
@@ -581,6 +612,8 @@ export const comparePracticeObjectAwareWindowsV1 = (
     const maskTruthRequired = referenceMetrics.relation === "MASK_DRIVEN"
       || effectFamilyId === "SUBJECT_ISOLATED_TRANSITION"
       || effectFamilyId === "MASK_REVEAL";
+    const subjectRelativeDirectionRequired = referenceMetrics.subjectBackgroundDivergencePeak >= 0.08
+      && referenceMetrics.subjectRelativeMotionPeak >= 0.04;
     if (pair === undefined) {
       const reason = "Object-aware reference window "
         + referenceWindow.windowId + " has no aligned rendered window.";
@@ -591,6 +624,11 @@ export const comparePracticeObjectAwareWindowsV1 = (
         effectFamilyId,
         relation: referenceMetrics.relation,
         relationMatched: false,
+        subjectRelativeDirectionRequired,
+        subjectRelativeDirectionVerified: !subjectRelativeDirectionRequired,
+        subjectRelativeDirectionScore: subjectRelativeDirectionRequired ? 0 : 1,
+        referenceSubjectRelativeDirection: referenceMetrics.subjectRelativeMotionDirection,
+        renderSubjectRelativeDirection: null,
         subjectIdentityRequired: true,
         subjectIdentityVerified: false,
         maskTruthRequired,
@@ -613,6 +651,14 @@ export const comparePracticeObjectAwareWindowsV1 = (
     if (renderWindow === undefined) return;
     matchedWindowCount += 1;
     const renderMetrics = objectWindowMetrics(renderWindow);
+    const subjectRelativeDirectionScore = subjectRelativeDirectionRequired
+      ? directionObjectScore(
+        referenceMetrics.subjectRelativeMotionDirection,
+        renderMetrics.subjectRelativeMotionDirection,
+      )
+      : 1;
+    const subjectRelativeDirectionVerified = !subjectRelativeDirectionRequired
+      || subjectRelativeDirectionScore >= 0.72;
     const renderSubjectIdentity = summarizePracticeSubjectIdentityV1(
       renderWindow.evidence.frames,
     );
@@ -700,6 +746,12 @@ export const comparePracticeObjectAwareWindowsV1 = (
           0.08,
         ),
       });
+      if (subjectRelativeDirectionRequired) {
+        metricScores.push({
+          label: "subject-relative motion direction",
+          score: subjectRelativeDirectionScore,
+        });
+      }
       if (referenceMetrics.subjectMotionPeak >= 0.04) {
         metricScores.push({
           label: "subject motion",
@@ -786,6 +838,14 @@ export const comparePracticeObjectAwareWindowsV1 = (
       "practice-subject-mask-truth-verified:" + String(maskTruthVerified),
       "practice-object-reference-relation:" + referenceMetrics.relation,
       "practice-object-render-relation:" + renderMetrics.relation,
+      "practice-subject-relative-direction-required:" + String(subjectRelativeDirectionRequired),
+      "practice-subject-relative-direction-score:" + subjectRelativeDirectionScore.toFixed(6),
+      "practice-subject-relative-reference-direction:"
+        + referenceMetrics.subjectRelativeMotionDirection.x.toFixed(6) + ","
+        + referenceMetrics.subjectRelativeMotionDirection.y.toFixed(6),
+      "practice-subject-relative-render-direction:"
+        + renderMetrics.subjectRelativeMotionDirection.x.toFixed(6) + ","
+        + renderMetrics.subjectRelativeMotionDirection.y.toFixed(6),
       "practice-object-window-score:" + score.toFixed(6),
       "practice-object-reference-persistence:"
         + referenceMetrics.evidencePersistence.toFixed(6),
@@ -799,6 +859,11 @@ export const comparePracticeObjectAwareWindowsV1 = (
       effectFamilyId,
       relation: referenceMetrics.relation,
       relationMatched,
+      subjectRelativeDirectionRequired,
+      subjectRelativeDirectionVerified,
+      subjectRelativeDirectionScore,
+      referenceSubjectRelativeDirection: referenceMetrics.subjectRelativeMotionDirection,
+      renderSubjectRelativeDirection: renderMetrics.subjectRelativeMotionDirection,
       subjectIdentityRequired: true,
       subjectIdentityVerified,
       maskTruthRequired,

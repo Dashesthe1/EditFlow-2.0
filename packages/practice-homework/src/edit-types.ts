@@ -633,6 +633,11 @@ export class EditTypeRegistryV1 {
     if (report.robust && !report.objectAwareVerified) {
       throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
     }
+    if (report.robust && report.subjectRelativeDirectionVerified !== true) {
+      throw new TypeError(
+        "ROBUST Practice maturity requires held-out subject-relative direction verification.",
+      );
+    }
     if (report.robust && report.effectFamilyCoverageVerified !== true) {
       throw new TypeError(
         "ROBUST Practice maturity requires held-out coverage for every TRANSFER_VERIFIED effect family.",

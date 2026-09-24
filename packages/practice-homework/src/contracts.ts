@@ -427,6 +427,11 @@ export interface PracticeObjectAwareWindowProofV1 {
   readonly effectFamilyId: string;
   readonly relation: PracticeObjectMotionRelationV1;
   readonly relationMatched: boolean;
+  readonly subjectRelativeDirectionRequired: boolean;
+  readonly subjectRelativeDirectionVerified: boolean;
+  readonly subjectRelativeDirectionScore: number;
+  readonly referenceSubjectRelativeDirection: Readonly<{ x: number; y: number }>;
+  readonly renderSubjectRelativeDirection: Readonly<{ x: number; y: number }> | null;
   readonly subjectIdentityRequired?: boolean;
   readonly subjectIdentityVerified?: boolean;
   readonly maskTruthRequired?: boolean;
@@ -728,6 +733,8 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly verifiedSkillUseIds: readonly string[];
   readonly skillUseAttestations: readonly PracticeSkillUseAttestationV1[];
   readonly objectAwareVerified: boolean;
+  readonly subjectRelativeDirectionWindowCount: number;
+  readonly subjectRelativeDirectionVerified: boolean;
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
   readonly passed: boolean;
@@ -741,6 +748,7 @@ export interface PracticeHeldOutBenchmarkPolicyV1 {
   readonly minimumSimilarity: number;
   readonly minimumDefiningEffectCoverage: number;
   readonly minimumObjectAwareCases: number;
+  readonly minimumSubjectRelativeDirectionCases: number;
 }
 
 export interface PracticeHeldOutBenchmarkReportV1 {
@@ -772,6 +780,8 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly professionalBenchmarkEvidenceRefs: readonly string[];
   readonly objectAwareCaseCount: number;
   readonly objectAwareVerified: boolean;
+  readonly subjectRelativeDirectionCaseCount: number;
+  readonly subjectRelativeDirectionVerified: boolean;
   readonly robust: boolean;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];

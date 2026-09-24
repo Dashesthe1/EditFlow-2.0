@@ -440,6 +440,8 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     sourceFingerprint: "source:held-out:" + String(index + 1),
     effectFamilyIds: [index % 2 === 0 ? "SHUTTER_FRAGMENTATION" : "MOTION_WARP"],
     objectAwareVerified: index === 0,
+    subjectRelativeDirectionWindowCount: index === 0 ? 1 : 0,
+    subjectRelativeDirectionVerified: index === 0,
     overallSimilarity: 0.97,
     definingEffectCoverage: 1,
     passed: true,
@@ -464,8 +466,25 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.professionalBenchmarkCoverageVerified, true);
   assert.equal(report.professionalBenchmarkFailures.length, 0);
   assert.equal(report.objectAwareVerified, true);
+  assert.equal(report.subjectRelativeDirectionCaseCount, 1);
+  assert.equal(report.subjectRelativeDirectionVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
+
+  const nondirectional = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases: cases.map((item) => ({
+      ...item,
+      subjectRelativeDirectionWindowCount: 0,
+      subjectRelativeDirectionVerified: false,
+    })),
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(nondirectional.objectAwareVerified, true);
+  assert.equal(nondirectional.subjectRelativeDirectionVerified, false);
+  assert.equal(nondirectional.robust, false);
+  assert.ok(nondirectional.reasons.some((reason) => /subject-relative direction cases/i.test(reason)));
 
   const practiceOnly = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
@@ -515,6 +534,8 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
     sourceFingerprint: "source:family:" + String(index + 1),
     effectFamilyIds: ["SHUTTER_FRAGMENTATION"],
     objectAwareVerified: index === 0,
+    subjectRelativeDirectionWindowCount: index === 0 ? 1 : 0,
+    subjectRelativeDirectionVerified: index === 0,
     overallSimilarity: 0.98,
     definingEffectCoverage: 1,
     passed: true,
@@ -783,6 +804,11 @@ test("object-aware proof preserves subject/background relation and fails when it
   assert.equal(passed.referenceWindowCount, 1);
   assert.equal(passed.verified, true);
   assert.equal(passed.windows[0].relationMatched, true);
+  assert.equal(passed.windows[0].subjectRelativeDirectionRequired, true);
+  assert.equal(passed.windows[0].subjectRelativeDirectionVerified, true);
+  assert.ok(passed.windows[0].subjectRelativeDirectionScore >= 0.72);
+  assert.ok(passed.windows[0].evidenceRefs.some((ref) =>
+    ref.startsWith("practice-subject-relative-direction-score:")));
   assert.ok(passed.overallScore >= 0.8);
 
   const collapsedFrames = referenceEvidence.frames.map((item) => ({
@@ -965,7 +991,11 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
       passedWindowCount: 1,
       overallScore: 0.94,
       verified: true,
-      windows: [],
+      windows: [{
+        subjectRelativeDirectionRequired: true,
+        subjectRelativeDirectionVerified: true,
+        subjectRelativeDirectionScore: 0.96,
+      }],
       reasons: [],
       evidenceRefs: ["proof:object-aware"],
     },
@@ -993,6 +1023,24 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
     proofRef: "proof:bundle",
   });
   assert.equal(heldOutCase.objectAwareVerified, true);
+  assert.equal(heldOutCase.subjectRelativeDirectionWindowCount, 1);
+  assert.equal(heldOutCase.subjectRelativeDirectionVerified, true);
+
+  const nondirectionalCase = buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: "practice:object-aware:nondirectional",
+    proof: {
+      ...proof,
+      sessionId: "practice:object-aware:nondirectional",
+      objectAwareProof: {
+        ...proof.objectAwareProof,
+        windows: [],
+      },
+    },
+    proofRef: "proof:nondirectional:bundle",
+  });
+  assert.equal(nondirectionalCase.objectAwareVerified, true);
+  assert.equal(nondirectionalCase.subjectRelativeDirectionWindowCount, 0);
+  assert.equal(nondirectionalCase.subjectRelativeDirectionVerified, false);
 
   const missingBindingCase = buildPracticeHeldOutBenchmarkCaseV1({
     sessionId: "practice:object-aware:no-binding",
