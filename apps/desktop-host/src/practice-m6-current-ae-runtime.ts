@@ -18,6 +18,7 @@ import type {
   EditTypeKnowledgeSnapshotV1,
   PracticeReferenceAnalysisV1,
   PracticeReferenceEffectWindowV1,
+  PracticeReferenceSubjectMotionTrackV1,
   PracticeSceneMatchV1,
   PracticeSubjectIdentityMemoryV1,
 } from "../../../packages/practice-homework/src/contracts.js";
@@ -134,6 +135,7 @@ interface PreparedAttemptV1 {
   readonly plan: PracticeAeBaselinePlanV1;
   readonly project: VirtualAeProjectV1;
   readonly shotLayerById: ReadonlyMap<string, string>;
+  readonly subjectMotionTrackByShot: ReadonlyMap<string, PracticeReferenceSubjectMotionTrackV1>;
   readonly evidenceRefs: string[];
 }
 
@@ -145,6 +147,21 @@ const nonEmptyString = (value: unknown): string | null =>
 
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.filter((value) => value.trim().length > 0))];
+
+const subjectMotionTrackObjective = (
+  track: PracticeReferenceSubjectMotionTrackV1 | undefined,
+): string => {
+  if (track === undefined || !track.usableForReconstruction) return "";
+  return " Preserve the retained Finish subject-relative motion track for "
+    + track.shotId + " (semantic " + track.semanticId
+    + ", identity coverage " + track.identityCoverage.toFixed(3)
+    + ", relative-motion peak " + track.relativeMotionPeak.toFixed(4)
+    + ", peak direction "
+    + track.relativeMotionDirection.x.toFixed(4) + ","
+    + track.relativeMotionDirection.y.toFixed(4)
+    + "). Treat subject/background motion as distinct reconstruction evidence even when "
+    + "the chosen graph does not request an isolation node.";
+};
 
 const beatTimingObjective = (
   referenceWindow: PracticeReferenceEffectWindowV1 | undefined,
@@ -371,6 +388,12 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
       attempt: input.attempt,
       baselinePlan: plan,
     });
+    const subjectMotionTracks = input.subjectMotionTracks ?? [];
+    const usableSubjectMotionTracks = subjectMotionTracks
+      .filter((track) => track.usableForReconstruction);
+    const subjectMotionTrackByShot = new Map(
+      usableSubjectMotionTracks.map((track) => [track.shotId, track] as const),
+    );
     this.#prepared.set(attemptKey(input.sessionId, input.attempt), {
       reference: input.reference,
       matches: input.matches,
@@ -378,7 +401,14 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
       plan,
       project,
       shotLayerById: shotLayers,
-      evidenceRefs: [...(prepared.evidenceRefs ?? [])],
+      subjectMotionTrackByShot,
+      evidenceRefs: [...unique([
+        ...(prepared.evidenceRefs ?? []),
+        ...subjectMotionTracks.flatMap((track) => track.evidenceRefs),
+        "practice-retained-subject-motion-tracks:" + String(subjectMotionTracks.length),
+        "practice-retained-usable-subject-motion-tracks:"
+          + String(usableSubjectMotionTracks.length),
+      ])],
     });
   }
 
@@ -444,6 +474,7 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
             + shot.shotId + ".",
         );
       }
+      const subjectMotionTrack = prepared.subjectMotionTrackByShot.get(shot.shotId);
 
       let targetStartMs = Math.max(input.window.startMs, shot.referenceStartMs);
       let targetEndMs = Math.min(input.window.endMs, shot.referenceEndMs);
@@ -544,12 +575,14 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           creativeObjective:
             "Reconstruct the defining visual behavior of this Practice reference window "
               + "over the measured overlap with " + shot.shotId + "."
-              + timingObjective,
+              + timingObjective
+              + subjectMotionTrackObjective(subjectMotionTrack),
           recipeRefs: [
             input.graph.graphId,
             prepared.plan.baselineId,
             input.window.windowId,
             shot.shotId,
+            ...(subjectMotionTrack === undefined ? [] : [subjectMotionTrack.trackId]),
             ...timingRefs,
           ],
         },
@@ -585,6 +618,14 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         "practice-m6-target-shot:" + shot.shotId,
         "practice-m6-window-overlap:" + shot.shotId + ":"
           + targetStartMs.toFixed(3) + "-" + targetEndMs.toFixed(3),
+        ...(subjectMotionTrack === undefined ? [] : [
+          "practice-m6-subject-motion-track:" + subjectMotionTrack.trackId,
+          "practice-m6-subject-relative-motion-peak:"
+            + subjectMotionTrack.relativeMotionPeak.toFixed(6),
+          "practice-m6-subject-relative-motion-direction:"
+            + subjectMotionTrack.relativeMotionDirection.x.toFixed(6) + ","
+            + subjectMotionTrack.relativeMotionDirection.y.toFixed(6),
+        ]),
         ...timingRefs.map((ref) => "practice-m6-" + ref),
         ...(referenceWindow?.anchorBeatCue === undefined ? [] : [
           "practice-effect-anchor-beat-event-ms:"

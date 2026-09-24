@@ -214,6 +214,38 @@ export interface PracticeReferenceObjectCueV1 {
   readonly occlusionPeak: number;
 }
 
+export interface PracticeReferenceSubjectMotionSampleV1 {
+  readonly timeMs: number;
+  readonly trackState: "OBSERVED" | "PREDICTED_LOW_MOTION" | "PREDICTED_OCCLUDED";
+  readonly identityConfidence: number;
+  readonly visibility: number;
+  readonly subjectMotion: Readonly<{ x: number; y: number }>;
+  readonly backgroundMotion: Readonly<{ x: number; y: number }>;
+  readonly relativeMotion: Readonly<{ x: number; y: number }>;
+  readonly subjectBoundingBox?: readonly [number, number, number, number];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface PracticeReferenceSubjectMotionTrackV1 {
+  readonly schema: "editflow.practice-reference-subject-motion-track.v1";
+  readonly trackId: string;
+  readonly shotId: string;
+  readonly semanticId: string;
+  readonly referenceStartMs: number;
+  readonly referenceEndMs: number;
+  readonly sampleCount: number;
+  readonly identityCoverage: number;
+  readonly observedCoverage: number;
+  readonly meanIdentityConfidence: number;
+  readonly continuityVerified: boolean;
+  readonly usableForReconstruction: boolean;
+  readonly relativeMotionPeak: number;
+  readonly relativeMotionMean: number;
+  readonly relativeMotionDirection: Readonly<{ x: number; y: number }>;
+  readonly samples: readonly PracticeReferenceSubjectMotionSampleV1[];
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeReferenceTemporalCueV1 {
   readonly behavior: PracticeSceneTemporalBehaviorV1;
   readonly rewind: PracticeTemporalRewindV1 | null;
@@ -251,6 +283,7 @@ export interface PracticeReferenceAnatomyV1 {
   readonly referenceId: string;
   readonly cuts: readonly PracticeReferenceCutV1[];
   readonly effectWindows: readonly PracticeReferenceEffectWindowV1[];
+  readonly subjectMotionTracks: readonly PracticeReferenceSubjectMotionTrackV1[];
   readonly rewindShotIds: readonly string[];
   readonly objectAwareWindowIds: readonly string[];
   readonly evidenceRefs: readonly string[];

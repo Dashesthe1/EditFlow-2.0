@@ -199,6 +199,75 @@ test("reference anatomy binds a cut-spanning effect to both shots and retains re
   assert.ok(anatomy.evidenceRefs.includes("practice-reference-cuts:1"));
 });
 
+test("reference anatomy retains verified per-shot subject motion tracks before effect recipes need them", () => {
+  const trackedFrame = (timeMs, semanticId, shotId) => ({
+    ...frame(timeMs, 0.05),
+    subjectSemanticId: semanticId,
+    subjectTrackState: "OBSERVED",
+    subjectIdentityConfidence: 0.94,
+    subjectVisibility: 0.97,
+    subjectBoundingBox: [0.2, 0.15, 0.45, 0.72],
+    subjectEvidenceIds: [
+      "subject-track:" + shotId,
+      "subject-track-frame:" + String(timeMs),
+    ],
+  });
+  const fullReferenceEvidence = {
+    ...evidence,
+    range: { startMs: 0, endMs: 1000 },
+    frames: [
+      trackedFrame(100, "finish-subject:001", "shot:001"),
+      trackedFrame(250, "finish-subject:001", "shot:001"),
+      trackedFrame(350, "finish-subject:001", "shot:001"),
+      trackedFrame(650, "finish-subject:002", "shot:002"),
+      trackedFrame(750, "finish-subject:002", "shot:002"),
+      trackedFrame(900, "finish-subject:002", "shot:002"),
+    ],
+    evidenceRefs: ["dense:full-reference"],
+  };
+  const sequence = {
+    schema: "editflow.dense-effect-sequence.v1",
+    sourceId: reference.referenceId,
+    windows: [{
+      windowId: "window:cut",
+      startIndex: 0,
+      endIndex: 2,
+      anchorIndex: 1,
+      startMs: 420,
+      endMs: 620,
+      anchorMs: 500,
+      peakEnergy: 0.35,
+      evidence,
+    }],
+    evidenceRefs: ["sequence:reference"],
+  };
+
+  const anatomy = buildPracticeReferenceAnatomyV1({
+    reference,
+    referenceEvidence: fullReferenceEvidence,
+    sequence,
+    matches,
+  });
+
+  assert.equal(anatomy.subjectMotionTracks.length, 2);
+  assert.deepEqual(
+    anatomy.subjectMotionTracks.map((track) => track.shotId),
+    ["shot:001", "shot:002"],
+  );
+  assert.deepEqual(
+    anatomy.subjectMotionTracks.map((track) => track.semanticId),
+    ["finish-subject:001", "finish-subject:002"],
+  );
+  assert.ok(anatomy.subjectMotionTracks.every((track) => track.usableForReconstruction));
+  assert.ok(anatomy.subjectMotionTracks.every((track) => track.sampleCount === 3));
+  assert.ok(anatomy.subjectMotionTracks.every((track) =>
+    Math.abs(track.relativeMotionPeak - 0.18) < 1e-9));
+  assert.ok(anatomy.evidenceRefs.includes("practice-reference-subject-motion-tracks:2"));
+  assert.ok(anatomy.evidenceRefs.includes(
+    "practice-reference-usable-subject-motion-tracks:2",
+  ));
+});
+
 test("reference anatomy preserves an intentional off-beat cut/effect anchor instead of snapping", () => {
   const sequence = {
     schema: "editflow.dense-effect-sequence.v1",

@@ -81,6 +81,7 @@ export interface PracticeM6RuntimeV1 {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly baseline: PracticeContentBaselineV1;
     readonly matches: readonly PracticeSceneMatchV1[];
+    readonly subjectMotionTracks?: PracticeReferenceAnatomyV1["subjectMotionTracks"];
     readonly priorAttempts: readonly PracticeAttemptV1[];
   }): Promise<void>;
   applyWindowGraph(input: {
@@ -799,13 +800,17 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
     const analysis = await this.#referenceAnalysis(input.reference);
     const referenceAnatomy = buildPracticeReferenceAnatomyV1({
       reference: input.reference,
+      referenceEvidence: analysis.evidence,
       sequence: analysis.sequence,
       matches: input.matches,
       ...(input.audioMatch?.beatGrid === undefined
         ? {}
         : { beatGrid: input.audioMatch.beatGrid }),
     });
-    await this.runtime.prepareAttempt(input);
+    await this.runtime.prepareAttempt({
+      ...input,
+      subjectMotionTracks: referenceAnatomy.subjectMotionTracks,
+    });
 
     const decisionTraces: PracticeDecisionTraceV1[] = [];
     const evidenceRefs: string[] = [
@@ -819,6 +824,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       const family = classifyEffectFamilyV1(window.evidence);
       const windowAnatomy = referenceAnatomy.effectWindows.find((item) =>
         item.windowId === window.windowId);
+      const windowSubjectMotionTracks = referenceAnatomy.subjectMotionTracks.filter((track) =>
+        track.usableForReconstruction
+        && (windowAnatomy?.shotIds.includes(track.shotId) ?? false));
       const learned = learnedGraphForWindow({
         evidence: window.evidence,
         family,
@@ -845,6 +853,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           `practice-edit-type-revision:${input.editTypeKnowledge.revision}`,
           ...(windowAnatomy?.anchorBeatCue?.evidenceRefs ?? []),
           ...(windowAnatomy?.transitionBeatCue?.evidenceRefs ?? []),
+          ...windowSubjectMotionTracks.flatMap((track) => track.evidenceRefs),
+          "practice-subject-motion-tracks-before-effect:"
+            + String(windowSubjectMotionTracks.length),
           ...(learned === null
             ? []
             : [`practice-edit-type-transferred-patches:${learned.patches.length}`]),
@@ -894,6 +905,15 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
               `transition-beat-offset-ms:${windowAnatomy.transitionBeatCue.offsetMs.toFixed(3)}`,
               `transition-beat-offset-beats:${windowAnatomy.transitionBeatCue.offsetBeats.toFixed(6)}`,
             ]),
+            ...windowSubjectMotionTracks.flatMap((track) => [
+              "subject-motion-track:" + track.trackId,
+              "subject-motion-semantic:" + track.semanticId,
+              "subject-motion-identity-coverage:" + track.identityCoverage.toFixed(6),
+              "subject-relative-motion-peak:" + track.relativeMotionPeak.toFixed(6),
+              "subject-relative-motion-direction:"
+                + track.relativeMotionDirection.x.toFixed(6) + ","
+                + track.relativeMotionDirection.y.toFixed(6),
+            ]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "object-aware:true",
               `object-relation:${windowAnatomy.objectCue.relation}`,
@@ -920,6 +940,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ...(windowAnatomy.transitionBeatCue === undefined ? [] : [
               `REFERENCE_TRANSITION_${windowAnatomy.transitionBeatCue.alignment}`,
             ]),
+            ...(windowSubjectMotionTracks.length === 0
+              ? []
+              : ["REFERENCE_SUBJECT_MOTION_TRACK_RETAINED"]),
             ...(windowAnatomy.objectCue.objectAware ? [
               "REFERENCE_OBJECT_AWARE",
               `REFERENCE_OBJECT_RELATION_${windowAnatomy.objectCue.relation}`,

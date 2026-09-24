@@ -1066,8 +1066,11 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
   };
 
   let capturedRequest = null;
+  let capturedPrepareAttempt = null;
+  let prepareCompleted = false;
   const brain = {
     async run(requestValue) {
+      assert.equal(prepareCompleted, true);
       capturedRequest = requestValue;
       return {
         schema: "editflow.m6-production-result.v1",
@@ -1084,7 +1087,10 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
     async analyzeReference() {
       return referenceEvidence;
     },
-    async prepareAttempt() {},
+    async prepareAttempt(input) {
+      capturedPrepareAttempt = input;
+      prepareCompleted = true;
+    },
     async applyWindowGraph() {},
     async renderWindowEvidence() {
       throw new Error("custom brain should not render a window in this test");
@@ -1153,6 +1159,12 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
     priorAttempts: [],
   });
 
+  assert.ok(capturedPrepareAttempt);
+  assert.equal(capturedPrepareAttempt.subjectMotionTracks.length, 1);
+  assert.equal(capturedPrepareAttempt.subjectMotionTracks[0].shotId, "shot:001");
+  assert.equal(capturedPrepareAttempt.subjectMotionTracks[0].semanticId, "subject:primary:v1");
+  assert.equal(capturedPrepareAttempt.subjectMotionTracks[0].usableForReconstruction, true);
+  assert.equal(capturedPrepareAttempt.subjectMotionTracks[0].sampleCount, 7);
   assert.ok(capturedRequest);
   assert.equal(capturedRequest.risk, "HIGH");
   assert.match(capturedRequest.learnedTechniqueId, /^edit-type:/);
@@ -1162,6 +1174,17 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
       item === "practice-edit-type-transferred-patches:1"),
   );
   assert.ok(capturedRequest.evidenceRefs.includes("audio:beat-aware:grid"));
+  assert.ok(capturedRequest.evidenceRefs.includes(
+    "practice-subject-motion-tracks-before-effect:1",
+  ));
+  assert.ok(
+    reconstruction.decisionTraces[0].cueIds.some((item) =>
+      item.startsWith("subject-motion-track:subject-track:shot:001:")),
+  );
+  assert.ok(
+    reconstruction.decisionTraces[0].rationaleCodes
+      .includes("REFERENCE_SUBJECT_MOTION_TRACK_RETAINED"),
+  );
   assert.ok(reconstruction.decisionTraces[0].cueIds.includes("effect-anchor-beat:ON_BEAT"));
   assert.ok(reconstruction.decisionTraces[0].cueIds.includes("effect-anchor-beat-offset-ms:0.000"));
   assert.ok(
@@ -1323,6 +1346,25 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     )],
   });
 
+  const retainedSubjectMotionTrack = {
+    schema: "editflow.practice-reference-subject-motion-track.v1",
+    trackId: "subject-track:shot:001:subject:primary:v1",
+    shotId: "shot:001",
+    semanticId: "subject:primary:v1",
+    referenceStartMs: 0,
+    referenceEndMs: 500,
+    sampleCount: 7,
+    identityCoverage: 1,
+    observedCoverage: 1,
+    meanIdentityConfidence: 0.91,
+    continuityVerified: true,
+    usableForReconstruction: true,
+    relativeMotionPeak: 0.18,
+    relativeMotionMean: 0.18,
+    relativeMotionDirection: { x: 0.18, y: 0 },
+    samples: [],
+    evidenceRefs: ["test:retained-subject-motion-track"],
+  };
   await runtime.prepareAttempt({
     sessionId: "practice:native",
     editTypeId: "spider-man-high-potency",
@@ -1331,6 +1373,7 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     reference: runtimeReference,
     baseline,
     matches: [match],
+    subjectMotionTracks: [retainedSubjectMotionTrack],
     priorAttempts: [],
   });
   const window = {
@@ -1371,6 +1414,12 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.match(String(capturedPlan.planId), /^practice-m6:practice:native:1:window:native:/);
   assert.match(JSON.stringify(capturedPlan), /PRACTICE_BASELINE_COMP_NATIVE/);
   assert.match(JSON.stringify(capturedPlan), /PRACTICE_SHOT_NATIVE_0001/);
+  assert.ok(capturedPlan.recipeRefs.includes(retainedSubjectMotionTrack.trackId));
+  assert.match(
+    capturedPlan.creativeObjective,
+    /Preserve the retained Finish subject-relative motion track/,
+  );
+  assert.match(capturedPlan.creativeObjective, /relative-motion peak 0\.1800/);
 
   const rendered = await runtime.renderWindowEvidence({
     sessionId: "practice:native",
@@ -1394,6 +1443,12 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
   assert.ok(fullRender.evidenceRefs.includes("practice-m6-beat-anchor:OFF_BEAT:-500.000"));
   assert.ok(fullRender.evidenceRefs.includes("practice-effect-anchor-beat-event-ms:100.000"));
   assert.ok(fullRender.evidenceRefs.includes("practice-effect-anchor-beat-offset-ms:-500.000"));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-motion-track:" + retainedSubjectMotionTrack.trackId,
+  ));
+  assert.ok(fullRender.evidenceRefs.includes(
+    "practice-m6-subject-relative-motion-peak:0.180000",
+  ));
 
   const isolationGraph = {
     ...graph,

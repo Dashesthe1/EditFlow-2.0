@@ -1,7 +1,9 @@
 import {
   classifyEffectFamilyV1,
+  type DenseEffectEvidenceV1,
   type DenseEffectSequenceV1,
   type DenseEffectWindowV1,
+  type DenseFrameMetricsV1,
 } from "../../visual-effects-intelligence/src/index.js";
 import type {
   PracticeAudioBeatGridV1,
@@ -11,6 +13,7 @@ import type {
   PracticeReferenceBeatCueV1,
   PracticeReferenceCutV1,
   PracticeReferenceEffectWindowV1,
+  PracticeReferenceSubjectMotionTrackV1,
   PracticeReferenceWindowRelationV1,
   PracticeSceneMatchV1,
   PracticeSceneTemporalBehaviorV1,
@@ -139,6 +142,113 @@ const objectRelationFor = (input: {
 
 const orderedShots = (reference: PracticeReferenceAnalysisV1) =>
   [...reference.shots].sort((a, b) => a.order - b.order);
+
+const ACTIVE_SUBJECT_TRACK_STATES = new Set([
+  "OBSERVED",
+  "PREDICTED_LOW_MOTION",
+  "PREDICTED_OCCLUDED",
+]);
+
+const subjectFramesForTracks = (input: {
+  readonly referenceEvidence?: DenseEffectEvidenceV1;
+  readonly sequence: DenseEffectSequenceV1;
+}): readonly DenseFrameMetricsV1[] => {
+  const frames = input.referenceEvidence?.frames
+    ?? input.sequence.windows.flatMap((window) => window.evidence.frames);
+  const byKey = new Map<string, DenseFrameMetricsV1>();
+  for (const frame of frames) {
+    const semanticId = frame.subjectSemanticId?.trim() ?? "";
+    const key = frame.timeMs.toFixed(6) + "|" + semanticId;
+    if (!byKey.has(key)) byKey.set(key, frame);
+  }
+  return [...byKey.values()].sort((left, right) => left.timeMs - right.timeMs);
+};
+
+const subjectMotionTracksForReference = (input: {
+  readonly reference: PracticeReferenceAnalysisV1;
+  readonly frames: readonly DenseFrameMetricsV1[];
+}): readonly PracticeReferenceSubjectMotionTrackV1[] => {
+  const tracks: PracticeReferenceSubjectMotionTrackV1[] = [];
+  for (const shot of orderedShots(input.reference)) {
+    const frames = input.frames.filter((frame) =>
+      frame.timeMs >= shot.referenceStartMs - 0.5
+      && frame.timeMs <= shot.referenceEndMs + 0.5);
+    if (frames.length === 0) continue;
+    const identity = summarizePracticeSubjectIdentityV1(frames);
+    const semanticId = identity.dominantSemanticId;
+    if (semanticId === null) continue;
+    const samples = frames
+      .filter((frame) =>
+        frame.subjectSemanticId?.trim() === semanticId
+        && frame.subjectTrackState !== undefined
+        && ACTIVE_SUBJECT_TRACK_STATES.has(frame.subjectTrackState))
+      .map((frame) => {
+        const relativeMotion = {
+          x: frame.subjectMotion.x - frame.backgroundMotion.x,
+          y: frame.subjectMotion.y - frame.backgroundMotion.y,
+        };
+        return {
+          timeMs: frame.timeMs,
+          trackState: frame.subjectTrackState as
+            | "OBSERVED"
+            | "PREDICTED_LOW_MOTION"
+            | "PREDICTED_OCCLUDED",
+          identityConfidence: Math.max(0, Math.min(1, frame.subjectIdentityConfidence ?? 0)),
+          visibility: Math.max(0, Math.min(1, frame.subjectVisibility ?? 0)),
+          subjectMotion: frame.subjectMotion,
+          backgroundMotion: frame.backgroundMotion,
+          relativeMotion,
+          ...(frame.subjectBoundingBox === undefined
+            ? {}
+            : { subjectBoundingBox: frame.subjectBoundingBox }),
+          evidenceRefs: unique(frame.subjectEvidenceIds ?? []),
+        };
+      });
+    if (samples.length === 0) continue;
+    const relativeMagnitudes = samples.map((sample) =>
+      Math.hypot(sample.relativeMotion.x, sample.relativeMotion.y));
+    const peakIndex = relativeMagnitudes.reduce(
+      (best, value, index, values) => value > values[best]! ? index : best,
+      0,
+    );
+    const relativeMotionPeak = relativeMagnitudes[peakIndex] ?? 0;
+    const relativeMotionMean = relativeMagnitudes.reduce((sum, value) => sum + value, 0)
+      / relativeMagnitudes.length;
+    const usableForReconstruction = identity.continuityVerified
+      && identity.observedFrameCount > 0
+      && samples.length >= 2;
+    const trackId = "subject-track:" + shot.shotId + ":" + semanticId;
+    const evidenceRefs = unique([
+      ...shot.evidenceRefs,
+      ...identity.evidenceRefs,
+      ...samples.flatMap((sample) => sample.evidenceRefs),
+      "practice-subject-motion-track:" + trackId,
+      "practice-subject-motion-track-samples:" + String(samples.length),
+      "practice-subject-motion-track-continuity:" + String(identity.continuityVerified),
+      "practice-subject-motion-track-usable:" + String(usableForReconstruction),
+    ]);
+    tracks.push({
+      schema: "editflow.practice-reference-subject-motion-track.v1",
+      trackId,
+      shotId: shot.shotId,
+      semanticId,
+      referenceStartMs: shot.referenceStartMs,
+      referenceEndMs: shot.referenceEndMs,
+      sampleCount: samples.length,
+      identityCoverage: identity.identityCoverage,
+      observedCoverage: identity.observedCoverage,
+      meanIdentityConfidence: identity.meanIdentityConfidence,
+      continuityVerified: identity.continuityVerified,
+      usableForReconstruction,
+      relativeMotionPeak,
+      relativeMotionMean,
+      relativeMotionDirection: samples[peakIndex]?.relativeMotion ?? { x: 0, y: 0 },
+      samples,
+      evidenceRefs,
+    });
+  }
+  return tracks;
+};
 
 const buildCuts = (
   reference: PracticeReferenceAnalysisV1,
@@ -382,11 +492,21 @@ const anatomyWindow = (
 
 export const buildPracticeReferenceAnatomyV1 = (input: {
   readonly reference: PracticeReferenceAnalysisV1;
+  readonly referenceEvidence?: DenseEffectEvidenceV1;
   readonly sequence: DenseEffectSequenceV1;
   readonly matches: readonly PracticeSceneMatchV1[];
   readonly beatGrid?: PracticeAudioBeatGridV1;
 }): PracticeReferenceAnatomyV1 => {
   const baseCuts = buildCuts(input.reference, input.beatGrid);
+  const subjectMotionTracks = subjectMotionTracksForReference({
+    reference: input.reference,
+    frames: subjectFramesForTracks({
+      ...(input.referenceEvidence === undefined
+        ? {}
+        : { referenceEvidence: input.referenceEvidence }),
+      sequence: input.sequence,
+    }),
+  });
   const effectWindows = input.sequence.windows.map((window) =>
     anatomyWindow(input.reference, window, baseCuts, input.matches, input.beatGrid));
   const cuts = baseCuts.map((cut) => ({
@@ -406,6 +526,7 @@ export const buildPracticeReferenceAnatomyV1 = (input: {
     referenceId: input.reference.referenceId,
     cuts,
     effectWindows,
+    subjectMotionTracks,
     rewindShotIds,
     objectAwareWindowIds,
     evidenceRefs: unique([
@@ -415,6 +536,10 @@ export const buildPracticeReferenceAnatomyV1 = (input: {
       ...(input.beatGrid?.evidenceRefs ?? []),
       ...cuts.flatMap((cut) => cut.beatCue?.evidenceRefs ?? []),
       ...effectWindows.flatMap((window) => window.evidenceRefs),
+      ...subjectMotionTracks.flatMap((track) => track.evidenceRefs),
+      "practice-reference-subject-motion-tracks:" + String(subjectMotionTracks.length),
+      "practice-reference-usable-subject-motion-tracks:"
+        + String(subjectMotionTracks.filter((track) => track.usableForReconstruction).length),
       "practice-reference-beat-grid:" + String(input.beatGrid !== undefined),
       "practice-reference-beat-cued-cuts:"
         + String(cuts.filter((cut) => cut.beatCue !== undefined).length),
