@@ -478,13 +478,25 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
   const subjectIsolationRoute = createPracticeM6SubjectIsolationRouterV1([
     sam31SubjectIsolationRoute === null
       ? null
-      : { id: "SAM31_TEMPORAL_MATTE", route: sam31SubjectIsolationRoute },
+      : {
+          id: "SAM31_TEMPORAL_MATTE",
+          maskSource: "SEGMENTATION",
+          route: sam31SubjectIsolationRoute,
+        },
     rotoBrushSubjectIsolationRoute === null
       ? null
-      : { id: "ROTO_BRUSH_TRACK_MATTE", route: rotoBrushSubjectIsolationRoute },
+      : {
+          id: "ROTO_BRUSH_TRACK_MATTE",
+          maskSource: "ROTO_BRUSH",
+          route: rotoBrushSubjectIsolationRoute,
+        },
     trackedMaskSubjectIsolationRoute === null
       ? null
-      : { id: "AE_TRACKED_MASK", route: trackedMaskSubjectIsolationRoute },
+      : {
+          id: "AE_TRACKED_MASK",
+          maskSource: "AE_TRACKED_MASK",
+          route: trackedMaskSubjectIsolationRoute,
+        },
   ]);
   const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,
