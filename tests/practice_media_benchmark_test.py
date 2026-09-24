@@ -87,10 +87,17 @@ def case():
     }
 
 
-def suite_result(index, status="PASS", reference_id=None, benchmark_id=None):
+def suite_result(
+    index,
+    status="PASS",
+    reference_id=None,
+    benchmark_id=None,
+    reference_sha256=None,
+):
     return {
         "benchmarkId": benchmark_id or f"case:{index}",
         "referenceId": reference_id or f"ref:{index}",
+        "referenceSourceSha256": reference_sha256 or f"{index:064x}",
         "status": status,
     }
 
@@ -356,6 +363,19 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
         self.assertFalse(summary["certified"])
         self.assertEqual(
             summary["generalizationGate"]["distinctReferenceCount"],
+            1,
+        )
+
+    def test_suite_certification_rejects_duplicate_finish_bytes(self):
+        repeated_sha = "a" * 64
+        results = [
+            suite_result(index, reference_sha256=repeated_sha)
+            for index in range(1, 21)
+        ]
+        summary = benchmark.summarize_suite(results)
+        self.assertFalse(summary["certified"])
+        self.assertEqual(
+            summary["generalizationGate"]["distinctReferenceSha256Count"],
             1,
         )
 
