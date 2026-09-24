@@ -127,6 +127,101 @@ export const practiceSubjectRelativeEffectAnchorV1 = (input: {
   };
 };
 
+export type PracticeSubjectRelativeSteerableParameterV1 =
+  | "displacementDirection"
+  | "motionPeakPhase"
+  | "fragmentationStateSeparationDirection"
+  | "blurDirectionVector";
+
+export interface PracticeSubjectRelativeEffectSteeringOverrideV1 {
+  readonly nodeId: string;
+  readonly parameter: PracticeSubjectRelativeSteerableParameterV1;
+  readonly value: number | readonly [number, number];
+}
+
+export interface PracticeSubjectRelativeEffectSteeringV1 {
+  readonly trackId: string;
+  readonly semanticId: string;
+  readonly normalizedDirection: Readonly<{ x: number; y: number }>;
+  readonly overrides: readonly PracticeSubjectRelativeEffectSteeringOverrideV1[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export const practiceSubjectRelativeEffectSteeringV1 = (input: {
+  readonly graph: ConstructionGraphV1;
+  readonly anchor: PracticeSubjectRelativeEffectAnchorV1 | null;
+}): PracticeSubjectRelativeEffectSteeringV1 | null => {
+  const anchor = input.anchor;
+  if (anchor === null) return null;
+  const magnitude = Math.hypot(anchor.direction.x, anchor.direction.y);
+  if (!Number.isFinite(magnitude) || magnitude <= 1e-6) return null;
+  const normalizedDirection = {
+    x: Number((anchor.direction.x / magnitude).toFixed(9)),
+    y: Number((anchor.direction.y / magnitude).toFixed(9)),
+  };
+  const directionTuple = [
+    normalizedDirection.x,
+    normalizedDirection.y,
+  ] as const;
+  const overrides: PracticeSubjectRelativeEffectSteeringOverrideV1[] = [];
+  for (const node of input.graph.nodes) {
+    if (Object.prototype.hasOwnProperty.call(node.parameters, "displacementDirection")) {
+      overrides.push({
+        nodeId: node.nodeId,
+        parameter: "displacementDirection",
+        value: directionTuple,
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(node.parameters, "motionPeakPhase")) {
+      overrides.push({
+        nodeId: node.nodeId,
+        parameter: "motionPeakPhase",
+        value: anchor.phase,
+      });
+    }
+    const temporalTrailSeparation =
+      Object.prototype.hasOwnProperty.call(node.parameters, "fragmentationStateSeparationPeak")
+      || Object.prototype.hasOwnProperty.call(node.parameters, "stateSeparationPeak");
+    if (node.kind === "TEMPORAL_DUPLICATES" && temporalTrailSeparation) {
+      overrides.push({
+        nodeId: node.nodeId,
+        parameter: "fragmentationStateSeparationDirection",
+        value: directionTuple,
+      });
+    }
+    if (node.kind === "OPTICAL_TREATMENT"
+      && Object.prototype.hasOwnProperty.call(node.parameters, "blurPeak")) {
+      overrides.push({
+        nodeId: node.nodeId,
+        parameter: "blurDirectionVector",
+        value: directionTuple,
+      });
+    } else if (Object.prototype.hasOwnProperty.call(node.parameters, "blurDirectionVector")) {
+      overrides.push({
+        nodeId: node.nodeId,
+        parameter: "blurDirectionVector",
+        value: directionTuple,
+      });
+    }
+  }
+  if (overrides.length === 0) return null;
+  return {
+    trackId: anchor.trackId,
+    semanticId: anchor.semanticId,
+    normalizedDirection,
+    overrides,
+    evidenceRefs: [...new Set([
+      ...anchor.evidenceRefs,
+      "practice-subject-relative-effect-steering:" + anchor.trackId,
+      "practice-subject-relative-effect-steering-direction:"
+        + normalizedDirection.x.toFixed(6) + "," + normalizedDirection.y.toFixed(6),
+      ...overrides.map((override) =>
+        "practice-subject-relative-effect-steering-parameter:"
+          + override.nodeId + ":" + override.parameter),
+    ])],
+  };
+};
+
 export interface PracticeContentStructureEvaluationV1 {
   readonly sceneIdentity: number;
   readonly temporalAlignment: number;
