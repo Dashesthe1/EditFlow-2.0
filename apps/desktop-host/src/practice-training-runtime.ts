@@ -80,6 +80,7 @@ import {
 } from "./practice-m6-tracked-mask-subject-isolation.js";
 import {
   createPracticeM6SubjectIsolationRouterV1,
+  type PracticeSubjectIsolationBackendV1,
 } from "./practice-m6-subject-isolation-router.js";
 const routeForCommand = (
   command: PracticeAeBaselineCommandV1,
@@ -260,6 +261,7 @@ export interface PracticeM6CurrentAeAssemblyV1 {
   readonly mediaAnalyzer: PracticeM6LocalMediaAnalyzerV1;
   readonly renderDriver: PracticeM6AeRenderDriverCurrentV1;
   readonly subjectIsolationRoute: PracticeM6SubjectIsolationRouteV1 | null;
+  readonly subjectIsolationBackendIds: readonly string[];
   readonly m6Runtime: PracticeM6CurrentAeRuntimeV1;
   readonly bridge: PracticeM6ExecutionBridgeV1;
 }
@@ -463,17 +465,30 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
         ? {}
         : { maxAnalysisWindowSeconds: input.trackedMaskMaxAnalysisWindowSeconds }),
     });
-  const subjectIsolationRoute = createPracticeM6SubjectIsolationRouterV1([
-    sam31SubjectIsolationRoute === null
-      ? null
-      : { id: "SAM31_TEMPORAL_MATTE", route: sam31SubjectIsolationRoute },
-    rotoBrushSubjectIsolationRoute === null
-      ? null
-      : { id: "ROTO_BRUSH_TRACK_MATTE", route: rotoBrushSubjectIsolationRoute },
-    trackedMaskSubjectIsolationRoute === null
-      ? null
-      : { id: "AE_TRACKED_MASK", route: trackedMaskSubjectIsolationRoute },
-  ]);
+  const subjectIsolationBackends: PracticeSubjectIsolationBackendV1[] = [];
+  if (sam31SubjectIsolationRoute !== null) {
+    subjectIsolationBackends.push({
+      id: "SAM31_TEMPORAL_MATTE",
+      route: sam31SubjectIsolationRoute,
+    });
+  }
+  if (rotoBrushSubjectIsolationRoute !== null) {
+    subjectIsolationBackends.push({
+      id: "ROTO_BRUSH_TRACK_MATTE",
+      route: rotoBrushSubjectIsolationRoute,
+    });
+  }
+  if (trackedMaskSubjectIsolationRoute !== null) {
+    subjectIsolationBackends.push({
+      id: "AE_TRACKED_MASK",
+      route: trackedMaskSubjectIsolationRoute,
+    });
+  }
+  const subjectIsolationRoute =
+    createPracticeM6SubjectIsolationRouterV1(subjectIsolationBackends);
+  const subjectIsolationBackendIds = Object.freeze(
+    subjectIsolationBackends.map((backend) => backend.id),
+  );
   const m6Runtime = new PracticeM6CurrentAeRuntimeV1({
     transaction,
     baselineBuilder,
@@ -501,6 +516,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     mediaAnalyzer,
     renderDriver,
     subjectIsolationRoute,
+    subjectIsolationBackendIds,
     m6Runtime,
     bridge,
   };

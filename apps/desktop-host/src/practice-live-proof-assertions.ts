@@ -11,6 +11,55 @@ export interface PracticeLiveAssertionV1 {
   readonly reasons: readonly string[];
 }
 
+export interface PracticeIsolationReadinessRequirementV1 {
+  readonly availableBackendIds: readonly string[];
+  readonly expectedBackend?: string | null;
+  readonly expectedFallbackAfter?: string | null;
+}
+
+export interface PracticeIsolationReadinessAssertionV1
+extends PracticeLiveAssertionV1 {
+  readonly availableBackendIds: readonly string[];
+}
+
+export const evaluatePracticeIsolationReadinessV1 = (
+  input: PracticeIsolationReadinessRequirementV1,
+): PracticeIsolationReadinessAssertionV1 => {
+  const availableBackendIds = [...new Set(
+    input.availableBackendIds
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
+  )];
+  const expectedBackend = input.expectedBackend?.trim() ?? "";
+  const expectedFallbackAfter = input.expectedFallbackAfter?.trim() ?? "";
+  const reasons: string[] = [];
+  if (expectedBackend.length > 0 && !availableBackendIds.includes(expectedBackend)) {
+    reasons.push(
+      "Expected subject-isolation backend is not registered in Current-AE runtime: "
+        + expectedBackend + ".",
+    );
+  }
+  if (expectedFallbackAfter.length > 0
+    && !availableBackendIds.includes(expectedFallbackAfter)) {
+    reasons.push(
+      "Expected subject-isolation fallback source is not registered in Current-AE runtime: "
+        + expectedFallbackAfter + ".",
+    );
+  }
+  if (expectedBackend.length > 0
+    && expectedFallbackAfter.length > 0
+    && expectedBackend === expectedFallbackAfter) {
+    reasons.push(
+      "Subject-isolation fallback source and successful backend must be different.",
+    );
+  }
+  return {
+    passed: reasons.length === 0,
+    reasons,
+    availableBackendIds,
+  };
+};
+
 export const evaluatePracticeLivePersistenceV1 = (
   practiceRole: "LEARNING" | "HELD_OUT_CERTIFICATION",
   proof: PracticeLiveReloadProofV1,

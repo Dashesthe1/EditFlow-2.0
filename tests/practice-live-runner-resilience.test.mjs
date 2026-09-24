@@ -94,6 +94,22 @@ test("Practice live learning allocation persists machine mastery before held-out
   assert.match(runner, /Learning mastery restored/);
 });
 
+test("Practice live isolation readiness runs before Current-AE reconstruction", async () => {
+  const source = await readFile(cliPath, "utf8");
+  const runtimeIndex = source.indexOf("createPracticeM6CurrentAeTrainingRuntimeV1({");
+  const readinessIndex = source.indexOf("evaluatePracticeIsolationReadinessV1({");
+  const runIndex = source.indexOf("const result = await runtime.run({");
+  assert.ok(runtimeIndex >= 0, "Current-AE runtime creation must be present");
+  assert.ok(readinessIndex >= 0, "subject-isolation readiness preflight must be present");
+  assert.ok(runIndex >= 0, "Practice reconstruction must be present");
+  assert.ok(runtimeIndex < readinessIndex, "readiness requires the assembled validated backends");
+  assert.ok(readinessIndex < runIndex, "readiness must fail closed before reconstruction");
+  assert.match(source, /runtime\.assembly\.subjectIsolationBackendIds/);
+  assert.match(source, /PRACTICE_CURRENT_AE_SUBJECT_ISOLATION_PREFLIGHT_FAILED/);
+  assert.match(source, /subjectIsolationReadiness: isolationReadiness/);
+  assert.match(source, /process\.exitCode = 8/);
+});
+
 test("Practice live media preflight runs before CEP/AE connection", async () => {
   const source = await readFile(cliPath, "utf8");
   const fingerprintIndex = source.indexOf("fingerprintPracticeHeldOutMaterialV1({");
