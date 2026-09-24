@@ -1248,6 +1248,12 @@ const compileM6TemporalDuplication = (
         layerId,
         name: `${sourceLayerId} temporal state ${state}`,
       });
+      const sourceRegistryKey = `${context.compId}\u0000${sourceLayerId}`;
+      const targetRegistryKey = `${context.compId}\u0000${layerId}`;
+      const inheritedPositionComponents = positionExpressionRegistry.get(sourceRegistryKey);
+      if (inheritedPositionComponents !== undefined) {
+        positionExpressionRegistry.set(targetRegistryKey, [...inheritedPositionComponents]);
+      }
       operations.push({
         type: "SET_PROPERTY",
         compId: context.compId,
@@ -1766,8 +1772,8 @@ const compileM6SemanticVisualState = (
           layerId,
           name: `${definition.sourceLayerId} ${definition.channel} fringe`,
         });
-        const sourceRegistryKey = `${context.compId}:${definition.sourceLayerId}`;
-        const targetRegistryKey = `${context.compId}:${layerId}`;
+        const sourceRegistryKey = `${context.compId}\u0000${definition.sourceLayerId}`;
+        const targetRegistryKey = `${context.compId}\u0000${layerId}`;
         const inheritedPositionComponents = positionExpressionRegistry.get(sourceRegistryKey);
         if (inheritedPositionComponents !== undefined) {
           positionExpressionRegistry.set(targetRegistryKey, [...inheritedPositionComponents]);

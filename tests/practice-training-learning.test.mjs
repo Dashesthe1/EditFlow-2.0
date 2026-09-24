@@ -1521,8 +1521,19 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     value.includes("var directionX=0.6;")
       && value.includes("var directionY=-0.8;")
       && value.includes("var dx=-directionX*amplitude*stateScale*envelope;")
-      && value.includes("var dy=-directionY*amplitude*stateScale*envelope;")),
+      && value.includes("var dy=-directionY*amplitude*stateScale*envelope;")
+      && value.includes("return [0,impulse];")
+      && value.includes("var dx=d0[0]+d1[0];")
+      && value.includes("var dy=d0[1]+d1[1];")),
   JSON.stringify(nativeEventExpressions));
+  const blurDirectionWrites = capturedPlan.operations
+    .filter((operation) => operation.input?.command === "effect.set_property")
+    .filter((operation) => operation.input?.payload?.propertyPath?.includes("ADBE Motion Blur-0001"))
+    .map((operation) => operation.input?.payload?.value)
+    .filter((value) => typeof value === "number");
+  const expectedBlurDirection = Math.atan2(-0.8, 0.6) * 180 / Math.PI;
+  assert.ok(blurDirectionWrites.some((value) =>
+    Math.abs(value - expectedBlurDirection) < 1e-9));
 
   const rendered = await runtime.renderWindowEvidence({
     sessionId: "practice:native",
