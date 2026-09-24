@@ -152,8 +152,12 @@ try {
     Write-Host ("Persistence assertion passed: " + $Result.assertions.persistence.passed)
     $Backends = @($Result.assertions.subjectIsolation.observedBackends) -join ","
     $Fallbacks = @($Result.assertions.subjectIsolation.observedFallbacks) -join ","
+    $Rejected = @($Result.assertions.subjectIsolation.observedRejectedBackends) -join ","
+    $RejectionCodes = @($Result.assertions.subjectIsolation.observedRejectionCodes) -join ","
     Write-Host ("Observed isolation backends: " + $Backends)
     Write-Host ("Observed isolation fallbacks: " + $Fallbacks)
+    Write-Host ("Rejected isolation backends: " + $Rejected)
+    Write-Host ("Isolation rejection codes: " + $RejectionCodes)
   }
   if ($null -ne $Result.persistence) {
     Write-Host ("Shared Practice state: " + $Result.persistence.stateDir)

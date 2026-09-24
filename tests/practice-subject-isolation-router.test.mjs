@@ -69,6 +69,12 @@ test("Practice isolation router falls back only after the primary backend reject
   assert.ok(result.evidenceRefs.includes(
     "practice-subject-isolation-fallback-after:SAM31_TEMPORAL_MATTE",
   ));
+  assert.ok(result.evidenceRefs.includes(
+    "practice-subject-isolation-rejected-backend:SAM31_TEMPORAL_MATTE",
+  ));
+  assert.ok(result.evidenceRefs.includes(
+    "practice-subject-isolation-rejection-code:SAM31_TEMPORAL_MATTE:SAM_REJECTED",
+  ));
 });
 
 test("Practice isolation router fails closed when every retained backend rejects", async () => {

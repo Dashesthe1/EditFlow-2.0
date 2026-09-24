@@ -43,6 +43,14 @@ const carriedFailure = (
 ): PracticeSubjectIsolationBackendFailureV1 | null =>
   error instanceof PracticeSubjectIsolationBackendFailureV1 ? error : null;
 
+const backendFailureCode = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = message.split(":", 1)[0]?.trim() ?? "";
+  return /^[A-Z0-9_]+$/.test(code)
+    ? code
+    : "UNCLASSIFIED_BACKEND_REJECTION";
+};
+
 export class PracticeM6SubjectIsolationRouterV1
 implements PracticeM6SubjectIsolationRouteV1 {
   readonly backends: readonly PracticeSubjectIsolationBackendV1[];
@@ -98,6 +106,11 @@ implements PracticeM6SubjectIsolationRouteV1 {
       } catch (error) {
         failed.push(backend.id);
         lastError = error;
+        carriedEvidence.push(
+          "practice-subject-isolation-rejected-backend:" + backend.id,
+          "practice-subject-isolation-rejection-code:"
+            + backend.id + ":" + backendFailureCode(error),
+        );
         const failure = carriedFailure(error);
         if (failure !== null) {
           carriedAppliedOperations += failure.appliedOperations;

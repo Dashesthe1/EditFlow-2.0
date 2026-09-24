@@ -162,7 +162,10 @@ ID that is not retained as TRANSFER_VERIFIED. Omitting the input does not auto-c
 Live subject-isolation certification may additionally require machine evidence for a
 specific backend and fallback path. The dedicated held-out isolation runner requires a
 real SAM 3.1 rejection followed by a verified Roto Brush track-matte success; it does not
-simulate or force the primary-backend failure. Missing fallback evidence fails closed.
+simulate or force the primary-backend failure. The router retains the rejected backend and
+its machine rejection code. Roto certification also requires retained cross-source identity,
+ROTO_BRUSH mask truth, the committed Roto route, native export host evidence, the final matte,
+working-layer cleanup, and applied undo accounting. Backend/fallback labels alone fail closed.
 
 ## Non-negotiable practice sequence
 

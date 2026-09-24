@@ -47,6 +47,8 @@ export interface PracticeIsolationEvidenceAssertionV1
 extends PracticeLiveAssertionV1 {
   readonly observedBackends: readonly string[];
   readonly observedFallbacks: readonly string[];
+  readonly observedRejectedBackends: readonly string[];
+  readonly observedRejectionCodes: readonly string[];
 }
 
 const suffixes = (
@@ -61,25 +63,70 @@ export const evaluatePracticeIsolationEvidenceV1 = (
 ): PracticeIsolationEvidenceAssertionV1 => {
   const backendPrefix = "practice-subject-isolation-backend:";
   const fallbackPrefix = "practice-subject-isolation-fallback-after:";
+  const rejectedPrefix = "practice-subject-isolation-rejected-backend:";
+  const rejectionCodePrefix = "practice-subject-isolation-rejection-code:";
   const observedBackends = suffixes(input.evidenceRefs, backendPrefix);
   const observedFallbacks = suffixes(input.evidenceRefs, fallbackPrefix);
+  const observedRejectedBackends = suffixes(input.evidenceRefs, rejectedPrefix);
+  const observedRejectionCodes = suffixes(input.evidenceRefs, rejectionCodePrefix);
   const reasons: string[] = [];
   const expectedBackend = input.expectedBackend?.trim() ?? "";
   const expectedFallbackAfter = input.expectedFallbackAfter?.trim() ?? "";
+  const hasExact = (value: string): boolean => input.evidenceRefs.includes(value);
+  const hasPrefix = (prefix: string): boolean =>
+    input.evidenceRefs.some((value) => value.startsWith(prefix));
   if (expectedBackend.length > 0 && !observedBackends.includes(expectedBackend)) {
     reasons.push("Expected subject-isolation backend was not proven: " + expectedBackend + ".");
   }
-  if (expectedFallbackAfter.length > 0
-    && !observedFallbacks.includes(expectedFallbackAfter)) {
-    reasons.push(
-      "Expected subject-isolation fallback was not proven after: "
-      + expectedFallbackAfter + ".",
-    );
+  if (expectedFallbackAfter.length > 0) {
+    if (!observedFallbacks.includes(expectedFallbackAfter)) {
+      reasons.push(
+        "Expected subject-isolation fallback was not proven after: "
+        + expectedFallbackAfter + ".",
+      );
+    }
+    if (!observedRejectedBackends.includes(expectedFallbackAfter)) {
+      reasons.push(
+        "Fallback backend rejection was not retained for: " + expectedFallbackAfter + ".",
+      );
+    }
+    if (!observedRejectionCodes.some((value) =>
+      value.startsWith(expectedFallbackAfter + ":"))) {
+      reasons.push(
+        "Fallback backend rejection code was not retained for: "
+        + expectedFallbackAfter + ".",
+      );
+    }
+  }
+  if (expectedBackend === "ROTO_BRUSH_TRACK_MATTE") {
+    const exactEvidence = [
+      "practice-subject-cross-source-identity:true",
+      "practice-subject-mask-source:ROTO_BRUSH",
+      "practice-roto-working-layer-cleaned:true",
+    ] as const;
+    for (const value of exactEvidence) {
+      if (!hasExact(value)) {
+        reasons.push("Roto Brush certification is missing committed proof: " + value + ".");
+      }
+    }
+    const prefixEvidence = [
+      "practice-subject-isolation-route:practice-m6.roto-brush-track-matte.",
+      "practice-roto-export-host-id:",
+      "practice-roto-final-matte:",
+      "practice-roto-applied-undo-entries:",
+    ] as const;
+    for (const prefix of prefixEvidence) {
+      if (!hasPrefix(prefix)) {
+        reasons.push("Roto Brush certification is missing committed evidence prefix: " + prefix);
+      }
+    }
   }
   return {
     passed: reasons.length === 0,
     reasons,
     observedBackends,
     observedFallbacks,
+    observedRejectedBackends,
+    observedRejectionCodes,
   };
 };

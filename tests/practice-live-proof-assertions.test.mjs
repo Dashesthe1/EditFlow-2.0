@@ -56,8 +56,17 @@ test("held-out persistence proves the certification did not enter learning memor
 test("live isolation assertion can require a real SAM-to-Roto fallback trace", () => {
   const accepted = evaluatePracticeIsolationEvidenceV1({
     evidenceRefs: [
+      "practice-subject-isolation-rejected-backend:SAM31_TEMPORAL_MATTE",
+      "practice-subject-isolation-rejection-code:SAM31_TEMPORAL_MATTE:PRACTICE_SUBJECT_ISOLATION_SEGMENTATION_REJECTED",
       "practice-subject-isolation-fallback-after:SAM31_TEMPORAL_MATTE",
       "practice-subject-isolation-backend:ROTO_BRUSH_TRACK_MATTE",
+      "practice-subject-isolation-route:practice-m6.roto-brush-track-matte.v1",
+      "practice-subject-cross-source-identity:true",
+      "practice-subject-mask-source:ROTO_BRUSH",
+      "practice-roto-export-host-id:4312",
+      "practice-roto-final-matte:PRACTICE_ROTO_MATTE_TEST",
+      "practice-roto-working-layer-cleaned:true",
+      "practice-roto-applied-undo-entries:5",
     ],
     expectedBackend: "ROTO_BRUSH_TRACK_MATTE",
     expectedFallbackAfter: "SAM31_TEMPORAL_MATTE",
@@ -65,6 +74,10 @@ test("live isolation assertion can require a real SAM-to-Roto fallback trace", (
   assert.equal(accepted.passed, true);
   assert.deepEqual(accepted.observedBackends, ["ROTO_BRUSH_TRACK_MATTE"]);
   assert.deepEqual(accepted.observedFallbacks, ["SAM31_TEMPORAL_MATTE"]);
+  assert.deepEqual(accepted.observedRejectedBackends, ["SAM31_TEMPORAL_MATTE"]);
+  assert.deepEqual(accepted.observedRejectionCodes, [
+    "SAM31_TEMPORAL_MATTE:PRACTICE_SUBJECT_ISOLATION_SEGMENTATION_REJECTED",
+  ]);
 
   const rejected = evaluatePracticeIsolationEvidenceV1({
     evidenceRefs: ["practice-subject-isolation-backend:SAM31_TEMPORAL_MATTE"],
@@ -72,5 +85,18 @@ test("live isolation assertion can require a real SAM-to-Roto fallback trace", (
     expectedFallbackAfter: "SAM31_TEMPORAL_MATTE",
   });
   assert.equal(rejected.passed, false);
-  assert.equal(rejected.reasons.length, 2);
+  assert.ok(rejected.reasons.length >= 2);
+
+  const labelOnly = evaluatePracticeIsolationEvidenceV1({
+    evidenceRefs: [
+      "practice-subject-isolation-rejected-backend:SAM31_TEMPORAL_MATTE",
+      "practice-subject-isolation-rejection-code:SAM31_TEMPORAL_MATTE:SAM_REJECTED",
+      "practice-subject-isolation-fallback-after:SAM31_TEMPORAL_MATTE",
+      "practice-subject-isolation-backend:ROTO_BRUSH_TRACK_MATTE",
+    ],
+    expectedBackend: "ROTO_BRUSH_TRACK_MATTE",
+    expectedFallbackAfter: "SAM31_TEMPORAL_MATTE",
+  });
+  assert.equal(labelOnly.passed, false);
+  assert.match(labelOnly.reasons.join("\n"), /Roto Brush certification is missing committed/);
 });
