@@ -443,6 +443,54 @@ test("AE baseline cuts a full-song source to the matched Finish soundtrack range
   assert.match(baseline.audioTimelineRef, /#audio:audio-match:full-song$/);
 });
 
+test("AE baseline preserves a beat-aware multi-segment song arrangement", () => {
+  const arrangedAudioMatch = {
+    ...audioMatch,
+    matchId: "audio-match:arranged-song",
+    segments: [
+      {
+        ...audioMatch.segments[0],
+        segmentId: "song-segment:arranged:001",
+        referenceEndMs: 1250,
+        sourceEndMs: 45750,
+      },
+      {
+        ...audioMatch.segments[0],
+        segmentId: "song-segment:arranged:002",
+        referenceStartMs: 1250,
+        referenceEndMs: 2000,
+        sourceStartMs: 62000,
+        sourceEndMs: 62750,
+      },
+    ],
+    beatGrid: {
+      beatTimesMs: [500, 1000, 1500, 2000],
+      estimatedBpm: 120,
+      confidence: 0.96,
+      evidenceRefs: ["audio:beat-grid"],
+    },
+  };
+  const plan = compilePracticeAeBaselinePlanV1({
+    reference,
+    matches,
+    audioMatch: arrangedAudioMatch,
+  });
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.deepEqual(timings.slice(-2), [
+    { startTime: -44.5, inPoint: 0.5, outPoint: 1.25, stretch: 100 },
+    { startTime: -60.75, inPoint: 1.25, outPoint: 2, stretch: 100 },
+  ]);
+  const switches = plan.operations
+    .filter((item) => item.command === "layer.switches.set")
+    .map((item) => item.payload.switches);
+  assert.deepEqual(switches.slice(-2), [
+    { audioEnabled: true },
+    { audioEnabled: true },
+  ]);
+});
+
 test("AE baseline builder prefers one atomic batch transaction when available", async () => {
   const executedPlans = [];
   const builder = new PracticeAeBaselineBuilderV1({
