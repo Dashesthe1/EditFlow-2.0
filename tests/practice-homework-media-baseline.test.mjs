@@ -179,6 +179,56 @@ test("AE baseline compiles a measured forward speed ramp into Time Remap keys", 
   assert.ok(Math.max(...segmentRates) / Math.min(...segmentRates) > 1.3);
 });
 
+test("AE baseline preserves multi-inflection speed ramps despite one contradictory scene sample", () => {
+  const speedRampMatches = [
+    matches[0],
+    {
+      ...matches[1],
+      direction: "FORWARD",
+      sourceStartMs: 7000,
+      sourceEndMs: 9000,
+      playbackRate: 1.25,
+      temporalBehavior: "FORWARD",
+      trajectory: [
+        { referenceTimeMs: 1120, sourceTimeMs: 7100, similarity: 0.99 },
+        { referenceTimeMs: 1370, sourceTimeMs: 7220, similarity: 0.98 },
+        { referenceTimeMs: 1620, sourceTimeMs: 7600, similarity: 0.99 },
+        { referenceTimeMs: 1850, sourceTimeMs: 7480, similarity: 0.61 },
+        { referenceTimeMs: 1950, sourceTimeMs: 8020, similarity: 0.99 },
+        { referenceTimeMs: 2180, sourceTimeMs: 8210, similarity: 0.98 },
+        { referenceTimeMs: 2380, sourceTimeMs: 8850, similarity: 0.99 },
+      ],
+    },
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: speedRampMatches });
+  const timing = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing)[1];
+  assert.deepEqual(timing, {
+    startTime: 1,
+    inPoint: 1,
+    outPoint: 2.5,
+    stretch: 100,
+  });
+  const remap = plan.operations.find((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0002"));
+  assert.ok(remap);
+  const keyframes = remap.payload.keyframes;
+  assert.ok(keyframes.some((item) => Math.abs(item.value - 7.6) < 1e-6));
+  assert.ok(keyframes.some((item) => Math.abs(item.value - 8.02) < 1e-6));
+  assert.equal(keyframes.some((item) => Math.abs(item.value - 7.48) < 1e-6), false);
+  const segmentRates = keyframes.slice(1).map((item, index) =>
+    Math.abs((item.value - keyframes[index].value) / (item.time - keyframes[index].time)));
+  const materialRateShifts = segmentRates.slice(1).filter((rate, index) => {
+    const previousRate = segmentRates[index];
+    const slower = Math.min(rate, previousRate);
+    const faster = Math.max(rate, previousRate);
+    return slower > 1e-6 && (faster / slower) >= 1.35;
+  });
+  assert.ok(materialRateShifts.length >= 2);
+});
+
 test("AE baseline keeps near-linear measured trajectories on the stretch fast path", () => {
   const linearMatches = [
     matches[0],
