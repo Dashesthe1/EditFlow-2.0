@@ -110,6 +110,18 @@ const nonEmpty = (value: string, name: string): string => {
 const unique = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 
+const sameCapabilityGapIdentity = (
+  left: GptCapabilityGapV1 | undefined,
+  right: GptCapabilityGapV1 | undefined,
+): boolean => {
+  if (left === undefined || right === undefined) return false;
+  return left.gapId.trim() === right.gapId.trim()
+    && left.kind === right.kind
+    && left.requestedBehavior.trim() === right.requestedBehavior.trim()
+    && JSON.stringify([...unique(left.missingCapabilityIds)].sort())
+      === JSON.stringify([...unique(right.missingCapabilityIds)].sort());
+};
+
 const hasCompleteCausalModel = (
   model: GptLearnedSkillV1["causalModel"],
 ): boolean => model !== undefined && [
@@ -141,17 +153,25 @@ const RESEARCH_PRIORITY_LINES = [
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
   "- Every matched Tutorial Drive tutorial file must be deep-analyzed and compiled through EditFlow's tutorial causal compiler before it can support Practice learning. The compiler-derived construction pattern, capabilities, triggers, invariants, adaptation axes, failure/repair logic, and transfer criteria are authoritative; do not hand-author substitutes for those fields.",
+  "- Keep capability evidence causally bound: CAPABILITY_IMPLEMENTATION and CAPABILITY_PROOF must carry the same originating capability gap, and SKILL_COMMIT may use only compiler semantics targeting that skill plus proof evidence bound to that same gap.",
   "- If no sufficiently relevant Tutorial Drive match exists, record the Tutorial Drive search/query and no-match result in RESEARCH provenance before escalating.",
   "- Second priority is official Adobe documentation/resources and the installed Adobe feature/plugin surface.",
   "- Third priority is external professional tutorials and plugin/vendor documentation; broader web/internet research is last.",
 ] as const;
 
 const applyCurrentResearchPriority = (message: string): string => {
-  if (message.includes(RESEARCH_PRIORITY_LINES[3])) return message;
+  if (message.includes(RESEARCH_PRIORITY_LINES[4])) return message;
+  if (message.includes(RESEARCH_PRIORITY_LINES[3])) {
+    return message.replace(
+      RESEARCH_PRIORITY_LINES[3],
+      RESEARCH_PRIORITY_LINES[3] + "\n" + RESEARCH_PRIORITY_LINES[4],
+    );
+  }
   if (message.includes(RESEARCH_PRIORITY_LINES[2])) {
     return message.replace(
       RESEARCH_PRIORITY_LINES[2],
-      RESEARCH_PRIORITY_LINES[2] + "\n" + RESEARCH_PRIORITY_LINES[3],
+      RESEARCH_PRIORITY_LINES[2] + "\n" + RESEARCH_PRIORITY_LINES[3]
+        + "\n" + RESEARCH_PRIORITY_LINES[4],
     );
   }
   for (const legacyLine of LEGACY_RESEARCH_POLICY_LINES) {
@@ -231,6 +251,16 @@ const isTutorialDriveFolderSearch = (source: GptResearchSourceV1 | undefined): b
 const hasResearchLearningPath = (sources: readonly GptResearchSourceV1[]): boolean =>
   sources.some((source) =>
     source.tutorialCompilation !== undefined && hasValidTutorialCompilation(source))
+  || (sources.some(isTutorialDriveFolderSearch)
+    && sources.some((source) => source.kind !== "TUTORIAL_DRIVE" && source.kind !== "INTERNAL_EVIDENCE"));
+
+const hasResearchLearningPathForSkill = (
+  sources: readonly GptResearchSourceV1[],
+  skillId: string,
+): boolean =>
+  sources.some((source) =>
+    source.tutorialCompilation?.targetSkillId === skillId
+    && hasValidTutorialCompilation(source))
   || (sources.some(isTutorialDriveFolderSearch)
     && sources.some((source) => source.kind !== "TUTORIAL_DRIVE" && source.kind !== "INTERNAL_EVIDENCE"));
 
@@ -683,14 +713,46 @@ export class GptOrchestrationStoreV1 {
           }
         }
       }
+      if (input.stage === "CAPABILITY_IMPLEMENTATION") {
+        const gap = input.capabilityGap;
+        if (gap === undefined || gap.status !== "OPEN") {
+          throw new TypeError(
+            "CAPABILITY_IMPLEMENTATION requires the originating OPEN capabilityGap.",
+          );
+        }
+        const gapWasOpened = sessionEvents.some((event) =>
+          event.stage === "CAPABILITY_GAP"
+          && sameCapabilityGapIdentity(event.capabilityGap, gap));
+        if (!gapWasOpened) {
+          throw new TypeError(
+            "CAPABILITY_IMPLEMENTATION must bind to a prior matching CAPABILITY_GAP event.",
+          );
+        }
+      }
       if (input.stage === "CAPABILITY_PROOF") {
+        const gap = input.capabilityGap;
+        if (gap === undefined || gap.status !== "OPEN") {
+          throw new TypeError(
+            "CAPABILITY_PROOF requires the originating OPEN capabilityGap.",
+          );
+        }
         if (unique(input.evidenceRefs ?? []).length === 0) {
           throw new TypeError("CAPABILITY_PROOF requires retained evidenceRefs.");
+        }
+        const gapWasOpened = sessionEvents.some((event) =>
+          event.stage === "CAPABILITY_GAP"
+          && sameCapabilityGapIdentity(event.capabilityGap, gap));
+        if (!gapWasOpened) {
+          throw new TypeError(
+            "CAPABILITY_PROOF must bind to a prior matching CAPABILITY_GAP event.",
+          );
         }
         const priorResearch = sessionEvents.filter((event) => event.stage === "RESEARCH")
           .flatMap((event) => event.researchSources ?? []);
         const priorImplementation = sessionEvents.some((event) =>
-          event.stage === "CAPABILITY_IMPLEMENTATION" && event.outcome !== "FAILURE");
+          event.stage === "CAPABILITY_IMPLEMENTATION"
+          && event.outcome !== "FAILURE"
+          && sameCapabilityGapIdentity(event.capabilityGap, gap));
         if (!priorResearch.some(isTutorialDriveResearchSource)) {
           throw new TypeError("CAPABILITY_PROOF requires prior Tutorial Drive research provenance.");
         }
@@ -700,7 +762,9 @@ export class GptOrchestrationStoreV1 {
           );
         }
         if (!priorImplementation) {
-          throw new TypeError("CAPABILITY_PROOF requires a prior CAPABILITY_IMPLEMENTATION event.");
+          throw new TypeError(
+            "CAPABILITY_PROOF requires a prior CAPABILITY_IMPLEMENTATION event for the same capability gap.",
+          );
         }
       }
       if (input.stage === "SKILL_COMMIT") {
@@ -734,23 +798,38 @@ export class GptOrchestrationStoreV1 {
           );
         }
         const gapWasOpened = sessionEvents.some((event) =>
-          event.stage === "CAPABILITY_GAP" && event.capabilityGap?.gapId === gap.gapId);
-        const proofSucceeded = sessionEvents.some((event) =>
+          event.stage === "CAPABILITY_GAP"
+          && sameCapabilityGapIdentity(event.capabilityGap, gap));
+        const matchingProofEvents = sessionEvents.filter((event) =>
           event.stage === "CAPABILITY_PROOF"
           && event.outcome === "SUCCESS"
-          && event.evidenceRefs.length > 0);
-        if (!gapWasOpened) throw new TypeError("SKILL_COMMIT requires a prior CAPABILITY_GAP event.");
+          && event.evidenceRefs.length > 0
+          && sameCapabilityGapIdentity(event.capabilityGap, gap));
+        if (!gapWasOpened) {
+          throw new TypeError(
+            "SKILL_COMMIT requires a prior matching CAPABILITY_GAP event.",
+          );
+        }
         if (!research.some(isTutorialDriveResearchSource)) {
           throw new TypeError("SKILL_COMMIT requires prior Tutorial Drive research provenance.");
         }
-        if (!hasResearchLearningPath(research)) {
+        if (!hasResearchLearningPathForSkill(research, skill.skillId)) {
           throw new TypeError(
-            "SKILL_COMMIT requires a compiler-backed Tutorial Drive technique record or a retained Tutorial Drive no-match search followed by an escalated authoritative source.",
+            "SKILL_COMMIT requires compiler-backed Tutorial Drive semantics targeting the committed skill, or a retained Tutorial Drive no-match search followed by an escalated authoritative source.",
           );
         }
-        if (!proofSucceeded) {
-          throw new TypeError("SKILL_COMMIT requires a successful prior CAPABILITY_PROOF event.");
+        if (matchingProofEvents.length === 0) {
+          throw new TypeError(
+            "SKILL_COMMIT requires a successful CAPABILITY_PROOF bound to the same capability gap.",
+          );
         }
+        retainedLearnedSkill = {
+          ...skill,
+          evidenceRefs: unique([
+            ...skill.evidenceRefs,
+            ...matchingProofEvents.flatMap((event) => event.evidenceRefs),
+          ]),
+        };
       }
       const event: GptLearningEventV1 = {
         schema: "editflow.gpt-learning-event.v1",

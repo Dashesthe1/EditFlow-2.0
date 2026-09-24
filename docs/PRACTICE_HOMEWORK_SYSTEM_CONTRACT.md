@@ -229,8 +229,14 @@ readback/render evidence.
 
 A committed learned skill must resolve its gap, be at least `AE_PROVEN`, retain the
 research sources and proof evidence, and store transferable construction/adaptation
-rules under the selected Edit Type. Pro Creation can then retrieve that skill without
-blindly replaying literal values.
+rules under the selected Edit Type. Capability evidence is gap-scoped: every
+`CAPABILITY_IMPLEMENTATION` and `CAPABILITY_PROOF` event must identify the same
+originating capability gap, and `SKILL_COMMIT` may consume only proof evidence bound to
+that gap. When Tutorial Drive contains a matching tutorial, its causal compilation must
+target the committed skill ID; a compilation for another skill cannot certify it.
+The retained skill automatically includes the compiler evidence and same-gap AE proof
+evidence. Pro Creation can then retrieve that skill without blindly replaying literal
+values.
 
 A short replay of frames that have just played forward is specifically classified as
 `TEMPORAL_REWIND` / `REVERSE_PLAYBACK`. Practice must not misread this as an effect

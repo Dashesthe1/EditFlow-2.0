@@ -1001,6 +1001,15 @@ export class PracticePanelServerV1 {
         "Compiler-backed Tutorial Drive research must use the tutorial-compilations endpoint.",
       );
     }
+    if (stage === "CAPABILITY_IMPLEMENTATION" && capabilityGap === undefined) {
+      throw new HttpError(
+        400,
+        "CAPABILITY_IMPLEMENTATION requires the originating capabilityGap.",
+      );
+    }
+    if (stage === "CAPABILITY_PROOF" && capabilityGap === undefined) {
+      throw new HttpError(400, "CAPABILITY_PROOF requires the originating capabilityGap.");
+    }
     if (stage === "CAPABILITY_PROOF" && evidenceRefs.length === 0) {
       throw new HttpError(400, "CAPABILITY_PROOF requires evidenceRefs.");
     }

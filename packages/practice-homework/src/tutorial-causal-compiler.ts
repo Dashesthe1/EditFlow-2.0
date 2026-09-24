@@ -249,5 +249,9 @@ export const applyCompiledTutorialCausalModelV1 = (
     adaptationNotes: compilations.map((item) => item.adaptationNotes).join(" || "),
     causalModel: mergedCausalModel,
     researchSources: uniqueSources(researchSources).map((source) => structuredClone(source)),
+    evidenceRefs: unique([
+      ...skill.evidenceRefs,
+      ...compilations.flatMap((item) => item.evidenceRefs),
+    ]),
   };
 };

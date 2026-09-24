@@ -394,6 +394,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
       stage: "CAPABILITY_PROOF",
       outcome: "SUCCESS",
       summary: "A proof cannot skip implementation.",
+      capabilityGap: gapOpen,
       evidenceRefs: ["render:premature-proof"],
     }),
     /prior CAPABILITY_IMPLEMENTATION/,
@@ -403,6 +404,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     stage: "CAPABILITY_IMPLEMENTATION",
     outcome: "SUCCESS",
     summary: "Built an AE Time Remap curve with a descending source-time segment over the measured rewind window.",
+    capabilityGap: gapOpen,
     detail: "Forward source time increases into the event, then decreases across the rewind span before the reference-defined exit.",
     evidenceRefs: ["construction:temporal-rewind:v1", "readback:time-remap-keyframes"],
   });
@@ -413,6 +415,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     stage: "CAPABILITY_PROOF",
     outcome: "SUCCESS",
     summary: "Rendered AE evidence shows the same source frames replay backward over the measured rewind span before the transition exits.",
+    capabilityGap: gapOpen,
     evidenceRefs: ["render:temporal-rewind-proof", "comparison:temporal-rewind-source-time-proof"],
   });
   registry.recordGptLearningEvent(proofEvent);

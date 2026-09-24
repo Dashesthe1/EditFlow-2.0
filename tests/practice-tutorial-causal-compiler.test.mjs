@@ -183,14 +183,52 @@ test("SKILL_COMMIT replaces GPT placeholders with compiler-backed tutorial seman
     stage: "CAPABILITY_IMPLEMENTATION",
     outcome: "SUCCESS",
     summary: "Implemented the tutorial-derived impact-push construction in AE.",
+    capabilityGap: gapOpen,
     evidenceRefs: ["ae:implementation:impact-push"],
   });
   await store.appendEvent({
     assignmentId: assignment.assignmentId,
     stage: "CAPABILITY_PROOF",
     outcome: "SUCCESS",    summary: "AE render and readback prove the reconstructed behavior.",
+    capabilityGap: gapOpen,
     evidenceRefs: ["render:impact-push", "comparison:impact-push"],
   });
+  await assert.rejects(
+    store.appendEvent({
+      assignmentId: assignment.assignmentId,
+      stage: "SKILL_COMMIT",
+      outcome: "SUCCESS",
+      summary: "A different skill cannot inherit this tutorial compilation.",
+      capabilityGap: {
+        ...gapOpen,
+        status: "RESOLVED",
+        resolutionSkillId: "skill:unrelated:v1",
+      },
+      learnedSkill: {
+        skillId: "skill:unrelated:v1",
+        title: "Unrelated Skill",
+        requestedBehavior: gapOpen.requestedBehavior,
+        maturity: "AE_PROVEN",
+        constructionPattern: "Caller-authored unrelated construction.",
+        capabilityIds: ["ae.layer.transform.set"],
+        adaptationNotes: "Adapt to materially different footage.",
+        causalModel: {
+          triggerConditions: ["A trigger exists."],
+          invariants: ["Preserve the visible result."],
+          adaptationAxes: ["subject scale"],
+          failureSignals: ["Visible mismatch."],
+          repairStrategies: ["Adjust the construction."],
+          transferCriteria: ["Verify on different footage."],
+        },
+        researchSources: [],
+        evidenceRefs: ["render:impact-push"],
+        learnedAt: "2026-09-23T23:00:00.000Z",
+      },
+      evidenceRefs: ["render:impact-push"],
+    }),
+    /targeting the committed skill/i,
+  );
+
   const resolvedGap = {
     ...gapOpen,
     status: "RESOLVED",
@@ -223,6 +261,10 @@ test("SKILL_COMMIT replaces GPT placeholders with compiler-backed tutorial seman
   assert.ok(committed.learnedSkill.causalModel.invariants.length > 0);
   assert.ok(committed.learnedSkill.causalModel.transferCriteria.length > 0);
   assert.equal(committed.learnedSkill.researchSources[0].sourceId, source.sourceId);
+  assert.ok(committed.learnedSkill.evidenceRefs.includes("render:impact-push"));
+  assert.ok(committed.learnedSkill.evidenceRefs.includes("comparison:impact-push"));
+  assert.ok(committed.learnedSkill.evidenceRefs.some((item) =>
+    item.startsWith("tutorial-analysis:sha256:")));
 });
 
 test("Practice Panel compiles deep tutorial analysis through the product API", async (t) => {
@@ -333,6 +375,31 @@ test("Practice Panel compiles deep tutorial analysis through the product API", a
   assert.match(
     (await shapedSubmission.json()).error,
     /tutorial-compilations endpoint/,
+  );
+
+  const unboundImplementation = await fetch(
+    "http://127.0.0.1:" + String(port)
+      + "/v1/product/gpt/assignments/"
+      + encodeURIComponent(assignment.assignmentId)
+      + "/events",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-EditFlow-Token": token,
+      },
+      body: JSON.stringify({
+        stage: "CAPABILITY_IMPLEMENTATION",
+        outcome: "SUCCESS",
+        summary: "Unbound implementation evidence must be rejected.",
+        evidenceRefs: ["ae:unbound"],
+      }),
+    },
+  );
+  assert.equal(unboundImplementation.status, 400);
+  assert.match(
+    (await unboundImplementation.json()).error,
+    /originating capabilityGap/,
   );
 
   const events = await store.eventsForSession(assignment.sessionId);
