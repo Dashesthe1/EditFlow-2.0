@@ -213,6 +213,12 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["metrics"]["falseHighConfidenceCount"], 1)
         self.assertLess(result["metrics"]["sourceIdentityAccuracy"], 1.0)
+        self.assertEqual(len(result["falseMatchDiagnostics"]), 1)
+        diagnostic = result["falseMatchDiagnostics"][0]
+        self.assertEqual(diagnostic["shotId"], "shot:1")
+        self.assertEqual(diagnostic["failureKinds"], ["SOURCE_IDENTITY_MISMATCH"])
+        self.assertEqual(diagnostic["expected"]["sourceId"], "video:movie")
+        self.assertEqual(diagnostic["observed"]["sourceId"], "video:wrong")
 
     def test_wrong_timing_fails_even_with_high_visual_confidence(self):
         matches = {
@@ -240,6 +246,7 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
         self.assertLess(result["metrics"]["geometricProofRate"], 1.0)
         row = next(item for item in result["perShot"] if item["shotId"] == "shot:1")
         self.assertFalse(row["certified"])
+        self.assertEqual(row["failureKinds"], ["GEOMETRY_PROOF_INSUFFICIENT"])
 
     def test_run_case_rejects_truth_bound_to_different_start_bytes_before_indexing(self):
         class FakeMatcher:
@@ -395,6 +402,35 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
         summary = benchmark.summarize_suite(results)
         self.assertFalse(summary["certified"])
         self.assertEqual(summary["failCount"], 1)
+
+    def test_suite_summary_aggregates_false_match_diagnostics(self):
+        results = [suite_result(index) for index in range(1, 21)]
+        results[-1]["status"] = "FAIL"
+        results[-1]["failureDiagnostics"] = [{
+            "shotId": "shot:7",
+            "failureKinds": ["SOURCE_IDENTITY_MISMATCH", "TIMING_MISMATCH"],
+            "falseHighConfidence": True,
+            "confidence": 0.99,
+            "confidenceGate": 0.95,
+            "geometricProofCorrect": True,
+            "intervalIou": 0.0,
+            "centerErrorMs": 4200.0,
+            "maximumBoundaryErrorMs": 4300.0,
+            "expected": {"sourceId": "video:expected"},
+            "observed": {"sourceId": "video:wrong"},
+        }]
+        summary = benchmark.summarize_suite(results)
+        diagnostics = summary["diagnostics"]
+        self.assertEqual(diagnostics["failedShotCount"], 1)
+        self.assertEqual(diagnostics["falseHighConfidenceCount"], 1)
+        self.assertEqual(diagnostics["failureKindCounts"], {
+            "SOURCE_IDENTITY_MISMATCH": 1,
+            "TIMING_MISMATCH": 1,
+        })
+        self.assertEqual(
+            diagnostics["falseMatchDiagnostics"][0]["benchmarkId"],
+            "case:20",
+        )
 
 
 if __name__ == "__main__":
