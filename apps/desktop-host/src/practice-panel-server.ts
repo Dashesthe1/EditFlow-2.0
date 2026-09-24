@@ -1085,6 +1085,7 @@ export class PracticePanelServerV1 {
       ? undefined
       : optionalNumber(body, "attempt", 1, 10_000, true);
     const evidenceRefs = stringArray(body, "evidenceRefs", false);
+    const appliedSkillIds = stringArray(body, "appliedSkillIds", false);
     const detail = optionalString(body, "detail");
     const developmentPattern = optionalString(body, "developmentPattern");
     const reusableLesson = optionalString(body, "reusableLesson");
@@ -1145,6 +1146,7 @@ export class PracticePanelServerV1 {
       ...(capabilityGap === undefined ? {} : { capabilityGap }),
       ...(researchSources === undefined ? {} : { researchSources }),
       ...(learnedSkill === undefined ? {} : { learnedSkill }),
+      ...(appliedSkillIds.length === 0 ? {} : { appliedSkillIds }),
       evidenceRefs,
     });
     const assignment = await this.#gptStore.getAssignment(assignmentId);
@@ -1214,12 +1216,16 @@ export class PracticePanelServerV1 {
           ])];
 
           if (practiceRole === "HELD_OUT_CERTIFICATION") {
+            const appliedSkillIds = [...new Set(sessionEvents
+              .filter((event) => event.outcome === "SUCCESS" || event.outcome === "IMPROVED")
+              .flatMap((event) => event.appliedSkillIds ?? []))];
             const certification = recordPracticeHeldOutCertificationV1({
               registry,
               editTypeId: pending.editTypeId,
               sessionId: pending.sessionId,
               proof: verification.proof,
               proofRef: verification.proofRef,
+              appliedSkillIds,
               repositoryRoot: this.config.repositoryRoot,
               traceReasons,
             });

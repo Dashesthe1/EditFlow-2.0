@@ -401,6 +401,8 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
       ? [
         "- A passing held-out case is certification evidence only. It must not become a mastery/training record or alter TRANSFER_VERIFIED skills.",
+        "- When you actually use a retained TRANSFER_VERIFIED learned skill, include its exact skillId in appliedSkillIds on a SUCCESS/IMPROVED AE_ACTION or RESULT audit event and retain evidenceRefs for that use. Never claim a skill that the case did not exercise.",
+        "- Skill-level certification is cumulative across held-out cases: ROBUST requires explicit passing held-out coverage for every retained TRANSFER_VERIFIED learned skill, not merely aggregate effect-family coverage.",
       ]
       : [
         "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",
@@ -647,6 +649,7 @@ export class GptOrchestrationStoreV1 {
     readonly capabilityGap?: GptCapabilityGapV1;
     readonly researchSources?: readonly GptResearchSourceV1[];
     readonly learnedSkill?: GptLearnedSkillV1;
+    readonly appliedSkillIds?: readonly string[];
     readonly evidenceRefs?: readonly string[];
   }): Promise<GptLearningEventV1> {
     const summary = nonEmpty(input.summary, "summary");
@@ -656,6 +659,8 @@ export class GptOrchestrationStoreV1 {
       if (!["RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)) {
         throw new TypeError("GPT learning events require a running assignment.");
       }
+      const appliedSkillIds = unique(input.appliedSkillIds ?? []);
+      const eventOutcome = input.outcome ?? "NEUTRAL";
       if (assignment.practiceRole === "HELD_OUT_CERTIFICATION") {
         const forbiddenStages: readonly GptLearningStageV1[] = [
           "RESEARCH", "CAPABILITY_IMPLEMENTATION", "CAPABILITY_PROOF", "SKILL_COMMIT", "LESSON",
@@ -669,6 +674,27 @@ export class GptOrchestrationStoreV1 {
           || input.learnedSkill !== undefined) {
           throw new TypeError("Held-out Practice certification cannot retain lessons, patterns, or learned skills.");
         }
+        if (appliedSkillIds.length > 0
+          && input.stage !== "AE_ACTION"
+          && input.stage !== "RESULT") {
+          throw new TypeError(
+            "Held-out appliedSkillIds are allowed only on AE_ACTION or RESULT audit events.",
+          );
+        }
+        if (appliedSkillIds.length > 0
+          && eventOutcome !== "SUCCESS"
+          && eventOutcome !== "IMPROVED") {
+          throw new TypeError(
+            "Held-out appliedSkillIds require SUCCESS or IMPROVED audit outcome.",
+          );
+        }
+        if (appliedSkillIds.length > 0 && unique(input.evidenceRefs ?? []).length === 0) {
+          throw new TypeError(
+            "Held-out appliedSkillIds require retained evidenceRefs tying the skill claim to the case.",
+          );
+        }
+      } else if (appliedSkillIds.length > 0) {
+        throw new TypeError("appliedSkillIds are reserved for held-out Practice certification audits.");
       }
       const sessionEvents = payload.events.filter((event) => event.sessionId === assignment.sessionId);
       let retainedLearnedSkill = input.learnedSkill === undefined
@@ -839,7 +865,7 @@ export class GptOrchestrationStoreV1 {
         mode: assignment.mode,
         ...(input.attempt === undefined ? {} : { attempt: Math.max(1, Math.floor(input.attempt)) }),
         stage: input.stage,
-        outcome: input.outcome ?? "NEUTRAL",
+        outcome: eventOutcome,
         summary,
         ...(input.detail === undefined ? {} : { detail: input.detail.trim() }),
         ...(input.developmentPattern === undefined
@@ -858,6 +884,7 @@ export class GptOrchestrationStoreV1 {
         ...(retainedLearnedSkill === undefined
           ? {}
           : { learnedSkill: structuredClone(retainedLearnedSkill) }),
+        ...(appliedSkillIds.length === 0 ? {} : { appliedSkillIds }),
         evidenceRefs: unique(input.evidenceRefs ?? []),
         createdAt: new Date().toISOString(),
       };

@@ -14,6 +14,7 @@ param(
   [int]$TimeoutSeconds = 180,
   [switch]$Allocate,
   [switch]$HeldOutCertification,
+  [string[]]$AppliedSkillId = @(),
   [string]$ExpectedIsolationBackend = "",
   [string]$ExpectedIsolationFallbackAfter = ""
 )
@@ -44,6 +45,9 @@ if ($MaxAttempts -lt 1) { throw "MaxAttempts must be at least 1." }
 if ($TimeoutSeconds -lt 30) { throw "TimeoutSeconds must be at least 30." }
 if ($HeldOutCertification -and $Allocate) {
   throw "Held-out certification cannot allocate learning evidence."
+}
+if (-not $HeldOutCertification -and @($AppliedSkillId).Count -gt 0) {
+  throw "AppliedSkillId is reserved for held-out certification."
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
@@ -109,7 +113,14 @@ try {
     $NodeArgs += @("--start-audio", (Resolve-Path -LiteralPath $audio).Path)
   }
   if ($Allocate) { $NodeArgs += "--allocate" }
-  if ($HeldOutCertification) { $NodeArgs += "--held-out-certification" }
+  if ($HeldOutCertification) {
+    $NodeArgs += "--held-out-certification"
+    foreach ($skillId in $AppliedSkillId) {
+      if (-not [string]::IsNullOrWhiteSpace($skillId)) {
+        $NodeArgs += @("--applied-skill-id", $skillId.Trim())
+      }
+    }
+  }
   if (-not [string]::IsNullOrWhiteSpace($ExpectedIsolationBackend)) {
     $NodeArgs += @("--expected-isolation-backend", $ExpectedIsolationBackend)
   }
@@ -129,6 +140,7 @@ try {
   if ($HeldOutCertification -and $null -ne $Result.heldOutProof) {
     Write-Host ("Held-out case passed: " + $Result.heldOutProof.heldOutCase.passed)
     Write-Host ("Held-out benchmark cases retained: " + $Result.heldOutProof.benchmark.caseCount)
+    Write-Host ("Held-out skill coverage verified: " + $Result.heldOutProof.benchmark.learnedSkillCoverageVerified)
     Write-Host ("Held-out benchmark robust: " + $Result.heldOutProof.benchmark.robust)
   }
   if ($null -ne $Result.assertions) {

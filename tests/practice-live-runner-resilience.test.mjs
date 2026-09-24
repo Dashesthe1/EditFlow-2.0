@@ -59,3 +59,16 @@ test("Practice live result retains whether CEP recovery was invoked", async () =
   assert.match(source, /afterFxPath/);
   assert.match(source, /panelBootstrapPath/);
 });
+
+
+test("Practice live held-out runner forwards only explicit learned-skill audit claims", async () => {
+  const cli = await readFile(cliPath, "utf8");
+  const runner = await readFile(runnerPath, "utf8");
+
+  assert.match(cli, /argumentsFor\("--applied-skill-id"\)/);
+  assert.match(cli, /--applied-skill-id is reserved for held-out certification/);
+  assert.match(cli, /appliedSkillIds,/);
+  assert.match(runner, /\[string\[\]\]\$AppliedSkillId = @\(\)/);
+  assert.match(runner, /"--applied-skill-id", \$skillId\.Trim\(\)/);
+  assert.match(runner, /Held-out skill coverage verified/);
+});

@@ -74,8 +74,10 @@ mastery proof is required for VISUAL_MATCH_VERIFIED. Materially different Finish
 Start fingerprints are required for TRANSFER_VERIFIED. OBJECT_AWARE_VERIFIED and ROBUST
 must come from retained held-out benchmark reports; GPT cannot assign those labels. ROBUST
 also requires M6.9 professional-benchmark authority for every effect family present in the
-Edit Type's TRANSFER_VERIFIED mastery records, so Practice cannot promote itself from its
-own held-out scores alone.
+Edit Type's TRANSFER_VERIFIED mastery records, plus explicit passing held-out coverage for
+every retained TRANSFER_VERIFIED learned skill. Effect-family success cannot proxy for a
+different learned recipe in the same family, so Practice cannot promote itself from its own
+aggregate held-out scores alone.
 
 Within-source semantic subject IDs never imply cross-source identity. When a Finish
 reference contains an object-aware effect window, mastery verification must independently
@@ -98,14 +100,18 @@ reference/source fingerprints and effect-family evidence, pass the configured vi
 floors, retain proof evidence, and include object-aware verification before ROBUST can
 be recorded. The benchmark also derives an effect-family target set from the Edit Type's
 TRANSFER_VERIFIED mastery records and requires at least one passing held-out case for every
-mastered family. A failed case never counts as family coverage. For each mastered family,
-the matching canonical M6.9 cases must also pass their exact-reference, direct-A/B,
+mastered family. It separately derives the retained TRANSFER_VERIFIED learned-skill target
+set. A held-out case credits a learned skill only when an evidence-bearing SUCCESS/IMPROVED
+`AE_ACTION` or `RESULT` audit event explicitly names that exact retained `skillId` via
+`appliedSkillIds`, and the case itself passes the machine gate. Unknown/unretained skill IDs
+fail closed; a failed case never counts as family or skill coverage. For each mastered
+family, the matching canonical M6.9 cases must also pass their exact-reference, direct-A/B,
 machine-comparison, transfer-axis, degraded-case-rejection, and proof-derived maturity gates.
 The panel and Current-AE runner load retained authority from
 `proofs/manifests/m6-professional-benchmark-evidence-v1.json`; an absent manifest is treated
 as no professional evidence, while malformed, duplicate, or unknown evidence fails closed.
-Reused training material, a missing mastered family, missing M6 authority, or a failed case
-invalidates the robust result.
+Reused training material, a missing mastered family, a missing retained learned skill,
+missing M6 authority, or a failed case invalidates the robust result.
 
 Normal Practice defaults to an AUTO lifecycle. Before transfer verification, AUTO resolves
 to LEARNING so GPT can research, reconstruct, diagnose, revise, and retain machine-proven
@@ -134,7 +140,10 @@ certification episode in Practice learning memory. The runner snapshots learning
 before and after certification and fails the proof if the held-out session leaks into memory,
 allocation, or Edit Type session evidence. It verifies the retained final render through the
 Practice mastery verifier and records only the resulting held-out case and benchmark through
-the same certification recorder used by the panel.
+the same certification recorder used by the panel. When the standalone runner is used to
+exercise a known retained learned skill, the caller must pass that exact skill with the
+repeatable `-AppliedSkillId` / `--applied-skill-id` audit input; the recorder rejects any
+ID that is not retained as TRANSFER_VERIFIED. Omitting the input does not auto-credit skills.
 
 Live subject-isolation certification may additionally require machine evidence for a
 specific backend and fallback path. The dedicated held-out isolation runner requires a

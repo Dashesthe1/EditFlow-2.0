@@ -546,6 +546,8 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly sourceFingerprint: string;
   readonly sourceMediaSha256?: readonly string[];
   readonly effectFamilyIds: readonly string[];
+  /** Exact retained TRANSFER_VERIFIED skills explicitly exercised in the held-out audit trace. */
+  readonly appliedSkillIds: readonly string[];
   readonly objectAwareVerified: boolean;
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
@@ -577,6 +579,12 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly verifiedEffectFamilyIds: readonly string[];
   readonly missingEffectFamilyIds: readonly string[];
   readonly effectFamilyCoverageVerified: boolean;
+  /** TRANSFER_VERIFIED learned skills retained for this Edit Type. */
+  readonly requiredLearnedSkillIds: readonly string[];
+  /** Required learned skills explicitly exercised by passing held-out cases. */
+  readonly verifiedLearnedSkillIds: readonly string[];
+  readonly missingLearnedSkillIds: readonly string[];
+  readonly learnedSkillCoverageVerified: boolean;
   /** M6.9 professional-benchmark families that passed their canonical machine gates. */
   readonly professionalBenchmarkVerifiedEffectFamilyIds: readonly string[];
   readonly professionalBenchmarkMissingEffectFamilyIds: readonly string[];
@@ -812,6 +820,8 @@ export interface GptLearningEventV1 {
   readonly capabilityGap?: GptCapabilityGapV1;
   readonly researchSources?: readonly GptResearchSourceV1[];
   readonly learnedSkill?: GptLearnedSkillV1;
+  /** Retained skills actually exercised by this event; used by inference-only held-out certification. */
+  readonly appliedSkillIds?: readonly string[];
   readonly evidenceRefs: readonly string[];
   readonly createdAt: string;
 }

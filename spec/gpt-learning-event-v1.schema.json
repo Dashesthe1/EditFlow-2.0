@@ -242,6 +242,11 @@
       "items": { "$ref": "#/$defs/researchSource" }
     },
     "learnedSkill": { "$ref": "#/$defs/learnedSkill" },
+    "appliedSkillIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
     "evidenceRefs": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   EditTypeRegistryV1,
+  GptOrchestrationStoreV1,
   PracticeHomeworkEngineV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import {
@@ -115,6 +116,44 @@ const transferVerifiedRegistry = (editTypeId) => {
     mode: "PRACTICE",
     mastered: true,
     masteryRecord: masteryRecord(trainingSession),
+  });
+  return registry;
+};
+
+const transferVerifiedSkillRegistry = (editTypeId, skillId) => {
+  const registry = transferVerifiedRegistry(editTypeId);
+  registry.recordGptLearningEvent({
+    schema: "editflow.gpt-learning-event.v1",
+    eventId: "gpt-learning-event:retained-transfer-skill",
+    sessionId: "practice:training:transfer",
+    editTypeId,
+    mode: "PRACTICE",
+    stage: "RESULT",
+    outcome: "SUCCESS",
+    summary: "Retain a previously transfer-verified learned skill for certification.",
+    learnedSkill: {
+      skillId,
+      title: "Retained Transfer Skill",
+      requestedBehavior: "Apply the retained professional construction when its trigger is present.",
+      maturity: "TRANSFER_VERIFIED",
+      constructionPattern: "Use the retained causal construction and adapt it to the current shot.",
+      capabilityIds: ["ae.keyframe.set"],
+      adaptationNotes: "Adapt timing and magnitude to the measured reference behavior.",
+      causalModel: {
+        triggerConditions: ["The held-out reference contains the learned behavior."],
+        invariants: ["Preserve the defining visible behavior."],
+        adaptationAxes: ["Timing and magnitude."],
+        failureSignals: ["The defining behavior is absent or mismatched."],
+        repairStrategies: ["Re-measure and correct the construction."],
+        transferCriteria: ["Pass on materially different held-out media."],
+      },
+      provenSessionIds: ["practice:training:transfer", "practice:training:transfer-2"],
+      researchSources: [],
+      evidenceRefs: ["proof:retained-transfer-skill"],
+      learnedAt: "2026-09-23T12:00:00.000Z",
+    },
+    evidenceRefs: ["proof:retained-transfer-skill"],
+    createdAt: "2026-09-23T12:00:00.000Z",
   });
   return registry;
 };
@@ -255,4 +294,103 @@ test("held-out certification rejects training and repeated material fingerprints
     }),
     /novel reference and source fingerprints/,
   );
+});
+
+
+test("held-out benchmark requires exact learned-skill coverage beyond effect-family coverage", () => {
+  const editTypeId = "held-out-skill-coverage";
+  const skillId = "skill:retained:shutter";
+  const sessionId = "practice:held-out:skill-missing";
+  const recorded = recordPracticeHeldOutCertificationV1({
+    registry: transferVerifiedSkillRegistry(editTypeId, skillId),
+    editTypeId,
+    sessionId,
+    proof: proof(sessionId, editTypeId),
+    proofRef: "proof:held-out:skill-missing",
+    professionalBenchmarkEvidence: professionalEvidenceForShutter(),
+  });
+  assert.deepEqual(recorded.benchmark.requiredLearnedSkillIds, [skillId]);
+  assert.deepEqual(recorded.benchmark.verifiedLearnedSkillIds, []);
+  assert.deepEqual(recorded.benchmark.missingLearnedSkillIds, [skillId]);
+  assert.equal(recorded.benchmark.learnedSkillCoverageVerified, false);
+  assert.ok(recorded.benchmark.reasons.some((reason) => /learned skills/.test(reason)));
+});
+
+test("held-out certification credits only explicitly applied retained skills", () => {
+  const editTypeId = "held-out-skill-applied";
+  const skillId = "skill:retained:shutter";
+  const sessionId = "practice:held-out:skill-applied";
+  const recorded = recordPracticeHeldOutCertificationV1({
+    registry: transferVerifiedSkillRegistry(editTypeId, skillId),
+    editTypeId,
+    sessionId,
+    proof: proof(sessionId, editTypeId),
+    proofRef: "proof:held-out:skill-applied",
+    appliedSkillIds: [skillId],
+    professionalBenchmarkEvidence: professionalEvidenceForShutter(),
+  });
+  assert.deepEqual(recorded.heldOutCase.appliedSkillIds, [skillId]);
+  assert.deepEqual(recorded.benchmark.verifiedLearnedSkillIds, [skillId]);
+  assert.deepEqual(recorded.benchmark.missingLearnedSkillIds, []);
+  assert.equal(recorded.benchmark.learnedSkillCoverageVerified, true);
+
+  assert.throws(() => recordPracticeHeldOutCertificationV1({
+    registry: transferVerifiedSkillRegistry("held-out-skill-unknown", skillId),
+    editTypeId: "held-out-skill-unknown",
+    sessionId: "practice:held-out:skill-unknown",
+    proof: proof("practice:held-out:skill-unknown", "held-out-skill-unknown"),
+    proofRef: "proof:held-out:skill-unknown",
+    appliedSkillIds: ["skill:not-retained"],
+  }), /not retained as TRANSFER_VERIFIED/);
+});
+
+test("held-out audit binds applied skill claims to evidence-bearing inference events", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-held-out-skill-audit-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const editTypeId = "held-out-skill-audit";
+  const skillId = "skill:retained:audit";
+  const registry = transferVerifiedSkillRegistry(editTypeId, skillId);
+  const store = new GptOrchestrationStoreV1(path.join(root, "orchestration.json"));
+  const assignment = await store.createAssignment({
+    sessionId: "practice:held-out:skill-audit",
+    mode: "PRACTICE",
+    practiceRole: "HELD_OUT_CERTIFICATION",
+    editTypeId,
+    finish: { mediaId: "finish:audit", role: "FINISH_REFERENCE", mediaKind: "VIDEO", uri: "C:\\Media\\finish-audit.mp4" },
+    start: [{ mediaId: "start:audit", role: "START_SOURCE", mediaKind: "VIDEO", uri: "C:\\Media\\raw-audit.mp4" }],
+    artifactDir: path.join(root, "artifacts"),
+    knowledge: registry.transferableKnowledge(editTypeId),
+  });
+  assert.match(assignment.chatMessage, /appliedSkillIds/);
+  await store.claim(assignment.assignmentId, "skill-audit-test");
+  await assert.rejects(store.appendEvent({
+    assignmentId: assignment.assignmentId,
+    stage: "OBSERVATION",
+    summary: "Skill claims cannot live on an observation-only event.",
+    appliedSkillIds: [skillId],
+    evidenceRefs: ["proof:observation"],
+  }), /only on AE_ACTION or RESULT/);
+  await assert.rejects(store.appendEvent({
+    assignmentId: assignment.assignmentId,
+    stage: "AE_ACTION",
+    summary: "A neutral applied-skill claim cannot earn certification credit.",
+    appliedSkillIds: [skillId],
+    evidenceRefs: ["readback:neutral-skill-claim"],
+  }), /require SUCCESS or IMPROVED/);
+  await assert.rejects(store.appendEvent({
+    assignmentId: assignment.assignmentId,
+    stage: "AE_ACTION",
+    outcome: "SUCCESS",
+    summary: "An applied skill claim without machine evidence must fail closed.",
+    appliedSkillIds: [skillId],
+  }), /require retained evidenceRefs/);
+  const event = await store.appendEvent({
+    assignmentId: assignment.assignmentId,
+    stage: "AE_ACTION",
+    outcome: "SUCCESS",
+    summary: "Applied the retained skill in AE and retained readback evidence.",
+    appliedSkillIds: [skillId],
+    evidenceRefs: ["readback:held-out-skill-audit"],
+  });
+  assert.deepEqual(event.appliedSkillIds, [skillId]);
 });

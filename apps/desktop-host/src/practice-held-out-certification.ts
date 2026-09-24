@@ -22,6 +22,7 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
   readonly sessionId: string;
   readonly proof: PracticeMasteryProofV1;
   readonly proofRef: string;
+  readonly appliedSkillIds?: readonly string[];
   readonly repositoryRoot?: string;
   readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
   readonly traceReasons?: readonly string[];
@@ -36,9 +37,25 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
   if (input.proof.sessionId !== input.sessionId) {
     throw new TypeError("Held-out proof session does not match the certification session.");
   }
-  if (input.registry.transferableKnowledge(editTypeId) === null) {
+  const transferable = input.registry.transferableKnowledge(editTypeId);
+  if (transferable === null) {
     throw new TypeError(
       "Held-out certification requires TRANSFER_VERIFIED Practice knowledge.",
+    );
+  }
+  const appliedSkillIds = [...new Set((input.appliedSkillIds ?? [])
+    .map((skillId) => skillId.trim())
+    .filter(Boolean))];
+  const transferableSkillIds = new Set(
+    transferable.gptLearning.learnedSkills.map((skill) => skill.skillId),
+  );
+  const unknownAppliedSkillIds = appliedSkillIds.filter(
+    (skillId) => !transferableSkillIds.has(skillId),
+  );
+  if (unknownAppliedSkillIds.length > 0) {
+    throw new TypeError(
+      "Held-out certification referenced skills that are not retained as TRANSFER_VERIFIED: "
+        + unknownAppliedSkillIds.join(", "),
     );
   }
 
@@ -46,6 +63,7 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
     sessionId: input.sessionId,
     proof: input.proof,
     proofRef: input.proofRef,
+    appliedSkillIds,
     ...(input.traceReasons === undefined ? {} : { traceReasons: input.traceReasons }),
   });
   input.registry.recordHeldOutCase(editTypeId, heldOutCase);
@@ -62,6 +80,7 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
     editTypeId,
     cases: retained.gptLearning.heldOutCases,
     priorMasteryRecords: retained.gptLearning.masteryRecords,
+    priorLearnedSkills: retained.gptLearning.learnedSkills,
     ...(professionalBenchmarkEvidence === undefined
       ? {}
       : { professionalBenchmarkEvidence }),

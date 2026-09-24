@@ -160,10 +160,16 @@ const main = async (): Promise<void> => {
   const editTypeId = requireArgument("--edit-type-id");
   const editTypeTitle = argument("--edit-type-title");
   const heldOutCertification = hasFlag("--held-out-certification");
+  const appliedSkillIds = [...new Set(argumentsFor("--applied-skill-id")
+    .map((value) => value.trim())
+    .filter(Boolean))];
   const expectedIsolationBackend = argument("--expected-isolation-backend");
   const expectedIsolationFallbackAfter = argument("--expected-isolation-fallback-after");
   if (heldOutCertification && hasFlag("--allocate")) {
     throw new Error("Held-out certification cannot allocate learning evidence.");
+  }
+  if (!heldOutCertification && appliedSkillIds.length > 0) {
+    throw new Error("--applied-skill-id is reserved for held-out certification.");
   }
   const maxAttempts = integerArgument("--max-attempts", 2, 1);
   const minimumSimilarity = numberArgument("--minimum-similarity", 0.95, 0);
@@ -360,6 +366,7 @@ const main = async (): Promise<void> => {
         sessionId,
         proof: verification.proof,
         proofRef: verification.proofRef,
+        appliedSkillIds,
         repositoryRoot,
       });
       await registryFile.save(registry);

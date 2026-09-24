@@ -8,6 +8,7 @@ import {
 
 import type {
   EditTypeProfileV1,
+  GptLearnedSkillV1,
   PracticeHeldOutBenchmarkCaseV1,
   PracticeHeldOutBenchmarkPolicyV1,
   PracticeHeldOutBenchmarkReportV1,
@@ -47,6 +48,7 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
   readonly sessionId: string;
   readonly proof: PracticeMasteryProofV1;
   readonly proofRef: string;
+  readonly appliedSkillIds?: readonly string[];
   readonly traceReasons?: readonly string[];
 }): PracticeHeldOutBenchmarkCaseV1 => {
   const objectAwareRequired = input.proof.objectAwareProof?.required === true;
@@ -77,6 +79,9 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       ? {}
       : { sourceMediaSha256: [...input.proof.sourceMediaSha256] }),
     effectFamilyIds: [...input.proof.effectFamilyIds],
+    appliedSkillIds: [...new Set((input.appliedSkillIds ?? [])
+      .map((skillId) => skillId.trim())
+      .filter(Boolean))],
     objectAwareVerified: objectAwareRequired
       && input.proof.objectAwareProof!.verified
       && crossSourceSubjectVerified,
@@ -137,6 +142,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   readonly editTypeId: string;
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
   readonly priorMasteryRecords?: readonly PracticeMasteryRecordV1[];
+  readonly priorLearnedSkills?: readonly GptLearnedSkillV1[];
   readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
   readonly policy?: Partial<PracticeHeldOutBenchmarkPolicyV1>;
 }): PracticeHeldOutBenchmarkReportV1 => {
@@ -159,6 +165,13 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       .filter(Boolean),
   );
   const verifiedEffectFamilies = new Set<string>();
+  const requiredLearnedSkills = new Set(
+    (input.priorLearnedSkills ?? [])
+      .filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
+      .map((skill) => skill.skillId.trim())
+      .filter(Boolean),
+  );
+  const verifiedLearnedSkills = new Set<string>();
   const evidenceRefs = new Set<string>();
   let passedCaseCount = 0;
   let objectAwareCaseCount = 0;
@@ -215,6 +228,17 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       const normalized = ref.trim();
       if (normalized.length > 0) evidenceRefs.add(normalized);
     }
+    const appliedSkillIds = [...new Set((item.appliedSkillIds ?? [])
+      .map((skillId) => skillId.trim())
+      .filter(Boolean))];
+    for (const skillId of appliedSkillIds) {
+      if (!requiredLearnedSkills.has(skillId)) {
+        reasons.push(
+          "Held-out case references a skill that is not retained as TRANSFER_VERIFIED: "
+            + item.caseId + " -> " + skillId + ".",
+        );
+      }
+    }
     const caseMeetsMachineGate = item.passed
       && item.overallSimilarity >= policy.minimumSimilarity
       && item.definingEffectCoverage >= policy.minimumDefiningEffectCoverage
@@ -225,6 +249,9 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       for (const family of item.effectFamilyIds) {
         const normalized = family.trim();
         if (normalized.length > 0) verifiedEffectFamilies.add(normalized);
+      }
+      for (const skillId of appliedSkillIds) {
+        if (requiredLearnedSkills.has(skillId)) verifiedLearnedSkills.add(skillId);
       }
       if (item.objectAwareVerified) objectAwareCaseCount += 1;
     }
@@ -245,6 +272,21 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     reasons.push(
       "Held-out benchmark is missing passing transfer coverage for mastered effect families: "
         + missingEffectFamilyIds.join(", ")
+        + ".",
+    );
+  }
+
+  const requiredLearnedSkillIds = [...requiredLearnedSkills].sort();
+  const verifiedLearnedSkillIds = [...verifiedLearnedSkills].sort();
+  const missingLearnedSkillIds = requiredLearnedSkillIds.filter(
+    (skillId) => !verifiedLearnedSkills.has(skillId),
+  );
+  const learnedSkillCoverageVerified = requiredLearnedSkillIds.length === 0
+    || missingLearnedSkillIds.length === 0;
+  if (missingLearnedSkillIds.length > 0) {
+    reasons.push(
+      "Held-out benchmark is missing explicit passing coverage for TRANSFER_VERIFIED learned skills: "
+        + missingLearnedSkillIds.join(", ")
         + ".",
     );
   }
@@ -322,6 +364,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
     && effectFamilyCoverageVerified
+    && learnedSkillCoverageVerified
     && professionalBenchmarkCoverageVerified
     && objectAwareVerified;
 
@@ -337,6 +380,10 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     verifiedEffectFamilyIds,
     missingEffectFamilyIds,
     effectFamilyCoverageVerified,
+    requiredLearnedSkillIds,
+    verifiedLearnedSkillIds,
+    missingLearnedSkillIds,
+    learnedSkillCoverageVerified,
     professionalBenchmarkVerifiedEffectFamilyIds,
     professionalBenchmarkMissingEffectFamilyIds,
     professionalBenchmarkCoverageVerified,
@@ -362,6 +409,7 @@ export const derivePracticeMaturityStageV1 = (
     report.robust
     && report.objectAwareVerified
     && report.effectFamilyCoverageVerified === true
+    && report.learnedSkillCoverageVerified === true
     && report.professionalBenchmarkCoverageVerified === true)) return "ROBUST";
   if (benchmarks.some((report) => report.objectAwareVerified)) {
     return "OBJECT_AWARE_VERIFIED";
