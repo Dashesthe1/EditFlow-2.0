@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -12,6 +13,19 @@ DRAFT_STATUS = "DRAFT"
 RETAINED_STATUS = "RETAINED"
 ALLOWED_ORIGINS = {"INDEPENDENT_HUMAN", "INDEPENDENT_EXTERNAL_TOOL"}
 ALLOWED_DIRECTIONS = {"FORWARD", "REVERSE"}
+RETAINED_SUITE_MANIFEST_SCHEMA = "editflow.practice-retained-truth-suite-manifest.v1"
+MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
+ALLOWED_DIFFICULTIES = {
+    "FAST_CUTS",
+    "NEAR_DUPLICATE_SOURCES",
+    "REVERSE_OR_REWIND",
+    "LOW_INFORMATION",
+    "STRONG_CAMERA_MOTION",
+    "OCCLUSION",
+    "IDENTITY_AMBIGUITY",
+    "HEAVY_EFFECT_OBSCURATION",
+    "REPEATED_SCENERY",
+}
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -65,6 +79,32 @@ def parse_source_sha256_args(values):
         if prior is not None and prior != source_sha256:
             raise ValueError(f"Conflicting SHA-256 bindings for source ID {source_id}")
         result[source_id] = source_sha256
+    return result
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_source_path_args(values):
+    result = {}
+    for item in values or []:
+        if "=" not in str(item):
+            raise ValueError("--source must use SOURCE_ID=PATH")
+        source_id, source_path = str(item).split("=", 1)
+        source_id = source_id.strip()
+        source_path = source_path.strip()
+        if not source_id or not source_path:
+            raise ValueError("--source must use non-empty SOURCE_ID=PATH")
+        resolved = str(Path(source_path).expanduser().resolve())
+        prior = result.get(source_id)
+        if prior is not None and prior != resolved:
+            raise ValueError(f"Conflicting paths for source ID {source_id}")
+        result[source_id] = resolved
     return result
 
 
@@ -279,6 +319,137 @@ def retain(
     return value
 
 
+def build_retained_suite_manifest(
+    truth,
+    reference,
+    finish_path,
+    source_paths_by_id,
+    case_id,
+    edit_type_id,
+    difficulty_tags,
+    truth_evidence_sha256,
+    reference_evidence_sha256,
+    observation=None,
+    observation_evidence_sha256=None,
+):
+    source_ids = sorted(
+        {str(item).strip() for item in truth.get("allowedSourceIds") or [] if str(item).strip()}
+    )
+    expected_hashes = require_source_sha256_bindings(
+        source_ids,
+        truth.get("allowedSourceSha256"),
+    )
+    errors = validate_truth(
+        truth,
+        reference,
+        allowed_source_ids=source_ids,
+        allowed_source_sha256_by_id=expected_hashes,
+        require_retained=True,
+    )
+    if errors:
+        raise ValueError("Retained truth is invalid:\n- " + "\n- ".join(errors))
+    if set(source_paths_by_id) != set(source_ids):
+        raise ValueError("Source paths must cover the exact retained source-ID set.")
+
+    finish_path = str(Path(finish_path).expanduser().resolve())
+    finish_sha256 = sha256_file(finish_path)
+    expected_finish_sha256 = str(truth.get("referenceSourceSha256", "")).strip().lower()
+    if finish_sha256 != expected_finish_sha256:
+        raise ValueError("Finish media bytes do not match retained independent truth.")
+
+    source_media = []
+    source_hashes = []
+    for source_id in source_ids:
+        source_path = str(Path(source_paths_by_id[source_id]).expanduser().resolve())
+        source_sha256 = sha256_file(source_path)
+        if source_sha256 != expected_hashes[source_id]:
+            raise ValueError(
+                f"Start media bytes do not match retained truth for source ID {source_id}."
+            )
+        source_media.append({"path": source_path, "sha256": source_sha256})
+        source_hashes.append(source_sha256)
+
+    tags = list(dict.fromkeys(str(item).strip() for item in difficulty_tags if str(item).strip()))
+    if not tags or any(item not in ALLOWED_DIFFICULTIES for item in tags):
+        raise ValueError("At least one supported retained-truth difficulty tag is required.")
+    authority = (
+        "INDEPENDENT_HUMAN"
+        if truth.get("annotationOrigin") == "INDEPENDENT_HUMAN"
+        else "INDEPENDENT_VERIFIER"
+    )
+    reference_shots = list(reference.get("shots") or [])
+    truth_by_id = {str(item["shotId"]): item for item in truth.get("shots") or []}
+    retained_shots = []
+    for order, reference_shot in enumerate(reference_shots):
+        shot_id = str(reference_shot["shotId"])
+        row = truth_by_id[shot_id]
+        shot_truth = {
+            "shotId": shot_id,
+            "order": order,
+            "referenceStartMs": float(reference_shot["referenceStartMs"]),
+            "referenceEndMs": float(reference_shot["referenceEndMs"]),
+            "expectedSourceId": str(row["sourceId"]),
+            "expectedSourceStartMs": float(row["sourceStartMs"]),
+            "expectedSourceEndMs": float(row["sourceEndMs"]),
+            "expectedDirection": str(row["direction"]),
+            "truthEvidenceRefs": [
+                f"independent-truth:sha256:{truth_evidence_sha256}:shot:{shot_id}",
+            ],
+        }
+        if row.get("toleranceMs") is not None:
+            shot_truth["sourceToleranceMs"] = float(row["toleranceMs"])
+        retained_shots.append(shot_truth)
+
+    duration_ms = float(
+        (reference.get("video") or {}).get(
+            "durationMs",
+            max(float(item["referenceEndMs"]) for item in reference_shots),
+        )
+    )
+    observation = observation or {
+        "schema": MATCH_SCHEMA,
+        "matches": [],
+        "evidenceRefs": [],
+    }
+    if observation.get("schema") != MATCH_SCHEMA:
+        raise ValueError(f"Observation must use {MATCH_SCHEMA}.")
+    observation_refs = list(observation.get("evidenceRefs") or [])
+    if observation_evidence_sha256:
+        observation_refs.append(
+            f"practice-match-observation:sha256:{observation_evidence_sha256}"
+        )
+    if not observation_refs:
+        observation_refs.append("practice-match-observation:not-yet-generated")
+
+    truth_ref = f"independent-truth:sha256:{truth_evidence_sha256}"
+    reference_ref = f"reference-analysis:sha256:{reference_evidence_sha256}"
+    return {
+        "schema": RETAINED_SUITE_MANIFEST_SCHEMA,
+        "editTypeId": str(edit_type_id).strip(),
+        "mode": "MEASURE_ONLY",
+        "cases": [{
+            "finishPath": finish_path,
+            "sourceMedia": source_media,
+            "truth": {
+                "caseId": str(case_id).strip(),
+                "referenceId": str(reference["referenceId"]),
+                "finishSha256": finish_sha256,
+                "referenceDurationMs": duration_ms,
+                "sourceMediaSha256": source_hashes,
+                "truthAuthority": authority,
+                "difficultyTags": tags,
+                "shots": retained_shots,
+                "evidenceRefs": [truth_ref, reference_ref],
+            },
+            "observation": {
+                "caseId": str(case_id).strip(),
+                "matches": list(observation.get("matches") or []),
+                "evidenceRefs": observation_refs,
+            },
+        }],
+    }
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Scaffold and retain independent shot truth for Practice real-media benchmarks."
@@ -305,6 +476,22 @@ def build_parser():
     retain_parser.add_argument("--source-sha256", action="append", required=True)
     retain_parser.add_argument("--annotation-origin", choices=sorted(ALLOWED_ORIGINS), required=True)
     retain_parser.add_argument("--output", required=True)
+
+    suite_parser = sub.add_parser("suite-manifest")
+    suite_parser.add_argument("--reference-analysis", required=True)
+    suite_parser.add_argument("--truth", required=True)
+    suite_parser.add_argument("--finish", required=True)
+    suite_parser.add_argument("--source", action="append", required=True)
+    suite_parser.add_argument("--case-id", required=True)
+    suite_parser.add_argument("--edit-type-id", required=True)
+    suite_parser.add_argument(
+        "--difficulty",
+        action="append",
+        required=True,
+        choices=sorted(ALLOWED_DIFFICULTIES),
+    )
+    suite_parser.add_argument("--matches")
+    suite_parser.add_argument("--output", required=True)
     return parser
 
 
@@ -346,6 +533,33 @@ def main():
         )
         write_json(args.output, payload)
         print(json.dumps({"ok": True, "status": RETAINED_STATUS, "output": str(Path(args.output).resolve())}))
+        return
+
+    if args.command == "suite-manifest":
+        truth = load_json(args.truth)
+        source_paths_by_id = parse_source_path_args(args.source)
+        observation = load_json(args.matches) if args.matches else None
+        payload = build_retained_suite_manifest(
+            truth=truth,
+            reference=reference,
+            finish_path=args.finish,
+            source_paths_by_id=source_paths_by_id,
+            case_id=args.case_id,
+            edit_type_id=args.edit_type_id,
+            difficulty_tags=args.difficulty,
+            truth_evidence_sha256=sha256_file(args.truth),
+            reference_evidence_sha256=sha256_file(args.reference_analysis),
+            observation=observation,
+            observation_evidence_sha256=(
+                sha256_file(args.matches) if args.matches else None
+            ),
+        )
+        write_json(args.output, payload)
+        print(json.dumps({
+            "ok": True,
+            "mode": "MEASURE_ONLY",
+            "output": str(Path(args.output).resolve()),
+        }))
         return
 
     raise RuntimeError("Unsupported command.")

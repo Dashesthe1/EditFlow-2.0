@@ -1,6 +1,7 @@
 import importlib.util
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 def load_truth_tool():
@@ -262,6 +263,115 @@ class PracticeMediaTruthTest(unittest.TestCase):
             require_retained=True,
         )
         self.assertTrue(any("allowedSourceIds" in item for item in errors))
+
+    def test_retained_truth_converts_to_measure_only_suite_without_matcher_leakage(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-media")
+            source_path.write_bytes(b"source-media")
+            finish_sha256 = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+
+            ref = reference()
+            ref["sourceSha256"] = finish_sha256
+            ref["video"] = {"durationMs": 1500.0}
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+            draft["shots"][0].update({
+                "sourceId": "video:movie",
+                "sourceStartMs": 1200.0,
+                "sourceEndMs": 2000.0,
+                "direction": "FORWARD",
+                "toleranceMs": 180.0,
+            })
+            draft["shots"][1].update({
+                "sourceId": "video:movie",
+                "sourceStartMs": 6300.0,
+                "sourceEndMs": 7000.0,
+                "direction": "REVERSE",
+            })
+            retained = truth_tool.retain(
+                draft,
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+                "INDEPENDENT_HUMAN",
+            )
+            manifest = truth_tool.build_retained_suite_manifest(
+                truth=retained,
+                reference=ref,
+                finish_path=finish_path,
+                source_paths_by_id={"video:movie": str(source_path)},
+                case_id="real-case-01",
+                edit_type_id="spider-edit",
+                difficulty_tags=["FAST_CUTS", "REVERSE_OR_REWIND"],
+                truth_evidence_sha256="c" * 64,
+                reference_evidence_sha256="d" * 64,
+            )
+
+            self.assertEqual(
+                manifest["schema"],
+                truth_tool.RETAINED_SUITE_MANIFEST_SCHEMA,
+            )
+            self.assertEqual(manifest["mode"], "MEASURE_ONLY")
+            case = manifest["cases"][0]
+            self.assertEqual(case["truth"]["truthAuthority"], "INDEPENDENT_HUMAN")
+            self.assertEqual(case["truth"]["finishSha256"], finish_sha256)
+            self.assertEqual(case["truth"]["sourceMediaSha256"], [source_sha256])
+            self.assertEqual(case["truth"]["shots"][1]["expectedDirection"], "REVERSE")
+            self.assertEqual(case["observation"]["matches"], [])
+            self.assertIn(
+                "practice-match-observation:not-yet-generated",
+                case["observation"]["evidenceRefs"],
+            )
+
+    def test_suite_manifest_rejects_changed_start_bytes(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-media")
+            source_path.write_bytes(b"source-media")
+            ref = reference()
+            ref["sourceSha256"] = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+            for index, row in enumerate(draft["shots"]):
+                row.update({
+                    "sourceId": "video:movie",
+                    "sourceStartMs": 1000.0 + (index * 1000.0),
+                    "sourceEndMs": 1600.0 + (index * 1000.0),
+                    "direction": "FORWARD",
+                })
+            retained = truth_tool.retain(
+                draft,
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+                "INDEPENDENT_HUMAN",
+            )
+            source_path.write_bytes(b"changed-source-media")
+            with self.assertRaisesRegex(ValueError, "Start media bytes"):
+                truth_tool.build_retained_suite_manifest(
+                    truth=retained,
+                    reference=ref,
+                    finish_path=finish_path,
+                    source_paths_by_id={"video:movie": str(source_path)},
+                    case_id="real-case-02",
+                    edit_type_id="spider-edit",
+                    difficulty_tags=["NEAR_DUPLICATE_SOURCES"],
+                    truth_evidence_sha256="c" * 64,
+                    reference_evidence_sha256="d" * 64,
+                )
 
     def test_source_interval_must_be_ascending_even_when_direction_is_reverse(self):
         draft = truth_tool.scaffold(reference(), ["video:movie"], SOURCE_HASHES)
