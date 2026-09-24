@@ -708,15 +708,87 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
         self.assertAlmostEqual(framing["rotationDegrees"], math.degrees(angle), delta=2.0)
         self.assertGreaterEqual(framing["confidence"], 0.72)
 
+    def test_repeated_geometry_recovers_dynamic_push_in_framing_trajectory(self):
+        source = self._synthetic_scene(91)
+
+        class DynamicReferenceReader:
+            duration_ms = 1000.0
+
+            def read_ms(self, time_ms):
+                progress = min(1.0, max(0.0, (float(time_ms) - 100.0) / 800.0))
+                scale = 1.0 + (0.26 * progress)
+                angle = math.radians(3.5 * progress)
+                center = np.asarray([320.0, 180.0], dtype=np.float64)
+                target = np.asarray([
+                    320.0 + (42.0 * progress),
+                    180.0 - (24.0 * progress),
+                ], dtype=np.float64)
+                linear = np.asarray([
+                    [scale * math.cos(angle), -scale * math.sin(angle)],
+                    [scale * math.sin(angle), scale * math.cos(angle)],
+                ], dtype=np.float32)
+                translation = target - (linear @ center)
+                transform = np.column_stack((linear, translation.astype(np.float32)))
+                return matcher.cv2.warpAffine(
+                    source,
+                    transform,
+                    (640, 360),
+                    flags=matcher.cv2.INTER_CUBIC,
+                    borderMode=matcher.cv2.BORDER_REFLECT,
+                )
+
+        class FixedSourceReader:
+            duration_ms = 10000.0
+
+            def read_ms(self, _time_ms):
+                return source
+
+        shot = {
+            "anchors": [
+                {"timeMs": 100.0},
+                {"timeMs": 350.0},
+                {"timeMs": 650.0},
+                {"timeMs": 900.0},
+            ],
+        }
+        mapping = {
+            "centerSourceMs": 5000.0,
+            "slope": 1.0,
+            "trajectory": [],
+        }
+        proof = matcher.mapping_geometric_proof(
+            shot,
+            mapping,
+            DynamicReferenceReader(),
+            FixedSourceReader(),
+        )
+        framing = proof.get("framing")
+        self.assertIsNotNone(framing, proof)
+        self.assertFalse(framing["stable"], framing)
+        self.assertTrue(framing["dynamic"], framing)
+        self.assertGreaterEqual(framing["dynamicConfidence"], 0.72)
+        self.assertGreaterEqual(len(framing["trajectory"]), 3)
+        self.assertGreater(
+            framing["trajectory"][-1]["scalePercent"]
+            - framing["trajectory"][0]["scalePercent"],
+            15.0,
+        )
+        self.assertGreater(
+            framing["trajectory"][-1]["positionX"]
+            - framing["trajectory"][0]["positionX"],
+            20.0,
+        )
+
     def test_inconsistent_geometry_does_not_certify_static_framing(self):
         evidence = []
-        for position_x, scale_percent, rotation in (
+        for index, (position_x, scale_percent, rotation) in enumerate((
             (90.0, 100.0, -12.0),
             (260.0, 135.0, 4.0),
             (490.0, 82.0, 17.0),
             (710.0, 170.0, -28.0),
-        ):
+        )):
             item = self._evidence(0.90, 18, 0.82, 0.91)
+            item["referenceTimeMs"] = float(index * 300)
             item["framing"] = {
                 "positionX": position_x,
                 "positionY": 180.0,
@@ -730,6 +802,8 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
         framing = matcher.aggregate_framing_proof(evidence)
         self.assertIsNotNone(framing)
         self.assertFalse(framing["stable"], framing)
+        self.assertFalse(framing["dynamic"], framing)
+        self.assertEqual(framing["trajectory"], [])
         self.assertEqual(framing["stableAnchorCount"], 0)
 
     def test_low_contrast_extractor_rejects_unrelated_scene(self):

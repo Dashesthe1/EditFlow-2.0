@@ -1547,13 +1547,14 @@ def angular_distance_degrees(left, right):
 
 
 def aggregate_framing_proof(evidence):
-    rows = [
-        item["framing"]
+    qualified_evidence = [
+        item
         for item in evidence
         if item.get("framing") is not None
         and rescue_geometry_certifiable(item)
         and float(item["framing"].get("confidence", 0.0)) >= 0.55
     ]
+    rows = [item["framing"] for item in qualified_evidence]
     if not rows:
         return None
 
@@ -1628,8 +1629,150 @@ def aggregate_framing_proof(evidence):
         and confidence >= 0.72
         and 1.0 < final_scale <= 5000.0
     )
+    trajectory_rows = []
+    for item in qualified_evidence:
+        reference_time = item.get("referenceTimeMs")
+        if reference_time is None or not math.isfinite(float(reference_time)):
+            continue
+        row = item["framing"]
+        trajectory_rows.append({
+            "referenceTimeMs": float(reference_time),
+            "positionX": float(row["positionX"]),
+            "positionY": float(row["positionY"]),
+            "scalePercent": float(row["scalePercent"]),
+            "rotationDegrees": float(row["rotationDegrees"]),
+            "confidence": float(row["confidence"]),
+        })
+    trajectory_rows.sort(key=lambda row: row["referenceTimeMs"])
+    deduped_trajectory = []
+    for point in trajectory_rows:
+        if (
+            deduped_trajectory
+            and abs(point["referenceTimeMs"] - deduped_trajectory[-1]["referenceTimeMs"]) <= 1e-3
+        ):
+            if point["confidence"] > deduped_trajectory[-1]["confidence"]:
+                deduped_trajectory[-1] = point
+            continue
+        deduped_trajectory.append(point)
+
+    if deduped_trajectory:
+        unwrapped = [float(deduped_trajectory[0]["rotationDegrees"])]
+        for point in deduped_trajectory[1:]:
+            previous = unwrapped[-1]
+            raw = float(point["rotationDegrees"])
+            delta = ((raw - previous + 180.0) % 360.0) - 180.0
+            unwrapped.append(previous + delta)
+        for point, value in zip(deduped_trajectory, unwrapped):
+            point["rotationDegrees"] = float(value)
+
+    dynamic = False
+    dynamic_confidence = 0.0
+    dynamic_trajectory = []
+    if len(deduped_trajectory) >= 3:
+        times = np.asarray(
+            [point["referenceTimeMs"] for point in deduped_trajectory],
+            dtype=np.float64,
+        )
+        time_span_ms = float(times[-1] - times[0])
+        if time_span_ms > 1e-6:
+            normalized_times = (times - times[0]) / time_span_ms
+            xs = np.asarray([point["positionX"] for point in deduped_trajectory], dtype=np.float64)
+            ys = np.asarray([point["positionY"] for point in deduped_trajectory], dtype=np.float64)
+            scales = np.asarray(
+                [point["scalePercent"] for point in deduped_trajectory],
+                dtype=np.float64,
+            )
+            rotations = np.asarray(
+                [point["rotationDegrees"] for point in deduped_trajectory],
+                dtype=np.float64,
+            )
+            trajectory_reference_width = float(np.median([
+                item["framing"]["referenceWidth"]
+                for item in qualified_evidence
+                if item["framing"].get("referenceWidth") is not None
+            ])) if any(
+                item["framing"].get("referenceWidth") is not None
+                for item in qualified_evidence
+            ) else reference_width
+            trajectory_reference_height = float(np.median([
+                item["framing"]["referenceHeight"]
+                for item in qualified_evidence
+                if item["framing"].get("referenceHeight") is not None
+            ])) if any(
+                item["framing"].get("referenceHeight") is not None
+                for item in qualified_evidence
+            ) else reference_height
+            trajectory_diagonal = math.hypot(
+                trajectory_reference_width,
+                trajectory_reference_height,
+            )
+            position_span = math.hypot(float(np.ptp(xs)), float(np.ptp(ys)))
+            scale_span = float(np.ptp(scales))
+            rotation_span = float(np.ptp(rotations))
+            position_motion_floor = max(10.0, trajectory_diagonal * 0.025)
+            scale_motion_floor = max(3.0, abs(float(np.median(scales))) * 0.04)
+            rotation_motion_floor = 2.0
+
+            fit_degree = 1 if len(deduped_trajectory) <= 3 else 2
+            smoothness = []
+            movement_ratios = []
+            if position_span >= position_motion_floor:
+                x_fit = np.polyval(np.polyfit(normalized_times, xs, fit_degree), normalized_times)
+                y_fit = np.polyval(np.polyfit(normalized_times, ys, fit_degree), normalized_times)
+                position_rmse = math.sqrt(float(np.mean(
+                    ((xs - x_fit) ** 2) + ((ys - y_fit) ** 2)
+                )))
+                position_allowance = max(position_motion_floor * 0.70, position_span * 0.18)
+                smoothness.append(1.0 - clamp01(position_rmse / position_allowance))
+                movement_ratios.append(position_span / position_motion_floor)
+            if scale_span >= scale_motion_floor:
+                scale_fit = np.polyval(
+                    np.polyfit(normalized_times, scales, fit_degree),
+                    normalized_times,
+                )
+                scale_rmse = math.sqrt(float(np.mean((scales - scale_fit) ** 2)))
+                scale_allowance = max(scale_motion_floor * 0.70, scale_span * 0.18)
+                smoothness.append(1.0 - clamp01(scale_rmse / scale_allowance))
+                movement_ratios.append(scale_span / scale_motion_floor)
+            if rotation_span >= rotation_motion_floor:
+                rotation_fit = np.polyval(
+                    np.polyfit(normalized_times, rotations, fit_degree),
+                    normalized_times,
+                )
+                rotation_rmse = math.sqrt(float(np.mean((rotations - rotation_fit) ** 2)))
+                rotation_allowance = max(rotation_motion_floor * 0.70, rotation_span * 0.18)
+                smoothness.append(1.0 - clamp01(rotation_rmse / rotation_allowance))
+                movement_ratios.append(rotation_span / rotation_motion_floor)
+
+            if smoothness:
+                mean_smoothness = float(np.mean(smoothness))
+                minimum_smoothness = float(np.min(smoothness))
+                trajectory_confidence = float(np.mean([
+                    point["confidence"] for point in deduped_trajectory
+                ]))
+                trajectory_coverage = len(deduped_trajectory) / max(1, len(evidence))
+                movement_strength = max(movement_ratios, default=0.0)
+                dynamic_confidence = clamp01(
+                    (0.45 * trajectory_confidence)
+                    + (0.20 * trajectory_coverage)
+                    + (0.25 * mean_smoothness)
+                    + (0.10 * clamp01((movement_strength - 1.0) / 2.0))
+                )
+                dynamic = (
+                    time_span_ms >= 80.0
+                    and minimum_smoothness >= 0.45
+                    and mean_smoothness >= 0.62
+                    and dynamic_confidence >= 0.72
+                )
+                if dynamic:
+                    dynamic_trajectory = deduped_trajectory
+
+    if dynamic:
+        stable = False
+
     return {
         "stable": bool(stable),
+        "dynamic": bool(dynamic),
         "anchorCount": len(rows),
         "stableAnchorCount": len(stable_rows),
         "stableAnchorFraction": float(stable_fraction),
@@ -1641,6 +1784,8 @@ def aggregate_framing_proof(evidence):
         "maxScaleDeviationPercent": float(max_scale_drift),
         "maxRotationDeviationDegrees": float(max_rotation_drift),
         "confidence": confidence,
+        "dynamicConfidence": float(dynamic_confidence),
+        "trajectory": dynamic_trajectory,
     }
 
 
@@ -2613,8 +2758,11 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     *(
                         [
                             f"practice-framing-stable:{str(mapping['geometricProof']['framing']['stable']).lower()}",
+                            f"practice-framing-dynamic:{str(mapping['geometricProof']['framing'].get('dynamic', False)).lower()}",
                             f"practice-framing-confidence:{mapping['geometricProof']['framing']['confidence']:.6f}",
+                            f"practice-framing-dynamic-confidence:{mapping['geometricProof']['framing'].get('dynamicConfidence', 0.0):.6f}",
                             f"practice-framing-stable-anchors:{mapping['geometricProof']['framing']['stableAnchorCount']}",
+                            f"practice-framing-trajectory-points:{len(mapping['geometricProof']['framing'].get('trajectory', []))}",
                             f"practice-framing-position:{mapping['geometricProof']['framing']['positionX']:.3f},{mapping['geometricProof']['framing']['positionY']:.3f}",
                             f"practice-framing-scale-percent:{mapping['geometricProof']['framing']['scalePercent']:.6f}",
                             f"practice-framing-rotation-deg:{mapping['geometricProof']['framing']['rotationDegrees']:.6f}",

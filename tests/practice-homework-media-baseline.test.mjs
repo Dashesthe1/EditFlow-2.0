@@ -381,6 +381,100 @@ test("AE baseline applies only stable retained framing to matched video layers",
   ]);
 });
 
+test("AE baseline preserves measured dynamic framing as transform trajectories", () => {
+  const dynamicMatches = [
+    {
+      ...matches[0],
+      geometricProof: {
+        anchorCount: 4,
+        strongAnchorCount: 4,
+        strongAnchorFraction: 1,
+        meanSupport: 0.94,
+        minimumSupport: 0.90,
+        maximumInlierCount: 28,
+        meanInlierRatio: 0.88,
+        meanCoverage: 0.22,
+        framing: {
+          stable: false,
+          dynamic: true,
+          anchorCount: 4,
+          stableAnchorCount: 0,
+          stableAnchorFraction: 0,
+          positionX: 205,
+          positionY: 91,
+          scalePercent: 116,
+          rotationDegrees: 2.1,
+          maxPositionDriftPx: 44,
+          maxScaleDeviationPercent: 18,
+          maxRotationDeviationDegrees: 4,
+          confidence: 0.61,
+          dynamicConfidence: 0.94,
+          trajectory: [
+            {
+              referenceTimeMs: 100,
+              positionX: 180,
+              positionY: 105,
+              scalePercent: 100,
+              rotationDegrees: 0,
+              confidence: 0.94,
+            },
+            {
+              referenceTimeMs: 350,
+              positionX: 194,
+              positionY: 98,
+              scalePercent: 109,
+              rotationDegrees: 1.2,
+              confidence: 0.95,
+            },
+            {
+              referenceTimeMs: 650,
+              positionX: 214,
+              positionY: 88,
+              scalePercent: 121,
+              rotationDegrees: 2.8,
+              confidence: 0.94,
+            },
+            {
+              referenceTimeMs: 900,
+              positionX: 232,
+              positionY: 80,
+              scalePercent: 132,
+              rotationDegrees: 4,
+              confidence: 0.93,
+            },
+          ],
+        },
+      },
+    },
+    matches[1],
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: dynamicMatches });
+  const transforms = plan.operations.filter((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0001")
+      && item.payload.propertyPath?.[0] === "ADBE Transform Group");
+  assert.equal(transforms.length, 3);
+  const byLeaf = new Map(transforms.map((item) => [item.payload.propertyPath.at(-1), item]));
+  assert.deepEqual(byLeaf.get("ADBE Position")?.payload.keyframes, [
+    { time: 0.1, value: [180, 105] },
+    { time: 0.35, value: [194, 98] },
+    { time: 0.65, value: [214, 88] },
+    { time: 0.9, value: [232, 80] },
+  ]);
+  assert.deepEqual(byLeaf.get("ADBE Scale")?.payload.keyframes, [
+    { time: 0.1, value: [100, 100] },
+    { time: 0.35, value: [109, 109] },
+    { time: 0.65, value: [121, 121] },
+    { time: 0.9, value: [132, 132] },
+  ]);
+  assert.deepEqual(byLeaf.get("ADBE Rotate Z")?.payload.keyframes, [
+    { time: 0.1, value: 0 },
+    { time: 0.35, value: 1.2 },
+    { time: 0.65, value: 2.8 },
+    { time: 0.9, value: 4 },
+  ]);
+});
+
 test("AE baseline refuses unstable framing evidence", () => {
   const unstableMatches = [
     {
