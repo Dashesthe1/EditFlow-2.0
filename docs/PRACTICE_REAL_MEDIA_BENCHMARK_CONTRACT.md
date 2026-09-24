@@ -62,9 +62,12 @@ different retained tolerance.
 
 Long movie indexes are retained only while the production matcher accepts their algorithm ID
 and analyzer fingerprint **and** the cached source ID/path, media SHA-256, sample step, and analysis
-FPS match the benchmark request. Reference caches must also match reference ID/path, Finish media
-SHA-256, cut threshold, and minimum shot duration. If those values, the media bytes, matcher code,
-OpenCV, or NumPy evidence change, the runner rebuilds the stale artifact before measuring the case.
+FPS match the benchmark request. Finish references are decoded through a deterministic FFmpeg-
+generated MJPEG CFR analysis proxy rather than directly through the delivery codec. Reference caches
+must also match reference ID/path, Finish media SHA-256, cut threshold, minimum shot duration,
+proxy mode, and reference-analysis FPS. If those values, the media bytes, matcher code, OpenCV,
+NumPy, FFmpeg decode path, or proxy evidence change, the runner rebuilds the stale artifact before
+measuring the case.
 
 This prevents a sparse exploratory index from being silently reused as a denser proof run and lets
 EditFlow iterate on retrieval evidence without comparing a new matcher against incompatible

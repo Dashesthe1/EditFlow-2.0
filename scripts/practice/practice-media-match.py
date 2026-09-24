@@ -867,12 +867,47 @@ def merge_cut_candidates(candidates, minimum_gap_ms):
     return merged
 
 
-def analyze_reference(video_path, reference_id, output_path, cut_threshold, minimum_shot_ms):
+def analyze_reference(
+    video_path,
+    reference_id,
+    output_path,
+    cut_threshold,
+    minimum_shot_ms,
+    explicit_ffmpeg=None,
+    proxy_dir=None,
+    analysis_fps=DEFAULT_ANALYSIS_PROXY_FPS,
+):
     video_path = Path(video_path).resolve()
-    capture = cv2.VideoCapture(str(video_path))
-    if not capture.isOpened():
+    original_capture = cv2.VideoCapture(str(video_path))
+    if not original_capture.isOpened():
         raise RuntimeError(f"Could not open reference video: {video_path}")
-    fps, frame_count, width, height, duration_ms = video_metadata(capture)
+    try:
+        fps, frame_count, width, height, duration_ms = video_metadata(original_capture)
+    finally:
+        original_capture.release()
+
+    source_sha = sha256_file(video_path)
+    proxy_root = (
+        Path(proxy_dir).resolve()
+        if proxy_dir
+        else Path(output_path).resolve().parent / "reference-proxy"
+    )
+    proxy_path = proxy_root / (
+        source_sha[:24]
+        + "-reference-"
+        + str(int(round(float(analysis_fps) * 1000.0)))
+        + ".avi"
+    )
+    proxy_path = ensure_analysis_proxy(
+        video_path,
+        proxy_path,
+        explicit_ffmpeg=explicit_ffmpeg,
+        analysis_fps=analysis_fps,
+    )
+    capture = cv2.VideoCapture(str(proxy_path))
+    if not capture.isOpened():
+        raise RuntimeError(f"Could not open Practice reference analysis proxy: {proxy_path}")
+    proxy_fps, _proxy_frame_count, _proxy_width, _proxy_height, _proxy_duration_ms = video_metadata(capture)
 
     scores = []
     previous = None
@@ -886,12 +921,14 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
             score = cut_score(previous, analysis_frame)
             scores.append({
                 "frame": frame_index,
-                "timeMs": frame_index * 1000.0 / fps,
+                "timeMs": frame_index * 1000.0 / proxy_fps,
                 "score": score,
             })
         previous = analysis_frame
         frame_index += 1
     capture.release()
+    if frame_index <= 0:
+        raise RuntimeError("Practice reference analysis proxy yielded no decodable frames.")
 
     candidates = []
     for index, item in enumerate(scores):
@@ -914,7 +951,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
         boundaries.append(cut_time)
     boundaries.append(duration_ms)
 
-    reader = FrameReader(video_path)
+    reader = FrameReader(proxy_path)
     shots = []
     try:
         for index in range(len(boundaries) - 1):
@@ -941,7 +978,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
                 "anchors": anchors,
                 "_tailMetrics": reference_tail_metrics(artifact_frames),
                 "evidenceRefs": [
-                    f"reference-video:sha256:{sha256_file(video_path)}",
+                    f"reference-video:sha256:{source_sha}",
                     f"reference-range-ms:{round(start_ms)}-{round(end_ms)}",
                 ],
             })
@@ -973,7 +1010,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
     style_fingerprint = hashlib.sha256(
         json.dumps(style_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    perceptual_reader = FrameReader(video_path)
+    perceptual_reader = FrameReader(proxy_path)
     try:
         perceptual_signature = perceptual_signature_from_reader(
             perceptual_reader, content_duration_ms
@@ -984,7 +1021,7 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
         "schema": "editflow.practice-reference-analysis.v1",
         "referenceId": reference_id,
         "sourcePath": str(video_path),
-        "sourceSha256": sha256_file(video_path),
+        "sourceSha256": source_sha,
         "video": {
             "fps": fps,
             "frameCount": frame_count,
@@ -998,6 +1035,9 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
             "analyzerFingerprint": analyzer_fingerprint(),
             "cutThreshold": cut_threshold,
             "minimumShotMs": minimum_shot_ms,
+            "analysisProxyMode": "FFMPEG_MJPEG_CFR_V1",
+            "analysisProxyFps": float(proxy_fps),
+            "analysisProxyMaxDimension": DEFAULT_ANALYSIS_PROXY_MAX_DIMENSION,
             "excludedTailRangeCount": len(excluded_ranges),
         },
         "styleFingerprint": style_fingerprint,
@@ -1005,8 +1045,10 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
         "shots": shots,
         "excludedRanges": excluded_ranges,
         "evidenceRefs": [
-            f"video:sha256:{sha256_file(video_path)}",
+            f"video:sha256:{source_sha}",
             f"practice-analyzer:sha256:{analyzer_fingerprint()}",
+            "practice-reference-analysis-proxy:FFMPEG_MJPEG_CFR_V1",
+            f"practice-reference-analysis-proxy-fps:{proxy_fps:.3f}",
             *[
                 f"practice-reference-excluded-range-ms:{round(item['referenceStartMs'])}-{round(item['referenceEndMs'])}:{item['kind']}"
                 for item in excluded_ranges
@@ -3988,6 +4030,9 @@ def build_parser():
     reference.add_argument("--output", required=True)
     reference.add_argument("--cut-threshold", type=float, default=0.42)
     reference.add_argument("--minimum-shot-ms", type=float, default=180.0)
+    reference.add_argument("--analysis-fps", type=float, default=DEFAULT_ANALYSIS_PROXY_FPS)
+    reference.add_argument("--proxy-dir")
+    reference.add_argument("--ffmpeg")
 
     source = subparsers.add_parser("index")
     source.add_argument("--video", required=True)
@@ -4028,12 +4073,17 @@ def main():
             raise ValueError("--cut-threshold must be in [0.1, 0.95].")
         if args.minimum_shot_ms < 80:
             raise ValueError("--minimum-shot-ms must be at least 80.")
+        if args.analysis_fps < 4 or args.analysis_fps > 30:
+            raise ValueError("--analysis-fps must be in [4, 30].")
         payload = analyze_reference(
             args.video,
             args.reference_id,
             args.output,
             args.cut_threshold,
             args.minimum_shot_ms,
+            explicit_ffmpeg=args.ffmpeg,
+            proxy_dir=args.proxy_dir,
+            analysis_fps=args.analysis_fps,
         )
         print(json.dumps({
             "ok": True,

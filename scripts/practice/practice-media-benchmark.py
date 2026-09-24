@@ -340,6 +340,7 @@ def reference_cache_compatible(
     reference_id,
     cut_threshold,
     minimum_shot_ms,
+    analysis_fps,
     source_sha256=None,
 ):
     analysis = artifact.get("analysis") or {}
@@ -349,6 +350,8 @@ def reference_cache_compatible(
         and (source_sha256 is None or str(artifact.get("sourceSha256")) == str(source_sha256))
         and same_number(analysis.get("cutThreshold"), cut_threshold)
         and same_number(analysis.get("minimumShotMs"), minimum_shot_ms)
+        and analysis.get("analysisProxyMode") == "FFMPEG_MJPEG_CFR_V1"
+        and same_number(analysis.get("analysisProxyFps"), analysis_fps)
     )
 
 
@@ -379,6 +382,7 @@ def run_case(matcher, case, base_dir, output_root):
     reference_id = str(case.get("referenceId", benchmark_id))
     cut_threshold = float(case.get("cutThreshold", 0.42))
     minimum_shot_ms = float(case.get("minimumShotMs", 180.0))
+    reference_analysis_fps = float(case.get("referenceAnalysisFps", 12.0))
     reference_sha256 = matcher.sha256_file(reference_video)
     reference = cached_artifact(
         matcher,
@@ -391,6 +395,7 @@ def run_case(matcher, case, base_dir, output_root):
         reference_id,
         cut_threshold,
         minimum_shot_ms,
+        reference_analysis_fps,
         reference_sha256,
     ):
         matcher.analyze_reference(
@@ -399,6 +404,9 @@ def run_case(matcher, case, base_dir, output_root):
             reference_json,
             cut_threshold,
             minimum_shot_ms,
+            explicit_ffmpeg=case.get("ffmpeg"),
+            proxy_dir=case_dir / "reference-proxy",
+            analysis_fps=reference_analysis_fps,
         )
         reference = matcher.load_artifact(
             reference_json,

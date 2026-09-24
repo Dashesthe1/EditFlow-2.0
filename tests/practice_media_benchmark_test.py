@@ -196,6 +196,9 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                 output,
                 cut_threshold,
                 minimum_shot_ms,
+                explicit_ffmpeg=None,
+                proxy_dir=None,
+                analysis_fps=12.0,
             ):
                 payload = {
                     "schema": "editflow.practice-reference-analysis.v1",
@@ -205,6 +208,8 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                     "analysis": {
                         "cutThreshold": cut_threshold,
                         "minimumShotMs": minimum_shot_ms,
+                        "analysisProxyMode": "FFMPEG_MJPEG_CFR_V1",
+                        "analysisProxyFps": analysis_fps,
                     },
                     "shots": [{"shotId": "shot:1"}],
                 }
@@ -280,6 +285,8 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
             "analysis": {
                 "cutThreshold": 0.42,
                 "minimumShotMs": 180.0,
+                "analysisProxyMode": "FFMPEG_MJPEG_CFR_V1",
+                "analysisProxyFps": 12.0,
             },
         }
         self.assertTrue(benchmark.reference_cache_compatible(
@@ -288,6 +295,7 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
             "ref:1",
             0.42,
             180.0,
+            12.0,
             "finish-sha-a",
         ))
         self.assertFalse(benchmark.reference_cache_compatible(
@@ -296,6 +304,7 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
             "ref:1",
             0.42,
             180.0,
+            12.0,
             "finish-sha-b",
         ))
         self.assertFalse(benchmark.reference_cache_compatible(
@@ -304,6 +313,16 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
             "ref:1",
             0.55,
             180.0,
+            12.0,
+        ))
+        self.assertFalse(benchmark.reference_cache_compatible(
+            artifact,
+            Path("finish.mp4").resolve(),
+            "ref:1",
+            0.42,
+            180.0,
+            8.0,
+            "finish-sha-a",
         ))
 
     def test_manifest_loader_accepts_utf8_bom(self):
@@ -403,6 +422,9 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                 output,
                 cut_threshold,
                 minimum_shot_ms,
+                explicit_ffmpeg=None,
+                proxy_dir=None,
+                analysis_fps=12.0,
             ):
                 payload = {
                     "schema": "editflow.practice-reference-analysis.v1",
@@ -414,6 +436,8 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                         "analyzerFingerprint": "fixture-analyzer",
                         "cutThreshold": cut_threshold,
                         "minimumShotMs": minimum_shot_ms,
+                        "analysisProxyMode": "FFMPEG_MJPEG_CFR_V1",
+                        "analysisProxyFps": analysis_fps,
                     },
                     "shots": [{
                         "shotId": "shot:1",
