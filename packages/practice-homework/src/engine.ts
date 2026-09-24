@@ -1,5 +1,6 @@
 import type {
   EditFlowOperatingModeV1,
+  EditTypeKnowledgeSnapshotV1,
   PracticeAttemptV1,
   PracticeAudioMatchV1,
   PracticeEpisodeV1,
@@ -183,7 +184,12 @@ export class PracticeHomeworkEngineV1 {
     };
   }
 
-  async run(request: PracticeSessionRequestV1): Promise<PracticeSessionResultV1> {
+  async run(
+    request: PracticeSessionRequestV1,
+    knowledgeOverride?: EditTypeKnowledgeSnapshotV1,
+    options?: { readonly retainEpisode?: boolean },
+  ): Promise<PracticeSessionResultV1> {
+    const retainEpisode = options?.retainEpisode !== false;
     const target = clamp01(request.minimumSimilarity ?? 0.95);
     const stretch = Math.max(target, clamp01(request.stretchSimilarity ?? 0.99));
     const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 48));
@@ -228,12 +234,17 @@ export class PracticeHomeworkEngineV1 {
       };
     }
 
-    const editTypeKnowledge = this.editTypes.knowledge(request.editTypeId);
-    if (editTypeKnowledge === null) {
+    const retainedKnowledge = this.editTypes.knowledge(request.editTypeId);
+    if (retainedKnowledge === null) {
       throw new TypeError(
         "Registered Edit Type disappeared before Practice execution: " + request.editTypeId,
       );
     }
+    if (knowledgeOverride !== undefined
+      && knowledgeOverride.editTypeId !== request.editTypeId) {
+      throw new TypeError("Practice knowledge override does not match the selected Edit Type.");
+    }
+    const editTypeKnowledge = knowledgeOverride ?? retainedKnowledge;
 
     const reference = await this.adapters.analyzeFinish(request.finish);
     const sourceIndex = await this.adapters.indexStart(request.start);
@@ -345,8 +356,10 @@ export class PracticeHomeworkEngineV1 {
         mastered: bestAttempt?.report.passed ?? false,
         bestAttempt,
       };
-      this.memory.remember(episode);
-      await this.adapters.recordEpisode?.(episode);
+      if (retainEpisode) {
+        this.memory.remember(episode);
+        await this.adapters.recordEpisode?.(episode);
+      }
       if (bestAttempt?.report.passed === true) {
         return {
           schema: "editflow.practice-session-result.v1",
@@ -371,7 +384,9 @@ export class PracticeHomeworkEngineV1 {
           reasons: bestAttempt.report.overallSimilarity >= stretch
             ? ["Practice target and stretch target both satisfied."]
             : ["Practice target satisfied; retained as a mastered reconstruction."],
-          allocationPrompt: allocationPrompt(request.sessionId, request.editTypeId),
+          allocationPrompt: retainEpisode
+            ? allocationPrompt(request.sessionId, request.editTypeId)
+            : null,
         };
       }
     }
@@ -402,7 +417,9 @@ export class PracticeHomeworkEngineV1 {
           + "% practice gate within the configured attempt budget.",
         "The strongest retained attempt should be exported for human evaluation and diagnosis.",
       ],
-      allocationPrompt: allocationPrompt(request.sessionId, request.editTypeId),
+      allocationPrompt: retainEpisode
+        ? allocationPrompt(request.sessionId, request.editTypeId)
+        : null,
     };
   }
 }

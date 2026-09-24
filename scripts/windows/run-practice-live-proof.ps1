@@ -5,13 +5,17 @@ param(
   [Parameter(Mandatory=$true)][string]$EditTypeId,
   [string]$EditTypeTitle = "",
   [string]$SessionId = "",
+  [string]$StateDir = "",
   [int]$MaxAttempts = 2,
   [double]$MinimumSimilarity = 0.95,
   [double]$StretchSimilarity = 0.99,
   [double]$ExactSceneConfidence = 0.95,
   [double]$MinimumAudioConfidence = 0.90,
   [int]$TimeoutSeconds = 180,
-  [switch]$Allocate
+  [switch]$Allocate,
+  [switch]$HeldOutCertification,
+  [string]$ExpectedIsolationBackend = "",
+  [string]$ExpectedIsolationFallbackAfter = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,15 +24,25 @@ $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 if ([string]::IsNullOrWhiteSpace($SessionId)) {
   $SessionId = "practice-live-" + (Get-Date -Format "yyyyMMdd-HHmmss")
 }
-$ArtifactDir = Join-Path $RepoRoot ("proofs\artifacts\practice-live\" + $SessionId)
+$PracticeLiveRoot = Join-Path $RepoRoot "proofs\artifacts\practice-live"
+$ArtifactDir = Join-Path $PracticeLiveRoot $SessionId
+if ([string]::IsNullOrWhiteSpace($StateDir)) {
+  $StateDir = Join-Path $PracticeLiveRoot "state"
+} else {
+  $StateDir = [System.IO.Path]::GetFullPath($StateDir)
+}
 $ResultPath = Join-Path $ArtifactDir "result.json"
 if (-not (Test-Path $ConfigPath -PathType Leaf)) {
   throw "EditFlow CEP runtime config is missing. Run install-editflow-cep.ps1 first."
 }
 if ($MaxAttempts -lt 1) { throw "MaxAttempts must be at least 1." }
 if ($TimeoutSeconds -lt 30) { throw "TimeoutSeconds must be at least 30." }
+if ($HeldOutCertification -and $Allocate) {
+  throw "Held-out certification cannot allocate learning evidence."
+}
 
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
+New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 Push-Location $RepoRoot
 try {
   npm run build:test-runtime
@@ -44,6 +58,7 @@ try {
     "--config", $ConfigPath,
     "--repository-root", $RepoRoot,
     "--artifact-dir", $ArtifactDir,
+    "--state-dir", $StateDir,
     "--result", $ResultPath,
     "--finish", (Resolve-Path -LiteralPath $Finish).Path,
     "--session-id", $SessionId,
@@ -65,6 +80,13 @@ try {
     $NodeArgs += @("--start-audio", (Resolve-Path -LiteralPath $audio).Path)
   }
   if ($Allocate) { $NodeArgs += "--allocate" }
+  if ($HeldOutCertification) { $NodeArgs += "--held-out-certification" }
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedIsolationBackend)) {
+    $NodeArgs += @("--expected-isolation-backend", $ExpectedIsolationBackend)
+  }
+  if (-not [string]::IsNullOrWhiteSpace($ExpectedIsolationFallbackAfter)) {
+    $NodeArgs += @("--expected-isolation-fallback-after", $ExpectedIsolationFallbackAfter)
+  }
 
   Write-Host ("Starting live Practice proof session " + $SessionId)
   & node @NodeArgs
@@ -75,6 +97,19 @@ try {
   }
   $Result = Get-Content $ResultPath -Raw | ConvertFrom-Json
   Write-Host ("Practice live proof status: " + $Result.status)
+  if ($HeldOutCertification -and $null -ne $Result.heldOutProof) {
+    Write-Host ("Held-out case passed: " + $Result.heldOutProof.heldOutCase.passed)
+    Write-Host ("Held-out benchmark cases retained: " + $Result.heldOutProof.benchmark.caseCount)
+    Write-Host ("Held-out benchmark robust: " + $Result.heldOutProof.benchmark.robust)
+  }
+  if ($null -ne $Result.assertions) {
+    Write-Host ("Persistence assertion passed: " + $Result.assertions.persistence.passed)
+    $Backends = @($Result.assertions.subjectIsolation.observedBackends) -join ","
+    $Fallbacks = @($Result.assertions.subjectIsolation.observedFallbacks) -join ","
+    Write-Host ("Observed isolation backends: " + $Backends)
+    Write-Host ("Observed isolation fallbacks: " + $Fallbacks)
+  }
+  Write-Host ("Shared Practice state: " + $StateDir)
   Write-Host ("Result artifact: " + $ResultPath)
   if ($ExitCode -ne 0) { exit $ExitCode }
 } finally {

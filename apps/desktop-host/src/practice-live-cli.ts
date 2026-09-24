@@ -2,8 +2,18 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { AE_ADAPTER_PROTOCOL_VERSION_V11 } from "../../../packages/adapters/ae-cep/src/protocol-v1_1.js";
-import type { PracticeMediaInputV1 } from "../../../packages/practice-homework/src/contracts.js";
+import {
+  EditTypeRegistryFileV1,
+  type GptOrchestrationAssignmentV1,
+  type PracticeMediaInputV1,
+} from "../../../packages/practice-homework/src/index.js";
 import { LoopbackCepBroker } from "./loopback-cep.js";
+import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
+import {
+  evaluatePracticeIsolationEvidenceV1,
+  evaluatePracticeLivePersistenceV1,
+} from "./practice-live-proof-assertions.js";
+import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
 import { createPracticeM6CurrentAeTrainingRuntimeV1 } from "./practice-training-runtime.js";
 
 interface BridgeConfigFile {
@@ -109,6 +119,10 @@ const main = async (): Promise<void> => {
   const configPath = path.resolve(requireArgument("--config"));
   const repositoryRoot = path.resolve(requireArgument("--repository-root"));
   const artifactDir = path.resolve(requireArgument("--artifact-dir"));
+  const stateDirArgument = argument("--state-dir");
+  const stateDir = stateDirArgument === null
+    ? path.join(artifactDir, "state")
+    : path.resolve(stateDirArgument);
   const resultPath = path.resolve(requireArgument("--result"));
   const finishPath = await ensureFile(requireArgument("--finish"), "Finish reference");
   const videoPaths = await Promise.all(
@@ -124,6 +138,12 @@ const main = async (): Promise<void> => {
   const sessionId = requireArgument("--session-id");
   const editTypeId = requireArgument("--edit-type-id");
   const editTypeTitle = argument("--edit-type-title");
+  const heldOutCertification = hasFlag("--held-out-certification");
+  const expectedIsolationBackend = argument("--expected-isolation-backend");
+  const expectedIsolationFallbackAfter = argument("--expected-isolation-fallback-after");
+  if (heldOutCertification && hasFlag("--allocate")) {
+    throw new Error("Held-out certification cannot allocate learning evidence.");
+  }
   const maxAttempts = integerArgument("--max-attempts", 2, 1);
   const minimumSimilarity = numberArgument("--minimum-similarity", 0.95, 0);
   const stretchSimilarity = numberArgument("--stretch-similarity", 0.99, 0);  const exactSceneConfidence = numberArgument("--exact-scene-confidence", 0.95, 0);
@@ -180,8 +200,8 @@ const main = async (): Promise<void> => {
     const mediaRoots = [...new Set(
       [finishPath, ...videoPaths, ...audioPaths].map((filePath) => path.dirname(filePath)),
     )];
-    const learningMemoryFilePath = path.join(artifactDir, "state", "practice-learning-memory.json");
-    const editTypeRegistryFilePath = path.join(artifactDir, "state", "edit-types.json");
+    const learningMemoryFilePath = path.join(stateDir, "practice-learning-memory.json");
+    const editTypeRegistryFilePath = path.join(stateDir, "edit-types.json");
 
     const runtime = await createPracticeM6CurrentAeTrainingRuntimeV1({
       transport: broker,
@@ -193,8 +213,14 @@ const main = async (): Promise<void> => {
       editTypeRegistryFilePath,
       renderTimeoutMs: timeoutMs,
     });
+    const learningMemoryBefore = runtime.engine.memory.snapshot();
     let editType = runtime.engine.editTypes.get(editTypeId);
     if (editType === null) {
+      if (heldOutCertification) {
+        throw new Error(
+          "Held-out certification requires an existing transfer-verified Edit Type.",
+        );
+      }
       if (editTypeTitle === null || editTypeTitle.trim().length === 0) {
         throw new Error(
           "Edit Type " + editTypeId + " does not exist; supply --edit-type-title to create it.",
@@ -206,7 +232,17 @@ const main = async (): Promise<void> => {
         choiceWords: [editTypeTitle],
         description: "Created by the live Practice proof runner.",
       });
-    }    const result = await runtime.run({
+    }
+    const heldOutKnowledge = heldOutCertification
+      ? runtime.engine.editTypes.transferableKnowledge(editTypeId)
+      : null;
+    if (heldOutCertification && heldOutKnowledge === null) {
+      throw new Error(
+        "Held-out certification requires TRANSFER_VERIFIED Practice knowledge.",
+      );
+    }
+
+    const result = await runtime.run({
       sessionId,
       mode: "PRACTICE",
       editTypeId,
@@ -217,7 +253,9 @@ const main = async (): Promise<void> => {
       maxAttempts,
       exactSceneConfidence,
       minimumAudioConfidence,
-    });
+    }, heldOutKnowledge ?? undefined, heldOutCertification
+      ? { retainEpisode: false }
+      : undefined);
 
     let allocation = null;
     if (hasFlag("--allocate") && result.attempts.length > 0) {
@@ -225,6 +263,64 @@ const main = async (): Promise<void> => {
         sessionId,
         editTypeId,
       });
+    }
+
+    let heldOutProof = null;
+    if (heldOutCertification) {
+      const finalRenderRef = result.bestAttempt?.renderRef ?? null;
+      if (finalRenderRef === null) {
+        throw new Error("Held-out certification requires a retained final render attempt.");
+      }
+      const assignment: GptOrchestrationAssignmentV1 = {
+        schema: "editflow.gpt-orchestration-assignment.v1",
+        assignmentId: "practice-live-held-out:" + sessionId,
+        sessionId,
+        mode: "PRACTICE",
+        practiceRole: "HELD_OUT_CERTIFICATION",
+        editTypeId,
+        status: "RUNNING",
+        finish,
+        start,
+        practicePolicy: {
+          minimumSimilarity,
+          exactSceneConfidence,
+          minimumAudioConfidence,
+        },
+        artifactDir,
+        chatMessage: "Standalone Current-AE held-out certification.",
+        createdAt: startedAt,
+        claimedAt: startedAt,
+        claimedBy: "practice-live-cli",
+        startedAt,
+        completedAt: null,
+        cancelRequestedAt: null,
+        finalRenderRef: null,
+        finalSummary: null,
+        error: null,
+      };
+      const verifier = new PracticeMasteryVerifierV1({ repositoryRoot });
+      const verification = await verifier.verify({
+        assignment,
+        finalRenderRef,
+        minimumSimilarity,
+        exactSceneConfidence,
+        minimumAudioConfidence,
+      });
+      const registryFile = new EditTypeRegistryFileV1(editTypeRegistryFilePath);
+      const registry = await registryFile.load();
+      const certification = recordPracticeHeldOutCertificationV1({
+        registry,
+        editTypeId,
+        sessionId,
+        proof: verification.proof,
+        proofRef: verification.proofRef,
+      });
+      await registryFile.save(registry);
+      heldOutProof = {
+        proofRef: verification.proofRef,
+        heldOutCase: certification.heldOutCase,
+        benchmark: certification.benchmark,
+      };
     }
 
     const reloaded = await createPracticeM6CurrentAeTrainingRuntimeV1({
@@ -239,21 +335,45 @@ const main = async (): Promise<void> => {
     });
     const reloadedEpisode = reloaded.engine.memory.get(sessionId);
     const reloadedEditType = reloaded.engine.editTypes.get(editTypeId);
+    const learningMemoryAfter = reloaded.engine.memory.snapshot();
     const reloadProof = {
       episodeRestored: reloadedEpisode !== null,
       editTypeRestored: reloadedEditType !== null,
       allocationRestored: reloadedEpisode?.allocatedEditTypeId === editTypeId,
       editTypeContainsSession: reloadedEditType?.sessionIds.includes(sessionId) ?? false,
+      learningMemoryUnchanged:
+        JSON.stringify(learningMemoryAfter) === JSON.stringify(learningMemoryBefore),
       retainedAudioMatchId: reloadedEpisode?.audioMatch?.matchId ?? null,
     };
 
-    await writeJson(resultPath, {      proofId: "PRACTICE_CURRENT_AE_LIVE_E2E_V1",
+    const practiceRole = heldOutCertification
+      ? "HELD_OUT_CERTIFICATION" as const
+      : "LEARNING" as const;
+    const persistenceAssertion = evaluatePracticeLivePersistenceV1(
+      practiceRole,
+      reloadProof,
+    );
+    const isolationAssertion = evaluatePracticeIsolationEvidenceV1({
+      evidenceRefs: result.evidenceRefs,
+      expectedBackend: expectedIsolationBackend,
+      expectedFallbackAfter: expectedIsolationFallbackAfter,
+    });
+    const heldOutCasePassed = heldOutProof?.heldOutCase.passed ?? null;
+    const liveRunAccepted = result.status === "MASTERED"
+      || result.status === "HUMAN_REVIEW_REQUIRED";
+    const accepted = liveRunAccepted
+      && persistenceAssertion.passed
+      && isolationAssertion.passed
+      && (!heldOutCertification || heldOutCasePassed === true);
+    await writeJson(resultPath, {
+      proofId: "PRACTICE_CURRENT_AE_LIVE_E2E_V1",
       startedAt,
       completedAt: new Date().toISOString(),
       status: result.status,
-      ok: result.status === "MASTERED" || result.status === "HUMAN_REVIEW_REQUIRED",
+      ok: accepted,
       panel,
       sessionId,
+      practiceRole,
       editType: {
         editTypeId: editType.editTypeId,
         title: editType.title,
@@ -273,17 +393,29 @@ const main = async (): Promise<void> => {
       },
       result,
       allocation,
+      heldOutProof,
       reloadProof,
+      assertions: {
+        persistence: persistenceAssertion,
+        subjectIsolation: isolationAssertion,
+      },
       persistence: {
+        stateDir,
         learningMemoryFilePath,
         editTypeRegistryFilePath,
       },
     });
     if (result.status === "BLOCKED") process.exitCode = 2;
-    if (!reloadProof.episodeRestored || !reloadProof.editTypeRestored) process.exitCode = 3;
+    if (!persistenceAssertion.passed) process.exitCode = 3;
     if (hasFlag("--allocate")
       && (!reloadProof.allocationRestored || !reloadProof.editTypeContainsSession)) {
       process.exitCode = 4;
+    }
+    if (heldOutCertification && heldOutCasePassed !== true) {
+      process.exitCode = 5;
+    }
+    if (!isolationAssertion.passed) {
+      process.exitCode = 6;
     }
   } catch (error) {
     await writeJson(resultPath, {

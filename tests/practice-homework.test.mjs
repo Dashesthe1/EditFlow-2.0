@@ -232,6 +232,26 @@ test("homework loop repeats until the reconstruction satisfies the supervised ga
   assert.equal(fixtures.recorded.length, 3);
 });
 
+test("held-out execution uses frozen knowledge without retaining an episode", async () => {
+  const fixtures = makeAdapters([
+    report(0.98, { breakdown: breakdown(0.98, { sceneIdentity: 0.999 }) }),
+  ]);
+  const memory = new PracticeLearningMemoryV1();
+  const editTypes = makeEditTypes();
+  const retainedKnowledge = editTypes.knowledge(request.editTypeId);
+  assert.ok(retainedKnowledge);
+  const engine = new PracticeHomeworkEngineV1(fixtures.adapters, memory, editTypes);
+  const result = await engine.run(
+    { ...request, sessionId: "practice:held-out:001" },
+    retainedKnowledge,
+    { retainEpisode: false },
+  );
+  assert.equal(result.status, "MASTERED");
+  assert.equal(result.allocationPrompt, null);
+  assert.equal(memory.size, 0);
+  assert.equal(fixtures.recorded.length, 0);
+});
+
 test("homework cannot begin reconstruction until every reference shot is source-matched", async () => {
   const fixtures = makeAdapters([report(0.99)], { missingMatch: true });
   const engine = new PracticeHomeworkEngineV1(

@@ -80,6 +80,22 @@ reference/source fingerprints and effect-family evidence, pass the configured vi
 floors, retain proof evidence, and include object-aware verification before ROBUST can
 be recorded. Reused training material or a failed case invalidates the robust result.
 
+The standalone Current-AE proof runner can execute the same held-out certification path
+as the Practice panel. Its shared state directory persists Edit Type and Practice memory
+across otherwise isolated proof sessions. Held-out mode requires existing
+TRANSFER_VERIFIED knowledge, forbids learning allocation, freezes the knowledge snapshot
+used for reconstruction, and must not retain the certification episode in Practice
+learning memory. The runner snapshots learning memory before and after certification and
+fails the proof if the held-out session leaks into memory, allocation, or Edit Type
+session evidence. It verifies the retained final render through the Practice mastery
+verifier and records only the resulting held-out case and benchmark through the same
+certification recorder used by the panel.
+
+Live subject-isolation certification may additionally require machine evidence for a
+specific backend and fallback path. The dedicated held-out isolation runner requires a
+real SAM 3.1 rejection followed by a verified Roto Brush track-matte success; it does not
+simulate or force the primary-backend failure. Missing fallback evidence fails closed.
+
 ## Non-negotiable practice sequence
 
 A Practice session runs:

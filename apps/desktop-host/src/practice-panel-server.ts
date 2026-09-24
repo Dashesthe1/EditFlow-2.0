@@ -14,9 +14,7 @@ import {
   GptOrchestrationStoreV1,
   ProCreationPreparationEngineV1,
   compileGptTutorialResearchSourceV1,
-  buildPracticeHeldOutBenchmarkCaseV1,
   classifyPracticeMasteryScopeV1,
-  evaluatePracticeHeldOutBenchmarkV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -42,6 +40,7 @@ import {
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
+import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
 import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
 
 export interface PracticePanelServerConfigV1 {
@@ -928,29 +927,20 @@ export class PracticePanelServerV1 {
           ])];
 
           if (practiceRole === "HELD_OUT_CERTIFICATION") {
-            const heldOutCase = buildPracticeHeldOutBenchmarkCaseV1({
+            const certification = recordPracticeHeldOutCertificationV1({
+              registry,
+              editTypeId: pending.editTypeId,
               sessionId: pending.sessionId,
               proof: verification.proof,
               proofRef: verification.proofRef,
               traceReasons,
             });
-            registry.recordHeldOutCase(pending.editTypeId, heldOutCase);
-            const retained = registry.knowledge(pending.editTypeId);
-            if (retained === null) {
-              throw new TypeError("Held-out certification lost its Edit Type registry entry.");
-            }
-            const benchmark = evaluatePracticeHeldOutBenchmarkV1({
-              editTypeId: pending.editTypeId,
-              cases: retained.gptLearning.heldOutCases,
-              priorMasteryRecords: retained.gptLearning.masteryRecords,
-            });
-            registry.recordHeldOutBenchmark(benchmark);
-            heldOutCasePassed = heldOutCase.passed;
-            heldOutBenchmarkRobust = benchmark.robust;
-            heldOutBenchmarkCaseCount = benchmark.caseCount;
+            heldOutCasePassed = certification.heldOutCase.passed;
+            heldOutBenchmarkRobust = certification.benchmark.robust;
+            heldOutBenchmarkCaseCount = certification.benchmark.caseCount;
             masteryReasons = [...new Set([
-              ...heldOutCase.reasons,
-              ...benchmark.reasons,
+              ...certification.heldOutCase.reasons,
+              ...certification.benchmark.reasons,
             ])];
           } else if (verification.proof.report.passed && traceReasons.length === 0) {
             const priorRecords = registry.knowledge(pending.editTypeId)

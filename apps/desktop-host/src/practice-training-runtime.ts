@@ -43,6 +43,7 @@ import {
   composePracticeM6ExecutionAdaptersV1,
 } from "../../../packages/practice-homework/src/m6-practice.js";
 import type {
+  EditTypeKnowledgeSnapshotV1,
   EditTypeProfileV1,
   PracticeHomeworkAdaptersV1,
   PracticeLearningAllocationResultV1,
@@ -526,8 +527,10 @@ export class PracticeM6CurrentAeTrainingRuntimeV1 {
   }
   async run(
     request: PracticeSessionRequestV1,
+    knowledgeOverride?: EditTypeKnowledgeSnapshotV1,
+    options?: { readonly retainEpisode?: boolean },
   ): Promise<PracticeSessionResultV1> {
-    return await this.engine.run(request);
+    return await this.engine.run(request, knowledgeOverride, options);
   }
 
   async createEditType(
