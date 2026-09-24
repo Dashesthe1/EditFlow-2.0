@@ -103,12 +103,64 @@ interface PracticeMatchTimingPlanV1 {
   }[] | null;
 }
 
+type PracticeTrajectoryPointV1 = NonNullable<PracticeSceneMatchV1["trajectory"]>[number];
+
+const trajectoryNeedsVariableRateRemap = (
+  shot: PracticeReferenceAnalysisV1["shots"][number],
+  match: PracticeSceneMatchV1,
+  trajectory: readonly PracticeTrajectoryPointV1[],
+): boolean => {
+  const behavior = match.temporalBehavior ?? match.direction;
+  if (behavior !== "FORWARD" && behavior !== "REVERSE") return false;
+  if (trajectory.length < 3) return false;
+
+  const expectedSign = behavior === "FORWARD" ? 1 : -1;
+  const segmentRates: number[] = [];
+  for (let index = 1; index < trajectory.length; index += 1) {
+    const left = trajectory[index - 1]!;
+    const right = trajectory[index]!;
+    const referenceDelta = right.referenceTimeMs - left.referenceTimeMs;
+    const sourceDelta = right.sourceTimeMs - left.sourceTimeMs;
+    if (referenceDelta <= 1e-6 || Math.abs(sourceDelta) <= 1e-6) return false;
+    if (Math.sign(sourceDelta) !== expectedSign) return false;
+    segmentRates.push(Math.abs(sourceDelta / referenceDelta));
+  }
+  if (segmentRates.length < 2) return false;
+
+  const first = trajectory[0]!;
+  const last = trajectory[trajectory.length - 1]!;
+  const referenceSpan = last.referenceTimeMs - first.referenceTimeMs;
+  if (referenceSpan <= 1e-6) return false;
+  const endpointSlope = (last.sourceTimeMs - first.sourceTimeMs) / referenceSpan;
+  const residuals = trajectory.map((point) => {
+    const predicted = first.sourceTimeMs
+      + endpointSlope * (point.referenceTimeMs - first.referenceTimeMs);
+    return point.sourceTimeMs - predicted;
+  });
+  const residualRmsMs = Math.sqrt(
+    residuals.reduce((sum, value) => sum + (value * value), 0) / residuals.length,
+  );
+  const durationMs = Math.max(1, shot.referenceEndMs - shot.referenceStartMs);
+  const residualFloorMs = Math.max(45, Math.min(120, durationMs * 0.04));
+  const minimumRate = Math.min(...segmentRates);
+  const maximumRate = Math.max(...segmentRates);
+  const rateSpread = minimumRate <= 1e-6 ? Number.POSITIVE_INFINITY : maximumRate / minimumRate;
+  const similarities = trajectory.map((point) => point.similarity);
+  const meanSimilarity = similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
+  const minimumSimilarity = Math.min(...similarities);
+
+  return meanSimilarity >= 0.80
+    && minimumSimilarity >= 0.60
+    && rateSpread >= 1.30
+    && residualRmsMs >= residualFloorMs;
+};
+
 const trajectoryTimeRemapKeyframes = (
   shot: PracticeReferenceAnalysisV1["shots"][number],
   match: PracticeSceneMatchV1,
 ): PracticeMatchTimingPlanV1["timeRemapKeyframes"] => {
-  if (match.rewind?.detected !== true
-    || match.temporalBehavior !== "FORWARD_THEN_REWIND") return null;
+  const preserveMeasuredRewind = match.rewind?.detected === true
+    && match.temporalBehavior === "FORWARD_THEN_REWIND";
   const trajectory = [...(match.trajectory ?? [])]
     .filter((point) =>
       Number.isFinite(point.referenceTimeMs)
@@ -122,6 +174,8 @@ const trajectoryTimeRemapKeyframes = (
   const uniqueTrajectory = trajectory.filter((point, index) =>
     index === 0 || Math.abs(point.referenceTimeMs - trajectory[index - 1]!.referenceTimeMs) > 1e-3);
   if (uniqueTrajectory.length < 3) return null;
+  if (!preserveMeasuredRewind
+    && !trajectoryNeedsVariableRateRemap(shot, match, uniqueTrajectory)) return null;
   const first = uniqueTrajectory[0]!;
   const second = uniqueTrajectory[1]!;
   const penultimate = uniqueTrajectory[uniqueTrajectory.length - 2]!;
