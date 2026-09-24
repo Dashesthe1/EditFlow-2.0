@@ -496,6 +496,11 @@ export class EditTypeRegistryV1 {
     if (report.robust && !report.objectAwareVerified) {
       throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
     }
+    if (report.robust && report.effectFamilyCoverageVerified !== true) {
+      throw new TypeError(
+        "ROBUST Practice maturity requires held-out coverage for every TRANSFER_VERIFIED effect family.",
+      );
+    }
     const learning = normalizedGptLearning(profile.gptLearning);
     const retained = learning.heldOutBenchmarks.filter((item) =>
       item.evaluatedAt !== report.evaluatedAt);

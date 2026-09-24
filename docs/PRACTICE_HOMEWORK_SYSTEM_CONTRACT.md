@@ -88,7 +88,10 @@ The robust Practice benchmark is fail-closed over a 20-30 case held-out proof wi
 Cases must use material pairs not seen in the training mastery set, retain unique
 reference/source fingerprints and effect-family evidence, pass the configured visual
 floors, retain proof evidence, and include object-aware verification before ROBUST can
-be recorded. Reused training material or a failed case invalidates the robust result.
+be recorded. The benchmark also derives an effect-family target set from the Edit Type's
+TRANSFER_VERIFIED mastery records and requires at least one passing held-out case for every
+mastered family. A failed case never counts as family coverage. Reused training material,
+a missing mastered family, or a failed case invalidates the robust result.
 
 Normal Practice defaults to an AUTO lifecycle. Before transfer verification, AUTO resolves
 to LEARNING so GPT can research, reconstruct, diagnose, revise, and retain machine-proven

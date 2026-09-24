@@ -566,7 +566,14 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly caseCount: number;
   readonly passedCaseCount: number;
   readonly distinctMaterialPairCount: number;
+  /** Effect families demonstrated by held-out cases that actually passed the machine gate. */
   readonly distinctEffectFamilyCount: number;
+  /** Authoritative effect families present in TRANSFER_VERIFIED Practice mastery records. */
+  readonly requiredEffectFamilyIds: readonly string[];
+  /** Required effect families covered by at least one passing held-out case. */
+  readonly verifiedEffectFamilyIds: readonly string[];
+  readonly missingEffectFamilyIds: readonly string[];
+  readonly effectFamilyCoverageVerified: boolean;
   readonly objectAwareCaseCount: number;
   readonly objectAwareVerified: boolean;
   readonly robust: boolean;

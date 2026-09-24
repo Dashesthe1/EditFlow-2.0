@@ -341,6 +341,10 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.passedCaseCount, 20);
   assert.equal(report.distinctMaterialPairCount, 20);
   assert.equal(report.distinctEffectFamilyCount, 2);
+  assert.deepEqual(report.requiredEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
+  assert.deepEqual(report.verifiedEffectFamilyIds, ["MOTION_WARP", "SHUTTER_FRAGMENTATION"]);
+  assert.deepEqual(report.missingEffectFamilyIds, []);
+  assert.equal(report.effectFamilyCoverageVerified, true);
   assert.equal(report.objectAwareVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
@@ -356,6 +360,81 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   });
   assert.equal(contaminated.robust, false);
   assert.ok(contaminated.reasons.some((reason) => /training reference fingerprint/.test(reason)));
+});
+
+test("ROBUST requires held-out transfer coverage for every mastered effect family", () => {
+  const shutter = masteryRecord(
+    "practice:family-training:shutter",
+    "TRANSFER_VERIFIED",
+    "finish:family-training:shutter",
+    "source:family-training:shutter",
+  );
+  const motionWarp = {
+    ...masteryRecord(
+      "practice:family-training:motion-warp",
+      "TRANSFER_VERIFIED",
+      "finish:family-training:motion-warp",
+      "source:family-training:motion-warp",
+    ),
+    effectFamilyIds: ["MOTION_WARP"],
+  };
+  const shutterOnlyCases = Array.from({ length: 20 }, (_, index) => ({
+    caseId: "held-out:family:" + String(index + 1),
+    sessionId: "practice:held-out:family:" + String(index + 1),
+    referenceFingerprint: "reference:family:" + String(index + 1),
+    sourceFingerprint: "source:family:" + String(index + 1),
+    effectFamilyIds: ["SHUTTER_FRAGMENTATION"],
+    objectAwareVerified: index === 0,
+    overallSimilarity: 0.98,
+    definingEffectCoverage: 1,
+    passed: true,
+    reasons: [],
+    evidenceRefs: ["proof:family:" + String(index + 1)],
+  }));
+
+  const missingFamily = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "family-coverage",
+    cases: shutterOnlyCases,
+    priorMasteryRecords: [shutter, motionWarp],
+  });
+  assert.equal(missingFamily.passedCaseCount, 20);
+  assert.deepEqual(
+    missingFamily.requiredEffectFamilyIds,
+    ["MOTION_WARP", "SHUTTER_FRAGMENTATION"],
+  );
+  assert.deepEqual(missingFamily.verifiedEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
+  assert.deepEqual(missingFamily.missingEffectFamilyIds, ["MOTION_WARP"]);
+  assert.equal(missingFamily.effectFamilyCoverageVerified, false);
+  assert.equal(missingFamily.robust, false);
+  assert.ok(missingFamily.reasons.some((reason) =>
+    /missing passing transfer coverage.*MOTION_WARP/i.test(reason)));
+
+  const coveredCases = shutterOnlyCases.map((item, index) =>
+    index === shutterOnlyCases.length - 1
+      ? { ...item, effectFamilyIds: ["MOTION_WARP"] }
+      : item);
+  const covered = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "family-coverage",
+    cases: coveredCases,
+    priorMasteryRecords: [shutter, motionWarp],
+  });
+  assert.deepEqual(covered.missingEffectFamilyIds, []);
+  assert.equal(covered.effectFamilyCoverageVerified, true);
+  assert.equal(covered.robust, true);
+
+  const failedCoverageCases = coveredCases.map((item, index) =>
+    index === coveredCases.length - 1
+      ? { ...item, passed: false, reasons: ["Effect-family transfer failed."] }
+      : item);
+  const failedCoverage = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "family-coverage",
+    cases: failedCoverageCases,
+    priorMasteryRecords: [shutter, motionWarp],
+  });
+  assert.deepEqual(failedCoverage.verifiedEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
+  assert.deepEqual(failedCoverage.missingEffectFamilyIds, ["MOTION_WARP"]);
+  assert.equal(failedCoverage.effectFamilyCoverageVerified, false);
+  assert.equal(failedCoverage.robust, false);
 });
 
 test("held-out certification retains failed machine cases instead of cherry-picking passes", () => {

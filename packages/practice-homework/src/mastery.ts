@@ -139,7 +139,14 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   const materialPairs = new Set<string>();
   const heldOutReferences = new Set<string>();
   const heldOutSources = new Set<string>();
-  const effectFamilies = new Set<string>();
+  const requiredEffectFamilies = new Set(
+    (input.priorMasteryRecords ?? [])
+      .filter((record) => record.scope === "TRANSFER_VERIFIED")
+      .flatMap((record) => record.effectFamilyIds)
+      .map((family) => family.trim())
+      .filter(Boolean),
+  );
+  const verifiedEffectFamilies = new Set<string>();
   const evidenceRefs = new Set<string>();
   let passedCaseCount = 0;
   let objectAwareCaseCount = 0;
@@ -192,10 +199,6 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     if (item.evidenceRefs.length === 0) {
       reasons.push("Held-out case has no retained proof evidence: " + item.caseId + ".");
     }
-    for (const family of item.effectFamilyIds) {
-      const normalized = family.trim();
-      if (normalized.length > 0) effectFamilies.add(normalized);
-    }
     for (const ref of item.evidenceRefs) {
       const normalized = ref.trim();
       if (normalized.length > 0) evidenceRefs.add(normalized);
@@ -205,8 +208,33 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
       && item.definingEffectCoverage >= policy.minimumDefiningEffectCoverage
       && item.effectFamilyIds.length > 0
       && item.evidenceRefs.length > 0;
-    if (item.objectAwareVerified && caseMeetsMachineGate) objectAwareCaseCount += 1;
-    if (caseMeetsMachineGate) passedCaseCount += 1;
+    if (caseMeetsMachineGate) {
+      passedCaseCount += 1;
+      for (const family of item.effectFamilyIds) {
+        const normalized = family.trim();
+        if (normalized.length > 0) verifiedEffectFamilies.add(normalized);
+      }
+      if (item.objectAwareVerified) objectAwareCaseCount += 1;
+    }
+  }
+
+  const requiredEffectFamilyIds = [...requiredEffectFamilies].sort();
+  const verifiedEffectFamilyIds = [...verifiedEffectFamilies].sort();
+  const missingEffectFamilyIds = requiredEffectFamilyIds.filter(
+    (family) => !verifiedEffectFamilies.has(family),
+  );
+  const effectFamilyCoverageVerified = requiredEffectFamilyIds.length > 0
+    && missingEffectFamilyIds.length === 0;
+  if (requiredEffectFamilyIds.length === 0) {
+    reasons.push(
+      "Held-out benchmark has no TRANSFER_VERIFIED effect-family target set from Practice mastery.",
+    );
+  } else if (missingEffectFamilyIds.length > 0) {
+    reasons.push(
+      "Held-out benchmark is missing passing transfer coverage for mastered effect families: "
+        + missingEffectFamilyIds.join(", ")
+        + ".",
+    );
   }
 
   const objectAwareVerified = objectAwareCaseCount >= policy.minimumObjectAwareCases;
@@ -220,6 +248,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   const robust = reasons.length === 0
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
+    && effectFamilyCoverageVerified
     && objectAwareVerified;
 
   return {
@@ -229,7 +258,11 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     caseCount: input.cases.length,
     passedCaseCount,
     distinctMaterialPairCount: materialPairs.size,
-    distinctEffectFamilyCount: effectFamilies.size,
+    distinctEffectFamilyCount: verifiedEffectFamilies.size,
+    requiredEffectFamilyIds,
+    verifiedEffectFamilyIds,
+    missingEffectFamilyIds,
+    effectFamilyCoverageVerified,
     objectAwareCaseCount,
     objectAwareVerified,
     robust,
@@ -246,7 +279,10 @@ export const derivePracticeMaturityStageV1 = (
   const learning = profile.gptLearning;
   const records = learning?.masteryRecords ?? [];
   const benchmarks = learning?.heldOutBenchmarks ?? [];
-  if (benchmarks.some((report) => report.robust)) return "ROBUST";
+  if (benchmarks.some((report) =>
+    report.robust
+    && report.objectAwareVerified
+    && report.effectFamilyCoverageVerified === true)) return "ROBUST";
   if (benchmarks.some((report) => report.objectAwareVerified)) {
     return "OBJECT_AWARE_VERIFIED";
   }
