@@ -323,6 +323,10 @@ test("Practice Roto fallback binds the matched subject, propagates both ways, an
   assert.equal(proof.maskSource, "ROTO_BRUSH");
   assert.equal(proof.appliedOperations, 5);
   assert.equal(proof.crossSourceIdentityVerified, true);
+  assert.equal(proof.targetBindingVerified, true);
+  assert.equal(proof.targetShotId, "shot:001");
+  assert.equal(proof.targetCompStableId, "PRACTICE_COMP_ROTO");
+  assert.equal(proof.targetLayerStableId, "PRACTICE_SHOT_ROTO_0001");
   assert.equal(harness.binderCalls.length, 1);
   assert.equal(harness.binderCalls[0].referenceTimeMs, 133.33333333333334);
   assert.equal(harness.seedCalls.length, 1);

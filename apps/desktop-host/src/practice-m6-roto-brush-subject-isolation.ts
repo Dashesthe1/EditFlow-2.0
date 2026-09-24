@@ -943,6 +943,10 @@ implements PracticeM6SubjectIsolationRouteV1 {
         referenceSemanticId: input.referenceSemanticId,
         sourceSemanticId: binding.sourceSemanticId,
         crossSourceIdentityVerified: true,
+        targetBindingVerified: true,
+        targetShotId: input.shotId,
+        targetCompStableId: input.compStableId,
+        targetLayerStableId: input.layerId,
         maskSource: "ROTO_BRUSH",
         appliedOperations: totalAppliedOperations,
         evidenceRefs: [

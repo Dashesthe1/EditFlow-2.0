@@ -65,6 +65,10 @@ export interface PracticeM6VerifiedSubjectIsolationV1 {
   readonly referenceSemanticId: string;
   readonly sourceSemanticId: string;
   readonly crossSourceIdentityVerified: true;
+  readonly targetBindingVerified: true;
+  readonly targetShotId: string;
+  readonly targetCompStableId: string;
+  readonly targetLayerStableId: string;
   readonly maskSource: PracticeM6VerifiedSubjectIsolationSourceV1;
   readonly appliedOperations: number;
   readonly evidenceRefs: readonly string[];
@@ -148,11 +152,20 @@ const subjectSemanticIdsForWindow = (
 
 const acceptedSubjectIsolationProof = (
   proof: PracticeM6VerifiedSubjectIsolationV1,
-  referenceSemanticId: string,
+  expected: {
+    readonly referenceSemanticId: string;
+    readonly shotId: string;
+    readonly compStableId: string;
+    readonly layerId: string;
+  },
 ): boolean =>
   proof?.verified === true
   && proof.crossSourceIdentityVerified === true
-  && proof.referenceSemanticId === referenceSemanticId
+  && proof.targetBindingVerified === true
+  && proof.referenceSemanticId === expected.referenceSemanticId
+  && proof.targetShotId === expected.shotId
+  && proof.targetCompStableId === expected.compStableId
+  && proof.targetLayerStableId === expected.layerId
   && nonEmptyString(proof.sourceSemanticId) !== null
   && nonEmptyString(proof.routeId) !== null
   && ["SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH"].includes(proof.maskSource)
@@ -431,7 +444,12 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           endMs: targetEndMs,
           referenceSemanticId,
         });
-        if (!acceptedSubjectIsolationProof(isolation, referenceSemanticId)) {
+        if (!acceptedSubjectIsolationProof(isolation, {
+          referenceSemanticId,
+          shotId: shot.shotId,
+          compStableId: prepared.plan.compStableId,
+          layerId,
+        })) {
           throw new Error(
             "PRACTICE_M6_SUBJECT_ISOLATION_PROOF_REJECTED:" + shot.shotId,
           );
@@ -447,6 +465,10 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           "practice-subject-reference-id:" + isolation.referenceSemanticId,
           "practice-subject-source-id:" + isolation.sourceSemanticId,
           "practice-subject-cross-source-identity:true",
+          "practice-subject-target-binding:true",
+          "practice-subject-target-shot:" + isolation.targetShotId,
+          "practice-subject-target-comp:" + isolation.targetCompStableId,
+          "practice-subject-target-layer:" + isolation.targetLayerStableId,
           "practice-subject-mask-source:" + isolation.maskSource,
         );
       }

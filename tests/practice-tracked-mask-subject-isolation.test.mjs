@@ -248,6 +248,10 @@ test("Practice tracked-mask fallback binds identity and accepts only native Mask
   );
   assert.equal(proof.maskSource, "AE_TRACKED_MASK");
   assert.equal(proof.crossSourceIdentityVerified, true);
+  assert.equal(proof.targetBindingVerified, true);
+  assert.equal(proof.targetShotId, "shot:001");
+  assert.equal(proof.targetCompStableId, "PRACTICE_COMP_TRACKED");
+  assert.equal(proof.targetLayerStableId, "PRACTICE_SHOT_TRACKED_0001");
   assert.equal(proof.appliedOperations, 2);
   assert.equal(harness.state.maskCreated, true);
   assert.equal(harness.binderCalls.length, 1);

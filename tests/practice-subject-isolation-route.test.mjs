@@ -251,6 +251,10 @@ test("Practice subject isolation binds raw identity, accepts temporal SAM proof,
   assert.equal(proof.verified, true);
   assert.equal(proof.routeId, PRACTICE_M6_SAM31_SUBJECT_ISOLATION_ROUTE_ID_V1);
   assert.equal(proof.crossSourceIdentityVerified, true);
+  assert.equal(proof.targetBindingVerified, true);
+  assert.equal(proof.targetShotId, "shot:001");
+  assert.equal(proof.targetCompStableId, "PRACTICE_COMP_ISOLATION");
+  assert.equal(proof.targetLayerStableId, "PRACTICE_SHOT_ISOLATION_0001");
   assert.equal(proof.maskSource, "SEGMENTATION");
   assert.equal(proof.referenceSemanticId, "subject:peter");
   assert.equal(proof.sourceSemanticId, binding.sourceSemanticId);

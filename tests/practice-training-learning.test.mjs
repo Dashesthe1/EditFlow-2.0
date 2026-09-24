@@ -505,7 +505,12 @@ const verifiedSubjectIsolationRoute = {
       referenceSemanticId: input.referenceSemanticId,
       sourceSemanticId: "source-subject:" + input.shotId,
       crossSourceIdentityVerified: true,
+      targetBindingVerified: true,
+      targetShotId: input.shotId,
+      targetCompStableId: input.compStableId,
+      targetLayerStableId: input.layerId,
       maskSource: "SEGMENTATION",
+      appliedOperations: 1,
       evidenceRefs: [
         "test:subject-isolation:" + input.shotId,
         "test:cross-source-identity:" + input.referenceSemanticId,
@@ -1020,7 +1025,7 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
         requiredInvariantIds: [],
         capabilityCandidates: ["ae.subject.isolate", "ae.layer.matte.set"],
         parameters: {},
-        optional: false,
+        optional: true,
       },
     ],
   };
@@ -1056,6 +1061,60 @@ test("Practice M6 current-AE runtime lowers a reference graph onto the matched s
     }),
     /PRACTICE_M6_SUBJECT_ISOLATION_ROUTE_UNVERIFIED/,
   );
+
+  let wrongBindingCalls = 0;
+  const wrongBindingRuntime = new PracticeM6CurrentAeRuntimeV1({
+    transaction,
+    baselineBuilder: {
+      plan(id) { return id === baselinePlan.baselineId ? baselinePlan : null; },
+    },
+    media,
+    renderDriver,
+    subjectIsolationRoute: {
+      async prepare(input) {
+        wrongBindingCalls += 1;
+        return {
+          verified: true,
+          routeId: "test.subject-isolation.wrong-target.v1",
+          referenceSemanticId: input.referenceSemanticId,
+          sourceSemanticId: "source-subject:" + input.shotId,
+          crossSourceIdentityVerified: true,
+          targetBindingVerified: true,
+          targetShotId: input.shotId,
+          targetCompStableId: input.compStableId,
+          targetLayerStableId: "PRACTICE_SHOT_WRONG_9999",
+          maskSource: "SEGMENTATION",
+          appliedOperations: 1,
+          evidenceRefs: ["test:wrong-target-proof"],
+        };
+      },
+    },
+    availableCapabilities: [...new Set(
+      isolationGraph.nodes.flatMap((node) => node.capabilityCandidates),
+    )],
+  });
+  await wrongBindingRuntime.prepareAttempt({
+    sessionId: "practice:native:wrong-target",
+    editTypeId: "spider-man-high-potency",
+    editTypeKnowledge: {},
+    attempt: 1,
+    reference: runtimeReference,
+    baseline,
+    matches: [match],
+    priorAttempts: [],
+  });
+  await assert.rejects(
+    () => wrongBindingRuntime.applyWindowGraph({
+      sessionId: "practice:native:wrong-target",
+      attempt: 1,
+      reference: runtimeReference,
+      baseline,
+      window,
+      graph: isolationGraph,
+    }),
+    /PRACTICE_M6_SUBJECT_ISOLATION_PROOF_REJECTED:shot:001/,
+  );
+  assert.equal(wrongBindingCalls, 1);
 });
 
 test("Practice M6 applies a cut-spanning transition to both participating shot layers", async () => {
