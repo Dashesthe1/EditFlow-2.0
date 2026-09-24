@@ -348,6 +348,33 @@ const timingPlanForMatch = (
   };
 };
 
+const executableFramingForMatch = (
+  match: PracticeSceneMatchV1,
+) => {
+  const framing = match.geometricProof?.framing;
+  if (framing === undefined || framing.stable !== true || framing.confidence < 0.72) {
+    return null;
+  }
+  const values = [
+    framing.positionX,
+    framing.positionY,
+    framing.scalePercent,
+    framing.rotationDegrees,
+    framing.anchorCount,
+    framing.stableAnchorCount,
+    framing.stableAnchorFraction,
+  ];
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  if (framing.anchorCount < 2
+    || framing.stableAnchorCount < 2
+    || framing.stableAnchorCount > framing.anchorCount
+    || framing.stableAnchorFraction < 0
+    || framing.stableAnchorFraction > 1
+    || framing.scalePercent <= 1
+    || framing.scalePercent > 5000) return null;
+  return framing;
+};
+
 const timingForAudioSegment = (
   segment: PracticeAudioSegmentMatchV1,
 ): Readonly<Record<string, number>> => {
@@ -403,6 +430,7 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
       temporalBehavior: match.temporalBehavior ?? null,
       rewind: match.rewind ?? null,
       trajectory: match.trajectory ?? [],
+      framing: match.geometricProof?.framing ?? null,
     };
   });
   const audioIdentity = audioMatch === null ? null : {
@@ -512,6 +540,34 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
         layer: { stableId: layerStableId },
         propertyPath: ["ADBE Time Remapping"],
         keyframes: timingPlan.timeRemapKeyframes,
+      }));
+      ordinal += 1;
+    }
+    const framing = executableFramingForMatch(match);
+    if (framing !== null) {
+      const framingTime = shot.referenceStartMs / 1000;
+      operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+        propertyPath: ["ADBE Transform Group", "ADBE Position"],
+        keyframes: [{ time: framingTime, value: [framing.positionX, framing.positionY] }],
+      }));
+      ordinal += 1;
+      operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+        propertyPath: ["ADBE Transform Group", "ADBE Scale"],
+        keyframes: [{
+          time: framingTime,
+          value: [framing.scalePercent, framing.scalePercent],
+        }],
+      }));
+      ordinal += 1;
+      operations.push(operation(baselineId, ordinal, "property.set_keyframes", {
+        comp: { stableId: compStableId },
+        layer: { stableId: layerStableId },
+        propertyPath: ["ADBE Transform Group", "ADBE Rotate Z"],
+        keyframes: [{ time: framingTime, value: framing.rotationDegrees }],
       }));
       ordinal += 1;
     }
