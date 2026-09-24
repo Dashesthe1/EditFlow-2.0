@@ -14,6 +14,15 @@ SPEC.loader.exec_module(matcher)
 
 
 class PracticeMediaMatchGeometryTests(unittest.TestCase):
+    def test_identity_cache_rejects_stale_entry_for_different_frame(self):
+        target = np.zeros((8, 8, 3), dtype=np.uint8)
+        other = np.ones((8, 8, 3), dtype=np.uint8)
+        cache = {
+            id(target): (matcher.weakref.ref(other), "poisoned"),
+        }
+        self.assertIsNone(matcher.identity_cache_get(cache, target))
+        self.assertNotIn(id(target), cache)
+
     def test_incomplete_knn_neighbors_do_not_crash(self):
         descriptor = {
             "dct": [1.0],
@@ -425,6 +434,22 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
             "sourceCoverage": 0.08,
         }
 
+    @staticmethod
+    def _synthetic_scene(seed):
+        rng = np.random.default_rng(seed)
+        frame = np.zeros((360, 640, 3), dtype=np.uint8)
+        for _ in range(180):
+            x = int(rng.integers(12, 628))
+            y = int(rng.integers(12, 348))
+            radius = int(rng.integers(2, 10))
+            color = tuple(int(value) for value in rng.integers(40, 255, size=3))
+            matcher.cv2.circle(frame, (x, y), radius, color, -1)
+        for _ in range(35):
+            start = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            end = (int(rng.integers(0, 640)), int(rng.integers(0, 360)))
+            matcher.cv2.line(frame, start, end, (255, 255, 255), 2)
+        return frame
+
     def test_softened_variant_can_strengthen_weak_effect_treated_geometry(self):
         weak = self._evidence(0.52, 5, 0.50, 0.66)
         strong = self._evidence(0.86, 12, 0.72, 0.81)
@@ -471,6 +496,72 @@ class PracticeEffectTolerantEvidenceTests(unittest.TestCase):
 
         self.assertIs(result, strong)
         self.assertEqual(softened_calls, [])
+
+    def test_low_contrast_fallback_requires_certifiable_geometry(self):
+        weak = self._evidence(0.50, 4, 0.40, 0.64)
+        rescue = self._evidence(0.79, 9, 0.64, 0.78)
+        originals = (
+            matcher.normalized_rescue_frame,
+            matcher.softened_rescue_frame,
+            matcher.feature_match_evidence,
+            matcher.low_contrast_feature_match_evidence,
+        )
+        low_calls = []
+        try:
+            matcher.normalized_rescue_frame = lambda frame: ("base", frame)
+            matcher.softened_rescue_frame = lambda frame: ("soft", frame)
+            matcher.feature_match_evidence = lambda _ref, _src: weak
+            matcher.low_contrast_feature_match_evidence = lambda ref, src: (
+                low_calls.append((ref, src)) or rescue
+            )
+            result = matcher.effect_tolerant_feature_match_evidence("ref", "src")
+        finally:
+            (
+                matcher.normalized_rescue_frame,
+                matcher.softened_rescue_frame,
+                matcher.feature_match_evidence,
+                matcher.low_contrast_feature_match_evidence,
+            ) = originals
+
+        self.assertIs(result, rescue)
+        self.assertEqual(len(low_calls), 1)
+
+    def test_low_contrast_extractor_recovers_trail_blur_identity(self):
+        source = self._synthetic_scene(31)
+        attempts = []
+        for dx, blur, contrast, bias in (
+            (8, 1.8, 0.34, 82.0),
+            (12, 2.2, 0.29, 88.0),
+            (16, 2.8, 0.24, 94.0),
+            (22, 3.5, 0.17, 100.0),
+        ):
+            shifted = []
+            for offset in (dx, dx * 2, dx * 3):
+                matrix = np.float32([[1, 0, offset], [0, 1, 0]])
+                shifted.append(matcher.cv2.warpAffine(source, matrix, (640, 360), borderMode=matcher.cv2.BORDER_REFLECT))
+            reference = np.clip(
+                0.42 * source.astype(np.float32)
+                + 0.24 * shifted[0].astype(np.float32)
+                + 0.19 * shifted[1].astype(np.float32)
+                + 0.15 * shifted[2].astype(np.float32), 0, 255,
+            ).astype(np.uint8)
+            reference = matcher.cv2.GaussianBlur(reference, (0, 0), blur)
+            reference = np.clip(reference.astype(np.float32) * contrast + bias, 0, 255).astype(np.uint8)
+            normalized_reference = matcher.normalized_rescue_frame(reference)
+            normalized_source = matcher.normalized_rescue_frame(source)
+            base = matcher.feature_match_evidence(normalized_reference, normalized_source)
+            rescued = matcher.low_contrast_feature_match_evidence(normalized_reference, normalized_source)
+            attempts.append((base, rescued))
+            if base["inlierCount"] < 6 and matcher.rescue_geometry_certifiable(rescued):
+                self.assertGreater(rescued["geometrySupport"], base["geometrySupport"])
+                return
+        self.fail(attempts)
+
+    def test_low_contrast_extractor_rejects_unrelated_scene(self):
+        left = matcher.normalized_rescue_frame(self._synthetic_scene(31))
+        right = matcher.normalized_rescue_frame(self._synthetic_scene(99))
+        evidence = matcher.low_contrast_feature_match_evidence(left, right)
+        self.assertFalse(matcher.rescue_geometry_certifiable(evidence), evidence)
 
 
 if __name__ == "__main__":

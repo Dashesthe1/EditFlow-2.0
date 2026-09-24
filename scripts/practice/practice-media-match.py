@@ -6,6 +6,7 @@ import json
 import math
 import os
 import subprocess
+import weakref
 from pathlib import Path
 
 import cv2
@@ -350,57 +351,98 @@ def perceptual_signature_from_samples(samples, sample_count=16):
 
 
 _SIFT = cv2.SIFT_create(nfeatures=600)
+_EFFECT_SIFT = cv2.SIFT_create(
+    nfeatures=1800,
+    contrastThreshold=0.003,
+    edgeThreshold=18,
+    sigma=0.8,
+)
 _RESCUE_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 _FRAME_DESCRIPTOR_CACHE = {}
 _FRAME_FEATURE_CACHE = {}
+_EFFECT_FEATURE_CACHE = {}
 _RESCUE_NORMALIZED_FRAME_CACHE = {}
 _RESCUE_SOFT_FRAME_CACHE = {}
 
 
-def cached_descriptor(frame):
+def _drop_identity_cache_entry(cache, key, frame_ref):
+    cached = cache.get(key)
+    if cached is not None and cached[0] is frame_ref:
+        cache.pop(key, None)
+
+
+def identity_cache_get(cache, frame):
     key = id(frame)
-    cached = _FRAME_DESCRIPTOR_CACHE.get(key)
+    cached = cache.get(key)
+    if cached is None:
+        return None
+    frame_ref, value = cached
+    if frame_ref() is frame:
+        return value
+    cache.pop(key, None)
+    return None
+
+
+def identity_cache_set(cache, frame, value):
+    key = id(frame)
+    try:
+        frame_ref = weakref.ref(
+            frame,
+            lambda dead_ref, cache=cache, key=key: _drop_identity_cache_entry(cache, key, dead_ref),
+        )
+    except TypeError:
+        return value
+    cache[key] = (frame_ref, value)
+    return value
+
+
+def cached_descriptor(frame):
+    cached = identity_cache_get(_FRAME_DESCRIPTOR_CACHE, frame)
     if cached is not None:
         return cached
     descriptor = frame_descriptor(frame)
-    _FRAME_DESCRIPTOR_CACHE[key] = descriptor
-    return descriptor
+    return identity_cache_set(_FRAME_DESCRIPTOR_CACHE, frame, descriptor)
 
 
 def cached_features(frame):
-    key = id(frame)
-    cached = _FRAME_FEATURE_CACHE.get(key)
+    cached = identity_cache_get(_FRAME_FEATURE_CACHE, frame)
     if cached is not None:
         return cached
     descriptor = cached_descriptor(frame)
     gray = cv2.cvtColor(resize_longest(frame, 360), cv2.COLOR_BGR2GRAY)
     keypoints, sift = _SIFT.detectAndCompute(gray, None)
     result = (descriptor, keypoints or [], sift)
-    _FRAME_FEATURE_CACHE[key] = result
-    return result
+    return identity_cache_set(_FRAME_FEATURE_CACHE, frame, result)
+
+
+def cached_effect_features(frame):
+    cached = identity_cache_get(_EFFECT_FEATURE_CACHE, frame)
+    if cached is not None:
+        return cached
+    descriptor = cached_descriptor(frame)
+    gray = cv2.cvtColor(resize_longest(frame, 480), cv2.COLOR_BGR2GRAY)
+    keypoints, sift = _EFFECT_SIFT.detectAndCompute(gray, None)
+    result = (descriptor, keypoints or [], sift)
+    return identity_cache_set(_EFFECT_FEATURE_CACHE, frame, result)
 
 
 def normalized_rescue_frame(frame):
-    key = id(frame)
-    cached = _RESCUE_NORMALIZED_FRAME_CACHE.get(key)
+    cached = identity_cache_get(_RESCUE_NORMALIZED_FRAME_CACHE, frame)
     if cached is not None:
         return cached
     gray = cv2.cvtColor(resize_longest(frame, 480), cv2.COLOR_BGR2GRAY)
     normalized = _RESCUE_CLAHE.apply(gray)
     result = cv2.cvtColor(normalized, cv2.COLOR_GRAY2BGR)
-    _RESCUE_NORMALIZED_FRAME_CACHE[key] = result
-    return result
+    return identity_cache_set(_RESCUE_NORMALIZED_FRAME_CACHE, frame, result)
 
 
 def softened_rescue_frame(frame):
-    key = id(frame)
-    cached = _RESCUE_SOFT_FRAME_CACHE.get(key)
+    cached = identity_cache_get(_RESCUE_SOFT_FRAME_CACHE, frame)
     if cached is not None:
         return cached
     normalized = normalized_rescue_frame(frame)
     result = cv2.GaussianBlur(normalized, (0, 0), sigmaX=1.35, sigmaY=1.35)
-    _RESCUE_SOFT_FRAME_CACHE[key] = result
-    return result
+    return identity_cache_set(_RESCUE_SOFT_FRAME_CACHE, frame, result)
 
 
 def feature_match_evidence(reference_frame, source_frame):
@@ -473,6 +515,76 @@ def feature_match_evidence(reference_frame, source_frame):
     }
 
 
+def low_contrast_feature_match_evidence(reference_frame, source_frame):
+    ref_global, ref_keypoints, ref_desc = cached_effect_features(reference_frame)
+    src_global, src_keypoints, src_desc = cached_effect_features(source_frame)
+    global_score = descriptor_similarity(ref_global, src_global)
+    empty = {
+        "score": clamp01(global_score * 0.88),
+        "globalScore": global_score,
+        "goodMatchCount": 0,
+        "inlierCount": 0,
+        "inlierRatio": 0.0,
+        "referenceCoverage": 0.0,
+        "sourceCoverage": 0.0,
+        "geometrySupport": 0.0,
+    }
+    if ref_desc is None or src_desc is None or len(ref_desc) < 4 or len(src_desc) < 4:
+        return empty
+
+    matcher = cv2.BFMatcher(cv2.NORM_L2)
+    pairs = matcher.knnMatch(ref_desc, src_desc, k=2)
+    good = [
+        pair[0]
+        for pair in pairs
+        if len(pair) >= 2 and pair[0].distance < 0.78 * pair[1].distance
+    ]
+    if len(good) < 4:
+        return {**empty, "score": clamp01(global_score * 0.90), "goodMatchCount": len(good)}
+
+    reference_points = np.float32([ref_keypoints[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+    source_points = np.float32([src_keypoints[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+    _matrix, mask = cv2.findHomography(reference_points, source_points, cv2.RANSAC, 5.0)
+    if mask is None:
+        return {**empty, "score": clamp01(global_score * 0.90), "goodMatchCount": len(good)}
+
+    flags = mask.reshape(-1) > 0
+    inlier_count = int(np.sum(flags))
+    inlier_ratio = float(np.mean(flags)) if len(flags) else 0.0
+
+    def point_coverage(points, width, height):
+        if len(points) < 3:
+            return 0.0
+        hull = cv2.convexHull(np.asarray(points, dtype=np.float32))
+        return clamp01(float(cv2.contourArea(hull)) / max(1.0, float(width * height)))
+
+    ref_gray = cv2.cvtColor(resize_longest(reference_frame, 480), cv2.COLOR_BGR2GRAY)
+    src_gray = cv2.cvtColor(resize_longest(source_frame, 480), cv2.COLOR_BGR2GRAY)
+    ref_inliers = [ref_keypoints[good[index].queryIdx].pt for index, value in enumerate(flags) if value]
+    src_inliers = [src_keypoints[good[index].trainIdx].pt for index, value in enumerate(flags) if value]
+    reference_coverage = point_coverage(ref_inliers, ref_gray.shape[1], ref_gray.shape[0])
+    source_coverage = point_coverage(src_inliers, src_gray.shape[1], src_gray.shape[0])
+
+    match_strength = clamp01(len(good) / 30.0)
+    feature_score = clamp01((0.58 * inlier_ratio) + (0.42 * match_strength))
+    geometry_support = clamp01(
+        (0.36 * clamp01(inlier_count / 12.0))
+        + (0.32 * clamp01(inlier_ratio / 0.70))
+        + (0.16 * clamp01(reference_coverage / 0.18))
+        + (0.16 * clamp01(source_coverage / 0.18))
+    )
+    return {
+        "score": clamp01((0.42 * global_score) + (0.58 * feature_score)),
+        "globalScore": global_score,
+        "goodMatchCount": len(good),
+        "inlierCount": inlier_count,
+        "inlierRatio": inlier_ratio,
+        "referenceCoverage": reference_coverage,
+        "sourceCoverage": source_coverage,
+        "geometrySupport": geometry_support,
+    }
+
+
 def feature_similarity(reference_frame, source_frame):
     return feature_match_evidence(reference_frame, source_frame)["score"]
 
@@ -485,11 +597,21 @@ def rescue_evidence_rank(item):
     )
 
 
-def effect_tolerant_feature_match_evidence(reference_frame, source_frame):
-    base = feature_match_evidence(
-        normalized_rescue_frame(reference_frame),
-        normalized_rescue_frame(source_frame),
+def rescue_geometry_certifiable(item):
+    return (
+        int(item.get("inlierCount", 0)) >= 6
+        and float(item.get("inlierRatio", 0.0)) >= 0.45
+        and min(
+            float(item.get("referenceCoverage", 0.0)),
+            float(item.get("sourceCoverage", 0.0)),
+        ) >= 0.015
     )
+
+
+def effect_tolerant_feature_match_evidence(reference_frame, source_frame):
+    normalized_reference = normalized_rescue_frame(reference_frame)
+    normalized_source = normalized_rescue_frame(source_frame)
+    base = feature_match_evidence(normalized_reference, normalized_source)
     if (
         int(base.get("inlierCount", 0)) >= 8
         and float(base.get("inlierRatio", 0.0)) >= 0.55
@@ -500,7 +622,17 @@ def effect_tolerant_feature_match_evidence(reference_frame, source_frame):
         softened_rescue_frame(reference_frame),
         softened_rescue_frame(source_frame),
     )
-    return max((base, softened), key=rescue_evidence_rank)
+    best = max((base, softened), key=rescue_evidence_rank)
+    if rescue_geometry_certifiable(best):
+        return best
+
+    low_contrast = low_contrast_feature_match_evidence(
+        normalized_reference,
+        normalized_source,
+    )
+    if not rescue_geometry_certifiable(low_contrast):
+        return best
+    return max((best, low_contrast), key=rescue_evidence_rank)
 
 
 def interior_anchor_times(start_ms, end_ms):
