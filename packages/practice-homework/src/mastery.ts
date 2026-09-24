@@ -19,6 +19,7 @@ import type {
   PracticeMasteryRecordV1,
   PracticeMasteryScopeV1,
   PracticeMaturityStageV1,
+  PracticeSubjectContinuityChallengeV1,
   PracticeSubjectRelativeDirectionBucketV1,
 } from "./contracts.js";
 import { buildPracticeSubjectIdentityMemoriesV1 } from "./subject-identity-memory.js";
@@ -45,6 +46,11 @@ const SUBJECT_RELATIVE_DIRECTION_BUCKETS = [
   "UP",
   "UP_RIGHT",
 ] as const satisfies readonly PracticeSubjectRelativeDirectionBucketV1[];
+
+const SUBJECT_CONTINUITY_CHALLENGES = [
+  "LOW_MOTION",
+  "OCCLUSION",
+] as const satisfies readonly PracticeSubjectContinuityChallengeV1[];
 
 const subjectRelativeDirectionBucket = (
   direction: Readonly<{ x: number; y: number }> | null | undefined,
@@ -349,6 +355,43 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       .map((window) => subjectRelativeDirectionBucket(window.referenceSubjectRelativeDirection))
       .filter((value): value is PracticeSubjectRelativeDirectionBucketV1 => value !== null),
   )];
+  const subjectContinuityChallengeWindows = input.proof.objectAwareProof?.windows.filter((window) => {
+    const reference = window.referenceSubjectIdentity;
+    return reference !== undefined
+      && (reference.lowMotionFrameCount > 0 || reference.occlusionFrameCount > 0);
+  }) ?? [];
+  const verifiedSubjectContinuityChallengeWindows = subjectContinuityChallengeWindows.filter((window) => {
+    const reference = window.referenceSubjectIdentity;
+    const render = window.renderSubjectIdentity;
+    if (reference === undefined || render === undefined || render === null) return false;
+    if (!window.passed || window.subjectIdentityVerified !== true) return false;
+    const lowMotionVerified = reference.lowMotionFrameCount === 0
+      || (reference.lowMotionSurvived && render.lowMotionSurvived);
+    const occlusionVerified = reference.occlusionFrameCount === 0
+      || (reference.occlusionSurvived && render.occlusionSurvived);
+    return lowMotionVerified && occlusionVerified;
+  });
+  const subjectContinuityHardCaseVerified = objectAwareRequired
+    && input.proof.objectAwareProof?.verified === true
+    && crossSourceSubjectVerified
+    && subjectContinuityChallengeWindows.length > 0
+    && verifiedSubjectContinuityChallengeWindows.length
+      === subjectContinuityChallengeWindows.length;
+  const subjectContinuityChallenges = [...new Set(
+    verifiedSubjectContinuityChallengeWindows.flatMap((window) => {
+      const reference = window.referenceSubjectIdentity;
+      const render = window.renderSubjectIdentity;
+      if (reference === undefined || render === undefined || render === null) return [];
+      const challenges: PracticeSubjectContinuityChallengeV1[] = [];
+      if (reference.lowMotionFrameCount > 0
+        && reference.lowMotionSurvived
+        && render.lowMotionSurvived) challenges.push("LOW_MOTION");
+      if (reference.occlusionFrameCount > 0
+        && reference.occlusionSurvived
+        && render.occlusionSurvived) challenges.push("OCCLUSION");
+      return challenges;
+    }),
+  )];
   const reasons = [...new Set([
     ...input.proof.report.reasons,
     ...objectProofReasons,
@@ -380,6 +423,9 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     subjectRelativeDirectionWindowCount: subjectRelativeDirectionWindows.length,
     subjectRelativeDirectionVerified,
     subjectRelativeDirectionBuckets,
+    subjectContinuityHardCaseVerified,
+    subjectContinuityChallengeWindowCount: subjectContinuityChallengeWindows.length,
+    subjectContinuityChallenges,
     overallSimilarity: input.proof.report.overallSimilarity,
     definingEffectCoverage: input.proof.report.definingEffectCoverage,
     passed: input.proof.report.passed && reasons.length === 0,
@@ -402,6 +448,8 @@ export const DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1: PracticeHeldOutBench
   minimumObjectAwareCases: 1,
   minimumSubjectRelativeDirectionCases: 3,
   minimumSubjectRelativeDirectionBuckets: 3,
+  minimumSubjectContinuityHardCases: 3,
+  minimumSubjectContinuityChallengeKinds: 2,
 };
 
 const benchmarkPolicy = (
@@ -451,6 +499,23 @@ const benchmarkPolicy = (
       ),
     ),
   ),
+  minimumSubjectContinuityHardCases: Math.max(
+    DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumSubjectContinuityHardCases,
+    Math.floor(
+      value?.minimumSubjectContinuityHardCases
+        ?? DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumSubjectContinuityHardCases,
+    ),
+  ),
+  minimumSubjectContinuityChallengeKinds: Math.max(
+    DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumSubjectContinuityChallengeKinds,
+    Math.min(
+      SUBJECT_CONTINUITY_CHALLENGES.length,
+      Math.floor(
+        value?.minimumSubjectContinuityChallengeKinds
+          ?? DEFAULT_PRACTICE_HELD_OUT_BENCHMARK_POLICY_V1.minimumSubjectContinuityChallengeKinds,
+      ),
+    ),
+  ),
 });
 
 export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
@@ -494,6 +559,8 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   let objectAwareCaseCount = 0;
   let subjectRelativeDirectionCaseCount = 0;
   const subjectRelativeDirectionBuckets = new Set<PracticeSubjectRelativeDirectionBucketV1>();
+  let subjectContinuityHardCaseCount = 0;
+  const subjectContinuityChallenges = new Set<PracticeSubjectContinuityChallengeV1>();
 
   if (input.cases.length < policy.minimumCases) {
     reasons.push("Held-out benchmark has fewer than " + String(policy.minimumCases) + " cases.");
@@ -638,6 +705,21 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
           }
         }
       }
+      const verifiedContinuityChallenges = (item.subjectContinuityChallenges ?? [])
+        .filter((challenge): challenge is PracticeSubjectContinuityChallengeV1 =>
+          SUBJECT_CONTINUITY_CHALLENGES.includes(challenge));
+      if (item.subjectContinuityHardCaseVerified === true
+        && verifiedContinuityChallenges.length > 0) {
+        subjectContinuityHardCaseCount += 1;
+        for (const challenge of verifiedContinuityChallenges) {
+          subjectContinuityChallenges.add(challenge);
+        }
+      } else if (item.subjectContinuityHardCaseVerified === true) {
+        reasons.push(
+          "Held-out hard subject-continuity case has no retained challenge evidence: "
+            + item.caseId + ".",
+        );
+      }
     }
   }
 
@@ -764,6 +846,26 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
         + " distinct subject-relative direction sectors on unseen material.",
     );
   }
+  const subjectContinuityHardCaseVerified = subjectContinuityHardCaseCount
+    >= policy.minimumSubjectContinuityHardCases;
+  if (!subjectContinuityHardCaseVerified) {
+    reasons.push(
+      "Held-out benchmark has fewer than "
+        + String(policy.minimumSubjectContinuityHardCases)
+        + " verified hard subject-continuity cases on unseen material.",
+    );
+  }
+  const verifiedSubjectContinuityChallenges = SUBJECT_CONTINUITY_CHALLENGES
+    .filter((challenge) => subjectContinuityChallenges.has(challenge));
+  const subjectContinuityChallengeDiversityVerified =
+    verifiedSubjectContinuityChallenges.length >= policy.minimumSubjectContinuityChallengeKinds;
+  if (!subjectContinuityChallengeDiversityVerified) {
+    reasons.push(
+      "Held-out benchmark covers fewer than "
+        + String(policy.minimumSubjectContinuityChallengeKinds)
+        + " distinct hard subject-continuity challenge kinds on unseen material.",
+    );
+  }
   const robust = reasons.length === 0
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
@@ -772,7 +874,9 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     && professionalBenchmarkCoverageVerified
     && objectAwareVerified
     && subjectRelativeDirectionVerified
-    && subjectRelativeDirectionDiversityVerified;
+    && subjectRelativeDirectionDiversityVerified
+    && subjectContinuityHardCaseVerified
+    && subjectContinuityChallengeDiversityVerified;
 
   return {
     schema: "editflow.practice-held-out-benchmark.v1",
@@ -802,6 +906,11 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     subjectRelativeDirectionBucketCount: verifiedSubjectRelativeDirectionBuckets.length,
     subjectRelativeDirectionBuckets: verifiedSubjectRelativeDirectionBuckets,
     subjectRelativeDirectionDiversityVerified,
+    subjectContinuityHardCaseCount,
+    subjectContinuityHardCaseVerified,
+    subjectContinuityChallengeKindCount: verifiedSubjectContinuityChallenges.length,
+    subjectContinuityChallenges: verifiedSubjectContinuityChallenges,
+    subjectContinuityChallengeDiversityVerified,
     robust,
     reasons: [...new Set(reasons)],
     cases: structuredClone(input.cases),
@@ -821,6 +930,8 @@ export const derivePracticeMaturityStageV1 = (
     && report.objectAwareVerified
     && report.subjectRelativeDirectionVerified === true
     && report.subjectRelativeDirectionDiversityVerified === true
+    && report.subjectContinuityHardCaseVerified === true
+    && report.subjectContinuityChallengeDiversityVerified === true
     && report.effectFamilyCoverageVerified === true
     && report.learnedSkillCoverageVerified === true
     && report.professionalBenchmarkCoverageVerified === true)) return "ROBUST";

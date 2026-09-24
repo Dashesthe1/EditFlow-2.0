@@ -643,6 +643,16 @@ export class EditTypeRegistryV1 {
         "ROBUST Practice maturity requires diverse held-out subject-relative direction verification.",
       );
     }
+    if (report.robust && report.subjectContinuityHardCaseVerified !== true) {
+      throw new TypeError(
+        "ROBUST Practice maturity requires repeated held-out hard subject-continuity verification.",
+      );
+    }
+    if (report.robust && report.subjectContinuityChallengeDiversityVerified !== true) {
+      throw new TypeError(
+        "ROBUST Practice maturity requires diverse held-out subject-continuity challenge verification.",
+      );
+    }
     if (report.robust && report.effectFamilyCoverageVerified !== true) {
       throw new TypeError(
         "ROBUST Practice maturity requires held-out coverage for every TRANSFER_VERIFIED effect family.",

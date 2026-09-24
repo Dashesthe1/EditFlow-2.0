@@ -449,6 +449,15 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
         : index === 2
           ? ["DOWN_LEFT"]
           : [],
+    subjectContinuityHardCaseVerified: index < 3,
+    subjectContinuityChallengeWindowCount: index < 3 ? 1 : 0,
+    subjectContinuityChallenges: index === 0
+      ? ["LOW_MOTION"]
+      : index === 1
+        ? ["OCCLUSION"]
+        : index === 2
+          ? ["LOW_MOTION", "OCCLUSION"]
+          : [],
     overallSimilarity: 0.97,
     definingEffectCoverage: 1,
     passed: true,
@@ -478,6 +487,11 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.subjectRelativeDirectionBucketCount, 3);
   assert.deepEqual(report.subjectRelativeDirectionBuckets, ["RIGHT", "DOWN_LEFT", "UP"]);
   assert.equal(report.subjectRelativeDirectionDiversityVerified, true);
+  assert.equal(report.subjectContinuityHardCaseCount, 3);
+  assert.equal(report.subjectContinuityHardCaseVerified, true);
+  assert.equal(report.subjectContinuityChallengeKindCount, 2);
+  assert.deepEqual(report.subjectContinuityChallenges, ["LOW_MOTION", "OCCLUSION"]);
+  assert.equal(report.subjectContinuityChallengeDiversityVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
 
@@ -513,6 +527,40 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(sameDirectionOnly.subjectRelativeDirectionDiversityVerified, false);
   assert.equal(sameDirectionOnly.robust, false);
   assert.ok(sameDirectionOnly.reasons.some((reason) => /direction sectors/i.test(reason)));
+
+  const easyOnly = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases: cases.map((item) => ({
+      ...item,
+      subjectContinuityHardCaseVerified: false,
+      subjectContinuityChallengeWindowCount: 0,
+      subjectContinuityChallenges: [],
+    })),
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(easyOnly.subjectContinuityHardCaseCount, 0);
+  assert.equal(easyOnly.subjectContinuityHardCaseVerified, false);
+  assert.equal(easyOnly.subjectContinuityChallengeDiversityVerified, false);
+  assert.equal(easyOnly.robust, false);
+  assert.ok(easyOnly.reasons.some((reason) => /hard subject-continuity cases/i.test(reason)));
+
+  const lowMotionOnly = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases: cases.map((item) => ({
+      ...item,
+      subjectContinuityChallenges: item.subjectContinuityHardCaseVerified ? ["LOW_MOTION"] : [],
+    })),
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(lowMotionOnly.subjectContinuityHardCaseCount, 3);
+  assert.equal(lowMotionOnly.subjectContinuityHardCaseVerified, true);
+  assert.equal(lowMotionOnly.subjectContinuityChallengeKindCount, 1);
+  assert.deepEqual(lowMotionOnly.subjectContinuityChallenges, ["LOW_MOTION"]);
+  assert.equal(lowMotionOnly.subjectContinuityChallengeDiversityVerified, false);
+  assert.equal(lowMotionOnly.robust, false);
+  assert.ok(lowMotionOnly.reasons.some((reason) => /challenge kinds/i.test(reason)));
 
   const practiceOnly = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
@@ -570,6 +618,15 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
         ? ["UP"]
         : index === 2
           ? ["DOWN_LEFT"]
+          : [],
+    subjectContinuityHardCaseVerified: index < 3,
+    subjectContinuityChallengeWindowCount: index < 3 ? 1 : 0,
+    subjectContinuityChallenges: index === 0
+      ? ["LOW_MOTION"]
+      : index === 1
+        ? ["OCCLUSION"]
+        : index === 2
+          ? ["LOW_MOTION", "OCCLUSION"]
           : [],
     overallSimilarity: 0.98,
     definingEffectCoverage: 1,
@@ -1031,6 +1088,20 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
         subjectRelativeDirectionVerified: true,
         subjectRelativeDirectionScore: 0.96,
         referenceSubjectRelativeDirection: { x: 0.6, y: -0.8 },
+        subjectIdentityVerified: true,
+        referenceSubjectIdentity: {
+          lowMotionFrameCount: 2,
+          lowMotionSurvived: true,
+          occlusionFrameCount: 1,
+          occlusionSurvived: true,
+        },
+        renderSubjectIdentity: {
+          lowMotionFrameCount: 2,
+          lowMotionSurvived: true,
+          occlusionFrameCount: 1,
+          occlusionSurvived: true,
+        },
+        passed: true,
       }],
       reasons: [],
       evidenceRefs: ["proof:object-aware"],
@@ -1062,6 +1133,12 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.equal(heldOutCase.subjectRelativeDirectionWindowCount, 1);
   assert.equal(heldOutCase.subjectRelativeDirectionVerified, true);
   assert.deepEqual(heldOutCase.subjectRelativeDirectionBuckets, ["UP_RIGHT"]);
+  assert.equal(heldOutCase.subjectContinuityHardCaseVerified, true);
+  assert.equal(heldOutCase.subjectContinuityChallengeWindowCount, 1);
+  assert.deepEqual(
+    heldOutCase.subjectContinuityChallenges,
+    ["LOW_MOTION", "OCCLUSION"],
+  );
 
   const nondirectionalCase = buildPracticeHeldOutBenchmarkCaseV1({
     sessionId: "practice:object-aware:nondirectional",
@@ -1078,6 +1155,8 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.equal(nondirectionalCase.objectAwareVerified, true);
   assert.equal(nondirectionalCase.subjectRelativeDirectionWindowCount, 0);
   assert.equal(nondirectionalCase.subjectRelativeDirectionVerified, false);
+  assert.equal(nondirectionalCase.subjectContinuityHardCaseVerified, false);
+  assert.equal(nondirectionalCase.subjectContinuityChallengeWindowCount, 0);
 
   const missingBindingCase = buildPracticeHeldOutBenchmarkCaseV1({
     sessionId: "practice:object-aware:no-binding",

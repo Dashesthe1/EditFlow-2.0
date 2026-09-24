@@ -728,6 +728,8 @@ export type PracticeSubjectRelativeDirectionBucketV1 =
   | "UP"
   | "UP_RIGHT";
 
+export type PracticeSubjectContinuityChallengeV1 = "LOW_MOTION" | "OCCLUSION";
+
 export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly caseId: string;
   readonly sessionId: string;
@@ -746,6 +748,9 @@ export interface PracticeHeldOutBenchmarkCaseV1 {
   readonly subjectRelativeDirectionWindowCount: number;
   readonly subjectRelativeDirectionVerified: boolean;
   readonly subjectRelativeDirectionBuckets?: readonly PracticeSubjectRelativeDirectionBucketV1[];
+  readonly subjectContinuityHardCaseVerified?: boolean;
+  readonly subjectContinuityChallengeWindowCount?: number;
+  readonly subjectContinuityChallenges?: readonly PracticeSubjectContinuityChallengeV1[];
   readonly overallSimilarity: number;
   readonly definingEffectCoverage: number;
   readonly passed: boolean;
@@ -761,6 +766,8 @@ export interface PracticeHeldOutBenchmarkPolicyV1 {
   readonly minimumObjectAwareCases: number;
   readonly minimumSubjectRelativeDirectionCases: number;
   readonly minimumSubjectRelativeDirectionBuckets: number;
+  readonly minimumSubjectContinuityHardCases: number;
+  readonly minimumSubjectContinuityChallengeKinds: number;
 }
 
 export interface PracticeHeldOutBenchmarkReportV1 {
@@ -797,6 +804,11 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly subjectRelativeDirectionBucketCount: number;
   readonly subjectRelativeDirectionBuckets: readonly PracticeSubjectRelativeDirectionBucketV1[];
   readonly subjectRelativeDirectionDiversityVerified: boolean;
+  readonly subjectContinuityHardCaseCount: number;
+  readonly subjectContinuityHardCaseVerified: boolean;
+  readonly subjectContinuityChallengeKindCount: number;
+  readonly subjectContinuityChallenges: readonly PracticeSubjectContinuityChallengeV1[];
+  readonly subjectContinuityChallengeDiversityVerified: boolean;
   readonly robust: boolean;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
