@@ -187,6 +187,24 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
     "AMBIGUOUS_FALSE_MATCH",
     "HIGH_CONFIDENCE_FALSE_MATCH",
   ]);
+  const identityPlan = report.tuningPlan.find((item) =>
+    item.subsystem === "SOURCE_IDENTITY_RETRIEVAL");
+  assert.deepEqual(identityPlan?.diagnosticKinds, ["WRONG_SOURCE"]);
+  assert.deepEqual(identityPlan?.caseIds, [first.truth.caseId]);
+  assert.equal(identityPlan?.highConfidenceFalseMatchCount, 1);
+  assert.equal(identityPlan?.ambiguousFalseMatchCount, 1);
+  assert.match(identityPlan?.recommendedAction ?? "", /Re-rank source candidates/);
+  assert.ok((identityPlan?.evidenceRefs.length ?? 0) > 0);
+
+  const confidencePlan = report.tuningPlan.find((item) =>
+    item.subsystem === "CONFIDENCE_CALIBRATION");
+  assert.deepEqual(confidencePlan?.diagnosticKinds, [
+    "HIGH_CONFIDENCE_FALSE_MATCH",
+    "AMBIGUOUS_FALSE_MATCH",
+  ]);
+  assert.equal(confidencePlan?.highConfidenceFalseMatchCount, 1);
+  assert.equal(confidencePlan?.ambiguousFalseMatchCount, 1);
+  assert.match(confidencePlan?.recommendedAction ?? "", /Down-calibrate scene confidence/);
 });
 
 test("timing and direction failures route to distinct tuning subsystems", () => {

@@ -942,6 +942,19 @@ export interface PracticeRetainedTruthTuningFocusV1 {
   readonly ambiguousFalseMatchCount: number;
 }
 
+export interface PracticeRetainedTruthTuningPlanItemV1 {
+  readonly subsystem: PracticeRetainedTruthTuningSubsystemV1;
+  readonly diagnosticKinds: readonly PracticeSceneTruthDiagnosticKindV1[];
+  readonly count: number;
+  readonly caseCount: number;
+  readonly difficultyKinds: readonly PracticeRetainedTruthDifficultyV1[];
+  readonly highConfidenceFalseMatchCount: number;
+  readonly ambiguousFalseMatchCount: number;
+  readonly caseIds: readonly string[];
+  readonly evidenceRefs: readonly string[];
+  readonly recommendedAction: string;
+}
+
 export interface PracticeRetainedTruthSuiteReportV1 {
   readonly schema: "editflow.practice-retained-truth-suite-report.v1";
   readonly editTypeId: string;
@@ -962,6 +975,7 @@ export interface PracticeRetainedTruthSuiteReportV1 {
     count: number;
   }>[];
   readonly tuningFocus?: readonly PracticeRetainedTruthTuningFocusV1[];
+  readonly tuningPlan?: readonly PracticeRetainedTruthTuningPlanItemV1[];
   readonly certified: boolean;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeRetainedTruthCaseReportV1[];

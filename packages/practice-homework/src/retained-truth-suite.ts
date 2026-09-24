@@ -7,6 +7,7 @@ import type {
   PracticeRetainedTruthSuitePolicyV1,
   PracticeRetainedTruthSuiteReportV1,
   PracticeRetainedTruthTuningFocusV1,
+  PracticeRetainedTruthTuningPlanItemV1,
   PracticeRetainedTruthTuningSubsystemV1,
   PracticeSceneMatchV1,
   PracticeSceneTruthDiagnosticKindV1,
@@ -58,6 +59,24 @@ PracticeRetainedTruthTuningSubsystemV1
   ["DIRECTION_MISMATCH", "TEMPORAL_DIRECTION"],
   ["HIGH_CONFIDENCE_FALSE_MATCH", "CONFIDENCE_CALIBRATION"],
   ["AMBIGUOUS_FALSE_MATCH", "CONFIDENCE_CALIBRATION"],
+]);
+
+const TUNING_ACTION_BY_SUBSYSTEM = new Map<
+PracticeRetainedTruthTuningSubsystemV1,
+string
+>([
+  ["MATCH_COVERAGE",
+    "Expand rescue retrieval only for truth shots with no retained match while preserving the exact-scene geometry gate."],
+  ["OUTPUT_DEDUPLICATION",
+    "Enforce one retained output per Finish shot and suppress colliding hypotheses before certification."],
+  ["SOURCE_IDENTITY_RETRIEVAL",
+    "Re-rank source candidates against retained identity collisions before relaxing any similarity threshold."],
+  ["SOURCE_TIMING_RETRIEVAL",
+    "Retune source-time trajectory and boundary alignment using the retained truth ranges that missed tolerance."],
+  ["TEMPORAL_DIRECTION",
+    "Require retained trajectory evidence to distinguish forward, reverse, and forward-then-rewind before selection."],
+  ["CONFIDENCE_CALIBRATION",
+    "Down-calibrate scene confidence for retained false matches, especially high-confidence errors and small runner-up margins."],
 ]);
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -489,6 +508,75 @@ const buildTuningFocus = (
     .sort((left, right) => right.count - left.count || left.kind.localeCompare(right.kind));
 };
 
+const buildTuningPlan = (
+  cases: readonly PracticeRetainedTruthSuiteCaseInputV1[],
+  reports: readonly PracticeRetainedTruthCaseReportV1[],
+): readonly PracticeRetainedTruthTuningPlanItemV1[] => {
+  const difficultyByCase = new Map(cases.map((item) => [
+    item.truth.caseId,
+    item.truth.difficultyTags,
+  ] as const));
+  const diagnostics = reports.flatMap((report) => report.diagnostics);
+  const highConfidenceKeys = new Set(
+    diagnostics
+      .filter((item) => item.kind === "HIGH_CONFIDENCE_FALSE_MATCH")
+      .map(diagnosticShotKey),
+  );
+  const ambiguousKeys = new Set(
+    diagnostics
+      .filter((item) => item.kind === "AMBIGUOUS_FALSE_MATCH")
+      .map(diagnosticShotKey),
+  );
+  const bySubsystem = new Map<
+  PracticeRetainedTruthTuningSubsystemV1,
+  PracticeSceneTruthDiagnosticV1[]
+  >();
+  for (const item of diagnostics) {
+    const subsystem = TUNING_SUBSYSTEM_BY_DIAGNOSTIC.get(item.kind);
+    if (subsystem === undefined) {
+      throw new TypeError("Missing retained-truth tuning subsystem for " + item.kind + ".");
+    }
+    bySubsystem.set(subsystem, [...(bySubsystem.get(subsystem) ?? []), item]);
+  }
+
+  return [...bySubsystem.entries()]
+    .map(([subsystem, clustered]): PracticeRetainedTruthTuningPlanItemV1 => {
+      const caseIds = [...new Set(clustered.map((item) => item.caseId))].sort();
+      const action = TUNING_ACTION_BY_SUBSYSTEM.get(subsystem);
+      if (action === undefined) {
+        throw new TypeError("Missing retained-truth tuning action for " + subsystem + ".");
+      }
+      return {
+        subsystem,
+        diagnosticKinds: DIAGNOSTIC_KINDS.filter((kind) =>
+          clustered.some((item) => item.kind === kind)),
+        count: clustered.length,
+        caseCount: caseIds.length,
+        difficultyKinds: DIFFICULTY_KINDS.filter((difficulty) =>
+          caseIds.some((caseId) =>
+            difficultyByCase.get(caseId)?.includes(difficulty) ?? false)),
+        highConfidenceFalseMatchCount: new Set(
+          clustered
+            .filter((item) => highConfidenceKeys.has(diagnosticShotKey(item)))
+            .map(diagnosticShotKey),
+        ).size,
+        ambiguousFalseMatchCount: new Set(
+          clustered
+            .filter((item) => ambiguousKeys.has(diagnosticShotKey(item)))
+            .map(diagnosticShotKey),
+        ).size,
+        caseIds,
+        evidenceRefs: uniqueNonEmpty(clustered.flatMap((item) => item.evidenceRefs)),
+        recommendedAction: action,
+      };
+    })
+    .sort((left, right) =>
+      right.highConfidenceFalseMatchCount - left.highConfidenceFalseMatchCount
+      || right.caseCount - left.caseCount
+      || right.count - left.count
+      || left.subsystem.localeCompare(right.subsystem));
+};
+
 export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
   readonly editTypeId: string;
   readonly mode: PracticeRetainedTruthSuiteModeV1;
@@ -562,6 +650,7 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
     }))
     .filter((item) => item.count > 0);
   const tuningFocus = buildTuningFocus(input.cases, reports);
+  const tuningPlan = buildTuningPlan(input.cases, reports);
   const sceneErrorCount = reports.reduce((sum, report) => sum + report.sceneErrorCount, 0);
   const certified = input.mode === "CERTIFICATION"
     && reasons.length === 0
@@ -593,6 +682,7 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
     sceneErrorCount,
     diagnosticCounts,
     tuningFocus,
+    tuningPlan,
     certified,
     reasons: uniqueNonEmpty(reasons),
     cases: reports,
