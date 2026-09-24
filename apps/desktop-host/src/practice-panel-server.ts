@@ -18,6 +18,9 @@ import {
   attestPracticeSkillUseV1,
   compileGptTutorialResearchSourceV1,
   buildPracticeMasteryRecordV1,
+  LocalPracticeMediaMatcherV1,
+  practicePerceptualSetOverlapsV1,
+  practicePerceptualSignatureMatchesV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -153,7 +156,10 @@ export interface PracticeHeldOutMaterialFingerprintV1 {
   readonly referenceFingerprint: string;
   readonly sourceFingerprint: string;
   readonly sourceMediaSha256: readonly string[];
+  readonly referencePerceptualSignature?: string;
+  readonly sourcePerceptualSignatures?: readonly string[];
   readonly duplicateStartMedia: boolean;
+  readonly duplicateStartPerceptualMedia?: boolean;
 }
 
 const sha256FileStream = async (filePath: string): Promise<string> =>
@@ -177,6 +183,9 @@ const sourceSetFingerprintFromSha256V1 = (
 export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   readonly finishPath: string;
   readonly videoPaths: readonly string[];
+  readonly repositoryRoot?: string;
+  readonly artifactDir?: string;
+  readonly ffmpegPath?: string;
 }): Promise<PracticeHeldOutMaterialFingerprintV1> => {
   const referenceFingerprint = await sha256FileStream(input.finishPath);
   const rawSourceHashes: string[] = [];
@@ -187,11 +196,69 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   if (sourceMediaSha256.length === 0) {
     throw new TypeError("Held-out certification requires at least one Start video.");
   }
-  return {
+
+  const base: PracticeHeldOutMaterialFingerprintV1 = {
     referenceFingerprint,
     sourceFingerprint: sourceSetFingerprintFromSha256V1(sourceMediaSha256),
     sourceMediaSha256,
     duplicateStartMedia: sourceMediaSha256.length !== rawSourceHashes.length,
+  };
+  if (input.repositoryRoot === undefined && input.artifactDir === undefined) return base;
+  if (input.repositoryRoot === undefined || input.artifactDir === undefined) {
+    throw new TypeError(
+      "Practice perceptual preflight requires repositoryRoot and artifactDir together.",
+    );
+  }
+
+  const matcher = new LocalPracticeMediaMatcherV1({
+    artifactDir: path.join(input.artifactDir, "media"),
+    analysisCacheDir: path.join(
+      input.repositoryRoot,
+      "proofs",
+      "artifacts",
+      "practice-media-cache",
+    ),
+    scriptPath: path.join(
+      input.repositoryRoot,
+      "scripts",
+      "practice",
+      "practice-media-match.py",
+    ),
+    ...(input.ffmpegPath === undefined ? {} : { ffmpegPath: input.ffmpegPath }),
+  });
+  const finish: PracticeMediaInputV1 = {
+    mediaId: mediaId("finish", input.finishPath, 0),
+    role: "FINISH_REFERENCE",
+    mediaKind: "VIDEO",
+    uri: input.finishPath,
+  };
+  const start = input.videoPaths.map((uri, index): PracticeMediaInputV1 => ({
+    mediaId: mediaId("video", uri, index),
+    role: "START_SOURCE",
+    mediaKind: "VIDEO",
+    uri,
+  }));
+  const reference = await matcher.analyzeFinish(finish);
+  const sourceIndex = await matcher.indexStart(start);
+  const referencePerceptualSignature = reference.perceptualSignature;
+  const sourcePerceptualSignatures = sourceIndex.videoPerceptualSignatures ?? [];
+  if (referencePerceptualSignature === undefined
+    || sourcePerceptualSignatures.length === 0) {
+    throw new TypeError(
+      "Practice perceptual preflight could not derive Finish/Start signatures.",
+    );
+  }
+  const duplicateStartPerceptualMedia =
+    sourcePerceptualSignatures.length !== input.videoPaths.length
+    || sourcePerceptualSignatures.some((value, index) =>
+      sourcePerceptualSignatures.slice(index + 1).some((other) =>
+        practicePerceptualSignatureMatchesV1(value, other)));
+
+  return {
+    ...base,
+    referencePerceptualSignature,
+    sourcePerceptualSignatures,
+    duplicateStartPerceptualMedia,
   };
 };
 
@@ -204,6 +271,9 @@ export const validatePracticeTransferLearningMaterialV1 = (input: {
   if (input.material.duplicateStartMedia) {
     reasons.push("Transfer learning Start inputs contain duplicate media bytes.");
   }
+  if (input.material.duplicateStartPerceptualMedia) {
+    reasons.push("Transfer learning Start inputs contain perceptually duplicate video content.");
+  }
   const comparableRecords = input.masteryRecords.filter((record) =>
     (record.sourceMediaSha256 ?? []).length > 0);
   if (input.masteryRecords.length > 0 && comparableRecords.length === 0) {
@@ -214,11 +284,19 @@ export const validatePracticeTransferLearningMaterialV1 = (input: {
   const sourceOverlap = (values: readonly string[] | undefined): boolean =>
     (values ?? []).some((value) => currentSources.has(value));
   for (const record of input.masteryRecords) {
-    if (record.referenceFingerprint === input.material.referenceFingerprint) {
+    if (record.referenceFingerprint === input.material.referenceFingerprint
+      || practicePerceptualSignatureMatchesV1(
+        record.referencePerceptualSignature,
+        input.material.referencePerceptualSignature,
+      )) {
       reasons.push("Transfer learning must use a different Finish reference.");
     }
     if (record.sourceFingerprint === input.material.sourceFingerprint
-      || sourceOverlap(record.sourceMediaSha256)) {
+      || sourceOverlap(record.sourceMediaSha256)
+      || practicePerceptualSetOverlapsV1(
+        record.sourcePerceptualSignatures,
+        input.material.sourcePerceptualSignatures,
+      )) {
       reasons.push("Transfer learning must use different Start video content.");
     }
   }
@@ -235,24 +313,43 @@ export const validatePracticeHeldOutMaterialNoveltyV1 = (input: {
   if (input.material.duplicateStartMedia) {
     reasons.push("Held-out Start inputs contain duplicate media bytes.");
   }
+  if (input.material.duplicateStartPerceptualMedia) {
+    reasons.push("Held-out Start inputs contain perceptually duplicate video content.");
+  }
   const sourceOverlap = (values: readonly string[] | undefined): boolean =>
     (values ?? []).some((value) => currentSources.has(value));
 
   for (const record of input.masteryRecords) {
-    if (record.referenceFingerprint === input.material.referenceFingerprint) {
+    if (record.referenceFingerprint === input.material.referenceFingerprint
+      || practicePerceptualSignatureMatchesV1(
+        record.referencePerceptualSignature,
+        input.material.referencePerceptualSignature,
+      )) {
       reasons.push("Finish reference reuses retained Practice training media.");
     }
     if (record.sourceFingerprint === input.material.sourceFingerprint
-      || sourceOverlap(record.sourceMediaSha256)) {
+      || sourceOverlap(record.sourceMediaSha256)
+      || practicePerceptualSetOverlapsV1(
+        record.sourcePerceptualSignatures,
+        input.material.sourcePerceptualSignatures,
+      )) {
       reasons.push("Start source reuses retained Practice training media.");
     }
   }
   for (const heldOutCase of input.heldOutCases) {
-    if (heldOutCase.referenceFingerprint === input.material.referenceFingerprint) {
+    if (heldOutCase.referenceFingerprint === input.material.referenceFingerprint
+      || practicePerceptualSignatureMatchesV1(
+        heldOutCase.referencePerceptualSignature,
+        input.material.referencePerceptualSignature,
+      )) {
       reasons.push("Finish reference reuses prior held-out certification media.");
     }
     if (heldOutCase.sourceFingerprint === input.material.sourceFingerprint
-      || sourceOverlap(heldOutCase.sourceMediaSha256)) {
+      || sourceOverlap(heldOutCase.sourceMediaSha256)
+      || practicePerceptualSetOverlapsV1(
+        heldOutCase.sourcePerceptualSignatures,
+        input.material.sourcePerceptualSignatures,
+      )) {
       reasons.push("Start source reuses prior held-out certification media.");
     }
   }
@@ -952,6 +1049,11 @@ export class PracticePanelServerV1 {
       const material = await fingerprintPracticeHeldOutMaterialV1({
         finishPath: request.finishPath,
         videoPaths: request.videoPaths,
+        repositoryRoot: this.config.repositoryRoot,
+        artifactDir,
+        ...(this.config.ffmpegPath === undefined
+          ? {}
+          : { ffmpegPath: this.config.ffmpegPath }),
       });
       const noveltyReasons = validatePracticeTransferLearningMaterialV1({
         material,
@@ -972,6 +1074,11 @@ export class PracticePanelServerV1 {
       const material = await fingerprintPracticeHeldOutMaterialV1({
         finishPath: request.finishPath,
         videoPaths: request.videoPaths,
+        repositoryRoot: this.config.repositoryRoot,
+        artifactDir,
+        ...(this.config.ffmpegPath === undefined
+          ? {}
+          : { ffmpegPath: this.config.ffmpegPath }),
       });
       const noveltyReasons = validatePracticeHeldOutMaterialNoveltyV1({
         material,

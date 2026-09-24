@@ -17,6 +17,11 @@ import {
   evaluatePracticeLivePersistenceV1,
 } from "./practice-live-proof-assertions.js";
 import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
+import {
+  fingerprintPracticeHeldOutMaterialV1,
+  validatePracticeHeldOutMaterialNoveltyV1,
+  validatePracticeTransferLearningMaterialV1,
+} from "./practice-panel-server.js";
 import { resolvePracticeStatePathsV1 } from "./practice-state-paths.js";
 import { createPracticeM6CurrentAeTrainingRuntimeV1 } from "./practice-training-runtime.js";
 
@@ -194,6 +199,67 @@ const main = async (): Promise<void> => {
     throw new Error("Similarity/confidence arguments must be <= 1.");
   }
 
+  const start: PracticeMediaInputV1[] = [
+    ...videoPaths.map((filePath, index) => ({
+      mediaId: mediaId("video", filePath, index),
+      role: "START_SOURCE" as const,
+      mediaKind: "VIDEO" as const,
+      uri: filePath,
+    })),
+    ...audioPaths.map((filePath, index) => ({
+      mediaId: mediaId("audio", filePath, index),
+      role: "START_SOURCE" as const,
+      mediaKind: "AUDIO" as const,
+      uri: filePath,
+    })),
+  ];
+  const finish: PracticeMediaInputV1 = {
+    mediaId: mediaId("finish", finishPath, 0),
+    role: "FINISH_REFERENCE",
+    mediaKind: "VIDEO",
+    uri: finishPath,
+  };
+  const mediaRoots = [...new Set(
+    [finishPath, ...videoPaths, ...audioPaths].map((filePath) => path.dirname(filePath)),
+  )];
+  const learningMemoryFilePath = statePaths.learningMemoryFilePath;
+  const editTypeRegistryFilePath = statePaths.editTypeRegistryFilePath;
+  const preflightRegistry = await new EditTypeRegistryFileV1(editTypeRegistryFilePath).load();
+  const preflightKnowledge = preflightRegistry.knowledge(editTypeId);
+  if (heldOutCertification
+    && preflightRegistry.transferableKnowledge(editTypeId) === null) {
+    throw new Error(
+      "Held-out certification requires TRANSFER_VERIFIED Practice knowledge.",
+    );
+  }
+  const preflightMasteryRecords = preflightKnowledge?.gptLearning.masteryRecords ?? [];
+  if (heldOutCertification || preflightMasteryRecords.length > 0) {
+    const material = await fingerprintPracticeHeldOutMaterialV1({
+      finishPath,
+      videoPaths,
+      repositoryRoot,
+      artifactDir,
+    });
+    const noveltyReasons = heldOutCertification
+      ? validatePracticeHeldOutMaterialNoveltyV1({
+        material,
+        masteryRecords: preflightMasteryRecords,
+        heldOutCases: preflightKnowledge?.gptLearning.heldOutCases ?? [],
+      })
+      : validatePracticeTransferLearningMaterialV1({
+        material,
+        masteryRecords: preflightMasteryRecords,
+      });
+    if (noveltyReasons.length > 0) {
+      throw new Error(
+        (heldOutCertification
+          ? "Held-out certification requires genuinely unseen Finish/Start media. "
+          : "Practice transfer learning requires materially different Finish/Start media. ")
+        + noveltyReasons.join(" "),
+      );
+    }
+  }
+
   const config = parseConfig(JSON.parse(stripUtf8Bom(await readFile(configPath, "utf8"))) as unknown);
   let broker: LoopbackCepBroker | null = null;
   const startedAt = new Date().toISOString();
@@ -231,31 +297,6 @@ const main = async (): Promise<void> => {
         + " does not match installed config " + config.extensionVersion + ".",
       );
     }
-
-    const start: PracticeMediaInputV1[] = [
-      ...videoPaths.map((filePath, index) => ({
-        mediaId: mediaId("video", filePath, index),
-        role: "START_SOURCE" as const,
-        mediaKind: "VIDEO" as const,
-        uri: filePath,
-      })),      ...audioPaths.map((filePath, index) => ({
-        mediaId: mediaId("audio", filePath, index),
-        role: "START_SOURCE" as const,
-        mediaKind: "AUDIO" as const,
-        uri: filePath,
-      })),
-    ];
-    const finish: PracticeMediaInputV1 = {
-      mediaId: mediaId("finish", finishPath, 0),
-      role: "FINISH_REFERENCE",
-      mediaKind: "VIDEO",
-      uri: finishPath,
-    };
-    const mediaRoots = [...new Set(
-      [finishPath, ...videoPaths, ...audioPaths].map((filePath) => path.dirname(filePath)),
-    )];
-    const learningMemoryFilePath = statePaths.learningMemoryFilePath;
-    const editTypeRegistryFilePath = statePaths.editTypeRegistryFilePath;
 
     const runtime = await createPracticeM6CurrentAeTrainingRuntimeV1({
       transport: broker,

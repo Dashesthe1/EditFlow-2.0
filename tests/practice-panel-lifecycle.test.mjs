@@ -13,6 +13,11 @@ import {
   validatePracticeTransferLearningMaterialV1,
 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 
+const signature = (hex) => Array.from({ length: 16 }, () => hex).join(",");
+const perceptualOriginal = signature("0000000000000000");
+const perceptualReencode = signature("0000000000000001");
+const perceptualDistinct = signature("ffffffffffffffff");
+
 test("Practice AUTO lifecycle learns before transfer verification", () => {
   assert.equal(resolvePracticeRunRoleV1(null, false), "LEARNING");
 });
@@ -213,4 +218,47 @@ test("held-out preflight accepts genuinely unseen material", () => {
     heldOutCases: [],
   });
   assert.deepEqual(reasons, []);
+});
+
+test("AUTO transfer preflight rejects re-encoded training media before AE work", () => {
+  const reasons = validatePracticeTransferLearningMaterialV1({
+    material: {
+      referenceFingerprint: "finish:new-bytes", sourceFingerprint: "source:new-bytes",
+      sourceMediaSha256: ["source:new-bytes"], duplicateStartMedia: false,
+      referencePerceptualSignature: perceptualReencode,
+      sourcePerceptualSignatures: [perceptualDistinct],
+    },
+    masteryRecords: [{
+      sessionId: "practice:perceptual-transfer", scope: "REFERENCE_VERIFIED",
+      proofRef: "proof:old", referenceId: "finish:old", sourceIndexId: "source:old",
+      referenceFingerprint: "finish:old-bytes", sourceFingerprint: "source:old-bytes",
+      sourceMediaSha256: ["source:old-bytes"], referencePerceptualSignature: perceptualOriginal,
+      sourcePerceptualSignatures: [perceptualOriginal], finalRenderRef: "render:old",
+      overallSimilarity: 0.99, definingEffectCoverage: 1, effectFamilyIds: ["MOTION_WARP"],
+      verifiedAt: "2026-09-24T00:00:00.000Z",
+    }],
+  });
+  assert.deepEqual(reasons, ["Transfer learning must use a different Finish reference."]);
+});
+
+test("held-out preflight rejects perceptually reused Start media before AE work", () => {
+  const reasons = validatePracticeHeldOutMaterialNoveltyV1({
+    material: {
+      referenceFingerprint: "finish:new-bytes", sourceFingerprint: "source:new-bytes",
+      sourceMediaSha256: ["source:new-bytes"], duplicateStartMedia: false,
+      referencePerceptualSignature: perceptualDistinct,
+      sourcePerceptualSignatures: [perceptualReencode],
+    },
+    masteryRecords: [{
+      sessionId: "practice:perceptual-held-out", scope: "TRANSFER_VERIFIED",
+      proofRef: "proof:old", referenceId: "finish:old", sourceIndexId: "source:old",
+      referenceFingerprint: "finish:old-bytes", sourceFingerprint: "source:old-bytes",
+      sourceMediaSha256: ["source:old-bytes"], referencePerceptualSignature: perceptualOriginal,
+      sourcePerceptualSignatures: [perceptualOriginal], finalRenderRef: "render:old",
+      overallSimilarity: 0.99, definingEffectCoverage: 1, effectFamilyIds: ["MOTION_WARP"],
+      verifiedAt: "2026-09-24T00:00:00.000Z",
+    }],
+    heldOutCases: [],
+  });
+  assert.deepEqual(reasons, ["Start source reuses retained Practice training media."]);
 });

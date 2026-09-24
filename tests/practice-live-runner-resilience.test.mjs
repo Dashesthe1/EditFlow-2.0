@@ -93,3 +93,14 @@ test("Practice live learning allocation persists machine mastery before held-out
   assert.match(runner, /Learning mastery proof/);
   assert.match(runner, /Learning mastery restored/);
 });
+
+test("Practice live novelty preflight runs before CEP/AE connection", async () => {
+  const source = await readFile(cliPath, "utf8");
+  const noveltyIndex = source.indexOf("fingerprintPracticeHeldOutMaterialV1({");
+  const brokerIndex = source.indexOf("new LoopbackCepBroker({");
+  assert.ok(noveltyIndex >= 0, "novelty preflight must be present");
+  assert.ok(brokerIndex >= 0, "CEP broker creation must be present");
+  assert.ok(noveltyIndex < brokerIndex, "novelty preflight must happen before AE connection");
+  assert.match(source, /validatePracticeTransferLearningMaterialV1/);
+  assert.match(source, /validatePracticeHeldOutMaterialNoveltyV1/);
+});
