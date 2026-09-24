@@ -9,6 +9,7 @@
   var finishPath = null;
   var startFiles = [];
   var activeRunId = null;
+  var completedRunId = null;
   var statusTimer = null;
   var pollTimer = null;
 
@@ -25,6 +26,10 @@
   var runStateEl = document.getElementById("run-state");
   var messageEl = document.getElementById("activity-message");
   var metricsEl = document.getElementById("result-metrics");
+  var reviewToolsEl = document.getElementById("review-tools");
+  var openBestAttemptEl = document.getElementById("open-best-attempt");
+  var humanReviewFormEl = document.getElementById("human-review-form");
+  var reviewStatusEl = document.getElementById("review-status");
 
   function productUrl(path) {
     return "http://127.0.0.1:" + productPort + path;
@@ -241,6 +246,38 @@
       });
   }
 
+  function hideReviewTools() {
+    completedRunId = null;
+    reviewToolsEl.hidden = true;
+    reviewStatusEl.textContent = "";
+  }
+
+  function reviewField(name) {
+    return humanReviewFormEl.elements.namedItem(name);
+  }
+
+  function showReviewTools(run) {
+    var renderRef = run.finalRenderRef
+      || (run.result && run.result.bestAttempt ? run.result.bestAttempt.renderRef : null);
+    if (!renderRef || run.state !== "COMPLETED") {
+      hideReviewTools();
+      return;
+    }
+    completedRunId = run.sessionId;
+    reviewToolsEl.hidden = false;
+    reviewStatusEl.textContent = "";
+    if (run.humanReview) {
+      ["sceneFidelity", "timingPacing", "effectsTransitions", "visualFinish", "overall"]
+        .forEach(function (name) {
+          var field = reviewField(name);
+          if (field) field.value = String(run.humanReview[name]);
+        });
+      var notes = reviewField("notes");
+      if (notes) notes.value = run.humanReview.notes || "";
+      reviewStatusEl.textContent = "Saved human review loaded.";
+    }
+  }
+
   function showMetrics(result) {
     var best = result.bestAttempt;
     var similarity = best ? Math.round(best.report.overallSimilarity * 1000) / 10 + "%" : "—";
@@ -258,12 +295,14 @@
     updateAction();
     if (run.state === "FAILED") {
       metricsEl.hidden = true;
+      hideReviewTools();
       setRunState("FAILED", run.error || run.finalSummary || "EditFlow run failed.");
       refreshEditTypes();
       return;
     }
     if (run.state === "CANCELLED") {
       metricsEl.hidden = true;
+      hideReviewTools();
       setRunState("CANCELLED", run.finalSummary || "Run cancelled.");
       refreshEditTypes();
       return;
@@ -273,6 +312,7 @@
     } else {
       metricsEl.hidden = true;
     }
+    showReviewTools(run);
     var label = run.mode === "PRACTICE" ? "Practice" : "Pro Creation";
     if (run.mode === "PRACTICE") {
       if (run.masteryScope) {
@@ -345,6 +385,7 @@
     var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
       .map(function (item) { return item.path; });
     metricsEl.hidden = true;
+    hideReviewTools();
     var effectiveRole = effectivePracticeRole();
     setRunState(
       "WAITING_FOR_GPT",
@@ -384,6 +425,7 @@
     var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
       .map(function (item) { return item.path; });
     metricsEl.hidden = true;
+    hideReviewTools();
     actionEl.disabled = true;
     setRunState(
       "WAITING_FOR_GPT",
@@ -419,6 +461,7 @@
       actionEl.textContent = mode === "PRACTICE" ? actionEl.textContent : "Create pro edit";
       updatePracticeRoleUi();
       metricsEl.hidden = true;
+      hideReviewTools();
       setRunState("IDLE", mode === "PRACTICE"
         ? "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
         : "Choose raw source media. GPT will create from the selected Edit Type's mastered Practice knowledge.");
@@ -493,6 +536,45 @@
   actionEl.addEventListener("click", function () {
     if (mode === "PRACTICE") startPractice();
     else startProCreation();
+  });
+
+  openBestAttemptEl.addEventListener("click", function () {
+    if (!completedRunId) return;
+    openBestAttemptEl.disabled = true;
+    reviewStatusEl.textContent = "Opening best-attempt render…";
+    productRequest(
+      "/v1/product/runs/" + encodeURIComponent(completedRunId) + "/open-best-attempt",
+      { method: "POST", body: "{}" }
+    ).then(function () {
+      reviewStatusEl.textContent = "Best-attempt render opened in the system player.";
+    }).catch(function (error) {
+      reviewStatusEl.textContent = error.message;
+    }).then(function () {
+      openBestAttemptEl.disabled = false;
+    });
+  });
+
+  humanReviewFormEl.addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (!completedRunId) return;
+    var body = {};
+    ["sceneFidelity", "timingPacing", "effectsTransitions", "visualFinish", "overall"]
+      .forEach(function (name) {
+        var field = reviewField(name);
+        body[name] = field ? Number(field.value) : 0;
+      });
+    var notes = reviewField("notes");
+    var noteText = notes ? notes.value.trim() : "";
+    if (noteText) body.notes = noteText;
+    reviewStatusEl.textContent = "Saving diagnostic review…";
+    productRequest(
+      "/v1/product/runs/" + encodeURIComponent(completedRunId) + "/human-review",
+      { method: "POST", body: JSON.stringify(body) }
+    ).then(function () {
+      reviewStatusEl.textContent = "Review saved. It does not change machine mastery.";
+    }).catch(function (error) {
+      reviewStatusEl.textContent = error.message;
+    });
   });
 
   cancelEl.addEventListener("click", function () {

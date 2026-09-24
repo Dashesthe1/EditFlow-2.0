@@ -79,6 +79,28 @@
       <div id="result-metrics" class="metrics" hidden></div>
     </section>
 
+    <section id="review-tools" class="review-tools" hidden>
+      <div class="activity-heading">
+        <h2>Review best attempt</h2>
+        <button id="open-best-attempt" class="text-button" type="button">Play render</button>
+      </div>
+      <p class="hint">Human review is diagnostic feedback only. It cannot override the machine mastery gate.</p>
+      <form id="human-review-form">
+        <div class="review-grid">
+          <label>Scene fidelity<select name="sceneFidelity" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label>Timing / pacing<select name="timingPacing" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label>Effects / transitions<select name="effectsTransitions" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label>Visual finish<select name="visualFinish" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+          <label>Overall<select name="overall" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+        </div>
+        <label class="review-notes">Notes<textarea name="notes" rows="3" placeholder="What still looks wrong, weak, mistimed, or unlike the reference?"></textarea></label>
+        <div class="run-actions">
+          <button class="primary-action" type="submit">Save review</button>
+          <span id="review-status" class="hint" aria-live="polite"></span>
+        </div>
+      </form>
+    </section>
+
     <details class="bridge-details">
       <summary>Connection details</summary>
       <dl>

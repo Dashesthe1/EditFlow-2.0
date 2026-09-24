@@ -206,6 +206,36 @@ select {
 .metric strong { display: block; font-size: 15px; }
 .metric span { color: var(--muted); font-size: 9px; text-transform: uppercase; }
 
+.review-tools {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 16px;
+  background: rgba(25, 28, 35, .94);
+}
+.review-tools[hidden] { display: none; }
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.review-grid label, .review-notes { color: var(--muted); font-size: 11px; }
+.review-grid select { margin-top: 4px; }
+.review-notes { display: block; margin-top: 9px; }
+.review-notes textarea {
+  width: 100%;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 9px;
+  resize: vertical;
+  background: #12151b;
+  color: var(--text);
+  font: inherit;
+}
+#review-status { align-self: center; margin: 0; }
+
 .bridge-details { margin-top: 12px; color: var(--muted); font-size: 11px; }
 .bridge-details summary { cursor: pointer; }
 dl { display: grid; grid-template-columns: 65px 1fr; gap: 4px 8px; }

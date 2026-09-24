@@ -1,5 +1,6 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdir, rename, stat, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -64,6 +65,20 @@ export type PracticePanelRunStateV1 =
   | "COMPLETED"
   | "FAILED";
 
+export interface PracticeHumanReviewV1 {
+  readonly schema: "editflow.practice-human-review.v1";
+  readonly sessionId: string;
+  readonly editTypeId: string;
+  readonly sceneFidelity: number;
+  readonly timingPacing: number;
+  readonly effectsTransitions: number;
+  readonly visualFinish: number;
+  readonly overall: number;
+  readonly notes: string | null;
+  readonly createdAt: string;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticePanelRunSnapshotV1 {
   readonly sessionId: string;
   readonly assignmentId: string;
@@ -83,6 +98,7 @@ export interface PracticePanelRunSnapshotV1 {
   readonly masteryProofRef: string | null;
   readonly masteryReasons: readonly string[];
   readonly finalRenderRef: string | null;
+  readonly humanReview: PracticeHumanReviewV1 | null;
   readonly finalSummary: string | null;
   readonly error: string | null;
 }
@@ -696,6 +712,7 @@ export class PracticePanelServerV1 {
       masteryProofRef: null,
       masteryReasons: [],
       finalRenderRef: null,
+      humanReview: null,
       finalSummary: null,
       error: null,
     };
@@ -737,6 +754,72 @@ export class PracticePanelServerV1 {
       this.#activeRunId = null;
     }
     return snapshot(updated);
+  }
+
+  async #bestAttemptRenderPath(sessionId: string): Promise<string> {
+    const run = await this.#syncRun(sessionId);
+    const candidate = run.finalRenderRef ?? run.result?.bestAttempt?.renderRef ?? null;
+    if (candidate === null) {
+      throw new HttpError(404, "Best-attempt render is not available for this run.");
+    }
+    return await ensureFile(candidate, "Best-attempt render");
+  }
+
+  async #openBestAttempt(sessionId: string): Promise<PracticePanelRunSnapshotV1> {
+    const renderPath = await this.#bestAttemptRenderPath(sessionId);
+    const command = process.platform === "win32"
+      ? "explorer.exe"
+      : process.platform === "darwin"
+        ? "open"
+        : "xdg-open";
+    const child = spawn(command, [renderPath], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    return await this.#syncRun(sessionId);
+  }
+
+  async #saveHumanReview(
+    sessionId: string,
+    body: Record<string, unknown>,
+  ): Promise<PracticeHumanReviewV1> {
+    const run = await this.#syncRun(sessionId);
+    if (run.state !== "COMPLETED") {
+      throw new HttpError(409, "Human review is available after the run completes.");
+    }
+    const renderPath = await this.#bestAttemptRenderPath(sessionId);
+    const score = (name: string): number => {
+      const value = optionalNumber(body, name, 1, 5, false);
+      if (value === undefined) throw new HttpError(400, name + " is required.");
+      return value;
+    };
+    const review: PracticeHumanReviewV1 = {
+      schema: "editflow.practice-human-review.v1",
+      sessionId,
+      editTypeId: run.editTypeId,
+      sceneFidelity: score("sceneFidelity"),
+      timingPacing: score("timingPacing"),
+      effectsTransitions: score("effectsTransitions"),
+      visualFinish: score("visualFinish"),
+      overall: score("overall"),
+      notes: optionalString(body, "notes") ?? null,
+      createdAt: new Date().toISOString(),
+      evidenceRefs: [
+        "practice-human-review:NON_AUTHORITATIVE_V1",
+        "practice-human-review-render:" + renderPath,
+      ],
+    };
+    const reviewDir = path.join(this.config.artifactDir, "human-reviews");
+    await mkdir(reviewDir, { recursive: true });
+    const safeSession = sessionId.replace(/[^a-zA-Z0-9._-]+/g, "-");
+    const reviewPath = path.join(reviewDir, safeSession + ".json");
+    const temporary = reviewPath + ".tmp-" + randomUUID();
+    await writeFile(temporary, JSON.stringify(review, null, 2) + "\n", "utf8");
+    await rename(temporary, reviewPath);
+    this.#runs.set(sessionId, { ...run, humanReview: review });
+    return review;
   }
 
   async #claimAssignment(
@@ -1143,6 +1226,7 @@ export class PracticePanelServerV1 {
       masteryProofRef: null,
       masteryReasons: [],
       finalRenderRef: null,
+      humanReview: null,
       finalSummary: null,
       error: null,
     };
@@ -1251,6 +1335,20 @@ export class PracticePanelServerV1 {
       if (req.method === "POST" && cancelRunMatch !== null) {
         const id = decodeURIComponent(cancelRunMatch[1] ?? "");
         jsonResponse(res, 200, { run: await this.#cancelRun(id) });
+        return;
+      }
+      const openRenderMatch = /^\/v1\/product\/runs\/([^/]+)\/open-best-attempt$/.exec(url.pathname);
+      if (req.method === "POST" && openRenderMatch !== null) {
+        const id = decodeURIComponent(openRenderMatch[1] ?? "");
+        jsonResponse(res, 200, { run: await this.#openBestAttempt(id) });
+        return;
+      }
+      const humanReviewMatch = /^\/v1\/product\/runs\/([^/]+)\/human-review$/.exec(url.pathname);
+      if (req.method === "POST" && humanReviewMatch !== null) {
+        const id = decodeURIComponent(humanReviewMatch[1] ?? "");
+        jsonResponse(res, 201, {
+          review: await this.#saveHumanReview(id, await readJson(req)),
+        });
         return;
       }
 
