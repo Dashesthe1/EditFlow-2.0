@@ -121,7 +121,7 @@ const monotonicTrajectorySubset = (
   for (let right = 0; right < trajectory.length; right += 1) {
     for (let left = 0; left < right; left += 1) {
       const sourceDelta = trajectory[right]!.sourceTimeMs - trajectory[left]!.sourceTimeMs;
-      if ((expectedSign * sourceDelta) <= 1e-3) continue;
+      if ((expectedSign * sourceDelta) < -1e-3) continue;
       const candidateScore = scores[left]! + 0.35
         + Math.max(0, Math.min(1, trajectory[right]!.similarity));
       const candidateCount = counts[left]! + 1;
@@ -170,14 +170,18 @@ const trajectoryNeedsVariableRateRemap = (
 
   const expectedSign = behavior === "FORWARD" ? 1 : -1;
   const segmentRates: number[] = [];
+  const holdDurationsMs: number[] = [];
   for (let index = 1; index < trajectory.length; index += 1) {
     const left = trajectory[index - 1]!;
     const right = trajectory[index]!;
     const referenceDelta = right.referenceTimeMs - left.referenceTimeMs;
     const sourceDelta = right.sourceTimeMs - left.sourceTimeMs;
-    if (referenceDelta <= 1e-6 || Math.abs(sourceDelta) <= 1e-6) return false;
-    if (Math.sign(sourceDelta) !== expectedSign) return false;
-    segmentRates.push(Math.abs(sourceDelta / referenceDelta));
+    if (referenceDelta <= 1e-6) return false;
+    const signedSourceDelta = expectedSign * sourceDelta;
+    if (signedSourceDelta < -1e-3) return false;
+    const rate = Math.abs(sourceDelta / referenceDelta);
+    segmentRates.push(rate);
+    if (Math.abs(sourceDelta) <= 1e-3) holdDurationsMs.push(referenceDelta);
   }
   if (segmentRates.length < 2) return false;
 
@@ -196,17 +200,22 @@ const trajectoryNeedsVariableRateRemap = (
   );
   const durationMs = Math.max(1, shot.referenceEndMs - shot.referenceStartMs);
   const residualFloorMs = Math.max(45, Math.min(120, durationMs * 0.04));
-  const minimumRate = Math.min(...segmentRates);
-  const maximumRate = Math.max(...segmentRates);
-  const rateSpread = minimumRate <= 1e-6 ? Number.POSITIVE_INFINITY : maximumRate / minimumRate;
+  const movingSegmentRates = segmentRates.filter((rate) => rate > 1e-6);
+  if (movingSegmentRates.length === 0) return false;
+  const minimumRate = Math.min(...movingSegmentRates);
+  const maximumRate = Math.max(...movingSegmentRates);
+  const rateSpread = maximumRate / minimumRate;
+  const holdFloorMs = Math.max(80, Math.min(250, durationMs * 0.04));
+  const hasMeaningfulHold = holdDurationsMs.some((holdDurationMs) =>
+    holdDurationMs >= holdFloorMs);
   const similarities = trajectory.map((point) => point.similarity);
   const meanSimilarity = similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
   const minimumSimilarity = Math.min(...similarities);
 
   return meanSimilarity >= 0.80
     && minimumSimilarity >= 0.60
-    && rateSpread >= 1.30
-    && residualRmsMs >= residualFloorMs;
+    && (hasMeaningfulHold
+      || (rateSpread >= 1.30 && residualRmsMs >= residualFloorMs));
 };
 
 const trajectoryTimeRemapKeyframes = (

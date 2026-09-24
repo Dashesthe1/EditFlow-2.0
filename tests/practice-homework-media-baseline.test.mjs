@@ -179,6 +179,74 @@ test("AE baseline compiles a measured forward speed ramp into Time Remap keys", 
   assert.ok(Math.max(...segmentRates) / Math.min(...segmentRates) > 1.3);
 });
 
+test("AE baseline preserves an intentional forward hold plateau inside a speed ramp", () => {
+  const holdMatches = [
+    matches[0],
+    {
+      ...matches[1],
+      direction: "FORWARD",
+      sourceStartMs: 7000,
+      sourceEndMs: 9000,
+      playbackRate: 1.25,
+      temporalBehavior: "FORWARD",
+      trajectory: [
+        { referenceTimeMs: 1120, sourceTimeMs: 7100, similarity: 0.99 },
+        { referenceTimeMs: 1400, sourceTimeMs: 7420, similarity: 0.99 },
+        { referenceTimeMs: 1700, sourceTimeMs: 7420, similarity: 0.99 },
+        { referenceTimeMs: 1980, sourceTimeMs: 7900, similarity: 0.98 },
+        { referenceTimeMs: 2200, sourceTimeMs: 8320, similarity: 0.98 },
+        { referenceTimeMs: 2380, sourceTimeMs: 8850, similarity: 0.99 },
+      ],
+    },
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: holdMatches });
+  const remap = plan.operations.find((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0002"));
+  assert.ok(remap);
+  const keyframes = remap.payload.keyframes;
+  const holdIndex = keyframes.findIndex((item, index) =>
+    index > 0
+      && Math.abs(item.value - keyframes[index - 1].value) < 1e-9
+      && (item.time - keyframes[index - 1].time) >= 0.25);
+  assert.ok(holdIndex > 0);
+  assert.ok(Math.abs(keyframes[holdIndex].value - 7.42) < 1e-6);
+});
+
+test("AE baseline preserves an intentional reverse hold plateau inside a speed ramp", () => {
+  const holdMatches = [
+    matches[0],
+    {
+      ...matches[1],
+      direction: "REVERSE",
+      sourceStartMs: 7000,
+      sourceEndMs: 9000,
+      playbackRate: 1.25,
+      temporalBehavior: "REVERSE",
+      trajectory: [
+        { referenceTimeMs: 1120, sourceTimeMs: 8880, similarity: 0.99 },
+        { referenceTimeMs: 1400, sourceTimeMs: 8500, similarity: 0.99 },
+        { referenceTimeMs: 1700, sourceTimeMs: 8500, similarity: 0.99 },
+        { referenceTimeMs: 1980, sourceTimeMs: 8060, similarity: 0.98 },
+        { referenceTimeMs: 2200, sourceTimeMs: 7650, similarity: 0.98 },
+        { referenceTimeMs: 2380, sourceTimeMs: 7150, similarity: 0.99 },
+      ],
+    },
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: holdMatches });
+  const remap = plan.operations.find((item) =>
+    item.command === "property.set_keyframes"
+      && item.payload.layer?.stableId?.endsWith("_0002"));
+  assert.ok(remap);
+  const keyframes = remap.payload.keyframes;
+  const holdIndex = keyframes.findIndex((item, index) =>
+    index > 0
+      && Math.abs(item.value - keyframes[index - 1].value) < 1e-9
+      && (item.time - keyframes[index - 1].time) >= 0.25);
+  assert.ok(holdIndex > 0);
+  assert.ok(Math.abs(keyframes[holdIndex].value - 8.5) < 1e-6);
+});
+
 test("AE baseline preserves multi-inflection speed ramps despite one contradictory scene sample", () => {
   const speedRampMatches = [
     matches[0],
