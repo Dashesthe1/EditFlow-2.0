@@ -578,6 +578,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
   });
+  assert.equal(legacyTwoChallengeOnly.subjectContinuityHardCaseCount, 3);
   assert.equal(legacyTwoChallengeOnly.subjectContinuityChallengeKindCount, 2);
   assert.deepEqual(
     legacyTwoChallengeOnly.subjectContinuityChallenges,
@@ -958,6 +959,78 @@ test("object-aware proof preserves subject/background relation and fails when it
   assert.ok(failed.reasons.some((reason) => /Object relation changed/.test(reason)));
 });
 
+test("object-aware proof requires the render to reproduce retained identity stress conditions", () => {
+  const stressedFrames = referenceEvidence.frames.map((item, index) => ({
+    ...item,
+    ...(index === 2 ? {
+      subjectIdentityConfidence: 0.52,
+      subjectVisibility: 0.9,
+      occlusion: 0,
+    } : {}),
+    ...(index === 3 ? {
+      backgroundMotion: { x: 0.24, y: 0 },
+      motionEnergy: 0.5,
+      subjectBackgroundDivergence: 0.18,
+    } : {}),
+  }));
+  const stressedReferenceEvidence = {
+    ...referenceEvidence,
+    sourceId: "reference:identity-stress",
+    contentKey: "fixture-content:identity-stress:reference",
+    frames: stressedFrames,
+    evidenceRefs: ["fixture:identity-stress:reference"],
+  };
+  const matchingRenderEvidence = {
+    ...stressedReferenceEvidence,
+    sourceId: "render:identity-stress:matching",
+    sourceKind: "RENDER",
+    contentKey: "fixture-content:identity-stress:matching",
+    evidenceRefs: ["fixture:identity-stress:matching"],
+  };
+  const matching = comparePracticeObjectAwareWindowsV1(
+    oneWindowSequence("reference:identity-stress", stressedReferenceEvidence),
+    oneWindowSequence("render:identity-stress:matching", matchingRenderEvidence),
+  );
+  assert.equal(matching.verified, true);
+  assert.equal(matching.windows[0].subjectIdentityVerified, true);
+  assert.equal(
+    matching.windows[0].referenceSubjectIdentity.backgroundMotionStressFrameCount > 0,
+    true,
+  );
+  assert.equal(
+    matching.windows[0].referenceSubjectIdentity.identityAmbiguityFrameCount > 0,
+    true,
+  );
+  assert.ok(matching.windows[0].evidenceRefs.some((ref) =>
+    ref.startsWith("practice-subject-reference-background-motion-stress-count:")));
+
+  const droppedChallengeFrames = stressedFrames.map((item, index) => ({
+    ...item,
+    ...(index === 2 ? { subjectIdentityConfidence: 0.91 } : {}),
+    ...(index === 3 ? { motionEnergy: 0.1 } : {}),
+  }));
+  const droppedChallengeRender = {
+    ...matchingRenderEvidence,
+    sourceId: "render:identity-stress:dropped",
+    contentKey: "fixture-content:identity-stress:dropped",
+    frames: droppedChallengeFrames,
+    evidenceRefs: ["fixture:identity-stress:dropped"],
+  };
+  const dropped = comparePracticeObjectAwareWindowsV1(
+    oneWindowSequence("reference:identity-stress", stressedReferenceEvidence),
+    oneWindowSequence("render:identity-stress:dropped", droppedChallengeRender),
+  );
+  assert.equal(dropped.windows[0].relationMatched, true);
+  assert.equal(dropped.windows[0].renderSubjectIdentity.continuityVerified, true);
+  assert.equal(dropped.windows[0].renderSubjectIdentity.backgroundMotionStressFrameCount, 0);
+  assert.equal(dropped.windows[0].renderSubjectIdentity.identityAmbiguityFrameCount, 0);
+  assert.equal(dropped.windows[0].subjectIdentityVerified, false);
+  assert.equal(dropped.windows[0].passed, false);
+  assert.equal(dropped.verified, false);
+  assert.ok(dropped.reasons.some((reason) =>
+    /background.*camera-motion challenge|identity-ambiguity challenge/i.test(reason)));
+});
+
 test("cross-source subject proof binds Finish identity to the matched raw Start subject", async () => {
   const bindingReference = {
     ...reference,
@@ -1182,6 +1255,32 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.deepEqual(
     heldOutCase.subjectContinuityChallenges,
     ["LOW_MOTION", "OCCLUSION", "BACKGROUND_MOTION", "IDENTITY_AMBIGUITY"],
+  );
+
+  const missingStressCase = buildPracticeHeldOutBenchmarkCaseV1({
+    sessionId: "practice:object-aware:missing-stress",
+    proof: {
+      ...proof,
+      sessionId: "practice:object-aware:missing-stress",
+      objectAwareProof: {
+        ...proof.objectAwareProof,
+        windows: proof.objectAwareProof.windows.map((window) => ({
+          ...window,
+          renderSubjectIdentity: {
+            ...window.renderSubjectIdentity,
+            backgroundMotionStressFrameCount: 0,
+            identityAmbiguityFrameCount: 0,
+          },
+        })),
+      },
+    },
+    proofRef: "proof:missing-stress:bundle",
+  });
+  assert.equal(missingStressCase.objectAwareVerified, true);
+  assert.equal(missingStressCase.subjectContinuityHardCaseVerified, false);
+  assert.deepEqual(
+    missingStressCase.subjectContinuityChallenges,
+    [],
   );
 
   const missingCameraStressCase = buildPracticeHeldOutBenchmarkCaseV1({

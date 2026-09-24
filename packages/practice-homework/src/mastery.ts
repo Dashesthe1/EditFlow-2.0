@@ -371,9 +371,13 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
     if (reference === undefined || render === undefined || render === null) return false;
     if (!window.passed || window.subjectIdentityVerified !== true) return false;
     const lowMotionVerified = reference.lowMotionFrameCount === 0
-      || (reference.lowMotionSurvived && render.lowMotionSurvived);
+      || (reference.lowMotionSurvived
+        && render.lowMotionFrameCount > 0
+        && render.lowMotionSurvived);
     const occlusionVerified = reference.occlusionFrameCount === 0
-      || (reference.occlusionSurvived && render.occlusionSurvived);
+      || (reference.occlusionSurvived
+        && render.occlusionFrameCount > 0
+        && render.occlusionSurvived);
     const backgroundMotionVerified = (reference.backgroundMotionStressFrameCount ?? 0) === 0
       || (reference.backgroundMotionStressSurvived === true
         && (render.backgroundMotionStressFrameCount ?? 0) > 0
@@ -400,9 +404,11 @@ export const buildPracticeHeldOutBenchmarkCaseV1 = (input: {
       if (reference === undefined || render === undefined || render === null) return [];
       const challenges: PracticeSubjectContinuityChallengeV1[] = [];
       if (reference.lowMotionFrameCount > 0
+        && render.lowMotionFrameCount > 0
         && reference.lowMotionSurvived
         && render.lowMotionSurvived) challenges.push("LOW_MOTION");
       if (reference.occlusionFrameCount > 0
+        && render.occlusionFrameCount > 0
         && reference.occlusionSurvived
         && render.occlusionSurvived) challenges.push("OCCLUSION");
       if ((reference.backgroundMotionStressFrameCount ?? 0) > 0

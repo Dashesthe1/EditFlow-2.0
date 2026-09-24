@@ -45,6 +45,7 @@ const occlusionFrame = (frame: DenseFrameMetricsV1): boolean =>
   || frame.occlusion >= 0.18;
 
 const backgroundMotionStressFrame = (frame: DenseFrameMetricsV1): boolean => {
+  if (!identityActive(frame)) return false;
   const backgroundMagnitude = Math.hypot(
     frame.backgroundMotion.x,
     frame.backgroundMotion.y,
@@ -57,7 +58,13 @@ const backgroundMotionStressFrame = (frame: DenseFrameMetricsV1): boolean => {
 const identityAmbiguityFrame = (frame: DenseFrameMetricsV1): boolean => {
   if (!identityActive(frame) || frame.subjectTrackState !== "OBSERVED") return false;
   const confidence = clamp01(frame.subjectIdentityConfidence ?? 0);
-  return confidence >= 0.35 && confidence < 0.65;
+  const visibility = clamp01(frame.subjectVisibility ?? 1);
+  // Keep ambiguity distinct from occlusion: the subject remains visibly observed,
+  // but identity confidence is materially degraded while staying above the proof floor.
+  return confidence >= 0.35
+    && confidence < 0.65
+    && visibility >= 0.5
+    && frame.occlusion < 0.18;
 };
 
 const validatedMaskFrame = (frame: DenseFrameMetricsV1): boolean =>
