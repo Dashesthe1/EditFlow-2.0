@@ -128,8 +128,23 @@ def evaluate_case(case, reference, matches_payload, truth_payload=None):
         geometry_correct = match is not None and exact_geometry(match)
         confidence = float((match or {}).get("confidence", 0.0))
         truth_correct = source_correct and timing["correct"] and direction_correct
-        if confidence >= confidence_gate and not truth_correct:
+        false_high_confidence_claim = confidence >= confidence_gate and not truth_correct
+        if false_high_confidence_claim:
             false_high_confidence += 1
+        failure_kinds = []
+        if match is None:
+            failure_kinds.append("NO_MATCH")
+        else:
+            if not source_correct:
+                failure_kinds.append("SOURCE_IDENTITY_MISMATCH")
+            if not timing["correct"]:
+                failure_kinds.append("TIMING_MISMATCH")
+            if not direction_correct:
+                failure_kinds.append("DIRECTION_MISMATCH")
+            if not geometry_correct:
+                failure_kinds.append("GEOMETRY_PROOF_INSUFFICIENT")
+            if confidence < confidence_gate:
+                failure_kinds.append("CONFIDENCE_BELOW_GATE")
         per_shot.append({
             "shotId": shot_id,
             "truthAvailable": True,
@@ -139,6 +154,20 @@ def evaluate_case(case, reference, matches_payload, truth_payload=None):
             "geometricProofCorrect": bool(geometry_correct),
             "confidence": confidence,
             "retainedConfidence": confidence >= confidence_gate,
+            "falseHighConfidence": false_high_confidence_claim,
+            "failureKinds": failure_kinds,
+            "expected": {
+                "sourceId": str(truth["sourceId"]),
+                "sourceStartMs": float(truth["sourceStartMs"]),
+                "sourceEndMs": float(truth["sourceEndMs"]),
+                "direction": truth.get("direction"),
+            },
+            "observed": ({
+                "sourceId": str(match.get("sourceId")),
+                "sourceStartMs": float(match.get("sourceStartMs", 0.0)),
+                "sourceEndMs": float(match.get("sourceEndMs", 0.0)),
+                "direction": match.get("direction"),
+            } if match is not None else None),
             **timing,
             "certified": bool(
                 truth_correct
@@ -214,6 +243,19 @@ def evaluate_case(case, reference, matches_payload, truth_payload=None):
         status = "MEASURE_ONLY"
     else:
         status = "PASS" if not reasons else "FAIL"
+    failure_diagnostics = [{
+        "shotId": item["shotId"],
+        "failureKinds": list(item.get("failureKinds") or []),
+        "falseHighConfidence": bool(item.get("falseHighConfidence", False)),
+        "confidence": float(item.get("confidence", 0.0)),
+        "confidenceGate": confidence_gate,
+        "geometricProofCorrect": bool(item.get("geometricProofCorrect", False)),
+        "intervalIou": float(item.get("intervalIou", 0.0)),
+        "centerErrorMs": item.get("centerErrorMs"),
+        "maximumBoundaryErrorMs": item.get("maximumBoundaryErrorMs"),
+        "expected": item.get("expected"),
+        "observed": item.get("observed"),
+    } for item in per_shot if item.get("truthAvailable") and not item.get("certified")]
     return {
         "benchmarkId": str(case["benchmarkId"]),
         "referenceId": str(reference.get("referenceId", case.get("referenceId", ""))),
@@ -222,6 +264,10 @@ def evaluate_case(case, reference, matches_payload, truth_payload=None):
         "metrics": metrics,
         "gates": gates,
         "reasons": reasons,
+        "failureDiagnostics": failure_diagnostics,
+        "falseMatchDiagnostics": [
+            item for item in failure_diagnostics if item["falseHighConfidence"]
+        ],
         "perShot": per_shot,
     }
 def load_matcher():
@@ -445,6 +491,21 @@ def summarize_suite(results):
     distinct_benchmark_ids = sorted({item for item in benchmark_ids if item})
     distinct_reference_ids = sorted({item for item in reference_ids if item})
     distinct_reference_sha256 = sorted({item for item in reference_sha256 if item})
+    failure_diagnostics = []
+    for result in results:
+        for diagnostic in result.get("failureDiagnostics") or []:
+            failure_diagnostics.append({
+                "benchmarkId": str(result.get("benchmarkId", "")),
+                "referenceId": str(result.get("referenceId", "")),
+                **diagnostic,
+            })
+    failure_kind_counts = {}
+    for diagnostic in failure_diagnostics:
+        for kind in diagnostic.get("failureKinds") or []:
+            failure_kind_counts[kind] = failure_kind_counts.get(kind, 0) + 1
+    false_match_diagnostics = [
+        item for item in failure_diagnostics if item.get("falseHighConfidence")
+    ]
 
     reasons = []
     if case_count < MIN_CERTIFIED_CASES:
@@ -482,6 +543,12 @@ def summarize_suite(results):
         "failCount": fail_count,
         "measureOnlyCount": measure_only_count,
         "certified": certified,
+        "diagnostics": {
+            "failedShotCount": len(failure_diagnostics),
+            "falseHighConfidenceCount": len(false_match_diagnostics),
+            "failureKindCounts": dict(sorted(failure_kind_counts.items())),
+            "falseMatchDiagnostics": false_match_diagnostics,
+        },
         "generalizationGate": {
             "minimumCaseCount": MIN_CERTIFIED_CASES,
             "recommendedMaximumCaseCount": RECOMMENDED_MAX_CERTIFICATION_CASES,
