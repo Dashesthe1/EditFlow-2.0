@@ -58,6 +58,22 @@ Per-shot timing uses interval overlap plus an explicit boundary-error tolerance.
 override `toleranceMs` and `minimumIou` when a speed-ramped or transformed shot requires a
 different retained tolerance.
 
+### Independent annotation review packs
+
+`practice-media-truth.py review-pack` turns a pristine scaffold into a matcher-blind review folder.
+It re-hashes the exact Finish and Start files, creates early/middle/late Finish stills for every
+reference shot, and writes a blank `annotations.csv` for source identity, source interval, playback
+direction, optional tolerance, and reviewer notes. It refuses any scaffold that already contains a
+source annotation, so EditFlow matcher predictions cannot be smuggled into the independent truth
+workflow.
+
+After an independent reviewer fills the worksheet, `practice-media-truth.py import-review` verifies
+shot coverage/order and annotation structure and writes an annotated DRAFT. The normal `retain`
+command is still required afterward with the real annotation origin; importing a worksheet never
+self-promotes it to retained truth. On Windows, use the same CV-capable runtime as Practice
+(`py -3.12`); the product's local-media adapters already pin that interpreter instead of relying on
+the workstation's default `python` command.
+
 ## Long-form cache behavior
 
 Long movie indexes are retained only while the production matcher accepts their algorithm ID

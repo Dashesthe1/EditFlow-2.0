@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import hashlib
 import json
 import math
@@ -450,6 +451,285 @@ def build_retained_suite_manifest(
     }
 
 
+
+REVIEW_PACK_SCHEMA = "editflow.practice-truth-review-pack.v1"
+REVIEW_FIELDS = (
+    "shotId",
+    "referenceStartMs",
+    "referenceEndMs",
+    "previewEarly",
+    "previewMiddle",
+    "previewLate",
+    "sourceId",
+    "sourceStartMs",
+    "sourceEndMs",
+    "direction",
+    "toleranceMs",
+    "notes",
+)
+
+
+def require_pristine_truth_draft(draft, reference):
+    if draft.get("schema") != TRUTH_SCHEMA or draft.get("status") != DRAFT_STATUS:
+        raise ValueError("Review pack requires a DRAFT Practice truth scaffold.")
+    if str(draft.get("referenceId")) != str(reference.get("referenceId")):
+        raise ValueError("Truth draft referenceId does not match the Finish analysis.")
+    if str(draft.get("referenceFingerprint", "")) != str(reference.get("styleFingerprint", "")):
+        raise ValueError("Truth draft is stale for the current Finish style fingerprint.")
+    if str(draft.get("referenceSourceSha256", "")).lower() != str(reference.get("sourceSha256", "")).lower():
+        raise ValueError("Truth draft is stale for the current Finish media bytes.")
+    if str(draft.get("referenceAnalyzerFingerprint", "")) != str(
+        (reference.get("analysis") or {}).get("analyzerFingerprint", "")
+    ):
+        raise ValueError("Truth draft is stale for the current reference analyzer.")
+    policy = draft.get("policy") or {}
+    if policy.get("matcherSuggestionsAllowed") is not False or policy.get("matcherOutputMayBecomeTruth") is not False:
+        raise ValueError("Truth draft does not preserve the no-matcher-leakage policy.")
+    for row in draft.get("shots") or []:
+        if any(row.get(key) is not None for key in (
+            "sourceId",
+            "sourceStartMs",
+            "sourceEndMs",
+            "direction",
+            "toleranceMs",
+        )):
+            raise ValueError(
+                "Review pack must be generated from a pristine scaffold with no source annotations."
+            )
+
+
+def extract_preview_frame(video_path, time_ms, output_path):
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError(
+            "OpenCV is required to render independent Finish review previews."
+        ) from exc
+    capture = cv2.VideoCapture(str(video_path))
+    try:
+        if not capture.isOpened():
+            raise RuntimeError(f"Could not open Finish media for review preview: {video_path}")
+        capture.set(cv2.CAP_PROP_POS_MSEC, max(0.0, float(time_ms)))
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            raise RuntimeError(
+                f"Could not decode Finish review preview at {float(time_ms):.3f} ms."
+            )
+        target = Path(output_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not cv2.imwrite(str(target), frame):
+            raise RuntimeError(f"Could not write Finish review preview: {target}")
+    finally:
+        capture.release()
+
+
+def build_review_pack(
+    reference,
+    draft,
+    finish_path,
+    source_paths_by_id,
+    output_dir,
+    preview_writer=None,
+):
+    require_pristine_truth_draft(draft, reference)
+    source_ids = sorted(
+        {str(item).strip() for item in draft.get("allowedSourceIds") or [] if str(item).strip()}
+    )
+    expected_source_hashes = require_source_sha256_bindings(
+        source_ids,
+        draft.get("allowedSourceSha256"),
+    )
+    if set(source_paths_by_id) != set(source_ids):
+        raise ValueError("Review-pack Start paths must cover the exact truth source-ID set.")
+
+    finish_path = str(Path(finish_path).expanduser().resolve())
+    finish_sha256 = sha256_file(finish_path)
+    expected_finish_sha256 = str(reference.get("sourceSha256", "")).strip().lower()
+    if finish_sha256 != expected_finish_sha256:
+        raise ValueError("Review-pack Finish media bytes do not match the reference analysis.")
+
+    normalized_sources = {}
+    for source_id in source_ids:
+        source_path = str(Path(source_paths_by_id[source_id]).expanduser().resolve())
+        source_sha256 = sha256_file(source_path)
+        if source_sha256 != expected_source_hashes[source_id]:
+            raise ValueError(
+                f"Review-pack Start media bytes do not match the scaffold for source ID {source_id}."
+            )
+        normalized_sources[source_id] = {
+            "path": source_path,
+            "sha256": source_sha256,
+        }
+
+    target_dir = Path(output_dir).expanduser().resolve()
+    preview_dir = target_dir / "finish-previews"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    writer = preview_writer or extract_preview_frame
+    worksheet_rows = []
+    preview_entries = []
+    for shot in reference.get("shots") or []:
+        shot_id = str(shot["shotId"])
+        start = float(shot["referenceStartMs"])
+        end = float(shot["referenceEndMs"])
+        span = max(1.0, end - start)
+        times = (
+            start + (span * 0.15),
+            start + (span * 0.50),
+            start + (span * 0.85),
+        )
+        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "_", shot_id)
+        names = (
+            f"{safe_id}-early.png",
+            f"{safe_id}-middle.png",
+            f"{safe_id}-late.png",
+        )
+        relative_paths = []
+        for time_ms, name in zip(times, names):
+            output_path = preview_dir / name
+            writer(finish_path, time_ms, output_path)
+            relative_paths.append(str(Path("finish-previews") / name))
+        preview_entries.append({
+            "shotId": shot_id,
+            "referenceStartMs": start,
+            "referenceEndMs": end,
+            "previewTimesMs": [float(item) for item in times],
+            "previewPaths": relative_paths,
+        })
+        worksheet_rows.append({
+            "shotId": shot_id,
+            "referenceStartMs": f"{start:.3f}",
+            "referenceEndMs": f"{end:.3f}",
+            "previewEarly": relative_paths[0],
+            "previewMiddle": relative_paths[1],
+            "previewLate": relative_paths[2],
+            "sourceId": "",
+            "sourceStartMs": "",
+            "sourceEndMs": "",
+            "direction": "",
+            "toleranceMs": "",
+            "notes": "",
+        })
+
+    worksheet_path = target_dir / "annotations.csv"
+    with worksheet_path.open("w", encoding="utf-8", newline="") as handle:
+        writer_csv = csv.DictWriter(handle, fieldnames=REVIEW_FIELDS)
+        writer_csv.writeheader()
+        writer_csv.writerows(worksheet_rows)
+
+    manifest = {
+        "schema": REVIEW_PACK_SCHEMA,
+        "referenceId": str(reference["referenceId"]),
+        "finish": {
+            "path": finish_path,
+            "sha256": finish_sha256,
+        },
+        "sources": [
+            {
+                "sourceId": source_id,
+                **normalized_sources[source_id],
+            }
+            for source_id in source_ids
+        ],
+        "worksheet": str(worksheet_path),
+        "previews": preview_entries,
+        "policy": {
+            "matcherSuggestionsAllowed": False,
+            "matcherOutputMayBecomeTruth": False,
+            "instruction": (
+                "Annotate source identity, source interval, and playback direction independently. "
+                "Do not inspect or copy EditFlow scene-match output while completing this worksheet."
+            ),
+        },
+    }
+    write_json(target_dir / "review-pack.json", manifest)
+    instructions = (
+        "EditFlow Practice independent truth review pack\n\n"
+        "1. Review each Finish shot using the three still previews.\n"
+        "2. Inspect only the declared Start media directly; do not use EditFlow matcher predictions.\n"
+        "3. Fill sourceId, sourceStartMs, sourceEndMs, and direction in annotations.csv.\n"
+        "4. Keep sourceStartMs/sourceEndMs ascending even for REVERSE playback.\n"
+        "5. Optionally set toleranceMs and notes.\n"
+        "6. Run practice-media-truth.py import-review, then retain with the real independent annotation origin.\n"
+    )
+    (target_dir / "INSTRUCTIONS.txt").write_text(
+        instructions,
+        encoding="utf-8",
+        newline="\n",
+    )
+    return manifest
+
+
+def import_review_csv(draft, reference, worksheet_path):
+    require_pristine_truth_draft(draft, reference)
+    worksheet_path = Path(worksheet_path).expanduser().resolve()
+    with worksheet_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    reference_shots = list(reference.get("shots") or [])
+    expected_ids = [str(item["shotId"]) for item in reference_shots]
+    observed_ids = [str(item.get("shotId", "")).strip() for item in rows]
+    if observed_ids != expected_ids:
+        raise ValueError(
+            "Review worksheet must cover every Finish shot exactly once in reference order."
+        )
+
+    allowed_sources = {
+        str(item).strip()
+        for item in draft.get("allowedSourceIds") or []
+        if str(item).strip()
+    }
+    value = json.loads(json.dumps(draft))
+    for output_row, input_row in zip(value["shots"], rows):
+        source_id = str(input_row.get("sourceId", "")).strip()
+        if source_id not in allowed_sources:
+            raise ValueError(
+                f"{output_row['shotId']}: sourceId must be one of the scaffolded Start source IDs."
+            )
+        try:
+            source_start = float(str(input_row.get("sourceStartMs", "")).strip())
+            source_end = float(str(input_row.get("sourceEndMs", "")).strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"{output_row['shotId']}: sourceStartMs/sourceEndMs must be numeric."
+            ) from exc
+        direction = str(input_row.get("direction", "")).strip().upper()
+        if direction not in ALLOWED_DIRECTIONS:
+            raise ValueError(
+                f"{output_row['shotId']}: direction must be FORWARD or REVERSE."
+            )
+        tolerance_text = str(input_row.get("toleranceMs", "")).strip()
+        try:
+            tolerance = None if not tolerance_text else float(tolerance_text)
+        except ValueError as exc:
+            raise ValueError(
+                f"{output_row['shotId']}: toleranceMs must be blank or numeric."
+            ) from exc
+        output_row.update({
+            "sourceId": source_id,
+            "sourceStartMs": source_start,
+            "sourceEndMs": source_end,
+            "direction": direction,
+            "toleranceMs": tolerance,
+            "notes": str(input_row.get("notes", "")),
+        })
+
+    structural_probe = json.loads(json.dumps(value))
+    structural_probe["annotationOrigin"] = "INDEPENDENT_HUMAN"
+    structural_probe["status"] = RETAINED_STATUS
+    structural_probe["retainedAt"] = now_iso()
+    errors = validate_truth(
+        structural_probe,
+        reference,
+        allowed_source_ids=sorted(allowed_sources),
+        allowed_source_sha256_by_id=draft.get("allowedSourceSha256"),
+        require_retained=True,
+    )
+    if errors:
+        raise ValueError(
+            "Review worksheet cannot be imported:\n- " + "\n- ".join(errors)
+        )
+    return value
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Scaffold and retain independent shot truth for Practice real-media benchmarks."
@@ -461,6 +741,19 @@ def build_parser():
     scaffold_parser.add_argument("--source-id", action="append", required=True)
     scaffold_parser.add_argument("--source-sha256", action="append", required=True)
     scaffold_parser.add_argument("--output", required=True)
+
+    review_parser = sub.add_parser("review-pack")
+    review_parser.add_argument("--reference-analysis", required=True)
+    review_parser.add_argument("--draft", required=True)
+    review_parser.add_argument("--finish", required=True)
+    review_parser.add_argument("--source", action="append", required=True)
+    review_parser.add_argument("--output-dir", required=True)
+
+    import_review_parser = sub.add_parser("import-review")
+    import_review_parser.add_argument("--reference-analysis", required=True)
+    import_review_parser.add_argument("--draft", required=True)
+    import_review_parser.add_argument("--worksheet", required=True)
+    import_review_parser.add_argument("--output", required=True)
 
     validate_parser = sub.add_parser("validate")
     validate_parser.add_argument("--reference-analysis", required=True)
@@ -504,6 +797,35 @@ def main():
         payload = scaffold(reference, args.source_id, source_sha256_by_id)
         write_json(args.output, payload)
         print(json.dumps({"ok": True, "status": DRAFT_STATUS, "output": str(Path(args.output).resolve())}))
+        return
+
+    if args.command == "review-pack":
+        draft = load_json(args.draft)
+        source_paths_by_id = parse_source_path_args(args.source)
+        payload = build_review_pack(
+            reference=reference,
+            draft=draft,
+            finish_path=args.finish,
+            source_paths_by_id=source_paths_by_id,
+            output_dir=args.output_dir,
+        )
+        print(json.dumps({
+            "ok": True,
+            "schema": REVIEW_PACK_SCHEMA,
+            "outputDir": str(Path(args.output_dir).resolve()),
+            "worksheet": payload["worksheet"],
+        }))
+        return
+
+    if args.command == "import-review":
+        draft = load_json(args.draft)
+        payload = import_review_csv(draft, reference, args.worksheet)
+        write_json(args.output, payload)
+        print(json.dumps({
+            "ok": True,
+            "status": DRAFT_STATUS,
+            "output": str(Path(args.output).resolve()),
+        }))
         return
 
     if args.command == "validate":

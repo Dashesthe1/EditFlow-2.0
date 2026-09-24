@@ -1,3 +1,4 @@
+import csv
 import importlib.util
 import unittest
 from pathlib import Path
@@ -371,6 +372,126 @@ class PracticeMediaTruthTest(unittest.TestCase):
                     difficulty_tags=["NEAR_DUPLICATE_SOURCES"],
                     truth_evidence_sha256="c" * 64,
                     reference_evidence_sha256="d" * 64,
+                )
+
+    def test_review_pack_stays_matcher_blind_and_imports_independent_annotations(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-review-media")
+            source_path.write_bytes(b"source-review-media")
+            ref = reference()
+            ref["sourceSha256"] = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+
+            def fake_preview_writer(_video_path, time_ms, output_path):
+                Path(output_path).write_bytes(
+                    ("preview:" + str(round(float(time_ms), 3))).encode("utf-8")
+                )
+
+            pack_dir = root / "review-pack"
+            pack = truth_tool.build_review_pack(
+                reference=ref,
+                draft=draft,
+                finish_path=finish_path,
+                source_paths_by_id={"video:movie": str(source_path)},
+                output_dir=pack_dir,
+                preview_writer=fake_preview_writer,
+            )
+            self.assertEqual(pack["schema"], truth_tool.REVIEW_PACK_SCHEMA)
+            self.assertFalse(pack["policy"]["matcherSuggestionsAllowed"])
+            self.assertFalse(pack["policy"]["matcherOutputMayBecomeTruth"])
+            self.assertEqual(len(pack["previews"]), 2)
+            self.assertEqual(
+                len(list((pack_dir / "finish-previews").glob("*.png"))),
+                6,
+            )
+
+            worksheet_path = pack_dir / "annotations.csv"
+            with worksheet_path.open("r", encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual([item["sourceId"] for item in rows], ["", ""])
+            rows[0].update({
+                "sourceId": "video:movie",
+                "sourceStartMs": "1200",
+                "sourceEndMs": "2000",
+                "direction": "FORWARD",
+                "toleranceMs": "180",
+                "notes": "Independent manual review.",
+            })
+            rows[1].update({
+                "sourceId": "video:movie",
+                "sourceStartMs": "6300",
+                "sourceEndMs": "7000",
+                "direction": "REVERSE",
+                "toleranceMs": "",
+                "notes": "",
+            })
+            with worksheet_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=truth_tool.REVIEW_FIELDS)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            imported = truth_tool.import_review_csv(draft, ref, worksheet_path)
+            self.assertEqual(imported["status"], "DRAFT")
+            self.assertIsNone(imported["annotationOrigin"])
+            self.assertEqual(imported["shots"][0]["sourceStartMs"], 1200.0)
+            self.assertEqual(imported["shots"][1]["direction"], "REVERSE")
+            retained = truth_tool.retain(
+                imported,
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+                "INDEPENDENT_HUMAN",
+            )
+            self.assertEqual(retained["status"], "RETAINED")
+
+    def test_review_pack_rejects_prefilled_or_changed_start_media(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-review-media")
+            source_path.write_bytes(b"source-review-media")
+            ref = reference()
+            ref["sourceSha256"] = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+            draft["shots"][0]["sourceId"] = "video:movie"
+            with self.assertRaisesRegex(ValueError, "pristine scaffold"):
+                truth_tool.build_review_pack(
+                    reference=ref,
+                    draft=draft,
+                    finish_path=finish_path,
+                    source_paths_by_id={"video:movie": str(source_path)},
+                    output_dir=root / "prefilled",
+                    preview_writer=lambda *_args: None,
+                )
+
+            fresh = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+            source_path.write_bytes(b"changed-after-scaffold")
+            with self.assertRaisesRegex(ValueError, "Start media bytes"):
+                truth_tool.build_review_pack(
+                    reference=ref,
+                    draft=fresh,
+                    finish_path=finish_path,
+                    source_paths_by_id={"video:movie": str(source_path)},
+                    output_dir=root / "changed",
+                    preview_writer=lambda *_args: None,
                 )
 
     def test_source_interval_must_be_ascending_even_when_direction_is_reverse(self):
