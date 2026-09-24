@@ -4,6 +4,7 @@ import csv
 import hashlib
 import importlib.util
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -26,6 +27,8 @@ MAX_CASES = 30
 MIN_DIFFICULTY_KINDS = 4
 PERCEPTUAL_DUPLICATE_SIMILARITY = 0.96
 PREPARE_SCHEMA = "editflow.practice-truth-review-preparation.v1"
+DISCOVERY_SCHEMA = "editflow.practice-truth-finish-discovery.v1"
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".webm"}
 DEFAULT_SOURCE_ATLAS_INTERVAL_MS = 300000.0
 DEFAULT_SOURCE_ATLAS_MAX_FRAMES = 30
 
@@ -114,7 +117,50 @@ def source_ids(case):
     return sorted(set(values))
 
 
-def worksheet_complete(path):
+def worksheet_validation_reasons(path, draft, reference):
+    if not path or not Path(path).is_file():
+        return ["Review worksheet is missing."]
+
+    with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    expected_ids = [str(item.get("shotId", "")).strip() for item in reference.get("shots") or []]
+    observed_ids = [str(item.get("shotId", "")).strip() for item in rows]
+    if observed_ids != expected_ids:
+        return ["Review worksheet must cover every Finish shot exactly once in reference order."]
+
+    allowed_sources = {
+        str(item).strip()
+        for item in draft.get("allowedSourceIds") or []
+        if str(item).strip()
+    }
+    reasons = []
+    for row in rows:
+        shot_id = str(row.get("shotId", "")).strip() or "<missing-shot-id>"
+        if any(not str(row.get(field, "")).strip() for field in REQUIRED_REVIEW_FIELDS):
+            reasons.append(f"{shot_id}: independent review fields are incomplete.")
+            continue
+        source_id = str(row.get("sourceId", "")).strip()
+        if source_id not in allowed_sources:
+            reasons.append(f"{shot_id}: sourceId must be one of the scaffolded Start source IDs.")
+        direction = str(row.get("direction", "")).strip().upper()
+        if direction not in ALLOWED_DIRECTIONS:
+            reasons.append(f"{shot_id}: direction must be FORWARD or REVERSE.")
+        try:
+            source_start = float(str(row.get("sourceStartMs", "")).strip())
+            source_end = float(str(row.get("sourceEndMs", "")).strip())
+        except ValueError:
+            reasons.append(f"{shot_id}: sourceStartMs/sourceEndMs must be numeric.")
+            continue
+        if not math.isfinite(source_start) or not math.isfinite(source_end):
+            reasons.append(f"{shot_id}: sourceStartMs/sourceEndMs must be finite.")
+        elif source_start < 0.0 or source_end <= source_start:
+            reasons.append(f"{shot_id}: source interval must be non-negative and ascending.")
+    return reasons
+
+
+def worksheet_complete(path, draft=None, reference=None):
+    if draft is not None and reference is not None:
+        return not worksheet_validation_reasons(path, draft, reference)
     if not path or not Path(path).is_file():
         return False
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
@@ -127,9 +173,11 @@ def worksheet_complete(path):
         if str(row.get("direction", "")).strip().upper() not in ALLOWED_DIRECTIONS:
             return False
         try:
-            float(str(row["sourceStartMs"]).strip())
-            float(str(row["sourceEndMs"]).strip())
+            source_start = float(str(row["sourceStartMs"]).strip())
+            source_end = float(str(row["sourceEndMs"]).strip())
         except ValueError:
+            return False
+        if source_start < 0.0 or source_end <= source_start:
             return False
     return True
 
@@ -163,6 +211,32 @@ def review_pack_has_source_atlas(review_dir, expected_source_ids):
             preview = sample.get("previewPath") if isinstance(sample, dict) else None
             if not preview or not (review_dir / str(preview)).is_file():
                 return False
+    return True
+
+
+def review_pack_preparation_complete(review_dir, expected_source_ids, require_source_atlas=True):
+    review_dir = Path(review_dir)
+    manifest_path = review_dir / "review-pack.json"
+    worksheet_path = review_dir / "annotations.csv"
+    if not manifest_path.is_file() or not worksheet_path.is_file():
+        return False
+    try:
+        pack = load_json(manifest_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if pack.get("schema") != REVIEW_PACK_SCHEMA:
+        return False
+    previews = pack.get("previews")
+    if not isinstance(previews, list) or not previews:
+        return False
+    for item in previews:
+        preview_paths = item.get("previewPaths") if isinstance(item, dict) else None
+        if not isinstance(preview_paths, list) or not preview_paths:
+            return False
+        if any(not (review_dir / str(path)).is_file() for path in preview_paths):
+            return False
+    if require_source_atlas and not review_pack_has_source_atlas(review_dir, expected_source_ids):
+        return False
     return True
 
 
@@ -227,8 +301,19 @@ def inspect_case(case, manifest_path, corpus):
         if pack.get("schema") != REVIEW_PACK_SCHEMA:
             return case_result(case_id, tags, "REVIEW_PACK", "REBUILD_REVIEW_PACK",
                                ["Review-pack schema is invalid."])
-        if not worksheet_complete(worksheet):
-            return case_result(case_id, tags, "INDEPENDENT_REVIEW", "COMPLETE_INDEPENDENT_REVIEW")
+        review_reasons = worksheet_validation_reasons(
+            worksheet,
+            draft,
+            reference,
+        )
+        if review_reasons:
+            return case_result(
+                case_id,
+                tags,
+                "INDEPENDENT_REVIEW",
+                "COMPLETE_INDEPENDENT_REVIEW",
+                review_reasons,
+            )
         return case_result(case_id, tags, "TRUTH_RETENTION", "IMPORT_AND_RETAIN_TRUTH")
 
     retained = load_json(retained_path)
@@ -448,10 +533,17 @@ def prepare_review_packs(
         if review_dir is None:
             results.append({"caseId": case_id, "status": "FAILED", "reason": "reviewPackDir is missing."})
             continue
-        if not force and (review_dir / "review-pack.json").is_file():
-            if not needs_atlas or review_pack_has_source_atlas(review_dir, expected_source_ids):
-                results.append({"caseId": case_id, "status": "SKIPPED", "reason": "Review pack already satisfies requested preparation."})
-                continue
+        if not force and review_pack_preparation_complete(
+            review_dir,
+            expected_source_ids,
+            require_source_atlas=needs_atlas,
+        ):
+            results.append({
+                "caseId": case_id,
+                "status": "SKIPPED",
+                "reason": "Review pack already satisfies requested preparation.",
+            })
+            continue
         try:
             finish_path = artifact_path(case, plan_path, "finishPath")
             reference_path = artifact_path(case, plan_path, "referenceAnalysis")
@@ -515,6 +607,89 @@ def prepare_review_packs(
     }
 
 
+def discover_finish_candidates(plan_path, finish_dirs):
+    plan = require_plan(plan_path)
+    scan_dirs = []
+    for value in finish_dirs or []:
+        directory = Path(value).expanduser().resolve()
+        if not directory.is_dir():
+            raise ValueError(f"Finish discovery directory does not exist: {directory}")
+        scan_dirs.append(directory)
+    if not scan_dirs:
+        raise ValueError("At least one Finish discovery directory is required.")
+
+    planned_by_sha = {}
+    for case in plan["cases"]:
+        finish = artifact_path(case, plan_path, "finishPath")
+        if finish is None or not finish.is_file():
+            continue
+        planned_by_sha.setdefault(sha256_file(finish), str(case.get("caseId", "")).strip())
+
+    media_paths = []
+    seen_paths = set()
+    for directory in scan_dirs:
+        for path in sorted(directory.iterdir(), key=lambda item: item.name.lower()):
+            if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
+                continue
+            resolved = path.resolve()
+            key = str(resolved).lower()
+            if key in seen_paths:
+                continue
+            seen_paths.add(key)
+            media_paths.append(resolved)
+
+    unused = []
+    duplicates = []
+    discovered_by_sha = {}
+    for path in media_paths:
+        finish_sha = sha256_file(path)
+        duplicate_case = planned_by_sha.get(finish_sha)
+        duplicate_candidate = discovered_by_sha.get(finish_sha)
+        if duplicate_case:
+            duplicates.append({
+                "path": str(path),
+                "fileName": path.name,
+                "sha256": finish_sha,
+                "duplicateOfCaseId": duplicate_case,
+                "duplicateOfCandidatePath": None,
+            })
+            continue
+        if duplicate_candidate:
+            duplicates.append({
+                "path": str(path),
+                "fileName": path.name,
+                "sha256": finish_sha,
+                "duplicateOfCaseId": None,
+                "duplicateOfCandidatePath": duplicate_candidate,
+            })
+            continue
+        discovered_by_sha[finish_sha] = str(path)
+        unused.append({
+            "path": str(path),
+            "fileName": path.name,
+            "sha256": finish_sha,
+            "bytes": path.stat().st_size,
+            "requiresSourceBinding": True,
+            "requiresReferenceAnalysis": True,
+            "requiresPerceptualScreening": True,
+        })
+
+    cases_needed = max(0, MIN_CASES - len(plan["cases"]))
+    return {
+        "schema": DISCOVERY_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "plannedCaseCount": len(plan["cases"]),
+        "casesNeededForMinimum": cases_needed,
+        "scanDirectories": [str(path) for path in scan_dirs],
+        "scannedVideoCount": len(media_paths),
+        "exactUniqueUnusedFinishCount": len(unused),
+        "exactDuplicateFinishCount": len(duplicates),
+        "canReachMinimumByExactUniqueFinishCount": len(unused) >= cases_needed,
+        "candidates": unused,
+        "duplicates": duplicates,
+    }
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Track population of the 20-30 case independent Practice truth suite."
@@ -546,6 +721,15 @@ def build_parser():
     )
     prepare.add_argument("--force", action="store_true")
     prepare.add_argument("--output")
+    discover = sub.add_parser("discover-finish-candidates")
+    discover.add_argument("--manifest", required=True)
+    discover.add_argument(
+        "--finish-dir",
+        action="append",
+        required=True,
+        help="Directory containing candidate professional Finish videos; repeat as needed.",
+    )
+    discover.add_argument("--output")
     return parser
 
 
@@ -553,7 +737,7 @@ def main():
     args = build_parser().parse_args()
     if args.command == "status":
         payload = build_status(args.manifest)
-    else:
+    elif args.command == "prepare-review-packs":
         payload = prepare_review_packs(
             args.manifest,
             source_atlas_interval_ms=args.source_atlas_interval_ms,
@@ -562,6 +746,8 @@ def main():
             force=args.force,
             case_ids=args.case_id,
         )
+    else:
+        payload = discover_finish_candidates(args.manifest, args.finish_dir)
     if args.output:
         target = Path(args.output)
         target.parent.mkdir(parents=True, exist_ok=True)

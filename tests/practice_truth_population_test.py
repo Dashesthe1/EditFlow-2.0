@@ -210,6 +210,33 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "IMPORT_AND_RETAIN_TRUTH",
             )
 
+    def test_invalid_completed_worksheet_cannot_advance_to_truth_retention(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = root / case["reviewPackDir"]
+            review.mkdir()
+            write_json(review / "review-pack.json", {"schema": tool.REVIEW_PACK_SCHEMA})
+            with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "shotId", "sourceId", "sourceStartMs", "sourceEndMs", "direction"
+                ])
+                writer.writeheader()
+                writer.writerow({
+                    "shotId": "shot:1",
+                    "sourceId": "video:not-allowed",
+                    "sourceStartMs": "1000",
+                    "sourceEndMs": "2000",
+                    "direction": "FORWARD",
+                })
+
+            status = tool.build_status(self._plan(root, [case]))
+            result = status["cases"][0]
+            self.assertEqual(result["stage"], "INDEPENDENT_REVIEW")
+            self.assertEqual(result["nextAction"], "COMPLETE_INDEPENDENT_REVIEW")
+            self.assertTrue(any("sourceId must be one of" in reason for reason in result["reasons"]))
+
     def test_prepare_review_packs_refreshes_missing_source_atlas_and_then_skips(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -228,8 +255,22 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     atlas_dir.mkdir(parents=True, exist_ok=True)
                     preview = atlas_dir / "0001.png"
                     preview.write_bytes(b"atlas")
+                    finish_preview_dir = review_dir / "finish-previews"
+                    finish_preview_dir.mkdir(parents=True, exist_ok=True)
+                    finish_preview = finish_preview_dir / "shot-1.png"
+                    finish_preview.write_bytes(b"finish")
+                    (review_dir / "annotations.csv").write_text(
+                        "shotId,sourceId,sourceStartMs,sourceEndMs,direction\n",
+                        encoding="utf-8",
+                    )
                     manifest = {
                         "schema": tool.REVIEW_PACK_SCHEMA,
+                        "previews": [{
+                            "shotId": "shot:1",
+                            "previewPaths": [
+                                str(Path("finish-previews") / "shot-1.png"),
+                            ],
+                        }],
                         "sourceAtlas": [{
                             "sourceId": source_id,
                             "samples": [{
@@ -259,6 +300,14 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             refreshed = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
             self.assertEqual(refreshed["preparedCount"], 1)
             self.assertEqual(len(calls), 2)
+
+            finish_preview_path = (
+                root / case["reviewPackDir"] / "finish-previews" / "shot-1.png"
+            )
+            finish_preview_path.unlink()
+            refreshed = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(refreshed["preparedCount"], 1)
+            self.assertEqual(len(calls), 3)
 
     def test_prepare_review_packs_scaffolds_missing_truth_draft(self):
         with TemporaryDirectory() as temporary:
@@ -354,6 +403,33 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual([item["caseId"] for item in payload["cases"]], [cases[1]["caseId"]])
             with self.assertRaisesRegex(ValueError, "Unknown population case id"):
                 tool.prepare_review_packs(plan, case_ids=["case-does-not-exist"], media_truth=FakeTruthTool())
+
+    def test_finish_discovery_excludes_planned_and_exact_duplicate_media(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scan = root / "finish-library"
+            scan.mkdir()
+            case = self._base_case(root)
+            plan = self._plan(root, [case])
+
+            planned_bytes = (root / case["finishPath"]).read_bytes()
+            (scan / "planned-copy.mp4").write_bytes(planned_bytes)
+            (scan / "new-a.mp4").write_bytes(b"new-a")
+            (scan / "new-a-copy.mov").write_bytes(b"new-a")
+            (scan / "ignore.txt").write_text("not video", encoding="utf-8")
+
+            result = tool.discover_finish_candidates(plan, [scan])
+            self.assertEqual(result["schema"], tool.DISCOVERY_SCHEMA)
+            self.assertEqual(result["plannedCaseCount"], 1)
+            self.assertEqual(result["casesNeededForMinimum"], 19)
+            self.assertEqual(result["scannedVideoCount"], 3)
+            self.assertEqual(result["exactUniqueUnusedFinishCount"], 1)
+            self.assertEqual(result["exactDuplicateFinishCount"], 2)
+            self.assertFalse(result["canReachMinimumByExactUniqueFinishCount"])
+            candidate = result["candidates"][0]
+            self.assertIn(candidate["fileName"], {"new-a.mp4", "new-a-copy.mov"})
+            self.assertTrue(candidate["requiresSourceBinding"])
+            self.assertTrue(candidate["requiresPerceptualScreening"])
 
     def test_complete_single_case_reaches_corpus_ready_without_certifying_population(self):
         with TemporaryDirectory() as temporary:
