@@ -86,6 +86,74 @@ def case():
 
 
 class PracticeMediaBenchmarkTest(unittest.TestCase):
+    def test_source_cache_requires_requested_density(self):
+        artifact = {
+            "sourceId": "video:movie",
+            "sourcePath": str(Path("movie.mp4").resolve()),
+            "sourceSha256": "movie-sha-a",
+            "analysis": {
+                "sampleStepMs": 1500.0,
+                "analysisProxyFps": 4.0,
+            },
+        }
+        self.assertFalse(benchmark.source_cache_compatible(
+            artifact,
+            Path("movie.mp4").resolve(),
+            "video:movie",
+            250.0,
+            4.0,
+        ))
+        self.assertTrue(benchmark.source_cache_compatible(
+            artifact,
+            Path("movie.mp4").resolve(),
+            "video:movie",
+            1500.0,
+            4.0,
+            "movie-sha-a",
+        ))
+        self.assertFalse(benchmark.source_cache_compatible(
+            artifact,
+            Path("movie.mp4").resolve(),
+            "video:movie",
+            1500.0,
+            4.0,
+            "movie-sha-b",
+        ))
+
+    def test_reference_cache_requires_requested_segmentation(self):
+        artifact = {
+            "referenceId": "ref:1",
+            "sourcePath": str(Path("finish.mp4").resolve()),
+            "sourceSha256": "finish-sha-a",
+            "analysis": {
+                "cutThreshold": 0.42,
+                "minimumShotMs": 180.0,
+            },
+        }
+        self.assertTrue(benchmark.reference_cache_compatible(
+            artifact,
+            Path("finish.mp4").resolve(),
+            "ref:1",
+            0.42,
+            180.0,
+            "finish-sha-a",
+        ))
+        self.assertFalse(benchmark.reference_cache_compatible(
+            artifact,
+            Path("finish.mp4").resolve(),
+            "ref:1",
+            0.42,
+            180.0,
+            "finish-sha-b",
+        ))
+        self.assertFalse(benchmark.reference_cache_compatible(
+            artifact,
+            Path("finish.mp4").resolve(),
+            "ref:1",
+            0.55,
+            180.0,
+        ))
+
     def test_manifest_loader_accepts_utf8_bom(self):
         with tempfile.TemporaryDirectory() as root:
             manifest = Path(root) / "manifest.json"

@@ -328,8 +328,10 @@ class FrameReader:
 
 
 _SIFT = cv2.SIFT_create(nfeatures=600)
+_RESCUE_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 _FRAME_DESCRIPTOR_CACHE = {}
 _FRAME_FEATURE_CACHE = {}
+_RESCUE_NORMALIZED_FRAME_CACHE = {}
 
 
 def cached_descriptor(frame):
@@ -352,6 +354,18 @@ def cached_features(frame):
     keypoints, sift = _SIFT.detectAndCompute(gray, None)
     result = (descriptor, keypoints or [], sift)
     _FRAME_FEATURE_CACHE[key] = result
+    return result
+
+
+def normalized_rescue_frame(frame):
+    key = id(frame)
+    cached = _RESCUE_NORMALIZED_FRAME_CACHE.get(key)
+    if cached is not None:
+        return cached
+    gray = cv2.cvtColor(resize_longest(frame, 480), cv2.COLOR_BGR2GRAY)
+    normalized = _RESCUE_CLAHE.apply(gray)
+    result = cv2.cvtColor(normalized, cv2.COLOR_GRAY2BGR)
+    _RESCUE_NORMALIZED_FRAME_CACHE[key] = result
     return result
 
 
@@ -1142,6 +1156,245 @@ def mapping_geometric_proof(
     }
 
 
+def solve_geometric_rescue_path(anchors, source_times, evidence_matrix, direction):
+    count = len(anchors)
+    sample_count = len(source_times)
+    if count < 2 or sample_count < 1:
+        return None
+    negative = -1e9
+    dp = np.full((count, sample_count), negative, dtype=np.float64)
+    previous = np.full((count, sample_count), -1, dtype=np.int32)
+
+    def pair_value(item):
+        return (
+            (0.72 * float(item["geometrySupport"]))
+            + (0.28 * float(item["score"]))
+        )
+
+    for sample_index in range(sample_count):
+        dp[0, sample_index] = pair_value(evidence_matrix[0][sample_index])
+
+    for anchor_index in range(1, count):
+        gap_ms = float(
+            anchors[anchor_index]["timeMs"]
+            - anchors[anchor_index - 1]["timeMs"]
+        )
+        minimum_delta = max(40.0, 0.15 * gap_ms)
+        maximum_delta = max(350.0, (4.5 * gap_ms) + 250.0)
+        for sample_index, sample_time in enumerate(source_times):
+            value_here = pair_value(evidence_matrix[anchor_index][sample_index])
+            for prior_index, prior_time in enumerate(source_times):
+                delta = (float(sample_time) - float(prior_time)) * float(direction)
+                if delta < minimum_delta or delta > maximum_delta:
+                    continue
+                candidate = dp[anchor_index - 1, prior_index] + value_here
+                if candidate > dp[anchor_index, sample_index]:
+                    dp[anchor_index, sample_index] = candidate
+                    previous[anchor_index, sample_index] = prior_index
+
+    final_index = int(np.argmax(dp[-1]))
+    if dp[-1, final_index] <= negative / 2:
+        return None
+    indexes = [final_index]
+    for anchor_index in range(count - 1, 0, -1):
+        final_index = int(previous[anchor_index, final_index])
+        if final_index < 0:
+            return None
+        indexes.append(final_index)
+    indexes.reverse()
+
+    path_times = [float(source_times[index]) for index in indexes]
+    path_evidence = [
+        evidence_matrix[anchor_index][indexes[anchor_index]]
+        for anchor_index in range(count)
+    ]
+    reference_times = np.asarray(
+        [float(anchor["timeMs"]) for anchor in anchors],
+        dtype=np.float64,
+    )
+    center_reference = float(reference_times[len(reference_times) // 2])
+    centered = reference_times - center_reference
+    source_array = np.asarray(path_times, dtype=np.float64)
+    matrix = np.column_stack((centered, np.ones_like(centered)))
+    fitted_slope, fitted_center = np.linalg.lstsq(
+        matrix,
+        source_array,
+        rcond=None,
+    )[0]
+    fitted = (fitted_slope * centered) + fitted_center
+    residual_ms = float(np.sqrt(np.mean((source_array - fitted) ** 2)))
+    fit_consistency = clamp01(1.0 - (residual_ms / 500.0))
+
+    strong = [
+        item
+        for item in path_evidence
+        if int(item["inlierCount"]) >= 6
+        and float(item["inlierRatio"]) >= 0.45
+        and min(
+            float(item["referenceCoverage"]),
+            float(item["sourceCoverage"]),
+        ) >= 0.015
+    ]
+    mean_support = float(np.mean([
+        float(item["geometrySupport"])
+        for item in path_evidence
+    ]))
+    mean_feature = float(np.mean([
+        float(item["score"])
+        for item in path_evidence
+    ]))
+    rescue_score = clamp01(
+        (0.62 * mean_support)
+        + (0.23 * mean_feature)
+        + (0.15 * fit_consistency)
+    )
+    return {
+        "score": rescue_score,
+        "strongAnchorCount": len(strong),
+        "meanSupport": mean_support,
+        "meanFeature": mean_feature,
+        "fitConsistency": fit_consistency,
+        "residualMs": residual_ms,
+        "slope": float(fitted_slope),
+        "centerSourceMs": float(fitted_center),
+        "pathTimes": path_times,
+        "pathEvidence": path_evidence,
+    }
+
+
+def geometric_rescue_candidate(
+    shot,
+    source_index,
+    reference_reader,
+    source_reader,
+    maximum_samples=480,
+):
+    anchors = shot["anchors"]
+    if len(anchors) < 2:
+        return None
+    indexes = sorted(set([0, len(anchors) // 2, len(anchors) - 1]))
+    selected_anchors = [anchors[index] for index in indexes]
+    reference_frames = [
+        reference_reader.read_ms(anchor["timeMs"])
+        for anchor in selected_anchors
+    ]
+    if any(frame is None for frame in reference_frames):
+        return None
+
+    samples = list(source_index["samples"])
+    if len(samples) > int(maximum_samples):
+        positions = np.linspace(0, len(samples) - 1, int(maximum_samples))
+        samples = [samples[int(round(position))] for position in positions]
+    source_times = [float(sample["timeMs"]) for sample in samples]
+    if not source_times:
+        return None
+
+    evidence_matrix = []
+    for reference_frame in reference_frames:
+        row = []
+        for source_time in source_times:
+            source_frame = source_reader.read_ms(source_time)
+            if source_frame is None:
+                row.append({
+                    "score": 0.0,
+                    "inlierCount": 0,
+                    "inlierRatio": 0.0,
+                    "referenceCoverage": 0.0,
+                    "sourceCoverage": 0.0,
+                    "geometrySupport": 0.0,
+                })
+            else:
+                row.append(feature_match_evidence(
+                    normalized_rescue_frame(reference_frame),
+                    normalized_rescue_frame(source_frame),
+                ))
+        evidence_matrix.append(row)
+
+    paths = [
+        solve_geometric_rescue_path(
+            selected_anchors,
+            source_times,
+            evidence_matrix,
+            direction,
+        )
+        for direction in (1.0, -1.0)
+    ]
+    paths = [item for item in paths if item is not None]
+    if not paths:
+        return None
+    best = max(paths, key=lambda item: item["score"])
+    rate = abs(float(best["slope"]))
+    if (
+        int(best["strongAnchorCount"]) < 2
+        or float(best["meanSupport"]) < 0.60
+        or float(best["residualMs"]) > 180.0
+        or rate < 0.15
+        or rate > 4.5
+    ):
+        return None
+
+    path_evidence = best["pathEvidence"]
+    strong_count = int(best["strongAnchorCount"])
+    anchor_count = len(path_evidence)
+    coverages = [
+        min(
+            float(item["referenceCoverage"]),
+            float(item["sourceCoverage"]),
+        )
+        for item in path_evidence
+    ]
+    geometric_proof = {
+        "anchorCount": anchor_count,
+        "strongAnchorCount": strong_count,
+        "strongAnchorFraction": strong_count / max(1, anchor_count),
+        "meanSupport": float(best["meanSupport"]),
+        "minimumSupport": float(min(
+            float(item["geometrySupport"])
+            for item in path_evidence
+        )),
+        "maximumInlierCount": max(
+            int(item["inlierCount"])
+            for item in path_evidence
+        ),
+        "meanInlierRatio": float(np.mean([
+            float(item["inlierRatio"])
+            for item in path_evidence
+        ])),
+        "meanCoverage": float(np.mean(coverages)),
+    }
+    trajectory = [
+        {
+            "referenceTimeMs": float(anchor["timeMs"]),
+            "sourceTimeMs": float(source_time),
+            "similarity": float(item["score"]),
+        }
+        for anchor, source_time, item in zip(
+            selected_anchors,
+            best["pathTimes"],
+            path_evidence,
+        )
+    ]
+    direction = "FORWARD" if float(best["slope"]) >= 0.0 else "REVERSE"
+    return {
+        "score": float(best["score"]),
+        "appearance": float(best["meanFeature"]),
+        "minimum": float(min(float(item["score"]) for item in path_evidence)),
+        "consistency": float(best["fitConsistency"]),
+        "slope": float(best["slope"]),
+        "centerSourceMs": float(best["centerSourceMs"]),
+        "anchorSimilarities": [
+            float(item["score"])
+            for item in path_evidence
+        ],
+        "trajectory": trajectory,
+        "temporalBehavior": direction,
+        "rewind": None,
+        "geometricProof": geometric_proof,
+        "rescueScore": float(best["score"]),
+        "rescueResidualMs": float(best["residualMs"]),
+    }
+
+
 def candidate_rank_score(mapping):
     proof = mapping.get("geometricProof") or {}
     strong_count = int(proof.get("strongAnchorCount", 0))
@@ -1180,6 +1433,20 @@ def confidence_from_result(best, second_score):
     # cross the default 0.95 exact-scene gate.
     if int(proof.get("strongAnchorCount", 0)) < 2:
         confidence = min(confidence, 0.949)
+    # Exact-scene confidence also requires the winning source/timing hypothesis
+    # to be materially distinct from the retained runner-up. Repeated geometry
+    # can prove correspondence, but it cannot by itself resolve a near-tie
+    # between different source hypotheses.
+    if margin < 0.02:
+        confidence = min(confidence, 0.949)
+    if mapping.get("rescueScore") is not None:
+        rescue_certified = (
+            int(proof.get("strongAnchorCount", 0)) >= 3
+            and float(mapping.get("rescueScore", 0.0)) >= 0.82
+            and margin >= 0.08
+        )
+        if not rescue_certified:
+            confidence = min(confidence, 0.949)
     return confidence
 
 
@@ -1220,6 +1487,11 @@ def reference_boundary_continuity(reference_reader, previous_shot, shot):
 
 def scene_identity_verified(match):
     if match is None or float(match.get("confidence", 0.0)) < 0.80:
+        return False
+    if (
+        match.get("selectionMode") == "GEOMETRIC_RESCUE"
+        and float(match.get("confidence", 0.0)) < 0.95
+    ):
         return False
     proof = match.get("geometricProof") or {}
     return (
@@ -1460,6 +1732,41 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     ),
                 }
 
+            repeated_geometry_present = any(
+                int(item["mapping"].get("geometricProof", {}).get("strongAnchorCount", 0)) >= 2
+                and float(item["mapping"].get("geometricProof", {}).get("meanSupport", 0.0)) >= 0.75
+                for item in detailed
+            )
+            if not repeated_geometry_present:
+                for source_index in source_indexes:
+                    source_id = source_index["sourceId"]
+                    reader = source_readers[source_id]
+                    rescue_mapping = geometric_rescue_candidate(
+                        shot,
+                        source_index,
+                        reference_reader,
+                        reader,
+                    )
+                    if rescue_mapping is None:
+                        continue
+                    rescue_sample = nearest_sample(
+                        source_index,
+                        float(rescue_mapping["centerSourceMs"]),
+                    )
+                    if rescue_sample is None:
+                        continue
+                    detailed.append({
+                        "candidate": {
+                            "score": float(rescue_mapping["rescueScore"]),
+                            "sample": rescue_sample,
+                            "index": source_index,
+                        },
+                        "index": source_index,
+                        "sample": rescue_sample,
+                        "coarseScore": float(rescue_mapping["rescueScore"]),
+                        "mapping": rescue_mapping,
+                    })
+
             detailed.sort(
                 key=lambda item: candidate_rank_score(item["mapping"]),
                 reverse=True,
@@ -1480,15 +1787,16 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             )
             mapping = best["mapping"]
             best_reader = source_readers[best["index"]["sourceId"]]
-            mapping = {
-                **mapping,
-                "geometricProof": mapping_geometric_proof(
-                    shot,
-                    mapping,
-                    reference_reader,
-                    best_reader,
-                ),
-            }
+            if mapping.get("rescueScore") is None:
+                mapping = {
+                    **mapping,
+                    "geometricProof": mapping_geometric_proof(
+                        shot,
+                        mapping,
+                        reference_reader,
+                        best_reader,
+                    ),
+                }
             best["mapping"] = mapping
             second_score = distinct_second_score(refined, best)
             center_reference = shot["anchors"][len(shot["anchors"]) // 2]["timeMs"]
@@ -1518,7 +1826,13 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             candidate_score = candidate_rank_score(mapping)
             candidate_margin = candidate_score - float(second_score)
             selection_mode = (
-                "REFERENCE_CONTINUITY_PRIOR" if continuity_applied else "VISUAL_BEST"
+                "GEOMETRIC_RESCUE"
+                if mapping.get("rescueScore") is not None
+                else (
+                    "REFERENCE_CONTINUITY_PRIOR"
+                    if continuity_applied
+                    else "VISUAL_BEST"
+                )
             )
             boundary_evidence = (
                 [
@@ -1563,6 +1877,14 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     f"practice-runner-up-score:{second_score:.6f}",
                     f"practice-candidate-margin:{candidate_margin:.6f}",
                     f"practice-scene-selection-mode:{selection_mode}",
+                    *(
+                        [
+                            f"practice-geometric-rescue-score:{mapping['rescueScore']:.6f}",
+                            f"practice-geometric-rescue-residual-ms:{mapping.get('rescueResidualMs', 0.0):.3f}",
+                        ]
+                        if mapping.get("rescueScore") is not None
+                        else []
+                    ),
                     f"practice-geometric-mean-support:{mapping.get('geometricProof', {}).get('meanSupport', 0.0):.6f}",
                     f"practice-geometric-strong-anchors:{mapping.get('geometricProof', {}).get('strongAnchorCount', 0)}",
                     f"practice-geometric-strong-fraction:{mapping.get('geometricProof', {}).get('strongAnchorFraction', 0.0):.6f}",
@@ -1602,6 +1924,15 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "geometricVerificationMode": "SOURCE_BEST_PLUS_TOP4_THREE_ANCHOR_THEN_FULL_WINNER_V1",
             "geometricRankingMinimumStrongAnchors": 2,
             "geometricRankingSampledAnchors": 3,
+            "geometricRescueMode": "BOUNDED_THREE_ANCHOR_COHERENT_PATH_V1",
+            "geometricRescuePhotometricNormalization": "CLAHE_V1",
+            "geometricRescueMaximumSamplesPerSource": 480,
+            "geometricRescueMinimumStrongAnchors": 2,
+            "geometricRescueMinimumMeanSupport": 0.60,
+            "geometricRescueMaximumResidualMs": 180.0,
+            "geometricRescueExactMinimumStrongAnchors": 3,
+            "geometricRescueExactMinimumScore": 0.82,
+            "geometricRescueExactMinimumCandidateMargin": 0.08,
             "sourceContinuityMode": "REFERENCE_BOUNDARY_V1",
             "sourceContinuityIdentityGate": "CONFIDENCE_0_80_PLUS_REPEATED_GEOMETRY_V1",
             "sourceContinuityThreshold": 0.70,

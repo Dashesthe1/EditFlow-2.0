@@ -88,7 +88,8 @@ export interface PracticeTemporalRewindV1 {
 
 export type PracticeSceneSelectionModeV1 =
   | "VISUAL_BEST"
-  | "REFERENCE_CONTINUITY_PRIOR";
+  | "REFERENCE_CONTINUITY_PRIOR"
+  | "GEOMETRIC_RESCUE";
 
 export interface PracticeSceneGeometricProofV1 {
   readonly anchorCount: number;

@@ -4,6 +4,7 @@ Practice scene matching must be proven against long-form source footage, not onl
 The benchmark runner is:
 
 - `scripts/practice/practice-media-benchmark.py`
+- `scripts/practice/practice-media-truth.py`
 - manifest schema: `editflow.practice-media-benchmark-suite.v1`
 - truth schema: `editflow.practice-media-benchmark-truth.v1`
 - report schema: `editflow.practice-media-benchmark-report.v1`
@@ -20,6 +21,15 @@ coverage, confidence, geometry, and retrieval behavior, but it cannot certify co
 A case can become `PASS` only when retained truth covers every Finish shot and the match is
 checked against independent source identity, source range, and direction annotations.
 High matcher confidence is never accepted as ground truth.
+
+`practice-media-truth.py scaffold` creates a DRAFT with Finish shot IDs and reference timing
+context only. It deliberately leaves source identity, source timing, and playback direction blank.
+`retain` accepts only complete independent annotations with origin
+`INDEPENDENT_HUMAN` or `INDEPENDENT_EXTERNAL_TOOL`; EditFlow matcher output is not a valid
+truth origin. Retained truth is bound to the exact Finish style fingerprint, Finish media SHA-256,
+analyzer fingerprint, and benchmark source-ID set. The benchmark rejects stale, DRAFT, incomplete,
+or source-set-mismatched truth before expensive source matching.
+
 The default certification gates are intentionally strict:
 
 - 100% Finish-shot match coverage;
@@ -37,11 +47,14 @@ different retained tolerance.
 ## Long-form cache behavior
 
 Long movie indexes are retained only while the production matcher accepts their algorithm ID
-and analyzer fingerprint. If matcher code, OpenCV, or NumPy evidence changes, the runner rebuilds
-the stale artifact before measuring the case.
+and analyzer fingerprint **and** the cached source ID/path, media SHA-256, sample step, and analysis
+FPS match the benchmark request. Reference caches must also match reference ID/path, Finish media
+SHA-256, cut threshold, and minimum shot duration. If those values, the media bytes, matcher code,
+OpenCV, or NumPy evidence change, the runner rebuilds the stale artifact before measuring the case.
 
-This lets EditFlow iterate on retrieval evidence without silently comparing a new matcher against
-an index created by an older algorithm implementation.
+This prevents a sparse exploratory index from being silently reused as a denser proof run and lets
+EditFlow iterate on retrieval evidence without comparing a new matcher against incompatible
+analysis artifacts.
 
 ## Benchmark manifest
 

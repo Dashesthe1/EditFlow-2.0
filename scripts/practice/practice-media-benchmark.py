@@ -230,15 +230,67 @@ def load_matcher():
     return module
 
 
-def valid_cached(matcher, path, schema):
+def load_truth_tool():
+    script = Path(__file__).with_name("practice-media-truth.py")
+    spec = importlib.util.spec_from_file_location("editflow_practice_media_truth", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load truth tool from {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def cached_artifact(matcher, path, schema):
     path = Path(path)
     if not path.is_file():
-        return False
+        return None
     try:
-        matcher.load_artifact(path, schema)
-        return True
+        return matcher.load_artifact(path, schema)
     except Exception:
+        return None
+
+
+def same_number(left, right, tolerance=1e-9):
+    try:
+        return abs(float(left) - float(right)) <= tolerance
+    except (TypeError, ValueError):
         return False
+
+
+def reference_cache_compatible(
+    artifact,
+    reference_video,
+    reference_id,
+    cut_threshold,
+    minimum_shot_ms,
+    source_sha256=None,
+):
+    analysis = artifact.get("analysis") or {}
+    return (
+        str(artifact.get("referenceId")) == str(reference_id)
+        and Path(str(artifact.get("sourcePath", ""))).resolve() == Path(reference_video).resolve()
+        and (source_sha256 is None or str(artifact.get("sourceSha256")) == str(source_sha256))
+        and same_number(analysis.get("cutThreshold"), cut_threshold)
+        and same_number(analysis.get("minimumShotMs"), minimum_shot_ms)
+    )
+
+
+def source_cache_compatible(
+    artifact,
+    source_video,
+    source_id,
+    sample_step_ms,
+    analysis_fps,
+    source_sha256=None,
+):
+    analysis = artifact.get("analysis") or {}
+    return (
+        str(artifact.get("sourceId")) == str(source_id)
+        and Path(str(artifact.get("sourcePath", ""))).resolve() == Path(source_video).resolve()
+        and (source_sha256 is None or str(artifact.get("sourceSha256")) == str(source_sha256))
+        and same_number(analysis.get("sampleStepMs"), sample_step_ms)
+        and same_number(analysis.get("analysisProxyFps"), analysis_fps)
+    )
 
 
 def run_case(matcher, case, base_dir, output_root):
@@ -248,33 +300,81 @@ def run_case(matcher, case, base_dir, output_root):
     reference_video = resolve_path(base_dir, case["referenceVideo"])
     reference_json = case_dir / "reference-analysis.json"
     reference_id = str(case.get("referenceId", benchmark_id))
-    if not valid_cached(matcher, reference_json, "editflow.practice-reference-analysis.v1"):
+    cut_threshold = float(case.get("cutThreshold", 0.42))
+    minimum_shot_ms = float(case.get("minimumShotMs", 180.0))
+    reference_sha256 = matcher.sha256_file(reference_video)
+    reference = cached_artifact(
+        matcher,
+        reference_json,
+        "editflow.practice-reference-analysis.v1",
+    )
+    if reference is None or not reference_cache_compatible(
+        reference,
+        reference_video,
+        reference_id,
+        cut_threshold,
+        minimum_shot_ms,
+        reference_sha256,
+    ):
         matcher.analyze_reference(
             reference_video,
             reference_id,
             reference_json,
-            float(case.get("cutThreshold", 0.42)),
-            float(case.get("minimumShotMs", 180.0)),
+            cut_threshold,
+            minimum_shot_ms,
         )
-    reference = matcher.load_artifact(
-        reference_json,
-        "editflow.practice-reference-analysis.v1",
-    )
+        reference = matcher.load_artifact(
+            reference_json,
+            "editflow.practice-reference-analysis.v1",
+        )
+
+    truth_payload = None
+    if case.get("truthFile"):
+        truth_path = resolve_path(base_dir, case["truthFile"])
+        truth_payload = load_json(truth_path)
+        truth_tool = load_truth_tool()
+        allowed_source_ids = [str(item["sourceId"]) for item in case.get("sources") or []]
+        truth_errors = truth_tool.validate_truth(
+            truth_payload,
+            reference,
+            allowed_source_ids=allowed_source_ids,
+            require_retained=True,
+        )
+        if truth_errors:
+            raise ValueError(
+                f"{truth_path} is not retained independent benchmark truth:\n- "
+                + "\n- ".join(truth_errors)
+            )
 
     source_indexes = []
     for source in case.get("sources") or []:
         source_id = str(source["sourceId"])
         source_video = resolve_path(base_dir, source["video"])
         source_json = case_dir / f"source-{safe_name(source_id)}.json"
-        if not valid_cached(matcher, source_json, "editflow.practice-source-index.v1"):
+        sample_step_ms = float(source.get("sampleStepMs", case.get("sampleStepMs", 500.0)))
+        analysis_fps = float(source.get("analysisFps", case.get("analysisFps", 6.0)))
+        source_sha256 = matcher.sha256_file(source_video)
+        source_index = cached_artifact(
+            matcher,
+            source_json,
+            "editflow.practice-source-index.v1",
+        )
+        if source_index is None or not source_cache_compatible(
+            source_index,
+            source_video,
+            source_id,
+            sample_step_ms,
+            analysis_fps,
+            source_sha256,
+        ):
             matcher.index_source(
                 source_video,
                 source_id,
                 source_json,
-                float(source.get("sampleStepMs", case.get("sampleStepMs", 500.0))),
+                sample_step_ms,
                 explicit_ffmpeg=case.get("ffmpeg"),
                 proxy_dir=case_dir / "proxy",
-                analysis_fps=float(source.get("analysisFps", case.get("analysisFps", 6.0))),
+                analysis_fps=analysis_fps,
             )
         source_indexes.append(source_json)
 
@@ -285,18 +385,6 @@ def run_case(matcher, case, base_dir, output_root):
         matches_json,
         int(case.get("coarseLimit", 16)),
     )
-    truth_payload = None
-    if case.get("truthFile"):
-        truth_path = resolve_path(base_dir, case["truthFile"])
-        truth_payload = load_json(truth_path)
-        if truth_payload.get("schema") != TRUTH_SCHEMA:
-            raise ValueError(f"{truth_path} must use {TRUTH_SCHEMA}")
-        if str(truth_payload.get("referenceId")) != str(reference_id):
-            raise ValueError(
-                f"Truth referenceId {truth_payload.get('referenceId')} "
-                f"does not match {reference_id}."
-            )
-
     result = evaluate_case(case, reference, matches_payload, truth_payload)
     result["artifacts"] = {
         "referenceAnalysis": str(reference_json),
