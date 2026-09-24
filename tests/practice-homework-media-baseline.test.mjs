@@ -386,8 +386,8 @@ test("AE baseline preserves measured dynamic framing as transform trajectories",
     {
       ...matches[0],
       geometricProof: {
-        anchorCount: 4,
-        strongAnchorCount: 4,
+        anchorCount: 5,
+        strongAnchorCount: 5,
         strongAnchorFraction: 1,
         meanSupport: 0.94,
         minimumSupport: 0.90,
@@ -397,7 +397,7 @@ test("AE baseline preserves measured dynamic framing as transform trajectories",
         framing: {
           stable: false,
           dynamic: true,
-          anchorCount: 4,
+          anchorCount: 5,
           stableAnchorCount: 0,
           stableAnchorFraction: 0,
           positionX: 205,
@@ -410,38 +410,16 @@ test("AE baseline preserves measured dynamic framing as transform trajectories",
           confidence: 0.61,
           dynamicConfidence: 0.94,
           trajectory: [
-            {
-              referenceTimeMs: 100,
-              positionX: 180,
-              positionY: 105,
-              scalePercent: 100,
-              rotationDegrees: 0,
-              confidence: 0.94,
-            },
-            {
-              referenceTimeMs: 350,
-              positionX: 194,
-              positionY: 98,
-              scalePercent: 109,
-              rotationDegrees: 1.2,
-              confidence: 0.95,
-            },
-            {
-              referenceTimeMs: 650,
-              positionX: 214,
-              positionY: 88,
-              scalePercent: 121,
-              rotationDegrees: 2.8,
-              confidence: 0.94,
-            },
-            {
-              referenceTimeMs: 900,
-              positionX: 232,
-              positionY: 80,
-              scalePercent: 132,
-              rotationDegrees: 4,
-              confidence: 0.93,
-            },
+            { referenceTimeMs: 100, positionX: 180, positionY: 105, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.94 },
+            { referenceTimeMs: 300, positionX: 190, positionY: 100, scalePercent: 102,
+              rotationDegrees: 0.5, confidence: 0.95 },
+            { referenceTimeMs: 500, positionX: 200, positionY: 95, scalePercent: 115,
+              rotationDegrees: 1, confidence: 0.95 },
+            { referenceTimeMs: 700, positionX: 210, positionY: 90, scalePercent: 128,
+              rotationDegrees: 1.5, confidence: 0.94 },
+            { referenceTimeMs: 900, positionX: 220, positionY: 85, scalePercent: 130,
+              rotationDegrees: 2, confidence: 0.93 },
           ],
         },
       },
@@ -457,22 +435,40 @@ test("AE baseline preserves measured dynamic framing as transform trajectories",
   const byLeaf = new Map(transforms.map((item) => [item.payload.propertyPath.at(-1), item]));
   assert.deepEqual(byLeaf.get("ADBE Position")?.payload.keyframes, [
     { time: 0.1, value: [180, 105] },
-    { time: 0.35, value: [194, 98] },
-    { time: 0.65, value: [214, 88] },
-    { time: 0.9, value: [232, 80] },
+    { time: 0.3, value: [190, 100] },
+    { time: 0.5, value: [200, 95] },
+    { time: 0.7, value: [210, 90] },
+    { time: 0.9, value: [220, 85] },
   ]);
   assert.deepEqual(byLeaf.get("ADBE Scale")?.payload.keyframes, [
     { time: 0.1, value: [100, 100] },
-    { time: 0.35, value: [109, 109] },
-    { time: 0.65, value: [121, 121] },
-    { time: 0.9, value: [132, 132] },
+    { time: 0.3, value: [102, 102] },
+    { time: 0.5, value: [115, 115] },
+    { time: 0.7, value: [128, 128] },
+    { time: 0.9, value: [130, 130] },
   ]);
   assert.deepEqual(byLeaf.get("ADBE Rotate Z")?.payload.keyframes, [
     { time: 0.1, value: 0 },
-    { time: 0.35, value: 1.2 },
-    { time: 0.65, value: 2.8 },
-    { time: 0.9, value: 4 },
+    { time: 0.3, value: 0.5 },
+    { time: 0.5, value: 1 },
+    { time: 0.7, value: 1.5 },
+    { time: 0.9, value: 2 },
   ]);
+  const curveOps = plan.operations.filter((item) =>
+    item.command === "property.temporal_interpolation.set"
+      && item.payload.layer?.stableId?.endsWith("_0001"));
+  assert.equal(curveOps.length, 2);
+  assert.deepEqual(curveOps.map((item) => item.payload.propertyPath?.at(-1)), [
+    "ADBE Scale",
+    "ADBE Scale",
+  ]);
+  assert.deepEqual(curveOps.map((item) => item.payload.keyIndex), [2, 4]);
+  assert.ok(curveOps.every((item) =>
+    item.capabilityId === "ae.property.temporal_interpolation.set"
+      && item.payload.interpolation?.inType === "BEZIER"
+      && item.payload.interpolation?.outType === "BEZIER"
+      && item.payload.interpolation?.temporalContinuous === true
+      && item.payload.interpolation?.temporalAutoBezier === true));
 });
 
 test("AE baseline refuses unstable framing evidence", () => {
