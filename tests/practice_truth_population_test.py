@@ -230,6 +230,9 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(prepared["failedCount"], 0)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0]["source_atlas_interval_ms"], tool.DEFAULT_SOURCE_ATLAS_INTERVAL_MS)
+            expected_cache = str(plan.resolve().parent / ".source-atlas-cache")
+            self.assertEqual(calls[0]["source_atlas_cache_dir"], expected_cache)
+            self.assertEqual(prepared["sourceAtlasCacheDir"], expected_cache)
 
             skipped = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
             self.assertEqual(skipped["skippedCount"], 1)
@@ -240,6 +243,101 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             refreshed = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
             self.assertEqual(refreshed["preparedCount"], 1)
             self.assertEqual(len(calls), 2)
+
+    def test_prepare_review_packs_scaffolds_missing_truth_draft(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            draft_path = root / case["truthDraft"]
+            draft_path.unlink()
+            plan = self._plan(root, [case])
+            scaffold_calls = []
+
+            class FakeTruthTool:
+                @staticmethod
+                def scaffold(reference, source_ids, source_hashes):
+                    scaffold_calls.append((reference, list(source_ids), dict(source_hashes)))
+                    return {
+                        "schema": tool.TRUTH_SCHEMA,
+                        "status": "DRAFT",
+                        "referenceId": reference["referenceId"],
+                        "allowedSourceIds": list(source_ids),
+                        "allowedSourceSha256": dict(source_hashes),
+                        "shots": [],
+                    }
+
+                @staticmethod
+                def build_review_pack(**kwargs):
+                    review_dir = Path(kwargs["output_dir"])
+                    source_id = next(iter(kwargs["source_paths_by_id"]))
+                    atlas_dir = review_dir / "source-atlas" / "fixture"
+                    atlas_dir.mkdir(parents=True, exist_ok=True)
+                    preview = atlas_dir / "0001.png"
+                    preview.write_bytes(b"atlas")
+                    manifest = {
+                        "schema": tool.REVIEW_PACK_SCHEMA,
+                        "sourceAtlas": [{
+                            "sourceId": source_id,
+                            "samples": [{"previewPath": str(Path("source-atlas") / "fixture" / "0001.png")}],
+                        }],
+                    }
+                    write_json(review_dir / "review-pack.json", manifest)
+                    return manifest
+
+            prepared = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(prepared["preparedCount"], 1)
+            self.assertTrue(prepared["cases"][0]["truthScaffoldCreated"])
+            self.assertTrue(draft_path.is_file())
+            self.assertEqual(len(scaffold_calls), 1)
+            self.assertEqual(scaffold_calls[0][1], [case["sourceMedia"][0]["sourceId"]])
+            self.assertEqual(
+                scaffold_calls[0][2][case["sourceMedia"][0]["sourceId"]],
+                sha256_bytes((root / case["sourceMedia"][0]["path"]).read_bytes()),
+            )
+
+    def test_prepare_review_packs_can_resume_selected_case_only(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cases = [self._base_case(root, index) for index in range(2)]
+            for case in cases:
+                self._write_reference_and_draft(root, case)
+            plan = self._plan(root, cases)
+            prepared_ids = []
+
+            class FakeTruthTool:
+                @staticmethod
+                def build_review_pack(**kwargs):
+                    review_dir = Path(kwargs["output_dir"])
+                    selected = next(
+                        case for case in cases
+                        if review_dir == (root / case["reviewPackDir"]).resolve()
+                    )
+                    prepared_ids.append(selected["caseId"])
+                    source_id = next(iter(kwargs["source_paths_by_id"]))
+                    atlas_dir = review_dir / "source-atlas" / "fixture"
+                    atlas_dir.mkdir(parents=True, exist_ok=True)
+                    preview = atlas_dir / "0001.png"
+                    preview.write_bytes(b"atlas")
+                    manifest = {
+                        "schema": tool.REVIEW_PACK_SCHEMA,
+                        "sourceAtlas": [{
+                            "sourceId": source_id,
+                            "samples": [{"previewPath": str(Path("source-atlas") / "fixture" / "0001.png")}],
+                        }],
+                    }
+                    write_json(review_dir / "review-pack.json", manifest)
+                    return manifest
+
+            payload = tool.prepare_review_packs(
+                plan,
+                case_ids=[cases[1]["caseId"]],
+                media_truth=FakeTruthTool(),
+            )
+            self.assertEqual(prepared_ids, [cases[1]["caseId"]])
+            self.assertEqual([item["caseId"] for item in payload["cases"]], [cases[1]["caseId"]])
+            with self.assertRaisesRegex(ValueError, "Unknown population case id"):
+                tool.prepare_review_packs(plan, case_ids=["case-does-not-exist"], media_truth=FakeTruthTool())
 
     def test_complete_single_case_reaches_corpus_ready_without_certifying_population(self):
         with TemporaryDirectory() as temporary:

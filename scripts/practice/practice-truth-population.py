@@ -384,10 +384,25 @@ def prepare_review_packs(
     plan_path,
     source_atlas_interval_ms=DEFAULT_SOURCE_ATLAS_INTERVAL_MS,
     source_atlas_max_frames=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    source_atlas_cache_dir=None,
     force=False,
+    case_ids=None,
     media_truth=None,
 ):
     plan = require_plan(plan_path)
+    requested_case_ids = {
+        str(item).strip() for item in (case_ids or []) if str(item).strip()
+    }
+    cases = list(plan["cases"])
+    if requested_case_ids:
+        known_case_ids = {str(item.get("caseId", "")).strip() for item in cases}
+        unknown = sorted(requested_case_ids - known_case_ids)
+        if unknown:
+            raise ValueError("Unknown population case id(s): " + ", ".join(unknown))
+        cases = [
+            item for item in cases
+            if str(item.get("caseId", "")).strip() in requested_case_ids
+        ]
     media_truth = media_truth or load_media_truth_tool()
     interval_ms = float(source_atlas_interval_ms)
     max_frames = int(source_atlas_max_frames)
@@ -395,9 +410,17 @@ def prepare_review_packs(
         raise ValueError("Source-atlas interval cannot be negative.")
     if max_frames < 1:
         raise ValueError("Source-atlas max frame count must be at least 1.")
+    cache_dir = None
+    if interval_ms > 0.0:
+        cache_dir = (
+            Path(source_atlas_cache_dir).expanduser().resolve()
+            if source_atlas_cache_dir
+            else Path(plan_path).resolve().parent / ".source-atlas-cache"
+        )
 
     results = []
-    for case in plan["cases"]:
+    source_sha_cache = {}
+    for case in cases:
         case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
         review_dir = artifact_path(case, plan_path, "reviewPackDir")
         expected_source_ids = source_ids(case)
@@ -417,21 +440,44 @@ def prepare_review_packs(
                 raise ValueError("Finish media is missing.")
             if reference_path is None or not reference_path.is_file():
                 raise ValueError("Reference analysis is missing.")
-            if draft_path is None or not draft_path.is_file():
-                raise ValueError("Truth draft is missing.")
+            if draft_path is None:
+                raise ValueError("truthDraft path is missing from the population case.")
+            reference = load_json(reference_path)
+            source_paths = _case_source_paths(case, plan_path)
+            scaffold_created = False
+            if not draft_path.is_file():
+                source_hashes = {}
+                for source_id, source_path in source_paths.items():
+                    source_key = str(Path(source_path).resolve())
+                    if source_key not in source_sha_cache:
+                        cached_hasher = getattr(media_truth, "sha256_file_cached", sha256_file)
+                        source_sha_cache[source_key] = cached_hasher(source_key)
+                    source_hashes[source_id] = source_sha_cache[source_key]
+                draft = media_truth.scaffold(reference, sorted(source_paths), source_hashes)
+                draft_path.parent.mkdir(parents=True, exist_ok=True)
+                draft_path.write_text(
+                    json.dumps(draft, indent=2) + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                scaffold_created = True
+            else:
+                draft = load_json(draft_path)
             manifest = media_truth.build_review_pack(
-                reference=load_json(reference_path),
-                draft=load_json(draft_path),
+                reference=reference,
+                draft=draft,
                 finish_path=str(finish_path),
-                source_paths_by_id=_case_source_paths(case, plan_path),
+                source_paths_by_id=source_paths,
                 output_dir=review_dir,
                 source_atlas_interval_ms=(interval_ms if needs_atlas else None),
                 source_atlas_max_frames=max_frames,
+                source_atlas_cache_dir=(None if cache_dir is None else str(cache_dir)),
             )
             results.append({
                 "caseId": case_id,
                 "status": "PREPARED",
                 "reviewPack": str(review_dir / "review-pack.json"),
+                "truthScaffoldCreated": scaffold_created,
                 "sourceAtlasCount": len(manifest.get("sourceAtlas") or []),
             })
         except Exception as exc:
@@ -444,6 +490,7 @@ def prepare_review_packs(
         "preparedCount": counts.get("PREPARED", 0),
         "skippedCount": counts.get("SKIPPED", 0),
         "failedCount": counts.get("FAILED", 0),
+        "sourceAtlasCacheDir": None if cache_dir is None else str(cache_dir),
         "cases": results,
     }
 
@@ -468,6 +515,15 @@ def build_parser():
         type=int,
         default=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
     )
+    prepare.add_argument(
+        "--source-atlas-cache-dir",
+        help="Optional shared content-addressed cache for Start thumbnails.",
+    )
+    prepare.add_argument(
+        "--case-id",
+        action="append",
+        help="Prepare only this population case id; repeat to select multiple cases.",
+    )
     prepare.add_argument("--force", action="store_true")
     prepare.add_argument("--output")
     return parser
@@ -482,7 +538,9 @@ def main():
             args.manifest,
             source_atlas_interval_ms=args.source_atlas_interval_ms,
             source_atlas_max_frames=args.source_atlas_max_frames,
+            source_atlas_cache_dir=args.source_atlas_cache_dir,
             force=args.force,
+            case_ids=args.case_id,
         )
     if args.output:
         target = Path(args.output)
