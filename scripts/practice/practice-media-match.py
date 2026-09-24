@@ -2639,6 +2639,220 @@ def audio_candidate(reference_features, source_features, rate):
     }
 
 
+def estimate_audio_beat_grid(features, sample_rate, hop):
+    if features.shape[0] < 16:
+        return None
+    onset = (
+        0.45 * np.maximum(features[:, 0], 0.0)
+        + 0.35 * np.maximum(features[:, 1], 0.0)
+        + 0.20 * np.maximum(features[:, 2], 0.0)
+    ).astype(np.float32)
+    onset = np.convolve(
+        onset,
+        np.asarray([0.20, 0.60, 0.20], dtype=np.float32),
+        mode="same",
+    ).astype(np.float32)
+    onset = np.maximum(0.0, onset - float(np.median(onset)))
+    if float(np.max(onset)) <= 1e-6:
+        return None
+
+    frames_per_second = float(sample_rate) / float(hop)
+    minimum_lag = max(4, int(round(frames_per_second * 60.0 / 200.0)))
+    maximum_lag = min(
+        features.shape[0] // 2,
+        int(round(frames_per_second * 60.0 / 60.0)),
+    )
+    if maximum_lag <= minimum_lag:
+        return None
+
+    best_lag = None
+    best_score = -1.0
+    for lag in range(minimum_lag, maximum_lag + 1):
+        left = onset[:-lag]
+        right = onset[lag:]
+        denominator = float(np.linalg.norm(left) * np.linalg.norm(right))
+        score = 0.0 if denominator <= 1e-8 else float(np.dot(left, right) / denominator)
+        if score > best_score:
+            best_lag = lag
+            best_score = score
+    if best_lag is None:
+        return None
+
+    phase_scores = []
+    for phase in range(best_lag):
+        values = onset[phase::best_lag]
+        phase_scores.append(float(np.mean(values)) if values.size else 0.0)
+    best_phase = int(np.argmax(np.asarray(phase_scores, dtype=np.float32)))
+    beat_frames = list(range(best_phase, features.shape[0], best_lag))
+    if len(beat_frames) < 3:
+        return None
+    phase_peak = max(phase_scores) if phase_scores else 0.0
+    onset_peak = float(np.percentile(onset, 90)) + 1e-8
+    confidence = clamp01(
+        (0.70 * clamp01((best_score - 0.10) / 0.70))
+        + (0.30 * clamp01(phase_peak / onset_peak))
+    )
+    return {
+        "beatFrames": beat_frames,
+        "lagFrames": best_lag,
+        "estimatedBpm": float(60.0 * frames_per_second / float(best_lag)),
+        "confidence": confidence,
+    }
+
+
+def _audio_window_spans(frame_count, window_frames):
+    spans = []
+    start = 0
+    minimum_tail = max(8, window_frames // 2)
+    while start < frame_count:
+        end = min(frame_count, start + window_frames)
+        if end - start < minimum_tail and spans:
+            prior_start, _ = spans[-1]
+            spans[-1] = (prior_start, frame_count)
+            break
+        spans.append((start, end))
+        start = end
+    return spans
+
+
+def _snap_audio_boundary(boundary_frame, beat_grid):
+    if beat_grid is None:
+        return int(boundary_frame)
+    beat_frames = beat_grid.get("beatFrames") or []
+    if not beat_frames:
+        return int(boundary_frame)
+    nearest = min(beat_frames, key=lambda value: abs(int(value) - int(boundary_frame)))
+    tolerance = max(2, int(round(float(beat_grid.get("lagFrames", 0)) / 3.0)))
+    if abs(int(nearest) - int(boundary_frame)) <= tolerance:
+        return int(nearest)
+    return int(boundary_frame)
+
+
+def piecewise_audio_candidate(reference_features, source, sample_rate, hop, beat_grid=None):
+    frames_per_second = float(sample_rate) / float(hop)
+    window_frames = max(12, int(round(frames_per_second * 0.85)))
+    if reference_features.shape[0] < window_frames * 2:
+        return None
+
+    windows = []
+    for reference_start, reference_end in _audio_window_spans(
+        reference_features.shape[0],
+        window_frames,
+    ):
+        window = reference_features[reference_start:reference_end]
+        best = None
+        for rate in AUDIO_RATE_GRID:
+            candidate = audio_candidate(window, source["features"], rate)
+            if candidate is None:
+                continue
+            candidate = dict(candidate)
+            candidate["referenceStartFrame"] = int(reference_start)
+            candidate["referenceEndFrame"] = int(reference_end)
+            candidate["sourceId"] = source["sourceId"]
+            candidate["sourcePath"] = source["sourcePath"]
+            candidate["sourceSha256"] = source["sourceSha256"]
+            if best is None or (
+                candidate["confidence"], candidate["similarity"]
+            ) > (
+                best["confidence"], best["similarity"]
+            ):
+                best = candidate
+        if best is None:
+            return None
+        windows.append(best)
+
+    tolerance_frames = max(3.0, frames_per_second * 0.18)
+    groups = []
+    for candidate in windows:
+        offset = float(candidate["startFrame"]) - (
+            float(candidate["referenceStartFrame"]) * float(candidate["rate"])
+        )
+        candidate["sourceOffsetFrames"] = offset
+        if groups:
+            prior = groups[-1][-1]
+            rate_delta = abs(float(candidate["rate"]) - float(prior["rate"]))
+            offset_delta = abs(offset - float(prior["sourceOffsetFrames"]))
+            if rate_delta <= 0.001 and offset_delta <= tolerance_frames:
+                groups[-1].append(candidate)
+                continue
+        groups.append([candidate])
+
+    if len(groups) < 2:
+        return None
+
+    boundaries = [0]
+    for group in groups[1:]:
+        boundary = int(group[0]["referenceStartFrame"])
+        boundaries.append(_snap_audio_boundary(boundary, beat_grid))
+    boundaries.append(int(reference_features.shape[0]))
+    boundaries = [
+        max(0, min(int(reference_features.shape[0]), int(value)))
+        for value in boundaries
+    ]
+    for index in range(1, len(boundaries)):
+        if boundaries[index] <= boundaries[index - 1]:
+            boundaries[index] = min(
+                int(reference_features.shape[0]),
+                boundaries[index - 1] + 1,
+            )
+
+    segments = []
+    for index, group in enumerate(groups):
+        reference_start = boundaries[index]
+        reference_end = boundaries[index + 1]
+        if reference_end <= reference_start:
+            continue
+        rate = float(group[0]["rate"])
+        offsets = np.asarray(
+            [float(item["sourceOffsetFrames"]) for item in group],
+            dtype=np.float32,
+        )
+        source_offset = float(np.median(offsets))
+        source_start = source_offset + (float(reference_start) * rate)
+        source_end = source_offset + (float(reference_end) * rate)
+        source_start = max(0.0, min(float(source["features"].shape[0]), source_start))
+        source_end = max(source_start, min(float(source["features"].shape[0]), source_end))
+        confidence = float(np.mean([item["confidence"] for item in group]))
+        correlation = float(np.mean([item["correlation"] for item in group]))
+        segments.append({
+            "referenceStartFrame": int(reference_start),
+            "referenceEndFrame": int(reference_end),
+            "sourceStartFrame": max(0.0, source_start),
+            "sourceEndFrame": max(0.0, source_end),
+            "rate": rate,
+            "correlation": correlation,
+            "confidence": confidence,
+            "sourceId": source["sourceId"],
+            "sourcePath": source["sourcePath"],
+            "sourceSha256": source["sourceSha256"],
+        })
+    if len(segments) < 2:
+        return None
+
+    total_frames = float(sum(
+        segment["referenceEndFrame"] - segment["referenceStartFrame"]
+        for segment in segments
+    ))
+    if total_frames <= 0:
+        return None
+    overall_confidence = float(sum(
+        segment["confidence"]
+        * float(segment["referenceEndFrame"] - segment["referenceStartFrame"])
+        for segment in segments
+    ) / total_frames)
+    adjusted_confidence = clamp01(
+        overall_confidence - (0.012 * float(max(0, len(segments) - 1)))
+    )
+    return {
+        "sourceId": source["sourceId"],
+        "sourcePath": source["sourcePath"],
+        "sourceSha256": source["sourceSha256"],
+        "segments": segments,
+        "overallConfidence": overall_confidence,
+        "adjustedConfidence": adjusted_confidence,
+    }
+
+
 def parse_audio_source(value):
     parts = value.split("|||", 1)
     if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
@@ -2653,75 +2867,205 @@ def match_reference_audio(reference_media, reference_id, source_values, output_p
     active_start, active_end = active_audio_range(reference_samples, sample_rate)
     active_reference = reference_samples[active_start:active_end]
     reference_features, hop = audio_feature_series(active_reference, sample_rate)
+    reference_start_ms = active_start * 1000.0 / sample_rate
+    reference_end_ms = active_end * 1000.0 / sample_rate
+    reference_duration_ms = reference_end_ms - reference_start_ms
+
+    beat_grid = estimate_audio_beat_grid(reference_features, sample_rate, hop)
+    if beat_grid is not None and beat_grid["confidence"] < 0.30:
+        beat_grid = None
 
     candidates = []
+    source_records = []
     for source_value in source_values:
         source_id, source_path = parse_audio_source(source_value)
+        resolved_source_path = str(Path(source_path).resolve())
+        source_sha256 = sha256_file(source_path)
         samples = decode_audio_f32(source_path, ffmpeg_exe, sample_rate)
         source_features, source_hop = audio_feature_series(samples, sample_rate)
         if source_hop != hop:
             raise RuntimeError("Practice audio feature hop mismatch.")
+        source = {
+            "sourceId": source_id,
+            "sourcePath": resolved_source_path,
+            "sourceSha256": source_sha256,
+            "features": source_features,
+        }
+        source_records.append(source)
         for rate in AUDIO_RATE_GRID:
             candidate = audio_candidate(reference_features, source_features, rate)
             if candidate is None:
                 continue
             candidate.update({
                 "sourceId": source_id,
-                "sourcePath": str(Path(source_path).resolve()),
-                "sourceSha256": sha256_file(source_path),
+                "sourcePath": resolved_source_path,
+                "sourceSha256": source_sha256,
             })
             candidates.append(candidate)
 
     candidates.sort(key=lambda item: (item["confidence"], item["similarity"]), reverse=True)
     best = candidates[0] if candidates else None
-    if best is None:
+
+    piecewise_candidates = []
+    for source in source_records:
+        candidate = piecewise_audio_candidate(
+            reference_features,
+            source,
+            sample_rate,
+            hop,
+            beat_grid,
+        )
+        if candidate is not None:
+            piecewise_candidates.append(candidate)
+    piecewise_candidates.sort(
+        key=lambda item: (item["adjustedConfidence"], item["overallConfidence"]),
+        reverse=True,
+    )
+    best_piecewise = piecewise_candidates[0] if piecewise_candidates else None
+    piecewise_min_confidence = (
+        0.0
+        if best_piecewise is None
+        else min(segment["confidence"] for segment in best_piecewise["segments"])
+    )
+    use_piecewise = (
+        best_piecewise is not None
+        and piecewise_min_confidence >= 0.86
+        and (
+            best is None
+            or best_piecewise["adjustedConfidence"] >= best["confidence"] + 0.035
+        )
+    )
+
+    analyzer_ref = f"practice-audio-analyzer:sha256:{analyzer_fingerprint()}"
+    if best is None and not use_piecewise:
         payload = {
             "schema": "editflow.practice-audio-match.v1",
             "referenceId": reference_id,
             "match": None,
-            "evidenceRefs": [
-                f"practice-audio-analyzer:sha256:{analyzer_fingerprint()}",
-            ],
+            "evidenceRefs": [analyzer_ref],
         }
     else:
-        source_start_ms = (best["startFrame"] * hop * 1000.0) / sample_rate
-        reference_start_ms = active_start * 1000.0 / sample_rate
-        reference_end_ms = active_end * 1000.0 / sample_rate
-        reference_duration_ms = reference_end_ms - reference_start_ms
-        source_end_ms = source_start_ms + (reference_duration_ms * best["rate"])
-        match_material = (
-            reference_id
-            + "|" + best["sourceId"]
-            + "|" + f"{source_start_ms:.3f}"
-            + "|" + f"{source_end_ms:.3f}"
-            + "|" + f"{best['rate']:.6f}"
-        )
-        match_id = "practice-audio-match:" + hashlib.sha256(
-            match_material.encode("utf-8")
-        ).hexdigest()[:20]
-        segment_id = match_id + ":segment:001"
-        evidence = [
-            f"practice-audio-analyzer:sha256:{analyzer_fingerprint()}",
-            f"source-audio:sha256:{best['sourceSha256']}",
-            f"audio-correlation:{best['correlation']:.6f}",
-            f"audio-uniqueness:{best['uniqueness']:.6f}",
-            f"audio-playback-rate:{best['rate']:.6f}",
-        ]
-        payload = {
-            "schema": "editflow.practice-audio-match.v1",
-            "referenceId": reference_id,
-            "analysis": {
-                "algorithmId": "editflow.practice-audio-match.v1",
-                "analyzerFingerprint": analyzer_fingerprint(),
-                "sampleRate": sample_rate,
-                "ffmpegExecutable": Path(ffmpeg_exe).name,
-            },
-            "match": {
+        beat_payload = None
+        beat_evidence = []
+        if beat_grid is not None:
+            beat_times_ms = [
+                float(reference_start_ms + (frame * hop * 1000.0 / sample_rate))
+                for frame in beat_grid["beatFrames"]
+                if reference_start_ms
+                <= reference_start_ms + (frame * hop * 1000.0 / sample_rate)
+                <= reference_end_ms
+            ]
+            if len(beat_times_ms) >= 3:
+                beat_evidence = [
+                    f"audio-beat-bpm:{beat_grid['estimatedBpm']:.6f}",
+                    f"audio-beat-confidence:{beat_grid['confidence']:.6f}",
+                    f"audio-beat-count:{len(beat_times_ms)}",
+                ]
+                beat_payload = {
+                    "beatTimesMs": beat_times_ms,
+                    "estimatedBpm": float(beat_grid["estimatedBpm"]),
+                    "confidence": float(beat_grid["confidence"]),
+                    "evidenceRefs": beat_evidence,
+                }
+
+        if use_piecewise:
+            selected = best_piecewise
+            converted_segments = []
+            for index, segment in enumerate(selected["segments"]):
+                segment_reference_start_ms = (
+                    reference_start_ms
+                    + (segment["referenceStartFrame"] * hop * 1000.0 / sample_rate)
+                )
+                segment_reference_end_ms = (
+                    reference_start_ms
+                    + (segment["referenceEndFrame"] * hop * 1000.0 / sample_rate)
+                )
+                if index == 0:
+                    segment_reference_start_ms = reference_start_ms
+                if index == len(selected["segments"]) - 1:
+                    segment_reference_end_ms = reference_end_ms
+                converted_segments.append({
+                    "referenceStartMs": float(segment_reference_start_ms),
+                    "referenceEndMs": float(segment_reference_end_ms),
+                    "sourceStartMs": float(
+                        segment["sourceStartFrame"] * hop * 1000.0 / sample_rate
+                    ),
+                    "sourceEndMs": float(
+                        segment["sourceEndFrame"] * hop * 1000.0 / sample_rate
+                    ),
+                    "playbackRate": float(segment["rate"]),
+                    "correlation": float(segment["correlation"]),
+                    "confidence": float(segment["confidence"]),
+                })
+            match_material = reference_id + "|" + selected["sourceId"] + "|" + "|".join(
+                (
+                    f"{segment['referenceStartMs']:.3f}:"
+                    + f"{segment['referenceEndMs']:.3f}:"
+                    + f"{segment['sourceStartMs']:.3f}:"
+                    + f"{segment['sourceEndMs']:.3f}:"
+                    + f"{segment['playbackRate']:.6f}"
+                )
+                for segment in converted_segments
+            )
+            match_id = "practice-audio-match:" + hashlib.sha256(
+                match_material.encode("utf-8")
+            ).hexdigest()[:20]
+            arrangement_evidence = [
+                analyzer_ref,
+                f"source-audio:sha256:{selected['sourceSha256']}",
+                f"audio-arrangement-segments:{len(converted_segments)}",
+                f"audio-arrangement-confidence:{selected['adjustedConfidence']:.6f}",
+                *beat_evidence,
+            ]
+            segments = []
+            for index, segment in enumerate(converted_segments):
+                segment_evidence = [
+                    *arrangement_evidence,
+                    f"audio-correlation:{segment['correlation']:.6f}",
+                    f"audio-playback-rate:{segment['playbackRate']:.6f}",
+                ]
+                segments.append({
+                    "segmentId": match_id + ":segment:" + str(index + 1).zfill(3),
+                    **segment,
+                    "evidenceRefs": segment_evidence,
+                })
+            match = {
+                "matchId": match_id,
+                "sourceId": selected["sourceId"],
+                "sourcePath": selected["sourcePath"],
+                "segments": segments,
+                "overallConfidence": float(selected["adjustedConfidence"]),
+                "evidenceRefs": arrangement_evidence,
+                **({} if beat_payload is None else {"beatGrid": beat_payload}),
+            }
+            evidence = arrangement_evidence
+        else:
+            source_start_ms = (best["startFrame"] * hop * 1000.0) / sample_rate
+            source_end_ms = source_start_ms + (reference_duration_ms * best["rate"])
+            match_material = (
+                reference_id
+                + "|" + best["sourceId"]
+                + "|" + f"{source_start_ms:.3f}"
+                + "|" + f"{source_end_ms:.3f}"
+                + "|" + f"{best['rate']:.6f}"
+            )
+            match_id = "practice-audio-match:" + hashlib.sha256(
+                match_material.encode("utf-8")
+            ).hexdigest()[:20]
+            evidence = [
+                analyzer_ref,
+                f"source-audio:sha256:{best['sourceSha256']}",
+                f"audio-correlation:{best['correlation']:.6f}",
+                f"audio-uniqueness:{best['uniqueness']:.6f}",
+                f"audio-playback-rate:{best['rate']:.6f}",
+                *beat_evidence,
+            ]
+            match = {
                 "matchId": match_id,
                 "sourceId": best["sourceId"],
                 "sourcePath": best["sourcePath"],
                 "segments": [{
-                    "segmentId": segment_id,
+                    "segmentId": match_id + ":segment:001",
                     "referenceStartMs": float(reference_start_ms),
                     "referenceEndMs": float(reference_end_ms),
                     "sourceStartMs": float(source_start_ms),
@@ -2733,7 +3077,21 @@ def match_reference_audio(reference_media, reference_id, source_values, output_p
                 }],
                 "overallConfidence": float(best["confidence"]),
                 "evidenceRefs": evidence,
+                **({} if beat_payload is None else {"beatGrid": beat_payload}),
+            }
+
+        payload = {
+            "schema": "editflow.practice-audio-match.v1",
+            "referenceId": reference_id,
+            "analysis": {
+                "algorithmId": "editflow.practice-audio-match.v2",
+                "analyzerFingerprint": analyzer_fingerprint(),
+                "sampleRate": sample_rate,
+                "ffmpegExecutable": Path(ffmpeg_exe).name,
+                "arrangementAware": True,
+                "beatGridAware": beat_payload is not None,
             },
+            "match": match,
             "evidenceRefs": evidence,
         }
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")

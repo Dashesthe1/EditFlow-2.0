@@ -140,6 +140,30 @@ const validateAudioMatch = (
       reasons.push("Audio segment " + segment.segmentId + " is below the exact-audio gate.");
     }
   }
+  if (match.beatGrid !== undefined) {
+    const beats = match.beatGrid.beatTimesMs;
+    if (!Number.isFinite(match.beatGrid.estimatedBpm)
+      || match.beatGrid.estimatedBpm < 30
+      || match.beatGrid.estimatedBpm > 300) {
+      reasons.push("Audio beat grid has an invalid estimated BPM.");
+    }
+    if (!Number.isFinite(match.beatGrid.confidence)
+      || match.beatGrid.confidence < 0
+      || match.beatGrid.confidence > 1) {
+      reasons.push("Audio beat grid has an invalid confidence.");
+    }
+    if (beats.length < 3) {
+      reasons.push("Audio beat grid must retain at least three beat positions.");
+    }
+    for (let index = 0; index < beats.length; index += 1) {
+      const beat = beats[index]!;
+      if (!Number.isFinite(beat)
+        || (index > 0 && beat <= beats[index - 1]!)) {
+        reasons.push("Audio beat grid positions must be finite and strictly increasing.");
+        break;
+      }
+    }
+  }
   return uniqueRefs(reasons);
 };
 

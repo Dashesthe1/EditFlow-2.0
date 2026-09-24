@@ -224,11 +224,19 @@ export interface PracticeAudioSegmentMatchV1 {
   readonly evidenceRefs: readonly string[];
 }
 
+export interface PracticeAudioBeatGridV1 {
+  readonly beatTimesMs: readonly number[];
+  readonly estimatedBpm: number;
+  readonly confidence: number;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeAudioMatchV1 {
   readonly matchId: string;
   readonly sourceId: string;
   readonly sourcePath?: string;
   readonly segments: readonly PracticeAudioSegmentMatchV1[];
+  readonly beatGrid?: PracticeAudioBeatGridV1;
   readonly overallConfidence: number;
   readonly evidenceRefs: readonly string[];
 }
