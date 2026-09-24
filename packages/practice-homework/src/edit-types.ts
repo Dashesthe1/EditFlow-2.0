@@ -714,6 +714,7 @@ export class EditTypeRegistryV1 {
         && report.distinctCaseIdCount === report.caseCount
         && report.distinctReferenceCount === report.caseCount
         && report.distinctFinishSha256Count === report.caseCount
+        && report.distinctSourceSetCount >= report.policy.minimumDistinctSourceSets
         && report.independentTruthCaseCount === report.caseCount
         && report.fullLengthTruthCaseCount === report.caseCount
         && report.sceneErrorCount === 0

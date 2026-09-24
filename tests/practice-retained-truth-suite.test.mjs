@@ -99,6 +99,8 @@ test("20 independent full-length truth cases can certify scene retrieval and per
   assert.equal(report.distinctCaseIdCount, 20);
   assert.equal(report.distinctReferenceCount, 20);
   assert.equal(report.distinctFinishSha256Count, 20);
+  assert.equal(report.distinctSourceSetCount, 20);
+  assert.equal(report.policy.minimumDistinctSourceSets, 3);
   assert.equal(report.independentTruthCaseCount, 20);
   assert.equal(report.fullLengthTruthCaseCount, 20);
   assert.equal(report.difficultyKindCount, 4);
@@ -121,6 +123,32 @@ test("20 independent full-length truth cases can certify scene retrieval and per
     true,
   );
 });
+
+test("certification rejects many Finishes backed by one repeated Start source set", () => {
+  const cases = certificationCases();
+  const repeatedSourceSet = [sha256(9001), sha256(9002)];
+  for (let index = 0; index < cases.length; index += 1) {
+    cases[index] = {
+      ...cases[index],
+      truth: {
+        ...cases[index].truth,
+        sourceMediaSha256: repeatedSourceSet,
+      },
+    };
+  }
+
+  const report = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-source-set-reuse",
+    mode: "CERTIFICATION",
+    cases,
+  });
+  assert.equal(report.passedCaseCount, 20);
+  assert.equal(report.distinctSourceSetCount, 1);
+  assert.equal(report.certified, false);
+  assert.ok(report.reasons.some((reason) =>
+    /fewer than 3 distinct content-addressed Start source sets/.test(reason)));
+});
+
 test("MEASURE_ONLY keeps diagnostics but cannot certify generalization", () => {
   const report = evaluatePracticeRetainedTruthSuiteV1({
     editTypeId: "truth-measure-only",
@@ -297,6 +325,13 @@ test("Edit Type memory refuses a forged certified truth report", () => {
     () => registry.recordRetainedTruthSuite({
       ...report,
       mode: "MEASURE_ONLY",
+    }),
+    /fail-closed integrity gates/,
+  );
+  assert.throws(
+    () => registry.recordRetainedTruthSuite({
+      ...report,
+      distinctSourceSetCount: 1,
     }),
     /fail-closed integrity gates/,
   );

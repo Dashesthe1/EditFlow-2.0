@@ -135,6 +135,7 @@ PracticeRetainedTruthSuitePolicyV1 = {
   maximumCases: 30,
   minimumTruthCoverage: 0.98,
   minimumDifficultyKinds: 4,
+  minimumDistinctSourceSets: 3,
   sourceRangeToleranceMs: 250,
   highConfidenceFalseMatchThreshold: 0.85,
   ambiguousFalseMatchMarginThreshold: 0.08,
@@ -168,6 +169,11 @@ const resolvedPolicy = (
         Math.floor(value?.minimumDifficultyKinds
           ?? DEFAULT_PRACTICE_RETAINED_TRUTH_SUITE_POLICY_V1.minimumDifficultyKinds),
       ),
+    ),
+    minimumDistinctSourceSets: Math.max(
+      DEFAULT_PRACTICE_RETAINED_TRUTH_SUITE_POLICY_V1.minimumDistinctSourceSets,
+      Math.floor(value?.minimumDistinctSourceSets
+        ?? DEFAULT_PRACTICE_RETAINED_TRUTH_SUITE_POLICY_V1.minimumDistinctSourceSets),
     ),
     sourceRangeToleranceMs: Math.max(
       0,
@@ -601,9 +607,12 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
   const caseIds = input.cases.map((item) => item.truth.caseId.trim());
   const references = input.cases.map((item) => item.truth.referenceId.trim());
   const finishSha256 = input.cases.map((item) => normalizedSha256(item.truth.finishSha256));
+  const sourceSets = input.cases.map((item) =>
+    [...uniqueNonEmpty(item.truth.sourceMediaSha256.map(normalizedSha256))].sort().join("|"));
   const distinctCaseIdCount = new Set(caseIds).size;
   const distinctReferenceCount = new Set(references).size;
   const distinctFinishSha256Count = new Set(finishSha256).size;
+  const distinctSourceSetCount = new Set(sourceSets).size;
   if (distinctCaseIdCount !== input.cases.length) {
     reasons.push("Retained truth suite reuses a case id.");
   }
@@ -612,6 +621,11 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
   }
   if (distinctFinishSha256Count !== input.cases.length) {
     reasons.push("Retained truth suite reuses Finish byte identity (SHA-256).");
+  }
+  if (distinctSourceSetCount < policy.minimumDistinctSourceSets) {
+    reasons.push("Retained truth suite spans fewer than "
+      + String(policy.minimumDistinctSourceSets)
+      + " distinct content-addressed Start source sets.");
   }
 
   const independentTruthCaseCount = reports
@@ -660,6 +674,7 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
     && distinctCaseIdCount === input.cases.length
     && distinctReferenceCount === input.cases.length
     && distinctFinishSha256Count === input.cases.length
+    && distinctSourceSetCount >= policy.minimumDistinctSourceSets
     && independentTruthCaseCount === input.cases.length
     && fullLengthTruthCaseCount === input.cases.length
     && difficultyKinds.length >= policy.minimumDifficultyKinds
@@ -675,6 +690,7 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
     distinctCaseIdCount,
     distinctReferenceCount,
     distinctFinishSha256Count,
+    distinctSourceSetCount,
     independentTruthCaseCount,
     fullLengthTruthCaseCount,
     difficultyKindCount: difficultyKinds.length,

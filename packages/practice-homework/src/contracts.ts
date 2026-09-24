@@ -919,6 +919,7 @@ export interface PracticeRetainedTruthSuitePolicyV1 {
   readonly maximumCases: number;
   readonly minimumTruthCoverage: number;
   readonly minimumDifficultyKinds: number;
+  readonly minimumDistinctSourceSets: number;
   readonly sourceRangeToleranceMs: number;
   readonly highConfidenceFalseMatchThreshold: number;
   readonly ambiguousFalseMatchMarginThreshold: number;
@@ -965,6 +966,7 @@ export interface PracticeRetainedTruthSuiteReportV1 {
   readonly distinctCaseIdCount: number;
   readonly distinctReferenceCount: number;
   readonly distinctFinishSha256Count: number;
+  readonly distinctSourceSetCount: number;
   readonly independentTruthCaseCount: number;
   readonly fullLengthTruthCaseCount: number;
   readonly difficultyKindCount: number;
