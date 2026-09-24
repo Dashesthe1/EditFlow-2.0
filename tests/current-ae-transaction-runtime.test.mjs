@@ -33,6 +33,9 @@ import {
   AE_TEMPORAL_EASE_ROUTE_ID_V18,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
 import {
+  AE_SPATIAL_GRAPH_ROUTE_ID_V19,
+} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_9.js";
+import {
   AE_MARKER_MOTION_ROUTE_ID_V20,
 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
 import {
@@ -265,6 +268,7 @@ const buildPlan = (observed) => {
     op("OP_KEYS", "ae.keyframe.set", AE_ADAPTER_ROUTE_ID_V11, "property.set_keyframes", ["OP_TIME_REMAP"]),
     op("OP_INTERPOLATION", "ae.property.temporal_interpolation.set", AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17, "property.temporal_interpolation.set", ["OP_KEYS"]),
     op("OP_EASE", "ae.property.temporal_ease.set", AE_TEMPORAL_EASE_ROUTE_ID_V18, "property.temporal_ease.set", ["OP_INTERPOLATION"]),
+    op("OP_SPATIAL", "ae.property.spatial_graph.set", AE_SPATIAL_GRAPH_ROUTE_ID_V19, "property.spatial_graph.set", ["OP_EASE"]),
   ];
   return {
     planId: "current-runtime-plan",
@@ -278,6 +282,7 @@ const buildPlan = (observed) => {
       "ae.keyframe.set",
       "ae.property.temporal_interpolation.set",
       "ae.property.temporal_ease.set",
+      "ae.property.spatial_graph.set",
     ],
     bindings: [],
     operations,
@@ -308,14 +313,14 @@ test("current AE transaction runtime executes and recovers one mixed-protocol pl
   const first = await runtime.execute(plan);
   assert.equal(first.state, "COMMITTED");
   assert.equal(first.recovered, false);
-  assert.equal(first.appliedOperations, 5);
-  assert.equal(transport.mutationCount, 5);
+  assert.equal(first.appliedOperations, 6);
+  assert.equal(transport.mutationCount, 6);
 
   const second = await runtime.execute(plan);
   assert.equal(second.state, "COMMITTED");
   assert.equal(second.recovered, true);
-  assert.equal(second.appliedOperations, 5);
-  assert.equal(transport.mutationCount, 5);
+  assert.equal(second.appliedOperations, 6);
+  assert.equal(transport.mutationCount, 6);
 
   assert.equal(runtime.status().recoveryLedgerEntries, 1);
   assert.equal(runtime.status().maxOperations, 64);
@@ -429,8 +434,8 @@ test("current AE transaction runtime tolerates revision-only observation drift w
   const result = await runtime.execute(plan);
   assert.equal(result.state, "COMMITTED");
   assert.equal(result.recovered, false);
-  assert.equal(result.appliedOperations, 5);
-  assert.equal(transport.mutationCount, 5);
+  assert.equal(result.appliedOperations, 6);
+  assert.equal(transport.mutationCount, 6);
 });
 
 test("current AE transaction runtime uses only proof-backed current routes", async () => {
@@ -452,6 +457,7 @@ test("current AE transaction runtime uses only proof-backed current routes", asy
     ["ae.layer.blend_mode.set", AE_COMPOSITE_ROUTE_ID_V13],
     ["ae.property.temporal_interpolation.set", AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17],
     ["ae.property.temporal_ease.set", AE_TEMPORAL_EASE_ROUTE_ID_V18],
+    ["ae.property.spatial_graph.set", AE_SPATIAL_GRAPH_ROUTE_ID_V19],
     ["ae.comp.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
     ["ae.layer.motion.set", AE_MARKER_MOTION_ROUTE_ID_V20],
     ["ae.media.sequence.import", AE_MEDIA_SEQUENCE_ROUTE_ID_V25],
@@ -714,7 +720,7 @@ test("Practice baseline compiles to the current mixed-protocol AE transaction su
   );
 });
 
-test("Practice framing curves route interpolation and measured ease as reversible AE work", async () => {
+test("Practice framing curves route temporal ease and spatial tangents as reversible AE work", async () => {
   const transport = new RuntimeTransport();
   const observer = new AeCepCurrentTransactionalHostV1(
     transport,
@@ -756,12 +762,31 @@ test("Practice framing curves route interpolation and measured ease as reversibl
       },
     },
   };
+  const spatialOperation = {
+    operationId: "PRACTICE_OP_SPATIAL",
+    command: "property.spatial_graph.set",
+    capabilityId: "ae.property.spatial_graph.set",
+    payload: {
+      comp: { stableId: "PRACTICE_COMP_TEST" },
+      layer: { stableId: "PRACTICE_LAYER_TEST" },
+      propertyPath: ["ADBE Transform Group", "ADBE Position"],
+      keyIndex: 2,
+      state: {
+        mode: "MANUAL",
+        inTangent: [-7, -7],
+        outTangent: [7, 7],
+        continuous: true,
+        roving: false,
+      },
+    },
+  };
   const execution = compilePracticeAeBaselineExecutionPlanV1({
     ...base,
     operations: [
       ...base.operations.slice(0, -1),
       curveOperation,
       easeOperation,
+      spatialOperation,
       base.operations.at(-1),
     ],
   }, observed);
@@ -769,6 +794,8 @@ test("Practice framing curves route interpolation and measured ease as reversibl
     String(operation.operationId) === "PRACTICE_OP_CURVE");
   const ease = execution.operations.find((operation) =>
     String(operation.operationId) === "PRACTICE_OP_EASE");
+  const spatial = execution.operations.find((operation) =>
+    String(operation.operationId) === "PRACTICE_OP_SPATIAL");
 
   assert.ok(curve);
   assert.equal(String(curve.routeId), AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17);
@@ -776,10 +803,15 @@ test("Practice framing curves route interpolation and measured ease as reversibl
   assert.ok(ease);
   assert.equal(String(ease.routeId), AE_TEMPORAL_EASE_ROUTE_ID_V18);
   assert.equal(ease.riskClass, "R1_REVERSIBLE");
+  assert.ok(spatial);
+  assert.equal(String(spatial.routeId), AE_SPATIAL_GRAPH_ROUTE_ID_V19);
+  assert.equal(spatial.riskClass, "R1_REVERSIBLE");
   assert.ok(execution.requiredCapabilities.map(String)
     .includes("ae.property.temporal_interpolation.set"));
   assert.ok(execution.requiredCapabilities.map(String)
     .includes("ae.property.temporal_ease.set"));
+  assert.ok(execution.requiredCapabilities.map(String)
+    .includes("ae.property.spatial_graph.set"));
 });
 
 test("Practice baseline executes atomically through the current AE runtime", async () => {

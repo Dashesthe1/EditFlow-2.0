@@ -18,6 +18,7 @@ export type PracticeAeBaselineCommandV1 =
   | "property.set_keyframes"
   | "property.temporal_interpolation.set"
   | "property.temporal_ease.set"
+  | "property.spatial_graph.set"
   | "layer.switches.set";
 
 export interface PracticeAeBaselineOperationV1 {
@@ -32,6 +33,7 @@ export interface PracticeAeBaselineOperationV1 {
     | "ae.keyframe.set"
     | "ae.property.temporal_interpolation.set"
     | "ae.property.temporal_ease.set"
+    | "ae.property.spatial_graph.set"
     | "ae.layer.switches.set";
   readonly payload: Readonly<Record<string, unknown>>;
 }
@@ -86,6 +88,8 @@ const commandCapability = (
       return "ae.property.temporal_interpolation.set";
     case "property.temporal_ease.set":
       return "ae.property.temporal_ease.set";
+    case "property.spatial_graph.set":
+      return "ae.property.spatial_graph.set";
     case "layer.switches.set": return "ae.layer.switches.set";
   }
 };
@@ -372,9 +376,17 @@ interface PracticeFramingCurveKeyV1 {
   readonly outInfluence: number;
 }
 
+interface PracticeFramingSpatialKeyV1 {
+  readonly keyIndex: number;
+  readonly strength: number;
+  readonly inTangent: readonly [number, number];
+  readonly outTangent: readonly [number, number];
+}
+
 interface PracticeFramingKeyframePlanV1 {
   readonly mode: "STATIC" | "DYNAMIC";
   readonly curveKeys: readonly PracticeFramingCurveKeyV1[];
+  readonly spatialKeys: readonly PracticeFramingSpatialKeyV1[];
   readonly position: readonly {
     readonly time: number;
     readonly value: readonly [number, number];
@@ -446,6 +458,58 @@ const measuredFramingCurveCandidates = (
     });
   }
   return candidates;
+};
+
+const measuredFramingSpatialCandidates = (
+  points: readonly PracticeSceneFramingPointV1[],
+): readonly PracticeFramingSpatialKeyV1[] => {
+  if (points.length < 3) return [];
+  const candidates: PracticeFramingSpatialKeyV1[] = [];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1]!;
+    const current = points[index]!;
+    const next = points[index + 1]!;
+    const incoming: readonly [number, number] = [
+      current.positionX - previous.positionX,
+      current.positionY - previous.positionY,
+    ];
+    const outgoing: readonly [number, number] = [
+      next.positionX - current.positionX,
+      next.positionY - current.positionY,
+    ];
+    const incomingDistance = vectorMagnitude(incoming);
+    const outgoingDistance = vectorMagnitude(outgoing);
+    if (incomingDistance < 2 || outgoingDistance < 2) continue;
+    const directionCosine = (
+      (incoming[0] * outgoing[0]) + (incoming[1] * outgoing[1])
+    ) / (incomingDistance * outgoingDistance);
+    if (!Number.isFinite(directionCosine)
+      || directionCosine >= 0.985
+      || directionCosine <= -0.15) continue;
+    const confidence = Math.min(previous.confidence, current.confidence, next.confidence);
+    const strength = ((1 - directionCosine) / 2) * confidence;
+    if (strength < 0.04) continue;
+
+    const throughVector: readonly [number, number] = [
+      next.positionX - previous.positionX,
+      next.positionY - previous.positionY,
+    ];
+    const throughMagnitude = vectorMagnitude(throughVector);
+    if (throughMagnitude <= 1e-6) continue;
+    const unitX = throughVector[0] / throughMagnitude;
+    const unitY = throughVector[1] / throughMagnitude;
+    const inLength = incomingDistance / 3;
+    const outLength = outgoingDistance / 3;
+    candidates.push({
+      keyIndex: index + 1,
+      strength,
+      inTangent: [-unitX * inLength, -unitY * inLength],
+      outTangent: [unitX * outLength, unitY * outLength],
+    });
+  }
+  return candidates
+    .sort((left, right) => (right.strength - left.strength) || (left.keyIndex - right.keyIndex))
+    .slice(0, 2);
 };
 
 const executableFramingForMatch = (
@@ -526,9 +590,11 @@ const executableFramingForMatch = (
         || left.propertyLeaf.localeCompare(right.propertyLeaf)
         || (left.keyIndex - right.keyIndex))
         .slice(0, 2);
+      const spatialKeys = measuredFramingSpatialCandidates(points);
       return {
         mode: "DYNAMIC",
         curveKeys,
+        spatialKeys,
         position: points.map((point) => ({
           time: point.referenceTimeMs / 1000,
           value: [point.positionX, point.positionY],
@@ -552,6 +618,7 @@ const executableFramingForMatch = (
   return {
     mode: "STATIC",
     curveKeys: [],
+    spatialKeys: [],
     position: [{ time: framingTime, value: [framing.positionX, framing.positionY] }],
     scale: [{
       time: framingTime,
@@ -752,6 +819,27 @@ export const compilePracticeAeBaselinePlanV1 = (input: {
         keyframes: framing.rotation,
       }));
       ordinal += 1;
+      for (const spatialKey of framing.spatialKeys) {
+        operations.push(operation(
+          baselineId,
+          ordinal,
+          "property.spatial_graph.set",
+          {
+            comp: { stableId: compStableId },
+            layer: { stableId: layerStableId },
+            propertyPath: ["ADBE Transform Group", "ADBE Position"],
+            keyIndex: spatialKey.keyIndex,
+            state: {
+              mode: "MANUAL",
+              inTangent: spatialKey.inTangent,
+              outTangent: spatialKey.outTangent,
+              continuous: true,
+              roving: false,
+            },
+          },
+        ));
+        ordinal += 1;
+      }
       for (const curveKey of framing.curveKeys) {
         operations.push(operation(
           baselineId,

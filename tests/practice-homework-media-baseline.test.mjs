@@ -486,6 +486,61 @@ test("AE baseline preserves measured dynamic framing as transform trajectories",
   assert.ok(Math.abs(easeOps[0].payload.easeIntent.outEase.speed - 65) < 1e-9);
   assert.ok(Math.abs(easeOps[1].payload.easeIntent.inEase.speed - 65) < 1e-9);
   assert.ok(Math.abs(easeOps[1].payload.easeIntent.outEase.speed - 10) < 1e-9);
+  assert.equal(plan.operations.filter((item) =>
+    item.command === "property.spatial_graph.set"
+      && item.payload.layer?.stableId?.endsWith("_0001")).length, 0);
+});
+
+test("AE baseline preserves measured curved framing with manual spatial tangents", () => {
+  const curvedMatches = [
+    {
+      ...matches[0],
+      geometricProof: {
+        framing: {
+          stable: false,
+          dynamic: true,
+          anchorCount: 3,
+          stableAnchorCount: 0,
+          stableAnchorFraction: 0,
+          positionX: 200,
+          positionY: 110,
+          scalePercent: 100,
+          rotationDegrees: 0,
+          confidence: 0.94,
+          dynamicConfidence: 0.96,
+          trajectory: [
+            { referenceTimeMs: 100, positionX: 180, positionY: 100, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.95 },
+            { referenceTimeMs: 500, positionX: 210, positionY: 100, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.96 },
+            { referenceTimeMs: 900, positionX: 210, positionY: 130, scalePercent: 100,
+              rotationDegrees: 0, confidence: 0.94 },
+          ],
+        },
+      },
+    },
+    matches[1],
+  ];
+  const plan = compilePracticeAeBaselinePlanV1({ reference, matches: curvedMatches });
+  const spatialOps = plan.operations.filter((item) =>
+    item.command === "property.spatial_graph.set"
+      && item.payload.layer?.stableId?.endsWith("_0001"));
+
+  assert.equal(spatialOps.length, 1);
+  assert.equal(spatialOps[0].capabilityId, "ae.property.spatial_graph.set");
+  assert.deepEqual(spatialOps[0].payload.propertyPath, [
+    "ADBE Transform Group",
+    "ADBE Position",
+  ]);
+  assert.equal(spatialOps[0].payload.keyIndex, 2);
+  assert.equal(spatialOps[0].payload.state.mode, "MANUAL");
+  assert.equal(spatialOps[0].payload.state.continuous, true);
+  assert.equal(spatialOps[0].payload.state.roving, false);
+  const expectedHandle = 10 / Math.sqrt(2);
+  assert.ok(Math.abs(spatialOps[0].payload.state.inTangent[0] + expectedHandle) < 1e-9);
+  assert.ok(Math.abs(spatialOps[0].payload.state.inTangent[1] + expectedHandle) < 1e-9);
+  assert.ok(Math.abs(spatialOps[0].payload.state.outTangent[0] - expectedHandle) < 1e-9);
+  assert.ok(Math.abs(spatialOps[0].payload.state.outTangent[1] - expectedHandle) < 1e-9);
 });
 
 test("AE baseline preserves a framing turnaround as zero-speed temporal ease", () => {
@@ -535,6 +590,9 @@ test("AE baseline preserves a framing turnaround as zero-speed temporal ease", (
   assert.equal(easeOps[0].payload.keyIndex, 2);
   assert.equal(easeOps[0].payload.easeIntent.inEase.speed, 0);
   assert.equal(easeOps[0].payload.easeIntent.outEase.speed, 0);
+  assert.equal(plan.operations.filter((item) =>
+    item.command === "property.spatial_graph.set"
+      && item.payload.layer?.stableId?.endsWith("_0001")).length, 0);
 });
 
 test("AE baseline refuses unstable framing evidence", () => {

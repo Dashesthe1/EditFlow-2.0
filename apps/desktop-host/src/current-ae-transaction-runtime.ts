@@ -38,6 +38,9 @@ import {
   M3_TEMPORAL_EASE_CAPABILITIES_V18,
 } from "../../../packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import {
+  M3_SPATIAL_GRAPH_CAPABILITIES_V19,
+} from "../../../packages/adapters/ae-cep/src/m3-spatial-graph.js";
+import {
   M3_MARKER_MOTION_CAPABILITIES_V20,
 } from "../../../packages/adapters/ae-cep/src/m3-marker-motion.js";
 import {
@@ -111,6 +114,7 @@ export const createCurrentAeTransactionRegistryV1 = (
     ...M3_LAYER_CONTROLS_CAPABILITIES_V16,
     ...M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
     ...M3_TEMPORAL_EASE_CAPABILITIES_V18,
+    ...M3_SPATIAL_GRAPH_CAPABILITIES_V19,
     ...M3_MARKER_MOTION_CAPABILITIES_V20,
     ...CURRENT_AE_MEDIA_SEQUENCE_CAPABILITIES_V25,
     ...M5_TIME_REMAP_CAPABILITIES_V27,

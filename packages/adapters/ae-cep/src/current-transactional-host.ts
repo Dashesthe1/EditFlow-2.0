@@ -47,6 +47,12 @@ import {
   type AeTemporalEaseTransportV18,
 } from "./protocol-v1_8.js";
 import {
+  AE_SPATIAL_GRAPH_ROUTE_ID_V19,
+  capabilityForSpatialGraphCommandV19,
+  isAeSpatialGraphCommandV19,
+  type AeSpatialGraphTransportV19,
+} from "./protocol-v1_9.js";
+import {
   AE_MARKER_MOTION_ROUTE_ID_V20,
   capabilityForMarkerMotionCommandV20,
   isAeMarkerMotionCommandV20,
@@ -77,6 +83,7 @@ import { buildMaskRequestV12 } from "./m3-mask.js";
 import { buildCompositeRequestV13 } from "./m3-composite.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
 import { buildTemporalEaseRequestV18 } from "./m3-temporal-ease.js";
+import { buildSpatialGraphRequestV19 } from "./m3-spatial-graph.js";
 import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
 import { buildTimeRemapRequestV27 } from "./m5-time-remap.js";
 import type { AeRotoBrushTransportV26 } from "./protocol-v2_6.js";
@@ -96,6 +103,7 @@ export type CurrentAeCepTransactionalTransportV1 =
   & AeLayerControlsTransportV16
   & AeTemporalInterpolationTransportV17
   & AeTemporalEaseTransportV18
+  & AeSpatialGraphTransportV19
   & AeMarkerMotionTransportV20
   & AeMediaSequenceTransportV25
   & AeRotoBrushTransportV26
@@ -936,6 +944,28 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       );
       return this.#accept(response, parsed.command);
     }
+
+    if (isAeSpatialGraphCommandV19(parsed.command)) {
+      assertBinding(
+        operation,
+        capabilityForSpatialGraphCommandV19(parsed.command),
+        AE_SPATIAL_GRAPH_ROUTE_ID_V19,
+      );
+      const response = await this.transport.dispatch(
+        buildSpatialGraphRequestV19({
+          requestId: this.requestIdFactory(),
+          transactionId: this.transactionId,
+          operationId: String(operation.operationId),
+          command: parsed.command,
+          expectedHostProjectRevision:
+            parsed.command === "property.spatial_graph.set" ? revision : null,
+          payload: parsed.payload,
+          readbackProfile: parsed.readbackProfile,
+        }),
+      );
+      return this.#accept(response, parsed.command);
+    }
+
     if (isAeMarkerMotionCommandV20(parsed.command)) {
       assertBinding(
         operation,
