@@ -924,6 +924,24 @@ export interface PracticeRetainedTruthSuitePolicyV1 {
   readonly ambiguousFalseMatchMarginThreshold: number;
 }
 
+export type PracticeRetainedTruthTuningSubsystemV1 =
+  | "MATCH_COVERAGE"
+  | "OUTPUT_DEDUPLICATION"
+  | "SOURCE_IDENTITY_RETRIEVAL"
+  | "SOURCE_TIMING_RETRIEVAL"
+  | "TEMPORAL_DIRECTION"
+  | "CONFIDENCE_CALIBRATION";
+
+export interface PracticeRetainedTruthTuningFocusV1 {
+  readonly kind: PracticeSceneTruthDiagnosticKindV1;
+  readonly subsystem: PracticeRetainedTruthTuningSubsystemV1;
+  readonly count: number;
+  readonly caseCount: number;
+  readonly difficultyKinds: readonly PracticeRetainedTruthDifficultyV1[];
+  readonly highConfidenceFalseMatchCount: number;
+  readonly ambiguousFalseMatchCount: number;
+}
+
 export interface PracticeRetainedTruthSuiteReportV1 {
   readonly schema: "editflow.practice-retained-truth-suite-report.v1";
   readonly editTypeId: string;
@@ -943,6 +961,7 @@ export interface PracticeRetainedTruthSuiteReportV1 {
     kind: PracticeSceneTruthDiagnosticKindV1;
     count: number;
   }>[];
+  readonly tuningFocus?: readonly PracticeRetainedTruthTuningFocusV1[];
   readonly certified: boolean;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeRetainedTruthCaseReportV1[];

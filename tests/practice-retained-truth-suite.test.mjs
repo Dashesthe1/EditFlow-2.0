@@ -169,6 +169,60 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
     report.diagnosticCounts.find((item) => item.kind === "WRONG_SOURCE")?.count,
     1,
   );
+  const identityFocus = report.tuningFocus.find((item) => item.kind === "WRONG_SOURCE");
+  assert.deepEqual(identityFocus, {
+    kind: "WRONG_SOURCE",
+    subsystem: "SOURCE_IDENTITY_RETRIEVAL",
+    count: 1,
+    caseCount: 1,
+    difficultyKinds: ["FAST_CUTS"],
+    highConfidenceFalseMatchCount: 1,
+    ambiguousFalseMatchCount: 1,
+  });
+  const calibrationKinds = report.tuningFocus
+    .filter((item) => item.subsystem === "CONFIDENCE_CALIBRATION")
+    .map((item) => item.kind)
+    .sort();
+  assert.deepEqual(calibrationKinds, [
+    "AMBIGUOUS_FALSE_MATCH",
+    "HIGH_CONFIDENCE_FALSE_MATCH",
+  ]);
+});
+
+test("timing and direction failures route to distinct tuning subsystems", () => {
+  const cases = certificationCases();
+  const first = cases[0];
+  cases[0] = {
+    ...first,
+    observation: {
+      ...first.observation,
+      matches: first.observation.matches.map((match, index) => index === 1
+        ? {
+          ...match,
+          sourceStartMs: 20500,
+          sourceEndMs: 21500,
+          direction: "REVERSE",
+          confidence: 0.96,
+          candidateMargin: 0.15,
+        }
+        : match),
+    },
+  };
+  const report = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-timing-direction",
+    mode: "CERTIFICATION",
+    cases,
+  });
+  const timingFocus = report.tuningFocus.find((item) =>
+    item.kind === "SOURCE_RANGE_MISMATCH");
+  const directionFocus = report.tuningFocus.find((item) =>
+    item.kind === "DIRECTION_MISMATCH");
+  assert.equal(timingFocus?.subsystem, "SOURCE_TIMING_RETRIEVAL");
+  assert.equal(directionFocus?.subsystem, "TEMPORAL_DIRECTION");
+  assert.equal(timingFocus?.highConfidenceFalseMatchCount, 1);
+  assert.equal(directionFocus?.highConfidenceFalseMatchCount, 1);
+  assert.equal(timingFocus?.ambiguousFalseMatchCount, 0);
+  assert.equal(directionFocus?.ambiguousFalseMatchCount, 0);
 });
 
 test("duplicate Finish bytes and partial truth both fail closed", () => {

@@ -6,6 +6,8 @@ import type {
   PracticeRetainedTruthSuiteModeV1,
   PracticeRetainedTruthSuitePolicyV1,
   PracticeRetainedTruthSuiteReportV1,
+  PracticeRetainedTruthTuningFocusV1,
+  PracticeRetainedTruthTuningSubsystemV1,
   PracticeSceneMatchV1,
   PracticeSceneTruthDiagnosticKindV1,
   PracticeSceneTruthDiagnosticV1,
@@ -42,6 +44,20 @@ const PRIMARY_DIAGNOSTICS = new Set<PracticeSceneTruthDiagnosticKindV1>([
   "WRONG_SOURCE",
   "SOURCE_RANGE_MISMATCH",
   "DIRECTION_MISMATCH",
+]);
+
+const TUNING_SUBSYSTEM_BY_DIAGNOSTIC = new Map<
+PracticeSceneTruthDiagnosticKindV1,
+PracticeRetainedTruthTuningSubsystemV1
+>([
+  ["MISSING_MATCH", "MATCH_COVERAGE"],
+  ["UNEXPECTED_MATCH", "OUTPUT_DEDUPLICATION"],
+  ["DUPLICATE_MATCH", "OUTPUT_DEDUPLICATION"],
+  ["WRONG_SOURCE", "SOURCE_IDENTITY_RETRIEVAL"],
+  ["SOURCE_RANGE_MISMATCH", "SOURCE_TIMING_RETRIEVAL"],
+  ["DIRECTION_MISMATCH", "TEMPORAL_DIRECTION"],
+  ["HIGH_CONFIDENCE_FALSE_MATCH", "CONFIDENCE_CALIBRATION"],
+  ["AMBIGUOUS_FALSE_MATCH", "CONFIDENCE_CALIBRATION"],
 ]);
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -423,6 +439,56 @@ const evaluateCase = (
   };
 };
 
+const diagnosticShotKey = (item: PracticeSceneTruthDiagnosticV1): string =>
+  item.caseId + "::" + (item.shotId ?? "<case>");
+
+const buildTuningFocus = (
+  cases: readonly PracticeRetainedTruthSuiteCaseInputV1[],
+  reports: readonly PracticeRetainedTruthCaseReportV1[],
+): readonly PracticeRetainedTruthTuningFocusV1[] => {
+  const difficultyByCase = new Map(cases.map((item) => [
+    item.truth.caseId,
+    item.truth.difficultyTags,
+  ] as const));
+  const diagnostics = reports.flatMap((report) => report.diagnostics);
+  const highConfidenceKeys = new Set(
+    diagnostics
+      .filter((item) => item.kind === "HIGH_CONFIDENCE_FALSE_MATCH")
+      .map(diagnosticShotKey),
+  );
+  const ambiguousKeys = new Set(
+    diagnostics
+      .filter((item) => item.kind === "AMBIGUOUS_FALSE_MATCH")
+      .map(diagnosticShotKey),
+  );
+
+  return DIAGNOSTIC_KINDS
+    .map((kind): PracticeRetainedTruthTuningFocusV1 | null => {
+      const clustered = diagnostics.filter((item) => item.kind === kind);
+      if (clustered.length === 0) return null;
+      const subsystem = TUNING_SUBSYSTEM_BY_DIAGNOSTIC.get(kind);
+      if (subsystem === undefined) {
+        throw new TypeError("Missing retained-truth tuning subsystem for " + kind + ".");
+      }
+      const difficultyKinds = DIFFICULTY_KINDS.filter((difficulty) =>
+        clustered.some((item) =>
+          difficultyByCase.get(item.caseId)?.includes(difficulty) ?? false));
+      return {
+        kind,
+        subsystem,
+        count: clustered.length,
+        caseCount: new Set(clustered.map((item) => item.caseId)).size,
+        difficultyKinds,
+        highConfidenceFalseMatchCount: clustered
+          .filter((item) => highConfidenceKeys.has(diagnosticShotKey(item))).length,
+        ambiguousFalseMatchCount: clustered
+          .filter((item) => ambiguousKeys.has(diagnosticShotKey(item))).length,
+      };
+    })
+    .filter((item): item is PracticeRetainedTruthTuningFocusV1 => item !== null)
+    .sort((left, right) => right.count - left.count || left.kind.localeCompare(right.kind));
+};
+
 export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
   readonly editTypeId: string;
   readonly mode: PracticeRetainedTruthSuiteModeV1;
@@ -495,6 +561,7 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
       count: allDiagnostics.filter((item) => item.kind === kind).length,
     }))
     .filter((item) => item.count > 0);
+  const tuningFocus = buildTuningFocus(input.cases, reports);
   const sceneErrorCount = reports.reduce((sum, report) => sum + report.sceneErrorCount, 0);
   const certified = input.mode === "CERTIFICATION"
     && reasons.length === 0
@@ -525,6 +592,7 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
     difficultyKinds,
     sceneErrorCount,
     diagnosticCounts,
+    tuningFocus,
     certified,
     reasons: uniqueNonEmpty(reasons),
     cases: reports,
