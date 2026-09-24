@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { PracticePanelServerV1 } from "./practice-panel-server.js";
+import { resolvePracticeStatePathsV1 } from "./practice-state-paths.js";
 
 interface BridgeConfigFile {
   readonly schemaVersion: 1;
@@ -62,6 +63,7 @@ const main = async (): Promise<void> => {
   const configPath = path.resolve(requiredArgument("--config"));
   const repositoryRoot = path.resolve(requiredArgument("--repository-root"));
   const artifactDir = path.resolve(requiredArgument("--artifact-dir"));
+  const statePaths = resolvePracticeStatePathsV1(argument("--state-dir"));
   const raw = await readFile(configPath, "utf8");
   const config = parseConfig(JSON.parse(
     raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw,
@@ -88,8 +90,8 @@ const main = async (): Promise<void> => {
     token: config.token,
     repositoryRoot,
     artifactDir,
-    learningMemoryFilePath: path.join(artifactDir, "state", "practice-learning-memory.json"),
-    editTypeRegistryFilePath: path.join(artifactDir, "state", "edit-types.json"),
+    learningMemoryFilePath: statePaths.learningMemoryFilePath,
+    editTypeRegistryFilePath: statePaths.editTypeRegistryFilePath,
     broker,
     ...(argument("--ffmpeg") === null ? {} : { ffmpegPath: path.resolve(argument("--ffmpeg") ?? "") }),
     renderTimeoutMs: timeoutMs,
@@ -102,6 +104,7 @@ const main = async (): Promise<void> => {
       "EditFlow Practice service ready on 127.0.0.1:" + String(panel.port)
       + "; AE bridge on 127.0.0.1:" + String(broker.port) + ".\n",
     );
+    process.stdout.write("Persistent Practice state: " + statePaths.stateDir + ".\n");
     process.stdout.write("Open Window > Extensions > EditFlow 2.0 Bridge in After Effects.\n");
     await new Promise<void>((resolve) => {
       const stop = (): void => resolve();

@@ -1,5 +1,6 @@
 param(
   [string]$ArtifactDir = "",
+  [string]$StateDir = "",
   [string]$FfmpegPath = "",
   [int]$TimeoutMs = 180000,
   [switch]$SkipBuild
@@ -37,6 +38,9 @@ $Arguments = @(
   "--artifact-dir", $ArtifactDir,
   "--timeout-ms", [string]$TimeoutMs
 )
+if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
+  $Arguments += @("--state-dir", [System.IO.Path]::GetFullPath($StateDir))
+}
 if ($FfmpegPath) {
   $Arguments += @("--ffmpeg", (Resolve-Path $FfmpegPath).Path)
 }

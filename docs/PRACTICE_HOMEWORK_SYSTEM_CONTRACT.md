@@ -81,10 +81,14 @@ floors, retain proof evidence, and include object-aware verification before ROBU
 be recorded. Reused training material or a failed case invalidates the robust result.
 
 The standalone Current-AE proof runner can execute the same held-out certification path
-as the Practice panel. Its shared state directory persists Edit Type and Practice memory
-across otherwise isolated proof sessions. Held-out mode requires existing
-TRANSFER_VERIFIED knowledge, forbids learning allocation, freezes the knowledge snapshot
-used for reconstruction, and must not retain the certification episode in Practice
+as the Practice panel. By default both surfaces resolve one worktree-independent persistent
+state root (`%LOCALAPPDATA%\EditFlow2\practice-state` on Windows, with
+`EDITFLOW_PRACTICE_STATE_DIR` as an explicit environment override). `-StateDir` / `--state-dir`
+remains available for intentionally isolated proofs. The shared state directory persists
+Edit Type and Practice memory across branches, worktrees, panel restarts, and proof sessions.
+Held-out mode requires existing TRANSFER_VERIFIED knowledge, forbids learning allocation,
+freezes the knowledge snapshot used for reconstruction, and must not retain the
+certification episode in Practice
 learning memory. The runner snapshots learning memory before and after certification and
 fails the proof if the held-out session leaks into memory, allocation, or Edit Type
 session evidence. It verifies the retained final render through the Practice mastery

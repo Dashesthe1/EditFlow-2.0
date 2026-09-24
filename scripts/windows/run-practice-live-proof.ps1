@@ -26,9 +26,7 @@ if ([string]::IsNullOrWhiteSpace($SessionId)) {
 }
 $PracticeLiveRoot = Join-Path $RepoRoot "proofs\artifacts\practice-live"
 $ArtifactDir = Join-Path $PracticeLiveRoot $SessionId
-if ([string]::IsNullOrWhiteSpace($StateDir)) {
-  $StateDir = Join-Path $PracticeLiveRoot "state"
-} else {
+if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
   $StateDir = [System.IO.Path]::GetFullPath($StateDir)
 }
 $ResultPath = Join-Path $ArtifactDir "result.json"
@@ -58,7 +56,6 @@ try {
     "--config", $ConfigPath,
     "--repository-root", $RepoRoot,
     "--artifact-dir", $ArtifactDir,
-    "--state-dir", $StateDir,
     "--result", $ResultPath,
     "--finish", (Resolve-Path -LiteralPath $Finish).Path,
     "--session-id", $SessionId,
@@ -70,6 +67,9 @@ try {
     "--minimum-audio-confidence", [string]$MinimumAudioConfidence,
     "--timeout-ms", [string]($TimeoutSeconds * 1000)
   )
+  if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
+    $NodeArgs += @("--state-dir", $StateDir)
+  }
   if (-not [string]::IsNullOrWhiteSpace($EditTypeTitle)) {
     $NodeArgs += @("--edit-type-title", $EditTypeTitle)
   }
@@ -109,7 +109,9 @@ try {
     Write-Host ("Observed isolation backends: " + $Backends)
     Write-Host ("Observed isolation fallbacks: " + $Fallbacks)
   }
-  Write-Host ("Shared Practice state: " + $StateDir)
+  if ($null -ne $Result.persistence) {
+    Write-Host ("Shared Practice state: " + $Result.persistence.stateDir)
+  }
   Write-Host ("Result artifact: " + $ResultPath)
   if ($ExitCode -ne 0) { exit $ExitCode }
 } finally {

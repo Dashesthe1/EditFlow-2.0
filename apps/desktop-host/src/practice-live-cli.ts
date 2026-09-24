@@ -14,6 +14,7 @@ import {
   evaluatePracticeLivePersistenceV1,
 } from "./practice-live-proof-assertions.js";
 import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
+import { resolvePracticeStatePathsV1 } from "./practice-state-paths.js";
 import { createPracticeM6CurrentAeTrainingRuntimeV1 } from "./practice-training-runtime.js";
 
 interface BridgeConfigFile {
@@ -119,10 +120,8 @@ const main = async (): Promise<void> => {
   const configPath = path.resolve(requireArgument("--config"));
   const repositoryRoot = path.resolve(requireArgument("--repository-root"));
   const artifactDir = path.resolve(requireArgument("--artifact-dir"));
-  const stateDirArgument = argument("--state-dir");
-  const stateDir = stateDirArgument === null
-    ? path.join(artifactDir, "state")
-    : path.resolve(stateDirArgument);
+  const statePaths = resolvePracticeStatePathsV1(argument("--state-dir"));
+  const stateDir = statePaths.stateDir;
   const resultPath = path.resolve(requireArgument("--result"));
   const finishPath = await ensureFile(requireArgument("--finish"), "Finish reference");
   const videoPaths = await Promise.all(
@@ -200,8 +199,8 @@ const main = async (): Promise<void> => {
     const mediaRoots = [...new Set(
       [finishPath, ...videoPaths, ...audioPaths].map((filePath) => path.dirname(filePath)),
     )];
-    const learningMemoryFilePath = path.join(stateDir, "practice-learning-memory.json");
-    const editTypeRegistryFilePath = path.join(stateDir, "edit-types.json");
+    const learningMemoryFilePath = statePaths.learningMemoryFilePath;
+    const editTypeRegistryFilePath = statePaths.editTypeRegistryFilePath;
 
     const runtime = await createPracticeM6CurrentAeTrainingRuntimeV1({
       transport: broker,
