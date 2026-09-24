@@ -458,7 +458,9 @@ a simultaneous success completion, so cancelled work cannot be certified as mast
 2. broaden GPT-facing Eyes and Hands tools beyond the current Shadow connector surface;
 3. retain independent shot-level truth for full-length real movies and difficult references,
    run the real-media benchmark suite, and tune indexing evidence from false-match diagnostics;
-   the fail-closed benchmark harness is implemented in `scripts/practice/practice-media-benchmark.py`.
+   the fail-closed benchmark harness is implemented in `scripts/practice/practice-media-benchmark.py`
+   and now requires at least 20 passing cases with 20 distinct Finish references before suite-level
+   generalization can be certified.
 
 The CEP panel now restores persisted active/latest runs after a service or panel restart, restores
 saved human review, exposes best-attempt playback, and retains non-authoritative five-dimension

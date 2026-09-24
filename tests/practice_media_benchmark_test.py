@@ -87,6 +87,14 @@ def case():
     }
 
 
+def suite_result(index, status="PASS", reference_id=None, benchmark_id=None):
+    return {
+        "benchmarkId": benchmark_id or f"case:{index}",
+        "referenceId": reference_id or f"ref:{index}",
+        "status": status,
+    }
+
+
 class PracticeMediaBenchmarkTest(unittest.TestCase):
     def test_source_cache_requires_requested_density(self):
         artifact = {
@@ -317,6 +325,56 @@ class PracticeMediaBenchmarkTest(unittest.TestCase):
                     root_path,
                     root_path / "out",
                 )
+
+    def test_suite_certification_requires_twenty_retained_cases(self):
+        results = [suite_result(index) for index in range(1, 20)]
+        summary = benchmark.summarize_suite(results)
+        self.assertFalse(summary["certified"])
+        self.assertEqual(summary["caseCount"], 19)
+        self.assertTrue(any(
+            "generalization floor of 20" in reason
+            for reason in summary["generalizationGate"]["reasons"]
+        ))
+
+    def test_suite_certification_passes_twenty_distinct_references(self):
+        results = [suite_result(index) for index in range(1, 21)]
+        summary = benchmark.summarize_suite(results)
+        self.assertTrue(summary["certified"])
+        self.assertEqual(summary["passCount"], 20)
+        self.assertEqual(
+            summary["generalizationGate"]["distinctReferenceCount"],
+            20,
+        )
+        self.assertEqual(summary["generalizationGate"]["reasons"], [])
+
+    def test_suite_certification_rejects_duplicate_reference_padding(self):
+        results = [
+            suite_result(index, reference_id="ref:same")
+            for index in range(1, 21)
+        ]
+        summary = benchmark.summarize_suite(results)
+        self.assertFalse(summary["certified"])
+        self.assertEqual(
+            summary["generalizationGate"]["distinctReferenceCount"],
+            1,
+        )
+
+    def test_suite_certification_rejects_duplicate_benchmark_ids(self):
+        results = [suite_result(index) for index in range(1, 21)]
+        results[-1]["benchmarkId"] = results[0]["benchmarkId"]
+        summary = benchmark.summarize_suite(results)
+        self.assertFalse(summary["certified"])
+        self.assertTrue(any(
+            "Benchmark IDs must be unique" in reason
+            for reason in summary["generalizationGate"]["reasons"]
+        ))
+
+    def test_suite_certification_requires_every_case_to_pass(self):
+        results = [suite_result(index) for index in range(1, 21)]
+        results[-1]["status"] = "FAIL"
+        summary = benchmark.summarize_suite(results)
+        self.assertFalse(summary["certified"])
+        self.assertEqual(summary["failCount"], 1)
 
 
 if __name__ == "__main__":
