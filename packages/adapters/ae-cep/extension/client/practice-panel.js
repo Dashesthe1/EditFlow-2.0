@@ -13,11 +13,15 @@
   var lastRecoveredRunId = null;
   var statusTimer = null;
   var pollTimer = null;
+  var editTypesById = {};
 
   var editTypeEl = document.getElementById("edit-type");
   var practiceRoleFieldEl = document.getElementById("practice-role-field");
   var practiceRoleEl = document.getElementById("practice-role");
   var practiceRoleHintEl = document.getElementById("practice-role-hint");
+  var lifecycleMaturityEl = document.getElementById("practice-lifecycle-maturity");
+  var lifecycleStepsEl = document.getElementById("practice-lifecycle-steps");
+  var lifecycleNextEl = document.getElementById("practice-lifecycle-next");
   var finishFieldEl = document.getElementById("finish-field");
   var finishSummaryEl = document.getElementById("finish-summary");
   var startSummaryEl = document.getElementById("start-summary");
@@ -80,6 +84,88 @@
   function selectedEditTypeMaturity() {
     var option = editTypeEl.options[editTypeEl.selectedIndex];
     return option ? option.getAttribute("data-maturity") || "UNPROVEN" : "UNPROVEN";
+  }
+
+  function selectedEditTypeProfile() {
+    return editTypesById[selectedEditType()] || null;
+  }
+
+  function lifecycleState(profile) {
+    var knowledge = profile && profile.knowledge ? profile.knowledge : null;
+    var learning = knowledge && knowledge.gptLearning ? knowledge.gptLearning : null;
+    var maturity = knowledge && knowledge.maturityStage ? knowledge.maturityStage : "UNPROVEN";
+    var referenceCount = knowledge ? Number(knowledge.referenceVerifiedPracticeSessionCount || 0) : 0;
+    var transferCount = knowledge ? Number(knowledge.transferVerifiedPracticeSessionCount || 0) : 0;
+    var heldOutCount = learning && Array.isArray(learning.heldOutCases) ? learning.heldOutCases.length : 0;
+    var referenceDone = referenceCount > 0
+      || ["VISUAL_MATCH_VERIFIED", "TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
+    var transferDone = transferCount > 0
+      || ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
+    var heldOutDone = maturity === "ROBUST";
+    return {
+      maturity: maturity,
+      referenceCount: referenceCount,
+      transferCount: transferCount,
+      heldOutCount: heldOutCount,
+      referenceDone: referenceDone,
+      transferDone: transferDone,
+      heldOutDone: heldOutDone
+    };
+  }
+
+  function addLifecycleStep(label, state, detail) {
+    var item = document.createElement("div");
+    item.className = "lifecycle-step";
+    item.setAttribute("data-state", state);
+    var title = document.createElement("strong");
+    title.textContent = label + " · " + (state === "DONE" ? "Done" : state === "NEXT" ? "Next" : "Locked");
+    var meta = document.createElement("span");
+    meta.textContent = detail;
+    item.appendChild(title);
+    item.appendChild(meta);
+    lifecycleStepsEl.appendChild(item);
+  }
+
+  function renderPracticeLifecycle() {
+    if (!lifecycleMaturityEl || !lifecycleStepsEl || !lifecycleNextEl) return;
+    var profile = selectedEditTypeProfile();
+    lifecycleStepsEl.innerHTML = "";
+    if (!profile) {
+      lifecycleMaturityEl.textContent = "UNPROVEN";
+      addLifecycleStep("1 Reference proof", "NEXT", "No machine-passing reference run yet");
+      addLifecycleStep("2 Transfer proof", "LOCKED", "Requires reference proof first");
+      addLifecycleStep("3 Held-out certification", "LOCKED", "Requires transfer proof first");
+      lifecycleNextEl.textContent = "Choose an Edit Type to see the next required proof.";
+      return;
+    }
+
+    var state = lifecycleState(profile);
+    lifecycleMaturityEl.textContent = state.maturity.replace(/_/g, " ");
+    addLifecycleStep(
+      "1 Reference proof",
+      state.referenceDone ? "DONE" : "NEXT",
+      state.referenceCount + " machine-verified session" + (state.referenceCount === 1 ? "" : "s")
+    );
+    addLifecycleStep(
+      "2 Transfer proof",
+      state.transferDone ? "DONE" : state.referenceDone ? "NEXT" : "LOCKED",
+      state.transferCount + " materially different transfer session" + (state.transferCount === 1 ? "" : "s")
+    );
+    addLifecycleStep(
+      "3 Held-out certification",
+      state.heldOutDone ? "DONE" : state.transferDone ? "NEXT" : "LOCKED",
+      state.heldOutCount + " retained held-out case" + (state.heldOutCount === 1 ? "" : "s")
+    );
+
+    if (!state.referenceDone) {
+      lifecycleNextEl.textContent = "Next: reconstruct this Finish from its Start media until the machine reference-proof gate passes.";
+    } else if (!state.transferDone) {
+      lifecycleNextEl.textContent = "Next: run Practice on materially different Finish and Start media. Reused reference or Start bytes are rejected before transfer promotion.";
+    } else if (!state.heldOutDone) {
+      lifecycleNextEl.textContent = "Next: AUTO now runs held-out certification. Use genuinely unseen Finish/Start media; transfer-verified knowledge is frozen and failed machine-proven cases remain in the benchmark.";
+    } else {
+      lifecycleNextEl.textContent = "Held-out certification is ROBUST. Pro Creation can use the retained transfer-verified knowledge; further Practice extends benchmark coverage without weakening the proof gates.";
+    }
   }
 
   function transferVerifiedReady() {
@@ -196,8 +282,10 @@
 
   function renderEditTypes(editTypes) {
     var selected = editTypeEl.value;
+    editTypesById = {};
     editTypeEl.innerHTML = '<option value="">Choose an Edit Type</option>';
     editTypes.forEach(function (profile) {
+      editTypesById[profile.editTypeId] = profile;
       var option = document.createElement("option");
       option.value = profile.editTypeId;
       var maturityId = profile.knowledge && profile.knowledge.maturityStage
@@ -209,6 +297,7 @@
       editTypeEl.appendChild(option);
     });
     if (selected) editTypeEl.value = selected;
+    renderPracticeLifecycle();
     updatePracticeRoleUi();
     updateAction();
   }
@@ -499,6 +588,7 @@
   });
 
   editTypeEl.addEventListener("change", function () {
+    renderPracticeLifecycle();
     updatePracticeRoleUi();
     updateAction();
   });
@@ -557,6 +647,8 @@
     }).then(function (value) {
       return refreshEditTypes().then(function () {
         editTypeEl.value = value.editType.editTypeId;
+        renderPracticeLifecycle();
+        updatePracticeRoleUi();
         updateAction();
       });
     }).catch(function (error) { setRunState("FAILED", error.message); });
@@ -635,6 +727,7 @@
     if (pollTimer) clearTimeout(pollTimer);
   });
 
+  renderPracticeLifecycle();
   updatePracticeRoleUi();
   renderFiles();
   checkService();

@@ -41,6 +41,14 @@
           <option value="HELD_OUT_CERTIFICATION">Force held-out certification</option>
         </select>
         <p id="practice-role-hint" class="hint">Automatic progression learns until transfer verification, then freezes that knowledge and certifies genuinely unseen Finish/Start pairs.</p>
+        <div id="practice-lifecycle-card" class="lifecycle-card" aria-live="polite">
+          <div class="lifecycle-heading">
+            <strong>Proof path</strong>
+            <span id="practice-lifecycle-maturity" class="lifecycle-maturity">UNPROVEN</span>
+          </div>
+          <div id="practice-lifecycle-steps" class="lifecycle-steps"></div>
+          <p id="practice-lifecycle-next" class="hint">Choose an Edit Type to see the next required proof.</p>
+        </div>
       </div>
 
       <div id="finish-field" class="field">

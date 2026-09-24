@@ -104,6 +104,50 @@ select {
 }
 .hint { margin: 5px 0 0; }
 
+.lifecycle-card {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+  background: #151820;
+}
+.lifecycle-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lifecycle-maturity {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #2b303b;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.lifecycle-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+.lifecycle-step {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px;
+  background: #12151b;
+}
+.lifecycle-step strong,
+.lifecycle-step span { display: block; }
+.lifecycle-step strong { font-size: 10px; }
+.lifecycle-step span { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.lifecycle-step[data-state="DONE"] { border-color: #39765a; }
+.lifecycle-step[data-state="DONE"] strong { color: var(--good); }
+.lifecycle-step[data-state="NEXT"] { border-color: #7657ee; background: #1d1a2a; }
+.lifecycle-step[data-state="NEXT"] strong { color: #d5caff; }
+.lifecycle-step[data-state="LOCKED"] { opacity: .58; }
+
 .text-button {
   border: 0;
   padding: 2px 0 5px 8px;

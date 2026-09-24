@@ -232,6 +232,10 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(html, /Automatic progression/);
   assert.match(html, /HELD_OUT_CERTIFICATION/);
   assert.match(html, /held-out certification/i);
+  assert.match(html, /id="practice-lifecycle-card"/);
+  assert.match(html, /id="practice-lifecycle-maturity"/);
+  assert.match(html, /id="practice-lifecycle-steps"/);
+  assert.match(html, /id="practice-lifecycle-next"/);
   assert.match(html, /practice-panel\.js/);
 
   assert.match(client, /finishPath/);
@@ -240,6 +244,15 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(client, /practiceRole: selectedPracticeRole\(\)/);
   assert.match(client, /effectivePracticeRole/);
   assert.match(client, /transferVerifiedReady/);
+  assert.match(client, /referenceVerifiedPracticeSessionCount/);
+  assert.match(client, /transferVerifiedPracticeSessionCount/);
+  assert.match(client, /heldOutCases/);
+  assert.match(client, /1 Reference proof/);
+  assert.match(client, /2 Transfer proof/);
+  assert.match(client, /3 Held-out certification/);
+  assert.match(client, /Reused reference or Start bytes are rejected before transfer promotion/);
+  assert.match(client, /AUTO now runs held-out certification/);
+  assert.match(client, /Held-out certification is ROBUST/);
   assert.match(client, /frozen transfer-verified knowledge/i);
   assert.match(client, /Failed machine-proven cases remain in the benchmark/);
   assert.match(html, /id="cancel-action"/);
