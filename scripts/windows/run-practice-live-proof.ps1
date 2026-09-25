@@ -14,6 +14,7 @@ param(
   [int]$TimeoutSeconds = 180,
   [switch]$Allocate,
   [switch]$HeldOutCertification,
+  [switch]$RequireRobustCertification,
   [string[]]$AppliedSkillId = @(),
   [string]$ExpectedIsolationBackend = "",
   [string]$ExpectedIsolationFallbackAfter = ""
@@ -45,6 +46,9 @@ if ($MaxAttempts -lt 1) { throw "MaxAttempts must be at least 1." }
 if ($TimeoutSeconds -lt 30) { throw "TimeoutSeconds must be at least 30." }
 if ($HeldOutCertification -and $Allocate) {
   throw "Held-out certification cannot allocate learning evidence."
+}
+if ($RequireRobustCertification -and -not $HeldOutCertification) {
+  throw "RequireRobustCertification requires HeldOutCertification."
 }
 if (-not $HeldOutCertification -and @($AppliedSkillId).Count -gt 0) {
   throw "AppliedSkillId is reserved for held-out certification."
@@ -151,6 +155,9 @@ try {
       Write-Host ("Held-out truth certificate evaluated at: " + $Result.heldOutProof.benchmark.retainedTruthSuiteEvaluatedAt)
     }
     Write-Host ("Held-out benchmark robust: " + $Result.heldOutProof.benchmark.robust)
+  }
+  if ($RequireRobustCertification -and ($null -eq $Result.heldOutProof -or $Result.heldOutProof.benchmark.robust -ne $true)) {
+    throw "Practice held-out final certification is not ROBUST; retained truth, coverage, or current transfer targets still require proof."
   }
   if ($null -ne $Result.assertions) {
     Write-Host ("Persistence assertion passed: " + $Result.assertions.persistence.passed)

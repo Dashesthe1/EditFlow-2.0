@@ -61,6 +61,16 @@ test("Practice live result retains whether CEP recovery was invoked", async () =
 });
 
 
+test("Practice live held-out runner can require the final ROBUST certification lock", async () => {
+  const runner = await readFile(runnerPath, "utf8");
+
+  assert.match(runner, /\[switch\]\$RequireRobustCertification/);
+  assert.match(runner, /RequireRobustCertification requires HeldOutCertification/);
+  assert.match(runner, /retainedTruthSuiteAuthorityVerified/);
+  assert.match(runner, /heldOutProof\.benchmark\.robust -ne \$true/);
+  assert.match(runner, /final certification is not ROBUST/);
+});
+
 test("Practice live held-out runner forwards only explicit learned-skill audit claims", async () => {
   const cli = await readFile(cliPath, "utf8");
   const runner = await readFile(runnerPath, "utf8");
