@@ -143,12 +143,12 @@ const normalizedGptLearning = (
       ...(report.robustCertificationLock === undefined ? {} : {
         robustCertificationLock: {
           ...structuredClone(report.robustCertificationLock),
-          transferVerifiedSkillIds: uniqueStrings(
+          transferVerifiedSkillIds: [...uniqueStrings(
             report.robustCertificationLock.transferVerifiedSkillIds ?? [],
-          ).sort(),
-          transferVerifiedEffectFamilyIds: uniqueStrings(
+          )].sort(),
+          transferVerifiedEffectFamilyIds: [...uniqueStrings(
             report.robustCertificationLock.transferVerifiedEffectFamilyIds ?? [],
-          ).sort(),
+          )].sort(),
         },
       }),
     })),
