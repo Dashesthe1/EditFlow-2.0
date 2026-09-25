@@ -53,6 +53,13 @@ export {
 export {
   evaluatePracticeRetainedTruthSuiteManifestV1,
 } from "./practice-retained-truth-suite.js";
+export {
+  applyPracticeRobustRecertificationV1,
+  recertifyPracticeRobustManifestV1,
+} from "./practice-robust-recertification.js";
+export type {
+  PracticeRobustRecertificationReportV1,
+} from "./practice-robust-recertification.js";
 export type {
   PracticeRetainedTruthManifestCaseV1,
   PracticeRetainedTruthManifestSourceV1,

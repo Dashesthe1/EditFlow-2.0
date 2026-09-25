@@ -173,6 +173,28 @@ python scripts/practice/practice-retained-corpus.py assemble `
   --inventory-output proofs/practice/retained-truth-corpus-inventory.json
 ```
 
+### On-demand ROBUST recertification
+
+After a retained corpus is assembled in `CERTIFICATION` mode, one command re-runs the canonical
+truth-suite evaluator against the current media bytes, records that newest result in the Edit Type
+registry, refreshes retained held-out authority when certified truth and held-out cases both exist,
+and then reports the final Practice progression gate:
+
+```powershell
+npm run practice:recertify -- `
+  --manifest proofs/practice/retained-truth-corpus.json `
+  --repository-root . `
+  --out proofs/practice/robust-recertification.json
+```
+
+By default this updates the same canonical Practice state directory used by the live runner. Use
+`--state-dir` for an isolated proof state or `--edit-type-registry` for an explicit registry file.
+
+The command exits nonzero unless the final registry state is actually `ROBUST`. A newer failed or
+incomplete truth evaluation is still retained so it invalidates stale ROBUST authority. Held-out
+refresh failures are surfaced in the recertification report instead of silently preserving an older
+ROBUST claim.
+
 ## Benchmark manifest
 
 Each case declares a Finish reference and one or more candidate Start videos. Paths may be

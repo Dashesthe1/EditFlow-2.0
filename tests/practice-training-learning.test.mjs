@@ -28,6 +28,7 @@ import {
 import {
   PracticeM6AeRenderDriverCurrentV1,
   PracticeM6CurrentAeRuntimeV1,
+  applyPracticeRobustRecertificationV1,
   buildPracticeCrossSourceSubjectProofV1,
   createPracticeM6CurrentAeAssemblyV1,
   createPracticeM6CurrentAeTrainingRuntimeV1,
@@ -760,7 +761,14 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     cases: retainedTruthReport.cases.slice(0, 10),
     evidenceRefs: ["truth:incomplete:latest"],
   };
-  registry.recordRetainedTruthSuite(incompleteTruthReport);
+  const blockedRecertification = applyPracticeRobustRecertificationV1({
+    registry,
+    retainedTruthReport: incompleteTruthReport,
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(blockedRecertification.retainedTruthCertified, false);
+  assert.equal(blockedRecertification.heldOutRefreshAttempted, false);
+  assert.equal(blockedRecertification.robustClaimAllowed, false);
   const blockedByLatestTruth = registry.knowledge("benchmark-gated");
   assert.equal(blockedByLatestTruth.maturityStage, "OBJECT_AWARE_VERIFIED");
   assert.equal(blockedByLatestTruth.progressionGate.populationWindowComplete, false);
@@ -786,16 +794,19 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
       Date.parse(retainedTruthReport.evaluatedAt) + 2000,
     ).toISOString(),
   };
-  registry.recordRetainedTruthSuite(refreshedTruthReport);
-  const refreshedReport = evaluatePracticeHeldOutBenchmarkV1({
-    editTypeId: "benchmark-gated",
-    cases,
-    priorMasteryRecords: [prior],
+  const recertified = applyPracticeRobustRecertificationV1({
+    registry,
+    retainedTruthReport: refreshedTruthReport,
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
-    retainedTruthSuiteReports: [refreshedTruthReport],
   });
-  assert.equal(refreshedReport.robust, true);
-  registry.recordHeldOutBenchmark(refreshedReport);
+  assert.equal(recertified.retainedTruthCertified, true);
+  assert.equal(recertified.heldOutRefreshAttempted, true);
+  assert.equal(recertified.heldOutRefreshCompleted, true);
+  assert.equal(recertified.heldOutRefreshError, null);
+  assert.equal(recertified.heldOutBenchmarkRobust, true);
+  assert.equal(recertified.maturityStage, "ROBUST");
+  assert.equal(recertified.robustClaimAllowed, true);
+  assert.deepEqual(recertified.progressionGate.blockingDependencies, []);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
   assert.equal(registry.knowledge("benchmark-gated").progressionGate.robustClaimAllowed, true);
 
