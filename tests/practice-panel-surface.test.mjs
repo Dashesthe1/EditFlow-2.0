@@ -28,6 +28,7 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     artifactDir: path.join(root, "artifacts"),
     learningMemoryFilePath: path.join(root, "state", "memory.json"),
     editTypeRegistryFilePath: path.join(root, "state", "edit-types.json"),
+    retainedTruthManifestPath: path.join(root, "missing-retained-truth.json"),
     broker,
   });
   const port = await service.start();
@@ -65,6 +66,13 @@ test("Practice panel product API is authenticated and preserves readiness gates"
   const listed = await fetch(base + "/v1/product/edit-types", { headers });
   assert.equal(listed.status, 200);
   assert.equal((await listed.json()).editTypes.length, 1);
+
+  const recertification = await fetch(
+    base + "/v1/product/edit-types/cinematic-action/robust-recertification",
+    { method: "POST", headers, body: "{}" },
+  );
+  assert.equal(recertification.status, 409);
+  assert.match((await recertification.json()).error, /Retained truth corpus manifest is unavailable/);
 
   const preparation = await fetch(base + "/v1/product/pro-creation/prepare", {
     method: "POST",
@@ -236,6 +244,8 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(html, /id="practice-lifecycle-maturity"/);
   assert.match(html, /id="practice-lifecycle-steps"/);
   assert.match(html, /id="practice-lifecycle-next"/);
+  assert.match(html, /id="practice-recertify-robust"/);
+  assert.match(html, /Refresh ROBUST proof/);
   assert.match(html, /practice-panel\.js/);
 
   assert.match(client, /finishPath/);
@@ -249,6 +259,9 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(client, /heldOutCases/);
   assert.match(client, /heldOutProofVerified/);
   assert.match(client, /retainedTruthSuiteReports/);
+  assert.match(client, /progressionGate/);
+  assert.match(client, /blockingDependencies/);
+  assert.match(client, /robust-recertification/);
   assert.match(client, /autoProgressionBlock/);
   assert.match(client, /Retained truth required/);
   assert.match(client, /Benchmark refresh required/);

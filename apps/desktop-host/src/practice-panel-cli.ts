@@ -92,6 +92,9 @@ const main = async (): Promise<void> => {
     artifactDir,
     learningMemoryFilePath: statePaths.learningMemoryFilePath,
     editTypeRegistryFilePath: statePaths.editTypeRegistryFilePath,
+    ...(argument("--retained-truth-manifest") === null
+      ? {}
+      : { retainedTruthManifestPath: path.resolve(argument("--retained-truth-manifest") ?? "") }),
     broker,
     ...(argument("--ffmpeg") === null ? {} : { ffmpegPath: path.resolve(argument("--ffmpeg") ?? "") }),
     renderTimeoutMs: timeoutMs,

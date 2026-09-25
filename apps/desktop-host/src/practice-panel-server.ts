@@ -53,6 +53,10 @@ import { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
 import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
+import {
+  recertifyPracticeRobustManifestV1,
+  type PracticeRobustRecertificationReportV1,
+} from "./practice-robust-recertification.js";
 import { PracticeMasteryVerifierV1 } from "./practice-mastery-verifier.js";
 
 export interface PracticePanelServerConfigV1 {
@@ -63,6 +67,7 @@ export interface PracticePanelServerConfigV1 {
   readonly learningMemoryFilePath: string;
   readonly editTypeRegistryFilePath: string;
   readonly gptOrchestrationFilePath?: string;
+  readonly retainedTruthManifestPath?: string;
   readonly broker: LoopbackCepBroker;
   readonly ffmpegPath?: string;
   readonly renderTimeoutMs?: number;
@@ -1083,6 +1088,52 @@ export class PracticePanelServerV1 {
     return new EditTypeRegistryFileV1(this.config.editTypeRegistryFilePath);
   }
 
+  #retainedTruthManifestPath(): string {
+    return path.resolve(
+      this.config.retainedTruthManifestPath
+        ?? path.join(this.config.repositoryRoot, "proofs", "practice", "retained-truth-corpus.json"),
+    );
+  }
+
+  async #recertifyRobust(editTypeId: string): Promise<PracticeRobustRecertificationReportV1> {
+    if (this.#activeRunId !== null) {
+      throw new HttpError(409, "Cannot recertify ROBUST while an EditFlow run is active.");
+    }
+    const manifestPath = this.#retainedTruthManifestPath();
+    let manifestStats: Awaited<ReturnType<typeof stat>>;
+    try {
+      manifestStats = await stat(manifestPath);
+    } catch {
+      throw new HttpError(
+        409,
+        "Retained truth corpus manifest is unavailable: " + manifestPath,
+      );
+    }
+    if (!manifestStats.isFile()) {
+      throw new HttpError(409, "Retained truth corpus manifest is not a file: " + manifestPath);
+    }
+
+    const file = await this.#editTypes();
+    const registry = await file.load();
+    if (registry.get(editTypeId) === null) {
+      throw new HttpError(404, "Edit Type not found: " + editTypeId);
+    }
+    const report = await recertifyPracticeRobustManifestV1({
+      registry,
+      manifestPath,
+      repositoryRoot: this.config.repositoryRoot,
+    });
+    if (report.editTypeId !== editTypeId) {
+      throw new HttpError(
+        409,
+        "Retained truth corpus targets Edit Type " + report.editTypeId
+          + ", not " + editTypeId + ".",
+      );
+    }
+    await file.save(registry);
+    return report;
+  }
+
   #humanReviewPath(sessionId: string): string {
     const safeSession = sessionId.replace(/[^a-zA-Z0-9._-]+/g, "-");
     return path.join(this.config.artifactDir, "human-reviews", safeSession + ".json");
@@ -1976,6 +2027,15 @@ export class PracticePanelServerV1 {
         });
         await file.save(registry);
         jsonResponse(res, 201, { editType: profile });
+        return;
+      }
+      const robustRecertificationMatch =
+        /^\/v1\/product\/edit-types\/([^/]+)\/robust-recertification$/.exec(url.pathname);
+      if (req.method === "POST" && robustRecertificationMatch !== null) {
+        const editTypeId = decodeURIComponent(robustRecertificationMatch[1] ?? "");
+        jsonResponse(res, 200, {
+          recertification: await this.#recertifyRobust(editTypeId),
+        });
         return;
       }
       if (req.method === "POST" && url.pathname === "/v1/product/practice") {

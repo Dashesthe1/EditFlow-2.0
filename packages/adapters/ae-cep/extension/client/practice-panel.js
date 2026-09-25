@@ -14,6 +14,7 @@
   var statusTimer = null;
   var pollTimer = null;
   var editTypesById = {};
+  var recertificationActive = false;
 
   var editTypeEl = document.getElementById("edit-type");
   var practiceRoleFieldEl = document.getElementById("practice-role-field");
@@ -22,6 +23,7 @@
   var lifecycleMaturityEl = document.getElementById("practice-lifecycle-maturity");
   var lifecycleStepsEl = document.getElementById("practice-lifecycle-steps");
   var lifecycleNextEl = document.getElementById("practice-lifecycle-next");
+  var recertifyRobustEl = document.getElementById("practice-recertify-robust");
   var finishFieldEl = document.getElementById("finish-field");
   var finishSummaryEl = document.getElementById("finish-summary");
   var startSummaryEl = document.getElementById("start-summary");
@@ -94,6 +96,7 @@
     var knowledge = profile && profile.knowledge ? profile.knowledge : null;
     var learning = knowledge && knowledge.gptLearning ? knowledge.gptLearning : null;
     var maturity = knowledge && knowledge.maturityStage ? knowledge.maturityStage : "UNPROVEN";
+    var progressionGate = knowledge && knowledge.progressionGate ? knowledge.progressionGate : null;
     var referenceCount = knowledge ? Number(knowledge.referenceVerifiedPracticeSessionCount || 0) : 0;
     var transferCount = knowledge ? Number(knowledge.transferVerifiedPracticeSessionCount || 0) : 0;
     var heldOutCases = learning && Array.isArray(learning.heldOutCases) ? learning.heldOutCases : [];
@@ -117,13 +120,22 @@
       || ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
     var heldOutDone = maturity === "ROBUST"
       || (latestBenchmark && latestBenchmark.heldOutProofVerified === true);
-    var truthDone = maturity === "ROBUST" || certifiedTruth !== null;
+    var truthDone = maturity === "ROBUST"
+      || (progressionGate
+        ? progressionGate.retainedTruthCertificationComplete === true
+        : certifiedTruth !== null);
     return {
       maturity: maturity,
+      progressionGate: progressionGate,
+      blockingDependencies: progressionGate && Array.isArray(progressionGate.blockingDependencies)
+        ? progressionGate.blockingDependencies
+        : [],
       referenceCount: referenceCount,
       transferCount: transferCount,
       heldOutCount: heldOutCases.length,
-      truthCaseCount: latestTruth ? Number(latestTruth.caseCount || 0) : 0,
+      truthCaseCount: progressionGate
+        ? Number(progressionGate.caseCount || 0)
+        : latestTruth ? Number(latestTruth.caseCount || 0) : 0,
       referenceDone: referenceDone,
       transferDone: transferDone,
       heldOutDone: heldOutDone,
@@ -146,6 +158,7 @@
 
   function renderPracticeLifecycle() {
     if (!lifecycleMaturityEl || !lifecycleStepsEl || !lifecycleNextEl) return;
+    if (recertifyRobustEl) recertifyRobustEl.hidden = true;
     var profile = selectedEditTypeProfile();
     lifecycleStepsEl.innerHTML = "";
     if (!profile) {
@@ -159,6 +172,9 @@
     }
 
     var state = lifecycleState(profile);
+    var robustAllowed = state.progressionGate
+      ? state.progressionGate.robustClaimAllowed === true
+      : state.maturity === "ROBUST";
     lifecycleMaturityEl.textContent = state.maturity.replace(/_/g, " ");
     addLifecycleStep(
       "1 Reference proof",
@@ -189,8 +205,9 @@
       lifecycleNextEl.textContent = "Next: AUTO runs held-out generalization on genuinely unseen Finish/Start media. Transfer-verified knowledge stays frozen and failed machine-proven cases remain retained.";
     } else if (!state.truthDone) {
       lifecycleNextEl.textContent = "Next: complete the independent 20-30 case retained real-media truth suite. More held-out edits are not the current blocker.";
-    } else if (state.maturity !== "ROBUST") {
+    } else if (!robustAllowed) {
       lifecycleNextEl.textContent = "Next: refresh the held-out benchmark against the certified truth authority and current transfer target set. No new edit is required for this refresh.";
+      if (recertifyRobustEl) recertifyRobustEl.hidden = mode !== "PRACTICE";
     } else {
       lifecycleNextEl.textContent = "Practice is ROBUST: held-out generalization and independent retained-truth authority are both bound to the current transfer target set.";
     }
@@ -218,7 +235,9 @@
     var state = lifecycleState(profile);
     if (!state.heldOutDone) return null;
     if (!state.truthDone) return "TRUTH_REQUIRED";
-    if (state.maturity !== "ROBUST") return "BENCHMARK_REFRESH_REQUIRED";
+    if (state.progressionGate
+      ? state.progressionGate.robustClaimAllowed !== true
+      : state.maturity !== "ROBUST") return "BENCHMARK_REFRESH_REQUIRED";
     return "ROBUST_COMPLETE";
   }
 
@@ -256,11 +275,15 @@
 
   function updateAction() {
     var hasVideo = startFiles.some(function (item) { return item.kind === "VIDEO"; });
-    var valid = serviceReady && !activeRunId && selectedEditType() && hasVideo && panelConnected;
+    var valid = serviceReady && !activeRunId && !recertificationActive
+      && selectedEditType() && hasVideo && panelConnected;
     if (mode === "PRACTICE") {
       valid = valid && Boolean(finishPath) && heldOutReady() && autoProgressionBlock() === null;
     }
     actionEl.disabled = !valid;
+    if (recertifyRobustEl) {
+      recertifyRobustEl.disabled = !serviceReady || Boolean(activeRunId) || recertificationActive;
+    }
     cancelEl.hidden = !activeRunId;
     cancelEl.disabled = !activeRunId;
   }
@@ -553,6 +576,44 @@
       });
   }
 
+  function recertifyRobust() {
+    var editTypeId = selectedEditType();
+    if (!editTypeId || activeRunId || recertificationActive) return;
+    recertificationActive = true;
+    updateAction();
+    setRunState(
+      "RECERTIFYING",
+      "Re-evaluating retained truth and refreshing the held-out benchmark against current transfer targets…"
+    );
+    productRequest(
+      "/v1/product/edit-types/" + encodeURIComponent(editTypeId) + "/robust-recertification",
+      { method: "POST", body: "{}" }
+    ).then(function (value) {
+      var report = value.recertification || {};
+      return refreshEditTypes().then(function () {
+        if (report.robustClaimAllowed === true && report.maturityStage === "ROBUST") {
+          setRunState(
+            "ROBUST",
+            "ROBUST recertification passed. Retained truth and held-out generalization are bound to the current transfer target set."
+          );
+          return;
+        }
+        var gate = report.progressionGate || {};
+        var blockers = Array.isArray(gate.blockingDependencies) ? gate.blockingDependencies : [];
+        setRunState(
+          "BLOCKED",
+          "ROBUST recertification did not pass."
+            + (blockers.length ? " " + blockers.join(" ") : "")
+        );
+      });
+    }).catch(function (error) {
+      setRunState("BLOCKED", error.message);
+    }).then(function () {
+      recertificationActive = false;
+      updateAction();
+    });
+  }
+
   function startPractice() {
     var progressionBlock = autoProgressionBlock();
     if (progressionBlock !== null) {
@@ -644,6 +705,7 @@
       finishFieldEl.hidden = mode !== "PRACTICE";
       practiceRoleFieldEl.hidden = mode !== "PRACTICE";
       actionEl.textContent = mode === "PRACTICE" ? actionEl.textContent : "Create pro edit";
+      renderPracticeLifecycle();
       updatePracticeRoleUi();
       metricsEl.hidden = true;
       hideReviewTools();
@@ -725,6 +787,10 @@
     if (mode === "PRACTICE") startPractice();
     else startProCreation();
   });
+
+  if (recertifyRobustEl) {
+    recertifyRobustEl.addEventListener("click", recertifyRobust);
+  }
 
   openBestAttemptEl.addEventListener("click", function () {
     if (!completedRunId) return;
