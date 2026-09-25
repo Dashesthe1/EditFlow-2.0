@@ -219,8 +219,15 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
     item.subsystem === "SOURCE_IDENTITY_RETRIEVAL");
   assert.deepEqual(identityPlan?.diagnosticKinds, ["WRONG_SOURCE"]);
   assert.deepEqual(identityPlan?.caseIds, [first.truth.caseId]);
+  assert.deepEqual(identityPlan?.targetShotKeys, [
+    first.truth.caseId + "::" + first.truth.shots[0].shotId,
+  ]);
   assert.equal(identityPlan?.highConfidenceFalseMatchCount, 1);
   assert.equal(identityPlan?.ambiguousFalseMatchCount, 1);
+  assert.equal(identityPlan?.correctionAction, "RERANK_SOURCE_IDENTITY");
+  assert.equal(identityPlan?.replayGate, "RETAINED_TRUTH_REPLAY_REQUIRED");
+  assert.equal(identityPlan?.preserveExactSceneGeometryGate, true);
+  assert.equal(identityPlan?.allowGlobalThresholdRelaxation, false);
   assert.match(identityPlan?.recommendedAction ?? "", /Re-rank source candidates/);
   assert.ok((identityPlan?.evidenceRefs.length ?? 0) > 0);
 
@@ -232,6 +239,13 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
   ]);
   assert.equal(confidencePlan?.highConfidenceFalseMatchCount, 1);
   assert.equal(confidencePlan?.ambiguousFalseMatchCount, 1);
+  assert.equal(
+    confidencePlan?.correctionAction,
+    "DOWN_CALIBRATE_FALSE_MATCH_CONFIDENCE",
+  );
+  assert.deepEqual(confidencePlan?.targetShotKeys, [
+    first.truth.caseId + "::" + first.truth.shots[0].shotId,
+  ]);
   assert.match(confidencePlan?.recommendedAction ?? "", /Down-calibrate scene confidence/);
 });
 
@@ -269,6 +283,19 @@ test("timing and direction failures route to distinct tuning subsystems", () => 
   assert.equal(directionFocus?.highConfidenceFalseMatchCount, 1);
   assert.equal(timingFocus?.ambiguousFalseMatchCount, 0);
   assert.equal(directionFocus?.ambiguousFalseMatchCount, 0);
+
+  const timingPlan = report.tuningPlan.find((item) =>
+    item.subsystem === "SOURCE_TIMING_RETRIEVAL");
+  const directionPlan = report.tuningPlan.find((item) =>
+    item.subsystem === "TEMPORAL_DIRECTION");
+  assert.equal(timingPlan?.correctionAction, "EXPAND_SOURCE_TIME_HYPOTHESES");
+  assert.equal(
+    directionPlan?.correctionAction,
+    "REQUIRE_DIRECTION_TRAJECTORY_PROOF",
+  );
+  assert.deepEqual(timingPlan?.targetShotKeys, directionPlan?.targetShotKeys);
+  assert.equal(timingPlan?.allowGlobalThresholdRelaxation, false);
+  assert.equal(directionPlan?.preserveExactSceneGeometryGate, true);
 });
 
 test("duplicate Finish bytes and partial truth both fail closed", () => {

@@ -3,6 +3,7 @@ import type {
   PracticeRetainedTruthCaseReportV1,
   PracticeRetainedTruthDifficultyV1,
   PracticeRetainedTruthSuiteCaseInputV1,
+  PracticeRetainedTruthCorrectionActionV1,
   PracticeRetainedTruthSuiteModeV1,
   PracticeRetainedTruthSuitePolicyV1,
   PracticeRetainedTruthSuiteReportV1,
@@ -77,6 +78,18 @@ string
     "Require retained trajectory evidence to distinguish forward, reverse, and forward-then-rewind before selection."],
   ["CONFIDENCE_CALIBRATION",
     "Down-calibrate scene confidence for retained false matches, especially high-confidence errors and small runner-up margins."],
+]);
+
+const CORRECTION_ACTION_BY_SUBSYSTEM = new Map<
+PracticeRetainedTruthTuningSubsystemV1,
+PracticeRetainedTruthCorrectionActionV1
+>([
+  ["MATCH_COVERAGE", "EXPAND_RESCUE_RETRIEVAL"],
+  ["OUTPUT_DEDUPLICATION", "SUPPRESS_COLLIDING_HYPOTHESES"],
+  ["SOURCE_IDENTITY_RETRIEVAL", "RERANK_SOURCE_IDENTITY"],
+  ["SOURCE_TIMING_RETRIEVAL", "EXPAND_SOURCE_TIME_HYPOTHESES"],
+  ["TEMPORAL_DIRECTION", "REQUIRE_DIRECTION_TRAJECTORY_PROOF"],
+  ["CONFIDENCE_CALIBRATION", "DOWN_CALIBRATE_FALSE_MATCH_CONFIDENCE"],
 ]);
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
@@ -549,9 +562,15 @@ const buildTuningPlan = (
     .map(([subsystem, clustered]): PracticeRetainedTruthTuningPlanItemV1 => {
       const caseIds = [...new Set(clustered.map((item) => item.caseId))].sort();
       const action = TUNING_ACTION_BY_SUBSYSTEM.get(subsystem);
-      if (action === undefined) {
+      const correctionAction = CORRECTION_ACTION_BY_SUBSYSTEM.get(subsystem);
+      if (action === undefined || correctionAction === undefined) {
         throw new TypeError("Missing retained-truth tuning action for " + subsystem + ".");
       }
+      const targetShotKeys = [...new Set(
+        clustered
+          .filter((item) => item.shotId !== undefined)
+          .map(diagnosticShotKey),
+      )].sort();
       return {
         subsystem,
         diagnosticKinds: DIAGNOSTIC_KINDS.filter((kind) =>
@@ -572,7 +591,12 @@ const buildTuningPlan = (
             .map(diagnosticShotKey),
         ).size,
         caseIds,
+        targetShotKeys,
         evidenceRefs: uniqueNonEmpty(clustered.flatMap((item) => item.evidenceRefs)),
+        correctionAction,
+        replayGate: "RETAINED_TRUTH_REPLAY_REQUIRED",
+        preserveExactSceneGeometryGate: true,
+        allowGlobalThresholdRelaxation: false,
         recommendedAction: action,
       };
     })

@@ -939,6 +939,14 @@ export type PracticeRetainedTruthTuningSubsystemV1 =
   | "TEMPORAL_DIRECTION"
   | "CONFIDENCE_CALIBRATION";
 
+export type PracticeRetainedTruthCorrectionActionV1 =
+  | "EXPAND_RESCUE_RETRIEVAL"
+  | "SUPPRESS_COLLIDING_HYPOTHESES"
+  | "RERANK_SOURCE_IDENTITY"
+  | "EXPAND_SOURCE_TIME_HYPOTHESES"
+  | "REQUIRE_DIRECTION_TRAJECTORY_PROOF"
+  | "DOWN_CALIBRATE_FALSE_MATCH_CONFIDENCE";
+
 export interface PracticeRetainedTruthTuningFocusV1 {
   readonly kind: PracticeSceneTruthDiagnosticKindV1;
   readonly subsystem: PracticeRetainedTruthTuningSubsystemV1;
@@ -958,7 +966,12 @@ export interface PracticeRetainedTruthTuningPlanItemV1 {
   readonly highConfidenceFalseMatchCount: number;
   readonly ambiguousFalseMatchCount: number;
   readonly caseIds: readonly string[];
+  readonly targetShotKeys: readonly string[];
   readonly evidenceRefs: readonly string[];
+  readonly correctionAction: PracticeRetainedTruthCorrectionActionV1;
+  readonly replayGate: "RETAINED_TRUTH_REPLAY_REQUIRED";
+  readonly preserveExactSceneGeometryGate: true;
+  readonly allowGlobalThresholdRelaxation: false;
   readonly recommendedAction: string;
 }
 
