@@ -5,6 +5,7 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 
 def load_tool():
@@ -1146,6 +1147,59 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertTrue((root / case["matches"]).is_file())
             self.assertTrue((root / case["suiteManifest"]).is_file())
             self.assertEqual(observed["nextAction"], "NONE")
+
+    def test_progression_gate_blocks_incomplete_population(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            plan = self._plan(root, [case])
+
+            gate = tool.build_progression_gate(plan)
+
+            self.assertEqual(gate["schema"], tool.PROGRESSION_GATE_SCHEMA)
+            self.assertFalse(gate["retainedEvaluationAllowed"])
+            self.assertFalse(gate["robustPopulationPrerequisiteSatisfied"])
+            self.assertEqual(gate["candidateCaseCount"], 1)
+            self.assertEqual(gate["readyForCorpusCount"], 0)
+            self.assertGreater(gate["pendingCaseCount"], 0)
+            self.assertTrue(any(
+                "at least 20 planned real-media cases" in reason
+                for reason in gate["blockingReasons"]
+            ))
+
+    def test_progression_gate_opens_only_when_entire_cohort_is_ready(self):
+        ready_status = {
+            "editTypeId": "edit-type:test",
+            "candidateCaseCount": 20,
+            "readyForCorpusCount": 20,
+            "populationWindowReached": True,
+            "populationReasons": [],
+        }
+        ready_queue = {
+            "remainingIndependentReviewShotCount": 0,
+            "acquisition": {
+                "additionalCasesNeededForMinimum": 0,
+                "additionalDistinctSourceSetsNeeded": 0,
+                "additionalDifficultyKindsNeeded": 0,
+                "sourceAcquisitionRequired": False,
+            },
+            "queue": [
+                {"caseId": f"case-{index:02d}", "nextAction": "NONE"}
+                for index in range(20)
+            ],
+        }
+        with patch.object(tool, "build_status", return_value=ready_status), patch.object(
+            tool,
+            "build_work_queue",
+            return_value=ready_queue,
+        ):
+            gate = tool.build_progression_gate("population.json")
+
+        self.assertTrue(gate["retainedEvaluationAllowed"])
+        self.assertTrue(gate["robustPopulationPrerequisiteSatisfied"])
+        self.assertEqual(gate["pendingCaseCount"], 0)
+        self.assertEqual(gate["remainingIndependentReviewShotCount"], 0)
+        self.assertEqual(gate["blockingReasons"], [])
 
 
 if __name__ == "__main__":
