@@ -395,6 +395,24 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             status = tool.build_status(plan)
             self.assertEqual(status["cases"][0]["stage"], "MATCHER_OBSERVATION")
 
+    def test_finalizer_rechecks_live_media_identity_before_skip(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            first = tool.finalize_independent_reviews(plan, "INDEPENDENT_HUMAN")
+            self.assertEqual(first["finalizedCount"], 1)
+
+            source_path = root / case["sourceMedia"][0]["path"]
+            source_path.write_bytes(b"source-changed-after-attestation")
+            second = tool.finalize_independent_reviews(plan, "INDEPENDENT_HUMAN")
+
+            self.assertEqual(second["skippedCount"], 0)
+            self.assertEqual(second["failedCount"], 1)
+            self.assertIn("invalid or stale", second["cases"][0]["error"])
+
     def test_tampered_review_after_finalization_blocks_matcher_observation(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -419,6 +437,37 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "no longer matches the review worksheet" in reason
                 for reason in observed["reasons"]
             ))
+
+    def test_review_pack_rebuild_invalidates_prior_authority(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            finalized = tool.finalize_independent_reviews(plan, "INDEPENDENT_HUMAN")
+            self.assertEqual(finalized["finalizedCount"], 1)
+            write_json(root / case["matches"], {"schema": tool.MATCH_SCHEMA, "matches": []})
+            write_json(root / case["suiteManifest"], {"schema": tool.RETAINED_SUITE_SCHEMA})
+
+            (review / "finish-previews" / "shot-1.png").unlink()
+
+            class FakeTruthTool:
+                @staticmethod
+                def build_review_pack(**_kwargs):
+                    rebuilt_review = self._write_complete_review_pack(root, case)
+                    return tool.load_json(rebuilt_review / "review-pack.json")
+
+            prepared = tool.prepare_review_packs(plan, media_truth=FakeTruthTool())
+            self.assertEqual(prepared["preparedCount"], 1)
+            self.assertEqual(
+                prepared["cases"][0]["invalidatedArtifacts"],
+                ["reviewAttestation", "retainedTruth", "matches", "suiteManifest"],
+            )
+            self.assertFalse((review / "review-attestation.json").exists())
+            self.assertFalse((root / case["retainedTruth"]).exists())
+            self.assertFalse((root / case["matches"]).exists())
+            self.assertFalse((root / case["suiteManifest"]).exists())
 
     def test_prepare_review_packs_refreshes_missing_source_atlas_and_then_skips(self):
         with TemporaryDirectory() as temporary:
@@ -472,6 +521,10 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                                 "previewPath": str(Path("source-atlas") / "fixture" / "0001.png"),
                             }],
                         }],
+                        "policy": {
+                            "matcherSuggestionsAllowed": False,
+                            "matcherOutputMayBecomeTruth": False,
+                        },
                     }
                     write_json(review_dir / "review-pack.json", manifest)
                     return manifest

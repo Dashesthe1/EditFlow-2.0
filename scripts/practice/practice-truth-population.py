@@ -304,6 +304,13 @@ def review_pack_preparation_complete(
         return False
     if pack.get("schema") != REVIEW_PACK_SCHEMA:
         return False
+    policy = pack.get("policy")
+    if (
+        not isinstance(policy, dict)
+        or policy.get("matcherSuggestionsAllowed") is not False
+        or policy.get("matcherOutputMayBecomeTruth") is not False
+    ):
+        return False
     expected_hashes = {
         str(source_id).strip(): str(source_sha256).strip().lower()
         for source_id, source_sha256 in (expected_source_sha256 or {}).items()
@@ -574,6 +581,9 @@ def inspect_case(case, manifest_path, corpus):
         review_dir,
         retained_truth_path=retained_path,
         expected_annotation_origin=retained.get("annotationOrigin"),
+        expected_case_id=case_id,
+        expected_finish_sha256=expected_finish_sha,
+        expected_source_sha256_by_id=current_source_hashes,
     )
     if attestation_reasons:
         return case_result(
@@ -995,10 +1005,21 @@ def finalize_independent_reviews(
             if retained_path is None:
                 raise ValueError("Retained-truth path is missing.")
 
+            reference = load_json(reference_path)
+            draft = load_json(draft_path)
+            source_paths = _case_source_paths(case, plan_path)
+            source_hashes = {
+                source_id: sha256_file(source_path)
+                for source_id, source_path in source_paths.items()
+            }
+            finish_sha = sha256_file(finish_path)
             existing_attestation_reasons = review_attestation_validation_reasons(
                 review_dir,
                 retained_truth_path=retained_path if retained_path.is_file() else None,
                 expected_annotation_origin=annotation_origin,
+                expected_case_id=case_id,
+                expected_finish_sha256=finish_sha,
+                expected_source_sha256_by_id=source_hashes,
             )
             if retained_path.is_file() and not existing_attestation_reasons and not force:
                 results.append({
@@ -1010,18 +1031,9 @@ def finalize_independent_reviews(
                 continue
             if retained_path.is_file() and not force:
                 raise ValueError(
-                    "Retained truth already exists but its matcher-blind attestation is invalid; "
+                    "Retained truth already exists but its matcher-blind attestation is invalid or stale; "
                     "rerun with --force only after rechecking the independent review."
                 )
-
-            reference = load_json(reference_path)
-            draft = load_json(draft_path)
-            source_paths = _case_source_paths(case, plan_path)
-            source_hashes = {
-                source_id: sha256_file(source_path)
-                for source_id, source_path in source_paths.items()
-            }
-            finish_sha = sha256_file(finish_path)
             if not review_pack_preparation_complete(
                 review_dir,
                 sorted(source_paths),
@@ -1213,12 +1225,23 @@ def prepare_review_packs(
                 source_atlas_max_frames=max_frames,
                 source_atlas_cache_dir=(None if cache_dir is None else str(cache_dir)),
             )
+            invalidated = []
+            attestation_path = review_dir / "review-attestation.json"
+            if attestation_path.is_file():
+                attestation_path.unlink()
+                invalidated.append("reviewAttestation")
+            for key in ("retainedTruth", "matches", "suiteManifest"):
+                downstream = artifact_path(case, plan_path, key)
+                if downstream is not None and downstream.is_file():
+                    downstream.unlink()
+                    invalidated.append(key)
             results.append({
                 "caseId": case_id,
                 "status": "PREPARED",
                 "reviewPack": str(review_dir / "review-pack.json"),
                 "truthScaffoldCreated": scaffold_created,
                 "sourceAtlasCount": len(manifest.get("sourceAtlas") or []),
+                "invalidatedArtifacts": invalidated,
             })
         except Exception as exc:
             results.append({"caseId": case_id, "status": "FAILED", "reason": str(exc)})
