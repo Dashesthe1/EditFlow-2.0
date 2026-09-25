@@ -18,6 +18,7 @@
     "practice:panel": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/run-practice-panel.ps1",
     "practice:truth-suite": "npm run build:test-runtime && node .tmp/runtime/apps/desktop-host/src/practice-retained-truth-suite-cli.js",
     "practice:truth-correction-replay": "npm run build:test-runtime && node .tmp/runtime/apps/desktop-host/src/practice-retained-truth-correction-cli.js",
+    "practice:truth-correction-profile": "npm run build:test-runtime && node .tmp/runtime/apps/desktop-host/src/practice-retained-truth-correction-profile-cli.js",
     "test": "npm run build:test-runtime && node --test tests/*.test.mjs",
     "check": "npm run validate:schemas && npm run typecheck && npm test"
   },

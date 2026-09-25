@@ -1163,6 +1163,42 @@ def load_artifact(path, expected_schema):
     return payload
 
 
+def load_matcher_correction_profile(path):
+    if path is None:
+        return None
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if payload.get("schema") != "editflow.practice-scene-matcher-correction-profile.v1":
+        raise ValueError("Practice matcher correction profile schema is invalid.")
+    if payload.get("subsystem") != "SOURCE_IDENTITY_RETRIEVAL" or payload.get("correctionAction") != "RERANK_SOURCE_IDENTITY":
+        raise ValueError("Practice matcher correction profile action is unsupported.")
+    if payload.get("retrievalMode") != "SOURCE_STRATIFIED_IDENTITY_REPLAY_V1":
+        raise ValueError("Practice matcher correction profile retrieval mode is unsupported.")
+    if payload.get("replayGate") != "RETAINED_TRUTH_REPLAY_REQUIRED" or payload.get("preserveExactSceneGeometryGate") is not True or payload.get("allowGlobalThresholdRelaxation") is not False:
+        raise ValueError("Practice matcher correction profile weakens fail-closed guardrails.")
+    per_source = int(payload.get("detailedPerSourceLimit", 0))
+    global_limit = int(payload.get("detailedGlobalLimit", 0))
+    continuity_maximum = float(payload.get("continuityMaximumBonus", -1.0))
+    if per_source < 2 or per_source > 4 or global_limit < 4 or global_limit > 12:
+        raise ValueError("Practice matcher correction profile candidate limits are outside safe bounds.")
+    if continuity_maximum < 0.0 or continuity_maximum > 0.02:
+        raise ValueError("Practice matcher correction profile continuity bonus exceeds replay bounds.")
+    target_shot_keys = payload.get("targetShotKeys")
+    if not target_shot_keys or not all(
+        isinstance(key, str) and "::" in key for key in target_shot_keys
+    ):
+        raise ValueError("Practice matcher correction profile has invalid retained-truth targets.")
+    return payload
+
+
+def matcher_correction_applies(profile, case_id, shot_id):
+    if profile is None:
+        return False
+    if case_id is None or not str(case_id).strip():
+        raise ValueError("Practice matcher correction replay requires --correction-case-id.")
+    key = f"{str(case_id).strip()}::{shot_id}"
+    return key in set(profile.get("targetShotKeys") or [])
+
+
 def dedupe_coarse_candidates(candidates, limit):
     output = []
     for item in sorted(candidates, key=lambda entry: entry["score"], reverse=True):
@@ -2497,7 +2533,17 @@ def continuity_candidates(shot, source_index, reference_reader, source_reader, l
     return output
 
 
-def match_reference(reference_path, source_index_paths, output_path, coarse_limit):
+def match_reference(
+    reference_path,
+    source_index_paths,
+    output_path,
+    coarse_limit,
+    correction_profile_path=None,
+    correction_case_id=None,
+):
+    correction_profile = load_matcher_correction_profile(correction_profile_path)
+    if correction_profile is not None and (correction_case_id is None or not str(correction_case_id).strip()):
+        raise ValueError("Practice matcher correction replay requires --correction-case-id.")
     reference = load_artifact(reference_path, "editflow.practice-reference-analysis.v1")
     source_indexes = [
         load_artifact(path, "editflow.practice-source-index.v1")
@@ -2516,6 +2562,23 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
     matches = []
     try:
         for shot_index, shot in enumerate(reference["shots"]):
+            correction_applied = matcher_correction_applies(
+                correction_profile,
+                correction_case_id,
+                shot["shotId"],
+            )
+            detailed_per_source_limit = (
+                int(correction_profile["detailedPerSourceLimit"])
+                if correction_applied else 2
+            )
+            detailed_global_limit = (
+                int(correction_profile["detailedGlobalLimit"])
+                if correction_applied else 4
+            )
+            continuity_maximum_bonus = (
+                float(correction_profile["continuityMaximumBonus"])
+                if correction_applied else 0.06
+            )
             previous_shot = reference["shots"][shot_index - 1] if shot_index > 0 else None
             previous_match = (
                 matches[-1]
@@ -2530,7 +2593,7 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 else None
             )
             continuity_bonus = (
-                source_continuity_bonus(boundary)
+                min(source_continuity_bonus(boundary), continuity_maximum_bonus)
                 if scene_identity_verified(previous_match)
                 else 0.0
             )
@@ -2559,8 +2622,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             # recoverable timing ambiguity into a false source/timing claim.
             detailed_seeds = source_stratified_candidates(
                 refined,
-                per_source_limit=2,
-                global_limit=4,
+                per_source_limit=detailed_per_source_limit,
+                global_limit=detailed_global_limit,
             )
 
             detailed = []
@@ -2624,8 +2687,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             # correct within-source timing hypothesis was pruned before geometry.
             geometry_candidates = source_stratified_candidates(
                 detailed,
-                per_source_limit=2,
-                global_limit=4,
+                per_source_limit=detailed_per_source_limit,
+                global_limit=detailed_global_limit,
             )
 
             for item in geometry_candidates:
@@ -2784,6 +2847,16 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     f"practice-scene-selection-mode:{selection_mode}",
                     *(
                         [
+                            "practice-retained-truth-correction-applied:RERANK_SOURCE_IDENTITY",
+                            f"practice-correction-case-id:{correction_case_id}",
+                            f"practice-correction-detailed-per-source:{detailed_per_source_limit}",
+                            f"practice-correction-detailed-global:{detailed_global_limit}",
+                            f"practice-correction-continuity-max:{continuity_maximum_bonus:.6f}",
+                        ]
+                        if correction_applied else []
+                    ),
+                    *(
+                        [
                             f"practice-geometric-rescue-score:{mapping['rescueScore']:.6f}",
                             f"practice-geometric-rescue-residual-ms:{mapping.get('rescueResidualMs', 0.0):.3f}",
                             "practice-geometric-rescue-full-verification:CLAHE_SIFT_SOFT_SIFT_LOW_CONTRAST_SIFT_PLUS_STRICT_ORB_ALL_ANCHORS_V4",
@@ -2869,9 +2942,27 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "sourceContinuityIdentityGate": "CONFIDENCE_0_80_PLUS_REPEATED_GEOMETRY_V1",
             "sourceContinuityThreshold": 0.70,
             "sourceContinuityMaximumBonus": 0.06,
-            "detailedCandidateLimit": max(
-                8,
-                min(16, len(source_indexes) * 2),
+            "detailedCandidatePerSourceLimit": 2,
+            "detailedCandidateGlobalLimit": 4,
+            "retainedTruthCorrectionReplayMode": (
+                correction_profile.get("retrievalMode")
+                if correction_profile is not None else None
+            ),
+            "retainedTruthCorrectionCaseId": (
+                str(correction_case_id).strip()
+                if correction_profile is not None else None
+            ),
+            "retainedTruthCorrectionDetailedPerSourceLimit": (
+                int(correction_profile["detailedPerSourceLimit"])
+                if correction_profile is not None else None
+            ),
+            "retainedTruthCorrectionDetailedGlobalLimit": (
+                int(correction_profile["detailedGlobalLimit"])
+                if correction_profile is not None else None
+            ),
+            "retainedTruthCorrectionContinuityMaximumBonus": (
+                float(correction_profile["continuityMaximumBonus"])
+                if correction_profile is not None else None
             ),
         },
         "sourceIndexIds": [item["sourceId"] for item in source_indexes],
@@ -2885,6 +2976,13 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             ],
             f"practice-analyzer:sha256:{analyzer_fingerprint()}",
             "practice-scene-match-mode:PROXY_PROGRESSIVE_SOURCE_BALANCED_GEOMETRIC_V3",
+            *(
+                [
+                    "practice-retained-truth-correction-profile-loaded:RERANK_SOURCE_IDENTITY",
+                    f"practice-correction-case-id:{str(correction_case_id).strip()}",
+                ]
+                if correction_profile is not None else []
+            ),
         ],
     }
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
@@ -4030,6 +4128,8 @@ def build_parser():
     match.add_argument("--source-index-json", action="append", required=True)
     match.add_argument("--output", required=True)
     match.add_argument("--coarse-limit", type=int, default=16)
+    match.add_argument("--correction-profile")
+    match.add_argument("--correction-case-id")
 
     audio = subparsers.add_parser("audio-match")
     audio.add_argument("--reference-media", required=True)
@@ -4099,6 +4199,8 @@ def main():
             args.source_index_json,
             args.output,
             args.coarse_limit,
+            args.correction_profile,
+            args.correction_case_id,
         )
         print(json.dumps({
             "ok": True,

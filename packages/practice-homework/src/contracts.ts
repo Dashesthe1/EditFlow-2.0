@@ -947,6 +947,22 @@ export type PracticeRetainedTruthCorrectionActionV1 =
   | "REQUIRE_DIRECTION_TRAJECTORY_PROOF"
   | "DOWN_CALIBRATE_FALSE_MATCH_CONFIDENCE";
 
+export interface PracticeSceneMatcherCorrectionProfileV1 {
+  readonly schema: "editflow.practice-scene-matcher-correction-profile.v1";
+  readonly editTypeId: string;
+  readonly subsystem: "SOURCE_IDENTITY_RETRIEVAL";
+  readonly correctionAction: "RERANK_SOURCE_IDENTITY";
+  readonly retrievalMode: "SOURCE_STRATIFIED_IDENTITY_REPLAY_V1";
+  readonly detailedPerSourceLimit: number;
+  readonly detailedGlobalLimit: number;
+  readonly continuityMaximumBonus: number;
+  readonly targetShotKeys: readonly string[];
+  readonly evidenceRefs: readonly string[];
+  readonly replayGate: "RETAINED_TRUTH_REPLAY_REQUIRED";
+  readonly preserveExactSceneGeometryGate: true;
+  readonly allowGlobalThresholdRelaxation: false;
+}
+
 export interface PracticeRetainedTruthTuningFocusV1 {
   readonly kind: PracticeSceneTruthDiagnosticKindV1;
   readonly subsystem: PracticeRetainedTruthTuningSubsystemV1;

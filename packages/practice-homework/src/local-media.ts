@@ -24,6 +24,8 @@ export interface LocalPracticeMediaMatcherConfigV1 {
   readonly scriptPath: string;
   readonly python?: PythonRuntimeV1;
   readonly ffmpegPath?: string;
+  readonly correctionProfilePath?: string;
+  readonly correctionCaseId?: string;
   readonly cutThreshold?: number;
   readonly minimumShotMs?: number;
   readonly sampleStepMs?: number;
@@ -170,9 +172,14 @@ const appendBoundedProcessOutput = (
 };
 
 export class LocalPracticeMediaMatcherV1 {
-  readonly config: Required<Omit<LocalPracticeMediaMatcherConfigV1, "python" | "ffmpegPath">> & {
+  readonly config: Required<Omit<
+  LocalPracticeMediaMatcherConfigV1,
+  "python" | "ffmpegPath" | "correctionProfilePath" | "correctionCaseId"
+  >> & {
     readonly python: PythonRuntimeV1;
     readonly ffmpegPath: string | null;
+    readonly correctionProfilePath: string | null;
+    readonly correctionCaseId: string | null;
   };
 
   readonly #referenceArtifactPathById = new Map<string, string>();
@@ -190,6 +197,10 @@ export class LocalPracticeMediaMatcherV1 {
       scriptPath: path.resolve(config.scriptPath),
       python: config.python ?? defaultPython(),
       ffmpegPath: config.ffmpegPath?.trim() || null,
+      correctionProfilePath: config.correctionProfilePath?.trim()
+        ? path.resolve(config.correctionProfilePath)
+        : null,
+      correctionCaseId: config.correctionCaseId?.trim() || null,
       cutThreshold: config.cutThreshold ?? 0.42,
       minimumShotMs: config.minimumShotMs ?? 180,
       sampleStepMs: config.sampleStepMs ?? 250,
@@ -197,6 +208,12 @@ export class LocalPracticeMediaMatcherV1 {
       analysisProxyFps: config.analysisProxyFps ?? 12,
       analysisTimeoutMs: config.analysisTimeoutMs ?? 60 * 60 * 1000,
     };
+    if (this.config.correctionProfilePath !== null
+      && this.config.correctionCaseId === null) {
+      throw new TypeError(
+        "Practice matcher correction replay requires a retained-truth case id.",
+      );
+    }
   }
 
   async #scriptSha256(): Promise<string> {
@@ -449,11 +466,18 @@ export class LocalPracticeMediaMatcherV1 {
 
     const directory = path.join(this.config.artifactDir, "matches");
     await mkdir(directory, { recursive: true });
+    const correctionProfileDigest = this.config.correctionProfilePath === null
+      ? "correction:none"
+      : createHash("sha256")
+        .update(await readFile(this.config.correctionProfilePath))
+        .digest("hex");
     const key = sha256Text([
       await this.#scriptSha256(),
       referencePath,
       ...sourcePaths,
       String(this.config.coarseCandidateLimit),
+      correctionProfileDigest,
+      this.config.correctionCaseId ?? "correction-case:none",
     ]).slice(0, 24);
     const outputPath = path.join(
       directory,
@@ -470,6 +494,10 @@ export class LocalPracticeMediaMatcherV1 {
       for (const sourcePathValue of sourcePaths) {
         args.push("--source-index-json", sourcePathValue);
       }
+      if (this.config.correctionProfilePath !== null) {
+        args.push("--correction-profile", this.config.correctionProfilePath);
+        args.push("--correction-case-id", this.config.correctionCaseId!);
+      }
       await this.#run(args);
     }
 
@@ -482,6 +510,7 @@ export class LocalPracticeMediaMatcherV1 {
       ...match,
       evidenceRefs: [
         ...match.evidenceRefs,
+        ...artifact.evidenceRefs,
         "practice-match-artifact:" + outputPath,
         "practice-required-confidence:" + input.minimumConfidence.toFixed(6),
       ],

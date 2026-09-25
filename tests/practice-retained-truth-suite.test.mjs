@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   EditTypeRegistryV1,
+  compilePracticeSceneMatcherCorrectionProfileV1,
   evaluatePracticeRetainedTruthCorrectionReplayV1,
   evaluatePracticeRetainedTruthSuiteV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
@@ -231,6 +232,23 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
   assert.equal(identityPlan?.allowGlobalThresholdRelaxation, false);
   assert.match(identityPlan?.recommendedAction ?? "", /Re-rank source candidates/);
   assert.ok((identityPlan?.evidenceRefs.length ?? 0) > 0);
+  assert.ok(identityPlan);
+  const correctionProfile = compilePracticeSceneMatcherCorrectionProfileV1({
+    editTypeId: report.editTypeId,
+    directive: identityPlan,
+  });
+  assert.equal(
+    correctionProfile.schema,
+    "editflow.practice-scene-matcher-correction-profile.v1",
+  );
+  assert.equal(correctionProfile.correctionAction, "RERANK_SOURCE_IDENTITY");
+  assert.equal(correctionProfile.detailedPerSourceLimit, 3);
+  assert.equal(correctionProfile.detailedGlobalLimit, 6);
+  assert.equal(correctionProfile.continuityMaximumBonus, 0.012);
+  assert.equal(correctionProfile.allowGlobalThresholdRelaxation, false);
+  assert.deepEqual(correctionProfile.targetShotKeys, identityPlan.targetShotKeys);
+  assert.ok(correctionProfile.evidenceRefs.some((item) =>
+    item === "practice-retained-truth-correction-profile:SOURCE_IDENTITY_RETRIEVAL"));
 
   const confidencePlan = report.tuningPlan.find((item) =>
     item.subsystem === "CONFIDENCE_CALIBRATION");
@@ -248,6 +266,35 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
     first.truth.caseId + "::" + first.truth.shots[0].shotId,
   ]);
   assert.match(confidencePlan?.recommendedAction ?? "", /Down-calibrate scene confidence/);
+});
+
+test("matcher correction profile rejects weakened replay guardrails", () => {
+  const cases = certificationCases();
+  const first = cases[0];
+  cases[0] = {
+    ...first,
+    observation: {
+      ...first.observation,
+      matches: first.observation.matches.map((match, index) => index === 0
+        ? { ...match, sourceId: "source:wrong", confidence: 0.97 }
+        : match),
+    },
+  };
+  const report = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-correction-profile-guardrail",
+    mode: "CERTIFICATION",
+    cases,
+  });
+  const directive = report.tuningPlan.find((item) =>
+    item.subsystem === "SOURCE_IDENTITY_RETRIEVAL");
+  assert.ok(directive);
+  assert.throws(() => compilePracticeSceneMatcherCorrectionProfileV1({
+    editTypeId: report.editTypeId,
+    directive: {
+      ...directive,
+      allowGlobalThresholdRelaxation: true,
+    },
+  }), /weakens retained-truth replay guardrails/);
 });
 
 test("correction replay accepts a targeted retained-truth fix without regression", () => {

@@ -11,6 +11,7 @@ import type {
   PracticeRetainedTruthTuningFocusV1,
   PracticeRetainedTruthTuningPlanItemV1,
   PracticeRetainedTruthTuningSubsystemV1,
+  PracticeSceneMatcherCorrectionProfileV1,
   PracticeSceneMatchV1,
   PracticeSceneTruthDiagnosticKindV1,
   PracticeSceneTruthDiagnosticV1,
@@ -606,6 +607,48 @@ const buildTuningPlan = (
       || right.caseCount - left.caseCount
       || right.count - left.count
       || left.subsystem.localeCompare(right.subsystem));
+};
+
+export const compilePracticeSceneMatcherCorrectionProfileV1 = (input: {
+  readonly editTypeId: string;
+  readonly directive: PracticeRetainedTruthTuningPlanItemV1;
+}): PracticeSceneMatcherCorrectionProfileV1 => {
+  const { directive } = input;
+  if (input.editTypeId.trim().length === 0) {
+    throw new TypeError("Matcher correction profile requires an Edit Type id.");
+  }
+  if (directive.subsystem !== "SOURCE_IDENTITY_RETRIEVAL"
+    || directive.correctionAction !== "RERANK_SOURCE_IDENTITY") {
+    throw new TypeError(
+      "Matcher correction profile currently supports only SOURCE_IDENTITY_RETRIEVAL reranking.",
+    );
+  }
+  if (directive.replayGate !== "RETAINED_TRUTH_REPLAY_REQUIRED"
+    || directive.preserveExactSceneGeometryGate !== true
+    || directive.allowGlobalThresholdRelaxation !== false) {
+    throw new TypeError("Matcher correction directive weakens retained-truth replay guardrails.");
+  }
+  if (directive.targetShotKeys.length === 0) {
+    throw new TypeError("Matcher correction directive has no retained-truth shot targets.");
+  }
+  return {
+    schema: "editflow.practice-scene-matcher-correction-profile.v1",
+    editTypeId: input.editTypeId.trim(),
+    subsystem: "SOURCE_IDENTITY_RETRIEVAL",
+    correctionAction: "RERANK_SOURCE_IDENTITY",
+    retrievalMode: "SOURCE_STRATIFIED_IDENTITY_REPLAY_V1",
+    detailedPerSourceLimit: 3,
+    detailedGlobalLimit: 6,
+    continuityMaximumBonus: 0.012,
+    targetShotKeys: [...new Set(directive.targetShotKeys)].sort(),
+    evidenceRefs: uniqueNonEmpty([
+      ...directive.evidenceRefs,
+      "practice-retained-truth-correction-profile:SOURCE_IDENTITY_RETRIEVAL",
+    ]),
+    replayGate: "RETAINED_TRUTH_REPLAY_REQUIRED",
+    preserveExactSceneGeometryGate: true,
+    allowGlobalThresholdRelaxation: false,
+  };
 };
 
 export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
