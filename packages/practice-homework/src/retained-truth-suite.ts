@@ -1,6 +1,7 @@
 import type {
   PracticeRetainedShotTruthV1,
   PracticeRetainedTruthCaseReportV1,
+  PracticeRetainedTruthCorrectionReplayReportV1,
   PracticeRetainedTruthDifficultyV1,
   PracticeRetainedTruthSuiteCaseInputV1,
   PracticeRetainedTruthCorrectionActionV1,
@@ -727,6 +728,121 @@ export const evaluatePracticeRetainedTruthSuiteV1 = (input: {
     reasons: uniqueNonEmpty(reasons),
     cases: reports,
     evidenceRefs: uniqueNonEmpty(reports.flatMap((report) => report.evidenceRefs)),
+    evaluatedAt: new Date().toISOString(),
+  };
+};
+
+const replayCaseIdentity = (
+  report: PracticeRetainedTruthSuiteReportV1,
+): readonly string[] => report.cases
+  .map((item) => item.caseId + "::" + item.finishSha256.toLowerCase())
+  .sort();
+
+const sameStrings = (
+  left: readonly string[],
+  right: readonly string[],
+): boolean => left.length === right.length
+  && left.every((value, index) => value === right[index]);
+
+const replayPrimaryDiagnosticSignature = (
+  item: PracticeSceneTruthDiagnosticV1,
+): string => item.kind + "::" + diagnosticShotKey(item);
+
+export const evaluatePracticeRetainedTruthCorrectionReplayV1 = (input: {
+  readonly baseline: PracticeRetainedTruthSuiteReportV1;
+  readonly candidate: PracticeRetainedTruthSuiteReportV1;
+  readonly directive: PracticeRetainedTruthTuningPlanItemV1;
+}): PracticeRetainedTruthCorrectionReplayReportV1 => {
+  const { baseline, candidate, directive } = input;
+  const reasons: string[] = [];
+  if (baseline.editTypeId !== candidate.editTypeId) {
+    reasons.push("Correction replay Edit Type changed.");
+  }
+  if (baseline.mode !== candidate.mode) {
+    reasons.push("Correction replay suite mode changed.");
+  }
+  if (!sameStrings(replayCaseIdentity(baseline), replayCaseIdentity(candidate))) {
+    reasons.push("Correction replay case/Finish identity changed.");
+  }
+  if (directive.replayGate !== "RETAINED_TRUTH_REPLAY_REQUIRED"
+    || directive.preserveExactSceneGeometryGate !== true
+    || directive.allowGlobalThresholdRelaxation !== false) {
+    reasons.push("Correction directive does not preserve fail-closed replay guardrails.");
+  }
+
+  const baselineDirective = baseline.tuningPlan?.find((item) =>
+    item.subsystem === directive.subsystem
+    && item.correctionAction === directive.correctionAction);
+  if (baselineDirective === undefined) {
+    reasons.push("Correction directive is not present in the baseline retained-truth report.");
+  } else {
+    const knownTargets = new Set(baselineDirective.targetShotKeys);
+    if (directive.targetShotKeys.length === 0
+      || directive.targetShotKeys.some((key) => !knownTargets.has(key))) {
+      reasons.push("Correction directive targets are stale or outside baseline evidence.");
+    }
+  }
+
+  const targetShotKeys = new Set(directive.targetShotKeys);
+  const targetKinds = new Set(directive.diagnosticKinds);
+  const targetDiagnosticCount = (
+    report: PracticeRetainedTruthSuiteReportV1,
+  ): number => report.cases
+    .flatMap((item) => item.diagnostics)
+    .filter((item) =>
+      targetShotKeys.has(diagnosticShotKey(item))
+      && targetKinds.has(item.kind))
+    .length;
+
+  const baselineTargetDiagnosticCount = targetDiagnosticCount(baseline);
+  const candidateTargetDiagnosticCount = targetDiagnosticCount(candidate);
+  if (baselineTargetDiagnosticCount === 0) {
+    reasons.push("Correction replay baseline no longer contains the targeted diagnostic.");
+  } else if (candidateTargetDiagnosticCount >= baselineTargetDiagnosticCount) {
+    reasons.push("Correction replay did not reduce the targeted retained-truth diagnostic.");
+  }
+  if (candidate.sceneErrorCount > baseline.sceneErrorCount) {
+    reasons.push("Correction replay increased primary scene errors.");
+  }
+  if (candidate.passedCaseCount < baseline.passedCaseCount) {
+    reasons.push("Correction replay reduced the number of passing retained-truth cases.");
+  }
+  if (candidate.independentTruthCaseCount < baseline.independentTruthCaseCount
+    || candidate.fullLengthTruthCaseCount < baseline.fullLengthTruthCaseCount) {
+    reasons.push("Correction replay weakened retained truth authority or coverage.");
+  }
+
+  const baselinePrimary = new Set(
+    baseline.cases
+      .flatMap((item) => item.diagnostics)
+      .filter((item) => PRIMARY_DIAGNOSTICS.has(item.kind))
+      .map(replayPrimaryDiagnosticSignature),
+  );
+  const introducedPrimaryDiagnostics = candidate.cases
+    .flatMap((item) => item.diagnostics)
+    .filter((item) => PRIMARY_DIAGNOSTICS.has(item.kind))
+    .map(replayPrimaryDiagnosticSignature)
+    .filter((signature) => !baselinePrimary.has(signature))
+    .sort();
+  if (introducedPrimaryDiagnostics.length > 0) {
+    reasons.push("Correction replay introduced new primary retained-truth diagnostics.");
+  }
+
+  return {
+    schema: "editflow.practice-retained-truth-correction-replay.v1",
+    editTypeId: baseline.editTypeId,
+    subsystem: directive.subsystem,
+    correctionAction: directive.correctionAction,
+    targetShotKeys: [...targetShotKeys].sort(),
+    baselineTargetDiagnosticCount,
+    candidateTargetDiagnosticCount,
+    baselineSceneErrorCount: baseline.sceneErrorCount,
+    candidateSceneErrorCount: candidate.sceneErrorCount,
+    baselinePassedCaseCount: baseline.passedCaseCount,
+    candidatePassedCaseCount: candidate.passedCaseCount,
+    introducedPrimaryDiagnostics,
+    accepted: reasons.length === 0,
+    reasons: uniqueNonEmpty(reasons),
     evaluatedAt: new Date().toISOString(),
   };
 };

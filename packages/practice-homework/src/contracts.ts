@@ -975,6 +975,24 @@ export interface PracticeRetainedTruthTuningPlanItemV1 {
   readonly recommendedAction: string;
 }
 
+export interface PracticeRetainedTruthCorrectionReplayReportV1 {
+  readonly schema: "editflow.practice-retained-truth-correction-replay.v1";
+  readonly editTypeId: string;
+  readonly subsystem: PracticeRetainedTruthTuningSubsystemV1;
+  readonly correctionAction: PracticeRetainedTruthCorrectionActionV1;
+  readonly targetShotKeys: readonly string[];
+  readonly baselineTargetDiagnosticCount: number;
+  readonly candidateTargetDiagnosticCount: number;
+  readonly baselineSceneErrorCount: number;
+  readonly candidateSceneErrorCount: number;
+  readonly baselinePassedCaseCount: number;
+  readonly candidatePassedCaseCount: number;
+  readonly introducedPrimaryDiagnostics: readonly string[];
+  readonly accepted: boolean;
+  readonly reasons: readonly string[];
+  readonly evaluatedAt: string;
+}
+
 export interface PracticeRetainedTruthSuiteReportV1 {
   readonly schema: "editflow.practice-retained-truth-suite-report.v1";
   readonly editTypeId: string;

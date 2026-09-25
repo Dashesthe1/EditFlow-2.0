@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   EditTypeRegistryV1,
+  evaluatePracticeRetainedTruthCorrectionReplayV1,
   evaluatePracticeRetainedTruthSuiteV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 
@@ -247,6 +248,96 @@ test("wrong-source matches are categorized for retrieval tuning", () => {
     first.truth.caseId + "::" + first.truth.shots[0].shotId,
   ]);
   assert.match(confidencePlan?.recommendedAction ?? "", /Down-calibrate scene confidence/);
+});
+
+test("correction replay accepts a targeted retained-truth fix without regression", () => {
+  const baselineCases = certificationCases();
+  const first = baselineCases[0];
+  baselineCases[0] = {
+    ...first,
+    observation: {
+      ...first.observation,
+      matches: first.observation.matches.map((match, index) => index === 0
+        ? { ...match, sourceId: "source:wrong", confidence: 0.97 }
+        : match),
+    },
+  };
+  const baseline = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-correction-replay",
+    mode: "CERTIFICATION",
+    cases: baselineCases,
+  });
+  const directive = baseline.tuningPlan.find((item) =>
+    item.subsystem === "SOURCE_IDENTITY_RETRIEVAL");
+  assert.ok(directive);
+
+  const candidate = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-correction-replay",
+    mode: "CERTIFICATION",
+    cases: certificationCases(),
+  });
+  const replay = evaluatePracticeRetainedTruthCorrectionReplayV1({
+    baseline,
+    candidate,
+    directive,
+  });
+  assert.equal(replay.accepted, true);
+  assert.equal(replay.baselineTargetDiagnosticCount, 1);
+  assert.equal(replay.candidateTargetDiagnosticCount, 0);
+  assert.equal(replay.baselineSceneErrorCount, 1);
+  assert.equal(replay.candidateSceneErrorCount, 0);
+  assert.deepEqual(replay.introducedPrimaryDiagnostics, []);
+});
+
+test("correction replay rejects a fix that introduces a new primary scene error", () => {
+  const baselineCases = certificationCases();
+  const first = baselineCases[0];
+  baselineCases[0] = {
+    ...first,
+    observation: {
+      ...first.observation,
+      matches: first.observation.matches.map((match, index) => index === 0
+        ? { ...match, sourceId: "source:wrong", confidence: 0.97 }
+        : match),
+    },
+  };
+  const baseline = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-correction-regression",
+    mode: "CERTIFICATION",
+    cases: baselineCases,
+  });
+  const directive = baseline.tuningPlan.find((item) =>
+    item.subsystem === "SOURCE_IDENTITY_RETRIEVAL");
+  assert.ok(directive);
+
+  const candidateCases = certificationCases();
+  const candidateFirst = candidateCases[0];
+  candidateCases[0] = {
+    ...candidateFirst,
+    observation: {
+      ...candidateFirst.observation,
+      matches: candidateFirst.observation.matches.map((match, index) => index === 1
+        ? { ...match, direction: "REVERSE" }
+        : match),
+    },
+  };
+  const candidate = evaluatePracticeRetainedTruthSuiteV1({
+    editTypeId: "truth-correction-regression",
+    mode: "CERTIFICATION",
+    cases: candidateCases,
+  });
+  const replay = evaluatePracticeRetainedTruthCorrectionReplayV1({
+    baseline,
+    candidate,
+    directive,
+  });
+  assert.equal(replay.baselineTargetDiagnosticCount, 1);
+  assert.equal(replay.candidateTargetDiagnosticCount, 0);
+  assert.equal(replay.accepted, false);
+  assert.ok(replay.introducedPrimaryDiagnostics.some((item) =>
+    item.startsWith("DIRECTION_MISMATCH::")));
+  assert.ok(replay.reasons.some((reason) =>
+    /introduced new primary retained-truth diagnostics/.test(reason)));
 });
 
 test("timing and direction failures route to distinct tuning subsystems", () => {
