@@ -1604,6 +1604,8 @@ def probe_acquisition_bindability(
                 matches_output=str(matches_path),
                 coarse_limit=int(coarse_limit),
                 minimum_coverage=float(minimum_coverage),
+                source_index_sample_step_ms=DEFAULT_MATCHER_SAMPLE_STEP_MS,
+                source_index_analysis_fps=DEFAULT_MATCHER_ANALYSIS_FPS,
             )
         except Exception as error:
             result["reasons"].append("Exact Start-source binding failed: " + str(error))
@@ -1901,6 +1903,8 @@ def execute_acquisition_plan(
                 matches_output=str(matches_path),
                 coarse_limit=int(coarse_limit),
                 minimum_coverage=float(minimum_coverage),
+                source_index_sample_step_ms=DEFAULT_MATCHER_SAMPLE_STEP_MS,
+                source_index_analysis_fps=DEFAULT_MATCHER_ANALYSIS_FPS,
             )
         except Exception as error:
             result["reasons"].append("Exact Start-source binding failed: " + str(error))

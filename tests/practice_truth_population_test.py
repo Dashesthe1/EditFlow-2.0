@@ -549,7 +549,13 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     matches_output=None,
                     coarse_limit=16,
                     minimum_coverage=0.98,
+                    source_index_sample_step_ms=None,
+                    source_index_analysis_fps=None,
                 ):
+                    if source_index_sample_step_ms != tool.DEFAULT_MATCHER_SAMPLE_STEP_MS:
+                        raise AssertionError("population source-index sample step was not forwarded")
+                    if source_index_analysis_fps != tool.DEFAULT_MATCHER_ANALYSIS_FPS:
+                        raise AssertionError("population source-index analysis FPS was not forwarded")
                     reference = tool.load_json(reference_path)
                     is_bound = reference["sourceSha256"] == finish_a_sha
                     payload = {
@@ -740,7 +746,13 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     matches_output=None,
                     coarse_limit=16,
                     minimum_coverage=0.98,
+                    source_index_sample_step_ms=None,
+                    source_index_analysis_fps=None,
                 ):
+                    if source_index_sample_step_ms != tool.DEFAULT_MATCHER_SAMPLE_STEP_MS:
+                        raise AssertionError("population source-index sample step was not forwarded")
+                    if source_index_analysis_fps != tool.DEFAULT_MATCHER_ANALYSIS_FPS:
+                        raise AssertionError("population source-index analysis FPS was not forwarded")
                     reference = tool.load_json(reference_path)
                     payload = {
                         "schema": tool.SOURCE_BINDING_SCHEMA,

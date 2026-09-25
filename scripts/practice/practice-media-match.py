@@ -307,12 +307,7 @@ def ensure_analysis_proxy(
         + ",scale=w=if(gte(iw\\,ih)\\," + str(int(max_dimension))
         + "\\,-2):h=if(gte(iw\\,ih)\\,-2\\," + str(int(max_dimension)) + ")"
     )
-    command = [
-        ffmpeg_exe,
-        "-nostdin",
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", str(video_path),
+    common_tail = [
         "-map", "0:v:0",
         "-an",
         "-vf", scale_filter,
@@ -322,19 +317,37 @@ def ensure_analysis_proxy(
         "-f", "avi",
         "-y", str(temporary),
     ]
-    completed = subprocess.run(
-        command,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
-    if completed.returncode != 0 or not temporary.is_file() or temporary.stat().st_size <= 0:
+    command_prefix = [
+        ffmpeg_exe,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "error",
+    ]
+    candidate_commands = [
+        command_prefix + ["-hwaccel", "cuda", "-i", str(video_path)] + common_tail,
+        command_prefix + ["-i", str(video_path)] + common_tail,
+    ]
+    failures = []
+    for command in candidate_commands:
+        if temporary.exists():
+            temporary.unlink()
+        completed = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        if completed.returncode == 0 and temporary.is_file() and temporary.stat().st_size > 0:
+            temporary.replace(proxy_path)
+            return proxy_path
         if temporary.exists():
             temporary.unlink()
         message = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError("Practice analysis proxy creation failed: " + message)
-    temporary.replace(proxy_path)
-    return proxy_path
+        failures.append(message or f"ffmpeg exited {completed.returncode}")
+    raise RuntimeError(
+        "Practice analysis proxy creation failed after CUDA and software decode attempts: "
+        + " | ".join(failures)
+    )
 
 
 class FrameReader:
