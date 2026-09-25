@@ -1578,9 +1578,15 @@ def execute_acquisition_plan(
         source_id + "=" + str(source_paths[source_id])
         for source_id in sorted(source_paths)
     ]
+    source_plan = Path(plan_path).expanduser().resolve()
     output_plan = Path(output_plan_path).expanduser().resolve()
-    if output_plan == Path(plan_path).expanduser().resolve():
+    if output_plan == source_plan:
         raise ValueError("Acquisition execution must write a new population plan path.")
+    if output_plan.parent != source_plan.parent:
+        raise ValueError(
+            "Acquisition output population plan must stay beside the source manifest "
+            "so existing relative artifact paths remain stable."
+        )
 
     matcher = matcher or load_media_match_tool()
     source_binding_tool = source_binding_tool or load_source_binding_tool()
@@ -2642,6 +2648,10 @@ def advance_population(
     finish_discovery_path=None,
     source_video_specs=None,
     bindability_output_path=None,
+    acquisition_output_plan_path=None,
+    acquisition_difficulty_specs=None,
+    acquisition_case_ids=None,
+    acquisition_signature_provider=None,
     source_binding_tool=None,
     reference_cut_threshold=0.42,
     minimum_shot_ms=180.0,
@@ -2659,23 +2669,40 @@ def advance_population(
     matcher=None,
     corpus=None,
 ):
-    plan = require_plan(plan_path)
-    cases = selected_population_cases(plan, case_ids)
+    original_plan_path = Path(plan_path).expanduser().resolve()
+    plan = require_plan(original_plan_path)
     media_truth = media_truth or load_media_truth_tool()
     matcher = matcher or load_media_match_tool()
     corpus = corpus or load_corpus_tool()
     source_video_specs = list(source_video_specs or [])
+    acquisition_difficulty_specs = list(acquisition_difficulty_specs or [])
+    acquisition_case_ids = list(acquisition_case_ids or [])
+    auto_acquisition_requested = bool(
+        acquisition_output_plan_path
+        or acquisition_difficulty_specs
+        or acquisition_case_ids
+    )
     if source_video_specs and not finish_discovery_path:
         raise ValueError("Practice one-command bindability probing requires Finish discovery evidence.")
     if bindability_output_path and not (finish_discovery_path and source_video_specs):
         raise ValueError("Bindability output requires Finish discovery and at least one raw Start source.")
+    if auto_acquisition_requested and not acquisition_output_plan_path:
+        raise ValueError("Auto acquisition requires an explicit output population plan path.")
+    if auto_acquisition_requested and not acquisition_difficulty_specs:
+        raise ValueError("Auto acquisition requires verified difficulty evidence.")
+    if auto_acquisition_requested and not (finish_discovery_path and source_video_specs):
+        raise ValueError(
+            "Auto acquisition requires Finish discovery evidence and at least one raw Start source."
+        )
 
     bindability_path = None
     bindability = None
     acquisition_plan = None
+    acquisition_run = None
+    active_plan_path = original_plan_path
     if finish_discovery_path and source_video_specs:
         bindability = probe_acquisition_bindability(
-            plan_path,
+            original_plan_path,
             finish_discovery_path,
             source_video_specs,
             matcher=matcher,
@@ -2689,16 +2716,62 @@ def advance_population(
         bindability_path = (
             Path(bindability_output_path).expanduser().resolve()
             if bindability_output_path
-            else Path(plan_path).resolve().parent / "acquisition-bindability.json"
+            else original_plan_path.parent / "acquisition-bindability.json"
         )
         write_json(bindability_path, bindability)
     if finish_discovery_path:
         acquisition_plan = build_acquisition_plan(
-            plan_path,
+            original_plan_path,
             finish_discovery_path,
             bindability_path=str(bindability_path) if bindability_path else None,
         )
 
+    if auto_acquisition_requested:
+        acquisition_run = execute_acquisition_plan(
+            original_plan_path,
+            finish_discovery_path,
+            acquisition_output_plan_path,
+            source_video_specs,
+            difficulty_specs=acquisition_difficulty_specs,
+            case_ids=acquisition_case_ids or None,
+            matcher=matcher,
+            source_binding_tool=source_binding_tool,
+            signature_provider=acquisition_signature_provider,
+            bindability_path=str(bindability_path) if bindability_path else None,
+            cut_threshold=reference_cut_threshold,
+            minimum_shot_ms=minimum_shot_ms,
+            coarse_limit=source_binding_coarse_limit,
+            minimum_coverage=minimum_source_coverage,
+            index_cache_dir=source_index_cache_dir,
+        )
+        if acquisition_run["admittedCount"] > 0:
+            active_plan_path = Path(acquisition_run["outputPlanPath"]).expanduser().resolve()
+            plan = require_plan(active_plan_path)
+            bindability = probe_acquisition_bindability(
+                active_plan_path,
+                finish_discovery_path,
+                source_video_specs,
+                matcher=matcher,
+                source_binding_tool=source_binding_tool,
+                cut_threshold=reference_cut_threshold,
+                minimum_shot_ms=minimum_shot_ms,
+                coarse_limit=source_binding_coarse_limit,
+                minimum_coverage=minimum_source_coverage,
+                index_cache_dir=source_index_cache_dir,
+            )
+            bindability_path = (
+                Path(bindability_output_path).expanduser().resolve()
+                if bindability_output_path
+                else active_plan_path.parent / "acquisition-bindability.json"
+            )
+            write_json(bindability_path, bindability)
+            acquisition_plan = build_acquisition_plan(
+                active_plan_path,
+                finish_discovery_path,
+                bindability_path=str(bindability_path),
+            )
+
+    cases = selected_population_cases(plan, case_ids)
     results = []
     for case in cases:
         case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
@@ -2706,7 +2779,7 @@ def advance_population(
         outcome = "BLOCKED"
         error = None
         for _iteration in range(12):
-            observed = inspect_case(case, plan_path, corpus)
+            observed = inspect_case(case, active_plan_path, corpus)
             action = observed["nextAction"]
             if action == "NONE":
                 outcome = "READY_FOR_CORPUS"
@@ -2715,7 +2788,7 @@ def advance_population(
                 outcome = "WAITING_FOR_INDEPENDENT_REVIEW"
                 break
             if action == "FINALIZE_INDEPENDENT_REVIEW":
-                retained_path = artifact_path(case, plan_path, "retainedTruth")
+                retained_path = artifact_path(case, active_plan_path, "retainedTruth")
                 if retained_path is not None and retained_path.is_file():
                     outcome = "WAITING_FOR_REVIEW_RECHECK"
                     break
@@ -2723,7 +2796,7 @@ def advance_population(
                     outcome = "WAITING_FOR_ANNOTATION_ORIGIN"
                     break
                 finalized = finalize_independent_reviews(
-                    plan_path,
+                    active_plan_path,
                     annotation_origin,
                     case_ids=[case_id],
                     media_truth=media_truth,
@@ -2736,7 +2809,7 @@ def advance_population(
                 continue
             if action in {"SCAFFOLD_TRUTH", "CREATE_REVIEW_PACK", "REBUILD_REVIEW_PACK"}:
                 prepared = prepare_review_packs(
-                    plan_path,
+                    active_plan_path,
                     source_atlas_interval_ms=source_atlas_interval_ms,
                     source_atlas_max_frames=source_atlas_max_frames,
                     source_atlas_cache_dir=source_atlas_cache_dir,
@@ -2754,7 +2827,7 @@ def advance_population(
                 break
             if action in {"RUN_MATCHER_OBSERVATION", "RERUN_MATCHER_OBSERVATION"}:
                 matched = run_matcher_observations(
-                    plan_path,
+                    active_plan_path,
                     case_ids=[case_id],
                     matcher=matcher,
                     media_truth=media_truth,
@@ -2771,7 +2844,7 @@ def advance_population(
                 continue
             if action in {"BUILD_SUITE_MANIFEST", "REBUILD_SUITE_MANIFEST"}:
                 built = build_suite_manifests(
-                    plan_path,
+                    active_plan_path,
                     case_ids=[case_id],
                     media_truth=media_truth,
                     corpus=corpus,
@@ -2784,7 +2857,7 @@ def advance_population(
                 continue
             outcome = "BLOCKED"
             break
-        final = inspect_case(case, plan_path, corpus)
+        final = inspect_case(case, active_plan_path, corpus)
         result = {
             "caseId": case_id,
             "outcome": outcome,
@@ -2800,7 +2873,7 @@ def advance_population(
 
     counts = Counter(item["outcome"] for item in results)
     progression_gate = build_progression_gate(
-        plan_path,
+        active_plan_path,
         finish_discovery_path=finish_discovery_path,
         bindability_path=str(bindability_path) if bindability_path else None,
     )
@@ -2813,6 +2886,8 @@ def advance_population(
         "waitingReviewRecheckCount": counts.get("WAITING_FOR_REVIEW_RECHECK", 0),
         "failedCount": counts.get("FAILED", 0),
         "cases": results,
+        "sourceManifestPath": str(original_plan_path),
+        "activeManifestPath": str(active_plan_path),
         "bindabilityEvidencePath": str(bindability_path) if bindability_path else None,
         "bindability": (
             {
@@ -2828,9 +2903,10 @@ def advance_population(
             else None
         ),
         "acquisitionPlan": acquisition_plan,
+        "acquisitionRun": acquisition_run,
         "progressionGate": progression_gate,
         "workQueue": build_work_queue(
-            plan_path,
+            active_plan_path,
             finish_discovery_path=finish_discovery_path,
         ),
     }
@@ -3137,7 +3213,21 @@ def build_parser():
     )
     advance.add_argument(
         "--bindability-output",
-        help="Optional output path for sealed bindability evidence; defaults beside the population manifest.",
+        help="Optional output path for sealed bindability evidence; defaults beside the active population manifest.",
+    )
+    advance.add_argument(
+        "--acquisition-output-plan",
+        help="Write an expanded population plan here when verified exact-bound acquisition is requested.",
+    )
+    advance.add_argument(
+        "--acquisition-difficulty",
+        action="append",
+        help="Verified acquisition difficulty in caseId=TAG[,TAG] form; repeat as needed.",
+    )
+    advance.add_argument(
+        "--acquisition-case-id",
+        action="append",
+        help="Auto-acquire only this acquisition task id; repeat to select multiple tasks.",
     )
     advance.add_argument("--source-index-cache-dir")
     advance.add_argument("--reference-cut-threshold", type=float, default=0.42)
@@ -3325,6 +3415,9 @@ def main():
             finish_discovery_path=args.finish_discovery,
             source_video_specs=args.source_video,
             bindability_output_path=args.bindability_output,
+            acquisition_output_plan_path=args.acquisition_output_plan,
+            acquisition_difficulty_specs=args.acquisition_difficulty,
+            acquisition_case_ids=args.acquisition_case_id,
             reference_cut_threshold=args.reference_cut_threshold,
             minimum_shot_ms=args.minimum_shot_ms,
             source_binding_coarse_limit=args.source_binding_coarse_limit,

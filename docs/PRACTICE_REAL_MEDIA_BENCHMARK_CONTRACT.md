@@ -99,6 +99,15 @@ py -3.12 scripts/practice/practice-truth-population.py status `
   --output proofs/practice/truth-population-status.json
 ```
 
+The one-command `advance` path may also execute exact-bound case acquisition when it is given
+Finish discovery evidence, raw `--source-video` inputs, an explicit
+`--acquisition-output-plan` beside the source manifest, and verified `--acquisition-difficulty`
+labels. It never guesses difficulty evidence and never mutates the source population manifest in
+place. If cases are admitted, Practice switches progression to the expanded output manifest,
+re-probes and re-seals
+Start-source bindability against that new manifest identity, and only then continues review-pack,
+retention, matcher-observation, and suite-manifest progression.
+
 ## Long-form cache behavior
 
 Long movie indexes are retained only while the production matcher accepts their algorithm ID

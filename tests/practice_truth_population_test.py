@@ -594,6 +594,31 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     source_paths={"video:new": source},
                 )
 
+    def test_acquisition_run_refuses_manifest_rebase_that_breaks_relative_artifacts(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            source = root / "acquisition-source.mp4"
+            source.write_bytes(b"acquisition-source")
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 0,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [],
+            })
+            rebased_output = root / "nested" / "population-acquired.json"
+
+            with self.assertRaisesRegex(ValueError, "must stay beside the source manifest"):
+                tool.execute_acquisition_plan(
+                    plan,
+                    discovery,
+                    rebased_output,
+                    ["video:new=" + str(source)],
+                    matcher=object(),
+                    source_binding_tool=object(),
+                )
+
     def test_acquisition_run_refuses_to_guess_missing_difficulty_evidence(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1613,6 +1638,153 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(
                 result["progressionGate"]["acquisition"]["bindabilityEvidencePath"],
                 str(proof.resolve()),
+            )
+
+    def test_advance_auto_acquisition_requires_explicit_verified_inputs(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            finish = root / "candidate-finish.mp4"
+            source = root / "raw-start.mp4"
+            finish.write_bytes(b"candidate-finish")
+            source.write_bytes(b"raw-start")
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 1,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [{
+                    "path": str(finish),
+                    "fileName": finish.name,
+                    "sha256": sha256_bytes(finish.read_bytes()),
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                }],
+            })
+            source_specs = ["video:new=" + str(source)]
+
+            with self.assertRaisesRegex(ValueError, "explicit output population plan"):
+                tool.advance_population(
+                    plan,
+                    finish_discovery_path=discovery,
+                    source_video_specs=source_specs,
+                    acquisition_difficulty_specs=["retained-test=FAST_CUTS"],
+                    matcher=object(),
+                )
+
+            with self.assertRaisesRegex(ValueError, "verified difficulty evidence"):
+                tool.advance_population(
+                    plan,
+                    finish_discovery_path=discovery,
+                    source_video_specs=source_specs,
+                    acquisition_output_plan_path=root / "population-acquired.json",
+                    matcher=object(),
+                )
+
+    def test_advance_auto_acquisition_promotes_expanded_plan_and_reseals_binding(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = root / case["reviewPackDir"]
+            review.mkdir()
+            write_json(review / "review-pack.json", {
+                "schema": tool.REVIEW_PACK_SCHEMA,
+                "policy": {
+                    "matcherSuggestionsAllowed": False,
+                    "matcherOutputMayBecomeTruth": False,
+                },
+            })
+            with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=[
+                    "shotId", "sourceId", "sourceStartMs", "sourceEndMs", "direction"
+                ])
+                writer.writeheader()
+                writer.writerow({"shotId": "shot:1"})
+
+            plan = self._plan(root, [case])
+            admitted_case = self._base_case(root, 1)
+            finish = root / "candidate-finish.mp4"
+            source = root / "raw-start.mp4"
+            finish.write_bytes(b"candidate-finish")
+            source.write_bytes(b"raw-start")
+            finish_sha = sha256_bytes(finish.read_bytes())
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 1,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [{
+                    "path": str(finish),
+                    "fileName": finish.name,
+                    "sha256": finish_sha,
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                }],
+            })
+            source_specs = ["video:new=" + str(source)]
+            output_plan = root / "population-acquired.json"
+            proof = root / "bindability.json"
+
+            def fake_probe(current_plan, finish_discovery_path, source_video_specs, **kwargs):
+                source_paths = tool.parse_source_video_specs(source_video_specs)
+                return tool.seal_bindability_evidence({
+                    "schema": tool.ACQUISITION_BINDABILITY_SCHEMA,
+                    "planSha256": tool.sha256_file(current_plan),
+                    "finishDiscoverySha256": tool.sha256_file(finish_discovery_path),
+                    "sourceFiles": tool.source_identity_records(source_paths),
+                    "candidateCount": 1,
+                    "bindableCandidateCount": 1,
+                    "unboundCandidateCount": 0,
+                    "canMeetMinimumByBindableCandidateCount": False,
+                    "candidateResults": [{
+                        "finishSha256": finish_sha,
+                        "status": "BINDABLE",
+                    }],
+                })
+
+            def fake_execute(*args, **kwargs):
+                expanded = tool.require_plan(plan)
+                expanded["cases"].append(admitted_case)
+                write_json(output_plan, expanded)
+                return {
+                    "schema": tool.ACQUISITION_RUN_SCHEMA,
+                    "outputPlanPath": str(output_plan.resolve()),
+                    "admittedCount": 1,
+                    "blockedCount": 0,
+                }
+
+            with patch.object(
+                tool,
+                "probe_acquisition_bindability",
+                side_effect=fake_probe,
+            ) as probe, patch.object(
+                tool,
+                "execute_acquisition_plan",
+                side_effect=fake_execute,
+            ) as execute:
+                result = tool.advance_population(
+                    plan,
+                    case_ids=[case["caseId"]],
+                    finish_discovery_path=discovery,
+                    source_video_specs=source_specs,
+                    bindability_output_path=proof,
+                    acquisition_output_plan_path=output_plan,
+                    acquisition_difficulty_specs=["retained-test=FAST_CUTS"],
+                    acquisition_case_ids=["retained-test"],
+                    matcher=object(),
+                )
+
+            execute.assert_called_once()
+            self.assertEqual(probe.call_count, 2)
+            self.assertEqual(result["sourceManifestPath"], str(plan.resolve()))
+            self.assertEqual(result["activeManifestPath"], str(output_plan.resolve()))
+            self.assertEqual(result["acquisitionRun"]["admittedCount"], 1)
+            self.assertEqual(result["cases"][0]["outcome"], "WAITING_FOR_INDEPENDENT_REVIEW")
+            self.assertEqual(result["progressionGate"]["candidateCaseCount"], 2)
+            self.assertEqual(
+                tool.load_json(proof)["planSha256"],
+                tool.sha256_file(output_plan),
             )
 
     def test_progression_gate_carries_sealed_bindability_into_acquisition_state(self):
