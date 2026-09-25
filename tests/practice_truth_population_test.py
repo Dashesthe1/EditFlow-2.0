@@ -1008,5 +1008,145 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertFalse(status["populationWindowReached"])
 
 
+    def test_advance_stops_before_retention_without_annotation_origin(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+
+            class FailingMatcher:
+                def __getattr__(self, name):
+                    raise AssertionError("matcher must not run before truth retention: " + name)
+
+            result = tool.advance_population(plan, matcher=FailingMatcher())
+
+            self.assertEqual(result["failedCount"], 0)
+            self.assertEqual(result["waitingAnnotationOriginCount"], 1)
+            observed = result["cases"][0]
+            self.assertEqual(observed["outcome"], "WAITING_FOR_ANNOTATION_ORIGIN")
+            self.assertEqual(observed["operations"], [])
+            self.assertEqual(observed["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
+            self.assertFalse((root / case["retainedTruth"]).exists())
+            self.assertFalse((root / case["matches"]).exists())
+
+    def test_advance_refuses_to_force_stale_review_authority(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            finalized = tool.finalize_independent_reviews(plan, "INDEPENDENT_HUMAN")
+            self.assertEqual(finalized["failedCount"], 0)
+            with (review / "annotations.csv").open("a", encoding="utf-8") as handle:
+                handle.write("\n")
+
+            class FailingMatcher:
+                def __getattr__(self, name):
+                    raise AssertionError("matcher must not run against stale authority: " + name)
+
+            result = tool.advance_population(
+                plan,
+                annotation_origin="INDEPENDENT_HUMAN",
+                matcher=FailingMatcher(),
+            )
+
+            self.assertEqual(result["waitingReviewRecheckCount"], 1)
+            observed = result["cases"][0]
+            self.assertEqual(observed["outcome"], "WAITING_FOR_REVIEW_RECHECK")
+            self.assertEqual(observed["operations"], [])
+            self.assertEqual(observed["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
+            self.assertFalse((root / case["matches"]).exists())
+
+    def test_advance_runs_matcher_only_after_attested_truth_and_builds_suite(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            matcher_calls = []
+
+            class FakeMatcher:
+                @staticmethod
+                def analyzer_fingerprint():
+                    return "fake-analyzer-fingerprint"
+
+                @staticmethod
+                def load_artifact(path, expected_schema):
+                    payload = tool.load_json(path)
+                    if payload.get("schema") != expected_schema:
+                        raise ValueError("unexpected schema")
+                    return payload
+
+                @staticmethod
+                def index_source(
+                    video_path,
+                    source_id,
+                    output_path,
+                    sample_step_ms,
+                    explicit_ffmpeg=None,
+                    proxy_dir=None,
+                    analysis_fps=tool.DEFAULT_MATCHER_ANALYSIS_FPS,
+                ):
+                    matcher_calls.append("index")
+                    payload = {
+                        "schema": "editflow.practice-source-index.v1",
+                        "sourceId": source_id,
+                        "sourceSha256": tool.sha256_file(video_path),
+                        "analysis": {
+                            "algorithmId": "fake",
+                            "analyzerFingerprint": "fake-analyzer-fingerprint",
+                            "sampleStepMs": sample_step_ms,
+                            "analysisProxyFps": analysis_fps,
+                        },
+                        "samples": [{"timeMs": 0.0, "descriptor": {}}],
+                    }
+                    write_json(output_path, payload)
+                    return payload
+
+                @staticmethod
+                def match_reference(reference_path, source_index_paths, output_path, coarse_limit):
+                    self.assertTrue((review / "review-attestation.json").is_file())
+                    self.assertTrue((root / case["retainedTruth"]).is_file())
+                    matcher_calls.append("match")
+                    payload = {
+                        "schema": tool.MATCH_SCHEMA,
+                        "analysis": {
+                            "algorithmId": "fake",
+                            "analyzerFingerprint": "fake-analyzer-fingerprint",
+                        },
+                        "matches": [],
+                        "evidenceRefs": ["practice-match-observation:fake"],
+                    }
+                    write_json(output_path, payload)
+                    return payload
+
+            result = tool.advance_population(
+                plan,
+                annotation_origin="INDEPENDENT_EXTERNAL_TOOL",
+                matcher=FakeMatcher(),
+            )
+
+            self.assertEqual(result["failedCount"], 0)
+            self.assertEqual(result["readyForCorpusCount"], 1)
+            observed = result["cases"][0]
+            self.assertEqual(observed["outcome"], "READY_FOR_CORPUS")
+            self.assertEqual(
+                observed["operations"],
+                [
+                    "FINALIZE_INDEPENDENT_REVIEW",
+                    "RUN_MATCHER_OBSERVATION",
+                    "BUILD_SUITE_MANIFEST",
+                ],
+            )
+            self.assertEqual(matcher_calls, ["index", "match"])
+            self.assertTrue((root / case["matches"]).is_file())
+            self.assertTrue((root / case["suiteManifest"]).is_file())
+            self.assertEqual(observed["nextAction"], "NONE")
+
+
 if __name__ == "__main__":
     unittest.main()

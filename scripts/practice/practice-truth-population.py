@@ -36,10 +36,16 @@ MIN_DISTINCT_SOURCE_SETS = 3
 PERCEPTUAL_DUPLICATE_SIMILARITY = 0.96
 PREPARE_SCHEMA = "editflow.practice-truth-review-preparation.v1"
 FINALIZE_SCHEMA = "editflow.practice-truth-review-finalization.v1"
+ADVANCE_SCHEMA = "editflow.practice-truth-population-advance.v1"
+MATCHER_OBSERVATION_SCHEMA = "editflow.practice-truth-matcher-observation.v1"
+SUITE_BUILD_SCHEMA = "editflow.practice-truth-suite-build.v1"
 DISCOVERY_SCHEMA = "editflow.practice-truth-finish-discovery.v1"
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".m4v", ".webm"}
 DEFAULT_SOURCE_ATLAS_INTERVAL_MS = 300000.0
 DEFAULT_SOURCE_ATLAS_MAX_FRAMES = 30
+DEFAULT_MATCHER_SAMPLE_STEP_MS = 500.0
+DEFAULT_MATCHER_ANALYSIS_FPS = 6.0
+DEFAULT_MATCHER_COARSE_LIMIT = 16
 
 
 def sha256_file(path):
@@ -1411,6 +1417,462 @@ def prepare_review_packs(
     }
 
 
+def selected_population_cases(plan, case_ids=None):
+    requested = {
+        str(item).strip() for item in (case_ids or []) if str(item).strip()
+    }
+    cases = list(plan["cases"])
+    if not requested:
+        return cases
+    known = {str(item.get("caseId", "")).strip() for item in cases}
+    unknown = sorted(requested - known)
+    if unknown:
+        raise ValueError("Unknown population case id(s): " + ", ".join(unknown))
+    return [
+        item for item in cases
+        if str(item.get("caseId", "")).strip() in requested
+    ]
+
+
+def matcher_source_index_compatible(
+    matcher,
+    index_path,
+    source_id,
+    source_sha256,
+    sample_step_ms,
+    analysis_fps,
+):
+    index_path = Path(index_path)
+    if not index_path.is_file():
+        return False
+    try:
+        payload = matcher.load_artifact(index_path, "editflow.practice-source-index.v1")
+    except Exception:
+        return False
+    analysis = payload.get("analysis") or {}
+    return (
+        str(payload.get("sourceId", "")).strip() == str(source_id).strip()
+        and str(payload.get("sourceSha256", "")).strip().lower()
+        == str(source_sha256).strip().lower()
+        and math.isclose(
+            float(analysis.get("sampleStepMs", -1.0)),
+            float(sample_step_ms),
+            rel_tol=0.0,
+            abs_tol=1e-6,
+        )
+        and math.isclose(
+            float(analysis.get("analysisProxyFps", -1.0)),
+            float(analysis_fps),
+            rel_tol=0.0,
+            abs_tol=1e-3,
+        )
+    )
+
+
+def run_matcher_observations(
+    plan_path,
+    case_ids=None,
+    matcher=None,
+    media_truth=None,
+    cache_dir=None,
+    sample_step_ms=DEFAULT_MATCHER_SAMPLE_STEP_MS,
+    analysis_fps=DEFAULT_MATCHER_ANALYSIS_FPS,
+    coarse_limit=DEFAULT_MATCHER_COARSE_LIMIT,
+):
+    plan = require_plan(plan_path)
+    cases = selected_population_cases(plan, case_ids)
+    matcher = matcher or load_media_match_tool()
+    media_truth = media_truth or load_media_truth_tool()
+    sample_step_ms = float(sample_step_ms)
+    analysis_fps = float(analysis_fps)
+    coarse_limit = int(coarse_limit)
+    if sample_step_ms <= 0.0 or analysis_fps <= 0.0 or coarse_limit < 1:
+        raise ValueError("Matcher observation settings must be positive.")
+    cache_root = (
+        Path(cache_dir).expanduser().resolve()
+        if cache_dir
+        else Path(plan_path).resolve().parent / ".matcher-cache"
+    )
+    results = []
+    for case in cases:
+        case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
+        try:
+            finish_path = artifact_path(case, plan_path, "finishPath")
+            reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+            retained_path = artifact_path(case, plan_path, "retainedTruth")
+            review_dir = artifact_path(case, plan_path, "reviewPackDir")
+            matches_path = artifact_path(case, plan_path, "matches")
+            if finish_path is None or not finish_path.is_file():
+                raise ValueError("Finish media is missing.")
+            if reference_path is None or not reference_path.is_file():
+                raise ValueError("Reference analysis is missing.")
+            if retained_path is None or not retained_path.is_file():
+                raise ValueError("Retained independent truth is missing.")
+            if review_dir is None:
+                raise ValueError("Review-pack directory is missing.")
+            if matches_path is None:
+                raise ValueError("Matcher observation path is missing.")
+
+            reference = matcher.load_artifact(reference_path, REFERENCE_SCHEMA)
+            retained = load_json(retained_path)
+            source_paths = _case_source_paths(case, plan_path)
+            source_hashes = {
+                source_id: sha256_file(source_path)
+                for source_id, source_path in source_paths.items()
+            }
+            finish_sha = sha256_file(finish_path)
+            truth_errors = media_truth.validate_truth(
+                retained,
+                reference,
+                allowed_source_ids=sorted(source_paths),
+                allowed_source_sha256_by_id=source_hashes,
+                require_retained=True,
+            )
+            if truth_errors:
+                raise ValueError("Retained independent truth is invalid: " + " ".join(truth_errors))
+            if str(retained.get("referenceSourceSha256", "")).strip().lower() != finish_sha:
+                raise ValueError("Finish media bytes changed after independent truth retention.")
+            attestation_reasons = review_attestation_validation_reasons(
+                review_dir,
+                retained_truth_path=retained_path,
+                expected_annotation_origin=retained.get("annotationOrigin"),
+                expected_case_id=case_id,
+                expected_finish_sha256=finish_sha,
+                expected_source_sha256_by_id=source_hashes,
+            )
+            if attestation_reasons:
+                raise ValueError(
+                    "Matcher is blocked until independent review authority is current: "
+                    + " ".join(attestation_reasons)
+                )
+
+            if matches_path.is_file():
+                try:
+                    existing = matcher.load_artifact(matches_path, MATCH_SCHEMA)
+                    if existing.get("schema") == MATCH_SCHEMA:
+                        results.append({
+                            "caseId": case_id,
+                            "status": "SKIPPED_ALREADY_MATCHED",
+                            "matches": str(matches_path),
+                        })
+                        continue
+                except Exception:
+                    pass
+
+            fingerprint = matcher.analyzer_fingerprint()
+            fingerprint_cache = cache_root / safe_stem(fingerprint)[:32]
+            source_indexes = []
+            for source_id, source_path in sorted(source_paths.items()):
+                source_sha = source_hashes[source_id]
+                index_path = fingerprint_cache / (
+                    "source-" + safe_stem(source_id) + "-" + source_sha[:20] + ".json"
+                )
+                if not matcher_source_index_compatible(
+                    matcher,
+                    index_path,
+                    source_id,
+                    source_sha,
+                    sample_step_ms,
+                    analysis_fps,
+                ):
+                    index_path.parent.mkdir(parents=True, exist_ok=True)
+                    matcher.index_source(
+                        source_path,
+                        source_id,
+                        index_path,
+                        sample_step_ms,
+                        proxy_dir=fingerprint_cache / "proxy",
+                        analysis_fps=analysis_fps,
+                    )
+                source_indexes.append(index_path)
+            if matcher.analyzer_fingerprint() != fingerprint:
+                raise RuntimeError("Practice matcher changed while source indexes were being prepared.")
+
+            matches_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = matcher.match_reference(
+                reference_path,
+                source_indexes,
+                matches_path,
+                coarse_limit,
+            )
+            if payload.get("schema") != MATCH_SCHEMA:
+                raise ValueError("Matcher observation schema is invalid.")
+            if matcher.analyzer_fingerprint() != fingerprint:
+                matches_path.unlink(missing_ok=True)
+                raise RuntimeError("Practice matcher changed during matcher observation.")
+            post_reasons = review_attestation_validation_reasons(
+                review_dir,
+                retained_truth_path=retained_path,
+                expected_annotation_origin=retained.get("annotationOrigin"),
+                expected_case_id=case_id,
+                expected_finish_sha256=finish_sha,
+                expected_source_sha256_by_id=source_hashes,
+            )
+            if post_reasons:
+                matches_path.unlink(missing_ok=True)
+                raise ValueError(
+                    "Independent review authority changed during matcher observation: "
+                    + " ".join(post_reasons)
+                )
+            suite_path = artifact_path(case, plan_path, "suiteManifest")
+            if suite_path is not None and suite_path.is_file():
+                suite_path.unlink()
+            results.append({
+                "caseId": case_id,
+                "status": "MATCHED",
+                "matches": str(matches_path),
+                "matcherAnalyzerFingerprint": fingerprint,
+                "sourceIndexCount": len(source_indexes),
+            })
+        except Exception as exc:
+            results.append({"caseId": case_id, "status": "FAILED", "error": str(exc)})
+    counts = Counter(item["status"] for item in results)
+    return {
+        "schema": MATCHER_OBSERVATION_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "matchedCount": counts.get("MATCHED", 0),
+        "skippedCount": counts.get("SKIPPED_ALREADY_MATCHED", 0),
+        "failedCount": counts.get("FAILED", 0),
+        "matcherCacheDir": str(cache_root),
+        "cases": results,
+    }
+
+
+def build_suite_manifests(
+    plan_path,
+    case_ids=None,
+    media_truth=None,
+    corpus=None,
+):
+    plan = require_plan(plan_path)
+    cases = selected_population_cases(plan, case_ids)
+    media_truth = media_truth or load_media_truth_tool()
+    corpus = corpus or load_corpus_tool()
+    results = []
+    for case in cases:
+        case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
+        try:
+            finish_path = artifact_path(case, plan_path, "finishPath")
+            reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+            retained_path = artifact_path(case, plan_path, "retainedTruth")
+            review_dir = artifact_path(case, plan_path, "reviewPackDir")
+            matches_path = artifact_path(case, plan_path, "matches")
+            suite_path = artifact_path(case, plan_path, "suiteManifest")
+            if any(path is None for path in (
+                finish_path, reference_path, retained_path, review_dir, matches_path, suite_path
+            )):
+                raise ValueError("Population case is missing a required suite-build path.")
+            if not finish_path.is_file() or not reference_path.is_file():
+                raise ValueError("Finish media or reference analysis is missing.")
+            if not retained_path.is_file() or not matches_path.is_file():
+                raise ValueError("Retained truth or matcher observation is missing.")
+
+            reference = load_json(reference_path)
+            retained = load_json(retained_path)
+            matches = load_json(matches_path)
+            if matches.get("schema") != MATCH_SCHEMA:
+                raise ValueError("Matcher observation schema is invalid.")
+            source_paths = _case_source_paths(case, plan_path)
+            source_hashes = {
+                source_id: sha256_file(path)
+                for source_id, path in source_paths.items()
+            }
+            finish_sha = sha256_file(finish_path)
+            truth_errors = media_truth.validate_truth(
+                retained,
+                reference,
+                allowed_source_ids=sorted(source_paths),
+                allowed_source_sha256_by_id=source_hashes,
+                require_retained=True,
+            )
+            if truth_errors:
+                raise ValueError("Retained independent truth is invalid: " + " ".join(truth_errors))
+            attestation_reasons = review_attestation_validation_reasons(
+                review_dir,
+                retained_truth_path=retained_path,
+                expected_annotation_origin=retained.get("annotationOrigin"),
+                expected_case_id=case_id,
+                expected_finish_sha256=finish_sha,
+                expected_source_sha256_by_id=source_hashes,
+            )
+            if attestation_reasons:
+                raise ValueError(
+                    "Suite build is blocked by stale independent review authority: "
+                    + " ".join(attestation_reasons)
+                )
+
+            payload = media_truth.build_retained_suite_manifest(
+                truth=retained,
+                reference=reference,
+                finish_path=str(finish_path),
+                source_paths_by_id=source_paths,
+                case_id=case_id,
+                edit_type_id=str(plan["editTypeId"]).strip(),
+                difficulty_tags=case.get("difficultyTags") or [],
+                truth_evidence_sha256=sha256_file(retained_path),
+                reference_evidence_sha256=sha256_file(reference_path),
+                observation=matches,
+                observation_evidence_sha256=sha256_file(matches_path),
+            )
+            write_json(suite_path, payload)
+            suite = corpus.require_manifest(suite_path)
+            if len(suite["cases"]) != 1:
+                raise ValueError("Population suite manifest must contain exactly one case.")
+            normalized = corpus.normalize_case(suite["cases"][0], suite_path)
+            reasons = corpus.case_preflight_reasons(normalized)
+            if reasons:
+                suite_path.unlink(missing_ok=True)
+                raise ValueError("Suite preflight failed: " + " ".join(reasons))
+            results.append({
+                "caseId": case_id,
+                "status": "BUILT",
+                "suiteManifest": str(suite_path),
+            })
+        except Exception as exc:
+            results.append({"caseId": case_id, "status": "FAILED", "error": str(exc)})
+    counts = Counter(item["status"] for item in results)
+    return {
+        "schema": SUITE_BUILD_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "builtCount": counts.get("BUILT", 0),
+        "failedCount": counts.get("FAILED", 0),
+        "cases": results,
+    }
+
+
+def advance_population(
+    plan_path,
+    annotation_origin=None,
+    case_ids=None,
+    source_atlas_interval_ms=DEFAULT_SOURCE_ATLAS_INTERVAL_MS,
+    source_atlas_max_frames=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    source_atlas_cache_dir=None,
+    matcher_cache_dir=None,
+    matcher_sample_step_ms=DEFAULT_MATCHER_SAMPLE_STEP_MS,
+    matcher_analysis_fps=DEFAULT_MATCHER_ANALYSIS_FPS,
+    matcher_coarse_limit=DEFAULT_MATCHER_COARSE_LIMIT,
+    media_truth=None,
+    matcher=None,
+    corpus=None,
+):
+    plan = require_plan(plan_path)
+    cases = selected_population_cases(plan, case_ids)
+    media_truth = media_truth or load_media_truth_tool()
+    matcher = matcher or load_media_match_tool()
+    corpus = corpus or load_corpus_tool()
+    results = []
+    for case in cases:
+        case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
+        operations = []
+        outcome = "BLOCKED"
+        error = None
+        for _iteration in range(12):
+            observed = inspect_case(case, plan_path, corpus)
+            action = observed["nextAction"]
+            if action == "NONE":
+                outcome = "READY_FOR_CORPUS"
+                break
+            if action == "COMPLETE_INDEPENDENT_REVIEW":
+                outcome = "WAITING_FOR_INDEPENDENT_REVIEW"
+                break
+            if action == "FINALIZE_INDEPENDENT_REVIEW":
+                retained_path = artifact_path(case, plan_path, "retainedTruth")
+                if retained_path is not None and retained_path.is_file():
+                    outcome = "WAITING_FOR_REVIEW_RECHECK"
+                    break
+                if not annotation_origin:
+                    outcome = "WAITING_FOR_ANNOTATION_ORIGIN"
+                    break
+                finalized = finalize_independent_reviews(
+                    plan_path,
+                    annotation_origin,
+                    case_ids=[case_id],
+                    media_truth=media_truth,
+                )
+                operations.append("FINALIZE_INDEPENDENT_REVIEW")
+                if finalized["failedCount"]:
+                    outcome = "FAILED"
+                    error = finalized["cases"][0].get("error")
+                    break
+                continue
+            if action in {"SCAFFOLD_TRUTH", "CREATE_REVIEW_PACK", "REBUILD_REVIEW_PACK"}:
+                prepared = prepare_review_packs(
+                    plan_path,
+                    source_atlas_interval_ms=source_atlas_interval_ms,
+                    source_atlas_max_frames=source_atlas_max_frames,
+                    source_atlas_cache_dir=source_atlas_cache_dir,
+                    case_ids=[case_id],
+                    media_truth=media_truth,
+                )
+                operations.append(action)
+                if prepared["failedCount"]:
+                    outcome = "FAILED"
+                    error = prepared["cases"][0].get("reason")
+                    break
+                continue
+            if action == "REBUILD_TRUTH_SCAFFOLD":
+                outcome = "WAITING_FOR_REVIEW_RESET"
+                break
+            if action in {"RUN_MATCHER_OBSERVATION", "RERUN_MATCHER_OBSERVATION"}:
+                matched = run_matcher_observations(
+                    plan_path,
+                    case_ids=[case_id],
+                    matcher=matcher,
+                    media_truth=media_truth,
+                    cache_dir=matcher_cache_dir,
+                    sample_step_ms=matcher_sample_step_ms,
+                    analysis_fps=matcher_analysis_fps,
+                    coarse_limit=matcher_coarse_limit,
+                )
+                operations.append(action)
+                if matched["failedCount"]:
+                    outcome = "FAILED"
+                    error = matched["cases"][0].get("error")
+                    break
+                continue
+            if action in {"BUILD_SUITE_MANIFEST", "REBUILD_SUITE_MANIFEST"}:
+                built = build_suite_manifests(
+                    plan_path,
+                    case_ids=[case_id],
+                    media_truth=media_truth,
+                    corpus=corpus,
+                )
+                operations.append(action)
+                if built["failedCount"]:
+                    outcome = "FAILED"
+                    error = built["cases"][0].get("error")
+                    break
+                continue
+            outcome = "BLOCKED"
+            break
+        final = inspect_case(case, plan_path, corpus)
+        result = {
+            "caseId": case_id,
+            "outcome": outcome,
+            "operations": operations,
+            "finalStage": final["stage"],
+            "nextAction": final["nextAction"],
+            "readyForCorpus": bool(final["readyForCorpus"]),
+            "reasons": list(final.get("reasons") or []),
+        }
+        if error:
+            result["error"] = error
+        results.append(result)
+
+    counts = Counter(item["outcome"] for item in results)
+    return {
+        "schema": ADVANCE_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "readyForCorpusCount": counts.get("READY_FOR_CORPUS", 0),
+        "waitingIndependentReviewCount": counts.get("WAITING_FOR_INDEPENDENT_REVIEW", 0),
+        "waitingAnnotationOriginCount": counts.get("WAITING_FOR_ANNOTATION_ORIGIN", 0),
+        "waitingReviewRecheckCount": counts.get("WAITING_FOR_REVIEW_RECHECK", 0),
+        "failedCount": counts.get("FAILED", 0),
+        "cases": results,
+        "workQueue": build_work_queue(plan_path),
+    }
+
+
 def discover_finish_candidates(
     plan_path,
     finish_dirs,
@@ -1624,6 +2086,46 @@ def build_parser():
         help="Optional finish-discovery JSON used to expose source-binding admission gaps.",
     )
     work_queue.add_argument("--output")
+    advance = sub.add_parser("advance")
+    advance.add_argument("--manifest", required=True)
+    advance.add_argument(
+        "--annotation-origin",
+        choices=sorted(ALLOWED_ANNOTATION_ORIGINS),
+        help="Required only when a completed independent worksheet is ready to retain.",
+    )
+    advance.add_argument(
+        "--case-id",
+        action="append",
+        help="Advance only this population case id; repeat to select multiple cases.",
+    )
+    advance.add_argument(
+        "--source-atlas-interval-ms",
+        type=float,
+        default=DEFAULT_SOURCE_ATLAS_INTERVAL_MS,
+    )
+    advance.add_argument(
+        "--source-atlas-max-frames",
+        type=int,
+        default=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
+    )
+    advance.add_argument("--source-atlas-cache-dir")
+    advance.add_argument("--matcher-cache-dir")
+    advance.add_argument(
+        "--matcher-sample-step-ms",
+        type=float,
+        default=DEFAULT_MATCHER_SAMPLE_STEP_MS,
+    )
+    advance.add_argument(
+        "--matcher-analysis-fps",
+        type=float,
+        default=DEFAULT_MATCHER_ANALYSIS_FPS,
+    )
+    advance.add_argument(
+        "--matcher-coarse-limit",
+        type=int,
+        default=DEFAULT_MATCHER_COARSE_LIMIT,
+    )
+    advance.add_argument("--output")
     prepare = sub.add_parser("prepare-review-packs")
     prepare.add_argument("--manifest", required=True)
     prepare.add_argument(
@@ -1723,6 +2225,21 @@ def main():
             args.manifest,
             finish_discovery_path=args.finish_discovery,
         )
+    elif args.command == "advance":
+        payload = advance_population(
+            args.manifest,
+            annotation_origin=args.annotation_origin,
+            case_ids=args.case_id,
+            source_atlas_interval_ms=args.source_atlas_interval_ms,
+            source_atlas_max_frames=args.source_atlas_max_frames,
+            source_atlas_cache_dir=args.source_atlas_cache_dir,
+            matcher_cache_dir=args.matcher_cache_dir,
+            matcher_sample_step_ms=args.matcher_sample_step_ms,
+            matcher_analysis_fps=args.matcher_analysis_fps,
+            matcher_coarse_limit=args.matcher_coarse_limit,
+        )
+        if payload["failedCount"]:
+            exit_code = 2
     elif args.command == "prepare-review-packs":
         payload = prepare_review_packs(
             args.manifest,
