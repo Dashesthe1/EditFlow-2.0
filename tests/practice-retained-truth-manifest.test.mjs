@@ -92,6 +92,11 @@ test("retained truth manifest verifies media bytes and survives registry restart
     assert.ok(report.evidenceRefs.includes(
       "retained-source-sha256:" + sourceSha256,
     ));
+    assert.match(
+      report.authorityRef ?? "",
+      /^practice-retained-truth-authority:sha256:[0-9a-f]{64}$/,
+    );
+    assert.match(report.authorityManifestSha256 ?? "", /^[0-9a-f]{64}$/);
 
     const registry = new EditTypeRegistryV1();
     registry.create({ editTypeId: "manifest-edit", title: "Manifest Edit" });
