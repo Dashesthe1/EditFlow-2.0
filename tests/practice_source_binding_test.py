@@ -188,6 +188,49 @@ class PracticeSourceBindingTest(unittest.TestCase):
             self.assertNotEqual(third, first)
             self.assertEqual(matcher.calls, 2)
 
+    def test_source_index_cache_rebuilds_stale_analyzer_fingerprint(self):
+        class FakeMatcher:
+            DEFAULT_ANALYSIS_PROXY_FPS = 12.0
+
+            def __init__(self):
+                self.calls = 0
+
+            def analyzer_fingerprint(self):
+                return "current-analyzer"
+
+            def index_source(self, video, source_id, output, step, **kwargs):
+                self.calls += 1
+                Path(output).write_text(json.dumps({
+                    "schema": "editflow.practice-source-index.v1",
+                    "sourceId": source_id,
+                    "sourceSha256": tool.sha256_file(video),
+                    "analysis": {
+                        "analyzerFingerprint": self.analyzer_fingerprint(),
+                        "sampleStepMs": float(step),
+                        "analysisProxyFps": float(kwargs["analysis_fps"]),
+                    },
+                }), encoding="utf-8")
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "movie.mp4"
+            source.write_bytes(b"same-source")
+            matcher = FakeMatcher()
+
+            first = tool.ensure_source_index(
+                "video:movie", source, root / "cache", matcher=matcher,
+            )
+            stale = json.loads(Path(first).read_text(encoding="utf-8"))
+            stale["analysis"]["analyzerFingerprint"] = "stale-analyzer"
+            Path(first).write_text(json.dumps(stale), encoding="utf-8")
+
+            second = tool.ensure_source_index(
+                "video:movie", source, root / "cache", matcher=matcher,
+            )
+            rebuilt = json.loads(Path(second).read_text(encoding="utf-8"))
+            self.assertEqual(first, second)
+            self.assertEqual(matcher.calls, 2)
+            self.assertEqual(rebuilt["analysis"]["analyzerFingerprint"], "current-analyzer")
 
     def test_source_index_cache_separates_analysis_profiles(self):
         class FakeMatcher:

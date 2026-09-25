@@ -287,14 +287,27 @@ def ensure_source_index(
         safe_stem(source_id) + "-" + source_sha[:20] + "-" + profile_token + ".json"
     )
 
+    fingerprint_provider = getattr(matcher, "analyzer_fingerprint", None)
+    current_analyzer_fingerprint = (
+        str(fingerprint_provider()).strip()
+        if callable(fingerprint_provider)
+        else None
+    )
+
     def matches_profile(artifact):
         analysis = artifact.get("analysis") or {}
+        fingerprint_matches = (
+            current_analyzer_fingerprint is None
+            or str(analysis.get("analyzerFingerprint", "")).strip()
+            == current_analyzer_fingerprint
+        )
         return (
             artifact.get("schema") == "editflow.practice-source-index.v1"
             and artifact.get("sourceId") == source_id
             and str(artifact.get("sourceSha256", "")).lower() == source_sha
             and abs(float(analysis.get("sampleStepMs", -1.0)) - sample_step_ms) < 0.001
             and abs(float(analysis.get("analysisProxyFps", -1.0)) - analysis_fps) < 0.001
+            and fingerprint_matches
         )
 
     if artifact_path.is_file():
