@@ -19,7 +19,11 @@ import type {
   PracticeRetainedTruthSuiteReportV1,
   PracticeSkillUseAttestationV1,
 } from "./contracts.js";
-import { derivePracticeMaturityStageV1 } from "./mastery.js";
+import {
+  derivePracticeMaturityStageV1,
+  practiceRetainedTruthAuthorityVerifiedV1,
+  practiceRobustCertificationLockMatchesV1,
+} from "./mastery.js";
 import {
   practicePerceptualSetOverlapsV1,
   practicePerceptualSignatureMatchesV1,
@@ -136,6 +140,17 @@ const normalizedGptLearning = (
       verifiedLearnedSkillIds: uniqueStrings(report.verifiedLearnedSkillIds ?? []),
       missingLearnedSkillIds: uniqueStrings(report.missingLearnedSkillIds ?? []),
       learnedSkillCoverageVerified: report.learnedSkillCoverageVerified === true,
+      ...(report.robustCertificationLock === undefined ? {} : {
+        robustCertificationLock: {
+          ...structuredClone(report.robustCertificationLock),
+          transferVerifiedSkillIds: uniqueStrings(
+            report.robustCertificationLock.transferVerifiedSkillIds ?? [],
+          ).sort(),
+          transferVerifiedEffectFamilyIds: uniqueStrings(
+            report.robustCertificationLock.transferVerifiedEffectFamilyIds ?? [],
+          ).sort(),
+        },
+      }),
     })),
     retainedTruthSuiteReports: (value.retainedTruthSuiteReports ?? []).map((report) => ({
       ...structuredClone(report),
@@ -642,6 +657,7 @@ export class EditTypeRegistryV1 {
     if (report.schema !== "editflow.practice-held-out-benchmark.v1") {
       throw new TypeError("Unsupported Practice held-out benchmark schema.");
     }
+    const learning = normalizedGptLearning(profile.gptLearning);
     if (report.robust && !report.objectAwareVerified) {
       throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
     }
@@ -675,7 +691,15 @@ export class EditTypeRegistryV1 {
         "ROBUST Practice maturity requires M6 professional-benchmark authority for every TRANSFER_VERIFIED effect family.",
       );
     }
-    const learning = normalizedGptLearning(profile.gptLearning);
+    if (report.robust
+      && !practiceRobustCertificationLockMatchesV1(
+        report.robustCertificationLock,
+        learning,
+      )) {
+      throw new TypeError(
+        "ROBUST Practice maturity requires a current retained real-media truth certification lock.",
+      );
+    }
     const retained = learning.heldOutBenchmarks.filter((item) =>
       item.evaluatedAt !== report.evaluatedAt);
     const updated: EditTypeProfileV1 = {
@@ -718,7 +742,8 @@ export class EditTypeRegistryV1 {
         && report.independentTruthCaseCount === report.caseCount
         && report.fullLengthTruthCaseCount === report.caseCount
         && report.sceneErrorCount === 0
-        && report.reasons.length === 0;
+        && report.reasons.length === 0
+        && practiceRetainedTruthAuthorityVerifiedV1(report);
       if (!certificationIntegrity) {
         throw new TypeError(
           "Certified Practice truth-suite report does not satisfy fail-closed integrity gates.",
