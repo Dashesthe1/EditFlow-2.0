@@ -15,6 +15,7 @@ import type {
   PracticeHeldOutBenchmarkPolicyV1,
   PracticeHeldOutBenchmarkReportV1,
   PracticeMasteryProofV1,
+  PracticeRetainedTruthSuiteReportV1,
   PracticeSkillUseAttestationV1,
   PracticeMasteryRecordV1,
   PracticeMasteryScopeV1,
@@ -546,16 +547,59 @@ const benchmarkPolicy = (
   ),
 });
 
+export const isPracticeRetainedTruthSuiteCertificationIntegrityV1 = (
+  report: PracticeRetainedTruthSuiteReportV1,
+): boolean => report.certified === true
+  && report.mode === "CERTIFICATION"
+  && report.caseCount >= 20
+  && report.caseCount <= 30
+  && report.cases.length === report.caseCount
+  && report.passedCaseCount === report.caseCount
+  && report.distinctCaseIdCount === report.caseCount
+  && report.distinctReferenceCount === report.caseCount
+  && report.distinctFinishSha256Count === report.caseCount
+  && report.distinctSourceSetCount >= report.policy.minimumDistinctSourceSets
+  && report.independentTruthCaseCount === report.caseCount
+  && report.fullLengthTruthCaseCount === report.caseCount
+  && report.difficultyKindCount >= report.policy.minimumDifficultyKinds
+  && report.sceneErrorCount === 0
+  && report.reasons.length === 0
+  && report.evidenceRefs.length > 0
+  && Number.isFinite(Date.parse(report.evaluatedAt));
+
+const retainedTruthSuiteAuthority = (
+  editTypeId: string,
+  reports: readonly PracticeRetainedTruthSuiteReportV1[],
+): PracticeRetainedTruthSuiteReportV1 | null => reports
+  .filter((report) => report.editTypeId === editTypeId
+    && isPracticeRetainedTruthSuiteCertificationIntegrityV1(report))
+  .sort((left, right) => right.evaluatedAt.localeCompare(left.evaluatedAt))[0] ?? null;
+
 export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   readonly editTypeId: string;
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
   readonly priorMasteryRecords?: readonly PracticeMasteryRecordV1[];
   readonly priorLearnedSkills?: readonly GptLearnedSkillV1[];
   readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
+  readonly retainedTruthSuiteReports?: readonly PracticeRetainedTruthSuiteReportV1[];
   readonly policy?: Partial<PracticeHeldOutBenchmarkPolicyV1>;
 }): PracticeHeldOutBenchmarkReportV1 => {
   const policy = benchmarkPolicy(input.policy);
   const reasons: string[] = [];
+  const truthAuthority = retainedTruthSuiteAuthority(
+    input.editTypeId.trim(),
+    input.retainedTruthSuiteReports ?? [],
+  );
+  const retainedTruthSuiteAuthorityVerified = truthAuthority !== null;
+  const retainedTruthSuiteEvaluatedAt = truthAuthority?.evaluatedAt ?? null;
+  const retainedTruthSuiteEvidenceRefs = truthAuthority === null
+    ? []
+    : uniqueNonEmpty(truthAuthority.evidenceRefs);
+  if (!retainedTruthSuiteAuthorityVerified) {
+    reasons.push(
+      "Held-out benchmark is not locked to a certified 20-30 case retained real-media truth suite.",
+    );
+  }
   const trainingRecords = input.priorMasteryRecords ?? [];
   const trainingReferences = new Set(
     trainingRecords.map((record) => record.referenceFingerprint),
@@ -897,6 +941,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   const robust = reasons.length === 0
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
+    && retainedTruthSuiteAuthorityVerified
     && effectFamilyCoverageVerified
     && learnedSkillCoverageVerified
     && professionalBenchmarkCoverageVerified
@@ -927,6 +972,9 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     professionalBenchmarkCoverageVerified,
     professionalBenchmarkFailures: [...new Set(professionalBenchmarkFailures)],
     professionalBenchmarkEvidenceRefs,
+    retainedTruthSuiteAuthorityVerified,
+    retainedTruthSuiteEvaluatedAt,
+    retainedTruthSuiteEvidenceRefs,
     objectAwareCaseCount,
     objectAwareVerified,
     subjectRelativeDirectionCaseCount,
@@ -954,23 +1002,36 @@ export const derivePracticeMaturityStageV1 = (
   const records = learning?.masteryRecords ?? [];
   const benchmarks = learning?.heldOutBenchmarks ?? [];
   const retainedTruthSuites = learning?.retainedTruthSuiteReports ?? [];
-  const realMediaTruthCertified = retainedTruthSuites.some((report) =>
-    report.certified === true
-    && report.mode === "CERTIFICATION"
-    && report.caseCount >= 20
-    && report.caseCount <= 30
-    && report.passedCaseCount === report.caseCount
-    && report.distinctCaseIdCount === report.caseCount
-    && report.distinctReferenceCount === report.caseCount
-    && report.distinctFinishSha256Count === report.caseCount
-    && report.independentTruthCaseCount === report.caseCount
-    && report.fullLengthTruthCaseCount === report.caseCount
-    && report.difficultyKindCount >= report.policy.minimumDifficultyKinds
-    && report.sceneErrorCount === 0
-    && report.reasons.length === 0
-    && report.evidenceRefs.length > 0);
-  if (realMediaTruthCertified && benchmarks.some((report) =>
+  const certifiedTruthSuites = retainedTruthSuites.filter(
+    isPracticeRetainedTruthSuiteCertificationIntegrityV1,
+  );
+  const currentRequiredEffectFamilyIds = [...uniqueNonEmpty(
+    records
+      .filter((record) => record.scope === "TRANSFER_VERIFIED")
+      .flatMap((record) => record.effectFamilyIds ?? []),
+  )].sort();
+  const currentRequiredLearnedSkillIds = [...uniqueNonEmpty(
+    (learning?.learnedSkills ?? [])
+      .filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
+      .map((skill) => skill.skillId),
+  )].sort();
+  const sameStringSet = (left: readonly string[], right: readonly string[]): boolean =>
+    JSON.stringify([...uniqueNonEmpty(left)].sort()) === JSON.stringify([...uniqueNonEmpty(right)].sort());
+  const retainedTruthAuthorityMatches = (report: PracticeHeldOutBenchmarkReportV1): boolean => {
+    if (!report.retainedTruthSuiteAuthorityVerified
+      || report.retainedTruthSuiteEvaluatedAt === null
+      || report.retainedTruthSuiteEvidenceRefs.length === 0) return false;
+    const authority = certifiedTruthSuites.find((truth) =>
+      truth.evaluatedAt === report.retainedTruthSuiteEvaluatedAt);
+    if (authority === undefined) return false;
+    const authorityRefs = new Set(authority.evidenceRefs);
+    return report.retainedTruthSuiteEvidenceRefs.every((ref) => authorityRefs.has(ref));
+  };
+  if (benchmarks.some((report) =>
     report.robust
+    && retainedTruthAuthorityMatches(report)
+    && sameStringSet(report.requiredEffectFamilyIds, currentRequiredEffectFamilyIds)
+    && sameStringSet(report.requiredLearnedSkillIds, currentRequiredLearnedSkillIds)
     && report.objectAwareVerified
     && report.subjectRelativeDirectionVerified === true
     && report.subjectRelativeDirectionDiversityVerified === true

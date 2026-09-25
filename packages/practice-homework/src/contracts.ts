@@ -805,6 +805,10 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly professionalBenchmarkCoverageVerified: boolean;
   readonly professionalBenchmarkFailures: readonly string[];
   readonly professionalBenchmarkEvidenceRefs: readonly string[];
+  /** Certified retained real-media truth suite bound to this benchmark evaluation. */
+  readonly retainedTruthSuiteAuthorityVerified: boolean;
+  readonly retainedTruthSuiteEvaluatedAt: string | null;
+  readonly retainedTruthSuiteEvidenceRefs: readonly string[];
   readonly objectAwareCaseCount: number;
   readonly objectAwareVerified: boolean;
   readonly subjectRelativeDirectionCaseCount: number;

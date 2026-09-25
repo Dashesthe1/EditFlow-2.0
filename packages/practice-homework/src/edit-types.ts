@@ -19,7 +19,10 @@ import type {
   PracticeRetainedTruthSuiteReportV1,
   PracticeSkillUseAttestationV1,
 } from "./contracts.js";
-import { derivePracticeMaturityStageV1 } from "./mastery.js";
+import {
+  derivePracticeMaturityStageV1,
+  isPracticeRetainedTruthSuiteCertificationIntegrityV1,
+} from "./mastery.js";
 import {
   practicePerceptualSetOverlapsV1,
   practicePerceptualSignatureMatchesV1,
@@ -136,6 +139,12 @@ const normalizedGptLearning = (
       verifiedLearnedSkillIds: uniqueStrings(report.verifiedLearnedSkillIds ?? []),
       missingLearnedSkillIds: uniqueStrings(report.missingLearnedSkillIds ?? []),
       learnedSkillCoverageVerified: report.learnedSkillCoverageVerified === true,
+      retainedTruthSuiteAuthorityVerified: report.retainedTruthSuiteAuthorityVerified === true,
+      retainedTruthSuiteEvaluatedAt:
+        typeof report.retainedTruthSuiteEvaluatedAt === "string"
+          ? report.retainedTruthSuiteEvaluatedAt
+          : null,
+      retainedTruthSuiteEvidenceRefs: uniqueStrings(report.retainedTruthSuiteEvidenceRefs ?? []),
     })),
     retainedTruthSuiteReports: (value.retainedTruthSuiteReports ?? []).map((report) => ({
       ...structuredClone(report),
@@ -642,6 +651,44 @@ export class EditTypeRegistryV1 {
     if (report.schema !== "editflow.practice-held-out-benchmark.v1") {
       throw new TypeError("Unsupported Practice held-out benchmark schema.");
     }
+    const learning = normalizedGptLearning(profile.gptLearning);
+    if (report.robust) {
+      if (!report.retainedTruthSuiteAuthorityVerified
+        || report.retainedTruthSuiteEvaluatedAt === null
+        || report.retainedTruthSuiteEvidenceRefs.length === 0) {
+        throw new TypeError(
+          "ROBUST Practice maturity requires a bound retained real-media truth-suite authority.",
+        );
+      }
+      const truthAuthority = learning.retainedTruthSuiteReports.find((item) =>
+        item.evaluatedAt === report.retainedTruthSuiteEvaluatedAt
+        && isPracticeRetainedTruthSuiteCertificationIntegrityV1(item));
+      const authorityRefs = new Set(truthAuthority?.evidenceRefs ?? []);
+      if (truthAuthority === undefined
+        || report.retainedTruthSuiteEvidenceRefs.some((ref) => !authorityRefs.has(ref))) {
+        throw new TypeError(
+          "ROBUST Practice maturity truth-suite authority is missing, stale, or does not match retained evidence.",
+        );
+      }
+      const currentEffectFamilyIds = [...uniqueStrings(
+        learning.masteryRecords
+          .filter((record) => record.scope === "TRANSFER_VERIFIED")
+          .flatMap((record) => record.effectFamilyIds),
+      )].sort();
+      const currentLearnedSkillIds = [...uniqueStrings(
+        learning.learnedSkills
+          .filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
+          .map((skill) => skill.skillId),
+      )].sort();
+      const reportEffectFamilyIds = [...uniqueStrings(report.requiredEffectFamilyIds)].sort();
+      const reportLearnedSkillIds = [...uniqueStrings(report.requiredLearnedSkillIds)].sort();
+      if (JSON.stringify(reportEffectFamilyIds) !== JSON.stringify(currentEffectFamilyIds)
+        || JSON.stringify(reportLearnedSkillIds) !== JSON.stringify(currentLearnedSkillIds)) {
+        throw new TypeError(
+          "ROBUST Practice maturity requires a benchmark locked to the current TRANSFER_VERIFIED target set.",
+        );
+      }
+    }
     if (report.robust && !report.objectAwareVerified) {
       throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
     }
@@ -675,7 +722,6 @@ export class EditTypeRegistryV1 {
         "ROBUST Practice maturity requires M6 professional-benchmark authority for every TRANSFER_VERIFIED effect family.",
       );
     }
-    const learning = normalizedGptLearning(profile.gptLearning);
     const retained = learning.heldOutBenchmarks.filter((item) =>
       item.evaluatedAt !== report.evaluatedAt);
     const updated: EditTypeProfileV1 = {
@@ -706,24 +752,11 @@ export class EditTypeRegistryV1 {
         "Retained truth-suite evidence is required, including failed scene-match evidence.",
       );
     }
-    if (report.certified) {
-      const certificationIntegrity = report.mode === "CERTIFICATION"
-        && report.caseCount >= 20
-        && report.caseCount <= 30
-        && report.passedCaseCount === report.caseCount
-        && report.distinctCaseIdCount === report.caseCount
-        && report.distinctReferenceCount === report.caseCount
-        && report.distinctFinishSha256Count === report.caseCount
-        && report.distinctSourceSetCount >= report.policy.minimumDistinctSourceSets
-        && report.independentTruthCaseCount === report.caseCount
-        && report.fullLengthTruthCaseCount === report.caseCount
-        && report.sceneErrorCount === 0
-        && report.reasons.length === 0;
-      if (!certificationIntegrity) {
-        throw new TypeError(
-          "Certified Practice truth-suite report does not satisfy fail-closed integrity gates.",
-        );
-      }
+    if (report.certified
+      && !isPracticeRetainedTruthSuiteCertificationIntegrityV1(report)) {
+      throw new TypeError(
+        "Certified Practice truth-suite report does not satisfy fail-closed integrity gates.",
+      );
     }
     const learning = normalizedGptLearning(profile.gptLearning);
     const retained = learning.retainedTruthSuiteReports.filter((item) =>

@@ -90,6 +90,7 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
     cases: retained.gptLearning.heldOutCases,
     priorMasteryRecords: retained.gptLearning.masteryRecords,
     priorLearnedSkills: retained.gptLearning.learnedSkills,
+    retainedTruthSuiteReports: retained.gptLearning.retainedTruthSuiteReports,
     ...(professionalBenchmarkEvidence === undefined
       ? {}
       : { professionalBenchmarkEvidence }),

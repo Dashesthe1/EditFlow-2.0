@@ -146,6 +146,10 @@ try {
     Write-Host ("Held-out case passed: " + $Result.heldOutProof.heldOutCase.passed)
     Write-Host ("Held-out benchmark cases retained: " + $Result.heldOutProof.benchmark.caseCount)
     Write-Host ("Held-out skill coverage verified: " + $Result.heldOutProof.benchmark.learnedSkillCoverageVerified)
+    Write-Host ("Held-out retained truth authority: " + $Result.heldOutProof.benchmark.retainedTruthSuiteAuthorityVerified)
+    if ($null -ne $Result.heldOutProof.benchmark.retainedTruthSuiteEvaluatedAt) {
+      Write-Host ("Held-out truth certificate evaluated at: " + $Result.heldOutProof.benchmark.retainedTruthSuiteEvaluatedAt)
+    }
     Write-Host ("Held-out benchmark robust: " + $Result.heldOutProof.benchmark.robust)
   }
   if ($null -ne $Result.assertions) {

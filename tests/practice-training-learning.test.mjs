@@ -527,11 +527,33 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     passed: true,
     evidenceRefs: ["proof:held-out:" + String(index + 1)],
   }));
+  const unboundReport = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases,
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(unboundReport.robust, false);
+  assert.equal(unboundReport.retainedTruthSuiteAuthorityVerified, false);
+  assert.ok(unboundReport.reasons.some((reason) => /retained real-media truth suite/i.test(reason)));
+  registry.recordHeldOutBenchmark(unboundReport);
+  assert.equal(registry.knowledge("benchmark-gated").maturityStage, "OBJECT_AWARE_VERIFIED");
+
+  const retainedTruthReport = retainedTruthCertificationReport("benchmark-gated");
+  assert.equal(retainedTruthReport.certified, true);
+  registry.recordRetainedTruthSuite(retainedTruthReport);
+  assert.equal(
+    registry.knowledge("benchmark-gated").maturityStage,
+    "OBJECT_AWARE_VERIFIED",
+    "a stale unbound benchmark must not compose with a later truth certificate",
+  );
+
   const report = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
     cases,
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(report.caseCount, 20);
   assert.equal(report.passedCaseCount, 20);
@@ -545,6 +567,9 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.deepEqual(report.professionalBenchmarkMissingEffectFamilyIds, []);
   assert.equal(report.professionalBenchmarkCoverageVerified, true);
   assert.equal(report.professionalBenchmarkFailures.length, 0);
+  assert.equal(report.retainedTruthSuiteAuthorityVerified, true);
+  assert.equal(report.retainedTruthSuiteEvaluatedAt, retainedTruthReport.evaluatedAt);
+  assert.ok(report.retainedTruthSuiteEvidenceRefs.length > 0);
   assert.equal(report.objectAwareVerified, true);
   assert.equal(report.subjectRelativeDirectionCaseCount, 3);
   assert.equal(report.subjectRelativeDirectionVerified, true);
@@ -561,6 +586,20 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(report.subjectContinuityChallengeDiversityVerified, true);
   assert.equal(report.robust, true);
   assert.deepEqual(report.reasons, []);
+  assert.throws(
+    () => registry.recordHeldOutBenchmark({
+      ...report,
+      retainedTruthSuiteEvaluatedAt: "2026-09-20T00:00:00.000Z",
+    }),
+    /truth-suite authority is missing, stale/i,
+  );
+  assert.throws(
+    () => registry.recordHeldOutBenchmark({
+      ...report,
+      requiredEffectFamilyIds: [],
+    }),
+    /current TRANSFER_VERIFIED target set/i,
+  );
 
   const nondirectional = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
@@ -572,6 +611,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     })),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(nondirectional.objectAwareVerified, true);
   assert.equal(nondirectional.subjectRelativeDirectionVerified, false);
@@ -586,6 +626,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     })),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(sameDirectionOnly.subjectRelativeDirectionCaseCount, 3);
   assert.equal(sameDirectionOnly.subjectRelativeDirectionVerified, true);
@@ -605,6 +646,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     })),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(easyOnly.subjectContinuityHardCaseCount, 0);
   assert.equal(easyOnly.subjectContinuityHardCaseVerified, false);
@@ -620,6 +662,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     })),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(lowMotionOnly.subjectContinuityHardCaseCount, 3);
   assert.equal(lowMotionOnly.subjectContinuityHardCaseVerified, true);
@@ -641,6 +684,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     })),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(legacyTwoChallengeOnly.subjectContinuityChallengeKindCount, 2);
   assert.deepEqual(
@@ -655,6 +699,7 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     editTypeId: "benchmark-gated",
     cases,
     priorMasteryRecords: [prior],
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(practiceOnly.effectFamilyCoverageVerified, true);
   assert.equal(practiceOnly.professionalBenchmarkCoverageVerified, false);
@@ -662,13 +707,6 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.ok(practiceOnly.reasons.some((reason) => /M6 professional benchmark authority/.test(reason)));
 
   registry.recordHeldOutBenchmark(report);
-  assert.equal(
-    registry.knowledge("benchmark-gated").maturityStage,
-    "OBJECT_AWARE_VERIFIED",
-  );
-  const retainedTruthReport = retainedTruthCertificationReport("benchmark-gated");
-  assert.equal(retainedTruthReport.certified, true);
-  registry.recordRetainedTruthSuite(retainedTruthReport);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
   const contaminated = evaluatePracticeHeldOutBenchmarkV1({
@@ -678,9 +716,33 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
       : item),
     priorMasteryRecords: [prior],
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(contaminated.robust, false);
   assert.ok(contaminated.reasons.some((reason) => /training reference fingerprint/.test(reason)));
+
+  const expandedTransferSession = "practice:benchmark:expanded-transfer";
+  registry.beginGptLearningSession("benchmark-gated", expandedTransferSession, "PRACTICE");
+  registry.completeGptLearningSession({
+    editTypeId: "benchmark-gated",
+    sessionId: expandedTransferSession,
+    mode: "PRACTICE",
+    mastered: true,
+    masteryRecord: {
+      ...masteryRecord(
+        expandedTransferSession,
+        "TRANSFER_VERIFIED",
+        "finish:expanded-transfer",
+        "source:expanded-transfer",
+      ),
+      effectFamilyIds: ["MOTION_WARP"],
+    },
+  });
+  assert.equal(
+    registry.knowledge("benchmark-gated").maturityStage,
+    "OBJECT_AWARE_VERIFIED",
+    "new transfer targets must invalidate a stale ROBUST benchmark until re-certification",
+  );
 });
 
 test("ROBUST requires held-out transfer coverage for every mastered effect family", () => {
@@ -699,6 +761,8 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
     ),
     effectFamilyIds: ["DISPLACEMENT_WARP"],
   };
+  const retainedTruthReport = retainedTruthCertificationReport("family-coverage");
+  assert.equal(retainedTruthReport.certified, true);
   const shutterOnlyCases = Array.from({ length: 20 }, (_, index) => ({
     caseId: "held-out:family:" + String(index + 1),
     sessionId: "practice:held-out:family:" + String(index + 1),
@@ -739,6 +803,7 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
       "SHUTTER_FRAGMENTATION",
       "DISPLACEMENT_WARP",
     ),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.equal(missingFamily.passedCaseCount, 20);
   assert.deepEqual(
@@ -764,6 +829,7 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
       "SHUTTER_FRAGMENTATION",
       "DISPLACEMENT_WARP",
     ),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.deepEqual(covered.missingEffectFamilyIds, []);
   assert.equal(covered.effectFamilyCoverageVerified, true);
@@ -781,6 +847,7 @@ test("ROBUST requires held-out transfer coverage for every mastered effect famil
       "SHUTTER_FRAGMENTATION",
       "DISPLACEMENT_WARP",
     ),
+    retainedTruthSuiteReports: [retainedTruthReport],
   });
   assert.deepEqual(failedCoverage.verifiedEffectFamilyIds, ["SHUTTER_FRAGMENTATION"]);
   assert.deepEqual(failedCoverage.missingEffectFamilyIds, ["DISPLACEMENT_WARP"]);

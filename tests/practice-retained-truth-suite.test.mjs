@@ -335,4 +335,25 @@ test("Edit Type memory refuses a forged certified truth report", () => {
     }),
     /fail-closed integrity gates/,
   );
+  assert.throws(
+    () => registry.recordRetainedTruthSuite({
+      ...report,
+      difficultyKindCount: 0,
+    }),
+    /fail-closed integrity gates/,
+  );
+  assert.throws(
+    () => registry.recordRetainedTruthSuite({
+      ...report,
+      cases: report.cases.slice(0, 19),
+    }),
+    /fail-closed integrity gates/,
+  );
+  assert.throws(
+    () => registry.recordRetainedTruthSuite({
+      ...report,
+      evaluatedAt: "not-a-date",
+    }),
+    /fail-closed integrity gates/,
+  );
 });
