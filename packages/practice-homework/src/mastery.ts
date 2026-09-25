@@ -547,6 +547,9 @@ const benchmarkPolicy = (
   ),
 });
 
+const RETAINED_TRUTH_AUTHORITY_REASON =
+  "Held-out benchmark is not locked to a certified 20-30 case retained real-media truth suite.";
+
 export const isPracticeRetainedTruthSuiteCertificationIntegrityV1 = (
   report: PracticeRetainedTruthSuiteReportV1,
 ): boolean => report.certified === true
@@ -567,6 +570,25 @@ export const isPracticeRetainedTruthSuiteCertificationIntegrityV1 = (
   && report.evidenceRefs.length > 0
   && Number.isFinite(Date.parse(report.evaluatedAt));
 
+export const isPracticeHeldOutBenchmarkProofIntegrityV1 = (
+  report: PracticeHeldOutBenchmarkReportV1,
+): boolean => report.caseCount >= report.policy.minimumCases
+  && report.caseCount <= report.policy.maximumCases
+  && report.cases.length === report.caseCount
+  && report.passedCaseCount === report.caseCount
+  && report.distinctMaterialPairCount === report.caseCount
+  && report.effectFamilyCoverageVerified === true
+  && report.learnedSkillCoverageVerified === true
+  && report.professionalBenchmarkCoverageVerified === true
+  && report.objectAwareVerified === true
+  && report.subjectRelativeDirectionVerified === true
+  && report.subjectRelativeDirectionDiversityVerified === true
+  && report.subjectContinuityHardCaseVerified === true
+  && report.subjectContinuityChallengeDiversityVerified === true
+  && report.evidenceRefs.length > 0
+  && Number.isFinite(Date.parse(report.evaluatedAt))
+  && report.reasons.filter((reason) => reason !== RETAINED_TRUTH_AUTHORITY_REASON).length === 0;
+
 const retainedTruthSuiteAuthority = (
   editTypeId: string,
   reports: readonly PracticeRetainedTruthSuiteReportV1[],
@@ -586,6 +608,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
 }): PracticeHeldOutBenchmarkReportV1 => {
   const policy = benchmarkPolicy(input.policy);
   const reasons: string[] = [];
+  const retainedTruthReasons: string[] = [];
   const truthAuthority = retainedTruthSuiteAuthority(
     input.editTypeId.trim(),
     input.retainedTruthSuiteReports ?? [],
@@ -596,9 +619,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     ? []
     : uniqueNonEmpty(truthAuthority.evidenceRefs);
   if (!retainedTruthSuiteAuthorityVerified) {
-    reasons.push(
-      "Held-out benchmark is not locked to a certified 20-30 case retained real-media truth suite.",
-    );
+    retainedTruthReasons.push(RETAINED_TRUTH_AUTHORITY_REASON);
   }
   const trainingRecords = input.priorMasteryRecords ?? [];
   const trainingReferences = new Set(
@@ -938,10 +959,9 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
         + " distinct hard subject-continuity challenge kinds on unseen material.",
     );
   }
-  const robust = reasons.length === 0
+  const heldOutProofVerified = reasons.length === 0
     && passedCaseCount === input.cases.length
     && materialPairs.size === input.cases.length
-    && retainedTruthSuiteAuthorityVerified
     && effectFamilyCoverageVerified
     && learnedSkillCoverageVerified
     && professionalBenchmarkCoverageVerified
@@ -950,6 +970,8 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     && subjectRelativeDirectionDiversityVerified
     && subjectContinuityHardCaseVerified
     && subjectContinuityChallengeDiversityVerified;
+  const robust = heldOutProofVerified && retainedTruthSuiteAuthorityVerified;
+  const benchmarkReasons = [...new Set([...reasons, ...retainedTruthReasons])];
 
   return {
     schema: "editflow.practice-held-out-benchmark.v1",
@@ -975,6 +997,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     retainedTruthSuiteAuthorityVerified,
     retainedTruthSuiteEvaluatedAt,
     retainedTruthSuiteEvidenceRefs,
+    heldOutProofVerified,
     objectAwareCaseCount,
     objectAwareVerified,
     subjectRelativeDirectionCaseCount,
@@ -988,7 +1011,7 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
     subjectContinuityChallenges: verifiedSubjectContinuityChallenges,
     subjectContinuityChallengeDiversityVerified,
     robust,
-    reasons: [...new Set(reasons)],
+    reasons: benchmarkReasons,
     cases: structuredClone(input.cases),
     evidenceRefs: [...evidenceRefs],
     evaluatedAt: new Date().toISOString(),

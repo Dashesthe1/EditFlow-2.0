@@ -47,6 +47,10 @@ export {
   createPracticeM6CurrentAeTrainingRuntimeV1,
 } from "./practice-training-runtime.js";
 export {
+  recordPracticeHeldOutCertificationV1,
+  refreshPracticeHeldOutBenchmarkV1,
+} from "./practice-held-out-certification.js";
+export {
   evaluatePracticeRetainedTruthSuiteManifestV1,
 } from "./practice-retained-truth-suite.js";
 export type {

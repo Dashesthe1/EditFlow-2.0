@@ -31,6 +31,7 @@ import {
   buildPracticeCrossSourceSubjectProofV1,
   createPracticeM6CurrentAeAssemblyV1,
   createPracticeM6CurrentAeTrainingRuntimeV1,
+  refreshPracticeHeldOutBenchmarkV1,
 } from "../.tmp/runtime/apps/desktop-host/src/index.js";
 
 const passedReport = (value = 0.98) => ({
@@ -534,8 +535,10 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
   });
   assert.equal(unboundReport.robust, false);
+  assert.equal(unboundReport.heldOutProofVerified, true);
   assert.equal(unboundReport.retainedTruthSuiteAuthorityVerified, false);
   assert.ok(unboundReport.reasons.some((reason) => /retained real-media truth suite/i.test(reason)));
+  for (const heldOutCase of cases) registry.recordHeldOutCase("benchmark-gated", heldOutCase);
   registry.recordHeldOutBenchmark(unboundReport);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "OBJECT_AWARE_VERIFIED");
 
@@ -547,6 +550,15 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     "OBJECT_AWARE_VERIFIED",
     "a stale unbound benchmark must not compose with a later truth certificate",
   );
+  const refreshedReport = refreshPracticeHeldOutBenchmarkV1({
+    registry,
+    editTypeId: "benchmark-gated",
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+  });
+  assert.equal(refreshedReport.heldOutProofVerified, true);
+  assert.equal(refreshedReport.retainedTruthSuiteAuthorityVerified, true);
+  assert.equal(refreshedReport.robust, true);
+  assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
   const report = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",

@@ -1624,6 +1624,8 @@ export class PracticePanelServerV1 {
     let masteryProofRef: string | null = null;
     let masteryReasons: readonly string[] = [];
     let heldOutCasePassed: boolean | null = null;
+    let heldOutProofVerified: boolean | null = null;
+    let retainedTruthAuthorityVerified: boolean | null = null;
     let heldOutBenchmarkRobust: boolean | null = null;
     let heldOutBenchmarkCaseCount = 0;
     let finalRenderRef = requestedRenderRef;
@@ -1686,6 +1688,8 @@ export class PracticePanelServerV1 {
               traceReasons,
             });
             heldOutCasePassed = certification.heldOutCase.passed;
+            heldOutProofVerified = certification.benchmark.heldOutProofVerified;
+            retainedTruthAuthorityVerified = certification.benchmark.retainedTruthSuiteAuthorityVerified;
             heldOutBenchmarkRobust = certification.benchmark.robust;
             heldOutBenchmarkCaseCount = certification.benchmark.caseCount;
             masteryReasons = [...new Set([
@@ -1752,7 +1756,11 @@ export class PracticePanelServerV1 {
           + (heldOutCasePassed === true ? "PASS" : "FAIL")
           + ". Benchmark: "
           + String(heldOutBenchmarkCaseCount)
-          + " retained case(s), "
+          + " retained case(s); held-out generalization "
+          + (heldOutProofVerified === true ? "VERIFIED" : "PENDING")
+          + "; retained truth authority "
+          + (retainedTruthAuthorityVerified === true ? "CERTIFIED" : "PENDING")
+          + "; overall "
           + (heldOutBenchmarkRobust === true ? "ROBUST." : "not yet ROBUST.")
           + (masteryReasons.length === 0 ? "" : " " + masteryReasons.join(" "))
         : masteryRecord === undefined

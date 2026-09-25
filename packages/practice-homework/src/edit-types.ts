@@ -21,6 +21,7 @@ import type {
 } from "./contracts.js";
 import {
   derivePracticeMaturityStageV1,
+  isPracticeHeldOutBenchmarkProofIntegrityV1,
   isPracticeRetainedTruthSuiteCertificationIntegrityV1,
 } from "./mastery.js";
 import {
@@ -139,6 +140,8 @@ const normalizedGptLearning = (
       verifiedLearnedSkillIds: uniqueStrings(report.verifiedLearnedSkillIds ?? []),
       missingLearnedSkillIds: uniqueStrings(report.missingLearnedSkillIds ?? []),
       learnedSkillCoverageVerified: report.learnedSkillCoverageVerified === true,
+      heldOutProofVerified: report.heldOutProofVerified === true
+        || isPracticeHeldOutBenchmarkProofIntegrityV1(report),
       retainedTruthSuiteAuthorityVerified: report.retainedTruthSuiteAuthorityVerified === true,
       retainedTruthSuiteEvaluatedAt:
         typeof report.retainedTruthSuiteEvaluatedAt === "string"
@@ -652,6 +655,15 @@ export class EditTypeRegistryV1 {
       throw new TypeError("Unsupported Practice held-out benchmark schema.");
     }
     const learning = normalizedGptLearning(profile.gptLearning);
+    if (report.heldOutProofVerified
+      && !isPracticeHeldOutBenchmarkProofIntegrityV1(report)) {
+      throw new TypeError(
+        "Held-out Practice proof claims verification without satisfying its machine integrity gates.",
+      );
+    }
+    if (report.robust && !report.heldOutProofVerified) {
+      throw new TypeError("ROBUST Practice maturity requires verified held-out generalization proof.");
+    }
     if (report.robust) {
       if (!report.retainedTruthSuiteAuthorityVerified
         || report.retainedTruthSuiteEvaluatedAt === null

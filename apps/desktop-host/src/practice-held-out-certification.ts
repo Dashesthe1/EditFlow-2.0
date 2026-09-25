@@ -98,3 +98,38 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
   input.registry.recordHeldOutBenchmark(benchmark);
   return { heldOutCase, benchmark };
 };
+
+export const refreshPracticeHeldOutBenchmarkV1 = (input: {
+  readonly registry: EditTypeRegistryV1;
+  readonly editTypeId: string;
+  readonly repositoryRoot?: string;
+  readonly professionalBenchmarkEvidence?: readonly BenchmarkCaseEvidenceV1[];
+}): PracticeHeldOutBenchmarkReportV1 => {
+  const editTypeId = input.editTypeId.trim();
+  if (editTypeId.length === 0) {
+    throw new TypeError("Held-out benchmark refresh requires an Edit Type.");
+  }
+  const retained = input.registry.knowledge(editTypeId);
+  if (retained === null) {
+    throw new TypeError("Held-out benchmark refresh requires retained Edit Type knowledge.");
+  }
+  if (retained.gptLearning.heldOutCases.length === 0) {
+    throw new TypeError("Held-out benchmark refresh requires retained held-out cases.");
+  }
+  const professionalBenchmarkEvidence = input.professionalBenchmarkEvidence
+    ?? (input.repositoryRoot === undefined
+      ? undefined
+      : loadM6ProfessionalBenchmarkEvidenceV1(input.repositoryRoot));
+  const benchmark = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId,
+    cases: retained.gptLearning.heldOutCases,
+    priorMasteryRecords: retained.gptLearning.masteryRecords,
+    priorLearnedSkills: retained.gptLearning.learnedSkills,
+    retainedTruthSuiteReports: retained.gptLearning.retainedTruthSuiteReports,
+    ...(professionalBenchmarkEvidence === undefined
+      ? {}
+      : { professionalBenchmarkEvidence }),
+  });
+  input.registry.recordHeldOutBenchmark(benchmark);
+  return benchmark;
+};

@@ -96,20 +96,38 @@
     var maturity = knowledge && knowledge.maturityStage ? knowledge.maturityStage : "UNPROVEN";
     var referenceCount = knowledge ? Number(knowledge.referenceVerifiedPracticeSessionCount || 0) : 0;
     var transferCount = knowledge ? Number(knowledge.transferVerifiedPracticeSessionCount || 0) : 0;
-    var heldOutCount = learning && Array.isArray(learning.heldOutCases) ? learning.heldOutCases.length : 0;
+    var heldOutCases = learning && Array.isArray(learning.heldOutCases) ? learning.heldOutCases : [];
+    var heldOutBenchmarks = learning && Array.isArray(learning.heldOutBenchmarks)
+      ? learning.heldOutBenchmarks : [];
+    var truthReports = learning && Array.isArray(learning.retainedTruthSuiteReports)
+      ? learning.retainedTruthSuiteReports : [];
+    var latestBenchmark = heldOutBenchmarks.slice().sort(function (left, right) {
+      return String(right.evaluatedAt || "").localeCompare(String(left.evaluatedAt || ""));
+    })[0] || null;
+    var certifiedTruth = truthReports.filter(function (report) { return report.certified === true; })
+      .sort(function (left, right) {
+        return String(right.evaluatedAt || "").localeCompare(String(left.evaluatedAt || ""));
+      })[0] || null;
+    var latestTruth = certifiedTruth || truthReports.slice().sort(function (left, right) {
+      return String(right.evaluatedAt || "").localeCompare(String(left.evaluatedAt || ""));
+    })[0] || null;
     var referenceDone = referenceCount > 0
       || ["VISUAL_MATCH_VERIFIED", "TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
     var transferDone = transferCount > 0
       || ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
-    var heldOutDone = maturity === "ROBUST";
+    var heldOutDone = maturity === "ROBUST"
+      || (latestBenchmark && latestBenchmark.heldOutProofVerified === true);
+    var truthDone = maturity === "ROBUST" || certifiedTruth !== null;
     return {
       maturity: maturity,
       referenceCount: referenceCount,
       transferCount: transferCount,
-      heldOutCount: heldOutCount,
+      heldOutCount: heldOutCases.length,
+      truthCaseCount: latestTruth ? Number(latestTruth.caseCount || 0) : 0,
       referenceDone: referenceDone,
       transferDone: transferDone,
-      heldOutDone: heldOutDone
+      heldOutDone: heldOutDone,
+      truthDone: truthDone
     };
   }
 
@@ -134,7 +152,8 @@
       lifecycleMaturityEl.textContent = "UNPROVEN";
       addLifecycleStep("1 Reference proof", "NEXT", "No machine-passing reference run yet");
       addLifecycleStep("2 Transfer proof", "LOCKED", "Requires reference proof first");
-      addLifecycleStep("3 Held-out certification", "LOCKED", "Requires transfer proof first");
+      addLifecycleStep("3 Held-out generalization", "LOCKED", "Requires transfer proof first");
+      addLifecycleStep("4 Retained truth authority", "LOCKED", "Requires independent full-length real-media truth");
       lifecycleNextEl.textContent = "Choose an Edit Type to see the next required proof.";
       return;
     }
@@ -152,9 +171,14 @@
       state.transferCount + " materially different transfer session" + (state.transferCount === 1 ? "" : "s")
     );
     addLifecycleStep(
-      "3 Held-out certification",
+      "3 Held-out generalization",
       state.heldOutDone ? "DONE" : state.transferDone ? "NEXT" : "LOCKED",
       state.heldOutCount + " retained held-out case" + (state.heldOutCount === 1 ? "" : "s")
+    );
+    addLifecycleStep(
+      "4 Retained truth authority",
+      state.truthDone ? "DONE" : state.heldOutDone ? "NEXT" : "LOCKED",
+      state.truthCaseCount + " independently reviewed truth case" + (state.truthCaseCount === 1 ? "" : "s")
     );
 
     if (!state.referenceDone) {
@@ -162,9 +186,13 @@
     } else if (!state.transferDone) {
       lifecycleNextEl.textContent = "Next: run Practice on materially different Finish and Start media. Reused reference or Start bytes are rejected before transfer promotion.";
     } else if (!state.heldOutDone) {
-      lifecycleNextEl.textContent = "Next: AUTO now runs held-out certification. Use genuinely unseen Finish/Start media; transfer-verified knowledge is frozen and failed machine-proven cases remain in the benchmark.";
+      lifecycleNextEl.textContent = "Next: AUTO runs held-out generalization on genuinely unseen Finish/Start media. Transfer-verified knowledge stays frozen and failed machine-proven cases remain retained.";
+    } else if (!state.truthDone) {
+      lifecycleNextEl.textContent = "Next: complete the independent 20-30 case retained real-media truth suite. More held-out edits are not the current blocker.";
+    } else if (state.maturity !== "ROBUST") {
+      lifecycleNextEl.textContent = "Next: refresh the held-out benchmark against the certified truth authority and current transfer target set. No new edit is required for this refresh.";
     } else {
-      lifecycleNextEl.textContent = "Held-out certification is ROBUST. Pro Creation can use the retained transfer-verified knowledge; further Practice extends benchmark coverage without weakening the proof gates.";
+      lifecycleNextEl.textContent = "Practice is ROBUST: held-out generalization and independent retained-truth authority are both bound to the current transfer target set.";
     }
   }
 
@@ -183,27 +211,55 @@
     return transferVerifiedReady();
   }
 
+  function autoProgressionBlock() {
+    if (selectedPracticeRole() !== "AUTO") return null;
+    var profile = selectedEditTypeProfile();
+    if (!profile) return null;
+    var state = lifecycleState(profile);
+    if (!state.heldOutDone) return null;
+    if (!state.truthDone) return "TRUTH_REQUIRED";
+    if (state.maturity !== "ROBUST") return "BENCHMARK_REFRESH_REQUIRED";
+    return "ROBUST_COMPLETE";
+  }
+
   function updatePracticeRoleUi() {
     if (!practiceRoleEl || !practiceRoleHintEl) return;
     var selected = selectedPracticeRole();
     var effective = effectivePracticeRole();
     var heldOut = effective === "HELD_OUT_CERTIFICATION";
-    practiceRoleHintEl.textContent = selected === "AUTO"
-      ? (heldOut
-        ? "Automatic progression: TRANSFER VERIFIED knowledge is frozen. The next Practice run is a held-out certification on genuinely unseen Finish/Start material."
-        : "Automatic progression: continue learning and machine-verifying new reconstructions until a materially different pair promotes this Edit Type to TRANSFER VERIFIED.")
-      : heldOut
-        ? "Forced certification freezes transfer-verified knowledge: no research, new skills, or retained lessons. Failed machine-proven cases remain in the benchmark."
-        : "Forced learning may research, correct, and retain proven lessons under the selected Edit Type.";
+    var progressionBlock = autoProgressionBlock();
+    if (selected === "AUTO" && progressionBlock === "TRUTH_REQUIRED") {
+      practiceRoleHintEl.textContent = "Automatic progression paused: held-out generalization is already verified. Complete the independent retained-truth suite before running more edits.";
+    } else if (selected === "AUTO" && progressionBlock === "BENCHMARK_REFRESH_REQUIRED") {
+      practiceRoleHintEl.textContent = "Automatic progression paused: retained truth is certified. Refresh the held-out benchmark against the current transfer target set; no new edit is required.";
+    } else if (selected === "AUTO" && progressionBlock === "ROBUST_COMPLETE") {
+      practiceRoleHintEl.textContent = "Automatic progression complete: this Edit Type is ROBUST. Choose forced held-out certification only when intentionally extending benchmark coverage.";
+    } else {
+      practiceRoleHintEl.textContent = selected === "AUTO"
+        ? (heldOut
+          ? "Automatic progression: TRANSFER VERIFIED knowledge is frozen. The next Practice run is held-out generalization on genuinely unseen Finish/Start material."
+          : "Automatic progression: continue learning and machine-verifying new reconstructions until a materially different pair promotes this Edit Type to TRANSFER VERIFIED.")
+        : heldOut
+          ? "Forced certification freezes transfer-verified knowledge: no research, new skills, or retained lessons. Failed machine-proven cases remain in the benchmark."
+          : "Forced learning may research, correct, and retain proven lessons under the selected Edit Type.";
+    }
     if (mode === "PRACTICE") {
-      actionEl.textContent = heldOut ? "Run held-out certification" : "Proceed to do homework";
+      actionEl.textContent = progressionBlock === "TRUTH_REQUIRED"
+        ? "Retained truth required"
+        : progressionBlock === "BENCHMARK_REFRESH_REQUIRED"
+          ? "Benchmark refresh required"
+          : progressionBlock === "ROBUST_COMPLETE"
+            ? "Practice ROBUST"
+            : heldOut ? "Run held-out certification" : "Proceed to do homework";
     }
   }
 
   function updateAction() {
     var hasVideo = startFiles.some(function (item) { return item.kind === "VIDEO"; });
     var valid = serviceReady && !activeRunId && selectedEditType() && hasVideo && panelConnected;
-    if (mode === "PRACTICE") valid = valid && Boolean(finishPath) && heldOutReady();
+    if (mode === "PRACTICE") {
+      valid = valid && Boolean(finishPath) && heldOutReady() && autoProgressionBlock() === null;
+    }
     actionEl.disabled = !valid;
     cancelEl.hidden = !activeRunId;
     cancelEl.disabled = !activeRunId;
@@ -498,6 +554,17 @@
   }
 
   function startPractice() {
+    var progressionBlock = autoProgressionBlock();
+    if (progressionBlock !== null) {
+      var message = progressionBlock === "TRUTH_REQUIRED"
+        ? "Held-out generalization is already verified. Complete the retained-truth suite before running more AUTO edits."
+        : progressionBlock === "BENCHMARK_REFRESH_REQUIRED"
+          ? "Retained truth is certified. Refresh the held-out benchmark; no new AUTO edit is required."
+          : "This Edit Type is already ROBUST. Use forced held-out certification only to extend benchmark coverage.";
+      setRunState("BLOCKED", message);
+      updateAction();
+      return;
+    }
     var videos = startFiles.filter(function (item) { return item.kind === "VIDEO"; })
       .map(function (item) { return item.path; });
     var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })

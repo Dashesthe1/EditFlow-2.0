@@ -809,6 +809,8 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly retainedTruthSuiteAuthorityVerified: boolean;
   readonly retainedTruthSuiteEvaluatedAt: string | null;
   readonly retainedTruthSuiteEvidenceRefs: readonly string[];
+  /** Held-out generalization proof, excluding the separately certified retained-truth authority. */
+  readonly heldOutProofVerified: boolean;
   readonly objectAwareCaseCount: number;
   readonly objectAwareVerified: boolean;
   readonly subjectRelativeDirectionCaseCount: number;
