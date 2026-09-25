@@ -340,6 +340,8 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 2,
             )
             self.assertEqual(queue["acquisition"]["unboundFinishCandidateCount"], 2)
+            self.assertEqual(queue["acquisition"]["finishCandidateShortfallForMinimum"], 17)
+            self.assertEqual(queue["finishDiscovery"]["finishCandidateShortfallForMinimum"], 17)
             self.assertEqual(
                 queue["finishDiscovery"]["unboundFinishCandidates"],
                 [
@@ -367,9 +369,56 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 for item in queue["blockingDependencies"]
             ))
             self.assertTrue(any(
+                "perceptually unique Finish candidate" in item
+                for item in queue["blockingDependencies"]
+            ))
+            self.assertTrue(any(
                 "matcher-blind shot annotations" in item
                 for item in queue["blockingDependencies"]
             ))
+
+    def test_acquisition_plan_schedules_exact_binding_tasks_for_minimum_cohort(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            plan = self._plan(root, [case])
+            candidates = []
+            for index in range(19):
+                candidates.append({
+                    "path": str(root / f"candidate-{index:02d}.mp4"),
+                    "fileName": f"Candidate {index:02d}.mp4",
+                    "sha256": f"{index + 1:064x}",
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": index % 2 == 0,
+                })
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 19,
+                "canReachMinimumByScreenedUniqueFinishCount": True,
+                "candidates": candidates,
+            })
+
+            result = tool.build_acquisition_plan(plan, discovery)
+
+            self.assertEqual(result["schema"], tool.ACQUISITION_PLAN_SCHEMA)
+            self.assertTrue(result["candidatePoolReady"])
+            self.assertEqual(result["targetNewCaseCount"], 19)
+            self.assertEqual(result["selectedCandidateCount"], 19)
+            self.assertEqual(result["finishCandidateShortfallForMinimum"], 0)
+            self.assertEqual(len(result["tasks"]), 19)
+            first = result["tasks"][0]
+            self.assertEqual(first["caseIdSuggestion"], "retained-000000000000")
+            self.assertEqual(first["requiredActions"], [
+                "ANALYZE_REFERENCE",
+                "BIND_EXACT_START_SOURCE",
+                "ADMIT_BOUND_CASE",
+            ])
+            self.assertTrue(first["mustIncreaseDistinctSourceSets"])
+            self.assertTrue(result["tasks"][1]["mustIncreaseDistinctSourceSets"])
+            self.assertFalse(result["tasks"][2]["mustIncreaseDistinctSourceSets"])
+            self.assertIn("reference-analysis.json", first["artifactTargets"]["referenceAnalysis"])
+            self.assertEqual(result["blockingReasons"], [])
 
     def test_review_pack_waits_for_independent_worksheet_completion(self):
         with TemporaryDirectory() as temporary:

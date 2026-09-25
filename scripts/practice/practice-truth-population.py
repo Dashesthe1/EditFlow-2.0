@@ -15,6 +15,7 @@ POPULATION_SCHEMA = "editflow.practice-truth-population-plan.v1"
 STATUS_SCHEMA = "editflow.practice-truth-population-status.v1"
 WORK_QUEUE_SCHEMA = "editflow.practice-truth-population-work-queue.v1"
 PROGRESSION_GATE_SCHEMA = "editflow.practice-truth-population-progression-gate.v1"
+ACQUISITION_PLAN_SCHEMA = "editflow.practice-truth-acquisition-plan.v1"
 REFERENCE_SCHEMA = "editflow.practice-reference-analysis.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
@@ -1047,20 +1048,34 @@ def build_work_queue(plan_path, finish_discovery_path=None):
             if item.get("requiresSourceBinding") is True
         ]
         needs_binding = len(unbound_candidates)
+        screened_unique_count = discovery.get("perceptuallyUniqueUnusedFinishCount")
+        eligible_candidate_count = (
+            int(screened_unique_count)
+            if isinstance(screened_unique_count, int) and screened_unique_count >= 0
+            else needs_binding
+        )
+        finish_candidate_shortfall = max(
+            0,
+            acquisition["additionalCasesNeededForMinimum"] - eligible_candidate_count,
+        )
         discovery_summary = {
             "path": str(Path(finish_discovery_path).resolve()),
             "unusedFinishCandidateCount": len(candidates),
-            "perceptuallyUniqueUnusedFinishCount": discovery.get(
-                "perceptuallyUniqueUnusedFinishCount"
-            ),
+            "perceptuallyUniqueUnusedFinishCount": screened_unique_count,
             "candidatesRequiringSourceBindingCount": needs_binding,
             "unboundFinishCandidates": unbound_candidates,
             "canReachMinimumFromScreenedFinishPool": discovery.get(
                 "canReachMinimumByScreenedUniqueFinishCount"
             ),
+            "finishCandidateShortfallForMinimum": finish_candidate_shortfall,
         }
         acquisition["exactSourceBindingRequiredBeforeAdmission"] = needs_binding > 0
         acquisition["unboundFinishCandidateCount"] = needs_binding
+        acquisition["finishCandidateShortfallForMinimum"] = finish_candidate_shortfall
+        acquisition["sourceAcquisitionRequired"] = (
+            acquisition["sourceAcquisitionRequired"]
+            or acquisition["additionalCasesNeededForMinimum"] > 0
+        )
 
     blockers = []
     if acquisition["additionalCasesNeededForMinimum"]:
@@ -1068,6 +1083,12 @@ def build_work_queue(plan_path, finish_discovery_path=None):
             "Admit at least "
             + str(acquisition["additionalCasesNeededForMinimum"])
             + " additional exact-bound cases."
+        )
+    if acquisition.get("finishCandidateShortfallForMinimum", 0):
+        blockers.append(
+            "Discover at least "
+            + str(acquisition["finishCandidateShortfallForMinimum"])
+            + " additional perceptually unique Finish candidate(s) before the minimum cohort can be reached."
         )
     if acquisition["additionalDistinctSourceSetsNeeded"]:
         blockers.append(
@@ -1111,6 +1132,86 @@ def build_work_queue(plan_path, finish_discovery_path=None):
     }
 
 
+def build_acquisition_plan(plan_path, finish_discovery_path):
+    plan = require_plan(plan_path)
+    queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
+    discovery = queue.get("finishDiscovery")
+    if discovery is None:
+        raise ValueError("Practice acquisition planning requires finish-discovery evidence.")
+
+    acquisition = queue["acquisition"]
+    target_count = int(acquisition["additionalCasesNeededForMinimum"])
+    candidates = list(discovery.get("unboundFinishCandidates") or [])
+    selected = candidates[:target_count] if target_count > 0 else []
+    existing_case_ids = {
+        str(case.get("caseId", "")).strip()
+        for case in plan["cases"]
+        if str(case.get("caseId", "")).strip()
+    }
+    used_case_ids = set(existing_case_ids)
+    artifact_root = Path(plan_path).resolve().parent / "acquisition"
+    required_difficulties = list(acquisition["unrepresentedDifficultyKinds"])
+    source_sets_needed = int(acquisition["additionalDistinctSourceSetsNeeded"])
+    tasks = []
+
+    for index, candidate in enumerate(selected):
+        finish_path = str(candidate.get("path", "")).strip()
+        finish_sha = str(candidate.get("sha256", "")).strip().lower()
+        token = finish_sha[:12] if len(finish_sha) >= 12 else hashlib.sha256(
+            finish_path.encode("utf-8")
+        ).hexdigest()[:12]
+        base_case_id = "retained-" + token
+        case_id = base_case_id
+        suffix = 2
+        while case_id in used_case_ids:
+            case_id = base_case_id + "-" + str(suffix)
+            suffix += 1
+        used_case_ids.add(case_id)
+        case_root = artifact_root / case_id
+        tasks.append({
+            "priority": index + 1,
+            "caseIdSuggestion": case_id,
+            "finishPath": finish_path,
+            "finishSha256": finish_sha,
+            "sourceBindingState": candidate.get("sourceBindingState"),
+            "requiredActions": [
+                "ANALYZE_REFERENCE" if candidate.get("requiresReferenceAnalysis") else "REUSE_REFERENCE_ANALYSIS",
+                "BIND_EXACT_START_SOURCE",
+                "ADMIT_BOUND_CASE",
+            ],
+            "mustIncreaseDistinctSourceSets": index < source_sets_needed,
+            "preferredDifficultyKinds": required_difficulties,
+            "artifactTargets": {
+                "referenceAnalysis": str(case_root / "reference-analysis.json"),
+                "sourceBinding": str(case_root / "source-binding.json"),
+                "sourceMatches": str(case_root / "source-binding.matches.json"),
+                "caseDir": str(case_root),
+            },
+        })
+
+    shortfall = max(0, target_count - len(selected))
+    blockers = []
+    if shortfall:
+        blockers.append(
+            "Finish discovery is short by " + str(shortfall)
+            + " perceptually unique candidate(s) for the minimum retained cohort."
+        )
+    return {
+        "schema": ACQUISITION_PLAN_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "targetNewCaseCount": target_count,
+        "selectedCandidateCount": len(selected),
+        "finishCandidateShortfallForMinimum": shortfall,
+        "candidatePoolReady": shortfall == 0,
+        "requiresExactSourceBinding": target_count > 0,
+        "additionalDistinctSourceSetsNeeded": source_sets_needed,
+        "additionalDifficultyKindsNeeded": int(acquisition["additionalDifficultyKindsNeeded"]),
+        "preferredDifficultyKinds": required_difficulties,
+        "blockingReasons": blockers,
+        "tasks": tasks,
+    }
+
+
 def build_progression_gate(plan_path, finish_discovery_path=None):
     status = build_status(plan_path)
     queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
@@ -1145,6 +1246,11 @@ def build_progression_gate(plan_path, finish_discovery_path=None):
             str(queue["remainingIndependentReviewShotCount"])
             + " matcher-blind shot annotation(s) remain incomplete."
         )
+    if acquisition.get("finishCandidateShortfallForMinimum", 0) > 0:
+        reasons.append(
+            str(acquisition["finishCandidateShortfallForMinimum"])
+            + " additional perceptually unique Finish candidate(s) are required."
+        )
     if acquisition["additionalDistinctSourceSetsNeeded"] > 0:
         reasons.append(
             str(acquisition["additionalDistinctSourceSetsNeeded"])
@@ -1177,6 +1283,12 @@ def build_progression_gate(plan_path, finish_discovery_path=None):
             "additionalCasesNeededForMinimum": acquisition["additionalCasesNeededForMinimum"],
             "additionalDistinctSourceSetsNeeded": acquisition["additionalDistinctSourceSetsNeeded"],
             "additionalDifficultyKindsNeeded": acquisition["additionalDifficultyKindsNeeded"],
+            "finishCandidateShortfallForMinimum": acquisition.get(
+                "finishCandidateShortfallForMinimum", 0
+            ),
+            "exactSourceBindingRequiredBeforeAdmission": acquisition.get(
+                "exactSourceBindingRequiredBeforeAdmission", False
+            ),
             "sourceAcquisitionRequired": acquisition["sourceAcquisitionRequired"],
         },
         "blockingReasons": reasons,
@@ -2176,6 +2288,14 @@ def build_parser():
         help="Optional finish-discovery JSON used to retain acquisition blockers in the gate report.",
     )
     progression_gate.add_argument("--output")
+    acquisition_plan = sub.add_parser("acquisition-plan")
+    acquisition_plan.add_argument("--manifest", required=True)
+    acquisition_plan.add_argument(
+        "--finish-discovery",
+        required=True,
+        help="Finish-discovery JSON used to schedule exact-bound case acquisition.",
+    )
+    acquisition_plan.add_argument("--output")
     advance = sub.add_parser("advance")
     advance.add_argument("--manifest", required=True)
     advance.add_argument(
@@ -2322,6 +2442,13 @@ def main():
         )
         if not payload["retainedEvaluationAllowed"]:
             exit_code = 3
+    elif args.command == "acquisition-plan":
+        payload = build_acquisition_plan(
+            args.manifest,
+            args.finish_discovery,
+        )
+        if not payload["candidatePoolReady"]:
+            exit_code = 4
     elif args.command == "advance":
         payload = advance_population(
             args.manifest,
