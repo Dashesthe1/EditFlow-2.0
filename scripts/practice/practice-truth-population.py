@@ -14,6 +14,7 @@ from pathlib import Path
 POPULATION_SCHEMA = "editflow.practice-truth-population-plan.v1"
 STATUS_SCHEMA = "editflow.practice-truth-population-status.v1"
 WORK_QUEUE_SCHEMA = "editflow.practice-truth-population-work-queue.v1"
+PROGRESSION_GATE_SCHEMA = "editflow.practice-truth-population-progression-gate.v1"
 REFERENCE_SCHEMA = "editflow.practice-reference-analysis.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
@@ -1100,6 +1101,78 @@ def build_work_queue(plan_path, finish_discovery_path=None):
     }
 
 
+def build_progression_gate(plan_path, finish_discovery_path=None):
+    status = build_status(plan_path)
+    queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
+    candidate_count = int(status["candidateCaseCount"])
+    ready_count = int(status["readyForCorpusCount"])
+    pending = [item for item in queue["queue"] if item["nextAction"] != "NONE"]
+    pending_action_counts = Counter(item["nextAction"] for item in pending)
+    acquisition = queue["acquisition"]
+
+    reasons = []
+    if not status["populationWindowReached"]:
+        reasons.extend(status["populationReasons"])
+    if candidate_count < MIN_CASES:
+        reasons.append(
+            "Practice retained evaluation requires at least "
+            + str(MIN_CASES)
+            + " planned real-media cases."
+        )
+    if candidate_count > MAX_CASES:
+        reasons.append(
+            "Practice retained evaluation supports at most "
+            + str(MAX_CASES)
+            + " planned real-media cases."
+        )
+    if ready_count != candidate_count:
+        reasons.append(
+            str(candidate_count - ready_count)
+            + " planned case(s) are not READY_FOR_CORPUS."
+        )
+    if queue["remainingIndependentReviewShotCount"] > 0:
+        reasons.append(
+            str(queue["remainingIndependentReviewShotCount"])
+            + " matcher-blind shot annotation(s) remain incomplete."
+        )
+    if acquisition["additionalDistinctSourceSetsNeeded"] > 0:
+        reasons.append(
+            str(acquisition["additionalDistinctSourceSetsNeeded"])
+            + " additional distinct Start source set(s) are required."
+        )
+    if acquisition["additionalDifficultyKindsNeeded"] > 0:
+        reasons.append(
+            str(acquisition["additionalDifficultyKindsNeeded"])
+            + " additional hard-case difficulty kind(s) are required."
+        )
+    if pending:
+        reasons.append(
+            str(len(pending))
+            + " planned case(s) still require progression work before retained evaluation."
+        )
+    reasons = list(dict.fromkeys(str(reason).strip() for reason in reasons if str(reason).strip()))
+    retained_evaluation_allowed = len(reasons) == 0
+
+    return {
+        "schema": PROGRESSION_GATE_SCHEMA,
+        "editTypeId": status["editTypeId"],
+        "retainedEvaluationAllowed": retained_evaluation_allowed,
+        "robustPopulationPrerequisiteSatisfied": retained_evaluation_allowed,
+        "candidateCaseCount": candidate_count,
+        "readyForCorpusCount": ready_count,
+        "pendingCaseCount": len(pending),
+        "remainingIndependentReviewShotCount": queue["remainingIndependentReviewShotCount"],
+        "pendingActionCounts": dict(sorted(pending_action_counts.items())),
+        "acquisition": {
+            "additionalCasesNeededForMinimum": acquisition["additionalCasesNeededForMinimum"],
+            "additionalDistinctSourceSetsNeeded": acquisition["additionalDistinctSourceSetsNeeded"],
+            "additionalDifficultyKindsNeeded": acquisition["additionalDifficultyKindsNeeded"],
+            "sourceAcquisitionRequired": acquisition["sourceAcquisitionRequired"],
+        },
+        "blockingReasons": reasons,
+    }
+
+
 def _case_source_paths(case, manifest_path):
     paths = {}
     for item in case.get("sourceMedia") or []:
@@ -2086,6 +2159,13 @@ def build_parser():
         help="Optional finish-discovery JSON used to expose source-binding admission gaps.",
     )
     work_queue.add_argument("--output")
+    progression_gate = sub.add_parser("progression-gate")
+    progression_gate.add_argument("--manifest", required=True)
+    progression_gate.add_argument(
+        "--finish-discovery",
+        help="Optional finish-discovery JSON used to retain acquisition blockers in the gate report.",
+    )
+    progression_gate.add_argument("--output")
     advance = sub.add_parser("advance")
     advance.add_argument("--manifest", required=True)
     advance.add_argument(
@@ -2225,6 +2305,13 @@ def main():
             args.manifest,
             finish_discovery_path=args.finish_discovery,
         )
+    elif args.command == "progression-gate":
+        payload = build_progression_gate(
+            args.manifest,
+            finish_discovery_path=args.finish_discovery,
+        )
+        if not payload["retainedEvaluationAllowed"]:
+            exit_code = 3
     elif args.command == "advance":
         payload = advance_population(
             args.manifest,
