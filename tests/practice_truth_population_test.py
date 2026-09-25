@@ -1548,6 +1548,125 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertTrue((root / case["suiteManifest"]).is_file())
             self.assertEqual(observed["nextAction"], "NONE")
 
+    def test_advance_one_command_persists_bindability_and_carries_it_into_gate(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            finish = root / "candidate-finish.mp4"
+            source = root / "raw-start.mp4"
+            finish.write_bytes(b"candidate-finish")
+            source.write_bytes(b"raw-start")
+            finish_sha = sha256_bytes(finish.read_bytes())
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 1,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [{
+                    "path": str(finish),
+                    "fileName": finish.name,
+                    "sha256": finish_sha,
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                }],
+            })
+            source_specs = ["video:new=" + str(source)]
+            source_paths = tool.parse_source_video_specs(source_specs)
+            evidence = tool.seal_bindability_evidence({
+                "schema": tool.ACQUISITION_BINDABILITY_SCHEMA,
+                "planSha256": tool.sha256_file(plan),
+                "finishDiscoverySha256": tool.sha256_file(discovery),
+                "sourceFiles": tool.source_identity_records(source_paths),
+                "candidateCount": 1,
+                "bindableCandidateCount": 1,
+                "unboundCandidateCount": 0,
+                "canMeetMinimumByBindableCandidateCount": False,
+                "candidateResults": [{
+                    "finishSha256": finish_sha,
+                    "status": "BINDABLE",
+                }],
+            })
+            proof = root / "bindability.json"
+
+            with patch.object(
+                tool,
+                "probe_acquisition_bindability",
+                return_value=evidence,
+            ) as probe:
+                result = tool.advance_population(
+                    plan,
+                    finish_discovery_path=discovery,
+                    source_video_specs=source_specs,
+                    bindability_output_path=proof,
+                    matcher=object(),
+                )
+
+            probe.assert_called_once()
+            self.assertTrue(proof.is_file())
+            self.assertEqual(
+                tool.load_json(proof)["attestationSha256"],
+                evidence["attestationSha256"],
+            )
+            self.assertEqual(result["bindabilityEvidencePath"], str(proof.resolve()))
+            self.assertTrue(result["acquisitionPlan"]["bindabilityVerified"])
+            self.assertTrue(result["progressionGate"]["acquisition"]["bindabilityVerified"])
+            self.assertEqual(
+                result["progressionGate"]["acquisition"]["bindabilityEvidencePath"],
+                str(proof.resolve()),
+            )
+
+    def test_progression_gate_carries_sealed_bindability_into_acquisition_state(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            candidates = [
+                {
+                    "path": str(root / f"candidate-{index:02d}.mp4"),
+                    "fileName": f"Candidate {index:02d}.mp4",
+                    "sha256": f"{index + 1:064x}",
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                }
+                for index in range(19)
+            ]
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 19,
+                "canReachMinimumByScreenedUniqueFinishCount": True,
+                "candidates": candidates,
+            })
+            evidence = tool.seal_bindability_evidence({
+                "schema": tool.ACQUISITION_BINDABILITY_SCHEMA,
+                "planSha256": tool.sha256_file(plan),
+                "finishDiscoverySha256": tool.sha256_file(discovery),
+                "sourceFiles": [],
+                "candidateResults": [
+                    {
+                        "finishSha256": item["sha256"],
+                        "status": "BINDABLE" if index < 18 else "UNBINDABLE",
+                    }
+                    for index, item in enumerate(candidates)
+                ],
+            })
+
+            gate = tool.build_progression_gate(
+                plan,
+                discovery,
+                bindability_evidence=evidence,
+            )
+
+            acquisition = gate["acquisition"]
+            self.assertTrue(acquisition["bindabilityVerified"])
+            self.assertEqual(acquisition["probedCandidateCount"], 19)
+            self.assertEqual(acquisition["bindableCandidateCount"], 18)
+            self.assertEqual(acquisition["bindableCandidateShortfallForMinimum"], 1)
+            self.assertFalse(acquisition["acquisitionReady"])
+            self.assertTrue(any(
+                "Exact raw Start-source binding is short by 1 candidate" in reason
+                for reason in gate["blockingReasons"]
+            ))
+
     def test_progression_gate_blocks_incomplete_population(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

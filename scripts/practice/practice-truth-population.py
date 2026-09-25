@@ -1869,7 +1869,12 @@ def execute_acquisition_plan(
     }
 
 
-def build_progression_gate(plan_path, finish_discovery_path=None):
+def build_progression_gate(
+    plan_path,
+    finish_discovery_path=None,
+    bindability_path=None,
+    bindability_evidence=None,
+):
     status = build_status(plan_path)
     queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
     candidate_count = int(status["candidateCaseCount"])
@@ -1877,6 +1882,14 @@ def build_progression_gate(plan_path, finish_discovery_path=None):
     pending = [item for item in queue["queue"] if item["nextAction"] != "NONE"]
     pending_action_counts = Counter(item["nextAction"] for item in pending)
     acquisition = queue["acquisition"]
+    verified_acquisition = None
+    if finish_discovery_path:
+        verified_acquisition = build_acquisition_plan(
+            plan_path,
+            finish_discovery_path,
+            bindability_path=bindability_path,
+            bindability_evidence=bindability_evidence,
+        )
 
     reasons = []
     if not status["populationWindowReached"]:
@@ -1918,6 +1931,8 @@ def build_progression_gate(plan_path, finish_discovery_path=None):
             str(acquisition["additionalDifficultyKindsNeeded"])
             + " additional hard-case difficulty kind(s) are required."
         )
+    if verified_acquisition is not None:
+        reasons.extend(verified_acquisition.get("blockingReasons") or [])
     if pending:
         reasons.append(
             str(len(pending))
@@ -1947,6 +1962,34 @@ def build_progression_gate(plan_path, finish_discovery_path=None):
                 "exactSourceBindingRequiredBeforeAdmission", False
             ),
             "sourceAcquisitionRequired": acquisition["sourceAcquisitionRequired"],
+            "bindabilityVerified": bool(
+                verified_acquisition and verified_acquisition.get("bindabilityVerified")
+            ),
+            "bindabilityEvidencePath": (
+                verified_acquisition.get("bindabilityEvidencePath")
+                if verified_acquisition is not None
+                else None
+            ),
+            "probedCandidateCount": int(
+                verified_acquisition.get("probedCandidateCount", 0)
+                if verified_acquisition is not None
+                else 0
+            ),
+            "bindableCandidateCount": int(
+                verified_acquisition.get("bindableCandidateCount", 0)
+                if verified_acquisition is not None
+                else 0
+            ),
+            "bindableCandidateShortfallForMinimum": int(
+                verified_acquisition.get("bindableCandidateShortfallForMinimum", 0)
+                if verified_acquisition is not None
+                else acquisition["additionalCasesNeededForMinimum"]
+            ),
+            "acquisitionReady": bool(
+                verified_acquisition.get("acquisitionReady")
+                if verified_acquisition is not None
+                else acquisition["additionalCasesNeededForMinimum"] == 0
+            ),
         },
         "blockingReasons": reasons,
     }
@@ -2596,6 +2639,15 @@ def advance_population(
     plan_path,
     annotation_origin=None,
     case_ids=None,
+    finish_discovery_path=None,
+    source_video_specs=None,
+    bindability_output_path=None,
+    source_binding_tool=None,
+    reference_cut_threshold=0.42,
+    minimum_shot_ms=180.0,
+    source_binding_coarse_limit=16,
+    minimum_source_coverage=0.98,
+    source_index_cache_dir=None,
     source_atlas_interval_ms=DEFAULT_SOURCE_ATLAS_INTERVAL_MS,
     source_atlas_max_frames=DEFAULT_SOURCE_ATLAS_MAX_FRAMES,
     source_atlas_cache_dir=None,
@@ -2612,6 +2664,41 @@ def advance_population(
     media_truth = media_truth or load_media_truth_tool()
     matcher = matcher or load_media_match_tool()
     corpus = corpus or load_corpus_tool()
+    source_video_specs = list(source_video_specs or [])
+    if source_video_specs and not finish_discovery_path:
+        raise ValueError("Practice one-command bindability probing requires Finish discovery evidence.")
+    if bindability_output_path and not (finish_discovery_path and source_video_specs):
+        raise ValueError("Bindability output requires Finish discovery and at least one raw Start source.")
+
+    bindability_path = None
+    bindability = None
+    acquisition_plan = None
+    if finish_discovery_path and source_video_specs:
+        bindability = probe_acquisition_bindability(
+            plan_path,
+            finish_discovery_path,
+            source_video_specs,
+            matcher=matcher,
+            source_binding_tool=source_binding_tool,
+            cut_threshold=reference_cut_threshold,
+            minimum_shot_ms=minimum_shot_ms,
+            coarse_limit=source_binding_coarse_limit,
+            minimum_coverage=minimum_source_coverage,
+            index_cache_dir=source_index_cache_dir,
+        )
+        bindability_path = (
+            Path(bindability_output_path).expanduser().resolve()
+            if bindability_output_path
+            else Path(plan_path).resolve().parent / "acquisition-bindability.json"
+        )
+        write_json(bindability_path, bindability)
+    if finish_discovery_path:
+        acquisition_plan = build_acquisition_plan(
+            plan_path,
+            finish_discovery_path,
+            bindability_path=str(bindability_path) if bindability_path else None,
+        )
+
     results = []
     for case in cases:
         case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
@@ -2712,6 +2799,11 @@ def advance_population(
         results.append(result)
 
     counts = Counter(item["outcome"] for item in results)
+    progression_gate = build_progression_gate(
+        plan_path,
+        finish_discovery_path=finish_discovery_path,
+        bindability_path=str(bindability_path) if bindability_path else None,
+    )
     return {
         "schema": ADVANCE_SCHEMA,
         "editTypeId": str(plan["editTypeId"]).strip(),
@@ -2721,7 +2813,26 @@ def advance_population(
         "waitingReviewRecheckCount": counts.get("WAITING_FOR_REVIEW_RECHECK", 0),
         "failedCount": counts.get("FAILED", 0),
         "cases": results,
-        "workQueue": build_work_queue(plan_path),
+        "bindabilityEvidencePath": str(bindability_path) if bindability_path else None,
+        "bindability": (
+            {
+                "attestationSha256": bindability.get("attestationSha256"),
+                "candidateCount": bindability.get("candidateCount", 0),
+                "bindableCandidateCount": bindability.get("bindableCandidateCount", 0),
+                "unboundCandidateCount": bindability.get("unboundCandidateCount", 0),
+                "canMeetMinimumByBindableCandidateCount": bindability.get(
+                    "canMeetMinimumByBindableCandidateCount", False
+                ),
+            }
+            if bindability is not None
+            else None
+        ),
+        "acquisitionPlan": acquisition_plan,
+        "progressionGate": progression_gate,
+        "workQueue": build_work_queue(
+            plan_path,
+            finish_discovery_path=finish_discovery_path,
+        ),
     }
 
 
@@ -2944,6 +3055,10 @@ def build_parser():
         "--finish-discovery",
         help="Optional finish-discovery JSON used to retain acquisition blockers in the gate report.",
     )
+    progression_gate.add_argument(
+        "--bindability",
+        help="Optional sealed Start-source bindability proof to carry into acquisition readiness.",
+    )
     progression_gate.add_argument("--output")
     acquisition_plan = sub.add_parser("acquisition-plan")
     acquisition_plan.add_argument("--manifest", required=True)
@@ -3011,6 +3126,24 @@ def build_parser():
         action="append",
         help="Advance only this population case id; repeat to select multiple cases.",
     )
+    advance.add_argument(
+        "--finish-discovery",
+        help="Optional Finish discovery evidence for one-command acquisition readiness proof.",
+    )
+    advance.add_argument(
+        "--source-video",
+        action="append",
+        help="Raw Start source in sourceId=path form; repeat to probe bindability in the same advance run.",
+    )
+    advance.add_argument(
+        "--bindability-output",
+        help="Optional output path for sealed bindability evidence; defaults beside the population manifest.",
+    )
+    advance.add_argument("--source-index-cache-dir")
+    advance.add_argument("--reference-cut-threshold", type=float, default=0.42)
+    advance.add_argument("--minimum-shot-ms", type=float, default=180.0)
+    advance.add_argument("--source-binding-coarse-limit", type=int, default=16)
+    advance.add_argument("--minimum-source-coverage", type=float, default=0.98)
     advance.add_argument(
         "--source-atlas-interval-ms",
         type=float,
@@ -3142,6 +3275,7 @@ def main():
         payload = build_progression_gate(
             args.manifest,
             finish_discovery_path=args.finish_discovery,
+            bindability_path=args.bindability,
         )
         if not payload["retainedEvaluationAllowed"]:
             exit_code = 3
@@ -3188,6 +3322,14 @@ def main():
             args.manifest,
             annotation_origin=args.annotation_origin,
             case_ids=args.case_id,
+            finish_discovery_path=args.finish_discovery,
+            source_video_specs=args.source_video,
+            bindability_output_path=args.bindability_output,
+            reference_cut_threshold=args.reference_cut_threshold,
+            minimum_shot_ms=args.minimum_shot_ms,
+            source_binding_coarse_limit=args.source_binding_coarse_limit,
+            minimum_source_coverage=args.minimum_source_coverage,
+            source_index_cache_dir=args.source_index_cache_dir,
             source_atlas_interval_ms=args.source_atlas_interval_ms,
             source_atlas_max_frames=args.source_atlas_max_frames,
             source_atlas_cache_dir=args.source_atlas_cache_dir,
