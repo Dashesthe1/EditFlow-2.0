@@ -307,8 +307,20 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "perceptuallyUniqueUnusedFinishCount": 2,
                 "canReachMinimumByScreenedUniqueFinishCount": False,
                 "candidates": [
-                    {"path": "candidate-a.mp4", "requiresSourceBinding": True},
-                    {"path": "candidate-b.mp4", "requiresSourceBinding": True},
+                    {
+                        "path": "candidate-a.mp4",
+                        "fileName": "Candidate A.mp4",
+                        "sha256": "a" * 64,
+                        "requiresSourceBinding": True,
+                        "requiresReferenceAnalysis": True,
+                    },
+                    {
+                        "path": "candidate-b.mp4",
+                        "fileName": "Candidate B.mp4",
+                        "sha256": "b" * 64,
+                        "requiresSourceBinding": True,
+                        "requiresReferenceAnalysis": False,
+                    },
                 ],
             })
 
@@ -326,6 +338,26 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(
                 queue["finishDiscovery"]["candidatesRequiringSourceBindingCount"],
                 2,
+            )
+            self.assertEqual(queue["acquisition"]["unboundFinishCandidateCount"], 2)
+            self.assertEqual(
+                queue["finishDiscovery"]["unboundFinishCandidates"],
+                [
+                    {
+                        "path": "candidate-a.mp4",
+                        "fileName": "Candidate A.mp4",
+                        "sha256": "a" * 64,
+                        "requiresReferenceAnalysis": True,
+                        "sourceBindingState": "MISSING_EXACT_BOUND_START_SOURCE",
+                    },
+                    {
+                        "path": "candidate-b.mp4",
+                        "fileName": "Candidate B.mp4",
+                        "sha256": "b" * 64,
+                        "requiresReferenceAnalysis": False,
+                        "sourceBindingState": "MISSING_EXACT_BOUND_START_SOURCE",
+                    },
+                ],
             )
             self.assertTrue(
                 queue["acquisition"]["exactSourceBindingRequiredBeforeAdmission"]

@@ -1035,10 +1035,18 @@ def build_work_queue(plan_path, finish_discovery_path=None):
             item for item in discovery.get("candidates") or []
             if isinstance(item, dict)
         ]
-        needs_binding = sum(
-            item.get("requiresSourceBinding") is True
+        unbound_candidates = [
+            {
+                "path": str(item.get("path", "")).strip(),
+                "fileName": str(item.get("fileName", "")).strip(),
+                "sha256": str(item.get("sha256", "")).strip().lower(),
+                "requiresReferenceAnalysis": item.get("requiresReferenceAnalysis") is True,
+                "sourceBindingState": "MISSING_EXACT_BOUND_START_SOURCE",
+            }
             for item in candidates
-        )
+            if item.get("requiresSourceBinding") is True
+        ]
+        needs_binding = len(unbound_candidates)
         discovery_summary = {
             "path": str(Path(finish_discovery_path).resolve()),
             "unusedFinishCandidateCount": len(candidates),
@@ -1046,11 +1054,13 @@ def build_work_queue(plan_path, finish_discovery_path=None):
                 "perceptuallyUniqueUnusedFinishCount"
             ),
             "candidatesRequiringSourceBindingCount": needs_binding,
+            "unboundFinishCandidates": unbound_candidates,
             "canReachMinimumFromScreenedFinishPool": discovery.get(
                 "canReachMinimumByScreenedUniqueFinishCount"
             ),
         }
         acquisition["exactSourceBindingRequiredBeforeAdmission"] = needs_binding > 0
+        acquisition["unboundFinishCandidateCount"] = needs_binding
 
     blockers = []
     if acquisition["additionalCasesNeededForMinimum"]:
