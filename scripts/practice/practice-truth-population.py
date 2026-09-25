@@ -22,6 +22,7 @@ REFERENCE_SCHEMA = "editflow.practice-reference-analysis.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
 REVIEW_PACK_SCHEMA = "editflow.practice-truth-review-pack.v1"
+REVIEWER_DECLARATION_SCHEMA = "editflow.practice-truth-reviewer-declaration.v1"
 REVIEW_ATTESTATION_SCHEMA = "editflow.practice-truth-review-attestation.v1"
 RETAINED_SUITE_SCHEMA = "editflow.practice-retained-truth-suite-manifest.v1"
 SOURCE_BINDING_SCHEMA = "editflow.practice-source-binding.v1"
@@ -446,6 +447,78 @@ def review_pack_matcher_blind_reasons(review_dir):
     return reasons
 
 
+def reviewer_declaration_validation_reasons(
+    review_dir,
+    expected_annotation_origin=None,
+    expected_case_id=None,
+    expected_finish_sha256=None,
+    expected_source_sha256_by_id=None,
+):
+    review_dir = Path(review_dir)
+    declaration_path = review_dir / "reviewer-declaration.json"
+    review_pack_path = review_dir / "review-pack.json"
+    worksheet_path = review_dir / "annotations.csv"
+    if not declaration_path.is_file():
+        return ["Independent reviewer declaration is missing."]
+    try:
+        declaration = load_json(declaration_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return ["Independent reviewer declaration cannot be read: " + str(exc)]
+    reasons = list(review_pack_matcher_blind_reasons(review_dir))
+    if expected_finish_sha256 and expected_source_sha256_by_id is not None:
+        if not review_pack_preparation_complete(
+            review_dir,
+            sorted(expected_source_sha256_by_id),
+            expected_source_sha256=expected_source_sha256_by_id,
+            expected_finish_sha256=expected_finish_sha256,
+            require_source_atlas=True,
+        ):
+            reasons.append(
+                "Independent reviewer declaration is not bound to a current complete review pack."
+            )
+    if declaration.get("schema") != REVIEWER_DECLARATION_SCHEMA:
+        reasons.append("Independent reviewer declaration schema is invalid.")
+    reviewer_id = str(declaration.get("reviewerId", "")).strip()
+    if not reviewer_id:
+        reasons.append("Independent reviewer declaration requires a reviewer id.")
+    origin = str(declaration.get("annotationOrigin", "")).strip()
+    if origin not in ALLOWED_ANNOTATION_ORIGINS:
+        reasons.append("Independent reviewer declaration has an invalid annotation origin.")
+    if expected_annotation_origin and origin != str(expected_annotation_origin).strip():
+        reasons.append("Independent reviewer declaration origin does not match requested retention origin.")
+    if expected_case_id and str(declaration.get("caseId", "")).strip() != str(expected_case_id).strip():
+        reasons.append("Independent reviewer declaration case id does not match the population case.")
+    if declaration.get("matcherBlindWorkflowVerified") is not True:
+        reasons.append("Independent reviewer must explicitly verify the matcher-blind workflow.")
+    if declaration.get("independentOfMatcherOutput") is not True:
+        reasons.append("Independent reviewer must explicitly declare independence from matcher output.")
+    if expected_finish_sha256:
+        observed_finish_sha = str(declaration.get("finishSha256", "")).strip().lower()
+        if observed_finish_sha != str(expected_finish_sha256).strip().lower():
+            reasons.append("Independent reviewer declaration does not match the current Finish media bytes.")
+    if expected_source_sha256_by_id is not None:
+        observed_source_hashes = {
+            str(source_id).strip(): str(source_sha).strip().lower()
+            for source_id, source_sha in (declaration.get("sourceSha256ById") or {}).items()
+        }
+        expected_source_hashes = {
+            str(source_id).strip(): str(source_sha).strip().lower()
+            for source_id, source_sha in expected_source_sha256_by_id.items()
+        }
+        if observed_source_hashes != expected_source_hashes:
+            reasons.append("Independent reviewer declaration does not match the current Start media bytes.")
+    for path, field, label in (
+        (review_pack_path, "reviewPackSha256", "review pack"),
+        (worksheet_path, "worksheetSha256", "review worksheet"),
+    ):
+        if not path.is_file():
+            reasons.append(label.capitalize() + " is missing.")
+            continue
+        if str(declaration.get(field, "")).strip().lower() != sha256_file(path):
+            reasons.append("Independent reviewer declaration no longer matches the " + label + ".")
+    return reasons
+
+
 def review_attestation_validation_reasons(
     review_dir,
     retained_truth_path=None,
@@ -458,13 +531,21 @@ def review_attestation_validation_reasons(
     attestation_path = review_dir / "review-attestation.json"
     review_pack_path = review_dir / "review-pack.json"
     worksheet_path = review_dir / "annotations.csv"
+    declaration_path = review_dir / "reviewer-declaration.json"
     if not attestation_path.is_file():
         return ["Independent review attestation is missing."]
     try:
         attestation = load_json(attestation_path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return ["Independent review attestation cannot be read: " + str(exc)]
-    reasons = list(review_pack_matcher_blind_reasons(review_dir))
+    reasons = reviewer_declaration_validation_reasons(
+        review_dir,
+        expected_annotation_origin=expected_annotation_origin,
+        expected_case_id=expected_case_id,
+        expected_finish_sha256=expected_finish_sha256,
+        expected_source_sha256_by_id=expected_source_sha256_by_id,
+    )
+    declaration = load_json(declaration_path) if declaration_path.is_file() else {}
     if attestation.get("schema") != REVIEW_ATTESTATION_SCHEMA:
         reasons.append("Independent review attestation schema is invalid.")
     if expected_case_id and str(attestation.get("caseId", "")).strip() != str(expected_case_id).strip():
@@ -491,6 +572,13 @@ def review_attestation_validation_reasons(
         reasons.append("Independent review attestation origin does not match retained truth.")
     if attestation.get("matcherBlindWorkflowVerified") is not True:
         reasons.append("Independent review attestation does not verify the matcher-blind workflow.")
+    if attestation.get("independentOfMatcherOutput") is not True:
+        reasons.append("Independent review attestation does not preserve matcher-output independence.")
+    if str(attestation.get("reviewerId", "")).strip() != str(declaration.get("reviewerId", "")).strip():
+        reasons.append("Independent review attestation reviewer id does not match the reviewer declaration.")
+    if declaration_path.is_file():
+        if str(attestation.get("reviewerDeclarationSha256", "")).strip().lower() != sha256_file(declaration_path):
+            reasons.append("Independent review attestation no longer matches the reviewer declaration.")
     for path, field, label in (
         (review_pack_path, "reviewPackSha256", "review pack"),
         (worksheet_path, "worksheetSha256", "review worksheet"),
@@ -593,6 +681,25 @@ def inspect_case(case, manifest_path, corpus):
                 "INDEPENDENT_REVIEW",
                 "COMPLETE_INDEPENDENT_REVIEW",
                 review_reasons,
+            )
+        current_source_paths = _case_source_paths(case, manifest_path)
+        current_source_hashes = {
+            source_id: sha256_file(source_path)
+            for source_id, source_path in current_source_paths.items()
+        }
+        declaration_reasons = reviewer_declaration_validation_reasons(
+            review_dir,
+            expected_case_id=case_id,
+            expected_finish_sha256=sha256_file(finish),
+            expected_source_sha256_by_id=current_source_hashes,
+        )
+        if declaration_reasons:
+            return case_result(
+                case_id,
+                tags,
+                "INDEPENDENT_REVIEW_PROVENANCE",
+                "COMPLETE_REVIEW_PROVENANCE",
+                declaration_reasons,
             )
         return case_result(case_id, tags, "TRUTH_RETENTION", "FINALIZE_INDEPENDENT_REVIEW")
 
@@ -1015,6 +1122,7 @@ def build_work_queue(plan_path, finish_discovery_path=None):
     }
     action_priority = {
         "FINALIZE_INDEPENDENT_REVIEW": 10,
+        "COMPLETE_REVIEW_PROVENANCE": 15,
         "RUN_MATCHER_OBSERVATION": 20,
         "BUILD_SUITE_MANIFEST": 30,
         "COMPLETE_INDEPENDENT_REVIEW": 40,
@@ -2018,6 +2126,89 @@ def _case_source_paths(case, manifest_path):
     return paths
 
 
+def declare_independent_review(plan_path, case_id, reviewer_id, annotation_origin):
+    plan = require_plan(plan_path)
+    case_id = str(case_id).strip()
+    reviewer_id = str(reviewer_id).strip()
+    annotation_origin = str(annotation_origin).strip()
+    if not case_id:
+        raise ValueError("Independent review declaration requires a case id.")
+    if not reviewer_id:
+        raise ValueError("Independent review declaration requires a reviewer id.")
+    if annotation_origin not in ALLOWED_ANNOTATION_ORIGINS:
+        raise ValueError("Independent annotation origin is invalid.")
+    matches = [case for case in plan["cases"] if str(case.get("caseId", "")).strip() == case_id]
+    if len(matches) != 1:
+        raise ValueError("Population case id is missing or ambiguous: " + case_id)
+    case = matches[0]
+    finish_path = artifact_path(case, plan_path, "finishPath")
+    reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+    draft_path = artifact_path(case, plan_path, "truthDraft")
+    review_dir = artifact_path(case, plan_path, "reviewPackDir")
+    retained_path = artifact_path(case, plan_path, "retainedTruth")
+    if finish_path is None or not finish_path.is_file():
+        raise ValueError("Finish media is missing.")
+    if reference_path is None or not reference_path.is_file():
+        raise ValueError("Reference analysis is missing.")
+    if draft_path is None or not draft_path.is_file():
+        raise ValueError("Truth draft is missing.")
+    if review_dir is None:
+        raise ValueError("Review-pack directory is missing.")
+    if retained_path is not None and retained_path.is_file():
+        raise ValueError("Reviewer provenance cannot be replaced after truth retention; re-open the review first.")
+    reference = load_json(reference_path)
+    draft = load_json(draft_path)
+    worksheet_path = review_dir / "annotations.csv"
+    review_reasons = worksheet_validation_reasons(worksheet_path, draft, reference)
+    if review_reasons:
+        raise ValueError("Independent review worksheet is not complete: " + " ".join(review_reasons))
+    policy_reasons = review_pack_matcher_blind_reasons(review_dir)
+    if policy_reasons:
+        raise ValueError(" ".join(policy_reasons))
+    source_paths = _case_source_paths(case, plan_path)
+    source_hashes = {source_id: sha256_file(path) for source_id, path in source_paths.items()}
+    finish_sha = sha256_file(finish_path)
+    if not review_pack_preparation_complete(
+        review_dir,
+        sorted(source_paths),
+        expected_source_sha256=source_hashes,
+        expected_finish_sha256=finish_sha,
+        require_source_atlas=True,
+    ):
+        raise ValueError(
+            "Independent reviewer provenance requires a current complete review pack "
+            "bound to the exact Finish and Start media."
+        )
+    review_pack_path = review_dir / "review-pack.json"
+    declaration = {
+        "schema": REVIEWER_DECLARATION_SCHEMA,
+        "caseId": case_id,
+        "reviewerId": reviewer_id,
+        "annotationOrigin": annotation_origin,
+        "matcherBlindWorkflowVerified": True,
+        "independentOfMatcherOutput": True,
+        "reviewPackSha256": sha256_file(review_pack_path),
+        "worksheetSha256": sha256_file(worksheet_path),
+        "finishSha256": finish_sha,
+        "sourceSha256ById": dict(sorted(source_hashes.items())),
+        "declaredAt": now_iso(),
+    }
+    declaration_path = review_dir / "reviewer-declaration.json"
+    write_json(declaration_path, declaration)
+    stale_attestation = review_dir / "review-attestation.json"
+    if stale_attestation.is_file():
+        stale_attestation.unlink()
+    return {
+        "schema": REVIEWER_DECLARATION_SCHEMA,
+        "caseId": case_id,
+        "reviewerId": reviewer_id,
+        "annotationOrigin": annotation_origin,
+        "reviewerDeclaration": str(declaration_path),
+        "reviewerDeclarationSha256": sha256_file(declaration_path),
+        "nextAction": "FINALIZE_INDEPENDENT_REVIEW",
+    }
+
+
 def finalize_independent_reviews(
     plan_path,
     annotation_origin,
@@ -2118,6 +2309,20 @@ def finalize_independent_reviews(
                 raise ValueError(
                     "Independent review worksheet is not complete: " + " ".join(review_reasons)
                 )
+            declaration_reasons = reviewer_declaration_validation_reasons(
+                review_dir,
+                expected_annotation_origin=annotation_origin,
+                expected_case_id=case_id,
+                expected_finish_sha256=finish_sha,
+                expected_source_sha256_by_id=source_hashes,
+            )
+            if declaration_reasons:
+                raise ValueError(
+                    "Independent reviewer provenance is incomplete or stale: "
+                    + " ".join(declaration_reasons)
+                )
+            declaration_path = review_dir / "reviewer-declaration.json"
+            declaration = load_json(declaration_path)
 
             imported = media_truth.import_review_csv(draft, reference, worksheet_path)
             retained = media_truth.retain(
@@ -2141,7 +2346,10 @@ def finalize_independent_reviews(
                 "schema": REVIEW_ATTESTATION_SCHEMA,
                 "caseId": case_id,
                 "annotationOrigin": annotation_origin,
-                "matcherBlindWorkflowVerified": True,
+                "reviewerId": str(declaration.get("reviewerId", "")).strip(),
+                "matcherBlindWorkflowVerified": declaration.get("matcherBlindWorkflowVerified") is True,
+                "independentOfMatcherOutput": declaration.get("independentOfMatcherOutput") is True,
+                "reviewerDeclarationSha256": sha256_file(declaration_path),
                 "reviewPackSha256": sha256_file(review_pack_path),
                 "worksheetSha256": sha256_file(worksheet_path),
                 "retainedTruthSha256": sha256_file(retained_path),
@@ -2286,10 +2494,13 @@ def prepare_review_packs(
                 source_atlas_cache_dir=(None if cache_dir is None else str(cache_dir)),
             )
             invalidated = []
-            attestation_path = review_dir / "review-attestation.json"
-            if attestation_path.is_file():
-                attestation_path.unlink()
-                invalidated.append("reviewAttestation")
+            for proof_name, proof_path in (
+                ("reviewerDeclaration", review_dir / "reviewer-declaration.json"),
+                ("reviewAttestation", review_dir / "review-attestation.json"),
+            ):
+                if proof_path.is_file():
+                    proof_path.unlink()
+                    invalidated.append(proof_name)
             for key in ("retainedTruth", "matches", "suiteManifest"):
                 downstream = artifact_path(case, plan_path, key)
                 if downstream is not None and downstream.is_file():
@@ -2787,17 +2998,28 @@ def advance_population(
             if action == "COMPLETE_INDEPENDENT_REVIEW":
                 outcome = "WAITING_FOR_INDEPENDENT_REVIEW"
                 break
+            if action == "COMPLETE_REVIEW_PROVENANCE":
+                outcome = "WAITING_FOR_REVIEW_PROVENANCE"
+                break
             if action == "FINALIZE_INDEPENDENT_REVIEW":
                 retained_path = artifact_path(case, active_plan_path, "retainedTruth")
                 if retained_path is not None and retained_path.is_file():
                     outcome = "WAITING_FOR_REVIEW_RECHECK"
                     break
-                if not annotation_origin:
+                case_annotation_origin = annotation_origin
+                if not case_annotation_origin:
+                    review_dir = artifact_path(case, active_plan_path, "reviewPackDir")
+                    declaration_path = None if review_dir is None else review_dir / "reviewer-declaration.json"
+                    if declaration_path is not None and declaration_path.is_file():
+                        case_annotation_origin = str(
+                            load_json(declaration_path).get("annotationOrigin", "")
+                        ).strip()
+                if case_annotation_origin not in ALLOWED_ANNOTATION_ORIGINS:
                     outcome = "WAITING_FOR_ANNOTATION_ORIGIN"
                     break
                 finalized = finalize_independent_reviews(
                     active_plan_path,
-                    annotation_origin,
+                    case_annotation_origin,
                     case_ids=[case_id],
                     media_truth=media_truth,
                 )
@@ -2882,6 +3104,7 @@ def advance_population(
         "editTypeId": str(plan["editTypeId"]).strip(),
         "readyForCorpusCount": counts.get("READY_FOR_CORPUS", 0),
         "waitingIndependentReviewCount": counts.get("WAITING_FOR_INDEPENDENT_REVIEW", 0),
+        "waitingReviewProvenanceCount": counts.get("WAITING_FOR_REVIEW_PROVENANCE", 0),
         "waitingAnnotationOriginCount": counts.get("WAITING_FOR_ANNOTATION_ORIGIN", 0),
         "waitingReviewRecheckCount": counts.get("WAITING_FOR_REVIEW_RECHECK", 0),
         "failedCount": counts.get("FAILED", 0),
@@ -3195,7 +3418,7 @@ def build_parser():
     advance.add_argument(
         "--annotation-origin",
         choices=sorted(ALLOWED_ANNOTATION_ORIGINS),
-        help="Required only when a completed independent worksheet is ready to retain.",
+        help="Optional retention-origin cross-check; normal advance reads the origin from the reviewer declaration.",
     )
     advance.add_argument(
         "--case-id",
@@ -3285,6 +3508,16 @@ def build_parser():
     )
     prepare.add_argument("--force", action="store_true")
     prepare.add_argument("--output")
+    declare_review = sub.add_parser("declare-independent-review")
+    declare_review.add_argument("--manifest", required=True)
+    declare_review.add_argument("--case-id", required=True)
+    declare_review.add_argument("--reviewer-id", required=True)
+    declare_review.add_argument(
+        "--annotation-origin",
+        required=True,
+        choices=sorted(ALLOWED_ANNOTATION_ORIGINS),
+    )
+    declare_review.add_argument("--output")
     finalize = sub.add_parser("finalize-independent-review")
     finalize.add_argument("--manifest", required=True)
     finalize.add_argument(
@@ -3441,6 +3674,13 @@ def main():
             source_atlas_cache_dir=args.source_atlas_cache_dir,
             force=args.force,
             case_ids=args.case_id,
+        )
+    elif args.command == "declare-independent-review":
+        payload = declare_independent_review(
+            args.manifest,
+            args.case_id,
+            args.reviewer_id,
+            args.annotation_origin,
         )
     elif args.command == "finalize-independent-review":
         payload = finalize_independent_reviews(

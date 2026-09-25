@@ -216,7 +216,13 @@ class PracticeTruthPopulationTest(unittest.TestCase):
         write_json(root / case["truthDraft"], draft)
         return reference
 
-    def _write_complete_review_pack(self, root, case):
+    def _write_complete_review_pack(
+        self,
+        root,
+        case,
+        annotation_origin="INDEPENDENT_HUMAN",
+        include_declaration=True,
+    ):
         truth_tool = tool.load_media_truth_tool()
         finish = root / case["finishPath"]
         source_id = case["sourceMedia"][0]["sourceId"]
@@ -273,6 +279,20 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "direction": "FORWARD",
                 "toleranceMs": "",
                 "notes": "Independent matcher-blind review.",
+            })
+        if include_declaration:
+            write_json(review / "reviewer-declaration.json", {
+                "schema": tool.REVIEWER_DECLARATION_SCHEMA,
+                "caseId": case["caseId"],
+                "reviewerId": "reviewer:fixture",
+                "annotationOrigin": annotation_origin,
+                "matcherBlindWorkflowVerified": True,
+                "independentOfMatcherOutput": True,
+                "reviewPackSha256": tool.sha256_file(review / "review-pack.json"),
+                "worksheetSha256": tool.sha256_file(review / "annotations.csv"),
+                "finishSha256": finish_sha,
+                "sourceSha256ById": {source_id: source_sha},
+                "declaredAt": "2026-09-24T00:00:00+00:00",
             })
         return review
 
@@ -769,15 +789,11 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             root = Path(temporary)
             case = self._base_case(root)
             self._write_reference_and_draft(root, case)
-            review = root / case["reviewPackDir"]
-            review.mkdir()
-            write_json(review / "review-pack.json", {
-                "schema": tool.REVIEW_PACK_SCHEMA,
-                "policy": {
-                    "matcherSuggestionsAllowed": False,
-                    "matcherOutputMayBecomeTruth": False,
-                },
-            })
+            review = self._write_complete_review_pack(
+                root,
+                case,
+                include_declaration=False,
+            )
             with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=[
                     "shotId", "sourceId", "sourceStartMs", "sourceEndMs", "direction"
@@ -804,12 +820,23 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     "sourceEndMs": "2000",
                     "direction": "FORWARD",
                 })
-            status = tool.build_status(self._plan(root, [case]))
-            self.assertEqual(status["cases"][0]["stage"], "TRUTH_RETENTION")
+            plan = self._plan(root, [case])
+            status = tool.build_status(plan)
+            self.assertEqual(status["cases"][0]["stage"], "INDEPENDENT_REVIEW_PROVENANCE")
             self.assertEqual(
                 status["cases"][0]["nextAction"],
-                "FINALIZE_INDEPENDENT_REVIEW",
+                "COMPLETE_REVIEW_PROVENANCE",
             )
+            declaration = tool.declare_independent_review(
+                plan,
+                case["caseId"],
+                "reviewer:test",
+                "INDEPENDENT_HUMAN",
+            )
+            self.assertEqual(declaration["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
+            status = tool.build_status(plan)
+            self.assertEqual(status["cases"][0]["stage"], "TRUTH_RETENTION")
+            self.assertEqual(status["cases"][0]["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
 
     def test_invalid_completed_worksheet_cannot_advance_to_truth_retention(self):
         with TemporaryDirectory() as temporary:
@@ -871,6 +898,12 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             attestation = tool.load_json(attestation_path)
             self.assertEqual(retained["annotationOrigin"], "INDEPENDENT_HUMAN")
             self.assertTrue(attestation["matcherBlindWorkflowVerified"])
+            self.assertTrue(attestation["independentOfMatcherOutput"])
+            self.assertEqual(attestation["reviewerId"], "reviewer:fixture")
+            self.assertEqual(
+                attestation["reviewerDeclarationSha256"],
+                tool.sha256_file(review / "reviewer-declaration.json"),
+            )
             self.assertEqual(
                 attestation["retainedTruthSha256"],
                 tool.sha256_file(retained_path),
@@ -883,6 +916,71 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             )
             status = tool.build_status(plan)
             self.assertEqual(status["cases"][0]["stage"], "MATCHER_OBSERVATION")
+
+    def test_finalizer_refuses_completed_worksheet_without_reviewer_declaration(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            self._write_complete_review_pack(root, case, include_declaration=False)
+            plan = self._plan(root, [case])
+
+            result = tool.finalize_independent_reviews(plan, "INDEPENDENT_HUMAN")
+
+            self.assertEqual(result["finalizedCount"], 0)
+            self.assertEqual(result["failedCount"], 1)
+            self.assertIn("reviewer provenance", result["cases"][0]["error"])
+            self.assertIn("declaration is missing", result["cases"][0]["error"])
+            self.assertFalse((root / case["retainedTruth"]).exists())
+
+    def test_reviewer_declaration_refuses_stale_review_pack_media_binding(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(
+                root,
+                case,
+                include_declaration=False,
+            )
+            plan = self._plan(root, [case])
+            source_path = root / case["sourceMedia"][0]["path"]
+            source_path.write_bytes(b"changed-after-review-pack")
+
+            with self.assertRaisesRegex(ValueError, "current complete review pack"):
+                tool.declare_independent_review(
+                    plan,
+                    case["caseId"],
+                    "reviewer:test",
+                    "INDEPENDENT_HUMAN",
+                )
+
+            self.assertFalse((review / "reviewer-declaration.json").exists())
+
+    def test_tampered_reviewer_declaration_invalidates_retained_authority(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            finalized = tool.finalize_independent_reviews(plan, "INDEPENDENT_HUMAN")
+            self.assertEqual(finalized["failedCount"], 0)
+
+            declaration_path = review / "reviewer-declaration.json"
+            declaration = tool.load_json(declaration_path)
+            declaration["reviewerId"] = "reviewer:tampered"
+            write_json(declaration_path, declaration)
+
+            status = tool.build_status(plan)
+            observed = status["cases"][0]
+            self.assertEqual(observed["stage"], "INDEPENDENT_REVIEW_ATTESTATION")
+            self.assertEqual(observed["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
+            self.assertTrue(any(
+                "reviewer id does not match" in reason
+                or "no longer matches the reviewer declaration" in reason
+                for reason in observed["reasons"]
+            ))
 
     def test_finalizer_rechecks_live_media_identity_before_skip(self):
         with TemporaryDirectory() as temporary:
@@ -907,7 +1005,11 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             root = Path(temporary)
             case = self._base_case(root)
             self._write_reference_and_draft(root, case)
-            review = self._write_complete_review_pack(root, case)
+            review = self._write_complete_review_pack(
+                root,
+                case,
+                annotation_origin="INDEPENDENT_EXTERNAL_TOOL",
+            )
             plan = self._plan(root, [case])
             result = tool.finalize_independent_reviews(
                 plan,
@@ -951,8 +1053,15 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(prepared["preparedCount"], 1)
             self.assertEqual(
                 prepared["cases"][0]["invalidatedArtifacts"],
-                ["reviewAttestation", "retainedTruth", "matches", "suiteManifest"],
+                [
+                    "reviewerDeclaration",
+                    "reviewAttestation",
+                    "retainedTruth",
+                    "matches",
+                    "suiteManifest",
+                ],
             )
+            self.assertFalse((review / "reviewer-declaration.json").exists())
             self.assertFalse((review / "review-attestation.json").exists())
             self.assertFalse((root / case["retainedTruth"]).exists())
             self.assertFalse((root / case["matches"]).exists())
@@ -1434,12 +1543,12 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertFalse(status["populationWindowReached"])
 
 
-    def test_advance_stops_before_retention_without_annotation_origin(self):
+    def test_advance_stops_before_retention_without_reviewer_provenance(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             case = self._base_case(root)
             self._write_reference_and_draft(root, case)
-            self._write_complete_review_pack(root, case)
+            self._write_complete_review_pack(root, case, include_declaration=False)
             plan = self._plan(root, [case])
 
             class FailingMatcher:
@@ -1449,11 +1558,11 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             result = tool.advance_population(plan, matcher=FailingMatcher())
 
             self.assertEqual(result["failedCount"], 0)
-            self.assertEqual(result["waitingAnnotationOriginCount"], 1)
+            self.assertEqual(result["waitingReviewProvenanceCount"], 1)
             observed = result["cases"][0]
-            self.assertEqual(observed["outcome"], "WAITING_FOR_ANNOTATION_ORIGIN")
+            self.assertEqual(observed["outcome"], "WAITING_FOR_REVIEW_PROVENANCE")
             self.assertEqual(observed["operations"], [])
-            self.assertEqual(observed["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
+            self.assertEqual(observed["nextAction"], "COMPLETE_REVIEW_PROVENANCE")
             self.assertFalse((root / case["retainedTruth"]).exists())
             self.assertFalse((root / case["matches"]).exists())
 
@@ -1491,7 +1600,11 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             root = Path(temporary)
             case = self._base_case(root)
             self._write_reference_and_draft(root, case)
-            review = self._write_complete_review_pack(root, case)
+            review = self._write_complete_review_pack(
+                root,
+                case,
+                annotation_origin="INDEPENDENT_EXTERNAL_TOOL",
+            )
             plan = self._plan(root, [case])
             matcher_calls = []
 
@@ -1552,7 +1665,6 @@ class PracticeTruthPopulationTest(unittest.TestCase):
 
             result = tool.advance_population(
                 plan,
-                annotation_origin="INDEPENDENT_EXTERNAL_TOOL",
                 matcher=FakeMatcher(),
             )
 

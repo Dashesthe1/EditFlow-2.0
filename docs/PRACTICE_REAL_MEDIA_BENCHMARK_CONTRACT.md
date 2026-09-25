@@ -68,11 +68,29 @@ source annotation, so EditFlow matcher predictions cannot be smuggled into the i
 workflow.
 
 After an independent reviewer fills the worksheet, `practice-media-truth.py import-review` verifies
-shot coverage/order and annotation structure and writes an annotated DRAFT. The normal `retain`
-command is still required afterward with the real annotation origin; importing a worksheet never
-self-promotes it to retained truth. On Windows, use the same CV-capable runtime as Practice
-(`py -3.12`); the product's local-media adapters already pin that interpreter instead of relying on
-the workstation's default `python` command.
+shot coverage/order and annotation structure and writes an annotated DRAFT. A completed worksheet
+is not enough to become retained truth. The reviewer must also seal a separate provenance declaration
+that identifies the reviewer, states the independent annotation origin, explicitly confirms the
+matcher-blind workflow and independence from matcher output, and hashes the exact review pack,
+worksheet, Finish media, and Start media. Practice validates that declaration before retention and
+binds its hash into the final review attestation.
+
+For a populated Practice case, seal that reviewer-supplied provenance with:
+
+```powershell
+py -3.12 scripts/practice/practice-truth-population.py declare-independent-review `
+  --manifest proofs/practice/truth-population.json `
+  --case-id case-01 `
+  --reviewer-id reviewer-01 `
+  --annotation-origin INDEPENDENT_HUMAN
+```
+
+The normal `retain`/finalization step is still required afterward; importing a worksheet or creating
+a declaration never self-promotes it to retained truth. Rebuilding a review pack invalidates both the
+reviewer declaration and final review attestation so changed evidence must be independently
+reconfirmed. On Windows, use the same CV-capable runtime as Practice (`py -3.12`); the product's
+local-media adapters already pin that interpreter instead of relying on the workstation's default
+`python` command.
 
 ### Truth population status
 
@@ -81,11 +99,11 @@ before corpus assembly. Its input uses `editflow.practice-truth-population-plan.
 output uses `editflow.practice-truth-population-status.v1`.
 
 Each case is fail-closed at the first missing proof stage: media intake, Finish reference analysis,
-truth scaffold, matcher-blind review pack, independent worksheet completion, retained truth, matcher
-observation, or per-case retained-suite manifest. A case becomes `READY_FOR_CORPUS` only after the
-existing retained-corpus preflight accepts its per-case manifest. The population-level
-`populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, distinct
-Finish media identities, and at least four hard-case categories. Finish identity is fail-closed in
+truth scaffold, matcher-blind review pack, independent worksheet completion, reviewer provenance,
+retained truth, matcher observation, or per-case retained-suite manifest. A case becomes
+`READY_FOR_CORPUS` only after the existing retained-corpus preflight accepts its per-case manifest.
+The population-level `populationWindowReached` flag checks only the 20-30 candidate window, unique
+case IDs, distinct Finish media identities, and at least four hard-case categories. Finish identity is fail-closed in
 two layers: exact SHA-256 reuse is rejected immediately, and once reference analysis exists,
 perceptual signatures at or above 0.96 similarity are rejected so a re-encode cannot inflate the
 population. It is intentionally separate from `readyForCorpusCount` and is never a certification
