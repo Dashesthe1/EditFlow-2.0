@@ -206,21 +206,74 @@ class PracticeTruthPopulationTest(unittest.TestCase):
         }
 
         write_json(root / case["referenceAnalysis"], reference)
-        write_json(root / case["truthDraft"], {
-            "schema": tool.TRUTH_SCHEMA,
-            "status": "DRAFT",
-            "referenceId": "reference:fixture",
-            "allowedSourceIds": [source_id],
-            "allowedSourceSha256": {source_id: sha256_bytes(source.read_bytes())},
-            "shots": [{
-                "shotId": "shot:1",
-                "sourceId": None,
-                "sourceStartMs": None,
-                "sourceEndMs": None,
-                "direction": None,
-            }],
-        })
+        truth_tool = tool.load_media_truth_tool()
+        draft = truth_tool.scaffold(
+            reference,
+            [source_id],
+            {source_id: sha256_bytes(source.read_bytes())},
+        )
+        write_json(root / case["truthDraft"], draft)
         return reference
+
+    def _write_complete_review_pack(self, root, case):
+        truth_tool = tool.load_media_truth_tool()
+        finish = root / case["finishPath"]
+        source_id = case["sourceMedia"][0]["sourceId"]
+        source = root / case["sourceMedia"][0]["path"]
+        finish_sha = sha256_bytes(finish.read_bytes())
+        source_sha = sha256_bytes(source.read_bytes())
+        review = root / case["reviewPackDir"]
+        preview_dir = review / "finish-previews"
+        atlas_dir = review / "source-atlas" / "fixture"
+        preview_dir.mkdir(parents=True, exist_ok=True)
+        atlas_dir.mkdir(parents=True, exist_ok=True)
+        finish_preview = preview_dir / "shot-1.png"
+        source_preview = atlas_dir / "0001.png"
+        finish_preview.write_bytes(b"finish-preview")
+        source_preview.write_bytes(b"source-preview")
+        write_json(review / "review-pack.json", {
+            "schema": tool.REVIEW_PACK_SCHEMA,
+            "finish": {"path": str(finish), "sha256": finish_sha},
+            "sources": [{
+                "sourceId": source_id,
+                "path": str(source),
+                "sha256": source_sha,
+            }],
+            "previews": [{
+                "shotId": "shot:1",
+                "previewPaths": [str(Path("finish-previews") / "shot-1.png")],
+            }],
+            "sourceAtlas": [{
+                "sourceId": source_id,
+                "sourceSha256": source_sha,
+                "samples": [{
+                    "timeMs": 1500.0,
+                    "previewPath": str(Path("source-atlas") / "fixture" / "0001.png"),
+                }],
+            }],
+            "policy": {
+                "matcherSuggestionsAllowed": False,
+                "matcherOutputMayBecomeTruth": False,
+            },
+        })
+        with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=truth_tool.REVIEW_FIELDS)
+            writer.writeheader()
+            writer.writerow({
+                "shotId": "shot:1",
+                "referenceStartMs": "0",
+                "referenceEndMs": "1000",
+                "previewEarly": str(Path("finish-previews") / "shot-1.png"),
+                "previewMiddle": str(Path("finish-previews") / "shot-1.png"),
+                "previewLate": str(Path("finish-previews") / "shot-1.png"),
+                "sourceId": source_id,
+                "sourceStartMs": "1000",
+                "sourceEndMs": "2000",
+                "direction": "FORWARD",
+                "toleranceMs": "",
+                "notes": "Independent matcher-blind review.",
+            })
+        return review
 
     def test_review_pack_waits_for_independent_worksheet_completion(self):
         with TemporaryDirectory() as temporary:
@@ -229,7 +282,13 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self._write_reference_and_draft(root, case)
             review = root / case["reviewPackDir"]
             review.mkdir()
-            write_json(review / "review-pack.json", {"schema": tool.REVIEW_PACK_SCHEMA})
+            write_json(review / "review-pack.json", {
+                "schema": tool.REVIEW_PACK_SCHEMA,
+                "policy": {
+                    "matcherSuggestionsAllowed": False,
+                    "matcherOutputMayBecomeTruth": False,
+                },
+            })
             with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=[
                     "shotId", "sourceId", "sourceStartMs", "sourceEndMs", "direction"
@@ -260,7 +319,7 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(status["cases"][0]["stage"], "TRUTH_RETENTION")
             self.assertEqual(
                 status["cases"][0]["nextAction"],
-                "IMPORT_AND_RETAIN_TRUTH",
+                "FINALIZE_INDEPENDENT_REVIEW",
             )
 
     def test_invalid_completed_worksheet_cannot_advance_to_truth_retention(self):
@@ -270,7 +329,13 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self._write_reference_and_draft(root, case)
             review = root / case["reviewPackDir"]
             review.mkdir()
-            write_json(review / "review-pack.json", {"schema": tool.REVIEW_PACK_SCHEMA})
+            write_json(review / "review-pack.json", {
+                "schema": tool.REVIEW_PACK_SCHEMA,
+                "policy": {
+                    "matcherSuggestionsAllowed": False,
+                    "matcherOutputMayBecomeTruth": False,
+                },
+            })
             with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=[
                     "shotId", "sourceId", "sourceStartMs", "sourceEndMs", "direction"
@@ -289,6 +354,71 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(result["stage"], "INDEPENDENT_REVIEW")
             self.assertEqual(result["nextAction"], "COMPLETE_INDEPENDENT_REVIEW")
             self.assertTrue(any("sourceId must be one of" in reason for reason in result["reasons"]))
+
+    def test_finalize_independent_review_retains_attests_and_invalidates_downstream(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            write_json(root / case["matches"], {"schema": tool.MATCH_SCHEMA, "matches": []})
+            write_json(root / case["suiteManifest"], {"schema": tool.RETAINED_SUITE_SCHEMA})
+            plan = self._plan(root, [case])
+
+            result = tool.finalize_independent_reviews(
+                plan,
+                "INDEPENDENT_HUMAN",
+                case_ids=[case["caseId"]],
+            )
+
+            self.assertEqual(result["schema"], tool.FINALIZE_SCHEMA)
+            self.assertEqual(result["finalizedCount"], 1)
+            self.assertEqual(result["failedCount"], 0)
+            retained_path = root / case["retainedTruth"]
+            attestation_path = review / "review-attestation.json"
+            self.assertTrue(retained_path.is_file())
+            self.assertTrue(attestation_path.is_file())
+            retained = tool.load_json(retained_path)
+            attestation = tool.load_json(attestation_path)
+            self.assertEqual(retained["annotationOrigin"], "INDEPENDENT_HUMAN")
+            self.assertTrue(attestation["matcherBlindWorkflowVerified"])
+            self.assertEqual(
+                attestation["retainedTruthSha256"],
+                tool.sha256_file(retained_path),
+            )
+            self.assertFalse((root / case["matches"]).exists())
+            self.assertFalse((root / case["suiteManifest"]).exists())
+            self.assertEqual(
+                result["cases"][0]["invalidatedDownstreamArtifacts"],
+                ["matches", "suiteManifest"],
+            )
+            status = tool.build_status(plan)
+            self.assertEqual(status["cases"][0]["stage"], "MATCHER_OBSERVATION")
+
+    def test_tampered_review_after_finalization_blocks_matcher_observation(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            result = tool.finalize_independent_reviews(
+                plan,
+                "INDEPENDENT_EXTERNAL_TOOL",
+            )
+            self.assertEqual(result["failedCount"], 0)
+
+            with (review / "annotations.csv").open("a", encoding="utf-8") as handle:
+                handle.write("\n")
+
+            status = tool.build_status(plan)
+            observed = status["cases"][0]
+            self.assertEqual(observed["stage"], "INDEPENDENT_REVIEW_ATTESTATION")
+            self.assertEqual(observed["nextAction"], "FINALIZE_INDEPENDENT_REVIEW")
+            self.assertTrue(any(
+                "no longer matches the review worksheet" in reason
+                for reason in observed["reasons"]
+            ))
 
     def test_prepare_review_packs_refreshes_missing_source_atlas_and_then_skips(self):
         with TemporaryDirectory() as temporary:
@@ -705,13 +835,13 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             finish_sha = sha256_bytes(finish.read_bytes())
             source_sha = sha256_bytes(source.read_bytes())
             source_id = case["sourceMedia"][0]["sourceId"]
-            retained = {
-                "schema": tool.TRUTH_SCHEMA,
-                "status": "RETAINED",
-                "referenceId": "reference:fixture",
-                "annotationOrigin": "INDEPENDENT_HUMAN",
-            }
-            write_json(root / case["retainedTruth"], retained)
+            self._write_complete_review_pack(root, case)
+            plan = self._plan(root, [case])
+            finalization = tool.finalize_independent_reviews(
+                plan,
+                "INDEPENDENT_HUMAN",
+            )
+            self.assertEqual(finalization["failedCount"], 0)
             write_json(root / case["matches"], {
                 "schema": tool.MATCH_SCHEMA,
                 "matches": [],
