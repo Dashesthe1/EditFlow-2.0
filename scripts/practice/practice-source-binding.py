@@ -257,39 +257,64 @@ def load_matcher():
     return module
 
 
-def ensure_source_index(source_id, source_path, cache_dir, matcher=None):
+def ensure_source_index(
+    source_id,
+    source_path,
+    cache_dir,
+    matcher=None,
+    sample_step_ms=250.0,
+    analysis_fps=None,
+):
     matcher = matcher or load_matcher()
+    sample_step_ms = float(sample_step_ms)
+    analysis_fps = float(
+        matcher.DEFAULT_ANALYSIS_PROXY_FPS if analysis_fps is None else analysis_fps
+    )
+    if sample_step_ms < 100.0 or sample_step_ms > 5000.0:
+        raise ValueError("Source-index sample step must be in [100, 5000] ms.")
+    if analysis_fps < 1.0 or analysis_fps > 30.0:
+        raise ValueError("Source-index analysis FPS must be in [1, 30].")
+
     source_path = Path(source_path).resolve()
     source_sha = sha256_file(source_path)
     cache_dir = Path(cache_dir).resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = cache_dir / (
-        safe_stem(source_id) + "-" + source_sha[:20] + ".json"
+    profile_token = (
+        "s" + str(int(round(sample_step_ms)))
+        + "-f" + str(int(round(analysis_fps * 1000.0)))
     )
-    if artifact_path.is_file():
-        artifact = load_json(artifact_path)
-        if (
+    artifact_path = cache_dir / (
+        safe_stem(source_id) + "-" + source_sha[:20] + "-" + profile_token + ".json"
+    )
+
+    def matches_profile(artifact):
+        analysis = artifact.get("analysis") or {}
+        return (
             artifact.get("schema") == "editflow.practice-source-index.v1"
             and artifact.get("sourceId") == source_id
             and str(artifact.get("sourceSha256", "")).lower() == source_sha
-        ):
+            and abs(float(analysis.get("sampleStepMs", -1.0)) - sample_step_ms) < 0.001
+            and abs(float(analysis.get("analysisProxyFps", -1.0)) - analysis_fps) < 0.001
+        )
+
+    if artifact_path.is_file():
+        artifact = load_json(artifact_path)
+        if matches_profile(artifact):
             return str(artifact_path)
 
     matcher.index_source(
         str(source_path),
         source_id,
         str(artifact_path),
-        250.0,
+        sample_step_ms,
         proxy_dir=str(cache_dir / "proxies"),
-        analysis_fps=matcher.DEFAULT_ANALYSIS_PROXY_FPS,
+        analysis_fps=analysis_fps,
     )
     artifact = load_json(artifact_path)
-    if (
-        artifact.get("schema") != "editflow.practice-source-index.v1"
-        or artifact.get("sourceId") != source_id
-        or str(artifact.get("sourceSha256", "")).lower() != source_sha
-    ):
-        raise ValueError("Practice source index does not match requested Start media.")
+    if not matches_profile(artifact):
+        raise ValueError(
+            "Practice source index does not match requested Start media and analysis profile."
+        )
     return str(artifact_path)
 
 
@@ -303,6 +328,8 @@ def bind_sources(
     matches_output=None,
     coarse_limit=16,
     minimum_coverage=DEFAULT_MINIMUM_COVERAGE,
+    source_index_sample_step_ms=250.0,
+    source_index_analysis_fps=None,
 ):
     reference = load_json(reference_path)
     if matches_path:
@@ -325,6 +352,8 @@ def bind_sources(
                         source_path,
                         cache_dir,
                         matcher=matcher,
+                        sample_step_ms=source_index_sample_step_ms,
+                        analysis_fps=source_index_analysis_fps,
                     )
                 )
         if not effective_index_paths:
@@ -376,6 +405,8 @@ def build_parser():
     parser.add_argument("--matches-output")
     parser.add_argument("--output", required=True)
     parser.add_argument("--coarse-limit", type=int, default=16)
+    parser.add_argument("--source-index-sample-step-ms", type=float, default=250.0)
+    parser.add_argument("--source-index-analysis-fps", type=float)
     parser.add_argument(
         "--minimum-coverage",
         type=float,
@@ -394,6 +425,13 @@ def main():
         raise ValueError("--coarse-limit must be in [2, 64].")
     if not (0.5 <= args.minimum_coverage <= 1.0):
         raise ValueError("--minimum-coverage must be in [0.5, 1.0].")
+    if args.source_index_sample_step_ms < 100 or args.source_index_sample_step_ms > 5000:
+        raise ValueError("--source-index-sample-step-ms must be in [100, 5000].")
+    if (
+        args.source_index_analysis_fps is not None
+        and (args.source_index_analysis_fps < 1 or args.source_index_analysis_fps > 30)
+    ):
+        raise ValueError("--source-index-analysis-fps must be in [1, 30].")
 
     result = bind_sources(
         args.reference_json,
@@ -405,6 +443,8 @@ def main():
         matches_output=args.matches_output,
         coarse_limit=args.coarse_limit,
         minimum_coverage=args.minimum_coverage,
+        source_index_sample_step_ms=args.source_index_sample_step_ms,
+        source_index_analysis_fps=args.source_index_analysis_fps,
     )
     print(json.dumps({
         "ok": True,

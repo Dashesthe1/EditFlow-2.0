@@ -145,12 +145,16 @@ class PracticeSourceBindingTest(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
 
-            def index_source(self, video, source_id, output, _step, **_kwargs):
+            def index_source(self, video, source_id, output, step, **kwargs):
                 self.calls += 1
                 Path(output).write_text(json.dumps({
                     "schema": "editflow.practice-source-index.v1",
                     "sourceId": source_id,
                     "sourceSha256": tool.sha256_file(video),
+                    "analysis": {
+                        "sampleStepMs": float(step),
+                        "analysisProxyFps": float(kwargs["analysis_fps"]),
+                    },
                 }), encoding="utf-8")
 
         with TemporaryDirectory() as temporary:
@@ -183,6 +187,63 @@ class PracticeSourceBindingTest(unittest.TestCase):
             )
             self.assertNotEqual(third, first)
             self.assertEqual(matcher.calls, 2)
+
+
+    def test_source_index_cache_separates_analysis_profiles(self):
+        class FakeMatcher:
+            DEFAULT_ANALYSIS_PROXY_FPS = 12.0
+
+            def __init__(self):
+                self.calls = []
+
+            def index_source(self, video, source_id, output, step, **kwargs):
+                self.calls.append((float(step), float(kwargs["analysis_fps"])))
+                Path(output).write_text(json.dumps({
+                    "schema": "editflow.practice-source-index.v1",
+                    "sourceId": source_id,
+                    "sourceSha256": tool.sha256_file(video),
+                    "analysis": {
+                        "sampleStepMs": float(step),
+                        "analysisProxyFps": float(kwargs["analysis_fps"]),
+                    },
+                }), encoding="utf-8")
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "movie.mp4"
+            source.write_bytes(b"same-source")
+            matcher = FakeMatcher()
+
+            exact = tool.ensure_source_index(
+                "video:movie",
+                source,
+                root / "cache",
+                matcher=matcher,
+                sample_step_ms=250.0,
+                analysis_fps=12.0,
+            )
+            coarse = tool.ensure_source_index(
+                "video:movie",
+                source,
+                root / "cache",
+                matcher=matcher,
+                sample_step_ms=1000.0,
+                analysis_fps=4.0,
+            )
+            exact_again = tool.ensure_source_index(
+                "video:movie",
+                source,
+                root / "cache",
+                matcher=matcher,
+                sample_step_ms=250.0,
+                analysis_fps=12.0,
+            )
+
+            self.assertNotEqual(exact, coarse)
+            self.assertEqual(exact, exact_again)
+            self.assertEqual(matcher.calls, [(250.0, 12.0), (1000.0, 4.0)])
+            self.assertIn("-s250-f12000.json", exact)
+            self.assertIn("-s1000-f4000.json", coarse)
 
     def test_bind_sources_can_certify_existing_match_observation(self):
         with TemporaryDirectory() as temporary:
