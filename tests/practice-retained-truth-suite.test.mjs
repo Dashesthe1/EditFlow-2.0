@@ -86,11 +86,26 @@ const retainedCase = (index) => {
 const certificationCases = () =>
   Array.from({ length: 20 }, (_, index) => retainedCase(index));
 
-test("20 independent full-length truth cases can certify scene retrieval and persist", () => {
+const withRetainedTruthAuthority = (report, cases) => ({
+  ...report,
+  authorityRef: "practice-retained-truth-authority:sha256:" + "a".repeat(64),
+  authorityManifestSha256: "b".repeat(64),
+  evidenceRefs: [...new Set([
+    ...report.evidenceRefs,
+    ...cases.map((item) =>
+      "retained-finish-sha256:" + item.truth.finishSha256),
+    ...cases.flatMap((item) =>
+      item.truth.sourceMediaSha256.map((sha) =>
+        "retained-source-sha256:" + sha)),
+  ])],
+});
+
+test("20 independent full-length truth cases certify only with retained media authority", () => {
+  const cases = certificationCases();
   const report = evaluatePracticeRetainedTruthSuiteV1({
     editTypeId: "truth-certified-edit",
     mode: "CERTIFICATION",
-    cases: certificationCases(),
+    cases,
   });
 
   assert.equal(report.certified, true);
@@ -113,7 +128,11 @@ test("20 independent full-length truth cases can certify scene retrieval and per
     editTypeId: "truth-certified-edit",
     title: "Truth Certified Edit",
   });
-  registry.recordRetainedTruthSuite(report);
+  assert.throws(
+    () => registry.recordRetainedTruthSuite(report),
+    /retained real-media authority/,
+  );
+  registry.recordRetainedTruthSuite(withRetainedTruthAuthority(report, cases));
   const knowledge = registry.knowledge("truth-certified-edit");
   assert.ok(knowledge);
   assert.equal(knowledge.maturityStage, null);
@@ -313,11 +332,12 @@ test("duplicate Finish bytes and partial truth both fail closed", () => {
 });
 
 test("Edit Type memory refuses a forged certified truth report", () => {
-  const report = evaluatePracticeRetainedTruthSuiteV1({
+  const cases = certificationCases();
+  const report = withRetainedTruthAuthority(evaluatePracticeRetainedTruthSuiteV1({
     editTypeId: "truth-forged",
     mode: "CERTIFICATION",
-    cases: certificationCases(),
-  });
+    cases,
+  }), cases);
   assert.equal(report.certified, true);
   const registry = new EditTypeRegistryV1();
   registry.create({ editTypeId: "truth-forged", title: "Truth Forged" });
