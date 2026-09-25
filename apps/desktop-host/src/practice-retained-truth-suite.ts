@@ -144,10 +144,10 @@ export const evaluatePracticeRetainedTruthSuiteManifestV1 = async (
     cases: verifiedCases,
   });
   const authorityManifestSha256 = await sha256File(manifestPath);
-  const authorityMediaSha256 = uniqueNonEmpty(verifiedCases.flatMap((item) => [
+  const authorityMediaSha256 = [...uniqueNonEmpty(verifiedCases.flatMap((item) => [
     item.truth.finishSha256,
     ...item.truth.sourceMediaSha256,
-  ])).sort();
+  ]))].sort();
   const authorityPayload = JSON.stringify({
     schema: "editflow.practice-retained-truth-authority.v1",
     editTypeId: manifest.editTypeId,
