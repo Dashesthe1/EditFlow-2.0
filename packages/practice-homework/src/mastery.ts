@@ -75,6 +75,7 @@ export const practiceRetainedTruthAuthorityVerifiedV1 = (
     && report.difficultyKindCount >= report.policy.minimumDifficultyKinds
     && report.sceneErrorCount === 0
     && report.reasons.length === 0
+    && report.cases.length === report.caseCount
     && authorityRef !== null
     && SHA256_HEX.test(authoritySha256)
     && manifestSha256 !== null
