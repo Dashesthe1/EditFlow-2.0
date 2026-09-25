@@ -41,7 +41,9 @@ test("Practice media timeout terminates the analyzer process tree", async () => 
       artifactDir: path.join(directory, "artifacts"),
       scriptPath,
       python: { executable: process.execPath, prefixArgs: [runnerPath] },
-      analysisTimeoutMs: 500,
+      // Leave enough startup budget for the synthetic Node analyzer to create
+      // its descendant before testing timeout-tree cleanup on a loaded Windows host.
+      analysisTimeoutMs: 2_000,
     });
     await assert.rejects(
       matcher.analyzeFinish({
