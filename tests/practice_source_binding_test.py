@@ -124,6 +124,37 @@ class PracticeSourceBindingTest(unittest.TestCase):
             for reason in result["rejectedShots"][0]["reasons"]
         ))
 
+    def test_category_specific_source_and_timing_ambiguity_block_binding(self):
+        source_ambiguous = match("shot:a", "video:a", SHA_A)
+        source_ambiguous["sourceCandidateMargin"] = 0.019
+        source_ambiguous["sourceIdentityCollisionRisk"] = True
+        timing_ambiguous = match(
+            "shot:b",
+            "video:b",
+            SHA_B,
+            start_ms=2000.0,
+        )
+        timing_ambiguous["timingCandidateMargin"] = 0.019
+        timing_ambiguous["timingAliasCollisionRisk"] = True
+
+        result = tool.evaluate_binding(reference(), {
+            "matches": [source_ambiguous, timing_ambiguous],
+        })
+
+        self.assertEqual(result["status"], "NO_VALID_BINDING")
+        source_reasons = result["rejectedShots"][0]["reasons"]
+        timing_reasons = result["rejectedShots"][1]["reasons"]
+        self.assertIn("source identity margin is ambiguous", source_reasons)
+        self.assertIn(
+            "cross-source identity collision remains unresolved",
+            source_reasons,
+        )
+        self.assertIn("same-source timing margin is ambiguous", timing_reasons)
+        self.assertIn(
+            "same-source timing alias remains unresolved",
+            timing_reasons,
+        )
+
     def test_source_id_cannot_change_content_identity_across_shots(self):
         observation = {"matches": [
             match("shot:a", "video:a", SHA_A),

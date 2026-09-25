@@ -2319,7 +2319,7 @@ def ambiguous_geometric_collision(best, second, margin_threshold=0.08):
     return support_advantage < 0.12 and fraction_advantage < 0.20
 
 
-def distinct_second_result(results, best):
+def cross_source_competitor(results, best):
     ordered = sorted(
         results,
         key=lambda item: candidate_rank_score(item["mapping"]),
@@ -2330,11 +2330,57 @@ def distinct_second_result(results, best):
             continue
         if item["index"]["sourceId"] != best["index"]["sourceId"]:
             return item
-        delta = abs(item["mapping"]["centerSourceMs"] - best["mapping"]["centerSourceMs"])
-        step = float(best["index"]["analysis"]["sampleStepMs"])
-        if delta >= max(800.0, step * 1.5):
+    return None
+
+
+def same_source_timing_competitor(results, best):
+    ordered = sorted(
+        results,
+        key=lambda item: candidate_rank_score(item["mapping"]),
+        reverse=True,
+    )
+    step = float(best["index"]["analysis"]["sampleStepMs"])
+    minimum_delta = max(800.0, step * 1.5)
+    for item in ordered:
+        if item is best:
+            continue
+        if item["index"]["sourceId"] != best["index"]["sourceId"]:
+            continue
+        delta = abs(
+            float(item["mapping"]["centerSourceMs"])
+            - float(best["mapping"]["centerSourceMs"])
+        )
+        if delta >= minimum_delta:
             return item
     return None
+
+
+def distinct_competitors(results, best):
+    values = [
+        cross_source_competitor(results, best),
+        same_source_timing_competitor(results, best),
+    ]
+    output = []
+    seen = set()
+    for item in values:
+        if item is None:
+            continue
+        key = candidate_item_key(item)
+        if key in seen:
+            continue
+        output.append(item)
+        seen.add(key)
+    return output
+
+
+def distinct_second_result(results, best):
+    competitors = distinct_competitors(results, best)
+    if not competitors:
+        return None
+    return max(
+        competitors,
+        key=lambda item: candidate_rank_score(item["mapping"]),
+    )
 
 
 def distinct_second_score(results, best):
@@ -2373,9 +2419,10 @@ def finalize_candidate_geometry(
     }
 
     # Full geometry can lower a provisional candidate that looked strongest
-    # under the three-anchor screen. Stabilize both the actual selection winner
-    # and its distinct runner-up so the final ordering and confidence margin are
-    # computed from comparable full-reference evidence.
+    # under the three-anchor screen. Stabilize the actual selection winner plus
+    # the strongest cross-source identity competitor and the strongest distant
+    # same-source timing alias so neither ambiguity class can remain on weaker
+    # provisional geometry while exact-scene confidence is decided.
     for _ in range(max(2, len(results) * 2)):
         best = max(
             results,
@@ -2385,8 +2432,8 @@ def finalize_candidate_geometry(
                 continuity_bonus,
             ),
         )
-        second = distinct_second_result(results, best)
-        targets = [best] + ([] if second is None else [second])
+        competitors = distinct_competitors(results, best)
+        targets = [best, *competitors]
         pending = [
             item
             for item in targets
@@ -2693,13 +2740,27 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 ),
             )
             mapping = best["mapping"]
+            source_second = cross_source_competitor(refined, best)
+            timing_second = same_source_timing_competitor(refined, best)
             second = distinct_second_result(refined, best)
+            source_second_score = (
+                0.0
+                if source_second is None
+                else candidate_rank_score(source_second["mapping"])
+            )
+            timing_second_score = (
+                0.0
+                if timing_second is None
+                else candidate_rank_score(timing_second["mapping"])
+            )
             second_score = (
                 0.0
                 if second is None
                 else candidate_rank_score(second["mapping"])
             )
-            collision_risk = ambiguous_geometric_collision(best, second)
+            source_collision_risk = ambiguous_geometric_collision(best, source_second)
+            timing_alias_risk = ambiguous_geometric_collision(best, timing_second)
+            collision_risk = source_collision_risk or timing_alias_risk
             center_reference = shot["anchors"][len(shot["anchors"]) // 2]["timeMs"]
             mapped_start = mapping["centerSourceMs"] + mapping["slope"] * (
                 shot["referenceStartMs"] - center_reference
@@ -2728,6 +2789,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             )
             candidate_score = candidate_rank_score(mapping)
             candidate_margin = candidate_score - float(second_score)
+            source_candidate_margin = candidate_score - float(source_second_score)
+            timing_candidate_margin = candidate_score - float(timing_second_score)
             selection_mode = (
                 "GEOMETRIC_RESCUE"
                 if mapping.get("rescueScore") is not None
@@ -2765,6 +2828,12 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                 "candidateScore": float(candidate_score),
                 "runnerUpScore": float(second_score),
                 "candidateMargin": float(candidate_margin),
+                "sourceRunnerUpScore": float(source_second_score),
+                "sourceCandidateMargin": float(source_candidate_margin),
+                "timingRunnerUpScore": float(timing_second_score),
+                "timingCandidateMargin": float(timing_candidate_margin),
+                "sourceIdentityCollisionRisk": bool(source_collision_risk),
+                "timingAliasCollisionRisk": bool(timing_alias_risk),
                 **(
                     {"referenceBoundaryContinuity": float(boundary["score"])}
                     if boundary is not None else {}
@@ -2779,8 +2848,14 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
                     f"practice-candidate-score:{candidate_score:.6f}",
                     f"practice-runner-up-score:{second_score:.6f}",
                     f"practice-candidate-margin:{candidate_margin:.6f}",
+                    f"practice-source-runner-up-score:{source_second_score:.6f}",
+                    f"practice-source-candidate-margin:{source_candidate_margin:.6f}",
+                    f"practice-timing-runner-up-score:{timing_second_score:.6f}",
+                    f"practice-timing-candidate-margin:{timing_candidate_margin:.6f}",
                     "practice-source-stratified-retrieval:v1",
                     f"practice-ambiguous-geometric-collision:{str(collision_risk).lower()}",
+                    f"practice-source-identity-collision:{str(source_collision_risk).lower()}",
+                    f"practice-timing-alias-collision:{str(timing_alias_risk).lower()}",
                     f"practice-scene-selection-mode:{selection_mode}",
                     *(
                         [
@@ -2847,7 +2922,8 @@ def match_reference(reference_path, source_index_paths, output_path, coarse_limi
             "coarseCandidateStrategy": "SOURCE_BALANCED_TEMPORAL_V2",
             "refinementMode": "PROXY_PROGRESSIVE_SOURCE_BALANCED_GEOMETRIC_V3",
             "geometricVerificationMode": "SOURCE_BEST_PLUS_TOP4_THREE_ANCHOR_THEN_STABLE_FULL_FINALISTS_V2",
-            "geometricFinalizationMode": "ITERATIVE_FULL_WINNER_DISTINCT_RUNNER_UP_V1",
+            "geometricFinalizationMode": "ITERATIVE_FULL_WINNER_SOURCE_AND_TIMING_COMPETITORS_V2",
+            "competitorMarginMode": "SOURCE_IDENTITY_PLUS_SAME_SOURCE_TIMING_V1",
             "geometricRankingMinimumStrongAnchors": 2,
             "geometricRankingSampledAnchors": 3,
             "geometricRescueMode": "BOUNDED_THREE_ANCHOR_COHERENT_PATH_V1",

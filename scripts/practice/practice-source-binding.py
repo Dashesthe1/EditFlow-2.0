@@ -135,6 +135,22 @@ def match_qualification_reasons(
     margin = match.get("candidateMargin")
     if not finite_number(margin) or float(margin) < minimum_margin:
         reasons.append("candidate margin is ambiguous")
+    source_margin = match.get("sourceCandidateMargin")
+    if source_margin is not None:
+        if not finite_number(source_margin):
+            reasons.append("source identity margin is invalid")
+        elif float(source_margin) < minimum_margin:
+            reasons.append("source identity margin is ambiguous")
+    timing_margin = match.get("timingCandidateMargin")
+    if timing_margin is not None:
+        if not finite_number(timing_margin):
+            reasons.append("same-source timing margin is invalid")
+        elif float(timing_margin) < minimum_margin:
+            reasons.append("same-source timing margin is ambiguous")
+    if match.get("sourceIdentityCollisionRisk") is True:
+        reasons.append("cross-source identity collision remains unresolved")
+    if match.get("timingAliasCollisionRisk") is True:
+        reasons.append("same-source timing alias remains unresolved")
     proof = match.get("geometricProof") or {}
     strong_anchors = proof.get("strongAnchorCount")
     if not finite_number(strong_anchors) or int(strong_anchors) < minimum_strong_anchors:

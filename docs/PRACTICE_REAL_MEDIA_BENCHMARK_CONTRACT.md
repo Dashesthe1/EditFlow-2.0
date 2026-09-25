@@ -91,9 +91,14 @@ origin sends the case back to `TRUTH_RETENTION`. Only after that independent tru
 the matcher observation receive a separate exact-scene source-binding gate. The binding must cover
 at least 98% of the Finish timeline using one retained match per covered shot, confidence at least
 0.95, candidate margin at least 0.02, at least two strong geometric anchors, and a retained source
-SHA-256 that equals the current declared Start file. Binding evidence is never copied into the
-review worksheet or retained truth. A case becomes `READY_FOR_CORPUS` only after the
-existing retained-corpus preflight accepts its per-case manifest. The population-level
+SHA-256 that equals the current declared Start file. Exact-scene finalization treats two ambiguity
+classes independently: the strongest competing Start source and the strongest distant timing alias
+within the winning Start source. The winner and both competitors receive full-reference geometry
+before confidence is finalized; the retained match records source-vs-timing runner-up scores,
+margins, and collision flags. Either unresolved identity collision or timing alias is fail-closed
+for source binding. Binding evidence is never copied into the review worksheet or retained truth.
+A case becomes `READY_FOR_CORPUS` only after the existing retained-corpus preflight accepts its
+per-case manifest. The population-level
 `populationWindowReached` flag checks only the 20-30 candidate window, unique case IDs, distinct
 Finish media identities, and at least four hard-case categories. Finish identity is fail-closed in
 two layers: exact SHA-256 reuse is rejected immediately, and once reference analysis exists,

@@ -173,6 +173,100 @@ class PracticeMediaMatchGeometryTests(unittest.TestCase):
             },
         )
 
+    def test_distinct_competitors_preserve_source_identity_and_timing_alias(self):
+        def item(source_id, sample_ms, center_ms, score):
+            return {
+                "index": {
+                    "sourceId": source_id,
+                    "analysis": {"sampleStepMs": 250.0},
+                },
+                "sample": {"timeMs": float(sample_ms)},
+                "mapping": {
+                    "score": float(score),
+                    "centerSourceMs": float(center_ms),
+                    "geometricProof": {
+                        "strongAnchorCount": 3,
+                        "strongAnchorFraction": 1.0,
+                        "meanSupport": 0.90,
+                    },
+                },
+            }
+
+        best = item("source-a", 100.0, 100.0, 0.90)
+        nearby_same_scene = item("source-a", 300.0, 350.0, 0.89)
+        timing_alias = item("source-a", 1200.0, 1200.0, 0.88)
+        cross_source = item("source-b", 200.0, 200.0, 0.87)
+        values = [best, nearby_same_scene, timing_alias, cross_source]
+
+        source_competitor = matcher.cross_source_competitor(values, best)
+        timing_competitor = matcher.same_source_timing_competitor(values, best)
+        competitors = matcher.distinct_competitors(values, best)
+
+        self.assertIs(source_competitor, cross_source)
+        self.assertIs(timing_competitor, timing_alias)
+        self.assertEqual(set(id(item) for item in competitors), {
+            id(cross_source),
+            id(timing_alias),
+        })
+        self.assertIs(matcher.distinct_second_result(values, best), timing_alias)
+
+    def test_full_geometry_verifies_both_source_and_timing_competitor_classes(self):
+        def item(source_id, sample_ms, center_ms, score):
+            return {
+                "index": {
+                    "sourceId": source_id,
+                    "analysis": {"sampleStepMs": 250.0},
+                },
+                "sample": {"timeMs": float(sample_ms)},
+                "mapping": {
+                    "score": float(score),
+                    "centerSourceMs": float(center_ms),
+                    "geometricProof": {
+                        "strongAnchorCount": 3,
+                        "strongAnchorFraction": 1.0,
+                        "meanSupport": 0.80,
+                    },
+                },
+            }
+
+        best = item("source-a", 100.0, 100.0, 0.90)
+        timing_alias = item("source-a", 1200.0, 1200.0, 0.87)
+        cross_source = item("source-b", 200.0, 200.0, 0.86)
+        original = matcher.mapping_geometric_proof
+        calls = []
+
+        def full_proof(
+            _shot,
+            mapping,
+            _reference_reader,
+            _source_reader,
+            max_anchors=None,
+            normalize_for_effects=False,
+        ):
+            self.assertIsNone(max_anchors)
+            self.assertFalse(normalize_for_effects)
+            calls.append(float(mapping["centerSourceMs"]))
+            return {
+                "anchorCount": 6,
+                "strongAnchorCount": 5,
+                "strongAnchorFraction": 5.0 / 6.0,
+                "meanSupport": 0.88,
+            }
+
+        try:
+            matcher.mapping_geometric_proof = full_proof
+            matcher.finalize_candidate_geometry(
+                {"shotId": "shot:dual-competitor"},
+                [best, timing_alias, cross_source],
+                object(),
+                {"source-a": object(), "source-b": object()},
+            )
+        finally:
+            matcher.mapping_geometric_proof = original
+
+        self.assertEqual(set(calls), {100.0, 1200.0, 200.0})
+        self.assertEqual(len(calls), 3)
+
     def test_ambiguous_repeated_geometry_collision_is_fail_closed(self):
         def item(source_id, score, support, fraction=1.0):
             return {
