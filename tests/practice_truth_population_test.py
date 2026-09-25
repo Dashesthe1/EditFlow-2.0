@@ -620,6 +620,68 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                     source_paths={"video:new": source},
                 )
 
+    def test_bindability_probe_rebuilds_stale_reference_artifact(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            source = root / "source.mp4"
+            source.write_bytes(b"source")
+            finish = root / "candidate.mp4"
+            finish.write_bytes(b"finish")
+            finish_sha = sha256_bytes(finish.read_bytes())
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 1,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [{
+                    "path": str(finish),
+                    "fileName": finish.name,
+                    "sha256": finish_sha,
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                }],
+            })
+            task = tool.build_acquisition_plan(plan, discovery)["tasks"][0]
+            stale_path = Path(task["artifactTargets"]["referenceAnalysis"])
+            stale_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(stale_path, {
+                "schema": tool.REFERENCE_SCHEMA,
+                "referenceId": "reference:stale",
+                "sourceSha256": finish_sha,
+                "analysis": {"analyzerFingerprint": "stale"},
+                "shots": [],
+            })
+
+            class FakeMatcher:
+                def __init__(self):
+                    self.calls = 0
+                def load_artifact(self, _path, _schema):
+                    raise ValueError("stale analyzer fingerprint")
+                def analyze_reference(self, video_path, reference_id, output_path, cut_threshold, minimum_shot_ms):
+                    self.calls += 1
+                    payload = {
+                        "schema": tool.REFERENCE_SCHEMA,
+                        "referenceId": reference_id,
+                        "sourceSha256": sha256_bytes(Path(video_path).read_bytes()),
+                        "shots": [],
+                    }
+                    write_json(output_path, payload)
+                    return payload
+
+            class FakeBindingTool:
+                def bind_sources(self, reference_path, output_path, **_kwargs):
+                    payload = {"schema": tool.SOURCE_BINDING_SCHEMA, "status": "UNBOUND", "sourceBindings": [], "reasons": ["none"]}
+                    write_json(output_path, payload)
+                    return payload
+
+            matcher = FakeMatcher()
+            tool.probe_acquisition_bindability(
+                plan, discovery, ["video:new=" + str(source)],
+                matcher=matcher, source_binding_tool=FakeBindingTool(),
+            )
+            self.assertEqual(matcher.calls, 1)
+
     def test_acquisition_run_refuses_manifest_rebase_that_breaks_relative_artifacts(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

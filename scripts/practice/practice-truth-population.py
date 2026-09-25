@@ -1573,10 +1573,17 @@ def probe_acquisition_bindability(
         if reference_path.is_file():
             try:
                 candidate = load_json(reference_path)
-                if (
+                candidate_matches = (
                     candidate.get("schema") == REFERENCE_SCHEMA
                     and str(candidate.get("sourceSha256", "")).strip().lower() == actual_sha.lower()
-                ):
+                )
+                artifact_loader = getattr(matcher, "load_artifact", None)
+                if candidate_matches and callable(artifact_loader):
+                    try:
+                        artifact_loader(reference_path, REFERENCE_SCHEMA)
+                    except (OSError, ValueError, json.JSONDecodeError):
+                        candidate_matches = False
+                if candidate_matches:
                     reference = candidate
             except (OSError, ValueError, json.JSONDecodeError):
                 reference = None
@@ -1872,10 +1879,17 @@ def execute_acquisition_plan(
         if reference_path.is_file():
             try:
                 candidate = load_json(reference_path)
-                if (
+                candidate_matches = (
                     candidate.get("schema") == REFERENCE_SCHEMA
                     and str(candidate.get("sourceSha256", "")).strip().lower() == finish_sha.lower()
-                ):
+                )
+                artifact_loader = getattr(matcher, "load_artifact", None)
+                if candidate_matches and callable(artifact_loader):
+                    try:
+                        artifact_loader(reference_path, REFERENCE_SCHEMA)
+                    except (OSError, ValueError, json.JSONDecodeError):
+                        candidate_matches = False
+                if candidate_matches:
                     reference = candidate
             except (OSError, ValueError, json.JSONDecodeError):
                 reference = None
