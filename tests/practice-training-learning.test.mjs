@@ -497,6 +497,11 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     masteryRecord: prior,
   });
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "TRANSFER_VERIFIED");
+  const initialProgression = registry.knowledge("benchmark-gated").progressionGate;
+  assert.equal(initialProgression.robustClaimAllowed, false);
+  assert.equal(initialProgression.retainedTruthCertificationComplete, false);
+  assert.ok(initialProgression.blockingDependencies.some((reason) =>
+    /No retained real-media truth-suite evaluation/i.test(reason)));
 
   const cases = Array.from({ length: 20 }, (_, index) => ({
     caseId: "held-out:" + String(index + 1),
@@ -550,14 +555,24 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
     "OBJECT_AWARE_VERIFIED",
     "a stale unbound benchmark must not compose with a later truth certificate",
   );
-  const refreshedReport = refreshPracticeHeldOutBenchmarkV1({
+  const certifiedProgression = registry.knowledge("benchmark-gated").progressionGate;
+  assert.equal(certifiedProgression.populationWindowComplete, true);
+  assert.equal(certifiedProgression.independentTruthReviewComplete, true);
+  assert.equal(certifiedProgression.sourceAcquisitionComplete, true);
+  assert.equal(certifiedProgression.retainedTruthCertificationComplete, true);
+  assert.equal(certifiedProgression.heldOutBenchmarkComplete, false);
+  assert.equal(certifiedProgression.robustClaimAllowed, false);
+  assert.ok(certifiedProgression.blockingDependencies.some((reason) =>
+    /No ROBUST held-out benchmark/i.test(reason)));
+
+  const initialRefreshedReport = refreshPracticeHeldOutBenchmarkV1({
     registry,
     editTypeId: "benchmark-gated",
     professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
   });
-  assert.equal(refreshedReport.heldOutProofVerified, true);
-  assert.equal(refreshedReport.retainedTruthSuiteAuthorityVerified, true);
-  assert.equal(refreshedReport.robust, true);
+  assert.equal(initialRefreshedReport.heldOutProofVerified, true);
+  assert.equal(initialRefreshedReport.retainedTruthSuiteAuthorityVerified, true);
+  assert.equal(initialRefreshedReport.robust, true);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
   const report = evaluatePracticeHeldOutBenchmarkV1({
@@ -720,6 +735,69 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
 
   registry.recordHeldOutBenchmark(report);
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
+  const robustProgression = registry.knowledge("benchmark-gated").progressionGate;
+  assert.equal(robustProgression.heldOutBenchmarkComplete, true);
+  assert.equal(robustProgression.robustClaimAllowed, true);
+  assert.deepEqual(robustProgression.blockingDependencies, []);
+
+  const incompleteTruthReport = {
+    ...retainedTruthReport,
+    evaluatedAt: new Date(
+      Date.parse(retainedTruthReport.evaluatedAt) + 1000,
+    ).toISOString(),
+    caseCount: 10,
+    passedCaseCount: 10,
+    distinctCaseIdCount: 10,
+    distinctReferenceCount: 10,
+    distinctFinishSha256Count: 10,
+    distinctSourceSetCount: 1,
+    independentTruthCaseCount: 5,
+    fullLengthTruthCaseCount: 5,
+    difficultyKindCount: 2,
+    difficultyKinds: retainedTruthReport.difficultyKinds.slice(0, 2),
+    certified: false,
+    reasons: ["Population and independent review are incomplete."],
+    cases: retainedTruthReport.cases.slice(0, 10),
+    evidenceRefs: ["truth:incomplete:latest"],
+  };
+  registry.recordRetainedTruthSuite(incompleteTruthReport);
+  const blockedByLatestTruth = registry.knowledge("benchmark-gated");
+  assert.equal(blockedByLatestTruth.maturityStage, "OBJECT_AWARE_VERIFIED");
+  assert.equal(blockedByLatestTruth.progressionGate.populationWindowComplete, false);
+  assert.equal(blockedByLatestTruth.progressionGate.independentTruthReviewComplete, false);
+  assert.equal(blockedByLatestTruth.progressionGate.sourceAcquisitionComplete, false);
+  assert.equal(blockedByLatestTruth.progressionGate.retainedTruthCertificationComplete, false);
+  assert.equal(blockedByLatestTruth.progressionGate.robustClaimAllowed, false);
+  assert.ok(blockedByLatestTruth.progressionGate.blockingDependencies.some((reason) =>
+    /10\/20 required cases/i.test(reason)));
+  assert.ok(blockedByLatestTruth.progressionGate.blockingDependencies.some((reason) =>
+    /5\/10 retained cases/i.test(reason)));
+  assert.ok(blockedByLatestTruth.progressionGate.blockingDependencies.some((reason) =>
+    /distinct Start source sets/i.test(reason)));
+  assert.throws(
+    () => registry.recordHeldOutBenchmark(report),
+    /truth-suite authority is missing, stale/i,
+    "an older certified truth suite must not authorize a ROBUST write after newer incomplete evidence",
+  );
+
+  const refreshedTruthReport = {
+    ...retainedTruthReport,
+    evaluatedAt: new Date(
+      Date.parse(retainedTruthReport.evaluatedAt) + 2000,
+    ).toISOString(),
+  };
+  registry.recordRetainedTruthSuite(refreshedTruthReport);
+  const refreshedReport = evaluatePracticeHeldOutBenchmarkV1({
+    editTypeId: "benchmark-gated",
+    cases,
+    priorMasteryRecords: [prior],
+    professionalBenchmarkEvidence: professionalBenchmarkEvidenceFor("SHUTTER_FRAGMENTATION"),
+    retainedTruthSuiteReports: [refreshedTruthReport],
+  });
+  assert.equal(refreshedReport.robust, true);
+  registry.recordHeldOutBenchmark(refreshedReport);
+  assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
+  assert.equal(registry.knowledge("benchmark-gated").progressionGate.robustClaimAllowed, true);
 
   const contaminated = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId: "benchmark-gated",
