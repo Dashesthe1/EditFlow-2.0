@@ -417,8 +417,154 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertTrue(first["mustIncreaseDistinctSourceSets"])
             self.assertTrue(result["tasks"][1]["mustIncreaseDistinctSourceSets"])
             self.assertFalse(result["tasks"][2]["mustIncreaseDistinctSourceSets"])
+            self.assertTrue(first["mustIncreaseDifficultyKinds"])
+            self.assertTrue(result["tasks"][2]["mustIncreaseDifficultyKinds"])
+            self.assertFalse(result["tasks"][3]["mustIncreaseDifficultyKinds"])
             self.assertIn("reference-analysis.json", first["artifactTargets"]["referenceAnalysis"])
             self.assertEqual(result["blockingReasons"], [])
+
+    def test_acquisition_run_refuses_to_guess_missing_difficulty_evidence(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            source = root / "acquisition-source.mp4"
+            source.write_bytes(b"acquisition-source")
+            candidates = []
+            for index in range(19):
+                finish = root / f"candidate-{index:02d}.mp4"
+                if index == 0:
+                    finish.write_bytes(b"candidate-finish")
+                candidates.append({
+                    "path": str(finish),
+                    "fileName": finish.name,
+                    "sha256": sha256_bytes(finish.read_bytes()) if finish.is_file() else f"{index + 1:064x}",
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                })
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 19,
+                "canReachMinimumByScreenedUniqueFinishCount": True,
+                "candidates": candidates,
+            })
+            case_id = tool.build_acquisition_plan(plan, discovery)["tasks"][0]["caseIdSuggestion"]
+            output_plan = root / "population-acquired.json"
+
+            result = tool.execute_acquisition_plan(
+                plan,
+                discovery,
+                output_plan,
+                ["video:new=" + str(source)],
+                case_ids=[case_id],
+                matcher=object(),
+                source_binding_tool=object(),
+            )
+
+            self.assertEqual(result["schema"], tool.ACQUISITION_RUN_SCHEMA)
+            self.assertEqual(result["admittedCount"], 0)
+            self.assertEqual(result["blockedCount"], 1)
+            self.assertIn("Verified difficulty evidence", result["tasks"][0]["reasons"][0])
+            self.assertEqual(len(tool.require_plan(plan)["cases"]), 1)
+            self.assertEqual(len(tool.require_plan(output_plan)["cases"]), 1)
+
+    def test_acquisition_run_admits_verified_exact_bound_case_to_new_plan(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cases = [self._base_case(root, index) for index in range(19)]
+            plan = self._plan(root, cases)
+            finish = root / "candidate-new.mp4"
+            source = root / "candidate-source-new.mp4"
+            finish.write_bytes(b"candidate-new-finish")
+            source.write_bytes(b"candidate-new-source")
+            finish_sha = sha256_bytes(finish.read_bytes())
+            source_sha = sha256_bytes(source.read_bytes())
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 1,
+                "canReachMinimumByScreenedUniqueFinishCount": True,
+                "candidates": [{
+                    "path": str(finish),
+                    "fileName": finish.name,
+                    "sha256": finish_sha,
+                    "requiresSourceBinding": True,
+                    "requiresReferenceAnalysis": True,
+                }],
+            })
+            case_id = tool.build_acquisition_plan(plan, discovery)["tasks"][0]["caseIdSuggestion"]
+
+            def signature_provider(path):
+                part = hashlib.sha256(str(Path(path).resolve()).encode()).hexdigest()[:16]
+                return perceptual_signature(part)
+
+            class FakeMatcher:
+                def analyze_reference(self, video_path, reference_id, output_path, cut_threshold, minimum_shot_ms):
+                    payload = {
+                        "schema": tool.REFERENCE_SCHEMA,
+                        "referenceId": reference_id,
+                        "sourceSha256": sha256_bytes(Path(video_path).read_bytes()),
+                        "perceptualSignature": signature_provider(video_path),
+                        "shots": [{
+                            "shotId": "shot:1",
+                            "referenceStartMs": 0,
+                            "referenceEndMs": 1000,
+                        }],
+                    }
+                    write_json(output_path, payload)
+                    return payload
+
+            class FakeBindingTool:
+                def bind_sources(
+                    self,
+                    reference_path,
+                    output_path,
+                    source_video_specs=None,
+                    index_cache_dir=None,
+                    matches_output=None,
+                    coarse_limit=16,
+                    minimum_coverage=0.98,
+                ):
+                    reference = tool.load_json(reference_path)
+                    payload = {
+                        "schema": tool.SOURCE_BINDING_SCHEMA,
+                        "status": "BOUND",
+                        "referenceId": reference["referenceId"],
+                        "referencePath": str(Path(reference_path).resolve()),
+                        "matchesPath": str(Path(matches_output).resolve()),
+                        "sourceIndexPaths": [],
+                        "sourceBindings": [{
+                            "sourceId": "video:new",
+                            "sourceSha256": source_sha,
+                        }],
+                        "reasons": [],
+                    }
+                    write_json(matches_output, {"schema": tool.MATCH_SCHEMA, "matches": []})
+                    write_json(output_path, payload)
+                    return payload
+
+            output_plan = root / "population-acquired.json"
+            result = tool.execute_acquisition_plan(
+                plan,
+                discovery,
+                output_plan,
+                ["video:new=" + str(source)],
+                difficulty_specs=[case_id + "=FAST_CUTS"],
+                case_ids=[case_id],
+                matcher=FakeMatcher(),
+                source_binding_tool=FakeBindingTool(),
+                signature_provider=signature_provider,
+            )
+
+            self.assertEqual(result["admittedCount"], 1)
+            self.assertEqual(result["blockedCount"], 0)
+            self.assertEqual(result["tasks"][0]["status"], "ADMITTED")
+            self.assertEqual(result["tasks"][0]["boundSourceIds"], ["video:new"])
+            self.assertEqual(result["coverageProjection"]["casesNeededForMinimum"], 0)
+            self.assertEqual(len(tool.require_plan(plan)["cases"]), 19)
+            acquired = tool.require_plan(output_plan)
+            self.assertEqual(len(acquired["cases"]), 20)
+            self.assertEqual(acquired["cases"][-1]["caseId"], case_id)
 
     def test_review_pack_waits_for_independent_worksheet_completion(self):
         with TemporaryDirectory() as temporary:

@@ -16,6 +16,7 @@ STATUS_SCHEMA = "editflow.practice-truth-population-status.v1"
 WORK_QUEUE_SCHEMA = "editflow.practice-truth-population-work-queue.v1"
 PROGRESSION_GATE_SCHEMA = "editflow.practice-truth-population-progression-gate.v1"
 ACQUISITION_PLAN_SCHEMA = "editflow.practice-truth-acquisition-plan.v1"
+ACQUISITION_RUN_SCHEMA = "editflow.practice-truth-acquisition-run.v1"
 REFERENCE_SCHEMA = "editflow.practice-reference-analysis.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
@@ -131,6 +132,14 @@ def load_media_match_tool():
     return module
 
 
+def load_source_binding_tool():
+    script = Path(__file__).with_name("practice-source-binding.py")
+    spec = importlib.util.spec_from_file_location("practice_source_binding", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def finish_perceptual_signature(path, signature_provider=None):
     if signature_provider is not None:
         return signature_provider(Path(path))
@@ -184,6 +193,24 @@ def parse_source_video_specs(values):
         result[source_id] = path
     if not result:
         raise ValueError("At least one Start source video is required.")
+    return result
+
+
+def parse_acquisition_difficulty_specs(values):
+    result = {}
+    for value in values or []:
+        case_id, separator, raw_tags = str(value).partition("=")
+        case_id = case_id.strip()
+        tags = [item.strip() for item in raw_tags.split(",") if item.strip()]
+        if not separator or not case_id or not tags:
+            raise ValueError("Acquisition difficulty must use caseId=TAG[,TAG] syntax.")
+        invalid = [tag for tag in tags if tag not in ALLOWED_DIFFICULTIES]
+        if invalid:
+            raise ValueError("Invalid Practice difficulty tag(s): " + ", ".join(sorted(set(invalid))))
+        retained = result.setdefault(case_id, [])
+        for tag in tags:
+            if tag not in retained:
+                retained.append(tag)
     return result
 
 
@@ -1152,6 +1179,7 @@ def build_acquisition_plan(plan_path, finish_discovery_path):
     artifact_root = Path(plan_path).resolve().parent / "acquisition"
     required_difficulties = list(acquisition["unrepresentedDifficultyKinds"])
     source_sets_needed = int(acquisition["additionalDistinctSourceSetsNeeded"])
+    difficulty_kinds_needed = int(acquisition["additionalDifficultyKindsNeeded"])
     tasks = []
 
     for index, candidate in enumerate(selected):
@@ -1180,6 +1208,7 @@ def build_acquisition_plan(plan_path, finish_discovery_path):
                 "ADMIT_BOUND_CASE",
             ],
             "mustIncreaseDistinctSourceSets": index < source_sets_needed,
+            "mustIncreaseDifficultyKinds": index < difficulty_kinds_needed,
             "preferredDifficultyKinds": required_difficulties,
             "artifactTargets": {
                 "referenceAnalysis": str(case_root / "reference-analysis.json"),
@@ -1209,6 +1238,224 @@ def build_acquisition_plan(plan_path, finish_discovery_path):
         "preferredDifficultyKinds": required_difficulties,
         "blockingReasons": blockers,
         "tasks": tasks,
+    }
+
+
+def execute_acquisition_plan(
+    plan_path,
+    finish_discovery_path,
+    output_plan_path,
+    source_video_specs,
+    difficulty_specs=None,
+    case_ids=None,
+    matcher=None,
+    source_binding_tool=None,
+    signature_provider=None,
+    cut_threshold=0.42,
+    minimum_shot_ms=180.0,
+    coarse_limit=16,
+    minimum_coverage=0.98,
+    index_cache_dir=None,
+):
+    if not (0.1 <= float(cut_threshold) <= 0.95):
+        raise ValueError("Reference cut threshold must be in [0.1, 0.95].")
+    if float(minimum_shot_ms) < 80:
+        raise ValueError("Minimum reference shot duration must be at least 80 ms.")
+    if int(coarse_limit) < 2 or int(coarse_limit) > 64:
+        raise ValueError("Source-binding coarse limit must be in [2, 64].")
+    if not (0.5 <= float(minimum_coverage) <= 1.0):
+        raise ValueError("Source-binding minimum coverage must be in [0.5, 1.0].")
+
+    source_paths = parse_source_video_specs(source_video_specs)
+    normalized_sources = [
+        source_id + "=" + str(source_paths[source_id])
+        for source_id in sorted(source_paths)
+    ]
+    difficulty_map = parse_acquisition_difficulty_specs(difficulty_specs)
+    acquisition = build_acquisition_plan(plan_path, finish_discovery_path)
+    tasks = list(acquisition["tasks"])
+    task_ids = {str(item["caseIdSuggestion"]) for item in tasks}
+    unknown_difficulties = sorted(set(difficulty_map) - task_ids)
+    if unknown_difficulties:
+        raise ValueError(
+            "Difficulty evidence references unknown acquisition case(s): "
+            + ", ".join(unknown_difficulties)
+        )
+
+    selected_ids = None
+    if case_ids:
+        selected_ids = {str(item).strip() for item in case_ids if str(item).strip()}
+        unknown = sorted(selected_ids - task_ids)
+        if unknown:
+            raise ValueError("Unknown acquisition case id(s): " + ", ".join(unknown))
+        tasks = [item for item in tasks if item["caseIdSuggestion"] in selected_ids]
+
+    output_plan = Path(output_plan_path).expanduser().resolve()
+    if output_plan == Path(plan_path).expanduser().resolve():
+        raise ValueError("Acquisition execution must write a new population plan path.")
+    write_json(output_plan, require_plan(plan_path))
+
+    matcher = matcher or load_media_match_tool()
+    source_binding_tool = source_binding_tool or load_source_binding_tool()
+    cache_dir = (
+        Path(index_cache_dir).expanduser().resolve()
+        if index_cache_dir
+        else output_plan.parent / ".source-index-cache"
+    )
+    task_results = []
+
+    for task in tasks:
+        case_id = str(task["caseIdSuggestion"])
+        result = {
+            "caseId": case_id,
+            "finishPath": task["finishPath"],
+            "status": "BLOCKED",
+            "reasons": [],
+        }
+        tags = list(difficulty_map.get(case_id) or [])
+        if not tags:
+            result["reasons"].append(
+                "Verified difficulty evidence is required before retained-corpus admission."
+            )
+            task_results.append(result)
+            continue
+        if task.get("mustIncreaseDifficultyKinds") and not (
+            set(tags) & set(task.get("preferredDifficultyKinds") or [])
+        ):
+            result["reasons"].append(
+                "This acquisition slot must add a currently unrepresented hard-case category."
+            )
+            task_results.append(result)
+            continue
+
+        finish_path = Path(task["finishPath"]).expanduser().resolve()
+        if not finish_path.is_file():
+            result["reasons"].append("Finish media is missing: " + str(finish_path))
+            task_results.append(result)
+            continue
+        finish_sha = sha256_file(finish_path)
+        expected_finish_sha = str(task.get("finishSha256", "")).strip().lower()
+        if expected_finish_sha and finish_sha.lower() != expected_finish_sha:
+            result["reasons"].append("Finish media SHA-256 changed after discovery.")
+            task_results.append(result)
+            continue
+
+        targets = task["artifactTargets"]
+        reference_path = Path(targets["referenceAnalysis"]).resolve()
+        binding_path = Path(targets["sourceBinding"]).resolve()
+        matches_path = Path(targets["sourceMatches"]).resolve()
+        reference = None
+        if reference_path.is_file():
+            try:
+                candidate = load_json(reference_path)
+                if (
+                    candidate.get("schema") == REFERENCE_SCHEMA
+                    and str(candidate.get("sourceSha256", "")).strip().lower() == finish_sha.lower()
+                ):
+                    reference = candidate
+            except (OSError, ValueError, json.JSONDecodeError):
+                reference = None
+        if reference is None:
+            try:
+                reference_path.parent.mkdir(parents=True, exist_ok=True)
+                reference = matcher.analyze_reference(
+                    str(finish_path),
+                    "reference:" + case_id,
+                    str(reference_path),
+                    float(cut_threshold),
+                    float(minimum_shot_ms),
+                )
+            except Exception as error:
+                result["reasons"].append("Reference analysis failed: " + str(error))
+                task_results.append(result)
+                continue
+
+        try:
+            binding = source_binding_tool.bind_sources(
+                str(reference_path),
+                str(binding_path),
+                source_video_specs=normalized_sources,
+                index_cache_dir=str(cache_dir),
+                matches_output=str(matches_path),
+                coarse_limit=int(coarse_limit),
+                minimum_coverage=float(minimum_coverage),
+            )
+        except Exception as error:
+            result["reasons"].append("Exact Start-source binding failed: " + str(error))
+            task_results.append(result)
+            continue
+        if binding.get("status") != "BOUND":
+            result["reasons"].extend(
+                str(reason).strip()
+                for reason in binding.get("reasons") or ["No exact Start-source binding qualified."]
+                if str(reason).strip()
+            )
+            task_results.append(result)
+            continue
+
+        before = population_projection(require_plan(output_plan))
+        try:
+            admission = admit_bound_case(
+                output_plan,
+                case_id,
+                finish_path,
+                binding_path,
+                normalized_sources,
+                tags,
+                case_dir=targets["caseDir"],
+                signature_provider=signature_provider,
+            )
+        except Exception as error:
+            result["reasons"].append("Retained-corpus admission failed: " + str(error))
+            task_results.append(result)
+            continue
+        after = admission["admission"]["coverageProjection"]
+        if (
+            task.get("mustIncreaseDistinctSourceSets")
+            and after["distinctSourceSetCount"] <= before["distinctSourceSetCount"]
+        ):
+            result["reasons"].append(
+                "This acquisition slot must increase distinct Start-source-set coverage."
+            )
+            task_results.append(result)
+            continue
+        if (
+            task.get("mustIncreaseDifficultyKinds")
+            and len(after["representedDifficultyKinds"]) <= len(before["representedDifficultyKinds"])
+        ):
+            result["reasons"].append(
+                "This acquisition slot did not increase verified hard-case-category coverage."
+            )
+            task_results.append(result)
+            continue
+
+        write_json(output_plan, admission["plan"])
+        result.update({
+            "status": "ADMITTED",
+            "reasons": [],
+            "difficultyTags": tags,
+            "boundSourceIds": admission["admission"]["boundSourceIds"],
+            "coverageProjection": after,
+            "referenceAnalysis": str(reference_path),
+            "sourceBinding": str(binding_path),
+            "sourceMatches": str(matches_path),
+        })
+        task_results.append(result)
+
+    admitted_count = sum(item["status"] == "ADMITTED" for item in task_results)
+    blocked_count = len(task_results) - admitted_count
+    final_plan = require_plan(output_plan)
+    return {
+        "schema": ACQUISITION_RUN_SCHEMA,
+        "editTypeId": str(final_plan["editTypeId"]).strip(),
+        "outputPlanPath": str(output_plan),
+        "candidatePoolReady": acquisition["candidatePoolReady"],
+        "selectedTaskCount": len(task_results),
+        "admittedCount": admitted_count,
+        "blockedCount": blocked_count,
+        "sourceIds": sorted(source_paths),
+        "coverageProjection": population_projection(final_plan),
+        "tasks": task_results,
     }
 
 
@@ -2296,6 +2543,32 @@ def build_parser():
         help="Finish-discovery JSON used to schedule exact-bound case acquisition.",
     )
     acquisition_plan.add_argument("--output")
+    acquisition_run = sub.add_parser("run-acquisition")
+    acquisition_run.add_argument("--manifest", required=True)
+    acquisition_run.add_argument("--finish-discovery", required=True)
+    acquisition_run.add_argument("--output-plan", required=True)
+    acquisition_run.add_argument(
+        "--source-video",
+        action="append",
+        required=True,
+        help="Raw Start source in sourceId=path form; repeat to build the acquisition source pool.",
+    )
+    acquisition_run.add_argument(
+        "--difficulty",
+        action="append",
+        help="Verified case difficulty in caseId=TAG[,TAG] form; repeat as needed.",
+    )
+    acquisition_run.add_argument(
+        "--case-id",
+        action="append",
+        help="Run only this planned acquisition case id; repeat to select multiple cases.",
+    )
+    acquisition_run.add_argument("--index-cache-dir")
+    acquisition_run.add_argument("--reference-cut-threshold", type=float, default=0.42)
+    acquisition_run.add_argument("--minimum-shot-ms", type=float, default=180.0)
+    acquisition_run.add_argument("--coarse-limit", type=int, default=16)
+    acquisition_run.add_argument("--minimum-coverage", type=float, default=0.98)
+    acquisition_run.add_argument("--output")
     advance = sub.add_parser("advance")
     advance.add_argument("--manifest", required=True)
     advance.add_argument(
@@ -2449,6 +2722,22 @@ def main():
         )
         if not payload["candidatePoolReady"]:
             exit_code = 4
+    elif args.command == "run-acquisition":
+        payload = execute_acquisition_plan(
+            args.manifest,
+            args.finish_discovery,
+            args.output_plan,
+            args.source_video,
+            difficulty_specs=args.difficulty,
+            case_ids=args.case_id,
+            cut_threshold=args.reference_cut_threshold,
+            minimum_shot_ms=args.minimum_shot_ms,
+            coarse_limit=args.coarse_limit,
+            minimum_coverage=args.minimum_coverage,
+            index_cache_dir=args.index_cache_dir,
+        )
+        if payload["blockedCount"] or not payload["candidatePoolReady"]:
+            exit_code = 5
     elif args.command == "advance":
         payload = advance_population(
             args.manifest,
