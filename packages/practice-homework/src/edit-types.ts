@@ -21,6 +21,7 @@ import type {
 } from "./contracts.js";
 import {
   derivePracticeMaturityStageV1,
+  evaluatePracticeProgressionGateV1,
   isPracticeHeldOutBenchmarkProofIntegrityV1,
   isPracticeRetainedTruthSuiteCertificationIntegrityV1,
 } from "./mastery.js";
@@ -675,8 +676,12 @@ export class EditTypeRegistryV1 {
       const truthAuthority = learning.retainedTruthSuiteReports.find((item) =>
         item.evaluatedAt === report.retainedTruthSuiteEvaluatedAt
         && isPracticeRetainedTruthSuiteCertificationIntegrityV1(item));
+      const latestTruthAuthority = [...learning.retainedTruthSuiteReports]
+        .filter((item) => item.editTypeId === report.editTypeId)
+        .sort((left, right) => right.evaluatedAt.localeCompare(left.evaluatedAt))[0];
       const authorityRefs = new Set(truthAuthority?.evidenceRefs ?? []);
       if (truthAuthority === undefined
+        || latestTruthAuthority?.evaluatedAt !== truthAuthority.evaluatedAt
         || report.retainedTruthSuiteEvidenceRefs.some((ref) => !authorityRefs.has(ref))) {
         throw new TypeError(
           "ROBUST Practice maturity truth-suite authority is missing, stale, or does not match retained evidence.",
@@ -839,6 +844,7 @@ export class EditTypeRegistryV1 {
       title: profile.title,
       revision: profile.revision,
       maturityStage: derivePracticeMaturityStageV1(profile),
+      progressionGate: evaluatePracticeProgressionGateV1(profile),
       knowledgeScope,
       masteredSessionCount: knowledgeScope === "TRANSFER_VERIFIED_ONLY"
         ? gptLearning.masteryRecords.length
