@@ -13,6 +13,7 @@ from pathlib import Path
 
 POPULATION_SCHEMA = "editflow.practice-truth-population-plan.v1"
 STATUS_SCHEMA = "editflow.practice-truth-population-status.v1"
+WORK_QUEUE_SCHEMA = "editflow.practice-truth-population-work-queue.v1"
 REFERENCE_SCHEMA = "editflow.practice-reference-analysis.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
@@ -941,6 +942,158 @@ def build_status(plan_path):
     }
 
 
+def build_work_queue(plan_path, finish_discovery_path=None):
+    plan = require_plan(plan_path)
+    status = build_status(plan_path)
+    case_by_id = {
+        str(case.get("caseId", "")).strip(): case
+        for case in plan["cases"]
+        if str(case.get("caseId", "")).strip()
+    }
+    action_priority = {
+        "FINALIZE_INDEPENDENT_REVIEW": 10,
+        "RUN_MATCHER_OBSERVATION": 20,
+        "BUILD_SUITE_MANIFEST": 30,
+        "COMPLETE_INDEPENDENT_REVIEW": 40,
+        "CREATE_REVIEW_PACK": 50,
+        "REBUILD_REVIEW_PACK": 50,
+        "SCAFFOLD_TRUTH": 60,
+        "REBUILD_TRUTH_SCAFFOLD": 60,
+        "ANALYZE_REFERENCE": 70,
+        "REBUILD_REFERENCE_ANALYSIS": 70,
+        "FIX_MEDIA_INTAKE": 80,
+        "NONE": 90,
+    }
+    queue = []
+    remaining_review_shots = 0
+    for observed in status["cases"]:
+        case_id = observed["caseId"]
+        case = case_by_id.get(case_id, {})
+        total_shots = 0
+        reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+        if reference_path is not None and reference_path.is_file():
+            try:
+                reference = load_json(reference_path)
+                total_shots = len(reference.get("shots") or [])
+            except (OSError, ValueError, json.JSONDecodeError):
+                total_shots = 0
+
+        incomplete_shot_ids = set()
+        if observed["nextAction"] == "COMPLETE_INDEPENDENT_REVIEW":
+            for reason in observed.get("reasons") or []:
+                shot_id, separator, _detail = str(reason).partition(": ")
+                if separator and shot_id.startswith("shot:"):
+                    incomplete_shot_ids.add(shot_id)
+            if not incomplete_shot_ids and total_shots:
+                incomplete_shot_ids = {
+                    "unknown:" + str(index)
+                    for index in range(total_shots)
+                }
+        missing_shots = len(incomplete_shot_ids)
+        remaining_review_shots += missing_shots
+        completed_shots = max(0, total_shots - missing_shots)
+        queue.append({
+            "caseId": case_id,
+            "stage": observed["stage"],
+            "nextAction": observed["nextAction"],
+            "readyForCorpus": bool(observed["readyForCorpus"]),
+            "priorityRank": action_priority.get(observed["nextAction"], 100),
+            "totalReferenceShotCount": total_shots,
+            "completedIndependentReviewShotCount": completed_shots,
+            "remainingIndependentReviewShotCount": missing_shots,
+            "reasons": list(observed.get("reasons") or []),
+        })
+
+    queue.sort(key=lambda item: (
+        item["priorityRank"],
+        item["remainingIndependentReviewShotCount"],
+        item["caseId"],
+    ))
+    coverage = status["coverage"]
+    acquisition = {
+        "additionalCasesNeededForMinimum": coverage["casesNeededForMinimum"],
+        "additionalDistinctSourceSetsNeeded": coverage["sourceSetsNeeded"],
+        "additionalDifficultyKindsNeeded": coverage["difficultyKindsNeeded"],
+        "unrepresentedDifficultyKinds": coverage["unrepresentedDifficultyKinds"],
+        "currentSourceSetCounts": coverage["sourceSetCounts"],
+        "sourceAcquisitionRequired": coverage["sourceSetsNeeded"] > 0,
+    }
+
+    discovery_summary = None
+    if finish_discovery_path:
+        discovery = load_json(finish_discovery_path)
+        if discovery.get("schema") != DISCOVERY_SCHEMA:
+            raise ValueError("Finish discovery schema is invalid.")
+        candidates = [
+            item for item in discovery.get("candidates") or []
+            if isinstance(item, dict)
+        ]
+        needs_binding = sum(
+            item.get("requiresSourceBinding") is True
+            for item in candidates
+        )
+        discovery_summary = {
+            "path": str(Path(finish_discovery_path).resolve()),
+            "unusedFinishCandidateCount": len(candidates),
+            "perceptuallyUniqueUnusedFinishCount": discovery.get(
+                "perceptuallyUniqueUnusedFinishCount"
+            ),
+            "candidatesRequiringSourceBindingCount": needs_binding,
+            "canReachMinimumFromScreenedFinishPool": discovery.get(
+                "canReachMinimumByScreenedUniqueFinishCount"
+            ),
+        }
+        acquisition["exactSourceBindingRequiredBeforeAdmission"] = needs_binding > 0
+
+    blockers = []
+    if acquisition["additionalCasesNeededForMinimum"]:
+        blockers.append(
+            "Admit at least "
+            + str(acquisition["additionalCasesNeededForMinimum"])
+            + " additional exact-bound cases."
+        )
+    if acquisition["additionalDistinctSourceSetsNeeded"]:
+        blockers.append(
+            "Add raw Start media producing at least "
+            + str(acquisition["additionalDistinctSourceSetsNeeded"])
+            + " additional distinct source sets."
+        )
+    if acquisition["additionalDifficultyKindsNeeded"]:
+        blockers.append(
+            "Cover at least "
+            + str(acquisition["additionalDifficultyKindsNeeded"])
+            + " additional hard-case categories from: "
+            + ", ".join(acquisition["unrepresentedDifficultyKinds"])
+            + "."
+        )
+    if remaining_review_shots:
+        blockers.append(
+            "Complete "
+            + str(remaining_review_shots)
+            + " remaining matcher-blind shot annotations across prepared cases."
+        )
+
+    return {
+        "schema": WORK_QUEUE_SCHEMA,
+        "editTypeId": status["editTypeId"],
+        "populationWindowReached": status["populationWindowReached"],
+        "readyForCorpusCount": status["readyForCorpusCount"],
+        "reviewableCaseCount": sum(
+            item["nextAction"] == "COMPLETE_INDEPENDENT_REVIEW"
+            for item in queue
+        ),
+        "readyToFinalizeCount": sum(
+            item["nextAction"] == "FINALIZE_INDEPENDENT_REVIEW"
+            for item in queue
+        ),
+        "remainingIndependentReviewShotCount": remaining_review_shots,
+        "acquisition": acquisition,
+        "finishDiscovery": discovery_summary,
+        "blockingDependencies": blockers,
+        "queue": queue,
+    }
+
+
 def _case_source_paths(case, manifest_path):
     paths = {}
     for item in case.get("sourceMedia") or []:
@@ -1464,6 +1617,13 @@ def build_parser():
     status = sub.add_parser("status")
     status.add_argument("--manifest", required=True)
     status.add_argument("--output")
+    work_queue = sub.add_parser("work-queue")
+    work_queue.add_argument("--manifest", required=True)
+    work_queue.add_argument(
+        "--finish-discovery",
+        help="Optional finish-discovery JSON used to expose source-binding admission gaps.",
+    )
+    work_queue.add_argument("--output")
     prepare = sub.add_parser("prepare-review-packs")
     prepare.add_argument("--manifest", required=True)
     prepare.add_argument(
@@ -1558,6 +1718,11 @@ def main():
     exit_code = 0
     if args.command == "status":
         payload = build_status(args.manifest)
+    elif args.command == "work-queue":
+        payload = build_work_queue(
+            args.manifest,
+            finish_discovery_path=args.finish_discovery,
+        )
     elif args.command == "prepare-review-packs":
         payload = prepare_review_packs(
             args.manifest,

@@ -275,6 +275,69 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             })
         return review
 
+    def test_work_queue_exposes_review_and_acquisition_dependencies(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case = self._base_case(root)
+            self._write_reference_and_draft(root, case)
+            review = self._write_complete_review_pack(root, case)
+            truth_tool = tool.load_media_truth_tool()
+            with (review / "annotations.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=truth_tool.REVIEW_FIELDS)
+                writer.writeheader()
+                writer.writerow({
+                    "shotId": "shot:1",
+                    "referenceStartMs": "0",
+                    "referenceEndMs": "1000",
+                    "previewEarly": str(Path("finish-previews") / "shot-1.png"),
+                    "previewMiddle": str(Path("finish-previews") / "shot-1.png"),
+                    "previewLate": str(Path("finish-previews") / "shot-1.png"),
+                    "sourceId": "",
+                    "sourceStartMs": "",
+                    "sourceEndMs": "",
+                    "direction": "",
+                    "toleranceMs": "",
+                    "notes": "",
+                })
+            plan = self._plan(root, [case])
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 2,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [
+                    {"path": "candidate-a.mp4", "requiresSourceBinding": True},
+                    {"path": "candidate-b.mp4", "requiresSourceBinding": True},
+                ],
+            })
+
+            queue = tool.build_work_queue(plan, discovery)
+
+            self.assertEqual(queue["schema"], tool.WORK_QUEUE_SCHEMA)
+            self.assertEqual(queue["reviewableCaseCount"], 1)
+            self.assertEqual(queue["readyToFinalizeCount"], 0)
+            self.assertEqual(queue["remainingIndependentReviewShotCount"], 1)
+            self.assertEqual(queue["queue"][0]["totalReferenceShotCount"], 1)
+            self.assertEqual(queue["queue"][0]["remainingIndependentReviewShotCount"], 1)
+            self.assertEqual(queue["acquisition"]["additionalCasesNeededForMinimum"], 19)
+            self.assertEqual(queue["acquisition"]["additionalDistinctSourceSetsNeeded"], 2)
+            self.assertTrue(queue["acquisition"]["sourceAcquisitionRequired"])
+            self.assertEqual(
+                queue["finishDiscovery"]["candidatesRequiringSourceBindingCount"],
+                2,
+            )
+            self.assertTrue(
+                queue["acquisition"]["exactSourceBindingRequiredBeforeAdmission"]
+            )
+            self.assertTrue(any(
+                "additional exact-bound cases" in item
+                for item in queue["blockingDependencies"]
+            ))
+            self.assertTrue(any(
+                "matcher-blind shot annotations" in item
+                for item in queue["blockingDependencies"]
+            ))
+
     def test_review_pack_waits_for_independent_worksheet_completion(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
