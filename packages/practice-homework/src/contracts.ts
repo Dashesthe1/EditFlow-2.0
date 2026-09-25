@@ -778,6 +778,15 @@ export interface PracticeHeldOutBenchmarkPolicyV1 {
   readonly minimumSubjectContinuityChallengeKinds: number;
 }
 
+export interface PracticeRobustCertificationLockV1 {
+  readonly schema: "editflow.practice-robust-certification-lock.v1";
+  readonly retainedTruthAuthorityRef: string;
+  readonly retainedTruthEvaluatedAt: string;
+  readonly transferVerifiedSkillIds: readonly string[];
+  readonly transferVerifiedEffectFamilyIds: readonly string[];
+  readonly lockedAt: string;
+}
+
 export interface PracticeHeldOutBenchmarkReportV1 {
   readonly schema: "editflow.practice-held-out-benchmark.v1";
   readonly editTypeId: string;
@@ -818,6 +827,7 @@ export interface PracticeHeldOutBenchmarkReportV1 {
   readonly subjectContinuityChallenges: readonly PracticeSubjectContinuityChallengeV1[];
   readonly subjectContinuityChallengeDiversityVerified: boolean;
   readonly robust: boolean;
+  readonly robustCertificationLock?: PracticeRobustCertificationLockV1;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeHeldOutBenchmarkCaseV1[];
   readonly evidenceRefs: readonly string[];
@@ -979,6 +989,8 @@ export interface PracticeRetainedTruthSuiteReportV1 {
   readonly tuningFocus?: readonly PracticeRetainedTruthTuningFocusV1[];
   readonly tuningPlan?: readonly PracticeRetainedTruthTuningPlanItemV1[];
   readonly certified: boolean;
+  readonly authorityRef?: string;
+  readonly authorityManifestSha256?: string;
   readonly reasons: readonly string[];
   readonly cases: readonly PracticeRetainedTruthCaseReportV1[];
   readonly evidenceRefs: readonly string[];

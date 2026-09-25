@@ -11,6 +11,7 @@ import {
   ProCreationPreparationEngineV1,
   buildPracticeHeldOutBenchmarkCaseV1,
   buildPracticeMasteryRecordV1,
+  buildPracticeRobustCertificationLockV1,
   classifyPracticeMasteryScopeV1,
   comparePracticeObjectAwareWindowsV1,
   composePracticeM6ExecutionAdaptersV1,
@@ -145,11 +146,24 @@ const retainedTruthCertificationReport = (editTypeId) => {
       },
     };
   });
-  return evaluatePracticeRetainedTruthSuiteV1({
+  const report = evaluatePracticeRetainedTruthSuiteV1({
     editTypeId,
     mode: "CERTIFICATION",
     cases,
   });
+  return {
+    ...report,
+    authorityRef: "practice-retained-truth-authority:sha256:" + "a".repeat(64),
+    authorityManifestSha256: "b".repeat(64),
+    evidenceRefs: [...new Set([
+      ...report.evidenceRefs,
+      ...cases.map((item) =>
+        "retained-finish-sha256:" + item.truth.finishSha256),
+      ...cases.flatMap((item) =>
+        item.truth.sourceMediaSha256.map((sha256) =>
+          "retained-source-sha256:" + sha256)),
+    ])],
+  };
 };
 
 const masteryRecord = (
@@ -661,14 +675,25 @@ test("held-out benchmark is fail-closed and can advance maturity only from retai
   assert.equal(practiceOnly.robust, false);
   assert.ok(practiceOnly.reasons.some((reason) => /M6 professional benchmark authority/.test(reason)));
 
-  registry.recordHeldOutBenchmark(report);
+  assert.throws(
+    () => registry.recordHeldOutBenchmark(report),
+    /retained real-media truth certification lock/,
+  );
   assert.equal(
     registry.knowledge("benchmark-gated").maturityStage,
-    "OBJECT_AWARE_VERIFIED",
+    "TRANSFER_VERIFIED",
   );
   const retainedTruthReport = retainedTruthCertificationReport("benchmark-gated");
   assert.equal(retainedTruthReport.certified, true);
   registry.recordRetainedTruthSuite(retainedTruthReport);
+  const lock = buildPracticeRobustCertificationLockV1(
+    registry.knowledge("benchmark-gated").gptLearning,
+  );
+  assert.ok(lock);
+  registry.recordHeldOutBenchmark({
+    ...report,
+    robustCertificationLock: lock,
+  });
   assert.equal(registry.knowledge("benchmark-gated").maturityStage, "ROBUST");
 
   const contaminated = evaluatePracticeHeldOutBenchmarkV1({

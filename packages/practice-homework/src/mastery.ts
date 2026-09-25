@@ -7,6 +7,7 @@ import {
 } from "../../visual-effects-intelligence/src/index.js";
 
 import type {
+  EditTypeGptLearningSummaryV1,
   EditTypeProfileV1,
   GptLearnedSkillV1,
   GptSkillMaturityV1,
@@ -19,6 +20,8 @@ import type {
   PracticeMasteryRecordV1,
   PracticeMasteryScopeV1,
   PracticeMaturityStageV1,
+  PracticeRetainedTruthSuiteReportV1,
+  PracticeRobustCertificationLockV1,
   PracticeSubjectContinuityChallengeV1,
   PracticeSubjectRelativeDirectionBucketV1,
 } from "./contracts.js";
@@ -35,6 +38,110 @@ const nonEmpty = (value: string | undefined): string | null => {
 
 const uniqueNonEmpty = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+
+const sortedUniqueNonEmpty = (values: readonly string[]): readonly string[] =>
+  [...uniqueNonEmpty(values)].sort();
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const RETAINED_TRUTH_AUTHORITY_PREFIX = "practice-retained-truth-authority:sha256:";
+const RETAINED_FINISH_PREFIX = "retained-finish-sha256:";
+const RETAINED_SOURCE_PREFIX = "retained-source-sha256:";
+
+export const practiceRetainedTruthAuthorityVerifiedV1 = (
+  report: PracticeRetainedTruthSuiteReportV1,
+): boolean => {
+  const authorityRef = nonEmpty(report.authorityRef);
+  const manifestSha256 = nonEmpty(report.authorityManifestSha256);
+  const authoritySha256 = authorityRef?.startsWith(RETAINED_TRUTH_AUTHORITY_PREFIX)
+    ? authorityRef.slice(RETAINED_TRUTH_AUTHORITY_PREFIX.length)
+    : "";
+  const finishEvidence = sortedUniqueNonEmpty(report.evidenceRefs
+    .filter((ref) => ref.startsWith(RETAINED_FINISH_PREFIX))
+    .map((ref) => ref.slice(RETAINED_FINISH_PREFIX.length).toLowerCase()));
+  const sourceEvidence = sortedUniqueNonEmpty(report.evidenceRefs
+    .filter((ref) => ref.startsWith(RETAINED_SOURCE_PREFIX))
+    .map((ref) => ref.slice(RETAINED_SOURCE_PREFIX.length).toLowerCase()));
+  return report.certified === true
+    && report.mode === "CERTIFICATION"
+    && report.caseCount >= 20
+    && report.caseCount <= 30
+    && report.passedCaseCount === report.caseCount
+    && report.distinctCaseIdCount === report.caseCount
+    && report.distinctReferenceCount === report.caseCount
+    && report.distinctFinishSha256Count === report.caseCount
+    && report.distinctSourceSetCount >= report.policy.minimumDistinctSourceSets
+    && report.independentTruthCaseCount === report.caseCount
+    && report.fullLengthTruthCaseCount === report.caseCount
+    && report.difficultyKindCount >= report.policy.minimumDifficultyKinds
+    && report.sceneErrorCount === 0
+    && report.reasons.length === 0
+    && report.cases.length === report.caseCount
+    && authorityRef !== null
+    && SHA256_HEX.test(authoritySha256)
+    && manifestSha256 !== null
+    && SHA256_HEX.test(manifestSha256.toLowerCase())
+    && finishEvidence.length === report.caseCount
+    && finishEvidence.every((value) => SHA256_HEX.test(value))
+    && sourceEvidence.length > 0
+    && sourceEvidence.every((value) => SHA256_HEX.test(value));
+};
+
+const latestPracticeRetainedTruthAuthorityV1 = (
+  learning: EditTypeGptLearningSummaryV1 | undefined,
+): PracticeRetainedTruthSuiteReportV1 | null => {
+  const candidates = (learning?.retainedTruthSuiteReports ?? [])
+    .filter(practiceRetainedTruthAuthorityVerifiedV1)
+    .slice()
+    .sort((left, right) => right.evaluatedAt.localeCompare(left.evaluatedAt));
+  return candidates[0] ?? null;
+};
+
+const currentTransferVerifiedSkillIdsV1 = (
+  learning: EditTypeGptLearningSummaryV1 | undefined,
+): readonly string[] => sortedUniqueNonEmpty(
+  (learning?.learnedSkills ?? [])
+    .filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
+    .map((skill) => skill.skillId),
+);
+
+const currentTransferVerifiedEffectFamilyIdsV1 = (
+  learning: EditTypeGptLearningSummaryV1 | undefined,
+): readonly string[] => sortedUniqueNonEmpty(
+  (learning?.masteryRecords ?? [])
+    .filter((record) => record.scope === "TRANSFER_VERIFIED")
+    .flatMap((record) => record.effectFamilyIds ?? []),
+);
+
+export const buildPracticeRobustCertificationLockV1 = (
+  learning: EditTypeGptLearningSummaryV1 | undefined,
+): PracticeRobustCertificationLockV1 | null => {
+  const retainedTruth = latestPracticeRetainedTruthAuthorityV1(learning);
+  if (retainedTruth === null || retainedTruth.authorityRef === undefined) return null;
+  return {
+    schema: "editflow.practice-robust-certification-lock.v1",
+    retainedTruthAuthorityRef: retainedTruth.authorityRef,
+    retainedTruthEvaluatedAt: retainedTruth.evaluatedAt,
+    transferVerifiedSkillIds: currentTransferVerifiedSkillIdsV1(learning),
+    transferVerifiedEffectFamilyIds: currentTransferVerifiedEffectFamilyIdsV1(learning),
+    lockedAt: new Date().toISOString(),
+  };
+};
+
+export const practiceRobustCertificationLockMatchesV1 = (
+  lock: PracticeRobustCertificationLockV1 | undefined,
+  learning: EditTypeGptLearningSummaryV1 | undefined,
+): boolean => {
+  if (lock === undefined
+    || lock.schema !== "editflow.practice-robust-certification-lock.v1") return false;
+  const current = buildPracticeRobustCertificationLockV1(learning);
+  if (current === null) return false;
+  return lock.retainedTruthAuthorityRef === current.retainedTruthAuthorityRef
+    && lock.retainedTruthEvaluatedAt === current.retainedTruthEvaluatedAt
+    && JSON.stringify(sortedUniqueNonEmpty(lock.transferVerifiedSkillIds))
+      === JSON.stringify(current.transferVerifiedSkillIds)
+    && JSON.stringify(sortedUniqueNonEmpty(lock.transferVerifiedEffectFamilyIds))
+      === JSON.stringify(current.transferVerifiedEffectFamilyIds);
+};
 
 const SUBJECT_RELATIVE_DIRECTION_BUCKETS = [
   "RIGHT",
@@ -953,23 +1060,8 @@ export const derivePracticeMaturityStageV1 = (
   const learning = profile.gptLearning;
   const records = learning?.masteryRecords ?? [];
   const benchmarks = learning?.heldOutBenchmarks ?? [];
-  const retainedTruthSuites = learning?.retainedTruthSuiteReports ?? [];
-  const realMediaTruthCertified = retainedTruthSuites.some((report) =>
-    report.certified === true
-    && report.mode === "CERTIFICATION"
-    && report.caseCount >= 20
-    && report.caseCount <= 30
-    && report.passedCaseCount === report.caseCount
-    && report.distinctCaseIdCount === report.caseCount
-    && report.distinctReferenceCount === report.caseCount
-    && report.distinctFinishSha256Count === report.caseCount
-    && report.independentTruthCaseCount === report.caseCount
-    && report.fullLengthTruthCaseCount === report.caseCount
-    && report.difficultyKindCount >= report.policy.minimumDifficultyKinds
-    && report.sceneErrorCount === 0
-    && report.reasons.length === 0
-    && report.evidenceRefs.length > 0);
-  if (realMediaTruthCertified && benchmarks.some((report) =>
+  const robustCertificationLock = buildPracticeRobustCertificationLockV1(learning);
+  if (robustCertificationLock !== null && benchmarks.some((report) =>
     report.robust
     && report.objectAwareVerified
     && report.subjectRelativeDirectionVerified === true
@@ -978,7 +1070,10 @@ export const derivePracticeMaturityStageV1 = (
     && report.subjectContinuityChallengeDiversityVerified === true
     && report.effectFamilyCoverageVerified === true
     && report.learnedSkillCoverageVerified === true
-    && report.professionalBenchmarkCoverageVerified === true)) return "ROBUST";
+    && report.professionalBenchmarkCoverageVerified === true
+    && practiceRobustCertificationLockMatchesV1(report.robustCertificationLock, learning))) {
+    return "ROBUST";
+  }
   if (benchmarks.some((report) => report.objectAwareVerified)) {
     return "OBJECT_AWARE_VERIFIED";
   }

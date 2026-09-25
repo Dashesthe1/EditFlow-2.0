@@ -138,9 +138,28 @@ export const evaluatePracticeRetainedTruthSuiteManifestV1 = async (
     });
   }
 
-  return evaluatePracticeRetainedTruthSuiteV1({
+  const report = evaluatePracticeRetainedTruthSuiteV1({
     editTypeId: manifest.editTypeId,
     mode: manifest.mode,
     cases: verifiedCases,
   });
+  const authorityManifestSha256 = await sha256File(manifestPath);
+  const authorityMediaSha256 = [...uniqueNonEmpty(verifiedCases.flatMap((item) => [
+    item.truth.finishSha256,
+    ...item.truth.sourceMediaSha256,
+  ]))].sort();
+  const authorityPayload = JSON.stringify({
+    schema: "editflow.practice-retained-truth-authority.v1",
+    editTypeId: manifest.editTypeId,
+    mode: manifest.mode,
+    manifestSha256: authorityManifestSha256,
+    mediaSha256: authorityMediaSha256,
+  });
+  const authorityRef = "practice-retained-truth-authority:sha256:"
+    + createHash("sha256").update(authorityPayload, "utf8").digest("hex");
+  return {
+    ...report,
+    authorityRef,
+    authorityManifestSha256,
+  };
 };

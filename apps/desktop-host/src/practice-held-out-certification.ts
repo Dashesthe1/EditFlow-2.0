@@ -4,6 +4,7 @@ import type {
 import { loadM6ProfessionalBenchmarkEvidenceV1 } from "./m6-professional-benchmark-evidence.js";
 import {
   attestPracticeSkillUseV1,
+  buildPracticeRobustCertificationLockV1,
   buildPracticeHeldOutBenchmarkCaseV1,
   evaluatePracticeHeldOutBenchmarkV1,
   type EditTypeRegistryV1,
@@ -85,7 +86,10 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
     ?? (input.repositoryRoot === undefined
       ? undefined
       : loadM6ProfessionalBenchmarkEvidenceV1(input.repositoryRoot));
-  const benchmark = evaluatePracticeHeldOutBenchmarkV1({
+  const robustCertificationLock = buildPracticeRobustCertificationLockV1(
+    retained.gptLearning,
+  );
+  const evaluatedBenchmark = evaluatePracticeHeldOutBenchmarkV1({
     editTypeId,
     cases: retained.gptLearning.heldOutCases,
     priorMasteryRecords: retained.gptLearning.masteryRecords,
@@ -94,6 +98,22 @@ export const recordPracticeHeldOutCertificationV1 = (input: {
       ? {}
       : { professionalBenchmarkEvidence }),
   });
+  const benchmark: PracticeHeldOutBenchmarkReportV1 = evaluatedBenchmark.robust
+    && robustCertificationLock === null
+    ? {
+      ...evaluatedBenchmark,
+      robust: false,
+      reasons: [...new Set([
+        ...evaluatedBenchmark.reasons,
+        "ROBUST certification requires a current retained real-media truth authority lock.",
+      ])],
+    }
+    : robustCertificationLock === null
+      ? evaluatedBenchmark
+      : {
+        ...evaluatedBenchmark,
+        robustCertificationLock,
+      };
   input.registry.recordHeldOutBenchmark(benchmark);
   return { heldOutCase, benchmark };
 };
