@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import argparse
+import copy
 import csv
 import hashlib
 import importlib.util
 import json
 import math
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -15,6 +17,7 @@ TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
 MATCH_SCHEMA = "editflow.practice-scene-matches.v1"
 REVIEW_PACK_SCHEMA = "editflow.practice-truth-review-pack.v1"
 RETAINED_SUITE_SCHEMA = "editflow.practice-retained-truth-suite-manifest.v1"
+SOURCE_BINDING_SCHEMA = "editflow.practice-source-binding.v1"
 REQUIRED_REVIEW_FIELDS = ("sourceId", "sourceStartMs", "sourceEndMs", "direction")
 ALLOWED_DIRECTIONS = {"FORWARD", "REVERSE"}
 ALLOWED_DIFFICULTIES = {
@@ -135,6 +138,30 @@ def source_ids(case):
         if isinstance(item, dict) and str(item.get("sourceId", "")).strip():
             values.append(str(item["sourceId"]).strip())
     return sorted(set(values))
+
+
+def safe_stem(value):
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value).strip()).strip("-._")
+    return stem or "case"
+
+
+def parse_source_video_specs(values):
+    result = {}
+    for value in values or []:
+        source_id, separator, media_path = str(value).partition("=")
+        source_id = source_id.strip()
+        media_path = media_path.strip()
+        if not separator or not source_id or not media_path:
+            raise ValueError("Source video must use sourceId=path syntax.")
+        if source_id in result:
+            raise ValueError("Duplicate Start source id: " + source_id)
+        path = Path(media_path).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError("Start source media does not exist: " + str(path))
+        result[source_id] = path
+    if not result:
+        raise ValueError("At least one Start source video is required.")
+    return result
 
 
 def worksheet_validation_reasons(path, draft, reference):
@@ -503,6 +530,202 @@ def population_coverage(plan, results, difficulty_counts):
         "distinctSourceSetCount": len(source_set_counts),
         "sourceSetsNeeded": max(0, MIN_DISTINCT_SOURCE_SETS - len(source_set_counts)),
         "sourceSetCounts": dict(sorted(source_set_counts.items())),
+    }
+
+
+def population_projection(plan):
+    difficulty_counts = Counter(
+        tag
+        for case in plan.get("cases") or []
+        for tag in case.get("difficultyTags") or []
+        if tag in ALLOWED_DIFFICULTIES
+    )
+    return population_coverage(
+        plan,
+        list(plan.get("cases") or []),
+        difficulty_counts,
+    )
+
+
+def candidate_finish_duplicate_reasons(
+    plan,
+    plan_path,
+    finish_path,
+    candidate_signature=None,
+    signature_provider=None,
+):
+    finish_path = Path(finish_path).resolve()
+    finish_sha = sha256_file(finish_path)
+    if not perceptual_signature_parts(candidate_signature):
+        candidate_signature = finish_perceptual_signature(
+            finish_path,
+            signature_provider=signature_provider,
+        )
+    if not perceptual_signature_parts(candidate_signature):
+        raise ValueError("Candidate Finish perceptual signature is unavailable or invalid.")
+
+    reasons = []
+    for case in plan["cases"]:
+        case_id = str(case.get("caseId", "")).strip() or "<missing-case-id>"
+        planned_finish = artifact_path(case, plan_path, "finishPath")
+        if planned_finish is None or not planned_finish.is_file():
+            continue
+        planned_sha = sha256_file(planned_finish)
+        if planned_sha == finish_sha:
+            reasons.append("Finish media exactly duplicates planned case " + case_id + ".")
+            continue
+        planned_signature = None
+        reference_path = artifact_path(case, plan_path, "referenceAnalysis")
+        if reference_path is not None and reference_path.is_file():
+            try:
+                reference = load_json(reference_path)
+                if reference.get("schema") == REFERENCE_SCHEMA:
+                    planned_signature = reference.get("perceptualSignature")
+            except (OSError, ValueError, json.JSONDecodeError):
+                planned_signature = None
+        if not perceptual_signature_parts(planned_signature):
+            planned_signature = finish_perceptual_signature(
+                planned_finish,
+                signature_provider=signature_provider,
+            )
+        similarity = perceptual_similarity(candidate_signature, planned_signature)
+        if similarity is not None and similarity >= PERCEPTUAL_DUPLICATE_SIMILARITY:
+            reasons.append(
+                "Finish media is perceptually equivalent to planned case "
+                + case_id
+                + f" ({similarity:.4f})."
+            )
+    return reasons
+
+
+def validate_bound_sources(binding, source_paths):
+    if binding.get("schema") != SOURCE_BINDING_SCHEMA:
+        raise ValueError("Source binding schema is invalid.")
+    if binding.get("status") != "BOUND":
+        raise ValueError("Source binding must have BOUND status before admission.")
+
+    bound = {}
+    for item in binding.get("sourceBindings") or []:
+        source_id = str(item.get("sourceId", "")).strip() if isinstance(item, dict) else ""
+        source_sha = str(item.get("sourceSha256", "")).strip().lower() if isinstance(item, dict) else ""
+        if (
+            not source_id
+            or len(source_sha) != 64
+            or any(character not in "0123456789abcdef" for character in source_sha)
+        ):
+            raise ValueError("Source binding contains an invalid source identity.")
+        if source_id in bound and bound[source_id] != source_sha:
+            raise ValueError("Source binding maps one source id to multiple content identities.")
+        bound[source_id] = source_sha
+    if not bound:
+        raise ValueError("Source binding contains no retained Start source identity.")
+
+    missing = sorted(set(bound) - set(source_paths))
+    if missing:
+        raise ValueError("Missing raw Start source for bound id(s): " + ", ".join(missing))
+    for source_id, expected_sha in bound.items():
+        actual_sha = sha256_file(source_paths[source_id])
+        if actual_sha.lower() != expected_sha:
+            raise ValueError("Start source content identity changed for " + source_id + ".")
+    return bound
+
+
+def admit_bound_case(
+    plan_path,
+    case_id,
+    finish_path,
+    binding_path,
+    source_video_specs,
+    difficulty_tags,
+    case_dir=None,
+    signature_provider=None,
+):
+    plan = require_plan(plan_path)
+    case_id = str(case_id).strip()
+    if not case_id:
+        raise ValueError("Population case id is required.")
+    if any(str(item.get("caseId", "")).strip() == case_id for item in plan["cases"]):
+        raise ValueError("Population case id already exists: " + case_id)
+    if len(plan["cases"]) >= MAX_CASES:
+        raise ValueError(f"Population already contains the maximum {MAX_CASES} cases.")
+
+    tags = list(dict.fromkeys(
+        str(tag).strip()
+        for tag in difficulty_tags or []
+        if str(tag).strip()
+    ))
+    if not tags or any(tag not in ALLOWED_DIFFICULTIES for tag in tags):
+        raise ValueError("Difficulty tags are missing or invalid.")
+
+    finish_path = Path(finish_path).expanduser().resolve()
+    if not finish_path.is_file():
+        raise ValueError("Finish media does not exist: " + str(finish_path))
+    binding_path = Path(binding_path).expanduser().resolve()
+    if not binding_path.is_file():
+        raise ValueError("Source binding does not exist: " + str(binding_path))
+    binding = load_json(binding_path)
+
+    source_paths = parse_source_video_specs(source_video_specs)
+    bound = validate_bound_sources(binding, source_paths)
+
+    reference_path = Path(str(binding.get("referencePath", ""))).expanduser().resolve()
+    if not reference_path.is_file():
+        raise ValueError("Bound reference analysis does not exist: " + str(reference_path))
+    reference = load_json(reference_path)
+    if reference.get("schema") != REFERENCE_SCHEMA:
+        raise ValueError("Bound reference analysis schema is invalid.")
+    if str(binding.get("referenceId", "")).strip() != str(reference.get("referenceId", "")).strip():
+        raise ValueError("Source binding reference identity does not match reference analysis.")
+
+    finish_sha = sha256_file(finish_path)
+    reference_sha = str(reference.get("sourceSha256", "")).strip().lower()
+    if reference_sha != finish_sha.lower():
+        raise ValueError("Finish media content identity does not match bound reference analysis.")
+
+    duplicate_reasons = candidate_finish_duplicate_reasons(
+        plan,
+        plan_path,
+        finish_path,
+        candidate_signature=reference.get("perceptualSignature"),
+        signature_provider=signature_provider,
+    )
+    if duplicate_reasons:
+        raise ValueError(" ".join(duplicate_reasons))
+
+    base = Path(case_dir) if case_dir else Path(safe_stem(case_id))
+    if not base.is_absolute():
+        base = Path(plan_path).resolve().parent / base
+    base = base.resolve()
+    retained_sources = [{
+        "sourceId": source_id,
+        "path": str(source_paths[source_id]),
+    } for source_id in sorted(bound)]
+
+    new_case = {
+        "caseId": case_id,
+        "difficultyTags": tags,
+        "finishPath": str(finish_path),
+        "sourceMedia": retained_sources,
+        "sourceBinding": str(binding_path),
+        "referenceAnalysis": str(reference_path),
+        "truthDraft": str(base / "truth-draft.json"),
+        "reviewPackDir": str(base / "review"),
+        "retainedTruth": str(base / "truth-retained.json"),
+        "matches": str(base / "matches.json"),
+        "suiteManifest": str(base / "suite.json"),
+    }
+    updated = copy.deepcopy(plan)
+    updated["cases"].append(new_case)
+    ignored_sources = sorted(set(source_paths) - set(bound))
+    return {
+        "plan": updated,
+        "admission": {
+            "caseId": case_id,
+            "boundSourceIds": sorted(bound),
+            "ignoredUnboundSourceIds": ignored_sources,
+            "candidateCaseCount": len(updated["cases"]),
+            "coverageProjection": population_projection(updated),
+        },
     }
 
 
@@ -939,6 +1162,32 @@ def build_parser():
         help="Skip near-duplicate Finish screening; production discovery screens by default.",
     )
     discover.add_argument("--output")
+    admit = sub.add_parser("admit-bound-case")
+    admit.add_argument("--manifest", required=True)
+    admit.add_argument("--case-id", required=True)
+    admit.add_argument("--finish", required=True)
+    admit.add_argument("--source-binding", required=True)
+    admit.add_argument(
+        "--source-video",
+        action="append",
+        required=True,
+        help="Raw Start source in sourceId=path form; repeat as needed.",
+    )
+    admit.add_argument(
+        "--difficulty-tag",
+        action="append",
+        required=True,
+        choices=sorted(ALLOWED_DIFFICULTIES),
+    )
+    admit.add_argument(
+        "--case-dir",
+        help="Artifact directory for the admitted case; defaults to a case-id-derived folder.",
+    )
+    admit.add_argument(
+        "--output",
+        required=True,
+        help="Updated population-plan JSON path.",
+    )
     return parser
 
 
@@ -955,6 +1204,24 @@ def main():
             force=args.force,
             case_ids=args.case_id,
         )
+    elif args.command == "admit-bound-case":
+        result = admit_bound_case(
+            args.manifest,
+            args.case_id,
+            args.finish,
+            args.source_binding,
+            args.source_video,
+            args.difficulty_tag,
+            case_dir=args.case_dir,
+        )
+        target = Path(args.output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(result["plan"], indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        payload = result["admission"]
     else:
         payload = discover_finish_candidates(
             args.manifest,
@@ -962,7 +1229,7 @@ def main():
             perceptual_screen=not args.skip_perceptual_screen,
             recursive=not args.no_recursive_scan,
         )
-    if args.output:
+    if args.command != "admit-bound-case" and args.output:
         target = Path(args.output)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")

@@ -66,6 +66,40 @@ class PracticeTruthPopulationTest(unittest.TestCase):
         })
         return path
 
+    def _bound_candidate_fixture(
+        self,
+        root,
+        *,
+        source_id="video:new",
+        signature=None,
+        expected_source_sha=None,
+    ):
+        finish = root / "candidate-finish.mp4"
+        source = root / "candidate-source.mp4"
+        finish.write_bytes(b"candidate-finish")
+        source.write_bytes(b"candidate-source")
+        source_sha = sha256_bytes(source.read_bytes())
+        reference_path = root / "candidate-reference.json"
+        write_json(reference_path, {
+            "schema": tool.REFERENCE_SCHEMA,
+            "referenceId": "reference:candidate",
+            "sourceSha256": sha256_bytes(finish.read_bytes()),
+            "perceptualSignature": signature or perceptual_signature("ffffffffffffffff"),
+            "shots": [{"shotId": "shot:1", "referenceStartMs": 0, "referenceEndMs": 1000}],
+        })
+        binding_path = root / "candidate-binding.json"
+        write_json(binding_path, {
+            "schema": tool.SOURCE_BINDING_SCHEMA,
+            "status": "BOUND",
+            "referenceId": "reference:candidate",
+            "referencePath": str(reference_path),
+            "sourceBindings": [{
+                "sourceId": source_id,
+                "sourceSha256": expected_source_sha or source_sha,
+            }],
+        })
+        return finish, source, binding_path
+
     def test_missing_reference_analysis_is_reported_as_next_action(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -539,6 +573,127 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(result["perceptuallyUniqueUnusedFinishCount"], 0)
             self.assertTrue(result["candidates"][0]["requiresPerceptualScreening"])
             self.assertIn("decode failed", result["candidates"][0]["perceptualScreeningError"])
+
+    def test_bound_candidate_admission_retains_only_proven_start_sources(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            existing = self._base_case(root)
+            write_json(root / existing["referenceAnalysis"], {
+                "schema": tool.REFERENCE_SCHEMA,
+                "referenceId": "reference:existing",
+                "perceptualSignature": perceptual_signature("0000000000000000"),
+            })
+            plan = self._plan(root, [existing])
+            finish, source, binding = self._bound_candidate_fixture(
+                root,
+                source_id="video:new",
+            )
+            unused = root / "unused-source.mp4"
+            unused.write_bytes(b"unused-source")
+
+            result = tool.admit_bound_case(
+                plan,
+                "case-new",
+                finish,
+                binding,
+                [
+                    f"video:new={source}",
+                    f"video:unused={unused}",
+                ],
+                ["STRONG_CAMERA_MOTION"],
+                case_dir="case-new-artifacts",
+            )
+
+            admitted = result["plan"]["cases"][-1]
+            self.assertEqual(
+                admitted["sourceMedia"],
+                [{"sourceId": "video:new", "path": str(source.resolve())}],
+            )
+            self.assertEqual(result["admission"]["boundSourceIds"], ["video:new"])
+            self.assertEqual(
+                result["admission"]["ignoredUnboundSourceIds"],
+                ["video:unused"],
+            )
+            coverage = result["admission"]["coverageProjection"]
+            self.assertEqual(result["admission"]["candidateCaseCount"], 2)
+            self.assertEqual(coverage["distinctSourceSetCount"], 2)
+            self.assertEqual(coverage["sourceSetsNeeded"], 1)
+            self.assertIn("STRONG_CAMERA_MOTION", coverage["representedDifficultyKinds"])
+
+    def test_bound_candidate_admission_rejects_malformed_bound_source_identity(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            existing = self._base_case(root)
+            write_json(root / existing["referenceAnalysis"], {
+                "schema": tool.REFERENCE_SCHEMA,
+                "referenceId": "reference:existing",
+                "perceptualSignature": perceptual_signature("0000000000000000"),
+            })
+            plan = self._plan(root, [existing])
+            finish, source, binding = self._bound_candidate_fixture(
+                root,
+                expected_source_sha="g" * 64,
+            )
+
+            with self.assertRaisesRegex(ValueError, "invalid source identity"):
+                tool.admit_bound_case(
+                    plan,
+                    "case-new",
+                    finish,
+                    binding,
+                    [f"video:new={source}"],
+                    ["OCCLUSION"],
+                )
+
+    def test_bound_candidate_admission_rejects_changed_start_source_identity(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            existing = self._base_case(root)
+            write_json(root / existing["referenceAnalysis"], {
+                "schema": tool.REFERENCE_SCHEMA,
+                "referenceId": "reference:existing",
+                "perceptualSignature": perceptual_signature("0000000000000000"),
+            })
+            plan = self._plan(root, [existing])
+            finish, source, binding = self._bound_candidate_fixture(
+                root,
+                expected_source_sha="f" * 64,
+            )
+
+            with self.assertRaisesRegex(ValueError, "content identity changed"):
+                tool.admit_bound_case(
+                    plan,
+                    "case-new",
+                    finish,
+                    binding,
+                    [f"video:new={source}"],
+                    ["OCCLUSION"],
+                )
+
+    def test_bound_candidate_admission_rejects_perceptual_finish_reuse(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            existing = self._base_case(root)
+            write_json(root / existing["referenceAnalysis"], {
+                "schema": tool.REFERENCE_SCHEMA,
+                "referenceId": "reference:existing",
+                "perceptualSignature": perceptual_signature("0000000000000000"),
+            })
+            plan = self._plan(root, [existing])
+            finish, source, binding = self._bound_candidate_fixture(
+                root,
+                signature=perceptual_signature("0000000000000001"),
+            )
+
+            with self.assertRaisesRegex(ValueError, "perceptually equivalent"):
+                tool.admit_bound_case(
+                    plan,
+                    "case-new",
+                    finish,
+                    binding,
+                    [f"video:new={source}"],
+                    ["HEAVY_EFFECT_OBSCURATION"],
+                )
 
     def test_complete_single_case_reaches_corpus_ready_without_certifying_population(self):
         with TemporaryDirectory() as temporary:
