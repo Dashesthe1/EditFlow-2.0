@@ -399,13 +399,16 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "candidates": candidates,
             })
 
-            bindability = {
+            bindability = tool.seal_bindability_evidence({
                 "schema": tool.ACQUISITION_BINDABILITY_SCHEMA,
+                "planSha256": tool.sha256_file(plan),
+                "finishDiscoverySha256": tool.sha256_file(discovery),
+                "sourceFiles": [],
                 "candidateResults": [
                     {"finishSha256": item["sha256"], "status": "BINDABLE"}
                     for item in candidates
                 ],
-            }
+            })
             result = tool.build_acquisition_plan(
                 plan,
                 discovery,
@@ -565,6 +568,31 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertEqual(filtered["bindableCandidateCount"], 1)
             self.assertEqual(filtered["bindableCandidateShortfallForMinimum"], 18)
             self.assertFalse(filtered["acquisitionReady"])
+            self.assertTrue(probe["attestationSha256"])
+            tool._load_bindability_evidence(
+                bindability_evidence=probe,
+                plan_path=plan,
+                finish_discovery_path=discovery,
+                source_paths={"video:new": source},
+            )
+
+            tampered = json.loads(json.dumps(probe))
+            tampered["candidateResults"][0]["status"] = "UNBINDABLE"
+            with self.assertRaisesRegex(ValueError, "attestation"):
+                tool.build_acquisition_plan(
+                    plan,
+                    discovery,
+                    bindability_evidence=tampered,
+                )
+
+            source.write_bytes(b"source-mutated-after-probe")
+            with self.assertRaisesRegex(ValueError, "Start-source identities"):
+                tool._load_bindability_evidence(
+                    bindability_evidence=probe,
+                    plan_path=plan,
+                    finish_discovery_path=discovery,
+                    source_paths={"video:new": source},
+                )
 
     def test_acquisition_run_refuses_to_guess_missing_difficulty_evidence(self):
         with TemporaryDirectory() as temporary:
@@ -699,6 +727,8 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 signature_provider=signature_provider,
             )
 
+            self.assertTrue(result["bindabilityVerified"])
+            self.assertTrue(result["acquisitionReady"])
             self.assertEqual(result["admittedCount"], 1)
             self.assertEqual(result["blockedCount"], 0)
             self.assertEqual(result["tasks"][0]["status"], "ADMITTED")

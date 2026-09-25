@@ -60,6 +60,33 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+def canonical_json_sha256(payload):
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def source_identity_records(source_paths):
+    return [
+        {
+            "sourceId": source_id,
+            "sha256": sha256_file(source_paths[source_id]),
+        }
+        for source_id in sorted(source_paths)
+    ]
+
+
+def seal_bindability_evidence(payload):
+    sealed = copy.deepcopy(payload)
+    sealed.pop("attestationSha256", None)
+    sealed["attestationSha256"] = canonical_json_sha256(sealed)
+    return sealed
+
+
 def perceptual_signature_parts(value):
     parts = [part.strip().lower() for part in str(value or "").split(",") if part.strip()]
     if len(parts) < 8:
@@ -1211,7 +1238,14 @@ def _build_acquisition_tasks(plan_path, plan, acquisition, candidates):
     return tasks
 
 
-def _load_bindability_evidence(bindability_path=None, bindability_evidence=None):
+def _load_bindability_evidence(
+    bindability_path=None,
+    bindability_evidence=None,
+    *,
+    plan_path=None,
+    finish_discovery_path=None,
+    source_paths=None,
+):
     evidence = bindability_evidence
     if evidence is None and bindability_path:
         evidence = load_json(bindability_path)
@@ -1219,6 +1253,35 @@ def _load_bindability_evidence(bindability_path=None, bindability_evidence=None)
         return None, {}
     if evidence.get("schema") != ACQUISITION_BINDABILITY_SCHEMA:
         raise ValueError("Practice acquisition bindability evidence schema is invalid.")
+
+    attestation = str(evidence.get("attestationSha256", "")).strip().lower()
+    unsigned = copy.deepcopy(evidence)
+    unsigned.pop("attestationSha256", None)
+    if not attestation or canonical_json_sha256(unsigned) != attestation:
+        raise ValueError("Practice acquisition bindability attestation is missing or invalid.")
+
+    if plan_path:
+        expected = sha256_file(plan_path)
+        observed = str(evidence.get("planSha256", "")).strip().lower()
+        if observed != expected:
+            raise ValueError("Practice acquisition bindability evidence was produced for a different population plan.")
+    if finish_discovery_path:
+        expected = sha256_file(finish_discovery_path)
+        observed = str(evidence.get("finishDiscoverySha256", "")).strip().lower()
+        if observed != expected:
+            raise ValueError("Practice acquisition bindability evidence was produced for different Finish discovery evidence.")
+    if source_paths is not None:
+        expected_sources = source_identity_records(source_paths)
+        observed_sources = [
+            {
+                "sourceId": str(item.get("sourceId", "")).strip(),
+                "sha256": str(item.get("sha256", "")).strip().lower(),
+            }
+            for item in evidence.get("sourceFiles") or []
+        ]
+        if observed_sources != expected_sources:
+            raise ValueError("Practice acquisition bindability evidence does not match the current raw Start-source identities.")
+
     results = {}
     for item in evidence.get("candidateResults") or []:
         finish_sha = str(item.get("finishSha256", "")).strip().lower()
@@ -1245,6 +1308,8 @@ def build_acquisition_plan(
     evidence, bindability_by_sha = _load_bindability_evidence(
         bindability_path=bindability_path,
         bindability_evidence=bindability_evidence,
+        plan_path=plan_path,
+        finish_discovery_path=finish_discovery_path,
     )
     if evidence is None:
         eligible_candidates = raw_candidates
@@ -1355,6 +1420,7 @@ def probe_acquisition_bindability(
     candidates = list(discovery.get("unboundFinishCandidates") or [])
     tasks = _build_acquisition_tasks(plan_path, plan, acquisition, candidates)
     source_paths = parse_source_video_specs(source_video_specs)
+    source_files = source_identity_records(source_paths)
     normalized_sources = [
         source_id + "=" + str(source_paths[source_id])
         for source_id in sorted(source_paths)
@@ -1392,6 +1458,9 @@ def probe_acquisition_bindability(
         reference_path = Path(targets["referenceAnalysis"]).resolve()
         binding_path = Path(targets["sourceBinding"]).resolve()
         matches_path = Path(targets["sourceMatches"]).resolve()
+        result["referenceAnalysisPath"] = str(reference_path)
+        result["sourceBindingPath"] = str(binding_path)
+        result["sourceMatchesPath"] = str(matches_path)
         reference = None
         if reference_path.is_file():
             try:
@@ -1451,9 +1520,13 @@ def probe_acquisition_bindability(
 
     bindable = [item for item in results if item["status"] == "BINDABLE"]
     blocked = [item for item in results if item["status"] != "BINDABLE"]
-    return {
+    payload = {
         "schema": ACQUISITION_BINDABILITY_SCHEMA,
         "editTypeId": str(plan["editTypeId"]).strip(),
+        "createdAtUtc": now_iso(),
+        "planSha256": sha256_file(plan_path),
+        "finishDiscoverySha256": sha256_file(finish_discovery_path),
+        "sourceFiles": source_files,
         "targetNewCaseCount": target_count,
         "sourceIds": sorted(source_paths),
         "candidateCount": len(results),
@@ -1471,6 +1544,7 @@ def probe_acquisition_bindability(
         ],
         "candidateResults": results,
     }
+    return seal_bindability_evidence(payload)
 
 
 def execute_acquisition_plan(
@@ -1504,15 +1578,22 @@ def execute_acquisition_plan(
         source_id + "=" + str(source_paths[source_id])
         for source_id in sorted(source_paths)
     ]
-    difficulty_map = parse_acquisition_difficulty_specs(difficulty_specs)
-    acquisition = build_acquisition_plan(
-        plan_path,
-        finish_discovery_path,
-        bindability_path=bindability_path,
+    output_plan = Path(output_plan_path).expanduser().resolve()
+    if output_plan == Path(plan_path).expanduser().resolve():
+        raise ValueError("Acquisition execution must write a new population plan path.")
+
+    matcher = matcher or load_media_match_tool()
+    source_binding_tool = source_binding_tool or load_source_binding_tool()
+    cache_dir = (
+        Path(index_cache_dir).expanduser().resolve()
+        if index_cache_dir
+        else output_plan.parent / ".source-index-cache"
     )
-    tasks = list(acquisition["tasks"])
-    task_ids = {str(item["caseIdSuggestion"]) for item in tasks}
-    unknown_difficulties = sorted(set(difficulty_map) - task_ids)
+    difficulty_map = parse_acquisition_difficulty_specs(difficulty_specs)
+    preflight = build_acquisition_plan(plan_path, finish_discovery_path)
+    raw_tasks = list(preflight["tasks"])
+    raw_task_ids = {str(item["caseIdSuggestion"]) for item in raw_tasks}
+    unknown_difficulties = sorted(set(difficulty_map) - raw_task_ids)
     if unknown_difficulties:
         raise ValueError(
             "Difficulty evidence references unknown acquisition case(s): "
@@ -1522,24 +1603,114 @@ def execute_acquisition_plan(
     selected_ids = None
     if case_ids:
         selected_ids = {str(item).strip() for item in case_ids if str(item).strip()}
-        unknown = sorted(selected_ids - task_ids)
+        unknown = sorted(selected_ids - raw_task_ids)
         if unknown:
             raise ValueError("Unknown acquisition case id(s): " + ", ".join(unknown))
-        tasks = [item for item in tasks if item["caseIdSuggestion"] in selected_ids]
+        raw_tasks = [item for item in raw_tasks if item["caseIdSuggestion"] in selected_ids]
 
-    output_plan = Path(output_plan_path).expanduser().resolve()
-    if output_plan == Path(plan_path).expanduser().resolve():
-        raise ValueError("Acquisition execution must write a new population plan path.")
+    preflight_results = []
+    eligible_case_ids = set()
+    for task in raw_tasks:
+        case_id = str(task["caseIdSuggestion"])
+        tags = list(difficulty_map.get(case_id) or [])
+        reasons = []
+        if not tags:
+            reasons.append(
+                "Verified difficulty evidence is required before retained-corpus admission."
+            )
+        elif task.get("mustIncreaseDifficultyKinds") and not (
+            set(tags) & set(task.get("preferredDifficultyKinds") or [])
+        ):
+            reasons.append(
+                "This acquisition slot must add a currently unrepresented hard-case category."
+            )
+        if reasons:
+            preflight_results.append({
+                "caseId": case_id,
+                "finishPath": task["finishPath"],
+                "status": "BLOCKED",
+                "reasons": reasons,
+            })
+        else:
+            eligible_case_ids.add(case_id)
+
     write_json(output_plan, require_plan(plan_path))
+    if not eligible_case_ids:
+        final_plan = require_plan(output_plan)
+        return {
+            "schema": ACQUISITION_RUN_SCHEMA,
+            "editTypeId": str(final_plan["editTypeId"]).strip(),
+            "outputPlanPath": str(output_plan),
+            "candidatePoolReady": preflight["candidatePoolReady"],
+            "bindabilityVerified": False,
+            "acquisitionReady": False,
+            "selectedTaskCount": len(preflight_results),
+            "admittedCount": 0,
+            "blockedCount": len(preflight_results),
+            "sourceIds": sorted(source_paths),
+            "coverageProjection": population_projection(final_plan),
+            "tasks": preflight_results,
+        }
 
-    matcher = matcher or load_media_match_tool()
-    source_binding_tool = source_binding_tool or load_source_binding_tool()
-    cache_dir = (
-        Path(index_cache_dir).expanduser().resolve()
-        if index_cache_dir
-        else output_plan.parent / ".source-index-cache"
+    if bindability_path:
+        bindability_evidence, bindability_by_sha = _load_bindability_evidence(
+            bindability_path=bindability_path,
+            plan_path=plan_path,
+            finish_discovery_path=finish_discovery_path,
+            source_paths=source_paths,
+        )
+    else:
+        bindability_evidence = probe_acquisition_bindability(
+            plan_path,
+            finish_discovery_path,
+            source_video_specs,
+            matcher=matcher,
+            source_binding_tool=source_binding_tool,
+            cut_threshold=cut_threshold,
+            minimum_shot_ms=minimum_shot_ms,
+            coarse_limit=coarse_limit,
+            minimum_coverage=minimum_coverage,
+            index_cache_dir=cache_dir,
+        )
+        _, bindability_by_sha = _load_bindability_evidence(
+            bindability_evidence=bindability_evidence,
+            plan_path=plan_path,
+            finish_discovery_path=finish_discovery_path,
+            source_paths=source_paths,
+        )
+
+    acquisition = build_acquisition_plan(
+        plan_path,
+        finish_discovery_path,
+        bindability_evidence=bindability_evidence,
     )
-    task_results = []
+    tasks = [
+        item for item in acquisition["tasks"]
+        if item["caseIdSuggestion"] in eligible_case_ids
+    ]
+    bindable_case_ids = {str(item["caseIdSuggestion"]) for item in tasks}
+    task_results = list(preflight_results)
+    for task in raw_tasks:
+        case_id = str(task["caseIdSuggestion"])
+        if case_id not in eligible_case_ids or case_id in bindable_case_ids:
+            continue
+        bindability = bindability_by_sha.get(
+            str(task.get("finishSha256", "")).strip().lower(),
+            {},
+        )
+        reasons = [
+            str(reason).strip()
+            for reason in bindability.get("reasons") or [
+                "No exact Start-source binding qualified for this Finish candidate."
+            ]
+            if str(reason).strip()
+        ]
+        task_results.append({
+            "caseId": case_id,
+            "finishPath": task["finishPath"],
+            "status": "BLOCKED",
+            "reasons": reasons,
+        })
 
     for task in tasks:
         case_id = str(task["caseIdSuggestion"])
