@@ -399,10 +399,24 @@ class PracticeTruthPopulationTest(unittest.TestCase):
                 "candidates": candidates,
             })
 
-            result = tool.build_acquisition_plan(plan, discovery)
+            bindability = {
+                "schema": tool.ACQUISITION_BINDABILITY_SCHEMA,
+                "candidateResults": [
+                    {"finishSha256": item["sha256"], "status": "BINDABLE"}
+                    for item in candidates
+                ],
+            }
+            result = tool.build_acquisition_plan(
+                plan,
+                discovery,
+                bindability_evidence=bindability,
+            )
 
             self.assertEqual(result["schema"], tool.ACQUISITION_PLAN_SCHEMA)
             self.assertTrue(result["candidatePoolReady"])
+            self.assertTrue(result["bindabilityVerified"])
+            self.assertTrue(result["acquisitionReady"])
+            self.assertEqual(result["bindableCandidateCount"], 19)
             self.assertEqual(result["targetNewCaseCount"], 19)
             self.assertEqual(result["selectedCandidateCount"], 19)
             self.assertEqual(result["finishCandidateShortfallForMinimum"], 0)
@@ -422,6 +436,135 @@ class PracticeTruthPopulationTest(unittest.TestCase):
             self.assertFalse(result["tasks"][3]["mustIncreaseDifficultyKinds"])
             self.assertIn("reference-analysis.json", first["artifactTargets"]["referenceAnalysis"])
             self.assertEqual(result["blockingReasons"], [])
+
+
+    def test_acquisition_plan_fails_closed_without_bindability_evidence(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            candidates = [{
+                "path": str(root / f"candidate-{index:02d}.mp4"),
+                "fileName": f"Candidate {index:02d}.mp4",
+                "sha256": f"{index + 1:064x}",
+                "requiresSourceBinding": True,
+                "requiresReferenceAnalysis": True,
+            } for index in range(19)]
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 19,
+                "canReachMinimumByScreenedUniqueFinishCount": True,
+                "candidates": candidates,
+            })
+
+            result = tool.build_acquisition_plan(plan, discovery)
+
+            self.assertTrue(result["candidatePoolReady"])
+            self.assertFalse(result["bindabilityVerified"])
+            self.assertFalse(result["acquisitionReady"])
+            self.assertTrue(result["sourceAcquisitionRequired"])
+            self.assertEqual(result["bindableCandidateShortfallForMinimum"], 19)
+            self.assertTrue(any(
+                "bindability must be probed" in reason
+                for reason in result["blockingReasons"]
+            ))
+
+    def test_bindability_probe_filters_finish_candidates_against_real_source_pool(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = self._plan(root, [self._base_case(root)])
+            source = root / "source.mp4"
+            source.write_bytes(b"source")
+            source_sha = sha256_bytes(source.read_bytes())
+            finish_a = root / "candidate-a.mp4"
+            finish_b = root / "candidate-b.mp4"
+            finish_a.write_bytes(b"finish-a")
+            finish_b.write_bytes(b"finish-b")
+            finish_a_sha = sha256_bytes(finish_a.read_bytes())
+            finish_b_sha = sha256_bytes(finish_b.read_bytes())
+            discovery = root / "finish-discovery.json"
+            write_json(discovery, {
+                "schema": tool.DISCOVERY_SCHEMA,
+                "perceptuallyUniqueUnusedFinishCount": 2,
+                "canReachMinimumByScreenedUniqueFinishCount": False,
+                "candidates": [
+                    {
+                        "path": str(finish_a),
+                        "fileName": finish_a.name,
+                        "sha256": finish_a_sha,
+                        "requiresSourceBinding": True,
+                        "requiresReferenceAnalysis": True,
+                    },
+                    {
+                        "path": str(finish_b),
+                        "fileName": finish_b.name,
+                        "sha256": finish_b_sha,
+                        "requiresSourceBinding": True,
+                        "requiresReferenceAnalysis": True,
+                    },
+                ],
+            })
+
+            class FakeMatcher:
+                def analyze_reference(self, video_path, reference_id, output_path, cut_threshold, minimum_shot_ms):
+                    payload = {
+                        "schema": tool.REFERENCE_SCHEMA,
+                        "referenceId": reference_id,
+                        "sourceSha256": sha256_bytes(Path(video_path).read_bytes()),
+                        "shots": [],
+                    }
+                    write_json(output_path, payload)
+                    return payload
+
+            class FakeBindingTool:
+                def bind_sources(
+                    self,
+                    reference_path,
+                    output_path,
+                    source_video_specs=None,
+                    index_cache_dir=None,
+                    matches_output=None,
+                    coarse_limit=16,
+                    minimum_coverage=0.98,
+                ):
+                    reference = tool.load_json(reference_path)
+                    is_bound = reference["sourceSha256"] == finish_a_sha
+                    payload = {
+                        "schema": tool.SOURCE_BINDING_SCHEMA,
+                        "status": "BOUND" if is_bound else "UNBOUND",
+                        "sourceBindings": (
+                            [{"sourceId": "video:new", "sourceSha256": source_sha}]
+                            if is_bound else []
+                        ),
+                        "reasons": [] if is_bound else ["No exact Start-source binding qualified."],
+                    }
+                    write_json(output_path, payload)
+                    write_json(matches_output, {"schema": tool.MATCH_SCHEMA, "matches": []})
+                    return payload
+
+            probe = tool.probe_acquisition_bindability(
+                plan,
+                discovery,
+                ["video:new=" + str(source)],
+                matcher=FakeMatcher(),
+                source_binding_tool=FakeBindingTool(),
+            )
+
+            self.assertEqual(probe["schema"], tool.ACQUISITION_BINDABILITY_SCHEMA)
+            self.assertEqual(probe["candidateCount"], 2)
+            self.assertEqual(probe["bindableCandidateCount"], 1)
+            self.assertEqual(probe["unboundCandidateCount"], 1)
+            self.assertFalse(probe["canMeetMinimumByBindableCandidateCount"])
+            self.assertEqual(len(probe["sourceAcquisitionQueue"]), 1)
+            filtered = tool.build_acquisition_plan(
+                plan,
+                discovery,
+                bindability_evidence=probe,
+            )
+            self.assertEqual(filtered["selectedCandidateCount"], 1)
+            self.assertEqual(filtered["bindableCandidateCount"], 1)
+            self.assertEqual(filtered["bindableCandidateShortfallForMinimum"], 18)
+            self.assertFalse(filtered["acquisitionReady"])
 
     def test_acquisition_run_refuses_to_guess_missing_difficulty_evidence(self):
         with TemporaryDirectory() as temporary:

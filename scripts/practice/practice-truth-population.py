@@ -16,6 +16,7 @@ STATUS_SCHEMA = "editflow.practice-truth-population-status.v1"
 WORK_QUEUE_SCHEMA = "editflow.practice-truth-population-work-queue.v1"
 PROGRESSION_GATE_SCHEMA = "editflow.practice-truth-population-progression-gate.v1"
 ACQUISITION_PLAN_SCHEMA = "editflow.practice-truth-acquisition-plan.v1"
+ACQUISITION_BINDABILITY_SCHEMA = "editflow.practice-truth-acquisition-bindability.v1"
 ACQUISITION_RUN_SCHEMA = "editflow.practice-truth-acquisition-run.v1"
 REFERENCE_SCHEMA = "editflow.practice-reference-analysis.v1"
 TRUTH_SCHEMA = "editflow.practice-media-benchmark-truth.v1"
@@ -1159,17 +1160,7 @@ def build_work_queue(plan_path, finish_discovery_path=None):
     }
 
 
-def build_acquisition_plan(plan_path, finish_discovery_path):
-    plan = require_plan(plan_path)
-    queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
-    discovery = queue.get("finishDiscovery")
-    if discovery is None:
-        raise ValueError("Practice acquisition planning requires finish-discovery evidence.")
-
-    acquisition = queue["acquisition"]
-    target_count = int(acquisition["additionalCasesNeededForMinimum"])
-    candidates = list(discovery.get("unboundFinishCandidates") or [])
-    selected = candidates[:target_count] if target_count > 0 else []
+def _build_acquisition_tasks(plan_path, plan, acquisition, candidates):
     existing_case_ids = {
         str(case.get("caseId", "")).strip()
         for case in plan["cases"]
@@ -1182,7 +1173,7 @@ def build_acquisition_plan(plan_path, finish_discovery_path):
     difficulty_kinds_needed = int(acquisition["additionalDifficultyKindsNeeded"])
     tasks = []
 
-    for index, candidate in enumerate(selected):
+    for index, candidate in enumerate(candidates):
         finish_path = str(candidate.get("path", "")).strip()
         finish_sha = str(candidate.get("sha256", "")).strip().lower()
         token = finish_sha[:12] if len(finish_sha) >= 12 else hashlib.sha256(
@@ -1217,27 +1208,268 @@ def build_acquisition_plan(plan_path, finish_discovery_path):
                 "caseDir": str(case_root),
             },
         })
+    return tasks
 
-    shortfall = max(0, target_count - len(selected))
+
+def _load_bindability_evidence(bindability_path=None, bindability_evidence=None):
+    evidence = bindability_evidence
+    if evidence is None and bindability_path:
+        evidence = load_json(bindability_path)
+    if evidence is None:
+        return None, {}
+    if evidence.get("schema") != ACQUISITION_BINDABILITY_SCHEMA:
+        raise ValueError("Practice acquisition bindability evidence schema is invalid.")
+    results = {}
+    for item in evidence.get("candidateResults") or []:
+        finish_sha = str(item.get("finishSha256", "")).strip().lower()
+        if finish_sha:
+            results[finish_sha] = item
+    return evidence, results
+
+
+def build_acquisition_plan(
+    plan_path,
+    finish_discovery_path,
+    bindability_path=None,
+    bindability_evidence=None,
+):
+    plan = require_plan(plan_path)
+    queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
+    discovery = queue.get("finishDiscovery")
+    if discovery is None:
+        raise ValueError("Practice acquisition planning requires finish-discovery evidence.")
+
+    acquisition = queue["acquisition"]
+    target_count = int(acquisition["additionalCasesNeededForMinimum"])
+    raw_candidates = list(discovery.get("unboundFinishCandidates") or [])
+    evidence, bindability_by_sha = _load_bindability_evidence(
+        bindability_path=bindability_path,
+        bindability_evidence=bindability_evidence,
+    )
+    if evidence is None:
+        eligible_candidates = raw_candidates
+    else:
+        eligible_candidates = [
+            candidate
+            for candidate in raw_candidates
+            if str(
+                bindability_by_sha.get(
+                    str(candidate.get("sha256", "")).strip().lower(),
+                    {},
+                ).get("status", "")
+            ).upper() == "BINDABLE"
+        ]
+    selected = eligible_candidates[:target_count] if target_count > 0 else []
+    tasks = _build_acquisition_tasks(plan_path, plan, acquisition, selected)
+
+    finish_shortfall = max(0, target_count - len(raw_candidates))
+    bindable_count = len(eligible_candidates) if evidence is not None else 0
+    bindable_shortfall = (
+        max(0, target_count - bindable_count)
+        if target_count > 0 and evidence is not None
+        else (target_count if target_count > 0 else 0)
+    )
+    probed_count = len(bindability_by_sha)
+    unprobed_count = (
+        sum(
+            1
+            for candidate in raw_candidates
+            if str(candidate.get("sha256", "")).strip().lower() not in bindability_by_sha
+        )
+        if evidence is not None
+        else len(raw_candidates)
+    )
     blockers = []
-    if shortfall:
+    if finish_shortfall:
         blockers.append(
-            "Finish discovery is short by " + str(shortfall)
+            "Finish discovery is short by " + str(finish_shortfall)
             + " perceptually unique candidate(s) for the minimum retained cohort."
         )
+    if target_count > 0 and evidence is None:
+        blockers.append(
+            "Raw Start-source bindability must be probed before Practice can treat the acquisition pool as executable."
+        )
+    elif bindable_shortfall:
+        blockers.append(
+            "Exact raw Start-source binding is short by " + str(bindable_shortfall)
+            + " candidate(s) for the minimum retained cohort."
+        )
+    acquisition_ready = (
+        finish_shortfall == 0
+        and (target_count == 0 or (evidence is not None and bindable_shortfall == 0))
+    )
     return {
         "schema": ACQUISITION_PLAN_SCHEMA,
         "editTypeId": str(plan["editTypeId"]).strip(),
         "targetNewCaseCount": target_count,
         "selectedCandidateCount": len(selected),
-        "finishCandidateShortfallForMinimum": shortfall,
-        "candidatePoolReady": shortfall == 0,
+        "finishCandidateShortfallForMinimum": finish_shortfall,
+        "candidatePoolReady": finish_shortfall == 0,
+        "bindabilityVerified": evidence is not None,
+        "bindabilityEvidencePath": (
+            str(Path(bindability_path).expanduser().resolve()) if bindability_path else None
+        ),
+        "probedCandidateCount": probed_count,
+        "unprobedCandidateCount": unprobed_count,
+        "bindableCandidateCount": bindable_count,
+        "bindableCandidateShortfallForMinimum": bindable_shortfall,
+        "acquisitionReady": acquisition_ready,
+        "sourceAcquisitionRequired": target_count > 0 and not acquisition_ready,
         "requiresExactSourceBinding": target_count > 0,
-        "additionalDistinctSourceSetsNeeded": source_sets_needed,
+        "additionalDistinctSourceSetsNeeded": int(acquisition["additionalDistinctSourceSetsNeeded"]),
         "additionalDifficultyKindsNeeded": int(acquisition["additionalDifficultyKindsNeeded"]),
-        "preferredDifficultyKinds": required_difficulties,
+        "preferredDifficultyKinds": list(acquisition["unrepresentedDifficultyKinds"]),
         "blockingReasons": blockers,
         "tasks": tasks,
+    }
+
+
+def probe_acquisition_bindability(
+    plan_path,
+    finish_discovery_path,
+    source_video_specs,
+    matcher=None,
+    source_binding_tool=None,
+    cut_threshold=0.42,
+    minimum_shot_ms=180.0,
+    coarse_limit=16,
+    minimum_coverage=0.98,
+    index_cache_dir=None,
+):
+    if not (0.1 <= float(cut_threshold) <= 0.95):
+        raise ValueError("Reference cut threshold must be in [0.1, 0.95].")
+    if float(minimum_shot_ms) < 80:
+        raise ValueError("Minimum reference shot duration must be at least 80 ms.")
+    if int(coarse_limit) < 2 or int(coarse_limit) > 64:
+        raise ValueError("Source-binding coarse limit must be in [2, 64].")
+    if not (0.5 <= float(minimum_coverage) <= 1.0):
+        raise ValueError("Source-binding minimum coverage must be in [0.5, 1.0].")
+
+    plan = require_plan(plan_path)
+    queue = build_work_queue(plan_path, finish_discovery_path=finish_discovery_path)
+    discovery = queue.get("finishDiscovery")
+    if discovery is None:
+        raise ValueError("Practice bindability probing requires finish-discovery evidence.")
+    acquisition = queue["acquisition"]
+    target_count = int(acquisition["additionalCasesNeededForMinimum"])
+    candidates = list(discovery.get("unboundFinishCandidates") or [])
+    tasks = _build_acquisition_tasks(plan_path, plan, acquisition, candidates)
+    source_paths = parse_source_video_specs(source_video_specs)
+    normalized_sources = [
+        source_id + "=" + str(source_paths[source_id])
+        for source_id in sorted(source_paths)
+    ]
+    matcher = matcher or load_media_match_tool()
+    source_binding_tool = source_binding_tool or load_source_binding_tool()
+    cache_dir = (
+        Path(index_cache_dir).expanduser().resolve()
+        if index_cache_dir
+        else Path(plan_path).resolve().parent / ".source-index-cache"
+    )
+    results = []
+
+    for task in tasks:
+        result = {
+            "caseIdSuggestion": task["caseIdSuggestion"],
+            "finishPath": task["finishPath"],
+            "finishSha256": task["finishSha256"],
+            "status": "UNBINDABLE",
+            "boundSourceIds": [],
+            "reasons": [],
+        }
+        finish_path = Path(task["finishPath"]).expanduser().resolve()
+        if not finish_path.is_file():
+            result["reasons"].append("Finish media is missing: " + str(finish_path))
+            results.append(result)
+            continue
+        actual_sha = sha256_file(finish_path)
+        if task["finishSha256"] and actual_sha.lower() != task["finishSha256"].lower():
+            result["reasons"].append("Finish media SHA-256 changed after discovery.")
+            results.append(result)
+            continue
+
+        targets = task["artifactTargets"]
+        reference_path = Path(targets["referenceAnalysis"]).resolve()
+        binding_path = Path(targets["sourceBinding"]).resolve()
+        matches_path = Path(targets["sourceMatches"]).resolve()
+        reference = None
+        if reference_path.is_file():
+            try:
+                candidate = load_json(reference_path)
+                if (
+                    candidate.get("schema") == REFERENCE_SCHEMA
+                    and str(candidate.get("sourceSha256", "")).strip().lower() == actual_sha.lower()
+                ):
+                    reference = candidate
+            except (OSError, ValueError, json.JSONDecodeError):
+                reference = None
+        if reference is None:
+            try:
+                reference_path.parent.mkdir(parents=True, exist_ok=True)
+                reference = matcher.analyze_reference(
+                    str(finish_path),
+                    "reference:" + task["caseIdSuggestion"],
+                    str(reference_path),
+                    float(cut_threshold),
+                    float(minimum_shot_ms),
+                )
+            except Exception as error:
+                result["reasons"].append("Reference analysis failed: " + str(error))
+                results.append(result)
+                continue
+
+        try:
+            binding = source_binding_tool.bind_sources(
+                str(reference_path),
+                str(binding_path),
+                source_video_specs=normalized_sources,
+                index_cache_dir=str(cache_dir),
+                matches_output=str(matches_path),
+                coarse_limit=int(coarse_limit),
+                minimum_coverage=float(minimum_coverage),
+            )
+        except Exception as error:
+            result["reasons"].append("Exact Start-source binding failed: " + str(error))
+            results.append(result)
+            continue
+        if binding.get("status") == "BOUND":
+            try:
+                bound = validate_bound_sources(binding, source_paths)
+            except ValueError as error:
+                result["reasons"].append(str(error))
+                results.append(result)
+                continue
+            result["status"] = "BINDABLE"
+            result["boundSourceIds"] = sorted(bound)
+        else:
+            result["reasons"].extend(
+                str(reason).strip()
+                for reason in binding.get("reasons") or ["No exact Start-source binding qualified."]
+                if str(reason).strip()
+            )
+        results.append(result)
+
+    bindable = [item for item in results if item["status"] == "BINDABLE"]
+    blocked = [item for item in results if item["status"] != "BINDABLE"]
+    return {
+        "schema": ACQUISITION_BINDABILITY_SCHEMA,
+        "editTypeId": str(plan["editTypeId"]).strip(),
+        "targetNewCaseCount": target_count,
+        "sourceIds": sorted(source_paths),
+        "candidateCount": len(results),
+        "bindableCandidateCount": len(bindable),
+        "unboundCandidateCount": len(blocked),
+        "canMeetMinimumByBindableCandidateCount": len(bindable) >= target_count,
+        "sourceAcquisitionQueue": [
+            {
+                "caseIdSuggestion": item["caseIdSuggestion"],
+                "finishPath": item["finishPath"],
+                "finishSha256": item["finishSha256"],
+                "reasons": item["reasons"],
+            }
+            for item in blocked
+        ],
+        "candidateResults": results,
     }
 
 
@@ -1251,6 +1483,7 @@ def execute_acquisition_plan(
     matcher=None,
     source_binding_tool=None,
     signature_provider=None,
+    bindability_path=None,
     cut_threshold=0.42,
     minimum_shot_ms=180.0,
     coarse_limit=16,
@@ -1272,7 +1505,11 @@ def execute_acquisition_plan(
         for source_id in sorted(source_paths)
     ]
     difficulty_map = parse_acquisition_difficulty_specs(difficulty_specs)
-    acquisition = build_acquisition_plan(plan_path, finish_discovery_path)
+    acquisition = build_acquisition_plan(
+        plan_path,
+        finish_discovery_path,
+        bindability_path=bindability_path,
+    )
     tasks = list(acquisition["tasks"])
     task_ids = {str(item["caseIdSuggestion"]) for item in tasks}
     unknown_difficulties = sorted(set(difficulty_map) - task_ids)
@@ -1450,6 +1687,8 @@ def execute_acquisition_plan(
         "editTypeId": str(final_plan["editTypeId"]).strip(),
         "outputPlanPath": str(output_plan),
         "candidatePoolReady": acquisition["candidatePoolReady"],
+        "bindabilityVerified": acquisition.get("bindabilityVerified", False),
+        "acquisitionReady": acquisition.get("acquisitionReady", acquisition["candidatePoolReady"]),
         "selectedTaskCount": len(task_results),
         "admittedCount": admitted_count,
         "blockedCount": blocked_count,
@@ -2542,7 +2781,26 @@ def build_parser():
         required=True,
         help="Finish-discovery JSON used to schedule exact-bound case acquisition.",
     )
+    acquisition_plan.add_argument(
+        "--bindability",
+        help="Optional bindability probe JSON; when supplied, only proven-bindable Finish candidates are scheduled.",
+    )
     acquisition_plan.add_argument("--output")
+    acquisition_probe = sub.add_parser("probe-acquisition-sources")
+    acquisition_probe.add_argument("--manifest", required=True)
+    acquisition_probe.add_argument("--finish-discovery", required=True)
+    acquisition_probe.add_argument(
+        "--source-video",
+        action="append",
+        required=True,
+        help="Raw Start source in sourceId=path form; repeat to probe the available source pool.",
+    )
+    acquisition_probe.add_argument("--index-cache-dir")
+    acquisition_probe.add_argument("--reference-cut-threshold", type=float, default=0.42)
+    acquisition_probe.add_argument("--minimum-shot-ms", type=float, default=180.0)
+    acquisition_probe.add_argument("--coarse-limit", type=int, default=16)
+    acquisition_probe.add_argument("--minimum-coverage", type=float, default=0.98)
+    acquisition_probe.add_argument("--output")
     acquisition_run = sub.add_parser("run-acquisition")
     acquisition_run.add_argument("--manifest", required=True)
     acquisition_run.add_argument("--finish-discovery", required=True)
@@ -2563,6 +2821,7 @@ def build_parser():
         action="append",
         help="Run only this planned acquisition case id; repeat to select multiple cases.",
     )
+    acquisition_run.add_argument("--bindability")
     acquisition_run.add_argument("--index-cache-dir")
     acquisition_run.add_argument("--reference-cut-threshold", type=float, default=0.42)
     acquisition_run.add_argument("--minimum-shot-ms", type=float, default=180.0)
@@ -2719,8 +2978,22 @@ def main():
         payload = build_acquisition_plan(
             args.manifest,
             args.finish_discovery,
+            bindability_path=args.bindability,
         )
-        if not payload["candidatePoolReady"]:
+        if not payload["acquisitionReady"]:
+            exit_code = 4
+    elif args.command == "probe-acquisition-sources":
+        payload = probe_acquisition_bindability(
+            args.manifest,
+            args.finish_discovery,
+            args.source_video,
+            cut_threshold=args.reference_cut_threshold,
+            minimum_shot_ms=args.minimum_shot_ms,
+            coarse_limit=args.coarse_limit,
+            minimum_coverage=args.minimum_coverage,
+            index_cache_dir=args.index_cache_dir,
+        )
+        if not payload["canMeetMinimumByBindableCandidateCount"]:
             exit_code = 4
     elif args.command == "run-acquisition":
         payload = execute_acquisition_plan(
@@ -2730,13 +3003,14 @@ def main():
             args.source_video,
             difficulty_specs=args.difficulty,
             case_ids=args.case_id,
+            bindability_path=args.bindability,
             cut_threshold=args.reference_cut_threshold,
             minimum_shot_ms=args.minimum_shot_ms,
             coarse_limit=args.coarse_limit,
             minimum_coverage=args.minimum_coverage,
             index_cache_dir=args.index_cache_dir,
         )
-        if payload["blockedCount"] or not payload["candidatePoolReady"]:
+        if payload["blockedCount"] or not payload["acquisitionReady"]:
             exit_code = 5
     elif args.command == "advance":
         payload = advance_population(
