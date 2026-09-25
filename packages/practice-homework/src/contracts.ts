@@ -1076,6 +1076,25 @@ export type PracticeMaturityStageV1 =
   | "OBJECT_AWARE_VERIFIED"
   | "ROBUST";
 
+export interface PracticeProgressionGateV1 {
+  readonly schema: "editflow.practice-progression-gate.v1";
+  readonly editTypeId: string;
+  readonly populationWindowComplete: boolean;
+  readonly independentTruthReviewComplete: boolean;
+  readonly sourceAcquisitionComplete: boolean;
+  readonly retainedTruthCertificationComplete: boolean;
+  readonly heldOutBenchmarkComplete: boolean;
+  readonly robustClaimAllowed: boolean;
+  readonly latestRetainedTruthEvaluatedAt: string | null;
+  readonly caseCount: number;
+  readonly minimumCaseCount: number;
+  readonly maximumCaseCount: number;
+  readonly independentTruthCaseCount: number;
+  readonly distinctSourceSetCount: number;
+  readonly minimumDistinctSourceSetCount: number | null;
+  readonly blockingDependencies: readonly string[];
+}
+
 export type EditTypeKnowledgeScopeV1 = "ALL_RETAINED" | "TRANSFER_VERIFIED_ONLY";
 
 export interface EditTypeKnowledgeSnapshotV1 {
@@ -1083,6 +1102,7 @@ export interface EditTypeKnowledgeSnapshotV1 {
   readonly title: string;
   readonly revision: number;
   readonly maturityStage: PracticeMaturityStageV1 | null;
+  readonly progressionGate: PracticeProgressionGateV1;
   readonly knowledgeScope: EditTypeKnowledgeScopeV1;
   readonly masteredSessionCount: number;
   readonly referenceVerifiedPracticeSessionCount: number;
