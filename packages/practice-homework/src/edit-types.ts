@@ -731,11 +731,6 @@ export class EditTypeRegistryV1 {
       );
     }
     if (report.certified) {
-      if (!practiceRetainedTruthAuthorityVerifiedV1(report)) {
-        throw new TypeError(
-          "Certified Practice truth-suite report requires verified retained real-media authority.",
-        );
-      }
       const certificationIntegrity = report.mode === "CERTIFICATION"
         && report.caseCount >= 20
         && report.caseCount <= 30
@@ -751,6 +746,11 @@ export class EditTypeRegistryV1 {
       if (!certificationIntegrity) {
         throw new TypeError(
           "Certified Practice truth-suite report does not satisfy fail-closed integrity gates.",
+        );
+      }
+      if (!practiceRetainedTruthAuthorityVerifiedV1(report)) {
+        throw new TypeError(
+          "Certified Practice truth-suite report requires verified retained real-media authority.",
         );
       }
     }
