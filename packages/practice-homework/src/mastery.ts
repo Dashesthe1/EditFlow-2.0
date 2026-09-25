@@ -15,6 +15,7 @@ import type {
   PracticeHeldOutBenchmarkPolicyV1,
   PracticeHeldOutBenchmarkReportV1,
   PracticeMasteryProofV1,
+  PracticeProgressionGateV1,
   PracticeRetainedTruthSuiteReportV1,
   PracticeSkillUseAttestationV1,
   PracticeMasteryRecordV1,
@@ -995,16 +996,39 @@ export const evaluatePracticeHeldOutBenchmarkV1 = (input: {
   };
 };
 
-export const derivePracticeMaturityStageV1 = (
+export const evaluatePracticeProgressionGateV1 = (
   profile: EditTypeProfileV1,
-): PracticeMaturityStageV1 | null => {
+): PracticeProgressionGateV1 => {
   const learning = profile.gptLearning;
   const records = learning?.masteryRecords ?? [];
   const benchmarks = learning?.heldOutBenchmarks ?? [];
-  const retainedTruthSuites = learning?.retainedTruthSuiteReports ?? [];
-  const certifiedTruthSuites = retainedTruthSuites.filter(
-    isPracticeRetainedTruthSuiteCertificationIntegrityV1,
-  );
+  const retainedTruthSuites = (learning?.retainedTruthSuiteReports ?? [])
+    .filter((report) => report.editTypeId === profile.editTypeId)
+    .sort((left, right) => right.evaluatedAt.localeCompare(left.evaluatedAt));
+  const latestTruth = retainedTruthSuites[0] ?? null;
+  const minimumCaseCount = latestTruth === null
+    ? 20
+    : Math.max(20, Math.floor(latestTruth.policy.minimumCases));
+  const maximumCaseCount = latestTruth === null
+    ? 30
+    : Math.min(30, Math.floor(latestTruth.policy.maximumCases));
+  const caseCount = latestTruth?.caseCount ?? 0;
+  const independentTruthCaseCount = latestTruth?.independentTruthCaseCount ?? 0;
+  const distinctSourceSetCount = latestTruth?.distinctSourceSetCount ?? 0;
+  const minimumDistinctSourceSetCount = latestTruth?.policy.minimumDistinctSourceSets ?? null;
+  const populationWindowComplete = latestTruth !== null
+    && caseCount >= minimumCaseCount
+    && caseCount <= maximumCaseCount;
+  const independentTruthReviewComplete = latestTruth !== null
+    && caseCount > 0
+    && independentTruthCaseCount === caseCount
+    && latestTruth.fullLengthTruthCaseCount === caseCount;
+  const sourceAcquisitionComplete = latestTruth !== null
+    && minimumDistinctSourceSetCount !== null
+    && distinctSourceSetCount >= minimumDistinctSourceSetCount;
+  const retainedTruthCertificationComplete = latestTruth !== null
+    && isPracticeRetainedTruthSuiteCertificationIntegrityV1(latestTruth);
+
   const currentRequiredEffectFamilyIds = [...uniqueNonEmpty(
     records
       .filter((record) => record.scope === "TRANSFER_VERIFIED")
@@ -1016,30 +1040,119 @@ export const derivePracticeMaturityStageV1 = (
       .map((skill) => skill.skillId),
   )].sort();
   const sameStringSet = (left: readonly string[], right: readonly string[]): boolean =>
-    JSON.stringify([...uniqueNonEmpty(left)].sort()) === JSON.stringify([...uniqueNonEmpty(right)].sort());
-  const retainedTruthAuthorityMatches = (report: PracticeHeldOutBenchmarkReportV1): boolean => {
-    if (!report.retainedTruthSuiteAuthorityVerified
-      || report.retainedTruthSuiteEvaluatedAt === null
-      || report.retainedTruthSuiteEvidenceRefs.length === 0) return false;
-    const authority = certifiedTruthSuites.find((truth) =>
-      truth.evaluatedAt === report.retainedTruthSuiteEvaluatedAt);
-    if (authority === undefined) return false;
-    const authorityRefs = new Set(authority.evidenceRefs);
-    return report.retainedTruthSuiteEvidenceRefs.every((ref) => authorityRefs.has(ref));
+    JSON.stringify([...uniqueNonEmpty(left)].sort())
+      === JSON.stringify([...uniqueNonEmpty(right)].sort());
+
+  const latestTruthRefs = new Set(latestTruth?.evidenceRefs ?? []);
+  const heldOutBenchmarkComplete = retainedTruthCertificationComplete
+    && benchmarks.some((report) =>
+      report.robust
+      && report.retainedTruthSuiteAuthorityVerified
+      && report.retainedTruthSuiteEvaluatedAt === latestTruth!.evaluatedAt
+      && report.retainedTruthSuiteEvidenceRefs.length > 0
+      && report.retainedTruthSuiteEvidenceRefs.every((ref) => latestTruthRefs.has(ref))
+      && sameStringSet(report.requiredEffectFamilyIds, currentRequiredEffectFamilyIds)
+      && sameStringSet(report.requiredLearnedSkillIds, currentRequiredLearnedSkillIds)
+      && report.objectAwareVerified
+      && report.subjectRelativeDirectionVerified === true
+      && report.subjectRelativeDirectionDiversityVerified === true
+      && report.subjectContinuityHardCaseVerified === true
+      && report.subjectContinuityChallengeDiversityVerified === true
+      && report.effectFamilyCoverageVerified === true
+      && report.learnedSkillCoverageVerified === true
+      && report.professionalBenchmarkCoverageVerified === true);
+
+  const blockingDependencies: string[] = [];
+  if (latestTruth === null) {
+    blockingDependencies.push(
+      "No retained real-media truth-suite evaluation exists for this Edit Type.",
+    );
+  } else {
+    if (!populationWindowComplete) {
+      if (caseCount < minimumCaseCount) {
+        blockingDependencies.push(
+          "Retained truth population has "
+            + String(caseCount)
+            + "/"
+            + String(minimumCaseCount)
+            + " required cases.",
+        );
+      } else {
+        blockingDependencies.push(
+          "Retained truth population exceeds the "
+            + String(maximumCaseCount)
+            + "-case certification window.",
+        );
+      }
+    }
+    if (!independentTruthReviewComplete) {
+      blockingDependencies.push(
+        "Independent matcher-blind review covers "
+          + String(independentTruthCaseCount)
+          + "/"
+          + String(caseCount)
+          + " retained cases at full length.",
+      );
+    }
+    if (!sourceAcquisitionComplete) {
+      blockingDependencies.push(
+        minimumDistinctSourceSetCount === null
+          ? "Retained truth source-acquisition policy is unavailable."
+          : "Retained truth spans "
+            + String(distinctSourceSetCount)
+            + "/"
+            + String(minimumDistinctSourceSetCount)
+            + " required distinct Start source sets.",
+      );
+    }
+    if (!retainedTruthCertificationComplete) {
+      blockingDependencies.push(
+        "Latest retained truth suite has not passed certification-integrity gates.",
+      );
+      blockingDependencies.push(
+        ...latestTruth.reasons.map((reason) => "Retained truth: " + reason),
+      );
+    }
+  }
+  if (retainedTruthCertificationComplete && !heldOutBenchmarkComplete) {
+    blockingDependencies.push(
+      "No ROBUST held-out benchmark is bound to the latest certified truth suite and current TRANSFER_VERIFIED target set.",
+    );
+  }
+
+  const robustClaimAllowed = populationWindowComplete
+    && independentTruthReviewComplete
+    && sourceAcquisitionComplete
+    && retainedTruthCertificationComplete
+    && heldOutBenchmarkComplete;
+
+  return {
+    schema: "editflow.practice-progression-gate.v1",
+    editTypeId: profile.editTypeId,
+    populationWindowComplete,
+    independentTruthReviewComplete,
+    sourceAcquisitionComplete,
+    retainedTruthCertificationComplete,
+    heldOutBenchmarkComplete,
+    robustClaimAllowed,
+    latestRetainedTruthEvaluatedAt: latestTruth?.evaluatedAt ?? null,
+    caseCount,
+    minimumCaseCount,
+    maximumCaseCount,
+    independentTruthCaseCount,
+    distinctSourceSetCount,
+    minimumDistinctSourceSetCount,
+    blockingDependencies: uniqueNonEmpty(blockingDependencies),
   };
-  if (benchmarks.some((report) =>
-    report.robust
-    && retainedTruthAuthorityMatches(report)
-    && sameStringSet(report.requiredEffectFamilyIds, currentRequiredEffectFamilyIds)
-    && sameStringSet(report.requiredLearnedSkillIds, currentRequiredLearnedSkillIds)
-    && report.objectAwareVerified
-    && report.subjectRelativeDirectionVerified === true
-    && report.subjectRelativeDirectionDiversityVerified === true
-    && report.subjectContinuityHardCaseVerified === true
-    && report.subjectContinuityChallengeDiversityVerified === true
-    && report.effectFamilyCoverageVerified === true
-    && report.learnedSkillCoverageVerified === true
-    && report.professionalBenchmarkCoverageVerified === true)) return "ROBUST";
+};
+
+export const derivePracticeMaturityStageV1 = (
+  profile: EditTypeProfileV1,
+): PracticeMaturityStageV1 | null => {
+  const learning = profile.gptLearning;
+  const records = learning?.masteryRecords ?? [];
+  const benchmarks = learning?.heldOutBenchmarks ?? [];
+  if (evaluatePracticeProgressionGateV1(profile).robustClaimAllowed) return "ROBUST";
   if (benchmarks.some((report) => report.objectAwareVerified)) {
     return "OBJECT_AWARE_VERIFIED";
   }
