@@ -2533,7 +2533,8 @@ test("GPT Practice assignment persists the full learning trajectory under its Ed
     knowledge: registry.knowledge("high-potency"),
   });
   assert.equal(assignment.status, "PENDING");
-  assert.match(assignment.chatMessage, /GPT is the orchestrator, creative reasoner, and learner/);
+  assert.match(assignment.chatMessage, /GPT is the session orchestrator, continuity owner, and escalation reasoner/);
+  assert.match(assignment.chatMessage, /original M6 Visual Effects Intelligence loop is the governing reference-driven/i);
   assert.match(assignment.chatMessage, /all editorial cutting, retiming, remodeling/i);
   assert.match(assignment.chatMessage, /OBSERVATION -> INTERPRETATION -> HYPOTHESIS/);
   assert.match(assignment.chatMessage, /C:\\Media\\finish\.mp4/);
