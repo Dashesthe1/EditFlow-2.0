@@ -1090,12 +1090,6 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       const result = await this.brain.run({
         requestId: `${input.sessionId}:attempt:${input.attempt}:${window.windowId}`,
         risk: "HIGH",
-        ...(learned === null
-          ? {}
-          : {
-            learnedTechniqueId: `edit-type:${input.editTypeId}:${family}`,
-            learnedGraph: learned.graph,
-          }),
         referenceEvidence: window.evidence,
         availableCapabilities: this.runtime.availableCapabilities,
         evidenceRefs: [
@@ -1129,7 +1123,10 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           ]),
           ...(learned === null
             ? []
-            : [`practice-edit-type-transferred-patches:${learned.patches.length}`]),
+            : [
+              `practice-edit-type-available-patches:${learned.patches.length}`,
+              "practice-original-m6-reference-first-route",
+            ]),
         ],
         applyGraph: async (graph) => this.runtime.applyWindowGraph({
           sessionId: input.sessionId,
@@ -1234,7 +1231,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ] : []),
             ...(windowAnatomy.temporalCue.rewind === null ? [] : ["REFERENCE_REWIND_MEASURED"]),
           ]),
-          ...(learned === null ? [] : ["EDIT_TYPE_TRANSFER_APPLIED"]),
+          ...(learned === null
+            ? []
+            : ["EDIT_TYPE_TRANSFER_AVAILABLE_NOT_GOVERNING_M6"]),
         ],
         semanticPatches: result.correction?.learnedPatches ?? [],
       });
