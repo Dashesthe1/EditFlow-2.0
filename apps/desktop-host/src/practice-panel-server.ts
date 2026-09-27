@@ -1197,6 +1197,11 @@ export class PracticePanelServerV1 {
 
   async #startPractice(body: Record<string, unknown>): Promise<PracticePanelRunSnapshotV1> {
     if (this.#activeRunId !== null) {
+      const active = this.#runs.get(this.#activeRunId);
+      if (active?.mode === "PRACTICE"
+        && !["CANCELLED", "COMPLETED", "FAILED"].includes(active.state)) {
+        return await this.#syncRun(active.sessionId);
+      }
       throw new HttpError(409, "EditFlow run already active: " + this.#activeRunId);
     }
     if (this.config.broker.panelSession === null) {
@@ -2030,8 +2035,18 @@ export class PracticePanelServerV1 {
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/product/gpt/assignments/next") {
-        const assignments = await this.#gptStore.listAssignments({ statuses: ["PENDING"] });
-        jsonResponse(res, 200, { assignment: assignments[0] ?? null });
+        const resumable = await this.#gptStore.listAssignments({
+          statuses: ["RUNNING", "CANCEL_REQUESTED"],
+        });
+        const pending = resumable.length > 0
+          ? []
+          : await this.#gptStore.listAssignments({ statuses: ["PENDING"] });
+        const assignment = resumable[0] ?? pending[0] ?? null;
+        jsonResponse(res, 200, {
+          assignment,
+          resumeRequired: assignment !== null
+            && (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED"),
+        });
         return;
       }
       const assignmentGetMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)$/.exec(url.pathname);
