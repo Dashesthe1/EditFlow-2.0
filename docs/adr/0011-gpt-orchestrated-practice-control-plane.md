@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+**Superseded in part by `docs/ORIGINAL_M6_WORKFLOW_RESET.md`.**
+
+The durable assignment, cancellation, persistence, learning-memory, and proof-separation parts of this ADR remain accepted. The earlier decision that GPT itself is the governing creative edit loop is superseded for reference-driven Practice and reference-driven effect/transition work.
+
+Under the reset, GPT owns session continuity, supervision, escalation, capability/tool invocation, and retained learning. The original M6 Visual Effects Intelligence workflow owns the governing reference-driven effect loop: dense reference evidence -> anatomy/DNA -> construction or synthesis -> local render -> semantic comparison -> bounded correction -> fidelity gate. Later systems remain supporting tools rather than alternate workflow controllers.
 
 ## Context
 
@@ -18,8 +22,9 @@ Creation can reuse successful development patterns and avoid known failures.
 
 ## Decision
 
-The Practice panel creates a durable editflow.gpt-orchestration-assignment.v1
-rather than starting the deterministic Practice engine as the governing loop.
+The Practice panel creates a durable `editflow.gpt-orchestration-assignment.v1` so the same Practice work survives ChatGPT handoffs and service interruption. The assignment is the continuity/control record, not a license to replace M6 with a new free-form editing loop.
+
+For reference-driven effects and transitions, the original M6 reference-first workflow is the governing production path. GPT supervises that path and invokes supporting Eyes/Hands/Brain capabilities, tutorial learning, tracking, roto, subject isolation, retained-truth systems, or capability development when M6 evidence requires them.
 The assignment contains the mode, Edit Type, Start and Finish media, retained Edit
 Type knowledge, artifact directory, and a complete GPT editing brief.
 The authenticated Shadow connector exposes assignment discovery, claim, learning
@@ -44,8 +49,7 @@ resolves to CANCELLED, never mastered.
 
 ## Alternatives considered
 
-- Continue expanding VisualEffectsBrainV1 into the primary editor. Rejected because
-  it replaces the required GPT reasoning and learning loop.
+- Use a separate GPT-authored free-form effects loop in place of VisualEffectsBrainV1. Rejected by the Original M6 Workflow Reset because it duplicates the reference-first M6 control loop and was producing repeated/restarted work across chats.
 - Call an OpenAI model directly from the CEP panel. Rejected because credentials and
   model traffic do not belong in the AE extension trust boundary.
 - Store only final recipes. Rejected because failed hypotheses, correction effects,

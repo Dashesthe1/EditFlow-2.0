@@ -20,10 +20,16 @@ EditFlow exposes two explicit modes:
 2. PRO_CREATION - autonomous production using retained learning and experience.
 
 V1 exposes a durable GPT assignment control plane through the local After Effects
-CEP panel. Practice and Pro Creation both create a structured assignment for GPT rather
-than entering a local rule-driven editing loop. GPT completion is not mastery. Pro
-Creation remains blocked until the selected Edit Type contains machine-verified Practice
-knowledge that has also passed transfer on materially different reference/source footage.
+CEP panel. The assignment is the durable session/continuity record across ChatGPT
+conversations. It does not replace the original M6 reference-driven production loop.
+For difficult reference-driven effects and transitions, original M6 remains the governing
+workflow: dense reference evidence -> anatomy/DNA -> construction or unknown synthesis ->
+local render -> semantic comparison -> bounded correction -> fidelity gate. GPT supervises
+that workflow, resumes it across chats, and invokes later Edit Type/tutorial/tracking/roto/
+subject-isolation/retained-truth/capability systems as supporting tools when needed.
+GPT completion is not mastery. Pro Creation remains blocked until the selected Edit Type
+contains machine-verified Practice knowledge that has also passed transfer on materially
+different reference/source footage.
 Learned skills are promoted independently: a skill can become TRANSFER_VERIFIED only when
 it is freshly AE-proven in the current Practice session and also has a prior machine-verified
 proof for that same skill on different Finish and Start material. Reused raw-source media
@@ -49,11 +55,13 @@ The JSON contract is spec/practice-session-v1.schema.json.
 
 The service binds only to authenticated loopback ports. Practice remains disabled
 until both the product service and the AE CEP bridge are connected. Pressing the primary
-action creates a persistent GPT assignment containing the media, selected Edit Type,
-retained knowledge, artifact location, and governing editing instructions. The Shadow
-connector exposes assignment claim, trace recording, completion, failure, status, and
-cancellation tools so GPT can orchestrate EditFlow's Eyes, Brain, AE hands, and Desktop
-Commander from one control loop.
+action creates or resumes a persistent GPT assignment containing the media, selected
+Edit Type, retained knowledge, artifact location, and governing editing instructions.
+If a Practice assignment is already active, repeated start/continue actions return that
+same run instead of creating a duplicate. The Shadow connector exposes assignment claim,
+trace recording, completion, failure, status, and cancellation tools so a new ChatGPT
+controller can reclaim the same RUNNING assignment, read retained events/artifacts, repair
+any broken connection, and continue at the first incomplete M6 checkpoint.
 
 Practice learning is allocated to the selected Edit Type automatically as GPT records
 events. A successful GPT completion is only a request for certification. EditFlow must
@@ -222,17 +230,26 @@ timing, framing, and finish decisions can be learned independently.
 Each attempt receives the reference analysis, content-locked baseline, exact scene
 matches, and all prior attempts.
 
-The reconstruction adapter may use the existing EditFlow pipeline:
+The reconstruction adapter follows the original M6 reference-first pipeline as the
+governing effect/transition loop:
 
-- Scene Understanding;
-- Editor Brain;
-- Editing IR;
-- Recipe Compiler;
-- M6 Professional Effects Intelligence;
-- unknown-effect synthesis;
-- tracking, roto, masks, optical flow, and adapters;
-- transactional AE execution;
-- render review and visual correction.
+- Scene Understanding and editorial decision;
+- reference effect detection and dense frame evidence;
+- Effect Anatomy and Transition DNA;
+- tutorial/learned causal knowledge as evidence and hypothesis support;
+- layer/construction hypothesis;
+- capability mapping and unknown-effect synthesis;
+- Editing IR -> Recipe Compiler -> Virtual AE -> real AE;
+- bounded local render;
+- semantic reference-vs-render comparison;
+- visual error diagnosis and automatic correction;
+- fidelity gate before full-edit acceptance.
+
+Later tracking, roto, masks, optical flow, subject isolation, Edit Type memory, retained
+truth, held-out proof, and capability-development systems remain available as tools inside
+that loop. They do not create a second governing reconstruction process. A retained learned
+graph may inform adaptation, but HIGH-risk/reference-driven M6 reconstruction begins from
+the current reference evidence and must not bypass fresh anatomy/synthesis/comparison.
 
 The attempt must emit a rendered artifact plus decision traces describing which cues,
 constructions, and rationales produced the result.

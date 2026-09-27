@@ -83,13 +83,14 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
             : "LEARNING"
           : null;
         const researchMessage = applyCurrentResearchPriority(assignment.chatMessage);
+        const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage);
         return {
           ...assignment,
           practiceRole,
           practicePolicy,
           chatMessage: practicePolicy === null
-            ? researchMessage
-            : applyCurrentMasteryPolicy(researchMessage, practicePolicy),
+            ? continuityMessage
+            : applyCurrentMasteryPolicy(continuityMessage, practicePolicy),
         };
       }),
     };
@@ -203,6 +204,26 @@ const applyCurrentResearchPriority = (message: string): string => {
     }
   }
   return message;
+};
+
+const WORKFLOW_CONTINUITY_POLICY_MARKER =
+  "- PRACTICE CONTINUITY IS MANDATORY:";
+
+const applyCurrentWorkflowContinuityPolicy = (message: string): string => {
+  if (message.includes(WORKFLOW_CONTINUITY_POLICY_MARKER)) return message;
+  return [
+    message,
+    "",
+    "Original M6 workflow + continuity policy (current):",
+    WORKFLOW_CONTINUITY_POLICY_MARKER
+      + " the Practice session/assignment is the durable unit of work across ChatGPT conversations.",
+    "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
+    "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
+    "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
+    "- For HIGH-risk/reference-driven Practice effects, the original M6 reference-first route is authoritative: REFERENCE EVIDENCE -> ANATOMY/DNA (or UNKNOWN synthesis) -> CONSTRUCTION -> LOCAL RENDER -> SEMANTIC COMPARISON -> BOUNDED CORRECTION.",
+    "- Retained Edit Type graphs, tutorial learning, tracking, roto, masks, subject isolation, source binding, retained truth, optical flow, advanced synthesis, and other newer systems remain available as supporting tools/capabilities. They must not replace the reference-first M6 governing route or start their own competing workflow.",
+    "- Optimize for completion: use one persistent scene set, one content-locked baseline, bounded M6 correction, one full-edit render/compare checkpoint per meaningful revision, and resume from retained evidence instead of rebuilding the edit.",
+  ].join("\n");
 };
 
 const MASTERY_POLICY_MARKER =
@@ -401,7 +422,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "Use successful lessons as guidance and actively avoid failures retained from Practice.",
       "The result must be original to the supplied footage while following the learned professional visual language.",
     ];
-  return [
+  const message = [
     "EDITFLOW 2.0 GPT ORCHESTRATION ASSIGNMENT",
     "Session: " + input.sessionId,
     "Mode: " + input.mode,
@@ -411,8 +432,10 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     ...modeInstruction,
     "",
     "Control architecture:",
-    "- GPT is the orchestrator, creative reasoner, and learner.",
-    "- EditFlow Brain is supporting editing knowledge and capability intelligence, not a replacement for GPT reasoning.",
+    "- GPT is the session orchestrator, continuity owner, and escalation reasoner.",
+    "- The original M6 Visual Effects Intelligence loop is the governing reference-driven effects/transition workflow. GPT drives and supervises that loop; it does not replace it with a parallel free-form effect workflow.",
+    "- EditFlow Brain/M6 owns reference evidence -> anatomy/DNA -> construction/synthesis -> local render -> semantic comparison -> bounded correction -> fidelity gating for difficult reference-driven effects.",
+    "- Later Edit Type, tutorial, tracking, roto, subject-isolation, retained-truth, and capability-development systems are supporting tools that GPT may invoke when the governing M6 loop needs them.",
     "- EditFlow visual analysis is GPT's eyes.",
     "- EditFlow's typed After Effects controls are GPT's primary editing hands.",
     "- Desktop Commander is the system-level hand for files, processes, recovery, and environment operations.",
@@ -491,6 +514,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Subject identity reuse rule: retained identity may be reused only on exact matching Finish/Start content and binding context; materially different footage requires fresh machine binding proof.",
     "Open/blocked capability gaps: " + (gapLines.length === 0 ? "(none)" : gapLines.join(" | ")),
   ].join("\n");
+  return applyCurrentWorkflowContinuityPolicy(message);
 };
 
 export class GptOrchestrationStoreV1 {
@@ -637,8 +661,14 @@ export class GptOrchestrationStoreV1 {
   async claim(assignmentId: string, claimedBy: string): Promise<GptOrchestrationAssignmentV1> {
     const controller = nonEmpty(claimedBy, "claimedBy");
     return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED") {
+        return {
+          ...assignment,
+          claimedBy: controller,
+        };
+      }
       if (assignment.status !== "PENDING") {
-        throw new TypeError("GPT assignment is not pending: " + assignment.status);
+        throw new TypeError("GPT assignment is not resumable: " + assignment.status);
       }
       const now = new Date().toISOString();
       return {
