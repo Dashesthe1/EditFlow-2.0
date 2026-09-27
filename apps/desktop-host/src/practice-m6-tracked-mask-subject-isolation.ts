@@ -39,7 +39,10 @@ import type {
   PracticeM6SubjectIsolationRouteV1,
   PracticeM6VerifiedSubjectIsolationV1,
 } from "./practice-m6-current-ae-runtime.js";
-import type { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
+import type {
+  PracticeCrossSourceSubjectBindingV1,
+  PracticeM6LocalMediaAnalyzerV1,
+} from "./practice-m6-media.js";
 import { PracticeSubjectIsolationBackendFailureV1 } from "./practice-m6-subject-isolation-router.js";
 
 export const PRACTICE_M6_TRACKED_MASK_SUBJECT_ISOLATION_ROUTE_ID_V1 =
@@ -68,21 +71,28 @@ const hasTimeRemap = (input: PrepareInputV1): boolean =>
   });
 
 const earliestSubjectFrame = (input: PrepareInputV1) => {
+  const frameIntervalMs = Math.max(1, input.window.evidence.summary.frameIntervalMs);
+  const seedLookbackMs = Math.max(500, frameIntervalMs * 30);
+  const maximumLateSeedMs = Math.max(50, frameIntervalMs * 1.5);
   const frames = input.window.evidence.frames.filter((frame) =>
-    frame.timeMs >= input.startMs - 0.5
-    && frame.timeMs <= input.endMs + 0.5
+    frame.timeMs >= input.startMs - seedLookbackMs
+    && frame.timeMs <= input.startMs + maximumLateSeedMs
     && frame.subjectSemanticId === input.referenceSemanticId
     && frame.subjectBoundingBox !== undefined
     && frame.subjectTrackState !== "LOST"
     && frame.subjectTrackState !== "UNOBSERVED");
   if (frames.length === 0) return null;
   return [...frames].sort((left, right) => {
-    if (left.timeMs !== right.timeMs) return left.timeMs - right.timeMs;
-    const leftScore = (left.subjectTrackState === "OBSERVED" ? 1 : 0)
-      + (left.subjectIdentityConfidence ?? 0);
-    const rightScore = (right.subjectTrackState === "OBSERVED" ? 1 : 0)
-      + (right.subjectIdentityConfidence ?? 0);
-    return rightScore - leftScore;
+    const leftScore = (left.subjectTrackState === "OBSERVED" ? 4 : 0)
+      + ((left.subjectIdentityConfidence ?? 0) * 2)
+      + (left.subjectVisibility ?? 0)
+      - (Math.abs(left.timeMs - input.startMs) / seedLookbackMs);
+    const rightScore = (right.subjectTrackState === "OBSERVED" ? 4 : 0)
+      + ((right.subjectIdentityConfidence ?? 0) * 2)
+      + (right.subjectVisibility ?? 0)
+      - (Math.abs(right.timeMs - input.startMs) / seedLookbackMs);
+    if (leftScore !== rightScore) return rightScore - leftScore;
+    return Math.abs(left.timeMs - input.startMs) - Math.abs(right.timeMs - input.startMs);
   })[0] ?? null;
 };
 
@@ -93,8 +103,28 @@ const sourceTimeForReference = (
   const trajectory = [...(input.sourceMatch.trajectory ?? [])]
     .sort((left, right) => left.referenceTimeMs - right.referenceTimeMs);
   if (trajectory.length >= 2) {
-    if (referenceTimeMs <= trajectory[0]!.referenceTimeMs) return trajectory[0]!.sourceTimeMs;
-    if (referenceTimeMs >= trajectory.at(-1)!.referenceTimeMs) return trajectory.at(-1)!.sourceTimeMs;
+    if (referenceTimeMs <= trajectory[0]!.referenceTimeMs) {
+      const left = trajectory[0]!;
+      const right = trajectory[1]!;
+      const span = right.referenceTimeMs - left.referenceTimeMs;
+      const slope = span <= 0 ? 0 : (right.sourceTimeMs - left.sourceTimeMs) / span;
+      const extrapolated = left.sourceTimeMs + (referenceTimeMs - left.referenceTimeMs) * slope;
+      return Math.max(
+        input.sourceMatch.sourceStartMs,
+        Math.min(input.sourceMatch.sourceEndMs, extrapolated),
+      );
+    }
+    if (referenceTimeMs >= trajectory.at(-1)!.referenceTimeMs) {
+      const right = trajectory.at(-1)!;
+      const left = trajectory.at(-2)!;
+      const span = right.referenceTimeMs - left.referenceTimeMs;
+      const slope = span <= 0 ? 0 : (right.sourceTimeMs - left.sourceTimeMs) / span;
+      const extrapolated = right.sourceTimeMs + (referenceTimeMs - right.referenceTimeMs) * slope;
+      return Math.max(
+        input.sourceMatch.sourceStartMs,
+        Math.min(input.sourceMatch.sourceEndMs, extrapolated),
+      );
+    }
     for (let index = 1; index < trajectory.length; index += 1) {
       const right = trajectory[index]!;
       const left = trajectory[index - 1]!;
@@ -113,6 +143,114 @@ const sourceTimeForReference = (
   }
   return input.sourceMatch.sourceStartMs
     + (referenceTimeMs - shot.referenceStartMs) * input.sourceMatch.playbackRate;
+};
+
+const bindingFromMeasuredFraming = (
+  input: PrepareInputV1,
+  referenceTimeMs: number,
+  rawBinding: PracticeCrossSourceSubjectBindingV1,
+): PracticeCrossSourceSubjectBindingV1 | null => {
+  const proof = input.sourceMatch.geometricProof;
+  const framing = proof?.framing;
+  const referenceVideo = input.reference.video;
+  const subjectFrame = earliestSubjectFrame(input);
+  if (proof === undefined || framing === undefined || referenceVideo === undefined
+    || subjectFrame?.subjectBoundingBox === undefined) {
+    return null;
+  }
+  if (proof.strongAnchorCount < 2
+    || proof.maximumInlierCount < 8
+    || proof.meanInlierRatio < 0.45
+    || framing.confidence < 0.55) {
+    return null;
+  }
+
+  const point = framing.dynamic === true
+    ? [...(framing.trajectory ?? [])]
+      .filter((candidate) => candidate.confidence >= 0.55)
+      .sort((left, right) =>
+        Math.abs(left.referenceTimeMs - referenceTimeMs)
+        - Math.abs(right.referenceTimeMs - referenceTimeMs))[0]
+    : undefined;
+  const positionX = point?.positionX ?? framing.positionX;
+  const positionY = point?.positionY ?? framing.positionY;
+  const scalePercent = point?.scalePercent ?? framing.scalePercent;
+  const rotationDegrees = point?.rotationDegrees ?? framing.rotationDegrees;
+  if (![positionX, positionY, scalePercent, rotationDegrees].every(Number.isFinite)
+    || scalePercent <= 1 || scalePercent > 5000) {
+    return null;
+  }
+
+  const [x, y, width, height] = subjectFrame.subjectBoundingBox;
+  const refWidth = referenceVideo.width;
+  const refHeight = referenceVideo.height;
+  const sourceWidth = rawBinding.sourceVideo.width;
+  const sourceHeight = rawBinding.sourceVideo.height;
+  if (![x, y, width, height, refWidth, refHeight, sourceWidth, sourceHeight]
+    .every(Number.isFinite)
+    || width <= 0 || height <= 0
+    || refWidth <= 0 || refHeight <= 0
+    || sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  const scale = scalePercent / 100;
+  const radians = rotationDegrees * Math.PI / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const sourceCenterX = sourceWidth / 2;
+  const sourceCenterY = sourceHeight / 2;
+  const corners = [
+    [x * refWidth, y * refHeight],
+    [(x + width) * refWidth, y * refHeight],
+    [(x + width) * refWidth, (y + height) * refHeight],
+    [x * refWidth, (y + height) * refHeight],
+  ] as const;
+  const sourcePoints = corners.map(([referenceX, referenceY]) => {
+    const normalizedX = (referenceX - positionX) / scale;
+    const normalizedY = (referenceY - positionY) / scale;
+    return [
+      sourceCenterX + cosine * normalizedX + sine * normalizedY,
+      sourceCenterY - sine * normalizedX + cosine * normalizedY,
+    ] as const;
+  });
+  const left = Math.max(0, Math.min(...sourcePoints.map((item) => item[0])) / sourceWidth);
+  const top = Math.max(0, Math.min(...sourcePoints.map((item) => item[1])) / sourceHeight);
+  const right = Math.min(1, Math.max(...sourcePoints.map((item) => item[0])) / sourceWidth);
+  const bottom = Math.min(1, Math.max(...sourcePoints.map((item) => item[1])) / sourceHeight);
+  const sourceSubjectBox = [left, top, right - left, bottom - top] as const;
+  if (sourceSubjectBox[2] < 0.01 || sourceSubjectBox[3] < 0.01
+    || sourceSubjectBox[2] > 0.95 || sourceSubjectBox[3] > 0.95) {
+    return null;
+  }
+
+  const confidence = Math.max(0, Math.min(
+    1,
+    0.55 * framing.confidence + 0.45 * proof.meanInlierRatio,
+  ));
+  const sourceSemanticId = "practice-source-subject:"
+    + input.sourceMatch.sourceId + ":"
+    + stableToken(
+      input.shotId,
+      String(referenceTimeMs),
+      ...sourceSubjectBox.map(String),
+    );
+  return {
+    ...rawBinding,
+    algorithmId: "editflow.practice-cross-source-subject-bind.measured-framing-inverse.v1",
+    verified: true,
+    reason: null,
+    sourceSemanticId,
+    sourceSubjectBox,
+    confidence,
+    evidenceRefs: [
+      ...rawBinding.evidenceRefs,
+      "practice-subject-bind-fallback:measured-framing-inverse-v1",
+      "practice-subject-bind-framing-confidence:" + framing.confidence.toFixed(6),
+      "practice-subject-bind-geometric-inlier-ratio:" + proof.meanInlierRatio.toFixed(6),
+      "practice-subject-bind-geometric-strong-anchors:" + String(proof.strongAnchorCount),
+    ],
+  };
 };
 
 const maskShapeForBox = (
@@ -466,6 +604,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
   readonly trackerFactory: PracticeTrackedMaskTrackerFactoryV1;
   readonly runtimeGate: PracticeTrackedMaskRuntimeGateV1;
   readonly maxAnalysisWindowSeconds: number;
+  readonly #verifiedByReuseKey = new Map<string, PracticeM6VerifiedSubjectIsolationV1>();
 
   constructor(config: PracticeM6TrackedMaskSubjectIsolationConfigV1) {
     this.transaction = config.transaction;
@@ -531,7 +670,7 @@ implements PracticeM6SubjectIsolationRouteV1 {
     }
 
     const sourceAnchorMs = sourceTimeForReference(input, subjectFrame.timeMs);
-    const binding = await this.media.bindCrossSourceSubject({
+    const rawBinding = await this.media.bindCrossSourceSubject({
       referenceVideoPath: input.reference.sourcePath,
       sourceVideoPath: input.sourceMatch.sourcePath,
       referenceTimeMs: subjectFrame.timeMs,
@@ -544,11 +683,20 @@ implements PracticeM6SubjectIsolationRouteV1 {
         ? {}
         : { retainedSubjectIdentity: input.retainedSubjectIdentity }),
     });
-    if (!binding.verified || binding.sourceSemanticId === null
+    const binding = (
+      rawBinding.verified
+      && rawBinding.sourceSemanticId !== null
+      && rawBinding.sourceSubjectBox !== null
+    )
+      ? rawBinding
+      : bindingFromMeasuredFraming(input, subjectFrame.timeMs, rawBinding);
+    if (binding === null
+      || !binding.verified
+      || binding.sourceSemanticId === null
       || binding.sourceSubjectBox === null) {
       throw new Error(
         "PRACTICE_TRACKED_MASK_CROSS_SOURCE_BINDING_REJECTED:"
-        + (binding.reason ?? "UNVERIFIED"),
+        + (rawBinding.reason ?? "UNVERIFIED"),
       );
     }
 
@@ -561,6 +709,25 @@ implements PracticeM6SubjectIsolationRouteV1 {
     );
     const maskStableId = "PRACTICE_TRACKED_MASK_" + token.toUpperCase();
     const maskName = "EditFlow Practice Subject " + token.slice(0, 6);
+    const reuseKey = [
+      maskStableId,
+      input.compStableId,
+      input.layerId,
+      input.referenceSemanticId,
+    ].join("\u0000");
+    const reused = this.#verifiedByReuseKey.get(reuseKey);
+    if (reused !== undefined) {
+      return {
+        ...reused,
+        appliedOperations: 0,
+        evidenceRefs: [...new Set([
+          ...reused.evidenceRefs,
+          ...runtimeEvidence,
+          ...binding.evidenceRefs,
+          "practice-tracked-mask-idempotent-reuse:" + maskStableId,
+        ])],
+      };
+    }
     const evidence: string[] = [
       ...runtimeEvidence,
       ...binding.evidenceRefs,
@@ -584,33 +751,42 @@ implements PracticeM6SubjectIsolationRouteV1 {
     let createUndoEntries = 0;
     let trackingUndoEntries = 0;
     try {
-      const createOperations = await executeMaskMutation(
-        this.transaction,
-        "practice-tracked-mask-create:" + token,
-        "mask.create",
-        {
-          comp: { stableId: input.compStableId },
-          layer: { stableId: input.layerId },
-          stableId: maskStableId,
-          name: maskName,
-          shape,
-          properties: {
-            mode: "ADD",
-            inverted: false,
-            opacity: 100,
-            feather: [0, 0],
-            expansion: 0,
+      let createOperations = 0;
+      try {
+        createOperations = await executeMaskMutation(
+          this.transaction,
+          "practice-tracked-mask-create:" + token,
+          "mask.create",
+          {
+            comp: { stableId: input.compStableId },
+            layer: { stableId: input.layerId },
+            stableId: maskStableId,
+            name: maskName,
+            shape,
+            properties: {
+              mode: "ADD",
+              inverted: false,
+              opacity: 100,
+              feather: [0, 0],
+              expansion: 0,
+            },
           },
-        },
-        "R2_STRUCTURAL",
-        evidence,
-      );
-      if (createOperations !== 1) {
-        throw new Error("PRACTICE_TRACKED_MASK_CREATE_OPERATION_COUNT_MISMATCH");
+          "R2_STRUCTURAL",
+          evidence,
+        );
+        if (createOperations !== 1) {
+          throw new Error("PRACTICE_TRACKED_MASK_CREATE_OPERATION_COUNT_MISMATCH");
+        }
+        createUndoEntries = createOperations;
+        evidence.push("practice-tracked-mask-create-undo-entry:1");
+      } catch (createError) {
+        const duplicateStableIdMarker = "PRACTICE_TRACKED_MASK_TRANSACTION_ROLLED_BACK:"
+          + "practice-tracked-mask-create:" + token
+          + ":MASK_STABLE_ID_EXISTS";
+        if (!String(createError).includes(duplicateStableIdMarker)) throw createError;
+        evidence.push("practice-tracked-mask-reused-existing:true");
       }
       created = true;
-      createUndoEntries = createOperations;
-      evidence.push("practice-tracked-mask-create-undo-entry:1");
 
       const prepared = await this.targetPreparer.prepare({
         requestId: "PRACTICE_TRACKED_MASK_PREPARE_" + token,
@@ -635,42 +811,89 @@ implements PracticeM6SubjectIsolationRouteV1 {
         analysisWindowSeconds,
         evidenceId: token,
       });
-      const tracked = await tracker.run({
+      const trackingRequest = {
         compHostId: target.compHostId,
         layerHostId: target.layerHostId,
         maskStableId,
         expectedCompName: target.compName,
         expectedLayerName: target.layerName,
-        direction: "FORWARD",
-      });
-      if (tracked.visualEvidenceId !== null) {
-        trackingUndoEntries = 1;
+        direction: "FORWARD" as const,
+      };
+      let tracked = await tracker.run(trackingRequest);
+      const initialBaselinePathKeyCount = tracked.baselinePathKeyCount;
+      const trackingVisualEvidenceIds: string[] = [];
+      const retainTrackingVisualEvidence = (candidate: MaskTrackingRunV1): void => {
+        if (candidate.visualEvidenceId !== null) {
+          trackingUndoEntries += 1;
+          trackingVisualEvidenceIds.push(candidate.visualEvidenceId);
+        }
+      };
+      retainTrackingVisualEvidence(tracked);
+      const assertTracked = (candidate: MaskTrackingRunV1): void => {
+        if (candidate.route !== "LOCAL"
+          || candidate.finalPathKeyCount <= candidate.baselinePathKeyCount
+          || candidate.visualEvidenceId === null
+          || candidate.finalLastKeyTime === null) {
+          throw new Error(
+            "PRACTICE_TRACKED_MASK_NATIVE_TRACKING_REJECTED:"
+            + String(candidate.escalationReason ?? "UNVERIFIED"),
+          );
+        }
+      };
+      if (tracked.route === "ESCALATE"
+        && tracked.escalationReason === "ANALYSIS_NOT_OBSERVED") {
+        evidence.push("practice-tracked-mask-native-tracking-retry:ANALYSIS_NOT_OBSERVED");
+        tracked = await tracker.run(trackingRequest);
+        retainTrackingVisualEvidence(tracked);
       }
-      if (tracked.route !== "LOCAL"
-        || tracked.finalPathKeyCount <= tracked.baselinePathKeyCount
-        || tracked.visualEvidenceId === null
-        || tracked.finalLastKeyTime === null) {
-        throw new Error(
-          "PRACTICE_TRACKED_MASK_NATIVE_TRACKING_REJECTED:"
-          + String(tracked.escalationReason ?? "UNVERIFIED"),
-        );
-      }
+      assertTracked(tracked);
+
       const coverageTolerance = Math.max(0.04, prepared.frameDuration * 1.5);
-      if (tracked.finalLastKeyTime + coverageTolerance < targetEndSeconds) {
-        throw new Error("PRACTICE_TRACKED_MASK_COVERAGE_INCOMPLETE");
+      const maxTrackingPasses = 6;
+      let trackingPasses = 1;
+      while (tracked.finalLastKeyTime !== null
+        && tracked.finalLastKeyTime + coverageTolerance < targetEndSeconds
+        && trackingPasses < maxTrackingPasses) {
+        const previousLastKeyTime = tracked.finalLastKeyTime;
+        const previousPathKeyCount = tracked.finalPathKeyCount;
+        const continued = await tracker.run(trackingRequest);
+        trackingPasses += 1;
+        if (continued.visualEvidenceId !== null) {
+          trackingUndoEntries += 1;
+          trackingVisualEvidenceIds.push(continued.visualEvidenceId);
+        }
+        assertTracked(continued);
+        tracked = continued;
+        if (tracked.finalPathKeyCount <= previousPathKeyCount
+          || tracked.finalLastKeyTime === null
+          || tracked.finalLastKeyTime <= previousLastKeyTime + prepared.frameDuration * 0.1) {
+          break;
+        }
+      }
+      if (tracked.finalLastKeyTime === null
+        || tracked.finalLastKeyTime + coverageTolerance < targetEndSeconds) {
+        throw new Error(
+          "PRACTICE_TRACKED_MASK_COVERAGE_INCOMPLETE:"
+          + "last=" + String(tracked.finalLastKeyTime)
+          + ":target=" + targetEndSeconds.toFixed(6)
+          + ":passes=" + String(trackingPasses),
+        );
       }
 
       const totalAppliedOperations = createUndoEntries + trackingUndoEntries;
       evidence.push(
-        "practice-tracked-mask-visual:" + tracked.visualEvidenceId,
+        ...trackingVisualEvidenceIds.map((visualEvidenceId) =>
+          "practice-tracked-mask-visual:" + visualEvidenceId
+        ),
         "practice-tracked-mask-path-keys:"
-          + tracked.baselinePathKeyCount + "->" + tracked.finalPathKeyCount,
+          + initialBaselinePathKeyCount + "->" + tracked.finalPathKeyCount,
         "practice-tracked-mask-last-key:" + tracked.finalLastKeyTime.toFixed(6),
-        "practice-tracked-mask-native-track-undo-entry:1",
+        "practice-tracked-mask-native-track-undo-entries:" + trackingUndoEntries,
+        "practice-tracked-mask-tracking-passes:" + trackingPasses,
         "practice-tracked-mask-applied-undo-entries:" + totalAppliedOperations,
       );
       committed = true;
-      return {
+      const verifiedResult: PracticeM6VerifiedSubjectIsolationV1 = {
         verified: true,
         routeId: PRACTICE_M6_TRACKED_MASK_SUBJECT_ISOLATION_ROUTE_ID_V1,
         referenceSemanticId: input.referenceSemanticId,
@@ -680,6 +903,8 @@ implements PracticeM6SubjectIsolationRouteV1 {
         appliedOperations: totalAppliedOperations,
         evidenceRefs: [...new Set(evidence)],
       };
+      this.#verifiedByReuseKey.set(reuseKey, verifiedResult);
+      return verifiedResult;
     } catch (error) {
       if (created && !committed) {
         try {
@@ -821,7 +1046,7 @@ export const createRetainedPracticeTrackedMaskSubjectIsolationRouteV1 = (
         scriptPath: paths.visualScriptPath,
         workingDirectory: paths.visualWorkingDirectory,
         evidenceDirectory: path.join(path.resolve(config.artifactDir), evidenceId),
-        timeoutMs: config.visualTimeoutMs ?? 120_000,
+        timeoutMs: config.visualTimeoutMs ?? 300_000,
         analysisWindowSeconds,
       });
       return new GuardedMaskTrackingControllerV1(config.transport, driver);

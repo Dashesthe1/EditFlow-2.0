@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,6 +32,9 @@ export interface LocalPracticeMediaMatcherConfigV1 {
   readonly coarseCandidateLimit?: number;
   readonly analysisProxyFps?: number;
   readonly analysisTimeoutMs?: number;
+  readonly materializeWorkingMedia?: boolean;
+  readonly workingMediaHandleMs?: number;
+  readonly workingMediaMergeGapMs?: number;
 }
 
 interface ReferenceArtifactV1 {
@@ -91,6 +94,97 @@ interface AudioSourceV1 {
   readonly sourcePath: string;
   readonly cacheKey: string;
 }
+
+interface WorkingRangeV1 {
+  readonly matchIndex: number;
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+interface WorkingPacketV1 {
+  readonly sourceId: string;
+  readonly sourcePath: string;
+  readonly sourceSha256: string;
+  startMs: number;
+  endMs: number;
+  readonly matchIndexes: number[];
+}
+
+const matchSourceBounds = (
+  match: PracticeSceneMatchV1,
+): Readonly<{ startMs: number; endMs: number }> => {
+  const values = [
+    match.sourceStartMs,
+    match.sourceEndMs,
+    ...(match.trajectory ?? []).map((point) => point.sourceTimeMs),
+    ...(match.rewind === undefined
+      ? []
+      : [match.rewind.sourceStartMs, match.rewind.sourceEndMs]),
+  ].filter(Number.isFinite);
+  return {
+    startMs: Math.min(...values),
+    endMs: Math.max(...values),
+  };
+};
+
+export const validatePracticeWorkingMediaMatchesV1 = (
+  matches: readonly PracticeSceneMatchV1[],
+): readonly string[] => {
+  const reasons: string[] = [];
+  if (matches.length === 0) {
+    return ["Practice requires at least one materialized matched source clip before AE work."];
+  }
+  for (const match of matches) {
+    const working = match.workingMedia;
+    if (working === undefined) {
+      reasons.push(
+        "Practice match " + match.shotId
+        + " has no bounded working-media clip; full raw source import is forbidden.",
+      );
+      continue;
+    }
+    if (working.schema !== "editflow.practice-working-media.v1") {
+      reasons.push("Practice working media schema is invalid for " + match.shotId + ".");
+    }
+    if (working.originalSourceId !== match.sourceId) {
+      reasons.push("Practice working media source identity drifted for " + match.shotId + ".");
+    }
+    if (working.workingSourceId.trim().length === 0 || working.sourcePath.trim().length === 0) {
+      reasons.push("Practice working media identity/path is empty for " + match.shotId + ".");
+    }
+    if (!Number.isFinite(working.originalStartMs)
+      || !Number.isFinite(working.originalEndMs)
+      || working.originalEndMs <= working.originalStartMs) {
+      reasons.push("Practice working media has invalid source bounds for " + match.shotId + ".");
+      continue;
+    }
+    const bounds = matchSourceBounds(match);
+    if (bounds.startMs < working.originalStartMs - 1
+      || bounds.endMs > working.originalEndMs + 1) {
+      reasons.push(
+        "Practice working media does not contain the full matched/retimed source range for "
+        + match.shotId + ".",
+      );
+    }
+    if (!Number.isFinite(working.handleBeforeMs)
+      || !Number.isFinite(working.handleAfterMs)
+      || working.handleBeforeMs < 0
+      || working.handleAfterMs < 0) {
+      reasons.push("Practice working media handles are invalid for " + match.shotId + ".");
+    }
+    if (match.sourcePath !== undefined
+      && path.resolve(working.sourcePath) === path.resolve(match.sourcePath)) {
+      reasons.push(
+        "Practice working media for " + match.shotId
+        + " still points at the original full source; a bounded clip is required.",
+      );
+    }
+  }
+  return [...new Set(reasons)];
+};
+
+const ffmpegSeconds = (valueMs: number): string =>
+  (Math.max(0, valueMs) / 1000).toFixed(6);
 
 export type PracticeExecutionAdaptersV1 = Pick<
   PracticeHomeworkAdaptersV1,
@@ -187,6 +281,7 @@ export class LocalPracticeMediaMatcherV1 {
   readonly #videoSourceArtifactsByIndexId = new Map<string, readonly string[]>();
   readonly #audioSourcesByIndexId = new Map<string, readonly AudioSourceV1[]>();
   #scriptDigest: Promise<string> | null = null;
+  #ffmpegExecutable: Promise<string> | null = null;
 
   constructor(config: LocalPracticeMediaMatcherConfigV1) {
     this.config = {
@@ -207,6 +302,9 @@ export class LocalPracticeMediaMatcherV1 {
       coarseCandidateLimit: config.coarseCandidateLimit ?? 16,
       analysisProxyFps: config.analysisProxyFps ?? 12,
       analysisTimeoutMs: config.analysisTimeoutMs ?? 60 * 60 * 1000,
+      materializeWorkingMedia: config.materializeWorkingMedia ?? false,
+      workingMediaHandleMs: Math.max(0, config.workingMediaHandleMs ?? 2_500),
+      workingMediaMergeGapMs: Math.max(0, config.workingMediaMergeGapMs ?? 1_000),
     };
     if (this.config.correctionProfilePath !== null
       && this.config.correctionCaseId === null) {
@@ -286,6 +384,304 @@ export class LocalPracticeMediaMatcherV1 {
         resolve();
       });
     });
+  }
+
+  async #resolveFfmpeg(): Promise<string> {
+    if (this.config.ffmpegPath !== null) return this.config.ffmpegPath;
+    const environmentPath = process.env.EDITFLOW_FFMPEG_PATH?.trim();
+    if (environmentPath) {
+      const metadata = await stat(environmentPath).catch(() => null);
+      if (metadata?.isFile()) return path.resolve(environmentPath);
+    }
+    this.#ffmpegExecutable ??= new Promise<string>((resolve, reject) => {
+      let stdout = "";
+      let stderr = "";
+      const child = spawn(
+        this.config.python.executable,
+        [
+          ...this.config.python.prefixArgs,
+          "-c",
+          "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())",
+        ],
+        {
+          windowsHide: true,
+          shell: false,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      child.stdout.on("data", (chunk: Buffer | string) => {
+        stdout += String(chunk);
+      });
+      child.stderr.on("data", (chunk: Buffer | string) => {
+        stderr = appendBoundedProcessOutput(stderr, chunk);
+      });
+      child.once("error", reject);
+      child.once("close", async (code) => {
+        const candidate = stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) ?? "";
+        if (code !== 0 || candidate.length === 0) {
+          reject(new Error(
+            "Practice working-media materialization could not resolve FFmpeg"
+            + (stderr.trim().length === 0 ? "." : ": " + stderr.trim()),
+          ));
+          return;
+        }
+        const metadata = await stat(candidate).catch(() => null);
+        if (metadata?.isFile() !== true) {
+          reject(new Error("Resolved Practice FFmpeg executable does not exist: " + candidate));
+          return;
+        }
+        resolve(path.resolve(candidate));
+      });
+    });
+    return await this.#ffmpegExecutable;
+  }
+
+  async #probeWorkingMediaEncoding(
+    sourcePath: string,
+  ): Promise<Readonly<{
+    profileId: string;
+    args: readonly string[];
+    sourceDescriptor: string;
+  }>> {
+    const executable = await this.#resolveFfmpeg();
+    const descriptor = await new Promise<string>((resolve, reject) => {
+      let stderr = "";
+      const child = spawn(executable, [
+        "-hide_banner",
+        "-loglevel", "info",
+        "-i", sourcePath,
+        "-map", "0:v:0",
+        "-frames:v", "1",
+        "-f", "null",
+        "-",
+      ], {
+        windowsHide: true,
+        shell: false,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      child.stderr.on("data", (chunk: Buffer | string) => {
+        stderr = appendBoundedProcessOutput(stderr, chunk);
+      });
+      child.once("error", reject);
+      child.once("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(
+            "Practice working-media source probe failed"
+            + (stderr.trim().length === 0 ? "." : ": " + stderr.trim()),
+          ));
+          return;
+        }
+        const videoLine = stderr.split(/\r?\n/)
+          .find((line) => /Stream #.*Video:/.test(line))?.trim() ?? "";
+        resolve(videoLine);
+      });
+    });
+    const tenBit = /\b(?:yuv\d+p10(?:le|be)?|p010(?:le|be)?|gbrp10(?:le|be)?|gray10(?:le|be)?|Main 10)\b/i
+      .test(descriptor);
+    return tenBit
+      ? {
+        profileId: "libx265-main10-crf10",
+        args: [
+          "-c:v", "libx265",
+          "-preset", "fast",
+          "-crf", "10",
+          "-pix_fmt", "yuv420p10le",
+          "-tag:v", "hvc1",
+        ],
+        sourceDescriptor: descriptor,
+      }
+      : {
+        profileId: "libx264-crf10",
+        args: [
+          "-c:v", "libx264",
+          "-preset", "fast",
+          "-crf", "10",
+          "-pix_fmt", "yuv420p",
+        ],
+        sourceDescriptor: descriptor,
+      };
+  }
+
+  async #runFfmpeg(args: readonly string[]): Promise<void> {
+    const executable = await this.#resolveFfmpeg();
+    await new Promise<void>((resolve, reject) => {
+      let timedOut = false;
+      let stderr = "";
+      const child = spawn(executable, args, {
+        windowsHide: true,
+        shell: false,
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      const timer = setTimeout(() => {
+        timedOut = true;
+        terminateProcessTree(child);
+      }, this.config.analysisTimeoutMs);
+      child.stderr.on("data", (chunk: Buffer | string) => {
+        stderr = appendBoundedProcessOutput(stderr, chunk);
+      });
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.once("close", (code, signal) => {
+        clearTimeout(timer);
+        if (timedOut) {
+          reject(new Error(
+            "Practice working-media materialization timed out after "
+            + String(this.config.analysisTimeoutMs) + " ms.",
+          ));
+          return;
+        }
+        if (code !== 0) {
+          const detail = stderr.trim();
+          reject(new Error(
+            "Practice working-media materialization failed"
+            + (code === null ? "" : " with exit code " + String(code))
+            + (signal === null ? "" : " (" + signal + ")")
+            + (detail.length === 0 ? "." : ": " + detail),
+          ));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  async #materializeWorkingMatches(
+    matches: readonly PracticeSceneMatchV1[],
+    sourceArtifacts: readonly SourceArtifactV1[],
+  ): Promise<readonly PracticeSceneMatchV1[]> {
+    if (matches.length === 0) return [];
+    const sourceById = new Map(sourceArtifacts.map((item) => [item.sourceId, item]));
+    const rangesBySource = new Map<string, WorkingRangeV1[]>();
+    matches.forEach((match, matchIndex) => {
+      const source = sourceById.get(match.sourceId);
+      if (source === undefined) {
+        throw new TypeError(
+          "Practice working-media materialization cannot resolve source " + match.sourceId + ".",
+        );
+      }
+      const bounds = matchSourceBounds(match);
+      const range: WorkingRangeV1 = {
+        matchIndex,
+        startMs: Math.max(0, bounds.startMs - this.config.workingMediaHandleMs),
+        endMs: Math.max(
+          bounds.startMs + 1,
+          bounds.endMs + this.config.workingMediaHandleMs,
+        ),
+      };
+      const prior = rangesBySource.get(match.sourceId) ?? [];
+      prior.push(range);
+      rangesBySource.set(match.sourceId, prior);
+    });
+
+    const packets: WorkingPacketV1[] = [];
+    for (const [sourceId, ranges] of rangesBySource) {
+      const source = sourceById.get(sourceId);
+      if (source === undefined) continue;
+      const sorted = [...ranges].sort((a, b) => a.startMs - b.startMs);
+      for (const range of sorted) {
+        const current = packets.at(-1);
+        if (current !== undefined
+          && current.sourceId === sourceId
+          && range.startMs <= current.endMs + this.config.workingMediaMergeGapMs) {
+          current.endMs = Math.max(current.endMs, range.endMs);
+          current.matchIndexes.push(range.matchIndex);
+          continue;
+        }
+        packets.push({
+          sourceId,
+          sourcePath: source.sourcePath,
+          sourceSha256: source.sourceSha256,
+          startMs: range.startMs,
+          endMs: range.endMs,
+          matchIndexes: [range.matchIndex],
+        });
+      }
+    }
+
+    const directory = path.join(this.config.analysisCacheDir, "working-media");
+    await mkdir(directory, { recursive: true });
+    const enriched = matches.map((match) => ({ ...match }));
+    for (const packet of packets) {
+      const encoding = await this.#probeWorkingMediaEncoding(packet.sourcePath);
+      const key = sha256Text([
+        "editflow.practice-working-media.v1",
+        packet.sourceSha256,
+        String(Math.round(packet.startMs)),
+        String(Math.round(packet.endMs)),
+        encoding.profileId,
+      ]).slice(0, 20);
+      const workingSourceId = "working:" + packet.sourceId + ":" + key;
+      const clipPath = path.join(
+        directory,
+        safeStem(packet.sourceId) + "-" + key + ".mp4",
+      );
+      if (!(await fileExists(clipPath))) {
+        const temporaryPath = clipPath + ".tmp-" + String(process.pid) + ".mp4";
+        await unlink(temporaryPath).catch(() => undefined);
+        try {
+          await this.#runFfmpeg([
+            "-hide_banner",
+            "-loglevel", "error",
+            "-ss", ffmpegSeconds(packet.startMs),
+            "-i", packet.sourcePath,
+            "-t", ffmpegSeconds(packet.endMs - packet.startMs),
+            "-map", "0:v:0",
+            "-map_metadata", "0",
+            "-an",
+            "-sn",
+            "-dn",
+            ...encoding.args,
+            "-movflags", "+faststart",
+            "-y",
+            temporaryPath,
+          ]);
+          await rename(temporaryPath, clipPath);
+        } catch (error) {
+          await unlink(temporaryPath).catch(() => undefined);
+          throw error;
+        }
+      }
+      const clipStat = await stat(clipPath);
+      if (!clipStat.isFile() || clipStat.size <= 0) {
+        throw new Error("Practice working-media clip is empty: " + clipPath);
+      }
+      const packetEvidence = [
+        "practice-working-media:" + key,
+        "practice-working-media-original-source:" + packet.sourceId,
+        "practice-working-media-original-sha256:" + packet.sourceSha256,
+        "practice-working-media-original-range-ms:"
+          + packet.startMs.toFixed(3) + ":" + packet.endMs.toFixed(3),
+        "practice-working-media-encoding:" + encoding.profileId,
+        ...(encoding.sourceDescriptor.length === 0
+          ? []
+          : ["practice-working-media-source-descriptor:" + encoding.sourceDescriptor]),
+        "practice-working-media-bytes:" + String(clipStat.size),
+      ];
+      for (const matchIndex of packet.matchIndexes) {
+        const match = matches[matchIndex];
+        if (match === undefined) continue;
+        const bounds = matchSourceBounds(match);
+        enriched[matchIndex] = {
+          ...match,
+          workingMedia: {
+            schema: "editflow.practice-working-media.v1",
+            workingSourceId,
+            sourcePath: clipPath,
+            originalSourceId: match.sourceId,
+            originalStartMs: packet.startMs,
+            originalEndMs: packet.endMs,
+            handleBeforeMs: Math.max(0, bounds.startMs - packet.startMs),
+            handleAfterMs: Math.max(0, packet.endMs - bounds.endMs),
+            evidenceRefs: packetEvidence,
+          },
+          evidenceRefs: [...match.evidenceRefs, ...packetEvidence],
+        };
+      }
+    }
+    return enriched;
   }
 
   async analyzeFinish(
@@ -506,7 +902,7 @@ export class LocalPracticeMediaMatcherV1 {
       throw new TypeError("Practice scene matcher returned an invalid artifact.");
     }
 
-    return artifact.matches.map((match) => ({
+    const matches = artifact.matches.map((match) => ({
       ...match,
       evidenceRefs: [
         ...match.evidenceRefs,
@@ -515,6 +911,14 @@ export class LocalPracticeMediaMatcherV1 {
         "practice-required-confidence:" + input.minimumConfidence.toFixed(6),
       ],
     }));
+    if (!this.config.materializeWorkingMedia
+      || matches.some((match) => match.confidence < input.minimumConfidence)) {
+      return matches;
+    }
+    const sourceArtifacts = await Promise.all(
+      sourcePaths.map((sourcePathValue) => jsonFile<SourceArtifactV1>(sourcePathValue)),
+    );
+    return await this.#materializeWorkingMatches(matches, sourceArtifacts);
   }
 
   async matchAudio(input: {

@@ -126,8 +126,13 @@ const prepareInput = () => ({
   referenceSemanticId: "subject:peter",
 });
 
-const makeHarness = ({ finalLastKeyTime = 0.2 } = {}) => {
-  const state = { maskCreated: false };
+const makeHarness = ({
+  finalLastKeyTime = 0.2,
+  finalLastKeyTimes = null,
+  duplicateCreate = false,
+} = {}) => {
+  const state = { maskCreated: duplicateCreate };
+  let trackerRunIndex = 0;
   const plans = [];
   const trackerCalls = [];
   const binderCalls = [];
@@ -171,6 +176,15 @@ const makeHarness = ({ finalLastKeyTime = 0.2 } = {}) => {
     async execute(plan) {
       plans.push(plan);
       const command = plan.operations[0].input.command;
+      if (command === "mask.create" && duplicateCreate) {
+        return {
+          transactionId: "tx:" + plans.length,
+          state: "ROLLED_BACK",
+          recovered: true,
+          appliedOperations: 0,
+          error: "MASK_STABLE_ID_EXISTS: Mask stableId already exists on the target layer.",
+        };
+      }
       if (command === "mask.create") state.maskCreated = true;
       if (command === "mask.remove") state.maskCreated = false;
       return {
@@ -214,13 +228,22 @@ const makeHarness = ({ finalLastKeyTime = 0.2 } = {}) => {
         return {
           async run(request) {
             trackerCalls.push({ input, request });
+            const runIndex = trackerRunIndex++;
+            const resolvedLastKeyTime = Array.isArray(finalLastKeyTimes)
+              ? finalLastKeyTimes[Math.min(runIndex, finalLastKeyTimes.length - 1)]
+              : finalLastKeyTime;
+            const previousLastKeyTime = runIndex === 0
+              ? null
+              : (Array.isArray(finalLastKeyTimes)
+                ? finalLastKeyTimes[Math.min(runIndex - 1, finalLastKeyTimes.length - 1)]
+                : finalLastKeyTime);
             return {
               route: "LOCAL",
-              baselinePathKeyCount: 0,
-              finalPathKeyCount: 4,
-              baselineLastKeyTime: null,
-              finalLastKeyTime,
-              visualEvidenceId: "tracked-mask-visual:1",
+              baselinePathKeyCount: runIndex * 4,
+              finalPathKeyCount: (runIndex + 1) * 4,
+              baselineLastKeyTime: previousLastKeyTime,
+              finalLastKeyTime: resolvedLastKeyTime,
+              visualEvidenceId: "tracked-mask-visual:" + String(runIndex + 1),
               escalationReason: null,
             };
           },
@@ -268,6 +291,40 @@ test("Practice tracked-mask fallback binds identity and accepts only native Mask
   ));
 });
 
+test("Practice tracked-mask fallback reuses an exact existing Practice mask stable id", async () => {
+  const harness = makeHarness({ duplicateCreate: true });
+  const proof = await harness.route.prepare(prepareInput());
+
+  assert.equal(proof.maskSource, "AE_TRACKED_MASK");
+  assert.equal(proof.appliedOperations, 1);
+  assert.equal(harness.state.maskCreated, true);
+  assert.equal(harness.prepareCalls.length, 1);
+  assert.equal(harness.trackerCalls.length, 1);
+  assert.ok(proof.evidenceRefs.includes(
+    "practice-tracked-mask-reused-existing:true",
+  ));
+  assert.deepEqual(
+    harness.plans.map((plan) => plan.operations[0].input.command),
+    ["mask.create"],
+  );
+});
+
+test("Practice tracked-mask fallback continues native tracking until required coverage is reached", async () => {
+  const harness = makeHarness({ finalLastKeyTimes: [0.1, 0.2] });
+  const proof = await harness.route.prepare(prepareInput());
+
+  assert.equal(proof.maskSource, "AE_TRACKED_MASK");
+  assert.equal(proof.appliedOperations, 3);
+  assert.equal(harness.state.maskCreated, true);
+  assert.equal(harness.trackerCalls.length, 2);
+  assert.ok(proof.evidenceRefs.includes(
+    "practice-tracked-mask-tracking-passes:2",
+  ));
+  assert.ok(proof.evidenceRefs.includes(
+    "practice-tracked-mask-path-keys:0->8",
+  ));
+});
+
 test("Practice tracked-mask fallback fails closed and removes its owned mask when coverage is incomplete", async () => {
   const harness = makeHarness({ finalLastKeyTime: 0.1 });
   const failure = await harness.route.prepare(prepareInput()).then(
@@ -276,7 +333,8 @@ test("Practice tracked-mask fallback fails closed and removes its owned mask whe
   );
   assert.ok(failure instanceof PracticeSubjectIsolationBackendFailureV1);
   assert.match(failure.message, /PRACTICE_TRACKED_MASK_COVERAGE_INCOMPLETE/);
-  assert.equal(failure.appliedOperations, 3);
+  assert.equal(failure.appliedOperations, 4);
+  assert.equal(harness.trackerCalls.length, 2);
   assert.equal(failure.fallbackSafe, true);
   assert.equal(harness.state.maskCreated, false);
   assert.deepEqual(

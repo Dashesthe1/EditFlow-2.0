@@ -15,6 +15,7 @@ import type {
   GptOrchestrationModeV1,
   GptResearchSourceV1,
   PracticeMediaInputV1,
+  PracticeSceneMatchV1,
   PracticeRunRoleV1,
   PracticeVerificationPolicyV1,
 } from "./contracts.js";
@@ -83,13 +84,14 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
             : "LEARNING"
           : null;
         const researchMessage = applyCurrentResearchPriority(assignment.chatMessage);
+        const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage);
         return {
           ...assignment,
           practiceRole,
           practicePolicy,
           chatMessage: practicePolicy === null
-            ? researchMessage
-            : applyCurrentMasteryPolicy(researchMessage, practicePolicy),
+            ? continuityMessage
+            : applyCurrentMasteryPolicy(continuityMessage, practicePolicy),
         };
       }),
     };
@@ -203,6 +205,57 @@ const applyCurrentResearchPriority = (message: string): string => {
     }
   }
   return message;
+};
+
+const WORKFLOW_CONTINUITY_POLICY_MARKER =
+  "- PRACTICE CONTINUITY IS MANDATORY:";
+
+const LEGACY_WORKFLOW_POLICY_REPLACEMENTS = [
+  [
+    "- M6_IS_TARGETED_SPECIALIST: M6/VisualEffectsBrain may analyze, synthesize, test, and correct specific observed effects/transitions, but it must not become the governing whole-edit reconstruction loop.",
+    "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
+  ],
+  [
+    "- GPT is the orchestrator, creative reasoner, and learner.",
+    "- GPT is the session orchestrator, continuity owner, and escalation reasoner.",
+  ],
+  [
+    "- EditFlow Brain is supporting editing knowledge and capability intelligence, not a replacement for GPT reasoning.",
+    "- The original M6 Visual Effects Intelligence loop is the governing reference-driven effects/transition workflow inside the full reconstruction process. GPT drives and supervises that loop; it does not replace it with a parallel free-form effect workflow.",
+  ],
+  [
+    "- Direct GPT visual judgment of the actual Finish, raw candidates, and rendered result is the creative authority; machine evidence is measurement/support.",
+    "- The professional reference and rendered pixels are the visual authority. GPT directly inspects them when judgment is needed; machine evidence measures and proves the observed behavior.",
+  ],
+  [
+    "- EditFlow visual analysis is GPT's measurement layer and search accelerator, not an autonomous creative editor.",
+    "- EditFlow visual analysis is the measurement/search layer used by the governing M6 workflow.",
+  ],
+  [
+    "- M6 is the professional effect/transition reconstruction specialist. It receives GPT-observed target behavior and returns/proves constructions; it does not choose the entire edit architecture.",
+    "- EditFlow Brain/M6 owns dense reference evidence -> anatomy/DNA -> construction or unknown synthesis -> local real-AE render -> semantic comparison -> bounded visual correction -> fidelity gate for difficult reference-driven effects.",
+  ],
+] as const;
+
+const applyCurrentWorkflowContinuityPolicy = (message: string): string => {
+  let migrated = message;
+  for (const [legacy, current] of LEGACY_WORKFLOW_POLICY_REPLACEMENTS) {
+    migrated = migrated.replace(legacy, current);
+  }
+  if (migrated.includes(WORKFLOW_CONTINUITY_POLICY_MARKER)) return migrated;
+  return [
+    migrated,
+    "",
+    "Original M6 workflow + continuity policy (current):",
+    WORKFLOW_CONTINUITY_POLICY_MARKER
+      + " the Practice session/assignment is the durable unit of work across ChatGPT conversations.",
+    "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
+    "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
+    "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
+    "- The original M6 roadmap is the governing reference-driven workflow: SCENE UNDERSTANDING -> REFERENCE EFFECT DETECTION -> DENSE FRAME EVIDENCE -> EFFECT ANATOMY/DNA -> CAUSAL KNOWLEDGE -> CONSTRUCTION/SYNTHESIS -> REAL AE -> LOCAL RENDER -> SEMANTIC COMPARISON -> VISUAL DIAGNOSIS -> BOUNDED CORRECTION -> FIDELITY GATE -> FINAL EDIT.",
+    "- Retained Edit Type knowledge, Tutorial Drive learning, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, advanced synthesis, and all later systems remain available as supporting tools. They must not replace the original M6 governing route or start a competing workflow.",
+    "- Optimize for completion: reuse the verified source set and content-locked baseline, preserve correct regions, render locally before full-edit rerenders, and advance from retained evidence instead of rebuilding the edit.",
+  ].join("\n");
 };
 
 const MASTERY_POLICY_MARKER =
@@ -324,6 +377,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   readonly editTypeId: string;
   readonly finish: PracticeMediaInputV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
+  readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
   readonly practicePolicy: PracticeVerificationPolicyV1 | null;
   readonly artifactDir: string;
   readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
@@ -378,6 +432,22 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   const practicePolicy = input.mode === "PRACTICE"
     ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
     : null;
+  const preparedMatchLines = (input.practiceSceneMatches ?? []).map((match) => {
+    const working = match.workingMedia;
+    const originalRange = match.sourceStartMs.toFixed(3) + "-" + match.sourceEndMs.toFixed(3) + "ms";
+    if (working === undefined) {
+      return "- " + match.shotId + " -> original " + match.sourceId + " [" + originalRange
+        + "] confidence=" + match.confidence.toFixed(3) + " WORKING_MEDIA_MISSING";
+    }
+    const localStartMs = match.sourceStartMs - working.originalStartMs;
+    const localEndMs = match.sourceEndMs - working.originalStartMs;
+    return "- " + match.shotId + " -> original " + match.sourceId + " [" + originalRange + "]"
+      + " working=" + working.sourcePath
+      + " local=" + localStartMs.toFixed(3) + "-" + localEndMs.toFixed(3) + "ms"
+      + " handles=" + working.handleBeforeMs.toFixed(3) + "/" + working.handleAfterMs.toFixed(3) + "ms"
+      + " direction=" + match.direction
+      + " confidence=" + match.confidence.toFixed(3);
+  });
   const modeInstruction = input.mode === "PRACTICE"
     ? input.practiceRole === "HELD_OUT_CERTIFICATION"
       ? [
@@ -401,7 +471,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "Use successful lessons as guidance and actively avoid failures retained from Practice.",
       "The result must be original to the supplied footage while following the learned professional visual language.",
     ];
-  return [
+  const message = [
     "EDITFLOW 2.0 GPT ORCHESTRATION ASSIGNMENT",
     "Session: " + input.sessionId,
     "Mode: " + input.mode,
@@ -410,10 +480,27 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "",
     ...modeInstruction,
     "",
+    ...(input.mode === "PRACTICE" ? [
+      "Practice reconstruction invariants:",
+      "- DIRECT_FINISH_OBSERVATION_REQUIRED: Before any AE mutation, directly inspect the actual Finish pixels across the whole edit, then revisit every shot, cut, effect, and transition at denser temporal sampling. Machine summaries and similarity scores support this judgment but never replace it.",
+      "- BUILD_EDIT_BLUEPRINT_FIRST: Record the shot order, exact cut intent, source-time behavior, framing, pacing, audio relationship, and an effect/transition blueprint describing entry, buildup, peak, cut interaction, persistence, recovery, and rewind behavior before construction.",
+      "- EFFECT_TRANSITION_PRIORITY: Once source identity and the editorial spine are correct, spend the main deep-reasoning/correction budget on professional effect and transition fidelity: temporal states, trails, displacement, blur, distortion, acceleration, masks/isolation, color/exposure behavior, cut overlap, persistence, and reverse/rewind endings.",
+      "- RAW_SOURCE_IS_SEARCH_ONLY: Full-length Start movies are a search corpus, never active AE editing footage. Index/search them outside AE, visually verify candidate ranges, materialize only the matched ranges with bounded handles, and use those working clips in AE.",
+      "- VISUAL_SOURCE_CONFIRMATION_REQUIRED: A machine scene score narrows candidates; GPT must inspect the candidate pixels and confirm the exact performance moment and trim before treating a source match as locked.",
+      "- LOCK_EDITORIAL_SPINE: After the correct raw shots, order, broad timing, and audio arrangement are verified, preserve them. Do not rebuild correct shots merely because an effect needs correction.",
+      "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
+      "- COMPLETE_EDIT_THEN_PATCH: Build one coherent full edit from the locked footage, render/review it, diagnose discrepancies, then patch only deficient regions. Later attempts preserve already-correct regions.",
+      "- CLEAN_AE_PROJECT: Temporary M6 experiments and proof renders remain isolated evidence and are not imported into the production composition. Do not create hundreds of alternate scenes or repeated full-length source items.",
+      "- NO_WEAKER_SUBSTITUTION: When a defining reference effect is unfamiliar, inspect it more densely and synthesize/research the actual behavior rather than replacing it with a generic flash, zoom, shake, or other weaker approximation.",
+      "",
+    ] : []),
     "Control architecture:",
-    "- GPT is the orchestrator, creative reasoner, and learner.",
-    "- EditFlow Brain is supporting editing knowledge and capability intelligence, not a replacement for GPT reasoning.",
-    "- EditFlow visual analysis is GPT's eyes.",
+    "- GPT is the session orchestrator, continuity owner, and escalation reasoner.",
+    "- The professional reference and rendered pixels are the visual authority. GPT directly inspects them when judgment is needed; machine evidence measures and proves the observed behavior.",
+    "- The original M6 Visual Effects Intelligence loop is the governing reference-driven effects/transition workflow inside the full reconstruction process. GPT drives and supervises that loop; it does not replace it with a parallel free-form effect workflow.",
+    "- EditFlow Brain/M6 owns dense reference evidence -> anatomy/DNA -> construction or unknown synthesis -> local real-AE render -> semantic comparison -> bounded visual correction -> fidelity gate for difficult reference-driven effects.",
+    "- EditFlow visual analysis is the measurement/search layer used by that governing workflow.",
+    "- Later Edit Type, Tutorial Drive, exact-source working-clip, tracking, roto, mask, subject-isolation, retained-truth, optical-flow, and capability-development systems remain supporting tools and proof infrastructure.",
     "- EditFlow's typed After Effects controls are GPT's primary editing hands.",
     "- Desktop Commander is the system-level hand for files, processes, recovery, and environment operations.",
     "- All editorial cutting, retiming, remodeling, effects, transitions, compositing, and final construction must exist in After Effects.",
@@ -475,6 +562,14 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "",
     "Start media:",
     ...input.start.map(mediaLine),
+    ...(input.mode === "PRACTICE" ? [
+      "",
+      "Preflight-verified source matches / AE working clips:",
+      ...(preparedMatchLines.length === 0
+        ? ["(none supplied; source matching/materialization must complete before AE construction)"]
+        : preparedMatchLines),
+      "Use the working clip path for AE construction. The original source identity/range is provenance and visual-verification context only.",
+    ] : []),
     ...(input.finish === null ? [] : ["", "Finish reference:", mediaLine(input.finish)]),
     "",
     "Artifact directory: " + input.artifactDir,
@@ -491,6 +586,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Subject identity reuse rule: retained identity may be reused only on exact matching Finish/Start content and binding context; materially different footage requires fresh machine binding proof.",
     "Open/blocked capability gaps: " + (gapLines.length === 0 ? "(none)" : gapLines.join(" | ")),
   ].join("\n");
+  return applyCurrentWorkflowContinuityPolicy(message);
 };
 
 export class GptOrchestrationStoreV1 {
@@ -541,6 +637,7 @@ export class GptOrchestrationStoreV1 {
     readonly editTypeId: string;
     readonly finish: PracticeMediaInputV1 | null;
     readonly start: readonly PracticeMediaInputV1[];
+    readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
     readonly practicePolicy?: Partial<PracticeVerificationPolicyV1> | null;
     readonly artifactDir: string;
     readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
@@ -575,6 +672,9 @@ export class GptOrchestrationStoreV1 {
       status: "PENDING",
       finish: input.finish === null ? null : structuredClone(input.finish),
       start: structuredClone(input.start),
+      practiceSceneMatches: input.mode === "PRACTICE"
+        ? structuredClone(input.practiceSceneMatches ?? null)
+        : null,
       practicePolicy,
       artifactDir,
       chatMessage: buildGptOrchestrationChatMessageV1({
@@ -584,6 +684,7 @@ export class GptOrchestrationStoreV1 {
         editTypeId,
         finish: input.finish,
         start: input.start,
+        practiceSceneMatches: input.practiceSceneMatches ?? null,
         practicePolicy,
         artifactDir,
         knowledge: input.knowledge,
@@ -637,8 +738,14 @@ export class GptOrchestrationStoreV1 {
   async claim(assignmentId: string, claimedBy: string): Promise<GptOrchestrationAssignmentV1> {
     const controller = nonEmpty(claimedBy, "claimedBy");
     return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED") {
+        return {
+          ...assignment,
+          claimedBy: controller,
+        };
+      }
       if (assignment.status !== "PENDING") {
-        throw new TypeError("GPT assignment is not pending: " + assignment.status);
+        throw new TypeError("GPT assignment is not resumable: " + assignment.status);
       }
       const now = new Date().toISOString();
       return {

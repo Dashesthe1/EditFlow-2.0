@@ -230,3 +230,14 @@ test("host ExtendScript exposes a fixed dispatcher and contains no dynamic code 
   assert.doesNotMatch(source, /\beval\s*\(/);
   assert.doesNotMatch(source, /new\s+Function\s*\(/);
 });
+
+test("host applies layer stretch before explicit comp-space trims", async () => {
+  const source = await readFile("packages/adapters/ae-cep/host/editflow_host.jsx", "utf8");
+  const timingStart = source.indexOf('handlers["layer.set_timing"]');
+  const timingEnd = source.indexOf('handlers["effect.add"]', timingStart);
+  const timingHandler = source.slice(timingStart, timingEnd);
+  const stretch = timingHandler.indexOf("layer.stretch = timing.stretch");
+  const inPoint = timingHandler.indexOf("layer.inPoint = timing.inPoint");
+  const outPoint = timingHandler.indexOf("layer.outPoint = timing.outPoint");
+  assert.ok(stretch >= 0 && inPoint > stretch && outPoint > stretch);
+});

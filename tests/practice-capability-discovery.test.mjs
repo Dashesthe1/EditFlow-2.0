@@ -172,6 +172,29 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     editTypeId: "microwave-edit",
     finish,
     start,
+    practiceSceneMatches: [{
+      shotId: "shot:1",
+      sourceId: "video:1",
+      sourcePath: "C:\\Media\\raw.mp4",
+      sourceStartMs: 5000,
+      sourceEndMs: 6200,
+      direction: "FORWARD",
+      playbackRate: 1,
+      confidence: 0.99,
+      componentSimilarities: {},
+      workingMedia: {
+        schema: "editflow.practice-working-media.v1",
+        workingSourceId: "working:video:1:shot-1",
+        sourcePath: "C:\\PracticeCache\\shot-1.mp4",
+        originalSourceId: "video:1",
+        originalStartMs: 2500,
+        originalEndMs: 8700,
+        handleBeforeMs: 2500,
+        handleAfterMs: 2500,
+        evidenceRefs: ["working-media:shot-1"],
+      },
+      evidenceRefs: ["match:shot-1"],
+    }],
     artifactDir: path.join(root, "artifacts"),
     knowledge: registry.knowledge("microwave-edit"),
   });
@@ -184,6 +207,24 @@ test("Practice can discover, prove, and retain a previously missing editing skil
   assert.match(assignment.chatMessage, /broader web\/internet research is last/);
   assert.match(assignment.chatMessage, /TEMPORAL_REWIND \/ REVERSE_PLAYBACK/);
   assert.match(assignment.chatMessage, /implement\/prove the missing EditFlow route/);
+  assert.match(assignment.chatMessage, /DIRECT_FINISH_OBSERVATION_REQUIRED/);
+  assert.match(assignment.chatMessage, /BUILD_EDIT_BLUEPRINT_FIRST/);
+  assert.match(assignment.chatMessage, /EFFECT_TRANSITION_PRIORITY/);
+  assert.match(assignment.chatMessage, /RAW_SOURCE_IS_SEARCH_ONLY/);
+  assert.match(assignment.chatMessage, /VISUAL_SOURCE_CONFIRMATION_REQUIRED/);
+  assert.match(assignment.chatMessage, /LOCK_EDITORIAL_SPINE/);
+  assert.match(assignment.chatMessage, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.match(assignment.chatMessage, /COMPLETE_EDIT_THEN_PATCH/);
+  assert.match(assignment.chatMessage, /CLEAN_AE_PROJECT/);
+  assert.match(assignment.chatMessage, /professional reference and rendered pixels are the visual authority/i);
+  assert.equal(
+    assignment.practiceSceneMatches?.[0]?.workingMedia?.sourcePath,
+    "C:\\PracticeCache\\shot-1.mp4",
+  );
+  assert.match(assignment.chatMessage, /Preflight-verified source matches \/ AE working clips/);
+  assert.match(assignment.chatMessage, /original video:1 \[5000\.000-6200\.000ms\]/);
+  assert.match(assignment.chatMessage, /working=C:\\PracticeCache\\shot-1\.mp4/);
+  assert.match(assignment.chatMessage, /Use the working clip path for AE construction/);
   await store.claim(assignment.assignmentId, "chatgpt-test");
   const gapOpen = {
     gapId: "gap:temporal-rewind",

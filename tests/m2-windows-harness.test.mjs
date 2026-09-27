@@ -51,7 +51,9 @@ test("self-hosted AE launcher waits for a stable project window before the prove
   assert.match(source, /refuses to touch an already-running After Effects session/);
   assert.match(source, /install-editflow-cep\.ps1/);
   assert.match(source, /open-editflow-bridge\.jsx/);
-  assert.match(source, /Start-Process -FilePath \$AfterFxPath -PassThru/);
+  assert.match(source, /Downloads\\Open Template\.aep/);
+  assert.match(source, /\$ResolvedDefaultProject = \(Resolve-Path \$DefaultAeProjectPath\)\.Path/);
+  assert.match(source, /Start-Process -FilePath \$AfterFxPath -ArgumentList \('\"' \+ \$ResolvedDefaultProject \+ '\"'\) -PassThru/);
   assert.match(source, /Find-ReadyTargetAfterFx/);
   assert.match(source, /\$Candidate\.Responding/);
   assert.match(source, /\$Candidate\.MainWindowHandle -ne 0/);
@@ -74,7 +76,9 @@ test("self-hosted AE launcher waits for a stable project window before the prove
   assert.doesNotMatch(source, /Copy-Item \$PanelBootstrap \$InstalledPanelBootstrap/);
   assert.doesNotMatch(source, /Scripts\\Startup/);
 
-  const coldLaunch = source.indexOf("Start-Process -FilePath $AfterFxPath -PassThru");
+  const coldLaunch = source.indexOf(
+    "Start-Process -FilePath $AfterFxPath -ArgumentList ('\"' + $ResolvedDefaultProject + '\"') -PassThru",
+  );
   const titleGate = source.indexOf('$WindowTitle -like "Adobe After Effects*"');
   const stabilization = source.indexOf("Start-Sleep -Seconds $CommandDeliveryStabilizationSeconds");
   const stableRecheck = source.indexOf("$StableAfterFx = Find-ReadyTargetAfterFx $AfterFxPath");

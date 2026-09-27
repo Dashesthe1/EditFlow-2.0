@@ -29,6 +29,9 @@ import {
   M3_COMPOSITE_CAPABILITIES_V13,
 } from "../../../packages/adapters/ae-cep/src/m3-composite.js";
 import {
+  M3_MASK_CAPABILITIES_V12,
+} from "../../../packages/adapters/ae-cep/src/m3-mask.js";
+import {
   M3_LAYER_CONTROLS_CAPABILITIES_V16,
 } from "../../../packages/adapters/ae-cep/src/m3-layer-controls.js";
 import {
@@ -60,7 +63,7 @@ import {
 
 export const CURRENT_AE_TRANSACTION_RUNTIME_PHASE =
   "M5_CURRENT_AE_TRANSACTION_RUNTIME_V1" as const;
-export const CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 = 64 as const;
+export const CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 = 80 as const;
 export const CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1 = 96 as const;
 
 export interface CurrentAeStabilizationRuntimeV1 {
@@ -111,6 +114,7 @@ export const createCurrentAeTransactionRegistryV1 = (
   registry.registerStatic([
     ...applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
     ...M3_COMPOSITE_CAPABILITIES_V13,
+    ...M3_MASK_CAPABILITIES_V12,
     ...M3_LAYER_CONTROLS_CAPABILITIES_V16,
     ...M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17,
     ...M3_TEMPORAL_EASE_CAPABILITIES_V18,
@@ -227,9 +231,9 @@ export class CurrentAeTransactionRuntimeV1 {
   constructor(
     transport: CurrentAeCepTransactionalTransportV1,
     projectId: string,
-    maxOperations = CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1,
+    maxOperations: number = CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1,
     stabilization: CurrentAeStabilizationRuntimeV1 | null = null,
-    correctionMaxOperations = CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1,
+    correctionMaxOperations: number = CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1,
     filesystemPolicy = new AeFilesystemPolicyV11([]),
   ) {
     if (!Number.isInteger(maxOperations) || maxOperations < 1) {

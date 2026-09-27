@@ -12,6 +12,46 @@ experience for later Pro Creation.
 
 The goal is to improve editorial decision making as well as AE execution skill.
 
+## Original M6 governing architecture (reset)
+
+The original M6 roadmap is again the governing reference-driven workflow. Practice uses the
+professional reference and rendered pixels as visual authority and advances through the M6
+sequence rather than a separate GPT-authored reconstruction loop:
+
+`SCENE UNDERSTANDING + EDITORIAL DECISION -> REFERENCE EFFECT DETECTION -> DENSE FRAME
+EVIDENCE -> EFFECT ANATOMY + TRANSITION DNA -> TUTORIAL / LEARNED CAUSAL KNOWLEDGE ->
+LAYER / CONSTRUCTION HYPOTHESIS -> CAPABILITY MAPPING + NEW EFFECT SYNTHESIS -> RECIPE
+COMPILER -> VIRTUAL AE -> REAL AE -> LOCAL RENDER -> REFERENCE/RENDER FIDELITY COMPARATOR
+-> VISUAL ERROR DIAGNOSIS -> AUTOMATIC CORRECTION LOOP -> FIDELITY GATE -> FINAL EDIT`.
+
+GPT remains the session orchestrator, continuity owner, and escalation reasoner. It may
+directly inspect Finish/raw/rendered pixels when judgment is needed, but it must drive and
+supervise the original M6 loop rather than replace it with a parallel free-form effect or
+whole-edit workflow. A new ChatGPT conversation must reclaim the same Practice assignment,
+read retained checkpoints/evidence, and continue at the first incomplete step.
+
+All later capabilities remain available as supporting tools inside that governing route:
+Edit Type learning, Tutorial Drive causal compilation, exact-source matching, bounded
+working clips, tracking, roto, masks, subject isolation, optical flow, temporal rewind,
+retained truth, held-out proof, advanced synthesis, transactional Current-AE execution,
+Desktop Commander recovery, and later capability-development surfaces. These systems are
+not rolled back; they are tools M6/GPT can call when the reference requires them.
+
+Full-length Start movies remain search corpora rather than active AE editing footage.
+Practice indexes them outside After Effects, verifies the required ranges, materializes only
+matched ranges with bounded handles into a persistent working-media cache, and retains the
+original movie identity/source-time provenance for proof. Once the correct scene set and
+editorial spine are verified, later effect corrections preserve correct regions rather than
+rebuilding them.
+
+The following behaviors are deprecated for normal Practice: starting a fresh reconstruction
+because a new ChatGPT chat opened; rerunning completed source/reference analysis without an
+input or proof invalidation; replacing the original M6 reference-first route with a GPT-only
+effect loop; importing full-length raw movies as the working AE substrate; importing proof
+renders into the production composition; proliferating alternate scenes/comps as a search
+strategy; and substituting generic flashes, zooms, or shakes for unfamiliar defining
+reference behavior.
+
 ## Operating modes
 
 EditFlow exposes two explicit modes:
@@ -20,9 +60,11 @@ EditFlow exposes two explicit modes:
 2. PRO_CREATION - autonomous production using retained learning and experience.
 
 V1 exposes a durable GPT assignment control plane through the local After Effects
-CEP panel. Practice and Pro Creation both create a structured assignment for GPT rather
-than entering a local rule-driven editing loop. GPT completion is not mastery. Pro
-Creation remains blocked until the selected Edit Type contains machine-verified Practice
+CEP panel. The assignment is the durable session/continuity record across ChatGPT
+conversations; it does not supersede the original M6 reference-driven production loop.
+GPT supervises that loop, resumes it across chats, and invokes the later advanced systems
+as tools when M6 evidence or capability gaps require them. GPT completion is not mastery.
+Pro Creation remains blocked until the selected Edit Type contains machine-verified Practice
 knowledge that has also passed transfer on materially different reference/source footage.
 Learned skills are promoted independently: a skill can become TRANSFER_VERIFIED only when
 it is freshly AE-proven in the current Practice session and also has a prior machine-verified
@@ -49,11 +91,13 @@ The JSON contract is spec/practice-session-v1.schema.json.
 
 The service binds only to authenticated loopback ports. Practice remains disabled
 until both the product service and the AE CEP bridge are connected. Pressing the primary
-action creates a persistent GPT assignment containing the media, selected Edit Type,
-retained knowledge, artifact location, and governing editing instructions. The Shadow
-connector exposes assignment claim, trace recording, completion, failure, status, and
-cancellation tools so GPT can orchestrate EditFlow's Eyes, Brain, AE hands, and Desktop
-Commander from one control loop.
+action creates or resumes a persistent GPT assignment containing the media, selected
+Edit Type, retained knowledge, artifact location, and governing editing instructions. If a
+Practice assignment is already active, repeated start/continue actions return that same run
+instead of creating a duplicate. The Shadow connector exposes assignment claim, trace
+recording, completion, failure, status, and cancellation tools so a new ChatGPT controller
+can reclaim the same RUNNING assignment, inspect retained events/artifacts/current AE state,
+repair any broken connection, and continue at the first incomplete M6 checkpoint.
 
 Practice learning is allocated to the selected Edit Type automatically as GPT records
 events. A successful GPT completion is only a request for certification. EditFlow must
@@ -222,17 +266,27 @@ timing, framing, and finish decisions can be learned independently.
 Each attempt receives the reference analysis, content-locked baseline, exact scene
 matches, and all prior attempts.
 
-The reconstruction adapter may use the existing EditFlow pipeline:
+The reconstruction adapter follows the original M6 reference-first pipeline as the
+governing reconstruction route:
 
-- Scene Understanding;
-- Editor Brain;
-- Editing IR;
-- Recipe Compiler;
-- M6 Professional Effects Intelligence;
-- unknown-effect synthesis;
-- tracking, roto, masks, optical flow, and adapters;
-- transactional AE execution;
-- render review and visual correction.
+- Scene Understanding and editorial decision;
+- reference effect detection and dense frame evidence;
+- Effect Anatomy and Transition DNA;
+- tutorial/learned causal knowledge as evidence and hypothesis support;
+- layer/construction hypothesis;
+- capability mapping and unknown-effect synthesis;
+- Editing IR -> Recipe Compiler -> Virtual AE -> real AE;
+- bounded local render;
+- semantic reference-vs-render comparison;
+- visual error diagnosis and automatic correction;
+- fidelity gate before full-edit acceptance.
+
+Later tracking, roto, masks, optical flow, subject isolation, Edit Type memory, bounded
+working clips, retained truth, held-out proof, and capability-development systems remain
+available as tools inside that route. They do not create a second governing reconstruction
+process. A retained learned graph may inform adaptation, but HIGH-risk/reference-driven M6
+reconstruction begins from the current reference evidence and must not bypass fresh
+anatomy/synthesis/comparison.
 
 The attempt must emit a rendered artifact plus decision traces describing which cues,
 constructions, and rationales produced the result.

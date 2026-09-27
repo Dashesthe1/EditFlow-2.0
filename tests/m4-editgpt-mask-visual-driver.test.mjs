@@ -72,6 +72,12 @@ test("mask sidecar is target-bound and explicitly verifies mask tracking mode", 
   assert.match(py, /Method selector/);
   assert.match(py, /Reject point Track Motion mode/);
   assert.match(py, /verify_mask_binding/);
+  assert.match(py, /Point to the literal Analyze label/);
+  assert.match(py, /detect_analyze_row_cv/);
+  assert.match(py, /deterministic four-button Analyze-row visual signature/);
+  assert.match(py, /Do not point to the Tracker title\/header/);
+  assert.doesNotMatch(py, /Point to the literal Tracker PANEL TITLE text/);
+  assert.doesNotMatch(py, /NEUTRAL EMPTY GRAY BACKGROUND/);
   assert.match(py, /boundedStopClicked/);
   assert.match(py, /analyzeRowRestoredAdvisory/);
   assert.doesNotMatch(py, /C:\\\\Users\\\\Shadow|pyautogui|SetCursorPos/);

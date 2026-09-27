@@ -101,7 +101,10 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     }),
   });
   assert.equal(practice.status, 409);
-  assert.match((await practice.json()).error, /CEP panel is not connected/);
+  assert.match(
+    (await practice.json()).error,
+    /CONNECTION_PREFLIGHT_BLOCKED: CEP_PANEL: After Effects CEP panel is missing or stale/,
+  );
 });
 
 test("Practice panel restores persisted runs and saved human review after restart", async (t) => {

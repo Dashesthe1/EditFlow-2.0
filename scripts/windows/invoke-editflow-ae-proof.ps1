@@ -9,6 +9,11 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $SupervisorPath = Join-Path $RepoRoot "scripts\windows\ae-host-supervisor.ps1"
 $ReadinessProbeTemplatePath = Join-Path $RepoRoot "scripts\windows\ae-host-readiness-probe-template.jsx"
 $IncrementalGatePath = Join-Path $RepoRoot "scripts\incremental-proof-gate.mjs"
+$DefaultAeProjectPath = if ($env:EDITFLOW_AE_DEFAULT_PROJECT) {
+  $env:EDITFLOW_AE_DEFAULT_PROJECT
+} else {
+  Join-Path $env:USERPROFILE "Downloads\Open Template.aep"
+}
 $AllowedLifecycles = @("REUSE_AE", "REOPEN_PROJECT", "RECONNECT_BROKER", "RESTART_AE", "CLEAN_BOOT")
 $SupervisorProcess = $null
 $StartedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -203,7 +208,9 @@ function Start-WarmAfterFx {
   $PreviousTrackingId = $env:RUNNER_TRACKING_ID
   try {
     $env:RUNNER_TRACKING_ID = ""
-    return Start-Process -FilePath $ExpectedPath -PassThru
+    $ResolvedProjectPath = (Resolve-Path $DefaultAeProjectPath).Path
+    $ProjectArgument = '"' + $ResolvedProjectPath + '"'
+    return Start-Process -FilePath $ExpectedPath -ArgumentList $ProjectArgument -PassThru
   } finally {
     if ($HadTrackingId) { $env:RUNNER_TRACKING_ID = $PreviousTrackingId }
     else { Remove-Item Env:RUNNER_TRACKING_ID -ErrorAction SilentlyContinue }

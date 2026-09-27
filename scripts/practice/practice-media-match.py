@@ -171,6 +171,23 @@ def reference_tail_metrics(frames):
     }
 
 
+def low_information_frame_metrics(frame):
+    metrics = reference_tail_metrics([frame])
+    return {
+        "saturation": float(metrics["meanSaturation"]),
+        "entropy": float(metrics["meanEntropy"]),
+        "edgeDensity": float(metrics["meanEdgeDensity"]),
+    }
+
+
+def is_low_information_tail_frame(metrics):
+    return (
+        float(metrics["saturation"]) <= 0.050
+        and float(metrics["entropy"]) <= 0.350
+        and float(metrics["edgeDensity"]) <= 0.060
+    )
+
+
 def classify_static_tail_artifact(shot, previous_shot, source_duration_ms):
     metrics = shot.get("_tailMetrics", {})
     previous = previous_shot.get("_tailMetrics", {})
@@ -227,6 +244,85 @@ def classify_static_tail_artifact(shot, previous_shot, source_duration_ms):
             metrics_ref,
             f"practice-tail-artifact-confidence:{confidence:.6f}",
         ],
+    }
+
+
+def classify_partial_static_tail_artifact(
+    reader, shot, previous_shot, source_duration_ms, minimum_shot_ms
+):
+    start_ms = float(shot["referenceStartMs"])
+    end_ms = float(shot["referenceEndMs"])
+    duration_ms = end_ms - start_ms
+    start_fraction = start_ms / max(float(source_duration_ms), 1.0)
+    if duration_ms < 1500.0 or start_fraction < 0.55:
+        return None
+
+    step_ms = 200.0
+    sample_start = max(start_ms, end_ms - 5000.0)
+    samples = []
+    time_ms = sample_start
+    while time_ms < end_ms - (step_ms * 0.25):
+        frame = reader.read_ms(time_ms)
+        if frame is not None:
+            metrics = low_information_frame_metrics(frame)
+            samples.append({
+                "timeMs": float(time_ms),
+                "metrics": metrics,
+                "lowInformation": is_low_information_tail_frame(metrics),
+            })
+        time_ms += step_ms
+    if len(samples) < 6:
+        return None
+
+    run_start = len(samples)
+    while run_start > 0 and samples[run_start - 1]["lowInformation"]:
+        run_start -= 1
+    if len(samples) - run_start < 5:
+        return None
+
+    suffix_start_ms = max(start_ms, samples[run_start]["timeMs"] - (step_ms * 0.5))
+    if end_ms - suffix_start_ms < 1000.0:
+        return None
+    previous = previous_shot.get("_tailMetrics", {})
+    preceding = samples[run_start - 1]["metrics"] if run_start > 0 else None
+    preceding_content_signal = (
+        (
+            preceding is not None
+            and (
+                float(preceding["saturation"]) >= 0.120
+                or float(preceding["entropy"]) >= 0.450
+                or float(preceding["edgeDensity"]) >= 0.060
+            )
+        )
+        or float(previous.get("meanMotion", 0.0)) >= 0.020
+        or float(previous.get("meanSaturation", 0.0)) >= 0.120
+        or float(previous.get("meanEntropy", 0.0)) >= 0.450
+    )
+    if not preceding_content_signal:
+        return None
+
+    retained_prefix_ms = suffix_start_ms - start_ms
+    exclusion_start_ms = (
+        start_ms if retained_prefix_ms < float(minimum_shot_ms) else suffix_start_ms
+    )
+    low_count = len(samples) - run_start
+    confidence = clamp01(0.90 + min(0.08, 0.01 * low_count))
+    artifact = {
+        "kind": "STATIC_LOW_INFORMATION_TAIL",
+        "referenceStartMs": float(exclusion_start_ms),
+        "referenceEndMs": end_ms,
+        "confidence": confidence,
+        "evidenceRefs": [
+            *shot["evidenceRefs"],
+            f"practice-tail-suffix-detected-ms:{suffix_start_ms:.3f}",
+            f"practice-tail-suffix-low-information-samples:{low_count}",
+            f"practice-tail-artifact-confidence:{confidence:.6f}",
+        ],
+    }
+    return {
+        "artifact": artifact,
+        "contentEndMs": float(exclusion_start_ms),
+        "detectedSuffixStartMs": float(suffix_start_ms),
     }
 
 
@@ -356,6 +452,7 @@ class FrameReader:
         self.capture = open_video_capture(self.path, "video")
         self.fps, self.frame_count, self.width, self.height, self.duration_ms = video_metadata(self.capture)
         self.cache = {}
+        self.cache_limit = 64
 
     def close(self):
         self.capture.release()
@@ -371,6 +468,8 @@ class FrameReader:
             return None
         frame = resize_longest(frame)
         self.cache[key] = frame
+        if len(self.cache) > self.cache_limit:
+            self.cache.pop(next(iter(self.cache)))
         return frame
 
 
@@ -1002,6 +1101,49 @@ def analyze_reference(video_path, reference_id, output_path, cut_threshold, mini
         content_duration_ms = float(shots[-1]["referenceStartMs"])
         shots.pop()
 
+    if len(shots) >= 2:
+        tail_reader = FrameReader(video_path)
+        try:
+            partial = classify_partial_static_tail_artifact(
+                tail_reader, shots[-1], shots[-2], duration_ms, minimum_shot_ms
+            )
+            if partial is not None:
+                artifact = partial["artifact"]
+                content_end_ms = float(partial["contentEndMs"])
+                current = shots[-1]
+                if content_end_ms <= float(current["referenceStartMs"]):
+                    shots.pop()
+                else:
+                    anchor_frames = []
+                    anchors = []
+                    for time_ms in interior_anchor_times(
+                        float(current["referenceStartMs"]), content_end_ms
+                    ):
+                        frame = tail_reader.read_ms(time_ms)
+                        if frame is None:
+                            continue
+                        anchors.append({
+                            "timeMs": float(time_ms),
+                            "descriptor": frame_descriptor(frame),
+                        })
+                        anchor_frames.append(frame)
+                    if not anchors:
+                        raise RuntimeError(
+                            "Partial tail exclusion left content without reference anchors."
+                        )
+                    current["referenceEndMs"] = content_end_ms
+                    current["anchors"] = anchors
+                    current["_tailMetrics"] = reference_tail_metrics(anchor_frames)
+                    current["evidenceRefs"] = [
+                        f"reference-video:sha256:{sha256_file(video_path)}",
+                        f"reference-range-ms:{round(current['referenceStartMs'])}-{round(content_end_ms)}",
+                        f"practice-reference-tail-trimmed-at-ms:{content_end_ms:.3f}",
+                    ]
+                excluded_ranges.insert(0, artifact)
+                content_duration_ms = content_end_ms
+        finally:
+            tail_reader.close()
+
     if not shots:
         raise RuntimeError("Reference analysis excluded every shot; refusing an empty Practice target.")
     for shot in shots:
@@ -1578,11 +1720,24 @@ def refine_candidate(shot, candidate, reference_reader, source_reader, local_ref
     return enriched_best
 
 
-def framing_for_reference_space(candidate, reference_frame, source_frame, geometry_support):
+def framing_for_reference_space(
+    candidate,
+    reference_frame,
+    source_frame,
+    geometry_support,
+    reference_original_width=None,
+    reference_original_height=None,
+    source_original_width=None,
+    source_original_height=None,
+):
     if candidate is None:
         return None
-    reference_height, reference_width = reference_frame.shape[:2]
-    source_height, source_width = source_frame.shape[:2]
+    proxy_reference_height, proxy_reference_width = reference_frame.shape[:2]
+    proxy_source_height, proxy_source_width = source_frame.shape[:2]
+    reference_width = int(reference_original_width or proxy_reference_width)
+    reference_height = int(reference_original_height or proxy_reference_height)
+    source_width = int(source_original_width or proxy_source_width)
+    source_height = int(source_original_height or proxy_source_height)
     reference_longest = float(max(reference_width, reference_height))
     source_longest = float(max(source_width, source_height))
     if reference_longest <= 0 or source_longest <= 0:
@@ -1912,6 +2067,10 @@ def mapping_geometric_proof(
             reference_frame,
             source_frame,
             item.get("geometrySupport", 0.0),
+            reference_reader.width,
+            reference_reader.height,
+            source_reader.width,
+            source_reader.height,
         )
         item = {
             **item,

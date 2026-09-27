@@ -1508,7 +1508,7 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.equal(benchmark.objectAwareVerified, false);
 });
 
-test("M6 Practice seeds a new reference with transferable Edit Type corrections", async () => {
+test("M6 Practice keeps transferable Edit Type corrections advisory under the original M6 reference-first route", async () => {
   const family = classifyEffectFamilyV1(referenceEvidence);
   assert.notEqual(family, "UNKNOWN");
   const anatomy = deriveEffectAnatomyV1(referenceEvidence, family);
@@ -1636,12 +1636,13 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
   assert.equal(capturedPrepareAttempt.subjectMotionTracks[0].sampleCount, 7);
   assert.ok(capturedRequest);
   assert.equal(capturedRequest.risk, "HIGH");
-  assert.match(capturedRequest.learnedTechniqueId, /^edit-type:/);
-  assert.ok(capturedRequest.learnedGraph);
+  assert.equal(capturedRequest.learnedTechniqueId, undefined);
+  assert.equal(capturedRequest.learnedGraph, undefined);
   assert.ok(
     capturedRequest.evidenceRefs.some((item) =>
-      item === "practice-edit-type-transferred-patches:1"),
+      item === "practice-edit-type-available-patches:1"),
   );
+  assert.ok(capturedRequest.evidenceRefs.includes("practice-original-m6-reference-first-route"));
   assert.ok(capturedRequest.evidenceRefs.includes("audio:beat-aware:grid"));
   assert.ok(capturedRequest.evidenceRefs.includes(
     "practice-subject-motion-tracks-before-effect:1",
@@ -1676,10 +1677,28 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
       .includes("REFERENCE_EFFECT_ANCHOR_ON_BEAT"),
   );
 
-  const learnedNode = capturedRequest.learnedGraph.nodes
-    .find((item) => item.nodeId === nodeId);
-  assert.ok(learnedNode);
-  assert.ok(learnedNode.parameters[invariant.metric] > prior);
+  assert.ok(
+    reconstruction.decisionTraces[0].rationaleCodes
+      .includes("EDIT_TYPE_TRANSFER_AVAILABLE_NOT_GOVERNING_M6"),
+  );
+});
+
+test("M6 whole-edit adapter composition is explicit deterministic-proof-only", () => {
+  assert.throws(
+    () => composePracticeM6ExecutionAdaptersV1(
+      {
+        async reconstruct() { throw new Error("not used"); },
+        async evaluate() { throw new Error("not used"); },
+      },
+      {
+        async analyzeFinish() { throw new Error("not used"); },
+        async indexStart() { throw new Error("not used"); },
+        async matchScenes() { return []; },
+        async buildContentBaseline() { throw new Error("not used"); },
+      },
+    ),
+    /whole-edit reconstruction is proof-only/i,
+  );
 });
 
 test("M6 Practice composition preserves raw-audio matching", async () => {
@@ -1702,6 +1721,7 @@ test("M6 Practice composition preserves raw-audio matching", async () => {
       async matchAudio() { return expected; },
       async buildContentBaseline() { throw new Error("not used"); },
     },
+    { deterministicProofOnly: true },
   );
   assert.equal(typeof adapters.matchAudio, "function");
   const actual = await adapters.matchAudio({});
@@ -2621,7 +2641,8 @@ test("GPT Practice assignment persists the full learning trajectory under its Ed
     knowledge: registry.knowledge("high-potency"),
   });
   assert.equal(assignment.status, "PENDING");
-  assert.match(assignment.chatMessage, /GPT is the orchestrator, creative reasoner, and learner/);
+  assert.match(assignment.chatMessage, /GPT is the session orchestrator, continuity owner, and escalation reasoner/);
+  assert.match(assignment.chatMessage, /original M6 Visual Effects Intelligence loop is the governing reference-driven/i);
   assert.match(assignment.chatMessage, /all editorial cutting, retiming, remodeling/i);
   assert.match(assignment.chatMessage, /OBSERVATION -> INTERPRETATION -> HYPOTHESIS/);
   assert.match(assignment.chatMessage, /C:\\Media\\finish\.mp4/);

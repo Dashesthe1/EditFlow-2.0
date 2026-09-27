@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,8 @@ import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/pa
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { LocalFastRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/local-fast-runtime.js";
 import { CurrentAeTransactionRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
+import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
+import { resolvePracticeStatePathsV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-state-paths.js";
 import { EditGptStabilizationVisualDriverV1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-editgpt-stabilization-visual-driver.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
@@ -32,10 +34,11 @@ const broker = new LoopbackCepBroker({
 await broker.start();
 const panel = await broker.waitForPanel(15_000);
 let requestCounter = 0;
+const filesystemPolicy = new AeFilesystemPolicyV11([process.env.USERPROFILE ?? repoRoot, repoRoot]);
 const client = new AeCepAdapterClientV11(
   broker,
   () => `shadow-current-${++requestCounter}`,
-  new AeFilesystemPolicyV11([process.env.USERPROFILE ?? repoRoot]),
+  filesystemPolicy,
 );
 const runtime = await LocalFastRuntimeV1.create(client, {
   projectId: "shadow-current-project",
@@ -80,10 +83,26 @@ const currentTransactionRuntime = new CurrentAeTransactionRuntimeV1(
     protocolV23Available: stabilizationProtocolAvailable,
     visualDriver: stabilizationVisualDriver,
   },
+  undefined,
+  filesystemPolicy,
 );
 const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
+
+const practiceStatePaths = resolvePracticeStatePathsV1();
+const practiceArtifactDir = path.join(repoRoot, "proofs", "artifacts", "practice-product");
+const practicePanel = new PracticePanelServerV1({
+  port: 0,
+  token: config.token,
+  repositoryRoot: repoRoot,
+  artifactDir: practiceArtifactDir,
+  learningMemoryFilePath: practiceStatePaths.learningMemoryFilePath,
+  editTypeRegistryFilePath: practiceStatePaths.editTypeRegistryFilePath,
+  broker,
+  renderTimeoutMs: 180_000,
+});
+await practicePanel.start();
 
 const MUTATION_LEASE_HEADER = "x-editflow-mutation-lease";
 const DEFAULT_MUTATION_LEASE_TTL_MS = 120_000;
@@ -122,12 +141,18 @@ const admitLeasedMutation = (req, res) => {
   return false;
 };
 
-const proofScriptRoot = path.resolve(repoRoot, "scripts", "windows");
+const proofScriptRoots = [
+  path.resolve(repoRoot, "scripts", "windows"),
+  path.resolve(repoRoot, "proofs", "artifacts"),
+];
 const resolveProofScript = async (value) => {
   if (typeof value !== "string" || value.length === 0) throw new Error("PROOF_SCRIPT_PATH_REQUIRED");
   const candidate = path.resolve(value);
-  const relative = path.relative(proofScriptRoot, candidate);
-  if (relative.startsWith("..") || path.isAbsolute(relative) || path.extname(candidate).toLowerCase() !== ".jsx") {
+  const allowed = proofScriptRoots.some((root) => {
+    const relative = path.relative(root, candidate);
+    return !relative.startsWith("..") && !path.isAbsolute(relative);
+  });
+  if (!allowed || path.extname(candidate).toLowerCase() !== ".jsx") {
     throw new Error("PROOF_SCRIPT_PATH_NOT_ALLOWED");
   }
   await readFile(candidate, "utf8");
@@ -168,6 +193,23 @@ const triageFailure = async (error, req, requestPath) => {
   return { error: errorText, stack, context: failureContext(req, requestPath), triage };
 };
 
+const proxyPracticeRequest = (req, res) => new Promise((resolve, reject) => {
+  const headers = { ...req.headers, host: `127.0.0.1:${practicePanel.port}` };
+  const upstream = httpRequest({
+    host: "127.0.0.1",
+    port: practicePanel.port,
+    path: req.url ?? "/",
+    method: req.method ?? "GET",
+    headers,
+  }, (upstreamResponse) => {
+    res.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
+    upstreamResponse.pipe(res);
+    upstreamResponse.on("end", resolve);
+  });
+  upstream.on("error", reject);
+  req.pipe(upstream);
+});
+
 const statusPayload = () => ({
   ok: true,
   service: "EditFlow Current Shadow Control",
@@ -178,14 +220,35 @@ const statusPayload = () => ({
   currentTransactionRuntime: currentTransactionRuntime.status(),
   mutationLease: mutationLeaseStatus(),
   panel: broker.panelSession ?? panel,
+  practiceService: {
+    integrated: true,
+    internalPort: practicePanel.port,
+    artifactDir: practiceArtifactDir,
+    stateDir: practiceStatePaths.stateDir,
+  },
   controlPlane: getMcpServerStatus(),
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
+
+const legacyControlRouteAliases = new Map([
+  ["/v1/product/control/observe", "/state"],
+  ["/v1/product/control/fast-refresh", "/state"],
+  ["/v1/product/control/status", "/status"],
+  ["/v1/product/control/run", "/run"],
+  ["/v1/product/control/run-batch", "/run-batch"],
+  ["/v1/product/control/execute", "/run-transaction"],
+  ["/v1/product/control/correction", "/run-correction-transaction"],
+]);
 
 const server = createServer(async (req, res) => {
   const requestPath = req.url ?? "/";
   try {
     const url = new URL(requestPath, "http://127.0.0.1");
+    url.pathname = legacyControlRouteAliases.get(url.pathname) ?? url.pathname;
+    if (url.pathname.startsWith("/v1/product/")) {
+      await proxyPracticeRequest(req, res);
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/mutation-lease") {
       sendJson(res, 200, { ok: true, lease: mutationLeaseStatus() });
       return;
@@ -308,14 +371,14 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/run-transaction") {
       const body = await readJson(req);
-      const result = await currentTransactionRuntime.execute(body.plan);
+      const result = await currentTransactionRuntime.execute(body?.plan ?? body);
       const ok = result.state === "COMMITTED";
       sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
       return;
     }
     if (req.method === "POST" && url.pathname === "/run-correction-transaction") {
       const body = await readJson(req);
-      const result = await currentTransactionRuntime.executeCorrection(body.plan);
+      const result = await currentTransactionRuntime.executeCorrection(body?.plan ?? body);
       const ok = result.state === "COMMITTED";
       sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
       return;
@@ -355,6 +418,7 @@ server.listen(32146, "127.0.0.1", () => {
 
 const shutdown = async () => {
   await new Promise((resolve) => server.close(() => resolve()));
+  await practicePanel.stop().catch(() => {});
   await broker.stop().catch(() => {});
   process.exit(0);
 };

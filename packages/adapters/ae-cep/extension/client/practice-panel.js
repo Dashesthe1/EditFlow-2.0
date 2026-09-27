@@ -57,6 +57,22 @@
     });
   }
 
+  function runConnectionPreflight() {
+    return productRequest("/v1/product/preflight", { method: "GET" })
+      .then(function (value) {
+        var preflight = value.preflight || {};
+        if (preflight.status === "READY") return preflight;
+        var checks = Array.isArray(preflight.checks) ? preflight.checks : [];
+        var failed = checks.filter(function (check) { return check.ready !== true; })
+          .map(function (check) { return check.id + ": " + check.detail; });
+        throw new Error(
+          "CONNECTION_PREFLIGHT_BLOCKED: "
+            + (failed.length ? failed.join(" ") : "Full GPT-to-AE connection chain is not ready.")
+            + " GPT must use Desktop Commander to repair the failed connection legs, then rerun preflight."
+        );
+      });
+  }
+
   function basename(filePath) {
     return filePath.replace(/\\/g, "/").split("/").pop() || filePath;
   }
@@ -634,21 +650,27 @@
     hideReviewTools();
     var effectiveRole = effectivePracticeRole();
     setRunState(
-      "WAITING_FOR_GPT",
-      effectiveRole === "HELD_OUT_CERTIFICATION"
-        ? "Validating unseen media and creating a frozen held-out certification assignment…"
-        : "Validating media and creating a GPT Practice learning assignment…"
+      "PREFLIGHT",
+      "Connection preflight: verifying EditFlow bridge, CEP panel, and live After Effects readback before Practice can start…"
     );
     actionEl.disabled = true;
-    productRequest("/v1/product/practice", {
-      method: "POST",
-      body: JSON.stringify({
-        editTypeId: selectedEditType(),
-        practiceRole: selectedPracticeRole(),
-        finishPath: finishPath,
-        videoPaths: videos,
-        audioPaths: audio
-      })
+    runConnectionPreflight().then(function () {
+      setRunState(
+        "WAITING_FOR_GPT",
+        effectiveRole === "HELD_OUT_CERTIFICATION"
+          ? "Connection preflight passed. Validating unseen media and creating a frozen held-out certification assignment…"
+          : "Connection preflight passed. Validating media and creating a GPT Practice learning assignment…"
+      );
+      return productRequest("/v1/product/practice", {
+        method: "POST",
+        body: JSON.stringify({
+          editTypeId: selectedEditType(),
+          practiceRole: selectedPracticeRole(),
+          finishPath: finishPath,
+          videoPaths: videos,
+          audioPaths: audio
+        })
+      });
     }).then(function (value) {
       activeRunId = value.run.sessionId;
       updateAction();
@@ -674,16 +696,22 @@
     hideReviewTools();
     actionEl.disabled = true;
     setRunState(
-      "WAITING_FOR_GPT",
-      "Loading the Edit Type's mastered Practice knowledge and creating a GPT Pro Creation assignment…"
+      "PREFLIGHT",
+      "Connection preflight: verifying EditFlow bridge, CEP panel, and live After Effects readback before Pro Creation can start…"
     );
-    productRequest("/v1/product/pro-creation", {
-      method: "POST",
-      body: JSON.stringify({
-        editTypeId: selectedEditType(),
-        videoPaths: videos,
-        audioPaths: audio
-      })
+    runConnectionPreflight().then(function () {
+      setRunState(
+        "WAITING_FOR_GPT",
+        "Connection preflight passed. Loading the Edit Type's mastered Practice knowledge and creating a GPT Pro Creation assignment…"
+      );
+      return productRequest("/v1/product/pro-creation", {
+        method: "POST",
+        body: JSON.stringify({
+          editTypeId: selectedEditType(),
+          videoPaths: videos,
+          audioPaths: audio
+        })
+      });
     }).then(function (value) {
       activeRunId = value.run.sessionId;
       updateAction();

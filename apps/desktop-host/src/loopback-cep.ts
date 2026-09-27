@@ -203,6 +203,7 @@ const negotiateProtocol = (offered: readonly string[], supported: readonly strin
 export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransportV12, AeCompositeTransportV13, AeParentingTransportV14, AeNullRigTransportV15, AeLayerControlsTransportV16, AeTemporalInterpolationTransportV17, AeTemporalEaseTransportV18, AeSpatialGraphTransportV19, AeMarkerMotionTransportV20, AePointTrackingTransportV21, AeFaceTrackingTransportV22, AeStabilizationTransportV23, AeTrackerRepairTransportV24, AeMediaSequenceTransportV25, AeRotoBrushTransportV26, AeTimeRemapTransportV27 {
   readonly options: Required<LoopbackCepBrokerOptions>;
   #server: Server | null = null;
+  #startPromise: Promise<number> | null = null;
   #port = 0;
   #session: LoopbackCepPanelSession | null = null;
   #pending = new Map<string, PendingCommand>();
@@ -239,22 +240,32 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
 
   async start(): Promise<number> {
     if (this.#server !== null) return this.#port;
-    const server = createServer((req, res) => { void this.#handle(req, res); });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(this.options.port, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
+    if (this.#startPromise !== null) return await this.#startPromise;
+
+    this.#startPromise = (async () => {
+      const server = createServer((req, res) => { void this.#handle(req, res); });
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(this.options.port, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
       });
-    });
-    const address = server.address() as AddressInfo | null;
-    if (address === null || address.address !== "127.0.0.1") {
-      server.close();
-      throw new Error("Loopback CEP broker failed to bind exclusively to 127.0.0.1.");
+      const address = server.address() as AddressInfo | null;
+      if (address === null || address.address !== "127.0.0.1") {
+        server.close();
+        throw new Error("Loopback CEP broker failed to bind exclusively to 127.0.0.1.");
+      }
+      this.#server = server;
+      this.#port = address.port;
+      return this.#port;
+    })();
+
+    try {
+      return await this.#startPromise;
+    } finally {
+      this.#startPromise = null;
     }
-    this.#server = server;
-    this.#port = address.port;
-    return this.#port;
   }
 
   async stop(): Promise<void> {

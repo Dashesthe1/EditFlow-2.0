@@ -38,7 +38,9 @@ import {
   type PracticeMasteryRecordV1,
   type PracticeMasteryScopeV1,
   type PracticeMediaInputV1,
+  type PracticeSceneMatchV1,
   type PracticeRunRoleV1,
+  validatePracticeWorkingMediaMatchesV1,
   type PracticeSessionResultV1,
   type PracticeSkillUseAttestationV1,
   type ProCreationPreparationResultV1,
@@ -52,6 +54,7 @@ import {
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
+import { createPracticeM6CurrentAeAssemblyV1 } from "./practice-training-runtime.js";
 import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
 import {
   recertifyPracticeRobustManifestV1,
@@ -117,6 +120,20 @@ export interface PracticePanelRunSnapshotV1 {
   readonly humanReview: PracticeHumanReviewV1 | null;
   readonly finalSummary: string | null;
   readonly error: string | null;
+}
+
+export interface PracticeConnectionPreflightCheckV1 {
+  readonly id: "PRODUCT_SERVICE" | "CEP_BROKER" | "CEP_PANEL" | "AFTER_EFFECTS_READBACK";
+  readonly ready: boolean;
+  readonly detail: string;
+}
+
+export interface PracticeConnectionPreflightV1 {
+  readonly schema: "editflow.connection-preflight.v1";
+  readonly status: "READY" | "BLOCKED";
+  readonly checkedAt: string;
+  readonly repairPolicy: "GPT_AUTO_REPAIR_THEN_RESUME";
+  readonly checks: readonly PracticeConnectionPreflightCheckV1[];
 }
 
 interface PracticeRunBody {
@@ -197,6 +214,7 @@ export interface PracticeHeldOutMaterialFingerprintV1 {
   readonly finishReusedAsStart?: boolean;
   readonly duplicateStartPerceptualMedia?: boolean;
   readonly sceneCompatibility?: PracticeSceneCompatibilityV1;
+  readonly sceneMatches?: readonly PracticeSceneMatchV1[];
 }
 
 const sha256FileStream = async (filePath: string): Promise<string> =>
@@ -271,6 +289,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
 
   const matcher = new LocalPracticeMediaMatcherV1({
     artifactDir: path.join(input.artifactDir, "media"),
+    materializeWorkingMedia: true,
     analysisCacheDir: path.join(
       input.repositoryRoot,
       "proofs",
@@ -314,6 +333,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
         practicePerceptualSignatureMatchesV1(value, other)));
 
   let sceneCompatibility: PracticeSceneCompatibilityV1 | undefined;
+  let sceneMatches: readonly PracticeSceneMatchV1[] | undefined;
   if (input.exactSceneConfidence !== undefined) {
     if (!Number.isFinite(input.exactSceneConfidence)
       || input.exactSceneConfidence < 0
@@ -325,6 +345,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
       sourceIndex,
       minimumConfidence: input.exactSceneConfidence,
     });
+    sceneMatches = matches;
     const shotIds = reference.shots.map((shot) => shot.shotId);
     const reasons = validatePracticeSceneMatchesV1(
       shotIds,
@@ -395,6 +416,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
     sourcePerceptualSignatures,
     duplicateStartPerceptualMedia,
     ...(sceneCompatibility === undefined ? {} : { sceneCompatibility }),
+    ...(sceneMatches === undefined ? {} : { sceneMatches: structuredClone(sceneMatches) }),
   };
 };
 
@@ -1072,6 +1094,79 @@ export class PracticePanelServerV1 {
     return await this.#fastRuntimePromise;
   }
 
+  async #connectionPreflight(): Promise<PracticeConnectionPreflightV1> {
+    const checks: PracticeConnectionPreflightCheckV1[] = [{
+      id: "PRODUCT_SERVICE",
+      ready: this.isStarted,
+      detail: this.isStarted
+        ? "Practice product service is listening."
+        : "Practice product service is not listening.",
+    }];
+    checks.push({
+      id: "CEP_BROKER",
+      ready: this.config.broker.isStarted,
+      detail: this.config.broker.isStarted
+        ? "EditFlow CEP broker is listening on 127.0.0.1:" + String(this.config.broker.port) + "."
+        : "EditFlow CEP broker is not listening.",
+    });
+    const panel = this.config.broker.panelSession;
+    checks.push({
+      id: "CEP_PANEL",
+      ready: panel !== null,
+      detail: panel === null
+        ? "After Effects CEP panel is missing or stale."
+        : "After Effects CEP panel is live; protocol=" + panel.protocolVersion
+          + " extension=" + panel.extensionVersion + ".",
+    });
+
+    if (this.config.broker.isStarted && panel !== null) {
+      try {
+        const state = await this.#transactionRuntime.observe();
+        checks.push({
+          id: "AFTER_EFFECTS_READBACK",
+          ready: true,
+          detail: "Live After Effects readback succeeded; revision=" + state.projectRevision + ".",
+        });
+      } catch (error) {
+        checks.push({
+          id: "AFTER_EFFECTS_READBACK",
+          ready: false,
+          detail: "Live After Effects readback failed: "
+            + (error instanceof Error ? error.message : String(error)),
+        });
+      }
+    } else {
+      checks.push({
+        id: "AFTER_EFFECTS_READBACK",
+        ready: false,
+        detail: "Live After Effects readback was not attempted because the CEP path is not ready.",
+      });
+    }
+
+    return {
+      schema: "editflow.connection-preflight.v1",
+      status: checks.every((check) => check.ready) ? "READY" : "BLOCKED",
+      checkedAt: new Date().toISOString(),
+      repairPolicy: "GPT_AUTO_REPAIR_THEN_RESUME",
+      checks,
+    };
+  }
+
+  async #requireConnectionPreflight(): Promise<PracticeConnectionPreflightV1> {
+    const preflight = await this.#connectionPreflight();
+    if (preflight.status === "READY") return preflight;
+    const failed = preflight.checks
+      .filter((check) => !check.ready)
+      .map((check) => check.id + ": " + check.detail)
+      .join(" ");
+    throw new HttpError(
+      409,
+      "CONNECTION_PREFLIGHT_BLOCKED: " + failed
+        + " GPT must automatically pause assignment work, use Desktop Commander to restore the failed connection legs, "
+        + "rerun the full preflight, verify READY, and then resume from the last safe checkpoint without waiting for user confirmation. No assignment was created.",
+    );
+  }
+
   #setHeaders(res: ServerResponse): void {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -1248,11 +1343,14 @@ export class PracticePanelServerV1 {
 
   async #startPractice(body: Record<string, unknown>): Promise<PracticePanelRunSnapshotV1> {
     if (this.#activeRunId !== null) {
+      const active = this.#runs.get(this.#activeRunId);
+      if (active?.mode === "PRACTICE"
+        && !["CANCELLED", "COMPLETED", "FAILED"].includes(active.state)) {
+        return await this.#syncRun(active.sessionId);
+      }
       throw new HttpError(409, "EditFlow run already active: " + this.#activeRunId);
     }
-    if (this.config.broker.panelSession === null) {
-      throw new HttpError(409, "After Effects CEP panel is not connected.");
-    }
+    await this.#requireConnectionPreflight();
     const request = await this.#parsePractice(body);
     const editTypesFile = await this.#editTypes();
     const registry = await editTypesFile.load();
@@ -1313,11 +1411,14 @@ export class PracticePanelServerV1 {
         ? {}
         : { ffmpegPath: this.config.ffmpegPath }),
     });
-    const compatibilityReasons = validatePracticePreAeSceneCompatibilityV1({ material });
+    const compatibilityReasons = [...new Set([
+      ...validatePracticePreAeSceneCompatibilityV1({ material }),
+      ...validatePracticeWorkingMediaMatchesV1(material.sceneMatches ?? []),
+    ])];
     if (compatibilityReasons.length > 0) {
       throw new HttpError(
         409,
-        "Practice Start footage does not exactly cover the retained Finish scenes; AE work was not started. "
+        "Practice Start footage is not ready for bounded AE reconstruction; AE work was not started. "
           + compatibilityReasons.join(" "),
       );
     }
@@ -1358,6 +1459,7 @@ export class PracticePanelServerV1 {
       editTypeId: editType.editTypeId,
       finish,
       start,
+      practiceSceneMatches: material.sceneMatches ?? null,
       practicePolicy: {
         ...(request.minimumSimilarity === undefined
           ? {}
@@ -1883,9 +1985,7 @@ export class PracticePanelServerV1 {
     if (this.#activeRunId !== null) {
       throw new HttpError(409, "EditFlow run already active: " + this.#activeRunId);
     }
-    if (this.config.broker.panelSession === null) {
-      throw new HttpError(409, "After Effects CEP panel is not connected.");
-    }
+    await this.#requireConnectionPreflight();
     const request: ProCreationBody = {
       editTypeId: requiredString(body, "editTypeId"),
       videoPaths: await Promise.all(
@@ -1999,6 +2099,101 @@ export class PracticePanelServerV1 {
         });
         return;
       }
+      if (req.method === "GET" && url.pathname === "/v1/product/preflight") {
+        jsonResponse(res, 200, { preflight: await this.#connectionPreflight() });
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/v1/product/control/observe") {
+        jsonResponse(res, 200, {
+          state: await this.#transactionRuntime.observe(),
+          runtime: this.#transactionRuntime.status(),
+        });
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/v1/product/control/fast-refresh") {
+        const runtime = await this.#ensureFastRuntime();
+        jsonResponse(res, 200, {
+          state: await runtime.refresh(),
+          runtime: runtime.status(),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/product/control/run") {
+        const body = await readJson(req);
+        const runtime = await this.#ensureFastRuntime();
+        const transactionId = optionalString(body, "transactionId")
+          ?? "practice-fast-" + String(Date.now());
+        const goal = body["goal"] as Parameters<LocalFastRuntimeV1["runGoal"]>[0];
+        jsonResponse(res, 200, {
+          result: await runtime.runGoal(goal, transactionId),
+          runtime: runtime.status(),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/product/control/run-batch") {
+        const body = await readJson(req);
+        const runtime = await this.#ensureFastRuntime();
+        const transactionId = optionalString(body, "transactionId")
+          ?? "practice-batch-" + String(Date.now());
+        const intents = body["intents"] as Parameters<LocalFastRuntimeV1["runRoutineBatch"]>[0];
+        jsonResponse(res, 200, {
+          result: await runtime.runRoutineBatch(intents, transactionId),
+          runtime: runtime.status(),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/product/control/build-baseline") {
+        const body = await readJson(req);
+        const referenceAnalysisPath = await ensureFile(
+          requiredString(body, "referenceAnalysisPath"),
+          "Practice reference analysis",
+        );
+        const sceneMatchPath = await ensureFile(
+          requiredString(body, "sceneMatchPath"),
+          "Practice scene-match packet",
+        );
+        const audioMatchPath = await ensureFile(
+          requiredString(body, "audioMatchPath"),
+          "Practice audio-match packet",
+        );
+        const artifactDir = path.resolve(requiredString(body, "artifactDir"));
+        const reference = JSON.parse(await readFile(referenceAnalysisPath, "utf8")) as any;
+        const scenePacket = JSON.parse(await readFile(sceneMatchPath, "utf8")) as any;
+        const audioMatch = JSON.parse(await readFile(audioMatchPath, "utf8")) as any;
+        const matches = Array.isArray(scenePacket) ? scenePacket : scenePacket.matches;
+        if (!Array.isArray(matches)) throw new HttpError(400, "Scene-match packet is missing matches.");
+        const assembly = createPracticeM6CurrentAeAssemblyV1({
+          transport: this.config.broker,
+          projectId: "practice-gpt-controller",
+          repositoryRoot: this.config.repositoryRoot,
+          artifactDir,
+          mediaRoots: [process.env.USERPROFILE ?? this.config.repositoryRoot],
+          ...(this.config.ffmpegPath === undefined ? {} : { ffmpegPath: this.config.ffmpegPath }),
+          ...(this.config.renderTimeoutMs === undefined ? {} : { renderTimeoutMs: this.config.renderTimeoutMs }),
+        });
+        const baseline = await assembly.baselineBuilder.buildContentBaseline({
+          reference,
+          matches,
+          audioMatch,
+        });
+        jsonResponse(res, 200, {
+          baseline,
+          plan: assembly.baselineBuilder.plan(baseline.baselineId),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/product/control/execute") {
+        jsonResponse(res, 200, {
+          result: await this.#transactionRuntime.execute(await readJson(req)),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/product/control/correction") {
+        jsonResponse(res, 200, {
+          result: await this.#transactionRuntime.executeCorrection(await readJson(req)),
+        });
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/v1/product/edit-types") {
         const file = await this.#editTypes();
         const registry = await file.load();
@@ -2090,8 +2285,18 @@ export class PracticePanelServerV1 {
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/product/gpt/assignments/next") {
-        const assignments = await this.#gptStore.listAssignments({ statuses: ["PENDING"] });
-        jsonResponse(res, 200, { assignment: assignments[0] ?? null });
+        const resumable = await this.#gptStore.listAssignments({
+          statuses: ["RUNNING", "CANCEL_REQUESTED"],
+        });
+        const pending = resumable.length > 0
+          ? []
+          : await this.#gptStore.listAssignments({ statuses: ["PENDING"] });
+        const assignment = resumable[0] ?? pending[0] ?? null;
+        jsonResponse(res, 200, {
+          assignment,
+          resumeRequired: assignment !== null
+            && (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED"),
+        });
         return;
       }
       const assignmentGetMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)$/.exec(url.pathname);

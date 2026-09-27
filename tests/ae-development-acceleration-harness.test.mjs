@@ -64,7 +64,9 @@ test("only the exact AfterFX launch is detached from GitHub job orphan tracking"
   assert.ok(runner.includes("function Start-WarmAfterFx"));
   assert.ok(runner.includes('$PreviousTrackingId = $env:RUNNER_TRACKING_ID'));
   assert.ok(runner.includes('$env:RUNNER_TRACKING_ID = ""'));
-  assert.ok(runner.includes('Start-Process -FilePath $ExpectedPath -PassThru'));
+  assert.ok(runner.includes('Join-Path $env:USERPROFILE "Downloads\\Open Template.aep"'));
+  assert.ok(runner.includes('$ResolvedProjectPath = (Resolve-Path $DefaultAeProjectPath).Path'));
+  assert.ok(runner.includes('Start-Process -FilePath $ExpectedPath -ArgumentList $ProjectArgument -PassThru'));
   assert.ok(runner.includes('$env:RUNNER_TRACKING_ID = $PreviousTrackingId'));
 
   const warmLaunchCall = "Start-WarmAfterFx -ExpectedPath $AfterFxPath";

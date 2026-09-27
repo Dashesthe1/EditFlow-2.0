@@ -6,6 +6,15 @@ const cliPath = "apps/desktop-host/src/practice-live-cli.ts";
 const runnerPath = "scripts/windows/run-practice-live-proof.ps1";
 const openerPath = "scripts/windows/open-editflow-bridge.jsx";
 
+test("Practice deterministic live CLI is proof-only and cannot become normal Practice", async () => {
+  const cli = await readFile(cliPath, "utf8");
+  const runner = await readFile(runnerPath, "utf8");
+
+  assert.match(cli, /--deterministic-proof/);
+  assert.match(cli, /Normal Practice must use the GPT orchestration assignment path/);
+  assert.match(runner, /"--deterministic-proof"/);
+});
+
 test("Practice live runner defaults to canonical persistent state with an explicit override", async () => {
   const source = await readFile(runnerPath, "utf8");
 
@@ -102,6 +111,18 @@ test("Practice live learning allocation persists machine mastery before held-out
   assert.match(runner, /Learning mastery scope/);
   assert.match(runner, /Learning mastery proof/);
   assert.match(runner, /Learning mastery restored/);
+});
+
+test("Practice live runner claims a single-session lock before expensive media analysis", async () => {
+  const source = await readFile(cliPath, "utf8");
+  const lockIndex = source.indexOf("acquirePracticeLiveRunnerLock(stateDir, sessionId)");
+  const fingerprintIndex = source.indexOf("fingerprintPracticeHeldOutMaterialV1({");
+  assert.ok(lockIndex >= 0, "Practice live runner lock must be present");
+  assert.ok(fingerprintIndex >= 0, "media fingerprint preflight must be present");
+  assert.ok(lockIndex < fingerprintIndex, "runner lock must be acquired before media analysis");
+  assert.match(source, /practice-live-runner\.lock/);
+  assert.match(source, /PRACTICE_LIVE_SESSION_LOCKED/);
+  assert.match(source, /runnerLock\?\.release\(\)/);
 });
 
 test("Practice live media preflight runs before CEP/AE connection", async () => {

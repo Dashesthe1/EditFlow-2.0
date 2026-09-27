@@ -87,6 +87,7 @@ try {
 
   $NodeArgs = @(
     $Cli,
+    "--deterministic-proof",
     "--config", $ConfigPath,
     "--repository-root", $RepoRoot,
     "--artifact-dir", $ArtifactDir,

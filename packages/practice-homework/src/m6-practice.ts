@@ -1090,12 +1090,6 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       const result = await this.brain.run({
         requestId: `${input.sessionId}:attempt:${input.attempt}:${window.windowId}`,
         risk: "HIGH",
-        ...(learned === null
-          ? {}
-          : {
-            learnedTechniqueId: `edit-type:${input.editTypeId}:${family}`,
-            learnedGraph: learned.graph,
-          }),
         referenceEvidence: window.evidence,
         availableCapabilities: this.runtime.availableCapabilities,
         evidenceRefs: [
@@ -1129,7 +1123,10 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           ]),
           ...(learned === null
             ? []
-            : [`practice-edit-type-transferred-patches:${learned.patches.length}`]),
+            : [
+              `practice-edit-type-available-patches:${learned.patches.length}`,
+              "practice-original-m6-reference-first-route",
+            ]),
         ],
         applyGraph: async (graph) => this.runtime.applyWindowGraph({
           sessionId: input.sessionId,
@@ -1234,7 +1231,9 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
             ] : []),
             ...(windowAnatomy.temporalCue.rewind === null ? [] : ["REFERENCE_REWIND_MEASURED"]),
           ]),
-          ...(learned === null ? [] : ["EDIT_TYPE_TRANSFER_APPLIED"]),
+          ...(learned === null
+            ? []
+            : ["EDIT_TYPE_TRANSFER_AVAILABLE_NOT_GOVERNING_M6"]),
         ],
         semanticPatches: result.correction?.learnedPatches ?? [],
       });
@@ -1359,13 +1358,28 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
   };
 }
 
+export interface PracticeM6ExecutionCompositionOptionsV1 {
+  /**
+   * Legacy M6-as-reconstructor wiring exists only for deterministic proof/certification.
+   * Normal Practice is GPT-orchestrated and must invoke M6 only for targeted FX/transition work.
+   */
+  readonly deterministicProofOnly: true;
+}
+
 export const composePracticeM6ExecutionAdaptersV1 = (
   bridge: PracticeM6ExecutionBridgeV1,
   other: Pick<
     PracticeHomeworkAdaptersV1,
     "analyzeFinish" | "indexStart" | "matchScenes" | "buildContentBaseline"
   > & Partial<Pick<PracticeHomeworkAdaptersV1, "matchAudio" | "recordEpisode">>,
-): PracticeHomeworkAdaptersV1 => ({
+  options: PracticeM6ExecutionCompositionOptionsV1,
+): PracticeHomeworkAdaptersV1 => {
+  if (options?.deterministicProofOnly !== true) {
+    throw new TypeError(
+      "M6 whole-edit reconstruction is proof-only; normal Practice must remain GPT-orchestrated.",
+    );
+  }
+  return {
   analyzeFinish: (finish) => other.analyzeFinish(finish),
   indexStart: (start) => other.indexStart(start),
   matchScenes: (input) => other.matchScenes(input),
@@ -1378,4 +1392,5 @@ export const composePracticeM6ExecutionAdaptersV1 = (
   ...(other.recordEpisode === undefined
     ? {}
     : { recordEpisode: (episode) => other.recordEpisode?.(episode) ?? Promise.resolve() }),
-});
+  };
+};

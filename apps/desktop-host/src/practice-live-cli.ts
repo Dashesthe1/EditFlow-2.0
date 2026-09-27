@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -9,6 +10,7 @@ import {
   buildPracticeMasteryRecordV1,
   type GptOrchestrationAssignmentV1,
   type PracticeMediaInputV1,
+  validatePracticeWorkingMediaMatchesV1,
 } from "../../../packages/practice-homework/src/index.js";
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
@@ -128,6 +130,127 @@ const writeJson = async (filePath: string, value: unknown): Promise<void> => {
 const isPanelRegistrationTimeout = (error: unknown): boolean =>
   error instanceof Error && error.message === "CEP_PANEL_REGISTRATION_TIMEOUT";
 
+interface PracticeLiveRunnerLock {
+  readonly lockPath: string;
+  readonly release: () => void;
+}
+
+const isProcessAlive = (pid: number): boolean => {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+const acquirePracticeLiveRunnerLock = async (
+  stateDir: string,
+  sessionId: string,
+): Promise<PracticeLiveRunnerLock> => {
+  await mkdir(stateDir, { recursive: true });
+  const lockPath = path.join(stateDir, "practice-live-runner.lock");
+  const owner = {
+    pid: process.pid,
+    sessionId,
+    startedAt: new Date().toISOString(),
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = openSync(lockPath, "wx");
+      try {
+        writeFileSync(fd, JSON.stringify(owner, null, 2) + "\n", "utf8");
+      } finally {
+        closeSync(fd);
+      }
+
+      let released = false;
+      const release = (): void => {
+        if (released) return;
+        released = true;
+        process.removeListener("exit", release);
+        try {
+          const current = JSON.parse(readFileSync(lockPath, "utf8")) as {
+            pid?: unknown;
+            sessionId?: unknown;
+          };
+          if (current.pid === process.pid && current.sessionId === sessionId) {
+            unlinkSync(lockPath);
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            // Exit cleanup must never mask the Practice result.
+          }
+        }
+      };
+      process.once("exit", release);
+      return { lockPath, release };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+
+      let existingPid: number | null = null;
+      let existingSessionId = "unknown";
+      try {
+        const existing = JSON.parse(readFileSync(lockPath, "utf8")) as {
+          pid?: unknown;
+          sessionId?: unknown;
+        };
+        if (typeof existing.pid === "number" && Number.isInteger(existing.pid)) {
+          existingPid = existing.pid;
+        }
+        if (typeof existing.sessionId === "string" && existing.sessionId.length > 0) {
+          existingSessionId = existing.sessionId;
+        }
+      } catch {
+        existingPid = null;
+      }
+
+      if (existingPid !== null && isProcessAlive(existingPid)) {
+        throw new Error(
+          "PRACTICE_LIVE_SESSION_LOCKED:pid=" + String(existingPid)
+          + ":sessionId=" + existingSessionId,
+        );
+      }
+
+      try {
+        unlinkSync(lockPath);
+      } catch (unlinkError) {
+        if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") throw unlinkError;
+      }
+    }
+  }
+
+  throw new Error("PRACTICE_LIVE_SESSION_LOCK_UNAVAILABLE");
+};
+
+const invokeAeTemplateLauncher = async (
+  launcherPath: string,
+  afterFxPath: string,
+  projectPath: string,
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("powershell.exe", [
+      "-NoLogo",
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", launcherPath,
+      "-AfterFxPath", afterFxPath,
+      "-ProjectPath", projectPath,
+    ], {
+      stdio: "ignore",
+      windowsHide: true,
+      detached: false,
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error("AE_TEMPLATE_LAUNCH_FAILED:exit=" + String(code)));
+    });
+  });
+};
+
 const invokeAePanelBootstrap = async (
   afterFxPath: string,
   panelBootstrapPath: string,
@@ -147,6 +270,11 @@ const invokeAePanelBootstrap = async (
 };
 
 const main = async (): Promise<void> => {
+  if (!hasFlag("--deterministic-proof")) {
+    throw new Error(
+      "practice-live-cli is proof-only. Normal Practice must use the GPT orchestration assignment path; deterministic M6 whole-edit reconstruction is disabled.",
+    );
+  }
   const configPath = path.resolve(requireArgument("--config"));
   const repositoryRoot = path.resolve(requireArgument("--repository-root"));
   const artifactDir = path.resolve(requireArgument("--artifact-dir"));
@@ -195,9 +323,40 @@ const main = async (): Promise<void> => {
   const panelBootstrapPath = panelBootstrapArgument === null
     ? null
     : await ensureFile(panelBootstrapArgument, "CEP panel bootstrap script");
+  const defaultAeProjectArgument = argument("--ae-project")
+    ?? process.env.EDITFLOW_AE_DEFAULT_PROJECT
+    ?? (process.env.USERPROFILE
+      ? path.join(process.env.USERPROFILE, "Downloads", "Open Template.aep")
+      : "");
+  const aeTemplateProjectPath = afterFxPath === null
+    ? null
+    : await ensureFile(defaultAeProjectArgument, "After Effects Open Template project");
+  const aeTemplateLauncherPath = afterFxPath === null
+    ? null
+    : await ensureFile(
+      path.join(repositoryRoot, "scripts", "windows", "open-after-effects-template.ps1"),
+      "After Effects template launcher",
+    );
   if ([minimumSimilarity, stretchSimilarity, exactSceneConfidence, minimumAudioConfidence]
     .some((value) => value > 1)) {
     throw new Error("Similarity/confidence arguments must be <= 1.");
+  }
+
+  let runnerLock: PracticeLiveRunnerLock | null = null;
+  try {
+    runnerLock = await acquirePracticeLiveRunnerLock(stateDir, sessionId);
+  } catch (error) {
+    const failedAt = new Date().toISOString();
+    await writeJson(resultPath, {
+      proofId: "PRACTICE_CURRENT_AE_LIVE_E2E_V1",
+      startedAt: failedAt,
+      completedAt: failedAt,
+      status: "FAILED",
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    process.exitCode = 1;
+    return;
   }
 
   const start: PracticeMediaInputV1[] = [
@@ -241,10 +400,13 @@ const main = async (): Promise<void> => {
     artifactDir,
     exactSceneConfidence,
   });
-  const compatibilityReasons = validatePracticePreAeSceneCompatibilityV1({ material });
+  const compatibilityReasons = [...new Set([
+    ...validatePracticePreAeSceneCompatibilityV1({ material }),
+    ...validatePracticeWorkingMediaMatchesV1(material.sceneMatches ?? []),
+  ])];
   if (compatibilityReasons.length > 0) {
     throw new Error(
-      "Practice Start footage does not exactly cover the retained Finish scenes; AE connection was not opened. "
+      "Practice Start footage is not ready for bounded AE reconstruction; AE connection was not opened. "
         + compatibilityReasons.join(" "),
     );
   }
@@ -286,6 +448,19 @@ const main = async (): Promise<void> => {
       throw new Error("CEP broker bound unexpected port " + String(boundPort) + ".");
     }
     const reconnectGraceMs = Math.min(2_000, Math.max(250, Math.floor(timeoutMs / 4)));
+    let aeTemplateLaunchInvoked = false;
+    if (
+      afterFxPath !== null
+      && aeTemplateProjectPath !== null
+      && aeTemplateLauncherPath !== null
+    ) {
+      await invokeAeTemplateLauncher(
+        aeTemplateLauncherPath,
+        afterFxPath,
+        aeTemplateProjectPath,
+      );
+      aeTemplateLaunchInvoked = true;
+    }
     let panelBootstrapInvoked = false;
     let panel = broker.panelSession;
     if (panel === null) {
@@ -573,7 +748,9 @@ const main = async (): Promise<void> => {
       panel,
       panelBootstrap: {
         invoked: panelBootstrapInvoked,
+        templateLaunchInvoked: aeTemplateLaunchInvoked,
         afterFxPath,
+        aeTemplateProjectPath,
         panelBootstrapPath,
       },
       sessionId,
@@ -637,6 +814,7 @@ const main = async (): Promise<void> => {
     process.exitCode = 1;
   } finally {
     if (broker !== null) await broker.stop();
+    runnerLock?.release();
   }
 };
 

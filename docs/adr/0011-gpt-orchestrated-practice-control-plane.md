@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted.
+**Superseded in part by the Original M6 Workflow Reset.**
+
+The durable assignment, persistence, cancellation, learning-memory, and proof-separation
+parts of this ADR remain accepted. The later decision that GPT itself is the governing
+creative reconstruction loop is superseded for reference-driven Practice and reference-
+driven effects/transitions.
 
 ## Context
 
@@ -10,18 +15,20 @@ Practice was initially implemented as a local deterministic reconstruction loop.
 That loop could analyze media, use M6 constructions, mutate After Effects, render,
 compare, and retry, but it made EditFlow code the creative decision-maker.
 
-The product requirement is different: GPT is the creative reasoner and learner.
-EditFlow Brain, visual analysis, typed AE transactions, and Desktop Commander are
-supporting Eyes, knowledge, Hands, and system control. Practice must preserve GPT's
-entire reasoning and correction trajectory under the selected Edit Type so Pro
-Creation can reuse successful development patterns and avoid known failures.
+The product still requires GPT supervision and durable learning, but the original M6
+roadmap is again the governing reference-driven production workflow. GPT owns session
+continuity, direct visual inspection when needed, escalation, tool/capability invocation,
+and learning. EditFlow Brain/M6 owns the reference-first effect loop from dense evidence
+through anatomy/DNA, construction/synthesis, local render, semantic comparison, bounded
+correction, and fidelity gating. Later systems support that loop rather than replacing it.
 
 ## Decision
 
-The Practice panel creates a durable editflow.gpt-orchestration-assignment.v1
-rather than starting the deterministic Practice engine as the governing loop.
-The assignment contains the mode, Edit Type, Start and Finish media, retained Edit
-Type knowledge, artifact directory, and a complete GPT editing brief.
+The Practice panel creates a durable `editflow.gpt-orchestration-assignment.v1` as
+the continuity/control record across ChatGPT conversations. The assignment is not a
+replacement governing edit loop. It contains the mode, Edit Type, Start and Finish media,
+retained knowledge, artifact directory, and a brief that requires the original M6
+reference-first workflow for reference-driven reconstruction.
 The authenticated Shadow connector exposes assignment discovery, claim, learning
 event recording, completion, failure, status, and cancellation operations. GPT uses
 the existing EditFlow perception and AE execution surfaces while recording events in
@@ -42,10 +49,28 @@ cancelled immediately. Running work moves to CANCEL_REQUESTED; GPT must stop at 
 safe checkpoint and acknowledge cancellation. Completion after a cancellation request
 resolves to CANCELLED, never mastered.
 
+### September 2026 architecture amendment — superseded by Original M6 reset
+
+Direct GPT observation of Finish/raw/rendered pixels remains an available inspection tool,
+and the bounded working-clip/source-provenance improvements remain active. What is
+superseded is the claim that GPT's free-form blueprint outranks the M6 reconstruction loop.
+
+For reference-driven Practice, the original M6 sequence is authoritative:
+scene understanding/editorial decision -> reference effect detection -> dense frame
+evidence -> anatomy/DNA -> causal knowledge -> construction hypothesis -> capability
+mapping/unknown synthesis -> Recipe Compiler/Virtual AE/real AE -> local render ->
+reference/render fidelity comparison -> visual diagnosis -> automatic correction ->
+fidelity gate -> final edit.
+
+GPT supervises and resumes that sequence. Full-length Start video remains search-only;
+exact matched ranges are still materialized into bounded cached working clips, and later
+tracking/roto/mask/subject-isolation/retained-truth systems remain callable tools.
+
 ## Alternatives considered
 
-- Continue expanding VisualEffectsBrainV1 into the primary editor. Rejected because
-  it replaces the required GPT reasoning and learning loop.
+- Use a separate GPT-authored free-form effects loop in place of the original M6
+  reference-first workflow. Rejected because it duplicates the M6 control loop, weakens
+  checkpoint continuity, and caused repeated/restarted work across ChatGPT handoffs.
 - Call an OpenAI model directly from the CEP panel. Rejected because credentials and
   model traffic do not belong in the AE extension trust boundary.
 - Store only final recipes. Rejected because failed hypotheses, correction effects,
@@ -56,10 +81,11 @@ resolves to CANCELLED, never mastered.
 
 ## Consequences
 
-The local M6 engine remains valuable as a tool and fallback implementation, but it is
-not the governing creative decision-maker for panel-launched Practice or Pro Creation.
-Assignments and learning survive chat or service process loss through atomic JSON
-persistence. Edit Type revisions now include GPT learning history.
+The original M6 engine/workflow is the governing reference-driven effects/transition
+decision path for Practice. GPT remains the continuity owner and escalation supervisor,
+while later EditFlow systems remain callable tools and proof infrastructure. Assignments
+and learning survive chat or service process loss through atomic JSON persistence. Edit
+Type revisions continue to include GPT learning history.
 
 A continuously available ChatGPT worker or platform trigger is still required for
 zero-message automatic claiming. Until that deployment integration exists, the panel

@@ -630,6 +630,25 @@ def source_atlas_cache_key(source_sha256, duration_ms, interval_ms, max_frames):
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _unlink_with_retry(path, attempts=5):
+    path = Path(path)
+    attempts = max(1, int(attempts))
+    for attempt in range(attempts):
+        try:
+            path.unlink()
+            return
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            transient_lock = (
+                getattr(error, "winerror", None) in {32, 33}
+                or getattr(error, "errno", None) in {13}
+            )
+            if not transient_lock or attempt + 1 >= attempts:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
 def _materialize_cached_preview(cache_path, output_path, attempts=5):
     cache_path = Path(cache_path)
     output_path = Path(output_path)
@@ -680,6 +699,14 @@ def build_source_atlas(
     safe_source = re.sub(r"[^A-Za-z0-9._-]+", "_", str(source_id))
     atlas_dir = Path(output_dir) / "source-atlas" / safe_source
     atlas_dir.mkdir(parents=True, exist_ok=True)
+    expected_names = [
+        f"{index:04d}-{int(round(time_ms)):010d}ms.png"
+        for index, time_ms in enumerate(times_ms, start=1)
+    ]
+    expected_name_set = set(expected_names)
+    for stale_path in atlas_dir.glob("*.png"):
+        if stale_path.name not in expected_name_set:
+            _unlink_with_retry(stale_path)
     cache_entry_dir = None
     cache_key = None
     cache_hit = False
@@ -697,10 +724,6 @@ def build_source_atlas(
             / cache_key
         )
         cache_entry_dir.mkdir(parents=True, exist_ok=True)
-        expected_names = [
-            f"{index:04d}-{int(round(time_ms)):010d}ms.png"
-            for index, time_ms in enumerate(times_ms, start=1)
-        ]
         cache_hit = all(
             (cache_entry_dir / name).is_file()
             and (cache_entry_dir / name).stat().st_size > 0
@@ -787,6 +810,8 @@ def build_review_pack(
     preview_dir = target_dir / "finish-previews"
     target_dir.mkdir(parents=True, exist_ok=True)
     preview_dir.mkdir(parents=True, exist_ok=True)
+    for stale_path in preview_dir.glob("shot_*-*.png"):
+        _unlink_with_retry(stale_path)
     source_atlas_entries = []
     if source_atlas_interval_ms is not None:
         for source_id in source_ids:

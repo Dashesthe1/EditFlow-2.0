@@ -12,4 +12,7 @@ test("Practice source indexing defaults to 250 ms coverage", () => {
     scriptPath: path.resolve("scripts", "practice", "practice-media-match.py"),
   });
   assert.equal(matcher.config.sampleStepMs, 250);
+  assert.equal(matcher.config.materializeWorkingMedia, false);
+  assert.equal(matcher.config.workingMediaHandleMs, 2500);
+  assert.equal(matcher.config.workingMediaMergeGapMs, 1000);
 });

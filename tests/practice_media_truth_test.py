@@ -1,6 +1,7 @@
 import csv
 import importlib.util
 import unittest
+from unittest import mock
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -500,6 +501,77 @@ class PracticeMediaTruthTest(unittest.TestCase):
                 rows = list(csv.DictReader(handle))
             self.assertEqual([item["sourceId"] for item in rows], ["", ""])
             self.assertFalse(pack["policy"]["matcherSuggestionsAllowed"])
+
+    def test_review_pack_rebuild_removes_stale_generated_evidence_files(self):
+        with TemporaryDirectory() as root:
+            root = Path(root)
+            finish_path = root / "finish.bin"
+            source_path = root / "source.bin"
+            finish_path.write_bytes(b"finish-review-media")
+            source_path.write_bytes(b"source-review-media")
+            ref = reference()
+            ref["sourceSha256"] = truth_tool.sha256_file(finish_path)
+            source_sha256 = truth_tool.sha256_file(source_path)
+            draft = truth_tool.scaffold(
+                ref,
+                ["video:movie"],
+                {"video:movie": source_sha256},
+            )
+
+            def fake_preview_writer(_video_path, time_ms, output_path):
+                Path(output_path).write_bytes(str(round(float(time_ms), 3)).encode("utf-8"))
+
+            pack_dir = root / "review-pack"
+            common = {
+                "reference": ref,
+                "draft": draft,
+                "finish_path": finish_path,
+                "source_paths_by_id": {"video:movie": str(source_path)},
+                "output_dir": pack_dir,
+                "preview_writer": fake_preview_writer,
+                "source_preview_writer": fake_preview_writer,
+                "source_duration_reader": lambda _path: 600000.0,
+            }
+            truth_tool.build_review_pack(
+                source_atlas_interval_ms=60000.0,
+                source_atlas_max_frames=5,
+                **common,
+            )
+            stale_preview = pack_dir / "finish-previews" / "shot_9999-middle.png"
+            stale_preview.write_bytes(b"stale")
+            rebuilt = truth_tool.build_review_pack(
+                source_atlas_interval_ms=120000.0,
+                source_atlas_max_frames=3,
+                **common,
+            )
+
+            self.assertFalse(stale_preview.exists())
+            atlas_dir = pack_dir / "source-atlas" / "video_movie"
+            expected_atlas = {
+                Path(item["previewPath"]).name
+                for item in rebuilt["sourceAtlas"][0]["samples"]
+            }
+            self.assertEqual({item.name for item in atlas_dir.glob("*.png")}, expected_atlas)
+            self.assertEqual(len(expected_atlas), 3)
+
+    def test_generated_evidence_cleanup_retries_transient_file_lock(self):
+        with TemporaryDirectory() as root:
+            target = Path(root) / "stale.png"
+            target.write_bytes(b"stale")
+            original_unlink = Path.unlink
+            calls = []
+
+            def flaky_unlink(path, *args, **kwargs):
+                calls.append(str(path))
+                if len(calls) == 1:
+                    raise PermissionError(13, "transient file lock")
+                return original_unlink(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "unlink", flaky_unlink):
+                truth_tool._unlink_with_retry(target)
+
+            self.assertEqual(len(calls), 2)
+            self.assertFalse(target.exists())
 
     def test_cached_preview_materialization_retries_transient_file_lock(self):
         with TemporaryDirectory() as root:

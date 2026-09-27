@@ -47,12 +47,23 @@ def _practice_http(
 
 
 def _http(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    base, token = _practice_config()
+    current_routes = {
+        "/state": "/state",
+        "/status": "/status",
+        "/run": "/run",
+        "/run-batch": "/run-batch",
+    }
+    target_path = current_routes.get(path, path)
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        CONTROL + path,
+        base + target_path,
         data=data,
         method=method,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-EditFlow-Token": token,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=35) as response:

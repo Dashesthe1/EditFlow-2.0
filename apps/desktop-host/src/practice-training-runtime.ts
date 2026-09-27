@@ -314,25 +314,32 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
   }
   const repositoryRoot = path.resolve(input.repositoryRoot);
   const artifactDir = path.resolve(input.artifactDir);
+  const practiceMediaCacheDir = path.join(
+    repositoryRoot,
+    "proofs",
+    "artifacts",
+    "practice-media-cache",
+  );
   const transaction = new CurrentAeTransactionRuntimeV1(
     input.transport,
     input.projectId,
     undefined,
     null,
     undefined,
-    new AeFilesystemPolicyV11([...input.mediaRoots, artifactDir]),
+    new AeFilesystemPolicyV11([
+      ...input.mediaRoots,
+      artifactDir,
+      practiceMediaCacheDir,
+    ]),
   );
   const baselineBuilder = new PracticeAeBaselineBuilderV1(
     new PracticeCurrentAeBaselineRunnerV1(transaction),
+    { requireWorkingMedia: true },
   );
   const mediaMatcher = new LocalPracticeMediaMatcherV1({
     artifactDir: path.join(artifactDir, "media"),
-    analysisCacheDir: path.join(
-      repositoryRoot,
-      "proofs",
-      "artifacts",
-      "practice-media-cache",
-    ),
+    analysisCacheDir: practiceMediaCacheDir,
+    materializeWorkingMedia: true,
     scriptPath: path.join(
       repositoryRoot,
       "scripts",
@@ -503,6 +510,8 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     ...(input.recordEpisode === undefined
       ? {}
       : { recordEpisode: (episode) => input.recordEpisode?.(episode) ?? Promise.resolve() }),
+  }, {
+    deterministicProofOnly: true,
   });
 
   return {

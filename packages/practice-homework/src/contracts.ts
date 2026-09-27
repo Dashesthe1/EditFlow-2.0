@@ -132,10 +132,23 @@ export interface PracticeSceneGeometricProofV1 {
   readonly framing?: PracticeSceneFramingProofV1;
 }
 
+export interface PracticeWorkingMediaV1 {
+  readonly schema: "editflow.practice-working-media.v1";
+  readonly workingSourceId: string;
+  readonly sourcePath: string;
+  readonly originalSourceId: string;
+  readonly originalStartMs: number;
+  readonly originalEndMs: number;
+  readonly handleBeforeMs: number;
+  readonly handleAfterMs: number;
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface PracticeSceneMatchV1 {
   readonly shotId: string;
   readonly sourceId: string;
   readonly sourcePath?: string;
+  readonly workingMedia?: PracticeWorkingMediaV1;
   readonly sourceStartMs: number;
   readonly sourceEndMs: number;
   readonly direction: "FORWARD" | "REVERSE";
@@ -1296,6 +1309,8 @@ export interface GptOrchestrationAssignmentV1 {
   readonly status: GptAssignmentStatusV1;
   readonly finish: PracticeMediaInputV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
+  /** Machine-prepared exact scene matches for Practice; GPT must visually confirm them before locking. */
+  readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
   readonly practicePolicy: PracticeVerificationPolicyV1 | null;
   readonly artifactDir: string;
   readonly chatMessage: string;

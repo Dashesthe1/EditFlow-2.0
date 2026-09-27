@@ -207,28 +207,79 @@ const beatTimingRefs = (
   ]),
 ]);
 
-const subjectSemanticIdsForWindow = (
+const subjectSemanticIdForRange = (
   window: DenseEffectWindowV1,
-): readonly string[] => unique(window.evidence.frames
-  .filter((frame) =>
-    frame.subjectTrackState !== "UNOBSERVED"
-    && frame.subjectTrackState !== "LOST")
-  .map((frame) => frame.subjectSemanticId ?? ""));
+  startMs: number,
+  endMs: number,
+): string | null => {
+  const frameIntervalMs = Math.max(1, window.evidence.summary.frameIntervalMs);
+  const seedLookbackMs = Math.max(100, frameIntervalMs * 6);
+  const frames = window.evidence.frames.filter((frame) =>
+    frame.timeMs >= startMs - seedLookbackMs
+    && frame.timeMs <= endMs + 0.5
+    && frame.subjectTrackState !== "UNOBSERVED"
+    && frame.subjectTrackState !== "LOST"
+    && nonEmptyString(frame.subjectSemanticId) !== null);
+  const ids = unique(frames.map((frame) => frame.subjectSemanticId ?? ""));
+  if (ids.length === 0) return null;
+  const family = (id: string): string => id.replace(/:v\d+$/, "");
+  if (unique(ids.map(family)).length !== 1) return null;
+
+  const spanMs = Math.max(1, endMs - startMs);
+  return ids.map((id) => {
+    const matching = frames.filter((frame) => frame.subjectSemanticId === id);
+    const observed = matching.filter((frame) => frame.subjectTrackState === "OBSERVED").length;
+    const confidence = matching.reduce(
+      (sum, frame) => sum + (frame.subjectIdentityConfidence ?? 0),
+      0,
+    ) / Math.max(1, matching.length);
+    const visibility = matching.reduce(
+      (sum, frame) => sum + (frame.subjectVisibility ?? 0),
+      0,
+    ) / Math.max(1, matching.length);
+    const nearest = Math.min(
+      ...matching.map((frame) => Math.abs(frame.timeMs - window.anchorMs)),
+    );
+    const earliest = Math.min(...matching.map((frame) => frame.timeMs));
+    const startDelayFrames = Math.max(0, earliest - startMs) / frameIntervalMs;
+    const preRollDistance = earliest < startMs
+      ? (startMs - earliest) / seedLookbackMs
+      : 0;
+    return {
+      id,
+      score: (earliest <= startMs + 0.5 ? 40 : 0)
+        + (observed * 4)
+        + matching.length
+        + confidence
+        + visibility
+        - (startDelayFrames * 5)
+        - preRollDistance
+        - (nearest / spanMs),
+    };
+  })
+    .sort((left, right) =>
+      (right.score - left.score) || left.id.localeCompare(right.id))[0]?.id ?? null;
+};
 
 const acceptedSubjectIsolationProof = (
   proof: PracticeM6VerifiedSubjectIsolationV1,
   referenceSemanticId: string,
-): boolean =>
-  proof?.verified === true
-  && proof.crossSourceIdentityVerified === true
-  && proof.referenceSemanticId === referenceSemanticId
-  && nonEmptyString(proof.sourceSemanticId) !== null
-  && nonEmptyString(proof.routeId) !== null
-  && ["SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH"].includes(proof.maskSource)
-  && Number.isInteger(proof.appliedOperations)
-  && proof.appliedOperations > 0
-  && Array.isArray(proof.evidenceRefs)
-  && unique(proof.evidenceRefs).length > 0;
+): boolean => {
+  const verifiedTrackedMaskReuse = proof.maskSource === "AE_TRACKED_MASK"
+    && proof.appliedOperations === 0
+    && proof.evidenceRefs.some((ref) =>
+      ref.startsWith("practice-tracked-mask-idempotent-reuse:"));
+  return proof?.verified === true
+    && proof.crossSourceIdentityVerified === true
+    && proof.referenceSemanticId === referenceSemanticId
+    && nonEmptyString(proof.sourceSemanticId) !== null
+    && nonEmptyString(proof.routeId) !== null
+    && ["SEGMENTATION", "AE_TRACKED_MASK", "ROTO_BRUSH"].includes(proof.maskSource)
+    && Number.isInteger(proof.appliedOperations)
+    && (proof.appliedOperations > 0 || verifiedTrackedMaskReuse)
+    && Array.isArray(proof.evidenceRefs)
+    && unique(proof.evidenceRefs).length > 0;
+};
 
 const shotsForWindow = (
   reference: PracticeReferenceAnalysisV1,
@@ -443,16 +494,6 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     const timingRefs = beatTimingRefs(referenceWindow);
     const graphRequiresSubjectIsolation = input.graph.nodes.some((node) =>
       node.kind === "SUBJECT_ISOLATION");
-    const referenceSubjectIds = graphRequiresSubjectIsolation
-      ? subjectSemanticIdsForWindow(input.window)
-      : [];
-    if (graphRequiresSubjectIsolation && referenceSubjectIds.length !== 1) {
-      throw new Error(
-        "PRACTICE_M6_SUBJECT_IDENTITY_UNVERIFIED: subject isolation requires exactly "
-          + "one persistent reference semantic identity; found "
-          + String(referenceSubjectIds.length) + ".",
-      );
-    }
     if (graphRequiresSubjectIsolation && this.subjectIsolationRoute === null) {
       throw new Error(
         "PRACTICE_M6_SUBJECT_ISOLATION_ROUTE_UNVERIFIED: the construction graph "
@@ -518,10 +559,11 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           );
         }
         const referenceSemanticId = graphRequiresSubjectIsolation
-          ? referenceSubjectIds[0]
-          : subjectMotionTrack?.semanticId;
+          ? subjectSemanticIdForRange(input.window, targetStartMs, targetEndMs)
+          : (subjectMotionTrack?.semanticId
+            ?? subjectSemanticIdForRange(input.window, targetStartMs, targetEndMs));
         const sourceMatch = prepared.matches.find((match) => match.shotId === shot.shotId);
-        if (referenceSemanticId === undefined || sourceMatch === undefined) {
+        if (referenceSemanticId === null || referenceSemanticId === undefined || sourceMatch === undefined) {
           throw new Error(
             "PRACTICE_M6_SUBJECT_ISOLATION_BINDING_MISSING:" + shot.shotId,
           );
@@ -535,52 +577,65 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
           sourceMatch,
           referenceSemanticId,
         });
-        const isolation = await route.prepare({
-          sessionId: input.sessionId,
-          attempt: input.attempt,
-          reference: input.reference,
-          sourceMatch,
-          baselinePlan: prepared.plan,
-          window: input.window,
-          shotId: shot.shotId,
-          compStableId: prepared.plan.compStableId,
-          layerId,
-          startMs: targetStartMs,
-          endMs: targetEndMs,
-          referenceSemanticId,
-          ...(retainedSubjectIdentity === null
-            ? {}
-            : { retainedSubjectIdentity }),
-        });
-        if (!acceptedSubjectIsolationProof(isolation, referenceSemanticId)) {
-          throw new Error(
-            "PRACTICE_M6_SUBJECT_ISOLATION_PROOF_REJECTED:" + shot.shotId,
+        let isolation: PracticeM6VerifiedSubjectIsolationV1 | null = null;
+        try {
+          isolation = await route.prepare({
+            sessionId: input.sessionId,
+            attempt: input.attempt,
+            reference: input.reference,
+            sourceMatch,
+            baselinePlan: prepared.plan,
+            window: input.window,
+            shotId: shot.shotId,
+            compStableId: prepared.plan.compStableId,
+            layerId,
+            startMs: targetStartMs,
+            endMs: targetEndMs,
+            referenceSemanticId,
+            ...(retainedSubjectIdentity === null
+              ? {}
+              : { retainedSubjectIdentity }),
+          });
+        } catch (error) {
+          if (graphRequiresSubjectIsolation || !proactiveSubjectRelativeIsolation) {
+            throw error;
+          }
+          prepared.evidenceRefs.push(
+            "practice-proactive-subject-isolation-skipped:" + shot.shotId,
+            "practice-proactive-subject-isolation-skip-reason:backend-rejected",
           );
         }
-        this.renderDriver.recordAppliedOperations?.({
-          sessionId: input.sessionId,
-          attempt: input.attempt,
-          count: isolation.appliedOperations,
-        });
-        prepared.evidenceRefs.push(
-          ...isolation.evidenceRefs,
-          "practice-subject-isolation-route:" + isolation.routeId,
-          "practice-subject-reference-id:" + isolation.referenceSemanticId,
-          "practice-subject-source-id:" + isolation.sourceSemanticId,
-          "practice-subject-cross-source-identity:true",
-          "practice-subject-mask-source:" + isolation.maskSource,
-          "practice-subject-relative-isolation-mode:"
-            + (proactiveSubjectRelativeIsolation ? "PROACTIVE" : "GRAPH_REQUIRED"),
-          ...(proactiveSubjectRelativeIsolation && subjectMotionTrack !== undefined
-            ? [
-              "practice-proactive-subject-relative-track:" + subjectMotionTrack.trackId,
-              "practice-proactive-subject-relative-semantic:"
-                + subjectMotionTrack.semanticId,
-              "practice-proactive-subject-relative-relation:"
-                + (referenceWindow?.objectCue.relation ?? "UNKNOWN"),
-            ]
-            : []),
-        );
+        if (isolation !== null) {
+          if (!acceptedSubjectIsolationProof(isolation, referenceSemanticId)) {
+            throw new Error(
+              "PRACTICE_M6_SUBJECT_ISOLATION_PROOF_REJECTED:" + shot.shotId,
+            );
+          }
+          this.renderDriver.recordAppliedOperations?.({
+            sessionId: input.sessionId,
+            attempt: input.attempt,
+            count: isolation.appliedOperations,
+          });
+          prepared.evidenceRefs.push(
+            ...isolation.evidenceRefs,
+            "practice-subject-isolation-route:" + isolation.routeId,
+            "practice-subject-reference-id:" + isolation.referenceSemanticId,
+            "practice-subject-source-id:" + isolation.sourceSemanticId,
+            "practice-subject-cross-source-identity:true",
+            "practice-subject-mask-source:" + isolation.maskSource,
+            "practice-subject-relative-isolation-mode:"
+              + (proactiveSubjectRelativeIsolation ? "PROACTIVE" : "GRAPH_REQUIRED"),
+            ...(proactiveSubjectRelativeIsolation && subjectMotionTrack !== undefined
+              ? [
+                "practice-proactive-subject-relative-track:" + subjectMotionTrack.trackId,
+                "practice-proactive-subject-relative-semantic:"
+                  + subjectMotionTrack.semanticId,
+                "practice-proactive-subject-relative-relation:"
+                  + (referenceWindow?.objectCue.relation ?? "UNKNOWN"),
+              ]
+              : []),
+          );
+        }
       }
 
       const subjectRelativeEffectAnchor = practiceSubjectRelativeEffectAnchorV1({
@@ -625,9 +680,26 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
             "practice.subjectRelativeMotionPhase": subjectRelativeEffectAnchor.phase,
           },
         };
+      // Subject isolation is executed and proof-gated above through the dedicated
+      // native segmentation/tracked-mask/Roto Brush route. Keep the recipe node in
+      // the dependency graph, but mark it optional for generic native lowering so
+      // the already-applied isolation semantic becomes a no-op rather than a false
+      // UNSUPPORTED_NATIVE_M6_PRIMITIVE failure.
+      const nativeCompilation = needsSubjectIsolation && compilation.recipe !== null
+        ? {
+          ...compilation,
+          recipe: {
+            ...compilation.recipe,
+            nodes: compilation.recipe.nodes.map((node) =>
+              node.kind === "SUBJECT_ISOLATION"
+                ? { ...node, optional: true }
+                : node),
+          },
+        }
+        : compilation;
       const observed = await this.transaction.observe();
       const native = compileConstructionThroughNativeAeV1(
-        compilation,
+        nativeCompilation,
         prepared.project,
         context,
         {

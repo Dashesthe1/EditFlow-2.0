@@ -7,7 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ALGORITHM_ID = "editflow.practice-cross-source-subject-bind.orb-homography.v1"
+ALGORITHM_ID = "editflow.practice-cross-source-subject-bind.orb-plus-scene-sift-homography.v2"
 
 
 def clamp01(value):
@@ -101,10 +101,75 @@ def appearance_similarity(reference_crop, source_crop):
     return clamp01(0.72 * hist + 0.28 * edge_overlap)
 
 
+def bind_subject_from_scene_geometry(reference_frame, source_frame, reference_box):
+    ref_work, ref_scale = resize_longest(reference_frame, 1280)
+    src_work, src_scale = resize_longest(source_frame, 1280)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    ref_gray = clahe.apply(cv2.cvtColor(ref_work, cv2.COLOR_BGR2GRAY))
+    src_gray = clahe.apply(cv2.cvtColor(src_work, cv2.COLOR_BGR2GRAY))
+    if hasattr(cv2, "SIFT_create"):
+        detector = cv2.SIFT_create(nfeatures=2600, contrastThreshold=0.012, edgeThreshold=12)
+        norm = cv2.NORM_L2
+        ratio = 0.82
+    else:
+        detector = cv2.ORB_create(nfeatures=3200, scaleFactor=1.2, nlevels=8, fastThreshold=8)
+        norm = cv2.NORM_HAMMING
+        ratio = 0.78
+    ref_points, ref_desc = detector.detectAndCompute(ref_gray, None)
+    src_points, src_desc = detector.detectAndCompute(src_gray, None)
+    if ref_desc is None or src_desc is None or len(ref_points) < 8 or len(src_points) < 8:
+        return {"verified": False, "reason": "SCENE_GEOMETRY_FEATURES_MISSING"}
+    pairs = cv2.BFMatcher(norm).knnMatch(ref_desc, src_desc, k=2)
+    good = [pair[0] for pair in pairs if len(pair) >= 2 and pair[0].distance < ratio * pair[1].distance]
+    good.sort(key=lambda item: item.distance)
+    good = good[:320]
+    if len(good) < 8:
+        return {"verified": False, "reason": "SCENE_GEOMETRY_MATCHES_MISSING", "goodMatches": len(good)}
+    ref_xy = np.float32([ref_points[item.queryIdx].pt for item in good]).reshape(-1, 1, 2)
+    src_xy = np.float32([src_points[item.trainIdx].pt for item in good]).reshape(-1, 1, 2)
+    homography, inlier_mask = cv2.findHomography(ref_xy, src_xy, cv2.RANSAC, 5.0)
+    if homography is None or inlier_mask is None:
+        return {"verified": False, "reason": "SCENE_GEOMETRY_HOMOGRAPHY_FAILED", "goodMatches": len(good)}
+    inliers = int(inlier_mask.ravel().sum())
+    inlier_ratio = inliers / max(1, len(good))
+    ref_h, ref_w = reference_frame.shape[:2]
+    x, y, width, height = reference_box
+    corners = np.float32([[
+        [x * ref_w * ref_scale, y * ref_h * ref_scale],
+        [(x + width) * ref_w * ref_scale, y * ref_h * ref_scale],
+        [(x + width) * ref_w * ref_scale, (y + height) * ref_h * ref_scale],
+        [x * ref_w * ref_scale, (y + height) * ref_h * ref_scale],
+    ]])
+    projected = cv2.perspectiveTransform(corners, homography).reshape(-1, 2)
+    source_h, source_w = source_frame.shape[:2]
+    xs = projected[:, 0] / max(src_scale, 1e-9) / source_w
+    ys = projected[:, 1] / max(src_scale, 1e-9) / source_h
+    left, top = clamp01(float(np.min(xs))), clamp01(float(np.min(ys)))
+    right, bottom = clamp01(float(np.max(xs))), clamp01(float(np.max(ys)))
+    source_box = [left, top, right - left, bottom - top]
+    if source_box[2] <= 0.015 or source_box[3] <= 0.015 or source_box[2] > 0.95 or source_box[3] > 0.95:
+        return {"verified": False, "reason": "SCENE_GEOMETRY_PROJECTED_BOX_INVALID", "goodMatches": len(good), "inliers": inliers, "inlierRatio": inlier_ratio}
+    appearance = appearance_similarity(crop_box(reference_frame, reference_box), crop_box(source_frame, source_box))
+    confidence = clamp01(0.52 * inlier_ratio + 0.28 * clamp01(inliers / 24.0) + 0.20 * appearance)
+    verified = len(good) >= 10 and inliers >= 6 and inlier_ratio >= 0.28 and confidence >= 0.38
+    return {"verified": verified, "reason": None if verified else "SCENE_GEOMETRY_IDENTITY_BELOW_PROOF_FLOOR", "sourceSubjectBox": source_box, "goodMatches": len(good), "inliers": inliers, "inlierRatio": inlier_ratio, "appearanceSimilarity": appearance, "confidence": confidence}
+
+
 def bind_subject(reference_frame, source_frame, reference_box):
+    def scene_fallback(primary_reason, **details):
+        scene = bind_subject_from_scene_geometry(reference_frame, source_frame, reference_box)
+        if scene.get("verified") is True:
+            scene["fallbackFrom"] = primary_reason
+            return scene
+        return {
+            "verified": False,
+            "reason": primary_reason + ":" + str(scene.get("reason") or "SCENE_GEOMETRY_UNVERIFIED"),
+            **details,
+        }
+
     reference_crop = crop_box(reference_frame, reference_box)
     if min(reference_crop.shape[:2]) < 24:
-        return {"verified": False, "reason": "REFERENCE_SUBJECT_CROP_TOO_SMALL"}
+        return scene_fallback("REFERENCE_SUBJECT_CROP_TOO_SMALL")
 
     reference_work, _ = resize_longest(reference_crop, 640)
     source_work, source_scale = resize_longest(source_frame, 1280)
@@ -114,7 +179,7 @@ def bind_subject(reference_frame, source_frame, reference_box):
     ref_points, ref_desc = orb.detectAndCompute(reference_gray, None)
     src_points, src_desc = orb.detectAndCompute(source_gray, None)
     if ref_desc is None or src_desc is None or len(ref_points) < 8 or len(src_points) < 8:
-        return {"verified": False, "reason": "INSUFFICIENT_ORB_FEATURES"}
+        return scene_fallback("INSUFFICIENT_ORB_FEATURES")
 
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
     pairs = matcher.knnMatch(ref_desc, src_desc, k=2)
@@ -122,12 +187,12 @@ def bind_subject(reference_frame, source_frame, reference_box):
     good.sort(key=lambda item: item.distance)
     good = good[:160]
     if len(good) < 8:
-        return {"verified": False, "reason": "INSUFFICIENT_CROSS_SOURCE_FEATURE_MATCHES", "goodMatches": len(good)}
+        return scene_fallback("INSUFFICIENT_CROSS_SOURCE_FEATURE_MATCHES", goodMatches=len(good))
     ref_xy = np.float32([ref_points[item.queryIdx].pt for item in good]).reshape(-1, 1, 2)
     src_xy = np.float32([src_points[item.trainIdx].pt for item in good]).reshape(-1, 1, 2)
     homography, inlier_mask = cv2.findHomography(ref_xy, src_xy, cv2.RANSAC, 4.0)
     if homography is None or inlier_mask is None:
-        return {"verified": False, "reason": "CROSS_SOURCE_HOMOGRAPHY_FAILED", "goodMatches": len(good)}
+        return scene_fallback("CROSS_SOURCE_HOMOGRAPHY_FAILED", goodMatches=len(good))
     inliers = int(inlier_mask.ravel().sum())
     inlier_ratio = inliers / max(1, len(good))
 
@@ -144,13 +209,12 @@ def bind_subject(reference_frame, source_frame, reference_box):
     width = right - left
     height = bottom - top
     if width <= 0.015 or height <= 0.015 or width > 0.95 or height > 0.95:
-        return {
-            "verified": False,
-            "reason": "CROSS_SOURCE_PROJECTED_BOX_INVALID",
-            "goodMatches": len(good),
-            "inliers": inliers,
-            "inlierRatio": inlier_ratio,
-        }
+        return scene_fallback(
+            "CROSS_SOURCE_PROJECTED_BOX_INVALID",
+            goodMatches=len(good),
+            inliers=inliers,
+            inlierRatio=inlier_ratio,
+        )
     source_box = [left, top, width, height]
     source_crop = crop_box(source_frame, source_box)
     appearance = appearance_similarity(reference_crop, source_crop)
@@ -169,7 +233,7 @@ def bind_subject(reference_frame, source_frame, reference_box):
         and appearance >= 0.20
         and confidence >= 0.42
     )
-    return {
+    result = {
         "verified": verified,
         "reason": None if verified else "CROSS_SOURCE_IDENTITY_BELOW_PROOF_FLOOR",
         "sourceSubjectBox": source_box,
@@ -179,6 +243,16 @@ def bind_subject(reference_frame, source_frame, reference_box):
         "appearanceSimilarity": appearance,
         "confidence": confidence,
     }
+    if verified:
+        return result
+    return scene_fallback(
+        "CROSS_SOURCE_IDENTITY_BELOW_PROOF_FLOOR",
+        goodMatches=len(good),
+        inliers=inliers,
+        inlierRatio=inlier_ratio,
+        appearanceSimilarity=appearance,
+        confidence=confidence,
+    )
 
 
 def main():

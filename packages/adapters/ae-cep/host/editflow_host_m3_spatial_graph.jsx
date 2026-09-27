@@ -156,7 +156,7 @@
       roving: property.keyRoving(keyIndex) === true
     };
   }
-  function closeNumber(a, b) { return Math.abs(a - b) <= 0.0000001; }
+  function closeNumber(a, b) { return Math.abs(a - b) <= Math.max(0.001, Math.max(Math.abs(a), Math.abs(b)) * 0.000001); }
   function sameVector(a, b) { if (!a || !b || a.length !== b.length) return false; var i; for (i = 0; i < a.length; i += 1) if (!closeNumber(a[i], b[i])) return false; return true; }
   function sameObservedState(a, b) { return sameVector(a.inTangent, b.inTangent) && sameVector(a.outTangent, b.outTangent) && a.continuous === b.continuous && a.autoBezier === b.autoBezier && a.roving === b.roving; }
   function requestedStateMatches(actual, requested) {

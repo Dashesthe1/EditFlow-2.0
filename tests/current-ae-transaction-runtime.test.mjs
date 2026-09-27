@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
+  CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1,
+  CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1,
   CurrentAeTransactionRuntimeV1,
   createCurrentAeTransactionRegistryV1,
 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
@@ -323,7 +325,7 @@ test("current AE transaction runtime executes and recovers one mixed-protocol pl
   assert.equal(transport.mutationCount, 6);
 
   assert.equal(runtime.status().recoveryLedgerEntries, 1);
-  assert.equal(runtime.status().maxOperations, 64);
+  assert.equal(runtime.status().maxOperations, CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1);
 });
 
 test("current AE transactional host dispatches protocol 1.2 mask mutations through the typed mask route", async () => {
@@ -531,7 +533,8 @@ test("current AE correction runtime admits one bounded restore-snapshot plan abo
     transport,
     "correction-runtime-project",
   );
-  const plan = buildRepeatedPlan(observed, 72);
+  const correctionOperationCount = CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 + 8;
+  const plan = buildRepeatedPlan(observed, correctionOperationCount);
   const requestCount = transport.requests.length;
 
   await assert.rejects(
@@ -542,14 +545,16 @@ test("current AE correction runtime admits one bounded restore-snapshot plan abo
 
   const result = await runtime.executeCorrection(plan);
   assert.equal(result.state, "COMMITTED");
-  assert.equal(result.appliedOperations, 72);
-  assert.equal(transport.project.itemCount, 72);
-  assert.equal(runtime.status().maxOperations, 64);
-  assert.equal(runtime.status().correctionMaxOperations, 96);
+  assert.equal(result.appliedOperations, correctionOperationCount);
+  assert.equal(transport.project.itemCount, correctionOperationCount);
+  assert.equal(runtime.status().maxOperations, CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1);
+  assert.equal(runtime.status().correctionMaxOperations, CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1);
 });
 
-test("current AE correction runtime rolls back a failure beyond operation 64", async () => {
-  const transport = new FailingMutationTransport(66);
+test("current AE correction runtime rolls back a failure beyond the normal transaction limit", async () => {
+  const failureOperationIndex = CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 + 2;
+  const correctionOperationCount = CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 + 8;
+  const transport = new FailingMutationTransport(failureOperationIndex);
   const observer = new AeCepCurrentTransactionalHostV1(
     transport,
     "correction-rollback-project",
@@ -561,15 +566,17 @@ test("current AE correction runtime rolls back a failure beyond operation 64", a
     transport,
     "correction-rollback-project",
   );
-  const result = await runtime.executeCorrection(buildRepeatedPlan(observed, 72));
+  const result = await runtime.executeCorrection(
+    buildRepeatedPlan(observed, correctionOperationCount),
+  );
 
   assert.equal(result.state, "ROLLED_BACK");
-  assert.equal(result.appliedOperations, 65);
+  assert.equal(result.appliedOperations, failureOperationIndex - 1);
   assert.equal(transport.project.itemCount, 0);
   assert.equal(transport.undoStack.length, 0);
   assert.equal(
     transport.requests.filter((request) => request.command === "transaction.undo_last").length,
-    65,
+    failureOperationIndex - 1,
   );
   assert.equal(result.finalState.projectFingerprint, observed.projectFingerprint);
 });
@@ -590,7 +597,11 @@ test("current AE correction runtime forbids oversized external-UI plans before c
   const requestCount = transport.requests.length;
 
   await assert.rejects(
-    runtime.executeCorrection(buildRepeatedPlan(observed, 65, "R4_EXTERNAL_UI")),
+    runtime.executeCorrection(buildRepeatedPlan(
+      observed,
+      CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 + 1,
+      "R4_EXTERNAL_UI",
+    )),
     /CURRENT_AE_CORRECTION_EXTERNAL_UI_FORBIDDEN/,
   );
   assert.equal(transport.requests.length, requestCount);
@@ -601,9 +612,9 @@ test("current Shadow daemon exposes typed mixed-protocol transaction execution",
   const source = await readFile("scripts/current-shadow-control-daemon.mjs", "utf8");
   assert.match(source, /CurrentAeTransactionRuntimeV1/);
   assert.match(source, /url\.pathname === "\/run-transaction"/);
-  assert.match(source, /currentTransactionRuntime\.execute\(body\.plan\)/);
+  assert.match(source, /currentTransactionRuntime\.execute\(body\?\.plan \?\? body\)/);
   assert.match(source, /run-correction-transaction/);
-  assert.match(source, /currentTransactionRuntime\.executeCorrection\(body\.plan\)/);
+  assert.match(source, /currentTransactionRuntime\.executeCorrection\(body\?\.plan \?\? body\)/);
   assert.match(source, /x-editflow-mutation-lease/);
   assert.match(source, /mutation-lease\/acquire/);
   assert.match(source, /MUTATION_LEASE_HELD/);
@@ -843,7 +854,9 @@ test("Practice baseline refuses oversized atomic construction before contacting 
     mediaRoots: ["C:\\Media"],
   });
   const base = practiceBaselinePlan();
-  const operations = Array.from({ length: 65 }, (_, index) => ({
+  const operations = Array.from({
+    length: CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 + 1,
+  }, (_, index) => ({
     ...base.operations[0],
     operationId: `PRACTICE_OVERSIZED_${String(index + 1).padStart(3, "0")}`,
   }));

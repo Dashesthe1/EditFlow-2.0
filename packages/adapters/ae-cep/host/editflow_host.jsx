@@ -357,9 +357,11 @@
       if (!isFinite(offset)) throw new Error("layer.set_timing startTimeOffset must be finite.");
       layer.startTime = layer.startTime + offset;
     }
+    // AE recalculates layer trims when stretch changes. Apply stretch before
+    // explicit comp-space trims so the requested in/out points remain exact.
+    if (timing.stretch !== undefined) layer.stretch = timing.stretch;
     if (timing.inPoint !== undefined) layer.inPoint = timing.inPoint;
     if (timing.outPoint !== undefined) layer.outPoint = timing.outPoint;
-    if (timing.stretch !== undefined) layer.stretch = timing.stretch;
     return result("APPLIED", { layer: layerSnapshot(layer) }, []);
   };
 

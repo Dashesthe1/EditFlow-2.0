@@ -8,6 +8,7 @@ import {
   PracticeAeBaselineBuilderV1,
   PracticeLearningMemoryFileV1,
   compilePracticeAeBaselinePlanV1,
+  validatePracticeWorkingMediaMatchesV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 
 const reference = {
@@ -90,6 +91,74 @@ test("AE baseline compiler maps forward and reverse source time into reference t
     outPoint: 2.5,
     stretch: -100,
   });
+});
+
+test("AE baseline imports bounded working media instead of the original full movie", () => {
+  const workingMatches = matches.map((match) => ({
+    ...match,
+    workingMedia: {
+      schema: "editflow.practice-working-media.v1",
+      workingSourceId: "working:movie:a:packet",
+      sourcePath: "C:\\Media\\practice-working\\movie-a-packet.mp4",
+      originalSourceId: "movie:a",
+      originalStartMs: 3000,
+      originalEndMs: 11000,
+      handleBeforeMs: 2000,
+      handleAfterMs: 2500,
+      evidenceRefs: ["working-media:packet"],
+    },
+  }));
+  const plan = compilePracticeAeBaselinePlanV1({
+    reference,
+    matches: workingMatches,
+  });
+  const imports = plan.operations.filter((item) => item.command === "media.import");
+  assert.equal(imports.length, 1);
+  assert.equal(imports[0].payload.path, "C:\\Media\\practice-working\\movie-a-packet.mp4");
+  assert.notEqual(imports[0].payload.path, "C:\\Media\\movie-a.mp4");
+  const timings = plan.operations
+    .filter((item) => item.command === "layer.set_timing")
+    .map((item) => item.payload.timing);
+  assert.equal(timings[0].startTime, -2);
+  assert.equal(timings[1].startTime, 6.5);
+  assert.ok(plan.evidenceRefs.includes("working-media:packet"));
+});
+
+test("Practice working-media guard rejects full-source reuse and accepts bounded clips", () => {
+  const missing = validatePracticeWorkingMediaMatchesV1([matches[0]]);
+  assert.ok(missing.some((reason) => /no bounded working-media clip/i.test(reason)));
+
+  const reusedFullSource = validatePracticeWorkingMediaMatchesV1([{
+    ...matches[0],
+    workingMedia: {
+      schema: "editflow.practice-working-media.v1",
+      workingSourceId: "working:bad",
+      sourcePath: matches[0].sourcePath,
+      originalSourceId: matches[0].sourceId,
+      originalStartMs: 4000,
+      originalEndMs: 7000,
+      handleBeforeMs: 1000,
+      handleAfterMs: 1000,
+      evidenceRefs: ["working:bad"],
+    },
+  }]);
+  assert.ok(reusedFullSource.some((reason) => /still points at the original full source/i.test(reason)));
+
+  const valid = validatePracticeWorkingMediaMatchesV1([{
+    ...matches[0],
+    workingMedia: {
+      schema: "editflow.practice-working-media.v1",
+      workingSourceId: "working:good",
+      sourcePath: "C:\\Media\\practice-working\\movie-a-shot-001.mp4",
+      originalSourceId: matches[0].sourceId,
+      originalStartMs: 4000,
+      originalEndMs: 7000,
+      handleBeforeMs: 1000,
+      handleAfterMs: 1000,
+      evidenceRefs: ["working:good"],
+    },
+  }]);
+  assert.deepEqual(valid, []);
 });
 
 test("AE baseline compiles a measured forward-then-rewind trajectory into Time Remap keys", () => {
@@ -632,6 +701,22 @@ test("AE baseline refuses unstable framing evidence", () => {
       && item.payload.layer?.stableId?.endsWith("_0001")
       && item.payload.propertyPath?.[0] === "ADBE Transform Group");
   assert.deepEqual(transforms, []);
+});
+
+test("production AE baseline builder refuses non-materialized full-source matches", async () => {
+  let executed = false;
+  const builder = new PracticeAeBaselineBuilderV1({
+    async execute() {
+      executed = true;
+      return {};
+    },
+  }, { requireWorkingMedia: true });
+
+  await assert.rejects(
+    builder.buildContentBaseline({ reference, matches }),
+    /full-length raw source import is disabled/,
+  );
+  assert.equal(executed, false);
 });
 
 test("AE baseline builder executes the deterministic plan in order", async () => {

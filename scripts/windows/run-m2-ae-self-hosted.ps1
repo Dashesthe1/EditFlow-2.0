@@ -8,6 +8,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$DefaultAeProjectPath = if ($env:EDITFLOW_AE_DEFAULT_PROJECT) {
+  $env:EDITFLOW_AE_DEFAULT_PROJECT
+} else {
+  Join-Path $env:USERPROFILE "Downloads\Open Template.aep"
+}
 $Installer = Join-Path $RepoRoot "scripts\windows\install-editflow-cep.ps1"
 $Acceptance = Join-Path $RepoRoot "scripts\windows\run-m2-ae-acceptance.ps1"
 $FinalBaselineAcceptance = Join-Path $RepoRoot "scripts\windows\run-m2-final-baseline-coverage.ps1"
@@ -91,8 +96,9 @@ Write-Host "Installing the checked-out EditFlow CEP bridge before launching the 
 & $Installer
 
 try {
-  Write-Host "Phase 1: cold-launching a fresh declared-target After Effects instance without a script argument..."
-  $LaunchProcess = Start-Process -FilePath $AfterFxPath -PassThru
+  $ResolvedDefaultProject = (Resolve-Path $DefaultAeProjectPath).Path
+  Write-Host ("Phase 1: cold-launching After Effects through the required Open Template project: " + $ResolvedDefaultProject)
+  $LaunchProcess = Start-Process -FilePath $AfterFxPath -ArgumentList ('"' + $ResolvedDefaultProject + '"') -PassThru
   $StartedAfterFx = $true
   Write-Host ("Cold-launch request PID " + $LaunchProcess.Id + ".")
 

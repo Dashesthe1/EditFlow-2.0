@@ -22,7 +22,12 @@
     }
   }
 
-  var loadedPath = $.fileName;
+  var loadedPath = "";
+  try {
+    loadedPath = String($.fileName || "");
+  } catch (fileNameError) {
+    loadedPath = "";
+  }
   appendBootstrapEvidence("SCRIPT_STARTED", loadedPath);
 
   /* The self-hosted runner may copy this source to a uniquely owned Startup filename.
