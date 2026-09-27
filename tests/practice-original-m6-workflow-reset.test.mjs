@@ -91,6 +91,7 @@ const shutterReference = () => {
     schema: "editflow.dense-effect-evidence.v1",
     sourceId: "reference:workflow-reset",
     sourceKind: "REFERENCE",
+    range: { startMs: 0, endMs: (summary.frameCount - 1) * summary.frameIntervalMs },
     analyzerFingerprint: "fixture:workflow-reset",
     settingsFingerprint: "fixture:workflow-reset",
     contentKey: "fixture:workflow-reset",
