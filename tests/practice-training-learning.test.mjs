@@ -1419,7 +1419,7 @@ test("held-out object-aware maturity is derived from machine proof and failed ca
   assert.equal(benchmark.objectAwareVerified, false);
 });
 
-test("M6 Practice seeds a new reference with transferable Edit Type corrections", async () => {
+test("M6 Practice keeps transferable Edit Type corrections advisory under the original M6 reference-first route", async () => {
   const family = classifyEffectFamilyV1(referenceEvidence);
   assert.notEqual(family, "UNKNOWN");
   const anatomy = deriveEffectAnatomyV1(referenceEvidence, family);
@@ -1547,12 +1547,13 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
   assert.equal(capturedPrepareAttempt.subjectMotionTracks[0].sampleCount, 7);
   assert.ok(capturedRequest);
   assert.equal(capturedRequest.risk, "HIGH");
-  assert.match(capturedRequest.learnedTechniqueId, /^edit-type:/);
-  assert.ok(capturedRequest.learnedGraph);
+  assert.equal(capturedRequest.learnedTechniqueId, undefined);
+  assert.equal(capturedRequest.learnedGraph, undefined);
   assert.ok(
     capturedRequest.evidenceRefs.some((item) =>
-      item === "practice-edit-type-transferred-patches:1"),
+      item === "practice-edit-type-available-patches:1"),
   );
+  assert.ok(capturedRequest.evidenceRefs.includes("practice-original-m6-reference-first-route"));
   assert.ok(capturedRequest.evidenceRefs.includes("audio:beat-aware:grid"));
   assert.ok(capturedRequest.evidenceRefs.includes(
     "practice-subject-motion-tracks-before-effect:1",
@@ -1587,10 +1588,10 @@ test("M6 Practice seeds a new reference with transferable Edit Type corrections"
       .includes("REFERENCE_EFFECT_ANCHOR_ON_BEAT"),
   );
 
-  const learnedNode = capturedRequest.learnedGraph.nodes
-    .find((item) => item.nodeId === nodeId);
-  assert.ok(learnedNode);
-  assert.ok(learnedNode.parameters[invariant.metric] > prior);
+  assert.ok(
+    reconstruction.decisionTraces[0].rationaleCodes
+      .includes("EDIT_TYPE_TRANSFER_AVAILABLE_NOT_GOVERNING_M6"),
+  );
 });
 
 test("M6 Practice composition preserves raw-audio matching", async () => {
