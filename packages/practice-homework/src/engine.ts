@@ -331,37 +331,41 @@ export class PracticeHomeworkEngineV1 {
     }
     const editTypeKnowledge = knowledgeOverride ?? retainedKnowledge;
 
-    const reference = await this.adapters.analyzeFinish(request.finish);
-    const sourceIndex = await this.adapters.indexStart(request.start);
-    const matches = await this.adapters.matchScenes({
-      reference,
-      sourceIndex,
-      minimumConfidence: exactSceneConfidence,
-    });
+    const [reference, sourceIndex] = await Promise.all([
+      this.adapters.analyzeFinish(request.finish),
+      this.adapters.indexStart(request.start),
+    ]);
+    const audioMatchPromise = sourceIndex.audioSourceIds.length > 0
+      && this.adapters.matchAudio !== undefined
+      ? this.adapters.matchAudio({
+        reference,
+        sourceIndex,
+        minimumConfidence: minimumAudioConfidence,
+      })
+      : Promise.resolve(null);
+    const [matches, audioMatch] = await Promise.all([
+      this.adapters.matchScenes({
+        reference,
+        sourceIndex,
+        minimumConfidence: exactSceneConfidence,
+      }),
+      audioMatchPromise,
+    ]);
     const matchReasons = validatePracticeSceneMatchesV1(
       reference.shots.map((shot) => shot.shotId),
       matches,
       exactSceneConfidence,
     );
-
-    let audioMatch: PracticeAudioMatchV1 | null = null;
     const audioReasons: string[] = [];
     if (sourceIndex.audioSourceIds.length > 0) {
       if (this.adapters.matchAudio === undefined) {
         audioReasons.push(
           "Raw audio was supplied but no real Practice audio-matching capability is available.",
         );
+      } else if (audioMatch === null) {
+        audioReasons.push("No source song/audio match was found for the Finish reference.");
       } else {
-        audioMatch = await this.adapters.matchAudio({
-          reference,
-          sourceIndex,
-          minimumConfidence: minimumAudioConfidence,
-        });
-        if (audioMatch === null) {
-          audioReasons.push("No source song/audio match was found for the Finish reference.");
-        } else {
-          audioReasons.push(...validateAudioMatch(audioMatch, minimumAudioConfidence));
-        }
+        audioReasons.push(...validateAudioMatch(audioMatch, minimumAudioConfidence));
       }
     }
 

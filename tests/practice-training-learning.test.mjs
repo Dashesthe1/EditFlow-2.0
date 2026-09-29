@@ -28,6 +28,7 @@ import {
 import {
   PracticeM6AeRenderDriverCurrentV1,
   PracticeM6CurrentAeRuntimeV1,
+  PracticeM6PhaseProofFileV1,
   applyPracticeRobustRecertificationV1,
   buildPracticeCrossSourceSubjectProofV1,
   createPracticeM6CurrentAeAssemblyV1,
@@ -2037,6 +2038,171 @@ test("M6 phase training stops reapplying proven windows until clean assembly", a
   assert.equal(confirmationRenders, 2);
   assert.equal(finalizedPhaseAttempts, 2);
   assert.equal(fullRenders, 1);
+});
+
+test("M6 phase proofs survive a fresh bridge/runtime and resume on the retained fast path", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-phase-proof-resume-"));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  const storePath = path.join(root, "phase-proofs.json");
+  const graph = buildConstructionGraphV1(
+    deriveEffectAnatomyV1(referenceEvidence, classifyEffectFamilyV1(referenceEvidence)),
+  );
+  const knowledge = {
+    editTypeId: "phase-proof-resume",
+    title: "Phase Proof Resume",
+    revision: 1,
+    masteredSessionCount: 0,
+    totalSessionCount: 0,
+    successfulConstructionIds: [],
+    failedConstructionIds: [],
+    successfulSemanticPatches: [],
+    failedSemanticPatches: [],
+    behaviorEvidence: [],
+  };
+  const baseline = {
+    baselineId: "baseline:phase-proof-resume",
+    timelineRef: "ae:comp:phase-proof-resume",
+    evidenceRefs: ["baseline:phase-proof-resume"],
+  };
+  const makeRuntime = (label) => {
+    const stats = { confirmations: 0, fullRenders: 0 };
+    return {
+      stats,
+      runtime: {
+        availableCapabilities: [],
+        async analyzeReference() {
+          return referenceEvidence;
+        },
+        async prepareAttempt() {},
+        async applyWindowGraph() {},
+        async renderWindowEvidence(input) {
+          stats.confirmations += 1;
+          return {
+            ...input.window.evidence,
+            sourceId: "render:phase-resume:" + label,
+            sourceKind: "RENDER",
+            contentKey: "render:phase-resume:" + label,
+            evidenceRefs: ["render:phase-resume:" + label],
+          };
+        },
+        async renderFullEdit(input) {
+          stats.fullRenders += 1;
+          return {
+            renderRef: "render:phase-resume:" + label + ":" + String(input.attempt),
+            evidenceRefs: ["render:phase-resume:full:" + label],
+          };
+        },
+        async analyzeRender() {
+          throw new Error("not used by phase-proof resume reconstruction test");
+        },
+        async evaluateContentStructure() {
+          throw new Error("not used by phase-proof resume reconstruction test");
+        },
+      },
+    };
+  };
+  const makeBrain = (risks) => ({
+    async run(requestValue) {
+      risks.push(requestValue.risk);
+      const appliedGraph = requestValue.learnedGraph ?? graph;
+      await requestValue.applyGraph(appliedGraph);
+      return {
+        schema: "editflow.m6-production-result.v1",
+        route: requestValue.risk === "LOW" ? "FAST_PATH" : "VISUAL_INTELLIGENCE",
+        status: "COMPLETED",
+        correction: requestValue.risk === "LOW"
+          ? null
+          : {
+            schema: "editflow.visual-correction-loop.v1",
+            status: "PASSED",
+            graph: appliedGraph,
+            passes: [],
+            learnedPatches: [],
+          },
+        synthesis: null,
+        evidenceRefs: requestValue.evidenceRefs,
+      };
+    },
+  });
+
+  const firstRuntime = makeRuntime("first");
+  const firstRisks = [];
+  const firstBridge = new PracticeM6ExecutionBridgeV1(
+    firstRuntime.runtime,
+    makeBrain(firstRisks),
+    new PracticeM6PhaseProofFileV1(storePath),
+  );
+  const first = await firstBridge.reconstruct({
+    sessionId: "practice:phase-proof-resume",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 1,
+    reference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [],
+  });
+  assert.equal(first.certificationReady, true);
+  assert.deepEqual(firstRisks, ["HIGH"]);
+  assert.equal(firstRuntime.stats.confirmations, 1);
+
+  const secondRuntime = makeRuntime("second");
+  const secondRisks = [];
+  const secondBridge = new PracticeM6ExecutionBridgeV1(
+    secondRuntime.runtime,
+    makeBrain(secondRisks),
+    new PracticeM6PhaseProofFileV1(storePath),
+  );
+  const second = await secondBridge.reconstruct({
+    sessionId: "practice:phase-proof-resume",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 2,
+    reference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [{
+      attempt: 1,
+      renderRef: first.renderRef,
+      certificationReady: true,
+      report: failedReport(),
+      decisionTraces: first.decisionTraces,
+      elapsedMs: 1,
+      evidenceRefs: first.evidenceRefs,
+    }],
+  });
+  assert.equal(second.certificationReady, true);
+  assert.deepEqual(secondRisks, ["LOW"]);
+  assert.equal(secondRuntime.stats.confirmations, 0);
+  assert.equal(secondRuntime.stats.fullRenders, 1);
+  assert.ok(second.evidenceRefs.includes(
+    "practice-phase-proof-fast-reuse:effect-01",
+  ));
+
+  const changedRuntime = makeRuntime("changed-baseline");
+  const changedRisks = [];
+  const changedBridge = new PracticeM6ExecutionBridgeV1(
+    changedRuntime.runtime,
+    makeBrain(changedRisks),
+    new PracticeM6PhaseProofFileV1(storePath),
+  );
+  await changedBridge.reconstruct({
+    sessionId: "practice:phase-proof-resume",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 3,
+    reference,
+    baseline: { ...baseline, baselineId: "baseline:changed-source-lock" },
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [],
+  });
+  assert.deepEqual(changedRisks, ["HIGH"]);
+  assert.equal(changedRuntime.stats.confirmations, 1);
 });
 
 test("M6 whole-edit adapter composition is explicit deterministic-proof-only", () => {

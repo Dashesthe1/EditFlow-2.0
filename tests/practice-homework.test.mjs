@@ -239,6 +239,42 @@ const request = {
   maxAttempts: 8,
 };
 
+test("Practice overlaps independent reference/index and scene/audio analysis", async () => {
+  const fixtures = makeAdapters([report(0.8)]);
+  const stages = { analysis: { active: 0, peak: 0 }, matching: { active: 0, peak: 0 } };
+  const overlap = (stage, operation) => async (...args) => {
+    const state = stages[stage];
+    state.active += 1;
+    state.peak = Math.max(state.peak, state.active);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return await operation(...args);
+    } finally {
+      state.active -= 1;
+    }
+  };
+  const original = fixtures.adapters;
+  const engine = new PracticeHomeworkEngineV1({
+    ...original,
+    analyzeFinish: overlap("analysis", original.analyzeFinish),
+    indexStart: overlap("analysis", original.indexStart),
+    matchScenes: overlap("matching", original.matchScenes),
+    matchAudio: overlap("matching", original.matchAudio),
+  }, new PracticeLearningMemoryV1(), makeEditTypes());
+  const result = await engine.run({
+    ...request,
+    start: [...request.start, {
+      mediaId: "song:a",
+      role: "START_SOURCE",
+      mediaKind: "AUDIO",
+      uri: "file:///song-a.wav",
+    }],
+  });
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(stages.analysis.peak, 2);
+  assert.equal(stages.matching.peak, 2);
+});
+
 test("homework loop repeats until the reconstruction satisfies the supervised gate", async () => {
   const fixtures = makeAdapters([
     report(0.90, { definingEffectCoverage: 0.5 }),

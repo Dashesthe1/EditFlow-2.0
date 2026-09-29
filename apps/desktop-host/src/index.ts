@@ -41,6 +41,7 @@ export interface DesktopAeSessionOptions {
 export {
   PracticeCurrentAeBaselineRunnerV1,
   PracticeM6CurrentAeTrainingRuntimeV1,
+  PracticeM6PhaseProofFileV1,
   compilePracticeAeBaselineExecutionPlanV1,
   createPracticeCurrentAeBaselineRunnerV1,
   createPracticeM6CurrentAeAssemblyV1,

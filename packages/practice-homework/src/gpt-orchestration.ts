@@ -490,6 +490,16 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "- LOCK_EDITORIAL_SPINE: After the correct raw shots, order, broad timing, and audio arrangement are verified, preserve them. Do not rebuild correct shots merely because an effect needs correction.",
       "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
       "- COMPLETE_EDIT_THEN_PATCH: Build one coherent full edit from the locked footage, render/review it, diagnose discrepancies, then patch only deficient regions. Later attempts preserve already-correct regions.",
+      "- ACCELERATED COVERAGE-FIRST SCHEDULE: after all source/range choices are locked, build a playable whole-edit reconstruction across every phase before final certification. Do not block later construction on a phase that still needs micro-optimization.",
+      "- BATCH SOURCE REVIEW: inspect direct-pixel contact sheets containing multiple Finish phases and strongest raw-source candidates when legible; retain an explicit source/range decision for every phase.",
+      "- BOUNDED SCRATCH SEARCH: one GPT hypothesis defines construction family, invariants, and safe parameter bounds; local non-canonical search may test many candidates without one GPT roundtrip per candidate, and only the winning commit becomes canonical.",
+      "- PROGRESSIVE FIDELITY FUNNEL: prefer up to 32 coarse 1/8-resolution critical-frame candidates, retain up to 8 at 1/4 resolution, then full-resolution proof only for the strongest 2. Machine scoring is search/ranking evidence only and can never satisfy a Practice fidelity pass.",
+      "- GPT REVIEW COMPRESSION: show GPT at most the strongest 3 useful alternatives plus reference/current-best instead of dominated intermediate candidates.",
+      "- GLOBAL RESIDUAL SCHEDULER: after whole-edit coverage exists, rank residuals by source correctness, defining-effect coverage, temporal/transition mismatch, severity, duration, and viewer salience; correct roughly the highest-impact 20% first and re-rank.",
+      "- ANTI_STAGNATION: after two weak micro-correction rounds on one hypothesis, or under 1% relevant improvement, stop parameter nudging and escalate parameter -> construction -> effect anatomy -> source/timing -> capability/tutorial research.",
+      "- DEPENDENCY_AWARE_RECERTIFICATION: a localized correction invalidates only that phase and connected transition/timing/composite dependencies; unrelated accepted proof remains reusable until its dependencies change.",
+      "- TRACE_BATCHING: emit several already-decided chronological trace events through the batch endpoint when safe instead of one process/HTTP roundtrip per event; individual validation and evidence requirements remain unchanged.",
+      "- QUALITY_GATES_UNCHANGED: Every phase still needs at least 2 consecutive passes before successful Practice completion, and the exact final candidate needs at least 2 consecutive whole-edit passes. Acceleration changes search/construction order, never acceptance authority.",
       "- CLEAN_AE_PROJECT: Temporary M6 experiments and proof renders remain isolated evidence and are not imported into the production composition. Do not create hundreds of alternate scenes or repeated full-length source items.",
       "- NO_WEAKER_SUBSTITUTION: When a defining reference effect is unfamiliar, inspect it more densely and synthesize/research the actual behavior rather than replacing it with a generic flash, zoom, shake, or other weaker approximation.",
       "",
@@ -588,6 +598,23 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   ].join("\n");
   return applyCurrentWorkflowContinuityPolicy(message);
 };
+
+export interface GptAppendEventInputV1 {
+  readonly assignmentId: string;
+  readonly stage: GptLearningStageV1;
+  readonly outcome?: GptLearningOutcomeV1;
+  readonly attempt?: number;
+  readonly summary: string;
+  readonly detail?: string;
+  readonly developmentPattern?: string;
+  readonly reusableLesson?: string;
+  readonly avoidRepeat?: string;
+  readonly capabilityGap?: GptCapabilityGapV1;
+  readonly researchSources?: readonly GptResearchSourceV1[];
+  readonly learnedSkill?: GptLearnedSkillV1;
+  readonly appliedSkillIds?: readonly string[];
+  readonly evidenceRefs?: readonly string[];
+}
 
 export class GptOrchestrationStoreV1 {
   readonly filePath: string;
@@ -796,24 +823,31 @@ export class GptOrchestrationStoreV1 {
     });
   }
 
-  async appendEvent(input: {
-    readonly assignmentId: string;
-    readonly stage: GptLearningStageV1;
-    readonly outcome?: GptLearningOutcomeV1;
-    readonly attempt?: number;
-    readonly summary: string;
-    readonly detail?: string;
-    readonly developmentPattern?: string;
-    readonly reusableLesson?: string;
-    readonly avoidRepeat?: string;
-    readonly capabilityGap?: GptCapabilityGapV1;
-    readonly researchSources?: readonly GptResearchSourceV1[];
-    readonly learnedSkill?: GptLearnedSkillV1;
-    readonly appliedSkillIds?: readonly string[];
-    readonly evidenceRefs?: readonly string[];
-  }): Promise<GptLearningEventV1> {
-    const summary = nonEmpty(input.summary, "summary");
+  async appendEvent(input: GptAppendEventInputV1): Promise<GptLearningEventV1> {
+    return (await this.appendEvents([input]))[0]!;
+  }
+
+  async appendEvents(inputs: readonly GptAppendEventInputV1[]): Promise<readonly GptLearningEventV1[]> {
+    if (inputs.length === 0 || inputs.length > 64) {
+      throw new TypeError("GPT event batch must contain 1-64 entries.");
+    }
     return await this.#mutate((payload) => {
+      let next = payload;
+      const events: GptLearningEventV1[] = [];
+      for (const input of inputs) {
+        const [updated, event] = this.#appendEventToPayload(next, input);
+        next = updated;
+        events.push(event);
+      }
+      return [next, events] as const;
+    });
+  }
+
+  #appendEventToPayload(
+    payload: GptOrchestrationStorePayloadV1,
+    input: GptAppendEventInputV1,
+  ): readonly [GptOrchestrationStorePayloadV1, GptLearningEventV1] {
+      const summary = nonEmpty(input.summary, "summary");
       const assignment = payload.assignments.find((item) => item.assignmentId === input.assignmentId);
       if (assignment === undefined) throw new TypeError("Unknown GPT assignment: " + input.assignmentId);
       if (!["RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)) {
@@ -1057,7 +1091,6 @@ export class GptOrchestrationStoreV1 {
         ...payload,
         events: [...payload.events, event],
       }, structuredClone(event)] as const;
-    });
   }
 
   async eventsForSession(sessionId: string): Promise<readonly GptLearningEventV1[]> {

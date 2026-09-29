@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   ConstructionGraphV1,
   DenseEffectEvidenceV1,
@@ -328,23 +330,67 @@ interface PracticeM6AttemptStateV1 {
   readonly windowResults: readonly M6ProductionResultV1[];
 }
 
-interface PracticeM6PhaseProofCacheEntryV1 {
+export interface PracticeM6PhaseProofCacheEntryV1 {
   readonly graph: ConstructionGraphV1;
   readonly consecutivePasses: number;
   readonly lastAttempt: number;
 }
+
+export interface PracticeM6PhaseProofStoreV1 {
+  load(key: string): Promise<PracticeM6PhaseProofCacheEntryV1 | null>;
+  save(key: string, entry: PracticeM6PhaseProofCacheEntryV1): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+const phaseProofDependencyFingerprint = (input: {
+  readonly reference: PracticeReferenceAnalysisV1;
+  readonly baseline: PracticeContentBaselineV1;
+  readonly matches: readonly PracticeSceneMatchV1[];
+  readonly audioMatch?: PracticeAudioMatchV1 | null;
+}): string => createHash("sha256").update(JSON.stringify({
+  referenceId: input.reference.referenceId,
+  styleFingerprint: input.reference.styleFingerprint,
+  shots: input.reference.shots,
+  baselineId: input.baseline.baselineId,
+  timelineRef: input.baseline.timelineRef,
+  audioTimelineRef: input.baseline.audioTimelineRef ?? null,
+  matches: input.matches.map((match) => ({
+    shotId: match.shotId,
+    sourceId: match.sourceId,
+    sourcePath: match.sourcePath ?? null,
+    workingMedia: match.workingMedia ?? null,
+    sourceStartMs: match.sourceStartMs,
+    sourceEndMs: match.sourceEndMs,
+    direction: match.direction,
+    playbackRate: match.playbackRate,
+    trajectory: match.trajectory ?? null,
+    temporalBehavior: match.temporalBehavior ?? null,
+    rewind: match.rewind ?? null,
+  })),
+  audioMatch: input.audioMatch === null || input.audioMatch === undefined
+    ? null
+    : {
+      matchId: input.audioMatch.matchId,
+      sourceId: input.audioMatch.sourceId,
+      sourcePath: input.audioMatch.sourcePath ?? null,
+      segments: input.audioMatch.segments,
+      beatGrid: input.audioMatch.beatGrid ?? null,
+    },
+})).digest("hex");
 
 const phaseProofCacheKey = (
   sessionId: string,
   referenceId: string,
   editTypeId: string,
   editTypeRevision: number,
+  dependencyFingerprint: string,
   windowId: string,
 ): string => [
   sessionId,
   referenceId,
   editTypeId,
   String(editTypeRevision),
+  dependencyFingerprint,
   windowId,
 ].join("::");
 
@@ -1029,6 +1075,7 @@ export class PracticeM6ExecutionBridgeV1
 implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
   readonly runtime: PracticeM6RuntimeV1;
   readonly brain: PracticeM6BrainV1;
+  readonly phaseProofStore: PracticeM6PhaseProofStoreV1 | null;
   readonly #referenceCache = new Map<string, {
     readonly evidence: DenseEffectEvidenceV1;
     readonly sequence: DenseEffectSequenceV1;
@@ -1039,9 +1086,37 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
   constructor(
     runtime: PracticeM6RuntimeV1,
     brain: PracticeM6BrainV1 = new VisualEffectsBrainV1(),
+    phaseProofStore: PracticeM6PhaseProofStoreV1 | null = null,
   ) {
     this.runtime = runtime;
     this.brain = brain;
+    this.phaseProofStore = phaseProofStore;
+  }
+
+  async #phaseProof(
+    key: string,
+  ): Promise<PracticeM6PhaseProofCacheEntryV1 | undefined> {
+    const cached = this.#phaseProofCache.get(key);
+    if (cached !== undefined) return cached;
+    const retained = await this.phaseProofStore?.load(key) ?? null;
+    if (retained === null) return undefined;
+    const cloned = structuredClone(retained);
+    this.#phaseProofCache.set(key, cloned);
+    return cloned;
+  }
+
+  async #rememberPhaseProof(
+    key: string,
+    entry: PracticeM6PhaseProofCacheEntryV1,
+  ): Promise<void> {
+    const cloned = structuredClone(entry);
+    this.#phaseProofCache.set(key, cloned);
+    await this.phaseProofStore?.save(key, cloned);
+  }
+
+  async #forgetPhaseProof(key: string): Promise<void> {
+    this.#phaseProofCache.delete(key);
+    await this.phaseProofStore?.delete(key);
   }
 
   async #referenceAnalysis(
@@ -1131,16 +1206,24 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         ? {}
         : { beatGrid: input.audioMatch.beatGrid }),
     });
-    const allPhasesProvenAtStart = analysis.sequence.windows.every((window) => {
+    const dependencyFingerprint = phaseProofDependencyFingerprint(input);
+    const phaseProofsAtStart = new Map<string, PracticeM6PhaseProofCacheEntryV1>();
+    for (const window of analysis.sequence.windows) {
       const key = phaseProofCacheKey(
         input.sessionId,
         input.reference.referenceId,
         input.editTypeId,
         input.editTypeKnowledge.revision,
+        dependencyFingerprint,
         window.windowId,
       );
-      return (this.#phaseProofCache.get(key)?.consecutivePasses ?? 0) >= 2;
-    });
+      const retained = await this.#phaseProof(key);
+      if (retained !== undefined) {
+        phaseProofsAtStart.set(window.windowId, retained);
+      }
+    }
+    const allPhasesProvenAtStart = analysis.sequence.windows.every((window) =>
+      (phaseProofsAtStart.get(window.windowId)?.consecutivePasses ?? 0) >= 2);
     const skippedProvenWindowIds = new Set<string>();
     await this.runtime.prepareAttempt({
       ...input,
@@ -1187,9 +1270,10 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         input.reference.referenceId,
         input.editTypeId,
         input.editTypeKnowledge.revision,
+        dependencyFingerprint,
         window.windowId,
       );
-      const retainedPhaseProof = this.#phaseProofCache.get(phaseCacheKey);
+      const retainedPhaseProof = phaseProofsAtStart.get(window.windowId);
       const reusablePhaseGraph = retainedPhaseProof !== undefined
         && retainedPhaseProof.consecutivePasses >= 2
         ? structuredClone(retainedPhaseProof.graph)
@@ -1310,18 +1394,18 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           );
           consecutivePhasePasses = confirmation.passed ? 2 : 0;
           if (consecutivePhasePasses >= 2) {
-            this.#phaseProofCache.set(phaseCacheKey, {
+            await this.#rememberPhaseProof(phaseCacheKey, {
               graph: structuredClone(resolvedGraph),
               consecutivePasses: consecutivePhasePasses,
               lastAttempt: input.attempt,
             });
           } else {
-            this.#phaseProofCache.delete(phaseCacheKey);
+            await this.#forgetPhaseProof(phaseCacheKey);
           }
         }
       } else {
         consecutivePhasePasses = 0;
-        this.#phaseProofCache.delete(phaseCacheKey);
+        await this.#forgetPhaseProof(phaseCacheKey);
       }
       windowResults.push(result);
       evidenceRefs.push(
@@ -1422,16 +1506,21 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       });
     }
 
-    const allPhasesProvenNow = analysis.sequence.windows.every((window) => {
+    let allPhasesProvenNow = true;
+    for (const window of analysis.sequence.windows) {
       const key = phaseProofCacheKey(
         input.sessionId,
         input.reference.referenceId,
         input.editTypeId,
         input.editTypeKnowledge.revision,
+        dependencyFingerprint,
         window.windowId,
       );
-      return (this.#phaseProofCache.get(key)?.consecutivePasses ?? 0) >= 2;
-    });
+      if ((await this.#phaseProof(key))?.consecutivePasses !== 2) {
+        allPhasesProvenNow = false;
+        break;
+      }
+    }
     const certificationReady = allPhasesProvenNow
       && skippedProvenWindowIds.size === 0;
     if (skippedProvenWindowIds.size > 0) {

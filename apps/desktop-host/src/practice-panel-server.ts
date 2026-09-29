@@ -22,6 +22,7 @@ import {
   LocalPracticeMediaMatcherV1,
   practicePerceptualSetOverlapsV1,
   practicePerceptualSignatureMatchesV1,
+  type GptAppendEventInputV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -1660,10 +1661,10 @@ export class PracticePanelServerV1 {
     return { assignment, researchSource };
   }
 
-  async #recordLearningEvent(
+  #parseLearningEvent(
     assignmentId: string,
     body: Record<string, unknown>,
-  ): Promise<GptOrchestrationAssignmentV1> {
+  ): GptAppendEventInputV1 {
     const stage = requiredString(body, "stage") as GptLearningStageV1;
     const allowedStages: readonly GptLearningStageV1[] = [
       "OBSERVATION", "INTERPRETATION", "HYPOTHESIS", "PLAN",
@@ -1730,7 +1731,7 @@ export class PracticePanelServerV1 {
         );
       }
     }
-    const event = await this.#gptStore.appendEvent({
+    return {
       assignmentId,
       stage,
       outcome,
@@ -1745,16 +1746,31 @@ export class PracticePanelServerV1 {
       ...(learnedSkill === undefined ? {} : { learnedSkill }),
       ...(appliedSkillIds.length === 0 ? {} : { appliedSkillIds }),
       evidenceRefs,
-    });
+    };
+  }
+
+  async #recordLearningEvents(
+    assignmentId: string,
+    bodies: readonly Record<string, unknown>[],
+  ): Promise<GptOrchestrationAssignmentV1> {
+    const inputs = bodies.map((body) => this.#parseLearningEvent(assignmentId, body));
+    const events = await this.#gptStore.appendEvents(inputs);
     const assignment = await this.#gptStore.getAssignment(assignmentId);
     if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
     if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
       const file = await this.#editTypes();
       const registry = await file.load();
-      registry.recordGptLearningEvent(event);
+      for (const event of events) registry.recordGptLearningEvent(event);
       await file.save(registry);
     }
     return assignment;
+  }
+
+  async #recordLearningEvent(
+    assignmentId: string,
+    body: Record<string, unknown>,
+  ): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#recordLearningEvents(assignmentId, [body]);
   }
 
   async #completeAssignment(
@@ -2327,6 +2343,27 @@ export class PracticePanelServerV1 {
           201,
           await this.#compileTutorialResearch(id, await readJson(req)),
         );
+        return;
+      }
+      const eventBatchMatch =
+        /^\/v1\/product\/gpt\/assignments\/([^/]+)\/events\/batch$/.exec(url.pathname);
+      if (req.method === "POST" && eventBatchMatch !== null) {
+        const id = decodeURIComponent(eventBatchMatch[1] ?? "");
+        const body = await readJson(req);
+        const rawEvents = body["events"];
+        if (!Array.isArray(rawEvents) || rawEvents.length === 0 || rawEvents.length > 64) {
+          throw new HttpError(400, "events must be a non-empty array with at most 64 entries.");
+        }
+        if (rawEvents.some((event) => event === null
+          || typeof event !== "object"
+          || Array.isArray(event))) {
+          throw new HttpError(400, "Each batched event must be an object.");
+        }
+        const assignment = await this.#recordLearningEvents(
+          id,
+          rawEvents as Record<string, unknown>[],
+        );
+        jsonResponse(res, 201, { assignment, eventCount: rawEvents.length });
         return;
       }
       const eventMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/events$/.exec(url.pathname);

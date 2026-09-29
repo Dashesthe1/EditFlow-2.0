@@ -296,3 +296,95 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(client, /WAITING_FOR_GPT/);
   assert.match(client, /GPT is orchestrating EditFlow Brain/);
 });
+
+
+test("Practice event batch endpoint preserves individual validated events with one HTTP roundtrip", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-practice-event-batch-"));
+  const artifactDir = path.join(root, "artifacts");
+  const gptPath = path.join(root, "state", "gpt-orchestration.json");
+  const registryPath = path.join(root, "state", "edit-types.json");
+  const broker = new LoopbackCepBroker({ port: 0, token });
+  await broker.start();
+  const service = new PracticePanelServerV1({
+    port: 0,
+    token,
+    repositoryRoot: process.cwd(),
+    artifactDir,
+    learningMemoryFilePath: path.join(root, "state", "memory.json"),
+    editTypeRegistryFilePath: registryPath,
+    gptOrchestrationFilePath: gptPath,
+    broker,
+  });
+  const port = await service.start();
+  const base = "http://127.0.0.1:" + String(port);
+  t.after(async () => {
+    await service.stop();
+    await broker.stop();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const editType = await fetch(base + "/v1/product/edit-types", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ editTypeId: "batch-test", title: "Batch Test" }),
+  });
+  assert.equal(editType.status, 201);
+
+  const store = new GptOrchestrationStoreV1(gptPath);
+  const assignment = await store.createAssignment({
+    sessionId: "practice:event-batch",
+    mode: "PRACTICE",
+    practiceRole: "LEARNING",
+    editTypeId: "batch-test",
+    finish: {
+      mediaId: "finish:batch",
+      role: "FINISH_REFERENCE",
+      mediaKind: "VIDEO",
+      uri: path.join(root, "finish.mp4"),
+    },
+    start: [{
+      mediaId: "start:batch",
+      role: "START_SOURCE",
+      mediaKind: "VIDEO",
+      uri: path.join(root, "start.mp4"),
+    }],
+    artifactDir: path.join(artifactDir, "practice-event-batch"),
+    knowledge: null,
+  });
+  await store.claim(assignment.assignmentId, "batch-test-controller");
+
+  const response = await fetch(
+    base + "/v1/product/gpt/assignments/" + encodeURIComponent(assignment.assignmentId) + "/events/batch",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        events: [
+          { stage: "OBSERVATION", summary: "Observed reference overview." },
+          { stage: "HYPOTHESIS", summary: "Defined one bounded construction hypothesis." },
+        ],
+      }),
+    },
+  );
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).eventCount, 2);
+  const events = await store.eventsForSession(assignment.sessionId);
+  assert.deepEqual(events.map((event) => event.stage), ["OBSERVATION", "HYPOTHESIS"]);
+
+  const rejected = await fetch(
+    base + "/v1/product/gpt/assignments/" + encodeURIComponent(assignment.assignmentId) + "/events/batch",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ events: [
+        { stage: "DIAGNOSIS", summary: "This must not partially persist." },
+        { stage: "CAPABILITY_PROOF", summary: "Missing required capability gap." },
+      ] }),
+    },
+  );
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(
+    (await store.eventsForSession(assignment.sessionId)).map((event) => event.stage),
+    ["OBSERVATION", "HYPOTHESIS"],
+  );
+});
