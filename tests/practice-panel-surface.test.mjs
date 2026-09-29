@@ -49,6 +49,7 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     panelConnected: false,
     gptOrchestration: "ASSIGNMENT_QUEUE_READY",
     practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
+    practiceStartup: "RESUMABLE_PREFLIGHT_V1",
     practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
     activeRunId: null,
     latestRunId: null,
@@ -102,11 +103,17 @@ test("Practice panel product API is authenticated and preserves readiness gates"
       audioPaths: [],
     }),
   });
-  assert.equal(practice.status, 409);
-  assert.match(
-    (await practice.json()).error,
-    /CONNECTION_PREFLIGHT_BLOCKED: CEP_PANEL: After Effects CEP panel is missing or stale/,
-  );
+  assert.equal(practice.status, 202);
+  const persistedRun = (await practice.json()).run;
+  assert.ok(persistedRun.assignmentId);
+  const resume = await (await fetch(base + "/v1/product/practice/resume-or-start", { headers })).json();
+  assert.equal(resume.assignment.assignmentId, persistedRun.assignmentId);
+  assert.equal(resume.nextOperation, "RESUME_PREFLIGHT");
+  const mutation = await fetch(base + "/v1/product/control/run-batch", {
+    method: "POST", headers, body: JSON.stringify({ intents: [] }),
+  });
+  assert.equal(mutation.status, 409);
+  assert.match((await mutation.json()).error, /reconstruction is locked/);
 });
 
 test("Practice panel restores persisted runs and saved human review after restart", async (t) => {

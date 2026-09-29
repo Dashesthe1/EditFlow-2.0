@@ -1,9 +1,11 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { hasRepeatedSceneGeometryV1, validatePracticeSceneMatchesV1 } from "./engine.js";
 
 import type {
   PracticeAudioMatchV1,
@@ -27,6 +29,7 @@ export const defaultPracticeAnalysisCacheDirectoryV1 = (): string => path.resolv
 
 export interface LocalPracticeMediaMatcherConfigV1 {
   readonly artifactDir: string;
+  readonly signal?: AbortSignal;
   readonly analysisCacheDir?: string;
   readonly scriptPath: string;
   readonly python?: PythonRuntimeV1;
@@ -275,8 +278,9 @@ const appendBoundedProcessOutput = (
 export class LocalPracticeMediaMatcherV1 {
   readonly config: Required<Omit<
   LocalPracticeMediaMatcherConfigV1,
-  "python" | "ffmpegPath" | "correctionProfilePath" | "correctionCaseId"
+  "python" | "ffmpegPath" | "correctionProfilePath" | "correctionCaseId" | "signal"
   >> & {
+    readonly signal?: AbortSignal;
     readonly python: PythonRuntimeV1;
     readonly ffmpegPath: string | null;
     readonly correctionProfilePath: string | null;
@@ -293,6 +297,7 @@ export class LocalPracticeMediaMatcherV1 {
   constructor(config: LocalPracticeMediaMatcherConfigV1) {
     this.config = {
       artifactDir: path.resolve(config.artifactDir),
+      ...(config.signal === undefined ? {} : { signal: config.signal }),
       analysisCacheDir: path.resolve(
         config.analysisCacheDir ?? path.join(config.artifactDir, "analysis-cache"),
       ),
@@ -345,17 +350,41 @@ export class LocalPracticeMediaMatcherV1 {
     ]).slice(0, 24);
   }
 
-  async #run(args: readonly string[]): Promise<void> {
-    const invocation = [...this.config.python.prefixArgs, this.config.scriptPath, ...args];
+  async #run(args: readonly string[], onMatch?: (match: PracticeSceneMatchV1) => Promise<void>): Promise<void> {
+    const script = args[0] === "match" && path.basename(this.config.scriptPath) === "practice-media-match.py"
+      ? path.join(path.dirname(this.config.scriptPath), "practice-resumable-match.py")
+      : this.config.scriptPath;
+    const invocation = [...this.config.python.prefixArgs, script, ...args];
     await new Promise<void>((resolve, reject) => {
       let timedOut = false;
       let stderr = "";
+      let pendingOutput = "";
+      let progressError: unknown;
+      let progressQueue = Promise.resolve();
       const child = spawn(this.config.python.executable, invocation, {
         windowsHide: true,
         shell: false,
         detached: process.platform !== "win32",
-        stdio: ["ignore", "ignore", "pipe"],
+        stdio: ["ignore", "pipe", "pipe"],
       });
+      child.stdout.on("data", (chunk: Buffer | string) => {
+        pendingOutput += chunk.toString();
+        let boundary: number;
+        while ((boundary = pendingOutput.indexOf("\n")) >= 0) {
+          const line = pendingOutput.slice(0, boundary);
+          pendingOutput = pendingOutput.slice(boundary + 1);
+          if (onMatch === undefined || !line.includes("editflow.practice-match-progress.v1")) continue;
+          progressQueue = progressQueue.then(async () => {
+            const event = JSON.parse(line) as { schema: string; match: PracticeSceneMatchV1 };
+            if (event.schema === "editflow.practice-match-progress.v1") await onMatch(event.match);
+          }).catch((error: unknown) => { progressError = error; terminateProcessTree(child); });
+        }
+        if (pendingOutput.length > 1_048_576) pendingOutput = "";
+      });
+      const abort = (): void => { terminateProcessTree(child); };
+      this.config.signal?.addEventListener("abort", abort, { once: true });
+      if (this.config.signal?.aborted === true) abort();
+      child.once("close", () => this.config.signal?.removeEventListener("abort", abort));
       const timer = setTimeout(() => {
         timedOut = true;
         terminateProcessTree(child);
@@ -368,8 +397,10 @@ export class LocalPracticeMediaMatcherV1 {
         clearTimeout(timer);
         reject(error);
       });
-      child.once("close", (code, signal) => {
+      child.once("close", async (code, signal) => {
         clearTimeout(timer);
+        await progressQueue;
+        if (progressError !== undefined) { reject(progressError); return; }
         if (timedOut) {
           reject(new Error(
             "Practice media analysis timed out after "
@@ -520,6 +551,10 @@ export class LocalPracticeMediaMatcherV1 {
         detached: process.platform !== "win32",
         stdio: ["ignore", "ignore", "pipe"],
       });
+      const abort = (): void => { terminateProcessTree(child); };
+      this.config.signal?.addEventListener("abort", abort, { once: true });
+      if (this.config.signal?.aborted === true) abort();
+      child.once("close", () => this.config.signal?.removeEventListener("abort", abort));
       const timer = setTimeout(() => {
         timedOut = true;
         terminateProcessTree(child);
@@ -857,6 +892,7 @@ export class LocalPracticeMediaMatcherV1 {
     readonly reference: PracticeReferenceAnalysisV1;
     readonly sourceIndex: PracticeSourceIndexV1;
     readonly minimumConfidence: number;
+    readonly onProgress?: (matches: readonly PracticeSceneMatchV1[], stage: "SCENE_MATCHING" | "TARGETED_REFINEMENT" | "WORKING_MEDIA") => Promise<void>;
   }): Promise<readonly PracticeSceneMatchV1[]> {
     const referencePath = this.#referenceArtifactPathById.get(input.reference.referenceId);
     const sourcePaths = this.#videoSourceArtifactsByIndexId.get(input.sourceIndex.indexId);
@@ -887,45 +923,119 @@ export class LocalPracticeMediaMatcherV1 {
       safeStem(input.reference.referenceId) + "-" + key + ".json",
     );
 
-    if (!(await fileExists(outputPath))) {
-      const args = [
-        "match",
-        "--reference-json", referencePath,
-        "--output", outputPath,
-        "--coarse-limit", String(this.config.coarseCandidateLimit),
-      ];
-      for (const sourcePathValue of sourcePaths) {
-        args.push("--source-index-json", sourcePathValue);
-      }
+    const checkpointPath = outputPath + ".checkpoint.json";
+    const runMatch = async (targetShotIds?: readonly string[]): Promise<void> => {
+      const args = ["match", "--reference-json", referencePath, "--output", outputPath,
+        "--checkpoint", checkpointPath, "--coarse-limit",
+        String(targetShotIds === undefined ? this.config.coarseCandidateLimit : 64)];
+      for (const sourcePathValue of sourcePaths) args.push("--source-index-json", sourcePathValue);
+      for (const shotId of targetShotIds ?? []) args.push("--shot-id", shotId);
       if (this.config.correctionProfilePath !== null) {
-        args.push("--correction-profile", this.config.correctionProfilePath);
-        args.push("--correction-case-id", this.config.correctionCaseId!);
+        args.push("--correction-profile", this.config.correctionProfilePath,
+          "--correction-case-id", this.config.correctionCaseId!);
       }
-      await this.#run(args);
-    }
-
-    const artifact = await jsonFile<MatchArtifactV1>(outputPath);
+      await this.#run(args, async (match) => {
+        const prior = matches.find((item) => item.shotId === match.shotId);
+        matches = [...matches.filter((item) => item.shotId !== match.shotId), { ...match,
+          ...(prior?.workingMedia === undefined ? {} : { workingMedia: prior.workingMedia }) }];
+        await persist("SCENE_MATCHING");
+        await materialize();
+      });
+    };
+    let artifact: MatchArtifactV1 = await fileExists(outputPath)
+      ? await jsonFile<MatchArtifactV1>(outputPath)
+      : { schema: "editflow.practice-scene-matches.v1", matches: [], evidenceRefs: [] };
     if (artifact.schema !== "editflow.practice-scene-matches.v1") {
       throw new TypeError("Practice scene matcher returned an invalid artifact.");
     }
-
-    const matches = artifact.matches.map((match) => ({
+    let matches: PracticeSceneMatchV1[] = artifact.matches.map((match) => ({
       ...match,
-      evidenceRefs: [
-        ...match.evidenceRefs,
-        ...artifact.evidenceRefs,
+      evidenceRefs: [...new Set([...match.evidenceRefs, ...artifact.evidenceRefs,
         "practice-match-artifact:" + outputPath,
-        "practice-required-confidence:" + input.minimumConfidence.toFixed(6),
-      ],
+        "practice-required-confidence:" + input.minimumConfidence.toFixed(6)])],
     }));
-    if (!this.config.materializeWorkingMedia
-      || matches.some((match) => match.confidence < input.minimumConfidence)) {
-      return matches;
+    const proven = (match: PracticeSceneMatchV1): boolean =>
+      validatePracticeSceneMatchesV1([match.shotId], [match], input.minimumConfidence).length === 0;
+    const sourceArtifacts = await Promise.all(sourcePaths.map((value) => jsonFile<SourceArtifactV1>(value)));
+    const persist = async (stage: "SCENE_MATCHING" | "TARGETED_REFINEMENT" | "WORKING_MEDIA"): Promise<void> => {
+      const temporary = outputPath + ".tmp-" + String(process.pid);
+      await writeFile(temporary, JSON.stringify({ ...artifact, referenceId: input.reference.referenceId, matches }) + "\n", "utf8");
+      await rename(temporary, outputPath);
+      await input.onProgress?.(matches, stage);
+    };
+    const materialize = async (): Promise<void> => {
+      if (!this.config.materializeWorkingMedia) return;
+      // Materialize one retained shot at a time so adding a shot cannot invalidate prior clip packets.
+      for (let index = 0; index < matches.length; index += 1) {
+        const match = matches[index]!;
+        if (!proven(match)) continue;
+        this.config.signal?.throwIfAborted();
+        if (match.workingMedia !== undefined && validatePracticeWorkingMediaMatchesV1([match]).length === 0
+          && await fileExists(match.workingMedia.sourcePath)
+          && (await stat(match.workingMedia.sourcePath)).size > 0) continue;
+        const prepared = await this.#materializeWorkingMatches([match], sourceArtifacts);
+        matches[index] = prepared[0]!;
+        await persist("WORKING_MEDIA");
+      }
+    };
+    if (input.reference.shots.some((shot) => !matches.some((match) => match.shotId === shot.shotId))) {
+      await runMatch();
+      artifact = await jsonFile<MatchArtifactV1>(outputPath);
+      const prepared = new Map(matches.map((match) => [match.shotId, match]));
+      matches = artifact.matches.map((match) => ({ ...match,
+        ...(prepared.get(match.shotId)?.workingMedia === undefined ? {}
+          : { workingMedia: prepared.get(match.shotId)!.workingMedia! }),
+        evidenceRefs: [...new Set([...match.evidenceRefs, ...artifact.evidenceRefs,
+          "practice-match-artifact:" + outputPath,
+          "practice-required-confidence:" + input.minimumConfidence.toFixed(6)])],
+      }));
     }
-    const sourceArtifacts = await Promise.all(
-      sourcePaths.map((sourcePathValue) => jsonFile<SourceArtifactV1>(sourcePathValue)),
-    );
-    return await this.#materializeWorkingMatches(matches, sourceArtifacts);
+    await persist("SCENE_MATCHING");
+    await materialize();
+    const byShot = new Map(matches.map((match) => [match.shotId, match]));
+    const unresolved = input.reference.shots.filter((shot) => !byShot.has(shot.shotId)
+      || !proven(byShot.get(shot.shotId)!)).map((shot) => shot.shotId);
+    const refinementReceipt = outputPath + ".refinement-v2.json";
+    if (unresolved.length > 0 && !(await fileExists(refinementReceipt))) {
+      await input.onProgress?.(matches, "TARGETED_REFINEMENT");
+      const selected = new Map(matches.map((match) => [match.shotId, match]));
+      const retainCandidate = (candidate: PracticeSceneMatchV1): void => {
+        if (!unresolved.includes(candidate.shotId)) return;
+        const prior = selected.get(candidate.shotId);
+        if (prior !== undefined && proven(prior)) return;
+        if (prior === undefined || proven(candidate)
+          || (hasRepeatedSceneGeometryV1(candidate) && !hasRepeatedSceneGeometryV1(prior))
+          || (hasRepeatedSceneGeometryV1(candidate) === hasRepeatedSceneGeometryV1(prior)
+            && candidate.confidence > prior.confidence)) selected.set(candidate.shotId, candidate);
+      };
+      // Refinement uses a separate output/checkpoint. Only unresolved shots are searched.
+      const refinedPath = outputPath + ".refined-v2.json";
+      const args = ["match", "--reference-json", referencePath, "--output", refinedPath,
+        "--checkpoint", refinedPath + ".checkpoint.json", "--seed-matches", outputPath, "--coarse-limit", "64"];
+      for (const value of sourcePaths) args.push("--source-index-json", value);
+      for (const shotId of unresolved) args.push("--shot-id", shotId);
+      if (this.config.correctionProfilePath !== null) args.push("--correction-profile",
+        this.config.correctionProfilePath, "--correction-case-id", this.config.correctionCaseId!);
+      if (!(await fileExists(refinedPath))) await this.#run(args, async (candidate) => {
+        retainCandidate(candidate);
+        matches = input.reference.shots.flatMap((shot) => {
+          const match = selected.get(shot.shotId); return match === undefined ? [] : [match];
+        });
+        await persist("TARGETED_REFINEMENT");
+        await materialize();
+        for (const match of matches) selected.set(match.shotId, match);
+      });
+      const refined = await jsonFile<MatchArtifactV1>(refinedPath);
+      if (refined.schema !== artifact.schema) throw new TypeError("Invalid refinement artifact.");
+      for (const candidate of refined.matches) retainCandidate(candidate);
+      matches = input.reference.shots.flatMap((shot) => {
+        const match = selected.get(shot.shotId); return match === undefined ? [] : [match];
+      });
+      await persist("TARGETED_REFINEMENT");
+      await materialize();
+      await writeFile(refinementReceipt, JSON.stringify({ unresolved, completedAt: new Date().toISOString() }));
+    }
+    return matches;
   }
 
   async matchAudio(input: {

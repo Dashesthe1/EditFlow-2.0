@@ -99,8 +99,20 @@ def build_server():
 
     @mcp.tool()
     def get_editflow2_state() -> dict[str, Any]:
-        """Read the current EditFlow control-plane and live After Effects state."""
-        return _http("GET", "/state")
+        """Read live AE state and the durable Practice resume handshake together."""
+        state = _http("GET", "/state")
+        state["practiceResume"] = _practice_http("GET", "/v1/product/practice/resume-or-start")
+        return state
+
+    @mcp.tool()
+    def resume_or_start_practice(start_json: str = "") -> dict[str, Any]:
+        """Inspect or resume durable Practice preflight; optionally supply Start request JSON."""
+        if not start_json:
+            return _practice_http("GET", "/v1/product/practice/resume-or-start")
+        payload = json.loads(start_json)
+        if not isinstance(payload, dict):
+            raise ValueError("Practice resume request must be a JSON object.")
+        return _practice_http("POST", "/v1/product/practice/resume-or-start", payload)
 
     @mcp.tool()
     def get_after_effects_state() -> dict[str, Any]:

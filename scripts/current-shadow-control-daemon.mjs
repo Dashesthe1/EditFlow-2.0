@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,6 +92,9 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
+const runtimeId = "RESUMABLE_PREFLIGHT_V1";
+const buildId = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
+const canonicalRuntimePath = path.join(localAppData, "EditFlow2", "current-runtime.json");
 const practiceArtifactDir = path.resolve(
   process.env.EDITFLOW_PRACTICE_ARTIFACT_DIR
     ?? path.join(localAppData, "EditFlow2", "practice-artifacts"),
@@ -99,6 +103,7 @@ const practicePanel = new PracticePanelServerV1({
   port: 0,
   token: config.token,
   repositoryRoot: repoRoot,
+  buildId,
   artifactDir: practiceArtifactDir,
   learningMemoryFilePath: practiceStatePaths.learningMemoryFilePath,
   editTypeRegistryFilePath: practiceStatePaths.editTypeRegistryFilePath,
@@ -218,7 +223,7 @@ const proxyPracticeRequest = (req, res) => new Promise((resolve, reject) => {
 const statusPayload = () => ({
   ok: true,
   service: "EditFlow Current Shadow Control",
-  repoRoot,  executionMode: session.executionMode,
+  repoRoot, runtimeId, buildId, canonicalRuntimePath, executionMode: session.executionMode,
   adapterBuild: session.adapterBuild,
   hostRevision: session.runner.hostRevision,
   localRuntime: runtime.status(),
@@ -250,6 +255,9 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(requestPath, "http://127.0.0.1");
     url.pathname = legacyControlRouteAliases.get(url.pathname) ?? url.pathname;
+    if (req.method === "POST" && ["/run", "/run-batch", "/run-transaction", "/run-correction-transaction", "/proof-script"].includes(url.pathname)) {
+      await practicePanel.assertPracticeReconstructionReady();
+    }
     if (url.pathname.startsWith("/v1/product/")) {
       await proxyPracticeRequest(req, res);
       return;
@@ -417,7 +425,14 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(32146, "127.0.0.1", () => {
+server.listen(32146, "127.0.0.1", async () => {
+  await mkdir(path.dirname(canonicalRuntimePath), { recursive: true });
+  const manifest = { schema: "editflow.current-runtime.v1", runtimeId, buildId, repositoryRoot: repoRoot,
+    stateDir: practiceStatePaths.stateDir, artifactDir: practiceArtifactDir,
+    productBaseUrl: "http://127.0.0.1:32146", startedAt: new Date().toISOString() };
+  const temporaryManifest = canonicalRuntimePath + ".tmp-" + String(process.pid);
+  await writeFile(temporaryManifest, JSON.stringify(manifest, null, 2) + "\n");
+  await rename(temporaryManifest, canonicalRuntimePath);
   console.log(JSON.stringify({ event: "CURRENT_SHADOW_CONTROL_READY", port: 32146, ...statusPayload() }));
 });
 

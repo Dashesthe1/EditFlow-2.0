@@ -8,6 +8,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$CanonicalPath = Join-Path $env:LOCALAPPDATA "EditFlow2\current-runtime.json"
+if (Test-Path $CanonicalPath -PathType Leaf) {
+  $Canonical = Get-Content -Raw $CanonicalPath | ConvertFrom-Json
+  if ($Canonical.schema -eq "editflow.current-runtime.v1" -and
+      (Test-Path (Join-Path $Canonical.repositoryRoot "scripts\current-shadow-control-daemon.mjs"))) {
+    $RepoRoot = [string]$Canonical.repositoryRoot
+  }
+}
 $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
 if (-not (Test-Path $ConfigPath -PathType Leaf)) {
   throw "EditFlow CEP config not found. Run scripts\windows\install-editflow-cep.ps1 first."
@@ -25,6 +33,7 @@ $ProductStatus = Get-LocalStatus "$Base/v1/product/status"
 $ControlStatus = Get-LocalStatus "$Base/status"
 $ExpectedWorkflow = "ACCELERATED_REFERENCE_FIRST_V1"
 if ($ProductStatus.practiceWorkflow -eq $ExpectedWorkflow -and
+    $ProductStatus.practiceStartup -eq "RESUMABLE_PREFLIGHT_V1" -and
     $ControlStatus.repoRoot -eq $RepoRoot) {
   Write-Host "Accelerated Practice is already primary in the live Shadow control plane."
   Write-Host "Practice endpoint: $Base/v1/product/status"

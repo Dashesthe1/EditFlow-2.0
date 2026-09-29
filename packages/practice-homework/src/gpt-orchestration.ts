@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -15,6 +15,7 @@ import type {
   GptOrchestrationModeV1,
   GptResearchSourceV1,
   PracticeMediaInputV1,
+  PracticePreflightCheckpointV1,
   PracticeSceneMatchV1,
   PracticeRunRoleV1,
   PracticeVerificationPolicyV1,
@@ -249,6 +250,8 @@ const applyCurrentWorkflowContinuityPolicy = (message: string): string => {
     "Original M6 workflow + continuity policy (current):",
     WORKFLOW_CONTINUITY_POLICY_MARKER
       + " the Practice session/assignment is the durable unit of work across ChatGPT conversations.",
+    "- Bootstrap once through GET /v1/product/practice/resume-or-start. If the direct MCP transport fails once and Desktop Commander is online, immediately call the authenticated local product API through Desktop Commander. Do not repeatedly retry the failed MCP route.",
+    "- POST /v1/product/practice/resume-or-start resumes persisted preflight. Inspect assignment.preflight, prepared practiceSceneMatches, reasons and nextOperation. Keep the same assignment; reconstruct in AE only after READY. Heartbeat by claiming with your unique controller ID at least every 60 seconds; release-controller when handing off.",
     "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
     "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
     "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
@@ -630,7 +633,7 @@ export interface GptAppendEventInputV1 {
 
 export class GptOrchestrationStoreV1 {
   readonly filePath: string;
-  #tail: Promise<void> = Promise.resolve();
+  static readonly #tails = new Map<string, Promise<void>>();
   #sequence = 0;
 
   constructor(filePath: string) {
@@ -640,15 +643,18 @@ export class GptOrchestrationStoreV1 {
   async #write(payload: GptOrchestrationStorePayloadV1): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
     this.#sequence += 1;
-    const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence);
-    await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", "utf8");
-    try {
-      await rename(temporary, this.filePath);
-    } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error;
-      await copyFile(temporary, this.filePath);
-      await unlink(temporary);
+    const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence) + "-" + randomUUID();
+    await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", flush: true });
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename(temporary, this.filePath);
+        break;
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES") || attempt >= 7) throw error;
+        // Readers always see the complete previous or next checkpoint, never a copy in progress.
+        await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * 2 ** attempt)));
+      }
     }
   }
 
@@ -658,14 +664,17 @@ export class GptOrchestrationStoreV1 {
       readonly [GptOrchestrationStorePayloadV1, T],
   ): Promise<T> {
     let output!: T;
-    const pending = this.#tail.then(async () => {
+    const pending = (GptOrchestrationStoreV1.#tails.get(this.filePath) ?? Promise.resolve()).then(async () => {
       const current = await readStore(this.filePath);
       const [next, value] = await operation(current);
       await this.#write(next);
       output = value;
     });
-    this.#tail = pending.catch(() => undefined);
-    await pending;
+    const tail = pending.catch(() => undefined);
+    GptOrchestrationStoreV1.#tails.set(this.filePath, tail);
+    try { await pending; } finally {
+      if (GptOrchestrationStoreV1.#tails.get(this.filePath) === tail) GptOrchestrationStoreV1.#tails.delete(this.filePath);
+    }
     return output;
   }
 
@@ -677,6 +686,7 @@ export class GptOrchestrationStoreV1 {
     readonly finish: PracticeMediaInputV1 | null;
     readonly start: readonly PracticeMediaInputV1[];
     readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
+    readonly preflight?: PracticePreflightCheckpointV1;
     readonly practicePolicy?: Partial<PracticeVerificationPolicyV1> | null;
     readonly artifactDir: string;
     readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
@@ -715,6 +725,7 @@ export class GptOrchestrationStoreV1 {
         ? structuredClone(input.practiceSceneMatches ?? null)
         : null,
       practicePolicy,
+      ...(input.preflight === undefined ? {} : { preflight: structuredClone(input.preflight) }),
       artifactDir,
       chatMessage: buildGptOrchestrationChatMessageV1({
         sessionId,
@@ -746,6 +757,28 @@ export class GptOrchestrationStoreV1 {
         ...payload,
         assignments: [...payload.assignments, assignment],
       }, structuredClone(assignment)] as const;
+    });
+  }
+
+  async updatePreflight(
+    assignmentId: string,
+    preflight: PracticePreflightCheckpointV1,
+    matches?: readonly PracticeSceneMatchV1[],
+  ): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (["CANCEL_REQUESTED", "CANCELLED", "COMPLETED", "FAILED"].includes(assignment.status)) return assignment;
+      return {
+        ...assignment,
+        preflight: structuredClone(preflight),
+        ...(matches === undefined ? {} : { practiceSceneMatches: structuredClone(matches) }),
+      };
+    });
+  }
+
+  async releaseController(assignmentId: string, owner: string): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.controllerLease?.owner !== owner) throw new TypeError("Controller lease owner mismatch.");
+      return { ...assignment, controllerLease: null };
     });
   }
 
@@ -798,10 +831,17 @@ export class GptOrchestrationStoreV1 {
   async claim(assignmentId: string, claimedBy: string): Promise<GptOrchestrationAssignmentV1> {
     const controller = nonEmpty(claimedBy, "claimedBy");
     return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.controllerLease !== undefined && assignment.controllerLease !== null
+        && assignment.controllerLease.owner !== controller
+        && Date.parse(assignment.controllerLease.expiresAt) > Date.now()) {
+        throw new TypeError("Practice controller lease is held by " + assignment.controllerLease.owner + ".");
+      }
+      const controllerLease = { owner: controller, expiresAt: new Date(Date.now() + 120_000).toISOString() };
       if (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED") {
         return {
           ...assignment,
           claimedBy: controller,
+          controllerLease,
         };
       }
       if (assignment.status !== "PENDING") {
@@ -813,6 +853,7 @@ export class GptOrchestrationStoreV1 {
         status: "RUNNING",
         claimedAt: now,
         claimedBy: controller,
+        controllerLease,
         startedAt: now,
       };
     });

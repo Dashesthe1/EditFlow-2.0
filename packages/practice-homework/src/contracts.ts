@@ -1303,6 +1303,17 @@ export interface GptLearningEventV1 {
   readonly createdAt: string;
 }
 
+export interface PracticePreflightCheckpointV1 {
+  readonly stage: "PREFLIGHT_MATCHING" | "FINGERPRINTING" | "REFERENCE_ANALYSIS" | "SOURCE_INDEXING" | "SCENE_MATCHING" | "TARGETED_REFINEMENT" | "WORKING_MEDIA" | "BLOCKED" | "READY";
+  readonly updatedAt: string;
+  readonly requireTransferNovelty: boolean;
+  readonly totalShotIds?: readonly string[];
+  readonly completedShotIds: readonly string[];
+  readonly unresolvedShotIds: readonly string[];
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface GptOrchestrationAssignmentV1 {
   readonly schema: "editflow.gpt-orchestration-assignment.v1";
   readonly assignmentId: string;
@@ -1316,6 +1327,8 @@ export interface GptOrchestrationAssignmentV1 {
   /** Machine-prepared exact scene matches for Practice; GPT must visually confirm them before locking. */
   readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
   readonly practicePolicy: PracticeVerificationPolicyV1 | null;
+  readonly preflight?: PracticePreflightCheckpointV1;
+  readonly controllerLease?: { readonly owner: string; readonly expiresAt: string } | null;
   readonly artifactDir: string;
   readonly chatMessage: string;
   readonly createdAt: string;

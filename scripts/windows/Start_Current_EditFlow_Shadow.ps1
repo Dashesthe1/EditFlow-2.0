@@ -4,6 +4,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$CanonicalPath = Join-Path $env:LOCALAPPDATA "EditFlow2\current-runtime.json"
+if (Test-Path $CanonicalPath -PathType Leaf) {
+  $Canonical = Get-Content -Raw $CanonicalPath | ConvertFrom-Json
+  if ($Canonical.schema -eq "editflow.current-runtime.v1" -and
+      (Test-Path (Join-Path $Canonical.repositoryRoot "scripts\current-shadow-control-daemon.mjs"))) {
+    $Root = [string]$Canonical.repositoryRoot
+  }
+}
 $LogRoot = Join-Path $Root ".tmp\current-shadow"
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 
