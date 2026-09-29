@@ -2838,7 +2838,7 @@ test("Practice M6 current-AE assembly connects media, baseline, M6, render, and 
   assert.equal(assembly.mediaMatcher.config.analysisTimeoutMs, 60 * 60 * 1000);
   assert.match(
     assembly.mediaMatcher.config.analysisCacheDir,
-    /proofs[\\/]artifacts[\\/]practice-media-cache$/,
+    /EditFlow2[\\/]practice-analysis-cache$/,
   );
 });
 

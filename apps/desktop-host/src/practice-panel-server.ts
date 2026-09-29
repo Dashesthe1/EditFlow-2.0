@@ -20,6 +20,7 @@ import {
   buildPracticeMasteryRecordV1,
   hasRepeatedSceneGeometryV1,
   LocalPracticeMediaMatcherV1,
+  defaultPracticeAnalysisCacheDirectoryV1,
   practicePerceptualSetOverlapsV1,
   practicePerceptualSignatureMatchesV1,
   type GptAppendEventInputV1,
@@ -291,12 +292,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   const matcher = new LocalPracticeMediaMatcherV1({
     artifactDir: path.join(input.artifactDir, "media"),
     materializeWorkingMedia: true,
-    analysisCacheDir: path.join(
-      input.repositoryRoot,
-      "proofs",
-      "artifacts",
-      "practice-media-cache",
-    ),
+    analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(),
     scriptPath: path.join(
       input.repositoryRoot,
       "scripts",
@@ -317,8 +313,10 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
     mediaKind: "VIDEO",
     uri,
   }));
-  const reference = await matcher.analyzeFinish(finish);
-  const sourceIndex = await matcher.indexStart(start);
+  const [reference, sourceIndex] = await Promise.all([
+    matcher.analyzeFinish(finish),
+    matcher.indexStart(start),
+  ]);
   const referencePerceptualSignature = reference.perceptualSignature;
   const sourcePerceptualSignatures = sourceIndex.videoPerceptualSignatures ?? [];
   if (referencePerceptualSignature === undefined
@@ -1033,6 +1031,7 @@ export class PracticePanelServerV1 {
 
   async start(): Promise<number> {
     if (this.#server !== null) return this.#port;
+    await this.#gptStore.refreshActivePracticeInstructions();
     await this.#recoverRuns();
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
@@ -2110,6 +2109,8 @@ export class PracticePanelServerV1 {
           service: "READY",
           panelConnected: this.config.broker.panelSession !== null,
           gptOrchestration: "ASSIGNMENT_QUEUE_READY",
+          practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
+          practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
           activeRunId: this.#activeRunId,
           latestRunId,
         });

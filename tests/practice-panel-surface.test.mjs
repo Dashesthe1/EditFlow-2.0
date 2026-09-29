@@ -48,6 +48,8 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     service: "READY",
     panelConnected: false,
     gptOrchestration: "ASSIGNMENT_QUEUE_READY",
+    practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
+    practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
     activeRunId: null,
     latestRunId: null,
   });

@@ -1,6 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +18,12 @@ interface PythonRuntimeV1 {
   readonly executable: string;
   readonly prefixArgs: readonly string[];
 }
+
+export const defaultPracticeAnalysisCacheDirectoryV1 = (): string => path.resolve(
+  process.env.LOCALAPPDATA?.trim() || os.homedir(),
+  "EditFlow2",
+  "practice-analysis-cache",
+);
 
 export interface LocalPracticeMediaMatcherConfigV1 {
   readonly artifactDir: string;
@@ -696,7 +703,7 @@ export class LocalPracticeMediaMatcherV1 {
       String(this.config.cutThreshold),
       String(this.config.minimumShotMs),
     ]);
-    const directory = path.join(this.config.artifactDir, "reference");
+    const directory = path.join(this.config.analysisCacheDir, "reference");
     await mkdir(directory, { recursive: true });
     const artifactPath = path.join(
       directory,
@@ -758,7 +765,7 @@ export class LocalPracticeMediaMatcherV1 {
   async indexStart(
     start: readonly PracticeMediaInputV1[],
   ): Promise<PracticeSourceIndexV1> {
-    const directory = path.join(this.config.artifactDir, "sources");
+    const directory = path.join(this.config.analysisCacheDir, "sources");
     await mkdir(directory, { recursive: true });
 
     const videoArtifactPaths: string[] = [];
@@ -860,7 +867,7 @@ export class LocalPracticeMediaMatcherV1 {
       throw new TypeError("Practice scene matching requires at least one indexed video source.");
     }
 
-    const directory = path.join(this.config.artifactDir, "matches");
+    const directory = path.join(this.config.analysisCacheDir, "matches");
     await mkdir(directory, { recursive: true });
     const correctionProfileDigest = this.config.correctionProfilePath === null
       ? "correction:none"
@@ -927,17 +934,18 @@ export class LocalPracticeMediaMatcherV1 {
     readonly minimumConfidence: number;
   }): Promise<PracticeAudioMatchV1 | null> {
     const referenceMedia = this.#referenceMediaPathById.get(input.reference.referenceId);
+    const referenceArtifact = this.#referenceArtifactPathById.get(input.reference.referenceId);
     const audioSources = this.#audioSourcesByIndexId.get(input.sourceIndex.indexId);
-    if (referenceMedia === undefined || audioSources === undefined) {
+    if (referenceMedia === undefined || referenceArtifact === undefined || audioSources === undefined) {
       throw new TypeError("Practice audio artifacts are not available for this matcher instance.");
     }
     if (audioSources.length === 0) return null;
 
-    const directory = path.join(this.config.artifactDir, "audio-matches");
+    const directory = path.join(this.config.analysisCacheDir, "audio-matches");
     await mkdir(directory, { recursive: true });
     const key = sha256Text([
       await this.#scriptSha256(),
-      referenceMedia,
+      referenceArtifact,
       ...audioSources.map((item) => item.sourceId + ":" + item.cacheKey),
       this.config.ffmpegPath ?? "ffmpeg:auto",
     ]).slice(0, 24);

@@ -92,6 +92,7 @@ const main = async (): Promise<void> => {
     artifactDir,
     learningMemoryFilePath: statePaths.learningMemoryFilePath,
     editTypeRegistryFilePath: statePaths.editTypeRegistryFilePath,
+    gptOrchestrationFilePath: path.join(statePaths.stateDir, "gpt-orchestration.json"),
     ...(argument("--retained-truth-manifest") === null
       ? {}
       : { retainedTruthManifestPath: path.resolve(argument("--retained-truth-manifest") ?? "") }),

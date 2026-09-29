@@ -6,6 +6,12 @@ Implemented in this branch: parallel independent media-analysis and matching sta
 coverage-first guidance; transactional batched trace persistence; persistent phase-proof reuse bound to
 reference, baseline, exact source matches, and audio; a non-authoritative progressive
 candidate ranker; source review sheets; residual and anti-stagnation policy helpers.
+The unified Shadow daemon exposes this as the primary Practice panel workflow, and resumed
+nonterminal assignments receive the current scheduling rules while retaining their checkpoints.
+Reference/source/match analysis now uses a shared user-level cache keyed by media path,
+size, modification time, analyzer code, and settings. Repeated sessions on unchanged media
+avoid another full indexing and scene search; changed media metadata or analyzer code
+invalidates the cache.
 
 Still required for the end-to-end target: a reusable AE scratch candidate rig, automatic
 whole-edit coverage before per-phase certification in the native Practice runtime,
@@ -47,8 +53,9 @@ mastery verification.
 11. Anti-stagnation: two weak micro-correction rounds or <1% relevant gain escalates the
     hypothesis instead of continuing parameter nudges.
 12. Dependency-aware proof: localized changes invalidate only connected phase proof.
-13. Shared analysis cache: reuse unchanged reference/source/index/match/proxy/audio work
-    across sessions while preserving a session-local evidence copy.
+13. Shared analysis cache: reuse reference/source/index/match/proxy/audio work across
+    sessions when the media identity and analyzer settings match. AE working clips remain
+    session local.
 14. Trace batching: transport up to 64 individually validated events in one request.
 15. Parallel evaluation: structural-content analysis and rendered-effect analysis overlap.
 

@@ -599,6 +599,18 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   return applyCurrentWorkflowContinuityPolicy(message);
 };
 
+const PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1 = "PRACTICE_ACCELERATION_CONTINUITY_V1";
+const PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1 = [
+  PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1,
+  "Current Practice execution policy for this resumed assignment:",
+  "- Preserve the retained assignment, source decisions, proven AE checkpoints, and original M6 reference-driven visual method.",
+  "- Build playable whole-edit coverage from every source-locked phase before final phase certification. Earlier instructions requiring a phase to pass before constructing the next phase are superseded as a construction-order rule.",
+  "- Use shared immutable media analysis, batch direct-pixel source review, bounded local candidate search, residual-priority correction, and validated batch trace transport when available.",
+  "- Machine/proxy candidate scores are search evidence only. GPT must inspect reference and actual AE render pixels before committing a winner.",
+  "- Stop weak parameter tuning after two rounds; escalate the effect hypothesis. Held-out certification remains inference-only and must fail closed when frozen capabilities are insufficient.",
+  "- Preserve the exact source, 95% similarity floor, two consecutive phase passes, and two consecutive whole-edit passes. Final proof authority is unchanged.",
+].join("\n");
+
 export interface GptAppendEventInputV1 {
   readonly assignmentId: string;
   readonly stage: GptLearningStageV1;
@@ -734,6 +746,27 @@ export class GptOrchestrationStoreV1 {
         ...payload,
         assignments: [...payload.assignments, assignment],
       }, structuredClone(assignment)] as const;
+    });
+  }
+
+  async refreshActivePracticeInstructions(): Promise<number> {
+    return await this.#mutate((payload) => {
+      let refreshed = 0;
+      const assignments = payload.assignments.map((assignment) => {
+        if (assignment.mode !== "PRACTICE"
+          || !["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
+          || assignment.chatMessage.includes("ACCELERATED COVERAGE-FIRST SCHEDULE")
+          || assignment.chatMessage.includes(PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1)) {
+          return assignment;
+        }
+        refreshed += 1;
+        return {
+          ...assignment,
+          chatMessage: assignment.chatMessage.trimEnd()
+            + "\n\n" + PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1,
+        };
+      });
+      return [{ ...payload, assignments }, refreshed] as const;
     });
   }
 

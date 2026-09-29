@@ -91,7 +91,10 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
-const practiceArtifactDir = path.join(repoRoot, "proofs", "artifacts", "practice-product");
+const practiceArtifactDir = path.resolve(
+  process.env.EDITFLOW_PRACTICE_ARTIFACT_DIR
+    ?? path.join(localAppData, "EditFlow2", "practice-artifacts"),
+);
 const practicePanel = new PracticePanelServerV1({
   port: 0,
   token: config.token,
@@ -99,8 +102,10 @@ const practicePanel = new PracticePanelServerV1({
   artifactDir: practiceArtifactDir,
   learningMemoryFilePath: practiceStatePaths.learningMemoryFilePath,
   editTypeRegistryFilePath: practiceStatePaths.editTypeRegistryFilePath,
+  gptOrchestrationFilePath: path.join(practiceStatePaths.stateDir, "gpt-orchestration.json"),
   broker,
-  renderTimeoutMs: 180_000,
+  ...(process.env.EDITFLOW_FFMPEG_PATH ? { ffmpegPath: process.env.EDITFLOW_FFMPEG_PATH } : {}),
+  renderTimeoutMs: Number(process.env.EDITFLOW_PRACTICE_TIMEOUT_MS ?? 180_000),
 });
 await practicePanel.start();
 

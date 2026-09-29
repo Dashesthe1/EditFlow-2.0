@@ -47,6 +47,7 @@ import {
 } from "../../../packages/practice-homework/src/ae-baseline.js";
 import {
   LocalPracticeMediaMatcherV1,
+  defaultPracticeAnalysisCacheDirectoryV1,
 } from "../../../packages/practice-homework/src/local-media.js";
 import {
   PracticeM6ExecutionBridgeV1,
@@ -435,12 +436,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
   }
   const repositoryRoot = path.resolve(input.repositoryRoot);
   const artifactDir = path.resolve(input.artifactDir);
-  const practiceMediaCacheDir = path.join(
-    repositoryRoot,
-    "proofs",
-    "artifacts",
-    "practice-media-cache",
-  );
+  const practiceMediaCacheDir = defaultPracticeAnalysisCacheDirectoryV1();
   const transaction = new CurrentAeTransactionRuntimeV1(
     input.transport,
     input.projectId,

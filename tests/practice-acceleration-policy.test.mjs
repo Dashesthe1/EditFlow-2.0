@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   DEFAULT_PRACTICE_ACCELERATION_POLICY_V1,
+  GptOrchestrationStoreV1,
   affectedPracticePhaseIdsV1,
   buildGptOrchestrationChatMessageV1,
   retainTopPracticeCandidatesV1,
@@ -93,4 +97,33 @@ test("dependency-aware recertification invalidates only connected phases", () =>
     { phaseId: "p5", similarity: 0.99, durationMs: 300 },
   ]);
   assert.deepEqual(new Set(affected), new Set(["p2", "p3", "p4"]));
+});
+
+test("retained running Practice assignments adopt current acceleration policy without losing continuity", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "practice-acceleration-resume-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const filePath = path.join(root, "gpt-orchestration.json");
+  const store = new GptOrchestrationStoreV1(filePath);
+  const assignment = await store.createAssignment({
+    sessionId: "practice:resumed",
+    mode: "PRACTICE",
+    editTypeId: "reference-edit",
+    finish: { mediaId: "finish:1", role: "FINISH_REFERENCE", mediaKind: "VIDEO", uri: "C:\\Media\\finish.mp4" },
+    start: [{ mediaId: "raw:1", role: "START_SOURCE", mediaKind: "VIDEO", uri: "C:\\Media\\raw.mp4" }],
+    artifactDir: root,
+    knowledge: null,
+  });
+  await store.claim(assignment.assignmentId, "existing-controller");
+  const retained = JSON.parse(await readFile(filePath, "utf8"));
+  retained.assignments[0].chatMessage = "Legacy original M6. Pass each phase before emitting work for the next chronological phase.";
+  await writeFile(filePath, JSON.stringify(retained), "utf8");
+
+  assert.equal(await store.refreshActivePracticeInstructions(), 1);
+  const resumed = await store.getAssignment(assignment.assignmentId);
+  assert.equal(resumed.status, "RUNNING");
+  assert.equal(resumed.claimedBy, "existing-controller");
+  assert.match(resumed.chatMessage, /PRACTICE_ACCELERATION_CONTINUITY_V1/);
+  assert.match(resumed.chatMessage, /superseded as a construction-order rule/);
+  assert.match(resumed.chatMessage, /two consecutive whole-edit passes/);
+  assert.equal(await store.refreshActivePracticeInstructions(), 0);
 });

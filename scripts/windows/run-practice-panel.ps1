@@ -9,57 +9,74 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ConfigPath = Join-Path $env:LOCALAPPDATA "EditFlow2\bridge-config.json"
-
 if (-not (Test-Path $ConfigPath -PathType Leaf)) {
   throw "EditFlow CEP config not found. Run scripts\windows\install-editflow-cep.ps1 first."
 }
-
 $BridgeConfig = Get-Content -Raw $ConfigPath | ConvertFrom-Json
-$ProductPort = if ($BridgeConfig.productPort) { [int]$BridgeConfig.productPort } else { [int]$BridgeConfig.port + 1 }
-try {
-  $IntegratedStatus = Invoke-RestMethod -Uri ("http://127.0.0.1:" + [string]$ProductPort + "/v1/product/status") -Method Get -Headers @{ "X-EditFlow-Token" = [string]$BridgeConfig.token } -TimeoutSec 2
-  if ($IntegratedStatus.gptOrchestration -eq "ASSIGNMENT_QUEUE_READY") {
-    Write-Host "EditFlow Practice service is already integrated into the running Current Shadow control plane."
-    Write-Host ("Product endpoint: http://127.0.0.1:" + [string]$ProductPort)
-    exit 0
-  }
-} catch {}
+$ControlPort = [int]$BridgeConfig.port + 1
+$Base = "http://127.0.0.1:$ControlPort"
+$Headers = @{ "X-EditFlow-Token" = [string]$BridgeConfig.token }
 
-if (-not $ArtifactDir) {
-  $ArtifactDir = Join-Path $RepoRoot "proofs\artifacts\practice-product"
+function Get-LocalStatus([string]$Uri) {
+  try { return Invoke-RestMethod -Uri $Uri -Method Get -Headers $Headers -TimeoutSec 2 }
+  catch { return $null }
 }
+$ProductStatus = Get-LocalStatus "$Base/v1/product/status"
+$ControlStatus = Get-LocalStatus "$Base/status"
+$ExpectedWorkflow = "ACCELERATED_REFERENCE_FIRST_V1"
+if ($ProductStatus.practiceWorkflow -eq $ExpectedWorkflow -and
+    $ControlStatus.repoRoot -eq $RepoRoot) {
+  Write-Host "Accelerated Practice is already primary in the live Shadow control plane."
+  Write-Host "Practice endpoint: $Base/v1/product/status"
+  exit 0
+}
+
 if (-not $SkipBuild) {
   Push-Location $RepoRoot
   try {
     npm run build:test-runtime
     if ($LASTEXITCODE -ne 0) { throw "Practice runtime build failed." }
-  } finally {
-    Pop-Location
+  } finally { Pop-Location }
+}
+
+$DaemonPath = Join-Path $RepoRoot "scripts\current-shadow-control-daemon.mjs"
+if (-not (Test-Path $DaemonPath -PathType Leaf)) {
+  throw "Unified Practice daemon not found: $DaemonPath"
+}
+$Listener = Get-NetTCPConnection -LocalPort $ControlPort -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if ($null -ne $Listener) {
+  if ($ControlStatus.service -ne "EditFlow Current Shadow Control") {
+    throw "Port $ControlPort belongs to an unknown service; no process was stopped."
+  }
+  if ($ControlStatus.mutationLease.held -eq $true) {
+    throw "The AE control daemon has an active mutation lease; wait for that work before switching Practice."
+  }
+  if ($ProductStatus.activeRunId) {
+    throw "A Practice assignment is active; resume it or safely pause before switching worktrees."
+  }
+  $OwnerProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$($Listener.OwningProcess)"
+  if ($null -eq $OwnerProcess -or
+      $OwnerProcess.CommandLine -notmatch 'current-shadow-control-daemon[.]mjs') {
+    throw "Port $ControlPort is not owned by the expected EditFlow daemon; no process was stopped."
+  }
+  Write-Host "Switching the EditFlow control daemon to the accelerated Practice build. AE stays open."
+  Stop-Process -Id $Listener.OwningProcess -ErrorAction Stop
+  for ($i = 0; $i -lt 40; $i++) {
+    if (-not (Get-NetTCPConnection -LocalPort $ControlPort -State Listen -ErrorAction SilentlyContinue)) { break }
+    Start-Sleep -Milliseconds 250
+  }
+  if (Get-NetTCPConnection -LocalPort $ControlPort -State Listen -ErrorAction SilentlyContinue) {
+    throw "Old EditFlow control daemon did not release port $ControlPort."
   }
 }
-
-$CliPath = Join-Path $RepoRoot ".tmp\runtime\apps\desktop-host\src\practice-panel-cli.js"
-if (-not (Test-Path $CliPath -PathType Leaf)) {
-  throw "Compiled Practice panel service not found: $CliPath"
-}
-
-$Arguments = @(
-  $CliPath,
-  "--config", $ConfigPath,
-  "--repository-root", $RepoRoot,
-  "--artifact-dir", $ArtifactDir,
-  "--timeout-ms", [string]$TimeoutMs
-)
-if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
-  $Arguments += @("--state-dir", [System.IO.Path]::GetFullPath($StateDir))
-}
-if ($FfmpegPath) {
-  $Arguments += @("--ffmpeg", (Resolve-Path $FfmpegPath).Path)
-}
-
-Write-Host "Starting EditFlow Practice service. Keep this window open while using the panel."
-Write-Host "Press Ctrl+C to stop."
-& node @Arguments
+if ($ArtifactDir) { $env:EDITFLOW_PRACTICE_ARTIFACT_DIR = [System.IO.Path]::GetFullPath($ArtifactDir) }
+if ($StateDir) { $env:EDITFLOW_PRACTICE_STATE_DIR = [System.IO.Path]::GetFullPath($StateDir) }
+if ($FfmpegPath) { $env:EDITFLOW_FFMPEG_PATH = (Resolve-Path $FfmpegPath).Path }
+$env:EDITFLOW_PRACTICE_TIMEOUT_MS = [string]$TimeoutMs
+Write-Host "Starting unified EditFlow control and accelerated Practice service."
+Write-Host "Keep this window open. Press Ctrl+C to stop the service; AE remains open."
+& node $DaemonPath
 if ($LASTEXITCODE -ne 0) {
-  throw "Practice service exited with code $LASTEXITCODE."
+  throw "Unified Practice service exited with code $LASTEXITCODE."
 }
