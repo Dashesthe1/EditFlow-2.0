@@ -127,6 +127,16 @@ export interface PracticeM6AeRenderDriverV1 {
     readonly renderPath: string;
     readonly evidenceRefs?: readonly string[];
   }>;
+  renderFinalizedReplay?(input: {
+    readonly sessionId: string;
+    readonly attempt: number;
+    readonly compStableId: string;
+    readonly durationMs: number;
+  }): Promise<{
+    readonly renderPath: string;
+    readonly evidenceRefs?: readonly string[];
+  }>;
+  finalizeAttempt?(sessionId: string): Promise<void>;
   recordAppliedOperations?(input: {
     readonly sessionId: string;
     readonly attempt: number;
@@ -858,6 +868,21 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
     });
   }
 
+  async finalizePhaseAttempt(input: {
+    readonly sessionId: string;
+    readonly attempt: number;
+  }): Promise<readonly string[]> {
+    this.#requirePrepared(input.sessionId, input.attempt);
+    if (this.renderDriver.finalizeAttempt === undefined) {
+      throw new Error("PRACTICE_PHASE_FINALIZE_UNAVAILABLE");
+    }
+    await this.renderDriver.finalizeAttempt(input.sessionId);
+    return [
+      "practice-m6-phase-only-finalized:" + input.sessionId + ":" + String(input.attempt),
+      "practice-m6-full-render-skipped-until-phase-proof-ready",
+    ];
+  }
+
   async renderFullEdit(
     input: Parameters<PracticeM6RuntimeV1["renderFullEdit"]>[0],
   ): Promise<{ readonly renderRef: string; readonly evidenceRefs: readonly string[] }> {
@@ -874,6 +899,37 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
         ...prepared.evidenceRefs,
         ...(rendered.evidenceRefs ?? []),
         "practice-m6-full-render:" + rendered.renderPath,
+      ]),
+    };
+  }
+
+  async rerenderCertifiedEdit(
+    input: NonNullable<PracticeM6RuntimeV1["rerenderCertifiedEdit"]> extends (
+      value: infer T,
+    ) => unknown ? T : never,
+  ): Promise<{ readonly renderRef: string; readonly evidenceRefs: readonly string[] }> {
+    const prior = this.#requirePrepared(input.sessionId, input.priorAttempt);
+    if (prior.reference.referenceId !== input.reference.referenceId
+      || prior.plan.baselineId !== input.baseline.baselineId) {
+      throw new Error("PRACTICE_CERTIFICATION_REPLAY_IDENTITY_MISMATCH");
+    }
+    if (this.renderDriver.renderFinalizedReplay === undefined) {
+      throw new Error("PRACTICE_CERTIFICATION_REPLAY_UNAVAILABLE");
+    }
+    const rendered = await this.renderDriver.renderFinalizedReplay({
+      sessionId: input.sessionId,
+      attempt: input.attempt,
+      compStableId: prior.plan.compStableId,
+      durationMs: prior.plan.durationMs,
+    });
+    return {
+      renderRef: rendered.renderPath,
+      evidenceRefs: unique([
+        ...prior.evidenceRefs,
+        ...(rendered.evidenceRefs ?? []),
+        "practice-m6-whole-edit-certification-replay",
+        "practice-m6-whole-edit-certification-replay-from-attempt:"
+          + String(input.priorAttempt),
       ]),
     };
   }

@@ -150,6 +150,7 @@ export class PracticeM6LocalMediaAnalyzerV1 {
   readonly denseEvidenceSourcePath: string;
   readonly analysisLongestEdge: number;
   readonly cutThreshold: number;
+  readonly #fileDigestByVersion = new Map<string, Promise<string>>();
 
   constructor(config: PracticeM6LocalMediaConfigV1) {
     this.repositoryRoot = path.resolve(config.repositoryRoot);
@@ -203,22 +204,39 @@ export class PracticeM6LocalMediaAnalyzerV1 {
     );
   }
 
+  async #fileSha256(filePath: string): Promise<string> {
+    const resolved = path.resolve(filePath);
+    const metadata = await stat(resolved);
+    const versionKey = [
+      resolved,
+      String(metadata.size),
+      String(metadata.mtimeMs),
+    ].join("::");
+    const retained = this.#fileDigestByVersion.get(versionKey);
+    if (retained !== undefined) return await retained;
+    const pending = sha256File(resolved);
+    this.#fileDigestByVersion.set(versionKey, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      this.#fileDigestByVersion.delete(versionKey);
+      throw error;
+    }
+  }
+
   async #denseCacheKey(input: {
     readonly videoPath: string;
     readonly startMs: number;
     readonly endMs: number;
   }): Promise<string> {
     const videoPath = path.resolve(input.videoPath);
-    const metadata = await stat(videoPath);
     const material = JSON.stringify({
-      videoPath,
-      size: metadata.size,
-      mtimeMs: metadata.mtimeMs,
+      videoSha256: await this.#fileSha256(videoPath),
       startMs: input.startMs,
       endMs: input.endMs,
       analysisLongestEdge: this.analysisLongestEdge,
-      probeScriptSha256: await sha256File(this.denseProbeScriptPath),
-      denseEvidenceSourceSha256: await sha256File(this.denseEvidenceSourcePath),
+      probeScriptSha256: await this.#fileSha256(this.denseProbeScriptPath),
+      denseEvidenceSourceSha256: await this.#fileSha256(this.denseEvidenceSourcePath),
     });
     return createHash("sha256").update(material, "utf8").digest("hex").slice(0, 24);
   }
@@ -279,7 +297,7 @@ export class PracticeM6LocalMediaAnalyzerV1 {
       throw new TypeError("Practice M6 dense video probe returned invalid correlated evidence.");
     }
 
-    const denseEvidenceSourceSha256 = await sha256File(this.denseEvidenceSourcePath);
+    const denseEvidenceSourceSha256 = await this.#fileSha256(this.denseEvidenceSourcePath);
     const measurementDescriptor = {
       probeAlgorithmId: probe.analysis.algorithmId,
       probeAnalyzerFingerprint: probe.analysis.analyzerFingerprint,
@@ -480,7 +498,7 @@ export class PracticeM6LocalMediaAnalyzerV1 {
 
     const directory = path.join(this.artifactDir, "content-comparison");
     await mkdir(directory, { recursive: true });
-    const renderDigest = (await sha256File(renderPath)).slice(0, 20);
+    const renderDigest = (await this.#fileSha256(renderPath)).slice(0, 20);
     const matchesPayload = JSON.stringify({
       schema: "editflow.practice-expected-scene-matches.v1",
       referenceId: input.reference.referenceId,

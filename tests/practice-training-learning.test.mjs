@@ -1683,6 +1683,362 @@ test("M6 Practice keeps transferable Edit Type corrections advisory under the or
   );
 });
 
+test("M6 second whole-edit certification replays the state-locked build without reconstruction", async () => {
+  const family = classifyEffectFamilyV1(referenceEvidence);
+  const graph = buildConstructionGraphV1(
+    deriveEffectAnatomyV1(referenceEvidence, family),
+  );
+  let analyzeReferenceCalls = 0;
+  let prepareCalls = 0;
+  let brainCalls = 0;
+  let applyCalls = 0;
+  let confirmationRenders = 0;
+  let fullRenders = 0;
+  let replayRenders = 0;
+  const runtime = {
+    availableCapabilities: [],
+    async analyzeReference() {
+      analyzeReferenceCalls += 1;
+      return referenceEvidence;
+    },
+    async prepareAttempt() {
+      prepareCalls += 1;
+    },
+    async applyWindowGraph() {
+      applyCalls += 1;
+    },
+    async renderWindowEvidence(input) {
+      confirmationRenders += 1;
+      return {
+        ...input.window.evidence,
+        sourceId: "render:phase-confirmation",
+        sourceKind: "RENDER",
+        contentKey: "render:phase-confirmation",
+        evidenceRefs: ["render:phase-confirmation"],
+      };
+    },
+    async renderFullEdit() {
+      fullRenders += 1;
+      return { renderRef: "render:certification:1", evidenceRefs: ["render:full:1"] };
+    },
+    async rerenderCertifiedEdit(input) {
+      replayRenders += 1;
+      assert.equal(input.priorAttempt, 1);
+      return { renderRef: "render:certification:2", evidenceRefs: ["render:full:2"] };
+    },
+    async analyzeRender() {
+      throw new Error("not used by reconstruction replay test");
+    },
+    async evaluateContentStructure() {
+      throw new Error("not used by reconstruction replay test");
+    },
+  };
+  const brain = {
+    async run(requestValue) {
+      brainCalls += 1;
+      await requestValue.applyGraph(graph);
+      return {
+        schema: "editflow.m6-production-result.v1",
+        route: "VISUAL_INTELLIGENCE",
+        status: "COMPLETED",
+        correction: {
+          schema: "editflow.visual-correction-loop.v1",
+          status: "PASSED",
+          graph,
+          passes: [],
+          learnedPatches: [],
+        },
+        synthesis: null,
+        evidenceRefs: requestValue.evidenceRefs,
+      };
+    },
+  };
+  const knowledge = {
+    editTypeId: "state-locked-replay",
+    title: "State Locked Replay",
+    revision: 1,
+    masteredSessionCount: 0,
+    totalSessionCount: 0,
+    successfulConstructionIds: [],
+    failedConstructionIds: [],
+    successfulSemanticPatches: [],
+    failedSemanticPatches: [],
+    behaviorEvidence: [],
+  };
+  const baseline = {
+    baselineId: "baseline:state-locked-replay",
+    timelineRef: "ae:comp:state-locked-replay",
+    evidenceRefs: ["baseline:state-locked-replay"],
+  };
+  const bridge = new PracticeM6ExecutionBridgeV1(runtime, brain);
+  const first = await bridge.reconstruct({
+    sessionId: "practice:state-locked-replay",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 1,
+    reference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [],
+  });
+  assert.equal(first.certificationReady, true);
+  const firstAttempt = {
+    attempt: 1,
+    renderRef: first.renderRef,
+    certificationReady: true,
+    report: passedReport(0.98),
+    decisionTraces: first.decisionTraces,
+    elapsedMs: 1,
+    evidenceRefs: first.evidenceRefs,
+  };
+  const second = await bridge.reconstruct({
+    sessionId: "practice:state-locked-replay",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 2,
+    reference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [firstAttempt],
+  });
+  assert.equal(second.certificationReady, true);
+  assert.equal(second.renderRef, "render:certification:2");
+  assert.equal(analyzeReferenceCalls, 1);
+  assert.equal(prepareCalls, 1);
+  assert.equal(brainCalls, 1);
+  assert.equal(applyCalls, 1);
+  assert.equal(confirmationRenders, 1);
+  assert.equal(fullRenders, 1);
+  assert.equal(replayRenders, 1);
+  assert.ok(second.evidenceRefs.includes("practice-whole-edit-certification-state-replay"));
+  assert.ok(second.decisionTraces.every((trace) =>
+    trace.rationaleCodes.includes("WHOLE_EDIT_CERTIFICATION_STATE_REPLAY")));
+});
+
+test("M6 phase training stops reapplying proven windows until clean assembly", async () => {
+  const interval = 1000 / 30;
+  const peakIndices = new Set([4, 16]);
+  const frames = Array.from({ length: 24 }, (_, index) => {
+    const peak = peakIndices.has(index);
+    return {
+      ...frame(0),
+      timeMs: index * interval,
+      exposure: peak ? 0.7 : 0.45,
+      frameDifference: peak ? 0.45 : 0.03,
+      structuralDifference: peak ? 0.4 : 0.03,
+      motionEnergy: peak ? 0.5 : 0.02,
+      subjectBackgroundDivergence: peak ? 0.18 : 0,
+      displacementMagnitude: peak ? 0.16 : 0.005,
+      blurStrength: peak ? 0.35 : 0.03,
+      distortionStrength: peak ? 0.2 : 0.01,
+      subjectSeparation: peak ? 0.42 : 0,
+      overlapDensity: peak ? 0.4 : 0,
+      stateSeparation: peak ? 0.08 : 0,
+      temporalStateCount: peak ? 4 : 1,
+      subjectEvidenceIds: [
+        "fixture:subject:primary:v1",
+        "fixture:multi-window:" + String(index),
+      ],
+    };
+  });
+  const multiEvidence = {
+    ...referenceEvidence,
+    sourceId: "reference:multi-window",
+    range: { startMs: 0, endMs: frames.at(-1).timeMs },
+    contentKey: "fixture-content:multi-window",
+    frames,
+    summary: {
+      ...summary,
+      frameCount: frames.length,
+      frameIntervalMs: interval,
+    },
+    evidenceRefs: ["fixture:reference:multi-window"],
+  };
+  const multiReference = {
+    ...reference,
+    referenceId: "finish:multi-window",
+    shots: [{
+      shotId: "shot:multi",
+      order: 0,
+      referenceStartMs: 0,
+      referenceEndMs: frames.at(-1).timeMs + interval,
+      evidenceRefs: ["shot:multi"],
+    }],
+  };
+  const graph = buildConstructionGraphV1(
+    deriveEffectAnatomyV1(referenceEvidence, classifyEffectFamilyV1(referenceEvidence)),
+  );
+  const brainRequests = [];
+  let confirmationRenders = 0;
+  let fullRenders = 0;
+  let finalizedPhaseAttempts = 0;
+  const runtime = {
+    availableCapabilities: [],
+    async analyzeReference() {
+      return multiEvidence;
+    },
+    async prepareAttempt() {},
+    async applyWindowGraph() {},
+    async renderWindowEvidence(input) {
+      confirmationRenders += 1;
+      return {
+        ...input.window.evidence,
+        sourceId: "render:" + input.window.windowId,
+        sourceKind: "RENDER",
+        contentKey: "render:" + input.window.windowId + ":" + String(input.attempt),
+        evidenceRefs: ["render:" + input.window.windowId],
+      };
+    },
+    async finalizePhaseAttempt() {
+      finalizedPhaseAttempts += 1;
+      return ["phase:finalized"];
+    },
+    async renderFullEdit(input) {
+      fullRenders += 1;
+      return {
+        renderRef: "render:multi:full:" + String(input.attempt),
+        evidenceRefs: ["render:multi:full"],
+      };
+    },
+    async analyzeRender() {
+      throw new Error("not used by reconstruction-only phase test");
+    },
+    async evaluateContentStructure() {
+      throw new Error("not used by reconstruction-only phase test");
+    },
+  };
+  const brain = {
+    async run(requestValue) {
+      brainRequests.push(requestValue.requestId);
+      const failSecondWindowOnFirstAttempt =
+        requestValue.requestId.includes(":attempt:1:effect-02");
+      if (failSecondWindowOnFirstAttempt) {
+        return {
+          schema: "editflow.m6-production-result.v1",
+          route: "VISUAL_INTELLIGENCE",
+          status: "FIDELITY_FAILED",
+          correction: null,
+          synthesis: null,
+          evidenceRefs: requestValue.evidenceRefs,
+        };
+      }
+      const appliedGraph = requestValue.learnedGraph ?? graph;
+      await requestValue.applyGraph(appliedGraph);
+      return {
+        schema: "editflow.m6-production-result.v1",
+        route: requestValue.risk === "LOW" ? "FAST_PATH" : "VISUAL_INTELLIGENCE",
+        status: "COMPLETED",
+        correction: requestValue.risk === "LOW"
+          ? null
+          : {
+            schema: "editflow.visual-correction-loop.v1",
+            status: "PASSED",
+            graph: appliedGraph,
+            passes: [],
+            learnedPatches: [],
+          },
+        synthesis: null,
+        evidenceRefs: requestValue.evidenceRefs,
+      };
+    },
+  };
+  const knowledge = {
+    editTypeId: "multi-window-skip",
+    title: "Multi Window Skip",
+    revision: 1,
+    masteredSessionCount: 0,
+    totalSessionCount: 0,
+    successfulConstructionIds: [],
+    failedConstructionIds: [],
+    successfulSemanticPatches: [],
+    failedSemanticPatches: [],
+    behaviorEvidence: [],
+  };
+  const baseline = {
+    baselineId: "baseline:multi-window-skip",
+    timelineRef: "ae:comp:multi-window-skip",
+    evidenceRefs: ["baseline:multi-window-skip"],
+  };
+  const bridge = new PracticeM6ExecutionBridgeV1(runtime, brain);
+
+  const first = await bridge.reconstruct({
+    sessionId: "practice:multi-window-skip",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 1,
+    reference: multiReference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [],
+  });
+  assert.equal(first.certificationReady, false);
+  assert.ok(brainRequests.some((id) => id.includes(":attempt:1:effect-01")));
+  assert.ok(brainRequests.some((id) => id.includes(":attempt:1:effect-02")));
+
+  const firstAttempt = {
+    attempt: 1,
+    renderRef: first.renderRef,
+    certificationReady: false,
+    report: failedReport(),
+    decisionTraces: first.decisionTraces,
+    elapsedMs: 1,
+    evidenceRefs: first.evidenceRefs,
+  };
+  const second = await bridge.reconstruct({
+    sessionId: "practice:multi-window-skip",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 2,
+    reference: multiReference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [firstAttempt],
+  });
+  assert.equal(second.certificationReady, false);
+  assert.equal(
+    brainRequests.some((id) => id.includes(":attempt:2:effect-01")),
+    false,
+  );
+  assert.ok(brainRequests.some((id) => id.includes(":attempt:2:effect-02")));
+  assert.ok(second.evidenceRefs.includes(
+    "practice-phase-training-skipped-proven-window:effect-01",
+  ));
+  assert.ok(second.evidenceRefs.includes(
+    "practice-phase-training-clean-assembly-required",
+  ));
+
+  const secondAttempt = {
+    attempt: 2,
+    renderRef: second.renderRef,
+    certificationReady: false,
+    report: failedReport(),
+    decisionTraces: second.decisionTraces,
+    elapsedMs: 1,
+    evidenceRefs: second.evidenceRefs,
+  };
+  const third = await bridge.reconstruct({
+    sessionId: "practice:multi-window-skip",
+    editTypeId: knowledge.editTypeId,
+    editTypeKnowledge: knowledge,
+    attempt: 3,
+    reference: multiReference,
+    baseline,
+    matches: [],
+    audioMatch: null,
+    priorAttempts: [firstAttempt, secondAttempt],
+  });
+  assert.equal(third.certificationReady, true);
+  assert.ok(brainRequests.some((id) => id.includes(":attempt:3:effect-01")));
+  assert.ok(brainRequests.some((id) => id.includes(":attempt:3:effect-02")));
+  assert.equal(confirmationRenders, 2);
+  assert.equal(finalizedPhaseAttempts, 2);
+  assert.equal(fullRenders, 1);
+});
+
 test("M6 whole-edit adapter composition is explicit deterministic-proof-only", () => {
   assert.throws(
     () => composePracticeM6ExecutionAdaptersV1(

@@ -383,6 +383,8 @@ export interface PracticeDecisionTraceV1 {
 
 export interface PracticeReconstructionOutputV1 {
   readonly renderRef: string;
+  /** False means this was a phase-proof training pass; full-edit certification was intentionally skipped. */
+  readonly certificationReady?: boolean;
   readonly decisionTraces: readonly PracticeDecisionTraceV1[];
   readonly evidenceRefs: readonly string[];
 }
@@ -390,6 +392,8 @@ export interface PracticeReconstructionOutputV1 {
 export interface PracticeAttemptV1 {
   readonly attempt: number;
   readonly renderRef: string;
+  /** False marks a phase-training pass that intentionally skipped whole-edit certification. */
+  readonly certificationReady?: boolean;
   readonly report: PracticeSimilarityReportV1;
   readonly decisionTraces: readonly PracticeDecisionTraceV1[];
   readonly elapsedMs: number;

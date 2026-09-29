@@ -347,6 +347,50 @@ implements PracticeM6AeRenderDriverV1 {
     });
   }
 
+  async renderFinalizedReplay(input: {
+    readonly sessionId: string;
+    readonly attempt: number;
+    readonly compStableId: string;
+    readonly durationMs: number;
+  }): Promise<{ readonly renderPath: string; readonly evidenceRefs?: readonly string[] }> {
+    const baseline = this.#baselineBySession.get(input.sessionId);
+    const finalized = this.#finalizedAttemptBySession.get(input.sessionId);
+    if (baseline === undefined || finalized === undefined) {
+      throw new Error("PRACTICE_CERTIFICATION_REPLAY_STATE_MISSING");
+    }
+    if (baseline.compStableId !== input.compStableId) {
+      throw new Error("PRACTICE_CERTIFICATION_REPLAY_COMP_CHANGED");
+    }
+    const observed = await this.client.observe(this.projectId);
+    const operationCount = this.#appliedOperationsBySession.get(input.sessionId) ?? 0;
+    if (
+      finalized.operationCount !== operationCount
+      || finalized.projectFingerprint !== observed.observed.projectFingerprint
+      || finalized.itemCount !== observed.project.itemCount
+    ) {
+      throw new Error(
+        "PRACTICE_CERTIFICATION_REPLAY_DRIFT: the finalized Practice state changed before replay.",
+      );
+    }
+    const rendered = await this.#render({
+      sessionId: input.sessionId,
+      attempt: input.attempt,
+      compStableId: input.compStableId,
+      suffix: "full-certification-replay",
+      startMs: 0,
+      durationMs: input.durationMs,
+    });
+    await this.finalizeAttempt(input.sessionId);
+    return {
+      ...rendered,
+      evidenceRefs: [
+        ...(rendered.evidenceRefs ?? []),
+        "practice-certification-replay-state-locked",
+        "practice-certification-replay-operation-count:" + String(operationCount),
+      ],
+    };
+  }
+
   async renderFullEdit(input: {
     readonly sessionId: string;
     readonly attempt: number;
