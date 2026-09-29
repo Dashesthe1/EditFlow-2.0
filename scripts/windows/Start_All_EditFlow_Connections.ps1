@@ -104,7 +104,7 @@ if (-not $LocalOnly) {
   }
   Pass "Tailscale" ([string]$ts.Self.DNSName)
 
-  $publicPathFile = Join-Path $RepoRoot ".tmp\current-shadow\public-path.txt"
+  $publicPathFile = Join-Path $env:LOCALAPPDATA "EditFlow2\public-path.txt"
   $publicPath = if (Test-Path $publicPathFile) { (Get-Content -Raw $publicPathFile).Trim() } else { "" }
   $funnel = (& $tailscale.Source funnel status 2>&1 | Out-String)
   if ([string]::IsNullOrWhiteSpace($publicPath) -or $funnel -notmatch [regex]::Escape($publicPath)) {

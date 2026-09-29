@@ -53,7 +53,11 @@ $GatewayPython = Join-Path $env:USERPROFILE "editgpt\.venv\Scripts\python.exe"
 if (-not (Test-Path $GatewayPython)) {
   $GatewayPython = (Get-Command python.exe -ErrorAction Stop).Source
 }
-$PublicPathFile = Join-Path $LogRoot "public-path.txt"
+$PublicPathFile = Join-Path $env:LOCALAPPDATA "EditFlow2\public-path.txt"
+$LegacyPublicPathFile = Join-Path $LogRoot "public-path.txt"
+if (-not (Test-Path $PublicPathFile) -and (Test-Path $LegacyPublicPathFile)) {
+  Copy-Item $LegacyPublicPathFile $PublicPathFile
+}
 $PublicPath = ""
 if (-not $LocalOnly) {
   $PublicPath = [string]$env:EDITFLOW_SHADOW_PUBLIC_PATH
