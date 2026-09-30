@@ -1010,6 +1010,7 @@ export class PracticePanelServerV1 {
   #controlRequestCounter = 0;
   #startingPractice: Promise<PracticePanelRunSnapshotV1> | null = null;
   readonly #preflightJobs = new Map<string, { abort: AbortController; promise: Promise<void> }>();
+  readonly #preflightErrors = new Map<string, string>();
 
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
@@ -1493,7 +1494,16 @@ export class PracticePanelServerV1 {
   #schedulePreflight(assignmentId: string): void {
     if (this.#preflightJobs.has(assignmentId)) return;
     const abort = new AbortController();
+    this.#preflightErrors.delete(assignmentId);
     const promise = Promise.resolve().then(() => this.#runPreflight(assignmentId, abort.signal))
+      .catch((error: unknown) => {
+        if (abort.signal.aborted) return;
+        // A locked checkpoint must not turn the background worker into an unhandled rejection.
+        // Keep the last durable assignment; expose the failure for a same-assignment retry.
+        const message = error instanceof Error ? error.message : String(error);
+        this.#preflightErrors.set(assignmentId, message);
+        console.error("Practice preflight paused: " + message);
+      })
       .finally(() => this.#preflightJobs.delete(assignmentId));
     this.#preflightJobs.set(assignmentId, { abort, promise });
   }
@@ -1588,6 +1598,7 @@ export class PracticePanelServerV1 {
       panelConnected: this.config.broker.panelSession !== null,
       assignment, preflight, checkpoint: events.at(-1) ?? null, nextOperation,
       workerRunning: assignment !== null && this.#preflightJobs.has(assignment.assignmentId),
+      workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
       controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
       resumeRequired: assignment !== null,
     };
@@ -1609,7 +1620,7 @@ export class PracticePanelServerV1 {
       completedAt: assignment.completedAt,
       finalRenderRef: assignment.finalRenderRef,
       finalSummary: assignment.finalSummary,
-      error: assignment.error,
+      error: this.#preflightErrors.get(assignment.assignmentId) ?? assignment.error,
     };
     this.#runs.set(sessionId, updated);
     if (["CANCELLED", "COMPLETED", "FAILED"].includes(state)

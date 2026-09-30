@@ -44,6 +44,11 @@ function Open-WarmCepBridge {
 
 $Node = (Get-Command node.exe -ErrorAction Stop).Source
 $Npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+$ReaderRepair = Join-Path $Root "scripts\windows\repair-desktop-commander-read-handles.mjs"
+if (Test-Path $ReaderRepair) {
+  & $Node $ReaderRepair
+  if ($LASTEXITCODE -ne 0) { throw "Desktop Commander text-reader repair failed." }
+}
 $TailscaleCommand = Get-Command tailscale.exe -ErrorAction SilentlyContinue
 $Tailscale = if ($null -ne $TailscaleCommand) { $TailscaleCommand.Source } else { "" }
 if (-not $LocalOnly -and [string]::IsNullOrWhiteSpace($Tailscale)) {

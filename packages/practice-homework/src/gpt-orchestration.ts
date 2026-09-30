@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -644,17 +644,28 @@ export class GptOrchestrationStoreV1 {
     await mkdir(path.dirname(this.filePath), { recursive: true });
     this.#sequence += 1;
     const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence) + "-" + randomUUID();
-    await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", flush: true });
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        await rename(temporary, this.filePath);
-        break;
-      } catch (error) {
-        const code = (error as { code?: string }).code;
-        if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES") || attempt >= 7) throw error;
-        // Readers always see the complete previous or next checkpoint, never a copy in progress.
-        await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * 2 ** attempt)));
+    try {
+      await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", flush: true });
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await rename(temporary, this.filePath);
+          return;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          const locked = process.platform === "win32"
+            && ["EPERM", "EACCES", "EBUSY"].includes(code ?? "");
+          if (!locked || attempt >= 40) {
+            if (locked && error instanceof Error) {
+              error.message += " Practice checkpoint was not committed; release the file reader lock and retry the retained assignment.";
+            }
+            throw error;
+          }
+          // Preserve atomic readers; retry a bounded Windows sharing violation.
+          await new Promise((resolve) => setTimeout(resolve, Math.min(250, 10 * 2 ** attempt)));
+        }
       }
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 
@@ -667,7 +678,7 @@ export class GptOrchestrationStoreV1 {
     const pending = (GptOrchestrationStoreV1.#tails.get(this.filePath) ?? Promise.resolve()).then(async () => {
       const current = await readStore(this.filePath);
       const [next, value] = await operation(current);
-      await this.#write(next);
+      if (next !== current) await this.#write(next);
       output = value;
     });
     const tail = pending.catch(() => undefined);
@@ -799,7 +810,7 @@ export class GptOrchestrationStoreV1 {
             + "\n\n" + PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1,
         };
       });
-      return [{ ...payload, assignments }, refreshed] as const;
+      return [refreshed === 0 ? payload : { ...payload, assignments }, refreshed] as const;
     });
   }
 
@@ -1223,6 +1234,7 @@ export class GptOrchestrationStoreV1 {
       if (index < 0) throw new TypeError("Unknown GPT assignment: " + assignmentId);
       const next = [...payload.assignments];
       const updated = update(next[index]!);
+      if (updated === next[index]) return [payload, structuredClone(updated)] as const;
       next[index] = updated;
       return [{ ...payload, assignments: next }, structuredClone(updated)] as const;
     });

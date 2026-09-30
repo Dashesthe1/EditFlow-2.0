@@ -31,6 +31,11 @@ function Get-DesktopCommanderRemote {
 Write-Host ""
 Write-Host "=== EditFlow / ChatGPT / After Effects Connections ==="
 
+$ReaderRepair = Join-Path $RepoRoot "scripts\windows\repair-desktop-commander-read-handles.mjs"
+if (Test-Path $ReaderRepair) {
+  & (Get-Command node.exe -ErrorAction Stop).Source $ReaderRepair
+  if ($LASTEXITCODE -ne 0) { throw "Desktop Commander text-reader repair failed." }
+}
 $dcRemote = Get-DesktopCommanderRemote
 if ($dcRemote.Count -eq 0) {
   $npx = Get-Command npx.cmd -ErrorAction Stop
