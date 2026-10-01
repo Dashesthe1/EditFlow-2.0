@@ -3,7 +3,7 @@
 // Browser evidence can establish activity, not private model/backend state.
 // No single timer or DOM indicator is sufficient to authorize a replacement.
 const POLICY = Object.freeze({
-  quietMs: 10 * 60 * 1000,
+  quietMs: 60 * 1000,
   confirmMs: 2 * 60 * 1000,
   terminalConfirmMs: 15 * 1000,
   observerStaleMs: 60 * 1000,

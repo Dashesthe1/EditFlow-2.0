@@ -331,7 +331,7 @@ function commandForHeartbeat(body, practice) {
     stopVisible: body.stopVisible === true, clickable: body.stopClickable === true,
     idleUi: body.idleUi === true, href: body.url || runtime.lastUrl, at: now };
   // One request's terminal event cannot mark another active stream idle.
-  const policy = { ...POLICY, quietMs: Math.max(POLICY.quietMs, (Number(body.hardOpenRequestSeconds) || 600) * 1000) };
+  const policy = { ...POLICY, quietMs: Math.max(POLICY.quietMs, (Number(body.hardOpenRequestSeconds) || 60) * 1000) };
   const verdict = evaluateLiveness(runtime.liveness || {}, evidence, now, policy);
   runtime.liveness = verdict.next;
   runtime.lastLiveness = { phase: verdict.phase, reason: verdict.reason, at: now };
@@ -582,7 +582,7 @@ async function handle(req, res) {
     return json(res, 200, {
       ok: true,
       service: "EditFlow Practice Chat Supervisor",
-      version: "1.6.1",
+      version: "1.6.2",
       extensionVersion: runtime.lastExtensionVersion || null,
       monitorState: runtime.lastMonitorState,
       monitoredTabId: runtime.lastTabId,

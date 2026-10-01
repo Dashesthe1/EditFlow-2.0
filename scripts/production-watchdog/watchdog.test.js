@@ -22,7 +22,9 @@ test("fresh semantic processing remains live after 40 minutes", () => {
   const now = start + 40 * 60000;
   assert.equal(evaluateLiveness({}, at(now - start, { semanticAt: now - 1000 }), now).phase, "PROCESSING");
 });
-test("fully silent generation needs 10 minutes plus 2 minutes confirmation", () => {
+test("fully silent generation needs 1 minute plus 2 minutes confirmation", () => {
+  assert.equal(POLICY.quietMs, 60000);
+  assert.equal(POLICY.confirmMs, 120000);
   const first = evaluateLiveness({}, at(POLICY.quietMs), start + POLICY.quietMs);
   assert.equal(first.phase, "SUSPECT");
   const early = evaluateLiveness(first.next, at(POLICY.quietMs + POLICY.confirmMs - 1), start + POLICY.quietMs + POLICY.confirmMs - 1);
@@ -189,7 +191,7 @@ function browserHarness(stopOK = true, options = {}) {
   if (options.streamActive) storage.watchdogRuntime.streamRequests.main = { active: true };
   const actions = [];
   const event = { addListener() {} };
-  const chrome = { runtime: { getManifest: () => ({version: "2.5.1"}), onMessage: event },
+  const chrome = { runtime: { getManifest: () => ({version: "2.5.2"}), onMessage: event },
     storage: { local: { get: async defaults => ({...defaults, ...structuredClone(storage)}),
       set: async values => { storage = {...storage, ...structuredClone(values)}; }, remove: async () => {} }, onChanged: event },
     alarms: { clear: async () => {}, create: async () => {}, onAlarm: event },
@@ -206,7 +208,7 @@ function browserHarness(stopOK = true, options = {}) {
         }
         if (message.type === "STOP_GENERATION_STATUS") return { protocol: 1,
           href: "https://chatgpt.com/c/test", stopVisible: !!options.stopReappears, idleUi: !options.unknownUi };
-        return { ready: true, received: true, stopProtocol: 1, version: "2.5.1" };
+        return { ready: true, received: true, stopProtocol: 1, version: "2.5.2" };
       }, onRemoved: event },
     webRequest: { onBeforeRequest: event, onHeadersReceived: event, onCompleted: event, onErrorOccurred: event } };
   const context = vm.createContext({ chrome, console, URL, AbortController, structuredClone,
@@ -375,6 +377,19 @@ test("extension upgrade preserves a user's paused state and owning tab", async (
   await h.api.initialize();
   assert.equal(h.storage().monitorState, "paused");
   assert.equal(h.storage().monitorTabId, 1);
+  assert.equal(h.storage().hardOpenRequestSeconds, 60);
   assert.equal(h.actions.includes("STOP_GENERATION_TERMINAL"), false);
   assert.equal(h.actions.includes("create"), false);
+});
+
+test("supervisor starts suspicion at 60 seconds and waits another 120 before handoff", () => {
+  const h = supervisorHarness();
+  h.time(start + 59999);
+  assert.equal(h.heartbeat({hardOpenRequestSeconds: 60}).phase, "PROCESSING");
+  h.time(start + 60000);
+  assert.equal(h.heartbeat({hardOpenRequestSeconds: 60}).phase, "SUSPECT");
+  h.time(start + 179999);
+  assert.equal(h.heartbeat({hardOpenRequestSeconds: 60}).command, "NONE");
+  h.time(start + 180000);
+  assert.equal(h.heartbeat({hardOpenRequestSeconds: 60}).command, "CHAIN");
 });

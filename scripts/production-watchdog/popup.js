@@ -16,7 +16,7 @@ async function readState() {
   return chrome.storage.local.get({
     monitorState: "stopped",
     monitorTabId: null,
-    hardOpenRequestSeconds: 600,
+    hardOpenRequestSeconds: 60,
     watchdogRuntime: null
   });
 }
@@ -38,8 +38,8 @@ async function render() {
   $("handoffs").textContent = Number(runtime.handoffCount || 0);
   const hardInput = $("hardMinutes");
   if (!hardMinutesDirty && document.activeElement !== hardInput) {
-    const savedMinutes = Number(data.hardOpenRequestSeconds || 600) / 60;
-    hardInput.value = Math.max(10, Math.round(savedMinutes * 2) / 2);
+    const savedMinutes = Number(data.hardOpenRequestSeconds || 60) / 60;
+    hardInput.value = Math.max(1, Math.round(savedMinutes * 2) / 2);
   }
   $("detail").textContent = runtime.needsAttention
     ? "Needs attention: " + runtime.needsAttention
@@ -91,10 +91,10 @@ $("stopBtn").addEventListener("click", () => void setState("stopped"));
 async function saveHardMinutes() {
   const input = $("hardMinutes");
   const raw = Number(input.value);
-  if (!Number.isFinite(raw) || raw < 10) {
-    input.value = 10;
+  if (!Number.isFinite(raw) || raw < 1) {
+    input.value = 1;
   }
-  const minutes = Math.max(10, Number(input.value) || 10);
+  const minutes = Math.max(1, Number(input.value) || 1);
   await chrome.storage.local.set({ hardOpenRequestSeconds: minutes * 60 });
   hardMinutesDirty = false;
   await render();

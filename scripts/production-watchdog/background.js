@@ -8,7 +8,7 @@ const DEFAULTS = {
   monitorState: "stopped",
   monitorTabId: null,
   monitorTabWasAutoDiscardable: true,
-  hardOpenRequestSeconds: 600,
+  hardOpenRequestSeconds: 60,
   failureConfirmSeconds: 15,
   handoffCooldownSeconds: 90,
   runtimeVersion: null,
@@ -810,7 +810,7 @@ async function handlePageHeartbeat(message, sender) {
     monitorState: data.monitorState,
     activeRequests: active.length,
     oldestRequestAgeMs: oldestStartedAt ? Date.now() - oldestStartedAt : 0,
-    hardOpenRequestSeconds: Number(data.hardOpenRequestSeconds) || 600,
+    hardOpenRequestSeconds: Number(data.hardOpenRequestSeconds) || 60,
     streamActiveRequests: stream.active.length,
     streamLastActivityAgeMs: stream.ageMs,
     streamBytesTotal: stream.bytesTotal,
@@ -985,7 +985,7 @@ async function initialize() {
   if (data.runtimeVersion !== chrome.runtime.getManifest().version) {
     await storeState({
       runtimeVersion: chrome.runtime.getManifest().version,
-      hardOpenRequestSeconds: 600,
+      hardOpenRequestSeconds: 60,
       watchdogRuntime: freshRuntime({
         statusText: "Production Watchdog " + chrome.runtime.getManifest().version + " loaded; semantic liveness and verified checkpoint handoff ready"
       })

@@ -1,4 +1,4 @@
-# EditFlow Production Watchdog 2.5.1 / Supervisor 1.6.1
+# EditFlow Production Watchdog 2.5.2 / Supervisor 1.6.2
 
 This browser controller resumes the existing nonterminal Practice assignment when a response has ended or a stall has been confirmed. It does not set a maximum chat duration. The browser cannot prove private model/backend state; it observes response events, visible assistant output, AE revisions and durable Practice evidence.
 
@@ -11,7 +11,7 @@ Those independent replacement paths are removed. Only the supervisor can issue a
 ## Monitoring policy
 
 - Changes in structured response events or visible output protect ongoing processing. Keepalives and padding are excluded when the stream schema is recognized. Unrecognized traffic remains uncertainty rather than proof of a stall.
-- Silence is eligible for suspicion after at least 10 minutes, followed by two more minutes of confirmation. This is a tunable silence window, not a session duration limit. New processing evidence cancels suspicion.
+- Silence is eligible for suspicion after at least 1 minute, followed by two more minutes of confirmation. This is a tunable silence window, not a session duration limit. New processing evidence cancels suspicion. Version 2.5.2 sets the installed silence setting to 60 seconds as requested; the popup allows a minimum of 1 minute.
 - Explicit failure is reconfirmed for 15 seconds while the response is idle; stale errors cannot override a live generation. Authentication and rate limits pause recovery instead of creating new chats.
 - Missing observer heartbeats repair the extension only. They never authorize terminating a chat or opening native fallback chats.
 - Live AE mutation/controller leases and manual Stop protect the session. Pause/Stop persist until the user starts monitoring again.
