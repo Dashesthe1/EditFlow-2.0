@@ -50,6 +50,7 @@ import {
   validatePracticeSceneMatchesV1,
 } from "../../../packages/practice-homework/src/index.js";
 import type { TutorialDeepAnalysisPacketV1 } from "../../../packages/tutorial-learning/src/index.js";
+import { ClipResearchStoreV1, CLIP_RESEARCH_CONTRACT_V1 } from "../../../packages/practice-homework/src/clip-research.js";
 import {
   AeCepAdapterClientV11,
   AeFilesystemPolicyV11,
@@ -616,7 +617,10 @@ const jsonResponse = (res: ServerResponse, status: number, value: unknown): void
   res.end(body);
 };
 
+const requestBodies = new WeakMap<IncomingMessage, Record<string, unknown>>();
 const readJson = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
+  const cached = requestBodies.get(req);
+  if (cached !== undefined) return cached;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -1003,6 +1007,7 @@ export class PracticePanelServerV1 {
   #activeRunId: string | null = null;
   readonly #runs = new Map<string, PracticePanelRunSnapshotV1>();
   readonly #gptStore: GptOrchestrationStoreV1;
+  readonly #clipResearch: ClipResearchStoreV1;
   readonly #masteryVerifier: PracticeMasteryVerifierV1;
   readonly #transactionRuntime: CurrentAeTransactionRuntimeV1;
   #fastRuntime: LocalFastRuntimeV1 | null = null;
@@ -1023,6 +1028,10 @@ export class PracticePanelServerV1 {
     this.#gptStore = new GptOrchestrationStoreV1(
       config.gptOrchestrationFilePath
         ?? path.join(config.artifactDir, "state", "gpt-orchestration.json"),
+    );
+    this.#clipResearch = new ClipResearchStoreV1(
+      path.join(path.dirname(this.#gptStore.filePath), "clip-research"),
+      [process.env.USERPROFILE ?? config.repositoryRoot, config.repositoryRoot, config.artifactDir],
     );
     this.#masteryVerifier = new PracticeMasteryVerifierV1({
       repositoryRoot: config.repositoryRoot,
@@ -1581,6 +1590,29 @@ export class PracticePanelServerV1 {
     }
   }
 
+  async assertClipResearchReady(body: Record<string, any>, allClips = false): Promise<Record<string, any> | null> {
+    if (this.#activeRunId === null) return null;
+    const run = this.#runs.get(this.#activeRunId);
+    if (run === undefined) throw new HttpError(409, "Active assignment is unavailable.");
+    const assignment = await this.#gptStore.getAssignment(run.assignmentId);
+    if (assignment === null) throw new HttpError(409, "Active assignment is unavailable.");
+    try {
+      const admitted = await this.#clipResearch.admit(assignment, body);
+      if (allClips && assignment.mode === "PRACTICE") {
+        const declared = new Set(admitted.plans.map((plan: Record<string, any>) => plan.clipId));
+        if ((assignment.practiceSceneMatches ?? []).some((match) => !declared.has(match.shotId))) {
+          throw new TypeError("CLIP_RESEARCH_REQUIRED: Baseline assembly needs plans for all affected clips.");
+        }
+      }
+      await this.#clipResearch.audit(assignment, admitted, "ADMITTED");
+      return { ...admitted, assignment };
+    } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
+  }
+
+  async recordClipResearchExecution(admission: Record<string, any> | null, outcome: string): Promise<void> {
+    if (admission !== null) await this.#clipResearch.audit(admission.assignment, admission, outcome);
+  }
+
   async #resumeHandshake(): Promise<Record<string, unknown>> {
     const active = this.#activeRunId === null ? null : this.#runs.get(this.#activeRunId);
     const assignment = active === null || active === undefined ? null : await this.#gptStore.getAssignment(active.assignmentId);
@@ -1597,6 +1629,7 @@ export class PracticePanelServerV1 {
       repositoryRoot: this.config.repositoryRoot, statePath: this.#gptStore.filePath,
       panelConnected: this.config.broker.panelSession !== null,
       assignment, preflight, checkpoint: events.at(-1) ?? null, nextOperation,
+      clipResearch: assignment === null ? null : await this.#clipResearch.snapshot(assignment),
       workerRunning: assignment !== null && this.#preflightJobs.has(assignment.assignmentId),
       workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
       controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
@@ -2202,6 +2235,31 @@ export class PracticePanelServerV1 {
     try {
       if (req.method === "POST" && url.pathname.startsWith("/v1/product/control/")) {
         await this.assertPracticeReconstructionReady();
+        const body = await readJson(req);
+        requestBodies.set(req, body);
+        const admission = await this.assertClipResearchReady(body, url.pathname.endsWith("/build-baseline"));
+        res.once("finish", () => {
+          void this.recordClipResearchExecution(admission, res.statusCode < 400 ? "HTTP_COMPLETED" : "HTTP_FAILED").catch(() => {});
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/v1/product/gpt/clip-research-contract") {
+        jsonResponse(res, 200, CLIP_RESEARCH_CONTRACT_V1);
+        return;
+      }
+      const clipResearchMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/clip-research$/.exec(url.pathname);
+      if ((req.method === "GET" || req.method === "POST") && clipResearchMatch !== null) {
+        const id = decodeURIComponent(clipResearchMatch[1] ?? "");
+        const assignment = await this.#gptStore.getAssignment(id);
+        if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
+        let ledger;
+        if (req.method === "POST") {
+          const events = await this.#gptStore.eventsForSession(assignment.sessionId);
+          const compiledSources = events.filter((event) => event.stage === "RESEARCH").flatMap((event) => event.researchSources ?? []);
+          try { ledger = await this.#clipResearch.record(assignment, await readJson(req), compiledSources); }
+          catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
+        } else ledger = await this.#clipResearch.snapshot(assignment);
+        jsonResponse(res, req.method === "POST" ? 201 : 200, { clipResearch: ledger });
+        return;
       }
       if ((req.method === "GET" || req.method === "POST") && url.pathname === "/v1/product/practice/resume-or-start") {
         if (req.method === "POST") {
@@ -2426,6 +2484,7 @@ export class PracticePanelServerV1 {
           assignment,
           resumeRequired: assignment !== null
             && (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED"),
+          clipResearch: assignment === null ? null : await this.#clipResearch.snapshot(assignment),
         });
         return;
       }
@@ -2437,6 +2496,7 @@ export class PracticePanelServerV1 {
         jsonResponse(res, 200, {
           assignment,
           events: await this.#gptStore.eventsForSession(assignment.sessionId),
+          clipResearch: await this.#clipResearch.snapshot(assignment),
         });
         return;
       }

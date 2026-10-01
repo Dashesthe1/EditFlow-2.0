@@ -169,7 +169,9 @@ const resolveProofScript = async (value) => {
   return candidate;
 };
 
+const requestBodies = new WeakMap();
 const readJson = async (req) => {
+  if (requestBodies.has(req)) return requestBodies.get(req);
   const chunks = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   const text = Buffer.concat(chunks).toString("utf8");
@@ -228,6 +230,7 @@ const statusPayload = () => ({
   hostRevision: session.runner.hostRevision,
   localRuntime: runtime.status(),
   currentTransactionRuntime: currentTransactionRuntime.status(),
+  clipResearchPolicy: "MANDATORY_PER_CLIP_TUTORIAL_ADOBE_WEB_V1",
   mutationLease: mutationLeaseStatus(),
   panel: broker.panelSession ?? panel,
   practiceService: {
@@ -257,6 +260,13 @@ const server = createServer(async (req, res) => {
     url.pathname = legacyControlRouteAliases.get(url.pathname) ?? url.pathname;
     if (req.method === "POST" && ["/run", "/run-batch", "/run-transaction", "/run-correction-transaction", "/proof-script"].includes(url.pathname)) {
       await practicePanel.assertPracticeReconstructionReady();
+      const body = await readJson(req);
+      requestBodies.set(req, body);
+      const admission = await practicePanel.assertClipResearchReady(body);
+      res.once("finish", () => {
+        void practicePanel.recordClipResearchExecution(admission, res.statusCode < 400 ? "HTTP_COMPLETED" : "HTTP_FAILED")
+          .catch((error) => console.error("CLIP_RESEARCH_AUDIT_FAILED", error.message));
+      });
     }
     if (url.pathname.startsWith("/v1/product/")) {
       await proxyPracticeRequest(req, res);
@@ -413,7 +423,7 @@ const server = createServer(async (req, res) => {
     sendJson(res, 404, { error: "NOT_FOUND" });
   } catch (error) {
     try {
-      sendJson(res, 500, await triageFailure(error, req, requestPath));
+      sendJson(res, typeof error?.status === "number" ? error.status : 500, await triageFailure(error, req, requestPath));
     } catch (triageError) {
       sendJson(res, 500, {
         error: error instanceof Error ? error.message : String(error),

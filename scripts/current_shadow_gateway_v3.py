@@ -185,6 +185,7 @@ def build_server():
                 "triage_error", "remember_error_resolution", "get_error_memory", "record_error_outcome",
                 "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_batch", "fast_ae_refresh",
                 "get_next_gpt_assignment", "get_gpt_assignment", "claim_gpt_assignment",
+                "get_clip_research_contract", "get_clip_research", "record_clip_research",
                 "record_gpt_learning_event", "complete_gpt_assignment", "fail_gpt_assignment",
                 "acknowledge_gpt_assignment_cancelled", "get_editflow_run", "cancel_editflow_run",
             ],
@@ -237,40 +238,64 @@ def build_server():
     ) -> dict[str, Any]:
         """Execute a validated short-horizon goal through the persistent ContinuousFastLoop."""
         parsed = json.loads(operations_json)
+        decision = json.loads(decision_json) if decision_json else {}
+        research_context = decision.get("researchContext", parsed.get("researchContext") if isinstance(parsed, dict) else None)
         transaction_id = idempotency_key or plan_id or f"shadow-fast-{int(time.time() * 1000)}"
         if isinstance(parsed, list):
             if not parsed:
                 raise ValueError("operations_json routine-intent list must not be empty")
-            result = _http("POST", "/run-batch", {"intents": parsed, "transactionId": transaction_id})
+            result = _http("POST", "/run-batch", {"intents": parsed, "transactionId": transaction_id, "researchContext": research_context})
             execution_path = "LOCAL_BATCH_RUNTIME"
         else:
             goal = _normalize_goal(operations_json)
-            result = _http("POST", "/run", {"goal": goal, "transactionId": transaction_id})
+            result = _http("POST", "/run", {"goal": goal, "transactionId": transaction_id, "researchContext": research_context})
             execution_path = "CONTINUOUS_FAST_LOOP"
         return {"baseRevision": base_revision, "planId": plan_id, "executionPath": execution_path, "result": result}
 
     @mcp.tool()
     def fast_ae_run(goal_json: str, transaction_id: str = "") -> dict[str, Any]:
         """Run one current-repo fast-loop goal while preserving the warm CEP lease/state."""
-        goal = json.loads(goal_json)
-        if not isinstance(goal, dict):
+        packet = json.loads(goal_json)
+        if not isinstance(packet, dict):
             raise ValueError("goal_json must decode to an object")
+        goal = packet.get("goal", packet)
         tx = transaction_id or f"shadow-fast-{int(time.time() * 1000)}"
-        return _http("POST", "/run", {"goal": goal, "transactionId": tx})
+        return _http("POST", "/run", {"goal": goal, "transactionId": tx, "researchContext": packet.get("researchContext")})
 
     @mcp.tool()
     def fast_ae_batch(intents_json: str, transaction_id: str = "") -> dict[str, Any]:
         """Execute up to 64 allow-listed AE routine actions locally in one MCP round trip."""
-        intents = json.loads(intents_json)
+        packet = json.loads(intents_json)
+        intents = packet.get("intents") if isinstance(packet, dict) else packet
         if not isinstance(intents, list) or not intents:
             raise ValueError("intents_json must decode to a non-empty routine-intent list")
         tx = transaction_id or f"shadow-batch-{int(time.time() * 1000)}"
-        return _http("POST", "/run-batch", {"intents": intents, "transactionId": tx})
+        return _http("POST", "/run-batch", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None})
 
     @mcp.tool()
     def fast_ae_refresh() -> dict[str, Any]:
         """Refresh the current AE world model at a meaningful checkpoint."""
         return _http("GET", "/state")
+
+    @mcp.tool()
+    def get_clip_research_contract() -> dict[str, Any]:
+        """Read mandatory per-clip scan/tutorial/Adobe/web research payloads before AE editing."""
+        return _practice_http("GET", "/v1/product/gpt/clip-research-contract")
+
+    @mcp.tool()
+    def get_clip_research(assignment_id: str) -> dict[str, Any]:
+        """Resume durable per-clip inspections, consulted methods, READY plans and execution audit."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/clip-research")
+
+    @mcp.tool()
+    def record_clip_research(assignment_id: str, research_json: str) -> dict[str, Any]:
+        """Record SCAN, SOURCE or PLAN with the live controller owner before changing a clip."""
+        payload = json.loads(research_json)
+        if not isinstance(payload, dict):
+            raise ValueError("research_json must be an object matching get_clip_research_contract")
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/clip-research", payload)
 
     @mcp.tool()
     def get_next_gpt_assignment() -> dict[str, Any]:

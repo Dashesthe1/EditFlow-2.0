@@ -21,6 +21,7 @@ import type {
   PracticeVerificationPolicyV1,
 } from "./contracts.js";
 import { applyCompiledTutorialCausalModelV1 } from "./tutorial-causal-compiler.js";
+import { CLIP_RESEARCH_POLICY_V1 } from "./clip-research.js";
 
 interface GptOrchestrationStorePayloadV1 {
   readonly schema: "editflow.gpt-orchestration-store.v1";
@@ -84,7 +85,9 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
             ? "HELD_OUT_CERTIFICATION"
             : "LEARNING"
           : null;
-        const researchMessage = applyCurrentResearchPriority(assignment.chatMessage);
+        const currentMessage = assignment.chatMessage.includes("MANDATORY PER-CLIP RESEARCH GATE V1")
+          ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
+        const researchMessage = applyCurrentResearchPriority(currentMessage);
         const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage);
         return {
           ...assignment,
@@ -175,7 +178,7 @@ const LEGACY_RESEARCH_POLICY_LINES = [
 ] as const;
 
 const RESEARCH_PRIORITY_LINES = [
-  "- Tutorial Drive is the mandatory first research source whenever EditFlow does not know how to reproduce a visible reference behavior, is stuck on a construction, or discovers a missing fundamental skill.",
+  "- Tutorial Drive is the mandatory first research source before editing EVERY clip in Practice and Pro Creation. Scan raw/reference windows, consult and compile matching tutorials, map the learned tools/method steps to each effect, and commit the durable clip research plan before AE mutations.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
   "- Every matched Tutorial Drive tutorial file must be deep-analyzed and compiled through EditFlow's tutorial causal compiler before it can support Practice learning. The compiler-derived construction pattern, capabilities, triggers, invariants, adaptation axes, failure/repair logic, and transfer criteria are authoritative; do not hand-author substitutes for those fields.",
@@ -525,6 +528,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       ]
       : [
         ...RESEARCH_PRIORITY_LINES,
+        CLIP_RESEARCH_POLICY_V1,
         "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
       ]),
     "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
