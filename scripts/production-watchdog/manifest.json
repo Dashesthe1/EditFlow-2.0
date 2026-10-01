@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Production Watchdog",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "Observe generation events, tool activity and checkpoints; confirm prolonged silence before a verified continuation handoff.",
   "permissions": [
     "storage",
@@ -42,6 +42,7 @@
         "https://chat.openai.com/*"
       ],
       "js": [
+        "stop-gate.js",
         "content.js"
       ],
       "run_at": "document_idle"

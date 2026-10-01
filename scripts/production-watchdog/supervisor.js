@@ -6,6 +6,7 @@ const pathMod = require("path");
 const { spawn } = require("child_process");
 const { randomUUID } = require("crypto");
 const { POLICY, evaluateLiveness } = require("./liveness.js");
+const { validStopProof } = require("./stop-gate.js");
 
 const PORT = 32147;
 const HOST = "127.0.0.1";
@@ -326,10 +327,10 @@ function commandForHeartbeat(body, practice) {
     terminal,
     completedAt: runtime.semanticCompletedAt || (transportClosedAndVisibleAnswer ? runtime.lastGenerationEndAt : 0)
   };
-  // An explicit protocol terminal supersedes orphaned cloned stream readers.
-  if (runtime.semanticCompletedAt && body.stopVisible !== true && !evidence.activeRequests) {
-    evidence.streamRequests = 0;
-  }
+  runtime.lastStopObservation = { protocol: Number(body.stopProtocol) || null,
+    stopVisible: body.stopVisible === true, clickable: body.stopClickable === true,
+    idleUi: body.idleUi === true, href: body.url || runtime.lastUrl, at: now };
+  // One request's terminal event cannot mark another active stream idle.
   const policy = { ...POLICY, quietMs: Math.max(POLICY.quietMs, (Number(body.hardOpenRequestSeconds) || 600) * 1000) };
   const verdict = evaluateLiveness(runtime.liveness || {}, evidence, now, policy);
   runtime.liveness = verdict.next;
@@ -351,7 +352,8 @@ function commandForHeartbeat(body, practice) {
   runtime.lastChainIssuedAt = now;
   runtime.handoff = { id: randomUUID(), sourceTabId: body.tabId,
     generationAt: runtime.lastGenerationStartAt, assignmentId: practice.assignmentId,
-    sessionId: practice.sessionId, reason: verdict.reason, status: "issued", expiresAt: now + 60000 };
+    sessionId: practice.sessionId, sourceUrl: runtime.lastUrl, issuedAt: now,
+    reason: verdict.reason, status: "issued", expiresAt: now + 60000 };
   persist();
   log("command_chain", { reason: verdict.reason, phase: verdict.phase, handoffId: runtime.handoff.id,
     generationAt: runtime.lastGenerationStartAt, semanticAt: runtime.lastSemanticAt });
@@ -379,17 +381,41 @@ function prepareHandoff(body) {
     "Run the connection preflight, reconcile any in-flight AE work and controller lease, then continue the original M6 reference-first workflow. " +
     "Use only the provided raw footage and raw audio; Finished is visual reference only. Keep After Effects open.";
   persist(); log("handoff_prepared", { handoffId: handoff.id, assignmentId: practice.assignmentId, checkpoint });
-  return { ok: true, handoffId: handoff.id, prompt: handoff.prompt };
+  return { ok: true, handoffId: handoff.id, prompt: handoff.prompt,
+    sourceUrl: handoff.sourceUrl, issuedAt: handoff.issuedAt };
+}
+
+function recordStopped(body) {
+  const handoff = runtime.handoff;
+  const practice = readPractice();
+  const now = Date.now();
+  if (!handoff || handoff.status !== "prepared" || handoff.id !== body.handoffId ||
+      handoff.sourceTabId !== body.tabId || handoff.generationAt !== runtime.lastGenerationStartAt ||
+      runtime.lastUrl !== handoff.sourceUrl || now >= handoff.expiresAt ||
+      runtime.lastMonitorState !== "running" || !practice.active || practice.cancelRequestedAt ||
+      practice.assignmentId !== handoff.assignmentId || practice.sessionId !== handoff.sessionId ||
+      Math.max(practice.controllerLeaseExpiresAt || 0, runtime.lastAeLeaseExpiresAt || 0) > now ||
+      !validStopProof(body.proof, handoff.sourceUrl, now, handoff.issuedAt)) {
+    return { ok: false, reason: "stop_confirmation_rejected" };
+  }
+  handoff.stopReceipt = { id: randomUUID(), proof: body.proof, verifiedAt: now };
+  persist();
+  log("handoff_stop_verified", { handoffId: handoff.id, sourceTabId: body.tabId,
+    clickCount: body.proof.clickCount, alreadyIdle: body.proof.alreadyIdle,
+    stableForMs: body.proof.stableForMs, transportQuietMs: body.proof.transportQuietMs });
+  return { ok: true, stopReceiptId: handoff.stopReceipt.id };
 }
 
 function commitHandoff(body) {
   const handoff = runtime.handoff;
   const practice = readPractice();
   if (!handoff || handoff.status !== "prepared" || handoff.id !== body.handoffId ||
-      body.stopped !== true || !Number.isInteger(body.targetTabId) ||
+      !handoff.stopReceipt || body.stopReceiptId !== handoff.stopReceipt.id ||
+      Date.now() - handoff.stopReceipt.verifiedAt > 5000 || !Number.isInteger(body.targetTabId) ||
       handoff.sourceTabId !== body.tabId || handoff.generationAt !== runtime.lastGenerationStartAt ||
       Date.now() >= handoff.expiresAt || runtime.lastMonitorState !== "running" ||
-      !practice.active || practice.cancelRequestedAt || practice.assignmentId !== handoff.assignmentId ||
+      runtime.lastUrl !== handoff.sourceUrl || !practice.active || practice.cancelRequestedAt ||
+      practice.assignmentId !== handoff.assignmentId || practice.sessionId !== handoff.sessionId ||
       Math.max(practice.controllerLeaseExpiresAt || 0, runtime.lastAeLeaseExpiresAt || 0) > Date.now()) {
     return { ok: false, reason: "handoff_commit_rejected" };
   }
@@ -556,13 +582,14 @@ async function handle(req, res) {
     return json(res, 200, {
       ok: true,
       service: "EditFlow Practice Chat Supervisor",
-      version: "1.6.0",
+      version: "1.6.1",
       extensionVersion: runtime.lastExtensionVersion || null,
       monitorState: runtime.lastMonitorState,
       monitoredTabId: runtime.lastTabId,
       policy: POLICY,
       liveness: runtime.lastLiveness,
       handoff: runtime.handoff,
+      stopObservation: runtime.lastStopObservation || null,
       lastSemanticAt: runtime.lastSemanticAt,
       semanticCoverage: runtime.semanticCoverage,
       pid: process.pid,
@@ -599,10 +626,11 @@ async function handle(req, res) {
     return json(res, 200, Object.assign({ supervisor: true }, readPractice()));
   }
 
-  if (req.method === "POST" && ["/handoff/prepare", "/handoff/commit"].includes(url.pathname)) {
+  if (req.method === "POST" && ["/handoff/prepare", "/handoff/stopped", "/handoff/commit"].includes(url.pathname)) {
     try {
       const body = await readBody(req);
-      const result = url.pathname.endsWith("prepare") ? prepareHandoff(body) : commitHandoff(body);
+      const result = url.pathname.endsWith("prepare") ? prepareHandoff(body)
+        : url.pathname.endsWith("stopped") ? recordStopped(body) : commitHandoff(body);
       return json(res, result.ok ? 200 : 409, result);
     } catch (error) { return json(res, 500, { ok: false, error: String(error) }); }
   }

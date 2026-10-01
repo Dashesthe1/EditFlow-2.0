@@ -1,4 +1,5 @@
 "use strict";
+importScripts("stop-gate.js");
 
 const ALARM = "editflow-production-watchdog";
 const HARD_ALARM = "editflow-production-hard-deadline";
@@ -240,10 +241,11 @@ async function ensureContentScript(tabId) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
-      files: ["content.js"]
+      files: ["stop-gate.js", "content.js"]
     });
     const reply = await chrome.tabs.sendMessage(tabId, { type: "PHRASE_MONITOR_PING" });
-    return !!(reply && reply.ready);
+    return !!(reply && reply.ready && reply.stopProtocol === 1 &&
+      reply.version === chrome.runtime.getManifest().version);
   } catch (_) {
     return false;
   }
@@ -360,12 +362,6 @@ async function onBefore(details) {
       data.monitorTabId !== details.tabId) return;
   const rt = await runtime();
   rt.requests = rt.requests || {};
-  for (const [id, prior] of Object.entries(rt.requests)) {
-    if (id !== details.requestId && prior && prior.active) {
-      prior.active = false;
-      prior.supersededAt = Date.now();
-    }
-  }
   rt.requests[details.requestId] = {
     active: true,
     startedAt: Date.now(),
@@ -526,12 +522,6 @@ async function onProbeEvent(event, sender) {
       transport: event.transport || null
     };
     if (type === "generation_request_start") {
-      for (const [id, prior] of Object.entries(rt.streamRequests)) {
-        if (id !== requestId && prior && prior.active) {
-          prior.active = false;
-          prior.supersededAt = ts;
-        }
-      }
       req.active = true;
       req.startedAt = ts;
       req.lastByteAt = ts;
@@ -616,41 +606,74 @@ async function onProbeEvent(event, sender) {
   return { ok: true };
 }
 
+async function confirmStoppedTransport(tabId, stop, issuedAt) {
+  const deadline = Date.now() + 12000;
+  let quietSince = null;
+  while (Date.now() <= deadline) {
+    const data = await state();
+    if (data.monitorState !== "running" || data.monitorTabId !== tabId) {
+      throw Error("Monitoring changed during Stop confirmation");
+    }
+    await transportQueue;
+    const sample = await chrome.tabs.sendMessage(tabId, { type: "STOP_GENERATION_STATUS" });
+    if (!sample || sample.protocol !== 1 || sample.href !== stop.href) {
+      throw Error("Old conversation observer could not verify Stop");
+    }
+    const rt = await runtime();
+    const requests = activeRequests(rt).length;
+    const streams = activeStreamRequests(rt).length;
+    if (!sample.stopVisible && sample.idleUi && requests === 0 && streams === 0) {
+      if (quietSince === null) quietSince = Date.now();
+      if (Date.now() - quietSince >= 1500) {
+        const proof = { ...stop, checkedAt: Date.now(), stopVisible: false, idleUi: true,
+          activeRequests: requests, activeStreamRequests: streams, transportQuietMs: Date.now() - quietSince };
+        if (!globalThis.EditFlowStopGate.validStopProof(proof, stop.href, Date.now(), issuedAt)) {
+          throw Error("Stop proof was incomplete or stale");
+        }
+        return proof;
+      }
+    } else { quietSince = null; }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw Error("Old generation UI or transport remains active; no replacement created");
+}
+
 let handoffInFlight = false;
 async function handoff(tabId, reason, handoffId) {
   if (handoffInFlight || !handoffId) return;
   handoffInFlight = true;
   let freshTab = null;
+  let committedHandoff = false;
   try {
     const data = await state();
     if (data.monitorState !== "running" || data.monitorTabId !== tabId) return;
     const permit = await supervisorPost("/handoff/prepare", { tabId, reason, handoffId });
     if (!permit || !permit.ok) return;
+    if (!(await ensureContentScript(tabId))) throw Error("Current Stop observer could not attach");
     const rt = await runtime();
-    // Require positive Stop acknowledgement and transport quiescence.
-    const stop = await chrome.tabs.sendMessage(tabId, { type: "STOP_GENERATION_TERMINAL" });
-    if (!stop || stop.stopped !== true) throw Error("Old generation was not confirmed stopped");
-    const until = Date.now() + 5000;
-    let remaining;
-    do {
-      remaining = activeRequests(await runtime()).length;
-      if (!remaining) break;
-      await new Promise(resolve => setTimeout(resolve, 250));
-    } while (Date.now() < until);
-    if (remaining) throw Error("Old generation transport remains active");
+    // Missing Stop is not proof of cancellation. Require stable idle UI and
+    // closure of every tracked generation stream before opening another tab.
+    const stop = await chrome.tabs.sendMessage(tabId, { type: "STOP_GENERATION_TERMINAL", expectedHref: permit.sourceUrl });
+    if (!stop || stop.protocol !== 1 || stop.stopped !== true || stop.href !== permit.sourceUrl) {
+      throw Error("Old generation was not confirmed stopped");
+    }
+    const proof = await confirmStoppedTransport(tabId, stop, permit.issuedAt);
+    const receipt = await supervisorPost("/handoff/stopped", { tabId, handoffId, proof });
+    if (!receipt || !receipt.ok || !receipt.stopReceiptId) throw Error("Supervisor rejected Stop confirmation");
     const current = await state();
     if (current.monitorState !== "running" || current.monitorTabId !== tabId) return;
-    freshTab = await chrome.tabs.create({ url: "https://chatgpt.com/", active: true });
+    freshTab = await chrome.tabs.create({ url: "https://chatgpt.com/", active: false });
     const committed = await supervisorPost("/handoff/commit", {
-      handoffId, tabId, targetTabId: freshTab.id, stopped: true
+      handoffId, tabId, targetTabId: freshTab.id, stopReceiptId: receipt.stopReceiptId
     });
     if (!committed || !committed.ok) throw Error("Checkpoint handoff commit was rejected");
+    committedHandoff = true;
     await restoreTab(data);
     await storeState({ monitorState: "busy", monitorTabId: freshTab.id,
       monitorTabWasAutoDiscardable: freshTab.autoDiscardable !== false,
       watchdogRuntime: freshRuntime({ handoffCount: Number(rt.handoffCount || 0) + 1,
         lastHandoffAt: Date.now(), lastHandoffReason: reason, statusText: "Checkpoint committed; sending continuation" }) });
-    await chrome.tabs.update(freshTab.id, { autoDiscardable: false });
+    await chrome.tabs.update(freshTab.id, { autoDiscardable: false, active: true });
     if (!(await waitForChatTabReady(freshTab.id, 20000)) || !(await ensureContentScript(freshTab.id))) {
       throw Error("Fresh chat observer could not attach");
     }
@@ -660,11 +683,19 @@ async function handoff(tabId, reason, handoffId) {
     if (!reply || reply.received !== true) throw Error("Continuation was not accepted");
     await supervisorEvent("chain_ack", { tabId: freshTab.id, handoffId, reason });
   } catch (error) {
+    if (freshTab && !committedHandoff) {
+      try { await chrome.tabs.remove(freshTab.id); } catch (_) {}
+    }
     const rt = await runtime();
     rt.needsAttention = String(error && error.message || error);
     rt.statusText = "Handoff paused: " + rt.needsAttention;
     await saveRuntime(rt);
     await supervisorEvent("chain_failed", { tabId: freshTab ? freshTab.id : tabId, handoffId, error: rt.needsAttention });
+    const current = await state();
+    if ((current.monitorState === "running" || current.monitorState === "busy") &&
+        (current.monitorTabId === tabId || current.monitorTabId === (freshTab && freshTab.id))) {
+      await storeState({ monitorState: "paused" });
+    }
   } finally { handoffInFlight = false; }
 }
 
@@ -788,6 +819,9 @@ async function handlePageHeartbeat(message, sender) {
     uiFailureSignal: message.uiFailureSignal || null,
     practiceCommandActive: !!message.practiceCommandActive,
     stopVisible: !!message.stopVisible,
+    stopProtocol: Number(message.stopProtocol) || null,
+    stopClickable: message.stopClickable === true,
+    idleUi: message.idleUi === true,
     manualStopUntil: Number(rt.manualStopUntil || 0),
     assistantCount: Number(message.assistantCount) || 0,
     assistantFingerprint,
@@ -973,6 +1007,11 @@ async function initialize() {
       await syncAlarm();
       return;
     }
+  }
+
+  if (data.monitorState === "paused") {
+    await chrome.alarms.clear(ALARM);
+    return;
   }
 
   await storeState({

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
-  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V250__) return;
-  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V250__ = true;
+  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V251__) return;
+  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V251__ = true;
 
   const PRACTICE_COMPLETION_MARKER = "EDITFLOW_PRACTICE_COMPLETE";
   const PRACTICE_CANCELLATION_MARKER = "EDITFLOW_PRACTICE_CANCELLED";
@@ -45,10 +45,14 @@
     element.getAttribute("data-testid"), element.innerText
   ].filter(Boolean).join(" ").toLowerCase().replace(/\s+/g, " ").trim();
 
-  function usable(element) {
-    if (!element || !element.isConnected || element.disabled) return false;
+  function rendered(element) {
+    if (!element || !element.isConnected || element.closest('[hidden], [aria-hidden="true"]')) return false;
     const style = getComputedStyle(element);
-    return style.display !== "none" && style.visibility !== "hidden";
+    return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+  }
+
+  function usable(element) {
+    return rendered(element) && !element.disabled;
   }
 
   function stopButtons() {
@@ -60,21 +64,24 @@
       'button[aria-label*="stop generating" i]',
       'button[aria-label*="stop streaming" i]',
       'button[aria-label*="stop response" i]',
+      'button[aria-label*="stop responding" i]',
       'button[aria-label="stop" i]',
       'button[title*="stop generating" i]',
       'button[title="stop" i]'
     ];
     for (const selector of selectors) {
       for (const button of document.querySelectorAll(selector)) {
-        if (usable(button)) matches.add(button);
+        if (rendered(button)) matches.add(button);
       }
     }
     // Includes common square-button variants with accessible names.
     for (const button of document.querySelectorAll('button, [role="button"]')) {
-      if (!usable(button)) continue;
+      if (!rendered(button)) continue;
       const label = meta(button);
-      if (/\bstop (generating|streaming|response)\b/.test(label) ||
-          /\b(data-)?stop-button\b/.test(label) || label === "stop") matches.add(button);
+      const accessibleName = String(button.getAttribute("aria-label") || button.getAttribute("title") || "").toLowerCase().trim();
+      if (/\bstop (generating|generation|streaming|response|responding)\b/.test(label) ||
+          /\b(data-)?stop-button\b/.test(label) || /^stop(?: (generating|generation|streaming|response|responding))?$/.test(accessibleName) ||
+          label === "stop") matches.add(button);
     }
     return [...matches];
   }
@@ -224,18 +231,35 @@
     void preArmPracticeFromComposer();
   }, true);
 
-  async function forceStopGeneration() {
+  function generationControls() {
+    const stops = stopButtons();
+    const box = composer();
+    const controls = box && (box.closest('form, [data-testid*="composer"], [data-type="composer"]') || box.parentElement);
+    const idleSend = controls && [...controls.querySelectorAll('button, [role="button"]')].some(button =>
+      rendered(button) && /^(send|send prompt|send message)$/.test(
+        String(button.getAttribute("aria-label") || button.getAttribute("title") || button.innerText || "")
+          .toLowerCase().replace(/\s+/g, " ").trim()));
+    return { href: location.href, stopVisible: stops.length > 0,
+      clickableStop: stops.some(button => !button.disabled), idleUi: !!(box && idleSend) };
+  }
+
+  async function forceStopGeneration(expectedHref) {
     programmaticStop = true;
     try {
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const stops = stopButtons();
-      if (stops.length === 0) return true;
-      for (const button of stops) {
-        try { button.click(); } catch (_) {}
-      }
-      await sleep(500);
-    }
-    return stopButtons().length === 0;
+      return await globalThis.EditFlowStopGate.stopAndVerify({
+        now: () => Date.now(), wait: sleep, observe: generationControls,
+        authorized: async () => {
+          const state = await chrome.storage.local.get(DEFAULTS);
+          if (state.monitorState !== "running" && state.monitorState !== "busy") {
+            throw Error("Monitoring paused; Stop cancelled");
+          }
+        },
+        click: () => {
+          const button = stopButtons().find(button => !button.disabled);
+          if (!button) return false;
+          button.click(); return true;
+        }
+      }, { expectedHref });
     } finally { programmaticStop = false; }
   }
 
@@ -582,13 +606,17 @@
   async function sendPageHeartbeat() {
     try {
       const assistantProgress = assistantProgressSnapshot();
+      const controls = generationControls();
       await chrome.runtime.sendMessage({
         type: "PAGE_HEARTBEAT",
         href: location.href,
         observedAt: Date.now(),
         uiFailureSignal: uiFailureSignal(),
         practiceCommandActive: PRACTICE_COMMAND_RE.test(latestUserOutputText()),
-        stopVisible: stopButtons().length > 0,
+        stopVisible: controls.stopVisible,
+        stopProtocol: globalThis.EditFlowStopGate.PROTOCOL,
+        stopClickable: controls.clickableStop,
+        idleUi: controls.idleUi,
         assistantCount: document.querySelectorAll('[data-message-author-role="assistant"]').length,
         assistantFingerprint: assistantProgress.fingerprint,
         assistantTextLength: assistantProgress.textLength,
@@ -606,7 +634,8 @@
       void sendPageHeartbeat(); sendResponse({ received: true }); return;
     }
     if (message?.type === "PHRASE_MONITOR_PING") {
-      sendResponse({ ready: true, version: chrome.runtime.getManifest().version });
+      sendResponse({ ready: true, version: chrome.runtime.getManifest().version,
+        stopProtocol: globalThis.EditFlowStopGate.PROTOCOL });
       return;
     }
     if (message?.type === "SCAN_NOW") {
@@ -637,10 +666,15 @@
       return;
     }
     if (message?.type === "STOP_GENERATION_TERMINAL") {
-      forceStopGeneration()
-        .then(stopped => sendResponse({ received: true, stopped }))
+      forceStopGeneration(message.expectedHref)
+        .then(proof => sendResponse({ received: true, ...proof }))
         .catch(error => sendResponse({ received: true, stopped: false, error: String(error) }));
       return true;
+    }
+    if (message?.type === "STOP_GENERATION_STATUS") {
+      sendResponse({ received: true, protocol: globalThis.EditFlowStopGate.PROTOCOL,
+        ...generationControls(), checkedAt: Date.now() });
+      return;
     }
   });
 })();
