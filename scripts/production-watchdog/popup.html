@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ChatGPT Production Watchdog</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1>Production Watchdog</h1>
+    <div class="statusRow">
+      <span>Monitor</span>
+      <strong id="status">Loading…</strong>
+    </div>
+
+    <div class="statusCard">
+      <div><span>Production request</span><strong id="production">—</strong></div>
+      <div><span>Last HTTP</span><strong id="httpStatus">—</strong></div>
+      <div><span>Last event</span><strong id="lastEvent">—</strong></div>
+      <div><span>Fresh-chat handoffs</span><strong id="handoffs">0</strong></div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">Start</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="stopBtn">Stop</button>
+    </div>
+
+    <h2>Silence before stall verification</h2>
+    <label>
+      No processing evidence for this many minutes (minimum 10), then verify for another 2 minutes
+      <input id="hardMinutes" type="number" min="10" step="1" value="10">
+    </label>
+    <button id="saveBtn" class="wide">Save</button>
+
+    <p id="detail" class="detail"></p>
+    <p class="note">
+      Ongoing response events, tool activity and edit progress protect the session.
+      A quiet response first becomes suspect; silence is verified before a restart.
+      Each handoff preserves the assignment checkpoint and confirms the old response stopped.
+      Missing monitoring signals trigger observer repair. Pause and Stop remain paused or stopped.
+
+    </p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
