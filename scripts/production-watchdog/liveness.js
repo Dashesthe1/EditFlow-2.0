@@ -17,7 +17,7 @@ function evaluateLiveness(previous, evidence, now, policy = POLICY) {
     next.suspectAt = 0; next.terminalAt = 0;
     return result("PAUSED", "monitor_inactive");
   }
-  if (evidence.blocked) return result("BLOCKED", evidence.blocked);
+  if (evidence.blocked) { next.suspectAt = 0; next.terminalAt = 0; return result("BLOCKED", evidence.blocked); }
   if (!evidence.observerAt || now - evidence.observerAt > policy.observerStaleMs) {
     next.suspectAt = 0; next.terminalAt = 0;
     return result("OBSERVER_OFFLINE", "observer_missing_repair_only");
@@ -26,8 +26,13 @@ function evaluateLiveness(previous, evidence, now, policy = POLICY) {
     next.suspectAt = 0; next.terminalAt = 0;
     return result("WAITING", "tool_controller_or_manual_stop_protected");
   }
+  if (evidence.thinkingSignal === "extended_thinking") {
+    next.suspectAt = 0; next.terminalAt = 0;
+    return result("WAITING", "extended_thinking_observed");
+  }
   const progressAt = Math.max(evidence.startedAt || 0, evidence.semanticAt || 0,
-    evidence.uiAt || 0, evidence.aeAt || 0, evidence.practiceAt || 0);
+    evidence.uiAt || 0, evidence.aeAt || 0, evidence.practiceAt || 0,
+    !evidence.semanticCoverage ? (evidence.streamAt || 0) : 0);
   const quietAgeMs = progressAt ? Math.max(0, now - progressAt) : 0;
   const live = evidence.stopVisible || evidence.activeRequests > 0 || evidence.streamRequests > 0;
   const recentProgress = progressAt && now - progressAt < policy.recentMs;
@@ -55,7 +60,8 @@ function evaluateLiveness(previous, evidence, now, policy = POLICY) {
 
   // Keepalive traffic is insufficient by itself. A confirmed suspicion needs
   // a healthy observer and another two minutes with no new progress/traffic.
-  if (!next.suspectAt) next.suspectAt = now;
+  if (next.suspectAt && progressAt > (next.suspectProgressAt || 0)) next.suspectAt = 0;
+  if (!next.suspectAt) { next.suspectAt = now; next.suspectProgressAt = progressAt; }
   if (now - next.suspectAt < policy.confirmMs) return result("SUSPECT", "silence_confirmation");
   return result("STALLED", "confirmed_multi_signal_silence", "HANDOFF");
 }

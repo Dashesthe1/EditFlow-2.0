@@ -63,6 +63,10 @@ let runtime = {
   liveness: {},
   lastSemanticAt: 0,
   semanticCoverage: false,
+  semanticUncertain: false,
+  responseKey: null,
+  retryAt: 0,
+  retryCount: 0,
   semanticCompletedAt: 0,
   generationRequestId: null,
   semanticRequestId: null,
@@ -162,8 +166,9 @@ function readPractice() {
     .filter(a => a && a.mode === "PRACTICE")
     .sort((a, b) => assignmentTime(b) - assignmentTime(a)) : [];
 
-  const active = all.find(a => a.status === "PENDING" || a.status === "RUNNING");
-  const latest = active || all[0] || null;
+  const bound = runtime.chainArmed ? all.find(a => a.assignmentId === runtime.armedAssignmentId) : null;
+  const latest = bound || all.find(a => !["COMPLETED", "CANCELLED"].includes(a.status)) || all[0] || null;
+  const active = latest && !["COMPLETED", "CANCELLED"].includes(latest.status);
   if (!latest) {
     return { ok: true, active: false, terminal: true, status: "NONE" };
   }
@@ -266,6 +271,55 @@ function disarm(reason, practice) {
   });
 }
 
+function resetResponse(startedAt, requestId, source) {
+  runtime.lastGenerationStartAt = startedAt;
+  runtime.lastGenerationOutcome = "running";
+  runtime.generationRequestId = source === "network" ? requestId : null;
+  runtime.semanticRequestId = source === "stream" ? requestId : null;
+  runtime.lastGenerationEndAt = 0;
+  runtime.lastGenerationErrorAt = 0;
+  runtime.lastGenerationHttpStatus = 0;
+  runtime.lastSemanticAt = 0;
+  runtime.semanticCompletedAt = 0;
+  runtime.semanticCoverage = false;
+  runtime.semanticUncertain = false;
+  runtime.lastStreamActivityAt = source === "stream" ? startedAt : 0;
+  runtime.liveness = {};
+  runtime.handoff = null;
+  runtime.lastAssistantFingerprint = null;
+  runtime.lastAssistantTextLength = 0;
+  runtime.lastUiProgressAt = startedAt;
+  runtime.lastChainedGenerationStartAt = 0;
+  runtime.retryAt = 0;
+  runtime.retryCount = 0;
+  log("response_scope_reset", { source, startedAt, requestId, tabId: runtime.lastTabId });
+}
+
+function handoffProgressResumed(handoff) {
+  if (!handoff || handoff.reason !== "confirmed_multi_signal_silence" || handoff.stopReceipt || handoff.stopRequestedAt) return false;
+  return Math.max(runtime.lastSemanticAt || 0, runtime.lastUiProgressAt || 0,
+    runtime.lastAeProgressAt || 0, runtime.lastPracticeProgressAt || 0,
+    (!runtime.semanticCoverage || runtime.semanticUncertain) ? runtime.lastStreamActivityAt || 0 : 0) > handoff.issuedAt;
+}
+
+function validateHandoff(body) {
+  const handoff = runtime.handoff, practice = readPractice(), now = Date.now();
+  if (!handoff || handoff.id !== body.handoffId || handoff.sourceTabId !== body.tabId ||
+      handoff.generationAt !== runtime.lastGenerationStartAt || now >= handoff.expiresAt ||
+      !["running", "busy"].includes(runtime.lastMonitorState) || !practice.active || practice.cancelRequestedAt ||
+      practice.assignmentId !== handoff.assignmentId || practice.sessionId !== handoff.sessionId ||
+      Math.max(practice.controllerLeaseExpiresAt || 0, runtime.lastAeLeaseExpiresAt || 0) > now) {
+    return { ok: false, reason: "handoff_authorization_changed" };
+  }
+  if (handoffProgressResumed(handoff)) {
+    runtime.handoff = null; runtime.liveness = {}; persist();
+    log("handoff_cancelled_new_progress", { handoffId: handoff.id });
+    return { ok: false, reason: "response_progress_resumed" };
+  }
+  if (body.stopClicked === true) handoff.stopRequestedAt = handoff.stopRequestedAt || now;
+  return { ok: true };
+}
+
 function commandForHeartbeat(body, practice) {
   const now = Date.now();
   // Old/historical tabs must not refresh evidence or trigger commands.
@@ -288,7 +342,16 @@ function commandForHeartbeat(body, practice) {
   if (practice.assignmentId !== runtime.armedAssignmentId) {
     return { command: "NONE", reason: "assignment_changed_rearm_required" };
   }
-  const enabled = body.monitorState === "running";
+  const enabled = ["running", "busy"].includes(body.monitorState);
+  const responseKey = String(body.responseKey || "");
+  if (responseKey && responseKey !== runtime.responseKey && body.stopVisible === true) {
+    // Reconcile a response already running when the extension attached. It
+    // may have missed webRequest.onBeforeRequest; an older chat is no clock.
+    if (runtime.responseKey || now - runtime.lastGenerationStartAt > 5000) resetResponse(now, null, "page");
+    runtime.responseKey = responseKey;
+  }
+  if (typeof body.semanticCoverage === "boolean") runtime.semanticCoverage = body.semanticCoverage;
+  if (Number(body.semanticAt) >= runtime.lastGenerationStartAt) runtime.lastSemanticAt = Math.max(runtime.lastSemanticAt, Number(body.semanticAt));
   if (!enabled) runtime.handoff = null;
   const fingerprint = String(body.assistantFingerprint || "");
   if (fingerprint && fingerprint !== runtime.lastAssistantFingerprint) {
@@ -306,7 +369,8 @@ function commandForHeartbeat(body, practice) {
     : status === 429 ? "rate_limited" : null;
   const terminal = body.uiFailureSignal ||
     (runtime.lastGenerationOutcome === "failure" ? "generation_failed" : null);
-  const transportClosedAndVisibleAnswer = runtime.lastGenerationOutcome === "transport_closed" &&
+  const transportClosedAndVisibleAnswer = (runtime.lastGenerationOutcome === "transport_closed" ||
+    (runtime.lastGenerationOutcome === "running" && body.idleUi === true)) &&
     Number(body.activeRequests || 0) === 0 && Number(body.streamActiveRequests || 0) === 0 &&
     body.stopVisible !== true && runtime.lastAssistantTextLength > 0 &&
     now - Math.max(runtime.lastGenerationEndAt, runtime.lastUiProgressAt) >= 15000;
@@ -314,7 +378,7 @@ function commandForHeartbeat(body, practice) {
     enabled, blocked, observerAt: now,
     startedAt: runtime.lastGenerationStartAt,
     semanticAt: runtime.lastSemanticAt,
-    semanticCoverage: runtime.semanticCoverage,
+    semanticCoverage: runtime.semanticCoverage && !runtime.semanticUncertain,
     uiAt: runtime.lastUiProgressAt,
     aeAt: runtime.lastAeProgressAt,
     practiceAt: runtime.lastPracticeProgressAt,
@@ -322,10 +386,11 @@ function commandForHeartbeat(body, practice) {
     activeRequests: Number(body.activeRequests || 0),
     streamRequests: Number(body.streamActiveRequests || 0),
     stopVisible: body.stopVisible === true,
+    thinkingSignal: body.thinkingSignal || null,
     manualStopUntil: Number(body.manualStopUntil || 0),
     leaseUntil: Math.max(Number(runtime.lastAeLeaseExpiresAt || 0), Number(practice.controllerLeaseExpiresAt || 0)),
     terminal,
-    completedAt: runtime.semanticCompletedAt || (transportClosedAndVisibleAnswer ? runtime.lastGenerationEndAt : 0)
+    completedAt: runtime.semanticCompletedAt || (transportClosedAndVisibleAnswer ? Math.max(runtime.lastGenerationEndAt, runtime.lastUiProgressAt) : 0)
   };
   runtime.lastStopObservation = { protocol: Number(body.stopProtocol) || null,
     stopVisible: body.stopVisible === true, clickable: body.stopClickable === true,
@@ -335,39 +400,65 @@ function commandForHeartbeat(body, practice) {
   const verdict = evaluateLiveness(runtime.liveness || {}, evidence, now, policy);
   runtime.liveness = verdict.next;
   runtime.lastLiveness = { phase: verdict.phase, reason: verdict.reason, at: now };
+  if (runtime.handoff && runtime.handoff.status === "committed") {
+    persist(); return { command: "SEND_CONTINUATION", handoffId: runtime.handoff.id, prompt: runtime.handoff.prompt };
+  }
+  if (body.monitorState === "busy") { persist(); return { command: "NONE", reason: "handoff_in_progress" }; }
+  if (now < runtime.retryAt) { persist(); return { command: "NONE", phase: "RECOVERING", reason: "handoff_retry_backoff", retryAt: runtime.retryAt }; }
   if (verdict.action !== "HANDOFF") { persist(); return { command: "NONE", ...runtime.lastLiveness }; }
   if (runtime.lastChainedGenerationStartAt === runtime.lastGenerationStartAt && runtime.lastGenerationStartAt) {
     return { command: "NONE", reason: "generation_already_handed_off" };
   }
   if (runtime.handoff && now < runtime.handoff.expiresAt) {
+    if (now - runtime.handoff.lastAttemptAt >= 30000) {
+      runtime.handoff.lastAttemptAt = now; persist();
+      return { command: "CHAIN", reason: runtime.handoff.reason, handoffId: runtime.handoff.id };
+    }
     return { command: "NONE", reason: "handoff_pending" };
   }
   const progressAt = Math.max(runtime.lastAeProgressAt || 0, runtime.lastPracticeProgressAt || 0);
   runtime.handoffHistory = (runtime.handoffHistory || []).filter(item =>
     now - item.at < 15 * 60000 && item.at > progressAt);
   if (runtime.handoffHistory.length >= 3) {
-    runtime.lastLiveness = { phase: "BLOCKED", reason: "restart_circuit_open_no_task_progress", at: now };
+    runtime.lastLiveness = { phase: "RECOVERING", reason: "restart_backoff_no_task_progress", at: now };
+    runtime.retryAt = now + 120000;
+    runtime.handoffHistory = [];
     persist(); return { command: "NONE", ...runtime.lastLiveness };
   }
   runtime.lastChainIssuedAt = now;
   runtime.handoff = { id: randomUUID(), sourceTabId: body.tabId,
     generationAt: runtime.lastGenerationStartAt, assignmentId: practice.assignmentId,
     sessionId: practice.sessionId, sourceUrl: runtime.lastUrl, issuedAt: now,
-    reason: verdict.reason, status: "issued", expiresAt: now + 60000 };
+    reason: verdict.reason, status: "issued", lastAttemptAt: now, expiresAt: now + 60000 };
   persist();
   log("command_chain", { reason: verdict.reason, phase: verdict.phase, handoffId: runtime.handoff.id,
     generationAt: runtime.lastGenerationStartAt, semanticAt: runtime.lastSemanticAt });
   return { command: "CHAIN", reason: verdict.reason, handoffId: runtime.handoff.id };
 }
 
+function prepareMissingTab(body) {
+  const practice = readPractice(), now = Date.now();
+  if (!runtime.chainArmed || runtime.lastTabId !== body.tabId || !practice.active || practice.cancelRequestedAt ||
+      runtime.closedOwnerTabId !== body.tabId || now - runtime.closedOwnerAt > 5000 ||
+      practice.assignmentId !== runtime.armedAssignmentId ||
+      Math.max(practice.controllerLeaseExpiresAt || 0, runtime.lastAeLeaseExpiresAt || 0) > now) return { ok: false, reason: "missing_tab_recovery_not_authorized" };
+  runtime.lastMonitorState = "running";
+  runtime.handoff = { id: randomUUID(), sourceTabId: body.tabId, sourceUrl: runtime.lastUrl,
+    generationAt: runtime.lastGenerationStartAt, assignmentId: practice.assignmentId, sessionId: practice.sessionId,
+    reason: "owner_tab_closed", issuedAt: now, lastAttemptAt: now, expiresAt: now + 60000, status: "issued" };
+  const prepared = prepareHandoff({ tabId: body.tabId, handoffId: runtime.handoff.id });
+  if (!prepared.ok) return prepared;
+  runtime.handoff.stopReceipt = { id: randomUUID(), verifiedAt: now, tabClosed: true };
+  persist(); log("handoff_owner_tab_closed_verified", { tabId: body.tabId, handoffId: runtime.handoff.id });
+  return { ...prepared, stopReceiptId: runtime.handoff.stopReceipt.id };
+}
+
 function prepareHandoff(body) {
   const practice = readPractice();
   const handoff = runtime.handoff;
   const now = Date.now();
-  if (!handoff || handoff.id !== body.handoffId || handoff.sourceTabId !== body.tabId ||
-      handoff.generationAt !== runtime.lastGenerationStartAt || now >= handoff.expiresAt ||
-      runtime.lastMonitorState !== "running" || !practice.active || practice.cancelRequestedAt ||
-      practice.assignmentId !== handoff.assignmentId) return { ok: false, reason: "handoff_authorization_changed" };
+  const valid = validateHandoff(body);
+  if (!valid.ok) return valid;
   if (Math.max(practice.controllerLeaseExpiresAt || 0, runtime.lastAeLeaseExpiresAt || 0) > now) {
     return { ok: false, reason: "active_work_lease" };
   }
@@ -422,6 +513,12 @@ function commitHandoff(body) {
   handoff.status = "committed"; handoff.targetTabId = body.targetTabId;
   runtime.lastChainedGenerationStartAt = handoff.generationAt;
   runtime.lastTabId = body.targetTabId;
+  runtime.responseKey = null;
+  runtime.lastGenerationStartAt = 0;
+  runtime.lastGenerationOutcome = "awaiting_continuation";
+  runtime.semanticRequestId = null; runtime.generationRequestId = null;
+  runtime.semanticCompletedAt = 0; runtime.lastSemanticAt = 0; runtime.semanticCoverage = false;
+  runtime.lastAssistantFingerprint = null; runtime.lastUiProgressAt = 0; runtime.liveness = {};
   runtime.handoffHistory.push({ at: Date.now(), handoffId: handoff.id });
   runtime.lastHeartbeatAt = 0;
   persist(); log("handoff_committed", { handoffId: handoff.id, targetTabId: body.targetTabId });
@@ -463,6 +560,7 @@ function onEvent(body) {
   const now = Date.now();
   const practice = readPractice();
   if (type === "practice_arm" && Number.isInteger(body.tabId)) {
+    if (runtime.lastTabId !== body.tabId) { resetResponse(0, null, "owner_change"); runtime.responseKey = null; }
     runtime.lastTabId = body.tabId;
   } else if (Number.isInteger(body.tabId) && body.tabId !== runtime.lastTabId) {
     return { ok: true, ignored: true, reason: "non_owner_event" };
@@ -471,6 +569,7 @@ function onEvent(body) {
       String(body.requestId || "") !== String(runtime.generationRequestId || "")) {
     return { ok: true, ignored: true, reason: "superseded_request_event" };
   }
+  if (type === "semantic_uncertain" && body.requestId === runtime.semanticRequestId) runtime.semanticUncertain = true;
   if (type === "semantic_activity" || type === "semantic_terminal" || type === "semantic_coverage") {
     if (body.requestId !== runtime.semanticRequestId) return { ok: true, ignored: true };
     runtime.semanticCoverage = true;
@@ -484,6 +583,8 @@ function onEvent(body) {
   if (type === "monitor_inactive") {
     runtime.lastMonitorState = body.monitorState || "stopped";
     runtime.liveness = {}; runtime.handoff = null;
+  } else if (type === "owner_tab_closed") {
+    runtime.closedOwnerTabId = body.tabId; runtime.closedOwnerAt = now;
   } else if (type === "extension_loaded") {
     runtime.lastExtensionVersion = body.extensionVersion || null;
   } else if (type === "practice_arm") {
@@ -492,31 +593,10 @@ function onEvent(body) {
     if (!runtime.chainArmed && practice.active) {
       armToPractice(practice, "generation_start_recovery");
     }
-    runtime.lastUiFailureKey = null;
-    runtime.lastGenerationStartAt = Number(body.ts) || now;
-    runtime.lastGenerationOutcome = "running";
-    runtime.generationRequestId = body.requestId || null;
-    runtime.lastGenerationHttpStatus = 0;
-    runtime.lastSemanticAt = 0;
-    runtime.semanticCompletedAt = 0;
-    runtime.semanticCoverage = false;
-    runtime.liveness = {};
-    runtime.handoff = null;
-    runtime.lastAssistantFingerprint = null;
-    runtime.lastAssistantTextLength = 0;
-    runtime.lastUiProgressAt = runtime.lastGenerationStartAt;
-    runtime.lastThinkingSignal = null;
-    runtime.lastPracticeProgressAt = Number(practice.progressAt || 0);
-    runtime.lastPracticeProgressSource = practice.progressSource || null;
-    // Every new real ChatGPT generation starts a fresh watchdog cycle.
-    // Older handoff state must not impose a 15-second settle delay on this
-    // response after it finishes.
-    runtime.lastChainIssuedAt = 0;
-    runtime.lastChainAckAt = 0;
-    runtime.lastChainSentAt = 0;
-    runtime.lastChainFailedAt = 0;
-    runtime.lastChainedGenerationStartAt = 0;
-    runtime.lastNativeHandoffForAt = 0;
+    const startedAt = Number(body.ts) || now;
+    if (runtime.semanticRequestId && Math.abs(startedAt - runtime.lastGenerationStartAt) < 2000 && runtime.lastGenerationOutcome === "running") {
+      runtime.generationRequestId = body.requestId || null;
+    } else resetResponse(startedAt, body.requestId || null, "network");
   } else if (type === "generation_end") {
     runtime.lastGenerationEndAt = Number(body.ts) || now;
     if (runtime.lastGenerationOutcome !== "failure") {
@@ -532,13 +612,26 @@ function onEvent(body) {
     // separate prevents an old handoff error from overwriting a newer live
     // ChatGPT generation and triggering another replacement loop.
     runtime.lastChainFailedAt = Number(body.ts) || now;
+    runtime.retryCount = Math.min(5, (runtime.retryCount || 0) + 1);
+    runtime.retryAt = now + Math.min(60000, 5000 * 2 ** runtime.retryCount);
+    if (runtime.handoff && runtime.handoff.status !== "committed") runtime.handoff = null;
+    runtime.lastLiveness = { phase: "RECOVERING", reason: "handoff_retry_backoff", at: now };
   } else if (type === "stream_start") {
+    const startedAt = Number(body.ts) || now;
+    if (!runtime.generationRequestId || Math.abs(startedAt - runtime.lastGenerationStartAt) >= 2000 || runtime.lastGenerationOutcome !== "running") {
+      resetResponse(startedAt, body.requestId || null, "stream");
+    }
     runtime.semanticRequestId = body.requestId || null;
+    runtime.semanticCoverage = false;
+    runtime.semanticUncertain = false;
+    runtime.lastSemanticAt = 0;
+    runtime.semanticCompletedAt = 0;
     runtime.lastUiFailureKey = null;
     runtime.lastStreamActivityAt = Number(body.ts) || now;
     runtime.lastStreamBytesTotal = 0;
     runtime.lastStreamRequestId = body.requestId || null;
   } else if (type === "stream_activity") {
+    if (runtime.semanticRequestId && body.requestId !== runtime.semanticRequestId) return { ok: true, ignored: true, reason: "superseded_stream_event" };
     runtime.lastStreamActivityAt = Number(body.ts) || now;
     runtime.lastStreamBytesTotal = Math.max(
       Number(runtime.lastStreamBytesTotal) || 0,
@@ -546,21 +639,27 @@ function onEvent(body) {
     );
     runtime.lastStreamRequestId = body.requestId || runtime.lastStreamRequestId;
   } else if (type === "stream_end") {
+    if (runtime.semanticRequestId && body.requestId !== runtime.semanticRequestId) return { ok: true, ignored: true, reason: "superseded_stream_event" };
     runtime.lastStreamActivityAt = Number(body.ts) || now;
     runtime.lastStreamBytesTotal = Math.max(
       Number(runtime.lastStreamBytesTotal) || 0,
       Number(body.bytesTotal) || 0
     );
     runtime.lastStreamRequestId = body.requestId || runtime.lastStreamRequestId;
+    runtime.lastGenerationEndAt = Number(body.ts) || now;
+    if (runtime.lastGenerationOutcome !== "failure") runtime.lastGenerationOutcome = body.terminal === "failure" ? "failure" : "transport_closed";
   } else if (type === "probe_ready") {
     runtime.probeReadyAt = Number(body.ts) || now;
   } else if (type === "chain_ack") {
     runtime.lastChainAckAt = Number(body.ts) || now;
   } else if (type === "chain_sent") {
+    if (runtime.handoff && runtime.handoff.status === "committed") { runtime.handoff.status = "sent"; runtime.handoff = null; }
+    runtime.lastMonitorState = "running";
+    runtime.retryAt = 0; runtime.retryCount = 0;
     runtime.lastChainSentAt = Number(body.ts) || now;
     runtime.lastChainFailedAt = 0;
   } else if (type === "terminal") {
-    disarm("extension_terminal", practice);
+    if (practice.terminal || practice.cancelRequestedAt) disarm("authoritative_practice_terminal", practice);
   }
 
   runtime.lastPracticeStatus = practice.status || runtime.lastPracticeStatus;
@@ -582,7 +681,7 @@ async function handle(req, res) {
     return json(res, 200, {
       ok: true,
       service: "EditFlow Practice Chat Supervisor",
-      version: "1.6.2",
+      version: "1.7.0",
       extensionVersion: runtime.lastExtensionVersion || null,
       monitorState: runtime.lastMonitorState,
       monitoredTabId: runtime.lastTabId,
@@ -626,10 +725,10 @@ async function handle(req, res) {
     return json(res, 200, Object.assign({ supervisor: true }, readPractice()));
   }
 
-  if (req.method === "POST" && ["/handoff/prepare", "/handoff/stopped", "/handoff/commit"].includes(url.pathname)) {
+  if (req.method === "POST" && ["/handoff/prepare", "/handoff/stopped", "/handoff/commit", "/handoff/validate", "/handoff/missing"].includes(url.pathname)) {
     try {
       const body = await readBody(req);
-      const result = url.pathname.endsWith("prepare") ? prepareHandoff(body)
+      const result = url.pathname.endsWith("missing") ? prepareMissingTab(body) : url.pathname.endsWith("validate") ? validateHandoff(body) : url.pathname.endsWith("prepare") ? prepareHandoff(body)
         : url.pathname.endsWith("stopped") ? recordStopped(body) : commitHandoff(body);
       return json(res, result.ok ? 200 : 409, result);
     } catch (error) { return json(res, 500, { ok: false, error: String(error) }); }
@@ -692,8 +791,8 @@ function supervisorTick() {
   if (runtime.chainArmed && (practice.terminal || practice.cancelRequestedAt)) {
     disarm("practice_terminal_tick", practice); return;
   }
-  if (!runtime.chainArmed || !practice.active || runtime.lastMonitorState !== "running") return;
-  if (runtime.handoff && Date.now() >= runtime.handoff.expiresAt) {
+  if (!runtime.chainArmed || !practice.active || !["running", "busy"].includes(runtime.lastMonitorState)) return;
+  if (runtime.handoff && runtime.handoff.status !== "committed" && Date.now() >= runtime.handoff.expiresAt) {
     log("handoff_expired", { handoffId: runtime.handoff.id });
     runtime.handoff = null; persist();
   }
@@ -707,9 +806,9 @@ function supervisorTick() {
 
 loadState();
 runtime.liveness = {};
-runtime.handoff = null;
+if (runtime.handoff && runtime.handoff.status !== "committed") runtime.handoff = null;
 runtime.lastHeartbeatAt = 0;
-runtime.lastMonitorState = "stopped";
+if (!["paused", "stopped"].includes(runtime.lastMonitorState)) runtime.lastMonitorState = "running";
 persist();
 
 const server = http.createServer((req, res) => {

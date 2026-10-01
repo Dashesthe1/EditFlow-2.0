@@ -1,7 +1,7 @@
 (() => {
   "use strict";
-  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V252__) return;
-  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V252__ = true;
+  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V260__) return;
+  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V260__ = true;
 
   const PRACTICE_COMPLETION_MARKER = "EDITFLOW_PRACTICE_COMPLETE";
   const PRACTICE_CANCELLATION_MARKER = "EDITFLOW_PRACTICE_CANCELLED";
@@ -219,7 +219,7 @@
     const button = event.target?.closest?.("button, [role=\"button\"]");
     if (!button) return;
     if (button === sendButton()) void preArmPracticeFromComposer();
-    if (!programmaticStop && stopButtons().includes(button)) {
+    if (event.isTrusted === true && !programmaticStop && stopButtons().includes(button)) {
       chrome.runtime.sendMessage({ type: "USER_STOP_INTENT", observedAt: Date.now() }).catch(() => {});
     }
   }, true);
@@ -243,7 +243,8 @@
       clickableStop: stops.some(button => !button.disabled), idleUi: !!(box && idleSend) };
   }
 
-  async function forceStopGeneration(expectedHref) {
+  async function forceStopGeneration(expectedHref, handoffId) {
+    let clicked = false;
     programmaticStop = true;
     try {
       return await globalThis.EditFlowStopGate.stopAndVerify({
@@ -253,11 +254,15 @@
           if (state.monitorState !== "running" && state.monitorState !== "busy") {
             throw Error("Monitoring paused; Stop cancelled");
           }
+          if (handoffId) {
+            const permit = await chrome.runtime.sendMessage({ type: "HANDOFF_STILL_AUTHORIZED", handoffId, stopClicked: clicked });
+            if (!permit || !permit.ok) throw Error("Handoff authorization changed; Stop cancelled");
+          }
         },
         click: () => {
           const button = stopButtons().find(button => !button.disabled);
           if (!button) return false;
-          button.click(); return true;
+          button.click(); clicked = true; return true;
         }
       }, { expectedHref });
     } finally { programmaticStop = false; }
@@ -474,6 +479,7 @@
         conversationUrl: location.href,
         observedAt: Date.now()
       }).catch(() => {});
+      return { sent: true };
     } catch (error) {
       console.error("[ChatGPT Production Watchdog]", error);
       chrome.runtime.sendMessage({
@@ -512,11 +518,15 @@
       const handoffPrompt = String(prompt || CONTINUE_PRACTICE_PROMPT).trim();
       enterPrompt(box, handoffPrompt);
       await sendMappedPrompt(box, handoffPrompt);
+      const until = Date.now() + 12000;
+      while (Date.now() < until && latestUserOutputText().replace(/\s+/g, " ").trim() !== handoffPrompt.replace(/\s+/g, " ").trim()) await sleep(250);
+      if (latestUserOutputText().replace(/\s+/g, " ").trim() !== handoffPrompt.replace(/\s+/g, " ").trim()) throw Error("Continuation was clicked but acceptance is unconfirmed; reconcile before retry");
       chrome.runtime.sendMessage({
         type: "HANDOFF_SENT",
         conversationUrl: location.href,
         observedAt: Date.now()
       }).catch(() => {});
+      return { sent: true };
     } catch (error) {
       console.error("[ChatGPT Production Watchdog]", error);
       chrome.runtime.sendMessage({
@@ -525,6 +535,7 @@
         conversationUrl: location.href,
         observedAt: Date.now()
       }).catch(() => {});
+      return { sent: false, error: String(error && error.message || error) };
     } finally {
       const stateNow = await chrome.storage.local.get(DEFAULTS);
       if (stateNow.monitorState === "busy") {
@@ -618,6 +629,7 @@
         stopClickable: controls.clickableStop,
         idleUi: controls.idleUi,
         assistantCount: document.querySelectorAll('[data-message-author-role="assistant"]').length,
+        responseKey: stableHash(String(document.querySelectorAll('[data-message-author-role="user"]').length) + "|" + latestUserOutputText()),
         assistantFingerprint: assistantProgress.fingerprint,
         assistantTextLength: assistantProgress.textLength,
         thinkingSignal: thinkingSignal(),
@@ -659,14 +671,18 @@
       return;
     }
     if (message?.type === "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE") {
-      scanQueue = scanQueue.catch(console.warn).then(() =>
-        sendFreshContinuation(message.prompt || CONTINUE_PRACTICE_PROMPT)
-      );
-      sendResponse({ received: true });
+      scanQueue = scanQueue.catch(console.warn).then(() => sendFreshContinuation(message.prompt || CONTINUE_PRACTICE_PROMPT));
+      scanQueue.then(result => sendResponse({ received: true, ...result })).catch(error => sendResponse({ received: true, sent: false, error: String(error) }));
+      return true;
+    }
+    if (message?.type === "CONTINUATION_STATUS") {
+      sendResponse({ promptPresent: latestUserOutputText().replace(/\s+/g, " ").trim() === String(message.prompt || "").replace(/\s+/g, " ").trim(),
+        emptyConversation: !/\/c\//i.test(location.pathname) && document.querySelectorAll('[data-message-author-role]').length === 0,
+        ...generationControls() });
       return;
     }
     if (message?.type === "STOP_GENERATION_TERMINAL") {
-      forceStopGeneration(message.expectedHref)
+      forceStopGeneration(message.expectedHref, message.handoffId)
         .then(proof => sendResponse({ received: true, ...proof }))
         .catch(error => sendResponse({ received: true, stopped: false, error: String(error) }));
       return true;

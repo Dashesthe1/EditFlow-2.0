@@ -99,7 +99,8 @@ test("message boundaries and tool results are not generation completion", () => 
 test("unrecognized wire data does not falsely claim semantic coverage", () => {
   const seen = []; const parse = createParser(e => seen.push(e));
   parse('data: opaque-wire-payload\n\n');
-  assert.equal(seen.length, 0);
+  assert.equal(seen.some(e => e.coverage), false);
+  assert.equal(seen.some(e => e.uncertain), true);
 });
 
 function supervisorHarness() {
@@ -109,7 +110,7 @@ function supervisorHarness() {
   const fakeFs = { readFileSync: () => JSON.stringify({ assignments: [assignment] }), writeFileSync() {}, renameSync() {}, appendFileSync() {}, mkdirSync() {}, readdirSync: () => [], copyFileSync: (...args) => copies.push(args) };
   const context = vm.createContext({ require: name => name === "fs" ? fakeFs : name === "./liveness.js" ? require("./liveness.js") : require(name), __dirname, process, console, URL, Date: class extends Date { static now() { return now; } } });
   const code = fs.readFileSync(path.join(__dirname, "supervisor.js"), "utf8").split("\nloadState();")[0];
-  vm.runInContext(code + '\nthis.api = { commandForHeartbeat, onEvent, prepareHandoff, recordStopped, commitHandoff, supervisorTick, get: () => runtime };', context);
+  vm.runInContext(code + '\nthis.api = { commandForHeartbeat, onEvent, prepareHandoff, recordStopped, commitHandoff, supervisorTick, validateHandoff, prepareMissingTab, readPractice, get: () => runtime };', context);
   const api = context.api;
   api.onEvent({ type: "practice_arm", tabId: 1 });
   api.onEvent({ type: "generation_start", tabId: 1, requestId: "network-1", ts: start });
@@ -174,14 +175,18 @@ test("handoff snapshots before commit; Stop proof and unchanged assignment are r
     stopReceiptId: receipt.stopReceiptId }).ok, true);
   assert.equal(h.api.get().lastTabId, 2);
 });
-test("three no-progress restarts open circuit", () => {
+test("three no-progress restarts apply temporary backoff and resume", () => {
   const h = supervisorHarness();
   h.api.get().handoffHistory = [10000, 20000, 30000].map(delta => ({at: start + delta}));
   h.time(start + 600000); h.heartbeat({});
   h.time(start + 720000);
   const decision = h.heartbeat({});
   assert.equal(decision.command, "NONE");
-  assert.equal(decision.reason, "restart_circuit_open_no_task_progress");
+  assert.equal(decision.reason, "restart_backoff_no_task_progress");
+  h.time(start + 839999);
+  assert.equal(h.heartbeat({}).command, "NONE");
+  h.time(start + 840000);
+  assert.equal(h.heartbeat({}).command, "CHAIN");
 });
 
 function browserHarness(stopOK = true, options = {}) {
@@ -191,7 +196,7 @@ function browserHarness(stopOK = true, options = {}) {
   if (options.streamActive) storage.watchdogRuntime.streamRequests.main = { active: true };
   const actions = [];
   const event = { addListener() {} };
-  const chrome = { runtime: { getManifest: () => ({version: "2.5.2"}), onMessage: event },
+  const chrome = { runtime: { getManifest: () => ({version: "2.6.0"}), onMessage: event },
     storage: { local: { get: async defaults => ({...defaults, ...structuredClone(storage)}),
       set: async values => { storage = {...storage, ...structuredClone(values)}; }, remove: async () => {} }, onChanged: event },
     alarms: { clear: async () => {}, create: async () => {}, onAlarm: event },
@@ -208,7 +213,9 @@ function browserHarness(stopOK = true, options = {}) {
         }
         if (message.type === "STOP_GENERATION_STATUS") return { protocol: 1,
           href: "https://chatgpt.com/c/test", stopVisible: !!options.stopReappears, idleUi: !options.unknownUi };
-        return { ready: true, received: true, stopProtocol: 1, version: "2.5.2" };
+        if (message.type === "CONTINUATION_STATUS") return { promptPresent: !!options.alreadySent, emptyConversation: !options.alreadySent };
+        if (message.type === "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE") return { received: true, sent: !options.sendFails };
+        return { ready: true, received: true, stopProtocol: 1, version: "2.6.0" };
       }, onRemoved: event },
     webRequest: { onBeforeRequest: event, onHeadersReceived: event, onCompleted: event, onErrorOccurred: event } };
   const context = vm.createContext({ chrome, console, URL, AbortController, structuredClone,
@@ -216,9 +223,9 @@ function browserHarness(stopOK = true, options = {}) {
     setTimeout: (fn, ms) => { if (ms === 250) { now += ms; Promise.resolve().then(fn); } return 1; },
     clearTimeout() {}, Date: class extends Date { static now() { return now; } },
     fetch: async (url, options) => ({ ok: true, json: async () => { actions.push(url.split("32147")[1]);
-      return { ok: true, prompt: "Resume assignment-1", sourceUrl: "https://chatgpt.com/c/test", issuedAt: start, stopReceiptId: "stop-receipt-1" }; } }) });
+      return { ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", prompt: "Resume assignment-1", sourceUrl: "https://chatgpt.com/c/test", issuedAt: start, stopReceiptId: "stop-receipt-1" }; } }) });
   const code = fs.readFileSync(path.join(__dirname, "background.js"), "utf8").split("\nchrome.runtime.onInstalled")[0];
-  vm.runInContext(code + '\nthis.api = { handoff, handlePageHeartbeat, onProbeEvent, initialize };', context);
+  vm.runInContext(code + '\nthis.api = { handoff, handlePageHeartbeat, onProbeEvent, initialize, resumeContinuation, evaluate };', context);
   return { api: context.api, actions, storage: () => storage };
 }
 test("browser will not create a replacement without verified Stop", async () => {
@@ -296,7 +303,7 @@ test("legacy stopped boolean, active cloned stream, returned Stop and lost obser
     const h = browserHarness(true, options);
     await h.api.handoff(1, "confirmed_multi_signal_silence", "permit-1");
     assert.equal(h.actions.includes("create"), false, JSON.stringify(options));
-    assert.equal(h.storage().monitorState, "paused");
+    assert.equal(h.storage().monitorState, options.pauseDuringStop ? "paused" : "running");
   }
 });
 test("secondary completion cannot erase a different active main stream", () => {
@@ -392,4 +399,179 @@ test("supervisor starts suspicion at 60 seconds and waits another 120 before han
   assert.equal(h.heartbeat({hardOpenRequestSeconds: 60}).command, "NONE");
   h.time(start + 180000);
   assert.equal(h.heartbeat({hardOpenRequestSeconds: 60}).command, "CHAIN");
+});
+
+test("a new stream reconciles a missed network start and clears old semantic coverage", () => {
+  const h = supervisorHarness();
+  h.api.onEvent({type: "stream_start", tabId: 1, requestId: "old"});
+  h.api.onEvent({type: "semantic_terminal", tabId: 1, requestId: "old", terminal: "success"});
+  h.time(start + 3600000);
+  h.api.onEvent({type: "stream_start", tabId: 1, requestId: "current"});
+  assert.equal(h.api.get().lastGenerationStartAt, start + 3600000);
+  assert.equal(h.api.get().semanticCoverage, false);
+  assert.equal(h.api.get().semanticCompletedAt, 0);
+  for (let i = 1; i <= 30; i++) {
+    h.time(start + 3600000 + i * 60000);
+    h.api.onEvent({type: "stream_activity", tabId: 1, requestId: "current", bytesTotal: i * 10000});
+    assert.equal(h.heartbeat({}).command, "NONE");
+  }
+});
+test("old stream semantic and terminal events cannot corrupt a current response", () => {
+  const h = supervisorHarness();
+  h.time(start + 600000);
+  h.api.onEvent({type: "stream_start", tabId: 1, requestId: "current"});
+  const before = h.api.get().lastStreamActivityAt;
+  h.time(start + 601000);
+  h.api.onEvent({type: "semantic_terminal", tabId: 1, requestId: "old", terminal: "failure"});
+  h.api.onEvent({type: "stream_end", tabId: 1, requestId: "old", terminal: "failure"});
+  assert.equal(h.api.get().lastGenerationOutcome, "running");
+  assert.equal(h.api.get().lastStreamActivityAt, before);
+});
+test("owning page response identity repairs stale running evidence on attachment", () => {
+  const h = supervisorHarness();
+  h.time(start + 3600000);
+  const reply = h.heartbeat({responseKey: "current-user-turn", semanticCoverage: false, streamLastActivityAt: start + 3600000});
+  assert.equal(reply.command, "NONE");
+  assert.equal(h.api.get().lastGenerationStartAt, start + 3600000);
+});
+test("new uncertain traffic restarts the complete silence and verification windows", () => {
+  const a = evaluateLiveness({}, at(60000), start + 60000);
+  const b = evaluateLiveness(a.next, at(200000, {semanticCoverage: false, streamAt: start + 150000}), start + 200000);
+  assert.equal(b.action, "NONE");
+  assert.equal(b.next.suspectAt, 0);
+  const c = evaluateLiveness(b.next, at(210000, {semanticCoverage: false, streamAt: start + 150000}), start + 210000);
+  assert.equal(c.phase, "SUSPECT");
+  assert.equal(evaluateLiveness(c.next, at(329999, {semanticCoverage: false, streamAt: start + 150000}), start + 329999).action, "NONE");
+});
+test("progress between throttled samples cancels the previous confirmation", () => {
+  const a = evaluateLiveness({}, at(60000), start + 60000);
+  const b = evaluateLiveness(a.next, at(240000, {semanticAt: start + 160000}), start + 240000);
+  assert.equal(b.action, "NONE");
+  assert.equal(b.next.suspectAt, start + 240000);
+});
+test("new progress revokes a prepared stall before the Stop click", () => {
+  const h = supervisorHarness();
+  h.time(start + 60000); h.heartbeat({});
+  h.time(start + 180000); const c = h.heartbeat({});
+  assert.equal(h.api.prepareHandoff({tabId: 1, handoffId: c.handoffId}).ok, true);
+  h.time(start + 180001); h.api.onEvent({type: "stream_activity", tabId: 1, requestId: "current", bytesTotal: 1000});
+  assert.equal(h.api.validateHandoff({tabId: 1, handoffId: c.handoffId}).ok, false);
+});
+test("extended thinking is protected even with silent transport", () => {
+  const now = start + 3600000;
+  assert.equal(evaluateLiveness({suspectAt: start}, at(now-start, {thinkingSignal: "extended_thinking"}), now).action, "NONE");
+});
+test("failed Stop keeps alarms and monitoring active for recovery", async () => {
+  const h = browserHarness(false);
+  await h.api.handoff(1, "confirmed_multi_signal_silence", "permit-1");
+  assert.equal(h.storage().monitorState, "running");
+  assert.ok(h.actions.includes("/event"));
+  assert.equal(h.actions.includes("create"), false);
+});
+test("committed send failure retains the single replacement tab and its prompt", async () => {
+  const h = browserHarness(true, {sendFails: true});
+  await h.api.handoff(1, "response_complete", "permit-1");
+  assert.equal(h.storage().monitorState, "running");
+  assert.equal(h.storage().pendingContinuation.tabId, 2);
+  assert.equal(h.actions.filter(x => x === "create").length, 1);
+  await h.api.resumeContinuation();
+  assert.equal(h.actions.filter(x => x === "create").length, 1);
+});
+test("already accepted continuation is reconciled without sending it twice", async () => {
+  const h = browserHarness(true, {alreadySent: true});
+  await h.api.handoff(1, "response_complete", "permit-1");
+  assert.equal(h.actions.includes("NETWORK_WATCHDOG_FRESH_TAB_CONTINUE"), false);
+  assert.equal(h.storage().pendingContinuation, null);
+  assert.equal(h.storage().monitorState, "running");
+});
+test("a failed handoff retries after backoff rather than disarming Practice", () => {
+  const h = supervisorHarness();
+  h.time(start + 60000); h.heartbeat({});
+  h.time(start + 180000); const c = h.heartbeat({});
+  h.api.onEvent({type: "chain_failed", tabId: 1, handoffId: c.handoffId});
+  assert.equal(h.api.get().chainArmed, true);
+  assert.equal(h.heartbeat({}).command, "NONE");
+  h.time(start + 190000);
+  assert.equal(h.heartbeat({}).command, "CHAIN");
+});
+test("completion markers cannot disarm a still-running Practice assignment", () => {
+  const h = supervisorHarness();
+  h.api.onEvent({type: "terminal", tabId: 1, terminalType: "PRACTICE_COMPLETED"});
+  assert.equal(h.api.get().chainArmed, true);
+});
+test("failed assignment remains monitored; durable completion disarms it", () => {
+  const h = supervisorHarness();
+  h.assignment.status = "FAILED";
+  assert.equal(h.api.readPractice().active, true);
+  h.assignment.status = "COMPLETED";
+  h.api.supervisorTick();
+  assert.equal(h.api.get().chainArmed, false);
+});
+test("semantic terminal does not silently close its transport reader", async () => {
+  const h = browserHarness();
+  const sender = {tab: {id: 1, url: "https://chatgpt.com/c/test"}};
+  await h.api.onProbeEvent({type: "generation_request_start", requestId: "main", ts: start}, sender);
+  await h.api.onProbeEvent({type: "generation_semantic_terminal", requestId: "main", terminal: "success", ts: start+1000}, sender);
+  assert.equal(h.storage().watchdogRuntime.streamRequests.main.active, true);
+  await h.api.onProbeEvent({type: "generation_stream_end", requestId: "main", ts: start+2000}, sender);
+  assert.equal(h.storage().watchdogRuntime.streamRequests.main.active, false);
+});
+test("unrecognized frames after recognized keepalives explicitly mark uncertainty", () => {
+  const seen = [], parse = createParser(e => seen.push(e));
+  parse('data: {"type":"ping"}\n\n');
+  parse('data: new-wire-format\n\n');
+  assert.equal(seen.some(e => e.uncertain), true);
+});
+
+test("logged 22:09 incident: stale completed generation cannot stop a byte-active current response", () => {
+  const h = supervisorHarness(), r = h.api.get();
+  Object.assign(r, {lastGenerationStartAt: 1790870519401, lastGenerationOutcome: "failure",
+    semanticCoverage: true, lastSemanticAt: 1790870710416, semanticCompletedAt: 1790870711607,
+    lastUiProgressAt: 1790870520588, semanticRequestId: "fetch-old"});
+  const started = 1790891946331;
+  h.time(started);
+  h.api.onEvent({type: "stream_start", tabId: 1, requestId: "fetch-current", ts: started});
+  for (const ts of [1790892517638, 1790892538263, 1790892554781, 1790892558401]) {
+    h.time(ts);
+    h.api.onEvent({type: "stream_activity", tabId: 1, requestId: "fetch-current", bytesTotal: 24982055});
+    assert.equal(h.heartbeat({}).command, "NONE");
+  }
+});
+test("Stop-caused EOF does not revoke a Stop already clicked under a valid permit", () => {
+  const h = supervisorHarness();
+  h.time(start + 60000); h.heartbeat({});
+  h.time(start + 180000); const c = h.heartbeat({});
+  h.api.prepareHandoff({tabId: 1, handoffId: c.handoffId});
+  assert.equal(h.api.validateHandoff({tabId: 1, handoffId: c.handoffId, stopClicked: true}).ok, true);
+  h.time(start + 180001);
+  h.api.onEvent({type: "stream_end", tabId: 1, requestId: "current", bytesTotal: 1000});
+  assert.equal(h.api.validateHandoff({tabId: 1, handoffId: c.handoffId, stopClicked: true}).ok, true);
+});
+test("closed owner tab requires fresh closure evidence and checkpoints before replacement", () => {
+  const h = supervisorHarness();
+  assert.equal(h.api.prepareMissingTab({tabId: 1}).ok, false);
+  h.api.onEvent({type: "owner_tab_closed", tabId: 1});
+  const permit = h.api.prepareMissingTab({tabId: 1});
+  assert.equal(permit.ok, true);
+  assert.equal(h.copies.length, 1);
+  assert.equal(h.api.commitHandoff({tabId: 1, targetTabId: 2, handoffId: permit.handoffId, stopReceiptId: permit.stopReceiptId}).ok, true);
+  assert.equal(h.api.get().lastTabId, 2);
+});
+test("unrelated or stale tab closure cannot authorize a replacement", () => {
+  const h = supervisorHarness();
+  h.api.onEvent({type: "owner_tab_closed", tabId: 99});
+  assert.equal(h.api.prepareMissingTab({tabId: 1}).ok, false);
+  h.api.onEvent({type: "owner_tab_closed", tabId: 1});
+  h.time(start + 5001);
+  assert.equal(h.api.prepareMissingTab({tabId: 1}).ok, false);
+});
+
+test("missed transport start still continues a stable visibly completed owning response", () => {
+  const h = supervisorHarness();
+  h.time(start + 3600000);
+  h.heartbeat({responseKey: "owning-response", assistantFingerprint: "answer", assistantTextLength: 500,
+    stopVisible: false, idleUi: true, activeRequests: 0, streamActiveRequests: 0});
+  h.time(start + 3615000);
+  assert.equal(h.heartbeat({responseKey: "owning-response", assistantFingerprint: "answer", assistantTextLength: 500,
+    stopVisible: false, idleUi: true, activeRequests: 0, streamActiveRequests: 0}).command, "CHAIN");
 });

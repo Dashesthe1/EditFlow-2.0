@@ -37,6 +37,7 @@
         }
         if (!data.length) continue;
         const info = classify(event, data.join("\n"));
+        if (!info.recognized) onEvent({ uncertain: true });
         if (info.recognized && !covered) { covered = true; onEvent({ coverage: true }); }
         if (info.terminal || (info.fingerprint && info.fingerprint !== previous)) onEvent(info);
         if (info.fingerprint) previous = info.fingerprint;

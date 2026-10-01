@@ -66,17 +66,20 @@ async function setState(target) {
     try { await chrome.tabs.update(tab.id, { autoDiscardable: false }); } catch (_) {}
     await chrome.storage.local.set({
       monitorState: "running",
+      pauseReason: null,
       monitorTabId: tab.id,
       monitorTabWasAutoDiscardable: tab.autoDiscardable !== false
     });
   } else if (target === "paused") {
-    await chrome.storage.local.set({ monitorState: "paused" });
+    await chrome.storage.local.set({ monitorState: "paused", pauseReason: "explicit_user_pause" });
   } else {
     if (Number.isInteger(data.monitorTabId)) {
       try { await chrome.tabs.update(data.monitorTabId, { autoDiscardable: true }); } catch (_) {}
     }
     await chrome.storage.local.set({
       monitorState: "stopped",
+      pauseReason: "explicit_user_stop",
+      pendingContinuation: null,
       monitorTabId: null,
       monitorTabWasAutoDiscardable: true
     });

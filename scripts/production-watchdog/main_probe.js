@@ -45,7 +45,7 @@
         return;
       }
       if (info.terminal && timer !== null) { clearTimeout(timer); timer = null; }
-      emit(info.terminal ? "generation_semantic_terminal" :
+      emit(info.uncertain ? "generation_semantic_uncertain" : info.terminal ? "generation_semantic_terminal" :
         info.fingerprint ? "generation_semantic_activity" : "generation_semantic_coverage", {
         requestId, terminal: info.terminal || null, eventType: info.eventType || null
       });

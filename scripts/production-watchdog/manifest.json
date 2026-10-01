@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Production Watchdog",
-  "version": "2.5.2",
+  "version": "2.6.0",
   "description": "Observe generation events, tool activity and checkpoints; confirm prolonged silence before a verified continuation handoff.",
   "permissions": [
     "storage",

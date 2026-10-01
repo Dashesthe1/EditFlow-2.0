@@ -11,6 +11,8 @@ const DEFAULTS = {
   hardOpenRequestSeconds: 60,
   failureConfirmSeconds: 15,
   handoffCooldownSeconds: 90,
+  pauseReason: null,
+  pendingContinuation: null,
   runtimeVersion: null,
   watchdogRuntime: null
 };
@@ -328,6 +330,8 @@ async function stopMonitor() {
     monitorState: "stopped",
     monitorTabId: null,
     monitorTabWasAutoDiscardable: true,
+    pauseReason: "explicit_stop_or_assignment_terminal",
+    pendingContinuation: null,
     watchdogRuntime: freshRuntime({ statusText: "Stopped" })
   });
   await chrome.alarms.clear(ALARM);
@@ -545,11 +549,13 @@ async function onProbeEvent(event, sender) {
       rt.statusText = "Generation stream is live; response bytes are still arriving";
     } else if (type.startsWith("generation_semantic_")) {
       if (req.endedAt || req.supersededAt) return { ok: true, ignored: true };
-      req.semanticCoverage = true;
-      if (type === "generation_semantic_activity") rt.lastSemanticAt = ts;
+      if (type === "generation_semantic_uncertain") req.semanticUncertain = true;
+      else req.semanticCoverage = true;
+      if (type === "generation_semantic_activity") { rt.lastSemanticAt = ts; req.semanticAt = ts; }
       if (type === "generation_semantic_terminal") {
         req.terminal = event.terminal || null;
-        req.active = false; req.endedAt = ts;
+        // A lifecycle event does not close the cloned transport reader.
+        req.terminalAt = ts;
       }
     } else if (type === "generation_stream_end") {
       req.active = false;
@@ -581,7 +587,8 @@ async function onProbeEvent(event, sender) {
   await syncHardDeadline();
   if (type.startsWith("generation_semantic_")) {
     await supervisorEvent(type === "generation_semantic_terminal" ? "semantic_terminal" :
-      type === "generation_semantic_activity" ? "semantic_activity" : "semantic_coverage", {
+      type === "generation_semantic_activity" ? "semantic_activity" :
+      type === "generation_semantic_uncertain" ? "semantic_uncertain" : "semantic_coverage", {
       tabId: tab.id, requestId, terminal: event.terminal || null, eventType: event.eventType || null
     });
   } else if (type === "generation_stream_activity") {
@@ -653,7 +660,7 @@ async function handoff(tabId, reason, handoffId) {
     const rt = await runtime();
     // Missing Stop is not proof of cancellation. Require stable idle UI and
     // closure of every tracked generation stream before opening another tab.
-    const stop = await chrome.tabs.sendMessage(tabId, { type: "STOP_GENERATION_TERMINAL", expectedHref: permit.sourceUrl });
+    const stop = await chrome.tabs.sendMessage(tabId, { type: "STOP_GENERATION_TERMINAL", expectedHref: permit.sourceUrl, handoffId });
     if (!stop || stop.protocol !== 1 || stop.stopped !== true || stop.href !== permit.sourceUrl) {
       throw Error("Old generation was not confirmed stopped");
     }
@@ -670,6 +677,7 @@ async function handoff(tabId, reason, handoffId) {
     committedHandoff = true;
     await restoreTab(data);
     await storeState({ monitorState: "busy", monitorTabId: freshTab.id,
+      pendingContinuation: { tabId: freshTab.id, handoffId, prompt: committed.prompt, retryAt: 0 },
       monitorTabWasAutoDiscardable: freshTab.autoDiscardable !== false,
       watchdogRuntime: freshRuntime({ handoffCount: Number(rt.handoffCount || 0) + 1,
         lastHandoffAt: Date.now(), lastHandoffReason: reason, statusText: "Checkpoint committed; sending continuation" }) });
@@ -677,31 +685,91 @@ async function handoff(tabId, reason, handoffId) {
     if (!(await waitForChatTabReady(freshTab.id, 20000)) || !(await ensureContentScript(freshTab.id))) {
       throw Error("Fresh chat observer could not attach");
     }
-    const reply = await chrome.tabs.sendMessage(freshTab.id, {
-      type: "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE", reason, prompt: committed.prompt
-    });
-    if (!reply || reply.received !== true) throw Error("Continuation was not accepted");
-    await supervisorEvent("chain_ack", { tabId: freshTab.id, handoffId, reason });
+    await resumeContinuation();
   } catch (error) {
     if (freshTab && !committedHandoff) {
       try { await chrome.tabs.remove(freshTab.id); } catch (_) {}
     }
     const rt = await runtime();
     rt.needsAttention = String(error && error.message || error);
-    rt.statusText = "Handoff paused: " + rt.needsAttention;
+    rt.statusText = "Handoff recovery remains active: " + rt.needsAttention;
     await saveRuntime(rt);
-    await supervisorEvent("chain_failed", { tabId: freshTab ? freshTab.id : tabId, handoffId, error: rt.needsAttention });
+    await supervisorEvent("chain_failed", { tabId: committedHandoff ? freshTab.id : tabId, handoffId, error: rt.needsAttention });
     const current = await state();
     if ((current.monitorState === "running" || current.monitorState === "busy") &&
         (current.monitorTabId === tabId || current.monitorTabId === (freshTab && freshTab.id))) {
-      await storeState({ monitorState: "paused" });
+      await storeState({ monitorState: "running", pauseReason: null });
+      await syncAlarm();
     }
   } finally { handoffInFlight = false; }
 }
 
+let continuationInFlight = false;
+async function resumeContinuation() {
+  if (continuationInFlight) return;
+  const data = await state(), pending = data.pendingContinuation;
+  if (!pending || data.monitorTabId !== pending.tabId || !["running", "busy"].includes(data.monitorState) || Date.now() < pending.retryAt) return;
+  continuationInFlight = true;
+  try {
+    const practice = await fetch(SUPERVISOR_BASE + "/practice-status").then(r => r.json());
+    if (!practice || !practice.ok) throw Error("Practice state unavailable; continuation will retry");
+    if (practice.terminal || practice.cancelRequestedAt) { await stopMonitor(); return; }
+    if (!(await waitForChatTabReady(pending.tabId, 20000)) || !(await ensureContentScript(pending.tabId))) throw Error("Continuation observer unavailable; retrying the same tab");
+    const status = await chrome.tabs.sendMessage(pending.tabId, { type: "CONTINUATION_STATUS", prompt: pending.prompt });
+    if (!status || (!status.promptPresent && !status.emptyConversation)) throw Error("Continuation target could not be reconciled");
+    if (!status.promptPresent) {
+      const reply = await chrome.tabs.sendMessage(pending.tabId, {
+        type: "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE", prompt: pending.prompt
+      });
+      if (!reply || !reply.sent) throw Error(reply && reply.error || "Continuation send not yet confirmed");
+    }
+    await supervisorEvent("chain_sent", { tabId: pending.tabId, handoffId: pending.handoffId });
+    const current = await state();
+    if (["running", "busy"].includes(current.monitorState)) await storeState({ monitorState: "running", pendingContinuation: null, pauseReason: null });
+    await syncAlarm();
+  } catch (error) {
+    const current = await state();
+    if (current.pendingContinuation && ["running", "busy"].includes(current.monitorState)) {
+      await storeState({ monitorState: "running", pendingContinuation: { ...current.pendingContinuation, retryAt: Date.now() + 10000 } });
+      await supervisorEvent("chain_failed", { tabId: pending.tabId, handoffId: pending.handoffId, error: String(error) });
+      await syncAlarm();
+    }
+  } finally { continuationInFlight = false; }
+}
+
+let missingTabRecovery = false;
+async function recoverMissingTab(tabId) {
+  if (missingTabRecovery || handoffInFlight) return;
+  const data = await state();
+  if (data.monitorTabId !== tabId || !["running", "busy"].includes(data.monitorState)) return;
+  try { await chrome.tabs.get(tabId); return; } catch (_) {}
+  missingTabRecovery = true;
+  let freshTab = null, committed = false;
+  try {
+    await supervisorEvent("owner_tab_closed", {tabId});
+    const permit = await supervisorPost("/handoff/missing", {tabId});
+    if (!permit || !permit.ok) return;
+    const current = await state();
+    if (current.monitorTabId !== tabId || !["running", "busy"].includes(current.monitorState)) return;
+    freshTab = await chrome.tabs.create({ url: "https://chatgpt.com/", active: false });
+    const receipt = await supervisorPost("/handoff/commit", {tabId, targetTabId: freshTab.id, handoffId: permit.handoffId, stopReceiptId: permit.stopReceiptId});
+    if (!receipt || !receipt.ok) throw Error("Missing-tab continuation commit unavailable");
+    committed = true;
+    await storeState({monitorState: "running", monitorTabId: freshTab.id,
+      pendingContinuation: {tabId: freshTab.id, handoffId: permit.handoffId, prompt: receipt.prompt, retryAt: 0},
+      watchdogRuntime: freshRuntime({statusText: "Practice chat closed; resuming the existing assignment"})});
+    await chrome.tabs.update(freshTab.id, {active: true, autoDiscardable: false});
+    await resumeContinuation();
+  } catch (error) {
+    if (freshTab && !committed) { try { await chrome.tabs.remove(freshTab.id); } catch (_) {} }
+  } finally { missingTabRecovery = false; await syncAlarm(); }
+}
+
 async function evaluate() {
   const data = await state();
-  if (data.monitorState !== "running" || !Number.isInteger(data.monitorTabId)) return;
+  if (!["running", "busy"].includes(data.monitorState) || !Number.isInteger(data.monitorTabId)) return;
+  try { await chrome.tabs.get(data.monitorTabId); } catch (_) { await recoverMissingTab(data.monitorTabId); return; }
+  if (data.pendingContinuation) { await resumeContinuation(); return; }
   if (!(await ensureContentScript(data.monitorTabId))) return;
   // Ask the owning page for fresh observations. Alarms never kill a chat.
   try { await chrome.tabs.sendMessage(data.monitorTabId, { type: "WATCHDOG_SAMPLE_NOW" }); } catch (_) {}
@@ -752,7 +820,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 chrome.tabs.onRemoved.addListener(tabId => {
   state().then(data => {
-    if (data.monitorTabId === tabId) return stopMonitor();
+    if (data.monitorTabId === tabId) {
+      const rt = data.watchdogRuntime || freshRuntime();
+      rt.statusText = "Owning Practice tab closed; waiting to reconnect the Practice controller";
+      return storeState({ watchdogRuntime: rt }).then(() => recoverMissingTab(tabId));
+    }
   }).catch(() => {});
 });
 
@@ -796,6 +868,8 @@ async function handlePageHeartbeat(message, sender) {
     await saveRuntime(rt);
   }
 
+  if (data.pendingContinuation) { await resumeContinuation(); return { ok: true, command: "SEND_CONTINUATION" }; }
+  await transportQueue;
   const active = activeRequests(rt);
   const stream = streamSnapshot(rt);
 
@@ -815,6 +889,9 @@ async function handlePageHeartbeat(message, sender) {
     streamLastActivityAgeMs: stream.ageMs,
     streamBytesTotal: stream.bytesTotal,
     streamLastActivityAt: stream.lastActivityAt,
+    semanticCoverage: stream.active.length > 0 && stream.active.every(req => req.semanticCoverage && !req.semanticUncertain),
+    semanticAt: Math.max(0, ...stream.active.map(req => Number(req.semanticAt || 0))),
+    responseKey: message.responseKey || null,
     probeReadyAt: Number(rt.probeReadyAt) || null,
     uiFailureSignal: message.uiFailureSignal || null,
     practiceCommandActive: !!message.practiceCommandActive,
@@ -838,7 +915,7 @@ async function handlePageHeartbeat(message, sender) {
     const labels = { PROCESSING: "Processing: response activity is continuing", WAITING: "Waiting: allowing reasoning or active tool work",
       SUSPECT: "Possible stall: verifying continued silence", STALLED: "Stall confirmed", COMPLETED: "Response completed",
       VERIFYING: "Verifying response failure", TERMINAL: "Response failure confirmed", PAUSED: "Monitoring paused",
-      OBSERVER_OFFLINE: "Monitor unavailable: repairing observation", BLOCKED: "Automatic restarts paused; diagnosis needed" };
+      OBSERVER_OFFLINE: "Monitor unavailable: repairing observation", BLOCKED: "Monitoring account availability", RECOVERING: "Recovering: retrying the Practice continuation" };
     latest.statusText = labels[reply.phase] || "Observing session activity";
     await saveRuntime(latest);
   }
@@ -867,6 +944,13 @@ async function handlePageHeartbeat(message, sender) {
     return { ok: true, supervisor: true, command: reply.command };
   }
 
+  if (reply.command === "SEND_CONTINUATION" && data.monitorTabId === tab.id) {
+    if (!data.pendingContinuation) await storeState({ pendingContinuation: { tabId: tab.id, handoffId: reply.handoffId, prompt: reply.prompt, retryAt: 0 } });
+    await resumeContinuation();
+    return { ok: true, command: "SEND_CONTINUATION" };
+  }
+  if (data.pendingContinuation) { await resumeContinuation(); return { ok: true, command: "SEND_CONTINUATION" }; }
+
   if (reply.command === "CHAIN" && data.monitorTabId === tab.id) {
     await handoff(tab.id, reply.reason || "continue", reply.handoffId);
     return { ok: true, supervisor: true, command: reply.command };
@@ -876,6 +960,11 @@ async function handlePageHeartbeat(message, sender) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message && message.type === "HANDOFF_STILL_AUTHORIZED") {
+    supervisorPost("/handoff/validate", { tabId: sender.tab && sender.tab.id, handoffId: message.handoffId, stopClicked: message.stopClicked === true })
+      .then(reply => respond(reply || { ok: false })).catch(() => respond({ ok: false }));
+    return true;
+  }
   if (message && message.type === "IS_TARGET_TAB") {
     state().then(data => respond({
       isTarget: Number.isInteger(sender.tab && sender.tab.id) &&
@@ -925,7 +1014,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       rt.failureCandidate = null;
       rt.statusText = "Manual Stop detected; monitor paused until Start";
       await saveRuntime(rt);
-      await storeState({ monitorState: "paused" });
+      await storeState({ monitorState: "paused", pauseReason: "manual_stop" });
     }).then(() => respond({ ok: true })).catch(() => respond({ ok: false }));
     return true;
   }
@@ -952,10 +1041,11 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message && (message.type === "PRACTICE_COMPLETED" ||
                   message.type === "PRACTICE_CANCELLED")) {
     (async () => {
-      await supervisorEvent("terminal", {
-        terminalType: message.type,
-        tabId: sender.tab && sender.tab.id || null
-      });
+      const data = await state();
+      if (!sender.tab || sender.tab.id !== data.monitorTabId) return respond({ ok: true, ignored: true });
+      const health = await fetch(SUPERVISOR_BASE + "/practice-status").then(r => r.json());
+      if (!health.ok || (!health.terminal && !health.cancelRequestedAt)) return respond({ ok: true, ignored: true });
+      await supervisorEvent("terminal", { terminalType: message.type, tabId: sender.tab.id });
       await stopMonitor();
       respond({ ok: true });
     })().catch(error => respond({ ok: false, error: String(error) }));
@@ -986,12 +1076,23 @@ async function initialize() {
     await storeState({
       runtimeVersion: chrome.runtime.getManifest().version,
       hardOpenRequestSeconds: 60,
-      watchdogRuntime: freshRuntime({
+      watchdogRuntime: { ...(data.watchdogRuntime || freshRuntime()),
         statusText: "Production Watchdog " + chrome.runtime.getManifest().version + " loaded; semantic liveness and verified checkpoint handoff ready"
-      })
+      }
     });
   }
 
+  const health = await fetch(SUPERVISOR_BASE + "/health").then(r => r.json()).catch(() => null);
+  if (health && health.handoff && health.handoff.status === "committed" && ["running", "busy"].includes(data.monitorState)) {
+    data.monitorTabId = health.handoff.targetTabId;
+    data.pendingContinuation = {tabId: health.handoff.targetTabId, handoffId: health.handoff.id, prompt: health.handoff.prompt, retryAt: 0};
+    await storeState({monitorTabId: data.monitorTabId, pendingContinuation: data.pendingContinuation});
+  }
+  if (data.monitorState === "paused" && !data.pauseReason && health && health.chainArmed && health.practice && health.practice.active &&
+      (data.watchdogRuntime && data.watchdogRuntime.needsAttention || health.lastChainFailedAt)) {
+    data.monitorState = "running";
+    await storeState({ monitorState: "running", pauseReason: null });
+  }
   if ((data.monitorState === "running" || data.monitorState === "busy") &&
       Number.isInteger(data.monitorTabId)) {
     let tab = null;
@@ -1004,9 +1105,18 @@ async function initialize() {
         await storeState({ monitorState: "running" });
       }
       await ensureContentScript(tab.id);
+      await supervisorEvent("practice_arm", { tabId: tab.id, source: "restore-owning-practice-tab" });
       await syncAlarm();
+      if (data.pendingContinuation) void resumeContinuation();
       return;
     }
+  }
+
+  if (["running", "busy"].includes(data.monitorState) && Number.isInteger(data.monitorTabId)) {
+    await storeState({monitorState: "running"});
+    await syncAlarm();
+    void recoverMissingTab(data.monitorTabId);
+    return;
   }
 
   if (data.monitorState === "paused") {
