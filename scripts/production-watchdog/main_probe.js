@@ -1,19 +1,28 @@
 (() => {
   "use strict";
-  if (globalThis.__EDITFLOW_PRODUCTION_PROBE_V3__) return;
-  globalThis.__EDITFLOW_PRODUCTION_PROBE_V3__ = true;
+  if (globalThis.__EDITFLOW_PRODUCTION_PROBE_V4__) return;
+  globalThis.__EDITFLOW_PRODUCTION_PROBE_V4__ = true;
 
-  const SOURCE = "__EDITFLOW_CHATGPT_PRODUCTION_LIVENESS_V3__";
+  const SOURCE = "__EDITFLOW_CHATGPT_PRODUCTION_LIVENESS_V4__";
   let sequence = 0;
   const stamp = () => Date.now();
-  const makeId = prefix => prefix + "-" + stamp() + "-" + (++sequence);
+  const requestOrigins = new Map();
+  const makeId = prefix => {
+    const requestStartedAt = stamp();
+    const id = prefix + "-" + requestStartedAt + "-" + (++sequence);
+    requestOrigins.set(id, { conversationUrl: location.href, requestStartedAt });
+    return id;
+  };
 
   function emit(type, detail) {
     try {
       window.postMessage(Object.assign({
-        source: SOURCE, version: 3, type: type,
+        source: SOURCE, version: 4, type: type,
         ts: stamp(), href: location.href
-      }, detail || {}), "*");
+      }, requestOrigins.get(detail && detail.requestId) || {}, detail || {}), "*");
+      if (detail && /^(generation_stream_end|generation_stream_error|generation_request_error|generation_abort)$/.test(type)) {
+        requestOrigins.delete(detail.requestId);
+      }
     } catch (_) {}
   }
 

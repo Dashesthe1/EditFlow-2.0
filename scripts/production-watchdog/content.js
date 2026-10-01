@@ -1,14 +1,14 @@
 (() => {
   "use strict";
-  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V262__) return;
-  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V262__ = true;
+  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V263__) return;
+  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V263__ = true;
 
   const PRACTICE_COMPLETION_MARKER = "EDITFLOW_PRACTICE_COMPLETE";
   const PRACTICE_CANCELLATION_MARKER = "EDITFLOW_PRACTICE_CANCELLED";
   const PRACTICE_COMMAND_RE = /^\s*(start|continue|resume)\b[\s\S]{0,100}\bpractice session\b/i;
   const CONTINUE_PRACTICE_PROMPT =
     "Continue the practice session with the given raw files to make the finished product";
-  const PROBE_SOURCE = "__EDITFLOW_CHATGPT_PRODUCTION_LIVENESS_V3__";
+  const PROBE_SOURCE = "__EDITFLOW_CHATGPT_PRODUCTION_LIVENESS_V4__";
 
   const DEFAULTS = {
     monitorState: "stopped",
@@ -33,7 +33,7 @@
   window.addEventListener("message", event => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.source !== PROBE_SOURCE || data.version !== 3 || !data.type) return;
+    if (!data || data.source !== PROBE_SOURCE || data.version !== 4 || !data.type) return;
     chrome.runtime.sendMessage({
       type: "PRODUCTION_PROBE_EVENT",
       event: data

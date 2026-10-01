@@ -1,12 +1,14 @@
-# EditFlow Production Watchdog 2.6.2 / Supervisor 1.7.2
+# EditFlow Production Watchdog 2.6.3 / Supervisor 1.7.3
 
 The controller monitors the owning live Practice chat and resumes the same durable assignment between conversations. There is no maximum chat duration. It stays armed through observation, Stop verification, checkpoint handoff, continuation sending and recovery until the durable assignment is COMPLETED or explicitly cancelled. Explicit user Pause/Stop remains available.
 
 ## October 1 correction
 
-Work Mode keeps multiple conversations mounted and uses user-message bubbles, assistant markdown and agent-activity blocks rather than the classic author-role attributes. Version 2.6.2 observes only rendered messages in the current conversation, includes tool activity in its progress fingerprint, excludes clock-only Working timers and requires the latest user request to explicitly start, continue or resume Practice. A maintenance chat cannot receive a Stop permit. This scope is rechecked immediately before Stop; changing conversations clears the previous transport state.
+Work Mode keeps multiple conversations mounted and uses user-message bubbles, assistant markdown and agent-activity blocks rather than the classic author-role attributes. Version 2.6.3 observes only rendered messages in the current conversation, includes tool activity in its progress fingerprint, excludes clock-only Working timers and requires the latest user request to explicitly start, continue or resume Practice. A maintenance chat cannot receive a Stop permit. This scope is rechecked immediately before Stop; changing conversations clears the previous transport state.
 
-The 22:09 failure used generation and semantic evidence from an older response while the owning chat was receiving fresh stream bytes. Stop verification then failed and background.js permanently changed monitorState to paused. Version 2.6.2 fixes both defects.
+The stream probe stamps each request with the conversation where it began. Late headers, bytes and errors from a previous conversation cannot recreate active transport in the current one. This upgrade retires legacy unscoped records that survived earlier extension reloads and blocked replacement creation; subsequent worker restarts preserve properly scoped active records. Health reports the current transport counts alongside positive idle UI evidence.
+
+The 22:09 failure used generation and semantic evidence from an older response while the owning chat was receiving fresh stream bytes. Stop verification then failed and background.js permanently changed monitorState to paused. Version 2.6.3 fixes both defects.
 
 - A new response, stream or owning page response identity clears prior generation completion, errors, semantic coverage and stall suspicion. The page identity reconciles starts missed when the observer attaches mid-response.
 - Coverage is calculated from the currently active streams. Unsupported frames explicitly mark uncertainty; observed traffic then protects the response. Recognized keepalives and padding do not count as progress.

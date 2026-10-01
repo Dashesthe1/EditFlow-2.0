@@ -196,7 +196,7 @@ function browserHarness(stopOK = true, options = {}) {
   if (options.streamActive) storage.watchdogRuntime.streamRequests.main = { active: true };
   const actions = [];
   const event = { addListener() {} };
-  const chrome = { runtime: { getManifest: () => ({version: "2.6.2"}), onMessage: event },
+  const chrome = { runtime: { getManifest: () => ({version: "2.6.3"}), onMessage: event },
     storage: { local: { get: async defaults => ({...defaults, ...structuredClone(storage)}),
       set: async values => { storage = {...storage, ...structuredClone(values)}; }, remove: async () => {} }, onChanged: event },
     alarms: { clear: async () => {}, create: async () => {}, onAlarm: event },
@@ -215,7 +215,7 @@ function browserHarness(stopOK = true, options = {}) {
           href: "https://chatgpt.com/c/test", stopVisible: !!options.stopReappears, idleUi: !options.unknownUi };
         if (message.type === "CONTINUATION_STATUS") return { promptPresent: !!options.alreadySent, emptyConversation: !options.alreadySent };
         if (message.type === "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE") return { received: true, sent: !options.sendFails };
-        return { ready: true, received: true, stopProtocol: 1, version: "2.6.2" };
+        return { ready: true, received: true, stopProtocol: 1, version: "2.6.3" };
       }, onRemoved: event },
     webRequest: { onBeforeRequest: event, onHeadersReceived: event, onCompleted: event, onErrorOccurred: event } };
   const context = vm.createContext({ chrome, console, URL, AbortController, structuredClone,
@@ -225,7 +225,7 @@ function browserHarness(stopOK = true, options = {}) {
     fetch: async (url, options) => ({ ok: true, json: async () => { actions.push(url.split("32147")[1]);
       return { ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", prompt: "Resume assignment-1", sourceUrl: "https://chatgpt.com/c/test", issuedAt: start, stopReceiptId: "stop-receipt-1" }; } }) });
   const code = fs.readFileSync(path.join(__dirname, "background.js"), "utf8").split("\nchrome.runtime.onInstalled")[0];
-  vm.runInContext(code + '\nthis.api = { handoff, handlePageHeartbeat, onProbeEvent, initialize, resumeContinuation, evaluate };', context);
+  vm.runInContext(code + '\nthis.api = { handoff, handlePageHeartbeat, onProbeEvent, onHeaders, onCompleted, onError, initialize, resumeContinuation, evaluate };', context);
   return { api: context.api, actions, storage: () => storage };
 }
 test("browser will not create a replacement without verified Stop", async () => {
@@ -646,4 +646,42 @@ test("the content Stop guard refuses a non-Practice request before clicking", as
   const h=contentHarness();
   await assert.rejects(h.api.forceStopGeneration("https://chatgpt.com/c/test","permit-1"),/not executing Practice/);
   assert.equal(h.clicks(),0);
+});
+
+test("upgrade retires unscoped streams that blocked an idle Practice handoff", async () => {
+  const h = browserHarness(true, {streamActive: true});
+  await h.api.initialize();
+  assert.equal(Object.keys(h.storage().watchdogRuntime.streamRequests).length, 0);
+  assert.equal(h.storage().monitorState, "running");
+  await h.api.handoff(1, "response_complete", "permit-1");
+  assert.equal(h.actions.filter(x => x === "create").length, 1);
+});
+test("normal worker restart preserves scoped active transport", async () => {
+  const h = browserHarness(true, {streamActive: true});
+  h.storage().watchdogRuntime.transportSchemaVersion = 4;
+  await h.api.initialize();
+  assert.equal(h.storage().watchdogRuntime.streamRequests.main.active, true);
+});
+test("late headers cannot resurrect a request from before conversation attachment", async () => {
+  const h = browserHarness();
+  await h.api.initialize();
+  const detail = {requestId:"obsolete", tabId:1, method:"POST", url:"https://chatgpt.com/backend-api/f/conversation", statusCode:200};
+  await h.api.onHeaders(detail);
+  await h.api.onCompleted(detail);
+  await h.api.onError({...detail, error:"net::ERR_ABORTED"});
+  assert.equal(Object.keys(h.storage().watchdogRuntime.requests).length, 0);
+});
+test("stream origin stays bound to its initial conversation across SPA navigation", async () => {
+  const h=browserHarness();
+  Object.assign(h.storage().watchdogRuntime, {transportSchemaVersion:4, conversationUrl:"https://chatgpt.com/c/current", scopeChangedAt:start});
+  const sender={tab:{id:1,url:"https://chatgpt.com/c/current"}};
+  await h.api.onProbeEvent({type:"generation_request_start",requestId:"old",ts:start+100,requestStartedAt:start+100,conversationUrl:"https://chatgpt.com/c/maintenance"},sender);
+  await h.api.onProbeEvent({type:"generation_headers",requestId:"orphan",ts:start+100,requestStartedAt:start+100,conversationUrl:sender.tab.url},sender);
+  await h.api.onProbeEvent({type:"generation_stream_activity",requestId:"legacy",ts:start+100},sender);
+  assert.equal(Object.keys(h.storage().watchdogRuntime.streamRequests).length,0);
+  const current={requestId:"current",ts:start+200,requestStartedAt:start+100,conversationUrl:sender.tab.url};
+  await h.api.onProbeEvent({...current,type:"generation_request_start"},sender);
+  await h.api.onProbeEvent({...current,type:"generation_stream_activity",bytesTotal:500},sender);
+  assert.equal(h.storage().watchdogRuntime.streamRequests.current.active,true);
+  assert.equal(h.storage().watchdogRuntime.streamRequests.current.bytesTotal,500);
 });

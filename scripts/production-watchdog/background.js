@@ -61,6 +61,7 @@ function recentForTab(tabId) {
 function freshRuntime(extra) {
   return Object.assign({
     armedAt: Date.now(),
+    transportSchemaVersion: 4,
     requests: {},
     streamRequests: {},
     probeReadyAt: null,
@@ -294,6 +295,8 @@ async function armPracticeTab(tab) {
   const captured = recentForTab(tab.id);
   const nextRuntime = freshRuntime({
     requests: captured,
+    conversationUrl: tab.url,
+    scopeChangedAt: Date.now(),
     handoffCount: Number(previous.handoffCount || 0),
     lastHandoffAt: previous.lastHandoffAt || null,
     lastHandoffReason: previous.lastHandoffReason || null,
@@ -365,6 +368,7 @@ async function onBefore(details) {
   if ((data.monitorState !== "running" && data.monitorState !== "busy") ||
       data.monitorTabId !== details.tabId) return;
   const rt = await runtime();
+  if (rt.scopeChangedAt && Number(details.timeStamp || Date.now()) < rt.scopeChangedAt) return;
   rt.requests = rt.requests || {};
   rt.requests[details.requestId] = {
     active: true,
@@ -397,6 +401,9 @@ async function onHeaders(details) {
   if ((data.monitorState !== "running" && data.monitorState !== "busy") ||
       data.monitorTabId !== details.tabId) return;
   const rt = await runtime();
+  // Headers/end/errors from a request that started before this conversation
+  // was attached must not create or alter the current response's evidence.
+  if (rt.scopeChangedAt && !rt.requests[details.requestId]) return;
   const req = rt.requests[details.requestId] || {
     active: true, startedAt: Date.now(), url: details.url, method: details.method
   };
@@ -421,6 +428,9 @@ async function onCompleted(details) {
   const data = await state();
   if (data.monitorTabId !== details.tabId) return;
   const rt = await runtime();
+  // Headers/end/errors from a request that started before this conversation
+  // was attached must not create or alter the current response's evidence.
+  if (rt.scopeChangedAt && !rt.requests[details.requestId]) return;
   const req = rt.requests[details.requestId] || {
     startedAt: Date.now(), url: details.url, method: details.method
   };
@@ -465,6 +475,9 @@ async function onError(details) {
   const data = await state();
   if (data.monitorTabId !== details.tabId) return;
   const rt = await runtime();
+  // Headers/end/errors from a request that started before this conversation
+  // was attached must not create or alter the current response's evidence.
+  if (rt.scopeChangedAt && !rt.requests[details.requestId]) return;
   const req = rt.requests[details.requestId] || {
     startedAt: Date.now(), url: details.url, method: details.method
   };
@@ -515,9 +528,13 @@ async function onProbeEvent(event, sender) {
 
   if (type === "probe_ready" || type === "page_heartbeat") {
     if (!rt.probeReadyAt) rt.probeReadyAt = ts;
-    rt.probeVersion = Number(event.version) || 2;
+    rt.probeVersion = Number(event.version) || 4;
   } else if (requestId) {
-    if (rt.scopeChangedAt && !rt.streamRequests[requestId] && type !== "generation_request_start" && type !== "generation_headers") return {ok:true, ignored:true};
+    const originUrl = String(event.conversationUrl || "");
+    const currentUrl = String(rt.conversationUrl || tab.url || "");
+    if (rt.scopeChangedAt && (!originUrl || Number(event.requestStartedAt || ts) < rt.scopeChangedAt)) return {ok:true, ignored:true};
+    if (originUrl !== currentUrl && /\/c\//.test(originUrl) && /\/c\//.test(currentUrl)) return {ok:true, ignored:true};
+    if (rt.scopeChangedAt && !rt.streamRequests[requestId] && type !== "generation_request_start") return {ok:true, ignored:true};
     const req = rt.streamRequests[requestId] || {
       requestId,
       active: false,
@@ -1087,6 +1104,20 @@ async function initialize() {
         statusText: "Production Watchdog " + chrome.runtime.getManifest().version + " loaded; semantic liveness and verified checkpoint handoff ready"
       }
     });
+  }
+
+  if (Number(data.watchdogRuntime && data.watchdogRuntime.transportSchemaVersion || 0) < 4) {
+    // Legacy records have no originating conversation. They cannot prove
+    // that this visible Practice response is running, especially after SPA
+    // navigation or an extension reload that missed their terminal event.
+    const old = data.watchdogRuntime || {};
+    const owner = Number.isInteger(data.monitorTabId) ? await chrome.tabs.get(data.monitorTabId).catch(() => null) : null;
+    await saveRuntime(freshRuntime({
+      conversationUrl: owner && owner.url || null, scopeChangedAt: Date.now(),
+      handoffCount: Number(old.handoffCount || 0), lastHandoffAt: old.lastHandoffAt || null,
+      lastHandoffReason: old.lastHandoffReason || null, manualStopUntil: Number(old.manualStopUntil || 0),
+      statusText: "Observing the current conversation; obsolete unscoped transport records retired"
+    }));
   }
 
   const health = await fetch(SUPERVISOR_BASE + "/health").then(r => r.json()).catch(() => null);
