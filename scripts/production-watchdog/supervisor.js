@@ -304,7 +304,8 @@ function handoffProgressResumed(handoff) {
 
 function validateHandoff(body) {
   const handoff = runtime.handoff, practice = readPractice(), now = Date.now();
-  if (!handoff || handoff.id !== body.handoffId || handoff.sourceTabId !== body.tabId ||
+  if (!handoff || runtime.scopeAllowed !== true || now - (runtime.scopeConfirmedAt || 0) > 10000 ||
+      runtime.lastUrl !== handoff.sourceUrl || handoff.id !== body.handoffId || handoff.sourceTabId !== body.tabId ||
       handoff.generationAt !== runtime.lastGenerationStartAt || now >= handoff.expiresAt ||
       !["running", "busy"].includes(runtime.lastMonitorState) || !practice.active || practice.cancelRequestedAt ||
       practice.assignmentId !== handoff.assignmentId || practice.sessionId !== handoff.sessionId ||
@@ -332,7 +333,12 @@ function commandForHeartbeat(body, practice) {
   runtime.lastTabId = body.tabId;
   runtime.lastHeartbeatAt = now;
   runtime.lastMonitorState = body.monitorState;
+  if (runtime.lastUrl && body.url && runtime.lastUrl !== body.url && /\/c\//.test(runtime.lastUrl) && /\/c\//.test(body.url)) {
+    resetResponse(0, null, "conversation_change"); runtime.responseKey = null;
+  }
   runtime.lastUrl = body.url || runtime.lastUrl;
+  runtime.scopeAllowed = body.practiceCommandActive === true;
+  runtime.scopeConfirmedAt = now;
   if (!practice.ok) return { command: "NONE", reason: "practice_status_unreadable" };
   if (practice.terminal || practice.cancelRequestedAt) {
     disarm("practice_terminal_or_cancel", practice);
@@ -343,8 +349,13 @@ function commandForHeartbeat(body, practice) {
     return { command: "NONE", reason: "assignment_changed_rearm_required" };
   }
   const enabled = ["running", "busy"].includes(body.monitorState);
+  if (body.practiceCommandActive !== true && !(runtime.handoff && runtime.handoff.status === "committed")) {
+    runtime.liveness = {}; runtime.handoff = null;
+    runtime.lastLiveness = { phase: "WAITING", reason: "owning_chat_is_not_running_practice", at: now };
+    persist(); return { command: "NONE", ...runtime.lastLiveness };
+  }
   const responseKey = String(body.responseKey || "");
-  if (responseKey && responseKey !== runtime.responseKey && body.stopVisible === true) {
+  if (responseKey && responseKey !== runtime.responseKey && (body.stopVisible === true || body.idleUi === true)) {
     // Reconcile a response already running when the extension attached. It
     // may have missed webRequest.onBeforeRequest; an older chat is no clock.
     if (runtime.responseKey || now - runtime.lastGenerationStartAt > 5000) resetResponse(now, null, "page");
@@ -443,6 +454,7 @@ function prepareMissingTab(body) {
       practice.assignmentId !== runtime.armedAssignmentId ||
       Math.max(practice.controllerLeaseExpiresAt || 0, runtime.lastAeLeaseExpiresAt || 0) > now) return { ok: false, reason: "missing_tab_recovery_not_authorized" };
   runtime.lastMonitorState = "running";
+  runtime.scopeAllowed = true; runtime.scopeConfirmedAt = now;
   runtime.handoff = { id: randomUUID(), sourceTabId: body.tabId, sourceUrl: runtime.lastUrl,
     generationAt: runtime.lastGenerationStartAt, assignmentId: practice.assignmentId, sessionId: practice.sessionId,
     reason: "owner_tab_closed", issuedAt: now, lastAttemptAt: now, expiresAt: now + 60000, status: "issued" };
@@ -580,6 +592,7 @@ function onEvent(body) {
     }
   }
 
+  if (type === "monitor_resume_ack") { runtime.monitorResumeRequested = false; }
   if (type === "monitor_inactive") {
     runtime.lastMonitorState = body.monitorState || "stopped";
     runtime.liveness = {}; runtime.handoff = null;
@@ -587,6 +600,7 @@ function onEvent(body) {
     runtime.closedOwnerTabId = body.tabId; runtime.closedOwnerAt = now;
   } else if (type === "extension_loaded") {
     runtime.lastExtensionVersion = body.extensionVersion || null;
+    runtime.lastExtensionLoadedAt = now;
   } else if (type === "practice_arm") {
     armToPractice(practice, body.source || "extension");
   } else if (type === "generation_start") {
@@ -681,10 +695,12 @@ async function handle(req, res) {
     return json(res, 200, {
       ok: true,
       service: "EditFlow Practice Chat Supervisor",
-      version: "1.7.0",
+      version: "1.7.2",
       extensionVersion: runtime.lastExtensionVersion || null,
+      lastExtensionLoadedAt: runtime.lastExtensionLoadedAt || 0,
       monitorState: runtime.lastMonitorState,
       monitoredTabId: runtime.lastTabId,
+      monitorResumeRequested: runtime.monitorResumeRequested === true,
       policy: POLICY,
       liveness: runtime.lastLiveness,
       handoff: runtime.handoff,
@@ -723,6 +739,14 @@ async function handle(req, res) {
 
   if (req.method === "GET" && url.pathname === "/practice-status") {
     return json(res, 200, Object.assign({ supervisor: true }, readPractice()));
+  }
+
+  if (req.method === "POST" && url.pathname === "/monitor/resume") {
+    const practice = readPractice();
+    if (!practice.ok || !practice.active || practice.cancelRequestedAt || !runtime.chainArmed) return json(res, 409, {ok:false});
+    runtime.monitorResumeRequested = true;
+    persist(); log("monitor_resume_requested", {assignmentId:practice.assignmentId, tabId:runtime.lastTabId});
+    return json(res, 200, {ok:true});
   }
 
   if (req.method === "POST" && ["/handoff/prepare", "/handoff/stopped", "/handoff/commit", "/handoff/validate", "/handoff/missing"].includes(url.pathname)) {

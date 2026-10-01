@@ -114,7 +114,7 @@ function supervisorHarness() {
   const api = context.api;
   api.onEvent({ type: "practice_arm", tabId: 1 });
   api.onEvent({ type: "generation_start", tabId: 1, requestId: "network-1", ts: start });
-  return { api, assignment, copies, time: n => { now = n; }, heartbeat: patch => api.commandForHeartbeat({ tabId: 1, url: "https://chatgpt.com/c/test", isTarget: true, monitorState: "running", activeRequests: 1, streamActiveRequests: 1, stopVisible: true, ...patch }, { ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", status: "RUNNING" }) };
+  return { api, assignment, copies, time: n => { now = n; }, heartbeat: patch => api.commandForHeartbeat({ tabId: 1, url: "https://chatgpt.com/c/test", isTarget: true, practiceCommandActive: true, monitorState: "running", activeRequests: 1, streamActiveRequests: 1, stopVisible: true, ...patch }, { ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", status: "RUNNING" }) };
 }
 test("unrelated tabs and old network failures never alter the owner", () => {
   const h = supervisorHarness();
@@ -196,7 +196,7 @@ function browserHarness(stopOK = true, options = {}) {
   if (options.streamActive) storage.watchdogRuntime.streamRequests.main = { active: true };
   const actions = [];
   const event = { addListener() {} };
-  const chrome = { runtime: { getManifest: () => ({version: "2.6.0"}), onMessage: event },
+  const chrome = { runtime: { getManifest: () => ({version: "2.6.2"}), onMessage: event },
     storage: { local: { get: async defaults => ({...defaults, ...structuredClone(storage)}),
       set: async values => { storage = {...storage, ...structuredClone(values)}; }, remove: async () => {} }, onChanged: event },
     alarms: { clear: async () => {}, create: async () => {}, onAlarm: event },
@@ -215,7 +215,7 @@ function browserHarness(stopOK = true, options = {}) {
           href: "https://chatgpt.com/c/test", stopVisible: !!options.stopReappears, idleUi: !options.unknownUi };
         if (message.type === "CONTINUATION_STATUS") return { promptPresent: !!options.alreadySent, emptyConversation: !options.alreadySent };
         if (message.type === "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE") return { received: true, sent: !options.sendFails };
-        return { ready: true, received: true, stopProtocol: 1, version: "2.6.0" };
+        return { ready: true, received: true, stopProtocol: 1, version: "2.6.2" };
       }, onRemoved: event },
     webRequest: { onBeforeRequest: event, onHeadersReceived: event, onCompleted: event, onErrorOccurred: event } };
   const context = vm.createContext({ chrome, console, URL, AbortController, structuredClone,
@@ -331,7 +331,7 @@ test("a new parallel stream does not silently supersede an active old stream", a
 });
 
 function contentHarness(options = {}) {
-  let now = start, stopVisible = !options.missing, idleVisible = false, clicks = 0;
+  let now = start, stopVisible = !options.missing && !options.idle, idleVisible = !!options.idle, clicks = 0;
   const listeners = {}, sent = [];
   const makeElement = (label, isStop = false) => ({
     isConnected: true, disabled: isStop ? !!options.disabled : true, innerText: "",
@@ -341,7 +341,7 @@ function contentHarness(options = {}) {
     click() { clicks++; listeners.click?.({target: this});
       if (!options.ineffective) { stopVisible = false; idleVisible = true; } }
   });
-  const stop = makeElement(options.label || "Stop", true), send = makeElement("Send prompt");
+  const stop = makeElement(options.label || "Stop", true), send = makeElement(options.idleLabel || "Send prompt");
   const controls = { querySelectorAll: () => [stop, send] };
   const box = { isConnected: true, disabled: false, getClientRects: () => [{}],
     closest: selector => selector.includes("hidden") ? null : controls };
@@ -574,4 +574,76 @@ test("missed transport start still continues a stable visibly completed owning r
   h.time(start + 3615000);
   assert.equal(h.heartbeat({responseKey: "owning-response", assistantFingerprint: "answer", assistantTextLength: 500,
     stopVisible: false, idleUi: true, activeRequests: 0, streamActiveRequests: 0}).command, "CHAIN");
+});
+
+test("maintenance chat is never evaluated or stopped while Practice remains armed", () => {
+  const h = supervisorHarness();
+  h.time(start + 600000); h.heartbeat({practiceCommandActive: false});
+  h.time(start + 720000);
+  const reply = h.heartbeat({practiceCommandActive: false});
+  assert.equal(reply.command, "NONE");
+  assert.equal(reply.reason, "owning_chat_is_not_running_practice");
+  assert.equal(h.api.get().chainArmed, true);
+  assert.equal(h.api.get().handoff, null);
+});
+
+function workModeObservationHarness() {
+  const node = (text, visible = true) => ({innerText:text, isConnected:true,
+    closest: () => null, getClientRects: () => visible ? [{}] : [], getAttribute: () => null});
+  const users = [node('I still think that the Watchdog is malfunctioning', false), node('Continue the practice session with the given raw files to make the finished product.')];
+  const assistants = [], activities = [node('Applying effect correction. Working for 2m 5s')];
+  const doc = {addEventListener(){}, querySelector:()=>null,
+    querySelectorAll: selector => selector === '[data-user-message-bubble]' ? users :
+      selector === '[data-markdown-text-style="assistant-message"]' ? assistants :
+      selector === '[class*="group/agent-activity"]' ? activities : []};
+  const context=vm.createContext({document:doc,window:{addEventListener(){}},location:{href:'https://chatgpt.com/c/practice'},
+    Date,console,setTimeout(){},getComputedStyle:()=>({display:'block',visibility:'visible'}),
+    chrome:{storage:{local:{get:async()=>({monitorState:'running'})}},runtime:{sendMessage:async()=>({ok:true})}}});
+  const code=fs.readFileSync(path.join(__dirname,'content.js'),'utf8').split('\n  const practiceObserver')[0];
+  vm.runInContext(code+'\nthis.api={latestUserOutputText,assistantProgressSnapshot,userMessages,isPractice:()=>PRACTICE_COMMAND_RE.test(latestUserOutputText())};\n})();',context);
+  return {api:context.api,users,activities,node};
+}
+test('Work Mode observes the rendered Practice bubble and excludes mounted hidden conversations',()=>{
+  const h=workModeObservationHarness();
+  assert.equal(h.api.isPractice(),true);
+  assert.match(h.api.latestUserOutputText(),/^Continue/);
+  assert.equal(h.api.userMessages().length,1);
+});
+test('Work Mode maintenance request excludes even quoted Practice commands',()=>{
+  const h=workModeObservationHarness();
+  h.users.splice(0, h.users.length, h.node('Continue the practice session',false),
+    h.node('While implementing changes to the watchdog, do not run the quoted Continue the practice session command'));
+  assert.equal(h.api.isPractice(),false);
+});
+test('Work Mode tool progress refreshes the fingerprint but clock-only Working timers do not',()=>{
+  const h=workModeObservationHarness(), before=h.api.assistantProgressSnapshot();
+  assert.ok(before.textLength>0);
+  h.activities[0].innerText='Applying effect correction. Working for 2m 6s';
+  assert.equal(h.api.assistantProgressSnapshot().fingerprint,before.fingerprint);
+  h.activities[0].innerText='Rendered correction proof. Working for 2m 6s';
+  assert.notEqual(h.api.assistantProgressSnapshot().fingerprint,before.fingerprint);
+});
+test('switching conversations cancels the previous response and Stop permit',()=>{
+  const h=supervisorHarness();
+  h.time(start+60000);h.heartbeat({});h.time(start+180000);const command=h.heartbeat({});
+  h.api.prepareHandoff({tabId:1,handoffId:command.handoffId});
+  const reply=h.heartbeat({url:'https://chatgpt.com/c/maintenance',practiceCommandActive:false});
+  assert.equal(reply.command,'NONE');
+  assert.equal(h.api.get().handoff,null);
+  assert.equal(h.api.validateHandoff({tabId:1,handoffId:command.handoffId}).ok,false);
+});
+
+test("Work Mode idle voice controls positively verify an already-ended response", async () => {
+  for (const idleLabel of ["Start Voice", "Dictate"]) {
+    const h=contentHarness({idle:true,idleLabel});
+    const proof=await h.api.forceStopGeneration("https://chatgpt.com/c/test");
+    assert.equal(proof.stopped,true);
+    assert.equal(proof.alreadyIdle,true);
+    assert.equal(h.clicks(),0);
+  }
+});
+test("the content Stop guard refuses a non-Practice request before clicking", async () => {
+  const h=contentHarness();
+  await assert.rejects(h.api.forceStopGeneration("https://chatgpt.com/c/test","permit-1"),/not executing Practice/);
+  assert.equal(h.clicks(),0);
 });

@@ -31,7 +31,7 @@ foreach ($p in $oldProcesses) { Stop-Process -Id $p.ProcessId -Force }
 # The guardian may restart it first. Start it only if the port remains down.
 $ready = $false
 for ($i = 0; $i -lt 15; $i++) {
-  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '1.7.0' } catch {}
+  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '1.7.2' } catch {}
   if ($ready) { break }
   if ($i -eq 5) {
     Start-Process (Get-Command node.exe).Source -ArgumentList ('"' + $liveScript + '"') -WorkingDirectory $supervisorRoot -WindowStyle Hidden
@@ -39,11 +39,14 @@ for ($i = 0; $i -lt 15; $i++) {
   Start-Sleep -Milliseconds 500
 }
 if (-not $ready) { throw 'New supervisor did not become healthy; backup is available at the reported path.' }
-& (Join-Path $supervisorRoot 'recover-extension.ps1') -Reason 'upgrade-watchdog-2.6.0-continuous-recovery'
+# This deployment explicitly resumes the armed assignment. Chat-scope checks
+# keep maintenance conversations excluded; subsequent manual controls persist.
+Invoke-RestMethod 'http://127.0.0.1:32147/monitor/resume' -Method Post -ContentType 'application/json' -Body '{}' -TimeoutSec 2 | Out-Null
+& (Join-Path $supervisorRoot 'recover-extension.ps1') -Reason 'upgrade-watchdog-2.6.2-continuous-recovery'
 $extensionReady = $false
 for ($i = 0; $i -lt 15; $i++) {
   $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 2
-  if ($health.extensionVersion -eq '2.6.0' -and $health.heartbeatAgeMs -lt 10000) { $extensionReady = $true; break }
+  if ($health.extensionVersion -eq '2.6.2' -and $health.heartbeatAgeMs -lt 10000) { $extensionReady = $true; break }
   Start-Sleep -Milliseconds 500
 }
 if (-not $extensionReady) { throw 'Supervisor upgraded, but the current extension heartbeat was not verified.' }

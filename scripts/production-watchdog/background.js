@@ -517,6 +517,7 @@ async function onProbeEvent(event, sender) {
     if (!rt.probeReadyAt) rt.probeReadyAt = ts;
     rt.probeVersion = Number(event.version) || 2;
   } else if (requestId) {
+    if (rt.scopeChangedAt && !rt.streamRequests[requestId] && type !== "generation_request_start" && type !== "generation_headers") return {ok:true, ignored:true};
     const req = rt.streamRequests[requestId] || {
       requestId,
       active: false,
@@ -836,7 +837,13 @@ async function handlePageHeartbeat(message, sender) {
 
   const data = await state();
   if (data.monitorTabId !== tab.id) return { ok: true, ignored: true };
-  const rt = await runtime();
+  let rt = await runtime();
+  const href = String(message.href || tab.url || "");
+  if (rt.conversationUrl && rt.conversationUrl !== href && /\/c\//.test(rt.conversationUrl) && /\/c\//.test(href)) {
+    rt = freshRuntime({conversationUrl: href, scopeChangedAt: Date.now(), statusText: "Observing the current conversation only"});
+    await saveRuntime(rt);
+  }
+  rt.conversationUrl = href;
   const uiFailureSignal = String(message.uiFailureSignal || "").trim() || null;
   const assistantFingerprint = String(message.assistantFingerprint || "").trim() || null;
   const assistantTextLength = Math.max(0, Number(message.assistantTextLength) || 0);
@@ -1083,6 +1090,11 @@ async function initialize() {
   }
 
   const health = await fetch(SUPERVISOR_BASE + "/health").then(r => r.json()).catch(() => null);
+  if (health && health.monitorResumeRequested && health.practice && health.practice.active && Number.isInteger(health.monitoredTabId)) {
+    data.monitorState = "running"; data.monitorTabId = health.monitoredTabId;
+    await storeState({monitorState:"running", monitorTabId:data.monitorTabId, pauseReason:null});
+    await supervisorEvent("monitor_resume_ack", {tabId:data.monitorTabId});
+  }
   if (health && health.handoff && health.handoff.status === "committed" && ["running", "busy"].includes(data.monitorState)) {
     data.monitorTabId = health.handoff.targetTabId;
     data.pendingContinuation = {tabId: health.handoff.targetTabId, handoffId: health.handoff.id, prompt: health.handoff.prompt, retryAt: 0};

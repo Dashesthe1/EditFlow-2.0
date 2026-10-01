@@ -14,6 +14,17 @@ function Log-Line([string]$Message) {
 }
 
 Log-Line "recovery-start reason=$Reason"
+$loadedBefore = 0
+try { $loadedBefore = (Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 2).lastExtensionLoadedAt } catch {}
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class EditFlowWatchdogReloadMouse {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(int flags, int x, int y, int buttons, int extra);
+}
+'@
+
 
 if (-not (Get-Process chrome -ErrorAction SilentlyContinue)) {
   Start-Process $chrome "https://chatgpt.com/"
@@ -55,8 +66,20 @@ while (-not $clicked -and [DateTimeOffset]::UtcNow -lt $deadline) {
       try {
         $pattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
         $pattern.Invoke()
-        $clicked = $true
-        break
+        Start-Sleep -Milliseconds 750
+        $loaded = (Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 2).lastExtensionLoadedAt
+        if ($loaded -le $loadedBefore) {
+          # InvokePattern can report success without reloading this Chrome
+          # extension. Use the observed details-page Reload rectangle.
+          $r = $button.Current.BoundingRectangle
+          [EditFlowWatchdogReloadMouse]::SetCursorPos([int]($r.X + $r.Width/2), [int]($r.Y + $r.Height/2)) | Out-Null
+          [EditFlowWatchdogReloadMouse]::mouse_event(2,0,0,0,0)
+          [EditFlowWatchdogReloadMouse]::mouse_event(4,0,0,0,0)
+          Start-Sleep -Milliseconds 750
+          $loaded = (Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 2).lastExtensionLoadedAt
+        }
+        $clicked = $loaded -gt $loadedBefore
+        if ($clicked) { break }
       } catch {}
     }
     if ($clicked) { break }

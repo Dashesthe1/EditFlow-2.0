@@ -1,11 +1,11 @@
 (() => {
   "use strict";
-  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V260__) return;
-  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V260__ = true;
+  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V262__) return;
+  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V262__ = true;
 
   const PRACTICE_COMPLETION_MARKER = "EDITFLOW_PRACTICE_COMPLETE";
   const PRACTICE_CANCELLATION_MARKER = "EDITFLOW_PRACTICE_CANCELLED";
-  const PRACTICE_COMMAND_RE = /\b(start|continue|resume)\b[\s\S]{0,100}\bpractice session\b/i;
+  const PRACTICE_COMMAND_RE = /^\s*(start|continue|resume)\b[\s\S]{0,100}\bpractice session\b/i;
   const CONTINUE_PRACTICE_PROMPT =
     "Continue the practice session with the given raw files to make the finished product";
   const PROBE_SOURCE = "__EDITFLOW_CHATGPT_PRODUCTION_LIVENESS_V3__";
@@ -86,14 +86,22 @@
     return [...matches];
   }
 
-  function assistantOutputText() {
-    const messages = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
-    return messages.at(-1)?.innerText || "";
+  function userMessages() {
+    const legacy = [...document.querySelectorAll('[data-message-author-role="user"]')].filter(rendered);
+    if (legacy.length) return legacy;
+    return [...document.querySelectorAll('[data-user-message-bubble]')].filter(e => rendered(e) &&
+      !e.closest('[data-search-result-target], [role="dialog"]'));
   }
 
+  function assistantMessages() {
+    const legacy = [...document.querySelectorAll('[data-message-author-role="assistant"]')].filter(rendered);
+    if (legacy.length) return legacy;
+    return [...document.querySelectorAll('[data-markdown-text-style="assistant-message"]')].filter(rendered);
+  }
+
+  function assistantOutputText() { return assistantMessages().at(-1)?.innerText || ""; }
   function latestUserOutputText() {
-    const messages = [...document.querySelectorAll('[data-message-author-role="user"]')];
-    return (messages.at(-1)?.innerText || "").replace(/\s+/g, " ").trim();
+    return (userMessages().at(-1)?.innerText || "").replace(/\s+/g, " ").trim();
   }
 
   function stableHash(value) {
@@ -107,13 +115,11 @@
   }
 
   function assistantProgressSnapshot() {
-    const messages = [...document.querySelectorAll('[data-message-author-role="assistant"]')];
-    const text = (messages.at(-1)?.innerText || "").replace(/\s+/g, " ").trim();
-    const tail = text.length > 16000 ? text.slice(-16000) : text;
-    return {
-      fingerprint: stableHash(String(messages.length) + "|" + tail),
-      textLength: text.length
-    };
+    const messages = assistantMessages();
+    const activity = [...document.querySelectorAll('[class*="group/agent-activity"]')].filter(rendered);
+    const normalize = value => String(value || "").replace(/(?:working|thinking) for \d+(?:[hms]| minutes?| seconds?)(?:\s+\d+[hms])*/gi, "processing").replace(/\s+/g, " ").trim();
+    const text = normalize([...messages.slice(-20), ...activity.slice(-20)].map(e => e.innerText).join("\n"));
+    return { fingerprint: stableHash(String(messages.length) + "|" + text.slice(-32000)), textLength: text.length };
   }
 
   function thinkingSignal() {
@@ -234,9 +240,9 @@
   function generationControls() {
     const stops = stopButtons();
     const box = composer();
-    const controls = box && (box.closest('form, [data-testid*="composer"], [data-type="composer"]') || box.parentElement);
+    const controls = box && (box.closest('[data-composer-body], form, [data-testid*="composer"], [data-type="composer"]') || box.parentElement);
     const idleSend = controls && [...controls.querySelectorAll('button, [role="button"]')].some(button =>
-      rendered(button) && /^(send|send prompt|send message)$/.test(
+      rendered(button) && /^(send|send prompt|send message|start voice|dictate)$/.test(
         String(button.getAttribute("aria-label") || button.getAttribute("title") || button.innerText || "")
           .toLowerCase().replace(/\s+/g, " ").trim()));
     return { href: location.href, stopVisible: stops.length > 0,
@@ -255,6 +261,7 @@
             throw Error("Monitoring paused; Stop cancelled");
           }
           if (handoffId) {
+            if (!PRACTICE_COMMAND_RE.test(latestUserOutputText())) throw Error("This chat is not executing Practice; Stop cancelled");
             const permit = await chrome.runtime.sendMessage({ type: "HANDOFF_STILL_AUTHORIZED", handoffId, stopClicked: clicked });
             if (!permit || !permit.ok) throw Error("Handoff authorization changed; Stop cancelled");
           }
@@ -279,7 +286,7 @@
       if (usable(button)) return button;
     }
     return [...document.querySelectorAll("button")].find(button =>
-      usable(button) && /^(send|send prompt|send message)$/.test(meta(button))
+      usable(button) && /^(send|send prompt|send message|start voice|dictate)$/.test(meta(button))
     ) || null;
   }
 
@@ -355,7 +362,7 @@
     while (Date.now() < until) {
       await requireStillAuthorized();
       const currentUserText = latestUserOutputText();
-      const messageCount = document.querySelectorAll('[data-message-author-role]').length;
+      const messageCount = userMessages().length + assistantMessages().length;
       if (location.href !== previousHref ||
           (messageCount === 0 && currentUserText !== previousUserText)) {
         return true;
@@ -508,7 +515,7 @@
     try {
       // This path is only for a brand-new browser tab created by background.js.
       // Refuse to type into an existing conversation if Chrome restored one.
-      const messages = document.querySelectorAll('[data-message-author-role]').length;
+      const messages = userMessages().length + assistantMessages().length;
       if (messages > 0 || /\/c\//i.test(location.pathname)) {
         throw Error("Fresh-tab handoff landed on an existing conversation; nothing sent.");
       }
@@ -596,7 +603,7 @@
     if (failureHeartbeatTimer !== null) return;
     failureHeartbeatTimer = setTimeout(() => {
       failureHeartbeatTimer = null;
-      if (uiFailureSignal()) void sendPageHeartbeat();
+      void sendPageHeartbeat();
     }, 150);
   }
 
@@ -628,8 +635,8 @@
         stopProtocol: globalThis.EditFlowStopGate.PROTOCOL,
         stopClickable: controls.clickableStop,
         idleUi: controls.idleUi,
-        assistantCount: document.querySelectorAll('[data-message-author-role="assistant"]').length,
-        responseKey: stableHash(String(document.querySelectorAll('[data-message-author-role="user"]').length) + "|" + latestUserOutputText()),
+        assistantCount: assistantMessages().length,
+        responseKey: stableHash(String(userMessages().length) + "|" + latestUserOutputText()),
         assistantFingerprint: assistantProgress.fingerprint,
         assistantTextLength: assistantProgress.textLength,
         thinkingSignal: thinkingSignal(),
@@ -677,7 +684,7 @@
     }
     if (message?.type === "CONTINUATION_STATUS") {
       sendResponse({ promptPresent: latestUserOutputText().replace(/\s+/g, " ").trim() === String(message.prompt || "").replace(/\s+/g, " ").trim(),
-        emptyConversation: !/\/c\//i.test(location.pathname) && document.querySelectorAll('[data-message-author-role]').length === 0,
+        emptyConversation: !/\/c\//i.test(location.pathname) && userMessages().length + assistantMessages().length === 0,
         ...generationControls() });
       return;
     }
