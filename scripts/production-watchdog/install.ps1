@@ -23,7 +23,7 @@ New-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Ed
 Start-Process powershell.exe -ArgumentList ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $guardian + '"') -WindowStyle Hidden
 $ready = $false
 for ($i=0; $i -lt 20; $i++) {
-  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '3.0.1' } catch {}
+  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '3.0.2' } catch {}
   if ($ready) { break }; Start-Sleep -Milliseconds 500
 }
 if (-not $ready) { throw 'Supervisor did not start; backup: ' + $backup }
@@ -31,7 +31,7 @@ if (-not $ready) { throw 'Supervisor did not start; backup: ' + $backup }
 $loaded = $false
 for ($i=0; $i -lt 30; $i++) {
   $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 2
-  if ($health.extensionVersion -eq '3.0.1') { $loaded = $true; break }; Start-Sleep -Milliseconds 500
+  if ($health.extensionVersion -eq '3.0.2') { $loaded = $true; break }; Start-Sleep -Milliseconds 500
 }
 if (-not $loaded) { throw 'Supervisor running, but browser actuator reload was not confirmed.' }
 [pscustomobject]@{version=$health.version; extension=$health.extensionVersion; phase=$health.phase; assignmentId=$health.assignment.assignmentId; startupInstalled=$true; backup=$backup} | ConvertTo-Json

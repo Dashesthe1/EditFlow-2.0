@@ -1,19 +1,27 @@
 (() => {
-  if (globalThis.__EDITFLOW_ACTUATOR_V301__) return;
-  globalThis.__EDITFLOW_ACTUATOR_V301__ = true;
+  if (globalThis.__EDITFLOW_ACTUATOR_V302__) return;
+  globalThis.__EDITFLOW_ACTUATOR_V302__ = true;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const visible = e => e && e.isConnected && e.getClientRects().length && !e.disabled;
   const buttons = () => [...document.querySelectorAll('button')];
   const findButton = (selector, pattern) => [...document.querySelectorAll(selector)].find(visible)
     || buttons().find(e => visible(e) && pattern.test((e.getAttribute('aria-label') || e.title || '').toLowerCase()));
-  const messages = () => [...document.querySelectorAll('[data-message-author-role="user"], [data-user-message-bubble]')];
+  const messages = () => [...document.querySelectorAll('[data-message-author-role="user"], [data-user-message-bubble], [data-turn="user"]')];
   let sending = false;
   async function send(cmd) {
     if (sending) return { sent: false, error: 'SEND_IN_FLIGHT' };
     sending = true;
     try {
-      const normalize = s => String(s).replace(/\s+/g, ' ').trim();
-      if (messages().some(e => normalize(e.innerText) === normalize(cmd.prompt))) return { sent: true };
+      const normalize = s => String(s || '').replace(/[\u200b-\u200f\ufeff]/g, '').replace(/\s+/g, ' ').trim();
+      const expected = normalize(cmd.prompt);
+      const identity = [cmd.prompt.match(/gpt-assignment:[\w-]+/)?.[0],
+        cmd.prompt.match(/session ([\w:-]+) from/)?.[1], cmd.prompt.match(/ef-worker:\d+:[a-f0-9]{64}/)?.[0]];
+      const ownReceipt = () => messages().some(e => [e.innerText, e.textContent].some(value => {
+        const text = normalize(value);
+        return text === expected || (identity.every(Boolean) && identity.every(id => text.includes(id))
+          && text.includes('session with the given raw files to make the finished product.'));
+      }));
+      if (ownReceipt()) return { sent: true };
       if (/\/c\//.test(location.pathname) || messages().length) throw Error('CONTINUATION_TARGET_NOT_EMPTY');
       const box = document.querySelector('#prompt-textarea, [contenteditable="true"][role="textbox"], textarea');
       if (!visible(box)) throw Error('COMPOSER_UNAVAILABLE');
@@ -31,7 +39,7 @@
       if (!button) throw Error('SEND_BUTTON_UNAVAILABLE');
       button.click();
       for (let i = 0; i < 30; i++) {
-        if (messages().some(e => normalize(e.innerText) === normalize(cmd.prompt))) return { sent: true };
+        if (ownReceipt()) return { sent: true };
         await sleep(200);
       }
       throw Error('SEND_ACCEPTANCE_UNCONFIRMED');
