@@ -928,6 +928,14 @@ export class GptOrchestrationStoreV1 {
     });
   }
 
+  async resumeFailedProduction(assignmentId: string): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.status !== "FAILED") return assignment;
+      return { ...assignment, status: "RUNNING", controllerLease: null, completedAt: null, error: null,
+        finalSummary: "Supervisor recovered failed production; retained checkpoints and job receipts require reconciliation." };
+    });
+  }
+
   async releaseController(assignmentId: string, owner: string): Promise<GptOrchestrationAssignmentV1> {
     return await this.#updateAssignment(assignmentId, (assignment) => {
       if (assignment.controllerLease?.owner !== owner) throw new TypeError("Controller lease owner mismatch.");

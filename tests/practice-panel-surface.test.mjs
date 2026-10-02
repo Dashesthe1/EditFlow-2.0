@@ -21,7 +21,7 @@ test("Practice panel product API is authenticated and preserves readiness gates"
 
   const broker = new LoopbackCepBroker({ port: 0, token });
   await broker.start();
-  const service = new PracticePanelServerV1({
+  const service = new PracticePanelServerV1({ productionSupervision: false,
     port: 0,
     token,
     repositoryRoot: process.cwd(),
@@ -176,7 +176,7 @@ test("Practice panel restores persisted runs and saved human review after restar
 
   const broker = new LoopbackCepBroker({ port: 0, token });
   await broker.start();
-  let service = new PracticePanelServerV1({
+  let service = new PracticePanelServerV1({ productionSupervision: false,
     port: 0,
     token,
     repositoryRoot: process.cwd(),
@@ -232,7 +232,7 @@ test("Practice panel restores persisted runs and saved human review after restar
     "utf8",
   );
 
-  service = new PracticePanelServerV1({
+  service = new PracticePanelServerV1({ productionSupervision: false,
     port: 0,
     token,
     repositoryRoot: process.cwd(),
@@ -340,7 +340,7 @@ test("Practice event batch endpoint preserves individual validated events with o
   const registryPath = path.join(root, "state", "edit-types.json");
   const broker = new LoopbackCepBroker({ port: 0, token });
   await broker.start();
-  const service = new PracticePanelServerV1({
+  const service = new PracticePanelServerV1({ productionSupervision: false,
     port: 0,
     token,
     repositoryRoot: process.cwd(),

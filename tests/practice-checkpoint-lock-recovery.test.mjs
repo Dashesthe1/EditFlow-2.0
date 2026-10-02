@@ -40,7 +40,7 @@ test("idle Practice startup leaves the checkpoint unchanged even while a Windows
   t.after(() => holder?.kill());
   const broker = new LoopbackCepBroker({ port: 0, token });
   await broker.start();
-  const service = new PracticePanelServerV1({ port: 0, token, broker, repositoryRoot: process.cwd(),
+  const service = new PracticePanelServerV1({ productionSupervision: false, port: 0, token, broker, repositoryRoot: process.cwd(),
     artifactDir: path.join(root, "artifacts"), learningMemoryFilePath: path.join(root, "memory.json"),
     editTypeRegistryFilePath: path.join(root, "types.json"), gptOrchestrationFilePath: file });
   t.after(async () => { await service.stop(); await broker.stop(); });
@@ -120,7 +120,7 @@ test("a background preflight failure stays observable and resumes the same durab
     reasons: ["needs source matching"], evidenceRefs: [] } });
   const broker = new LoopbackCepBroker({ port: 0, token });
   await broker.start();
-  const service = new PracticePanelServerV1({ port: 0, token, broker, repositoryRoot: process.cwd(),
+  const service = new PracticePanelServerV1({ productionSupervision: false, port: 0, token, broker, repositoryRoot: process.cwd(),
     artifactDir: path.join(root, "artifacts"), learningMemoryFilePath: path.join(root, "memory.json"),
     editTypeRegistryFilePath: path.join(root, "types.json"), gptOrchestrationFilePath: file });
   await service.start();

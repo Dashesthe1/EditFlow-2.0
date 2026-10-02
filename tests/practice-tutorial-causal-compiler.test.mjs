@@ -325,7 +325,7 @@ test("Practice Panel compiles deep tutorial analysis through the product API", a
 
   const broker = new LoopbackCepBroker({ port: 0, token });
   await broker.start();
-  const service = new PracticePanelServerV1({
+  const service = new PracticePanelServerV1({ productionSupervision: false,
     port: 0,
     token,
     repositoryRoot: process.cwd(),

@@ -14,6 +14,8 @@ export interface PracticeProductionJobV1 {
   readonly status: "PENDING" | "RUNNING" | "SUCCEEDED" | "REVIEW_REQUIRED" | "FAILED" | "CANCELLED" | "RECONCILE_REQUIRED";
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly heartbeatAt?: string;
+  readonly startedAt?: string;
   readonly result?: unknown;
   readonly error?: string;
 }
@@ -33,7 +35,8 @@ export class PracticeProductionWorkerV1 {
   constructor(filePath: string, readonly executor: (
     job: PracticeProductionJobV1, signal: AbortSignal,
   ) => Promise<{ readonly result: unknown; readonly reviewRequired?: boolean }>,
-  readonly assignmentActive: (id: string) => Promise<boolean>) { this.#path = path.resolve(filePath); }
+  readonly assignmentActive: (id: string) => Promise<boolean>,
+  readonly assignmentRunnable: (id: string) => Promise<boolean> = async () => true) { this.#path = path.resolve(filePath); }
 
   async load(): Promise<void> {
     if (this.#loaded) return;
@@ -68,6 +71,8 @@ export class PracticeProductionWorkerV1 {
   async #put(job: PracticeProductionJobV1): Promise<void> {
     const next = { ...job, updatedAt: new Date().toISOString() };
     const pending = this.#tail.catch(() => undefined).then(async () => {
+      if (this.#jobs.get(job.jobId)?.status === "RECONCILE_REQUIRED" && job.status !== "SUCCEEDED" && job.status !== "CANCELLED" && job.status !== "RECONCILE_REQUIRED") return;
+      if (job.status === "RUNNING" && job.heartbeatAt && job.startedAt === this.#jobs.get(job.jobId)?.startedAt && this.#jobs.get(job.jobId)?.status !== "RUNNING" && this.#jobs.has(job.jobId)) return;
       await mkdir(path.dirname(this.#path), { recursive: true });
       await appendFile(this.#path, JSON.stringify(next) + "\n", { encoding: "utf8", flush: true });
       this.#jobs.set(next.jobId, next);
@@ -83,7 +88,7 @@ export class PracticeProductionWorkerV1 {
 
   async enqueue(input: Omit<PracticeProductionJobV1, "jobId" | "status" | "createdAt" | "updatedAt" | "result" | "error" | "requestKey">): Promise<PracticeProductionJobV1> {
     await this.load();
-    const requestKey = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    const requestKey = createHash("sha256").update(JSON.stringify(input).replace(/ef-worker:\d+:[a-f0-9]{64}/g, "WORKER_AUTHORITY")).digest("hex");
     const pending = this.#enqueueTails.get(requestKey);
     if (pending) return await pending;
     const operation = this.#enqueue(input, requestKey);
@@ -108,6 +113,15 @@ export class PracticeProductionWorkerV1 {
     const job = this.#jobs.get(jobId);
     if (!job || !["REVIEW_REQUIRED", "RECONCILE_REQUIRED", "FAILED"].includes(job.status)) throw new TypeError("Job is not waiting for review/reconciliation.");
     await this.#put({ ...job, status: "SUCCEEDED", result });
+  }
+
+  async interrupt(assignmentId: string, reason: string): Promise<void> {
+    for (const job of this.list(assignmentId)) {
+      if (job.status === "RUNNING") {
+        this.#aborts.get(job.jobId)?.abort();
+        await this.#put({ ...job, status: "RECONCILE_REQUIRED", error: reason });
+      }
+    }
   }
 
   async cancel(assignmentId: string): Promise<void> {
@@ -136,23 +150,31 @@ export class PracticeProductionWorkerV1 {
 
   async #execute(job: PracticeProductionJobV1): Promise<void> {
     if (!await this.assignmentActive(job.assignmentId)) { await this.cancel(job.assignmentId); return; }
+    if (!await this.assignmentRunnable(job.assignmentId)) return;
     const abort = new AbortController();
     this.#aborts.set(job.jobId, abort);
-    await this.#put({ ...job, status: "RUNNING" });
+    await this.#put({ ...job, status: "RUNNING", startedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString() });
+    const heartbeat = setInterval(() => {
+      const current = this.#jobs.get(job.jobId);
+      if (current?.status === "RUNNING") void this.#put({ ...current, heartbeatAt: new Date().toISOString() }).catch(() => undefined);
+    }, 5000);
+    heartbeat.unref?.();
     const cancellationPoll = setInterval(() => {
       void this.assignmentActive(job.assignmentId).then((active) => { if (!active) abort.abort(); }).catch(() => undefined);
     }, 1000);
     cancellationPoll.unref?.();
     try {
       const output = await this.executor(job, abort.signal);
+      if (this.#jobs.get(job.jobId)?.status === "RECONCILE_REQUIRED") return;
       await this.#put({ ...job, result: output.result,
         status: abort.signal.aborted ? "CANCELLED" : output.reviewRequired ? "REVIEW_REQUIRED" : "SUCCEEDED" });
     } catch (error) {
       const code = (error as { status?: number }).status;
+      if (this.#jobs.get(job.jobId)?.status === "RECONCILE_REQUIRED") return;
       await this.#put({ ...job,
         status: abort.signal.aborted ? "CANCELLED" : code === 423 ? "PENDING" : "FAILED",
         error: error instanceof Error ? error.message : String(error) });
-    } finally { clearInterval(cancellationPoll); this.#aborts.delete(job.jobId); }
+    } finally { clearInterval(heartbeat); clearInterval(cancellationPoll); this.#aborts.delete(job.jobId); }
   }
 
   async start(): Promise<void> {

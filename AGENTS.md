@@ -22,3 +22,16 @@ Practice and Pro Creation use `DURABLE_PRODUCTION_QUEUE_V1` exclusively.
   Use provided raw footage/audio; keep AE open and preserve correct retained work.
 - Standalone acceptance labs are isolated validation tools. They must not be used
   as a fallback production path for an active edit assignment.
+
+# Production chat ownership
+
+The local Production Supervisor arms automatically for Practice and Pro Creation.
+Use only the private worker credential supplied in its continuation prompt as
+`claimedBy`, `researchContext.claimedBy`, or `X-EditFlow-Worker-Credential` on every
+assignment write. The gateway rejects missing, retired and wrong-assignment workers.
+A `STALE_WORKER` response means stop immediately. Do not claim another identity,
+read supervision keys, pause/reconfigure the supervisor, run native AE scripts or
+use Desktop Commander to bypass the production queue. Only the supervisor may
+revoke/issue worker generations. Resume existing receipts; accepted jobs belong
+to the durable queue and can finish across a chat handoff. Only isolated automated
+acceptance tests may set `productionSupervision: false`.

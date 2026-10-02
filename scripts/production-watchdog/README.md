@@ -1,40 +1,43 @@
-# EditFlow Production Watchdog 2.6.4 / Supervisor 1.7.4
+# EditFlow Production Supervisor 3.0
 
-The controller monitors the owning live Practice chat and resumes the same durable assignment between conversations. There is no maximum chat duration. It stays armed through observation, Stop verification, checkpoint handoff, continuation sending and recovery until the durable assignment is COMPLETED or explicitly cancelled. Explicit user Pause/Stop remains available.
+Practice and Pro Creation share one local supervisor and one gateway worker authority.
+The supervisor starts at Windows sign-in and arms automatically when the gateway
+finds an unfinished assignment. No paid API or model service is used.
 
-## October 1 correction
+The gateway persists a monotonic generation and private worker credential. All
+assignment POSTs (including claim, research, queue, review, checkpoints, learning
+and completion) require that credential. Public responses redact it. The gateway
+serializes admission against revocation so an old request cannot cross a handoff.
+Use the issued credential as claimedBy/researchContext.claimedBy, or send the
+X-EditFlow-Worker-Credential header. A stale worker must stop, never reclaim.
 
-The 19:31 incident displayed "Stream cache expired" and idle composer controls while the backend was still renewing its controller reservation and generating editing artifacts. Idle-answer handoffs raced those renewals and Stop confirmation was rejected. Reloading that same owning page restored the live Stop control and current response. Version 2.6.4 confirms the rendered error for 15 seconds, then permits one validated reload of that response when there is no live transport, Stop control, recent work, manual Stop or AE mutation lease. A controller reservation remains a barrier to replacement but cannot block this observation repair. Failed reloads retry without pausing. Successful reloads are persisted and bounded per assignment/conversation/response; fresh activity or scope changes revoke queued repairs. Completion also checks for newer recent editing progress before handing off.
+Health decisions use authorized operations, durable queue statuses and heartbeats,
+checkpoint/phase/score movement and repeated operation signatures. Browser pixels,
+DOM activity, errors, thinking indicators and ChatGPT network payloads are not
+health evidence. Silence has a 60-second grace and 120-second confirmation; first
+worker startup has 180 seconds. Healthy accepted jobs are protected up to explicit
+operation deadlines. Infrastructure failures trigger local gateway/actuator repair.
+Ambiguous operations are retained for reconciliation; they are never replayed.
 
-Error observation excludes hidden conversations and message prose while allowing an error banner inside an author-role wrapper. Supervisor health exposes the current failure signal and page recovery record. The popup distinguishes a controller reservation from response processing.
+Handoff order: persist intent, revoke gateway authority, request Stop and close the
+owned tab, drain accepted work, issue the next generation, create one fresh chat,
+send the assignment-specific durable continuation. Retries resume the same step.
+A manual pause persists, freezes new/pending work and retains the checkpoint.
+Resume reuses the same assignment. Completion/cancellation disarms production;
+the supervisor/guardian processes stay running.
 
-Work Mode keeps multiple conversations mounted and uses user-message bubbles, assistant markdown and agent-activity blocks rather than the classic author-role attributes. Version 2.6.4 observes only rendered messages in the current conversation, includes tool activity in its progress fingerprint, excludes clock-only Working timers and requires the latest user request to explicitly start, continue or resume Practice. A maintenance chat cannot receive a Stop permit. This scope is rechecked immediately before Stop; changing conversations clears the previous transport state.
+The browser extension is only an actuator. Its permissions no longer include
+webRequest and it contains no ChatGPT stream parser. It reads only its own submitted
+prompt to verify send acceptance and browser controls to execute Stop/Send.
+The public /health endpoint reports state without credentials. The gateway private
+supervision route requires a separate local supervisor key; the actuator route is
+restricted to the installed extension origin.
 
-The stream probe stamps each request with the conversation where it began. Late headers, bytes and errors from a previous conversation cannot recreate active transport in the current one. This upgrade retires legacy unscoped records that survived earlier extension reloads and blocked replacement creation; subsequent worker restarts preserve properly scoped active records. Health reports the current transport counts alongside positive idle UI evidence.
+This guarantees one authorized EditFlow worker, not authoritative cancellation of
+OpenAI backend generation. It is a trusted-local-PC system: arbitrary code with the
+same Windows account can access its files. Workers must not bypass the gateway
+through Desktop Commander or native AE scripts.
 
-The 22:09 failure used generation and semantic evidence from an older response while the owning chat was receiving fresh stream bytes. Stop verification then failed and background.js permanently changed monitorState to paused. Version 2.6.4 fixes both defects.
-
-- A new response, stream or owning page response identity clears prior generation completion, errors, semantic coverage and stall suspicion. The page identity reconciles starts missed when the observer attaches mid-response.
-- Coverage is calculated from the currently active streams. Unsupported frames explicitly mark uncertainty; observed traffic then protects the response. Recognized keepalives and padding do not count as progress.
-- One minute of actual silence starts suspicion; two additional minutes of silence confirm it. Any new useful or uncertain activity restarts the full confirmation window, including activity received between throttled samples. Extended-thinking UI and active AE/controller leases protect ongoing work.
-- Historical tabs and superseded stream terminal events cannot change the owning response. A semantic terminal never silently closes a still-active cloned transport.
-- Recovery errors never automatically pause monitoring. Stop failures retry with backoff; a no-progress restart circuit applies a temporary delay and automatically resumes.
-- Durable Practice state, bound to the existing assignment, is authoritative for completion. A response ending, an assistant completion marker, or a FAILED assignment does not declare the edit complete.
-
-## Handoff and restart recovery
-
-1. Re-read assignment identity, cancellation and work leases; write the orchestration checkpoint before Stop.
-2. Revalidate the permit before clicking the official Stop control. Newly resumed progress revokes a stall permit before Stop. A click under a valid permit is recorded separately so cancellation-caused EOF is not mistaken for resumed work.
-3. Confirm positive idle UI and closure of all tracked generation transports for at least 1.5 seconds each. Work Mode empty-composer Voice controls provide positive idle evidence; the composer body scopes those controls. Missing, disabled or ineffective Stop controls do not authorize a replacement. Unknown observation keeps recovery running.
-4. Record Stop proof and commit ownership to one fresh tab. Persist its continuation prompt and target tab. Verify that Send was accepted; retry a failed send in the same tab and reconcile the existing user prompt before retrying, avoiding duplicate submissions.
-5. Preserve the committed handoff through supervisor/extension restarts, including the commit-before-browser-storage interval. A genuinely removed owning tab is checkpointed and verified as closed before creating its replacement. Observer loss repairs observation without authorizing termination of a live chat.
-
-Continuation prompts preserve the assignment/session, Primary Edit Production System, connection preflight, raw-only footage/audio policy and open AE. Practice also preserves M6 as an integrated reference-fidelity engine inside that system. Account/login or rate-limit blocks remain observed while availability is checked; creating more chats would not fix them.
-
-## Validation and installation
-
-Run node --test watchdog.test.js and node --check on each JavaScript file. Tests use simulated clocks and browser/AE evidence, including the recorded 22:09 incident, long active responses, genuine silence, confirmation reset, stale coverage, historical tabs, active transports, official Stop clicks, progress-before-Stop cancellation, Stop-caused EOF, failed handoff/send recovery, duplicate suppression, closure recovery and authoritative completion. No healthy production response is deliberately stopped to run these tests.
-
-Run install.ps1 on Shadow. It backs up the installed controller, installs the validated files, restarts only the chat supervisor and reloads the unpacked extension. The current legacy automatic pause is migrated back to running when a recorded handoff failure and an active armed assignment corroborate it. Explicit user pauses have their own provenance and remain intact. The assignment, Practice service and AE are preserved.
-
-Extension recovery verifies a new extension-loaded event; when Chrome InvokePattern reports success without reloading, it clicks the observed extension-details Reload control and verifies the event before reporting success.
+Install from this directory with install.ps1 after compiling the TypeScript gateway.
+Tests: npm run build:test-runtime; node --test tests/production-supervision.test.mjs;
+node --test scripts/production-watchdog/watchdog.test.js.

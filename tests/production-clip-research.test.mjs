@@ -123,7 +123,7 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
     start: [{ mediaId: 'raw', role: 'START_SOURCE', mediaKind: 'VIDEO', uri: 'raw.mp4' }],
     preflight: { stage: 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false, completedShotIds: [], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
   await store.claim(assignment.assignmentId, 'controller');
-  let service = new PracticePanelServerV1(config); await service.start();
+  let service = new PracticePanelServerV1({ ...config, productionSupervision: false }); await service.start();
   t.after(async () => { await service.stop(); await broker.stop(); await rm(root, { recursive: true, force: true }); });
   const headers = { 'X-EditFlow-Token': token, 'Content-Type': 'application/json' };
   const get = async route => (await fetch(`http://127.0.0.1:${service.port}${route}`, { headers })).json();
@@ -133,7 +133,7 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
     assert.equal(response.status, 410, route);
     assert.equal((await response.json()).error, "EDIT_EXECUTION_PATH_REMOVED", route);
   }
-  await service.stop(); service = new PracticePanelServerV1(config); await service.start();
+  await service.stop(); service = new PracticePanelServerV1({ ...config, productionSupervision: false }); await service.start();
   const resumed = await get('/v1/product/practice/resume-or-start');
   assert.equal(resumed.assignment.assignmentId, assignment.assignmentId);
   assert.match(resumed.assignment.chatMessage, /MANDATORY PER-CLIP RESEARCH GATE V1/);
@@ -212,7 +212,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
       environmentProbe: request.command === 'host.probe' ? { adapterProtocolVersion: '1.1.0', adapterBuild: 'test', hostName: 'Adobe After Effects', hostVersion: 'test', hostBuild: 'test', os: 'test', projectOpen: true } : null,
       projectSnapshot: request.command === 'project.inspect' ? { hostRevision: revision, filePath: null, activeItemHostId: null, itemCount: 0, items: [] } : null };
   }};
-  let service = new PracticePanelServerV1({ ...config, broker }); await service.start();
+  let service = new PracticePanelServerV1({ productionSupervision: false, ...config, broker }); await service.start();
   t.after(async () => service.stop());
   const headers = { 'X-EditFlow-Token': token, 'Content-Type': 'application/json' };
   const request = (route, body) => fetch(`http://127.0.0.1:${service.port}${route}`, { headers, ...(body ? { method:'POST', body:JSON.stringify(body) } : {}) });
@@ -244,7 +244,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   assert.equal(expired.status,409);
   const proof = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath}});
   const review = await wait((await proof.json()).job.jobId); assert.equal(review.status,'REVIEW_REQUIRED');
-  await service.stop(); service = new PracticePanelServerV1({...config,broker}); await service.start();
+  await service.stop(); service = new PracticePanelServerV1({ productionSupervision: false,...config,broker}); await service.start();
   const resumed = (await (await request(endpoint+'?jobId='+encodeURIComponent(review.jobId))).json()).job;
   assert.equal(resumed.status,'REVIEW_REQUIRED');
   const noEvidence = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller'}); assert.equal(noEvidence.status,400);

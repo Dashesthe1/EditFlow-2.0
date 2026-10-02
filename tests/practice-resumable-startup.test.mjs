@@ -19,7 +19,7 @@ test("concurrent offline starts persist one assignment and restart resumes the s
   const config = { port: 0, token, broker, repositoryRoot: process.cwd(),
     artifactDir: path.join(root, "artifacts"), learningMemoryFilePath: path.join(root, "memory.json"),
     editTypeRegistryFilePath: path.join(root, "types.json"), gptOrchestrationFilePath: path.join(root, "gpt.json") };
-  let service = new PracticePanelServerV1(config);
+  let service = new PracticePanelServerV1({ ...config, productionSupervision: false });
   await service.start();
   t.after(async () => { await service.stop(); await broker.stop(); await rm(root, { recursive: true, force: true }); });
   const start = () => fetch(`http://127.0.0.1:${service.port}/v1/product/practice`, {
@@ -31,7 +31,7 @@ test("concurrent offline starts persist one assignment and restart resumes the s
   await service.stop();
   const store = new GptOrchestrationStoreV1(config.gptOrchestrationFilePath);
   assert.equal((await store.listAssignments()).length, 1);
-  service = new PracticePanelServerV1(config);
+  service = new PracticePanelServerV1({ ...config, productionSupervision: false });
   await service.start();
   const handshake = await (await fetch(`http://127.0.0.1:${service.port}/v1/product/practice/resume-or-start`, { headers })).json();
   assert.equal(handshake.assignment.assignmentId, first.assignmentId);

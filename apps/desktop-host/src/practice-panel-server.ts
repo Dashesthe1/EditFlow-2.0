@@ -10,6 +10,7 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { ProductionSupervisionV1, redactWorkerCredentialsV1 } from "./production-supervision.js";
 
 import {
   EditTypeRegistryFileV1,
@@ -91,6 +92,8 @@ export interface PracticePanelServerConfigV1 {
   readonly renderTimeoutMs?: number;
   readonly buildId?: string;
   readonly aeWriterAvailable?: () => boolean;
+  /** Explicitly disabled only by isolated acceptance labs. */
+  readonly productionSupervision?: boolean;
   readonly stabilization?: CurrentAeStabilizationRuntimeV1;
 }
 
@@ -623,14 +626,17 @@ class HttpError extends Error {
 }
 
 const jsonResponse = (res: ServerResponse, status: number, value: unknown): void => {
-  const body = JSON.stringify(value);
+  const body = redactWorkerCredentialsV1(value);
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Length", Buffer.byteLength(body));
   res.end(body);
 };
 
+const requestBodies = new WeakMap<IncomingMessage, Record<string, unknown>>();
 const readJson = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
+  const cached = requestBodies.get(req);
+  if (cached) return cached;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -644,6 +650,7 @@ const readJson = async (req: IncomingMessage): Promise<Record<string, unknown>> 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new HttpError(400, "JSON object body required.");
   }
+  requestBodies.set(req, parsed as Record<string, unknown>);
   return parsed as Record<string, unknown>;
 };
 
@@ -1021,6 +1028,7 @@ export class PracticePanelServerV1 {
   readonly #productionCoordinatorDir: string;
   readonly #coordinators = new Map<string, Promise<{ file: PracticeProductionCoordinatorFileV1; coordinator: PracticeProductionCoordinatorV1 }>>();
   readonly #productionWorker: PracticeProductionWorkerV1;
+  readonly #supervision: ProductionSupervisionV1 | null;
   #aeWriterOwner: string | null = null;
   #childProofScope: { key: string; jobId: string; body: Record<string, any> } | null = null;
   #childProofTail: Promise<unknown> = Promise.resolve();
@@ -1053,10 +1061,13 @@ export class PracticePanelServerV1 {
       path.dirname(this.#gptStore.filePath),
       "production-coordinator",
     );
+    this.#supervision = config.productionSupervision === false ? null : new ProductionSupervisionV1(
+      path.join(path.dirname(this.#gptStore.filePath), "production-supervision"));
     this.#productionWorker = new PracticeProductionWorkerV1(
       path.join(this.#productionCoordinatorDir, "jobs.jsonl"),
       (job, signal) => this.#executeProductionJob(job, signal),
       async (id) => (await this.#gptStore.getAssignment(id))?.status === "RUNNING",
+      async (id) => { const state = this.#supervision?.publicState(); return !state || state.assignmentId !== id || state.state !== "PAUSED"; },
     );
     this.#masteryVerifier = new PracticeMasteryVerifierV1({
       repositoryRoot: config.repositoryRoot,
@@ -1196,9 +1207,9 @@ export class PracticePanelServerV1 {
     }
     const owner = body.researchContext?.claimedBy;
     if (typeof owner !== "string") throw new TypeError("Queued production requires an authorized researchContext.");
-    try { assignment = await this.#gptStore.claim(job.assignmentId, owner); }
-    catch (error) { throw new HttpError(423, error instanceof Error ? error.message : String(error)); }
-    const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE");
+    // The queue owns accepted decisions across GPT handoffs. It revalidates all
+    // research/media evidence but does not reclaim a retired chat's lease.
+    const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE", true);
     signal.throwIfAborted();
     const production = await this.#productionCoordinator(assignment);
     const strategy = production.coordinator.strategyDirective();
@@ -1348,8 +1359,7 @@ export class PracticePanelServerV1 {
     const heartbeatTimer = setInterval(() => {
       coordinator.heartbeat(input.operation);
       void file.save(coordinator).catch(() => undefined);
-      const owner = input.body?.researchContext?.claimedBy;
-      if (typeof owner === "string") void this.#gptStore.claim(assignment.assignmentId, owner).catch(() => undefined);
+
     }, 20_000);
     heartbeatTimer.unref?.();
     try {
@@ -1398,8 +1408,10 @@ export class PracticePanelServerV1 {
 
   async start(): Promise<number> {
     if (this.#server !== null) return this.#port;
+    this.#supervision?.acquireGateway();
     await this.#gptStore.refreshActiveProductionInstructions();
     await this.#recoverRuns();
+    if (this.#supervision) await this.#supervisionSnapshot();
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -1436,6 +1448,7 @@ export class PracticePanelServerV1 {
       });
     }
     this.#port = 0;
+    this.#supervision?.releaseGateway();
   }
 
   async #ensureFastRuntime(): Promise<LocalFastRuntimeV1> {
@@ -1480,6 +1493,7 @@ export class PracticePanelServerV1 {
       adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
       localRuntime: this.#fastRuntime?.status() ?? null,
       currentTransactionRuntime: this.#transactionRuntime.status(),
+      productionSupervisor: this.#supervision?.publicState() ?? null,
       mutationLease: { held: this.#aeWriterOwner !== null, owner: this.#aeWriterOwner, expiresAt: null } };
   }
 
@@ -1559,7 +1573,7 @@ export class PracticePanelServerV1 {
   #setHeaders(res: ServerResponse): void {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-EditFlow-Token");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-EditFlow-Token, X-EditFlow-Worker-Credential");
     res.setHeader("Cache-Control", "no-store");
   }
 
@@ -1961,14 +1975,14 @@ export class PracticePanelServerV1 {
     }
   }
 
-  async assertClipResearchReady(body: Record<string, any>, allClips = false): Promise<Record<string, any> | null> {
+  async assertClipResearchReady(body: Record<string, any>, allClips = false, queuedExecution = false): Promise<Record<string, any> | null> {
     if (this.#activeRunId === null) return null;
     const run = this.#runs.get(this.#activeRunId);
     if (run === undefined) throw new HttpError(409, "Active assignment is unavailable.");
     const assignment = await this.#gptStore.getAssignment(run.assignmentId);
     if (assignment === null) throw new HttpError(409, "Active assignment is unavailable.");
     try {
-      const admitted = await this.#clipResearch.admit(assignment, body);
+      const admitted = await this.#clipResearch.admit(assignment, body, queuedExecution);
       if (allClips && assignment.mode === "PRACTICE") {
         const declared = new Set(admitted.plans.map((plan: Record<string, any>) => plan.clipId));
         if ((assignment.practiceSceneMatches ?? []).some((match) => !declared.has(match.shotId))) {
@@ -2611,7 +2625,84 @@ export class PracticePanelServerV1 {
     });
   }
 
+  async #supervisionSnapshot(): Promise<Record<string, any>> {
+    const assignments = await this.#gptStore.listAssignments();
+    const authority = this.#supervision!.publicState();
+    const active = assignments.find((a) => a.assignmentId === authority.assignmentId && !["COMPLETED", "CANCELLED"].includes(a.status))
+      ?? assignments.find((a) => a.sessionId === this.#activeRunId)
+      ?? assignments.find((a) => ["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(a.status)) ?? null;
+    await this.#supervision!.bind(active && !["COMPLETED", "CANCELLED"].includes(active.status) ? active : null);
+    const production = active ? (await this.#productionCoordinator(active)).coordinator.snapshot() : null;
+    const jobs = active ? this.#productionWorker.list(active.assignmentId) : [];
+    return { authority: this.#supervision!.publicState(), assignment: active ? { assignmentId: active.assignmentId,
+      sessionId: active.sessionId, mode: active.mode, status: active.status, preflight: active.preflight ?? null,
+      cancelRequestedAt: active.cancelRequestedAt, artifactDir: active.artifactDir } : null,
+      production, jobs: jobs.map((job) => ({ jobId: job.jobId, kind: job.kind, status: job.status,
+        updatedAt: job.updatedAt, createdAt: job.createdAt, startedAt: job.startedAt,
+        heartbeatAt: job.heartbeatAt, error: job.error, operationSignature: job.requestKey })),
+      writerOwner: this.#aeWriterOwner, hostRevision: this.controlStatus().hostRevision,
+      panelLastSeenAt: this.config.broker.panelSession?.lastSeenAt ?? null };
+  }
+
   async #handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    try {
+      if (this.#supervision && this.#authorized(req) && url.pathname === "/v1/product/production/supervision") {
+        if (req.headers["x-editflow-supervisor-key"] !== this.#supervision.key) throw new HttpError(403, "SUPERVISOR_KEY_REQUIRED");
+        if (req.method === "GET") { jsonResponse(res, 200, await this.#supervisionSnapshot()); return; }
+        if (req.method === "POST") {
+          const body = await readJson(req);
+          const state = this.#supervision.publicState();
+          const id = requiredString(body, "assignmentId");
+          if (id !== state.assignmentId) throw new HttpError(409, "SUPERVISOR_ASSIGNMENT_MISMATCH");
+          let credential: string | undefined;
+          if (body.action === "ISSUE") {
+            credential = await this.#supervision.issue(id, requiredString(body, "launchId"));
+            const assignment = await this.#gptStore.getAssignment(id);
+            if (assignment?.controllerLease && assignment.controllerLease.owner !== credential) {
+              await this.#gptStore.releaseController(id, assignment.controllerLease.owner);
+            }
+          }
+          else if (body.action === "REVOKE" || body.action === "PAUSE") {
+            await this.#supervision.revoke(id, Number(body.generation), requiredString(body, "reason"), body.action === "PAUSE");
+            const assignment = await this.#gptStore.getAssignment(id);
+            if (assignment?.controllerLease) await this.#gptStore.releaseController(id, assignment.controllerLease.owner);
+          } else if (body.action === "INTERRUPT") {
+            await this.#productionWorker.interrupt(id, requiredString(body, "reason"));
+          } else if (body.action === "RECOVER_FAILED") {
+            const resumed = await this.#gptStore.resumeFailedProduction(id);
+            this.#activeRunId = resumed.sessionId;
+            await this.#syncRun(resumed.sessionId);
+          } else if (body.action === "RESUME") await this.#supervision.resume(id);
+          else throw new HttpError(400, "UNKNOWN_SUPERVISOR_ACTION");
+          // This private response is the only route that returns the credential.
+          const payload = JSON.stringify({ ok: true, authority: this.#supervision.publicState(), credential });
+          res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(payload); return;
+        }
+      }
+      const match = /^\/v1\/product\/gpt\/assignments\/([^/]+)\//.exec(url.pathname);
+      if (this.#supervision && this.#authorized(req) && req.method === "POST" && match) {
+        await this.#supervisionSnapshot();
+        const body = await readJson(req) as Record<string, any>;
+        const credential = req.headers["x-editflow-worker-credential"] ?? body.claimedBy ?? body.payload?.researchContext?.claimedBy;
+        if (typeof credential === "string") {
+          body.claimedBy = credential;
+          if (body.payload?.researchContext) body.payload.researchContext.claimedBy = credential;
+        }
+        // Serialize revoke against the entire admission/write, including slow validations.
+        await this.#supervision.authorized(decodeURIComponent(match[1]!), credential, { path: url.pathname, body }, async () => {
+          await this.#handleAuthorized(req, res); return res.statusCode;
+        }); return;
+      }
+      await this.#handleAuthorized(req, res);
+    } catch (error) {
+      this.#setHeaders(res);
+      jsonResponse(res, typeof (error as any).status === "number" ? (error as any).status : 500,
+        { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  async #handleAuthorized(req: IncomingMessage, res: ServerResponse): Promise<void> {
     this.#setHeaders(res);
     if (req.method === "OPTIONS") {
       res.statusCode = 204;
@@ -2637,7 +2728,7 @@ export class PracticePanelServerV1 {
         const body = await readJson(req);
         const operation = this.#childProofTail.catch(() => undefined).then(async () => {
           if (this.#childProofScope !== scope) throw new HttpError(409, "Worker job scope expired.");
-          await this.assertClipResearchReady(scope.body);
+          await this.assertClipResearchReady(scope.body, false, true);
           return await this.#dispatchWorkerProofScript(requiredString(body, "scriptPath"), scope.jobId + ":child:" + randomUUID());
         });
         this.#childProofTail = operation;

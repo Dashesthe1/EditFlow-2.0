@@ -1,84 +1,53 @@
 "use strict";
-
-// Browser evidence can establish activity, not private model/backend state.
-// No single timer or DOM indicator is sufficient to authorize a replacement.
-const POLICY = Object.freeze({
-  quietMs: 60 * 1000,
-  confirmMs: 2 * 60 * 1000,
-  terminalConfirmMs: 15 * 1000,
-  observerStaleMs: 60 * 1000,
-  recentMs: 30 * 1000
-});
-
-function evaluateLiveness(previous, evidence, now, policy = POLICY) {
-  const next = { ...previous };
-  const result = (phase, reason, action = "NONE") => ({ next, phase, reason, action });
-  if (!evidence.enabled) {
-    next.suspectAt = 0; next.terminalAt = 0;
-    return result("PAUSED", "monitor_inactive");
-  }
-  if (evidence.blocked) { next.suspectAt = 0; next.terminalAt = 0; return result("BLOCKED", evidence.blocked); }
-  if (!evidence.observerAt || now - evidence.observerAt > policy.observerStaleMs) {
-    next.suspectAt = 0; next.terminalAt = 0;
-    return result("OBSERVER_OFFLINE", "observer_missing_repair_only");
-  }
-  if (evidence.leaseUntil > now || evidence.manualStopUntil > now) {
-    next.suspectAt = 0; next.terminalAt = 0;
-    return result("WAITING", "tool_controller_or_manual_stop_protected");
-  }
-  if (evidence.thinkingSignal === "extended_thinking") {
-    next.suspectAt = 0; next.terminalAt = 0;
-    return result("WAITING", "extended_thinking_observed");
-  }
-  const progressAt = Math.max(evidence.startedAt || 0, evidence.semanticAt || 0,
-    evidence.uiAt || 0, evidence.aeAt || 0, evidence.practiceAt || 0,
-    evidence.productionAt || 0, evidence.productionHeartbeatAt || 0,
-    !evidence.semanticCoverage ? (evidence.streamAt || 0) : 0);
-  const quietAgeMs = progressAt ? Math.max(0, now - progressAt) : 0;
-  const live = evidence.stopVisible || evidence.activeRequests > 0 || evidence.streamRequests > 0;
-  const recentProgress = progressAt && now - progressAt < policy.recentMs;
-  const recentTransport = !evidence.semanticCoverage && evidence.streamAt && now - evidence.streamAt < policy.recentMs;
-  const recentProductionHeartbeat = evidence.productionHeartbeatAt
-    && now - evidence.productionHeartbeatAt < policy.quietMs;
-  if (evidence.productionInFlight && recentProductionHeartbeat) {
-    next.suspectAt = 0; next.terminalAt = 0;
-    return result("PROCESSING", "production_operation_in_flight");
-  }
-
-  // An old error banner or request cannot override newer processing evidence.
-  if (evidence.terminal && !live && !recentProgress) {
-    if (!next.terminalAt || next.terminalKey !== evidence.terminal) {
-      next.terminalAt = now; next.terminalKey = evidence.terminal;
-    }
-    if (now - next.terminalAt >= policy.terminalConfirmMs) {
-      if (evidence.controllerLeaseUntil > now && evidence.idleUi === true) {
-        return result("RECOVERING", "expired_ui_controller_reserved", "REPAIR_OWNER");
-      }
-      return result("TERMINAL", evidence.terminal, "HANDOFF");
-    }
-    return result("VERIFYING", "terminal_confirmation");
-  }
-  next.terminalAt = 0; next.terminalKey = null;
-  if (evidence.controllerLeaseUntil > now) {
-    next.suspectAt = 0;
-    return result("WAITING", "controller_reserved");
-  }
-  if (evidence.completedAt && !live && !(recentProgress && progressAt > evidence.completedAt) &&
-      evidence.completedAt >= evidence.startedAt) {
-    return result("COMPLETED", "response_complete", "HANDOFF");
-  }
-  if (!evidence.startedAt) return result("WAITING", "generation_not_observed");
-  if (recentProgress || recentTransport || quietAgeMs < policy.quietMs) {
-    next.suspectAt = 0;
-    return result(live ? "PROCESSING" : "WAITING", recentProgress ? "processing_evidence" : "quiet_generation_grace");
-  }
-
-  // Keepalive traffic is insufficient by itself. A confirmed suspicion needs
-  // a healthy observer and another two minutes with no new progress/traffic.
-  if (next.suspectAt && progressAt > (next.suspectProgressAt || 0)) next.suspectAt = 0;
-  if (!next.suspectAt) { next.suspectAt = now; next.suspectProgressAt = progressAt; }
-  if (now - next.suspectAt < policy.confirmMs) return result("SUSPECT", "silence_confirmation");
-  return result("STALLED", "confirmed_multi_signal_silence", "HANDOFF");
+const POLICY = Object.freeze({ quietMs: 60000, confirmMs: 120000, startupMs: 180000,
+  heartbeatMs: 20000, noProgressMs: 15 * 60000, loopCount: 5,
+  deadlines: { AE_TRANSACTION: 120000, AE_CORRECTION: 180000, AE_BATCH: 120000,
+    AE_GOAL: 120000, SAVE_CHECKPOINT: 120000, REFERENCE_ANALYSIS: 600000,
+    LOCAL_RENDER: 1800000, BUILD_BASELINE: 1800000, PROOF_SCRIPT: 1800000, SCRATCH_SEARCH: 3600000 } });
+function semanticKey(snapshot) {
+  const p = snapshot.production || {};
+  return JSON.stringify({ preflight: snapshot.assignment?.preflight?.stage,
+    sources: snapshot.assignment?.preflight?.completedShotIds, stage: p.stage,
+    covered: p.wholeEditCovered, passes: p.wholeEditPasses, certified: p.certified,
+    strategy: p.strategyKey, checkpoint: p.aeCheckpoint ? [p.aeCheckpoint.projectPath, p.aeCheckpoint.projectRevision] : null,
+    phases: (p.phases || []).map(x => [x.phaseId, x.state, x.sourceCertificateKey,
+      x.researchKey, x.consecutivePasses, x.lastSimilarity, x.proofCandidateKey, x.lastSearchScore]),
+    jobs: (snapshot.jobs || []).filter(x => ['SUCCEEDED', 'REVIEW_REQUIRED'].includes(x.status)).map(x => [x.operationSignature || x.jobId, x.status]) });
 }
-
-module.exports = { POLICY, evaluateLiveness };
+function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
+  const next = { ...previous };
+  const result = (phase, reason, action = 'NONE') => ({ next, phase, reason, action });
+  if (!snapshot) return result('INFRA_RECOVERY', 'gateway_unavailable', 'REPAIR');
+  const a = snapshot.authority || {}, task = snapshot.assignment;
+  if (!task || ['COMPLETED', 'CANCELLED'].includes(task.status)) return result('IDLE', 'assignment_terminal');
+  if (task.cancelRequestedAt || task.status === 'CANCEL_REQUESTED') return result('CANCELLING', 'user_cancel', 'CANCEL');
+  if (a.state === 'PAUSED') return result('PAUSED', 'user_pause');
+  if (task.status === 'FAILED') return result('RECOVERING', 'assignment_failed_checkpoint_retained', 'RECOVER_FAILED');
+  const key = semanticKey(snapshot);
+  if (next.generation !== a.generation || next.key !== key) {
+    next.key = key; next.progressAt = now; next.suspectAt = 0; next.generation = a.generation;
+    next.loopBaselineAt = now; next.progressSeq = (next.progressSeq || 0) + 1;
+  }
+  const jobs = (snapshot.jobs || []).filter(x => x.status === 'RUNNING');
+  if (snapshot.writerOwner && !jobs.length) return result('INFRA_RECOVERY', 'writer_requires_reconciliation', 'REPAIR');
+  if (jobs.length || snapshot.writerOwner) {
+    next.suspectAt = 0;
+    const dead = jobs.find(x => now - Date.parse(x.heartbeatAt || x.updatedAt) > policy.heartbeatMs
+      || now - Date.parse(x.startedAt || x.createdAt) > (policy.deadlines[x.kind] || 600000));
+    return dead ? result('INFRA_RECOVERY', 'operation_deadline_or_heartbeat_expired', 'REPAIR')
+      : result('PROCESSING', 'accepted_operation_running');
+  }
+  if (a.state === 'HANDOFF') return result('HANDOFF', 'worker_revoked', 'HANDOFF');
+  const activityAt = Math.max(a.issuedAt || 0, a.lastActivityAt || 0);
+  const recent = (a.recent || []).filter(x => x.at > (next.loopBaselineAt || 0));
+  const groups = new Map();
+  for (const x of recent) groups.set(x.signature, (groups.get(x.signature) || 0) + 1);
+  if ([...groups.values()].some(count => count >= policy.loopCount)) return result('LOOP', 'repeated_action_without_checkpoint_delta', 'HANDOFF');
+  if (a.lastActivityAt && now - next.progressAt >= policy.noProgressMs) return result('STALLED', 'activity_without_semantic_progress', 'HANDOFF');
+  const grace = a.lastActivityAt ? policy.quietMs : policy.startupMs;
+  if (now - activityAt < grace) { next.suspectAt = 0; return result('HEALTHY', 'worker_activity_grace'); }
+  if (!next.suspectAt) next.suspectAt = now;
+  if (now - next.suspectAt < policy.confirmMs) return result('VERIFYING', 'no_worker_or_operation_activity');
+  return result('STALLED', 'confirmed_operational_silence', 'HANDOFF');
+}
+module.exports = { POLICY, evaluateLiveness, semanticKey };

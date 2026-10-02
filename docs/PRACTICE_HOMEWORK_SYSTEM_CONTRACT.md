@@ -526,3 +526,21 @@ The assignment queue, connector control surface, Edit Type learning trace, Pro C
 mastery gate, and Practice/Pro Creation cancellation lifecycle are implemented. The remaining
 items are deployment and proof gaps; the local deterministic M6 loop is retained as GPT's
 toolkit and is no longer the governing creative decision-maker.
+
+## Single active GPT worker supervision
+
+Practice and Pro Creation automatically arm the same local Production Supervisor.
+The gateway persists its generation/credential authority separately from edit
+checkpoints, and fences every assignment mutation, including claim and completion.
+Only the credential in the current supervisor continuation can write. Public
+assignment/status/job responses redact credentials. Direct production routes stay
+removed; Desktop Commander/native scripts must not bypass this gate.
+
+Operational activity, queue heartbeats/deadlines, phase/proof/checkpoint movement
+and repeated action signatures decide health. Browser text, pixels, thinking UI,
+error banners and network payloads do not. Browser control only actuates Stop,
+Close, Create and Send after gateway revocation. Persisted handoff steps survive
+restarts. Accepted queue jobs drain/reconcile across chat replacement; pending jobs
+freeze during explicit pause. Cancellation/completion disarms the assignment while
+the supervisor service remains available. Infrastructure recovery restarts only
+EditFlow gateway/actuator components and preserves AE and durable job receipts.

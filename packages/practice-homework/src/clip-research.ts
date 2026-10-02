@@ -306,14 +306,14 @@ export class ClipResearchStoreV1 {
     });
   }
 
-  async admit(assignment: Packet, body: Packet): Promise<Packet> {
+  async admit(assignment: Packet, body: Packet, queuedExecution = false): Promise<Packet> {
     if (assignment.status !== "RUNNING") return fail("Cancelled, unclaimed or terminal assignment cannot edit.");
     const context = body.researchContext;
     if (!context || context.assignmentId !== assignment.assignmentId || !Array.isArray(context.plans) || !context.plans.length) {
       return fail("AE editing needs researchContext with current assignmentId and READY plans for every affected clip. Inspect assignment.clipResearch and GET clip-research-contract.");
     }
     const lease = assignment.controllerLease;
-    if (!lease || lease.owner !== context.claimedBy || Date.parse(lease.expiresAt) <= Date.now()) {
+    if (!queuedExecution && (!lease || lease.owner !== context.claimedBy || Date.parse(lease.expiresAt) <= Date.now())) {
       return fail("Heartbeat/claim the assignment and pass researchContext.claimedBy for its current live controller.");
     }
     const saved = await this.snapshot(assignment);
