@@ -111,6 +111,7 @@ const practicePanel = new PracticePanelServerV1({
   broker,
   ...(process.env.EDITFLOW_FFMPEG_PATH ? { ffmpegPath: process.env.EDITFLOW_FFMPEG_PATH } : {}),
   renderTimeoutMs: Number(process.env.EDITFLOW_PRACTICE_TIMEOUT_MS ?? 180_000),
+  aeWriterAvailable: () => activeMutationLease() === null,
 });
 await practicePanel.start();
 
@@ -269,6 +270,7 @@ const server = createServer(async (req, res) => {
       });
     }
     if (url.pathname.startsWith("/v1/product/")) {
+      if (req.method === "POST" && url.pathname.startsWith("/v1/product/control/") && !admitLeasedMutation(req, res)) return;
       await proxyPracticeRequest(req, res);
       return;
     }
@@ -379,7 +381,7 @@ const server = createServer(async (req, res) => {
       if (!activePanel || typeof activePanel.protocolVersion !== "string") throw new Error("CEP_PANEL_NOT_CONNECTED");
       const sequence = ++requestCounter;
       const suffix = `${Date.now()}-${sequence}`;
-      const response = await broker.dispatch({
+      const response = await practicePanel.runExternalProductionOperation(body, url.pathname, () => broker.dispatch({
         protocolVersion: activePanel.protocolVersion,
         requestId: `shadow-proof-request-${suffix}`,
         transactionId: `shadow-proof-tx-${suffix}`,
@@ -387,21 +389,21 @@ const server = createServer(async (req, res) => {
         capabilityId: "internal.proof.eval_file",
         command: "proof.eval_file",
         payload: { scriptPath },
-      });
+      }));
       const ok = response?.outcome === "APPLIED";
       sendJson(res, ok ? 200 : 502, { ok, scriptPath, response });
       return;
     }
     if (req.method === "POST" && url.pathname === "/run-transaction") {
       const body = await readJson(req);
-      const result = await currentTransactionRuntime.execute(body?.plan ?? body);
+      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => currentTransactionRuntime.execute(body?.plan ?? body));
       const ok = result.state === "COMMITTED";
       sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
       return;
     }
     if (req.method === "POST" && url.pathname === "/run-correction-transaction") {
       const body = await readJson(req);
-      const result = await currentTransactionRuntime.executeCorrection(body?.plan ?? body);
+      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => currentTransactionRuntime.executeCorrection(body?.plan ?? body));
       const ok = result.state === "COMMITTED";
       sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
       return;
@@ -409,14 +411,14 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/run") {
       const body = await readJson(req);
       const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-fast-${Date.now()}`;
-      const result = await runtime.runGoal(body.goal, transactionId);
+      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => runtime.runGoal(body.goal, transactionId));
       sendJson(res, 200, { ...result, status: statusPayload() });
       return;
     }
     if (req.method === "POST" && url.pathname === "/run-batch") {
       const body = await readJson(req);
       const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-batch-${Date.now()}`;
-      const result = await runtime.runRoutineBatch(body.intents, transactionId);
+      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => runtime.runRoutineBatch(body.intents, transactionId));
       sendJson(res, 200, { ...result, status: statusPayload() });
       return;
     }

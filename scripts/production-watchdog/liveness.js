@@ -32,11 +32,18 @@ function evaluateLiveness(previous, evidence, now, policy = POLICY) {
   }
   const progressAt = Math.max(evidence.startedAt || 0, evidence.semanticAt || 0,
     evidence.uiAt || 0, evidence.aeAt || 0, evidence.practiceAt || 0,
+    evidence.productionAt || 0, evidence.productionHeartbeatAt || 0,
     !evidence.semanticCoverage ? (evidence.streamAt || 0) : 0);
   const quietAgeMs = progressAt ? Math.max(0, now - progressAt) : 0;
   const live = evidence.stopVisible || evidence.activeRequests > 0 || evidence.streamRequests > 0;
   const recentProgress = progressAt && now - progressAt < policy.recentMs;
   const recentTransport = !evidence.semanticCoverage && evidence.streamAt && now - evidence.streamAt < policy.recentMs;
+  const recentProductionHeartbeat = evidence.productionHeartbeatAt
+    && now - evidence.productionHeartbeatAt < policy.quietMs;
+  if (evidence.productionInFlight && recentProductionHeartbeat) {
+    next.suspectAt = 0; next.terminalAt = 0;
+    return result("PROCESSING", "production_operation_in_flight");
+  }
 
   // An old error banner or request cannot override newer processing evidence.
   if (evidence.terminal && !live && !recentProgress) {

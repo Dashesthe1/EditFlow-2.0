@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 type Packet = Record<string, any>;
 export const CLIP_RESEARCH_POLICY_V1 = [
   "MANDATORY PER-CLIP RESEARCH GATE V1 (Practice and Pro Creation):",
   "After discovering/resuming the assignment and before changing any clip, inspect that raw clip and the corresponding visual reference window. Record its timing, motion, layering, intensity, exit/reverse behavior and each desired effect through clip-research SCAN.",
-  "For EVERY clip, search Adobe Effect Tutorials / Adobe Effect Music + Beat Tutorials first. Open and inspect the relevant tutorial sections, compile matched tutorial techniques using tutorial-compilations, and record clip-research SOURCE with the returned compiler-backed researchSourceId. A title, policy flag, or inherited knowledge alone is not consultation evidence.",
+  "For EVERY clip, retrieve an already-consulted compiled technique covering its scanned effects, or search Adobe Effect Tutorials / Adobe Effect Music + Beat Tutorials first when none fits. Reuse retains tutorial provenance; only the footage-specific plan must be new. A title, policy flag, or inherited knowledge alone is not consultation evidence.",
   "Record the actual search/review artifact, source URL/file ID, title, timestamp/section, extracted AE tools and method steps, effect coverage, and any specific limitation. Escalation is Tutorial Drive -> official Adobe documentation -> online sources, only after recorded insufficient coverage/no-match in the previous tier. Access failures are BLOCKED; they are not a no-match result.",
   "Commit clip-research PLAN mapping EACH effect to consulted source steps, an adaptation for the raw footage, and render/reference comparison checks. Tools/methods from the source guide construction; reference visual behavior remains the correctness authority. Finished footage/audio must never enter the attempt.",
   "Authenticated API: GET/POST /v1/product/gpt/assignments/{assignmentId}/clip-research. POST action=SCAN|SOURCE|PLAN with clipId and claimedBy (the current live assignment controller). GET returns durable scans, sources, plans and execution audits. Inspect GET /v1/product/gpt/clip-research-contract for payload fields.",
@@ -18,7 +18,7 @@ export const CLIP_RESEARCH_CONTRACT_V1 = {
   policy: CLIP_RESEARCH_POLICY_V1,
   common: ["action", "clipId", "claimedBy"],
   SCAN: ["sourceMediaId (provided raw video)", "sourceRangeMs [start,end]", "referenceRangeMs [start,end] (Practice)", "observations", "effects [{effectId,behavior}]", "evidencePath (JSON {clipId,observations,sourceMediaId,sourceRangeMs,referenceRangeMs})"],
-  SOURCE: ["tier TUTORIAL|ADOBE|WEB", "outcome SUFFICIENT|PARTIAL|NO_MATCH", "query", "title", "uri", "locator (video timestamps/document section)", "limitation (required if insufficient)", "evidencePath (JSON {query,uri,locator,observations|results})", "compiledResearchSourceId (matched Tutorial Drive file)", "steps [{stepId,tool,action,effectIds}]"],
+  SOURCE: ["tier TUTORIAL|ADOBE|WEB", "outcome SUFFICIENT|PARTIAL|NO_MATCH", "query", "title", "uri", "locator (video timestamps/document section)", "limitation (required if insufficient)", "evidencePath (JSON {query,uri,locator,observations|results})", "compiledResearchSourceId (matched Tutorial Drive file)", "steps [{stepId,tool,action,effectIds}]", "reuseSourceId (optional retained sourceId from another clip when it covers every scanned effect)"],
   PLAN: ["bindings [{effectId,sourceId,stepIds,adaptation}]", "comparisonChecks [specific render/reference checks]"],
   mutationContext: { assignmentId: "current assignment", claimedBy: "current controller lease owner", plans: [{ clipId: "affected clip", planId: "returned READY plan" }] },
   persistence: "Separate atomic per-assignment ledger; scans/source evidence content hashes; methods and request hashes retained in audit.",
@@ -45,18 +45,44 @@ const assignmentHash = (assignment: Packet): string => hash({
   assignmentId: assignment.assignmentId, finish: assignment.finish, start: assignment.start,
   practiceSceneMatches: assignment.practiceSceneMatches,
 });
+const mediaKey = (assignment: Packet): string => hash({ finish: assignment.finish, start: assignment.start });
+const matchKey = (assignment: Packet, clipId: string): string => {
+  const match = (assignment.practiceSceneMatches ?? []).find((item: Packet) => item.shotId === clipId);
+  return hash(match ? { sourceId: match.sourceId, sourcePath: match.sourcePath,
+    sourceStartMs: match.sourceStartMs, sourceEndMs: match.sourceEndMs, direction: match.direction,
+    trajectory: match.trajectory, workingMedia: match.workingMedia?.sourcePath } : null);
+};
 const ranks: Record<string, number> = { TUTORIAL: 0, ADOBE: 1, WEB: 2 };
 
 export class ClipResearchStoreV1 {
   static readonly tails = new Map<string, Promise<unknown>>();
+  readonly #cache = new Map<string, { mtimeMs: number; ledger: Packet }>();
   constructor(readonly directory: string, readonly evidenceRoots: readonly string[]) {}
 
   private file(assignmentId: string): string { return path.join(this.directory, hash(assignmentId) + ".json"); }
   async snapshot(assignment: Packet): Promise<Packet> {
     try {
-      const saved = JSON.parse(await readFile(this.file(assignment.assignmentId), "utf8")) as Packet;
+      const file = this.file(assignment.assignmentId);
+      const metadata = await stat(file);
+      const cached = this.#cache.get(file);
+      let saved: Packet;
+      if (cached?.mtimeMs === metadata.mtimeMs) saved = structuredClone(cached.ledger);
+      else {
+        saved = JSON.parse(await readFile(file, "utf8")) as Packet;
+        let journal = "";
+        try { journal = await readFile(file + ".audit.jsonl", "utf8"); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+        const audit = [...(saved.audit ?? []), ...journal.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))];
+        saved.audit = [...new Map(audit.map((event: Packet) => [hash(event), event])).values()];
+        this.#cache.set(file, { mtimeMs: metadata.mtimeMs, ledger: structuredClone(saved) });
+      }
       if (saved.schema !== "editflow.clip-research-ledger.v1" || saved.assignmentId !== assignment.assignmentId) {
         return fail("Invalid research ledger; repair the ledger before editing.");
+      }
+      if (saved.assignmentHash !== assignmentHash(assignment) && saved.mediaKey === mediaKey(assignment)) {
+        const clips = Object.fromEntries(Object.entries(saved.clips as Record<string, Packet>).map(([id, clip]) => [id,
+          clip.matchKey === matchKey(assignment, id) ? clip : { ...clip, plan: null, stale: true }]));
+        return { ...saved, clips, assignmentHash: assignmentHash(assignment), current: true };
       }
       return { ...saved, current: saved.assignmentHash === assignmentHash(assignment) };
     } catch (error) {
@@ -64,6 +90,15 @@ export class ClipResearchStoreV1 {
       return { schema: "editflow.clip-research-ledger.v1", assignmentId: assignment.assignmentId,
         sessionId: assignment.sessionId, assignmentHash: assignmentHash(assignment), clips: {}, audit: [], current: true };
     }
+  }
+
+  publicView(ledger: Packet, includeAuditHistory = false): Packet {
+    const { journaledAudit: _journaledAudit, ...view } = ledger;
+    const audit = ledger.audit ?? [];
+    return { ...view, auditCount: audit.length, auditTruncated: !includeAuditHistory && audit.length > 20,
+      audit: (includeAuditHistory ? audit : audit.slice(-20)).map((event: Packet) => ({ ...event,
+        ...(Array.isArray(event.plans) && !includeAuditHistory ? {
+          plans: event.plans.map((plan: Packet) => ({ clipId: plan.clipId, planId: plan.planId })) } : {}) })) };
   }
 
   private async evidence(value: unknown): Promise<Packet> {
@@ -85,11 +120,25 @@ export class ClipResearchStoreV1 {
     const pending = prior.catch(() => {}).then(async () => {
       const saved = await this.snapshot(assignment);
       const result = await action(saved);
-      const next = { ...result, updatedAt: new Date().toISOString() };
+      const next: Packet = { ...result, mediaKey: mediaKey(assignment), updatedAt: new Date().toISOString() };
       await mkdir(this.directory, { recursive: true });
+      const cached = this.#cache.get(file);
+      const retained = new Set((cached?.ledger.journaledAudit ?? []).map((item: string) => item));
+      const missing = next.audit.filter((event: Packet) => !retained.has(hash(event)));
+      if (missing.length) await appendFile(file + ".audit.jsonl", missing.map((event: Packet) => JSON.stringify(event)).join("\n") + "\n", { encoding: "utf8", flush: true });
+      const journaledAudit = next.audit.map((event: Packet) => hash(event));
       const temporary = file + ".tmp-" + randomUUID();
-      await writeFile(temporary, JSON.stringify(next, null, 2) + "\n");
-      await rename(temporary, file);
+      await writeFile(temporary, JSON.stringify({ ...next, audit: [], journaledAudit }, null, 2) + "\n", { encoding: "utf8", flush: true });
+      try {
+        for (let attempt = 0; ; attempt++) {
+          try { await rename(temporary, file); break; }
+          catch (error) {
+            if (!["EPERM", "EACCES", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "") || attempt >= 5) throw error;
+            await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+          }
+        }
+      } finally { await rm(temporary, { force: true }).catch(() => undefined); }
+      this.#cache.set(file, { mtimeMs: (await stat(file)).mtimeMs, ledger: { ...structuredClone(next), journaledAudit } });
       return next;
     });
     ClipResearchStoreV1.tails.set(file, pending);
@@ -140,16 +189,40 @@ export class ClipResearchStoreV1 {
         const scan = { sourceMediaId, sourceRangeMs, referenceRangeMs, observations, effects, evidence,
           referenceMediaId: assignment.finish?.mediaId ?? null };
         // Reposting the same scan resumes it; changed inspection invalidates the prior plan.
-        clip = clip?.scanHash === hash(scan) ? clip : { clipId, scan, scanHash: hash(scan), sources: [], plan: null };
+        clip = clip?.scanHash === hash(scan) && !clip.stale ? clip : { clipId, scan, scanHash: hash(scan), sources: [], plan: null };
+        clip = { ...clip, matchKey: matchKey(assignment, clipId), stale: false };
       } else {
         if (!clip) return fail("Inspect and record SCAN before consulting a source or making a plan.");
         const effectIds = clip.scan.effects.map((effect: Packet) => effect.effectId);
         if (input.action === "SOURCE") {
+          const priorSources = clip.sources as Packet[];
+          const reuseSourceId = typeof input.reuseSourceId === "string" && input.reuseSourceId.trim()
+            ? input.reuseSourceId.trim()
+            : null;
+          if (reuseSourceId !== null) {
+            const reusable = Object.values(saved.clips as Record<string, Packet>)
+              .flatMap((candidate: Packet) => candidate?.sources ?? [])
+              .find((source: Packet) => source.sourceId === reuseSourceId);
+            if (!reusable || reusable.outcome === "NO_MATCH") {
+              return fail("reuseSourceId must identify a retained successful/partial consulted source.");
+            }
+            const covered = new Set(reusable.steps.flatMap((step: Packet) => step.effectIds));
+            if (!effectIds.every((id: string) => covered.has(id))) {
+              return fail("Reused research source does not cover every scanned effect for this clip.");
+            }
+            if (!priorSources.some((source: Packet) => source.sourceId === reusable.sourceId)) {
+              priorSources.push(structuredClone(reusable));
+              clip = { ...clip, sources: priorSources, plan: null };
+            }
+            return { ...saved, clips: { ...saved.clips, [clipId]: clip }, audit: [
+              ...saved.audit,
+              { kind: "RESEARCH_REUSED", at: new Date().toISOString(), clipId, sourceId: reuseSourceId },
+            ] };
+          }
           const tier = str(input.tier, "tier");
           const rank = ranks[tier];
           if (rank === undefined) return fail("tier must be TUTORIAL, ADOBE or WEB.");
           if (!["SUFFICIENT", "PARTIAL", "NO_MATCH"].includes(input.outcome)) return fail("Invalid source outcome; access failures must be repaired, not treated as no-match.");
-          const priorSources = clip.sources as Packet[];
           const lastRank = priorSources.length ? ranks[priorSources.at(-1)!.tier]! : 0;
           if (rank < lastRank || rank > lastRank + 1 || (!priorSources.length && rank !== 0)) {
             return fail("Consult tutorials first, then Adobe, then web without skipping a tier.");
@@ -271,7 +344,7 @@ export class ClipResearchStoreV1 {
   async audit(assignment: Packet, admission: Packet, outcome: string, evidenceRefs: readonly string[] = []): Promise<void> {
     await this.mutate(assignment, async (saved) => ({ ...saved, audit: [...saved.audit, {
       kind: "METHOD_EXECUTION", at: new Date().toISOString(), outcome, requestHash: admission.requestHash,
-      plans: admission.plans, evidenceRefs,
+      plans: admission.plans.map((plan: Packet) => ({ clipId: plan.clipId, planId: plan.planId })), evidenceRefs,
     }] }));
   }
 }

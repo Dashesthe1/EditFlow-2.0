@@ -247,6 +247,8 @@ export interface PracticeContentStructureEvaluationV1 {
 
 export interface PracticeM6RuntimeV1 {
   readonly availableCapabilities: readonly string[];
+  /** Defer the second phase proof to one shared whole-edit render. */
+  readonly deferPhaseConfirmationToWholeEdit?: boolean;
   analyzeReference(
     reference: PracticeReferenceAnalysisV1,
   ): Promise<DenseEffectEvidenceV1>;
@@ -342,19 +344,23 @@ export interface PracticeM6PhaseProofStoreV1 {
   delete(key: string): Promise<void>;
 }
 
-const phaseProofDependencyFingerprint = (input: {
+export const phaseProofDependencyFingerprintV1 = (input: {
   readonly reference: PracticeReferenceAnalysisV1;
   readonly baseline: PracticeContentBaselineV1;
   readonly matches: readonly PracticeSceneMatchV1[];
   readonly audioMatch?: PracticeAudioMatchV1 | null;
-}): string => createHash("sha256").update(JSON.stringify({
+}, window?: Pick<DenseEffectWindowV1, "startMs" | "endMs">): string => {
+  const shots = window === undefined ? input.reference.shots : input.reference.shots.filter((shot) =>
+    shot.referenceStartMs < window.endMs + 34 && shot.referenceEndMs > window.startMs - 34);
+  const ids = new Set(shots.map((shot) => shot.shotId));
+  return createHash("sha256").update(JSON.stringify({
   referenceId: input.reference.referenceId,
   styleFingerprint: input.reference.styleFingerprint,
-  shots: input.reference.shots,
+  shots,
   baselineId: input.baseline.baselineId,
   timelineRef: input.baseline.timelineRef,
   audioTimelineRef: input.baseline.audioTimelineRef ?? null,
-  matches: input.matches.map((match) => ({
+  matches: input.matches.filter((match) => window === undefined || ids.has(match.shotId)).map((match) => ({
     shotId: match.shotId,
     sourceId: match.sourceId,
     sourcePath: match.sourcePath ?? null,
@@ -377,6 +383,7 @@ const phaseProofDependencyFingerprint = (input: {
       beatGrid: input.audioMatch.beatGrid ?? null,
     },
 })).digest("hex");
+};
 
 const phaseProofCacheKey = (
   sessionId: string,
@@ -1206,7 +1213,6 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         ? {}
         : { beatGrid: input.audioMatch.beatGrid }),
     });
-    const dependencyFingerprint = phaseProofDependencyFingerprint(input);
     const phaseProofsAtStart = new Map<string, PracticeM6PhaseProofCacheEntryV1>();
     for (const window of analysis.sequence.windows) {
       const key = phaseProofCacheKey(
@@ -1214,7 +1220,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         input.reference.referenceId,
         input.editTypeId,
         input.editTypeKnowledge.revision,
-        dependencyFingerprint,
+        phaseProofDependencyFingerprintV1(input, window),
         window.windowId,
       );
       const retained = await this.#phaseProof(key);
@@ -1270,7 +1276,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         input.reference.referenceId,
         input.editTypeId,
         input.editTypeKnowledge.revision,
-        dependencyFingerprint,
+        phaseProofDependencyFingerprintV1(input, window),
         window.windowId,
       );
       const retainedPhaseProof = phaseProofsAtStart.get(window.windowId);
@@ -1278,7 +1284,8 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         && retainedPhaseProof.consecutivePasses >= 2
         ? structuredClone(retainedPhaseProof.graph)
         : null;
-      const skipRetainedPhaseDuringTraining = !allPhasesProvenAtStart
+      const skipRetainedPhaseDuringTraining = this.runtime.deferPhaseConfirmationToWholeEdit !== true
+        && !allPhasesProvenAtStart
         && reusablePhaseGraph !== null;
       if (skipRetainedPhaseDuringTraining) {
         skippedProvenWindowIds.add(window.windowId);
@@ -1371,36 +1378,48 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       if (result.status === "COMPLETED" && resolvedGraph !== null) {
         if (reusablePhaseGraph === null) {
           consecutivePhasePasses = 1;
-          const confirmationEvidence = await this.runtime.renderWindowEvidence({
-            sessionId: input.sessionId,
-            attempt: input.attempt,
-            reference: input.reference,
-            baseline: input.baseline,
-            window,
-            graph: resolvedGraph,
-          });
-          const confirmation = compareSemanticVisualFidelityV1({
-            reference: window.evidence,
-            render: confirmationEvidence,
-            dna: dnaForEvidence(window.evidence),
-            alignment: "SEMANTIC",
-          });
-          phaseEvidenceRefs.push(
-            ...confirmationEvidence.evidenceRefs,
-            `practice-phase-proof-confirmation-reference:${confirmation.referenceEvidenceKey}`,
-            `practice-phase-proof-confirmation-render:${confirmation.renderEvidenceKey}`,
-            ...confirmation.diagnoses.map((diagnosis) =>
-              `practice-phase-proof-confirmation-diagnosis:${diagnosis}`),
-          );
-          consecutivePhasePasses = confirmation.passed ? 2 : 0;
-          if (consecutivePhasePasses >= 2) {
+          if (this.runtime.deferPhaseConfirmationToWholeEdit === true) {
             await this.#rememberPhaseProof(phaseCacheKey, {
               graph: structuredClone(resolvedGraph),
-              consecutivePasses: consecutivePhasePasses,
+              consecutivePasses: 1,
               lastAttempt: input.attempt,
             });
+            phaseEvidenceRefs.push(
+              `practice-phase-proof-provisional:${window.windowId}`,
+              "practice-phase-proof-second-pass-deferred-to-whole-edit",
+            );
           } else {
-            await this.#forgetPhaseProof(phaseCacheKey);
+            const confirmationEvidence = await this.runtime.renderWindowEvidence({
+              sessionId: input.sessionId,
+              attempt: input.attempt,
+              reference: input.reference,
+              baseline: input.baseline,
+              window,
+              graph: resolvedGraph,
+            });
+            const confirmation = compareSemanticVisualFidelityV1({
+              reference: window.evidence,
+              render: confirmationEvidence,
+              dna: dnaForEvidence(window.evidence),
+              alignment: "SEMANTIC",
+            });
+            phaseEvidenceRefs.push(
+              ...confirmationEvidence.evidenceRefs,
+              `practice-phase-proof-confirmation-reference:${confirmation.referenceEvidenceKey}`,
+              `practice-phase-proof-confirmation-render:${confirmation.renderEvidenceKey}`,
+              ...confirmation.diagnoses.map((diagnosis) =>
+                `practice-phase-proof-confirmation-diagnosis:${diagnosis}`),
+            );
+            consecutivePhasePasses = confirmation.passed ? 2 : 0;
+            if (consecutivePhasePasses >= 2) {
+              await this.#rememberPhaseProof(phaseCacheKey, {
+                graph: structuredClone(resolvedGraph),
+                consecutivePasses: consecutivePhasePasses,
+                lastAttempt: input.attempt,
+              });
+            } else {
+              await this.#forgetPhaseProof(phaseCacheKey);
+            }
           }
         }
       } else {
@@ -1506,6 +1525,74 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       });
     }
 
+    let deferredWholeEditRender: Awaited<ReturnType<PracticeM6RuntimeV1["renderFullEdit"]>> | null = null;
+    if (this.runtime.deferPhaseConfirmationToWholeEdit === true) {
+      const provisionalKeys = await Promise.all(analysis.sequence.windows.map(async (window) => {
+        const key = phaseProofCacheKey(
+          input.sessionId,
+          input.reference.referenceId,
+          input.editTypeId,
+          input.editTypeKnowledge.revision,
+          phaseProofDependencyFingerprintV1(input, window),
+          window.windowId,
+        );
+        const retained = await this.#phaseProof(key);
+        return retained?.consecutivePasses === 1 ? { window, key, retained } : null;
+      }));
+      const provisional = provisionalKeys.filter((item): item is NonNullable<typeof item> => item !== null);
+      if (provisional.length > 0) {
+        deferredWholeEditRender = await this.runtime.renderFullEdit({
+          sessionId: input.sessionId,
+          attempt: input.attempt,
+          reference: input.reference,
+          baseline: input.baseline,
+        });
+        evidenceRefs.push(
+          ...deferredWholeEditRender.evidenceRefs,
+          "practice-phase-proof-shared-whole-edit-confirmation",
+        );
+        const renderedEvidence = await this.runtime.analyzeRender({
+          renderRef: deferredWholeEditRender.renderRef,
+          reference: input.reference,
+        });
+        const renderedSequence = detectDenseEffectWindowsV1(renderedEvidence);
+        const alignment = alignDenseEffectSequencesV1(analysis.sequence, renderedSequence);
+        const pairByReference = new Map(alignment.pairs.map((pair) => [pair.referenceIndex, pair]));
+        for (const item of provisional) {
+          const referenceIndex = analysis.sequence.windows.findIndex((window) => window.windowId === item.window.windowId);
+          const pair = pairByReference.get(referenceIndex);
+          const renderedWindow = pair === undefined ? undefined : renderedSequence.windows[pair.renderIndex];
+          if (renderedWindow === undefined) {
+            await this.#forgetPhaseProof(item.key);
+            evidenceRefs.push(`practice-phase-proof-shared-confirmation-missing:${item.window.windowId}`);
+            continue;
+          }
+          const confirmation = compareSemanticVisualFidelityV1({
+            reference: item.window.evidence,
+            render: renderedWindow.evidence,
+            dna: dnaForEvidence(item.window.evidence),
+            alignment: "SEMANTIC",
+          });
+          evidenceRefs.push(
+            `practice-phase-proof-shared-confirmation-reference:${confirmation.referenceEvidenceKey}`,
+            `practice-phase-proof-shared-confirmation-render:${confirmation.renderEvidenceKey}`,
+            `practice-phase-proof-shared-confirmation:${item.window.windowId}:${String(confirmation.passed)}`,
+            ...confirmation.diagnoses.map((diagnosis) =>
+              `practice-phase-proof-shared-confirmation-diagnosis:${diagnosis}`),
+          );
+          if (confirmation.passed) {
+            await this.#rememberPhaseProof(item.key, {
+              graph: structuredClone(item.retained.graph),
+              consecutivePasses: 2,
+              lastAttempt: input.attempt,
+            });
+          } else {
+            await this.#forgetPhaseProof(item.key);
+          }
+        }
+      }
+    }
+
     let allPhasesProvenNow = true;
     for (const window of analysis.sequence.windows) {
       const key = phaseProofCacheKey(
@@ -1513,7 +1600,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         input.reference.referenceId,
         input.editTypeId,
         input.editTypeKnowledge.revision,
-        dependencyFingerprint,
+        phaseProofDependencyFingerprintV1(input, window),
         window.windowId,
       );
       if ((await this.#phaseProof(key))?.consecutivePasses !== 2) {
@@ -1564,7 +1651,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       };
     }
 
-    const rendered = await this.runtime.renderFullEdit({
+    const rendered = deferredWholeEditRender ?? await this.runtime.renderFullEdit({
       sessionId: input.sessionId,
       attempt: input.attempt,
       reference: input.reference,

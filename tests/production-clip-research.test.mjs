@@ -141,3 +141,32 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   assert.equal((await store.listAssignments()).length, 1);
   assert.deepEqual(resumed.clipResearch.clips, {});
 });
+
+test('compiled research source can be reused across clips with identical effect coverage', async t => {
+  const f = await fixture(t);
+  await f.scan('shot:1');
+  await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
+  const first = await f.store.snapshot(f.assignment);
+  const sourceId = first.clips['shot:1'].sources[0].sourceId;
+  await f.scan('shot:2');
+  const reused = await f.store.record(f.assignment, {
+    action: 'SOURCE',
+    claimedBy: 'controller',
+    clipId: 'shot:2',
+    reuseSourceId: sourceId,
+  });
+  assert.equal(reused.clips['shot:2'].sources[0].sourceId, sourceId);
+  assert.equal(reused.audit.at(-1).kind, 'RESEARCH_REUSED');
+});
+
+
+test('public research view bounds audit payload while preserving complete retained history', async t => {
+  const f = await fixture(t);
+  const ledger = { clips: { 'shot:1': { plan: { status:'READY' } } }, journaledAudit:['hash'],
+    audit: Array.from({length:30}, (_,i) => ({kind:'METHOD_EXECUTION', plans:[{clipId:'shot:1',planId:'plan:'+i,methods:'x'.repeat(10000)}]})) };
+  const view = f.store.publicView(ledger);
+  assert.equal(view.audit.length,20); assert.equal(view.auditCount,30); assert.equal(view.auditTruncated,true);
+  assert.equal(view.audit[0].plans[0].methods,undefined); assert.equal(view.journaledAudit,undefined);
+  assert.equal(f.store.publicView(ledger,true).audit.length,30);
+  assert.equal(ledger.audit[0].plans[0].methods.length,10000);
+});

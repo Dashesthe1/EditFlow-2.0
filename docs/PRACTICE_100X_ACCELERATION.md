@@ -1,22 +1,66 @@
 # Practice 100x Acceleration Contract
 
-Status: staged implementation; 100x remains an unproven benchmark target.
+Status: implemented architecture with native scratch rendering; production speedup still requires a real-media benchmark.
 
-Implemented in this branch: parallel independent media-analysis and matching stages; GPT
-coverage-first guidance; transactional batched trace persistence; persistent phase-proof reuse bound to
-reference, baseline, exact source matches, and audio; a non-authoritative progressive
-candidate ranker; source review sheets; residual and anti-stagnation policy helpers.
-The unified Shadow daemon exposes this as the primary Practice panel workflow, and resumed
-nonterminal assignments receive the current scheduling rules while retaining their checkpoints.
-Reference/source/match analysis now uses a shared user-level cache keyed by media path,
-size, modification time, analyzer code, and settings. Repeated sessions on unchanged media
-avoid another full indexing and scene search; changed media metadata or analyzer code
-invalidates the cache.
+Implemented in this branch: parallel independent media-analysis and matching stages; a durable
+production coordinator independent of ChatGPT conversation lifetime; automatic source-lock certificates;
+whole-edit coverage as a first-class milestone; transactional batched trace persistence; append-only GPT
+learning-event journaling; persistent phase-proof reuse bound to reference, baseline, exact source matches,
+and audio; dependency-aware invalidation; residual-priority scheduling; stage wall-clock budgets with
+strategy-escalation directives; production/AE heartbeats; production-aware Watchdog liveness; cross-clip
+compiled-tutorial reuse; targeted-mutation enforcement after whole-edit coverage; a reusable progressive
+scratch-candidate search rig; and shared whole-edit confirmation of provisional phase proofs so one render
+can supply the second unchanged pass for many phases. The unified Shadow daemon exposes this as the
+primary Practice panel workflow, and resumed nonterminal assignments receive the current scheduling rules
+while retaining their checkpoints. Production telemetry is retained by category/stage so time spent in
+media analysis, research, AE mutation, render/comparison, proof I/O, infrastructure, and idle work can be
+measured rather than reconstructed manually.
 
-Still required for the end-to-end target: a reusable AE scratch candidate rig, automatic
-whole-edit coverage before per-phase certification in the native Practice runtime,
-and a real-media A/B benchmark. The policy
-constants and tests alone do not establish a measured speedup.
+Reference/source/match analysis uses a shared user-level cache keyed by media path, size, modification
+time, analyzer code, and settings. Repeated sessions on unchanged media avoid another full indexing and
+scene search; changed media metadata or analyzer code invalidates the cache. The production coordinator
+also persists AE checkpoint identity separately from any ChatGPT chat, and long-running production
+operations refresh their own liveness heartbeat.
+
+Remaining validation: run a real-media A/B benchmark on the same assignment inputs and quality gates.
+The native scratch backend renders isolated root-comp copies at 1/8, 1/4 and full resolution,
+verifies actual output dimensions, and cleans the temporary comp after each render. Search scores
+remain non-authoritative and return finalists to GPT for direct pixel inspection. Native numeric
+search currently supports root-layer AE properties/effects; nested precomp structure, expressions,
+third-party effects and new topology require a new GPT hypothesis/capability route.
+
+## Continuous production API
+
+- `GET/POST /v1/product/gpt/assignments/{id}/production-jobs`: enqueue authorized
+  `AE_TRANSACTION`, `SCRATCH_SEARCH`, `LOCAL_RENDER`, `SAVE_CHECKPOINT`, and
+  `REFERENCE_ANALYSIS` work. Include the current `researchContext` in each payload.
+- The local worker starts with the service, reads the durable append journal, executes one
+  AE writer alongside up to three read-only preparations, respects dependencies and cancellation,
+  and retains results independently of ChatGPT. It never invents missing creative decisions.
+- Search/render finalists pause for `REVIEW_REQUIRED`. A crashed in-flight mutation becomes
+  `RECONCILE_REQUIRED`, never an automatic replay. Failed jobs also hold later writes until reconciled. `RESOLVE` requires the current controller
+  and retained visual/reconciliation evidence. These queue receipts do not certify an edit.
+- Production state updates require the live controller. Local/whole proof receipts require a
+  unique render evidence reference and candidate identity. A repeated receipt cannot count twice;
+  failures, reconstruction and changes to a candidate reset the affected proof sequence.
+- Stage budgets accumulate across stage changes. Warm/cold session strategy envelopes are
+  4/6 hours. An overrun pauses queued work at a strategy review. `STRATEGY_CHANGE` records a
+  new concrete strategy before execution resumes; it preserves the original elapsed telemetry.
+- Source certificates include file identity and matched ranges. Ordinary numeric effect changes
+  preserve sources, research, audio and unrelated phases. Changed files without fresh source validation
+  block AE writes. Research and phase fingerprints use
+  the affected source windows rather than invalidating every clip for one changed match.
+- GPT learning events, clip execution audits, job state and telemetry append to journals.
+  Small snapshots support cheap readback; coordinator writes serialize and retry Windows locks.
+  Default research responses retain the latest 20 compact audit receipts and their total count;
+  `includeAuditHistory=true` retrieves complete retained history.
+- Telemetry distinguishes summed work from the union of active intervals, so concurrent jobs
+  cannot hide idle time through double-counting. The remaining wall time is explicitly unattributed.
+
+Coverage-first construction and shared whole-edit confirmation change scheduling, not quality.
+Authoritative completion still requires the existing original M6/direct-GPT visual gate, exact raw
+sources, raw audio, the 95% similarity floor, two phase passes, two whole-edit passes, and the
+independent mastery rules. A coordinator or a machine search score cannot grant acceptance.
 
 ## Goal
 

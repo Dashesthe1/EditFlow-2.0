@@ -109,6 +109,28 @@ test("Practice panel product API is authenticated and preserves readiness gates"
   const resume = await (await fetch(base + "/v1/product/practice/resume-or-start", { headers })).json();
   assert.equal(resume.assignment.assignmentId, persistedRun.assignmentId);
   assert.equal(resume.nextOperation, "RESUME_PREFLIGHT");
+  assert.ok(resume.production);
+  const production = await (await fetch(
+    base + "/v1/product/gpt/assignments/" + encodeURIComponent(persistedRun.assignmentId) + "/production",
+    { headers },
+  )).json();
+  assert.equal(production.production.sessionId, persistedRun.sessionId);
+  assert.equal(production.strategy.action, "CONTINUE");
+  assert.ok(production.telemetry);
+  const assignmentStore = new GptOrchestrationStoreV1(path.join(root, "artifacts", "state", "gpt-orchestration.json"));
+  await assignmentStore.claim(persistedRun.assignmentId, "test-controller");
+  const checkpoint = await fetch(
+    base + "/v1/product/gpt/assignments/" + encodeURIComponent(persistedRun.assignmentId) + "/production",
+    {
+      method: "POST", headers,
+      body: JSON.stringify({
+        action: "AE_CHECKPOINT", claimedBy: "test-controller", projectId: "practice-test-project", projectRevision: 7,
+        activeCompId: "comp:test", projectPath: "C:/Practice/test.aep",
+      }),
+    },
+  );
+  assert.equal(checkpoint.status, 200);
+  assert.equal((await checkpoint.json()).production.aeCheckpoint.projectRevision, 7);
   const mutation = await fetch(base + "/v1/product/control/run-batch", {
     method: "POST", headers, body: JSON.stringify({ intents: [] }),
   });

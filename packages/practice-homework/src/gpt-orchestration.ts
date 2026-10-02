@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -63,6 +63,32 @@ export const normalizePracticeVerificationPolicyV1 = (
   ),
 });
 
+const eventJournalPathFor = (filePath: string): string => filePath + ".events.jsonl";
+
+const readEventJournal = async (filePath: string): Promise<readonly GptLearningEventV1[]> => {
+  try {
+    const raw = await readFile(eventJournalPathFor(filePath), "utf8");
+    return raw.split(/\r?\n/).filter(Boolean).map((line, index) => {
+      try { return JSON.parse(line) as GptLearningEventV1; }
+      catch (error) {
+        throw new TypeError(`GPT orchestration event journal contains invalid JSON at line ${index + 1}: ${String(error)}`);
+      }
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+};
+
+const mergeEvents = (
+  snapshotEvents: readonly GptLearningEventV1[],
+  journalEvents: readonly GptLearningEventV1[],
+): readonly GptLearningEventV1[] => {
+  const byId = new Map<string, GptLearningEventV1>();
+  for (const event of [...snapshotEvents, ...journalEvents]) byId.set(event.eventId, event);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+};
+
 const readStore = async (filePath: string): Promise<GptOrchestrationStorePayloadV1> => {
   try {
     const parsed = JSON.parse(
@@ -74,8 +100,10 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
       throw new TypeError("GPT orchestration store has an unsupported schema.");
     }
     const payload = parsed as GptOrchestrationStorePayloadV1;
+    const journalEvents = await readEventJournal(filePath);
     return {
       ...payload,
+      events: mergeEvents(payload.events, journalEvents),
       assignments: payload.assignments.map((assignment) => {
         const practicePolicy = assignment.mode === "PRACTICE"
           ? normalizePracticeVerificationPolicyV1(assignment.practicePolicy)
@@ -606,15 +634,25 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   return applyCurrentWorkflowContinuityPolicy(message);
 };
 
-const PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1 = "PRACTICE_ACCELERATION_CONTINUITY_V1";
+const PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1 = "PRACTICE_ACCELERATION_CONTINUITY_V3";
 const PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1 = [
   PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1,
   "Current Practice execution policy for this resumed assignment:",
   "- Preserve the retained assignment, source decisions, proven AE checkpoints, and original M6 reference-driven visual method.",
   "- Build playable whole-edit coverage from every source-locked phase before final phase certification. Earlier instructions requiring a phase to pass before constructing the next phase are superseded as a construction-order rule.",
+  "- Use the durable production coordinator endpoint for stage/heartbeat/proof state. ChatGPT conversations are replaceable reasoning workers, never the production clock or owner of AE continuity.",
+  "- Submit approved deterministic tasks through GET/POST /v1/product/gpt/assignments/{assignmentId}/production-jobs. Job kinds AE_TRANSACTION, SCRATCH_SEARCH, LOCAL_RENDER, SAVE_CHECKPOINT and REFERENCE_ANALYSIS run continuously from a durable queue; dependencyIds preserve order. Payload includes the current researchContext. Review/reconcile REVIEW_REQUIRED, RECONCILE_REQUIRED or FAILED jobs using action=RESOLVE, jobId, claimedBy and reviewEvidenceRef after inspecting and, if needed, repairing actual AE state. Never blindly replay a crashed AE mutation.",
+  "- SCRATCH_SEARCH payload includes clipId, compStableId, startMs/endMs (at most 2000 ms), and up to 32 candidates {candidateId,patches:[{layerIndex,effectMatchName,propertyPath,keys:[{timeMs,value}]}]}. Numeric native AE overrides are applied only to disposable root-comp copies; actual render dimensions must verify 1/8, 1/4 and full resolution. Finalists require direct GPT pixel review and a separate canonical commit.",
   "- Use shared immutable media analysis, batch direct-pixel source review, bounded local candidate search, residual-priority correction, and validated batch trace transport when available.",
+  "- Reuse a retained consulted tutorial source across clips when it covers the same scanned effects; only the footage-specific PLAN/adaptation must be new. Do not reopen the same tutorial merely to satisfy per-clip bookkeeping.",
+  "- Prefer targeted clip/boundary mutation after whole-edit coverage exists. Do not submit all-shot mutation batches unless the operation is genuinely global.",
+  "- A first successful local phase proof becomes PROVISIONAL_PASS. Let a later whole-edit render provide the second phase pass for all provisional phases at once when unchanged; avoid immediate duplicate confirmation renders.",
+  "- Keep one AE writer. Parallelize non-mutating work: reference anatomy, source preparation, tutorial retrieval, comparison, and next-phase planning may overlap while AE is rendering or mutating.",
+  "- Use the scratch candidate funnel for bounded numeric search: up to 32 coarse candidates -> 8 mid candidates -> 2 full candidates. GPT chooses the effect hypothesis/invariants and reviews only the strongest alternatives.",
   "- Machine/proxy candidate scores are search evidence only. GPT must inspect reference and actual AE render pixels before committing a winner.",
-  "- Stop weak parameter tuning after two rounds; escalate the effect hypothesis. Held-out certification remains inference-only and must fail closed when frozen capabilities are insufficient.",
+  "- Stop weak parameter tuning after two rounds or under 1% relevant gain; escalate the effect hypothesis rather than spending wall time on tiny nudges.",
+  "- Record wall-clock telemetry for media analysis, source decision, GPT review, research, AE mutation, render, comparison, proof I/O, infrastructure, and idle time. Budget overruns must trigger strategy change, not silent waiting.",
+  "- On ESCALATE_STRATEGY, diagnose the bottleneck and send production action=STRATEGY_CHANGE with claimedBy and a new concrete strategyKey. Retain elapsed telemetry and proof history; do not reset the assignment to reset its budget.",
   "- Preserve the exact source, 95% similarity floor, two consecutive phase passes, and two consecutive whole-edit passes. Final proof authority is unchanged.",
 ].join("\n");
 
@@ -644,12 +682,27 @@ export class GptOrchestrationStoreV1 {
     this.filePath = path.resolve(filePath);
   }
 
+  async #appendMissingEventsToJournal(events: readonly GptLearningEventV1[]): Promise<void> {
+    if (events.length === 0) return;
+    await mkdir(path.dirname(this.filePath), { recursive: true });
+    const retainedIds = new Set((await readEventJournal(this.filePath)).map((event) => event.eventId));
+    const missing = events.filter((event) => !retainedIds.has(event.eventId));
+    if (missing.length === 0) return;
+    await appendFile(
+      eventJournalPathFor(this.filePath),
+      missing.map((event) => JSON.stringify(event)).join("\n") + "\n",
+      { encoding: "utf8", flush: true },
+    );
+  }
+
   async #write(payload: GptOrchestrationStorePayloadV1): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
+    await this.#appendMissingEventsToJournal(payload.events);
+    const snapshotPayload: GptOrchestrationStorePayloadV1 = { ...payload, events: [] };
     this.#sequence += 1;
     const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence) + "-" + randomUUID();
     try {
-      await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", flush: true });
+      await writeFile(temporary, JSON.stringify(snapshotPayload, null, 2) + "\n", { encoding: "utf8", flush: true });
       for (let attempt = 0; ; attempt += 1) {
         try {
           await rename(temporary, this.filePath);
@@ -803,7 +856,6 @@ export class GptOrchestrationStoreV1 {
       const assignments = payload.assignments.map((assignment) => {
         if (assignment.mode !== "PRACTICE"
           || !["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
-          || assignment.chatMessage.includes("ACCELERATED COVERAGE-FIRST SCHEDULE")
           || assignment.chatMessage.includes(PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1)) {
           return assignment;
         }
@@ -920,16 +972,24 @@ export class GptOrchestrationStoreV1 {
     if (inputs.length === 0 || inputs.length > 64) {
       throw new TypeError("GPT event batch must contain 1-64 entries.");
     }
-    return await this.#mutate((payload) => {
-      let next = payload;
+    let output: readonly GptLearningEventV1[] = [];
+    const pending = (GptOrchestrationStoreV1.#tails.get(this.filePath) ?? Promise.resolve()).then(async () => {
+      let next = await readStore(this.filePath);
       const events: GptLearningEventV1[] = [];
       for (const input of inputs) {
         const [updated, event] = this.#appendEventToPayload(next, input);
         next = updated;
         events.push(event);
       }
-      return [next, events] as const;
+      await this.#appendMissingEventsToJournal(events);
+      output = events.map((event) => structuredClone(event));
     });
+    const tail = pending.catch(() => undefined);
+    GptOrchestrationStoreV1.#tails.set(this.filePath, tail);
+    try { await pending; } finally {
+      if (GptOrchestrationStoreV1.#tails.get(this.filePath) === tail) GptOrchestrationStoreV1.#tails.delete(this.filePath);
+    }
+    return output;
   }
 
   #appendEventToPayload(

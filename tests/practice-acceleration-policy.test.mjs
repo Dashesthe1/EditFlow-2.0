@@ -115,14 +115,14 @@ test("retained running Practice assignments adopt current acceleration policy wi
   });
   await store.claim(assignment.assignmentId, "existing-controller");
   const retained = JSON.parse(await readFile(filePath, "utf8"));
-  retained.assignments[0].chatMessage = "Legacy original M6. Pass each phase before emitting work for the next chronological phase.";
+  retained.assignments[0].chatMessage = "Legacy original M6. ACCELERATED COVERAGE-FIRST SCHEDULE. Pass each phase before emitting work for the next chronological phase.";
   await writeFile(filePath, JSON.stringify(retained), "utf8");
 
   assert.equal(await store.refreshActivePracticeInstructions(), 1);
   const resumed = await store.getAssignment(assignment.assignmentId);
   assert.equal(resumed.status, "RUNNING");
   assert.equal(resumed.claimedBy, "existing-controller");
-  assert.match(resumed.chatMessage, /PRACTICE_ACCELERATION_CONTINUITY_V1/);
+  assert.match(resumed.chatMessage, /PRACTICE_ACCELERATION_CONTINUITY_V3/);
   assert.match(resumed.chatMessage, /superseded as a construction-order rule/);
   assert.match(resumed.chatMessage, /two consecutive whole-edit passes/);
   assert.equal(await store.refreshActivePracticeInstructions(), 0);

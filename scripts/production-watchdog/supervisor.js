@@ -4,7 +4,7 @@ const http = require("http");
 const fs = require("fs");
 const pathMod = require("path");
 const { spawn } = require("child_process");
-const { randomUUID } = require("crypto");
+const { randomUUID, createHash } = require("crypto");
 const { POLICY, evaluateLiveness } = require("./liveness.js");
 const { validStopProof } = require("./stop-gate.js");
 
@@ -14,6 +14,7 @@ const ROOT = __dirname;
 const ORCHESTRATION =
   "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\practice-state\\gpt-orchestration.json";
 const STATE_PATH = pathMod.join(ROOT, "state.json");
+const PRODUCTION_DIR = pathMod.join(pathMod.dirname(ORCHESTRATION), "production-coordinator");
 const LOG_PATH = pathMod.join(ROOT, "events.jsonl");
 const RECOVERY_SCRIPT = pathMod.join(ROOT, "recover-extension.ps1");
 const EDITFLOW_STATUS_URL = "http://127.0.0.1:32146/status";
@@ -184,11 +185,28 @@ function readPractice() {
       if (lastLearningEventAt) break;
     }
   }
+  let production = null;
+  if (latest.sessionId) {
+    try {
+      const key = createHash("sha256").update(String(latest.sessionId), "utf8").digest("hex");
+      production = JSON.parse(fs.readFileSync(pathMod.join(PRODUCTION_DIR, key + ".json"), "utf8"));
+    } catch (_) {}
+  }
+  const productionProgressAt = production && production.lastProgressAt
+    ? (Date.parse(production.lastProgressAt) || 0)
+    : 0;
+  const productionHeartbeatAt = production && production.workerHeartbeatAt
+    ? (Date.parse(production.workerHeartbeatAt) || 0)
+    : 0;
   const artifactProgressAt = newestArtifactMtime(latest.artifactDir || null);
-  const practiceProgressAt = Math.max(lastLearningEventAt, artifactProgressAt);
-  const practiceProgressSource = artifactProgressAt >= lastLearningEventAt
-    ? (artifactProgressAt ? "artifact" : null)
-    : "learning_event";
+  const practiceProgressAt = Math.max(lastLearningEventAt, artifactProgressAt, productionProgressAt, productionHeartbeatAt);
+  const practiceProgressSource = practiceProgressAt === productionHeartbeatAt && productionHeartbeatAt
+    ? "production_heartbeat"
+    : practiceProgressAt === productionProgressAt && productionProgressAt
+      ? "production_checkpoint"
+      : artifactProgressAt >= lastLearningEventAt
+        ? (artifactProgressAt ? "artifact" : null)
+        : "learning_event";
 
   return {
     ok: true,
@@ -206,6 +224,11 @@ function readPractice() {
       : 0,
     lastLearningEventAt: lastLearningEventAt || 0,
     artifactProgressAt: artifactProgressAt || 0,
+    productionProgressAt: productionProgressAt || 0,
+    productionHeartbeatAt: productionHeartbeatAt || 0,
+    productionInFlight: !!(production && production.inFlightOperation),
+    productionOperation: production && production.inFlightOperation || null,
+    productionStage: production && production.stage || null,
     progressAt: practiceProgressAt || 0,
     progressSource: practiceProgressSource
   };
@@ -397,6 +420,9 @@ function commandForHeartbeat(body, practice) {
     uiAt: runtime.lastUiProgressAt,
     aeAt: runtime.lastAeProgressAt,
     practiceAt: runtime.lastPracticeProgressAt,
+    productionAt: Number(practice.productionProgressAt || 0),
+    productionHeartbeatAt: Number(practice.productionHeartbeatAt || 0),
+    productionInFlight: practice.productionInFlight === true,
     streamAt: Number(body.streamLastActivityAt || runtime.lastStreamActivityAt || 0),
     activeRequests: Number(body.activeRequests || 0),
     streamRequests: Number(body.streamActiveRequests || 0),
