@@ -15,7 +15,13 @@ async function execute() {
   let cmd;
   try {
     cmd = await request('/actuator');
-    if (cmd.command === 'STOP_CLOSE') {
+    if (cmd.command === 'NONE' && cmd.recoverLaunchId) {
+      const saved = await chrome.storage.local.get('launchTabs');
+      const tabId = saved.launchTabs?.[cmd.recoverLaunchId];
+      if (Number.isInteger(tabId) && await chrome.tabs.get(tabId).catch(() => null)) {
+        await request('/actuator/ack', { type: 'OWNER_TARGET', launchId: cmd.recoverLaunchId, tabId });
+      }
+    } else if (cmd.command === 'STOP_CLOSE') {
       const tab = await chrome.tabs.get(cmd.tabId).catch(() => null);
       if (tab) {
         // Authority was revoked before this instruction. Stop failure cannot

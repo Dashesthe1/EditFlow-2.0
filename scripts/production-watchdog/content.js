@@ -1,12 +1,12 @@
 (() => {
-  if (globalThis.__EDITFLOW_ACTUATOR_V3__) return;
-  globalThis.__EDITFLOW_ACTUATOR_V3__ = true;
+  if (globalThis.__EDITFLOW_ACTUATOR_V301__) return;
+  globalThis.__EDITFLOW_ACTUATOR_V301__ = true;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const visible = e => e && e.isConnected && e.getClientRects().length && !e.disabled;
   const buttons = () => [...document.querySelectorAll('button')];
   const findButton = (selector, pattern) => [...document.querySelectorAll(selector)].find(visible)
     || buttons().find(e => visible(e) && pattern.test((e.getAttribute('aria-label') || e.title || '').toLowerCase()));
-  const messages = () => [...document.querySelectorAll('[data-message-author-role="user"]')];
+  const messages = () => [...document.querySelectorAll('[data-message-author-role="user"], [data-user-message-bubble]')];
   let sending = false;
   async function send(cmd) {
     if (sending) return { sent: false, error: 'SEND_IN_FLIGHT' };

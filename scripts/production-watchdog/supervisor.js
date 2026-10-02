@@ -100,7 +100,8 @@ async function tick() {
 function actuatorCommand() {
   const h = state.handoff;
   if (!snapshot || Date.now() - lastGatewayAt > 15000) return { command: 'NONE', reason: 'gateway_unavailable' };
-  if (!h || snapshot.authority.state === 'PAUSED') return { command: 'NONE' };
+  if (!h || snapshot.authority.state === 'PAUSED') return { command: 'NONE',
+    recoverLaunchId: !state.activeTabId && !h ? snapshot.authority.launchId : null };
   if (['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'STOP_CLOSE', id: h.id, tabId: h.sourceTabId };
   if (h.status === 'CREATE') return { command: 'CREATE', id: h.id };
   if (h.status === 'SEND') return { command: 'SEND', id: h.id, tabId: h.targetTabId, prompt: h.prompt };
@@ -116,7 +117,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.0.0', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.0.1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError,
       lastExtensionLoadedAt: state.lastExtensionLoadedAt, extensionVersion: state.extensionVersion,
@@ -128,11 +129,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/actuator/ack') {
       const b = await body(req); const h = state.handoff;
       if (b.type === 'READY') { state.lastExtensionLoadedAt = Date.now(); state.extensionVersion = b.version; persist(); return send(200, { ok: true }); }
+      if (b.type === 'OWNER_TARGET' && !state.handoff && !state.activeTabId &&
+        b.launchId === snapshot?.authority.launchId && Number.isInteger(b.tabId)) {
+        state.activeTabId = b.tabId; persist(); return send(200, { ok: true });
+      }
       if (!h || b.id !== h.id) return send(409, { error: 'STALE_ACTUATOR_ACK' });
       if (b.type === 'MISSING' && h.status === 'SEND') { h.status = 'CREATE'; h.targetTabId = null; }
       else if (b.type === 'CLOSED' && h.status === 'CLOSE_ONLY') { state.activeTabId = null; state.handoff = null; }
       else if (b.type === 'CLOSED' && h.status === 'CLOSE') { h.status = 'DRAIN'; state.activeTabId = null; }
-      else if (b.type === 'CREATED' && h.status === 'CREATE' && Number.isInteger(b.tabId)) { h.status = 'SEND'; h.targetTabId = b.tabId; }
+      else if (b.type === 'CREATED' && h.status === 'CREATE' && Number.isInteger(b.tabId)) { h.status = 'SEND'; h.targetTabId = b.tabId; state.activeTabId = b.tabId; }
       else if (b.type === 'SENT' && h.status === 'SEND' && b.tabId === h.targetTabId) {
         state.activeTabId = b.tabId; state.handoff = null; state.liveness = {}; log('continuation_sent', { assignmentId: h.assignmentId, generation: h.generation, tabId: b.tabId });
       } else if (b.type === 'FAILED') { log('actuator_failed_retry_same_step', { id: h.id, error: b.error }); }
@@ -145,6 +150,7 @@ const server = http.createServer(async (req, res) => {
       if (!snapshot?.assignment) return send(409, { error: 'NO_ASSIGNMENT' });
       const a = snapshot.authority;
       await gateway({ action: req.url === '/pause' ? 'PAUSE' : 'RESUME', assignmentId: a.assignmentId, generation: a.generation, reason: 'explicit_user_pause' });
+      if (state.handoff?.targetTabId) state.activeTabId = state.handoff.targetTabId;
       state.handoff = null; persist(); return send(200, { ok: true });
     }
     return send(404, { error: 'NOT_FOUND' });
