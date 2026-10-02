@@ -1,4 +1,4 @@
-﻿import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -62,6 +62,7 @@ export interface PracticeProductionPhaseV1 {
   readonly lastSearchScore?: number | null;
   readonly changeHypothesis?: boolean;
   readonly sourceValidatedAt?: string;
+  readonly sourceValidationToken?: string;
   readonly sourceValidationRequired?: boolean;
 }
 
@@ -299,7 +300,7 @@ export class PracticeProductionCoordinatorV1 {
     this.#commit({ stage, stageStartedAt, currentPhaseId: phaseId, stageElapsedMs });
   }
 
-  lockSource(phaseId: string, certificateKey: string, validatedAt?: string): void {
+  lockSource(phaseId: string, certificateKey: string, validatedAt?: string, validationToken?: string): void {
     const prior = this.#snapshot.phases.find((phase) => phase.phaseId === phaseId);
     if (prior?.sourceCertificateKey === certificateKey) return;
     if (prior?.sourceCertificateKey) this.invalidate([phaseId], "SOURCE");
@@ -307,6 +308,7 @@ export class PracticeProductionCoordinatorV1 {
       sourceCertificateKey: certificateKey,
       sourceValidationRequired: false,
       ...(validatedAt ? { sourceValidatedAt: validatedAt } : {}),
+      ...(validationToken ? { sourceValidationToken: validationToken } : {}),
     }));
     this.setStage("SOURCE_LOCK", phaseId);
   }

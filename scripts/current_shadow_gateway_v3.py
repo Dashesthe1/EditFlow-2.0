@@ -48,13 +48,7 @@ def _practice_http(
 
 def _http(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     base, token = _practice_config()
-    current_routes = {
-        "/state": "/state",
-        "/status": "/status",
-        "/run": "/run",
-        "/run-batch": "/run-batch",
-    }
-    target_path = current_routes.get(path, path)
+    target_path = path
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         base + target_path,
@@ -71,6 +65,31 @@ def _http(method: str, path: str, payload: dict[str, Any] | None = None) -> dict
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Current EditFlow control error {exc.code}: {detail}") from exc
+
+
+def _execute_queued(kind: str, payload: dict[str, Any], wait_seconds: float = 30) -> dict[str, Any]:
+    context = payload.get("researchContext")
+    if not isinstance(context, dict) or not context.get("assignmentId") or not context.get("claimedBy"):
+        raise ValueError("Production execution requires researchContext for the active assignment and live controller")
+    safe_id = urllib.parse.quote(context["assignmentId"], safe="")
+    endpoint = f"/v1/product/gpt/assignments/{safe_id}/production-jobs"
+    accepted = _practice_http("POST", endpoint, {"kind": kind, "payload": payload, "dependencyIds": []})
+    job = accepted["job"]
+    deadline = time.monotonic() + wait_seconds
+    while job["status"] in ("PENDING", "RUNNING") and time.monotonic() < deadline:
+        time.sleep(.1)
+        safe_job = urllib.parse.quote(job["jobId"], safe="")
+        try:
+            job = _practice_http("GET", endpoint + "?jobId=" + safe_job)["job"]
+        except Exception as exc:
+            return {"productionJobId": job["jobId"], "productionStatus": job["status"],
+                    "executionPath": "DURABLE_PRODUCTION_QUEUE_V1", "pollError": str(exc),
+                    "nextAction": "Resume this job receipt; do not resubmit or switch execution paths."}
+    result = job.get("result", {})
+    return {**(result if isinstance(result, dict) else {"result": result}),
+            "productionJobId": job["jobId"], "productionStatus": job["status"],
+            "executionPath": "DURABLE_PRODUCTION_QUEUE_V1",
+            **({"error": job["error"]} if job.get("error") else {})}
 
 
 def _normalize_goal(operations_json: str) -> dict[str, Any]:
@@ -174,11 +193,11 @@ def build_server():
 
     @mcp.tool()
     def get_mcp_surface() -> dict[str, Any]:
-        """Describe the stable Shadow compatibility surface backed by the current repo."""
+        """Describe the current Shadow MCP surface backed by the primary production system."""
         return {
             "service": "EditFlow Current Shadow Gateway",
-            "legacyCompatibility": True,
-            "primaryExecution": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
+            "primarySystemOnly": True,
+            "primaryExecution": "DURABLE_PRODUCTION_QUEUE_V1",
             "tools": [
                 "get_edit_state", "get_editflow2_state", "get_after_effects_state",
                 "probe_after_effects", "get_production_status", "list_adaptive_capabilities",
@@ -186,6 +205,7 @@ def build_server():
                 "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_batch", "fast_ae_refresh",
                 "get_next_gpt_assignment", "get_gpt_assignment", "claim_gpt_assignment",
                 "get_clip_research_contract", "get_clip_research", "record_clip_research",
+                "enqueue_production_job", "get_production_jobs", "resolve_production_job",
                 "record_gpt_learning_event", "complete_gpt_assignment", "fail_gpt_assignment",
                 "acknowledge_gpt_assignment_cancelled", "get_editflow_run", "cancel_editflow_run",
             ],
@@ -193,18 +213,18 @@ def build_server():
 
     @mcp.tool()
     def list_adaptive_capabilities() -> dict[str, Any]:
-        """Legacy introspection alias for the current fast-path capability surface."""
+        """Describe capabilities available through the current primary production surface."""
         status = _http("GET", "/status")
         return {
             "service": "EditFlow Current Shadow Gateway",
-            "compatibilityAlias": True,
-            "primaryExecution": "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0",
+            "primarySystemOnly": True,
+            "primaryExecution": "DURABLE_PRODUCTION_QUEUE_V1",
             "hostRevision": status.get("hostRevision"),
             "executionMode": status.get("executionMode"),
             "controlPlane": status.get("controlPlane"),
             "capabilities": [
-                "CURRENT_AE_STATE", "WARM_CEP_PROBE", "CONTINUOUS_FAST_LOOP",
-                "ROUTINE_DECISION_ENGINE", "LOCAL_BATCH_RUNTIME", "ERROR_TRIAGE_MEMORY",
+                "CURRENT_AE_STATE", "WARM_CEP_PROBE", "DURABLE_PRODUCTION_QUEUE_V1",
+                "ROUTINE_DECISION_ENGINE", "WARM_BATCH_COMPONENT", "ERROR_TRIAGE_MEMORY",
                 "VALIDATE_EDIT_PLAN", "APPLY_EDIT_PLAN", "GPT_PRACTICE_ORCHESTRATION",
                 "EDIT_TYPE_LEARNING_TRACE", "PRACTICE_PRO_CREATION_CANCELLATION",
             ],
@@ -236,7 +256,7 @@ def build_server():
         idempotency_key: str = "",
         decision_json: str = "",
     ) -> dict[str, Any]:
-        """Execute a validated short-horizon goal through the persistent ContinuousFastLoop."""
+        """Submit authorized AE work to the durable production worker; preserve the job receipt on timeout."""
         parsed = json.loads(operations_json)
         decision = json.loads(decision_json) if decision_json else {}
         research_context = decision.get("researchContext", parsed.get("researchContext") if isinstance(parsed, dict) else None)
@@ -244,33 +264,55 @@ def build_server():
         if isinstance(parsed, list):
             if not parsed:
                 raise ValueError("operations_json routine-intent list must not be empty")
-            result = _http("POST", "/run-batch", {"intents": parsed, "transactionId": transaction_id, "researchContext": research_context})
-            execution_path = "LOCAL_BATCH_RUNTIME"
+            result = _execute_queued("AE_BATCH", {"intents": parsed, "transactionId": transaction_id, "researchContext": research_context})
+            execution_path = "DURABLE_PRODUCTION_QUEUE_V1"
         else:
             goal = _normalize_goal(operations_json)
-            result = _http("POST", "/run", {"goal": goal, "transactionId": transaction_id, "researchContext": research_context})
-            execution_path = "CONTINUOUS_FAST_LOOP"
+            result = _execute_queued("AE_GOAL", {"goal": goal, "transactionId": transaction_id, "researchContext": research_context})
+            execution_path = "DURABLE_PRODUCTION_QUEUE_V1"
         return {"baseRevision": base_revision, "planId": plan_id, "executionPath": execution_path, "result": result}
 
     @mcp.tool()
     def fast_ae_run(goal_json: str, transaction_id: str = "") -> dict[str, Any]:
-        """Run one current-repo fast-loop goal while preserving the warm CEP lease/state."""
+        """Run an authorized AE goal as a durable production job using the shared warm CEP runtime."""
         packet = json.loads(goal_json)
         if not isinstance(packet, dict):
             raise ValueError("goal_json must decode to an object")
         goal = packet.get("goal", packet)
         tx = transaction_id or f"shadow-fast-{int(time.time() * 1000)}"
-        return _http("POST", "/run", {"goal": goal, "transactionId": tx, "researchContext": packet.get("researchContext")})
+        return _execute_queued("AE_GOAL", {"goal": goal, "transactionId": tx, "researchContext": packet.get("researchContext")})
 
     @mcp.tool()
     def fast_ae_batch(intents_json: str, transaction_id: str = "") -> dict[str, Any]:
-        """Execute up to 64 allow-listed AE routine actions locally in one MCP round trip."""
+        """Queue up to 64 allow-listed AE actions on the sole production writer; no direct-execution fallback."""
         packet = json.loads(intents_json)
         intents = packet.get("intents") if isinstance(packet, dict) else packet
         if not isinstance(intents, list) or not intents:
             raise ValueError("intents_json must decode to a non-empty routine-intent list")
         tx = transaction_id or f"shadow-batch-{int(time.time() * 1000)}"
-        return _http("POST", "/run-batch", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None})
+        return _execute_queued("AE_BATCH", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None})
+
+    @mcp.tool()
+    def enqueue_production_job(assignment_id: str, job_json: str) -> dict[str, Any]:
+        """Submit deterministic authorized work to the sole Practice/Pro Creation production worker."""
+        payload = json.loads(job_json)
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/production-jobs", payload)
+
+    @mcp.tool()
+    def get_production_jobs(assignment_id: str, job_id: str = "") -> dict[str, Any]:
+        """Inspect durable jobs; use a retained job_id to resume instead of resubmitting work."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        query = "?jobId=" + urllib.parse.quote(job_id, safe="") if job_id else ""
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/production-jobs" + query)
+
+    @mcp.tool()
+    def resolve_production_job(assignment_id: str, job_id: str, claimed_by: str, review_evidence_ref: str, result_json: str = "{}") -> dict[str, Any]:
+        """Reconcile held work after inspecting actual AE readback/render evidence; never blindly replay a write."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/production-jobs", {
+            "action": "RESOLVE", "jobId": job_id, "claimedBy": claimed_by,
+            "reviewEvidenceRef": review_evidence_ref, "result": json.loads(result_json)})
 
     @mcp.tool()
     def fast_ae_refresh() -> dict[str, Any]:

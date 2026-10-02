@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { productionJobScopeV1 } from "./production-job-scope.js";
 
 import type {
   TrackerVisualAnalysisDriverV1,
@@ -59,6 +60,7 @@ export class NodeTrackerVisualSidecarRunnerV1 implements TrackerVisualSidecarRun
       let timedOut = false;
       const child = spawn(input.executablePath, [...input.args], {
         cwd: input.workingDirectory,
+        env: { ...process.env, ...productionJobScopeV1.getStore() },
         shell: false,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],

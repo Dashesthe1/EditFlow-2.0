@@ -25,6 +25,10 @@ export const CLIP_RESEARCH_CONTRACT_V1 = {
 };
 
 const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const sourceFileIdentity = async (uri: string): Promise<Packet> => {
+  try { const file = await stat(uri); return { uri, size: file.size, mtimeMs: file.mtimeMs }; }
+  catch { return { uri, missing: true }; }
+};
 const fail = (message: string): never => { throw new TypeError("CLIP_RESEARCH_REQUIRED: " + message); };
 const str = (value: unknown, name: string): string => {
   if (typeof value !== "string" || !value.trim()) return fail(name + " is required.");
@@ -186,7 +190,9 @@ export class ClipResearchStoreV1 {
           return fail("Inspection artifact must identify the same clip, raw media and source/reference windows.");
         }
         str(evidence.data.observations, "inspection artifact observations");
+        const source = assignment.start.find((item: Packet) => item.mediaId === sourceMediaId);
         const scan = { sourceMediaId, sourceRangeMs, referenceRangeMs, observations, effects, evidence,
+          sourceFileIdentity: await sourceFileIdentity(source.uri),
           referenceMediaId: assignment.finish?.mediaId ?? null };
         // Reposting the same scan resumes it; changed inspection invalidates the prior plan.
         clip = clip?.scanHash === hash(scan) && !clip.stale ? clip : { clipId, scan, scanHash: hash(scan), sources: [], plan: null };
@@ -333,6 +339,10 @@ export class ClipResearchStoreV1 {
     // Verify every retained inspected/reviewed artifact remains unchanged before editing.
     for (const id of ids) {
       const clip = saved.clips[id];
+      const source = assignment.start.find((item: Packet) => item.mediaId === clip.scan.sourceMediaId);
+      if (clip.scan.sourceFileIdentity && hash(clip.scan.sourceFileIdentity) !== hash(await sourceFileIdentity(source.uri))) {
+        return fail("Raw source file changed; rescan and review its affected plan before editing.");
+      }
       for (const evidence of [clip.scan.evidence, ...clip.sources.map((source: Packet) => source.evidence)]) {
         const current = await this.evidence(evidence.path);
         if (current.sha256 !== evidence.sha256) return fail("Consultation evidence changed; rescan/review before editing.");

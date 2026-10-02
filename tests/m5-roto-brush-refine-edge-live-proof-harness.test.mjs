@@ -43,7 +43,7 @@ test("M5 Refine Edge uses warm CEP native tool selection without a semantic reth
   assert.ok(first >= 0 && checkpoint > first);
   const localBatch = py.slice(first, checkpoint);
   assert.doesNotMatch(localBatch, /qwen\.|verify_visible|choose_pointer_target/);
-  assert.match(py, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(py, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.match(py, /native_refine_tool_to_draw/);
   assert.match(py, /smallLayerCanvasDetected/);
   assert.match(py, /layerTabFocusBeforeMaximize/);

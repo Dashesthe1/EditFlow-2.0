@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -134,48 +135,22 @@ const context = {
 };
 
 const load = async (file) => JSON.parse(await readFile(file, "utf8"));
-let mutationLeaseToken = null;
 const request = async (pathname, init = {}) => {
   const headers = { ...(init.headers ?? {}) };
-  if (mutationLeaseToken !== null) headers["x-editflow-mutation-lease"] = mutationLeaseToken;
-  const response = await fetch(CONTROL + pathname, { ...init, headers });
+  const response = await productionRequest(CONTROL, pathname, { ...init, headers });
   const body = await response.json();
   if (!response.ok || body.ok === false) {
     throw new Error(pathname + " failed: " + JSON.stringify(body));
   }
   return body;
 };
-const proofScript = (name) => request("/proof-script", {
+const proofScript = (name) => request("@PROOF_SCRIPT", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ scriptPath: WINDOWS(name) }),
 });
-const acquireMutationLease = async (iteration) => {
-  if (mutationLeaseToken !== null) throw new Error("Mutation lease is already held by this proof process.");
-  const lease = await request("/mutation-lease/acquire", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      owner: "m6-generic-native-auto-correction-pass-" + iteration,
-      ttlMs: 120_000,
-    }),
-  });
-  mutationLeaseToken = lease.lease.token;
-  return lease.lease;
-};
-const releaseMutationLease = async () => {
-  const token = mutationLeaseToken;
-  if (token === null) return;
-  try {
-    await request("/mutation-lease/release", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-  } finally {
-    mutationLeaseToken = null;
-  }
-};
+// The durable worker owns the writer lease for each correction.
+
 const run = (command, args) => {
   const result = spawnSync(command, args, {
     cwd: ROOT, encoding: "utf8", windowsHide: true, maxBuffer: 16 * 1024 * 1024,
@@ -226,7 +201,6 @@ const compileNative = (graph, observedState, iteration) => {
 };
 
 const executePass = async (graph, iteration) => {
-  await acquireMutationLease(iteration);
   try {
     await proofScript("m6-generic-native-corr01-cleanup.jsx").catch(() => {});
   await proofScript("m6-generic-native-corr01-setup.jsx");
@@ -266,7 +240,7 @@ const executePass = async (graph, iteration) => {
     compiled = compileNative(budgetGraph, live.state.observed, iteration);
   }
   const { compilation, native } = compiled;
-  const transaction = await request("/run-correction-transaction", {
+  const transaction = await request("@AE_CORRECTION", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ plan: native.plan }),
@@ -285,7 +259,6 @@ const executePass = async (graph, iteration) => {
   return { graph: budgetGraph, budgetBackoff, compilation, native, transaction, readback, video, measured };
   } finally {
     await proofScript("m6-generic-native-corr01-cleanup.jsx").catch(() => {});
-    await releaseMutationLease().catch(() => {});
   }
 };
 

@@ -38,6 +38,7 @@ import {
   PracticeProductionCoordinatorFileV1,
   PracticeProductionCoordinatorV1,
   PracticeProductionWorkerV1,
+  PRACTICE_PRODUCTION_JOB_KINDS_V1,
   type PracticeProductionJobV1,
   practiceTelemetrySpanV1,
   type PracticeHeldOutBenchmarkCaseV1,
@@ -60,8 +61,10 @@ import {
   AeCepAdapterClientV11,
   AeFilesystemPolicyV11,
 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
+import { productionJobScopeV1 } from "../../../packages/adapters/ae-cep/src/production-job-scope.js";
 import { LoopbackCepBroker } from "./loopback-cep.js";
-import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
+import { CurrentAeTransactionRuntimeV1, type CurrentAeStabilizationRuntimeV1 } from "./current-ae-transaction-runtime.js";
+import { PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "./production-authority.js";
 import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
 import { createPracticeM6CurrentAeAssemblyV1 } from "./practice-training-runtime.js";
 import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
@@ -88,6 +91,7 @@ export interface PracticePanelServerConfigV1 {
   readonly renderTimeoutMs?: number;
   readonly buildId?: string;
   readonly aeWriterAvailable?: () => boolean;
+  readonly stabilization?: CurrentAeStabilizationRuntimeV1;
 }
 
 export type PracticePanelRunStateV1 =
@@ -626,10 +630,7 @@ const jsonResponse = (res: ServerResponse, status: number, value: unknown): void
   res.end(body);
 };
 
-const requestBodies = new WeakMap<IncomingMessage, Record<string, unknown>>();
 const readJson = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
-  const cached = requestBodies.get(req);
-  if (cached !== undefined) return cached;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -1021,6 +1022,8 @@ export class PracticePanelServerV1 {
   readonly #coordinators = new Map<string, Promise<{ file: PracticeProductionCoordinatorFileV1; coordinator: PracticeProductionCoordinatorV1 }>>();
   readonly #productionWorker: PracticeProductionWorkerV1;
   #aeWriterOwner: string | null = null;
+  #childProofScope: { key: string; jobId: string; body: Record<string, any> } | null = null;
+  #childProofTail: Promise<unknown> = Promise.resolve();
   readonly #masteryVerifier: PracticeMasteryVerifierV1;
   readonly #transactionRuntime: CurrentAeTransactionRuntimeV1;
   #fastRuntime: LocalFastRuntimeV1 | null = null;
@@ -1063,7 +1066,7 @@ export class PracticePanelServerV1 {
       config.broker,
       "practice-gpt-controller",
       64,
-      null,
+      config.stabilization ?? null,
       96,
       new AeFilesystemPolicyV11([
         process.env.USERPROFILE ?? config.repositoryRoot,
@@ -1107,6 +1110,28 @@ export class PracticePanelServerV1 {
   async #synchronizeProductionSources(assignment: GptOrchestrationAssignmentV1,
     { file, coordinator }: { file: PracticeProductionCoordinatorFileV1; coordinator: PracticeProductionCoordinatorV1 }): Promise<void> {
     const before = JSON.stringify(coordinator.snapshot());
+    if (assignment.mode === "PRO_CREATION") {
+      const ledger = await this.#clipResearch.snapshot(assignment);
+      coordinator.ensurePhases(Object.keys(ledger.clips));
+      for (const [clipId, clip] of Object.entries(ledger.clips) as [string, Record<string, any>][]) {
+        const source = assignment.start.find((item) => item.mediaId === clip.scan.sourceMediaId && item.mediaKind === "VIDEO");
+        if (!source) throw new HttpError(409, "Pro Creation clip source is not a provided raw video.");
+        const key = "pro-source-lock:" + createHash("sha256").update(JSON.stringify({
+          sourceIdentity: await this.#sourceIdentity(source.uri), sourceRangeMs: clip.scan.sourceRangeMs,
+          inspectionHash: clip.scanHash,
+        })).digest("hex");
+        const prior = coordinator.snapshot().phases.find((phase) => phase.phaseId === clipId)!;
+        if (prior.sourceCertificateKey !== key && (prior.sourceCertificateKey || prior.sourceValidationRequired)
+          && prior.sourceValidationToken === clip.scanHash) {
+          if (!prior.sourceValidationRequired) coordinator.requireSourceValidation(clipId);
+          continue;
+        }
+        coordinator.lockSource(clipId, key, ledger.updatedAt ?? assignment.createdAt, clip.scanHash);
+        if (clip.plan?.status === "READY" && !clip.stale) coordinator.markResearchReady(clipId, clip.plan.planId);
+      }
+      if (before !== JSON.stringify(coordinator.snapshot())) await file.save(coordinator);
+      return;
+    }
     coordinator.ensurePhases((assignment.practiceSceneMatches ?? []).map((match) => match.shotId));
     for (const match of assignment.practiceSceneMatches ?? []) {
       const sourceStartMs = Number.isFinite(match.sourceStartMs) ? match.sourceStartMs : 0;
@@ -1144,7 +1169,7 @@ export class PracticePanelServerV1 {
     catch { return { path: path.resolve(value), missing: true }; }
   }
 
-  reserveAeWriter(owner: string): () => void {
+  #reserveAeWriter(owner: string): () => void {
     if (owner.startsWith("production-job:") && this.config.aeWriterAvailable?.() === false) throw new HttpError(423, "AE_MUTATION_LEASE_HELD");
     if (this.#aeWriterOwner !== null) throw new HttpError(423, "AE_WRITER_BUSY: " + this.#aeWriterOwner);
     this.#aeWriterOwner = owner;
@@ -1153,7 +1178,7 @@ export class PracticePanelServerV1 {
 
   async #executeProductionJob(job: PracticeProductionJobV1, signal: AbortSignal): Promise<{ result: unknown; reviewRequired?: boolean }> {
     let assignment = await this.#gptStore.getAssignment(job.assignmentId);
-    if (!assignment || assignment.status !== "RUNNING") throw new HttpError(409, "Assignment no longer accepts production work.");
+    if (!assignment || assignment.status !== "RUNNING" || assignment.sessionId !== this.#activeRunId) throw new HttpError(409, "Assignment no longer accepts production work.");
     await this.assertPracticeReconstructionReady();
     const body = structuredClone(job.payload) as Record<string, any>;
     if (job.kind === "REFERENCE_ANALYSIS") {
@@ -1173,19 +1198,51 @@ export class PracticePanelServerV1 {
     if (typeof owner !== "string") throw new TypeError("Queued production requires an authorized researchContext.");
     try { assignment = await this.#gptStore.claim(job.assignmentId, owner); }
     catch (error) { throw new HttpError(423, error instanceof Error ? error.message : String(error)); }
-    const admission = await this.assertClipResearchReady(body);
+    const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE");
     signal.throwIfAborted();
     const production = await this.#productionCoordinator(assignment);
     const strategy = production.coordinator.strategyDirective();
     if (strategy.action === "ESCALATE_STRATEGY") return { result: { strategy, nextAction: production.coordinator.nextAction() }, reviewRequired: true };
-    const output = await this.#withProductionOperation({ body, category: job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "RENDER" : "AE_MUTATION",
-      stage: job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "LOCAL_PROOF" : "AE_CONSTRUCTION",
-      operation: job.jobId, markConstructed: job.kind === "AE_TRANSACTION",
+    const output = await this.#withProductionOperation({ body: job.kind === "BUILD_BASELINE" ? { ...body, globalOperation: true } : body,
+      category: job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "RENDER" : "AE_MUTATION",
+      stage: job.kind === "BUILD_BASELINE" ? "WHOLE_EDIT_COVERAGE" : job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "LOCAL_PROOF" : "AE_CONSTRUCTION",
+      operation: job.jobId, markConstructed: ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH"].includes(job.kind),
       run: async () => {
-        if (job.kind === "AE_TRANSACTION") {
-          const result = await this.#transactionRuntime.execute(body.plan ?? body);
+        if (job.kind === "AE_TRANSACTION" || job.kind === "AE_CORRECTION") {
+          const result = job.kind === "AE_TRANSACTION" ? await this.#transactionRuntime.execute(body.plan ?? body)
+            : await this.#transactionRuntime.executeCorrection(body.plan ?? body);
           if (result.state !== "COMMITTED") throw new Error("Queued AE transaction failed: " + result.state);
           return { result };
+        }
+        if (job.kind === "AE_GOAL" || job.kind === "AE_BATCH") {
+          const runtime = await this.#ensureFastRuntime();
+          const result = job.kind === "AE_GOAL" ? await runtime.runGoal(body.goal, body.transactionId ?? job.jobId)
+            : await runtime.runRoutineBatch(body.intents, body.transactionId ?? job.jobId);
+          if (job.kind === "AE_BATCH" && result.completedActions !== body.intents.length) throw new Error("Queued AE batch stopped before every authorized action completed; reconcile actual state.");
+          return { result: { ...result, state: result.escalationReason ? "REVIEW_REQUIRED" : "COMMITTED" }, reviewRequired: !!result.escalationReason };
+        }
+        if (job.kind === "PROOF_SCRIPT") {
+          const response = await this.#dispatchWorkerProofScript(requiredString(body, "scriptPath"), job.jobId);
+          // Opaque scripts always require readback review before another job proceeds.
+          return { result: response, reviewRequired: true };
+        }
+        if (job.kind === "BUILD_BASELINE") {
+          if (assignment!.mode !== "PRACTICE") throw new HttpError(400, "Practice baseline uses a Finish reference; Pro Creation constructs its editorial plan with AE_BATCH/AE_TRANSACTION.");
+          const reference = JSON.parse(await readFile(await ensureFile(requiredString(body, "referenceAnalysisPath"), "reference analysis"), "utf8"));
+          const scenePacket = JSON.parse(await readFile(await ensureFile(requiredString(body, "sceneMatchPath"), "scene match"), "utf8"));
+          const audioMatch = JSON.parse(await readFile(await ensureFile(requiredString(body, "audioMatchPath"), "audio match"), "utf8"));
+          const matches = Array.isArray(scenePacket) ? scenePacket : scenePacket.matches;
+          if (!Array.isArray(matches)) throw new TypeError("Scene-match packet is missing matches.");
+          const assembly = createPracticeM6CurrentAeAssemblyV1({ transport: this.config.broker, projectId: "practice-gpt-controller",
+            repositoryRoot: this.config.repositoryRoot, artifactDir: assignment!.artifactDir,
+            mediaRoots: [process.env.USERPROFILE ?? this.config.repositoryRoot],
+            ...(this.config.ffmpegPath ? { ffmpegPath: this.config.ffmpegPath } : {}),
+            ...(this.config.renderTimeoutMs ? { renderTimeoutMs: this.config.renderTimeoutMs } : {}) });
+          const baseline = await assembly.baselineBuilder.buildContentBaseline({ reference, matches, audioMatch });
+          const revision = Number(String((await this.#transactionRuntime.observe()).projectRevision).replace(/^ae-revision:/, ""));
+          production.coordinator.markWholeEditCovered(Number.isFinite(revision) ? revision : null);
+          await production.file.save(production.coordinator);
+          return { result: { baseline, plan: assembly.baselineBuilder.plan(baseline.baselineId) } };
         }
         const driver = new PracticeM6AeRenderDriverCurrentV1({ transport: this.config.broker,
           projectId: "practice-gpt-controller", artifactDir: assignment!.artifactDir,
@@ -1225,18 +1282,25 @@ export class PracticePanelServerV1 {
     return output;
   }
 
-  async #assignmentForProductionBody(body: Record<string, any>): Promise<GptOrchestrationAssignmentV1 | null> {
-    const assignmentId = typeof body?.researchContext?.assignmentId === "string"
-      ? body.researchContext.assignmentId
-      : this.#activeRunId === null
-        ? null
-        : this.#runs.get(this.#activeRunId)?.assignmentId ?? null;
-    return assignmentId === null ? null : await this.#gptStore.getAssignment(assignmentId);
+  async #dispatchWorkerProofScript(value: string, operationId: string) {
+    const scriptPath = path.resolve(this.config.repositoryRoot, value);
+    if (path.extname(scriptPath).toLowerCase() !== ".jsx" || !["scripts/windows", "proofs/artifacts"].some((directory) => {
+      const relative = path.relative(path.resolve(this.config.repositoryRoot, directory), scriptPath);
+      return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+    })) throw new HttpError(400, "PROOF_SCRIPT_PATH_NOT_ALLOWED");
+    await readFile(scriptPath, "utf8");
+    const panel = this.config.broker.panelSession;
+    if (!panel) throw new Error("CEP_PANEL_NOT_CONNECTED");
+    const response = await this.config.broker.dispatch({ protocolVersion: panel.protocolVersion,
+      requestId: operationId, transactionId: operationId, operationId,
+      capabilityId: "internal.proof.eval_file", command: "proof.eval_file", payload: { scriptPath } });
+    if (response.outcome !== "APPLIED") throw new Error("Queued native proof script failed: " + response.error?.message);
+    return response;
   }
 
-  async runExternalProductionOperation<T>(body: Record<string, any>, operation: string, run: () => Promise<T>): Promise<T> {
-    return await this.#withProductionOperation({ body, operation: "external:" + operation,
-      category: "AE_MUTATION", stage: "AE_CONSTRUCTION", markConstructed: operation !== "/proof-script", run });
+  async #assignmentForProductionBody(body: Record<string, any>): Promise<GptOrchestrationAssignmentV1 | null> {
+    const assignmentId = typeof body?.researchContext?.assignmentId === "string" ? body.researchContext.assignmentId : null;
+    return assignmentId === null ? null : await this.#gptStore.getAssignment(assignmentId);
   }
 
   async #withProductionOperation<T>(input: {
@@ -1248,11 +1312,14 @@ export class PracticePanelServerV1 {
     readonly run: () => Promise<T>;
   }): Promise<T> {
     const assignment = await this.#assignmentForProductionBody(input.body);
-    const releaseWriter = this.reserveAeWriter(input.operation);
-    if (assignment === null) { try { return await input.run(); } finally { releaseWriter(); } }
+    const releaseWriter = this.#reserveAeWriter(input.operation);
+    if (!assignment || assignment.status !== "RUNNING" || assignment.sessionId !== this.#activeRunId) {
+      releaseWriter();
+      throw new HttpError(409, "AE execution requires the active RUNNING production assignment.");
+    }
     try {
     const { file, coordinator } = await this.#productionCoordinator(assignment);
-    const phaseIds = Array.isArray(input.body?.researchContext?.plans)
+    const phaseIds: string[] = Array.isArray(input.body?.researchContext?.plans)
       ? input.body.researchContext.plans
         .map((plan: any) => typeof plan?.clipId === "string" ? plan.clipId : null)
         .filter((value: string | null): value is string => value !== null)
@@ -1272,6 +1339,8 @@ export class PracticePanelServerV1 {
           + "target only the affected clip/boundary plans, or set globalOperation=true for a genuinely global edit.",
       );
     }
+    if (input.category === "AE_MUTATION") coordinator.invalidate(phaseIds.filter((id) =>
+      ["CONSTRUCTED", "PROVISIONAL_PASS", "PROVEN"].includes(productionSnapshot.phases.find((phase) => phase.phaseId === id)?.state ?? "")), "PROOF");
     coordinator.setStage(input.stage, phaseIds.length === 1 ? phaseIds[0]! : null);
     coordinator.heartbeat(input.operation);
     await file.save(coordinator);
@@ -1284,7 +1353,12 @@ export class PracticePanelServerV1 {
     }, 20_000);
     heartbeatTimer.unref?.();
     try {
-      const result = await input.run();
+      const scope = { key: randomUUID(), jobId: input.operation, body: input.body };
+      this.#childProofScope = scope;
+      const result = await productionJobScopeV1.run({
+        EDITFLOW_WORKER_PROOF_URL: `http://127.0.0.1:${this.#port}/v1/product/production/worker-proof`,
+        EDITFLOW_WORKER_PROOF_KEY: scope.key, EDITFLOW_WORKER_PRODUCT_TOKEN: this.config.token,
+      }, input.run);
       const success = (result as any)?.state === "COMMITTED" || (result as any)?.result?.state === "COMMITTED"
         || (result as any)?.status === "COMPLETED" || (result as any)?.outcome === "APPLIED";
       if (input.markConstructed && success) {
@@ -1309,6 +1383,8 @@ export class PracticePanelServerV1 {
       }));
       throw error;
     } finally {
+      await this.#childProofTail.catch(() => undefined);
+      this.#childProofScope = null;
       clearInterval(heartbeatTimer);
       coordinator.heartbeat(null);
       await file.save(coordinator);
@@ -1322,7 +1398,7 @@ export class PracticePanelServerV1 {
 
   async start(): Promise<number> {
     if (this.#server !== null) return this.#port;
-    await this.#gptStore.refreshActivePracticeInstructions();
+    await this.#gptStore.refreshActiveProductionInstructions();
     await this.#recoverRuns();
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
@@ -1391,6 +1467,20 @@ export class PracticePanelServerV1 {
       });
     }
     return await this.#fastRuntimePromise;
+  }
+
+  async observeCurrentAe() {
+    return await (await this.#ensureFastRuntime()).refresh();
+  }
+
+  controlStatus() {
+    return { primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+      hostRevision: this.#fastRuntime?.session.runner.hostRevision ?? null,
+      adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
+      localRuntime: this.#fastRuntime?.status() ?? null,
+      currentTransactionRuntime: this.#transactionRuntime.status(),
+      mutationLease: { held: this.#aeWriterOwner !== null, owner: this.#aeWriterOwner, expiresAt: null } };
   }
 
   async #connectionPreflight(): Promise<PracticeConnectionPreflightV1> {
@@ -2423,6 +2513,7 @@ export class PracticePanelServerV1 {
     if (run === undefined) throw new HttpError(404, "EditFlow run not found.");
     await this.#gptStore.requestCancel(run.assignmentId);
     this.#preflightJobs.get(run.assignmentId)?.abort.abort();
+    await this.#productionWorker.cancel(run.assignmentId);
     return await this.#syncRun(sessionId);
   }
 
@@ -2533,14 +2624,25 @@ export class PracticePanelServerV1 {
     }
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
-      if (req.method === "POST" && url.pathname.startsWith("/v1/product/control/")) {
-        await this.assertPracticeReconstructionReady();
+      if (RETIRED_EDIT_EXECUTION_PATHS_V1.has(url.pathname)) {
+        jsonResponse(res, 410, retiredEditExecutionResponseV1());
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/product/production/worker-proof") {
+        const scope = this.#childProofScope;
+        const key = req.headers["x-editflow-worker-key"];
+        if (!scope || this.#aeWriterOwner !== scope.jobId || typeof key !== "string" || key !== scope.key) {
+          throw new HttpError(409, "WORKER_JOB_SCOPE_REQUIRED: native capability helpers execute only inside the current durable writer job.");
+        }
         const body = await readJson(req);
-        requestBodies.set(req, body);
-        const admission = await this.assertClipResearchReady(body, url.pathname.endsWith("/build-baseline"));
-        res.once("finish", () => {
-          void this.recordClipResearchExecution(admission, res.statusCode < 400 ? "HTTP_COMPLETED" : "HTTP_FAILED").catch(() => {});
+        const operation = this.#childProofTail.catch(() => undefined).then(async () => {
+          if (this.#childProofScope !== scope) throw new HttpError(409, "Worker job scope expired.");
+          await this.assertClipResearchReady(scope.body);
+          return await this.#dispatchWorkerProofScript(requiredString(body, "scriptPath"), scope.jobId + ":child:" + randomUUID());
         });
+        this.#childProofTail = operation;
+        jsonResponse(res, 200, { ok: true, response: await operation, productionJobId: scope.jobId });
+        return;
       }
       if (req.method === "GET" && url.pathname === "/v1/product/gpt/clip-research-contract") {
         jsonResponse(res, 200, CLIP_RESEARCH_CONTRACT_V1);
@@ -2586,15 +2688,27 @@ export class PracticePanelServerV1 {
             if (typeof body.reviewEvidenceRef !== "string" || !body.reviewEvidenceRef.trim()) throw new HttpError(400, "Review/reconciliation requires retained evidence.");
             await this.#productionWorker.resolve(job.jobId, { ...body.result, reviewEvidenceRef: body.reviewEvidenceRef });
           } else {
-            if (!["AE_TRANSACTION", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"].includes(body.kind)) throw new HttpError(400, "Unknown production job kind.");
+            if (!PRACTICE_PRODUCTION_JOB_KINDS_V1.includes(body.kind)) throw new HttpError(400, "Unknown production job kind.");
             if (body.payload?.researchContext?.assignmentId !== id) throw new HttpError(400, "Job researchContext must identify the same assignment.");
-            await this.assertClipResearchReady(body.payload);
+            if (assignment.status !== "RUNNING" || this.#activeRunId !== assignment.sessionId) throw new HttpError(409, "Only the retained active RUNNING assignment accepts production jobs.");
+            if (body.kind === "REFERENCE_ANALYSIS" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Pro Creation has no Finish answer key; use raw-media analysis and designed render review.");
+            if (body.kind === "BUILD_BASELINE" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Practice baseline requires a Finish reference; use AE_BATCH or AE_TRANSACTION for Pro Creation.");
+            if (body.kind === "SCRATCH_SEARCH" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Reference-scored scratch search is a Practice capability; Pro Creation uses rendered candidate review.");
+            await this.assertPracticeReconstructionReady();
+            await this.assertClipResearchReady(body.payload, body.kind === "BUILD_BASELINE");
             if (body.kind === "SCRATCH_SEARCH") validatePracticeScratchSearchV1(body.payload);
-            await this.#productionWorker.enqueue({ assignmentId: id, kind: body.kind, payload: body.payload,
+            const job = await this.#productionWorker.enqueue({ assignmentId: id, kind: body.kind, payload: body.payload,
               dependencyIds: stringArray(body, "dependencyIds", false) });
+            void this.#productionWorker.runOnce().catch(() => undefined);
+            jsonResponse(res, 202, { job, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 });
+            return;
           }
         }
-        jsonResponse(res, 200, { jobs: this.#productionWorker.list(id), writerOwner: this.#aeWriterOwner });
+        const requestedJobId = url.searchParams.get("jobId");
+        const jobs = this.#productionWorker.list(id);
+        const job = requestedJobId ? jobs.find((item) => item.jobId === requestedJobId) : undefined;
+        if (requestedJobId && !job) throw new HttpError(404, "Production job not found for this assignment.");
+        jsonResponse(res, 200, requestedJobId ? { job, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 } : { jobs, writerOwner: this.#aeWriterOwner, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 });
         return;
       }
       if ((req.method === "GET" || req.method === "POST") && productionMatch !== null) {
@@ -2709,6 +2823,10 @@ export class PracticePanelServerV1 {
           practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
           practiceStartup: "RESUMABLE_PREFLIGHT_V1",
           practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
+          primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+          productionModes: ["PRACTICE", "PRO_CREATION"],
+          directMutationRoutes: "REMOVED",
+          productionJobKinds: PRACTICE_PRODUCTION_JOB_KINDS_V1,
           activeRunId: this.#activeRunId,
           latestRunId,
         });
@@ -2731,101 +2849,6 @@ export class PracticePanelServerV1 {
           state: await runtime.refresh(),
           runtime: runtime.status(),
         });
-        return;
-      }
-      if (req.method === "POST" && url.pathname === "/v1/product/control/run") {
-        const body = await readJson(req);
-        const runtime = await this.#ensureFastRuntime();
-        const transactionId = optionalString(body, "transactionId")
-          ?? "practice-fast-" + String(Date.now());
-        const goal = body["goal"] as Parameters<LocalFastRuntimeV1["runGoal"]>[0];
-        const result = await this.#withProductionOperation({
-          body, category: "AE_MUTATION", stage: "AE_CONSTRUCTION",
-          operation: "fast-run:" + transactionId, markConstructed: true,
-          run: () => runtime.runGoal(goal, transactionId),
-        });
-        jsonResponse(res, 200, { result, runtime: runtime.status() });
-        return;
-      }
-      if (req.method === "POST" && url.pathname === "/v1/product/control/run-batch") {
-        const body = await readJson(req);
-        const runtime = await this.#ensureFastRuntime();
-        const transactionId = optionalString(body, "transactionId")
-          ?? "practice-batch-" + String(Date.now());
-        const intents = body["intents"] as Parameters<LocalFastRuntimeV1["runRoutineBatch"]>[0];
-        const result = await this.#withProductionOperation({
-          body, category: "AE_MUTATION", stage: "AE_CONSTRUCTION",
-          operation: "fast-batch:" + transactionId, markConstructed: true,
-          run: () => runtime.runRoutineBatch(intents, transactionId),
-        });
-        jsonResponse(res, 200, { result, runtime: runtime.status() });
-        return;
-      }
-      if (req.method === "POST" && url.pathname === "/v1/product/control/build-baseline") {
-        const body = await readJson(req);
-        const referenceAnalysisPath = await ensureFile(
-          requiredString(body, "referenceAnalysisPath"),
-          "Practice reference analysis",
-        );
-        const sceneMatchPath = await ensureFile(
-          requiredString(body, "sceneMatchPath"),
-          "Practice scene-match packet",
-        );
-        const audioMatchPath = await ensureFile(
-          requiredString(body, "audioMatchPath"),
-          "Practice audio-match packet",
-        );
-        const artifactDir = path.resolve(requiredString(body, "artifactDir"));
-        const reference = JSON.parse(await readFile(referenceAnalysisPath, "utf8")) as any;
-        const scenePacket = JSON.parse(await readFile(sceneMatchPath, "utf8")) as any;
-        const audioMatch = JSON.parse(await readFile(audioMatchPath, "utf8")) as any;
-        const matches = Array.isArray(scenePacket) ? scenePacket : scenePacket.matches;
-        if (!Array.isArray(matches)) throw new HttpError(400, "Scene-match packet is missing matches.");
-        const assembly = createPracticeM6CurrentAeAssemblyV1({
-          transport: this.config.broker,
-          projectId: "practice-gpt-controller",
-          repositoryRoot: this.config.repositoryRoot,
-          artifactDir,
-          mediaRoots: [process.env.USERPROFILE ?? this.config.repositoryRoot],
-          ...(this.config.ffmpegPath === undefined ? {} : { ffmpegPath: this.config.ffmpegPath }),
-          ...(this.config.renderTimeoutMs === undefined ? {} : { renderTimeoutMs: this.config.renderTimeoutMs }),
-        });
-        const baseline = await this.#withProductionOperation({
-          body,
-          category: "AE_MUTATION",
-          stage: "WHOLE_EDIT_COVERAGE",
-          operation: "build-content-lock-baseline",
-          run: () => assembly.baselineBuilder.buildContentBaseline({ reference, matches, audioMatch }),
-        });
-        const productionAssignment = await this.#assignmentForProductionBody(body);
-        if (productionAssignment !== null) {
-          const { file, coordinator } = await this.#productionCoordinator(productionAssignment);
-          const revision = Number(String((await this.#transactionRuntime.observe()).projectRevision).replace(/^ae-revision:/, ""));
-          coordinator.markWholeEditCovered(Number.isFinite(revision) ? revision : null);
-          await file.save(coordinator);
-        }
-        jsonResponse(res, 200, {
-          baseline,
-          plan: assembly.baselineBuilder.plan(baseline.baselineId),
-        });
-        return;
-      }
-      if (req.method === "POST" && url.pathname === "/v1/product/control/execute") {
-        const body = await readJson(req);
-        const result = await this.#withProductionOperation({
-          body, category: "AE_MUTATION", stage: "AE_CONSTRUCTION", operation: "transaction-execute",
-          markConstructed: true, run: () => this.#transactionRuntime.execute(body),
-        });
-        jsonResponse(res, 200, { result });
-        return;
-      }
-      if (req.method === "POST" && url.pathname === "/v1/product/control/correction") {
-        const body = await readJson(req);
-        const result = await this.#withProductionOperation({
-          body, category: "AE_MUTATION", stage: "AE_CONSTRUCTION", operation: "transaction-correction",
-          markConstructed: true, run: () => this.#transactionRuntime.executeCorrection(body),
-        });
-        jsonResponse(res, 200, { result });
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/product/edit-types") {

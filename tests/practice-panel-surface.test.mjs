@@ -51,6 +51,10 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
     practiceStartup: "RESUMABLE_PREFLIGHT_V1",
     practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
+    primaryProductionSystem: "DURABLE_PRODUCTION_QUEUE_V1",
+    productionModes: ["PRACTICE", "PRO_CREATION"],
+    directMutationRoutes: "REMOVED",
+    productionJobKinds: ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE", "PROOF_SCRIPT", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"],
     activeRunId: null,
     latestRunId: null,
   });
@@ -134,8 +138,8 @@ test("Practice panel product API is authenticated and preserves readiness gates"
   const mutation = await fetch(base + "/v1/product/control/run-batch", {
     method: "POST", headers, body: JSON.stringify({ intents: [] }),
   });
-  assert.equal(mutation.status, 409);
-  assert.match((await mutation.json()).error, /reconstruction is locked/);
+  assert.equal(mutation.status, 410);
+  assert.equal((await mutation.json()).error, "EDIT_EXECUTION_PATH_REMOVED");
 });
 
 test("Practice panel restores persisted runs and saved human review after restart", async (t) => {

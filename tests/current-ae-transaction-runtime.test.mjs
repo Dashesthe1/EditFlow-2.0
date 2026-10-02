@@ -608,20 +608,15 @@ test("current AE correction runtime forbids oversized external-UI plans before c
 });
 
 
-test("current Shadow daemon exposes typed mixed-protocol transaction execution", async () => {
+test("current Shadow daemon delegates transactions and stabilization to the sole production worker", async () => {
   const source = await readFile("scripts/current-shadow-control-daemon.mjs", "utf8");
-  assert.match(source, /CurrentAeTransactionRuntimeV1/);
-  assert.match(source, /url\.pathname === "\/run-transaction"/);
-  assert.match(source, /currentTransactionRuntime\.execute\(body\?\.plan \?\? body\)/);
-  assert.match(source, /run-correction-transaction/);
-  assert.match(source, /currentTransactionRuntime\.executeCorrection\(body\?\.plan \?\? body\)/);
-  assert.match(source, /x-editflow-mutation-lease/);
-  assert.match(source, /mutation-lease\/acquire/);
-  assert.match(source, /MUTATION_LEASE_HELD/);
-  assert.match(source, /LEASE_GUARDED_MUTATION_PATHS/);
+  const panel = await readFile("apps/desktop-host/src/practice-panel-server.ts", "utf8");
+  assert.match(source, /RETIRED_EDIT_EXECUTION_PATHS_V1/);
+  assert.doesNotMatch(source, /url\.pathname === "\/run-transaction"|new CurrentAeTransactionRuntimeV1|currentTransactionRuntime\.execute/);
+  assert.match(panel, /#transactionRuntime\.execute\(body\.plan \?\? body\)/);
+  assert.match(panel, /#transactionRuntime\.executeCorrection\(body\.plan \?\? body\)/);
   assert.match(source, /EditGptStabilizationVisualDriverV1/);
-  assert.match(source, /supportedProtocolVersions.*2\.3\.0/s);
-  assert.match(source, /result\.state === "COMMITTED"/);
+  assert.match(source, /stabilization: \{ protocolV23Available: stabilizationProtocolAvailable, visualDriver: stabilizationVisualDriver \}/);
 });
 
 const practiceBaselinePlan = () => ({

@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { writeFile } from "node:fs/promises";
 import { AE_ADAPTER_ROUTE_ID_V11 } from "../../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import { AE_TIME_REMAP_ROUTE_ID_V27 } from "../../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
@@ -13,7 +14,7 @@ const assertThat = (value, message) => {
 };
 
 const requestJson = async (path, init = {}, allowError = false) => {
-  const response = await fetch(BASE + path, init);
+  const response = await productionRequest(BASE, path, init);
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok && !allowError) {
@@ -24,7 +25,7 @@ const requestJson = async (path, init = {}, allowError = false) => {
 
 const getState = async () => (await requestJson("/state")).body;
 const runTransaction = async (plan, allowError = false) => (
-  await requestJson("/run-transaction", {
+  await requestJson("@AE_TRANSACTION", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ plan }),

@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EDITFLOW_DEFAULT_EXECUTION_RUNNER, getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 
-test("runtime status declares the editor brain fast loop as the canonical default execution runner", () => {
+test("runtime status declares the durable production queue as the canonical execution path", () => {
   const status = getMcpServerStatus();
-  assert.equal(EDITFLOW_DEFAULT_EXECUTION_RUNNER, "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0");
+  assert.equal(EDITFLOW_DEFAULT_EXECUTION_RUNNER, "DURABLE_PRODUCTION_QUEUE_V1");
   assert.equal(status.defaultExecutionRunner, EDITFLOW_DEFAULT_EXECUTION_RUNNER);
   assert.equal(status.editorBrain, "V0_LOCAL_EXPLAINABLE_POLICY");
   assert.equal(status.editorBrainDecisionBudgetMs, 50);

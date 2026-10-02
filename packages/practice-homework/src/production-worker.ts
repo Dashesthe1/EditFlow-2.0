@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, truncate } from "node:fs/promises";
 import path from "node:path";
 
-export type PracticeProductionJobKindV1 = "AE_TRANSACTION" | "SCRATCH_SEARCH" | "LOCAL_RENDER" | "SAVE_CHECKPOINT" | "REFERENCE_ANALYSIS";
+export const PRACTICE_PRODUCTION_JOB_KINDS_V1 = ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE", "PROOF_SCRIPT", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"] as const;
+export type PracticeProductionJobKindV1 = typeof PRACTICE_PRODUCTION_JOB_KINDS_V1[number];
 export interface PracticeProductionJobV1 {
   readonly jobId: string;
   readonly requestKey: string;

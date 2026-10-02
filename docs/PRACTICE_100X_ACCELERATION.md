@@ -11,7 +11,7 @@ strategy-escalation directives; production/AE heartbeats; production-aware Watch
 compiled-tutorial reuse; targeted-mutation enforcement after whole-edit coverage; a reusable progressive
 scratch-candidate search rig; and shared whole-edit confirmation of provisional phase proofs so one render
 can supply the second unchanged pass for many phases. The unified Shadow daemon exposes this as the
-primary Practice panel workflow, and resumed nonterminal assignments receive the current scheduling rules
+sole Practice and Pro Creation production workflow, and resumed nonterminal assignments receive the current scheduling rules
 while retaining their checkpoints. Production telemetry is retained by category/stage so time spent in
 media analysis, research, AE mutation, render/comparison, proof I/O, infrastructure, and idle work can be
 measured rather than reconstructed manually.
@@ -32,14 +32,25 @@ third-party effects and new topology require a new GPT hypothesis/capability rou
 ## Continuous production API
 
 - `GET/POST /v1/product/gpt/assignments/{id}/production-jobs`: enqueue authorized
-  `AE_TRANSACTION`, `SCRATCH_SEARCH`, `LOCAL_RENDER`, `SAVE_CHECKPOINT`, and
+  `AE_TRANSACTION`, `AE_CORRECTION`, `AE_GOAL`, `AE_BATCH`, `BUILD_BASELINE`,
+  `PROOF_SCRIPT`, `SCRATCH_SEARCH`, `LOCAL_RENDER`, `SAVE_CHECKPOINT`, and
   `REFERENCE_ANALYSIS` work. Include the current `researchContext` in each payload.
+- `GET .../production-jobs?jobId={jobId}` resumes a submitted receipt. No direct
+  mutation endpoints or compatibility aliases remain; retired requests return `410`.
+- Pro Creation uses the same worker with source phases from its raw-clip research ledger.
+  Reference analysis, reference-scored scratch search and Finish-based baseline assembly
+  are Practice-only. Opaque native scripts pause for explicit readback review.
 - The local worker starts with the service, reads the durable append journal, executes one
   AE writer alongside up to three read-only preparations, respects dependencies and cancellation,
   and retains results independently of ChatGPT. It never invents missing creative decisions.
 - Search/render finalists pause for `REVIEW_REQUIRED`. A crashed in-flight mutation becomes
   `RECONCILE_REQUIRED`, never an automatic replay. Failed jobs also hold later writes until reconciled. `RESOLVE` requires the current controller
   and retained visual/reconciliation evidence. These queue receipts do not certify an edit.
+- Acceptance helper scripts use `scripts/production-job-client.mjs` and the current
+  `EDITFLOW_RESEARCH_CONTEXT_JSON`; a pending/review receipt stops the helper until GPT
+  inspects and resolves it. They cannot call a separate mutation service. Native tracking/roto
+  subprocesses receive an ephemeral worker scope for their proof commands; the scope expires
+  with that job and shares its writer, research admission and cancellation checks.
 - Production state updates require the live controller. Local/whole proof receipts require a
   unique render evidence reference and candidate identity. A repeated receipt cannot count twice;
   failures, reconstruction and changes to a candidate reset the affected proof sequence.
@@ -58,9 +69,10 @@ third-party effects and new topology require a new GPT hypothesis/capability rou
   cannot hide idle time through double-counting. The remaining wall time is explicitly unattributed.
 
 Coverage-first construction and shared whole-edit confirmation change scheduling, not quality.
-Authoritative completion still requires the existing original M6/direct-GPT visual gate, exact raw
-sources, raw audio, the 95% similarity floor, two phase passes, two whole-edit passes, and the
-independent mastery rules. A coordinator or a machine search score cannot grant acceptance.
+Authoritative Practice completion still requires the reference-fidelity visual gate inside the primary
+production system, exact raw sources, raw audio, the 95% similarity floor, two phase passes, two
+whole-edit passes, and the independent mastery rules. The integrated M6 fidelity engine and direct GPT
+pixel review supply reference evidence; a coordinator or machine search score cannot grant acceptance.
 
 ## Goal
 

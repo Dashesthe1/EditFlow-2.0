@@ -32,7 +32,7 @@ test("M5 seed fast path uses warm CEP native Roto Brush identity and enforces sp
   const node = await read("scripts/m5-roto-brush-live-proof.mjs");
   const selector = await read("scripts/windows/m5-roto-brush-tool-select.jsx");
   assert.match(py, /tool_select = select_native_tool\(afterfx_path, tool_select_script, "ROTO_BRUSH"\)/);
-  assert.match(py, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(py, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.match(py, /native_roto_tool_to_draw_seed/);
   assert.match(selector, /if \(requestedTool === "ROTO_BRUSH"\) expected = 9041/);
   assert.match(selector, /else if \(requestedTool === "REFINE_EDGE"\) expected = 9042/);

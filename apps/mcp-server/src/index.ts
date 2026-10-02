@@ -1,6 +1,6 @@
 export const EDITFLOW_VERSION = "0.5.0-dev" as const;
 export const EDITFLOW_PHASE = "M4_TRACKING_ISOLATION_IN_PROGRESS" as const;
-export const EDITFLOW_DEFAULT_EXECUTION_RUNNER = "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0" as const;
+export const EDITFLOW_DEFAULT_EXECUTION_RUNNER = "DURABLE_PRODUCTION_QUEUE_V1" as const;
 
 export interface McpServerStatus {
   readonly version: typeof EDITFLOW_VERSION;
@@ -26,6 +26,8 @@ export interface McpServerStatus {
   readonly ordinaryIntentBudgetMs: 2000;
   readonly routineMicroActionBudgetMs: 1000;
   readonly localRuntime: "PERSISTENT_BATCH_RUNTIME_V1";
+  readonly primaryProductionSystem: "DURABLE_PRODUCTION_QUEUE_V1";
+  readonly directMutationRoutes: "REMOVED";
   readonly mcpCommandGranularity: "COARSE_GRAINED_BATCHES";
   readonly routineBatchMaxActions: 64;
   readonly slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE";
@@ -61,6 +63,8 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   ordinaryIntentBudgetMs: 2000,
   routineMicroActionBudgetMs: 1000,
   localRuntime: "PERSISTENT_BATCH_RUNTIME_V1",
+  primaryProductionSystem: "DURABLE_PRODUCTION_QUEUE_V1",
+  directMutationRoutes: "REMOVED",
   mcpCommandGranularity: "COARSE_GRAINED_BATCHES",
   routineBatchMaxActions: 64,
   slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE",

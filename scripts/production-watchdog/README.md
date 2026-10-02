@@ -29,7 +29,7 @@ The 22:09 failure used generation and semantic evidence from an older response w
 4. Record Stop proof and commit ownership to one fresh tab. Persist its continuation prompt and target tab. Verify that Send was accepted; retry a failed send in the same tab and reconcile the existing user prompt before retrying, avoiding duplicate submissions.
 5. Preserve the committed handoff through supervisor/extension restarts, including the commit-before-browser-storage interval. A genuinely removed owning tab is checkpointed and verified as closed before creating its replacement. Observer loss repairs observation without authorizing termination of a live chat.
 
-Continuation prompts preserve the assignment/session, original M6 workflow, connection preflight, raw-only footage/audio policy and open AE. Account/login or rate-limit blocks remain observed while availability is checked; creating more chats would not fix them.
+Continuation prompts preserve the assignment/session, Primary Edit Production System, connection preflight, raw-only footage/audio policy and open AE. Practice also preserves M6 as an integrated reference-fidelity engine inside that system. Account/login or rate-limit blocks remain observed while availability is checked; creating more chats would not fix them.
 
 ## Validation and installation
 

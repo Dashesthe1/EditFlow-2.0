@@ -22,9 +22,9 @@ test("M5 Mocha planar-region proof is retained, warm-AE, and non-retrying", asyn
   assert.match(runner, /layer1UiaVerified/);
   assert.match(runner, /sameAeProcess/i);
   assert.match(runner, /maxMeasuredWarmAeRoundtripMs/);
-  assert.match(runner, /ProofScriptEndpoint/);
-  assert.match(runner, /127\.0\.0\.1:32146\/proof-script/);
-  assert.match(runner, /Invoke-WebRequest/);
+  assert.match(runner, /ProductionJobClient/);
+  assert.match(runner, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
+  assert.match(runner, /Invoke-ProductionProof/);
   assert.match(runner, /WARM_CEP_PROOF_SCRIPT/);
   assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFxPath/);
 });

@@ -30,9 +30,9 @@ test("M5 Mocha launch proof is warm-AE, no-retry, and requires clean external-se
   assert.match(runner, /sameAeProcess/i);
   assert.match(runner, /maxMeasuredWarmAeRoundtripMs/);
   assert.match(runner, /Boris FX/);
-  assert.match(runner, /ProofScriptEndpoint/);
-  assert.match(runner, /127\.0\.0\.1:32146\/proof-script/);
-  assert.match(runner, /Invoke-WebRequest/);
+  assert.match(runner, /ProductionJobClient/);
+  assert.match(runner, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
+  assert.match(runner, /Invoke-ProductionProof/);
   assert.match(runner, /WARM_CEP_PROOF_SCRIPT/);
   assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFxPath/);
 });

@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -35,12 +36,12 @@ const CAPABILITIES = [
   "ae.layer.order.set", "ae.precompose.layers", "ae.effect.echo",
 ];
 const request = async (pathname, init) => {
-  const response = await fetch(CONTROL + pathname, init);
+  const response = await productionRequest(CONTROL, pathname, init);
   const body = await response.json();
   if (!response.ok || body.ok === false) throw new Error(pathname + " failed: " + JSON.stringify(body));
   return body;
 };
-const runProofScript = (name) => request("/proof-script", {
+const runProofScript = (name) => request("@PROOF_SCRIPT", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ scriptPath: WINDOWS(name) }),
@@ -206,7 +207,7 @@ try {
     startingIntensity: Number(echoNode.parameters.startingIntensity),
     decay: Number(echoNode.parameters.decay),
   };
-  const transaction = await request("/run-transaction", {
+  const transaction = await request("@AE_TRANSACTION", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ plan: native.plan }),

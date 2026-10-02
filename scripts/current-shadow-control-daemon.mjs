@@ -6,11 +6,9 @@ import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
-import { LocalFastRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/local-fast-runtime.js";
-import { CurrentAeTransactionRuntimeV1 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
+import { RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "../.tmp/runtime/apps/desktop-host/src/production-authority.js";
 import { resolvePracticeStatePathsV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-state-paths.js";
 import { EditGptStabilizationVisualDriverV1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-editgpt-stabilization-visual-driver.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
@@ -34,21 +32,6 @@ const broker = new LoopbackCepBroker({
 });
 await broker.start();
 const panel = await broker.waitForPanel(15_000);
-let requestCounter = 0;
-const filesystemPolicy = new AeFilesystemPolicyV11([process.env.USERPROFILE ?? repoRoot, repoRoot]);
-const client = new AeCepAdapterClientV11(
-  broker,
-  () => `shadow-current-${++requestCounter}`,
-  filesystemPolicy,
-);
-const runtime = await LocalFastRuntimeV1.create(client, {
-  projectId: "shadow-current-project",
-  maxBatchActions: 64,
-  totalBudgetMs: 30_000,
-  actionBudgetMs: 1_000,
-  leaseTtlMs: 120_000,
-});
-const session = runtime.session;
 const activePanel = broker.panelSession ?? panel;
 const stabilizationProtocolAvailable =
   Array.isArray(activePanel?.supportedProtocolVersions)
@@ -76,17 +59,6 @@ const stabilizationVisualDriver =
         analysisWindowSeconds: 5,
       })
     : null;
-const currentTransactionRuntime = new CurrentAeTransactionRuntimeV1(
-  broker,
-  "shadow-current-project",
-  64,
-  {
-    protocolV23Available: stabilizationProtocolAvailable,
-    visualDriver: stabilizationVisualDriver,
-  },
-  undefined,
-  filesystemPolicy,
-);
 const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
@@ -111,68 +83,13 @@ const practicePanel = new PracticePanelServerV1({
   broker,
   ...(process.env.EDITFLOW_FFMPEG_PATH ? { ffmpegPath: process.env.EDITFLOW_FFMPEG_PATH } : {}),
   renderTimeoutMs: Number(process.env.EDITFLOW_PRACTICE_TIMEOUT_MS ?? 180_000),
-  aeWriterAvailable: () => activeMutationLease() === null,
+  stabilization: { protocolV23Available: stabilizationProtocolAvailable, visualDriver: stabilizationVisualDriver },
 });
 await practicePanel.start();
 
-const MUTATION_LEASE_HEADER = "x-editflow-mutation-lease";
-const DEFAULT_MUTATION_LEASE_TTL_MS = 120_000;
-const MAX_MUTATION_LEASE_TTL_MS = 180_000;
-const LEASE_GUARDED_MUTATION_PATHS = new Set([
-  "/proof-script",
-  "/run-transaction",
-  "/run-correction-transaction",
-  "/run",
-  "/run-batch",
-]);
-let mutationLease = null;
-const activeMutationLease = () => {
-  if (mutationLease !== null && mutationLease.expiresAt <= Date.now()) mutationLease = null;
-  return mutationLease;
-};
-const mutationLeaseStatus = () => {
-  const lease = activeMutationLease();
-  return lease === null
-    ? { held: false }
-    : { held: true, owner: lease.owner, expiresAt: lease.expiresAt };
-};
-const requestMutationLeaseToken = (req) => {
-  const raw = req.headers[MUTATION_LEASE_HEADER];
-  if (Array.isArray(raw)) return raw[0] ?? null;
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
-};
-const admitLeasedMutation = (req, res) => {
-  const lease = activeMutationLease();
-  if (lease === null || requestMutationLeaseToken(req) === lease.token) return true;
-  sendJson(res, 423, {
-    ok: false,
-    error: "MUTATION_LEASE_HELD",
-    lease: { owner: lease.owner, expiresAt: lease.expiresAt },
-  });
-  return false;
-};
+await practicePanel.observeCurrentAe();
 
-const proofScriptRoots = [
-  path.resolve(repoRoot, "scripts", "windows"),
-  path.resolve(repoRoot, "proofs", "artifacts"),
-];
-const resolveProofScript = async (value) => {
-  if (typeof value !== "string" || value.length === 0) throw new Error("PROOF_SCRIPT_PATH_REQUIRED");
-  const candidate = path.resolve(value);
-  const allowed = proofScriptRoots.some((root) => {
-    const relative = path.relative(root, candidate);
-    return !relative.startsWith("..") && !path.isAbsolute(relative);
-  });
-  if (!allowed || path.extname(candidate).toLowerCase() !== ".jsx") {
-    throw new Error("PROOF_SCRIPT_PATH_NOT_ALLOWED");
-  }
-  await readFile(candidate, "utf8");
-  return candidate;
-};
-
-const requestBodies = new WeakMap();
 const readJson = async (req) => {
-  if (requestBodies.has(req)) return requestBodies.get(req);
   const chunks = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   const text = Buffer.concat(chunks).toString("utf8");
@@ -190,7 +107,7 @@ const sendJson = (res, status, value) => {
 const failureContext = (req, requestPath) => ({
   process: { pid: process.pid, execPath: process.execPath },
   request: { method: req.method ?? null, path: requestPath },
-  afterEffects: { hostRevision: session.runner.hostRevision, projectId: "shadow-current-project" },
+  afterEffects: { hostRevision: practicePanel.controlStatus().hostRevision, projectId: "practice-gpt-controller" },
   cep: {
     connected: Boolean(broker.panelSession ?? panel),
     sessionId: (broker.panelSession ?? panel)?.sessionId ?? null,
@@ -226,13 +143,11 @@ const proxyPracticeRequest = (req, res) => new Promise((resolve, reject) => {
 const statusPayload = () => ({
   ok: true,
   service: "EditFlow Current Shadow Control",
-  repoRoot, runtimeId, buildId, canonicalRuntimePath, executionMode: session.executionMode,
-  adapterBuild: session.adapterBuild,
-  hostRevision: session.runner.hostRevision,
-  localRuntime: runtime.status(),
-  currentTransactionRuntime: currentTransactionRuntime.status(),
+  repoRoot, runtimeId, buildId, canonicalRuntimePath,
+  ...practicePanel.controlStatus(),
+  primarySystemOnly: true,
+  directMutationRoutes: "REMOVED",
   clipResearchPolicy: "MANDATORY_PER_CLIP_TUTORIAL_ADOBE_WEB_V1",
-  mutationLease: mutationLeaseStatus(),
   panel: broker.panelSession ?? panel,
   practiceService: {
     integrated: true,
@@ -244,89 +159,22 @@ const statusPayload = () => ({
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
 
-const legacyControlRouteAliases = new Map([
-  ["/v1/product/control/observe", "/state"],
-  ["/v1/product/control/fast-refresh", "/state"],
-  ["/v1/product/control/status", "/status"],
-  ["/v1/product/control/run", "/run"],
-  ["/v1/product/control/run-batch", "/run-batch"],
-  ["/v1/product/control/execute", "/run-transaction"],
-  ["/v1/product/control/correction", "/run-correction-transaction"],
-]);
-
 const server = createServer(async (req, res) => {
   const requestPath = req.url ?? "/";
   try {
     const url = new URL(requestPath, "http://127.0.0.1");
-    url.pathname = legacyControlRouteAliases.get(url.pathname) ?? url.pathname;
-    if (req.method === "POST" && ["/run", "/run-batch", "/run-transaction", "/run-correction-transaction", "/proof-script"].includes(url.pathname)) {
-      await practicePanel.assertPracticeReconstructionReady();
-      const body = await readJson(req);
-      requestBodies.set(req, body);
-      const admission = await practicePanel.assertClipResearchReady(body);
-      res.once("finish", () => {
-        void practicePanel.recordClipResearchExecution(admission, res.statusCode < 400 ? "HTTP_COMPLETED" : "HTTP_FAILED")
-          .catch((error) => console.error("CLIP_RESEARCH_AUDIT_FAILED", error.message));
-      });
+    if (RETIRED_EDIT_EXECUTION_PATHS_V1.has(url.pathname)) {
+      sendJson(res, 410, retiredEditExecutionResponseV1());
+      return;
     }
     if (url.pathname.startsWith("/v1/product/")) {
-      if (req.method === "POST" && url.pathname.startsWith("/v1/product/control/") && !admitLeasedMutation(req, res)) return;
       await proxyPracticeRequest(req, res);
       return;
     }
     if (req.method === "GET" && url.pathname === "/mutation-lease") {
-      sendJson(res, 200, { ok: true, lease: mutationLeaseStatus() });
+      sendJson(res, 200, { ok: true, lease: practicePanel.controlStatus().mutationLease });
       return;
     }
-    if (req.method === "POST" && url.pathname === "/mutation-lease/acquire") {
-      const body = await readJson(req);
-      const current = activeMutationLease();
-      if (current !== null) {
-        sendJson(res, 423, {
-          ok: false,
-          error: "MUTATION_LEASE_HELD",
-          lease: { owner: current.owner, expiresAt: current.expiresAt },
-        });
-        return;
-      }
-      const owner = typeof body.owner === "string" && body.owner.trim().length > 0
-        ? body.owner.trim()
-        : "anonymous-proof";
-      const requestedTtl = Number(body.ttlMs ?? DEFAULT_MUTATION_LEASE_TTL_MS);
-      const ttlMs = Math.max(
-        5_000,
-        Math.min(MAX_MUTATION_LEASE_TTL_MS, Number.isFinite(requestedTtl) ? requestedTtl : DEFAULT_MUTATION_LEASE_TTL_MS),
-      );
-      mutationLease = {
-        token: randomUUID(),
-        owner,
-        acquiredAt: Date.now(),
-        expiresAt: Date.now() + ttlMs,
-      };
-      sendJson(res, 200, { ok: true, lease: { ...mutationLease } });
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/mutation-lease/release") {
-      const body = await readJson(req);
-      const current = activeMutationLease();
-      if (current === null) {
-        sendJson(res, 200, { ok: true, released: false, lease: { held: false } });
-        return;
-      }
-      const token = typeof body.token === "string" ? body.token : requestMutationLeaseToken(req);
-      if (token !== current.token) {
-        sendJson(res, 409, { ok: false, error: "MUTATION_LEASE_TOKEN_MISMATCH" });
-        return;
-      }
-      mutationLease = null;
-      sendJson(res, 200, { ok: true, released: true, lease: { held: false } });
-      return;
-    }
-    if (
-      req.method === "POST"
-      && LEASE_GUARDED_MUTATION_PATHS.has(url.pathname)
-      && !admitLeasedMutation(req, res)
-    ) return;
     if (req.method === "GET" && url.pathname === "/healthz") {
       sendJson(res, 200, statusPayload());
       return;
@@ -336,7 +184,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url.pathname === "/state") {
-      const state = await session.runner.refresh();
+      const state = await practicePanel.observeCurrentAe();
       sendJson(res, 200, { ...statusPayload(), revision: state.hostRevision, state });
       return;
     }
@@ -372,54 +220,6 @@ const server = createServer(async (req, res) => {
       if (typeof body.signature !== "string" || typeof body.success !== "boolean") throw new Error("ERROR_OUTCOME_INPUT_REQUIRED");
       const entry = await errorMemory.recordOutcome(body.signature, body.success);
       sendJson(res, entry ? 200 : 404, { ok: Boolean(entry), entry });
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/proof-script") {
-      const body = await readJson(req);
-      const scriptPath = await resolveProofScript(body.scriptPath);
-      const activePanel = broker.panelSession ?? panel;
-      if (!activePanel || typeof activePanel.protocolVersion !== "string") throw new Error("CEP_PANEL_NOT_CONNECTED");
-      const sequence = ++requestCounter;
-      const suffix = `${Date.now()}-${sequence}`;
-      const response = await practicePanel.runExternalProductionOperation(body, url.pathname, () => broker.dispatch({
-        protocolVersion: activePanel.protocolVersion,
-        requestId: `shadow-proof-request-${suffix}`,
-        transactionId: `shadow-proof-tx-${suffix}`,
-        operationId: `shadow-proof-op-${suffix}`,
-        capabilityId: "internal.proof.eval_file",
-        command: "proof.eval_file",
-        payload: { scriptPath },
-      }));
-      const ok = response?.outcome === "APPLIED";
-      sendJson(res, ok ? 200 : 502, { ok, scriptPath, response });
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/run-transaction") {
-      const body = await readJson(req);
-      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => currentTransactionRuntime.execute(body?.plan ?? body));
-      const ok = result.state === "COMMITTED";
-      sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/run-correction-transaction") {
-      const body = await readJson(req);
-      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => currentTransactionRuntime.executeCorrection(body?.plan ?? body));
-      const ok = result.state === "COMMITTED";
-      sendJson(res, ok ? 200 : 409, { ok, result, status: statusPayload() });
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/run") {
-      const body = await readJson(req);
-      const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-fast-${Date.now()}`;
-      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => runtime.runGoal(body.goal, transactionId));
-      sendJson(res, 200, { ...result, status: statusPayload() });
-      return;
-    }
-    if (req.method === "POST" && url.pathname === "/run-batch") {
-      const body = await readJson(req);
-      const transactionId = typeof body.transactionId === "string" && body.transactionId ? body.transactionId : `shadow-batch-${Date.now()}`;
-      const result = await practicePanel.runExternalProductionOperation(body, url.pathname, () => runtime.runRoutineBatch(body.intents, transactionId));
-      sendJson(res, 200, { ...result, status: statusPayload() });
       return;
     }
     sendJson(res, 404, { error: "NOT_FOUND" });

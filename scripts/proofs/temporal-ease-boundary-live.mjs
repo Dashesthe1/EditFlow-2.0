@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { writeFile } from "node:fs/promises";
 import { AE_ADAPTER_ROUTE_ID_V11 } from "../../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
 import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
@@ -11,14 +12,14 @@ const LAYER = "EF2_EASE_BOUNDARY_LAYER";
 const requireThat = (value, message) => { if (!value) throw new Error(message); };
 
 const requestJson = async (path, init = {}) => {
-  const response = await fetch(BASE + path, init);
+  const response = await productionRequest(BASE, path, init);
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
   if (!response.ok) throw new Error(`${path} failed ${response.status}: ${text}`);
   return body;
 };
 const getState = () => requestJson("/state");
-const runTransaction = (plan) => requestJson("/run-transaction", {
+const runTransaction = (plan) => requestJson("@AE_TRANSACTION", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ plan }),

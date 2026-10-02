@@ -34,6 +34,8 @@ $ControlStatus = Get-LocalStatus "$Base/status"
 $ExpectedWorkflow = "ACCELERATED_REFERENCE_FIRST_V1"
 if ($ProductStatus.practiceWorkflow -eq $ExpectedWorkflow -and
     $ProductStatus.practiceStartup -eq "RESUMABLE_PREFLIGHT_V1" -and
+    $ProductStatus.primaryProductionSystem -eq "DURABLE_PRODUCTION_QUEUE_V1" -and
+    $ProductStatus.directMutationRoutes -eq "REMOVED" -and
     $ControlStatus.repoRoot -eq $RepoRoot) {
   Write-Host "Accelerated Practice is already primary in the live Shadow control plane."
   Write-Host "Practice endpoint: $Base/v1/product/status"

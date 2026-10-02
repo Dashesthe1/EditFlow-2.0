@@ -28,7 +28,7 @@ test("Tutorial 001 live runner gates capture with semantic sparse visual assessm
   assert.match(source, /EDITFLOW_T001_VISUAL === "1"/);
   assert.match(source, /m5-tutorial-001-live-adaptive-structural\.json/);
   assert.match(source, /m5-tutorial-001-live-adaptive-visual\.json/);
-  assert.match(source, /\/proof-script/);
+  assert.match(source, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.match(source, /baseline\.json/);
   assert.match(source, /edited\.json/);
   assert.match(source, /waitForVisualFiles/);

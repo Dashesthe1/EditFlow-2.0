@@ -213,10 +213,10 @@ test("Practice can discover, prove, and retain a previously missing editing skil
   assert.match(assignment.chatMessage, /RAW_SOURCE_IS_SEARCH_ONLY/);
   assert.match(assignment.chatMessage, /VISUAL_SOURCE_CONFIRMATION_REQUIRED/);
   assert.match(assignment.chatMessage, /LOCK_EDITORIAL_SPINE/);
-  assert.match(assignment.chatMessage, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.match(assignment.chatMessage, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
   assert.match(assignment.chatMessage, /COMPLETE_EDIT_THEN_PATCH/);
   assert.match(assignment.chatMessage, /CLEAN_AE_PROJECT/);
-  assert.match(assignment.chatMessage, /professional reference and rendered pixels are the visual authority/i);
+  assert.match(assignment.chatMessage, /professional reference and rendered pixels are the Practice visual authority/i);
   assert.equal(
     assignment.practiceSceneMatches?.[0]?.workingMedia?.sourcePath,
     "C:\\PracticeCache\\shot-1.mp4",
