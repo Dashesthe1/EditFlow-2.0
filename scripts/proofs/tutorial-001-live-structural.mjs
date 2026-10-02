@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { compileTutorialDeepLessonV1 } from "../../.tmp/runtime/packages/tutorial-learning/src/index.js";
@@ -46,7 +47,7 @@ const requireThat = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 const jsonRequest = async (path, init = {}) => {
-  const response = await fetch(BASE + path, init);
+  const response = await productionRequest(BASE, path, init);
   const text = await response.text();
   let body;
   try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
@@ -58,13 +59,13 @@ const jsonRequest = async (path, init = {}) => {
 
 const getState = async () => jsonRequest("/state");
 const getStatus = async () => jsonRequest("/status");
-const runTransaction = async (plan) => jsonRequest("/run-transaction", {
+const runTransaction = async (plan) => jsonRequest("@AE_TRANSACTION", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ plan }),
 });
 const runVisualCapture = async () => {
-  const result = await jsonRequest("/proof-script", {
+  const result = await jsonRequest("@PROOF_SCRIPT", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ scriptPath: VISUAL_SCRIPT }),
@@ -73,7 +74,7 @@ const runVisualCapture = async () => {
   return result;
 };
 const runMotionCapture = async () => {
-  const result = await jsonRequest("/proof-script", {
+  const result = await jsonRequest("@PROOF_SCRIPT", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ scriptPath: MOTION_SCRIPT }),

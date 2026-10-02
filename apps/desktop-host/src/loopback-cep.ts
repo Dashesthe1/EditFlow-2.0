@@ -125,8 +125,22 @@ export interface LoopbackCepPanelSession {
   readonly lastSeenAt: string;
 }
 
-type BrokerRequest = AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14 | AeNullRigRequestV15 | AeLayerControlsRequestV16 | AeTemporalInterpolationRequestV17 | AeTemporalEaseRequestV18 | AeSpatialGraphRequestV19 | AeMarkerMotionRequestV20 | AePointTrackingRequestV21 | AeFaceTrackingRequestV22 | AeStabilizationRequestV23 | AeTrackerRepairRequestV24 | AeMediaSequenceRequestV25 | AeRotoBrushRequestV26 | AeTimeRemapRequestV27;
-type BrokerResponse = AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14 | AeNullRigResponseV15 | AeLayerControlsResponseV16 | AeTemporalInterpolationResponseV17 | AeTemporalEaseResponseV18 | AeSpatialGraphResponseV19 | AeMarkerMotionResponseV20 | AePointTrackingResponseV21 | AeFaceTrackingResponseV22 | AeStabilizationResponseV23 | AeTrackerRepairResponseV24 | AeMediaSequenceResponseV25 | AeRotoBrushResponseV26 | AeTimeRemapResponseV27;
+export interface AePrivateProofRequestV1 {
+  readonly protocolVersion: string;
+  readonly requestId: string;
+  readonly transactionId: string;
+  readonly operationId: string;
+  readonly capabilityId: "internal.proof.eval_file";
+  readonly command: "proof.eval_file";
+  readonly payload: { readonly scriptPath: string };
+}
+export type AePrivateProofResponseV1 = Omit<AeAdapterResponseV11, "protocolVersion" | "command"> & {
+  readonly protocolVersion: string;
+  readonly command: "proof.eval_file";
+};
+
+type BrokerRequest = AePrivateProofRequestV1 | AeAdapterRequestV11 | AeMaskRequestV12 | AeCompositeRequestV13 | AeParentingRequestV14 | AeNullRigRequestV15 | AeLayerControlsRequestV16 | AeTemporalInterpolationRequestV17 | AeTemporalEaseRequestV18 | AeSpatialGraphRequestV19 | AeMarkerMotionRequestV20 | AePointTrackingRequestV21 | AeFaceTrackingRequestV22 | AeStabilizationRequestV23 | AeTrackerRepairRequestV24 | AeMediaSequenceRequestV25 | AeRotoBrushRequestV26 | AeTimeRemapRequestV27;
+type BrokerResponse = AePrivateProofResponseV1 | AeAdapterResponseV11 | AeMaskResponseV12 | AeCompositeResponseV13 | AeParentingResponseV14 | AeNullRigResponseV15 | AeLayerControlsResponseV16 | AeTemporalInterpolationResponseV17 | AeTemporalEaseResponseV18 | AeSpatialGraphResponseV19 | AeMarkerMotionResponseV20 | AePointTrackingResponseV21 | AeFaceTrackingResponseV22 | AeStabilizationResponseV23 | AeTrackerRepairResponseV24 | AeMediaSequenceResponseV25 | AeRotoBrushResponseV26 | AeTimeRemapResponseV27;
 
 interface PendingCommand {
   readonly request: BrokerRequest;
@@ -297,6 +311,7 @@ export class LoopbackCepBroker implements AeAdapterTransportV11, AeMaskTransport
     throw new Error("CEP_PANEL_REGISTRATION_TIMEOUT");
   }
 
+  async dispatch(request: AePrivateProofRequestV1): Promise<AePrivateProofResponseV1>;
   async dispatch(request: AeAdapterRequestV11): Promise<AeAdapterResponseV11>;
   async dispatch(request: AeMaskRequestV12): Promise<AeMaskResponseV12>;
   async dispatch(request: AeCompositeRequestV13): Promise<AeCompositeResponseV13>;

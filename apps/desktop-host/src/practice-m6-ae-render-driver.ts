@@ -1,5 +1,6 @@
 import { mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import {
   AeCepAdapterClientV11,
@@ -268,6 +269,8 @@ implements PracticeM6AeRenderDriverV1 {
     readonly suffix: string;
     readonly startMs: number;
     readonly durationMs: number;
+    readonly scratchCandidate?: Readonly<Record<string, unknown>>;
+    readonly resolutionFactor?: number;
   }): Promise<{ readonly renderPath: string; readonly evidenceRefs: readonly string[] }> {
     if (input.durationMs <= 0 || !Number.isFinite(input.durationMs)) {
       throw new TypeError("Practice render duration must be finite and positive.");
@@ -277,7 +280,7 @@ implements PracticeM6AeRenderDriverV1 {
       this.artifactDir,
       safeStem(input.sessionId)
         + "-attempt-" + String(input.attempt).padStart(3, "0")
-        + "-" + safeStem(input.suffix) + ".avi",
+        + "-" + safeStem(input.suffix) + "-" + randomUUID().slice(0, 8) + ".avi",
     );
     const observed = await this.client.observe(this.projectId);
     const response = await this.client.executePublic("render.capture", {
@@ -288,6 +291,8 @@ implements PracticeM6AeRenderDriverV1 {
         outputPath: renderPath,
         timeSpanStart: input.startMs / 1000,
         timeSpanDuration: input.durationMs / 1000,
+        ...(input.scratchCandidate === undefined ? {} : { scratchCandidate: input.scratchCandidate,
+          resolutionFactor: input.resolutionFactor ?? 1 }),
       },
       expectedState: observed.observed,
       readbackProfile: "PRACTICE_M6_RENDER_V1",
@@ -344,6 +349,23 @@ implements PracticeM6AeRenderDriverV1 {
       suffix: input.windowId,
       startMs: input.startMs,
       durationMs: input.endMs - input.startMs,
+    });
+  }
+
+  async renderSearchCandidate(input: {
+    readonly sessionId: string;
+    readonly compStableId: string;
+    readonly candidateId: string;
+    readonly patches: readonly Readonly<Record<string, unknown>>[];
+    readonly startMs: number;
+    readonly endMs: number;
+    readonly resolutionScale: number;
+  }): Promise<{ readonly renderPath: string; readonly evidenceRefs: readonly string[] }> {
+    if (![1, 0.25, 0.125].includes(input.resolutionScale)) throw new TypeError("Unsupported scratch resolution scale.");
+    return await this.#render({ sessionId: input.sessionId, attempt: 0, compStableId: input.compStableId,
+      suffix: "scratch-" + input.candidateId, startMs: input.startMs, durationMs: input.endMs - input.startMs,
+      resolutionFactor: Math.round(1 / input.resolutionScale),
+      scratchCandidate: { candidateId: input.candidateId, patches: input.patches },
     });
   }
 

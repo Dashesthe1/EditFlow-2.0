@@ -18,8 +18,8 @@ test("M5 Mocha repair proof is retained, warm-CEP, and non-retrying", async () =
   assert.equal(manifest.incrementalNodeId, "M5_MOCHA_AE_REPAIR_TRACK");
   for (const dep of [preparePath, repairPath, verifyPath, workspacePath]) assert.ok(manifest.incrementalDependencies.includes(dep));
   const runner = await readFile(runnerPath, "utf8");
-  assert.match(runner, /127\.0\.0\.1:32146\/proof-script/);
-  assert.match(runner, /Invoke-WebRequest/);
+  assert.match(runner, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
+  assert.match(runner, /Invoke-ProductionProof/);
   assert.match(runner, /WARM_CEP_PROOF_SCRIPT/);
   assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFxPath/);
   assert.match(runner, /RepairTrackVerified/);

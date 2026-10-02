@@ -51,6 +51,10 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
     practiceStartup: "RESUMABLE_PREFLIGHT_V1",
     practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
+    primaryProductionSystem: "DURABLE_PRODUCTION_QUEUE_V1",
+    productionModes: ["PRACTICE", "PRO_CREATION"],
+    directMutationRoutes: "REMOVED",
+    productionJobKinds: ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE", "PROOF_SCRIPT", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"],
     activeRunId: null,
     latestRunId: null,
   });
@@ -109,11 +113,33 @@ test("Practice panel product API is authenticated and preserves readiness gates"
   const resume = await (await fetch(base + "/v1/product/practice/resume-or-start", { headers })).json();
   assert.equal(resume.assignment.assignmentId, persistedRun.assignmentId);
   assert.equal(resume.nextOperation, "RESUME_PREFLIGHT");
+  assert.ok(resume.production);
+  const production = await (await fetch(
+    base + "/v1/product/gpt/assignments/" + encodeURIComponent(persistedRun.assignmentId) + "/production",
+    { headers },
+  )).json();
+  assert.equal(production.production.sessionId, persistedRun.sessionId);
+  assert.equal(production.strategy.action, "CONTINUE");
+  assert.ok(production.telemetry);
+  const assignmentStore = new GptOrchestrationStoreV1(path.join(root, "artifacts", "state", "gpt-orchestration.json"));
+  await assignmentStore.claim(persistedRun.assignmentId, "test-controller");
+  const checkpoint = await fetch(
+    base + "/v1/product/gpt/assignments/" + encodeURIComponent(persistedRun.assignmentId) + "/production",
+    {
+      method: "POST", headers,
+      body: JSON.stringify({
+        action: "AE_CHECKPOINT", claimedBy: "test-controller", projectId: "practice-test-project", projectRevision: 7,
+        activeCompId: "comp:test", projectPath: "C:/Practice/test.aep",
+      }),
+    },
+  );
+  assert.equal(checkpoint.status, 200);
+  assert.equal((await checkpoint.json()).production.aeCheckpoint.projectRevision, 7);
   const mutation = await fetch(base + "/v1/product/control/run-batch", {
     method: "POST", headers, body: JSON.stringify({ intents: [] }),
   });
-  assert.equal(mutation.status, 409);
-  assert.match((await mutation.json()).error, /reconstruction is locked/);
+  assert.equal(mutation.status, 410);
+  assert.equal((await mutation.json()).error, "EDIT_EXECUTION_PATH_REMOVED");
 });
 
 test("Practice panel restores persisted runs and saved human review after restart", async (t) => {

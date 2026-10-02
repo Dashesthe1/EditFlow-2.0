@@ -44,10 +44,17 @@ function Wait-JsonMarker([string]$Path, [int]$Seconds, [string]$Label) {
   }
   throw "$Label marker was not valid JSON: $Path"
 }
-$ProofScriptEndpoint = "http://127.0.0.1:32146/proof-script"
+$ProductionJobClient = Join-Path $PSScriptRoot "..\production-job-client.mjs"
+function Invoke-ProductionProof([string]$Body) {
+  $ScriptPath = ($Body | ConvertFrom-Json).scriptPath
+  $Text = (& node $ProductionJobClient $ScriptPath) -join [Environment]::NewLine
+  if ($LASTEXITCODE -ne 0) { throw "Production proof job requires review/reconciliation: $Text" }
+  return @{ StatusCode = 200; Content = $Text }
+}
+
 function Invoke-AeScript([string]$ScriptPath) {
   $body = @{ scriptPath = $ScriptPath } | ConvertTo-Json -Compress
-  $result = Invoke-RestMethod -Uri $ProofScriptEndpoint -Method Post -ContentType "application/json" -Body $body -TimeoutSec ([Math]::Max($TimeoutSeconds, 30))
+  $result = (Invoke-ProductionProof $Body).Content | ConvertFrom-Json
   if (-not $result.ok) { throw "Warm CEP proof script dispatch failed: $ScriptPath" }
   return $result
 }

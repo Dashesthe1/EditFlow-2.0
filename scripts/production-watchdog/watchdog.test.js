@@ -18,6 +18,18 @@ test("recorded 90–92s cutoffs never terminate active reasoning", () => {
     assert.equal(r.action, "NONE");
   }
 });
+test("active production operation heartbeat protects a silent ChatGPT surface", () => {
+  const now = start + 20 * 60000;
+  const r = evaluateLiveness({ suspectAt: start }, at(now - start, {
+    semanticAt: start,
+    productionInFlight: true,
+    productionHeartbeatAt: now - 1000,
+  }), now);
+  assert.equal(r.phase, "PROCESSING");
+  assert.equal(r.reason, "production_operation_in_flight");
+  assert.equal(r.action, "NONE");
+});
+
 test("fresh semantic processing remains live after 40 minutes", () => {
   const now = start + 40 * 60000;
   assert.equal(evaluateLiveness({}, at(now - start, { semanticAt: now - 1000 }), now).phase, "PROCESSING");

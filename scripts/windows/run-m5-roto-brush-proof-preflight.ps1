@@ -12,9 +12,16 @@ $Running = @(Get-Process -Name "AfterFX" -ErrorAction SilentlyContinue)
 if ($Running.Count -ne 1) { throw "M5 Roto Brush proof preflight requires exactly one already-running After Effects process; found $($Running.Count). No AE lifecycle action was attempted." }
 if (-not $Running[0].Responding -or $Running[0].MainWindowHandle -eq 0) { throw "The existing After Effects process is not a responsive visible proof target. No AE lifecycle action was attempted." }
 Remove-Item $Marker -Force -ErrorAction SilentlyContinue
-$ProofScriptEndpoint = "http://127.0.0.1:32146/proof-script"
+$ProductionJobClient = Join-Path $PSScriptRoot "..\production-job-client.mjs"
+function Invoke-ProductionProof([string]$Body) {
+  $ScriptPath = ($Body | ConvertFrom-Json).scriptPath
+  $Text = (& node $ProductionJobClient $ScriptPath) -join [Environment]::NewLine
+  if ($LASTEXITCODE -ne 0) { throw "Production proof job requires review/reconciliation: $Text" }
+  return @{ StatusCode = 200; Content = $Text }
+}
+
 $Body = @{ scriptPath = $PreflightScript } | ConvertTo-Json -Compress
-$Dispatch = Invoke-RestMethod -Uri $ProofScriptEndpoint -Method Post -ContentType "application/json" -Body $Body -TimeoutSec ([Math]::Max($TimeoutSeconds, 30))
+$Dispatch = (Invoke-ProductionProof $Body).Content | ConvertFrom-Json
 if (-not $Dispatch.ok) { throw "M5 Roto Brush read-only preflight warm CEP dispatch failed." }
 $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while (-not (Test-Path $Marker -PathType Leaf)) {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -63,6 +63,32 @@ export const normalizePracticeVerificationPolicyV1 = (
   ),
 });
 
+const eventJournalPathFor = (filePath: string): string => filePath + ".events.jsonl";
+
+const readEventJournal = async (filePath: string): Promise<readonly GptLearningEventV1[]> => {
+  try {
+    const raw = await readFile(eventJournalPathFor(filePath), "utf8");
+    return raw.split(/\r?\n/).filter(Boolean).map((line, index) => {
+      try { return JSON.parse(line) as GptLearningEventV1; }
+      catch (error) {
+        throw new TypeError(`GPT orchestration event journal contains invalid JSON at line ${index + 1}: ${String(error)}`);
+      }
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+};
+
+const mergeEvents = (
+  snapshotEvents: readonly GptLearningEventV1[],
+  journalEvents: readonly GptLearningEventV1[],
+): readonly GptLearningEventV1[] => {
+  const byId = new Map<string, GptLearningEventV1>();
+  for (const event of [...snapshotEvents, ...journalEvents]) byId.set(event.eventId, event);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+};
+
 const readStore = async (filePath: string): Promise<GptOrchestrationStorePayloadV1> => {
   try {
     const parsed = JSON.parse(
@@ -74,8 +100,10 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
       throw new TypeError("GPT orchestration store has an unsupported schema.");
     }
     const payload = parsed as GptOrchestrationStorePayloadV1;
+    const journalEvents = await readEventJournal(filePath);
     return {
       ...payload,
+      events: mergeEvents(payload.events, journalEvents),
       assignments: payload.assignments.map((assignment) => {
         const practicePolicy = assignment.mode === "PRACTICE"
           ? normalizePracticeVerificationPolicyV1(assignment.practicePolicy)
@@ -88,7 +116,7 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
         const currentMessage = assignment.chatMessage.includes("MANDATORY PER-CLIP RESEARCH GATE V1")
           ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
         const researchMessage = applyCurrentResearchPriority(currentMessage);
-        const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage);
+        const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage, assignment.mode);
         return {
           ...assignment,
           practiceRole,
@@ -211,46 +239,117 @@ const applyCurrentResearchPriority = (message: string): string => {
   return message;
 };
 
+const PRIMARY_EDIT_PRODUCTION_SYSTEM_MARKER =
+  "- PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY:";
 const WORKFLOW_CONTINUITY_POLICY_MARKER =
   "- PRACTICE CONTINUITY IS MANDATORY:";
+const PRO_CREATION_CONTINUITY_POLICY_MARKER =
+  "- PRO CREATION CONTINUITY IS MANDATORY:";
 
 const LEGACY_WORKFLOW_POLICY_REPLACEMENTS = [
   [
     "- M6_IS_TARGETED_SPECIALIST: M6/VisualEffectsBrain may analyze, synthesize, test, and correct specific observed effects/transitions, but it must not become the governing whole-edit reconstruction loop.",
+    "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for dense reference analysis, construction/synthesis, comparison, correction, and fidelity gating.",
+  ],
+  [
     "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
+    "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for reference-effect detection, dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating.",
   ],
   [
     "- GPT is the orchestrator, creative reasoner, and learner.",
+    "- GPT is the session orchestrator, creative judgment owner, continuity owner, and escalation reasoner inside the primary production system.",
+  ],
+  [
     "- GPT is the session orchestrator, continuity owner, and escalation reasoner.",
+    "- GPT is the session orchestrator, creative judgment owner, continuity owner, and escalation reasoner inside the primary production system.",
   ],
   [
     "- EditFlow Brain is supporting editing knowledge and capability intelligence, not a replacement for GPT reasoning.",
+    "- M6 Visual Effects Intelligence is an integrated Practice reference-fidelity engine, not a separate whole-edit production controller.",
+  ],
+  [
     "- The original M6 Visual Effects Intelligence loop is the governing reference-driven effects/transition workflow inside the full reconstruction process. GPT drives and supervises that loop; it does not replace it with a parallel free-form effect workflow.",
+    "- M6 Visual Effects Intelligence is the integrated reference-fidelity engine for difficult Practice effects/transitions, not a separate whole-edit controller.",
   ],
   [
     "- Direct GPT visual judgment of the actual Finish, raw candidates, and rendered result is the creative authority; machine evidence is measurement/support.",
-    "- The professional reference and rendered pixels are the visual authority. GPT directly inspects them when judgment is needed; machine evidence measures and proves the observed behavior.",
+    "- The professional reference and rendered pixels are the Practice visual authority; machine evidence measures and proves the observed behavior.",
   ],
   [
     "- EditFlow visual analysis is GPT's measurement layer and search accelerator, not an autonomous creative editor.",
+    "- EditFlow visual analysis is the measurement/search layer inside the primary production system.",
+  ],
+  [
     "- EditFlow visual analysis is the measurement/search layer used by the governing M6 workflow.",
+    "- EditFlow visual analysis is the measurement/search layer inside the primary production system.",
   ],
   [
     "- M6 is the professional effect/transition reconstruction specialist. It receives GPT-observed target behavior and returns/proves constructions; it does not choose the entire edit architecture.",
-    "- EditFlow Brain/M6 owns dense reference evidence -> anatomy/DNA -> construction or unknown synthesis -> local real-AE render -> semantic comparison -> bounded visual correction -> fidelity gate for difficult reference-driven effects.",
+    "- M6/Visual Effects Intelligence is an integrated synthesis/correction capability inside the primary production system and never creates a second production workflow.",
   ],
 ] as const;
 
-const applyCurrentWorkflowContinuityPolicy = (message: string): string => {
+const applyPrimaryEditProductionSystemPolicy = (
+  message: string,
+  mode: GptOrchestrationModeV1,
+): string => {
+  message = message.replace("- Legacy/current-shadow control endpoint names are compatibility aliases only. They may call the same guarded runtime but must never become a separate legacy production workflow or bypass the active assignment.",
+    "- Direct mutation endpoints and legacy aliases are removed. Submit every edit through production-jobs; inspect/reconcile its receipt instead of falling back to another execution route.");
+  if (message.includes(PRIMARY_EDIT_PRODUCTION_SYSTEM_MARKER)) return message;
+  return [
+    message,
+    "",
+    "Primary edit production system (current):",
+    PRIMARY_EDIT_PRODUCTION_SYSTEM_MARKER
+      + " Practice and Pro Creation use one authoritative production architecture.",
+    "- The authoritative route is durable GPT assignment -> production coordinator/job queue -> single AE writer -> persistent warm CEP batched runtime -> After Effects -> render/readback -> retained evidence.",
+    "- ChatGPT owns creative judgment, ambiguity resolution, and strategy escalation. Deterministic authorized work runs locally in durable batches/jobs; do not recreate the old serial one-chat/one-action production loop.",
+    "- Every production AE mutation during an active Practice or Pro Creation assignment must pass through the guarded production operation path, the mandatory per-clip research gate, and the single-writer lease.",
+    "- Direct mutation endpoints and legacy aliases are removed. Submit every edit through production-jobs; inspect/reconcile its receipt instead of falling back to another execution route.",
+    "- Keep one AE writer. Parallelize only non-mutating analysis, tutorial retrieval, source preparation, comparison, and planning work.",
+    "- Treat ChatGPT conversations as replaceable reasoning workers. Durable assignment state, production heartbeat, checkpoints, job receipts, research plans, and evidence own continuity across chats.",
+    "- Reconcile an interrupted or ambiguous AE write from actual readback/evidence before continuing; never blindly replay a crashed mutation.",
+    "- Tutorial Drive -> Adobe resources -> external professional/vendor sources -> broader web remains the mandatory research order before clip mutation.",
+    "- Production proof scripts, baseline assembly, correction, goals and batches are durable job kinds inside the same worker. Standalone acceptance labs are isolated tests and never production fallback controllers.",
+    mode === "PRACTICE"
+      ? "- Practice keeps its reference-first M6 visual authority and machine fidelity/certification gates."
+      : "- Pro Creation has no Finish answer key: use TRANSFER_VERIFIED Edit Type knowledge, the designed editorial target, direct review of actual renders, and the same durable production/execution architecture without inventing reference-only gates.",
+  ].join("\n");
+};
+
+const applyCurrentWorkflowContinuityPolicy = (
+  message: string,
+  mode: GptOrchestrationModeV1,
+): string => {
   let migrated = message;
   for (const [legacy, current] of LEGACY_WORKFLOW_POLICY_REPLACEMENTS) {
     migrated = migrated.replace(legacy, current);
   }
+  const legacyPracticeHeading = "\n\nOriginal M6 workflow + continuity policy (current):";
+  const legacyPracticeIndex = migrated.indexOf(legacyPracticeHeading);
+  if (legacyPracticeIndex >= 0) migrated = migrated.slice(0, legacyPracticeIndex);
+  if (mode === "PRO_CREATION") {
+    migrated = applyPrimaryEditProductionSystemPolicy(migrated, mode);
+    if (migrated.includes(PRO_CREATION_CONTINUITY_POLICY_MARKER)) return migrated;
+    return [
+      migrated,
+      "",
+      "Pro Creation continuity policy (current):",
+      PRO_CREATION_CONTINUITY_POLICY_MARKER
+        + " the Pro Creation assignment is the durable unit of work across ChatGPT conversations.",
+      "- Resume the existing PENDING/RUNNING Pro Creation assignment from retained events, jobs, checkpoints, research plans, and current AE state. A new chat never creates a replacement edit run.",
+      "- Use only TRANSFER_VERIFIED Edit Type knowledge as authoritative learned production memory; adapt it to the supplied footage rather than replaying literal values.",
+      "- Build a coherent playable edit early, then render/review and target the largest editorial, pacing, transition, effect, motion, and finish residuals instead of serially perfecting one clip before the rest exists.",
+      "- Preserve correct regions and retained checkpoints. Re-run only work invalidated by a concrete source, construction, or proof dependency change.",
+      "- Infrastructure failure is a pause, not a restart: repair the connection/runtime and continue from retained production state.",
+    ].join("\n");
+  }
+  migrated = applyPrimaryEditProductionSystemPolicy(migrated, mode);
   if (migrated.includes(WORKFLOW_CONTINUITY_POLICY_MARKER)) return migrated;
   return [
     migrated,
     "",
-    "Original M6 workflow + continuity policy (current):",
+    "Practice reference-fidelity policy (current):",
     WORKFLOW_CONTINUITY_POLICY_MARKER
       + " the Practice session/assignment is the durable unit of work across ChatGPT conversations.",
     "- Bootstrap once through GET /v1/product/practice/resume-or-start. If the direct MCP transport fails once and Desktop Commander is online, immediately call the authenticated local product API through Desktop Commander. Do not repeatedly retry the failed MCP route.",
@@ -258,8 +357,8 @@ const applyCurrentWorkflowContinuityPolicy = (message: string): string => {
     "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
     "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
     "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
-    "- The original M6 roadmap is the governing reference-driven workflow: SCENE UNDERSTANDING -> REFERENCE EFFECT DETECTION -> DENSE FRAME EVIDENCE -> EFFECT ANATOMY/DNA -> CAUSAL KNOWLEDGE -> CONSTRUCTION/SYNTHESIS -> REAL AE -> LOCAL RENDER -> SEMANTIC COMPARISON -> VISUAL DIAGNOSIS -> BOUNDED CORRECTION -> FIDELITY GATE -> FINAL EDIT.",
-    "- Retained Edit Type knowledge, Tutorial Drive learning, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, advanced synthesis, and all later systems remain available as supporting tools. They must not replace the original M6 governing route or start a competing workflow.",
+    "- The primary production system governs the edit. Within Practice, M6 is the authoritative reference-fidelity engine for difficult effects/transitions: REFERENCE EFFECT DETECTION -> DENSE FRAME EVIDENCE -> EFFECT ANATOMY/DNA -> CAUSAL KNOWLEDGE -> CONSTRUCTION/SYNTHESIS -> REAL AE -> LOCAL RENDER -> SEMANTIC COMPARISON -> VISUAL DIAGNOSIS -> BOUNDED CORRECTION -> FIDELITY GATE.",
+    "- Retained Edit Type knowledge, Tutorial Drive learning, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, advanced synthesis, and later systems are integrated capabilities inside the primary production system, not alternate workflows.",
     "- Optimize for completion: reuse the verified source set and content-locked baseline, preserve correct regions, render locally before full-edit rerenders, and advance from retained evidence instead of rebuilding the edit.",
   ].join("\n");
 };
@@ -494,7 +593,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "- RAW_SOURCE_IS_SEARCH_ONLY: Full-length Start movies are a search corpus, never active AE editing footage. Index/search them outside AE, visually verify candidate ranges, materialize only the matched ranges with bounded handles, and use those working clips in AE.",
       "- VISUAL_SOURCE_CONFIRMATION_REQUIRED: A machine scene score narrows candidates; GPT must inspect the candidate pixels and confirm the exact performance moment and trim before treating a source match as locked.",
       "- LOCK_EDITORIAL_SPINE: After the correct raw shots, order, broad timing, and audio arrangement are verified, preserve them. Do not rebuild correct shots merely because an effect needs correction.",
-      "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
+      "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for reference-effect detection, dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating.",
       "- COMPLETE_EDIT_THEN_PATCH: Build one coherent full edit from the locked footage, render/review it, diagnose discrepancies, then patch only deficient regions. Later attempts preserve already-correct regions.",
       "- ACCELERATED COVERAGE-FIRST SCHEDULE: after all source/range choices are locked, build a playable whole-edit reconstruction across every phase before final certification. Do not block later construction on a phase that still needs micro-optimization.",
       "- BATCH SOURCE REVIEW: inspect direct-pixel contact sheets containing multiple Finish phases and strongest raw-source candidates when legible; retain an explicit source/range decision for every phase.",
@@ -511,12 +610,20 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "",
     ] : []),
     "Control architecture:",
-    "- GPT is the session orchestrator, continuity owner, and escalation reasoner.",
-    "- The professional reference and rendered pixels are the visual authority. GPT directly inspects them when judgment is needed; machine evidence measures and proves the observed behavior.",
-    "- The original M6 Visual Effects Intelligence loop is the governing reference-driven effects/transition workflow inside the full reconstruction process. GPT drives and supervises that loop; it does not replace it with a parallel free-form effect workflow.",
-    "- EditFlow Brain/M6 owns dense reference evidence -> anatomy/DNA -> construction or unknown synthesis -> local real-AE render -> semantic comparison -> bounded visual correction -> fidelity gate for difficult reference-driven effects.",
-    "- EditFlow visual analysis is the measurement/search layer used by that governing workflow.",
-    "- Later Edit Type, Tutorial Drive, exact-source working-clip, tracking, roto, mask, subject-isolation, retained-truth, optical-flow, and capability-development systems remain supporting tools and proof infrastructure.",
+    "- The primary edit production system is the only production controller for Practice and Pro Creation: durable assignment -> coordinator/job queue -> single AE writer -> warm CEP batched runtime -> After Effects -> render/readback -> retained evidence.",
+    "- GPT is the session orchestrator, creative judgment owner, continuity owner, and escalation reasoner inside the primary production system.",
+    ...(input.mode === "PRACTICE"
+      ? [
+        "- The professional reference and rendered pixels are the Practice visual authority. GPT directly inspects them when judgment is needed; machine evidence measures and proves the observed behavior.",
+        "- M6 Visual Effects Intelligence is the integrated reference-fidelity engine for difficult Practice effects/transitions, not a separate whole-edit controller.",
+        "- EditFlow Brain/M6 owns dense reference evidence -> anatomy/DNA -> construction or unknown synthesis -> local real-AE render -> semantic comparison -> bounded visual correction -> fidelity gate when a Practice reference requires it.",
+      ]
+      : [
+        "- Pro Creation has no Finish authority. The editorial target, TRANSFER_VERIFIED Edit Type knowledge, source footage, and actual rendered pixels guide creative decisions.",
+        "- M6/Visual Effects Intelligence is available as an integrated synthesis/correction capability when the chosen design requires difficult effects or transitions; it does not create a second production workflow.",
+      ]),
+    "- EditFlow visual analysis is the measurement/search layer inside the primary production system.",
+    "- Edit Type, Tutorial Drive, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, and capability development are integrated capabilities and proof infrastructure, not alternate production paths.",
     "- EditFlow's typed After Effects controls are GPT's primary editing hands.",
     "- Desktop Commander is the system-level hand for files, processes, recovery, and environment operations.",
     "- All editorial cutting, retiming, remodeling, effects, transitions, compositing, and final construction must exist in After Effects.",
@@ -603,20 +710,36 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Subject identity reuse rule: retained identity may be reused only on exact matching Finish/Start content and binding context; materially different footage requires fresh machine binding proof.",
     "Open/blocked capability gaps: " + (gapLines.length === 0 ? "(none)" : gapLines.join(" | ")),
   ].join("\n");
-  return applyCurrentWorkflowContinuityPolicy(message);
+  return applyCurrentProductionQueuePolicy(applyCurrentWorkflowContinuityPolicy(message, input.mode), input.mode);
 };
 
-const PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1 = "PRACTICE_ACCELERATION_CONTINUITY_V1";
-const PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1 = [
-  PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1,
-  "Current Practice execution policy for this resumed assignment:",
-  "- Preserve the retained assignment, source decisions, proven AE checkpoints, and original M6 reference-driven visual method.",
-  "- Build playable whole-edit coverage from every source-locked phase before final phase certification. Earlier instructions requiring a phase to pass before constructing the next phase are superseded as a construction-order rule.",
+const EDIT_PRODUCTION_CONTINUITY_MARKER_V1 = "EDIT_PRODUCTION_QUEUE_POLICY_V4";
+const editProductionContinuityAppendixV1 = (mode: GptOrchestrationModeV1) => [
+  EDIT_PRODUCTION_CONTINUITY_MARKER_V1,
+  "Current authoritative edit production policy:",
+  "- Preserve the retained assignment, source decisions, proven AE checkpoints, and the primary production system; use M6 as the integrated Practice reference-fidelity engine where required.",
+  "- Build playable whole-edit coverage from source-locked clips before deep final polishing. Earlier instructions requiring a phase to pass before constructing the next phase are superseded as a construction-order rule.",
+  "- Use the durable production coordinator endpoint for stage/heartbeat/proof state. ChatGPT conversations are replaceable reasoning workers, never the production clock or owner of AE continuity.",
+  "- Submit approved deterministic tasks through GET/POST /v1/product/gpt/assignments/{assignmentId}/production-jobs. Job kinds AE_TRANSACTION, AE_CORRECTION, AE_GOAL, AE_BATCH, BUILD_BASELINE, PROOF_SCRIPT, SCRATCH_SEARCH, LOCAL_RENDER, SAVE_CHECKPOINT and REFERENCE_ANALYSIS run continuously from a durable queue; dependencyIds preserve order. Reference analysis, reference-scored scratch search and Finish-based baseline assembly are Practice-only. Payload includes the current researchContext. Review/reconcile REVIEW_REQUIRED, RECONCILE_REQUIRED or FAILED jobs using action=RESOLVE, jobId, claimedBy and reviewEvidenceRef after inspecting and, if needed, repairing actual AE state. Never blindly replay a crashed AE mutation.",
+  mode === "PRO_CREATION" ? "- Use LOCAL_RENDER for bounded candidate review against the designed editorial target; reference-scored SCRATCH_SEARCH is unavailable without a Finish." : "- SCRATCH_SEARCH payload includes clipId, compStableId, startMs/endMs (at most 2000 ms), and up to 32 candidates {candidateId,patches:[{layerIndex,effectMatchName,propertyPath,keys:[{timeMs,value}]}]}. Numeric native AE overrides are applied only to disposable root-comp copies; actual render dimensions must verify 1/8, 1/4 and full resolution. Finalists require direct GPT pixel review and a separate canonical commit.",
   "- Use shared immutable media analysis, batch direct-pixel source review, bounded local candidate search, residual-priority correction, and validated batch trace transport when available.",
-  "- Machine/proxy candidate scores are search evidence only. GPT must inspect reference and actual AE render pixels before committing a winner.",
-  "- Stop weak parameter tuning after two rounds; escalate the effect hypothesis. Held-out certification remains inference-only and must fail closed when frozen capabilities are insufficient.",
-  "- Preserve the exact source, 95% similarity floor, two consecutive phase passes, and two consecutive whole-edit passes. Final proof authority is unchanged.",
+  "- Reuse a retained consulted tutorial source across clips when it covers the same scanned effects; only the footage-specific PLAN/adaptation must be new. Do not reopen the same tutorial merely to satisfy per-clip bookkeeping.",
+  "- Prefer targeted clip/boundary mutation after whole-edit coverage exists. Do not submit all-shot mutation batches unless the operation is genuinely global.",
+  mode === "PRACTICE" ? "- A first successful local phase proof becomes PROVISIONAL_PASS. Let a later whole-edit render provide the second phase pass for unchanged provisional phases at once." : "- Pro Creation uses the designed editorial target and direct review of actual renders; it has no Finish answer key and must not invent reference-based phase certification.",
+  "- Keep one AE writer. Parallelize non-mutating work: reference anatomy, source preparation, tutorial retrieval, comparison, and next-phase planning may overlap while AE is rendering or mutating.",
+  mode === "PRO_CREATION" ? "- Compare bounded candidate renders against the editorial target, then commit only the reviewed construction." : "- Use the scratch candidate funnel for bounded numeric search: up to 32 coarse candidates -> 8 mid candidates -> 2 full candidates. GPT chooses the effect hypothesis/invariants and reviews only the strongest alternatives.",
+  "- Machine/proxy scores are search evidence only. GPT inspects actual rendered pixels against the Practice reference or Pro Creation editorial target before choosing a candidate.",
+  "- Stop weak parameter tuning after two rounds or under 1% relevant gain; escalate the effect hypothesis rather than spending wall time on tiny nudges.",
+  "- Record wall-clock telemetry for media analysis, source decision, GPT review, research, AE mutation, render, comparison, proof I/O, infrastructure, and idle time. Budget overruns must trigger strategy change, not silent waiting.",
+  "- On ESCALATE_STRATEGY, diagnose the bottleneck and send production action=STRATEGY_CHANGE with claimedBy and a new concrete strategyKey. Retain elapsed telemetry and proof history; do not reset the assignment to reset its budget.",
+  mode === "PRACTICE" ? "- Preserve exact raw sources, the 95% similarity floor, two consecutive phase passes and two consecutive whole-edit passes. Final proof authority is unchanged." : "- Use provided raw media, TRANSFER_VERIFIED knowledge and actual render review for Pro Creation. Keep its distinct existing completion gates.",
 ].join("\n");
+
+const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrationModeV1): string => {
+  if (message.includes(EDIT_PRODUCTION_CONTINUITY_MARKER_V1)) return message;
+  const cleaned = message.replace(/PRACTICE_ACCELERATION_CONTINUITY_V[1-3]\nCurrent Practice execution policy for this resumed assignment:\n(?:- .*?(?:\n|$))*/g, "").trimEnd();
+  return cleaned + "\n\n" + editProductionContinuityAppendixV1(mode);
+};
 
 export interface GptAppendEventInputV1 {
   readonly assignmentId: string;
@@ -644,12 +767,27 @@ export class GptOrchestrationStoreV1 {
     this.filePath = path.resolve(filePath);
   }
 
+  async #appendMissingEventsToJournal(events: readonly GptLearningEventV1[]): Promise<void> {
+    if (events.length === 0) return;
+    await mkdir(path.dirname(this.filePath), { recursive: true });
+    const retainedIds = new Set((await readEventJournal(this.filePath)).map((event) => event.eventId));
+    const missing = events.filter((event) => !retainedIds.has(event.eventId));
+    if (missing.length === 0) return;
+    await appendFile(
+      eventJournalPathFor(this.filePath),
+      missing.map((event) => JSON.stringify(event)).join("\n") + "\n",
+      { encoding: "utf8", flush: true },
+    );
+  }
+
   async #write(payload: GptOrchestrationStorePayloadV1): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
+    await this.#appendMissingEventsToJournal(payload.events);
+    const snapshotPayload: GptOrchestrationStorePayloadV1 = { ...payload, events: [] };
     this.#sequence += 1;
     const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence) + "-" + randomUUID();
     try {
-      await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", flush: true });
+      await writeFile(temporary, JSON.stringify(snapshotPayload, null, 2) + "\n", { encoding: "utf8", flush: true });
       for (let attempt = 0; ; attempt += 1) {
         try {
           await rename(temporary, this.filePath);
@@ -797,21 +935,18 @@ export class GptOrchestrationStoreV1 {
     });
   }
 
-  async refreshActivePracticeInstructions(): Promise<number> {
+  async refreshActiveProductionInstructions(): Promise<number> {
     return await this.#mutate((payload) => {
       let refreshed = 0;
       const assignments = payload.assignments.map((assignment) => {
-        if (assignment.mode !== "PRACTICE"
-          || !["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
-          || assignment.chatMessage.includes("ACCELERATED COVERAGE-FIRST SCHEDULE")
-          || assignment.chatMessage.includes(PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1)) {
+        if (!["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
+          || assignment.chatMessage.includes(EDIT_PRODUCTION_CONTINUITY_MARKER_V1)) {
           return assignment;
         }
         refreshed += 1;
         return {
           ...assignment,
-          chatMessage: assignment.chatMessage.trimEnd()
-            + "\n\n" + PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1,
+          chatMessage: applyCurrentProductionQueuePolicy(assignment.chatMessage, assignment.mode),
         };
       });
       return [refreshed === 0 ? payload : { ...payload, assignments }, refreshed] as const;
@@ -920,16 +1055,24 @@ export class GptOrchestrationStoreV1 {
     if (inputs.length === 0 || inputs.length > 64) {
       throw new TypeError("GPT event batch must contain 1-64 entries.");
     }
-    return await this.#mutate((payload) => {
-      let next = payload;
+    let output: readonly GptLearningEventV1[] = [];
+    const pending = (GptOrchestrationStoreV1.#tails.get(this.filePath) ?? Promise.resolve()).then(async () => {
+      let next = await readStore(this.filePath);
       const events: GptLearningEventV1[] = [];
       for (const input of inputs) {
         const [updated, event] = this.#appendEventToPayload(next, input);
         next = updated;
         events.push(event);
       }
-      return [next, events] as const;
+      await this.#appendMissingEventsToJournal(events);
+      output = events.map((event) => structuredClone(event));
     });
+    const tail = pending.catch(() => undefined);
+    GptOrchestrationStoreV1.#tails.set(this.filePath, tail);
+    try { await pending; } finally {
+      if (GptOrchestrationStoreV1.#tails.get(this.filePath) === tail) GptOrchestrationStoreV1.#tails.delete(this.filePath);
+    }
+    return output;
   }
 
   #appendEventToPayload(

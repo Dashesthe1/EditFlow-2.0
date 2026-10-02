@@ -43,6 +43,9 @@
     if (job.rqItem) {
       try { job.rqItem.remove(); job.queueItemRemoved = true; } catch (_) { job.queueItemRemoved = false; }
     }
+    if (job.scratchComp) {
+      try { job.scratchComp.remove(); job.scratchComp = null; } catch (_) {}
+    }
     $.global.EditFlow2_activeRenderJob = null;
   }
 
@@ -59,7 +62,10 @@
         outputPath: job.outputPath,
         error: null,
         completedAtMs: (new Date()).getTime(),
-        queueItemRemoved: false
+        queueItemRemoved: false,
+        scratchRemoved: !job.scratchComp,
+        searchOnly: job.searchOnly === true,
+        resolutionFactor: job.resolutionFactor || 1
       }));
     } finally {
       marker.close();

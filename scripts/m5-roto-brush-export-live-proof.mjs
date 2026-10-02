@@ -1,3 +1,4 @@
+import { productionRequest } from "./production-job-client.mjs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +18,7 @@ const required = (name) => {
   return value;
 };
 const afterFxPath = required("--afterfx-path");
-const proofScriptEndpoint = arg("--proof-script-endpoint") ?? "http://127.0.0.1:32146/proof-script";
+const proofScriptEndpoint = "@PROOF_SCRIPT";
 const fixturePath = required("--fixture");
 const resultPath = required("--result");
 const dispatchScript = required("--dispatch-script");
@@ -41,7 +42,7 @@ const waitJson = async (filePath, deadlineMs) => {
   throw new Error(`Timed out waiting for ${filePath}`);
 };
 const invokeAeScript = async () => {
-  const response = await fetch(proofScriptEndpoint, {
+  const response = await productionRequest(process.env.EDITFLOW_SHADOW_CONTROL ?? "http://127.0.0.1:32146", proofScriptEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scriptPath: dispatchScript }),

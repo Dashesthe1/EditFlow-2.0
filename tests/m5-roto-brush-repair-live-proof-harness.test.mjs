@@ -48,8 +48,8 @@ test("repair runner recovers a retained stale isolation state before a new entry
 
 test("repair runner dispatches isolation fixture and restore through the warm CEP proof endpoint", async () => {
   const source = await readFile(runnerPath, "utf8");
-  assert.match(source, /ProofScriptEndpoint = "http:\/\/127\.0\.0\.1:32146\/proof-script"/);
-  assert.match(source, /Invoke-WebRequest -UseBasicParsing -Method Post -Uri \$ProofScriptEndpoint/);
+  assert.match(source, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
+  assert.match(source, /Invoke-ProductionProof \$Body/);
   assert.match(source, /Invoke-AeScript \$EnterScript/);
   assert.match(source, /Invoke-AeScript \$FixtureScript/);
   assert.match(source, /Invoke-AeScript \$RestoreScript/);
@@ -59,7 +59,7 @@ test("repair runner dispatches isolation fixture and restore through the warm CE
 test("repair proof uses warm CEP readback dispatch instead of per-readback AfterFX launch", async () => {
   const source = await readFile(nodeProof, "utf8");
   assert.match(source, /proofScriptEndpoint/);
-  assert.match(source, /fetch\(proofScriptEndpoint/);
+  assert.match(source, /productionRequest\(/);
   assert.match(source, /Warm CEP proof script dispatch failed/);
   assert.doesNotMatch(source, /spawn\(afterFxPath|execFile\(afterFxPath/);
 });

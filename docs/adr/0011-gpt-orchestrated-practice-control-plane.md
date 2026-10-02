@@ -2,12 +2,14 @@
 
 ## Status
 
-**Superseded in part by the Original M6 Workflow Reset.**
+**Superseded by the Primary Edit Production System architecture (October 2, 2026).**
 
 The durable assignment, persistence, cancellation, learning-memory, and proof-separation
-parts of this ADR remain accepted. The later decision that GPT itself is the governing
-creative reconstruction loop is superseded for reference-driven Practice and reference-
-driven effects/transitions.
+parts of this ADR remain accepted. The current authority is one production system for
+Practice and Pro Creation: durable assignment -> production coordinator/job queue ->
+single AE writer -> persistent warm CEP runtime -> After Effects -> render/readback ->
+retained evidence. M6 remains an integrated Practice reference-fidelity engine, not a
+separate governing controller.
 
 ## Context
 
@@ -15,20 +17,21 @@ Practice was initially implemented as a local deterministic reconstruction loop.
 That loop could analyze media, use M6 constructions, mutate After Effects, render,
 compare, and retry, but it made EditFlow code the creative decision-maker.
 
-The product still requires GPT supervision and durable learning, but the original M6
-roadmap is again the governing reference-driven production workflow. GPT owns session
-continuity, direct visual inspection when needed, escalation, tool/capability invocation,
-and learning. EditFlow Brain/M6 owns the reference-first effect loop from dense evidence
-through anatomy/DNA, construction/synthesis, local render, semantic comparison, bounded
-correction, and fidelity gating. Later systems support that loop rather than replacing it.
+The product still requires GPT supervision and durable learning. The current primary
+production system owns scheduling, continuity, batching, checkpoints, and AE execution.
+GPT owns creative judgment and escalation inside that system. For Practice, EditFlow
+Brain/M6 supplies the integrated reference-fidelity loop from dense evidence through
+anatomy/DNA, construction/synthesis, local render, semantic comparison, bounded correction,
+and fidelity gating. For Pro Creation, the same production system operates without a
+Finish answer key and uses TRANSFER_VERIFIED Edit Type knowledge plus actual render review.
 
 ## Decision
 
 The Practice panel creates a durable `editflow.gpt-orchestration-assignment.v1` as
-the continuity/control record across ChatGPT conversations. The assignment is not a
-replacement governing edit loop. It contains the mode, Edit Type, Start and Finish media,
-retained knowledge, artifact directory, and a brief that requires the original M6
-reference-first workflow for reference-driven reconstruction.
+the continuity/control record across ChatGPT conversations. Together with the production
+coordinator/job queue, single AE writer, and warm CEP runtime, it is the primary production
+path. The assignment contains the mode, Edit Type, Start and Finish media, retained
+knowledge, artifact directory, and the mode-specific production brief.
 The authenticated Shadow connector exposes assignment discovery, claim, learning
 event recording, completion, failure, status, and cancellation operations. GPT uses
 the existing EditFlow perception and AE execution surfaces while recording events in
@@ -49,28 +52,27 @@ cancelled immediately. Running work moves to CANCEL_REQUESTED; GPT must stop at 
 safe checkpoint and acknowledge cancellation. Completion after a cancellation request
 resolves to CANCELLED, never mastered.
 
-### September 2026 architecture amendment — superseded by Original M6 reset
+### October 2026 architecture amendment — Primary Edit Production System
 
-Direct GPT observation of Finish/raw/rendered pixels remains an available inspection tool,
-and the bounded working-clip/source-provenance improvements remain active. What is
-superseded is the claim that GPT's free-form blueprint outranks the M6 reconstruction loop.
+Direct GPT inspection, bounded working clips, exact provenance, M6 fidelity analysis,
+Edit Type knowledge, tutorial compilation, transactional AE control, persistent warm
+execution, and proof infrastructure are now integrated under one production controller.
 
-For reference-driven Practice, the original M6 sequence is authoritative:
-scene understanding/editorial decision -> reference effect detection -> dense frame
-evidence -> anatomy/DNA -> causal knowledge -> construction hypothesis -> capability
-mapping/unknown synthesis -> Recipe Compiler/Virtual AE/real AE -> local render ->
-reference/render fidelity comparison -> visual diagnosis -> automatic correction ->
-fidelity gate -> final edit.
+For Practice, M6 provides the reference-fidelity sub-loop when needed:
+reference effect detection -> dense frame evidence -> anatomy/DNA -> causal knowledge ->
+construction/synthesis -> real AE -> local render -> reference/render comparison ->
+visual diagnosis -> bounded correction -> fidelity gate. The primary production system
+owns the whole-edit schedule, durable jobs, checkpoints, and AE writer.
 
-GPT supervises and resumes that sequence. Full-length Start video remains search-only;
-exact matched ranges are still materialized into bounded cached working clips, and later
-tracking/roto/mask/subject-isolation/retained-truth systems remain callable tools.
+For Pro Creation, the same primary system operates without a Finish answer key using
+TRANSFER_VERIFIED knowledge, the source media, the chosen editorial target, and actual
+render review. No legacy or parallel whole-edit controller is authorized.
 
 ## Alternatives considered
 
-- Use a separate GPT-authored free-form effects loop in place of the original M6
-  reference-first workflow. Rejected because it duplicates the M6 control loop, weakens
-  checkpoint continuity, and caused repeated/restarted work across ChatGPT handoffs.
+- Use any separate whole-edit controller beside the primary production system.
+  Rejected because duplicate controllers weaken checkpoint continuity, repeat work across
+  ChatGPT handoffs, and create competing AE mutation authority.
 - Call an OpenAI model directly from the CEP panel. Rejected because credentials and
   model traffic do not belong in the AE extension trust boundary.
 - Store only final recipes. Rejected because failed hypotheses, correction effects,
@@ -81,11 +83,12 @@ tracking/roto/mask/subject-isolation/retained-truth systems remain callable tool
 
 ## Consequences
 
-The original M6 engine/workflow is the governing reference-driven effects/transition
-decision path for Practice. GPT remains the continuity owner and escalation supervisor,
-while later EditFlow systems remain callable tools and proof infrastructure. Assignments
-and learning survive chat or service process loss through atomic JSON persistence. Edit
-Type revisions continue to include GPT learning history.
+The Primary Edit Production System is the only production controller for Practice and
+Pro Creation. GPT supplies creative judgment and escalation inside it; M6 supplies
+Practice reference-fidelity analysis/synthesis when needed; later EditFlow capabilities
+remain integrated tools and proof infrastructure. Assignments, jobs, checkpoints, and
+learning survive chat or service process loss through durable persistence. Edit Type
+revisions continue to include GPT learning history.
 
 A continuously available ChatGPT worker or platform trigger is still required for
 zero-message automatic claiming. Until that deployment integration exists, the panel

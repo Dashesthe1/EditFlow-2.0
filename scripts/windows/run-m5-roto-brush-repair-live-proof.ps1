@@ -4,7 +4,14 @@ param(
   [int]$TimeoutSeconds = 20
 )
 $ErrorActionPreference = "Stop"
-$ProofScriptEndpoint = "http://127.0.0.1:32146/proof-script"
+$ProductionJobClient = Join-Path $PSScriptRoot "..\production-job-client.mjs"
+function Invoke-ProductionProof([string]$Body) {
+  $ScriptPath = ($Body | ConvertFrom-Json).scriptPath
+  $Text = (& node $ProductionJobClient $ScriptPath) -join [Environment]::NewLine
+  if ($LASTEXITCODE -ne 0) { throw "Production proof job requires review/reconciliation: $Text" }
+  return @{ StatusCode = 200; Content = $Text }
+}
+
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $EnterScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-isolation-enter.jsx"
 $RestoreScript = Join-Path $RepoRoot "scripts\windows\m5-roto-brush-isolation-restore.jsx"
@@ -40,7 +47,7 @@ function Wait-JsonMarker([string]$Path, [int]$Seconds, [string]$Label) {
 }
 function Invoke-AeScript([string]$ScriptPath) {
   $Body = @{ scriptPath = $ScriptPath } | ConvertTo-Json -Compress
-  $Response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri $ProofScriptEndpoint -ContentType "application/json" -Body $Body -TimeoutSec 10
+  $Response = Invoke-ProductionProof $Body
   $Payload = $Response.Content | ConvertFrom-Json
   if ($Response.StatusCode -ne 200 -or $Payload.ok -ne $true) { throw "Warm CEP proof-script dispatch failed for $ScriptPath" }
 }

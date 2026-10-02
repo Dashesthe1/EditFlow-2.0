@@ -41,7 +41,7 @@ test("export runner recovers retained isolation state before a new entry and cle
 
 test("export runner keeps one warm AE process and restores in finally through the warm CEP proof endpoint", async () => {
   const source = await readFile(runnerPath, "utf8");
-  assert.match(source, /ProofScriptEndpoint = "http:\/\/127\.0\.0\.1:32146\/proof-script"/);
+  assert.match(source, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.match(source, /requires exactly one already-running After Effects process/);
   assert.match(source, /Invoke-AeScript \$EnterScript/);
   assert.match(source, /Invoke-AeScript \$FixtureScript/);

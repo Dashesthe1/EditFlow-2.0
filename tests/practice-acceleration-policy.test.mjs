@@ -76,6 +76,25 @@ test("Practice orchestration builds whole edit before certification without weak
   assert.doesNotMatch(message, /before emitting work for the next chronological phase/);
 });
 
+test("Pro Creation uses the same primary production system without Practice-only reference authority", () => {
+  const message = buildGptOrchestrationChatMessageV1({
+    sessionId: "pro:primary-system",
+    mode: "PRO_CREATION",
+    editTypeId: "reference-faithful",
+    finish: null,
+    start: [{ mediaId: "start:1", role: "START_SOURCE", mediaKind: "VIDEO", uri: "C:\\Media\\raw.mp4" }],
+    artifactDir: "C:\\EditFlow\\pro",
+    knowledge: null,
+  });
+  assert.match(message, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
+  assert.match(message, /PRO CREATION CONTINUITY IS MANDATORY/);
+  assert.match(message, /durable assignment -> coordinator\/job queue -> single AE writer -> warm CEP batched runtime/i);
+  assert.match(message, /M6\/Visual Effects Intelligence is available as an integrated synthesis\/correction capability/i);
+  assert.doesNotMatch(message, /PRACTICE CONTINUITY IS MANDATORY/);
+  assert.doesNotMatch(message, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.doesNotMatch(message, /original M6 Visual Effects Intelligence loop is the governing/i);
+});
+
 test("global residual scheduler spends attention on the highest-impact mismatches first", () => {
   const focus = selectPracticeResidualFocusSetV1([
     { phaseId: "p1", similarity: 0.94, durationMs: 500, viewerSalience: 0.4 },
@@ -115,15 +134,36 @@ test("retained running Practice assignments adopt current acceleration policy wi
   });
   await store.claim(assignment.assignmentId, "existing-controller");
   const retained = JSON.parse(await readFile(filePath, "utf8"));
-  retained.assignments[0].chatMessage = "Legacy original M6. Pass each phase before emitting work for the next chronological phase.";
+  retained.assignments[0].chatMessage = "Legacy original M6. ACCELERATED COVERAGE-FIRST SCHEDULE. Pass each phase before emitting work for the next chronological phase.";
   await writeFile(filePath, JSON.stringify(retained), "utf8");
 
-  assert.equal(await store.refreshActivePracticeInstructions(), 1);
+  assert.equal(await store.refreshActiveProductionInstructions(), 1);
   const resumed = await store.getAssignment(assignment.assignmentId);
   assert.equal(resumed.status, "RUNNING");
   assert.equal(resumed.claimedBy, "existing-controller");
-  assert.match(resumed.chatMessage, /PRACTICE_ACCELERATION_CONTINUITY_V1/);
+  assert.match(resumed.chatMessage, /EDIT_PRODUCTION_QUEUE_POLICY_V4/);
   assert.match(resumed.chatMessage, /superseded as a construction-order rule/);
   assert.match(resumed.chatMessage, /two consecutive whole-edit passes/);
-  assert.equal(await store.refreshActivePracticeInstructions(), 0);
+  assert.equal(await store.refreshActiveProductionInstructions(), 0);
+});
+
+for (const mode of ["PRACTICE", "PRO_CREATION"]) test(`${mode} removes old execution instructions while preserving retained assignment data`, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(),"production-policy-migration-")); t.after(()=>rm(root,{recursive:true,force:true}));
+  const file = path.join(root,"gpt.json"); const store = new GptOrchestrationStoreV1(file);
+  const assignment = await store.createAssignment({sessionId:"retained:"+mode,mode,editTypeId:"edit",artifactDir:root,knowledge:null,
+    finish:mode === "PRACTICE" ? {mediaId:"finish",role:"FINISH_REFERENCE",mediaKind:"VIDEO",uri:"finish.mp4"} : null,
+    start:[{mediaId:"raw",role:"START_SOURCE",mediaKind:"VIDEO",uri:"raw.mp4"}]});
+  await store.claim(assignment.assignmentId,"retained-controller");
+  const payload=JSON.parse(await readFile(file,"utf8"));
+  payload.assignments[0].chatMessage="Retained lesson: preserve the source.\n\nPRACTICE_ACCELERATION_CONTINUITY_V3\nCurrent Practice execution policy for this resumed assignment:\n- Legacy endpoints may be used.\n";
+  const before=structuredClone(payload.assignments[0]); await writeFile(file,JSON.stringify(payload));
+  assert.equal(await store.refreshActiveProductionInstructions(),1);
+  const after=await store.getAssignment(assignment.assignmentId);
+  for(const key of ["assignmentId","sessionId","mode","status","controllerLease","start"]) assert.deepEqual(after[key],before[key]);
+  assert.match(after.chatMessage,/EDIT_PRODUCTION_QUEUE_POLICY_V4/);
+  assert.match(after.chatMessage,/Retained lesson: preserve the source/);
+  assert.doesNotMatch(after.chatMessage,/PRACTICE_ACCELERATION_CONTINUITY_V3|Legacy endpoints may be used/);
+  assert.match(after.chatMessage,/Direct mutation endpoints and legacy aliases are removed/);
+  if(mode === "PRO_CREATION") assert.match(after.chatMessage,/has no Finish answer key/);
+  assert.equal(await store.refreshActiveProductionInstructions(),0);
 });

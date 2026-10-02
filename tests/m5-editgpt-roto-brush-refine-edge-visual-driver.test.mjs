@@ -118,7 +118,7 @@ test("Refine Edge sidecar uses exact native tool selection, grounds normalized s
   assert.match(py, /"type": "drag"/);
   assert.match(py, /"modifiers": \[\]/);
   assert.match(py, /tool_select = select_native_tool\(afterfx_path, tool_select_script, "REFINE_EDGE"\)/);
-  assert.match(py, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(py, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.match(py, /dispatchTransport.*WARM_CEP/);
   assert.match(py, /"9042" if tool == "REFINE_EDGE"/);
   assert.doesNotMatch(py, /retained_tool_flyout/);

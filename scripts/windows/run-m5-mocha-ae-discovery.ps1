@@ -3,7 +3,14 @@ param(
   [int]$TimeoutSeconds = 30
 )
 $ErrorActionPreference = "Stop"
-$ProofScriptEndpoint = "http://127.0.0.1:32146/proof-script"
+$ProductionJobClient = Join-Path $PSScriptRoot "..\production-job-client.mjs"
+function Invoke-ProductionProof([string]$Body) {
+  $ScriptPath = ($Body | ConvertFrom-Json).scriptPath
+  $Text = (& node $ProductionJobClient $ScriptPath) -join [Environment]::NewLine
+  if ($LASTEXITCODE -ne 0) { throw "Production proof job requires review/reconciliation: $Text" }
+  return @{ StatusCode = 200; Content = $Text }
+}
+
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\.." )).Path
 $ArtifactDir = $env:EDITFLOW_PROOF_ARTIFACT_DIR
 if (-not $ArtifactDir) { throw "EDITFLOW_PROOF_ARTIFACT_DIR is required." }
@@ -18,7 +25,7 @@ Remove-Item $ResultPath,$ProbeMarker -Force -ErrorAction SilentlyContinue
 if (-not (Test-Path $ProbeScript -PathType Leaf)) { throw "Required Mocha discovery probe missing: $ProbeScript" }
 $Timer = [System.Diagnostics.Stopwatch]::StartNew()
 $body = @{ scriptPath = $ProbeScript } | ConvertTo-Json -Compress
-try { $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri $ProofScriptEndpoint -ContentType "application/json" -Body $body -TimeoutSec 10 } catch { throw "Warm CEP discovery dispatch failed: $($_.Exception.Message)" }
+try { $response = Invoke-ProductionProof $Body } catch { throw "Warm CEP discovery dispatch failed: $($_.Exception.Message)" }
 $payload = $response.Content | ConvertFrom-Json
 if ($response.StatusCode -ne 200 -or $payload.ok -ne $true) { throw "Warm CEP discovery dispatch refused." }
 $Deadline = (Get-Date).AddSeconds([Math]::Max(5, $TimeoutSeconds - 2))

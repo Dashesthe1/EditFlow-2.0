@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -130,8 +130,8 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   assert.equal((await get('/v1/product/gpt/clip-research-contract')).schema, 'editflow.clip-research-contract.v1');
   for (const route of ['run', 'run-batch', 'execute', 'correction', 'build-baseline']) {
     const response = await fetch(`http://127.0.0.1:${service.port}/v1/product/control/${route}`, { method: 'POST', headers, body: '{}' });
-    assert.equal(response.status, 409, route);
-    assert.match((await response.json()).error, /CLIP_RESEARCH_REQUIRED/, route);
+    assert.equal(response.status, 410, route);
+    assert.equal((await response.json()).error, "EDIT_EXECUTION_PATH_REMOVED", route);
   }
   await service.stop(); service = new PracticePanelServerV1(config); await service.start();
   const resumed = await get('/v1/product/practice/resume-or-start');
@@ -140,4 +140,124 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   assert.equal(resumed.preflight.stage, 'READY');
   assert.equal((await store.listAssignments()).length, 1);
   assert.deepEqual(resumed.clipResearch.clips, {});
+});
+
+test('compiled research source can be reused across clips with identical effect coverage', async t => {
+  const f = await fixture(t);
+  await f.scan('shot:1');
+  await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
+  const first = await f.store.snapshot(f.assignment);
+  const sourceId = first.clips['shot:1'].sources[0].sourceId;
+  await f.scan('shot:2');
+  const reused = await f.store.record(f.assignment, {
+    action: 'SOURCE',
+    claimedBy: 'controller',
+    clipId: 'shot:2',
+    reuseSourceId: sourceId,
+  });
+  assert.equal(reused.clips['shot:2'].sources[0].sourceId, sourceId);
+  assert.equal(reused.audit.at(-1).kind, 'RESEARCH_REUSED');
+});
+
+
+test('public research view bounds audit payload while preserving complete retained history', async t => {
+  const f = await fixture(t);
+  const ledger = { clips: { 'shot:1': { plan: { status:'READY' } } }, journaledAudit:['hash'],
+    audit: Array.from({length:30}, (_,i) => ({kind:'METHOD_EXECUTION', plans:[{clipId:'shot:1',planId:'plan:'+i,methods:'x'.repeat(10000)}]})) };
+  const view = f.store.publicView(ledger);
+  assert.equal(view.audit.length,20); assert.equal(view.auditCount,30); assert.equal(view.auditTruncated,true);
+  assert.equal(view.audit[0].plans[0].methods,undefined); assert.equal(view.journaledAudit,undefined);
+  assert.equal(f.store.publicView(ledger,true).audit.length,30);
+  assert.equal(ledger.audit[0].plans[0].methods.length,10000);
+});
+
+for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only authorized durable jobs and resumes review receipts`, async t => {
+  const f = await fixture(t, mode);
+  const token = 'production-authority-test-token-0123456789abcdef';
+  const config = { port: 0, token, repositoryRoot: f.dir, artifactDir: f.dir,
+    learningMemoryFilePath: path.join(f.dir, 'memory.json'), editTypeRegistryFilePath: path.join(f.dir, 'types.json'),
+    gptOrchestrationFilePath: path.join(f.dir, 'gpt.json') };
+  const store = new GptOrchestrationStoreV1(config.gptOrchestrationFilePath);
+  const assignment = await store.createAssignment({ sessionId: 'production:' + mode, mode, editTypeId: 'test', artifactDir: f.dir, knowledge: null,
+    finish: mode === 'PRACTICE' ? { mediaId: 'finish:1', role: 'FINISH_REFERENCE', mediaKind: 'VIDEO', uri: 'reference.mp4' } : null,
+    start: [{ mediaId: 'raw:1', role: 'START_SOURCE', mediaKind: 'VIDEO', uri: path.join(f.dir, 'raw.mp4') }],
+    practiceSceneMatches: mode === 'PRACTICE' ? [{ shotId: 'shot:1', sourceId: 'raw:1', sourceStartMs: 1000, sourceEndMs: 2000, confidence: 1, playbackRate: 1, direction: 'FORWARD' }] : [],
+    preflight: { stage: 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false, completedShotIds: ['shot:1'], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
+  Object.assign(f.assignment, await store.claim(assignment.assignmentId, 'controller'));
+  f.store.directory = path.join(f.dir, 'clip-research');
+  await writeFile(f.assignment.start[0].uri, 'raw media');
+  await f.scan(); await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
+  const saved = await f.plan();
+  await mkdir(path.join(f.dir,'scripts','windows'), {recursive:true});
+  const scriptPath=path.join(f.dir,'scripts','windows','test.jsx'); await writeFile(scriptPath,'// scoped native capability helper');
+  const { productionJobScopeV1 } = await import('../.tmp/runtime/packages/adapters/ae-cep/src/production-job-scope.js');
+  let borrowedScope = null;
+  let revision = 1;
+  const dispatched = [];
+  const broker = { panelSession: { protocolVersion: '2.7.0' }, async dispatch(request) {
+    dispatched.push(request);
+    if (request.command === 'property.set_keyframes') {
+      borrowedScope = productionJobScopeV1.getStore();
+      assert.ok(borrowedScope);
+      const child = await fetch(borrowedScope.EDITFLOW_WORKER_PROOF_URL, {method:'POST',headers:{'Content-Type':'application/json',
+        'X-EditFlow-Token':borrowedScope.EDITFLOW_WORKER_PRODUCT_TOKEN,'X-EditFlow-Worker-Key':borrowedScope.EDITFLOW_WORKER_PROOF_KEY},body:JSON.stringify({scriptPath})});
+      assert.equal(child.status,200); assert.ok((await child.json()).productionJobId);
+    }
+    const observational = request.command === 'host.probe' || request.command === 'project.inspect';
+    if (!observational) revision++;
+    return { protocolVersion: request.protocolVersion, requestId: request.requestId, transactionId: request.transactionId,
+      operationId: request.operationId, capabilityId: request.capabilityId, command: request.command, outcome: observational ? 'NO_OP' : 'APPLIED',
+      error: null, affectedObjects: [], readback: {}, hostProjectRevision: revision, proofArtifactRefs: [],
+      diagnostics: { adapterProtocolVersion: request.protocolVersion, adapterBuild: 'test', command: request.command, notes: [] },
+      environmentProbe: request.command === 'host.probe' ? { adapterProtocolVersion: '1.1.0', adapterBuild: 'test', hostName: 'Adobe After Effects', hostVersion: 'test', hostBuild: 'test', os: 'test', projectOpen: true } : null,
+      projectSnapshot: request.command === 'project.inspect' ? { hostRevision: revision, filePath: null, activeItemHostId: null, itemCount: 0, items: [] } : null };
+  }};
+  let service = new PracticePanelServerV1({ ...config, broker }); await service.start();
+  t.after(async () => service.stop());
+  const headers = { 'X-EditFlow-Token': token, 'Content-Type': 'application/json' };
+  const request = (route, body) => fetch(`http://127.0.0.1:${service.port}${route}`, { headers, ...(body ? { method:'POST', body:JSON.stringify(body) } : {}) });
+  const endpoint = '/v1/product/gpt/assignments/' + encodeURIComponent(assignment.assignmentId) + '/production-jobs';
+  for (const route of ['/run', '/run-batch', '/run-transaction', '/run-correction-transaction', '/proof-script', '/mutation-lease/acquire', '/v1/product/control/execute']) {
+    const response = await request(route, {}); assert.equal(response.status, 410, route);
+    assert.equal((await response.json()).error, 'EDIT_EXECUTION_PATH_REMOVED');
+  }
+  assert.equal(dispatched.length, 0);
+  const unscoped = await request('/v1/product/production/worker-proof', {scriptPath:'scripts/windows/test.jsx'});
+  assert.equal(unscoped.status,409); assert.equal(dispatched.length,0);
+  const invalid = await request(endpoint, {kind:'AE_TRANSACTION',payload:{researchContext:{assignmentId:assignment.assignmentId,claimedBy:'controller',plans:[]}}});
+  assert.equal(invalid.status, 409); assert.equal(dispatched.length, 0);
+  const { CurrentAeTransactionRuntimeV1 } = await import('../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js');
+  const observed = await new CurrentAeTransactionRuntimeV1(broker, 'practice-gpt-controller').observe();
+  const plan = { planId:'authority-edit',planRevision:1,projectRevision:observed.projectRevision,projectFingerprint:observed.projectFingerprint,
+    environmentFingerprint:observed.environmentFingerprint,requiredCapabilities:['ae.keyframe.set'],bindings:[],checkpoints:[],invariants:{structural:[],visual:[]},
+    rollbackBoundaries:[{id:'boundary',strategy:'RESTORE_SNAPSHOT'}], operations:[{operationId:'keys',capabilityId:'ae.keyframe.set',routeId:'ae-cep.v1_1',dependsOn:[],
+      idempotency:'CHECK_THEN_APPLY',riskClass:'R1_REVERSIBLE',input:{command:'property.set_keyframes',payload:{},readbackProfile:'test'},rollbackBoundaryId:'boundary'}] };
+  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{...f.context(saved),plan}});
+  assert.equal(accepted.status, 202); const receipt = (await accepted.json()).job;
+  const wait = async id => { for(let i=0;i<200;i++) { const job = (await (await request(endpoint+'?jobId='+encodeURIComponent(id))).json()).job;
+    if(!['RUNNING','PENDING'].includes(job.status)) return job; await new Promise(r=>setTimeout(r,10)); } throw new Error('queued job timeout'); };
+  const complete = await wait(receipt.jobId); assert.equal(complete.status, 'SUCCEEDED', complete.error);
+  const state = await (await request(endpoint.replace('/production-jobs','/production'))).json();
+  assert.equal(state.production.phases[0].state, 'CONSTRUCTED');
+  const expired = await fetch(borrowedScope.EDITFLOW_WORKER_PROOF_URL,{method:'POST',headers:{'Content-Type':'application/json',
+    'X-EditFlow-Token':token,'X-EditFlow-Worker-Key':borrowedScope.EDITFLOW_WORKER_PROOF_KEY},body:JSON.stringify({scriptPath})});
+  assert.equal(expired.status,409);
+  const proof = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath}});
+  const review = await wait((await proof.json()).job.jobId); assert.equal(review.status,'REVIEW_REQUIRED');
+  await service.stop(); service = new PracticePanelServerV1({...config,broker}); await service.start();
+  const resumed = (await (await request(endpoint+'?jobId='+encodeURIComponent(review.jobId))).json()).job;
+  assert.equal(resumed.status,'REVIEW_REQUIRED');
+  const noEvidence = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller'}); assert.equal(noEvidence.status,400);
+  const resolved = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller',reviewEvidenceRef:'actual-ae-readback.json'}); assert.equal(resolved.status,200);
+  if(mode === 'PRO_CREATION') {
+    await writeFile(f.assignment.start[0].uri,'changed raw media requires a fresh scan');
+    const changed = await (await request(endpoint.replace('/production-jobs','/production'))).json();
+    assert.equal(changed.production.phases[0].sourceValidationRequired,true);
+    const stale = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath}}); assert.equal(stale.status,409);
+    await f.scan(); await f.source('TUTORIAL','SUFFICIENT',['zoom','trail']); const renewed = await f.plan();
+    assert.notEqual(renewed.clips['shot:1'].scanHash,saved.clips['shot:1'].scanHash);
+    const fresh = await (await request(endpoint.replace('/production-jobs','/production'))).json();
+    assert.equal(fresh.production.phases[0].sourceValidationRequired,false);
+    const unsupported = await request(endpoint,{kind:'BUILD_BASELINE',payload:f.context(saved)}); assert.equal(unsupported.status,400);
+  }
 });

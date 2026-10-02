@@ -101,7 +101,7 @@ const shutterReference = () => {
   };
 };
 
-test("Practice orchestration brief makes cross-chat continuity and original M6 routing mandatory", () => {
+test("Practice orchestration brief makes the primary production system and cross-chat continuity mandatory", () => {
   const message = buildGptOrchestrationChatMessageV1({
     sessionId: "practice:continuity",
     mode: "PRACTICE",
@@ -123,13 +123,16 @@ test("Practice orchestration brief makes cross-chat continuity and original M6 r
     artifactDir: "C:\\EditFlow\\practice",
     knowledge: null,
   });
+  assert.match(message, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
   assert.match(message, /PRACTICE CONTINUITY IS MANDATORY/);
   assert.match(message, /new ChatGPT controller must resume the existing PENDING\/RUNNING assignment/i);
-  assert.match(message, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
-  assert.match(message, /original M6 Visual Effects Intelligence loop is the governing reference-driven/i);
+  assert.match(message, /PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.match(message, /M6 Visual Effects Intelligence is the integrated reference-fidelity engine/i);
+  assert.doesNotMatch(message, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.doesNotMatch(message, /original M6 Visual Effects Intelligence loop is the governing/i);
 });
 
-test("persisted GPT-first Practice briefs migrate to original M6 authority even when continuity marker already exists", async (t) => {
+test("persisted legacy Practice briefs migrate to the primary production system even when a continuity marker already exists", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "editflow-workflow-migrate-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   const storePath = path.join(root, "gpt-orchestration.json");
@@ -172,9 +175,12 @@ test("persisted GPT-first Practice briefs migrate to original M6 authority even 
   assert.ok(migrated);
   assert.doesNotMatch(migrated.chatMessage, /M6_IS_TARGETED_SPECIALIST/);
   assert.doesNotMatch(migrated.chatMessage, /GPT is the orchestrator, creative reasoner, and learner/);
-  assert.match(migrated.chatMessage, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
-  assert.match(migrated.chatMessage, /GPT is the session orchestrator, continuity owner, and escalation reasoner/);
-  assert.match(migrated.chatMessage, /original M6 Visual Effects Intelligence loop is the governing reference-driven/i);
+  assert.doesNotMatch(migrated.chatMessage, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.doesNotMatch(migrated.chatMessage, /original M6 Visual Effects Intelligence loop is the governing/i);
+  assert.match(migrated.chatMessage, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
+  assert.match(migrated.chatMessage, /PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
+  assert.match(migrated.chatMessage, /creative judgment owner, continuity owner, and escalation reasoner inside the primary production system/);
+  assert.match(migrated.chatMessage, /integrated Practice reference-fidelity engine/i);
 });
 
 test("a new ChatGPT controller can reclaim the same RUNNING Practice assignment", async (t) => {

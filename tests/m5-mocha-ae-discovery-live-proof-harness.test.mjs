@@ -27,9 +27,9 @@ test("Mocha discovery enumerates AE effect metadata without adding an effect", a
   assert.match(source, /REVISION_AFTER/);
   assert.match(runner, /sameAeProcess/);
   assert.match(runner, /mutationStarted = \$false/);
-  assert.match(runner, /ProofScriptEndpoint/);
-  assert.match(runner, /127\.0\.0\.1:32146\/proof-script/);
-  assert.match(runner, /Invoke-WebRequest/);
+  assert.match(runner, /ProductionJobClient/);
+  assert.match(runner, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
+  assert.match(runner, /Invoke-ProductionProof/);
   assert.match(runner, /WARM_CEP_PROOF_SCRIPT/);
   assert.doesNotMatch(runner, /Start-Process -FilePath \$AfterFxPath/);
 });

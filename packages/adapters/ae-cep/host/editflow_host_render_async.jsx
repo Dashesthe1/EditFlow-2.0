@@ -17,7 +17,7 @@
   "use strict";
 
   var PROTOCOL = "1.1.0";
-  var BUILD = "0.1.0-dev.4-renderasync7-start-grace30s";
+  var BUILD = "0.1.0-dev.4-renderasync8-isolated-search";
   var STABLE_PREFIX = "[[EDITFLOW2_STABLE:";
   var STABLE_SUFFIX = "]]";
   var innerDispatch = $.global.EditFlow2_dispatch;
@@ -66,6 +66,45 @@
     var item = findItem(ref);
     if (!item || !(item instanceof CompItem)) throw new Error("render.capture composition target could not be resolved.");
     return item;
+  }
+
+  // Numeric search works only on a temporary copy of the root comp. Nested
+  // sources are read-only. No user code, expressions, imports, or file paths
+  // are accepted as candidate parameters.
+  function prepareScratchComp(source, candidate) {
+    var copy = source.duplicate();
+    try {
+      copy.name = "EditFlow Scratch " + asString(candidate.candidateId);
+      copy.comment = "EDITFLOW2_SCRATCH_SEARCH_ONLY:" + asString(candidate.candidateId);
+      var patches = candidate.patches || [];
+      if (!(patches instanceof Array) || patches.length > 64) throw new Error("Scratch patches must contain at most 64 numeric overrides.");
+      for (var p = 0; p < patches.length; p += 1) {
+        var patch = patches[p];
+        if (!(patch.layerIndex >= 1 && patch.layerIndex <= copy.numLayers)) throw new Error("Scratch layer index is outside the source comp.");
+        var layer = copy.layer(patch.layerIndex);
+        layer.locked = false;
+        var property = layer;
+        if (patch.effectMatchName) {
+          var effects = layer.property("ADBE Effect Parade");
+          var effect = null;
+          for (var e = 1; e <= effects.numProperties; e += 1) {
+            if (effects.property(e).matchName === patch.effectMatchName) { effect = effects.property(e); break; }
+          }
+          property = effect || effects.addProperty(patch.effectMatchName);
+        }
+        if (!(patch.propertyPath instanceof Array) || patch.propertyPath.length < 1 || patch.propertyPath.length > 8) throw new Error("Scratch propertyPath is required.");
+        for (var q = 0; q < patch.propertyPath.length; q += 1) {
+          property = property.property(patch.propertyPath[q]);
+          if (!property) throw new Error("Scratch property could not be resolved.");
+        }
+        if (property.canSetExpression && property.expressionEnabled) throw new Error("Scratch search refuses expression-driven parameters.");
+        while (property.numKeys > 0) property.removeKey(property.numKeys);
+        if (patch.keys) {
+          for (var k = 0; k < patch.keys.length; k += 1) property.setValueAtTime(patch.keys[k].timeMs / 1000, patch.keys[k].value);
+        } else property.setValue(patch.value);
+      }
+      return copy;
+    } catch (error) { try { copy.remove(); } catch (_) {} throw error; }
   }
 
   function responseBase(request, started, beforeRevision) {
@@ -123,7 +162,10 @@
         outputPath: job.outputPath,
         error: errorMessage || null,
         completedAtMs: nowMs(),
-        queueItemRemoved: job.queueItemRemoved === true
+        queueItemRemoved: job.queueItemRemoved === true,
+        scratchRemoved: !job.scratchComp,
+        searchOnly: job.searchOnly === true,
+        resolutionFactor: job.resolutionFactor || 1
       });
       if (!marker.write(payload)) throw new Error("After Effects did not write the render lifecycle marker payload.");
     } finally {
@@ -167,6 +209,10 @@
       if (cleanupError) {
         ok = false;
         errorMessage = (errorMessage ? errorMessage + " | " : "") + "Render queue cleanup failed: " + cleanupError;
+      }
+      if (job.scratchComp) {
+        try { job.scratchComp.remove(); job.scratchComp = null; }
+        catch (scratchError) { ok = false; errorMessage = "Scratch cleanup failed: " + asString(scratchError); }
       }
       job.terminalOk = ok === true;
       job.terminalError = errorMessage || null;
@@ -357,10 +403,42 @@
 
       var rqItem = null;
       var job = null;
+      var scratchComp = null;
       try {
+        if (payload.scratchCandidate) {
+          scratchComp = prepareScratchComp(comp, payload.scratchCandidate);
+          comp = scratchComp;
+        }
         rqItem = app.project.renderQueue.items.add(comp);
-        if (payload.timeSpanStart !== undefined) rqItem.timeSpanStart = payload.timeSpanStart;
-        if (payload.timeSpanDuration !== undefined) rqItem.timeSpanDuration = payload.timeSpanDuration;
+        var factor = payload.resolutionFactor === undefined ? 1 : Number(payload.resolutionFactor);
+        if (factor !== 1 && factor !== 4 && factor !== 8) throw new Error("Search resolutionFactor must be 1, 4 or 8.");
+        if (factor !== 1 && !scratchComp) throw new Error("Reduced-resolution rendering is restricted to scratch candidates.");
+        if (scratchComp) {
+          comp.resolutionFactor = [factor, factor];
+          rqItem.setSetting("Resolution", factor === 1 ? "Full" : "Current Settings");
+        }
+        var compStart = Number(comp.displayStartTime || 0);
+        var compEnd = compStart + Number(comp.duration || 0);
+        var requestedStart = payload.timeSpanStart !== undefined
+          ? Number(payload.timeSpanStart) : compStart;
+        var requestedDuration = payload.timeSpanDuration !== undefined
+          ? Number(payload.timeSpanDuration) : Math.max(0, compEnd - requestedStart);
+        if (!isFinite(requestedStart)) requestedStart = compStart;
+        if (!isFinite(requestedDuration) || requestedDuration <= 0) {
+          requestedDuration = Math.max(Number(comp.frameDuration || 0), compEnd - requestedStart);
+        }
+        var frameDuration = Number(comp.frameDuration || (1 / 30));
+        var safeStart = Math.max(
+          compStart,
+          Math.min(requestedStart, Math.max(compStart, compEnd - frameDuration))
+        );
+        var safeMaxDuration = Math.max(frameDuration, compEnd - safeStart);
+        var safeDuration = Math.min(requestedDuration, safeMaxDuration);
+        if (safeStart + safeDuration >= compEnd && safeDuration > frameDuration) {
+          safeDuration = Math.max(frameDuration, safeMaxDuration - 0.000001);
+        }
+        rqItem.timeSpanStart = safeStart;
+        rqItem.timeSpanDuration = safeDuration;
         rqItem.render = true;
         var module = rqItem.outputModule(1);
         module.file = new File(payload.outputPath);
@@ -371,6 +449,9 @@
           outputPath: payload.outputPath,
           completionPath: completionPath,
           rqItem: rqItem,
+          scratchComp: scratchComp,
+          searchOnly: scratchComp !== null,
+          resolutionFactor: factor,
           state: "SCHEDULED",
           mode: "ASYNC_HOST_RENDER_V4",
           queueItemRemoved: false,
@@ -420,6 +501,7 @@
         } else if (rqItem) {
           try { rqItem.remove(); } catch (_) {}
         }
+        if (scratchComp) { try { scratchComp.remove(); } catch (_) {} }
         return JSON.stringify(failureResponse(
           request, started, beforeRevision, "FAILED", "ADAPTER_FAILURE", "ASYNC_RENDER_SCHEDULE_FAILED",
           asString(setupError)

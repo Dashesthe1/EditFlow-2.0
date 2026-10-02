@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { compileTutorialDeepLessonV1 } from "../../.tmp/runtime/packages/tutorial-learning/src/index.js";
@@ -36,17 +37,17 @@ const waitForCompletePng = async (filePath) => {
   throw new Error(`T002_VISUAL_FRAME_COMPLETION_TIMEOUT ${filePath}`);
 };
 const jsonRequest = async (requestPath, init = {}, allowError = false) => {
-  const response = await fetch(BASE + requestPath, init);
+  const response = await productionRequest(BASE, requestPath, init);
   const text = await response.text();
   let body; try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
   if (!response.ok && !allowError) throw new Error(`${requestPath} failed ${response.status}: ${JSON.stringify(body)}`);
   return { status: response.status, body };
 };
 const getState = async () => (await jsonRequest("/state")).body;
-const runTransaction = async (plan, allowError = false) => jsonRequest("/run-transaction", {
+const runTransaction = async (plan, allowError = false) => jsonRequest("@AE_TRANSACTION", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ plan }),
 }, allowError);
-const runProofScript = async (scriptPath) => jsonRequest("/proof-script", {
+const runProofScript = async (scriptPath) => jsonRequest("@PROOF_SCRIPT", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scriptPath }),
 });
 const op = (id, capabilityId, command, payload, dependsOn = [], riskClass = "R2_STRUCTURAL") => ({

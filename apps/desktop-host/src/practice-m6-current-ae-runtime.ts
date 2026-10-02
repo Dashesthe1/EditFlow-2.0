@@ -386,6 +386,7 @@ export class PracticeM6CurrentAeRuntimeV1 implements PracticeM6RuntimeV1 {
   readonly renderDriver: PracticeM6AeRenderDriverV1;
   readonly subjectIsolationRoute: PracticeM6SubjectIsolationRouteV1 | null;
   readonly availableCapabilities: readonly string[];
+  readonly deferPhaseConfirmationToWholeEdit = true;
 
   readonly #prepared = new Map<string, PreparedAttemptV1>();
   #applyCounter = 0;

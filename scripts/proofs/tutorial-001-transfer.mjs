@@ -1,3 +1,4 @@
+import { productionRequest } from "../production-job-client.mjs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { compileTutorialDeepLessonV1 } from "../../.tmp/runtime/packages/tutorial-learning/src/index.js";
@@ -31,7 +32,7 @@ const REAL_IN = "EF2_T001_TRANSFER_REAL_IN_LAYER";
 const requireThat = (condition, message) => {
   if (!condition) throw new Error(message);
 };const jsonRequest = async (path, init = {}) => {
-  const response = await fetch(BASE + path, init);
+  const response = await productionRequest(BASE, path, init);
   const text = await response.text();
   let body;
   try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
@@ -42,13 +43,13 @@ const requireThat = (condition, message) => {
 };
 const getState = async () => jsonRequest("/state");
 const getStatus = async () => jsonRequest("/status");
-const runTransaction = async (plan) => jsonRequest("/run-transaction", {
+const runTransaction = async (plan) => jsonRequest("@AE_TRANSACTION", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ plan }),
 });
 const runCapture = async () => {
-  const result = await jsonRequest("/proof-script", {
+  const result = await jsonRequest("@PROOF_SCRIPT", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ scriptPath: SCRIPT }),

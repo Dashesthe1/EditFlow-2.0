@@ -101,7 +101,7 @@ test("Roto Brush repair sidecar keeps routine tool-to-stroke execution local and
   assert.match(py, /visibleRepairChange/);
   assert.match(py, /visibleRepairChangeObserved/);
   assert.match(py, /stroke_modifiers = \["ALT"\] if request\["stroke"\]\["role"\] == "BACKGROUND"/);
-  assert.match(py, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(py, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.match(py, /acknowledgementOnly/);
   assert.match(py, /aeActionToActionLatenciesMs/);
 });
@@ -117,7 +117,7 @@ test("repair sidecar is exact-target, popup-aware, same-path visible-change guar
   assert.match(py, /nativeRepairStrokeAttempted/);
   assert.match(py, /inspect_error_popup/);
   assert.match(py, /acknowledgementOnly/);
-  assert.match(py, /127\.0\.0\.1:32146\/proof-script/);
+  assert.match(py, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
   assert.doesNotMatch(py, /pyautogui|SetCursorPos/);
 });
 test("Roto Brush repair visual driver safely maximizes a verified Layer viewer when canvas grounding is too small", async () => {

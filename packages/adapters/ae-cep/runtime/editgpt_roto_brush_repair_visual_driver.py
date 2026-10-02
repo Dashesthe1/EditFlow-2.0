@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import argparse
 import asyncio
 import json
@@ -244,10 +246,15 @@ def select_native_tool(_afterfx_path: str, tool_select_script: str, tool: str) -
     request_path.write_text(json.dumps({"schema": "editflow.roto-brush-tool-select.v1", "requestId": request_id, "tool": tool}) + "\n", encoding="utf-8")
     started = time.perf_counter()
     payload = json.dumps({"scriptPath": tool_select_script}).encode("utf-8")
+    endpoint = os.environ.get("EDITFLOW_WORKER_PROOF_URL")
+    key = os.environ.get("EDITFLOW_WORKER_PROOF_KEY")
+    token = os.environ.get("EDITFLOW_WORKER_PRODUCT_TOKEN")
+    if not endpoint or not key or not token:
+        raise RuntimeError("WORKER_JOB_SCOPE_REQUIRED: submit this capability through the durable production queue")
     dispatch_request = urllib.request.Request(
-        "http://127.0.0.1:32146/proof-script",
+        endpoint,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-EditFlow-Token": token, "X-EditFlow-Worker-Key": key},
         method="POST",
     )
     try:
