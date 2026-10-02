@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,16 +92,25 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
-const practiceArtifactDir = path.join(repoRoot, "proofs", "artifacts", "practice-product");
+const runtimeId = "RESUMABLE_PREFLIGHT_V1";
+const buildId = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
+const canonicalRuntimePath = path.join(localAppData, "EditFlow2", "current-runtime.json");
+const practiceArtifactDir = path.resolve(
+  process.env.EDITFLOW_PRACTICE_ARTIFACT_DIR
+    ?? path.join(localAppData, "EditFlow2", "practice-artifacts"),
+);
 const practicePanel = new PracticePanelServerV1({
   port: 0,
   token: config.token,
   repositoryRoot: repoRoot,
+  buildId,
   artifactDir: practiceArtifactDir,
   learningMemoryFilePath: practiceStatePaths.learningMemoryFilePath,
   editTypeRegistryFilePath: practiceStatePaths.editTypeRegistryFilePath,
+  gptOrchestrationFilePath: path.join(practiceStatePaths.stateDir, "gpt-orchestration.json"),
   broker,
-  renderTimeoutMs: 180_000,
+  ...(process.env.EDITFLOW_FFMPEG_PATH ? { ffmpegPath: process.env.EDITFLOW_FFMPEG_PATH } : {}),
+  renderTimeoutMs: Number(process.env.EDITFLOW_PRACTICE_TIMEOUT_MS ?? 180_000),
 });
 await practicePanel.start();
 
@@ -159,7 +169,9 @@ const resolveProofScript = async (value) => {
   return candidate;
 };
 
+const requestBodies = new WeakMap();
 const readJson = async (req) => {
+  if (requestBodies.has(req)) return requestBodies.get(req);
   const chunks = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   const text = Buffer.concat(chunks).toString("utf8");
@@ -213,11 +225,12 @@ const proxyPracticeRequest = (req, res) => new Promise((resolve, reject) => {
 const statusPayload = () => ({
   ok: true,
   service: "EditFlow Current Shadow Control",
-  repoRoot,  executionMode: session.executionMode,
+  repoRoot, runtimeId, buildId, canonicalRuntimePath, executionMode: session.executionMode,
   adapterBuild: session.adapterBuild,
   hostRevision: session.runner.hostRevision,
   localRuntime: runtime.status(),
   currentTransactionRuntime: currentTransactionRuntime.status(),
+  clipResearchPolicy: "MANDATORY_PER_CLIP_TUTORIAL_ADOBE_WEB_V1",
   mutationLease: mutationLeaseStatus(),
   panel: broker.panelSession ?? panel,
   practiceService: {
@@ -245,6 +258,16 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(requestPath, "http://127.0.0.1");
     url.pathname = legacyControlRouteAliases.get(url.pathname) ?? url.pathname;
+    if (req.method === "POST" && ["/run", "/run-batch", "/run-transaction", "/run-correction-transaction", "/proof-script"].includes(url.pathname)) {
+      await practicePanel.assertPracticeReconstructionReady();
+      const body = await readJson(req);
+      requestBodies.set(req, body);
+      const admission = await practicePanel.assertClipResearchReady(body);
+      res.once("finish", () => {
+        void practicePanel.recordClipResearchExecution(admission, res.statusCode < 400 ? "HTTP_COMPLETED" : "HTTP_FAILED")
+          .catch((error) => console.error("CLIP_RESEARCH_AUDIT_FAILED", error.message));
+      });
+    }
     if (url.pathname.startsWith("/v1/product/")) {
       await proxyPracticeRequest(req, res);
       return;
@@ -400,7 +423,7 @@ const server = createServer(async (req, res) => {
     sendJson(res, 404, { error: "NOT_FOUND" });
   } catch (error) {
     try {
-      sendJson(res, 500, await triageFailure(error, req, requestPath));
+      sendJson(res, typeof error?.status === "number" ? error.status : 500, await triageFailure(error, req, requestPath));
     } catch (triageError) {
       sendJson(res, 500, {
         error: error instanceof Error ? error.message : String(error),
@@ -412,7 +435,14 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(32146, "127.0.0.1", () => {
+server.listen(32146, "127.0.0.1", async () => {
+  await mkdir(path.dirname(canonicalRuntimePath), { recursive: true });
+  const manifest = { schema: "editflow.current-runtime.v1", runtimeId, buildId, repositoryRoot: repoRoot,
+    stateDir: practiceStatePaths.stateDir, artifactDir: practiceArtifactDir,
+    productBaseUrl: "http://127.0.0.1:32146", startedAt: new Date().toISOString() };
+  const temporaryManifest = canonicalRuntimePath + ".tmp-" + String(process.pid);
+  await writeFile(temporaryManifest, JSON.stringify(manifest, null, 2) + "\n");
+  await rename(temporaryManifest, canonicalRuntimePath);
   console.log(JSON.stringify({ event: "CURRENT_SHADOW_CONTROL_READY", port: 32146, ...statusPayload() }));
 });
 

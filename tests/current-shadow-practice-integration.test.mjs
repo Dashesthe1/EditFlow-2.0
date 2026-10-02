@@ -17,9 +17,12 @@ test("Current Shadow control plane integrates Practice on the same CEP broker", 
   assert.match(source, /await practicePanel\.stop\(\)/);
 });
 
-test("standalone Practice launcher exits cleanly when integrated service is already running", async () => {
+test("Practice launcher requires the accelerated workflow and switches only an idle EditFlow daemon", async () => {
   const source = await read("scripts/windows/run-practice-panel.ps1");
+  assert.match(source, /ACCELERATED_REFERENCE_FIRST_V1/);
   assert.match(source, /\/v1\/product\/status/);
-  assert.match(source, /ASSIGNMENT_QUEUE_READY/);
-  assert.match(source, /already integrated into the running Current Shadow control plane/);
+  assert.match(source, /ControlStatus\.repoRoot -eq \$RepoRoot/);
+  assert.match(source, /mutationLease\.held/);
+  assert.match(source, /current-shadow-control-daemon\[\.\]mjs/);
+  assert.match(source, /& node \$DaemonPath/);
 });

@@ -9,6 +9,7 @@ import type {
   PracticeSceneMatchV1,
   PracticeSessionRequestV1,
   PracticeSessionResultV1,
+  PracticeSimilarityReportV1,
 } from "./contracts.js";
 import { EditTypeRegistryV1 } from "./edit-types.js";
 import { PracticeLearningMemoryV1 } from "./memory.js";
@@ -37,6 +38,7 @@ const selectBestAttempt = (
 ): PracticeAttemptV1 | null => {
   let best: PracticeAttemptV1 | null = null;
   for (const attempt of attempts) {
+    if (attempt.certificationReady === false) continue;
     if (best === null) {
       best = attempt;
       continue;
@@ -58,6 +60,36 @@ const selectBestAttempt = (
 
 const uniqueRefs = (refs: readonly string[]): readonly string[] =>
   [...new Set(refs.filter((ref) => ref.trim().length > 0))];
+
+const phaseTrainingReport = (
+  evidenceRefs: readonly string[],
+): PracticeSimilarityReportV1 => ({
+  schema: "editflow.practice-similarity.v1",
+  breakdown: {
+    sceneIdentity: 0,
+    temporalAlignment: 0,
+    cutTiming: 0,
+    framing: 0,
+    motion: 0,
+    effectFidelity: 0,
+    transitionFidelity: 0,
+    colorFinish: 0,
+    pixelStructure: 0,
+  },
+  definingEffectCoverage: 0,
+  wrongSceneCount: 0,
+  unmatchedSceneCount: 0,
+  overallSimilarity: 0,
+  passed: false,
+  reasons: [
+    "Whole-edit certification deferred while phase proofs are still converging.",
+  ],
+  evidenceRefs: uniqueRefs([
+    ...evidenceRefs,
+    "practice-phase-proof-training-only",
+    "practice-full-edit-certification-skipped",
+  ]),
+});
 
 export const hasRepeatedSceneGeometryV1 = (match: PracticeSceneMatchV1): boolean => {
   const proof = match.geometricProof;
@@ -299,37 +331,41 @@ export class PracticeHomeworkEngineV1 {
     }
     const editTypeKnowledge = knowledgeOverride ?? retainedKnowledge;
 
-    const reference = await this.adapters.analyzeFinish(request.finish);
-    const sourceIndex = await this.adapters.indexStart(request.start);
-    const matches = await this.adapters.matchScenes({
-      reference,
-      sourceIndex,
-      minimumConfidence: exactSceneConfidence,
-    });
+    const [reference, sourceIndex] = await Promise.all([
+      this.adapters.analyzeFinish(request.finish),
+      this.adapters.indexStart(request.start),
+    ]);
+    const audioMatchPromise = sourceIndex.audioSourceIds.length > 0
+      && this.adapters.matchAudio !== undefined
+      ? this.adapters.matchAudio({
+        reference,
+        sourceIndex,
+        minimumConfidence: minimumAudioConfidence,
+      })
+      : Promise.resolve(null);
+    const [matches, audioMatch] = await Promise.all([
+      this.adapters.matchScenes({
+        reference,
+        sourceIndex,
+        minimumConfidence: exactSceneConfidence,
+      }),
+      audioMatchPromise,
+    ]);
     const matchReasons = validatePracticeSceneMatchesV1(
       reference.shots.map((shot) => shot.shotId),
       matches,
       exactSceneConfidence,
     );
-
-    let audioMatch: PracticeAudioMatchV1 | null = null;
     const audioReasons: string[] = [];
     if (sourceIndex.audioSourceIds.length > 0) {
       if (this.adapters.matchAudio === undefined) {
         audioReasons.push(
           "Raw audio was supplied but no real Practice audio-matching capability is available.",
         );
+      } else if (audioMatch === null) {
+        audioReasons.push("No source song/audio match was found for the Finish reference.");
       } else {
-        audioMatch = await this.adapters.matchAudio({
-          reference,
-          sourceIndex,
-          minimumConfidence: minimumAudioConfidence,
-        });
-        if (audioMatch === null) {
-          audioReasons.push("No source song/audio match was found for the Finish reference.");
-        } else {
-          audioReasons.push(...validateAudioMatch(audioMatch, minimumAudioConfidence));
-        }
+        audioReasons.push(...validateAudioMatch(audioMatch, minimumAudioConfidence));
       }
     }
 
@@ -366,6 +402,7 @@ export class PracticeHomeworkEngineV1 {
       audioMatch,
     });
     const attempts: PracticeAttemptV1[] = [];
+    let consecutiveCertifiedAttempts = 0;
 
     for (let attemptNumber = 1; attemptNumber <= maxAttempts; attemptNumber += 1) {
       const startedAt = Date.now();
@@ -380,15 +417,24 @@ export class PracticeHomeworkEngineV1 {
         audioMatch,
         priorAttempts: attempts,
       });
-      const measured = await this.adapters.evaluate({
-        reference,
-        renderRef: reconstruction.renderRef,
-        minimumSimilarity: target,
-      });
-      const report = finalizePracticeSimilarityReportV1(measured, target);
+      const certificationReady = reconstruction.certificationReady !== false;
+      const report = certificationReady
+        ? finalizePracticeSimilarityReportV1(
+          await this.adapters.evaluate({
+            reference,
+            renderRef: reconstruction.renderRef,
+            minimumSimilarity: target,
+          }),
+          target,
+        )
+        : phaseTrainingReport(reconstruction.evidenceRefs);
+      consecutiveCertifiedAttempts = certificationReady && report.passed
+        ? consecutiveCertifiedAttempts + 1
+        : 0;
       attempts.push({
         attempt: attemptNumber,
         renderRef: reconstruction.renderRef,
+        certificationReady,
         report,
         decisionTraces: reconstruction.decisionTraces,
         elapsedMs: Math.max(0, Date.now() - startedAt),
@@ -407,14 +453,14 @@ export class PracticeHomeworkEngineV1 {
         matches,
         audioMatch,
         attempts,
-        mastered: bestAttempt?.report.passed ?? false,
+        mastered: consecutiveCertifiedAttempts >= 2,
         bestAttempt,
       };
       if (retainEpisode) {
         this.memory.remember(episode);
         await this.adapters.recordEpisode?.(episode);
       }
-      if (bestAttempt?.report.passed === true) {
+      if (consecutiveCertifiedAttempts >= 2 && bestAttempt?.report.passed === true) {
         return {
           schema: "editflow.practice-session-result.v1",
           sessionId: request.sessionId,
@@ -436,8 +482,8 @@ export class PracticeHomeworkEngineV1 {
             ...attempts.flatMap((attempt) => attempt.evidenceRefs),
           ]),
           reasons: bestAttempt.report.overallSimilarity >= stretch
-            ? ["Practice target and stretch target both satisfied."]
-            : ["Practice target satisfied; retained as a mastered reconstruction."],
+            ? ["Practice target and stretch target both satisfied across two consecutive full-edit certifications."]
+            : ["Practice target satisfied across two consecutive full-edit certifications; retained as a mastered reconstruction."],
           allocationPrompt: retainEpisode
             ? allocationPrompt(request.sessionId, request.editTypeId)
             : null,

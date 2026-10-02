@@ -82,9 +82,11 @@ const exactGeometry = {
 const makeAdapters = (evaluations, options = {}) => {
   const recorded = [];
   const reconstructed = [];
+  const evaluated = [];
   return {
     recorded,
     reconstructed,
+    evaluated,
     adapters: {
       async analyzeFinish(finish) {
         return {
@@ -185,6 +187,7 @@ const makeAdapters = (evaluations, options = {}) => {
         const { attempt } = input;
         return {
           renderRef: `render:attempt:${attempt}`,
+          certificationReady: options.certificationReadyByAttempt?.[attempt - 1] ?? true,
           decisionTraces: [{
             decisionId: `decision:${attempt}`,
             cueIds: ["reference:cue"],
@@ -195,6 +198,7 @@ const makeAdapters = (evaluations, options = {}) => {
         };
       },
       async evaluate({ renderRef }) {
+        evaluated.push(renderRef);
         const attempt = Number(renderRef.split(":").at(-1));
         return evaluations[attempt - 1] ?? evaluations.at(-1);
       },
@@ -235,6 +239,42 @@ const request = {
   maxAttempts: 8,
 };
 
+test("Practice overlaps independent reference/index and scene/audio analysis", async () => {
+  const fixtures = makeAdapters([report(0.8)]);
+  const stages = { analysis: { active: 0, peak: 0 }, matching: { active: 0, peak: 0 } };
+  const overlap = (stage, operation) => async (...args) => {
+    const state = stages[stage];
+    state.active += 1;
+    state.peak = Math.max(state.peak, state.active);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return await operation(...args);
+    } finally {
+      state.active -= 1;
+    }
+  };
+  const original = fixtures.adapters;
+  const engine = new PracticeHomeworkEngineV1({
+    ...original,
+    analyzeFinish: overlap("analysis", original.analyzeFinish),
+    indexStart: overlap("analysis", original.indexStart),
+    matchScenes: overlap("matching", original.matchScenes),
+    matchAudio: overlap("matching", original.matchAudio),
+  }, new PracticeLearningMemoryV1(), makeEditTypes());
+  const result = await engine.run({
+    ...request,
+    start: [...request.start, {
+      mediaId: "song:a",
+      role: "START_SOURCE",
+      mediaKind: "AUDIO",
+      uri: "file:///song-a.wav",
+    }],
+  });
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(stages.analysis.peak, 2);
+  assert.equal(stages.matching.peak, 2);
+});
+
 test("homework loop repeats until the reconstruction satisfies the supervised gate", async () => {
   const fixtures = makeAdapters([
     report(0.90, { definingEffectCoverage: 0.5 }),
@@ -245,12 +285,12 @@ test("homework loop repeats until the reconstruction satisfies the supervised ga
   const engine = new PracticeHomeworkEngineV1(fixtures.adapters, memory, makeEditTypes());
   const result = await engine.run(request);
   assert.equal(result.status, "MASTERED");
-  assert.equal(result.attempts.length, 3);
+  assert.equal(result.attempts.length, 4);
   assert.equal(result.bestAttempt?.attempt, 3);
   assert.ok((result.bestAttempt?.report.overallSimilarity ?? 0) >= 0.95);
   assert.equal(memory.size, 1);
   assert.equal(memory.successfulExamples("style:pro-edit-a").length, 1);
-  assert.equal(fixtures.recorded.length, 3);
+  assert.equal(fixtures.recorded.length, 4);
 });
 
 test("Practice forwards the matched audio beat grid into reconstruction", async () => {
@@ -299,7 +339,7 @@ test("Practice forwards the matched audio beat grid into reconstruction", async 
     ],
   });
   assert.equal(result.status, "MASTERED");
-  assert.equal(fixtures.reconstructed.length, 1);
+  assert.equal(fixtures.reconstructed.length, 2);
   assert.equal(fixtures.reconstructed[0].audioMatch?.matchId, audioMatch.matchId);
   assert.deepEqual(
     fixtures.reconstructed[0].audioMatch?.beatGrid?.beatTimesMs,
@@ -309,6 +349,26 @@ test("Practice forwards the matched audio beat grid into reconstruction", async 
     fixtures.reconstructed[0].audioMatch?.beatGrid?.evidenceRefs
       .includes("audio:beat-grid:forwarded"),
   );
+});
+
+test("phase-only training skips full evaluation until certification is ready", async () => {
+  const fixtures = makeAdapters([
+    report(0.98, { breakdown: breakdown(0.98, { sceneIdentity: 0.999 }) }),
+  ], {
+    certificationReadyByAttempt: [false, true, true],
+  });
+  const engine = new PracticeHomeworkEngineV1(
+    fixtures.adapters,
+    new PracticeLearningMemoryV1(),
+    makeEditTypes(),
+  );
+  const result = await engine.run({ ...request, sessionId: "practice:phase-fast" });
+  assert.equal(result.status, "MASTERED");
+  assert.equal(fixtures.reconstructed.length, 3);
+  assert.equal(fixtures.evaluated.length, 2);
+  assert.equal(result.attempts.length, 3);
+  assert.deepEqual(result.attempts.map((attempt) => attempt.attempt), [1, 2, 3]);
+  assert.equal(result.attempts[0].certificationReady, false);
 });
 
 test("held-out execution uses frozen knowledge without retaining an episode", async () => {

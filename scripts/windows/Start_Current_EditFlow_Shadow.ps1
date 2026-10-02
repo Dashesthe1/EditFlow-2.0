@@ -4,6 +4,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$CanonicalPath = Join-Path $env:LOCALAPPDATA "EditFlow2\current-runtime.json"
+if (Test-Path $CanonicalPath -PathType Leaf) {
+  $Canonical = Get-Content -Raw $CanonicalPath | ConvertFrom-Json
+  if ($Canonical.schema -eq "editflow.current-runtime.v1" -and
+      (Test-Path (Join-Path $Canonical.repositoryRoot "scripts\current-shadow-control-daemon.mjs"))) {
+    $Root = [string]$Canonical.repositoryRoot
+  }
+}
 $LogRoot = Join-Path $Root ".tmp\current-shadow"
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 
@@ -36,6 +44,11 @@ function Open-WarmCepBridge {
 
 $Node = (Get-Command node.exe -ErrorAction Stop).Source
 $Npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+$ReaderRepair = Join-Path $Root "scripts\windows\repair-desktop-commander-read-handles.mjs"
+if (Test-Path $ReaderRepair) {
+  & $Node $ReaderRepair
+  if ($LASTEXITCODE -ne 0) { throw "Desktop Commander text-reader repair failed." }
+}
 $TailscaleCommand = Get-Command tailscale.exe -ErrorAction SilentlyContinue
 $Tailscale = if ($null -ne $TailscaleCommand) { $TailscaleCommand.Source } else { "" }
 if (-not $LocalOnly -and [string]::IsNullOrWhiteSpace($Tailscale)) {
@@ -45,7 +58,11 @@ $GatewayPython = Join-Path $env:USERPROFILE "editgpt\.venv\Scripts\python.exe"
 if (-not (Test-Path $GatewayPython)) {
   $GatewayPython = (Get-Command python.exe -ErrorAction Stop).Source
 }
-$PublicPathFile = Join-Path $LogRoot "public-path.txt"
+$PublicPathFile = Join-Path $env:LOCALAPPDATA "EditFlow2\public-path.txt"
+$LegacyPublicPathFile = Join-Path $LogRoot "public-path.txt"
+if (-not (Test-Path $PublicPathFile) -and (Test-Path $LegacyPublicPathFile)) {
+  Copy-Item $LegacyPublicPathFile $PublicPathFile
+}
 $PublicPath = ""
 if (-not $LocalOnly) {
   $PublicPath = [string]$env:EDITFLOW_SHADOW_PUBLIC_PATH

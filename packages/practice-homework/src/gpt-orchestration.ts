@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -15,11 +15,13 @@ import type {
   GptOrchestrationModeV1,
   GptResearchSourceV1,
   PracticeMediaInputV1,
+  PracticePreflightCheckpointV1,
   PracticeSceneMatchV1,
   PracticeRunRoleV1,
   PracticeVerificationPolicyV1,
 } from "./contracts.js";
 import { applyCompiledTutorialCausalModelV1 } from "./tutorial-causal-compiler.js";
+import { CLIP_RESEARCH_POLICY_V1 } from "./clip-research.js";
 
 interface GptOrchestrationStorePayloadV1 {
   readonly schema: "editflow.gpt-orchestration-store.v1";
@@ -83,7 +85,9 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
             ? "HELD_OUT_CERTIFICATION"
             : "LEARNING"
           : null;
-        const researchMessage = applyCurrentResearchPriority(assignment.chatMessage);
+        const currentMessage = assignment.chatMessage.includes("MANDATORY PER-CLIP RESEARCH GATE V1")
+          ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
+        const researchMessage = applyCurrentResearchPriority(currentMessage);
         const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage);
         return {
           ...assignment,
@@ -174,7 +178,7 @@ const LEGACY_RESEARCH_POLICY_LINES = [
 ] as const;
 
 const RESEARCH_PRIORITY_LINES = [
-  "- Tutorial Drive is the mandatory first research source whenever EditFlow does not know how to reproduce a visible reference behavior, is stuck on a construction, or discovers a missing fundamental skill.",
+  "- Tutorial Drive is the mandatory first research source before editing EVERY clip in Practice and Pro Creation. Scan raw/reference windows, consult and compile matching tutorials, map the learned tools/method steps to each effect, and commit the durable clip research plan before AE mutations.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
   "- Every matched Tutorial Drive tutorial file must be deep-analyzed and compiled through EditFlow's tutorial causal compiler before it can support Practice learning. The compiler-derived construction pattern, capabilities, triggers, invariants, adaptation axes, failure/repair logic, and transfer criteria are authoritative; do not hand-author substitutes for those fields.",
@@ -249,6 +253,8 @@ const applyCurrentWorkflowContinuityPolicy = (message: string): string => {
     "Original M6 workflow + continuity policy (current):",
     WORKFLOW_CONTINUITY_POLICY_MARKER
       + " the Practice session/assignment is the durable unit of work across ChatGPT conversations.",
+    "- Bootstrap once through GET /v1/product/practice/resume-or-start. If the direct MCP transport fails once and Desktop Commander is online, immediately call the authenticated local product API through Desktop Commander. Do not repeatedly retry the failed MCP route.",
+    "- POST /v1/product/practice/resume-or-start resumes persisted preflight. Inspect assignment.preflight, prepared practiceSceneMatches, reasons and nextOperation. Keep the same assignment; reconstruct in AE only after READY. Heartbeat by claiming with your unique controller ID at least every 60 seconds; release-controller when handing off.",
     "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
     "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
     "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
@@ -490,6 +496,16 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "- LOCK_EDITORIAL_SPINE: After the correct raw shots, order, broad timing, and audio arrangement are verified, preserve them. Do not rebuild correct shots merely because an effect needs correction.",
       "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
       "- COMPLETE_EDIT_THEN_PATCH: Build one coherent full edit from the locked footage, render/review it, diagnose discrepancies, then patch only deficient regions. Later attempts preserve already-correct regions.",
+      "- ACCELERATED COVERAGE-FIRST SCHEDULE: after all source/range choices are locked, build a playable whole-edit reconstruction across every phase before final certification. Do not block later construction on a phase that still needs micro-optimization.",
+      "- BATCH SOURCE REVIEW: inspect direct-pixel contact sheets containing multiple Finish phases and strongest raw-source candidates when legible; retain an explicit source/range decision for every phase.",
+      "- BOUNDED SCRATCH SEARCH: one GPT hypothesis defines construction family, invariants, and safe parameter bounds; local non-canonical search may test many candidates without one GPT roundtrip per candidate, and only the winning commit becomes canonical.",
+      "- PROGRESSIVE FIDELITY FUNNEL: prefer up to 32 coarse 1/8-resolution critical-frame candidates, retain up to 8 at 1/4 resolution, then full-resolution proof only for the strongest 2. Machine scoring is search/ranking evidence only and can never satisfy a Practice fidelity pass.",
+      "- GPT REVIEW COMPRESSION: show GPT at most the strongest 3 useful alternatives plus reference/current-best instead of dominated intermediate candidates.",
+      "- GLOBAL RESIDUAL SCHEDULER: after whole-edit coverage exists, rank residuals by source correctness, defining-effect coverage, temporal/transition mismatch, severity, duration, and viewer salience; correct roughly the highest-impact 20% first and re-rank.",
+      "- ANTI_STAGNATION: after two weak micro-correction rounds on one hypothesis, or under 1% relevant improvement, stop parameter nudging and escalate parameter -> construction -> effect anatomy -> source/timing -> capability/tutorial research.",
+      "- DEPENDENCY_AWARE_RECERTIFICATION: a localized correction invalidates only that phase and connected transition/timing/composite dependencies; unrelated accepted proof remains reusable until its dependencies change.",
+      "- TRACE_BATCHING: emit several already-decided chronological trace events through the batch endpoint when safe instead of one process/HTTP roundtrip per event; individual validation and evidence requirements remain unchanged.",
+      "- QUALITY_GATES_UNCHANGED: Every phase still needs at least 2 consecutive passes before successful Practice completion, and the exact final candidate needs at least 2 consecutive whole-edit passes. Acceleration changes search/construction order, never acceptance authority.",
       "- CLEAN_AE_PROJECT: Temporary M6 experiments and proof renders remain isolated evidence and are not imported into the production composition. Do not create hundreds of alternate scenes or repeated full-length source items.",
       "- NO_WEAKER_SUBSTITUTION: When a defining reference effect is unfamiliar, inspect it more densely and synthesize/research the actual behavior rather than replacing it with a generic flash, zoom, shake, or other weaker approximation.",
       "",
@@ -512,6 +528,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       ]
       : [
         ...RESEARCH_PRIORITY_LINES,
+        CLIP_RESEARCH_POLICY_V1,
         "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
       ]),
     "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
@@ -589,9 +606,38 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   return applyCurrentWorkflowContinuityPolicy(message);
 };
 
+const PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1 = "PRACTICE_ACCELERATION_CONTINUITY_V1";
+const PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1 = [
+  PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1,
+  "Current Practice execution policy for this resumed assignment:",
+  "- Preserve the retained assignment, source decisions, proven AE checkpoints, and original M6 reference-driven visual method.",
+  "- Build playable whole-edit coverage from every source-locked phase before final phase certification. Earlier instructions requiring a phase to pass before constructing the next phase are superseded as a construction-order rule.",
+  "- Use shared immutable media analysis, batch direct-pixel source review, bounded local candidate search, residual-priority correction, and validated batch trace transport when available.",
+  "- Machine/proxy candidate scores are search evidence only. GPT must inspect reference and actual AE render pixels before committing a winner.",
+  "- Stop weak parameter tuning after two rounds; escalate the effect hypothesis. Held-out certification remains inference-only and must fail closed when frozen capabilities are insufficient.",
+  "- Preserve the exact source, 95% similarity floor, two consecutive phase passes, and two consecutive whole-edit passes. Final proof authority is unchanged.",
+].join("\n");
+
+export interface GptAppendEventInputV1 {
+  readonly assignmentId: string;
+  readonly stage: GptLearningStageV1;
+  readonly outcome?: GptLearningOutcomeV1;
+  readonly attempt?: number;
+  readonly summary: string;
+  readonly detail?: string;
+  readonly developmentPattern?: string;
+  readonly reusableLesson?: string;
+  readonly avoidRepeat?: string;
+  readonly capabilityGap?: GptCapabilityGapV1;
+  readonly researchSources?: readonly GptResearchSourceV1[];
+  readonly learnedSkill?: GptLearnedSkillV1;
+  readonly appliedSkillIds?: readonly string[];
+  readonly evidenceRefs?: readonly string[];
+}
+
 export class GptOrchestrationStoreV1 {
   readonly filePath: string;
-  #tail: Promise<void> = Promise.resolve();
+  static readonly #tails = new Map<string, Promise<void>>();
   #sequence = 0;
 
   constructor(filePath: string) {
@@ -601,15 +647,29 @@ export class GptOrchestrationStoreV1 {
   async #write(payload: GptOrchestrationStorePayloadV1): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
     this.#sequence += 1;
-    const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence);
-    await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", "utf8");
+    const temporary = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence) + "-" + randomUUID();
     try {
-      await rename(temporary, this.filePath);
-    } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error;
-      await copyFile(temporary, this.filePath);
-      await unlink(temporary);
+      await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { encoding: "utf8", flush: true });
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await rename(temporary, this.filePath);
+          return;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          const locked = process.platform === "win32"
+            && ["EPERM", "EACCES", "EBUSY"].includes(code ?? "");
+          if (!locked || attempt >= 40) {
+            if (locked && error instanceof Error) {
+              error.message += " Practice checkpoint was not committed; release the file reader lock and retry the retained assignment.";
+            }
+            throw error;
+          }
+          // Preserve atomic readers; retry a bounded Windows sharing violation.
+          await new Promise((resolve) => setTimeout(resolve, Math.min(250, 10 * 2 ** attempt)));
+        }
+      }
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 
@@ -619,14 +679,17 @@ export class GptOrchestrationStoreV1 {
       readonly [GptOrchestrationStorePayloadV1, T],
   ): Promise<T> {
     let output!: T;
-    const pending = this.#tail.then(async () => {
+    const pending = (GptOrchestrationStoreV1.#tails.get(this.filePath) ?? Promise.resolve()).then(async () => {
       const current = await readStore(this.filePath);
       const [next, value] = await operation(current);
-      await this.#write(next);
+      if (next !== current) await this.#write(next);
       output = value;
     });
-    this.#tail = pending.catch(() => undefined);
-    await pending;
+    const tail = pending.catch(() => undefined);
+    GptOrchestrationStoreV1.#tails.set(this.filePath, tail);
+    try { await pending; } finally {
+      if (GptOrchestrationStoreV1.#tails.get(this.filePath) === tail) GptOrchestrationStoreV1.#tails.delete(this.filePath);
+    }
     return output;
   }
 
@@ -638,6 +701,7 @@ export class GptOrchestrationStoreV1 {
     readonly finish: PracticeMediaInputV1 | null;
     readonly start: readonly PracticeMediaInputV1[];
     readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
+    readonly preflight?: PracticePreflightCheckpointV1;
     readonly practicePolicy?: Partial<PracticeVerificationPolicyV1> | null;
     readonly artifactDir: string;
     readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
@@ -676,6 +740,7 @@ export class GptOrchestrationStoreV1 {
         ? structuredClone(input.practiceSceneMatches ?? null)
         : null,
       practicePolicy,
+      ...(input.preflight === undefined ? {} : { preflight: structuredClone(input.preflight) }),
       artifactDir,
       chatMessage: buildGptOrchestrationChatMessageV1({
         sessionId,
@@ -710,6 +775,49 @@ export class GptOrchestrationStoreV1 {
     });
   }
 
+  async updatePreflight(
+    assignmentId: string,
+    preflight: PracticePreflightCheckpointV1,
+    matches?: readonly PracticeSceneMatchV1[],
+  ): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (["CANCEL_REQUESTED", "CANCELLED", "COMPLETED", "FAILED"].includes(assignment.status)) return assignment;
+      return {
+        ...assignment,
+        preflight: structuredClone(preflight),
+        ...(matches === undefined ? {} : { practiceSceneMatches: structuredClone(matches) }),
+      };
+    });
+  }
+
+  async releaseController(assignmentId: string, owner: string): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.controllerLease?.owner !== owner) throw new TypeError("Controller lease owner mismatch.");
+      return { ...assignment, controllerLease: null };
+    });
+  }
+
+  async refreshActivePracticeInstructions(): Promise<number> {
+    return await this.#mutate((payload) => {
+      let refreshed = 0;
+      const assignments = payload.assignments.map((assignment) => {
+        if (assignment.mode !== "PRACTICE"
+          || !["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
+          || assignment.chatMessage.includes("ACCELERATED COVERAGE-FIRST SCHEDULE")
+          || assignment.chatMessage.includes(PRACTICE_ACCELERATION_CONTINUITY_MARKER_V1)) {
+          return assignment;
+        }
+        refreshed += 1;
+        return {
+          ...assignment,
+          chatMessage: assignment.chatMessage.trimEnd()
+            + "\n\n" + PRACTICE_ACCELERATION_CONTINUITY_APPENDIX_V1,
+        };
+      });
+      return [refreshed === 0 ? payload : { ...payload, assignments }, refreshed] as const;
+    });
+  }
+
   async getAssignment(assignmentId: string): Promise<GptOrchestrationAssignmentV1 | null> {
     const payload = await readStore(this.filePath);
     const assignment = payload.assignments.find((item) => item.assignmentId === assignmentId);
@@ -738,10 +846,17 @@ export class GptOrchestrationStoreV1 {
   async claim(assignmentId: string, claimedBy: string): Promise<GptOrchestrationAssignmentV1> {
     const controller = nonEmpty(claimedBy, "claimedBy");
     return await this.#updateAssignment(assignmentId, (assignment) => {
+      if (assignment.controllerLease !== undefined && assignment.controllerLease !== null
+        && assignment.controllerLease.owner !== controller
+        && Date.parse(assignment.controllerLease.expiresAt) > Date.now()) {
+        throw new TypeError("Practice controller lease is held by " + assignment.controllerLease.owner + ".");
+      }
+      const controllerLease = { owner: controller, expiresAt: new Date(Date.now() + 120_000).toISOString() };
       if (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED") {
         return {
           ...assignment,
           claimedBy: controller,
+          controllerLease,
         };
       }
       if (assignment.status !== "PENDING") {
@@ -753,6 +868,7 @@ export class GptOrchestrationStoreV1 {
         status: "RUNNING",
         claimedAt: now,
         claimedBy: controller,
+        controllerLease,
         startedAt: now,
       };
     });
@@ -796,24 +912,31 @@ export class GptOrchestrationStoreV1 {
     });
   }
 
-  async appendEvent(input: {
-    readonly assignmentId: string;
-    readonly stage: GptLearningStageV1;
-    readonly outcome?: GptLearningOutcomeV1;
-    readonly attempt?: number;
-    readonly summary: string;
-    readonly detail?: string;
-    readonly developmentPattern?: string;
-    readonly reusableLesson?: string;
-    readonly avoidRepeat?: string;
-    readonly capabilityGap?: GptCapabilityGapV1;
-    readonly researchSources?: readonly GptResearchSourceV1[];
-    readonly learnedSkill?: GptLearnedSkillV1;
-    readonly appliedSkillIds?: readonly string[];
-    readonly evidenceRefs?: readonly string[];
-  }): Promise<GptLearningEventV1> {
-    const summary = nonEmpty(input.summary, "summary");
+  async appendEvent(input: GptAppendEventInputV1): Promise<GptLearningEventV1> {
+    return (await this.appendEvents([input]))[0]!;
+  }
+
+  async appendEvents(inputs: readonly GptAppendEventInputV1[]): Promise<readonly GptLearningEventV1[]> {
+    if (inputs.length === 0 || inputs.length > 64) {
+      throw new TypeError("GPT event batch must contain 1-64 entries.");
+    }
     return await this.#mutate((payload) => {
+      let next = payload;
+      const events: GptLearningEventV1[] = [];
+      for (const input of inputs) {
+        const [updated, event] = this.#appendEventToPayload(next, input);
+        next = updated;
+        events.push(event);
+      }
+      return [next, events] as const;
+    });
+  }
+
+  #appendEventToPayload(
+    payload: GptOrchestrationStorePayloadV1,
+    input: GptAppendEventInputV1,
+  ): readonly [GptOrchestrationStorePayloadV1, GptLearningEventV1] {
+      const summary = nonEmpty(input.summary, "summary");
       const assignment = payload.assignments.find((item) => item.assignmentId === input.assignmentId);
       if (assignment === undefined) throw new TypeError("Unknown GPT assignment: " + input.assignmentId);
       if (!["RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)) {
@@ -1057,7 +1180,6 @@ export class GptOrchestrationStoreV1 {
         ...payload,
         events: [...payload.events, event],
       }, structuredClone(event)] as const;
-    });
   }
 
   async eventsForSession(sessionId: string): Promise<readonly GptLearningEventV1[]> {
@@ -1116,6 +1238,7 @@ export class GptOrchestrationStoreV1 {
       if (index < 0) throw new TypeError("Unknown GPT assignment: " + assignmentId);
       const next = [...payload.assignments];
       const updated = update(next[index]!);
+      if (updated === next[index]) return [payload, structuredClone(updated)] as const;
       next[index] = updated;
       return [{ ...payload, assignments: next }, structuredClone(updated)] as const;
     });

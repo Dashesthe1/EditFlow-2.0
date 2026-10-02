@@ -557,6 +557,17 @@
       .then(function (value) {
         var run = value.run;
         var seconds = Math.max(0, Math.round((Date.now() - Date.parse(run.startedAt)) / 1000));
+        if (run.preflight && run.preflight.stage !== "READY"
+            && (run.state === "WAITING_FOR_GPT" || run.state === "RUNNING")) {
+          var prepared = (run.preflight.completedShotIds || []).length;
+          var unresolved = (run.preflight.unresolvedShotIds || []).length;
+          setRunState(run.preflight.stage,
+            "Practice retained · " + prepared + " clips prepared · " + unresolved + " shots unresolved · "
+            + run.preflight.stage.replace(/_/g, " ").toLowerCase()
+            + (run.preflight.reasons && run.preflight.reasons.length ? " · " + run.preflight.reasons.join(" ") : ""));
+          pollTimer = setTimeout(pollRun, 1000);
+          return;
+        }
         if (run.state === "WAITING_FOR_GPT") {
           setRunState(
             "WAITING_FOR_GPT",
@@ -586,9 +597,8 @@
         finishRun(run);
       })
       .catch(function (error) {
-        activeRunId = null;
-        setRunState("FAILED", error.message);
-        updateAction();
+        setRunState("PAUSED", "Connection interrupted; retained Practice will resume · " + error.message);
+        pollTimer = setTimeout(pollRun, 2000);
       });
   }
 
@@ -651,17 +661,10 @@
     var effectiveRole = effectivePracticeRole();
     setRunState(
       "PREFLIGHT",
-      "Connection preflight: verifying EditFlow bridge, CEP panel, and live After Effects readback before Practice can start…"
+      "Creating a persistent Practice assignment. Analysis and connection checks will resume inside this session…"
     );
     actionEl.disabled = true;
-    runConnectionPreflight().then(function () {
-      setRunState(
-        "WAITING_FOR_GPT",
-        effectiveRole === "HELD_OUT_CERTIFICATION"
-          ? "Connection preflight passed. Validating unseen media and creating a frozen held-out certification assignment…"
-          : "Connection preflight passed. Validating media and creating a GPT Practice learning assignment…"
-      );
-      return productRequest("/v1/product/practice", {
+    productRequest("/v1/product/practice", {
         method: "POST",
         body: JSON.stringify({
           editTypeId: selectedEditType(),
@@ -670,8 +673,7 @@
           videoPaths: videos,
           audioPaths: audio
         })
-      });
-    }).then(function (value) {
+      }).then(function (value) {
       activeRunId = value.run.sessionId;
       updateAction();
       setRunState(

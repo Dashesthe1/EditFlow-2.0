@@ -383,6 +383,8 @@ export interface PracticeDecisionTraceV1 {
 
 export interface PracticeReconstructionOutputV1 {
   readonly renderRef: string;
+  /** False means this was a phase-proof training pass; full-edit certification was intentionally skipped. */
+  readonly certificationReady?: boolean;
   readonly decisionTraces: readonly PracticeDecisionTraceV1[];
   readonly evidenceRefs: readonly string[];
 }
@@ -390,6 +392,8 @@ export interface PracticeReconstructionOutputV1 {
 export interface PracticeAttemptV1 {
   readonly attempt: number;
   readonly renderRef: string;
+  /** False marks a phase-training pass that intentionally skipped whole-edit certification. */
+  readonly certificationReady?: boolean;
   readonly report: PracticeSimilarityReportV1;
   readonly decisionTraces: readonly PracticeDecisionTraceV1[];
   readonly elapsedMs: number;
@@ -1299,6 +1303,17 @@ export interface GptLearningEventV1 {
   readonly createdAt: string;
 }
 
+export interface PracticePreflightCheckpointV1 {
+  readonly stage: "PREFLIGHT_MATCHING" | "FINGERPRINTING" | "REFERENCE_ANALYSIS" | "SOURCE_INDEXING" | "SCENE_MATCHING" | "TARGETED_REFINEMENT" | "WORKING_MEDIA" | "BLOCKED" | "READY";
+  readonly updatedAt: string;
+  readonly requireTransferNovelty: boolean;
+  readonly totalShotIds?: readonly string[];
+  readonly completedShotIds: readonly string[];
+  readonly unresolvedShotIds: readonly string[];
+  readonly reasons: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
 export interface GptOrchestrationAssignmentV1 {
   readonly schema: "editflow.gpt-orchestration-assignment.v1";
   readonly assignmentId: string;
@@ -1312,6 +1327,8 @@ export interface GptOrchestrationAssignmentV1 {
   /** Machine-prepared exact scene matches for Practice; GPT must visually confirm them before locking. */
   readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
   readonly practicePolicy: PracticeVerificationPolicyV1 | null;
+  readonly preflight?: PracticePreflightCheckpointV1;
+  readonly controllerLease?: { readonly owner: string; readonly expiresAt: string } | null;
   readonly artifactDir: string;
   readonly chatMessage: string;
   readonly createdAt: string;

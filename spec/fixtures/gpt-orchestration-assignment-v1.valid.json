@@ -11,12 +11,14 @@
     "mediaKind": "VIDEO",
     "uri": "C:/Media/finish.mp4"
   },
-  "start": [{
-    "mediaId": "video:1",
-    "role": "START_SOURCE",
-    "mediaKind": "VIDEO",
-    "uri": "C:/Media/raw.mp4"
-  }],
+  "start": [
+    {
+      "mediaId": "video:1",
+      "role": "START_SOURCE",
+      "mediaKind": "VIDEO",
+      "uri": "C:/Media/raw.mp4"
+    }
+  ],
   "practicePolicy": {
     "minimumSimilarity": 0.95,
     "exactSceneConfidence": 0.95,
@@ -32,5 +34,28 @@
   "cancelRequestedAt": null,
   "finalRenderRef": null,
   "finalSummary": null,
-  "error": null
+  "error": null,
+  "preflight": {
+    "stage": "SCENE_MATCHING",
+    "updatedAt": "2026-09-29T23:00:00Z",
+    "requireTransferNovelty": false,
+    "totalShotIds": [
+      "shot:1",
+      "shot:2"
+    ],
+    "completedShotIds": [
+      "shot:1"
+    ],
+    "unresolvedShotIds": [
+      "shot:2"
+    ],
+    "reasons": [],
+    "evidenceRefs": [
+      "proof:shot:1"
+    ]
+  },
+  "controllerLease": {
+    "owner": "controller:1",
+    "expiresAt": "2026-09-29T23:02:00Z"
+  }
 }

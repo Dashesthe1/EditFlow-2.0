@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   ConstructionGraphV1,
   DenseEffectEvidenceV1,
@@ -285,6 +287,20 @@ export interface PracticeM6RuntimeV1 {
     readonly renderRef: string;
     readonly evidenceRefs: readonly string[];
   }>;
+  rerenderCertifiedEdit?(input: {
+    readonly sessionId: string;
+    readonly attempt: number;
+    readonly priorAttempt: number;
+    readonly reference: PracticeReferenceAnalysisV1;
+    readonly baseline: PracticeContentBaselineV1;
+  }): Promise<{
+    readonly renderRef: string;
+    readonly evidenceRefs: readonly string[];
+  }>;
+  finalizePhaseAttempt?(input: {
+    readonly sessionId: string;
+    readonly attempt: number;
+  }): Promise<readonly string[]>;
   analyzeRender(input: {
     readonly renderRef: string;
     readonly reference: PracticeReferenceAnalysisV1;
@@ -304,6 +320,7 @@ export interface PracticeM6BrainV1 {
 interface PracticeM6AttemptStateV1 {
   readonly sessionId: string;
   readonly attempt: number;
+  readonly certificationReady: boolean;
   readonly reference: PracticeReferenceAnalysisV1;
   readonly baseline: PracticeContentBaselineV1;
   readonly matches: readonly PracticeSceneMatchV1[];
@@ -312,6 +329,70 @@ interface PracticeM6AttemptStateV1 {
   readonly referenceAnatomy: PracticeReferenceAnatomyV1;
   readonly windowResults: readonly M6ProductionResultV1[];
 }
+
+export interface PracticeM6PhaseProofCacheEntryV1 {
+  readonly graph: ConstructionGraphV1;
+  readonly consecutivePasses: number;
+  readonly lastAttempt: number;
+}
+
+export interface PracticeM6PhaseProofStoreV1 {
+  load(key: string): Promise<PracticeM6PhaseProofCacheEntryV1 | null>;
+  save(key: string, entry: PracticeM6PhaseProofCacheEntryV1): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+const phaseProofDependencyFingerprint = (input: {
+  readonly reference: PracticeReferenceAnalysisV1;
+  readonly baseline: PracticeContentBaselineV1;
+  readonly matches: readonly PracticeSceneMatchV1[];
+  readonly audioMatch?: PracticeAudioMatchV1 | null;
+}): string => createHash("sha256").update(JSON.stringify({
+  referenceId: input.reference.referenceId,
+  styleFingerprint: input.reference.styleFingerprint,
+  shots: input.reference.shots,
+  baselineId: input.baseline.baselineId,
+  timelineRef: input.baseline.timelineRef,
+  audioTimelineRef: input.baseline.audioTimelineRef ?? null,
+  matches: input.matches.map((match) => ({
+    shotId: match.shotId,
+    sourceId: match.sourceId,
+    sourcePath: match.sourcePath ?? null,
+    workingMedia: match.workingMedia ?? null,
+    sourceStartMs: match.sourceStartMs,
+    sourceEndMs: match.sourceEndMs,
+    direction: match.direction,
+    playbackRate: match.playbackRate,
+    trajectory: match.trajectory ?? null,
+    temporalBehavior: match.temporalBehavior ?? null,
+    rewind: match.rewind ?? null,
+  })),
+  audioMatch: input.audioMatch === null || input.audioMatch === undefined
+    ? null
+    : {
+      matchId: input.audioMatch.matchId,
+      sourceId: input.audioMatch.sourceId,
+      sourcePath: input.audioMatch.sourcePath ?? null,
+      segments: input.audioMatch.segments,
+      beatGrid: input.audioMatch.beatGrid ?? null,
+    },
+})).digest("hex");
+
+const phaseProofCacheKey = (
+  sessionId: string,
+  referenceId: string,
+  editTypeId: string,
+  editTypeRevision: number,
+  dependencyFingerprint: string,
+  windowId: string,
+): string => [
+  sessionId,
+  referenceId,
+  editTypeId,
+  String(editTypeRevision),
+  dependencyFingerprint,
+  windowId,
+].join("::");
 
 const dnaForEvidence = (
   evidence: DenseEffectEvidenceV1,
@@ -994,18 +1075,48 @@ export class PracticeM6ExecutionBridgeV1
 implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
   readonly runtime: PracticeM6RuntimeV1;
   readonly brain: PracticeM6BrainV1;
+  readonly phaseProofStore: PracticeM6PhaseProofStoreV1 | null;
   readonly #referenceCache = new Map<string, {
     readonly evidence: DenseEffectEvidenceV1;
     readonly sequence: DenseEffectSequenceV1;
   }>();
   readonly #attemptByRenderRef = new Map<string, PracticeM6AttemptStateV1>();
+  readonly #phaseProofCache = new Map<string, PracticeM6PhaseProofCacheEntryV1>();
 
   constructor(
     runtime: PracticeM6RuntimeV1,
     brain: PracticeM6BrainV1 = new VisualEffectsBrainV1(),
+    phaseProofStore: PracticeM6PhaseProofStoreV1 | null = null,
   ) {
     this.runtime = runtime;
     this.brain = brain;
+    this.phaseProofStore = phaseProofStore;
+  }
+
+  async #phaseProof(
+    key: string,
+  ): Promise<PracticeM6PhaseProofCacheEntryV1 | undefined> {
+    const cached = this.#phaseProofCache.get(key);
+    if (cached !== undefined) return cached;
+    const retained = await this.phaseProofStore?.load(key) ?? null;
+    if (retained === null) return undefined;
+    const cloned = structuredClone(retained);
+    this.#phaseProofCache.set(key, cloned);
+    return cloned;
+  }
+
+  async #rememberPhaseProof(
+    key: string,
+    entry: PracticeM6PhaseProofCacheEntryV1,
+  ): Promise<void> {
+    const cloned = structuredClone(entry);
+    this.#phaseProofCache.set(key, cloned);
+    await this.phaseProofStore?.save(key, cloned);
+  }
+
+  async #forgetPhaseProof(key: string): Promise<void> {
+    this.#phaseProofCache.delete(key);
+    await this.phaseProofStore?.delete(key);
   }
 
   async #referenceAnalysis(
@@ -1037,6 +1148,54 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
     readonly audioMatch?: PracticeAudioMatchV1 | null;
     readonly priorAttempts: readonly PracticeAttemptV1[];
   }): Promise<PracticeReconstructionOutputV1> => {
+    const priorAttempt = input.priorAttempts.at(-1);
+    const priorState = priorAttempt === undefined
+      ? undefined
+      : this.#attemptByRenderRef.get(priorAttempt.renderRef);
+    const replayEligible = this.runtime.rerenderCertifiedEdit !== undefined
+      && priorAttempt !== undefined
+      && priorAttempt.attempt === input.attempt - 1
+      && priorAttempt.certificationReady !== false
+      && priorAttempt.report.passed
+      && priorState !== undefined
+      && priorState.certificationReady
+      && priorState.reference.referenceId === input.reference.referenceId
+      && priorState.baseline.baselineId === input.baseline.baselineId;
+    if (replayEligible && priorAttempt !== undefined && priorState !== undefined) {
+      const replay = await this.runtime.rerenderCertifiedEdit!({
+        sessionId: input.sessionId,
+        attempt: input.attempt,
+        priorAttempt: priorAttempt.attempt,
+        reference: input.reference,
+        baseline: input.baseline,
+      });
+      this.#attemptByRenderRef.set(replay.renderRef, {
+        ...priorState,
+        attempt: input.attempt,
+        certificationReady: true,
+      });
+      return {
+        renderRef: replay.renderRef,
+        certificationReady: true,
+        decisionTraces: priorAttempt.decisionTraces.map((trace) => ({
+          ...trace,
+          decisionId: trace.decisionId
+            + ":certification-replay:" + String(input.attempt),
+          rationaleCodes: unique([
+            ...trace.rationaleCodes,
+            "WHOLE_EDIT_CERTIFICATION_STATE_REPLAY",
+          ]),
+        })),
+        evidenceRefs: unique([
+          ...priorAttempt.evidenceRefs,
+          ...replay.evidenceRefs,
+          "practice-whole-edit-certification-state-replay",
+          "practice-whole-edit-certification-replay-from-attempt:"
+            + String(priorAttempt.attempt),
+        ]),
+      };
+    }
+
     const analysis = await this.#referenceAnalysis(input.reference);
     const referenceAnatomy = buildPracticeReferenceAnatomyV1({
       reference: input.reference,
@@ -1047,6 +1206,25 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         ? {}
         : { beatGrid: input.audioMatch.beatGrid }),
     });
+    const dependencyFingerprint = phaseProofDependencyFingerprint(input);
+    const phaseProofsAtStart = new Map<string, PracticeM6PhaseProofCacheEntryV1>();
+    for (const window of analysis.sequence.windows) {
+      const key = phaseProofCacheKey(
+        input.sessionId,
+        input.reference.referenceId,
+        input.editTypeId,
+        input.editTypeKnowledge.revision,
+        dependencyFingerprint,
+        window.windowId,
+      );
+      const retained = await this.#phaseProof(key);
+      if (retained !== undefined) {
+        phaseProofsAtStart.set(window.windowId, retained);
+      }
+    }
+    const allPhasesProvenAtStart = analysis.sequence.windows.every((window) =>
+      (phaseProofsAtStart.get(window.windowId)?.consecutivePasses ?? 0) >= 2);
+    const skippedProvenWindowIds = new Set<string>();
     await this.runtime.prepareAttempt({
       ...input,
       subjectMotionTracks: referenceAnatomy.subjectMotionTracks,
@@ -1087,9 +1265,44 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
         availableCapabilities: this.runtime.availableCapabilities,
         knowledge: input.editTypeKnowledge,
       });
-      const result = await this.brain.run({
+      const phaseCacheKey = phaseProofCacheKey(
+        input.sessionId,
+        input.reference.referenceId,
+        input.editTypeId,
+        input.editTypeKnowledge.revision,
+        dependencyFingerprint,
+        window.windowId,
+      );
+      const retainedPhaseProof = phaseProofsAtStart.get(window.windowId);
+      const reusablePhaseGraph = retainedPhaseProof !== undefined
+        && retainedPhaseProof.consecutivePasses >= 2
+        ? structuredClone(retainedPhaseProof.graph)
+        : null;
+      const skipRetainedPhaseDuringTraining = !allPhasesProvenAtStart
+        && reusablePhaseGraph !== null;
+      if (skipRetainedPhaseDuringTraining) {
+        skippedProvenWindowIds.add(window.windowId);
+      }
+      const result: M6ProductionResultV1 = skipRetainedPhaseDuringTraining
+        ? {
+          schema: "editflow.m6-production-result.v1",
+          route: "FAST_PATH",
+          status: "COMPLETED",
+          correction: null,
+          synthesis: null,
+          evidenceRefs: [
+            ...window.evidence.evidenceRefs,
+            `practice-phase-proof-retained-not-reapplied:${window.windowId}`,
+            "practice-phase-training-unresolved-windows-only",
+          ],
+        }
+        : await this.brain.run({
         requestId: `${input.sessionId}:attempt:${input.attempt}:${window.windowId}`,
-        risk: "HIGH",
+        risk: reusablePhaseGraph === null ? "HIGH" : "LOW",
+        ...(reusablePhaseGraph === null ? {} : {
+          learnedTechniqueId: `practice-phase-proof:${window.windowId}`,
+          learnedGraph: reusablePhaseGraph,
+        }),
         referenceEvidence: window.evidence,
         availableCapabilities: this.runtime.availableCapabilities,
         evidenceRefs: [
@@ -1127,6 +1340,10 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
               `practice-edit-type-available-patches:${learned.patches.length}`,
               "practice-original-m6-reference-first-route",
             ]),
+          ...(reusablePhaseGraph === null ? [] : [
+            `practice-phase-proof-fast-reuse:${window.windowId}`,
+            "practice-phase-proof-required-consecutive-passes:2",
+          ]),
         ],
         applyGraph: async (graph) => this.runtime.applyWindowGraph({
           sessionId: input.sessionId,
@@ -1146,9 +1363,59 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
           graph,
         }),
       });
+      const resolvedGraph = result.correction?.graph
+        ?? result.synthesis?.selected?.graph
+        ?? reusablePhaseGraph;
+      let consecutivePhasePasses = retainedPhaseProof?.consecutivePasses ?? 0;
+      const phaseEvidenceRefs: string[] = [...result.evidenceRefs];
+      if (result.status === "COMPLETED" && resolvedGraph !== null) {
+        if (reusablePhaseGraph === null) {
+          consecutivePhasePasses = 1;
+          const confirmationEvidence = await this.runtime.renderWindowEvidence({
+            sessionId: input.sessionId,
+            attempt: input.attempt,
+            reference: input.reference,
+            baseline: input.baseline,
+            window,
+            graph: resolvedGraph,
+          });
+          const confirmation = compareSemanticVisualFidelityV1({
+            reference: window.evidence,
+            render: confirmationEvidence,
+            dna: dnaForEvidence(window.evidence),
+            alignment: "SEMANTIC",
+          });
+          phaseEvidenceRefs.push(
+            ...confirmationEvidence.evidenceRefs,
+            `practice-phase-proof-confirmation-reference:${confirmation.referenceEvidenceKey}`,
+            `practice-phase-proof-confirmation-render:${confirmation.renderEvidenceKey}`,
+            ...confirmation.diagnoses.map((diagnosis) =>
+              `practice-phase-proof-confirmation-diagnosis:${diagnosis}`),
+          );
+          consecutivePhasePasses = confirmation.passed ? 2 : 0;
+          if (consecutivePhasePasses >= 2) {
+            await this.#rememberPhaseProof(phaseCacheKey, {
+              graph: structuredClone(resolvedGraph),
+              consecutivePasses: consecutivePhasePasses,
+              lastAttempt: input.attempt,
+            });
+          } else {
+            await this.#forgetPhaseProof(phaseCacheKey);
+          }
+        }
+      } else {
+        consecutivePhasePasses = 0;
+        await this.#forgetPhaseProof(phaseCacheKey);
+      }
       windowResults.push(result);
-      evidenceRefs.push(...result.evidenceRefs);
-      const graphId = finalGraphId(result);
+      evidenceRefs.push(
+        ...phaseEvidenceRefs,
+        `practice-phase-proof-consecutive-passes:${window.windowId}:${consecutivePhasePasses}`,
+        ...(reusablePhaseGraph === null
+          ? []
+          : [`practice-phase-proof-fast-reuse-applied:${window.windowId}`]),
+      );
+      const graphId = resolvedGraph?.graphId ?? finalGraphId(result);
       const shotId = shotForWindow(input.reference, window);
       decisionTraces.push({
         decisionId: `${input.sessionId}:attempt:${input.attempt}:${window.windowId}`,
@@ -1239,16 +1506,78 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       });
     }
 
+    let allPhasesProvenNow = true;
+    for (const window of analysis.sequence.windows) {
+      const key = phaseProofCacheKey(
+        input.sessionId,
+        input.reference.referenceId,
+        input.editTypeId,
+        input.editTypeKnowledge.revision,
+        dependencyFingerprint,
+        window.windowId,
+      );
+      if ((await this.#phaseProof(key))?.consecutivePasses !== 2) {
+        allPhasesProvenNow = false;
+        break;
+      }
+    }
+    const certificationReady = allPhasesProvenNow
+      && skippedProvenWindowIds.size === 0;
+    if (skippedProvenWindowIds.size > 0) {
+      evidenceRefs.push(
+        "practice-phase-training-skipped-proven-count:"
+          + String(skippedProvenWindowIds.size),
+        ...[...skippedProvenWindowIds].map((windowId) =>
+          "practice-phase-training-skipped-proven-window:" + windowId),
+        ...(allPhasesProvenNow
+          ? ["practice-phase-training-clean-assembly-required"]
+          : []),
+      );
+    }
+
+    if (!certificationReady) {
+      let phaseRenderRef = `practice-phase-only:${input.sessionId}:${input.attempt}`;
+      if (this.runtime.finalizePhaseAttempt !== undefined) {
+        evidenceRefs.push(...await this.runtime.finalizePhaseAttempt({
+          sessionId: input.sessionId,
+          attempt: input.attempt,
+        }));
+      } else {
+        const fallback = await this.runtime.renderFullEdit({
+          sessionId: input.sessionId,
+          attempt: input.attempt,
+          reference: input.reference,
+          baseline: input.baseline,
+        });
+        phaseRenderRef = fallback.renderRef;
+        evidenceRefs.push(
+          ...fallback.evidenceRefs,
+          "practice-phase-proof-full-render-fallback",
+        );
+      }
+      evidenceRefs.push("practice-phase-proof-certification-ready:false");
+      return {
+        renderRef: phaseRenderRef,
+        certificationReady: false,
+        decisionTraces,
+        evidenceRefs: unique(evidenceRefs),
+      };
+    }
+
     const rendered = await this.runtime.renderFullEdit({
       sessionId: input.sessionId,
       attempt: input.attempt,
       reference: input.reference,
       baseline: input.baseline,
     });
-    evidenceRefs.push(...rendered.evidenceRefs);
+    evidenceRefs.push(
+      ...rendered.evidenceRefs,
+      "practice-phase-proof-certification-ready:true",
+    );
     this.#attemptByRenderRef.set(rendered.renderRef, {
       sessionId: input.sessionId,
       attempt: input.attempt,
+      certificationReady: true,
       reference: input.reference,
       baseline: input.baseline,
       matches: input.matches,
@@ -1260,6 +1589,7 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
 
     return {
       renderRef: rendered.renderRef,
+      certificationReady: true,
       decisionTraces,
       evidenceRefs: unique(evidenceRefs),
     };
@@ -1277,12 +1607,22 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
       );
     }
 
-    const content = await this.runtime.evaluateContentStructure({
+    const renderAnalysis = this.runtime.analyzeRender({
       renderRef: input.renderRef,
       reference: input.reference,
-      baseline: attempt.baseline,
-      matches: attempt.matches,
-    });
+    }).then(
+      (evidence) => ({ ok: true as const, evidence }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    const [content, analyzedRender] = await Promise.all([
+      this.runtime.evaluateContentStructure({
+        renderRef: input.renderRef,
+        reference: input.reference,
+        baseline: attempt.baseline,
+        matches: attempt.matches,
+      }),
+      renderAnalysis,
+    ]);
 
     let effectFidelity = 0;
     let transitionFidelity = 0;
@@ -1297,10 +1637,8 @@ implements Pick<PracticeHomeworkAdaptersV1, "reconstruct" | "evaluate"> {
     }
 
     try {
-      const renderEvidence = await this.runtime.analyzeRender({
-        renderRef: input.renderRef,
-        reference: input.reference,
-      });
+      if (!analyzedRender.ok) throw analyzedRender.error;
+      const renderEvidence = analyzedRender.evidence;
       if (renderEvidence.sourceKind !== "RENDER") {
         throw new TypeError("Practice M6 render analysis must return RENDER dense evidence.");
       }

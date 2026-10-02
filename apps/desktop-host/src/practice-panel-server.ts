@@ -20,8 +20,10 @@ import {
   buildPracticeMasteryRecordV1,
   hasRepeatedSceneGeometryV1,
   LocalPracticeMediaMatcherV1,
+  defaultPracticeAnalysisCacheDirectoryV1,
   practicePerceptualSetOverlapsV1,
   practicePerceptualSignatureMatchesV1,
+  type GptAppendEventInputV1,
   type GptCapabilityGapV1,
   type GptLearnedSkillV1,
   type GptLearningEventV1,
@@ -38,6 +40,7 @@ import {
   type PracticeMasteryRecordV1,
   type PracticeMasteryScopeV1,
   type PracticeMediaInputV1,
+  type PracticePreflightCheckpointV1,
   type PracticeSceneMatchV1,
   type PracticeRunRoleV1,
   validatePracticeWorkingMediaMatchesV1,
@@ -47,6 +50,7 @@ import {
   validatePracticeSceneMatchesV1,
 } from "../../../packages/practice-homework/src/index.js";
 import type { TutorialDeepAnalysisPacketV1 } from "../../../packages/tutorial-learning/src/index.js";
+import { ClipResearchStoreV1, CLIP_RESEARCH_CONTRACT_V1 } from "../../../packages/practice-homework/src/clip-research.js";
 import {
   AeCepAdapterClientV11,
   AeFilesystemPolicyV11,
@@ -74,6 +78,7 @@ export interface PracticePanelServerConfigV1 {
   readonly broker: LoopbackCepBroker;
   readonly ffmpegPath?: string;
   readonly renderTimeoutMs?: number;
+  readonly buildId?: string;
 }
 
 export type PracticePanelRunStateV1 =
@@ -106,6 +111,7 @@ export interface PracticePanelRunSnapshotV1 {
   readonly editTypeId: string;
   readonly state: PracticePanelRunStateV1;
   readonly stage: GptLearningStageV1 | null;
+  readonly preflight?: PracticePreflightCheckpointV1;
   readonly startedAt: string;
   readonly completedAt: string | null;
   readonly finishPath: string | null;
@@ -259,10 +265,15 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   readonly artifactDir?: string;
   readonly ffmpegPath?: string;
   readonly exactSceneConfidence?: number;
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (stage: PracticePreflightCheckpointV1["stage"], matches?: readonly PracticeSceneMatchV1[], shotIds?: readonly string[]) => Promise<void>;
 }): Promise<PracticeHeldOutMaterialFingerprintV1> => {
+  input.signal?.throwIfAborted();
+  await input.onProgress?.("FINGERPRINTING");
   const referenceFingerprint = await sha256FileStream(input.finishPath);
   const rawSourceHashes: string[] = [];
   for (const videoPath of input.videoPaths) {
+    input.signal?.throwIfAborted();
     rawSourceHashes.push(await sha256FileStream(videoPath));
   }
   const sourceMediaSha256 = [...new Set(rawSourceHashes)].sort();
@@ -290,12 +301,8 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
   const matcher = new LocalPracticeMediaMatcherV1({
     artifactDir: path.join(input.artifactDir, "media"),
     materializeWorkingMedia: true,
-    analysisCacheDir: path.join(
-      input.repositoryRoot,
-      "proofs",
-      "artifacts",
-      "practice-media-cache",
-    ),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+    analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(),
     scriptPath: path.join(
       input.repositoryRoot,
       "scripts",
@@ -316,8 +323,12 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
     mediaKind: "VIDEO",
     uri,
   }));
+  await input.onProgress?.("REFERENCE_ANALYSIS");
   const reference = await matcher.analyzeFinish(finish);
+  input.signal?.throwIfAborted();
+  await input.onProgress?.("SOURCE_INDEXING", undefined, reference.shots.map((shot) => shot.shotId));
   const sourceIndex = await matcher.indexStart(start);
+  input.signal?.throwIfAborted();
   const referencePerceptualSignature = reference.perceptualSignature;
   const sourcePerceptualSignatures = sourceIndex.videoPerceptualSignatures ?? [];
   if (referencePerceptualSignature === undefined
@@ -344,6 +355,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
       reference,
       sourceIndex,
       minimumConfidence: input.exactSceneConfidence,
+      onProgress: async (matches, stage) => { await input.onProgress?.(stage, matches); },
     });
     sceneMatches = matches;
     const shotIds = reference.shots.map((shot) => shot.shotId);
@@ -605,7 +617,10 @@ const jsonResponse = (res: ServerResponse, status: number, value: unknown): void
   res.end(body);
 };
 
+const requestBodies = new WeakMap<IncomingMessage, Record<string, unknown>>();
 const readJson = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
+  const cached = requestBodies.get(req);
+  if (cached !== undefined) return cached;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -992,11 +1007,15 @@ export class PracticePanelServerV1 {
   #activeRunId: string | null = null;
   readonly #runs = new Map<string, PracticePanelRunSnapshotV1>();
   readonly #gptStore: GptOrchestrationStoreV1;
+  readonly #clipResearch: ClipResearchStoreV1;
   readonly #masteryVerifier: PracticeMasteryVerifierV1;
   readonly #transactionRuntime: CurrentAeTransactionRuntimeV1;
   #fastRuntime: LocalFastRuntimeV1 | null = null;
   #fastRuntimePromise: Promise<LocalFastRuntimeV1> | null = null;
   #controlRequestCounter = 0;
+  #startingPractice: Promise<PracticePanelRunSnapshotV1> | null = null;
+  readonly #preflightJobs = new Map<string, { abort: AbortController; promise: Promise<void> }>();
+  readonly #preflightErrors = new Map<string, string>();
 
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
@@ -1009,6 +1028,10 @@ export class PracticePanelServerV1 {
     this.#gptStore = new GptOrchestrationStoreV1(
       config.gptOrchestrationFilePath
         ?? path.join(config.artifactDir, "state", "gpt-orchestration.json"),
+    );
+    this.#clipResearch = new ClipResearchStoreV1(
+      path.join(path.dirname(this.#gptStore.filePath), "clip-research"),
+      [process.env.USERPROFILE ?? config.repositoryRoot, config.repositoryRoot, config.artifactDir],
     );
     this.#masteryVerifier = new PracticeMasteryVerifierV1({
       repositoryRoot: config.repositoryRoot,
@@ -1032,6 +1055,7 @@ export class PracticePanelServerV1 {
 
   async start(): Promise<number> {
     if (this.#server !== null) return this.#port;
+    await this.#gptStore.refreshActivePracticeInstructions();
     await this.#recoverRuns();
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
@@ -1048,10 +1072,16 @@ export class PracticePanelServerV1 {
     }
     this.#server = server;
     this.#port = address.port;
+    for (const assignment of await this.#gptStore.listAssignments({ mode: "PRACTICE", statuses: ["PENDING", "RUNNING"] })) {
+      if (assignment.preflight !== undefined && assignment.preflight.stage !== "READY"
+        && assignment.preflight.stage !== "BLOCKED") this.#schedulePreflight(assignment.assignmentId);
+    }
     return this.#port;
   }
 
   async stop(): Promise<void> {
+    for (const job of this.#preflightJobs.values()) job.abort.abort();
+    await Promise.allSettled([...this.#preflightJobs.values()].map((job) => job.promise));
     const server = this.#server;
     this.#server = null;
     if (server !== null) {
@@ -1275,6 +1305,7 @@ export class PracticePanelServerV1 {
           practiceRole: assignment.practiceRole,
           editTypeId: assignment.editTypeId,
           state: assignmentRunState(assignment.status),
+          ...(assignment.preflight === undefined ? {} : { preflight: assignment.preflight }),
           stage: events.at(-1)?.stage ?? null,
           startedAt: assignment.startedAt ?? assignment.createdAt,
           completedAt: assignment.completedAt,
@@ -1342,6 +1373,13 @@ export class PracticePanelServerV1 {
   }
 
   async #startPractice(body: Record<string, unknown>): Promise<PracticePanelRunSnapshotV1> {
+    if (this.#startingPractice !== null) return await this.#startingPractice;
+    const pending = this.#createPractice(body);
+    this.#startingPractice = pending;
+    try { return await pending; } finally { this.#startingPractice = null; }
+  }
+
+  async #createPractice(body: Record<string, unknown>): Promise<PracticePanelRunSnapshotV1> {
     if (this.#activeRunId !== null) {
       const active = this.#runs.get(this.#activeRunId);
       if (active?.mode === "PRACTICE"
@@ -1350,7 +1388,6 @@ export class PracticePanelServerV1 {
       }
       throw new HttpError(409, "EditFlow run already active: " + this.#activeRunId);
     }
-    await this.#requireConnectionPreflight();
     const request = await this.#parsePractice(body);
     const editTypesFile = await this.#editTypes();
     const registry = await editTypesFile.load();
@@ -1400,58 +1437,11 @@ export class PracticePanelServerV1 {
         "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
       );
     }
-    const exactSceneConfidence = request.exactSceneConfidence ?? 0.95;
-    const material = await fingerprintPracticeHeldOutMaterialV1({
-      finishPath: request.finishPath,
-      videoPaths: request.videoPaths,
-      repositoryRoot: this.config.repositoryRoot,
-      artifactDir,
-      exactSceneConfidence,
-      ...(this.config.ffmpegPath === undefined
-        ? {}
-        : { ffmpegPath: this.config.ffmpegPath }),
-    });
-    const compatibilityReasons = [...new Set([
-      ...validatePracticePreAeSceneCompatibilityV1({ material }),
-      ...validatePracticeWorkingMediaMatchesV1(material.sceneMatches ?? []),
-    ])];
-    if (compatibilityReasons.length > 0) {
-      throw new HttpError(
-        409,
-        "Practice Start footage is not ready for bounded AE reconstruction; AE work was not started. "
-          + compatibilityReasons.join(" "),
-      );
-    }
-    if (request.practiceRole === null && autoLifecycleStage === "TRANSFER_LEARNING") {
-      const noveltyReasons = validatePracticeTransferLearningMaterialV1({
-        material,
-        masteryRecords: retainedKnowledge?.gptLearning.masteryRecords ?? [],
-      });
-      if (noveltyReasons.length > 0) {
-        throw new HttpError(
-          409,
-          "Practice AUTO transfer learning requires materially different Finish/Start media. "
-            + noveltyReasons.join(" "),
-        );
-      }
-    }
-    if (practiceRole === "HELD_OUT_CERTIFICATION") {
-      if (retainedKnowledge === null) {
-        throw new HttpError(409, "Held-out certification lost its retained Edit Type knowledge.");
-      }
-      const noveltyReasons = validatePracticeHeldOutMaterialNoveltyV1({
-        material,
-        masteryRecords: retainedKnowledge.gptLearning.masteryRecords,
-        heldOutCases: retainedKnowledge.gptLearning.heldOutCases,
-      });
-      if (noveltyReasons.length > 0) {
-        throw new HttpError(
-          409,
-          "Held-out certification requires genuinely unseen Finish/Start media. "
-            + noveltyReasons.join(" "),
-        );
-      }
-    }
+    const preflight: PracticePreflightCheckpointV1 = {
+      stage: "PREFLIGHT_MATCHING", updatedAt: new Date().toISOString(),
+      requireTransferNovelty: request.practiceRole === null && autoLifecycleStage === "TRANSFER_LEARNING",
+      completedShotIds: [], unresolvedShotIds: [], reasons: [], evidenceRefs: [],
+    };
     const assignment = await this.#gptStore.createAssignment({
       sessionId,
       mode: "PRACTICE",
@@ -1459,7 +1449,8 @@ export class PracticePanelServerV1 {
       editTypeId: editType.editTypeId,
       finish,
       start,
-      practiceSceneMatches: material.sceneMatches ?? null,
+      preflight,
+      practiceSceneMatches: null,
       practicePolicy: {
         ...(request.minimumSimilarity === undefined
           ? {}
@@ -1486,6 +1477,7 @@ export class PracticePanelServerV1 {
       practiceRole,
       editTypeId: editType.editTypeId,
       state: "WAITING_FOR_GPT",
+      preflight,
       stage: null,
       startedAt: assignment.createdAt,
       completedAt: null,
@@ -1504,7 +1496,145 @@ export class PracticePanelServerV1 {
     };
     this.#activeRunId = sessionId;
     this.#runs.set(sessionId, run);
+    this.#schedulePreflight(assignment.assignmentId);
     return snapshot(run);
+  }
+
+  #schedulePreflight(assignmentId: string): void {
+    if (this.#preflightJobs.has(assignmentId)) return;
+    const abort = new AbortController();
+    this.#preflightErrors.delete(assignmentId);
+    const promise = Promise.resolve().then(() => this.#runPreflight(assignmentId, abort.signal))
+      .catch((error: unknown) => {
+        if (abort.signal.aborted) return;
+        // A locked checkpoint must not turn the background worker into an unhandled rejection.
+        // Keep the last durable assignment; expose the failure for a same-assignment retry.
+        const message = error instanceof Error ? error.message : String(error);
+        this.#preflightErrors.set(assignmentId, message);
+        console.error("Practice preflight paused: " + message);
+      })
+      .finally(() => this.#preflightJobs.delete(assignmentId));
+    this.#preflightJobs.set(assignmentId, { abort, promise });
+  }
+
+  async #runPreflight(assignmentId: string, signal: AbortSignal): Promise<void> {
+    let assignment = await this.#gptStore.getAssignment(assignmentId);
+    if (assignment?.preflight === undefined || assignment.finish === null
+      || !["PENDING", "RUNNING"].includes(assignment.status) || assignment.preflight.stage === "READY") return;
+    let checkpoint = assignment.preflight;
+    const progress = async (stage: PracticePreflightCheckpointV1["stage"], matches?: readonly PracticeSceneMatchV1[], shotIds?: readonly string[]): Promise<void> => {
+      signal.throwIfAborted();
+      const retained = matches ?? assignment!.practiceSceneMatches ?? [];
+      checkpoint = { ...checkpoint, stage, updatedAt: new Date().toISOString(), reasons: [],
+        totalShotIds: shotIds ?? checkpoint.totalShotIds ?? retained.map((match) => match.shotId),
+        completedShotIds: retained.filter((match) => match.workingMedia !== undefined
+          && validatePracticeSceneMatchesV1([match.shotId], [match], assignment!.practicePolicy!.exactSceneConfidence).length === 0)
+          .map((match) => match.shotId),
+        unresolvedShotIds: (shotIds ?? checkpoint.totalShotIds ?? retained.map((match) => match.shotId)).filter((shotId) => {
+          const match = retained.find((item) => item.shotId === shotId);
+          return match === undefined || match.workingMedia === undefined
+            || validatePracticeSceneMatchesV1([shotId], [match], assignment!.practicePolicy!.exactSceneConfidence).length > 0;
+        }),
+        evidenceRefs: [...new Set(retained.flatMap((match) => match.evidenceRefs))],
+      };
+      assignment = await this.#gptStore.updatePreflight(assignmentId, checkpoint, matches);
+    };
+    try {
+      // Reference and raw-source analysis can proceed while AE is temporarily disconnected.
+      const material = await fingerprintPracticeHeldOutMaterialV1({
+        finishPath: assignment.finish.uri,
+        videoPaths: assignment.start.filter((item) => item.mediaKind === "VIDEO").map((item) => item.uri),
+        repositoryRoot: this.config.repositoryRoot, artifactDir: assignment.artifactDir,
+        exactSceneConfidence: assignment.practicePolicy?.exactSceneConfidence ?? 0.95,
+        ...(this.config.ffmpegPath === undefined ? {} : { ffmpegPath: this.config.ffmpegPath }),
+        signal, onProgress: progress,
+      });
+      signal.throwIfAborted();
+      const reasons = [...validatePracticePreAeSceneCompatibilityV1({ material }),
+        ...validatePracticeWorkingMediaMatchesV1(material.sceneMatches ?? [])];
+      const registry = await (await this.#editTypes()).load();
+      const knowledge = registry.knowledge(assignment.editTypeId);
+      if (checkpoint.requireTransferNovelty) reasons.push(...validatePracticeTransferLearningMaterialV1({
+        material, masteryRecords: knowledge?.gptLearning.masteryRecords ?? [],
+      }));
+      if (assignment.practiceRole === "HELD_OUT_CERTIFICATION") reasons.push(...validatePracticeHeldOutMaterialNoveltyV1({
+        material, masteryRecords: knowledge?.gptLearning.masteryRecords ?? [],
+        heldOutCases: knowledge?.gptLearning.heldOutCases ?? [],
+      }));
+      const connection = await this.#connectionPreflight();
+      signal.throwIfAborted();
+      for (const check of connection.checks.filter((item) => !item.ready)) reasons.push(check.id + ": " + check.detail);
+      const unresolvedShotIds = material.sceneCompatibility?.shots.filter((shot) => !shot.exact
+        || !material.sceneMatches?.find((match) => match.shotId === shot.shotId)?.workingMedia).map((shot) => shot.shotId) ?? [];
+      await progress("WORKING_MEDIA", material.sceneMatches ?? []);
+      checkpoint = { ...checkpoint, stage: reasons.length === 0 ? "READY" : "BLOCKED",
+        updatedAt: new Date().toISOString(), unresolvedShotIds, reasons: [...new Set(reasons)],
+        evidenceRefs: [...checkpoint.evidenceRefs, ...(material.sceneCompatibility?.evidenceRefs ?? [])],
+      };
+      await this.#gptStore.updatePreflight(assignmentId, checkpoint, material.sceneMatches ?? []);
+    } catch (error) {
+      if (signal.aborted) return; // Shutdown/cancel preserves the last durable operation for the next controller.
+      await this.#gptStore.updatePreflight(assignmentId, { ...checkpoint, stage: "BLOCKED",
+        updatedAt: new Date().toISOString(), reasons: [error instanceof Error ? error.message : String(error)] });
+    }
+  }
+
+  async assertPracticeReconstructionReady(): Promise<void> {
+    if (this.#activeRunId === null) return;
+    const run = this.#runs.get(this.#activeRunId);
+    if (run === undefined) return;
+    const assignment = await this.#gptStore.getAssignment(run.assignmentId);
+    if (assignment?.mode === "PRACTICE" && assignment.preflight !== undefined
+      && assignment.preflight.stage !== "READY") {
+      throw new HttpError(409, "Practice reconstruction is locked until preflight is READY; resume the retained assignment.");
+    }
+  }
+
+  async assertClipResearchReady(body: Record<string, any>, allClips = false): Promise<Record<string, any> | null> {
+    if (this.#activeRunId === null) return null;
+    const run = this.#runs.get(this.#activeRunId);
+    if (run === undefined) throw new HttpError(409, "Active assignment is unavailable.");
+    const assignment = await this.#gptStore.getAssignment(run.assignmentId);
+    if (assignment === null) throw new HttpError(409, "Active assignment is unavailable.");
+    try {
+      const admitted = await this.#clipResearch.admit(assignment, body);
+      if (allClips && assignment.mode === "PRACTICE") {
+        const declared = new Set(admitted.plans.map((plan: Record<string, any>) => plan.clipId));
+        if ((assignment.practiceSceneMatches ?? []).some((match) => !declared.has(match.shotId))) {
+          throw new TypeError("CLIP_RESEARCH_REQUIRED: Baseline assembly needs plans for all affected clips.");
+        }
+      }
+      await this.#clipResearch.audit(assignment, admitted, "ADMITTED");
+      return { ...admitted, assignment };
+    } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
+  }
+
+  async recordClipResearchExecution(admission: Record<string, any> | null, outcome: string): Promise<void> {
+    if (admission !== null) await this.#clipResearch.audit(admission.assignment, admission, outcome);
+  }
+
+  async #resumeHandshake(): Promise<Record<string, unknown>> {
+    const active = this.#activeRunId === null ? null : this.#runs.get(this.#activeRunId);
+    const assignment = active === null || active === undefined ? null : await this.#gptStore.getAssignment(active.assignmentId);
+    const events = assignment === null ? [] : await this.#gptStore.eventsForSession(assignment.sessionId);
+    const preflight = assignment?.preflight ?? null;
+    const nextOperation = assignment === null ? "START_PRACTICE"
+      : assignment.status === "CANCEL_REQUESTED" ? "ACKNOWLEDGE_CANCELLATION"
+      : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
+      : "RESUME_GPT_EDITING_FROM_CHECKPOINT";
+    return {
+      schema: "editflow.practice-resume.v1", runtimeId: "RESUMABLE_PREFLIGHT_V1",
+      buildId: this.config.buildId ?? null, panel: this.config.broker.panelSession,
+      aeConnection: this.config.broker.panelSession === null ? "DISCONNECTED" : "CEP_CONNECTED",
+      repositoryRoot: this.config.repositoryRoot, statePath: this.#gptStore.filePath,
+      panelConnected: this.config.broker.panelSession !== null,
+      assignment, preflight, checkpoint: events.at(-1) ?? null, nextOperation,
+      clipResearch: assignment === null ? null : await this.#clipResearch.snapshot(assignment),
+      workerRunning: assignment !== null && this.#preflightJobs.has(assignment.assignmentId),
+      workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
+      controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
+      resumeRequired: assignment !== null,
+    };
   }
 
   async #syncRun(sessionId: string): Promise<PracticePanelRunSnapshotV1> {
@@ -1517,12 +1647,13 @@ export class PracticePanelServerV1 {
     const state = assignmentRunState(assignment.status);
     const updated: PracticePanelRunSnapshotV1 = {
       ...run,
+      ...(assignment.preflight === undefined ? {} : { preflight: assignment.preflight }),
       state,
       stage: latestEvent?.stage ?? run.stage,
       completedAt: assignment.completedAt,
       finalRenderRef: assignment.finalRenderRef,
       finalSummary: assignment.finalSummary,
-      error: assignment.error,
+      error: this.#preflightErrors.get(assignment.assignmentId) ?? assignment.error,
     };
     this.#runs.set(sessionId, updated);
     if (["CANCELLED", "COMPLETED", "FAILED"].includes(state)
@@ -1660,10 +1791,10 @@ export class PracticePanelServerV1 {
     return { assignment, researchSource };
   }
 
-  async #recordLearningEvent(
+  #parseLearningEvent(
     assignmentId: string,
     body: Record<string, unknown>,
-  ): Promise<GptOrchestrationAssignmentV1> {
+  ): GptAppendEventInputV1 {
     const stage = requiredString(body, "stage") as GptLearningStageV1;
     const allowedStages: readonly GptLearningStageV1[] = [
       "OBSERVATION", "INTERPRETATION", "HYPOTHESIS", "PLAN",
@@ -1730,7 +1861,7 @@ export class PracticePanelServerV1 {
         );
       }
     }
-    const event = await this.#gptStore.appendEvent({
+    return {
       assignmentId,
       stage,
       outcome,
@@ -1745,16 +1876,31 @@ export class PracticePanelServerV1 {
       ...(learnedSkill === undefined ? {} : { learnedSkill }),
       ...(appliedSkillIds.length === 0 ? {} : { appliedSkillIds }),
       evidenceRefs,
-    });
+    };
+  }
+
+  async #recordLearningEvents(
+    assignmentId: string,
+    bodies: readonly Record<string, unknown>[],
+  ): Promise<GptOrchestrationAssignmentV1> {
+    const inputs = bodies.map((body) => this.#parseLearningEvent(assignmentId, body));
+    const events = await this.#gptStore.appendEvents(inputs);
     const assignment = await this.#gptStore.getAssignment(assignmentId);
     if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
     if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
       const file = await this.#editTypes();
       const registry = await file.load();
-      registry.recordGptLearningEvent(event);
+      for (const event of events) registry.recordGptLearningEvent(event);
       await file.save(registry);
     }
     return assignment;
+  }
+
+  async #recordLearningEvent(
+    assignmentId: string,
+    body: Record<string, unknown>,
+  ): Promise<GptOrchestrationAssignmentV1> {
+    return await this.#recordLearningEvents(assignmentId, [body]);
   }
 
   async #completeAssignment(
@@ -1976,6 +2122,7 @@ export class PracticePanelServerV1 {
     const run = this.#runs.get(sessionId);
     if (run === undefined) throw new HttpError(404, "EditFlow run not found.");
     await this.#gptStore.requestCancel(run.assignmentId);
+    this.#preflightJobs.get(run.assignmentId)?.abort.abort();
     return await this.#syncRun(sessionId);
   }
 
@@ -2086,6 +2233,44 @@ export class PracticePanelServerV1 {
     }
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
+      if (req.method === "POST" && url.pathname.startsWith("/v1/product/control/")) {
+        await this.assertPracticeReconstructionReady();
+        const body = await readJson(req);
+        requestBodies.set(req, body);
+        const admission = await this.assertClipResearchReady(body, url.pathname.endsWith("/build-baseline"));
+        res.once("finish", () => {
+          void this.recordClipResearchExecution(admission, res.statusCode < 400 ? "HTTP_COMPLETED" : "HTTP_FAILED").catch(() => {});
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/v1/product/gpt/clip-research-contract") {
+        jsonResponse(res, 200, CLIP_RESEARCH_CONTRACT_V1);
+        return;
+      }
+      const clipResearchMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/clip-research$/.exec(url.pathname);
+      if ((req.method === "GET" || req.method === "POST") && clipResearchMatch !== null) {
+        const id = decodeURIComponent(clipResearchMatch[1] ?? "");
+        const assignment = await this.#gptStore.getAssignment(id);
+        if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
+        let ledger;
+        if (req.method === "POST") {
+          const events = await this.#gptStore.eventsForSession(assignment.sessionId);
+          const compiledSources = events.filter((event) => event.stage === "RESEARCH").flatMap((event) => event.researchSources ?? []);
+          try { ledger = await this.#clipResearch.record(assignment, await readJson(req), compiledSources); }
+          catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
+        } else ledger = await this.#clipResearch.snapshot(assignment);
+        jsonResponse(res, req.method === "POST" ? 201 : 200, { clipResearch: ledger });
+        return;
+      }
+      if ((req.method === "GET" || req.method === "POST") && url.pathname === "/v1/product/practice/resume-or-start") {
+        if (req.method === "POST") {
+          const body = await readJson(req);
+          if (this.#activeRunId === null && body["finishPath"] !== undefined) await this.#startPractice(body);
+          const active = this.#activeRunId === null ? undefined : this.#runs.get(this.#activeRunId);
+          if (active !== undefined) this.#schedulePreflight(active.assignmentId);
+        }
+        jsonResponse(res, 200, await this.#resumeHandshake());
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/v1/product/status") {
         const latestRunId = [...this.#runs.values()]
           .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
@@ -2094,6 +2279,9 @@ export class PracticePanelServerV1 {
           service: "READY",
           panelConnected: this.config.broker.panelSession !== null,
           gptOrchestration: "ASSIGNMENT_QUEUE_READY",
+          practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
+          practiceStartup: "RESUMABLE_PREFLIGHT_V1",
+          practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
           activeRunId: this.#activeRunId,
           latestRunId,
         });
@@ -2296,6 +2484,7 @@ export class PracticePanelServerV1 {
           assignment,
           resumeRequired: assignment !== null
             && (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED"),
+          clipResearch: assignment === null ? null : await this.#clipResearch.snapshot(assignment),
         });
         return;
       }
@@ -2307,7 +2496,15 @@ export class PracticePanelServerV1 {
         jsonResponse(res, 200, {
           assignment,
           events: await this.#gptStore.eventsForSession(assignment.sessionId),
+          clipResearch: await this.#clipResearch.snapshot(assignment),
         });
+        return;
+      }
+      const releaseMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/release-controller$/.exec(url.pathname);
+      if (req.method === "POST" && releaseMatch !== null) {
+        const body = await readJson(req);
+        jsonResponse(res, 200, { assignment: await this.#gptStore.releaseController(
+          decodeURIComponent(releaseMatch[1] ?? ""), requiredString(body, "claimedBy")) });
         return;
       }
       const claimMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/claim$/.exec(url.pathname);
@@ -2327,6 +2524,27 @@ export class PracticePanelServerV1 {
           201,
           await this.#compileTutorialResearch(id, await readJson(req)),
         );
+        return;
+      }
+      const eventBatchMatch =
+        /^\/v1\/product\/gpt\/assignments\/([^/]+)\/events\/batch$/.exec(url.pathname);
+      if (req.method === "POST" && eventBatchMatch !== null) {
+        const id = decodeURIComponent(eventBatchMatch[1] ?? "");
+        const body = await readJson(req);
+        const rawEvents = body["events"];
+        if (!Array.isArray(rawEvents) || rawEvents.length === 0 || rawEvents.length > 64) {
+          throw new HttpError(400, "events must be a non-empty array with at most 64 entries.");
+        }
+        if (rawEvents.some((event) => event === null
+          || typeof event !== "object"
+          || Array.isArray(event))) {
+          throw new HttpError(400, "Each batched event must be an object.");
+        }
+        const assignment = await this.#recordLearningEvents(
+          id,
+          rawEvents as Record<string, unknown>[],
+        );
+        jsonResponse(res, 201, { assignment, eventCount: rawEvents.length });
         return;
       }
       const eventMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/events$/.exec(url.pathname);

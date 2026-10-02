@@ -202,6 +202,8 @@ test("a new ChatGPT controller can reclaim the same RUNNING Practice assignment"
     knowledge: null,
   });
   const first = await store.claim(assignment.assignmentId, "chatgpt:first-chat");
+  await assert.rejects(store.claim(assignment.assignmentId, "chatgpt:next-chat"), /lease is held/);
+  await store.releaseController(assignment.assignmentId, "chatgpt:first-chat");
   const second = await store.claim(assignment.assignmentId, "chatgpt:next-chat");
   assert.equal(first.status, "RUNNING");
   assert.equal(second.status, "RUNNING");

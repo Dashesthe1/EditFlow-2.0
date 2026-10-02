@@ -1,3 +1,4 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
@@ -46,10 +47,13 @@ import {
 } from "../../../packages/practice-homework/src/ae-baseline.js";
 import {
   LocalPracticeMediaMatcherV1,
+  defaultPracticeAnalysisCacheDirectoryV1,
 } from "../../../packages/practice-homework/src/local-media.js";
 import {
   PracticeM6ExecutionBridgeV1,
   composePracticeM6ExecutionAdaptersV1,
+  type PracticeM6PhaseProofCacheEntryV1,
+  type PracticeM6PhaseProofStoreV1,
 } from "../../../packages/practice-homework/src/m6-practice.js";
 import type {
   EditTypeKnowledgeSnapshotV1,
@@ -264,6 +268,122 @@ export const createPracticeCurrentAeBaselineRunnerV1 = (input: {
   );
 };
 
+interface PracticeM6PhaseProofFilePayloadV1 {
+  readonly schema: "editflow.practice-m6-phase-proof-cache.v1";
+  readonly entries: Readonly<Record<string, PracticeM6PhaseProofCacheEntryV1>>;
+}
+
+const readPracticeM6PhaseProofFileV1 = async (
+  filePath: string,
+): Promise<PracticeM6PhaseProofFilePayloadV1> => {
+  try {
+    const parsed = JSON.parse(
+      await readFile(filePath, "utf8"),
+    ) as Partial<PracticeM6PhaseProofFilePayloadV1>;
+    if (parsed.schema !== "editflow.practice-m6-phase-proof-cache.v1"
+      || parsed.entries === null
+      || typeof parsed.entries !== "object"
+      || Array.isArray(parsed.entries)) {
+      throw new TypeError("Practice M6 phase-proof file has an unsupported schema.");
+    }
+    for (const [key, value] of Object.entries(parsed.entries)) {
+      if (key.trim().length === 0
+        || value === null
+        || typeof value !== "object"
+        || !Number.isInteger(value.consecutivePasses)
+        || value.consecutivePasses < 2
+        || !Number.isInteger(value.lastAttempt)
+        || value.lastAttempt < 1
+        || value.graph === null
+        || typeof value.graph !== "object") {
+        throw new TypeError("Practice M6 phase-proof file contains an invalid entry.");
+      }
+    }
+    return parsed as PracticeM6PhaseProofFilePayloadV1;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        schema: "editflow.practice-m6-phase-proof-cache.v1",
+        entries: {},
+      };
+    }
+    throw error;
+  }
+};
+
+export class PracticeM6PhaseProofFileV1
+implements PracticeM6PhaseProofStoreV1 {
+  readonly filePath: string;
+  #tail: Promise<void> = Promise.resolve();
+  #sequence = 0;
+
+  constructor(filePath: string) {
+    this.filePath = path.resolve(filePath);
+  }
+
+  async load(key: string): Promise<PracticeM6PhaseProofCacheEntryV1 | null> {
+    await this.#tail;
+    const retained = await readPracticeM6PhaseProofFileV1(this.filePath);
+    const entry = retained.entries[key];
+    return entry === undefined ? null : structuredClone(entry);
+  }
+
+  async #update(
+    mutate: (entries: Record<string, PracticeM6PhaseProofCacheEntryV1>) => boolean,
+  ): Promise<void> {
+    const operation = this.#tail.then(async () => {
+      const retained = await readPracticeM6PhaseProofFileV1(this.filePath);
+      const entries: Record<string, PracticeM6PhaseProofCacheEntryV1> =
+        Object.fromEntries(
+          Object.entries(retained.entries).map(([key, value]) => [
+            key,
+            structuredClone(value),
+          ]),
+        );
+      if (!mutate(entries)) return;
+      const payload: PracticeM6PhaseProofFilePayloadV1 = {
+        schema: "editflow.practice-m6-phase-proof-cache.v1",
+        entries: Object.fromEntries(
+          Object.entries(entries).sort(([a], [b]) => a.localeCompare(b)),
+        ),
+      };
+      await mkdir(path.dirname(this.filePath), { recursive: true });
+      this.#sequence += 1;
+      const temporaryPath =
+        this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence);
+      await writeFile(
+        temporaryPath,
+        JSON.stringify(payload, null, 2) + "\n",
+        "utf8",
+      );
+      await rename(temporaryPath, this.filePath);
+    });
+    this.#tail = operation.catch(() => undefined);
+    await operation;
+  }
+
+  async save(
+    key: string,
+    entry: PracticeM6PhaseProofCacheEntryV1,
+  ): Promise<void> {
+    if (key.trim().length === 0 || entry.consecutivePasses < 2) {
+      throw new TypeError("Practice M6 phase-proof persistence requires a proven key/entry.");
+    }
+    await this.#update((entries) => {
+      entries[key] = structuredClone(entry);
+      return true;
+    });
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.#update((entries) => {
+      if (!(key in entries)) return false;
+      delete entries[key];
+      return true;
+    });
+  }
+}
+
 export interface PracticeM6CurrentAeAssemblyV1 {
   readonly adapters: PracticeHomeworkAdaptersV1;
   readonly transaction: CurrentAeTransactionRuntimeV1;
@@ -273,6 +393,7 @@ export interface PracticeM6CurrentAeAssemblyV1 {
   readonly renderDriver: PracticeM6AeRenderDriverCurrentV1;
   readonly subjectIsolationRoute: PracticeM6SubjectIsolationRouteV1 | null;
   readonly m6Runtime: PracticeM6CurrentAeRuntimeV1;
+  readonly phaseProofStore: PracticeM6PhaseProofFileV1;
   readonly bridge: PracticeM6ExecutionBridgeV1;
 }
 
@@ -301,6 +422,7 @@ export interface PracticeM6CurrentAeAssemblyConfigV1 {
   readonly trackedMaskRuntimeEvidencePath?: string;
   readonly trackedMaskVisualTimeoutMs?: number;
   readonly trackedMaskMaxAnalysisWindowSeconds?: number;
+  readonly phaseProofFilePath?: string;
   readonly recordEpisode?: NonNullable<PracticeHomeworkAdaptersV1["recordEpisode"]>;
 }
 
@@ -314,12 +436,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
   }
   const repositoryRoot = path.resolve(input.repositoryRoot);
   const artifactDir = path.resolve(input.artifactDir);
-  const practiceMediaCacheDir = path.join(
-    repositoryRoot,
-    "proofs",
-    "artifacts",
-    "practice-media-cache",
-  );
+  const practiceMediaCacheDir = defaultPracticeAnalysisCacheDirectoryV1();
   const transaction = new CurrentAeTransactionRuntimeV1(
     input.transport,
     input.projectId,
@@ -500,7 +617,15 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     renderDriver,
     subjectIsolationRoute,
   });
-  const bridge = new PracticeM6ExecutionBridgeV1(m6Runtime);
+  const phaseProofStore = new PracticeM6PhaseProofFileV1(
+    input.phaseProofFilePath
+      ?? path.join(artifactDir, "practice-m6-phase-proofs.json"),
+  );
+  const bridge = new PracticeM6ExecutionBridgeV1(
+    m6Runtime,
+    undefined,
+    phaseProofStore,
+  );
   const adapters = composePracticeM6ExecutionAdaptersV1(bridge, {
     analyzeFinish: (finish) => mediaMatcher.analyzeFinish(finish),
     indexStart: (start) => mediaMatcher.indexStart(start),
@@ -523,6 +648,7 @@ export const createPracticeM6CurrentAeAssemblyV1 = (
     renderDriver,
     subjectIsolationRoute,
     m6Runtime,
+    phaseProofStore,
     bridge,
   };
 };
