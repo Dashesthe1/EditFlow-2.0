@@ -44,12 +44,20 @@ function evaluateLiveness(previous, evidence, now, policy = POLICY) {
       next.terminalAt = now; next.terminalKey = evidence.terminal;
     }
     if (now - next.terminalAt >= policy.terminalConfirmMs) {
+      if (evidence.controllerLeaseUntil > now && evidence.idleUi === true) {
+        return result("RECOVERING", "expired_ui_controller_reserved", "REPAIR_OWNER");
+      }
       return result("TERMINAL", evidence.terminal, "HANDOFF");
     }
     return result("VERIFYING", "terminal_confirmation");
   }
   next.terminalAt = 0; next.terminalKey = null;
-  if (evidence.completedAt && !live && evidence.completedAt >= evidence.startedAt) {
+  if (evidence.controllerLeaseUntil > now) {
+    next.suspectAt = 0;
+    return result("WAITING", "controller_reserved");
+  }
+  if (evidence.completedAt && !live && !(recentProgress && progressAt > evidence.completedAt) &&
+      evidence.completedAt >= evidence.startedAt) {
     return result("COMPLETED", "response_complete", "HANDOFF");
   }
   if (!evidence.startedAt) return result("WAITING", "generation_not_observed");

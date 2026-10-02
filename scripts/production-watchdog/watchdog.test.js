@@ -110,11 +110,11 @@ function supervisorHarness() {
   const fakeFs = { readFileSync: () => JSON.stringify({ assignments: [assignment] }), writeFileSync() {}, renameSync() {}, appendFileSync() {}, mkdirSync() {}, readdirSync: () => [], copyFileSync: (...args) => copies.push(args) };
   const context = vm.createContext({ require: name => name === "fs" ? fakeFs : name === "./liveness.js" ? require("./liveness.js") : require(name), __dirname, process, console, URL, Date: class extends Date { static now() { return now; } } });
   const code = fs.readFileSync(path.join(__dirname, "supervisor.js"), "utf8").split("\nloadState();")[0];
-  vm.runInContext(code + '\nthis.api = { commandForHeartbeat, onEvent, prepareHandoff, recordStopped, commitHandoff, supervisorTick, validateHandoff, prepareMissingTab, readPractice, get: () => runtime };', context);
+  vm.runInContext(code + '\nthis.api = { commandForHeartbeat, onEvent, prepareHandoff, recordStopped, commitHandoff, supervisorTick, validateHandoff, prepareMissingTab, validateOwnerRefresh, readPractice, get: () => runtime };', context);
   const api = context.api;
   api.onEvent({ type: "practice_arm", tabId: 1 });
   api.onEvent({ type: "generation_start", tabId: 1, requestId: "network-1", ts: start });
-  return { api, assignment, copies, time: n => { now = n; }, heartbeat: patch => api.commandForHeartbeat({ tabId: 1, url: "https://chatgpt.com/c/test", isTarget: true, practiceCommandActive: true, monitorState: "running", activeRequests: 1, streamActiveRequests: 1, stopVisible: true, ...patch }, { ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", status: "RUNNING" }) };
+  return { api, assignment, copies, time: n => { now = n; }, heartbeat: patch => api.commandForHeartbeat({ tabId: 1, url: "https://chatgpt.com/c/test", isTarget: true, practiceCommandActive: true, monitorState: "running", activeRequests: 1, streamActiveRequests: 1, stopVisible: true, ...patch }, { ...api.readPractice(), ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", status: "RUNNING" }) };
 }
 test("unrelated tabs and old network failures never alter the owner", () => {
   const h = supervisorHarness();
@@ -201,8 +201,9 @@ function browserHarness(stopOK = true, options = {}) {
       set: async values => { storage = {...storage, ...structuredClone(values)}; }, remove: async () => {} }, onChanged: event },
     alarms: { clear: async () => {}, create: async () => {}, onAlarm: event },
     scripting: { executeScript: async () => [] },
-    tabs: { get: async id => ({id, url: "https://chatgpt.com/", status: "complete"}),
+    tabs: { get: async id => ({id, url: options.tabUrl || "https://chatgpt.com/", status: "complete"}),
       query: async () => [{id: 1, url: "https://chatgpt.com/"}], update: async () => {},
+      reload: async () => { actions.push("reload"); if (options.reloadFails) throw Error("reload failed"); },
       create: async () => { actions.push("create"); return { id: 2 }; },
       sendMessage: async (id, message) => {
         actions.push(message.type);
@@ -212,7 +213,8 @@ function browserHarness(stopOK = true, options = {}) {
           return options.legacyBoolean ? { stopped: true } : { ...stopProof(now - 1500, now), stopped: stopOK };
         }
         if (message.type === "STOP_GENERATION_STATUS") return { protocol: 1,
-          href: "https://chatgpt.com/c/test", stopVisible: !!options.stopReappears, idleUi: !options.unknownUi };
+          href: "https://chatgpt.com/c/test", stopVisible: !!options.stopReappears, idleUi: !options.unknownUi,
+          uiFailureSignal: "stream_cache_expired", practiceCommandActive: true };
         if (message.type === "CONTINUATION_STATUS") return { promptPresent: !!options.alreadySent, emptyConversation: !options.alreadySent };
         if (message.type === "NETWORK_WATCHDOG_FRESH_TAB_CONTINUE") return { received: true, sent: !options.sendFails };
         return { ready: true, received: true, stopProtocol: 1, version: "2.6.3" };
@@ -223,9 +225,9 @@ function browserHarness(stopOK = true, options = {}) {
     setTimeout: (fn, ms) => { if (ms === 250) { now += ms; Promise.resolve().then(fn); } return 1; },
     clearTimeout() {}, Date: class extends Date { static now() { return now; } },
     fetch: async (url, options) => ({ ok: true, json: async () => { actions.push(url.split("32147")[1]);
-      return { ok: true, active: true, assignmentId: "assignment-1", sessionId: "session-1", prompt: "Resume assignment-1", sourceUrl: "https://chatgpt.com/c/test", issuedAt: start, stopReceiptId: "stop-receipt-1" }; } }) });
+      return { ok: !(url.endsWith("/owner-refresh/validate") && options.repairDenied), active: true, assignmentId: "assignment-1", sessionId: "session-1", prompt: "Resume assignment-1", sourceUrl: "https://chatgpt.com/c/test", issuedAt: start, stopReceiptId: "stop-receipt-1" }; } }) });
   const code = fs.readFileSync(path.join(__dirname, "background.js"), "utf8").split("\nchrome.runtime.onInstalled")[0];
-  vm.runInContext(code + '\nthis.api = { handoff, handlePageHeartbeat, onProbeEvent, onHeaders, onCompleted, onError, initialize, resumeContinuation, evaluate };', context);
+  vm.runInContext(code + '\nthis.api = { handoff, handlePageHeartbeat, onProbeEvent, onHeaders, onCompleted, onError, initialize, resumeContinuation, evaluate, repairOwner };', context);
   return { api: context.api, actions, storage: () => storage };
 }
 test("browser will not create a replacement without verified Stop", async () => {
@@ -684,4 +686,123 @@ test("stream origin stays bound to its initial conversation across SPA navigatio
   await h.api.onProbeEvent({...current,type:"generation_stream_activity",bytesTotal:500},sender);
   assert.equal(h.storage().watchdogRuntime.streamRequests.current.active,true);
   assert.equal(h.storage().watchdogRuntime.streamRequests.current.bytesTotal,500);
+});
+
+test("recorded idle stream-expiry with a renewed controller lease repairs the owner page", () => {
+  const patch = { activeRequests: 0, streamRequests: 0, stopVisible: false, idleUi: true,
+    terminal: "stream_cache_expired", controllerLeaseUntil: start + 240000 };
+  const first = evaluateLiveness({}, at(60000, patch), start + 60000);
+  assert.equal(first.phase, "VERIFYING");
+  const confirmed = evaluateLiveness(first.next, at(75000, patch), start + 75000);
+  assert.equal(confirmed.action, "REPAIR_OWNER");
+  assert.equal(confirmed.reason, "expired_ui_controller_reserved");
+});
+test("owner page repair never overrides active mutation, manual Stop, traffic or recent work", () => {
+  const now = start + 75000;
+  const patch = { terminal: "stream_cache_expired", controllerLeaseUntil: now + 120000,
+    activeRequests: 0, streamRequests: 0, stopVisible: false, idleUi: true };
+  for (const extra of [{leaseUntil:now+1000}, {manualStopUntil:now+1000},
+    {activeRequests:1}, {streamRequests:1}, {stopVisible:true}, {practiceAt:now}, {aeAt:now}, {semanticAt:now}, {uiAt:now}]) {
+    const result = evaluateLiveness({terminalAt:start+60000, terminalKey:patch.terminal}, at(75000,{...patch,...extra}),now);
+    assert.equal(result.action,"NONE", JSON.stringify(extra));
+  }
+});
+test("recent artifact progress blocks a premature idle-answer completion handoff", () => {
+  const now = start + 60000;
+  assert.equal(evaluateLiveness({}, at(60000,{activeRequests:0,streamRequests:0,stopVisible:false,
+    completedAt:start+10000,practiceAt:now}),now).action,"NONE");
+});
+const expiredOwner = {activeRequests:0,streamActiveRequests:0,stopVisible:false,idleUi:true,
+  uiFailureSignal:"stream_cache_expired",responseKey:"owning-response"};
+function ownerRepairHarness() {
+  const h=supervisorHarness();
+  h.assignment.controllerLease={owner:"expired-page-controller",expiresAt:new Date(start+240000).toISOString()};
+  h.time(start+60000); h.heartbeat(expiredOwner);
+  h.time(start+120000); h.heartbeat(expiredOwner);
+  h.time(start+135000); const reply=h.heartbeat(expiredOwner);
+  assert.equal(reply.command,"REFRESH_OWNER");
+  return {...h, reply, permit:{...expiredOwner,href:"https://chatgpt.com/c/test",practiceCommandActive:true,
+    tabId:1,refreshId:reply.refreshId}};
+}
+test("page recovery is response scoped, validated and limited to one successful reload", () => {
+  const h=ownerRepairHarness();
+  assert.equal(h.api.validateOwnerRefresh(h.permit).ok,true);
+  h.api.onEvent({type:"owner_refreshed",tabId:1,refreshId:h.reply.refreshId});
+  h.time(start+150000);
+  assert.equal(h.heartbeat(expiredOwner).command,"NONE");
+  assert.equal(h.api.get().ownerRefresh.status,"reloaded");
+  assert.equal(h.api.get().chainArmed,true);
+  assert.equal(h.copies.length,0);
+  // Once the reservation expires, the ordinary checkpoint/Stop handoff runs.
+  h.time(start+240000);
+  assert.equal(h.heartbeat(expiredOwner).command,"CHAIN");
+});
+test("renewed work or changing the owning chat revokes a queued page recovery", () => {
+  for (const change of ["work","stop","pause","url","cancel","mutation"]) {
+    const h=ownerRepairHarness();
+    if(change==="work") h.api.get().lastAeProgressAt=start+135001;
+    if(change==="stop") h.api.get().lastStopObservation.stopVisible=true;
+    if(change==="pause") h.api.onEvent({type:"monitor_inactive",monitorState:"paused"});
+    if(change==="url") h.api.get().lastUrl="https://chatgpt.com/c/maintenance";
+    if(change==="cancel") h.assignment.cancelRequestedAt="now";
+    if(change==="mutation") h.api.get().lastAeLeaseExpiresAt=start+140000;
+    assert.equal(h.api.validateOwnerRefresh(h.permit).ok,false,change);
+  }
+});
+test("failed page recovery retries without pausing or creating a chat", () => {
+  const h=ownerRepairHarness();
+  h.api.onEvent({type:"owner_refresh_failed",tabId:1,refreshId:h.reply.refreshId});
+  h.time(start+164999); assert.equal(h.heartbeat(expiredOwner).command,"NONE");
+  h.time(start+165000); assert.equal(h.heartbeat(expiredOwner).command,"REFRESH_OWNER");
+  assert.equal(h.api.get().lastMonitorState,"running");
+});
+test("browser reloads the same failed owner once without Stop or replacement", async () => {
+  const h=browserHarness(true,{tabUrl:"https://chatgpt.com/c/test"});
+  const reply={refreshId:"repair-1",sourceUrl:"https://chatgpt.com/c/test"};
+  await Promise.all([h.api.repairOwner(1,reply),h.api.repairOwner(1,reply)]);
+  assert.equal(h.actions.filter(x=>x==="reload").length,1);
+  assert.equal(h.actions.includes("create"),false);
+  assert.equal(h.actions.includes("STOP_GENERATION_TERMINAL"),false);
+  assert.equal(h.storage().monitorState,"running");
+});
+test("browser refuses page recovery after Pause, navigation, permit denial or live transport", async () => {
+  for(const options of [{monitorPaused:true},{tabUrl:"https://chatgpt.com/c/maintenance"},
+    {repairDenied:true},{streamActive:true}]) {
+    const h=browserHarness(true,options);
+    await h.api.repairOwner(1,{refreshId:"repair-1",sourceUrl:"https://chatgpt.com/c/test"});
+    assert.equal(h.actions.includes("reload"),false,JSON.stringify(options));
+    assert.equal(h.actions.includes("create"),false);
+  }
+});
+test("reload failures leave monitoring running for a later retry", async () => {
+  const h=browserHarness(true,{reloadFails:true,tabUrl:"https://chatgpt.com/c/test"});
+  await h.api.repairOwner(1,{refreshId:"repair-1",sourceUrl:"https://chatgpt.com/c/test"});
+  assert.equal(h.actions.includes("/event"),true);
+  assert.equal(h.storage().monitorState,"running");
+});
+
+function failureObservationHarness() {
+  let now=start;
+  const leaves=[];
+  const doc={body:{},addEventListener(){},querySelector:()=>null,querySelectorAll:()=>[],
+    createTreeWalker:()=>{let i=0;return{nextNode:()=>leaves[i++]||null};}};
+  const context=vm.createContext({document:doc,window:{addEventListener(){}},location:{href:"https://chatgpt.com/c/test"},
+    NodeFilter:{SHOW_TEXT:4},Date:class extends Date{static now(){return now;}},console,setTimeout(){},
+    getComputedStyle:()=>({display:"block",visibility:"visible"}),chrome:{runtime:{sendMessage:async()=>({})}}});
+  const code=fs.readFileSync(path.join(__dirname,"content.js"),"utf8").split("\n  const practiceObserver")[0];
+  vm.runInContext(code+'\nthis.api={uiFailureSignal};\n})();',context);
+  return {api:context.api,time:n=>now=n,leaves,
+    leaf:(text,{hidden=false,prose=false,legacyWrapper=false}={})=>({nodeValue:text,parentElement:{isConnected:true,
+      getClientRects:()=>hidden?[]:[{}],closest:s=>prose&&s.includes('.markdown')?{}:
+        legacyWrapper&&s.includes('[data-message-author-role]')?{}:null}})};
+}
+test("terminal observer reads the rendered error inside a message wrapper",()=>{
+  const h=failureObservationHarness();h.time(start+6000);
+  h.leaves.push(h.leaf("Stream cache expired",{legacyWrapper:true}));
+  assert.equal(h.api.uiFailureSignal(),"stream_cache_expired");
+});
+test("terminal observer excludes hidden conversation errors and quoted assistant prose",()=>{
+  const h=failureObservationHarness();h.time(start+6000);
+  h.leaves.push(h.leaf("Stream cache expired",{hidden:true}),h.leaf("Stream cache expired",{prose:true}));
+  assert.equal(h.api.uiFailureSignal(),null);
 });

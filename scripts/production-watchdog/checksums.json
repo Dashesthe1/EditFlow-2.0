@@ -1,17 +1,17 @@
 {
-  "README.md": "6ba09c37c6bf5e22dbe76e9b6120f22a02acab834386b7c18fc01df7c88a3c91",
-  "background.js": "cdb1b330dbeae99bbdd2170a5f944b2d57f3751a12b4cd16663ccbb4a83e35a7",
-  "content.js": "58b4d7a086153dfd94ba147af77f9b5d1b83e7c768547e3c6569b96558b6ff8b",
-  "install.ps1": "0997f140101cb3930edefef303b6c6478ab0673e191141915e65db20637427d9",
-  "liveness.js": "ae70479fc39ba2f527a95e630f280f948d162521c8ce4febbd3136ad6f1550fd",
+  "README.md": "2eb4a7b9dc735d10a54dd0deba4adeee9eedcb5ed797a286b1c4f6e14aea8c72",
+  "background.js": "90886b0e87e61b0952e3e3e9fa389e77ec576bdbb242e92b687304f8765e4ce1",
+  "content.js": "dac0b9e1af612c1fb38c0ab9a8c3a5d742bf0b1aa207cb62d4bc604b430b428c",
+  "install.ps1": "7466a7ea6b47c23191dc16d0b5fc217137bb8d03036d772c8d8b10121c693786",
+  "liveness.js": "5aea4a055ef892434d91fe2248b8329e1ea46cf8140b465252e6425e29cd0ad2",
   "main_probe.js": "ceefeea749b91b839e529c8f15cbf98438e848726922b4c4af519e014120dab0",
-  "manifest.json": "ca7b30cfd0be4dab77d053f012bd9f3657b4a21cab4761839b85b57de52d7b17",
-  "package.json": "7e3a91ae849d2f867ddde12b719d1d88f5ffa110a98fb16b91b7f393bf37d17c",
+  "manifest.json": "85b0ce3620e819d3bb5b282476c6012f541a1b775e4d22f7b71e6c607cd1e728",
+  "package.json": "ec12fcb65eefd6541b4c1af1a2013cf619aef08bae9dbb6c030a63425aabc839",
   "popup.html": "9a70ab2337bb41b019cc3d98b6b7aeb57150adda8e5899ad1607bd1547c318e2",
   "popup.js": "a7feb1656de475d434ea9661984cf4a62db9d8821153183263ed5ccf5559a2fc",
   "recover-extension.ps1": "c78dd6b27dbf020a185e2db2336a84fd7a5ab702fd1a5edb488021cbab19d785",
   "stop-gate.js": "aa0394c95481ca702dc1c14be1dc0446bcb2886366952c8b2738499e176022ec",
   "stream-events.js": "09a66efc25221ceb6aebac6a12408d71e6c8ebb7c1bc0350c651677450896092",
-  "supervisor.js": "d2485d940f1d2faf62f8110c96c55fdf6f67ecac4280fb7d9b49e257fbc91b2a",
-  "watchdog.test.js": "55b9bebf7c84bd60c4f143e73f3169deed98a0ec36bd5b59e79700501495e10f"
+  "supervisor.js": "9737147dda1c9e634d6935932521486a898edb4c04aeab228f08b53a2afc18dc",
+  "watchdog.test.js": "d18539503315caa24c9db7db03c8b0cc5b9017f33b377e9f37bd27996729cc77"
 }

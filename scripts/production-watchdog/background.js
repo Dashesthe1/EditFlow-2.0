@@ -846,6 +846,29 @@ chrome.tabs.onRemoved.addListener(tabId => {
   }).catch(() => {});
 });
 
+const ownerRefreshes = new Set();
+async function repairOwner(tabId, reply) {
+  if (!reply.refreshId || ownerRefreshes.has(reply.refreshId)) return;
+  ownerRefreshes.add(reply.refreshId);
+  try {
+    const controls = await chrome.tabs.sendMessage(tabId, { type: "STOP_GENERATION_STATUS" });
+    await transportQueue;
+    const rt = await runtime();
+    if (activeRequests(rt).length || activeStreamRequests(rt).length) return;
+    const permit = await supervisorPost("/owner-refresh/validate", { ...controls, tabId, refreshId: reply.refreshId });
+    if (!permit || !permit.ok) return;
+    const latest = await state(), tab = await chrome.tabs.get(tabId);
+    if (latest.monitorState !== "running" || latest.monitorTabId !== tabId || latest.pendingContinuation ||
+        tab.url !== reply.sourceUrl || Number(rt.manualStopUntil || 0) > Date.now()) return;
+    rt.statusText = "Recovering expired Practice page; preserving assignment and AE work";
+    await saveRuntime(rt);
+    await chrome.tabs.reload(tabId);
+    await supervisorEvent("owner_refreshed", { tabId, refreshId: reply.refreshId });
+  } catch (error) {
+    await supervisorEvent("owner_refresh_failed", { tabId, refreshId: reply.refreshId, error: String(error) });
+  } finally { ownerRefreshes.delete(reply.refreshId); }
+}
+
 async function handlePageHeartbeat(message, sender) {
   const tab = sender && sender.tab;
   if (!tab || !Number.isInteger(tab.id) || !isChatGptUrl(tab.url)) {
@@ -940,7 +963,12 @@ async function handlePageHeartbeat(message, sender) {
       SUSPECT: "Possible stall: verifying continued silence", STALLED: "Stall confirmed", COMPLETED: "Response completed",
       VERIFYING: "Verifying response failure", TERMINAL: "Response failure confirmed", PAUSED: "Monitoring paused",
       OBSERVER_OFFLINE: "Monitor unavailable: repairing observation", BLOCKED: "Monitoring account availability", RECOVERING: "Recovering: retrying the Practice continuation" };
-    latest.statusText = labels[reply.phase] || "Observing session activity";
+    const reasons = {
+      controller_reserved: "Waiting for the Practice controller lease; no replacement authorized",
+      expired_ui_controller_reserved: "Recovering expired Practice page while preserving its controller",
+      waiting_for_controller_after_page_recovery: "Expired page recovered; waiting for controller reconciliation"
+    };
+    latest.statusText = reasons[reply.reason] || labels[reply.phase] || "Observing session activity";
     await saveRuntime(latest);
   }
   if (!reply || !reply.command || reply.command === "NONE") {
@@ -950,6 +978,11 @@ async function handlePageHeartbeat(message, sender) {
   if (reply.command === "STOP") {
     if (data.monitorTabId === tab.id) await stopMonitor();
     return { ok: true, supervisor: true, command: "STOP" };
+  }
+
+  if (reply.command === "REFRESH_OWNER") {
+    await repairOwner(tab.id, reply);
+    return { ok: true, command: reply.command };
   }
 
   if (reply.command === "ARM_ONLY") {

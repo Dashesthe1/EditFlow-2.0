@@ -1,14 +1,18 @@
-# EditFlow Production Watchdog 2.6.3 / Supervisor 1.7.3
+# EditFlow Production Watchdog 2.6.4 / Supervisor 1.7.4
 
 The controller monitors the owning live Practice chat and resumes the same durable assignment between conversations. There is no maximum chat duration. It stays armed through observation, Stop verification, checkpoint handoff, continuation sending and recovery until the durable assignment is COMPLETED or explicitly cancelled. Explicit user Pause/Stop remains available.
 
 ## October 1 correction
 
-Work Mode keeps multiple conversations mounted and uses user-message bubbles, assistant markdown and agent-activity blocks rather than the classic author-role attributes. Version 2.6.3 observes only rendered messages in the current conversation, includes tool activity in its progress fingerprint, excludes clock-only Working timers and requires the latest user request to explicitly start, continue or resume Practice. A maintenance chat cannot receive a Stop permit. This scope is rechecked immediately before Stop; changing conversations clears the previous transport state.
+The 19:31 incident displayed "Stream cache expired" and idle composer controls while the backend was still renewing its controller reservation and generating editing artifacts. Idle-answer handoffs raced those renewals and Stop confirmation was rejected. Reloading that same owning page restored the live Stop control and current response. Version 2.6.4 confirms the rendered error for 15 seconds, then permits one validated reload of that response when there is no live transport, Stop control, recent work, manual Stop or AE mutation lease. A controller reservation remains a barrier to replacement but cannot block this observation repair. Failed reloads retry without pausing. Successful reloads are persisted and bounded per assignment/conversation/response; fresh activity or scope changes revoke queued repairs. Completion also checks for newer recent editing progress before handing off.
+
+Error observation excludes hidden conversations and message prose while allowing an error banner inside an author-role wrapper. Supervisor health exposes the current failure signal and page recovery record. The popup distinguishes a controller reservation from response processing.
+
+Work Mode keeps multiple conversations mounted and uses user-message bubbles, assistant markdown and agent-activity blocks rather than the classic author-role attributes. Version 2.6.4 observes only rendered messages in the current conversation, includes tool activity in its progress fingerprint, excludes clock-only Working timers and requires the latest user request to explicitly start, continue or resume Practice. A maintenance chat cannot receive a Stop permit. This scope is rechecked immediately before Stop; changing conversations clears the previous transport state.
 
 The stream probe stamps each request with the conversation where it began. Late headers, bytes and errors from a previous conversation cannot recreate active transport in the current one. This upgrade retires legacy unscoped records that survived earlier extension reloads and blocked replacement creation; subsequent worker restarts preserve properly scoped active records. Health reports the current transport counts alongside positive idle UI evidence.
 
-The 22:09 failure used generation and semantic evidence from an older response while the owning chat was receiving fresh stream bytes. Stop verification then failed and background.js permanently changed monitorState to paused. Version 2.6.3 fixes both defects.
+The 22:09 failure used generation and semantic evidence from an older response while the owning chat was receiving fresh stream bytes. Stop verification then failed and background.js permanently changed monitorState to paused. Version 2.6.4 fixes both defects.
 
 - A new response, stream or owning page response identity clears prior generation completion, errors, semantic coverage and stall suspicion. The page identity reconciles starts missed when the observer attaches mid-response.
 - Coverage is calculated from the currently active streams. Unsupported frames explicitly mark uncertainty; observed traffic then protects the response. Recognized keepalives and padding do not count as progress.

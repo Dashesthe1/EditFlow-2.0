@@ -73,6 +73,8 @@ let runtime = {
   handoff: null,
   handoffHistory: [],
   lastLiveness: null,
+  ownerRefresh: null,
+  lastUiFailureSignal: null,
   supervisorStartedAt: Date.now()
 };
 
@@ -371,6 +373,7 @@ function commandForHeartbeat(body, practice) {
     runtime.lastUiProgressAt = now;
   }
   runtime.lastThinkingSignal = body.thinkingSignal || null;
+  runtime.lastManualStopUntil = Number(body.manualStopUntil || 0);
   if (Number(practice.progressAt) > Number(runtime.lastPracticeProgressAt || 0)) {
     runtime.lastPracticeProgressAt = Number(practice.progressAt);
     runtime.lastPracticeProgressSource = practice.progressSource;
@@ -380,6 +383,7 @@ function commandForHeartbeat(body, practice) {
     : status === 429 ? "rate_limited" : null;
   const terminal = body.uiFailureSignal ||
     (runtime.lastGenerationOutcome === "failure" ? "generation_failed" : null);
+  runtime.lastUiFailureSignal = body.uiFailureSignal || null;
   const transportClosedAndVisibleAnswer = (runtime.lastGenerationOutcome === "transport_closed" ||
     (runtime.lastGenerationOutcome === "running" && body.idleUi === true)) &&
     Number(body.activeRequests || 0) === 0 && Number(body.streamActiveRequests || 0) === 0 &&
@@ -399,7 +403,9 @@ function commandForHeartbeat(body, practice) {
     stopVisible: body.stopVisible === true,
     thinkingSignal: body.thinkingSignal || null,
     manualStopUntil: Number(body.manualStopUntil || 0),
-    leaseUntil: Math.max(Number(runtime.lastAeLeaseExpiresAt || 0), Number(practice.controllerLeaseExpiresAt || 0)),
+    leaseUntil: Number(runtime.lastAeLeaseExpiresAt || 0),
+    controllerLeaseUntil: Number(practice.controllerLeaseExpiresAt || 0),
+    idleUi: body.idleUi === true,
     terminal,
     completedAt: runtime.semanticCompletedAt || (transportClosedAndVisibleAnswer ? Math.max(runtime.lastGenerationEndAt, runtime.lastUiProgressAt) : 0)
   };
@@ -417,6 +423,19 @@ function commandForHeartbeat(body, practice) {
   }
   if (body.monitorState === "busy") { persist(); return { command: "NONE", reason: "handoff_in_progress" }; }
   if (now < runtime.retryAt) { persist(); return { command: "NONE", phase: "RECOVERING", reason: "handoff_retry_backoff", retryAt: runtime.retryAt }; }
+  if (verdict.action === "REPAIR_OWNER") {
+    const key = practice.assignmentId + "|" + runtime.lastUrl + "|" + (runtime.responseKey || runtime.lastGenerationStartAt);
+    const previous = runtime.ownerRefresh;
+    if (previous && previous.key === key && (previous.status === "reloaded" || now - previous.issuedAt < 30000)) {
+      runtime.lastLiveness = { phase: "RECOVERING", reason: "waiting_for_controller_after_page_recovery", at: now };
+      persist(); return { command: "NONE", ...runtime.lastLiveness };
+    }
+    runtime.ownerRefresh = { id: randomUUID(), key, tabId: body.tabId, sourceUrl: runtime.lastUrl,
+      assignmentId: practice.assignmentId, sessionId: practice.sessionId, issuedAt: now, status: "issued" };
+    persist(); log("owner_refresh_requested", runtime.ownerRefresh);
+    return { command: "REFRESH_OWNER", refreshId: runtime.ownerRefresh.id, sourceUrl: runtime.lastUrl,
+      reason: verdict.reason, ...runtime.lastLiveness };
+  }
   if (verdict.action !== "HANDOFF") { persist(); return { command: "NONE", ...runtime.lastLiveness }; }
   if (runtime.lastChainedGenerationStartAt === runtime.lastGenerationStartAt && runtime.lastGenerationStartAt) {
     return { command: "NONE", reason: "generation_already_handed_off" };
@@ -446,6 +465,24 @@ function commandForHeartbeat(body, practice) {
   log("command_chain", { reason: verdict.reason, phase: verdict.phase, handoffId: runtime.handoff.id,
     generationAt: runtime.lastGenerationStartAt, semanticAt: runtime.lastSemanticAt });
   return { command: "CHAIN", reason: verdict.reason, handoffId: runtime.handoff.id };
+}
+
+function validateOwnerRefresh(body) {
+  const repair = runtime.ownerRefresh, practice = readPractice(), now = Date.now();
+  const observed = runtime.lastStopObservation || {};
+  return { ok: !!repair && repair.id === body.refreshId && repair.status === "issued" &&
+    now - repair.issuedAt < 30000 && runtime.lastTabId === body.tabId && repair.tabId === body.tabId &&
+    runtime.lastMonitorState === "running" && runtime.scopeAllowed === true && now - runtime.scopeConfirmedAt < 5000 &&
+    runtime.lastUrl === repair.sourceUrl && body.href === repair.sourceUrl &&
+    practice.active && !practice.cancelRequestedAt && practice.assignmentId === repair.assignmentId &&
+    practice.sessionId === repair.sessionId && practice.controllerLeaseExpiresAt > now &&
+    runtime.lastAeLeaseExpiresAt <= now && (runtime.lastManualStopUntil || 0) <= now &&
+    !!runtime.lastUiFailureSignal && body.uiFailureSignal === runtime.lastUiFailureSignal &&
+    body.practiceCommandActive === true && body.stopVisible === false && body.idleUi === true &&
+    now - observed.at < 5000 && observed.stopVisible === false && observed.idleUi === true &&
+    observed.activeRequests === 0 && observed.activeStreamRequests === 0 &&
+    Math.max(runtime.lastUiProgressAt || 0, runtime.lastSemanticAt || 0,
+      runtime.lastAeProgressAt || 0, runtime.lastPracticeProgressAt || 0, runtime.lastStreamActivityAt || 0) <= repair.issuedAt };
 }
 
 function prepareMissingTab(body) {
@@ -572,6 +609,15 @@ function onEvent(body) {
   const type = String(body.type || "");
   const now = Date.now();
   const practice = readPractice();
+  if (["owner_refreshed", "owner_refresh_failed"].includes(type)) {
+    const repair = runtime.ownerRefresh;
+    if (!repair || repair.id !== body.refreshId || repair.tabId !== body.tabId ||
+        practice.assignmentId !== repair.assignmentId || runtime.lastUrl !== repair.sourceUrl) {
+      return { ok: true, ignored: true, reason: "stale_owner_refresh_event" };
+    }
+    repair.status = type === "owner_refreshed" ? "reloaded" : "failed";
+    repair.observedAt = now;
+  }
   if (type === "practice_arm" && Number.isInteger(body.tabId)) {
     if (runtime.lastTabId !== body.tabId) { resetResponse(0, null, "owner_change"); runtime.responseKey = null; }
     runtime.lastTabId = body.tabId;
@@ -696,7 +742,7 @@ async function handle(req, res) {
     return json(res, 200, {
       ok: true,
       service: "EditFlow Practice Chat Supervisor",
-      version: "1.7.3",
+      version: "1.7.4",
       extensionVersion: runtime.lastExtensionVersion || null,
       lastExtensionLoadedAt: runtime.lastExtensionLoadedAt || 0,
       monitorState: runtime.lastMonitorState,
@@ -704,6 +750,8 @@ async function handle(req, res) {
       monitorResumeRequested: runtime.monitorResumeRequested === true,
       policy: POLICY,
       liveness: runtime.lastLiveness,
+      ownerRefresh: runtime.ownerRefresh,
+      uiFailureSignal: runtime.lastUiFailureSignal,
       handoff: runtime.handoff,
       stopObservation: runtime.lastStopObservation || null,
       lastSemanticAt: runtime.lastSemanticAt,
@@ -782,6 +830,10 @@ async function handle(req, res) {
       chainArmed: runtime.chainArmed,
       practice
     }, command));
+  }
+
+  if (req.method === "POST" && url.pathname === "/owner-refresh/validate") {
+    return json(res, 200, validateOwnerRefresh(await readBody(req)));
   }
 
   return json(res, 404, { ok: false, error: "not_found" });

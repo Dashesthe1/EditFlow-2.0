@@ -1,7 +1,7 @@
 (() => {
   "use strict";
-  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V263__) return;
-  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V263__ = true;
+  if (globalThis.__EDITFLOW_CHAT_SUPERVISOR_V264__) return;
+  globalThis.__EDITFLOW_CHAT_SUPERVISOR_V264__ = true;
 
   const PRACTICE_COMPLETION_MARKER = "EDITFLOW_PRACTICE_COMPLETE";
   const PRACTICE_CANCELLATION_MARKER = "EDITFLOW_PRACTICE_CANCELLED";
@@ -153,7 +153,21 @@
     // banner in the DOM while a fresh chat is mounting. Ignore that carryover
     // for a short route-change grace period.
     if (Date.now() - conversationChangedAt < 5000) return null;
-    const text = monitorSurfaceText().toLowerCase();
+    // Work Mode can place the error within an author-role wrapper. Inspect
+    // rendered error text outside actual message prose, rather than excluding
+    // the entire wrapper or reading hidden, mounted conversations.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const parts = [];
+    let node;
+    while ((node = walker.nextNode())) {
+      const element = node.parentElement;
+      if (!rendered(element) || element.closest(
+        '[data-markdown-text-style="assistant-message"], [data-user-message-bubble], .markdown, pre, code, #prompt-textarea, textarea, input, [contenteditable="true"], [role="dialog"], [class*="group/agent-activity"]'
+      )) continue;
+      const value = String(node.nodeValue || "").trim();
+      if (value) parts.push(value);
+    }
+    const text = parts.join(" ").replace(/\s+/g, " ").toLowerCase();
     if (/stream cache expired/.test(text)) {
       return "stream_cache_expired";
     }
@@ -696,6 +710,7 @@
     }
     if (message?.type === "STOP_GENERATION_STATUS") {
       sendResponse({ received: true, protocol: globalThis.EditFlowStopGate.PROTOCOL,
+        uiFailureSignal: uiFailureSignal(), practiceCommandActive: PRACTICE_COMMAND_RE.test(latestUserOutputText()),
         ...generationControls(), checkedAt: Date.now() });
       return;
     }
