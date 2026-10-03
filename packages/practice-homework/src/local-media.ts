@@ -301,6 +301,10 @@ export class LocalPracticeMediaMatcherV1 {
   #ffmpegExecutable: Promise<string> | null = null;
 
   constructor(config: LocalPracticeMediaMatcherConfigV1) {
+    if (config.shotSelectionAuthority !== undefined
+      && !["CHATGPT_DIRECT", "ISOLATED_LEGACY_TEST"].includes(config.shotSelectionAuthority)) {
+      throw new TypeError("Unsupported footage selection authority; production requires CHATGPT_DIRECT.");
+    }
     this.config = {
       shotSelectionAuthority: config.shotSelectionAuthority ?? "CHATGPT_DIRECT",
       chatgptSelectionsPath: path.resolve(config.chatgptSelectionsPath ?? path.join(config.artifactDir, "chatgpt-selections.json")),
@@ -373,6 +377,10 @@ export class LocalPracticeMediaMatcherV1 {
   }
 
   async #run(args: readonly string[], onMatch?: (match: PracticeSceneMatchV1) => Promise<void>): Promise<void> {
+    if (this.config.shotSelectionAuthority === "CHATGPT_DIRECT"
+      && ["index", "match"].includes(args[0] ?? "")) {
+      throw new TypeError("Automated raw-footage indexing/ranking is retired from production.");
+    }
     const script = ["metadata", "browse"].includes(args[0] ?? "")
       ? path.join(path.dirname(this.config.scriptPath), "chatgpt-footage-browser.py")
       : args[0] === "match" && path.basename(this.config.scriptPath) === "practice-media-match.py"

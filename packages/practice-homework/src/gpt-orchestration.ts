@@ -22,6 +22,30 @@ import type {
 } from "./contracts.js";
 import { applyCompiledTutorialCausalModelV1 } from "./tutorial-causal-compiler.js";
 import { CLIP_RESEARCH_POLICY_V1 } from "./clip-research.js";
+import { hasVerifiedPracticeSourceIdentityV1 } from "./engine.js";
+
+const isDirectChatgptRawSelectionV1 = (
+  match: PracticeSceneMatchV1,
+  start: readonly PracticeMediaInputV1[],
+): boolean => match.selectionMode === "CHATGPT_DIRECT"
+  && hasVerifiedPracticeSourceIdentityV1(match)
+  && !!match.shotId?.trim() && Number.isFinite(match.confidence)
+  && match.confidence >= 0 && match.confidence <= 1
+  && Number.isFinite(match.sourceStartMs) && match.sourceStartMs >= 0
+  && Number.isFinite(match.sourceEndMs) && match.sourceEndMs > match.sourceStartMs
+  && Number.isFinite(match.playbackRate) && match.playbackRate > 0
+  && start.some((media) => media.role === "START_SOURCE"
+    && media.mediaKind === "VIDEO" && media.mediaId === match.sourceId);
+
+const assertDirectChatgptRawSelectionsV1 = (
+  matches: readonly PracticeSceneMatchV1[],
+  start: readonly PracticeMediaInputV1[],
+): void => {
+  if (matches.some((match) => !isDirectChatgptRawSelectionV1(match, start))
+    || new Set(matches.map((match) => match.shotId)).size !== matches.length) {
+    throw new TypeError("CHATGPT_DIRECT_REQUIRED: Practice accepts only direct ChatGPT selections backed by retained comparisons of provided raw video.");
+  }
+};
 
 interface GptOrchestrationStorePayloadV1 {
   readonly schema: "editflow.gpt-orchestration-store.v1";
@@ -117,16 +141,19 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
           ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
         const researchMessage = applyCurrentResearchPriority(currentMessage);
         const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage, assignment.mode);
-        const directMatches = (assignment.practiceSceneMatches ?? []).filter((match) => match.selectionMode === "CHATGPT_DIRECT");
-        const discardedLegacy = assignment.mode === "PRACTICE" && ["PENDING", "CLAIMED", "RUNNING"].includes(assignment.status)
+        const directMatches = (assignment.practiceSceneMatches ?? []).filter((match) => isDirectChatgptRawSelectionV1(match, assignment.start));
+        const discardedLegacy = assignment.mode === "PRACTICE"
           && directMatches.length !== (assignment.practiceSceneMatches ?? []).length;
+        const needsDirectPreflight = assignment.mode === "PRACTICE"
+          && ["PENDING", "CLAIMED", "RUNNING"].includes(assignment.status)
+          && (discardedLegacy || assignment.preflight === undefined);
         return {
           ...assignment,
-          ...(discardedLegacy ? { practiceSceneMatches: directMatches,
-            preflight: { ...assignment.preflight, stage: "AWAITING_CHATGPT_SHOTS" as const,
+          ...(discardedLegacy ? { practiceSceneMatches: directMatches } : {}),
+          ...(needsDirectPreflight ? { preflight: { ...assignment.preflight, stage: "AWAITING_CHATGPT_SHOTS" as const,
               updatedAt: new Date().toISOString(), requireTransferNovelty: assignment.preflight?.requireTransferNovelty ?? false,
               completedShotIds: [], unresolvedShotIds: assignment.preflight?.totalShotIds ?? [],
-              reasons: ["Legacy raw-shot candidates discarded; ChatGPT must inspect and select the raw shots directly."], evidenceRefs: [] } } : {}),
+              reasons: ["Practice requires direct ChatGPT footage selections and verified preflight before editing."], evidenceRefs: [] } } : {}),
           practiceRole,
           practicePolicy,
           chatMessage: practicePolicy === null
@@ -876,6 +903,7 @@ export class GptOrchestrationStoreV1 {
     if (input.mode === "PRACTICE" && input.finish === null) {
       throw new TypeError("GPT Practice assignment requires a Finish reference.");
     }
+    if (input.mode === "PRACTICE") assertDirectChatgptRawSelectionsV1(input.practiceSceneMatches ?? [], input.start);
     const practiceRole: PracticeRunRoleV1 | null = input.mode === "PRACTICE"
       ? input.practiceRole === "HELD_OUT_CERTIFICATION"
         ? "HELD_OUT_CERTIFICATION"
@@ -946,6 +974,9 @@ export class GptOrchestrationStoreV1 {
   ): Promise<GptOrchestrationAssignmentV1> {
     return await this.#updateAssignment(assignmentId, (assignment) => {
       if (["CANCEL_REQUESTED", "CANCELLED", "COMPLETED", "FAILED"].includes(assignment.status)) return assignment;
+      if (assignment.mode === "PRACTICE" && matches !== undefined) {
+        assertDirectChatgptRawSelectionsV1(matches, assignment.start);
+      }
       return {
         ...assignment,
         preflight: structuredClone(preflight),

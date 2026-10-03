@@ -26,6 +26,8 @@ Practice and Pro Creation use `DURABLE_PRODUCTION_QUEUE_V1` exclusively.
 # Raw footage selection authority
 
 ChatGPT alone browses the provided raw footage and selects exact scene/shot ranges.
+`CHATGPT_DIRECT` is the sole available footage-selection method for Practice chats,
+not a preference that can fall back to another method or be overridden by a request.
 Use the assignment's `footage-selection` contract and BROWSE / NOTE / SELECT actions.
 The production raw-shot candidate generator, visual matcher and ranking are retired.
 Do not run their scripts, consume their cached choices, or present ranked raw shots.

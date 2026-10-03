@@ -14,7 +14,11 @@ async function fixture(t, mode = 'PRACTICE') {
   const store = new ClipResearchStoreV1(path.join(dir, 'ledger'), [dir]);
   const assignment = { assignmentId: 'assignment:1', sessionId: 'practice:1', status: 'RUNNING', mode,
     start: [{ mediaId: 'raw:1', mediaKind: 'VIDEO', uri: 'raw.mp4' }], finish: { mediaId: 'finish:1', uri: 'reference.mp4' },
-    practiceSceneMatches: [{ shotId: 'shot:1', sourceId: 'raw:1' }, { shotId: 'shot:2', sourceId: 'raw:1' }],
+    practiceSceneMatches: ['shot:1', 'shot:2'].map(shotId => ({ shotId, sourceId: 'raw:1',
+      selectionMode: 'CHATGPT_DIRECT', chatgptSelection: { authority: 'CHATGPT_DIRECT', decisionId: 'fixture:' + shotId,
+        rationale: 'Direct visual comparison', reviewedAt: new Date().toISOString(),
+        anchors: [0, 400, 900].map(time => ({ referenceTimeMs: time, sourceTimeMs: 1000 + time,
+          referenceEvidenceId: 'a'.repeat(24), sourceEvidenceId: 'b'.repeat(24), observation: 'Same visible action' })) } })),
     controllerLease: { owner: 'controller', expiresAt: new Date(Date.now() + 120000).toISOString() } };
   const artifact = async (name, data) => { const file = path.join(dir, name + '.json'); await writeFile(file, JSON.stringify(data)); return file; };
   const scan = async (clipId = 'shot:1', extra = {}) => store.record(assignment, { action: 'SCAN', claimedBy: 'controller', clipId,
@@ -111,6 +115,23 @@ test('Pro Creation requires the same clip research and supports a designed targe
   assert.equal(saved.clips['shot:1'].scan.referenceMediaId, null);
 });
 
+test('Practice research cannot admit a machine choice or reuse plans after direct selection changes', async t => {
+  const f = await fixture(t);
+  await f.scan(); await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
+  const saved = await f.plan(), body = f.context(saved);
+  const legacy = structuredClone(f.assignment);
+  legacy.practiceSceneMatches[0].selectionMode = 'VISUAL_BEST';
+  await assert.rejects(f.store.record(legacy, { action: 'SCAN', claimedBy: 'controller', clipId: 'shot:1' }), /direct ChatGPT/);
+  await assert.rejects(f.store.admit(legacy, body), /direct ChatGPT/);
+  const relabeled = structuredClone(f.assignment);
+  delete relabeled.practiceSceneMatches[0].chatgptSelection;
+  await assert.rejects(f.store.record(relabeled, { action: 'SCAN', claimedBy: 'controller', clipId: 'shot:1' }), /direct ChatGPT/);
+  const reselected = structuredClone(f.assignment);
+  reselected.practiceSceneMatches[0].chatgptSelection.decisionId = 'reviewed:replacement';
+  await assert.rejects(f.store.admit(reselected, body), /READY/);
+  await f.store.admit(f.assignment, body);
+});
+
 test('integrated HTTP edits reject before dispatch; restart preserves the same assignment and new instructions', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'clip-research-http-'));
   const token = 'clip-research-http-token-0123456789abcdef';
@@ -184,7 +205,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
     practiceSceneMatches: mode === 'PRACTICE' ? [{ shotId: 'shot:1', sourceId: 'raw:1', sourceStartMs: 1000, sourceEndMs: 2000, confidence: 1, playbackRate: 1, direction: 'FORWARD', selectionMode: 'CHATGPT_DIRECT',
       chatgptSelection: { authority: 'CHATGPT_DIRECT', decisionId: 'test-selection', rationale: 'Fixture direct review', reviewedAt: new Date().toISOString(),
         anchors: [0, 400, 900].map(time => ({ referenceTimeMs: time, sourceTimeMs: 1000 + time, referenceEvidenceId: 'a'.repeat(24), sourceEvidenceId: 'b'.repeat(24), observation: 'Fixture comparison' })) } }] : [],
-    preflight: { stage: 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false, completedShotIds: ['shot:1'], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
+    preflight: { stage: 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false, totalShotIds: ['shot:1'], completedShotIds: ['shot:1'], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
   Object.assign(f.assignment, await store.claim(assignment.assignmentId, 'controller'));
   f.store.directory = path.join(f.dir, 'clip-research');
   await writeFile(f.assignment.start[0].uri, 'raw media');

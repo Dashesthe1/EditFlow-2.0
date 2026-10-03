@@ -175,6 +175,10 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     practiceSceneMatches: [{
       shotId: "shot:1",
       selectionMode: "CHATGPT_DIRECT",
+      chatgptSelection: { authority: "CHATGPT_DIRECT", decisionId: "fixture:direct-selection",
+        rationale: "Directly compared the raw action and reference at three moments.", reviewedAt: new Date().toISOString(),
+        anchors: [0, 400, 900].map((time) => ({ referenceTimeMs: time, sourceTimeMs: 5000 + time,
+          referenceEvidenceId: "a".repeat(24), sourceEvidenceId: "b".repeat(24), observation: "Corresponding subject/action." })) },
       sourceId: "video:1",
       sourcePath: "C:\\Media\\raw.mp4",
       sourceStartMs: 5000,

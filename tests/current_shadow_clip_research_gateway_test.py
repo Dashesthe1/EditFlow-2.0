@@ -72,6 +72,14 @@ class GatewayContractTests(unittest.TestCase):
         self.assertEqual(self.calls[-1][2], payload)
         with self.assertRaises(ValueError):
             gateway.mcp.tools['inspect_or_select_footage']('assignment:1', '[]')
+        for action in ('MATCH', 'RANK', 'AUTO_SELECT', 'ISOLATED_LEGACY_TEST'):
+            with self.assertRaisesRegex(ValueError, 'Only direct ChatGPT'):
+                gateway.mcp.tools['inspect_or_select_footage']('assignment:1', json.dumps({'action': action}))
+
+    def test_chat_surface_advertises_one_footage_selection_method(self):
+        surface = gateway.mcp.tools['get_mcp_surface']()
+        self.assertEqual(surface['availableFootageSelectionMethods'], ['CHATGPT_DIRECT'])
+        self.assertEqual(surface['rawShotCandidateRanking'], 'REMOVED_FROM_PRODUCTION')
 
 
 if __name__ == '__main__':

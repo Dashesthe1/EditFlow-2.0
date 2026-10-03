@@ -100,6 +100,8 @@ export interface PracticePanelServerConfigV1 {
 
 export const CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1 = {
   authority: "CHATGPT_DIRECT",
+  availableSelectionMethods: ["CHATGPT_DIRECT"],
+  onlySelectionMethod: true,
   endpoint: "/v1/product/gpt/assignments/{id}/footage-selection",
   actions: ["BROWSE", "NOTE", "SELECT"],
   instruction: "GET returns reference shot boundaries, supplied raw media and prior GPT decisions, never ranked candidates. BROWSE takes mediaId, timesMs (1–48 explicit timestamps), width (160–1920), claimedBy. Open the returned contactSheetPath and frame paths to inspect the actual pixels. SELECT takes claimedBy, selections and search. Each selection: shotId, sourceId, sourceStartMs, sourceEndMs, direction, confidence, rationale, anchors (at least three comparisons spanning the shot). Anchor: referenceTimeMs, sourceTimeMs, referenceEvidenceId, sourceEvidenceId, observation. search: internetStatus CONSULTED with sources [{url,query,finding}], or UNAVAILABLE with reason, plus strategies. Use internet scene/dialogue/script/chapter clues first, chronological overview sheets, time-range narrowing, surrounding context, dense boundary/gesture comparisons and exact frames. Internet clues are hypotheses; directly inspected provided raw pixels decide every shot. Selection and working-clip preparation never mutate AE. Research effects separately using Tutorial Drive, Adobe, then web. Resume the same assignment; no machine-ranking fallback.",
@@ -1983,12 +1985,19 @@ export class PracticePanelServerV1 {
   async assertPracticeReconstructionReady(): Promise<void> {
     if (this.#activeRunId === null) return;
     const run = this.#runs.get(this.#activeRunId);
-    if (run === undefined) return;
+    if (run === undefined) throw new HttpError(409, "Active assignment is unavailable.");
     const assignment = await this.#gptStore.getAssignment(run.assignmentId);
-    if (assignment?.mode === "PRACTICE" && assignment.preflight !== undefined
-      && (assignment.preflight.stage !== "READY" || !assignment.practiceSceneMatches?.length
-        || assignment.practiceSceneMatches.some((match) => match.selectionMode !== "CHATGPT_DIRECT"
-          || !hasVerifiedPracticeSourceIdentityV1(match)))) {
+    if (!assignment) throw new HttpError(409, "Active assignment is unavailable.");
+    const matches = assignment.practiceSceneMatches ?? [];
+    const shotIds = assignment.preflight?.totalShotIds ?? [];
+    if (assignment.mode === "PRACTICE"
+      && (assignment.preflight?.stage !== "READY" || !shotIds.length
+        || !matches.length || new Set(matches.map((match) => match.shotId)).size !== matches.length
+        || validatePracticeSceneMatchesV1(shotIds, matches, assignment.practicePolicy?.exactSceneConfidence ?? .95).length > 0
+        || matches.some((match) => match.selectionMode !== "CHATGPT_DIRECT"
+          || !hasVerifiedPracticeSourceIdentityV1(match)
+          || !assignment.start.some((media) => media.mediaKind === "VIDEO"
+            && media.role === "START_SOURCE" && media.mediaId === match.sourceId)))) {
       throw new HttpError(409, "Practice reconstruction is locked until preflight is READY; resume the retained assignment.");
     }
   }

@@ -207,6 +207,9 @@ def build_server():
             "service": "EditFlow Current Shadow Gateway",
             "primarySystemOnly": True,
             "primaryExecution": "DURABLE_PRODUCTION_QUEUE_V1",
+            "footageSelectionAuthority": "CHATGPT_DIRECT",
+            "availableFootageSelectionMethods": ["CHATGPT_DIRECT"],
+            "rawShotCandidateRanking": "REMOVED_FROM_PRODUCTION",
             "tools": [
                 "get_edit_state", "get_editflow2_state", "get_after_effects_state",
                 "probe_after_effects", "get_production_status", "list_adaptive_capabilities",
@@ -338,6 +341,8 @@ def build_server():
         payload = json.loads(request_json)
         if not isinstance(payload, dict):
             raise ValueError("Footage request must be a JSON object with the current claimedBy.")
+        if payload.get("action") not in ("BROWSE", "NOTE", "SELECT"):
+            raise ValueError("Only direct ChatGPT footage BROWSE, NOTE and SELECT actions are available; automated matching/ranking is retired.")
         safe_id = urllib.parse.quote(assignment_id, safe="")
         return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/footage-selection", payload)
 

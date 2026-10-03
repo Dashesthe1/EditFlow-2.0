@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { hasVerifiedPracticeSourceIdentityV1 } from "./engine.js";
+import type { PracticeSceneMatchV1 } from "./contracts.js";
 
 type Packet = Record<string, any>;
 export const CLIP_RESEARCH_POLICY_V1 = [
@@ -54,7 +56,17 @@ const matchKey = (assignment: Packet, clipId: string): string => {
   const match = (assignment.practiceSceneMatches ?? []).find((item: Packet) => item.shotId === clipId);
   return hash(match ? { sourceId: match.sourceId, sourcePath: match.sourcePath,
     sourceStartMs: match.sourceStartMs, sourceEndMs: match.sourceEndMs, direction: match.direction,
-    trajectory: match.trajectory, workingMedia: match.workingMedia?.sourcePath } : null);
+    trajectory: match.trajectory, workingMedia: match.workingMedia?.sourcePath,
+    selectionMode: match.selectionMode, chatgptSelection: match.chatgptSelection } : null);
+};
+
+const requireDirectPracticeShot = (assignment: Packet, clipId: string): void => {
+  if (assignment.mode !== "PRACTICE") return;
+  const match = (assignment.practiceSceneMatches ?? []).find((item: Packet) => item.shotId === clipId);
+  if (!match || match.selectionMode !== "CHATGPT_DIRECT"
+    || !hasVerifiedPracticeSourceIdentityV1(match as PracticeSceneMatchV1)) {
+    fail("clipId must be a retained direct ChatGPT Practice selection; inspect and select its raw footage first.");
+  }
 };
 const ranks: Record<string, number> = { TUTORIAL: 0, ADOBE: 1, WEB: 2 };
 
@@ -157,9 +169,7 @@ export class ClipResearchStoreV1 {
       return fail("Claim/heartbeat the existing assignment using your unique controller before recording research.");
     }
     const clipId = str(input.clipId, "clipId");
-    if (assignment.mode === "PRACTICE" && !(assignment.practiceSceneMatches ?? []).some((m: Packet) => m.shotId === clipId)) {
-      return fail("clipId must be a retained Practice shot; finish source matching first.");
-    }
+    requireDirectPracticeShot(assignment, clipId);
     return await this.mutate(assignment, async (saved) => {
       if (!saved.current) {
         saved = { ...saved, assignmentHash: assignmentHash(assignment), clips: {}, current: true,
@@ -319,6 +329,7 @@ export class ClipResearchStoreV1 {
     const saved = await this.snapshot(assignment);
     if (!saved.current) return fail("Media/scene matches changed; rescan the affected clips.");
     const ids = list(context.plans.map((ref: Packet) => ref.clipId), "affected clipIds");
+    ids.forEach((id) => requireDirectPracticeShot(assignment, id));
     const declaredTargets = new Set<string>();
     const collectTargets = (value: unknown): void => {
       if (!value || typeof value !== "object") return;

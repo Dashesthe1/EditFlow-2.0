@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { LocalPracticeMediaMatcherV1, GptOrchestrationStoreV1, hasVerifiedPracticeSourceIdentityV1 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
+import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
+import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "chatgpt-footage-"));
@@ -111,13 +113,96 @@ test("switching an active legacy assignment discards candidate authority and kee
   const f = await fixture(t), store = new GptOrchestrationStoreV1(path.join(f.root, "gpt.json"));
   const assignment = await store.createAssignment({ sessionId: "practice:retained", mode: "PRACTICE", editTypeId: "test",
     artifactDir: f.root, finish: f.finish, start: [f.raw], knowledge: null,
-    practiceSceneMatches: [{ shotId: "shot:1", sourceId: "raw", sourceStartMs: 2000, sourceEndMs: 3000,
-      playbackRate: 1, direction: "FORWARD", confidence: .99, selectionMode: "VISUAL_BEST", evidenceRefs: [] }],
     preflight: { stage: "READY", updatedAt: new Date().toISOString(), requireTransferNovelty: false,
       totalShotIds: ["shot:1"], completedShotIds: ["shot:1"], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
+  // Seed a pre-upgrade record directly; new writes must reject this old format.
+  const persisted = JSON.parse(await readFile(store.filePath, "utf8"));
+  persisted.assignments[0].practiceSceneMatches = [{ shotId: "shot:1", sourceId: "raw", sourceStartMs: 2000, sourceEndMs: 3000,
+      playbackRate: 1, direction: "FORWARD", confidence: .99, selectionMode: "VISUAL_BEST", evidenceRefs: [] }];
+  await writeFile(store.filePath, JSON.stringify(persisted));
   const resumed = await store.getAssignment(assignment.assignmentId);
   assert.equal(resumed.sessionId, assignment.sessionId); assert.deepEqual(resumed.practiceSceneMatches, []);
   assert.equal(resumed.preflight.stage, "AWAITING_CHATGPT_SHOTS");
   assert.match(resumed.chatMessage, /CHATGPT DIRECT RAW FOOTAGE SELECTION V1/);
   assert.doesNotMatch(resumed.chatMessage, /A machine scene score narrows candidates/);
+});
+
+test("Practice writes reject every alternate selection method and direct labels without comparisons", async (t) => {
+  const f = await fixture(t), store = new GptOrchestrationStoreV1(path.join(f.root, "gpt.json"));
+  const create = { sessionId: "practice:only-direct", mode: "PRACTICE", editTypeId: "test",
+    artifactDir: f.root, finish: f.finish, start: [f.raw], knowledge: null };
+  const direct = (await f.matcher.selectFootage(f.input))[0];
+  const assignment = await store.createAssignment({ ...create, practiceSceneMatches: [direct] });
+  const preflight = { stage: "WORKING_MEDIA", updatedAt: new Date().toISOString(), requireTransferNovelty: false,
+    completedShotIds: [], unresolvedShotIds: ["shot:1"], reasons: [], evidenceRefs: [] };
+  for (const mode of ["VISUAL_BEST", "VISUAL_TEMPORAL", "VISUAL_GEOMETRIC", "AUTOMATIC", "ISOLATED_LEGACY_TEST", undefined]) {
+    const alternate = { ...direct, selectionMode: mode };
+    await assert.rejects(store.createAssignment({ ...create, sessionId: "alternate:" + mode,
+      practiceSceneMatches: [alternate] }), /CHATGPT_DIRECT_REQUIRED/);
+    await assert.rejects(store.updatePreflight(assignment.assignmentId, preflight, [alternate]), /CHATGPT_DIRECT_REQUIRED/);
+  }
+  await assert.rejects(store.updatePreflight(assignment.assignmentId, preflight,
+    [{ ...direct, chatgptSelection: undefined }]), /CHATGPT_DIRECT_REQUIRED/);
+  await assert.rejects(store.updatePreflight(assignment.assignmentId, preflight,
+    [{ ...direct, sourceId: f.finish.mediaId }]), /CHATGPT_DIRECT_REQUIRED/);
+  await assert.rejects(store.updatePreflight(assignment.assignmentId, preflight, [direct, direct]), /CHATGPT_DIRECT_REQUIRED/);
+  assert.deepEqual((await store.getAssignment(assignment.assignmentId)).practiceSceneMatches, [direct]);
+  assert.throws(() => new LocalPracticeMediaMatcherV1({ ...f.config, shotSelectionAuthority: "AUTOMATIC" }), /Unsupported/);
+});
+
+test("terminal assignment reads expose no legacy choices while preserving history on disk", async (t) => {
+  const f = await fixture(t), store = new GptOrchestrationStoreV1(path.join(f.root, "gpt.json"));
+  const assignment = await store.createAssignment({ sessionId: "practice:completed-history", mode: "PRACTICE", editTypeId: "test",
+    artifactDir: f.root, finish: f.finish, start: [f.raw], knowledge: null });
+  const persisted = JSON.parse(await readFile(store.filePath, "utf8"));
+  const legacy = { ...f.input.selections[0], selectionMode: "VISUAL_BEST", evidenceRefs: [], playbackRate: 1 };
+  persisted.assignments[0] = { ...persisted.assignments[0], status: "COMPLETED", finalRenderRef: "retained:final",
+    practiceSceneMatches: [legacy] };
+  await writeFile(store.filePath, JSON.stringify(persisted));
+  const read = await store.getAssignment(assignment.assignmentId);
+  assert.deepEqual(read.practiceSceneMatches, []);
+  assert.equal(read.status, "COMPLETED"); assert.equal(read.finalRenderRef, "retained:final");
+  assert.deepEqual(JSON.parse(await readFile(store.filePath, "utf8")).assignments[0].practiceSceneMatches, [legacy]);
+});
+
+test("Practice chat jobs cannot bypass direct selection through missing checkpoints or incomplete shot coverage", async (t) => {
+  const f = await fixture(t);
+  const token = "exclusive-footage-selection-test-0123456789abcdef";
+  const broker = new LoopbackCepBroker({ port: 0, token }); await broker.start();
+  const store = new GptOrchestrationStoreV1(path.join(f.root, "gpt.json"));
+  const direct = (await f.matcher.selectFootage(f.input))[0];
+  const assignment = await store.createAssignment({ sessionId: "practice:chat-gate", mode: "PRACTICE", editTypeId: "test",
+    artifactDir: f.root, finish: f.finish, start: [f.raw], knowledge: null });
+  await store.claim(assignment.assignmentId, "controller");
+  const service = new PracticePanelServerV1({ port: 0, token, broker, productionSupervision: false,
+    repositoryRoot: process.cwd(), artifactDir: f.root, learningMemoryFilePath: path.join(f.root, "memory.json"),
+    editTypeRegistryFilePath: path.join(f.root, "types.json"), gptOrchestrationFilePath: store.filePath });
+  await service.start();
+  t.after(async () => { await service.stop(); await broker.stop(); });
+  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  const headers = { "Content-Type": "application/json", "X-EditFlow-Token": token };
+  const endpoint = `http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production-jobs`;
+  const enqueue = async () => {
+    const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ kind: "AE_BATCH", payload: {
+      intents: [], researchContext: { assignmentId: assignment.assignmentId, claimedBy: "controller", plans: [] } } }) });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /reconstruction is locked/);
+    assert.deepEqual((await (await fetch(endpoint, { headers })).json()).jobs, []);
+  };
+  await enqueue();
+  await service.stop(); // Drain the background checkpoint before injecting retained states.
+  const persisted = JSON.parse(await readFile(store.filePath, "utf8"));
+  const checkpoint = { stage: "READY", updatedAt: new Date().toISOString(), requireTransferNovelty: false,
+    totalShotIds: ["shot:1"], completedShotIds: [], unresolvedShotIds: [], reasons: [], evidenceRefs: [] };
+  const writeState = async (matches, shots = ["shot:1"]) => {
+    persisted.assignments[0] = { ...persisted.assignments[0], practiceSceneMatches: matches,
+      preflight: { ...checkpoint, totalShotIds: shots } };
+    await writeFile(store.filePath, JSON.stringify(persisted));
+  };
+  await writeState([]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  await writeState([direct], ["shot:1", "shot:2"]);
+  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  await writeState([direct, direct]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  await writeState([{ ...direct, confidence: .7 }]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  await writeState([direct]); await service.assertPracticeReconstructionReady();
 });
