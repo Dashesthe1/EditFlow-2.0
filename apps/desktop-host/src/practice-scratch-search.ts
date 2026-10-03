@@ -1,11 +1,6 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { PracticeScratchCandidateRigV1 } from "../../../packages/practice-homework/src/scratch-candidate-rig.js";
-import { classifyEffectFamilyV1, compareSemanticVisualFidelityV1, decomposeUnknownEffectV1, deriveEffectAnatomyV1 } from "../../../packages/visual-effects-intelligence/src/index.js";
 import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
 import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
 
-const execFileAsync = promisify(execFile);
 const numeric = (value: unknown): boolean => typeof value === "number" && Number.isFinite(value)
   || Array.isArray(value) && value.length > 0 && value.length <= 4 && value.every((item) => typeof item === "number" && Number.isFinite(item));
 
@@ -51,44 +46,18 @@ export const runPracticeScratchSearchV1 = async (input: {
 }) => {
   const body = input.body;
   validatePracticeScratchSearchV1(body);
-  const reference = await input.media.analyzeVideo({ videoPath: input.referencePath,
-    sourceId: input.sessionId + ":scratch-reference:" + body.startMs + ":" + body.endMs,
-    sourceKind: "REFERENCE", startMs: body.startMs, endMs: body.endMs });
-  const family = classifyEffectFamilyV1(reference);
-  const dna = family === "UNKNOWN" ? decomposeUnknownEffectV1(reference).dna : deriveEffectAnatomyV1(reference, family).dna;
-  const state = await input.renderDriver.client.observe(input.renderDriver.projectId);
-  const comp = state.project.items.find((item) => item.stableId === body.compStableId)?.composition;
-  if (!comp) throw new TypeError("Scratch source comp is missing.");
-  const fullDimensions = { width: comp.width, height: comp.height };
-  const paths: Record<string, string> = {};
-  // One AE writer, including scratch renders. Numeric candidates never edit the
-  // canonical comp, and machine scores never satisfy a production proof gate.
-  const rig = new PracticeScratchCandidateRigV1<Record<string, any>>(1);
-  const result = await rig.search({
-    candidates: body.candidates.map((candidate: Record<string, any>) => ({ candidateId: candidate.candidateId, value: candidate })),
-    evaluate: async (candidate, stage) => {
-      input.signal.throwIfAborted();
-      const rendered = await input.renderDriver.renderSearchCandidate({ sessionId: input.sessionId,
-        compStableId: body.compStableId, candidateId: candidate.candidateId + ":" + stage.id,
-        patches: candidate.value.patches, startMs: body.startMs, endMs: body.endMs, resolutionScale: stage.resolutionScale });
-      const probe = input.ffprobePath
-        ? await execFileAsync(input.ffprobePath, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", rendered.renderPath], { timeout: 15_000 })
-        : await execFileAsync(input.media.python.executable, [...input.media.python.prefixArgs, "-c",
-          "import cv2,json,sys; c=cv2.VideoCapture(sys.argv[1]); print(json.dumps({'streams':[{'width':c.get(cv2.CAP_PROP_FRAME_WIDTH),'height':c.get(cv2.CAP_PROP_FRAME_HEIGHT)}]})); c.release()",
-          rendered.renderPath], { timeout: 15_000 });
-      const dimensions = JSON.parse(probe.stdout).streams?.[0];
-      if (!dimensions?.width || !dimensions?.height) throw new TypeError("Scratch render dimensions could not be verified.");
-      if (Math.abs(dimensions.width - fullDimensions.width * stage.resolutionScale) > 1
-        || Math.abs(dimensions.height - fullDimensions.height * stage.resolutionScale) > 1) throw new TypeError("Scratch renderer did not honor the progressive-resolution funnel.");
-      const render = await input.media.analyzeVideo({ videoPath: rendered.renderPath,
-        sourceId: candidate.candidateId + ":" + stage.id + ":" + rendered.renderPath,
-        sourceKind: "RENDER", startMs: 0, endMs: body.endMs - body.startMs });
-      const comparison = compareSemanticVisualFidelityV1({ reference, render, dna, alignment: "SEMANTIC" });
-      paths[stage.id + ":" + candidate.candidateId] = rendered.renderPath;
-      return { score: comparison.weightedFidelity, definingCoverage: comparison.definingCoverage,
-        evidenceRefs: [...rendered.evidenceRefs, ...render.evidenceRefs, "search-only:" + render.contentKey] };
-    },
-  });
-  return { ...result, authority: "NON_AUTHORITATIVE_SEARCH_ONLY", reviewRequired: true, renderPaths: paths,
-    referencePath: input.referencePath, window: [body.startMs, body.endMs] };
+  // Every candidate and resolution is supplied by GPT. No score, family label,
+  // automated pruning, winner, or canonical mutation is produced here.
+  const candidates = [];
+  for (const candidate of body.candidates) {
+    input.signal.throwIfAborted();
+    const scale = candidate.resolutionScale ?? 1;
+    if (!Number.isFinite(scale) || scale <= 0 || scale > 1) throw new TypeError("Invalid explicitly requested render resolution.");
+    const render = await input.renderDriver.renderSearchCandidate({ sessionId: input.sessionId,
+      compStableId: body.compStableId, candidateId: candidate.candidateId,
+      patches: candidate.patches, startMs: body.startMs, endMs: body.endMs, resolutionScale: scale });
+    candidates.push({ candidateId: candidate.candidateId, renderPath: render.renderPath, evidenceRefs: render.evidenceRefs ?? [], resolutionScale: scale });
+  }
+  return { schema: "editflow.chatgpt-candidate-review.v1", authority: "CHATGPT_DIRECT", candidates,
+    winner: null, reviewRequired: true, instruction: "Inspect every requested render and choose the result yourself. No automatic ranking, elimination or parameter correction. Submit a separate explicit canonical plan." };
 };

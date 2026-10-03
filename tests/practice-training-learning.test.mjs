@@ -405,7 +405,7 @@ test("GPT Practice cannot promote itself to mastery without a machine proof reco
   );
 });
 
-test("Pro Creation stays blocked until Practice knowledge is transfer-verified", () => {
+test("Pro Creation lets GPT judge retained preset knowledge without machine transfer gating", () => {
   const registry = new EditTypeRegistryV1();
   registry.create({
     editTypeId: "spider-man-high-potency",
@@ -432,9 +432,9 @@ test("Pro Creation stays blocked until Practice knowledge is transfer-verified",
     ],
   };
 
-  assert.equal(engine.prepare(request).status, "BLOCKED");
+  assert.equal(engine.prepare(request).status, "READY");
   registry.allocateEpisode(episode, "spider-man-high-potency");
-  assert.equal(engine.prepare(request).status, "BLOCKED");
+  assert.equal(engine.prepare(request).status, "READY");
 
   const firstSession = "practice:verified:001";
   registry.beginGptLearningSession("spider-man-high-potency", firstSession, "PRACTICE");
@@ -450,7 +450,7 @@ test("Pro Creation stays blocked until Practice knowledge is transfer-verified",
       "practice-source-set:one",
     ),
   });
-  assert.equal(engine.prepare(request).status, "BLOCKED");
+  assert.equal(engine.prepare(request).status, "READY");
 
   const transferSession = "practice:verified:002";
   registry.beginGptLearningSession("spider-man-high-potency", transferSession, "PRACTICE");
@@ -469,13 +469,13 @@ test("Pro Creation stays blocked until Practice knowledge is transfer-verified",
   const ready = engine.prepare(request);
   assert.equal(ready.status, "READY");
   assert.equal(ready.knowledge?.transferVerifiedPracticeSessionCount, 1);
-  assert.equal(ready.knowledge?.knowledgeScope, "TRANSFER_VERIFIED_ONLY");
+  assert.equal(ready.knowledge?.knowledgeScope, "ALL_RETAINED");
   assert.equal(ready.knowledge?.maturityStage, "TRANSFER_VERIFIED");
-  assert.deepEqual(ready.knowledge?.successfulConstructionIds, []);
+  assert.deepEqual(ready.knowledge?.successfulConstructionIds, ["graph:passed"]);
   assert.equal(
     ready.knowledge?.behaviorEvidence.some((item) =>
       item.sessionId === episode.sessionId),
-    false,
+    true,
   );
   assert.equal(ready.start.some((item) => item.mediaKind === "AUDIO"), true);
 });
@@ -3104,10 +3104,8 @@ test("Practice Current-AE training runtime persists Edit Type allocation across 
       role: "START_SOURCE",
     }],
   });
-  assert.equal(proCreation.status, "BLOCKED");
-  assert.ok(
-    proCreation.reasons.some((reason) => /no transfer-verified GPT Practice knowledge/.test(reason)),
-  );
+  assert.equal(proCreation.status, "READY");
+  assert.deepEqual(proCreation.reasons, []);
   assert.equal(
     proCreation.knowledge?.totalSessionCount,
     1,
@@ -3164,10 +3162,10 @@ test("GPT Practice assignment persists the full learning trajectory under its Ed
   });
   assert.equal(assignment.status, "PENDING");
   assert.match(assignment.chatMessage, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
-  assert.match(assignment.chatMessage, /creative judgment owner, continuity owner, and escalation reasoner inside the primary production system/);
-  assert.match(assignment.chatMessage, /M6 Visual Effects Intelligence is the integrated reference-fidelity engine/i);
+  assert.match(assignment.chatMessage, /ChatGPT owns creative judgment/);
+  assert.match(assignment.chatMessage, /ChatGPT directly decides/);
   assert.doesNotMatch(assignment.chatMessage, /original M6 Visual Effects Intelligence loop is the governing/i);
-  assert.match(assignment.chatMessage, /all editorial cutting, retiming, remodeling/i);
+  assert.match(assignment.chatMessage, /All cutting, retiming, effects, transitions and compositing/);
   assert.match(assignment.chatMessage, /OBSERVATION -> INTERPRETATION -> HYPOTHESIS/);
   assert.match(assignment.chatMessage, /C:\\Media\\finish\.mp4/);
 

@@ -9,9 +9,11 @@ import { AE_ADAPTER_BUILD_V11 } from "../../../packages/adapters/ae-cep/src/prot
 import { ContinuousFastLoop, type ContinuousFastLoopOptions } from "../../../packages/continuous-fast-loop/src/index.js";
 import { EditorBrainRuntimeV0, EditorBrainV0 } from "../../../packages/editor-brain/src/index.js";
 
-export const DEFAULT_AE_EXECUTION_MODE = "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0" as const;
+export const DEFAULT_AE_EXECUTION_MODE = "CHATGPT_DIRECT_EXPLICIT_PLAN_EXECUTION_V1" as const;
 
 export interface DesktopAeSessionV11Options {
+  /** Isolated historical acceptance labs only; never enabled by the production runtime. */
+  readonly isolatedLegacyBrain?: boolean;
   readonly runner?: ContinuousFastLoopOptions;
 }
 
@@ -21,8 +23,8 @@ export interface DesktopAeSessionV11 {
   readonly registry: CapabilityRegistry;
   readonly executionMode: typeof DEFAULT_AE_EXECUTION_MODE;
   readonly runner: ContinuousFastLoop;
-  readonly editorBrain: EditorBrainV0;
-  readonly editorRunner: EditorBrainRuntimeV0;
+  readonly editorBrain: EditorBrainV0 | null;
+  readonly editorRunner: EditorBrainRuntimeV0 | null;
 }
 
 export const createDesktopAeSessionV11 = async (
@@ -39,8 +41,8 @@ export const createDesktopAeSessionV11 = async (
     capabilities: applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11),
   });
   const runner = new ContinuousFastLoop(adapter, state, options.runner);
-  const editorBrain = new EditorBrainV0();
-  const editorRunner = new EditorBrainRuntimeV0(editorBrain, runner);
+  const editorBrain = options.isolatedLegacyBrain === true ? new EditorBrainV0() : null;
+  const editorRunner = editorBrain ? new EditorBrainRuntimeV0(editorBrain, runner) : null;
   return {
     adapterBuild: AE_ADAPTER_BUILD_V11,
     state,

@@ -1069,6 +1069,8 @@ async def apply_stabilization(eyes, hands, qwen, output: Path, proof: dict):
 async def run(request: dict, output: Path, analysis_window_s: float = 4.0) -> dict:
     global LAST_PROOF
     request = validate_request(request)
+    from editflow_editorial_authority import require_isolated_legacy_driver
+    require_isolated_legacy_driver()
     qwen = LocalQwenVLClient()
     health = qwen.health()
     proof = {

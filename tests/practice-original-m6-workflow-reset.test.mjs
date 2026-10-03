@@ -126,8 +126,8 @@ test("Practice orchestration brief makes the primary production system and cross
   assert.match(message, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
   assert.match(message, /PRACTICE CONTINUITY IS MANDATORY/);
   assert.match(message, /new ChatGPT controller must resume the existing PENDING\/RUNNING assignment/i);
-  assert.match(message, /PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
-  assert.match(message, /M6 Visual Effects Intelligence is the integrated reference-fidelity engine/i);
+  assert.match(message, /CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/);
+  assert.match(message, /ChatGPT directly decides/);
   assert.doesNotMatch(message, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
   assert.doesNotMatch(message, /original M6 Visual Effects Intelligence loop is the governing/i);
 });
@@ -178,9 +178,9 @@ test("persisted legacy Practice briefs migrate to the primary production system 
   assert.doesNotMatch(migrated.chatMessage, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
   assert.doesNotMatch(migrated.chatMessage, /original M6 Visual Effects Intelligence loop is the governing/i);
   assert.match(migrated.chatMessage, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
-  assert.match(migrated.chatMessage, /PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
-  assert.match(migrated.chatMessage, /creative judgment owner, continuity owner, and escalation reasoner inside the primary production system/);
-  assert.match(migrated.chatMessage, /integrated Practice reference-fidelity engine/i);
+  assert.match(migrated.chatMessage, /CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/);
+  assert.match(migrated.chatMessage, /ChatGPT owns creative judgment/);
+  assert.match(migrated.chatMessage, /ChatGPT directly decides/);
 });
 
 test("a new ChatGPT controller can reclaim the same RUNNING Practice assignment", async (t) => {

@@ -66,13 +66,11 @@ test("Practice orchestration builds whole edit before certification without weak
     artifactDir: "C:\\EditFlow\\practice",
     knowledge: null,
   });
-  assert.match(message, /ACCELERATED COVERAGE-FIRST SCHEDULE/);
-  assert.match(message, /build a playable whole-edit reconstruction across every phase before final certification/i);
-  assert.match(message, /32 coarse 1\/8-resolution/);
-  assert.match(message, /full-resolution proof only for the strongest 2/);
-  assert.match(message, /Machine scoring is search\/ranking evidence only and can never satisfy a Practice fidelity pass/);
-  assert.match(message, /Every phase still needs at least 2 consecutive passes before successful Practice completion/);
-  assert.match(message, /exact final candidate needs at least 2 consecutive whole-edit passes/);
+  assert.match(message, /CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/);
+  assert.match(message, /build whole-edit coverage before polishing/i);
+  assert.match(message, /without scoring, pruning or selecting a winner/);
+  assert.match(message, /direct review of the exact final render against Finish/);
+  assert.doesNotMatch(message, /32 coarse|strongest 2|two consecutive whole-edit passes/);
   assert.doesNotMatch(message, /before emitting work for the next chronological phase/);
 });
 
@@ -88,8 +86,8 @@ test("Pro Creation uses the same primary production system without Practice-only
   });
   assert.match(message, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
   assert.match(message, /PRO CREATION CONTINUITY IS MANDATORY/);
-  assert.match(message, /durable assignment -> coordinator\/job queue -> single AE writer -> warm CEP batched runtime/i);
-  assert.match(message, /M6\/Visual Effects Intelligence is available as an integrated synthesis\/correction capability/i);
+  assert.match(message, /durable GPT assignment -> production coordinator\/job queue -> single AE writer/);
+  assert.match(message, /ChatGPT directly decides/);
   assert.doesNotMatch(message, /PRACTICE CONTINUITY IS MANDATORY/);
   assert.doesNotMatch(message, /ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW/);
   assert.doesNotMatch(message, /original M6 Visual Effects Intelligence loop is the governing/i);
@@ -141,9 +139,9 @@ test("retained running Practice assignments adopt current acceleration policy wi
   const resumed = await store.getAssignment(assignment.assignmentId);
   assert.equal(resumed.status, "RUNNING");
   assert.equal(resumed.claimedBy, "existing-controller");
-  assert.match(resumed.chatMessage, /EDIT_PRODUCTION_QUEUE_POLICY_V4/);
-  assert.match(resumed.chatMessage, /superseded as a construction-order rule/);
-  assert.match(resumed.chatMessage, /two consecutive whole-edit passes/);
+  assert.match(resumed.chatMessage, /CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/);
+  assert.match(resumed.chatMessage, /preserve correct retained work/);
+  assert.match(resumed.chatMessage, /direct review of the exact final render/);
   assert.equal(await store.refreshActiveProductionInstructions(), 0);
 });
 
@@ -160,7 +158,7 @@ for (const mode of ["PRACTICE", "PRO_CREATION"]) test(`${mode} removes old execu
   assert.equal(await store.refreshActiveProductionInstructions(),1);
   const after=await store.getAssignment(assignment.assignmentId);
   for(const key of ["assignmentId","sessionId","mode","status","controllerLease","start"]) assert.deepEqual(after[key],before[key]);
-  assert.match(after.chatMessage,/EDIT_PRODUCTION_QUEUE_POLICY_V4/);
+  assert.match(after.chatMessage,/CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/);
   assert.match(after.chatMessage,/Retained lesson: preserve the source/);
   assert.doesNotMatch(after.chatMessage,/PRACTICE_ACCELERATION_CONTINUITY_V3|Legacy endpoints may be used/);
   assert.match(after.chatMessage,/Direct mutation endpoints and legacy aliases are removed/);

@@ -105,10 +105,10 @@ test("legacy GPT assignments inherit the current Tutorial Drive-first research p
     minimumAudioConfidence: 0.90,
   });
   assert.match(migrated.chatMessage, /Adobe Effect Tutorials/);
-  assert.match(migrated.chatMessage, /GPT completion is not Practice mastery/);
-  assert.match(migrated.chatMessage, /weighted\/effect\/transition fidelity >= 0\.950/);
+  assert.match(migrated.chatMessage, /direct review of the exact final render/);
+  assert.match(migrated.chatMessage, /Machine similarity\/audio\/effect scores cannot decide acceptance/);
   assert.match(migrated.chatMessage, /Second priority is official Adobe documentation\/resources/);
-  assert.match(migrated.chatMessage, /tutorial causal compiler/);
+  assert.match(migrated.chatMessage, /Machine tutorial compilation is retired/);
   assert.doesNotMatch(migrated.chatMessage, /online research is required before accepting a fallback/);
 });
 
@@ -204,31 +204,31 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     knowledge: registry.knowledge("microwave-edit"),
   });
 
-  assert.match(assignment.chatMessage, /CAPABILITY_GAP -> RESEARCH/);
+  assert.match(assignment.chatMessage, /Capability gaps:/);
   assert.match(assignment.chatMessage, /Tutorial Drive is the mandatory first research source/);
   assert.match(assignment.chatMessage, /Adobe Effect Tutorials/);
   assert.match(assignment.chatMessage, /Adobe Effect Music \+ Beat Tutorials/);
   assert.match(assignment.chatMessage, /Second priority is official Adobe documentation\/resources/);
   assert.match(assignment.chatMessage, /broader web\/internet research is last/);
-  assert.match(assignment.chatMessage, /TEMPORAL_REWIND \/ REVERSE_PLAYBACK/);
-  assert.match(assignment.chatMessage, /implement\/prove the missing EditFlow route/);
-  assert.match(assignment.chatMessage, /DIRECT_FINISH_OBSERVATION_REQUIRED/);
-  assert.match(assignment.chatMessage, /BUILD_EDIT_BLUEPRINT_FIRST/);
-  assert.match(assignment.chatMessage, /EFFECT_TRANSITION_PRIORITY/);
-  assert.match(assignment.chatMessage, /RAW_SOURCE_IS_SEARCH_ONLY/);
-  assert.match(assignment.chatMessage, /VISUAL_SOURCE_CONFIRMATION_REQUIRED/);
-  assert.match(assignment.chatMessage, /LOCK_EDITORIAL_SPINE/);
+  assert.match(assignment.chatMessage, /reverse\/rewind behavior/);
+  assert.match(assignment.chatMessage, /Research unfamiliar behavior/);
+  assert.match(assignment.chatMessage, /Directly inspect all reference shots/);
+  assert.match(assignment.chatMessage, /Record your blueprint before construction/);
+  assert.match(assignment.chatMessage, /effects, transitions and compositing/);
+  assert.match(assignment.chatMessage, /Full raw movies are search-only/);
+  assert.match(assignment.chatMessage, /actual issued inspection evidence IDs/);
+  assert.match(assignment.chatMessage, /preserve correct retained work/);
   assert.match(assignment.chatMessage, /PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY/);
-  assert.match(assignment.chatMessage, /COMPLETE_EDIT_THEN_PATCH/);
-  assert.match(assignment.chatMessage, /CLEAN_AE_PROJECT/);
-  assert.match(assignment.chatMessage, /professional reference and rendered pixels are the Practice visual authority/i);
+  assert.match(assignment.chatMessage, /build whole-edit coverage before polishing deficient regions/);
+  assert.match(assignment.chatMessage, /keep AE open/);
+  assert.match(assignment.chatMessage, /direct review of the exact final render against Finish/);
   assert.equal(
     assignment.practiceSceneMatches?.[0]?.workingMedia?.sourcePath,
     "C:\\PracticeCache\\shot-1.mp4",
   );
-  assert.match(assignment.chatMessage, /ChatGPT-selected raw shots \/ AE working clips/);
+  assert.match(assignment.chatMessage, /Retained GPT source choices:/);
   assert.match(assignment.chatMessage, /CHATGPT DIRECT RAW FOOTAGE SELECTION V1/);
-  assert.match(assignment.chatMessage, /never reuse legacy ranked candidates/);
+  assert.match(assignment.chatMessage, /never propose\/rank shots/);
   await store.claim(assignment.assignmentId, "chatgpt-test");
   const gapOpen = {
     gapId: "gap:temporal-rewind",
@@ -591,8 +591,8 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     start,
   });
   assert.equal(pro.status, "READY");
-  assert.equal(pro.knowledge.knowledgeScope, "TRANSFER_VERIFIED_ONLY");
-  assert.equal(pro.knowledge.gptLearning.learnedSkills.length, 0);
+  assert.equal(pro.knowledge.knowledgeScope, "ALL_RETAINED");
+  assert.equal(pro.knowledge.gptLearning.learnedSkills.length, 1);
 
   const proMessage = buildGptOrchestrationChatMessageV1({
     sessionId: "pro:capability-discovery:chat:001",
@@ -604,8 +604,8 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     artifactDir: "C:\\EditFlow\\artifacts\\pro-capability-discovery",
     knowledge,
   });
-  assert.doesNotMatch(proMessage, /skill:temporal-rewind:v1/);
-  assert.match(proMessage, /only TRANSFER_VERIFIED learned skills/i);
+  assert.match(proMessage, /skill:temporal-rewind:v1/);
+  assert.match(proMessage, /explicitly adapt them to the footage/i);
 
   const [transferSkillUseAttestation] = attestPracticeSkillUseV1({
     skills: [learnedSkill],
@@ -696,7 +696,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     start,
   });
   assert.equal(promotedPro.status, "READY");
-  assert.equal(promotedPro.knowledge.knowledgeScope, "TRANSFER_VERIFIED_ONLY");
+  assert.equal(promotedPro.knowledge.knowledgeScope, "ALL_RETAINED");
   assert.equal(promotedPro.knowledge.gptLearning.learnedSkills[0].skillId, learnedSkill.skillId);
   const transferredMessage = buildGptOrchestrationChatMessageV1({
     sessionId: "pro:capability-discovery:chat:002",

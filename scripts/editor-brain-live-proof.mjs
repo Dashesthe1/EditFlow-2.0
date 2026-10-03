@@ -38,7 +38,7 @@ try {
     () => `default-live-${++requestCounter}`,
     new AeFilesystemPolicyV11([path.dirname(resultPath)]),
   );
-  const session = await createDesktopAeSessionV11(client, "default-continuous-runner-live-proof");
+  const session = await createDesktopAeSessionV11(client, "isolated-legacy-brain-proof", { isolatedLegacyBrain: true });
   const activeHostId = session.state.project.activeItemHostId;
   const activeItem = session.state.project.items.find((item) => item.hostId === activeHostId && item.kind === "COMPOSITION");
   const layer = activeItem?.composition?.layers.find((candidate) => !candidate.locked && candidate.hostId !== null);

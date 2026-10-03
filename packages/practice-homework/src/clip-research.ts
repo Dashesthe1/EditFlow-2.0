@@ -8,7 +8,7 @@ type Packet = Record<string, any>;
 export const CLIP_RESEARCH_POLICY_V1 = [
   "MANDATORY PER-CLIP RESEARCH GATE V1 (Practice and Pro Creation):",
   "After discovering/resuming the assignment and before changing any clip, inspect that raw clip and the corresponding visual reference window. Record its timing, motion, layering, intensity, exit/reverse behavior and each desired effect through clip-research SCAN.",
-  "For EVERY clip, retrieve an already-consulted compiled technique covering its scanned effects, or search Adobe Effect Tutorials / Adobe Effect Music + Beat Tutorials first when none fits. Reuse retains tutorial provenance; only the footage-specific plan must be new. A title, policy flag, or inherited knowledge alone is not consultation evidence.",
+  "For EVERY clip, directly review a relevant retained technique or search Adobe Effect Tutorials / Adobe Effect Music + Beat Tutorials first. ChatGPT extracts and chooses the method steps itself; machine tutorial compilation is retired. Reuse preserves provenance and needs a new explicit footage adaptation. A title alone is not consultation evidence.",
   "Record the actual search/review artifact, source URL/file ID, title, timestamp/section, extracted AE tools and method steps, effect coverage, and any specific limitation. Escalation is Tutorial Drive -> official Adobe documentation -> online sources, only after recorded insufficient coverage/no-match in the previous tier. Access failures are BLOCKED; they are not a no-match result.",
   "Commit clip-research PLAN mapping EACH effect to consulted source steps, an adaptation for the raw footage, and render/reference comparison checks. Tools/methods from the source guide construction; reference visual behavior remains the correctness authority. Finished footage/audio must never enter the attempt.",
   "Authenticated API: GET/POST /v1/product/gpt/assignments/{assignmentId}/clip-research. POST action=SCAN|SOURCE|PLAN with clipId and claimedBy (the current live assignment controller). GET returns durable scans, sources, plans and execution audits. Inspect GET /v1/product/gpt/clip-research-contract for payload fields.",
@@ -20,7 +20,7 @@ export const CLIP_RESEARCH_CONTRACT_V1 = {
   policy: CLIP_RESEARCH_POLICY_V1,
   common: ["action", "clipId", "claimedBy"],
   SCAN: ["sourceMediaId (provided raw video)", "sourceRangeMs [start,end]", "referenceRangeMs [start,end] (Practice)", "observations", "effects [{effectId,behavior}]", "evidencePath (JSON {clipId,observations,sourceMediaId,sourceRangeMs,referenceRangeMs})"],
-  SOURCE: ["tier TUTORIAL|ADOBE|WEB", "outcome SUFFICIENT|PARTIAL|NO_MATCH", "query", "title", "uri", "locator (video timestamps/document section)", "limitation (required if insufficient)", "evidencePath (JSON {query,uri,locator,observations|results})", "compiledResearchSourceId (matched Tutorial Drive file)", "steps [{stepId,tool,action,effectIds}]", "reuseSourceId (optional retained sourceId from another clip when it covers every scanned effect)"],
+  SOURCE: ["authority CHATGPT_DIRECT", "tier TUTORIAL|ADOBE|WEB", "outcome SUFFICIENT|PARTIAL|NO_MATCH", "query", "title", "uri", "locator (video timestamps/document section)", "limitation (required if insufficient)", "evidencePath (JSON {query,uri,locator,observations|results})", "steps [{stepId,tool,action,effectIds}] chosen directly by ChatGPT", "reuseSourceId (optional retained sourceId from another clip when it covers every scanned effect)"],
   PLAN: ["bindings [{effectId,sourceId,stepIds,adaptation}]", "comparisonChecks [specific render/reference checks]"],
   mutationContext: { assignmentId: "current assignment", claimedBy: "current controller lease owner", plans: [{ clipId: "affected clip", planId: "returned READY plan" }] },
   persistence: "Separate atomic per-assignment ledger; scans/source evidence content hashes; methods and request hashes retained in audit.",
@@ -270,13 +270,14 @@ export class ClipResearchStoreV1 {
           if (tier === "TUTORIAL" && !uri.startsWith("https://drive.google.com/")) return fail("First tier must reference the user's Tutorial Drive.");
           let compiledResearchSourceId: string | null = null;
           let compilation: Packet | null = null;
-          if (tier === "TUTORIAL" && input.outcome !== "NO_MATCH") {
+          if (input.authority !== "CHATGPT_DIRECT") return fail("ChatGPT must directly review the source and choose its method steps (authority:CHATGPT_DIRECT).");
+          if (input.compiledResearchSourceId) {
             compiledResearchSourceId = str(input.compiledResearchSourceId, "compiledResearchSourceId");
             const source = compiledSources.find((source) => source.sourceId === compiledResearchSourceId && source.uri === uri);
             compilation = source?.tutorialCompilation ?? null;
             if (!compilation || compilation.schema !== "editflow.gpt-tutorial-causal-compilation.v1"
               || compilation.compilerVersion !== 1 || !compilation.evidenceRefs?.length) {
-              return fail("Matched tutorials require a retained compiler-backed tutorial-compilations RESEARCH source, not a title or guessed method.");
+              return fail("A cited historical compiled source must exist; it is context only, never an automatically chosen construction.");
             }
           }
           const steps = input.outcome === "NO_MATCH" ? [] : (input.steps ?? []).map((step: Packet) => ({
@@ -288,7 +289,7 @@ export class ClipResearchStoreV1 {
             if (steps.some((step: Packet) => step.effectIds.some((id: string) => !effectIds.includes(id)))) return fail("Method steps can cover only scanned effects.");
           }
           if (input.outcome === "SUFFICIENT" && !effectIds.every((id: string) => steps.some((step: Packet) => step.effectIds.includes(id)))) return fail("SUFFICIENT must cover every scanned effect.");
-          const source = { tier, outcome: input.outcome, query, uri, locator, title, limitation, evidence, steps, compiledResearchSourceId, compilation };
+          const source = { authority: "CHATGPT_DIRECT", tier, outcome: input.outcome, query, uri, locator, title, limitation, evidence, steps, compiledResearchSourceId, compilation };
           const sourceId = "clip-source:" + hash(source);
           if (!priorSources.some((source) => source.sourceId === sourceId)) {
             priorSources.push({ ...source, sourceId });

@@ -16,8 +16,10 @@ Practice and Pro Creation use `DURABLE_PRODUCTION_QUEUE_V1` exclusively.
   GPT supplies creative judgment and strategy changes inside that system.
 - M6 analysis, synthesis, tracking/roto, capability adapters, warm batch routines and
   proof libraries are integrated capabilities, not alternate production controllers.
-- Practice retains reference fidelity and existing certification gates. Pro Creation
-  has no Finish answer key and uses its designed target and actual render review.
+- ChatGPT directly reviews the actual final render and decides PASS/REVISE. Machine
+  certification, similarity thresholds and learned-skill promotion are advisory legacy
+  lab records, never production acceptance or creative-selection gates. Pro Creation
+  uses its designed target and all relevant retained preset examples.
 - Tutorial Drive, Adobe resources, then external sources is the research order.
   Use provided raw footage/audio; keep AE open and preserve correct retained work.
 - Standalone acceptance labs are isolated validation tools. They must not be used
@@ -69,3 +71,22 @@ LAUNCHING and prompt delivery are PENDING. Report BLOCKED/FAILED with the reason
 Never autonomously invent a restart, replacement or cancellation request. Workers
 must still stop immediately on STALE_WORKER; these user controls do not authorize
 AE edits, controller claims, credential recovery or native-script bypasses.
+
+
+# All editorial decisions and Practice memory
+
+`CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1` is the exclusive production policy.
+ChatGPT chooses all reference cuts/duration, audio, timing, framing, effects,
+transitions, exact keyframes/constructions, corrections and final acceptance.
+Require an immutable editorialDecision on every queue job. Do not invoke formula
+pulses, automatic baseline/effect synthesis, automatic correction, candidate
+ranking/pruning, local-Qwen decision drivers or machine final-certification paths.
+Native measurement/tracking/roto may execute only GPT-chosen targets, methods and
+settings, with no automatic fallback and with direct review of the output.
+Mechanical rendering, explicit-plan execution, metadata and integrity checks remain.
+Read the selected preset's existing `gptLearning` notebook on start and resume.
+Integrate workedExamples into that record; retain previous lessons and skills.
+Save ordered actions/settings/reasons/checks, observed successes and failures,
+adaptation guidance, mistakes and issued render/job evidence after reviewed attempts,
+before handoff and completion. Preserve prior examples; supersede with a new entry.
+Never automatically select/apply a saved technique or claim universal proficiency.

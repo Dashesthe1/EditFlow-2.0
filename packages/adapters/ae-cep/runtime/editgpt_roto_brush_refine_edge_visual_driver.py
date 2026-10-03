@@ -190,6 +190,8 @@ def select_native_tool(_afterfx_path: str, tool_select_script: str, tool: str) -
 
 async def run(request: dict, output: Path, afterfx_path: str, tool_select_script: str) -> dict:
     request = validate_request(request)
+    from editflow_editorial_authority import require_isolated_legacy_driver
+    require_isolated_legacy_driver()
     qwen = LocalQwenVLClient()
     if not qwen.health().get("ok"):
         raise RuntimeError("local EditGPT semantic model is not ready")

@@ -437,7 +437,7 @@ test("held-out audit binds applied skill claims to evidence-bearing inference ev
     artifactDir: path.join(root, "artifacts"),
     knowledge: registry.transferableKnowledge(editTypeId),
   });
-  assert.match(assignment.chatMessage, /appliedSkillIds/);
+  assert.match(assignment.chatMessage, /Practice role: HELD_OUT_CERTIFICATION/);
   await store.claim(assignment.assignmentId, "skill-audit-test");
   await assert.rejects(store.appendEvent({
     assignmentId: assignment.assignmentId,

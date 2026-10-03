@@ -103,6 +103,8 @@ async def ensure_detailed_method(eyes, hands, qwen, output: Path, request: dict,
 
 async def run(request: dict, output: Path, analysis_window_s: float = 4.0) -> dict:
     request = validate_request(request)
+    from editflow_editorial_authority import require_isolated_legacy_driver
+    require_isolated_legacy_driver()
     qwen = LocalQwenVLClient()
     if not qwen.health().get("ok"):
         raise RuntimeError("local EditGPT semantic model is not ready")

@@ -1070,6 +1070,8 @@ export interface PracticeRetainedTruthSuiteReportV1 {
 }
 
 export interface EditTypeGptLearningSummaryV1 {
+  readonly workedExamples?: readonly import("./chatgpt-editorial-authority.js").PracticeWorkedExampleV1[];
+  readonly chatgptReviews?: readonly { readonly sessionId: string; readonly verdict: "PASS" | "REVISE"; readonly renderRef: string; readonly renderSha256: string; readonly summary: string; readonly evidenceRefs: readonly string[]; readonly reviewedAt: string }[];
   readonly practiceSessionIds: readonly string[];
   readonly proCreationSessionIds: readonly string[];
   readonly masteredPracticeSessionIds: readonly string[];
@@ -1318,7 +1320,7 @@ export interface GptLearningEventV1 {
 }
 
 export interface PracticePreflightCheckpointV1 {
-  readonly stage: "PREFLIGHT_MATCHING" | "FINGERPRINTING" | "REFERENCE_ANALYSIS" | "SOURCE_INDEXING" | "SCENE_MATCHING" | "AWAITING_CHATGPT_SHOTS" | "TARGETED_REFINEMENT" | "WORKING_MEDIA" | "BLOCKED" | "READY";
+  readonly stage: "PREFLIGHT_MATCHING" | "FINGERPRINTING" | "REFERENCE_ANALYSIS" | "SOURCE_INDEXING" | "SCENE_MATCHING" | "AWAITING_CHATGPT_REFERENCE" | "AWAITING_CHATGPT_SHOTS" | "TARGETED_REFINEMENT" | "WORKING_MEDIA" | "BLOCKED" | "READY";
   readonly updatedAt: string;
   readonly requireTransferNovelty: boolean;
   readonly totalShotIds?: readonly string[];

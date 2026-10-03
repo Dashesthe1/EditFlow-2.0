@@ -12,6 +12,6 @@
   "popup.js": "b3d996ab024493f7f3617010df285be5d06c01954f89ab3c05f655c040c0927e",
   "recover-extension.ps1": "c78dd6b27dbf020a185e2db2336a84fd7a5ab702fd1a5edb488021cbab19d785",
   "repair-production.ps1": "f7e18d30eb42b78e2a8173359b2475ffc460491f32d5ffa9d157bbe00309baaa",
-  "supervisor.js": "30391abbdf61dbe831cdc03f2d225ca0f908c12acc8a6481cf81f40d147f1046",
+  "supervisor.js": "055d3d88e28fc91d6711d27efdfba8ba7a95e3c9023d4fc56f7d6166b2cd8ee7",
   "watchdog.test.js": "df6486270d330c791d231b8e02012d766ba1fb8578d7bb5f571b90e497364f26"
 }

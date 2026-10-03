@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { parsePracticeWorkedExampleV1 } from "./chatgpt-editorial-authority.js";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -86,6 +87,8 @@ const hasMateriallyDifferentSkillProof = (
 };
 
 const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
+  workedExamples: [],
+  chatgptReviews: [],
   practiceSessionIds: [],
   proCreationSessionIds: [],
   masteredPracticeSessionIds: [],
@@ -106,6 +109,8 @@ const normalizedGptLearning = (
 ): EditTypeGptLearningSummaryV1 => value === undefined
   ? emptyGptLearning()
   : {
+    workedExamples: structuredClone(value.workedExamples ?? []),
+    chatgptReviews: structuredClone(value.chatgptReviews ?? []),
     practiceSessionIds: uniqueStrings(value.practiceSessionIds),
     proCreationSessionIds: uniqueStrings(value.proCreationSessionIds),
     masteredPracticeSessionIds: uniqueStrings(value.masteredPracticeSessionIds),
@@ -417,6 +422,40 @@ export class EditTypeRegistryV1 {
     };
     this.#profiles.set(editTypeId, updated);
     return structuredClone(updated);
+  }
+
+  recordPracticeWorkedExample(editTypeId: string, sessionId: string, input: Record<string, any>): EditTypeProfileV1 {
+    const profile = this.#profiles.get(editTypeId);
+    if (!profile) throw new TypeError("Unknown Edit Type: " + editTypeId);
+    const example = parsePracticeWorkedExampleV1(editTypeId, sessionId, input);
+    const learning = normalizedGptLearning(profile.gptLearning);
+    const examples = learning.workedExamples ?? [];
+    const prior = examples.find(e => e.lessonId === example.lessonId);
+    const content = (e: typeof example) => { const { recordedAt: _time, ...rest } = e; return JSON.stringify(rest); };
+    if (prior) {
+      if (content(prior) !== content(example)) throw new TypeError("Lesson IDs are immutable; create a new lesson and supersede the old one.");
+      return structuredClone(profile);
+    }
+    if (example.supersedesLessonIds.some(id => !examples.some(e => e.lessonId === id))) throw new TypeError("Only retained examples from this preset can be superseded.");
+    const updated = { ...profile, revision: profile.revision + 1,
+      gptLearning: { ...learning, workedExamples: [...examples, example], lastUpdatedAt: example.recordedAt } };
+    this.#profiles.set(editTypeId, updated);
+    return structuredClone(updated);
+  }
+
+  recordChatgptReview(editTypeId: string, review: NonNullable<EditTypeGptLearningSummaryV1["chatgptReviews"]>[number]): void {
+    const profile = this.#profiles.get(editTypeId);
+    if (!profile) throw new TypeError("Unknown Edit Type: " + editTypeId);
+    const learning = normalizedGptLearning(profile.gptLearning);
+    if (!(learning.workedExamples ?? []).some(e => e.sessionId === review.sessionId && e.outcome !== "UNVERIFIED")) throw new TypeError("Save this Practice session's reviewed worked/failed examples before completion.");
+    const reviews = learning.chatgptReviews ?? [];
+    const prior = reviews.find(r => r.sessionId === review.sessionId && r.renderSha256 === review.renderSha256 && r.verdict === review.verdict);
+    if (prior) return;
+    this.#profiles.set(editTypeId, { ...profile, revision: profile.revision + 1,
+      masteredSessionIds: review.verdict === "PASS" ? uniqueStrings([...profile.masteredSessionIds, review.sessionId]) : profile.masteredSessionIds,
+      gptLearning: { ...learning, chatgptReviews: [...reviews, structuredClone(review)],
+        masteredPracticeSessionIds: review.verdict === "PASS" ? uniqueStrings([...learning.masteredPracticeSessionIds, review.sessionId]) : learning.masteredPracticeSessionIds,
+        lastUpdatedAt: review.reviewedAt } });
   }
 
   recordGptLearningEvent(event: GptLearningEventV1): EditTypeProfileV1 {
@@ -931,6 +970,8 @@ const readRegistryFile = async (
 };
 
 export class EditTypeRegistryFileV1 {
+  static readonly mutations = new Map<string, Promise<unknown>>();
+  static sequence = 0;
   readonly filePath: string;
   #sequence = 0;
 
@@ -944,14 +985,22 @@ export class EditTypeRegistryFileV1 {
     return registry;
   }
 
+  async update<T>(mutate: (registry: EditTypeRegistryV1) => T | Promise<T>): Promise<T> {
+    const operation = (EditTypeRegistryFileV1.mutations.get(this.filePath) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      const registry = await this.load(); const result = await mutate(registry); await this.save(registry); return result;
+    });
+    EditTypeRegistryFileV1.mutations.set(this.filePath, operation);
+    try { return await operation; }
+    finally { if (EditTypeRegistryFileV1.mutations.get(this.filePath) === operation) EditTypeRegistryFileV1.mutations.delete(this.filePath); }
+  }
+
   async save(registry: EditTypeRegistryV1): Promise<void> {
     const payload: EditTypeRegistryFilePayloadV1 = {
       schema: "editflow.edit-type-registry.v1",
       profiles: registry.list(),
     };
     await mkdir(path.dirname(this.filePath), { recursive: true });
-    this.#sequence += 1;
-    const temporaryPath = this.filePath + ".tmp-" + String(process.pid) + "-" + String(this.#sequence);
+    const temporaryPath = this.filePath + ".tmp-" + String(process.pid) + "-" + String(++EditTypeRegistryFileV1.sequence);
     await writeFile(temporaryPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
     try {
       await rename(temporaryPath, this.filePath);

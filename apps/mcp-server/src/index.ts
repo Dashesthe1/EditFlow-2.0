@@ -19,10 +19,10 @@ export interface McpServerStatus {
   readonly cepRuntimeBridge: "REAL_AE_PROVEN";
   readonly cepBrokerBinding: "127.0.0.1_AUTHENTICATED";
   readonly defaultExecutionRunner: typeof EDITFLOW_DEFAULT_EXECUTION_RUNNER;
-  readonly editorBrain: "V0_LOCAL_EXPLAINABLE_POLICY";
-  readonly editorBrainDecisionBudgetMs: 50;
-  readonly editorBrainKnowledgeMode: "PRECOMPILED_REFERENCE_TUTORIAL_EVIDENCE";
-  readonly editorBrainFailureMode: "FAIL_CLOSED_AND_ESCALATE";
+  readonly editorBrain: "CHATGPT_DIRECT";
+  readonly editorBrainDecisionBudgetMs: 0;
+  readonly editorBrainKnowledgeMode: "GPT_RETAINED_PRESET_EXAMPLES";
+  readonly editorBrainFailureMode: "REQUIRE_CHATGPT_DECISION";
   readonly ordinaryIntentBudgetMs: 2000;
   readonly routineMicroActionBudgetMs: 1000;
   readonly localRuntime: "PERSISTENT_BATCH_RUNTIME_V1";
@@ -30,7 +30,7 @@ export interface McpServerStatus {
   readonly directMutationRoutes: "REMOVED";
   readonly mcpCommandGranularity: "COARSE_GRAINED_BATCHES";
   readonly routineBatchMaxActions: 64;
-  readonly slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE";
+  readonly slowReasoningPolicy: "CHATGPT_FOR_ALL_EDITORIAL_DECISIONS";
   readonly realAeAcceptance: "P1_P5_ACCEPTED";
   readonly humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED";
   readonly m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED";
@@ -56,10 +56,10 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   cepRuntimeBridge: "REAL_AE_PROVEN",
   cepBrokerBinding: "127.0.0.1_AUTHENTICATED",
   defaultExecutionRunner: EDITFLOW_DEFAULT_EXECUTION_RUNNER,
-  editorBrain: "V0_LOCAL_EXPLAINABLE_POLICY",
-  editorBrainDecisionBudgetMs: 50,
-  editorBrainKnowledgeMode: "PRECOMPILED_REFERENCE_TUTORIAL_EVIDENCE",
-  editorBrainFailureMode: "FAIL_CLOSED_AND_ESCALATE",
+  editorBrain: "CHATGPT_DIRECT",
+  editorBrainDecisionBudgetMs: 0,
+  editorBrainKnowledgeMode: "GPT_RETAINED_PRESET_EXAMPLES",
+  editorBrainFailureMode: "REQUIRE_CHATGPT_DECISION",
   ordinaryIntentBudgetMs: 2000,
   routineMicroActionBudgetMs: 1000,
   localRuntime: "PERSISTENT_BATCH_RUNTIME_V1",
@@ -67,7 +67,7 @@ export const getMcpServerStatus = (): McpServerStatus => ({
   directMutationRoutes: "REMOVED",
   mcpCommandGranularity: "COARSE_GRAINED_BATCHES",
   routineBatchMaxActions: 64,
-  slowReasoningPolicy: "ESCALATION_ONLY_FOR_AMBIGUOUS_NOVEL_OR_UNSAFE",
+  slowReasoningPolicy: "CHATGPT_FOR_ALL_EDITORIAL_DECISIONS",
   realAeAcceptance: "P1_P5_ACCEPTED",
   humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",
   m3ExitGate: "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED",

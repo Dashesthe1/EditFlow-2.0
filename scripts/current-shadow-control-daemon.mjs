@@ -14,6 +14,9 @@ import { EditGptStabilizationVisualDriverV1 } from "../.tmp/runtime/packages/ada
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
+process.env.EDITFLOW_EDIT_DECISION_AUTHORITY = "CHATGPT_DIRECT";
+process.env.EDITFLOW_ISOLATED_LEGACY_TEST = "0";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const configPath = path.join(process.env.APPDATA ?? "", "Adobe", "CEP", "extensions", "com.editflow2.bridge", "client", "runtime-config.js");
@@ -47,7 +50,8 @@ const stabilizationScript = path.join(
   "editgpt_stabilization_visual_driver.py",
 );
 const stabilizationVisualDriver =
-  stabilizationProtocolAvailable
+  false // Local Qwen UI decisions are retired from production; GPT chooses exact native plans.
+  && stabilizationProtocolAvailable
   && existsSync(stabilizationPython)
   && existsSync(stabilizationScript)
     ? new EditGptStabilizationVisualDriverV1({
@@ -151,6 +155,11 @@ const statusPayload = () => ({
   footageSelectionAuthority: "CHATGPT_DIRECT",
   availableFootageSelectionMethods: ["CHATGPT_DIRECT"],
   rawShotCandidateRanking: "REMOVED_FROM_PRODUCTION",
+  editDecisionAuthority: "CHATGPT_DIRECT",
+  automaticEffectSelection: "REMOVED_FROM_PRODUCTION",
+  automaticCandidateRanking: "REMOVED_FROM_PRODUCTION",
+  finalReviewAuthority: "CHATGPT_DIRECT",
+  localQwenUiDecisions: "DISABLED_IN_PRODUCTION",
   panel: broker.panelSession ?? panel,
   practiceService: {
     integrated: true,

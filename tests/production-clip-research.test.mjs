@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
+import {createHash} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import { test } from 'node:test';
 import { ClipResearchStoreV1 } from '../.tmp/runtime/packages/practice-homework/src/clip-research.js';
@@ -27,7 +29,7 @@ async function fixture(t, mode = 'PRACTICE') {
     evidencePath: await artifact('scan-' + clipId.replace(':', '-'), { clipId, sourceMediaId: 'raw:1', sourceRangeMs: [1000, 2000], referenceRangeMs: [0, 1000], observations: 'Observed raw and reference frames.' }), ...extra });
   const source = async (tier, outcome, effects = [], extra = {}) => {
     const uri = tier === 'TUTORIAL' ? 'https://drive.google.com/file/d/tutorial/view' : tier === 'ADOBE' ? 'https://helpx.adobe.com/after-effects/using/echo.html' : 'https://example.org/method';
-    const input = { action: 'SOURCE', claimedBy: 'controller', clipId: 'shot:1', tier, outcome, query: 'zoom shutter reverse', uri,
+    const input = { action: 'SOURCE', authority:'CHATGPT_DIRECT', claimedBy: 'controller', clipId: 'shot:1', tier, outcome, query: 'zoom shutter reverse', uri,
       title: tier + ' source', locator: '00:12-00:30', limitation: 'Missing the three-copy trail construction.',
       evidencePath: await artifact(tier, { query: 'zoom shutter reverse', uri, locator: '00:12-00:30', observations: 'Inspected method section and extracted the actual tool sequence.', results: [] }),
       compiledResearchSourceId: 'compiled:1', steps: effects.length ? [{ stepId: 'step:1', tool: 'Transform/Echo', action: 'Animate scale; time-offset copies and ease reverse exit.', effectIds: effects }] : [], ...extra };
@@ -78,7 +80,7 @@ test('fallback cannot skip tutorials or Adobe, or escalate when already sufficie
 
 test('tutorial title alone, missing methods, and fake Adobe host cannot pass', async t => {
   const f = await fixture(t); await f.scan();
-  await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail'], { compiledResearchSourceId: 'title-only' }), /compiler-backed/);
+  await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail'], { compiledResearchSourceId: 'title-only' }), /historical compiled source/);
   await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom']), /every scanned effect/);
   await f.source('TUTORIAL', 'NO_MATCH');
   const badUri = 'https://adobe.com.example.org/help';
@@ -235,7 +237,10 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
       environmentProbe: request.command === 'host.probe' ? { adapterProtocolVersion: '1.1.0', adapterBuild: 'test', hostName: 'Adobe After Effects', hostVersion: 'test', hostBuild: 'test', os: 'test', projectOpen: true } : null,
       projectSnapshot: request.command === 'project.inspect' ? { hostRevision: revision, filePath: null, activeItemHostId: null, itemCount: 0, items: [] } : null };
   }};
-  let service = new PracticePanelServerV1({ productionSupervision: false, ...config, broker }); await service.start();
+  const makeService=()=>{ const s=new PracticePanelServerV1({productionSupervision:false,...config,broker});
+    // Unit fixture isolates queue behavior; actual reference/pixel admission is tested by chatgpt-footage-browser-real.
+    if(mode==='PRACTICE') s.assertPracticeReconstructionReady=async()=>{}; return s; };
+  let service=makeService(); await service.start();
   t.after(async () => service.stop());
   const headers = { 'X-EditFlow-Token': token, 'Content-Type': 'application/json' };
   const request = (route, body) => fetch(`http://127.0.0.1:${service.port}${route}`, { headers, ...(body ? { method:'POST', body:JSON.stringify(body) } : {}) });
@@ -255,7 +260,8 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
     environmentFingerprint:observed.environmentFingerprint,requiredCapabilities:['ae.keyframe.set'],bindings:[],checkpoints:[],invariants:{structural:[],visual:[]},
     rollbackBoundaries:[{id:'boundary',strategy:'RESTORE_SNAPSHOT'}], operations:[{operationId:'keys',capabilityId:'ae.keyframe.set',routeId:'ae-cep.v1_1',dependsOn:[],
       idempotency:'CHECK_THEN_APPLY',riskClass:'R1_REVERSIBLE',input:{command:'property.set_keyframes',payload:{},readbackProfile:'test'},rollbackBoundaryId:'boundary'}] };
-  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{...f.context(saved),plan}});
+  const editorialDecision={authority:'CHATGPT_DIRECT',decisionId:'explicit-keys',rationale:'Reviewed fixture pixels and chose exact keys',evidenceRefs:['fixture-render'],steps:['Set explicit keys']};
+  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{...f.context(saved),plan,editorialDecision}});
   assert.equal(accepted.status, 202); const receipt = (await accepted.json()).job;
   const wait = async id => { for(let i=0;i<200;i++) { const job = (await (await request(endpoint+'?jobId='+encodeURIComponent(id))).json()).job;
     if(!['RUNNING','PENDING'].includes(job.status)) return job; await new Promise(r=>setTimeout(r,10)); } throw new Error('queued job timeout'); };
@@ -265,9 +271,9 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   const expired = await fetch(borrowedScope.EDITFLOW_WORKER_PROOF_URL,{method:'POST',headers:{'Content-Type':'application/json',
     'X-EditFlow-Token':token,'X-EditFlow-Worker-Key':borrowedScope.EDITFLOW_WORKER_PROOF_KEY},body:JSON.stringify({scriptPath})});
   assert.equal(expired.status,409);
-  const proof = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath}});
+  const proof = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'explicit-proof'}}});
   const review = await wait((await proof.json()).job.jobId); assert.equal(review.status,'REVIEW_REQUIRED');
-  await service.stop(); service = new PracticePanelServerV1({ productionSupervision: false,...config,broker}); await service.start();
+  await service.stop(); service = makeService(); await service.start();
   const resumed = (await (await request(endpoint+'?jobId='+encodeURIComponent(review.jobId))).json()).job;
   assert.equal(resumed.status,'REVIEW_REQUIRED');
   const noEvidence = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller'}); assert.equal(noEvidence.status,400);
@@ -276,7 +282,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
     await writeFile(f.assignment.start[0].uri,'changed raw media requires a fresh scan');
     const changed = await (await request(endpoint.replace('/production-jobs','/production'))).json();
     assert.equal(changed.production.phases[0].sourceValidationRequired,true);
-    const stale = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath}}); assert.equal(stale.status,409);
+    const stale = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'explicit-proof'}}}); assert.equal(stale.status,409);
     await f.scan(); await f.source('TUTORIAL','SUFFICIENT',['zoom','trail']); const renewed = await f.plan();
     assert.notEqual(renewed.clips['shot:1'].scanHash,saved.clips['shot:1'].scanHash);
     const fresh = await (await request(endpoint.replace('/production-jobs','/production'))).json();

@@ -102,6 +102,7 @@ export class LocalFastRuntimeV1 {
   }
 
   async runGoal(goal: ReflexGoal, transactionId: string) {
+    if (!["SHORT_HORIZON", "REFRAME"].includes(goal.kind)) throw new TypeError("FORMULA_EDITING_RETIRED: ChatGPT must supply exact intents/keyframes and their timing.");
     return await this.session.runner.run(goal, transactionId);
   }
 

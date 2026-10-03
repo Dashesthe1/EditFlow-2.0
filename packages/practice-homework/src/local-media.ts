@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -340,10 +340,8 @@ export class LocalPracticeMediaMatcherV1 {
   }
 
   async #scriptSha256(): Promise<string> {
-    this.#scriptDigest ??= Promise.all([readFile(this.config.scriptPath),
-      this.config.shotSelectionAuthority === "CHATGPT_DIRECT"
-        ? readFile(path.join(path.dirname(this.config.scriptPath), "chatgpt-footage-browser.py"))
-        : Promise.resolve(Buffer.alloc(0))])
+    this.#scriptDigest ??= Promise.all([readFile(this.config.shotSelectionAuthority === "CHATGPT_DIRECT"
+      ? path.join(path.dirname(this.config.scriptPath), "chatgpt-footage-browser.py") : this.config.scriptPath)])
       .then((buffers) => { const hash = createHash("sha256"); for (const bytes of buffers) hash.update(bytes); return hash.digest("hex"); });
     return this.#scriptDigest;
   }
@@ -386,7 +384,8 @@ export class LocalPracticeMediaMatcherV1 {
       : args[0] === "match" && path.basename(this.config.scriptPath) === "practice-media-match.py"
       ? path.join(path.dirname(this.config.scriptPath), "practice-resumable-match.py")
       : this.config.scriptPath;
-    const invocation = [...this.config.python.prefixArgs, script, ...args];
+    const invocation = [...this.config.python.prefixArgs, script, ...args,
+      ...(["metadata", "browse"].includes(args[0] ?? "") && this.config.ffmpegPath && !args.includes("--ffmpeg") ? ["--ffmpeg", this.config.ffmpegPath] : [])];
     await new Promise<void>((resolve, reject) => {
       let timedOut = false;
       let stderr = "";
@@ -761,6 +760,7 @@ export class LocalPracticeMediaMatcherV1 {
   async analyzeFinish(
     finish: PracticeMediaInputV1,
   ): Promise<PracticeReferenceAnalysisV1> {
+    if (this.config.shotSelectionAuthority === "CHATGPT_DIRECT") return await this.#directReference(finish);
     if (finish.mediaKind !== "VIDEO") {
       throw new TypeError("Practice Finish must be a video.");
     }
@@ -829,6 +829,64 @@ export class LocalPracticeMediaMatcherV1 {
     };
   }
 
+  async #directReference(finish: PracticeMediaInputV1): Promise<PracticeReferenceAnalysisV1> {
+    if (finish.mediaKind !== "VIDEO") throw new TypeError("Practice Finish must be a video.");
+    const key = await this.#mediaCacheKey(finish, ["direct-reference-metadata-v1"]);
+    const metadataPath = path.join(this.config.analysisCacheDir, "direct-reference-metadata", key + ".json");
+    await mkdir(path.dirname(metadataPath), { recursive: true });
+    await this.#ensureArtifact(metadataPath, () => this.#run(["metadata", "--video", mediaPath(finish.uri), "--source-id", finish.mediaId, "--output", metadataPath]));
+    const metadata = await jsonFile<SourceArtifactV1 & { video: NonNullable<PracticeReferenceAnalysisV1["video"]> }>(metadataPath);
+    if (!metadata.video || !Number.isFinite(metadata.video.durationMs) || metadata.video.durationMs <= 0) throw new TypeError("Invalid reference metadata.");
+    const version = await this.#mediaCacheKey(finish, ["inspection-media-version-v1"]);
+    const planPath = path.join(this.config.artifactDir, "chatgpt-reference-plan.json");
+    const packet = await fileExists(planPath) ? await jsonFile<Record<string, any>>(planPath) : null;
+    const plan = packet?.authority === "CHATGPT_DIRECT" && packet.mediaVersion === version ? packet : null;
+    const reference: PracticeReferenceAnalysisV1 = { referenceId: finish.mediaId, sourcePath: mediaPath(finish.uri),
+      styleFingerprint: sha256Text([metadata.sourceSha256, JSON.stringify(plan?.shots ?? [])]),
+      ...(metadata.perceptualSignature ? { perceptualSignature: metadata.perceptualSignature } : {}),
+      video: { ...metadata.video, sourceDurationMs: metadata.video.durationMs, durationMs: plan?.durationMs ?? metadata.video.durationMs },
+      shots: plan?.shots ?? [],
+      evidenceRefs: ["video:sha256:" + metadata.sourceSha256, "editorial-authority:CHATGPT_DIRECT",
+        plan ? "chatgpt-reference-plan:" + planPath : "awaiting-chatgpt-reference-plan"] };
+    const artifactPath = path.join(this.config.artifactDir, "chatgpt-reference.json");
+    await mkdir(path.dirname(artifactPath), { recursive: true });
+    const temp = artifactPath + ".tmp-" + randomUUID();
+    await writeFile(temp, JSON.stringify({ schema: "editflow.practice-reference-analysis.v1", ...reference }) + "\n", "utf8");
+    await rename(temp, artifactPath);
+    this.#referenceArtifactPathById.set(finish.mediaId, artifactPath);
+    this.#referenceMediaPathById.set(finish.mediaId, mediaPath(finish.uri));
+    return { ...reference, evidenceRefs: [...reference.evidenceRefs, "practice-reference-artifact:" + artifactPath] };
+  }
+
+  async defineReference(finish: PracticeMediaInputV1, input: Record<string, any>): Promise<PracticeReferenceAnalysisV1> {
+    const reference = await this.#directReference(finish);
+    const durationMs = input.durationMs;
+    if (input.authority !== "CHATGPT_DIRECT" || !input.rationale?.trim() || !Number.isFinite(durationMs)
+      || durationMs <= 0 || durationMs > reference.video!.sourceDurationMs! || !Array.isArray(input.shots) || !input.shots.length) throw new TypeError("ChatGPT must explicitly define reference duration, shots and rationale.");
+    const ids = new Set<string>();
+    let end = 0;
+    const shots: PracticeReferenceAnalysisV1["shots"][number][] = [];
+    for (const shot of input.shots) {
+      if (typeof shot.shotId !== "string" || !shot.shotId.trim() || ids.has(shot.shotId) || shot.order !== shots.length
+        || !Number.isFinite(shot.referenceStartMs) || !Number.isFinite(shot.referenceEndMs)
+        || Math.abs(shot.referenceStartMs - end) > 1 || shot.referenceEndMs <= shot.referenceStartMs || shot.referenceEndMs > durationMs
+        || !shot.observation?.trim() || !Array.isArray(shot.inspections) || !shot.inspections.length) throw new TypeError("Reference shots need explicit ordered bounds, observations and issued pixel inspections with continuous coverage.");
+      for (const inspection of shot.inspections) await this.#verifyInspection(finish.mediaId, finish.uri, inspection.evidenceId, inspection.timeMs);
+      if (!shot.inspections.some((i: any) => i.timeMs >= shot.referenceStartMs && i.timeMs < shot.referenceEndMs)) throw new TypeError("Inspect each reference shot itself.");
+      shots.push({ shotId: shot.shotId, order: shot.order, referenceStartMs: shot.referenceStartMs, referenceEndMs: shot.referenceEndMs,
+        evidenceRefs: ["chatgpt-reference-observation:" + shot.observation, ...shot.inspections.map((i: any) => "footage-inspection:" + i.evidenceId)] });
+      ids.add(shot.shotId); end = shot.referenceEndMs;
+    }
+    if (Math.abs(end - durationMs) > 1) throw new TypeError("ChatGPT reference shots must cover the chosen duration.");
+    await mkdir(this.config.artifactDir, { recursive: true });
+    const planPath = path.join(this.config.artifactDir, "chatgpt-reference-plan.json");
+    const temp = planPath + ".tmp-" + randomUUID();
+    await writeFile(temp, JSON.stringify({ authority: "CHATGPT_DIRECT", mediaVersion: await this.#mediaCacheKey(finish, ["inspection-media-version-v1"]),
+      durationMs, shots, rationale: input.rationale, recordedAt: new Date().toISOString() }) + "\n", { encoding: "utf8", flush: true });
+    await rename(temp, planPath);
+    return await this.#directReference(finish);
+  }
+
   async indexStart(
     start: readonly PracticeMediaInputV1[],
   ): Promise<PracticeSourceIndexV1> {
@@ -848,7 +906,7 @@ export class LocalPracticeMediaMatcherV1 {
       const localPath = mediaPath(input.uri);
       sourceIds.push(input.mediaId);
       if (input.mediaKind === "VIDEO") {
-        const key = await this.#mediaCacheKey(input, [
+        const key = await this.#mediaCacheKey(input, this.config.shotSelectionAuthority === "CHATGPT_DIRECT" ? ["direct-source-metadata-v1"] : [
           this.config.shotSelectionAuthority,
           "source-index",
           String(this.config.sampleStepMs),
@@ -945,8 +1003,9 @@ export class LocalPracticeMediaMatcherV1 {
 
     if (this.config.shotSelectionAuthority === "CHATGPT_DIRECT") {
       if (!(await fileExists(this.config.chatgptSelectionsPath))) return [];
-      const packet = await jsonFile<{ referenceId: string; sourceIndexId: string; matches: PracticeSceneMatchV1[] }>(this.config.chatgptSelectionsPath);
-      if (packet.referenceId !== input.reference.referenceId || packet.sourceIndexId !== input.sourceIndex.indexId) return [];
+      const packet = await jsonFile<{ referenceId: string; referencePlanFingerprint?: string; sourceIndexId: string; matches: PracticeSceneMatchV1[] }>(this.config.chatgptSelectionsPath);
+      if (packet.referenceId !== input.reference.referenceId || packet.sourceIndexId !== input.sourceIndex.indexId
+        || packet.referencePlanFingerprint !== input.reference.styleFingerprint) return [];
       const matches = packet.matches.filter((match) => match.selectionMode === "CHATGPT_DIRECT"
         && match.chatgptSelection?.authority === "CHATGPT_DIRECT");
       const artifacts = await Promise.all(sourcePaths.map((value) => jsonFile<SourceArtifactV1>(value)));
@@ -1188,6 +1247,10 @@ export class LocalPracticeMediaMatcherV1 {
     return packet;
   }
 
+  async verifyFootageInspection(media: PracticeMediaInputV1, evidenceId: string, timeMs: number): Promise<void> {
+    await this.#verifyInspection(media.mediaId, media.uri, evidenceId, timeMs);
+  }
+
   async selectFootage(input: {
     reference: PracticeReferenceAnalysisV1; sourceIndex: PracticeSourceIndexV1;
     finish: PracticeMediaInputV1; start: readonly PracticeMediaInputV1[];
@@ -1202,8 +1265,9 @@ export class LocalPracticeMediaMatcherV1 {
     let retained: PracticeSceneMatchV1[] = [];
     let searchHistory: unknown[] = [];
     if (await fileExists(this.config.chatgptSelectionsPath)) {
-      const prior = await jsonFile<{ referenceId: string; sourceIndexId: string; matches: PracticeSceneMatchV1[]; searchHistory?: unknown[] }>(this.config.chatgptSelectionsPath);
-      if (prior.referenceId === input.reference.referenceId && prior.sourceIndexId === input.sourceIndex.indexId) {
+      const prior = await jsonFile<{ referenceId: string; referencePlanFingerprint?: string; sourceIndexId: string; matches: PracticeSceneMatchV1[]; searchHistory?: unknown[] }>(this.config.chatgptSelectionsPath);
+      if (prior.referenceId === input.reference.referenceId && prior.sourceIndexId === input.sourceIndex.indexId
+        && prior.referencePlanFingerprint === input.reference.styleFingerprint) {
         retained = prior.matches; searchHistory = prior.searchHistory ?? [];
       }
     }
@@ -1213,7 +1277,8 @@ export class LocalPracticeMediaMatcherV1 {
       const source = input.start.find((item) => item.role === "START_SOURCE" && item.mediaKind === "VIDEO" && item.mediaId === selection.sourceId);
       if (!shot || !source || selectedIds.has(shot.shotId)) throw new TypeError("Selection must identify a unique reference shot and provided raw video.");
       selectedIds.add(shot.shotId);
-      if (![selection.sourceStartMs, selection.sourceEndMs, selection.confidence].every(Number.isFinite)
+      if (![selection.sourceStartMs, selection.sourceEndMs, selection.confidence, selection.playbackRate].every(Number.isFinite)
+        || selection.playbackRate <= 0
         || selection.sourceStartMs < 0 || selection.sourceEndMs <= selection.sourceStartMs
         || selection.confidence < 0 || selection.confidence > 1
         || !["FORWARD", "REVERSE"].includes(selection.direction)
@@ -1243,7 +1308,7 @@ export class LocalPracticeMediaMatcherV1 {
       const match: PracticeSceneMatchV1 = {
         shotId: shot.shotId, sourceId: source.mediaId, sourcePath: mediaPath(source.uri),
         sourceStartMs: selection.sourceStartMs, sourceEndMs: selection.sourceEndMs, direction: selection.direction,
-        playbackRate: (selection.sourceEndMs - selection.sourceStartMs) / (shot.referenceEndMs - shot.referenceStartMs),
+        playbackRate: selection.playbackRate,
         trajectory: anchors.map((anchor) => ({ referenceTimeMs: anchor.referenceTimeMs, sourceTimeMs: anchor.sourceTimeMs, similarity: selection.confidence })),
         temporalBehavior,
         // Compatibility fields express GPT's declared visual confidence. They
@@ -1257,6 +1322,7 @@ export class LocalPracticeMediaMatcherV1 {
       retained = [...retained.filter((item) => item.shotId !== shot.shotId), match];
     }
     await this.#saveChatgptPacket({ schema: "editflow.chatgpt-shot-selections.v1", referenceId: input.reference.referenceId,
+      referencePlanFingerprint: input.reference.styleFingerprint,
       sourceIndexId: input.sourceIndex.indexId, search: input.search,
       searchHistory: [...searchHistory, { ...input.search, recordedAt: new Date().toISOString() }], matches: retained });
     return retained;
@@ -1267,6 +1333,9 @@ export class LocalPracticeMediaMatcherV1 {
     readonly sourceIndex: PracticeSourceIndexV1;
     readonly minimumConfidence: number;
   }): Promise<PracticeAudioMatchV1 | null> {
+    if (this.config.shotSelectionAuthority === "CHATGPT_DIRECT") {
+      throw new TypeError("AUTOMATIC_AUDIO_CHOICE_RETIRED: ChatGPT chooses the supplied raw song, exact segments, rates, levels and timing in its explicit AE plan. Finished audio is not an authority.");
+    }
     const referenceMedia = this.#referenceMediaPathById.get(input.reference.referenceId);
     const referenceArtifact = this.#referenceArtifactPathById.get(input.reference.referenceId);
     const audioSources = this.#audioSourcesByIndexId.get(input.sourceIndex.indexId);

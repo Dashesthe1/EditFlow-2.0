@@ -17,6 +17,7 @@ export interface PracticeProductionJobV1 {
   readonly heartbeatAt?: string;
   readonly startedAt?: string;
   readonly result?: unknown;
+  readonly review?: unknown;
   readonly error?: string;
 }
 
@@ -112,7 +113,8 @@ export class PracticeProductionWorkerV1 {
   async resolve(jobId: string, result: unknown): Promise<void> {
     const job = this.#jobs.get(jobId);
     if (!job || !["REVIEW_REQUIRED", "RECONCILE_REQUIRED", "FAILED"].includes(job.status)) throw new TypeError("Job is not waiting for review/reconciliation.");
-    await this.#put({ ...job, status: "SUCCEEDED", result });
+    // The reviewer cannot replace the worker's issued artifact identity.
+    await this.#put({ ...job, status: "SUCCEEDED", review: result });
   }
 
   async interrupt(assignmentId: string, reason: string): Promise<void> {

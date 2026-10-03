@@ -92,7 +92,7 @@ test("continuous fast loop executes a reflex horizon without observation between
   assert.deepEqual(requests.map((request) => request.expectedHostProjectRevision), [10, 11, 12]);
 });
 
-test("current desktop v1.1 session installs the editor brain over the continuous reflex loop", async () => {
+test("current desktop uses explicit GPT execution and does not instantiate an autonomous brain", async () => {
   const state = baselineState();
   let reads = 0;
   const adapter = {
@@ -101,10 +101,13 @@ test("current desktop v1.1 session installs the editor brain over the continuous
   const session = await createDesktopAeSessionV11(adapter, "reflex-test");
   assert.equal(reads, 1);
   assert.equal(session.executionMode, DEFAULT_AE_EXECUTION_MODE);
-  assert.equal(session.executionMode, "EDITOR_BRAIN_CONTINUOUS_FAST_LOOP_V0");
+  assert.equal(session.executionMode, "CHATGPT_DIRECT_EXPLICIT_PLAN_EXECUTION_V1");
   assert.ok(session.runner instanceof ContinuousFastLoop);
-  assert.ok(session.editorBrain instanceof EditorBrainV0);
-  assert.ok(session.editorRunner instanceof EditorBrainRuntimeV0);
+  assert.equal(session.editorBrain, null);
+  assert.equal(session.editorRunner, null);
+  const lab = await createDesktopAeSessionV11(adapter, "isolated-lab", {isolatedLegacyBrain:true});
+  assert.ok(lab.editorBrain instanceof EditorBrainV0);
+  assert.ok(lab.editorRunner instanceof EditorBrainRuntimeV0);
 });
 
 test("continuous fast loop reuses the warm lease across successful goals without a full observation", async () => {

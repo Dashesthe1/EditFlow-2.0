@@ -24,15 +24,9 @@ export class ProCreationPreparationEngineV1 {
       reasons.push("Pro Creation requires at least one raw video source.");
     }
     const retainedKnowledge = this.editTypes.knowledge(request.editTypeId);
-    const knowledge = this.editTypes.transferableKnowledge(request.editTypeId);
+    const knowledge = retainedKnowledge;
     if (retainedKnowledge === null) {
       reasons.push("A registered Edit Type must be selected before Pro Creation can start.");
-    } else if (knowledge === null) {
-      reasons.push(
-        "The selected Edit Type has no transfer-verified GPT Practice knowledge yet. "
-          + "A single-reference reconstruction is not enough for Pro Creation; "
-          + "pass the Practice proof gate on materially different reference/source footage first.",
-      );
     }
 
     return {
@@ -46,4 +40,3 @@ export class ProCreationPreparationEngineV1 {
     };
   }
 }
-

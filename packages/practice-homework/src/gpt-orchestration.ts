@@ -156,9 +156,7 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
               reasons: ["Practice requires direct ChatGPT footage selections and verified preflight before editing."], evidenceRefs: [] } } : {}),
           practiceRole,
           practicePolicy,
-          chatMessage: practicePolicy === null
-            ? continuityMessage
-            : applyCurrentMasteryPolicy(continuityMessage, practicePolicy),
+          chatMessage: applyCurrentProductionQueuePolicy(continuityMessage, assignment.mode),
         };
       }),
     };
@@ -244,8 +242,8 @@ const RESEARCH_PRIORITY_LINES = [
   "- Tutorial Drive is the mandatory first research source before editing EVERY clip in Practice and Pro Creation. Scan raw/reference windows, consult and compile matching tutorials, map the learned tools/method steps to each effect, and commit the durable clip research plan before AE mutations.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
-  "- Every matched Tutorial Drive tutorial file must be deep-analyzed and compiled through EditFlow's tutorial causal compiler before it can support Practice learning. The compiler-derived construction pattern, capabilities, triggers, invariants, adaptation axes, failure/repair logic, and transfer criteria are authoritative; do not hand-author substitutes for those fields.",
-  "- Keep capability evidence causally bound: CAPABILITY_IMPLEMENTATION and CAPABILITY_PROOF must carry the same originating capability gap, and SKILL_COMMIT may use only compiler semantics targeting that skill plus proof evidence bound to that same gap.",
+  "- ChatGPT directly studies the tutorial and chooses its construction, exact settings, invariants, adaptation and troubleshooting. Record those decisions as explicit clip-research SOURCE steps with authority:CHATGPT_DIRECT and reviewed worked examples. Machine tutorial compilation is retired from production.",
+  "- Preserve tutorial provenance and actual AE render/readback checks. Retain successes and failures in the selected preset's existing practice-notebook; no machine skill promotion or automatic recipe application.",
   "- If no sufficiently relevant Tutorial Drive match exists, record the Tutorial Drive search/query and no-match result in RESEARCH provenance before escalating.",
   "- Second priority is official Adobe documentation/resources and the installed Adobe feature/plugin surface.",
   "- Third priority is external professional tutorials and plugin/vendor documentation; broader web/internet research is last.",
@@ -347,8 +345,8 @@ const applyPrimaryEditProductionSystemPolicy = (
     "- Tutorial Drive -> Adobe resources -> external professional/vendor sources -> broader web remains the mandatory research order before clip mutation.",
     "- Production proof scripts, baseline assembly, correction, goals and batches are durable job kinds inside the same worker. Standalone acceptance labs are isolated tests and never production fallback controllers.",
     mode === "PRACTICE"
-      ? "- Practice keeps its reference-first M6 visual authority and machine fidelity/certification gates."
-      : "- Pro Creation has no Finish answer key: use TRANSFER_VERIFIED Edit Type knowledge, the designed editorial target, direct review of actual renders, and the same durable production/execution architecture without inventing reference-only gates.",
+      ? "- ChatGPT directly studies the reference and decides editorial choices and final acceptance."
+      : "- Pro Creation has no Finish answer key: use retained Edit Type lessons and worked examples, the designed editorial target, direct review of actual renders, and the same durable production/execution architecture without inventing reference-only gates.",
   ].join("\n");
 };
 
@@ -373,7 +371,7 @@ const applyCurrentWorkflowContinuityPolicy = (
       PRO_CREATION_CONTINUITY_POLICY_MARKER
         + " the Pro Creation assignment is the durable unit of work across ChatGPT conversations.",
       "- Resume the existing PENDING/RUNNING Pro Creation assignment from retained events, jobs, checkpoints, research plans, and current AE state. A new chat never creates a replacement edit run.",
-      "- Use only TRANSFER_VERIFIED Edit Type knowledge as authoritative learned production memory; adapt it to the supplied footage rather than replaying literal values.",
+      "- Read retained Edit Type knowledge and explicitly decide which techniques apply; adapt it to the supplied footage rather than replaying literal values.",
       "- Build a coherent playable edit early, then render/review and target the largest editorial, pacing, transition, effect, motion, and finish residuals instead of serially perfecting one clip before the rest exists.",
       "- Preserve correct regions and retained checkpoints. Re-run only work invalidated by a concrete source, construction, or proof dependency change.",
       "- Infrastructure failure is a pause, not a restart: repair the connection/runtime and continue from retained production state.",
@@ -392,7 +390,7 @@ const applyCurrentWorkflowContinuityPolicy = (
     "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
     "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
     "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
-    "- The primary production system governs the edit. Within Practice, M6 is the authoritative reference-fidelity engine for difficult effects/transitions: REFERENCE EFFECT DETECTION -> DENSE FRAME EVIDENCE -> EFFECT ANATOMY/DNA -> CAUSAL KNOWLEDGE -> CONSTRUCTION/SYNTHESIS -> REAL AE -> LOCAL RENDER -> SEMANTIC COMPARISON -> VISUAL DIAGNOSIS -> BOUNDED CORRECTION -> FIDELITY GATE.",
+    "- The primary production system governs the edit. Within Practice, ChatGPT directly observes and reasons about effects/transitions, supplies exact constructions, reviews real AE renders and decides each correction.",
     "- Retained Edit Type knowledge, Tutorial Drive learning, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, advanced synthesis, and later systems are integrated capabilities inside the primary production system, not alternate workflows.",
     "- Optimize for completion: reuse the verified source set and content-locked baseline, preserve correct regions, render locally before full-edit rerenders, and advance from retained evidence instead of rebuilding the edit.",
   ].join("\n");
@@ -423,22 +421,7 @@ const applyCurrentMasteryPolicy = (
   message: string,
   policy: PracticeVerificationPolicyV1,
 ): string => {
-  if (message.includes(MASTERY_POLICY_MARKER)) return message;
-  return [
-    message,
-    "",
-    "Practice certification policy (current):",
-    MASTERY_POLICY_MARKER
-      + " EditFlow independently re-analyzes the actual final render before certification.",
-    "- Certification requires exact source matching, 100% defining effect/transition behavior coverage, "
-      + "and weighted/effect/transition fidelity >= " + policy.minimumSimilarity.toFixed(3) + ".",
-    "- Exact-scene confidence must be >= " + policy.exactSceneConfidence.toFixed(3)
-      + "; raw-audio confidence, when applicable, must be >= "
-      + policy.minimumAudioConfidence.toFixed(3) + ".",
-    "- A machine-passing first reconstruction is REFERENCE_VERIFIED; Pro Creation remains blocked "
-      + "until materially different Finish and Start video content also passes as TRANSFER_VERIFIED.",
-    "- HUMAN_REVIEW_REQUIRED is not mastery and must not be written into authoritative training memory.",
-  ].join("\n");
+  return applyCurrentProductionQueuePolicy(message, "PRACTICE");
 };
 
 const isTutorialDriveResearchSource = (source: GptResearchSourceV1 | undefined): boolean =>
@@ -540,257 +523,58 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   readonly artifactDir: string;
   readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
 }): string => {
-  const learned = input.knowledge;
-  const successLessons = learned?.gptLearning.successLessons ?? [];
-  const failureLessons = learned?.gptLearning.failureAvoidanceLessons ?? [];
-  const patterns = learned?.gptLearning.developmentPatterns ?? [];
-  const allLearnedSkills = learned?.gptLearning.learnedSkills ?? [];
-  const learnedSkills = input.mode === "PRO_CREATION"
-    ? allLearnedSkills.filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
-    : allLearnedSkills;
-  const openGaps = (learned?.gptLearning.capabilityGaps ?? [])
-    .filter((gap) => gap.status !== "RESOLVED");
-  const skillLines = learnedSkills.slice(-12).map((skill) => {
-    const causal = skill.causalModel;
-    const causalSummary = causal === undefined
-      ? " causal-model=UNRECORDED"
-      : " triggers={" + causal.triggerConditions.join("; ") + "}"
-        + " invariants={" + causal.invariants.join("; ") + "}"
-        + " adapt={" + causal.adaptationAxes.join("; ") + "}"
-        + " transfer={" + causal.transferCriteria.join("; ") + "}";
-    const machineSignature = skill.machineUseSignature;
-    const machineSummary = machineSignature === undefined
-      ? " machine-use-signature=UNRECORDED"
-      : " machine-use-signature={"
-        + machineSignature.invariantRules.map((rule) =>
-          rule.invariant + "=>"
-            + rule.evidence.map((predicate) =>
-              predicate.source + ":" + predicate.match + ":" + predicate.value
-            ).join("&")
-        ).join(" | ")
-        + "}";
-    return skill.skillId + " [" + skill.maturity + "] " + skill.title + ": "
-      + skill.constructionPattern + causalSummary + machineSummary;
-  });
-  const gapLines = openGaps.slice(-12).map((gap) =>
-    gap.gapId + " [" + gap.kind + "/" + gap.status + "] " + gap.requestedBehavior
-  );
-  const subjectMemoryLines = (learned?.gptLearning.masteryRecords ?? [])
-    .flatMap((record) => record.subjectIdentityMemories ?? [])
-    .slice(-12)
-    .map((memory) =>
-      memory.memoryId
-        + " shot=" + memory.shotId
-        + " source=" + memory.sourceId
-        + " ref-subject=" + memory.referenceSemanticId
-        + " raw-subject=" + memory.sourceSemanticId
-        + " confidence=" + memory.confidence.toFixed(3)
-        + " mask=" + memory.maskSources.join("+")
-    );
-  const practicePolicy = input.mode === "PRACTICE"
-    ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
-    : null;
-  const preparedMatchLines = (input.practiceSceneMatches ?? []).filter((match) => match.selectionMode === "CHATGPT_DIRECT").map((match) => {
-    const working = match.workingMedia;
-    const originalRange = match.sourceStartMs.toFixed(3) + "-" + match.sourceEndMs.toFixed(3) + "ms";
-    if (working === undefined) {
-      return "- " + match.shotId + " -> original " + match.sourceId + " [" + originalRange
-        + "] confidence=" + match.confidence.toFixed(3) + " WORKING_MEDIA_MISSING";
-    }
-    const localStartMs = match.sourceStartMs - working.originalStartMs;
-    const localEndMs = match.sourceEndMs - working.originalStartMs;
-    return "- " + match.shotId + " -> original " + match.sourceId + " [" + originalRange + "]"
-      + " working=" + working.sourcePath
-      + " local=" + localStartMs.toFixed(3) + "-" + localEndMs.toFixed(3) + "ms"
-      + " handles=" + working.handleBeforeMs.toFixed(3) + "/" + working.handleAfterMs.toFixed(3) + "ms"
-      + " direction=" + match.direction
-      + " confidence=" + match.confidence.toFixed(3);
-  });
-  const modeInstruction = input.mode === "PRACTICE"
-    ? input.practiceRole === "HELD_OUT_CERTIFICATION"
-      ? [
-        "This is held-out Practice certification. The Finish video is an unseen answer key.",
-        "Use only the frozen TRANSFER_VERIFIED Edit Type snapshot supplied with this assignment.",
-        "Study the Finish, find the matching raw material, and reconstruct it from scratch in After Effects.",
-        "Continue render -> compare -> diagnose -> correct cycles until the reference is replicated to the accepted proof gate.",
-        "Do not teach, research, implement new capabilities, commit skills, or retain lessons during this run. If frozen knowledge/capabilities are insufficient, record the failure and let the held-out case fail closed.",
-        "Assignment events are audit trace only and must not mutate Edit Type learning memory.",
-      ]
-      : [
-        "This is supervised Practice learning. The Finish video is the answer key.",
-        "Study the Finish, find the matching raw material, and reconstruct it from scratch in After Effects.",
-        "Continue render -> compare -> diagnose -> correct cycles until the reference is replicated to the accepted proof gate.",
-        "Record the full learning trajectory, including failed hypotheses and why they failed, under the selected Edit Type.",
-      ]
-    : [
-      "This is Pro Creation. There is no Finish answer key.",
-      "Create a new professional edit from the Start media by applying the selected Edit Type's successful Practice development patterns.",
-      "Treat only TRANSFER_VERIFIED learned skills as authoritative Pro Creation skill memory; AE_PROVEN single-reference skills remain Practice-only until separately transferred.",
-      "Use successful lessons as guidance and actively avoid failures retained from Practice.",
-      "The result must be original to the supplied footage while following the learned professional visual language.",
-    ];
+  const learning = input.knowledge?.gptLearning;
   const message = [
     "EDITFLOW 2.0 GPT ORCHESTRATION ASSIGNMENT",
-    "Session: " + input.sessionId,
-    "Mode: " + input.mode,
-    ...(input.mode === "PRACTICE" ? ["Practice role: " + (input.practiceRole ?? "LEARNING")] : []),
-    "Edit Type: " + input.editTypeId,
-    "",
-    ...modeInstruction,
-    "",
-    ...(input.mode === "PRACTICE" ? [
-      "Practice reconstruction invariants:",
-      "- DIRECT_FINISH_OBSERVATION_REQUIRED: Before any AE mutation, directly inspect the actual Finish pixels across the whole edit, then revisit every shot, cut, effect, and transition at denser temporal sampling. Machine summaries and similarity scores support this judgment but never replace it.",
-      "- BUILD_EDIT_BLUEPRINT_FIRST: Record the shot order, exact cut intent, source-time behavior, framing, pacing, audio relationship, and an effect/transition blueprint describing entry, buildup, peak, cut interaction, persistence, recovery, and rewind behavior before construction.",
-      "- EFFECT_TRANSITION_PRIORITY: Once source identity and the editorial spine are correct, spend the main deep-reasoning/correction budget on professional effect and transition fidelity: temporal states, trails, displacement, blur, distortion, acceleration, masks/isolation, color/exposure behavior, cut overlap, persistence, and reverse/rewind endings.",
-      "- RAW_SOURCE_IS_SEARCH_ONLY: Full-length Start movies are a search corpus, never active AE editing footage. Index/search them outside AE, visually verify candidate ranges, materialize only the matched ranges with bounded handles, and use those working clips in AE.",
-      "- VISUAL_SOURCE_CONFIRMATION_REQUIRED: ChatGPT directly browses raw footage and chooses exact performance moments and trims; automated raw-shot candidate ranking is disabled.",
-      "- LOCK_EDITORIAL_SPINE: After the correct raw shots, order, broad timing, and audio arrangement are verified, preserve them. Do not rebuild correct shots merely because an effect needs correction.",
-      "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for reference-effect detection, dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating.",
-      "- COMPLETE_EDIT_THEN_PATCH: Build one coherent full edit from the locked footage, render/review it, diagnose discrepancies, then patch only deficient regions. Later attempts preserve already-correct regions.",
-      "- ACCELERATED COVERAGE-FIRST SCHEDULE: after all source/range choices are locked, build a playable whole-edit reconstruction across every phase before final certification. Do not block later construction on a phase that still needs micro-optimization.",
-      "- BATCH SOURCE REVIEW: inspect timestamped contact sheets of raw intervals chosen by ChatGPT, then narrow and retain an explicit source/range decision for every phase.",
-      "- BOUNDED SCRATCH SEARCH: one GPT hypothesis defines construction family, invariants, and safe parameter bounds; local non-canonical search may test many candidates without one GPT roundtrip per candidate, and only the winning commit becomes canonical.",
-      "- PROGRESSIVE FIDELITY FUNNEL: prefer up to 32 coarse 1/8-resolution critical-frame candidates, retain up to 8 at 1/4 resolution, then full-resolution proof only for the strongest 2. Machine scoring is search/ranking evidence only and can never satisfy a Practice fidelity pass.",
-      "- GPT REVIEW COMPRESSION: show GPT at most the strongest 3 useful alternatives plus reference/current-best instead of dominated intermediate candidates.",
-      "- GLOBAL RESIDUAL SCHEDULER: after whole-edit coverage exists, rank residuals by source correctness, defining-effect coverage, temporal/transition mismatch, severity, duration, and viewer salience; correct roughly the highest-impact 20% first and re-rank.",
-      "- ANTI_STAGNATION: after two weak micro-correction rounds on one hypothesis, or under 1% relevant improvement, stop parameter nudging and escalate parameter -> construction -> effect anatomy -> source/timing -> capability/tutorial research.",
-      "- DEPENDENCY_AWARE_RECERTIFICATION: a localized correction invalidates only that phase and connected transition/timing/composite dependencies; unrelated accepted proof remains reusable until its dependencies change.",
-      "- TRACE_BATCHING: emit several already-decided chronological trace events through the batch endpoint when safe instead of one process/HTTP roundtrip per event; individual validation and evidence requirements remain unchanged.",
-      "- QUALITY_GATES_UNCHANGED: Every phase still needs at least 2 consecutive passes before successful Practice completion, and the exact final candidate needs at least 2 consecutive whole-edit passes. Acceleration changes search/construction order, never acceptance authority.",
-      "- CLEAN_AE_PROJECT: Temporary M6 experiments and proof renders remain isolated evidence and are not imported into the production composition. Do not create hundreds of alternate scenes or repeated full-length source items.",
-      "- NO_WEAKER_SUBSTITUTION: When a defining reference effect is unfamiliar, inspect it more densely and synthesize/research the actual behavior rather than replacing it with a generic flash, zoom, shake, or other weaker approximation.",
-      "",
-    ] : []),
-    "Control architecture:",
-    "- The primary edit production system is the only production controller for Practice and Pro Creation: durable assignment -> coordinator/job queue -> single AE writer -> warm CEP batched runtime -> After Effects -> render/readback -> retained evidence.",
-    "- GPT is the session orchestrator, creative judgment owner, continuity owner, and escalation reasoner inside the primary production system.",
-    ...(input.mode === "PRACTICE"
-      ? [
-        "- The professional reference and rendered pixels are the Practice visual authority. GPT directly inspects them when judgment is needed; machine evidence measures and proves the observed behavior.",
-        "- M6 Visual Effects Intelligence is the integrated reference-fidelity engine for difficult Practice effects/transitions, not a separate whole-edit controller.",
-        "- EditFlow Brain/M6 owns dense reference evidence -> anatomy/DNA -> construction or unknown synthesis -> local real-AE render -> semantic comparison -> bounded visual correction -> fidelity gate when a Practice reference requires it.",
-      ]
-      : [
-        "- Pro Creation has no Finish authority. The editorial target, TRANSFER_VERIFIED Edit Type knowledge, source footage, and actual rendered pixels guide creative decisions.",
-        "- M6/Visual Effects Intelligence is available as an integrated synthesis/correction capability when the chosen design requires difficult effects or transitions; it does not create a second production workflow.",
-      ]),
-    "- EditFlow visual analysis is the measurement/search layer inside the primary production system.",
-    "- Edit Type, Tutorial Drive, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, and capability development are integrated capabilities and proof infrastructure, not alternate production paths.",
-    "- EditFlow's typed After Effects controls are GPT's primary editing hands.",
-    "- Desktop Commander is the system-level hand for files, processes, recovery, and environment operations.",
-    "- All editorial cutting, retiming, remodeling, effects, transitions, compositing, and final construction must exist in After Effects.",
-    "- Never replace an unfamiliar reference behavior with a weaker known effect. Reverse-engineer it and synthesize a construction when capabilities permit.",
-    "- If a fundamental skill is missing, distinguish a RECIPE_SKILL gap from an EXECUTION_CAPABILITY gap instead of degrading the reference.",
-    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
-      ? [
-        "- Held-out certification is inference-only: do not research or implement a missing skill inside the case. Record the exact missing behavior/capability in the audit trace and allow the case to fail.",
-      ]
-      : [
-        ...RESEARCH_PRIORITY_LINES,
-        CLIP_RESEARCH_POLICY_V1,
-        "- Preserve research provenance (source, URI when available, and the specific technique learned) in the Practice trace. Research is for discovery; rendered/readback evidence is still required for proof.",
-      ]),
-    "- Treat a short replay of recently shown source frames backward as TEMPORAL_REWIND / REVERSE_PLAYBACK. Do not confuse it with animation-parameter recovery, transition recoil, or a failed construction. Measure the source-time trajectory, rewind span, speed, and exit behavior, then reproduce the actual backward replay.",
-    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
-      ? [
-        "- Do not synthesize or retain a new reusable skill during certification. A missing execution route is a certification failure, not an invitation to widen the system under test.",
-      ]
-      : [
-        "- If existing primitives can express the behavior, synthesize and prove a new reusable skill. If an execution capability is genuinely absent, implement/prove the missing EditFlow route when development access permits; otherwise mark the exact gap BLOCKED.",
-        "- Research is hypothesis evidence, not proof. Resume the edit only after AE construction/readback/render evidence supports the new skill or capability.",
-      ]),
-    "- GPT completion is not Practice mastery. On completion, EditFlow independently re-analyzes the actual final render against Finish, re-checks exact source matches, M6 defining behavior coverage, effect/transition fidelity, and the configured Practice proof gate.",
-    ...(practicePolicy === null ? [] : [
-      "- Practice certification thresholds: weighted/effect/transition fidelity >= " + practicePolicy.minimumSimilarity.toFixed(3)
-        + ", exact-scene confidence >= " + practicePolicy.exactSceneConfidence.toFixed(3)
-        + ", raw-audio confidence >= " + practicePolicy.minimumAudioConfidence.toFixed(3)
-        + ". These thresholds can be strengthened per session but never weakened below the product floor.",
-    ]),
-    "- A Practice run that misses any hard gate remains HUMAN_REVIEW_REQUIRED even if GPT believes the edit is successful. Never self-certify or substitute prose confidence for retained comparison evidence.",
-    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
-      ? [
-        "- A passing held-out case is certification evidence only. It must not become a mastery/training record or alter TRANSFER_VERIFIED skills.",
-        "- appliedSkillIds on SUCCESS/IMPROVED AE_ACTION or RESULT events are diagnostic audit claims only. They never earn certification credit by themselves.",
-        "- Skill-use credit is derived independently from the exact persisted Practice attempt that produced the certified render. Every causal invariant must satisfy the retained machineUseSignature using actual cue IDs, rationale codes, construction IDs, proof effect-family/object evidence, or retained AE/runtime evidence refs.",
-        "- A retained skill with no machineUseSignature, a render-mismatched/missing attempt, missing construction IDs, or an unsatisfied causal invariant earns no held-out skill credit. Do not try to compensate with prose or extra appliedSkillIds claims.",
-        "- Skill-level certification is cumulative across held-out cases: ROBUST requires machine-attested passing held-out coverage for every retained TRANSFER_VERIFIED learned skill, not merely aggregate effect-family coverage.",
-        "- ROBUST also requires a separate certified retained real-media truth suite: 20-30 byte-distinct Finish cases with independent full-length shot truth, hard-case diversity, and zero retained scene errors. A held-out benchmark by itself cannot promote ROBUST.",
-      ]
-      : [
-        "- The first machine-passing reference reconstruction is REFERENCE_VERIFIED. Pro Creation remains blocked until a later materially different Finish/source set also passes and promotes the Edit Type to TRANSFER_VERIFIED.",
-        "- When an existing AE_PROVEN skill is successfully re-proven on a materially different Practice reference/source set, emit a fresh SKILL_COMMIT with AE_PROVEN maturity. EditFlow promotes that skill to TRANSFER_VERIFIED only after the overall machine transfer gate passes.",
-      ]),
-    "- Check cancellation state between meaningful operations and stop safely when cancellation is requested.",
-    "",
-    input.practiceRole === "HELD_OUT_CERTIFICATION" ? "Certification audit trace contract:" : "Learning trace contract:",
-    ...(input.practiceRole === "HELD_OUT_CERTIFICATION"
-      ? [
-        "Inference loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT.",
-        "Do not emit RESEARCH, CAPABILITY_IMPLEMENTATION, CAPABILITY_PROOF, SKILL_COMMIT, or LESSON during held-out certification.",
-      ]
-      : [
-        "Normal loop: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE_ACTION -> RENDER -> COMPARISON -> DIAGNOSIS -> CORRECTION -> RESULT -> LESSON.",
-        "When a missing fundamental skill/capability is discovered, insert CAPABILITY_GAP -> RESEARCH -> CAPABILITY_IMPLEMENTATION -> CAPABILITY_PROOF -> SKILL_COMMIT, then return to the normal AE/render/compare loop.",
-        "A lesson or committed skill should capture transferable reasons and adaptation rules, not only literal parameter values.",
-        "Every SKILL_COMMIT must retain a causal transfer model: trigger conditions, visual/temporal invariants, adaptation axes, failure signals, repair strategies, and explicit transfer criteria. It should also retain a machineUseSignature that maps every causal invariant to observable Practice/AE proof predicates (CUE_ID, RATIONALE_CODE, CONSTRUCTION_ID, EVIDENCE_REF, PROOF_EFFECT_FAMILY, or PROOF_OBJECT_AWARE; EXACT or PREFIX matching). Do not encode an invariant that cannot be independently observed.",
-        "A later materially different Practice run must re-prove and re-commit that skill before EditFlow can promote it to TRANSFER_VERIFIED.",
-      ]),
-    "",
-    "Start media:",
-    ...input.start.map(mediaLine),
-    ...(input.mode === "PRACTICE" ? [
-      "",
-      "Preflight-verified source matches / AE working clips:",
-      ...(preparedMatchLines.length === 0
-        ? ["(none supplied; source matching/materialization must complete before AE construction)"]
-        : preparedMatchLines),
-      "Use the working clip path for AE construction. The original source identity/range is provenance and visual-verification context only.",
-    ] : []),
-    ...(input.finish === null ? [] : ["", "Finish reference:", mediaLine(input.finish)]),
-    "",
-    "Artifact directory: " + input.artifactDir,
-    "",
-    "Retained Edit Type knowledge:",
-    "Maturity: " + (learned?.maturityStage ?? "UNPROVEN"),
-    "Trust scope: " + (learned?.knowledgeScope ?? "NONE"),
-    "Successful lessons: " + (successLessons.length === 0 ? "(none yet)" : successLessons.join(" | ")),
-    "Failures to avoid: " + (failureLessons.length === 0 ? "(none yet)" : failureLessons.join(" | ")),
-    "Development patterns: " + (patterns.length === 0 ? "(none yet)" : patterns.join(" | ")),
-    "Learned skills: " + (skillLines.length === 0 ? "(none yet)" : skillLines.join(" | ")),
-    "Verified subject identity memory: "
-      + (subjectMemoryLines.length === 0 ? "(none yet)" : subjectMemoryLines.join(" | ")),
-    "Subject identity reuse rule: retained identity may be reused only on exact matching Finish/Start content and binding context; materially different footage requires fresh machine binding proof.",
-    "Open/blocked capability gaps: " + (gapLines.length === 0 ? "(none)" : gapLines.join(" | ")),
+    "Session: " + input.sessionId, "Mode: " + input.mode, "Edit Type: " + input.editTypeId,
+    "Practice role: " + (input.practiceRole ?? "LEARNING"),
+    input.mode === "PRACTICE" ? "Study the actual Finish and reconstruct it from the provided raw media in After Effects." : "Design an original edit from the provided raw media using the chosen preset and direct render review.",
+    "Finish path: " + (input.finish?.uri ?? "(none)"),
+    "Learning sequence: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE -> RENDER -> DIRECT COMPARISON -> CORRECTION -> WORKED EXAMPLE.",
+    "Finish: " + JSON.stringify(input.finish), "Provided raw media: " + JSON.stringify(input.start),
+    "Retained GPT source choices: " + JSON.stringify(input.practiceSceneMatches ?? []),
+    "Evidence directory: " + input.artifactDir,
+    "Existing preset successes: " + JSON.stringify(learning?.successLessons ?? []),
+    "Existing preset failures: " + JSON.stringify(learning?.failureAvoidanceLessons ?? []),
+    "Existing preset techniques: " + JSON.stringify(learning?.learnedSkills ?? []),
+    "Recent worked examples: " + JSON.stringify((learning?.workedExamples ?? []).slice(-12)),
+    "Capability gaps: " + JSON.stringify(learning?.capabilityGaps ?? []),
+    "These retained observations are context for your judgment, not automatically applied recipes. Retrieve the fresh complete preset notebook on every start and resume.",
+    ...RESEARCH_PRIORITY_LINES, CLIP_RESEARCH_POLICY_V1,
+    "Keep one AE writer, keep AE open, preserve correct retained work, and build whole-edit coverage before polishing deficient regions.",
+    "Full raw movies are search-only. Materialize your selected ranges with bounded handles for AE; Finish remains a reference and must never become production footage.",
+    "Directly inspect all reference shots, cut boundaries, effect states, audio relationships and reverse/rewind behavior. Record your blueprint before construction.",
+    "All cutting, retiming, effects, transitions and compositing must be constructed in AE from your explicit decisions. Research unfamiliar behavior rather than replacing it with a weaker approximation.",
   ].join("\n");
   return applyCurrentProductionQueuePolicy(applyCurrentWorkflowContinuityPolicy(message, input.mode), input.mode);
 };
 
-const EDIT_PRODUCTION_CONTINUITY_MARKER_V1 = "EDIT_PRODUCTION_QUEUE_POLICY_V4";
+const EDIT_PRODUCTION_CONTINUITY_MARKER_V1 = "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1";
 const editProductionContinuityAppendixV1 = (mode: GptOrchestrationModeV1) => [
   EDIT_PRODUCTION_CONTINUITY_MARKER_V1,
-  "Current authoritative edit production policy:",
-  "- Preserve the retained assignment, source decisions, proven AE checkpoints, and the primary production system; use M6 as the integrated Practice reference-fidelity engine where required.",
-  "- Build playable whole-edit coverage from source-locked clips before deep final polishing. Earlier instructions requiring a phase to pass before constructing the next phase are superseded as a construction-order rule.",
-  "- Use the durable production coordinator endpoint for stage/heartbeat/proof state. ChatGPT conversations are replaceable reasoning workers, never the production clock or owner of AE continuity.",
-  "- Submit approved deterministic tasks through GET/POST /v1/product/gpt/assignments/{assignmentId}/production-jobs. Job kinds AE_TRANSACTION, AE_CORRECTION, AE_GOAL, AE_BATCH, BUILD_BASELINE, PROOF_SCRIPT, SCRATCH_SEARCH, LOCAL_RENDER, SAVE_CHECKPOINT and REFERENCE_ANALYSIS run continuously from a durable queue; dependencyIds preserve order. Reference analysis, reference-scored scratch search and Finish-based baseline assembly are Practice-only. Payload includes the current researchContext. Review/reconcile REVIEW_REQUIRED, RECONCILE_REQUIRED or FAILED jobs using action=RESOLVE, jobId, claimedBy and reviewEvidenceRef after inspecting and, if needed, repairing actual AE state. Never blindly replay a crashed AE mutation.",
-  mode === "PRO_CREATION" ? "- Use LOCAL_RENDER for bounded candidate review against the designed editorial target; reference-scored SCRATCH_SEARCH is unavailable without a Finish." : "- SCRATCH_SEARCH payload includes clipId, compStableId, startMs/endMs (at most 2000 ms), and up to 32 candidates {candidateId,patches:[{layerIndex,effectMatchName,propertyPath,keys:[{timeMs,value}]}]}. Numeric native AE overrides are applied only to disposable root-comp copies; actual render dimensions must verify 1/8, 1/4 and full resolution. Finalists require direct GPT pixel review and a separate canonical commit.",
-  "- Use shared immutable media analysis, batch direct-pixel source review, bounded local candidate search, residual-priority correction, and validated batch trace transport when available.",
-  "- Reuse a retained consulted tutorial source across clips when it covers the same scanned effects; only the footage-specific PLAN/adaptation must be new. Do not reopen the same tutorial merely to satisfy per-clip bookkeeping.",
-  "- Prefer targeted clip/boundary mutation after whole-edit coverage exists. Do not submit all-shot mutation batches unless the operation is genuinely global.",
-  mode === "PRACTICE" ? "- A first successful local phase proof becomes PROVISIONAL_PASS. Let a later whole-edit render provide the second phase pass for unchanged provisional phases at once." : "- Pro Creation uses the designed editorial target and direct review of actual renders; it has no Finish answer key and must not invent reference-based phase certification.",
-  "- Keep one AE writer. Parallelize non-mutating work: reference anatomy, source preparation, tutorial retrieval, comparison, and next-phase planning may overlap while AE is rendering or mutating.",
-  mode === "PRO_CREATION" ? "- Compare bounded candidate renders against the editorial target, then commit only the reviewed construction." : "- Use the scratch candidate funnel for bounded numeric search: up to 32 coarse candidates -> 8 mid candidates -> 2 full candidates. GPT chooses the effect hypothesis/invariants and reviews only the strongest alternatives.",
-  "- Machine/proxy scores are search evidence only. GPT inspects actual rendered pixels against the Practice reference or Pro Creation editorial target before choosing a candidate.",
-  "- Stop weak parameter tuning after two rounds or under 1% relevant gain; escalate the effect hypothesis rather than spending wall time on tiny nudges.",
-  "- Record wall-clock telemetry for media analysis, source decision, GPT review, research, AE mutation, render, comparison, proof I/O, infrastructure, and idle time. Budget overruns must trigger strategy change, not silent waiting.",
-  "- On ESCALATE_STRATEGY, diagnose the bottleneck and send production action=STRATEGY_CHANGE with claimedBy and a new concrete strategyKey. Retain elapsed telemetry and proof history; do not reset the assignment to reset its budget.",
-  mode === "PRACTICE" ? "- Preserve exact raw sources, the 95% similarity floor, two consecutive phase passes and two consecutive whole-edit passes. Final proof authority is unchanged." : "- Use provided raw media, TRANSFER_VERIFIED knowledge and actual render review for Pro Creation. Keep its distinct existing completion gates.",
+  "Current exclusive editorial authority:",
+  "- ChatGPT directly decides reference duration/cuts, footage, audio arrangement, timing/retiming, framing, effects, transitions, construction, corrections, candidate selection, next steps and final acceptance. Automatic creative analysis, formula pulses, baseline generation, scoring/ranking/pruning, machine certification and local-Qwen creative/UI decisions are retired from production.",
+  "- Helpers execute your explicit operations or return requested raw observations. Native tracking/roto/optical flow are allowed only when you explicitly choose the target, method and settings and then review the output; no automatic backend or recipe fallback.",
+  "- Resume the retained assignment, preserve correct retained work and reconcile actual AE state. Submit every AE action through production-jobs on the sole durable writer. Preserve receipts on timeout; never replay interrupted writes blindly or use retired routes.",
+  "- Every job payload requires editorialDecision:{authority:CHATGPT_DIRECT,decisionId,rationale,evidenceRefs:[...],steps:[...]}. Its immutable receipt binds the exact payload hash. Changed plans need new decisionIds. Include the current researchContext/controller credential.",
+  "- BUILD_BASELINE requires plan containing exact AE transaction operations. AE_GOAL accepts only SHORT_HORIZON with exact intents or REFRAME with explicit values; automatic pulse goals are rejected. PROOF_SCRIPT requires scriptSha256 of the reviewed script with your explicit editing settings.",
+  "- REFERENCE_ANALYSIS decodes only your chosen Finish timesMs inside a bounded window. Use footage-selection BROWSE for wider contact sheets and DEFINE_REFERENCE for explicit durationMs and continuous shots [{shotId,order,referenceStartMs,referenceEndMs,observation,inspections:[{evidenceId,timeMs}]}], authority:CHATGPT_DIRECT and rationale. No automatic cut/tail detector is used.",
+  "- Search internet scene/dialogue/script/chapter clues first, then browse your chosen raw timestamps and verify exact provided pixels. SELECT requires explicit ranges, direction, playbackRate, rationale and issued comparison anchors; retain search notes. Source discovery and effect research use their distinct research orders.",
+  "- SCRATCH_SEARCH renders every candidate in supplied order at its explicit resolutionScale (default full), without scoring, pruning or selecting a winner. Review the actual alternatives yourself and submit a separate explicit canonical commit. Machines must never decide which alternatives you see.",
+  "- Production telemetry and residual measurements are observations. Choose the correction order and strategy yourself. Scheduling, file integrity, leases and execution safety checks are mechanical, not editorial decisions.",
+  "- GET assignments/{id}/practice-notebook reads the existing selected preset gptLearning including old lessons/skills and complete worked/failed examples; ?q searches without ranking. POST records your lesson with ordered actions/settings/reasons/checks, observed outcome, explanation, whenToUse, adaptation, mistakesToAvoid, evidenceRefs and supersedesLessonIds. Reviewed outcomes require reviewEvidence with a retained renderJobId and issued inspections, or failedJobId for an execution failure. Save after reviewed attempts, before handoff and completion. Never overwrite history or apply a recipe automatically.",
+  mode === "PRACTICE" ? "- Completion and Practice learning authority are your direct review of the exact final render against Finish. Machine similarity/audio/effect scores cannot decide acceptance or block use of retained preset knowledge. Preserve fidelity as the target; record discrepancies honestly and choose PASS or REVISE." : "- Pro Creation has no Finish. Use all relevant retained preset examples, including failures, and explicitly adapt them to the footage. Review against your designed target.",
+  "- Complete requires claimedBy, success, finalSummary and finalReview:{authority:CHATGPT_DIRECT,verdict:PASS|REVISE,renderJobId,renderSha256,remainingIssues:[],checks:{shots,timing,audio,framing,effects,transitions,color},comparisons:[{clipId,renderTimeMs,renderEvidenceId,referenceTimeMs,referenceEvidenceId,observation}]}. Use BROWSE_RENDER to obtain issued inspections from the retained LOCAL_RENDER output. Review every chosen clip. Practice must first save a reviewed worked/failed example in the existing preset. PASS requires no unresolved issues. Numeric scores alone never complete an edit.",
 ].join("\n");
 
 const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrationModeV1): string => {
-  if (message.includes(EDIT_PRODUCTION_CONTINUITY_MARKER_V1)) return message;
-  const cleaned = message.replace(/PRACTICE_ACCELERATION_CONTINUITY_V[1-3]\nCurrent Practice execution policy for this resumed assignment:\n(?:- .*?(?:\n|$))*/g, "").trimEnd();
+  const markerAt = message.indexOf(EDIT_PRODUCTION_CONTINUITY_MARKER_V1);
+  const prior = (markerAt < 0 ? message : message.slice(0, markerAt))
+    .replace(/PRACTICE_ACCELERATION_CONTINUITY_V[1-3]\nCurrent Practice execution policy for this resumed assignment:\n(?:- .*?(?:\n|$))*/g, "")
+    .replace(/Pass each phase before emitting work for the next chronological phase\./g, "");
+  // Remove obsolete cached directions, not retained evidence or lessons.
+  const obsolete = /(?:compiler-derived|compiled through|compiler semantics|Certification requires|machine[- ]passing|independently re-analyzes|machine-attested|machine transfer gate|certification thresholds|raw-audio confidence|exact-scene confidence|95% similarity floor|QUALITY_GATES_UNCHANGED|PROGRESSIVE FIDELITY FUNNEL|GPT REVIEW COMPRESSION|GLOBAL RESIDUAL SCHEDULER|ANTI_STAGNATION|BOUNDED SCRATCH SEARCH|scratch candidate funnel|32 coarse|winning commit|strongest alternatives|strongest 3|M6 owns|EditFlow Brain\/M6 owns|invoke the M6 reference-fidelity|GPT completion is not Practice mastery|Pro Creation remains blocked|Use only TRANSFER_VERIFIED|Treat only TRANSFER_VERIFIED|frozen TRANSFER_VERIFIED|must re-prove and re-commit|fresh machine binding proof|Final proof authority is unchanged|Keep its distinct existing completion gates|HUMAN_REVIEW_REQUIRED|reference-scored scratch search|residual-priority correction|same.*proof gate|overall machine|95%|machine evidence measures and proves)/i;
+  const cleaned = prior.split("\n").filter(line => !(line.startsWith("- ") && obsolete.test(line)) && !/^(?:EDIT_PRODUCTION_QUEUE_POLICY_V|Practice certification policy \(current\):|Current authoritative edit production policy:)/.test(line)).join("\n").trimEnd();
   return cleaned + "\n\n" + editProductionContinuityAppendixV1(mode);
 };
 
@@ -1001,11 +785,16 @@ export class GptOrchestrationStoreV1 {
   }
 
   async refreshActiveProductionInstructions(): Promise<number> {
-    return await this.#mutate((payload) => {
+    return await this.#mutate(async (payload) => {
+      const raw = JSON.parse(await readFile(this.filePath, "utf8").catch(error => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return '{"assignments":[]}';
+        throw error;
+      })) as GptOrchestrationStorePayloadV1;
+      const needsRefresh = new Set(raw.assignments.filter(a => !a.chatMessage.includes(EDIT_PRODUCTION_CONTINUITY_MARKER_V1)).map(a => a.assignmentId));
       let refreshed = 0;
       const assignments = payload.assignments.map((assignment) => {
         if (!["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
-          || assignment.chatMessage.includes(EDIT_PRODUCTION_CONTINUITY_MARKER_V1)) {
+          || !needsRefresh.has(assignment.assignmentId)) {
           return assignment;
         }
         refreshed += 1;

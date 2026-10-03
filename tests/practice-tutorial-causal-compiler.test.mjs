@@ -288,7 +288,7 @@ test("SKILL_COMMIT replaces GPT placeholders with compiler-backed tutorial seman
     item.startsWith("tutorial-analysis:sha256:")));
 });
 
-test("Practice Panel compiles deep tutorial analysis through the product API", async (t) => {
+test("Practice Panel retires machine tutorial compilation from the production API", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "editflow-causal-api-"));
   const token = "tutorial-causal-api-test-token-0123456789";
   const registryPath = path.join(root, "state", "edit-types.json");
@@ -361,77 +361,7 @@ test("Practice Panel compiles deep tutorial analysis through the product API", a
       }),
     },
   );
-  assert.equal(response.status, 201);
-  const payload = await response.json();
-  assert.equal(payload.researchSource.kind, "TUTORIAL_DRIVE");
-  assert.equal(
-    payload.researchSource.tutorialCompilation.targetSkillId,
-    "skill:impact-push:v1",
-  );
-  assert.match(
-    payload.researchSource.tutorialCompilation.analysisFingerprint,
-    /^[0-9a-f]{64}$/,
-  );
-
-  const shapedSubmission = await fetch(
-    "http://127.0.0.1:" + String(port)
-      + "/v1/product/gpt/assignments/"
-      + encodeURIComponent(assignment.assignmentId)
-      + "/events",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-EditFlow-Token": token,
-      },
-      body: JSON.stringify({
-        stage: "RESEARCH",
-        outcome: "SUCCESS",
-        summary: "A caller-shaped compiler record must not bypass the compiler endpoint.",
-        researchSources: [payload.researchSource],
-      }),
-    },
-  );
-  assert.equal(shapedSubmission.status, 400);
-  assert.match(
-    (await shapedSubmission.json()).error,
-    /tutorial-compilations endpoint/,
-  );
-
-  const unboundImplementation = await fetch(
-    "http://127.0.0.1:" + String(port)
-      + "/v1/product/gpt/assignments/"
-      + encodeURIComponent(assignment.assignmentId)
-      + "/events",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-EditFlow-Token": token,
-      },
-      body: JSON.stringify({
-        stage: "CAPABILITY_IMPLEMENTATION",
-        outcome: "SUCCESS",
-        summary: "Unbound implementation evidence must be rejected.",
-        evidenceRefs: ["ae:unbound"],
-      }),
-    },
-  );
-  assert.equal(unboundImplementation.status, 400);
-  assert.match(
-    (await unboundImplementation.json()).error,
-    /originating capabilityGap/,
-  );
-
-  const events = await store.eventsForSession(assignment.sessionId);
-  assert.equal(events.length, 1);
-  assert.equal(events[0].stage, "RESEARCH");
-  assert.equal(
-    events[0].researchSources[0].tutorialCompilation.targetSkillId,
-    "skill:impact-push:v1",
-  );
-
-  const reloaded = await new EditTypeRegistryFileV1(registryPath).load();
-  const knowledge = reloaded.knowledge("impact-edit");
-  assert.equal(knowledge.gptLearning.eventCount, 1);
+  assert.equal(response.status, 410);
+  assert.match((await response.json()).error, /MACHINE_TUTORIAL_COMPILATION_RETIRED/);
+  assert.equal((await store.eventsForSession(assignment.sessionId)).length,0);
 });

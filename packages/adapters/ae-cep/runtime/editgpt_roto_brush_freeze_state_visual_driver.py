@@ -102,6 +102,8 @@ async def wait_for_roto_state(qwen, eyes, hands, evidence_dir: Path, desired_sta
 
 async def run(evidence_dir: Path, expected_layer_name: str, tool_select_script: str) -> dict:
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    from editflow_editorial_authority import require_isolated_legacy_driver
+    require_isolated_legacy_driver()
     qwen = LocalQwenVLClient()
     if not qwen.health().get("ok"):
         raise RuntimeError("local semantic verifier unavailable")

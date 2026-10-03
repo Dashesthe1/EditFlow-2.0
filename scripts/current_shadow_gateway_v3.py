@@ -207,6 +207,9 @@ def build_server():
             "service": "EditFlow Current Shadow Gateway",
             "primarySystemOnly": True,
             "primaryExecution": "DURABLE_PRODUCTION_QUEUE_V1",
+            "editorialDecisionAuthority": "CHATGPT_DIRECT",
+            "automaticCreativeFallback": False,
+            "presetLearning": "EXISTING_GPT_LEARNING_WORKED_EXAMPLES",
             "footageSelectionAuthority": "CHATGPT_DIRECT",
             "availableFootageSelectionMethods": ["CHATGPT_DIRECT"],
             "rawShotCandidateRanking": "REMOVED_FROM_PRODUCTION",
@@ -219,7 +222,7 @@ def build_server():
                 "get_clip_research_contract", "get_clip_research", "record_clip_research",
                 "get_footage_selection", "inspect_or_select_footage",
                 "enqueue_production_job", "get_production_jobs", "resolve_production_job",
-                "record_gpt_learning_event", "complete_gpt_assignment", "fail_gpt_assignment",
+                "record_gpt_learning_event", "get_practice_notebook", "record_practice_example", "complete_gpt_assignment", "fail_gpt_assignment",
                 "acknowledge_gpt_assignment_cancelled", "get_editflow_run", "cancel_editflow_run",
                 "resume_or_start_practice",
             ],
@@ -256,7 +259,8 @@ def build_server():
         goal = _normalize_goal(operations_json)
         state = _http("GET", "/status")
         return {
-            "valid": True,
+            "valid": goal.get("kind") in ("SHORT_HORIZON", "REFRAME"),
+            "editorialAuthority": "CHATGPT_DIRECT",
             "baseRevision": base_revision,
             "hostRevision": state.get("hostRevision"),
             "planId": plan_id,
@@ -275,15 +279,16 @@ def build_server():
         parsed = json.loads(operations_json)
         decision = json.loads(decision_json) if decision_json else {}
         research_context = decision.get("researchContext", parsed.get("researchContext") if isinstance(parsed, dict) else None)
+        editorial = decision.get("editorialDecision", decision if decision.get("authority") == "CHATGPT_DIRECT" else None)
         transaction_id = idempotency_key or plan_id or f"shadow-fast-{int(time.time() * 1000)}"
         if isinstance(parsed, list):
             if not parsed:
                 raise ValueError("operations_json routine-intent list must not be empty")
-            result = _execute_queued("AE_BATCH", {"intents": parsed, "transactionId": transaction_id, "researchContext": research_context})
+            result = _execute_queued("AE_BATCH", {"intents": parsed, "transactionId": transaction_id, "researchContext": research_context, "editorialDecision": editorial})
             execution_path = "DURABLE_PRODUCTION_QUEUE_V1"
         else:
             goal = _normalize_goal(operations_json)
-            result = _execute_queued("AE_GOAL", {"goal": goal, "transactionId": transaction_id, "researchContext": research_context})
+            result = _execute_queued("AE_GOAL", {"goal": goal, "transactionId": transaction_id, "researchContext": research_context, "editorialDecision": editorial})
             execution_path = "DURABLE_PRODUCTION_QUEUE_V1"
         return {"baseRevision": base_revision, "planId": plan_id, "executionPath": execution_path, "result": result}
 
@@ -295,7 +300,7 @@ def build_server():
             raise ValueError("goal_json must decode to an object")
         goal = packet.get("goal", packet)
         tx = transaction_id or f"shadow-fast-{int(time.time() * 1000)}"
-        return _execute_queued("AE_GOAL", {"goal": goal, "transactionId": tx, "researchContext": packet.get("researchContext")})
+        return _execute_queued("AE_GOAL", {"goal": goal, "transactionId": tx, "researchContext": packet.get("researchContext"), "editorialDecision": packet.get("editorialDecision")})
 
     @mcp.tool()
     def fast_ae_batch(intents_json: str, transaction_id: str = "") -> dict[str, Any]:
@@ -305,7 +310,7 @@ def build_server():
         if not isinstance(intents, list) or not intents:
             raise ValueError("intents_json must decode to a non-empty routine-intent list")
         tx = transaction_id or f"shadow-batch-{int(time.time() * 1000)}"
-        return _execute_queued("AE_BATCH", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None})
+        return _execute_queued("AE_BATCH", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None, "editorialDecision": packet.get("editorialDecision") if isinstance(packet, dict) else None})
 
     @mcp.tool()
     def enqueue_production_job(assignment_id: str, job_json: str) -> dict[str, Any]:
@@ -341,10 +346,22 @@ def build_server():
         payload = json.loads(request_json)
         if not isinstance(payload, dict):
             raise ValueError("Footage request must be a JSON object with the current claimedBy.")
-        if payload.get("action") not in ("BROWSE", "NOTE", "SELECT"):
-            raise ValueError("Only direct ChatGPT footage BROWSE, NOTE and SELECT actions are available; automated matching/ranking is retired.")
+        if payload.get("action") not in ("BROWSE", "NOTE", "DEFINE_REFERENCE", "SELECT", "BROWSE_RENDER"):
+            raise ValueError("Only direct ChatGPT BROWSE, NOTE, DEFINE_REFERENCE, SELECT and BROWSE_RENDER actions are available; automated matching/ranking is retired.")
         safe_id = urllib.parse.quote(assignment_id, safe="")
         return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/footage-selection", payload)
+
+    @mcp.tool()
+    def get_practice_notebook(assignment_id: str, query: str = "") -> dict[str, Any]:
+        """Read the selected preset's existing learning record and complete worked/failed examples; no automatic recipe selection."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/practice-notebook?q=" + urllib.parse.quote(query, safe=""))
+
+    @mcp.tool()
+    def record_practice_example(assignment_id: str, example_json: str) -> dict[str, Any]:
+        """Retain {claimedBy,lesson,reviewEvidence} in the existing preset notebook. Save exact ordered steps, observed outcome, mistakes and issued evidence."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/practice-notebook", json.loads(example_json))
 
     @mcp.tool()
     def fast_ae_refresh() -> dict[str, Any]:
@@ -441,11 +458,15 @@ def build_server():
         success: bool,
         final_summary: str,
         final_render_ref: str = "",
+        final_review_json: str = "",
+        claimed_by: str = "",
     ) -> dict[str, Any]:
-        """Complete GPT's assignment; cancelled assignments cannot be certified as successful."""
+        """Complete only after direct ChatGPT review of a retained whole-edit render and saved preset worked/failed examples. Supply final_review_json and current claimed_by."""
         payload: dict[str, Any] = {
             "success": bool(success),
             "finalSummary": final_summary,
+            "finalReview": json.loads(final_review_json) if final_review_json else None,
+            "claimedBy": claimed_by,
         }
         if final_render_ref:
             payload["finalRenderRef"] = final_render_ref

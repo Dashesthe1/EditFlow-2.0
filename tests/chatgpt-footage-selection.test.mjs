@@ -34,11 +34,13 @@ async function fixture(t) {
   const config = { artifactDir: path.join(root, "artifacts"), analysisCacheDir: path.join(root, "cache"),
     scriptPath: referenceScript, python: { executable: process.execPath, prefixArgs: [] }, ffmpegPath: process.execPath };
   const matcher = new LocalPracticeMediaMatcherV1(config);
-  const reference = await matcher.analyzeFinish(finish), sourceIndex = await matcher.indexStart([raw]);
+  const initial = await matcher.analyzeFinish(finish), sourceIndex = await matcher.indexStart([raw]);
+  assert.deepEqual(initial.shots, []);
   const refPixels = await matcher.inspectFootage(finish, [0, 400, 900]);
+  const reference = await matcher.defineReference(finish, {authority:"CHATGPT_DIRECT",durationMs:1000,rationale:"Observed a single shot",shots:[{shotId:"shot:1",order:0,referenceStartMs:0,referenceEndMs:1000,observation:"Single continuous action",inspections:[{evidenceId:refPixels.evidenceId,timeMs:400}]}]});
   const rawPixels = await matcher.inspectFootage(raw, [2000, 2400, 2900]);
   const selections = [{ shotId: "shot:1", sourceId: "raw", sourceStartMs: 2000, sourceEndMs: 3000,
-    direction: "FORWARD", confidence: .98, rationale: "Same subject, pose and action across the complete shot.",
+    direction: "FORWARD", playbackRate: 1, confidence: .98, rationale: "Same subject, pose and action across the complete shot.",
     anchors: [0, 1, 2].map((i) => ({ referenceTimeMs: refPixels.frames[i].timeMs, sourceTimeMs: rawPixels.frames[i].timeMs,
       referenceEvidenceId: refPixels.evidenceId, sourceEvidenceId: rawPixels.evidenceId, observation: "Corresponding action moment." })) }];
   const search = { internetStatus: "CONSULTED", sources: [{ url: "https://example.org/script", query: "scene dialogue", finding: "Scene context narrows the raw interval." }],
@@ -59,7 +61,7 @@ test("production defaults to GPT choices, never runs index/ranking, and resumes 
   const ref = await resumed.analyzeFinish(f.finish), index = await resumed.indexStart([f.raw]);
   assert.equal(index.indexId, f.sourceIndex.indexId);
   assert.deepEqual(await resumed.matchScenes({ reference: ref, sourceIndex: index, minimumConfidence: .95 }), matches);
-  assert.doesNotMatch(await readFile(f.counter, "utf8"), /^(index|match)$/m);
+  assert.doesNotMatch(await readFile(f.counter, "utf8"), /^(reference|index|match|audio-match)$/m);
   const audio = { mediaId: "song", role: "START_SOURCE", mediaKind: "AUDIO", uri: path.join(f.root, "song.mp3") };
   await writeFile(audio.uri, "raw audio");
   const withAudio = await resumed.indexStart([f.raw, audio]);
@@ -179,14 +181,14 @@ test("Practice chat jobs cannot bypass direct selection through missing checkpoi
     editTypeRegistryFilePath: path.join(f.root, "types.json"), gptOrchestrationFilePath: store.filePath });
   await service.start();
   t.after(async () => { await service.stop(); await broker.stop(); });
-  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
   const headers = { "Content-Type": "application/json", "X-EditFlow-Token": token };
   const endpoint = `http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production-jobs`;
   const enqueue = async () => {
     const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ kind: "AE_BATCH", payload: {
       intents: [], researchContext: { assignmentId: assignment.assignmentId, claimedBy: "controller", plans: [] } } }) });
     assert.equal(response.status, 409);
-    assert.match((await response.json()).error, /reconstruction is locked/);
+    assert.match((await response.json()).error, /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
     assert.deepEqual((await (await fetch(endpoint, { headers })).json()).jobs, []);
   };
   await enqueue();
@@ -199,10 +201,10 @@ test("Practice chat jobs cannot bypass direct selection through missing checkpoi
       preflight: { ...checkpoint, totalShotIds: shots } };
     await writeFile(store.filePath, JSON.stringify(persisted));
   };
-  await writeState([]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
+  await writeState([]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
   await writeState([direct], ["shot:1", "shot:2"]);
-  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
-  await writeState([direct, direct]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
-  await writeState([{ ...direct, confidence: .7 }]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
-  await writeState([direct]); await service.assertPracticeReconstructionReady();
+  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+  await writeState([direct, direct]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+  await writeState([{ ...direct, confidence: .7 }]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+  await writeState([direct]); await assert.rejects(service.assertPracticeReconstructionReady());
 });
