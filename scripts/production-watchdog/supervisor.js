@@ -4,7 +4,7 @@ const path = require('path');
 const http = require('http');
 const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
-const { POLICY, evaluateLiveness } = require('./liveness.js');
+const { POLICY, evaluateLiveness, operationFailure } = require('./liveness.js');
 const ROOT = process.env.EDITFLOW_SUPERVISOR_ROOT || __dirname;
 fs.mkdirSync(ROOT, { recursive: true });
 const LOCAL = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
@@ -26,9 +26,9 @@ function connection() {
   const key = fs.readFileSync(path.join(manifest.stateDir, 'production-supervision', 'supervisor.key'), 'utf8').trim();
   return { url: manifest.productBaseUrl + '/v1/product/production/supervision', token: config.token, key };
 }
-async function gateway(body) {
+async function gateway(body, route) {
   const c = connection();
-  const response = await fetch(c.url, { method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(10000),
+  const response = await fetch(route ? c.url.replace('/production/supervision', route) : c.url, { method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(10000),
     headers: { 'content-type': 'application/json', 'x-editflow-token': c.token, 'x-editflow-supervisor-key': c.key },
     ...(body ? { body: JSON.stringify(body) } : {}) });
   const result = await response.json(); if (!response.ok) throw Error(result.error || 'GATEWAY_' + response.status);
@@ -48,18 +48,42 @@ async function beginHandoff(reason) {
 }
 async function progressHandoff() {
   const h = state.handoff; if (!h || !snapshot) return;
-  if (h.assignmentId !== snapshot.assignment?.assignmentId) { state.handoff = null; persist(); return; }
+  if (!h.userControlId && h.assignmentId !== snapshot.assignment?.assignmentId) { state.handoff = null; persist(); return; }
   if (h.status === 'REVOKE') {
     if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: h.assignmentId,
       generation: snapshot.authority.generation, reason: h.reason });
     h.status = Number.isInteger(h.sourceTabId) ? 'CLOSE' : 'DRAIN'; persist(); log('worker_revoked', { assignmentId: h.assignmentId, reason: h.reason });
   }
   if (h.status === 'DRAIN') {
-    if (snapshot.writerOwner || snapshot.jobs.some(j => j.status === 'RUNNING')) return;
+    if (snapshot.writerOwner || snapshot.jobs.some(j => j.status === 'RUNNING') || snapshot.preflightRunning && h.userControlId) return;
+    if (h.userControlId) {
+      const prepared = await gateway({ action: 'CONTROL_PREPARE', requestId: h.userControlId });
+      if (prepared.receipt.status === 'COMPLETED') { state.handoff = null; persist(); return; }
+      if (prepared.receipt.status !== 'PENDING' || prepared.receipt.step !== 'LAUNCHING') return;
+      h.assignmentId = prepared.receipt.assignmentId; h.sessionId = prepared.receipt.sessionId;
+      snapshot = await gateway(); lastGatewayAt = Date.now();
+    }
     const issued = await gateway({ action: 'ISSUE', assignmentId: h.assignmentId, launchId: h.id });
     h.prompt = prompt(snapshot.assignment, issued.credential); h.generation = issued.authority.generation;
     h.status = 'CREATE'; persist();
   }
+}
+async function processUserControl(request) {
+  state.phase = request.status === 'BLOCKED' ? 'BLOCKED' : 'USER_CONTROL';
+  state.reason = request.error || request.action + ':' + request.step;
+  if (request.status === 'BLOCKED') return;
+  if (!state.handoff || state.handoff.userControlId !== request.requestId) {
+    // An outstanding CREATE must acknowledge its owned tab before it can be retired.
+    if (state.handoff?.status === 'CREATE') return;
+    if (state.handoff?.targetTabId) state.activeTabId = state.handoff.targetTabId;
+    const begun = await gateway({ action: 'CONTROL_BEGIN', requestId: request.requestId });
+    if (begun.receipt.status !== 'PENDING') return;
+    state.handoff = { id: request.requestId, userControlId: request.requestId,
+      assignmentId: request.expectedAssignmentId, sourceTabId: state.activeTabId, targetTabId: null,
+      status: Number.isInteger(state.activeTabId) ? 'CLOSE' : 'DRAIN', reason: 'explicit_user_' + request.action.toLowerCase(), createdAt: Date.now() };
+    persist();
+  }
+  await progressHandoff();
 }
 function repair(reason) {
   if (Date.now() - state.lastRepairAt < 120000) return;
@@ -74,6 +98,16 @@ async function tick() {
   if (tickBusy) return; tickBusy = true;
   try {
     snapshot = await gateway(); lastGatewayAt = Date.now(); gatewayError = null;
+    if ((snapshot.assignment || snapshot.userControl) && Date.now() - (Math.max(bootAt, state.lastActuatorAt || 0, state.lastExtensionLoadedAt || 0)) > 60000) repair('actuator_offline');
+    if (snapshot.userControl && snapshot.userControl.step !== 'VERIFYING') {
+      const failure = operationFailure(snapshot, Date.now());
+      if (failure && snapshot.assignment) {
+        if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: snapshot.assignment.assignmentId, generation: snapshot.authority.generation, reason: failure });
+        await gateway({ action: 'INTERRUPT', assignmentId: snapshot.assignment.assignmentId, reason: failure });
+        state.phase = 'INFRA_RECOVERY'; state.reason = failure; repair(failure); persist(); return;
+      }
+      await processUserControl(snapshot.userControl); persist(); return;
+    }
     const verdict = evaluateLiveness(state.liveness, snapshot, Date.now());
     state.liveness = verdict.next; state.phase = verdict.phase; state.reason = verdict.reason;
     if (verdict.phase === 'IDLE') { state.handoff = null; }
@@ -81,7 +115,16 @@ async function tick() {
       if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: snapshot.assignment.assignmentId,
         generation: snapshot.authority.generation, reason: 'user_cancel' });
       // Assignment cancellation owns job abortion. Never start another chat.
-      if (Number.isInteger(state.activeTabId) && !state.handoff) state.handoff = { id: randomUUID(), status: 'CLOSE_ONLY', sourceTabId: state.activeTabId };
+      if (state.handoff?.targetTabId) state.activeTabId = state.handoff.targetTabId;
+      if (Number.isInteger(state.activeTabId) && state.handoff?.status !== 'CLOSE_ONLY') {
+        state.handoff = { id: randomUUID(), status: 'CLOSE_ONLY', sourceTabId: state.activeTabId };
+      }
+      if (!Number.isInteger(state.activeTabId) && state.handoff?.status !== 'CLOSE_ONLY') state.handoff = null;
+      if (!Number.isInteger(state.activeTabId) && !state.handoff && !snapshot.writerOwner
+        && !snapshot.preflightRunning && !snapshot.jobs.some(j => j.status === 'RUNNING')) {
+        await gateway({ action: 'FINALIZE_CANCEL', assignmentId: snapshot.assignment.assignmentId });
+        log('cancellation_completed', { assignmentId: snapshot.assignment.assignmentId });
+      }
     } else if (verdict.action === 'REPAIR') {
       if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: snapshot.assignment.assignmentId,
         generation: snapshot.authority.generation, reason: verdict.reason });
@@ -91,8 +134,10 @@ async function tick() {
       await gateway({ action: 'RECOVER_FAILED', assignmentId: snapshot.assignment.assignmentId });
       await beginHandoff(verdict.reason);
     } else if (state.handoff) await progressHandoff();
-    else if (verdict.action === 'HANDOFF') await beginHandoff(verdict.reason);
-    if (snapshot.assignment && Date.now() - (Math.max(bootAt, state.lastActuatorAt || 0, state.lastExtensionLoadedAt || 0)) > 60000) repair('actuator_offline');
+    else if (verdict.action === 'HANDOFF') {
+      if (snapshot.userControl?.step === 'VERIFYING') await gateway({ action: 'CONTROL_FAILED', requestId: snapshot.userControl.requestId, error: 'Prompt delivered, but the authorized worker did not claim the assignment before operational silence was confirmed.' });
+      await beginHandoff(verdict.reason);
+    }
     persist();
   } catch (e) { gatewayError = e.message; state.phase = 'INFRA_RECOVERY'; state.reason = 'gateway_unavailable'; persist(); repair('gateway_unavailable'); }
   finally { tickBusy = false; }
@@ -100,7 +145,7 @@ async function tick() {
 function actuatorCommand() {
   const h = state.handoff;
   if (!snapshot || Date.now() - lastGatewayAt > 15000) return { command: 'NONE', reason: 'gateway_unavailable' };
-  if (!h || snapshot.authority.state === 'PAUSED') return { command: 'NONE',
+  if (!h || snapshot.authority.state === 'PAUSED' && !['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'NONE',
     recoverLaunchId: !state.activeTabId && !h ? snapshot.authority.launchId : null };
   if (['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'STOP_CLOSE', id: h.id, tabId: h.sourceTabId };
   if (h.status === 'CREATE') return { command: 'CREATE', id: h.id };
@@ -117,11 +162,17 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.0.2', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.1.0', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError,
       lastExtensionLoadedAt: state.lastExtensionLoadedAt, extensionVersion: state.extensionVersion,
+      userControl: snapshot?.userControl || null, latestUserControl: snapshot?.latestUserControl || null,
       activeTabId: state.activeTabId, handoff: state.handoff ? { id: state.handoff.id, status: state.handoff.status } : null });
+    if (req.url.split('?')[0] === '/user-controls') {
+      if (!actuatorAllowed) return send(403, { error: 'ACTUATOR_ORIGIN_REQUIRED' });
+      if (req.method === 'GET') return send(200, await gateway(null, '/production/user-controls' + (req.url.includes('?') ? '?' + req.url.split('?')[1] : '')));
+      if (req.method === 'POST') return send(200, await gateway(await body(req), '/production/user-controls'));
+    }
     if (req.url.startsWith('/actuator') && !actuatorAllowed) return send(403, { error: 'ACTUATOR_ORIGIN_REQUIRED' });
     if (req.method === 'GET' && req.url === '/actuator') {
       state.lastActuatorAt = Date.now(); return send(200, actuatorCommand());
@@ -139,6 +190,7 @@ const server = http.createServer(async (req, res) => {
       else if (b.type === 'CLOSED' && h.status === 'CLOSE') { h.status = 'DRAIN'; state.activeTabId = null; }
       else if (b.type === 'CREATED' && h.status === 'CREATE' && Number.isInteger(b.tabId)) { h.status = 'SEND'; h.targetTabId = b.tabId; state.activeTabId = b.tabId; }
       else if (b.type === 'SENT' && h.status === 'SEND' && b.tabId === h.targetTabId) {
+        if (h.userControlId) await gateway({ action: 'CONTROL_DELIVERED', requestId: h.userControlId, tabId: b.tabId });
         state.activeTabId = b.tabId; state.handoff = null; state.liveness = {}; log('continuation_sent', { assignmentId: h.assignmentId, generation: h.generation, tabId: b.tabId });
       } else if (b.type === 'FAILED') { log('actuator_failed_retry_same_step', { id: h.id, error: b.error }); }
       else return send(409, { error: 'ACTUATOR_STEP_MISMATCH' });
@@ -148,6 +200,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && ['/pause', '/resume'].includes(req.url)) {
       if (origin && origin !== extensionOrigin) return send(403, { error: 'LOCAL_CONTROL_REQUIRED' });
       if (!snapshot?.assignment) return send(409, { error: 'NO_ASSIGNMENT' });
+      if (snapshot.userControl) return send(409, { error: 'USER_CONTROL_ALREADY_PENDING' });
       const a = snapshot.authority;
       await gateway({ action: req.url === '/pause' ? 'PAUSE' : 'RESUME', assignmentId: a.assignmentId, generation: a.generation, reason: 'explicit_user_pause' });
       if (state.handoff?.targetTabId) state.activeTabId = state.handoff.targetTabId;

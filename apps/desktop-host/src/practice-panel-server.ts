@@ -11,6 +11,7 @@ import {
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { ProductionSupervisionV1, redactWorkerCredentialsV1 } from "./production-supervision.js";
+import { ProductionUserControlsV1, PRODUCTION_USER_CONTROL_CONTRACT_V1, type ProductionUserControlReceiptV1 } from "./production-user-controls.js";
 
 import {
   EditTypeRegistryFileV1,
@@ -1029,6 +1030,7 @@ export class PracticePanelServerV1 {
   readonly #coordinators = new Map<string, Promise<{ file: PracticeProductionCoordinatorFileV1; coordinator: PracticeProductionCoordinatorV1 }>>();
   readonly #productionWorker: PracticeProductionWorkerV1;
   readonly #supervision: ProductionSupervisionV1 | null;
+  readonly #userControls: ProductionUserControlsV1;
   #aeWriterOwner: string | null = null;
   #childProofScope: { key: string; jobId: string; body: Record<string, any> } | null = null;
   #childProofTail: Promise<unknown> = Promise.resolve();
@@ -1063,11 +1065,12 @@ export class PracticePanelServerV1 {
     );
     this.#supervision = config.productionSupervision === false ? null : new ProductionSupervisionV1(
       path.join(path.dirname(this.#gptStore.filePath), "production-supervision"));
+    this.#userControls = new ProductionUserControlsV1(path.join(path.dirname(this.#gptStore.filePath), "production-supervision"));
     this.#productionWorker = new PracticeProductionWorkerV1(
       path.join(this.#productionCoordinatorDir, "jobs.jsonl"),
       (job, signal) => this.#executeProductionJob(job, signal),
       async (id) => (await this.#gptStore.getAssignment(id))?.status === "RUNNING",
-      async (id) => { const state = this.#supervision?.publicState(); return !state || state.assignmentId !== id || state.state !== "PAUSED"; },
+      async (id) => { const state = this.#supervision?.publicState(); return !state || state.assignmentId !== id || state.state === "ARMED"; },
     );
     this.#masteryVerifier = new PracticeMasteryVerifierV1({
       repositoryRoot: config.repositoryRoot,
@@ -1494,6 +1497,7 @@ export class PracticePanelServerV1 {
       localRuntime: this.#fastRuntime?.status() ?? null,
       currentTransactionRuntime: this.#transactionRuntime.status(),
       productionSupervisor: this.#supervision?.publicState() ?? null,
+      userControls: { contract: PRODUCTION_USER_CONTROL_CONTRACT_V1, active: this.#userControls.active(), latest: this.#userControls.latest() },
       mutationLease: { held: this.#aeWriterOwner !== null, owner: this.#aeWriterOwner, expiresAt: null } };
   }
 
@@ -1745,17 +1749,20 @@ export class PracticePanelServerV1 {
     };
   }
 
-  async #startPractice(body: Record<string, unknown>): Promise<PracticePanelRunSnapshotV1> {
+  async #startPractice(body: Record<string, unknown>, plannedSessionId?: string): Promise<PracticePanelRunSnapshotV1> {
+    if (this.#userControls.active() && plannedSessionId !== this.#userControls.active()?.plannedSessionId) {
+      throw new HttpError(409, "USER_CONTROL_ALREADY_PENDING: finish the requested lifecycle action first.");
+    }
     if (this.#startingPractice !== null) return await this.#startingPractice;
-    const pending = this.#createPractice(body);
+    const pending = this.#createPractice(body, plannedSessionId);
     this.#startingPractice = pending;
     try { return await pending; } finally { this.#startingPractice = null; }
   }
 
-  async #createPractice(body: Record<string, unknown>): Promise<PracticePanelRunSnapshotV1> {
+  async #createPractice(body: Record<string, unknown>, plannedSessionId?: string): Promise<PracticePanelRunSnapshotV1> {
     if (this.#activeRunId !== null) {
       const active = this.#runs.get(this.#activeRunId);
-      if (active?.mode === "PRACTICE"
+      if (active?.mode === "PRACTICE" && (!plannedSessionId || active.sessionId === plannedSessionId)
         && !["CANCELLED", "COMPLETED", "FAILED"].includes(active.state)) {
         return await this.#syncRun(active.sessionId);
       }
@@ -1780,7 +1787,7 @@ export class PracticePanelServerV1 {
       });
     }
 
-    const sessionId = "practice:" + randomUUID();
+    const sessionId = plannedSessionId ?? "practice:" + randomUUID();
     const start = mediaInputs(request.videoPaths, request.audioPaths ?? []);
     const finish: PracticeMediaInputV1 = {
       mediaId: mediaId("finish", request.finishPath, 0),
@@ -2036,6 +2043,7 @@ export class PracticePanelServerV1 {
       ),
       productionJobs: assignment === null ? [] : this.#productionWorker.list(assignment.assignmentId),
       workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
+      userControls: { contract: PRODUCTION_USER_CONTROL_CONTRACT_V1, active: this.#userControls.active(), latest: this.#userControls.latest() },
       controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
       resumeRequired: assignment !== null,
     };
@@ -2534,6 +2542,7 @@ export class PracticePanelServerV1 {
   async #startProCreation(
     body: Record<string, unknown>,
   ): Promise<PracticePanelRunSnapshotV1> {
+    if (this.#userControls.active()) throw new HttpError(409, "USER_CONTROL_ALREADY_PENDING");
     if (this.#activeRunId !== null) {
       throw new HttpError(409, "EditFlow run already active: " + this.#activeRunId);
     }
@@ -2625,6 +2634,134 @@ export class PracticePanelServerV1 {
     });
   }
 
+  async #requestUserControl(body: Record<string, any>): Promise<Record<string, any>> {
+    if (!this.#supervision) throw new HttpError(409, "PRODUCTION_SUPERVISION_REQUIRED");
+    if (body.action === "STATUS") {
+      const receipt = body.requestId ? this.#userControls.get(requiredString(body, "requestId")) : this.#userControls.latest();
+      if (body.requestId && !receipt) throw new HttpError(404, "USER_CONTROL_NOT_FOUND");
+      return { receipt, contract: PRODUCTION_USER_CONTROL_CONTRACT_V1 };
+    }
+    if (body.userRequested !== true) throw new HttpError(400, "EXPLICIT_USER_REQUEST_REQUIRED");
+    const requestId = requiredString(body, "requestId");
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(requestId)) throw new HttpError(400, "INVALID_USER_CONTROL_REQUEST_ID");
+    return await this.#userControls.exclusive(async () => {
+      if (body.action === "RETRY") {
+        const prior = this.#userControls.get(requestId);
+        if (!prior || prior.status !== "BLOCKED") throw new HttpError(409, "USER_CONTROL_NOT_BLOCKED");
+        return { receipt: this.#userControls.update(requestId, { status: "PENDING", error: null }) };
+      }
+      const action = requiredString(body, "action") as ProductionUserControlReceiptV1["action"];
+      if (!["START_PRACTICE", "RESTART_PRACTICE", "REPLACE_CHAT", "CANCEL"].includes(action)) throw new HttpError(400, "UNKNOWN_USER_CONTROL_ACTION");
+      const expectedAssignmentId = action === "START_PRACTICE" ? null : requiredString(body, "expectedAssignmentId");
+      const inputFields = ["editTypeId", "editTypeTitle", "finishPath", "videoPaths", "audioPaths", "practiceRole", "minimumSimilarity", "exactSceneConfidence", "minimumAudioConfidence"];
+      const supplied = body.input ?? body;
+      const requestedInput = action === "START_PRACTICE" ? Object.fromEntries(inputFields.filter(k => supplied[k] !== undefined).map(k => [k, supplied[k]])) : null;
+      const fingerprint = this.#userControls.fingerprint({ action, expectedAssignmentId, input: requestedInput });
+      const prior = this.#userControls.get(requestId);
+      if (prior) {
+        if (prior.fingerprint !== fingerprint) throw new HttpError(409, "REQUEST_ID_REUSED_WITH_DIFFERENT_INTENT");
+        return { receipt: prior };
+      }
+      if (this.#userControls.active()) throw new HttpError(409, "USER_CONTROL_ALREADY_PENDING");
+      const assignments = await this.#gptStore.listAssignments();
+      const source = assignments.find(a => a.assignmentId === expectedAssignmentId);
+      const unfinished = assignments.find(a => ["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(a.status));
+      if (unfinished && unfinished.assignmentId !== expectedAssignmentId) throw new HttpError(409, "ANOTHER_ASSIGNMENT_IS_ACTIVE");
+      if (expectedAssignmentId && !source) throw new HttpError(404, "GPT_ASSIGNMENT_NOT_FOUND");
+      if (action === "REPLACE_CHAT" && (!source || !["PENDING", "RUNNING", "FAILED"].includes(source.status))) {
+        throw new HttpError(409, "REPLACE_CHAT_REQUIRES_UNFINISHED_ASSIGNMENT: choose RESTART_PRACTICE for a fresh attempt.");
+      }
+      let input: Record<string, unknown> | null = requestedInput;
+      if (action === "RESTART_PRACTICE") {
+        if (source?.mode !== "PRACTICE" || !source.finish) throw new HttpError(409, "RESTART_REQUIRES_PRACTICE_ASSIGNMENT");
+        input = { editTypeId: source.editTypeId, practiceRole: source.practiceRole,
+          finishPath: source.finish.uri, videoPaths: source.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri),
+          audioPaths: source.start.filter(m => m.mediaKind === "AUDIO").map(m => m.uri), ...source.practicePolicy };
+      }
+      // Validate chosen media before stopping the existing assignment.
+      if (input) await this.#parsePractice(input);
+      const now = new Date().toISOString();
+      const receipt = this.#userControls.submit({ requestId, action, fingerprint, status: "PENDING", step: "QUEUED",
+        expectedAssignmentId, previousAssignmentId: expectedAssignmentId, assignmentId: action === "REPLACE_CHAT" ? expectedAssignmentId : null,
+        sessionId: action === "REPLACE_CHAT" ? source!.sessionId : null,
+        plannedSessionId: input ? "practice:" + randomUUID() : null, input, generation: null, tabId: null,
+        createdAt: now, updatedAt: now, deliveredAt: null, completedAt: null, error: null });
+      return { receipt, contract: PRODUCTION_USER_CONTROL_CONTRACT_V1 };
+    });
+  }
+
+  async #finalizeCancellation(assignmentId: string): Promise<PracticePanelRunSnapshotV1> {
+    const authority = this.#supervision!.publicState();
+    if (authority.assignmentId === assignmentId && authority.state === "ARMED") throw new HttpError(409, "WORKER_MUST_BE_REVOKED_FIRST");
+    if (this.#aeWriterOwner || this.#productionWorker.list(assignmentId).some(j => j.status === "RUNNING") || this.#preflightJobs.has(assignmentId)) {
+      throw new HttpError(409, "CANCELLATION_DRAIN_PENDING");
+    }
+    const assignment = await this.#gptStore.getAssignment(assignmentId);
+    if (!assignment) throw new HttpError(404, "GPT_ASSIGNMENT_NOT_FOUND");
+    if (!["CANCEL_REQUESTED", "CANCELLED"].includes(assignment.status)) throw new HttpError(409, "ASSIGNMENT_NOT_CANCELLING");
+    if (assignment.status === "CANCEL_REQUESTED") await this.#gptStore.acknowledgeCancelled(assignmentId, "Supervisor verified revoked worker and drained production before completing user cancellation.");
+    return await this.#syncRun(assignment.sessionId);
+  }
+
+  async #advanceUserControl(body: Record<string, any>): Promise<Record<string, any>> {
+    return await this.#userControls.exclusive(async () => {
+      const id = requiredString(body, "requestId");
+      let receipt = this.#userControls.get(id);
+      if (!receipt) throw new HttpError(404, "USER_CONTROL_NOT_FOUND");
+      if (receipt.status !== "PENDING") return { receipt };
+      if (body.action === "CONTROL_BEGIN" && receipt.step === "QUEUED") {
+        const authority = this.#supervision!.publicState();
+        if (authority.state !== "IDLE" && authority.assignmentId !== receipt.expectedAssignmentId) throw new HttpError(409, "USER_CONTROL_ASSIGNMENT_CHANGED");
+        if (authority.assignmentId && authority.state !== "IDLE") {
+          await this.#supervision!.revoke(authority.assignmentId, authority.generation, "explicit_user_" + receipt.action.toLowerCase());
+          const old = await this.#gptStore.getAssignment(authority.assignmentId);
+          if (old?.controllerLease) await this.#gptStore.releaseController(old.assignmentId, old.controllerLease.owner);
+        }
+        if (["RESTART_PRACTICE", "CANCEL"].includes(receipt.action)) {
+          const old = await this.#gptStore.getAssignment(receipt.expectedAssignmentId!);
+          if (old && !["CANCELLED", "COMPLETED", "FAILED"].includes(old.status)) await this.#cancelRun(old.sessionId);
+        }
+        receipt = this.#userControls.update(id, { step: "STOPPING" });
+      } else if (body.action === "CONTROL_PREPARE" && ["STOPPING", "DRAINING", "PREPARING"].includes(receipt.step)) {
+        this.#userControls.update(id, { step: "DRAINING" });
+        const old = receipt.expectedAssignmentId ? await this.#gptStore.getAssignment(receipt.expectedAssignmentId) : null;
+        if (this.#aeWriterOwner || (old && (this.#productionWorker.list(old.assignmentId).some(j => j.status === "RUNNING") || this.#preflightJobs.has(old.assignmentId)))) return { receipt: this.#userControls.get(id) };
+        if (old?.status === "CANCEL_REQUESTED") await this.#finalizeCancellation(old.assignmentId);
+        if (receipt.action === "CANCEL") return { receipt: this.#userControls.update(id, { status: "COMPLETED", step: "DONE", completedAt: new Date().toISOString() }) };
+        receipt = this.#userControls.update(id, { step: "PREPARING" });
+        try {
+          let target = old;
+          if (receipt.input) {
+            // The session ID is persisted before creation; crash recovery cannot create a second assignment.
+            target = (await this.#gptStore.listAssignments()).find(a => a.sessionId === receipt!.plannedSessionId) ?? null;
+            if (!target) {
+              await this.#requireConnectionPreflight();
+              const run = await this.#startPractice(receipt.input, receipt.plannedSessionId!);
+              target = await this.#gptStore.getAssignment(run.assignmentId);
+            }
+          } else if (target?.status === "FAILED") {
+            target = await this.#gptStore.resumeFailedProduction(target.assignmentId);
+            this.#activeRunId = target.sessionId; await this.#syncRun(target.sessionId);
+          }
+          if (!target || ["COMPLETED", "CANCELLED", "CANCEL_REQUESTED"].includes(target.status)) throw new HttpError(409, "USER_CONTROL_TARGET_NOT_RUNNABLE");
+          await this.#supervision!.bind(target);
+          receipt = this.#userControls.update(id, { assignmentId: target.assignmentId, sessionId: target.sessionId, step: "LAUNCHING", error: null });
+        } catch (error) {
+          receipt = this.#userControls.update(id, { status: "BLOCKED", error: error instanceof Error ? error.message : String(error) });
+        }
+      } else if (body.action === "CONTROL_DELIVERED") {
+        if (!["LAUNCHING", "VERIFYING"].includes(receipt.step)) throw new HttpError(409, "USER_CONTROL_NOT_LAUNCHING");
+        if (!Number.isInteger(body.tabId)) throw new HttpError(400, "INVALID_WORKER_TAB_ID");
+        const a = this.#supervision!.publicState();
+        if (a.assignmentId !== receipt.assignmentId || a.launchId !== receipt.requestId || a.state !== "ARMED") throw new HttpError(409, "STALE_USER_CONTROL_DELIVERY");
+        receipt = this.#userControls.update(id, { step: "VERIFYING", generation: a.generation, tabId: Number(body.tabId), deliveredAt: new Date().toISOString() });
+      } else if (body.action === "CONTROL_FAILED" && receipt.step === "VERIFYING") {
+        receipt = this.#userControls.update(id, { status: "FAILED", error: requiredString(body, "error") });
+      }
+      return { receipt };
+    });
+  }
+
   async #supervisionSnapshot(): Promise<Record<string, any>> {
     const assignments = await this.#gptStore.listAssignments();
     const authority = this.#supervision!.publicState();
@@ -2632,6 +2769,12 @@ export class PracticePanelServerV1 {
       ?? assignments.find((a) => a.sessionId === this.#activeRunId)
       ?? assignments.find((a) => ["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(a.status)) ?? null;
     await this.#supervision!.bind(active && !["COMPLETED", "CANCELLED"].includes(active.status) ? active : null);
+    const request = this.#userControls.active(), currentAuthority = this.#supervision!.publicState();
+    if (request?.status === "PENDING" && request.step === "VERIFYING" && request.assignmentId === active?.assignmentId
+      && request.generation === currentAuthority.generation && currentAuthority.state === "ARMED"
+      && active.status === "RUNNING" && active.controllerLease?.owner.startsWith(`ef-worker:${request.generation}:`)) {
+      this.#userControls.update(request.requestId, { status: "COMPLETED", step: "DONE", completedAt: new Date().toISOString(), error: null });
+    }
     const production = active ? (await this.#productionCoordinator(active)).coordinator.snapshot() : null;
     const jobs = active ? this.#productionWorker.list(active.assignmentId) : [];
     return { authority: this.#supervision!.publicState(), assignment: active ? { assignmentId: active.assignmentId,
@@ -2641,6 +2784,8 @@ export class PracticePanelServerV1 {
         updatedAt: job.updatedAt, createdAt: job.createdAt, startedAt: job.startedAt,
         heartbeatAt: job.heartbeatAt, error: job.error, operationSignature: job.requestKey })),
       writerOwner: this.#aeWriterOwner, hostRevision: this.controlStatus().hostRevision,
+      preflightRunning: active ? this.#preflightJobs.has(active.assignmentId) : false,
+      userControl: this.#userControls.active(), latestUserControl: this.#userControls.latest(),
       panelLastSeenAt: this.config.broker.panelSession?.lastSeenAt ?? null };
   }
 
@@ -2652,6 +2797,9 @@ export class PracticePanelServerV1 {
         if (req.method === "GET") { jsonResponse(res, 200, await this.#supervisionSnapshot()); return; }
         if (req.method === "POST") {
           const body = await readJson(req);
+          if (typeof body.action === "string" && ["CONTROL_BEGIN", "CONTROL_PREPARE", "CONTROL_DELIVERED", "CONTROL_FAILED"].includes(body.action)) {
+            jsonResponse(res, 200, await this.#advanceUserControl(body)); return;
+          }
           const state = this.#supervision.publicState();
           const id = requiredString(body, "assignmentId");
           if (id !== state.assignmentId) throw new HttpError(409, "SUPERVISOR_ASSIGNMENT_MISMATCH");
@@ -2673,6 +2821,8 @@ export class PracticePanelServerV1 {
             const resumed = await this.#gptStore.resumeFailedProduction(id);
             this.#activeRunId = resumed.sessionId;
             await this.#syncRun(resumed.sessionId);
+          } else if (body.action === "FINALIZE_CANCEL") {
+            jsonResponse(res, 200, { run: await this.#finalizeCancellation(id) }); return;
           } else if (body.action === "RESUME") await this.#supervision.resume(id);
           else throw new HttpError(400, "UNKNOWN_SUPERVISOR_ACTION");
           // This private response is the only route that returns the credential.
@@ -2893,9 +3043,14 @@ export class PracticePanelServerV1 {
         });
         return;
       }
+      if (url.pathname === "/v1/product/production/user-controls" && ["GET", "POST"].includes(req.method ?? "")) {
+        const result = await this.#requestUserControl(req.method === "POST" ? await readJson(req) : { action: "STATUS", requestId: url.searchParams.get("requestId") });
+        jsonResponse(res, 200, result); return;
+      }
       if ((req.method === "GET" || req.method === "POST") && url.pathname === "/v1/product/practice/resume-or-start") {
         if (req.method === "POST") {
           const body = await readJson(req);
+          if (body.action) { jsonResponse(res, 200, await this.#requestUserControl(body)); return; }
           if (this.#activeRunId === null && body["finishPath"] !== undefined) await this.#startPractice(body);
           const active = this.#activeRunId === null ? undefined : this.#runs.get(this.#activeRunId);
           if (active !== undefined) this.#schedulePreflight(active.assignmentId);

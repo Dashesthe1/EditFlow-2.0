@@ -39,7 +39,8 @@ async function execute() {
         await chrome.storage.local.set({ launchTabs: { [cmd.id]: tab.id } });
       }
       await chrome.tabs.update(tab.id, { autoDiscardable: false });
-      await request('/actuator/ack', { id: cmd.id, type: 'CREATED', tabId: tab.id });
+      try { await request('/actuator/ack', { id: cmd.id, type: 'CREATED', tabId: tab.id }); }
+      catch (e) { if (e.message === 'STALE_ACTUATOR_ACK') await chrome.tabs.remove(tab.id).catch(() => {}); throw e; }
     } else if (cmd.command === 'SEND') {
       const tab = await chrome.tabs.get(cmd.tabId).catch(() => null);
       if (!tab) { await request('/actuator/ack', { id: cmd.id, type: 'MISSING' }); return; }

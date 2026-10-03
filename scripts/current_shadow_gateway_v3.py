@@ -125,7 +125,16 @@ def build_server():
 
     @mcp.tool()
     def resume_or_start_practice(start_json: str = "") -> dict[str, Any]:
-        """Inspect or resume durable Practice preflight; optionally supply Start request JSON."""
+        """Inspect Practice, or submit an explicit USER lifecycle request in start_json.
+
+        Actions: START_PRACTICE (input with chosen files/Edit Type), RESTART_PRACTICE
+        (same inputs, fresh assignment), REPLACE_CHAT (same assignment/checkpoints),
+        CANCEL, RETRY, STATUS. Mutations require userRequested:true and a stable
+        requestId; restart/replace/cancel require expectedAssignmentId. STATUS with
+        that requestId returns PENDING/COMPLETED/BLOCKED/FAILED and verified IDs.
+        No worker credential is required. Never invent a lifecycle request or
+        report completion before its receipt says COMPLETED.
+        """
         if not start_json:
             return _practice_http("GET", "/v1/product/practice/resume-or-start")
         payload = json.loads(start_json)
@@ -208,7 +217,9 @@ def build_server():
                 "enqueue_production_job", "get_production_jobs", "resolve_production_job",
                 "record_gpt_learning_event", "complete_gpt_assignment", "fail_gpt_assignment",
                 "acknowledge_gpt_assignment_cancelled", "get_editflow_run", "cancel_editflow_run",
+                "resume_or_start_practice",
             ],
+            "userLifecycleControls": _practice_http("GET", "/v1/product/production/user-controls"),
         }
 
     @mcp.tool()

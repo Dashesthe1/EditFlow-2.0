@@ -14,6 +14,13 @@ function semanticKey(snapshot) {
       x.researchKey, x.consecutivePasses, x.lastSimilarity, x.proofCandidateKey, x.lastSearchScore]),
     jobs: (snapshot.jobs || []).filter(x => ['SUCCEEDED', 'REVIEW_REQUIRED'].includes(x.status)).map(x => [x.operationSignature || x.jobId, x.status]) });
 }
+function operationFailure(snapshot, now, policy = POLICY) {
+  const jobs = (snapshot.jobs || []).filter(x => x.status === 'RUNNING');
+  if (snapshot.writerOwner && !jobs.length) return 'writer_requires_reconciliation';
+  return jobs.some(x => now - Date.parse(x.heartbeatAt || x.updatedAt) > policy.heartbeatMs
+    || now - Date.parse(x.startedAt || x.createdAt) > (policy.deadlines[x.kind] || 600000))
+    ? 'operation_deadline_or_heartbeat_expired' : null;
+}
 function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   const next = { ...previous };
   const result = (phase, reason, action = 'NONE') => ({ next, phase, reason, action });
@@ -29,12 +36,11 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
     next.loopBaselineAt = now; next.progressSeq = (next.progressSeq || 0) + 1;
   }
   const jobs = (snapshot.jobs || []).filter(x => x.status === 'RUNNING');
-  if (snapshot.writerOwner && !jobs.length) return result('INFRA_RECOVERY', 'writer_requires_reconciliation', 'REPAIR');
+  const failure = operationFailure(snapshot, now, policy);
+  if (snapshot.writerOwner && !jobs.length) return result('INFRA_RECOVERY', failure, 'REPAIR');
   if (jobs.length || snapshot.writerOwner) {
     next.suspectAt = 0;
-    const dead = jobs.find(x => now - Date.parse(x.heartbeatAt || x.updatedAt) > policy.heartbeatMs
-      || now - Date.parse(x.startedAt || x.createdAt) > (policy.deadlines[x.kind] || 600000));
-    return dead ? result('INFRA_RECOVERY', 'operation_deadline_or_heartbeat_expired', 'REPAIR')
+    return failure ? result('INFRA_RECOVERY', failure, 'REPAIR')
       : result('PROCESSING', 'accepted_operation_running');
   }
   if (a.state === 'HANDOFF') return result('HANDOFF', 'worker_revoked', 'HANDOFF');
@@ -50,4 +56,4 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   if (now - next.suspectAt < policy.confirmMs) return result('VERIFYING', 'no_worker_or_operation_activity');
   return result('STALLED', 'confirmed_operational_silence', 'HANDOFF');
 }
-module.exports = { POLICY, evaluateLiveness, semanticKey };
+module.exports = { POLICY, evaluateLiveness, semanticKey, operationFailure };

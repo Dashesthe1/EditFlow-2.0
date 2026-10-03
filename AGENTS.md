@@ -35,3 +35,22 @@ use Desktop Commander to bypass the production queue. Only the supervisor may
 revoke/issue worker generations. Resume existing receipts; accepted jobs belong
 to the durable queue and can finish across a chat handoff. Only isolated automated
 acceptance tests may set `productionSupervision: false`.
+
+# Explicit user lifecycle controls
+
+Any ordinary connected chat may fulfill an explicit user request to start Practice,
+restart Practice from scratch, replace the editing chat, or cancel production.
+These are user controls, not worker/AE writes: use `resume_or_start_practice` with
+`start_json` containing `action`, `userRequested:true`, and one stable `requestId`.
+Read the returned `userControls.contract` for the full schema or use authenticated
+`POST /v1/product/production/user-controls`; no worker credential or supervisor key
+is needed. Restart/replace/cancel require the expected current assignment ID.
+`RESTART_PRACTICE` makes a fresh assignment using the selected assignment's raw
+video, raw audio, Finish reference and Edit Type. `REPLACE_CHAT` keeps its assignment
+and checkpoints. `START_PRACTICE` takes chosen inputs under `input`.
+Poll `action:STATUS` using that request ID. Report COMPLETED only when the durable
+receipt says COMPLETED and includes verified target IDs/generation; QUEUED,
+LAUNCHING and prompt delivery are PENDING. Report BLOCKED/FAILED with the reason.
+Never autonomously invent a restart, replacement or cancellation request. Workers
+must still stop immediately on STALE_WORKER; these user controls do not authorize
+AE edits, controller claims, credential recovery or native-script bypasses.
