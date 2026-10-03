@@ -89,6 +89,7 @@ export interface PracticeTemporalRewindV1 {
 }
 
 export type PracticeSceneSelectionModeV1 =
+  | "CHATGPT_DIRECT"
   | "VISUAL_BEST"
   | "REFERENCE_CONTINUITY_PRIOR"
   | "GEOMETRIC_RESCUE";
@@ -145,6 +146,19 @@ export interface PracticeWorkingMediaV1 {
 }
 
 export interface PracticeSceneMatchV1 {
+  readonly chatgptSelection?: {
+    readonly authority: "CHATGPT_DIRECT";
+    readonly decisionId: string;
+    readonly rationale: string;
+    readonly reviewedAt: string;
+    readonly anchors: readonly {
+      readonly referenceTimeMs: number;
+      readonly sourceTimeMs: number;
+      readonly referenceEvidenceId: string;
+      readonly sourceEvidenceId: string;
+      readonly observation: string;
+    }[];
+  };
   readonly shotId: string;
   readonly sourceId: string;
   readonly sourcePath?: string;
@@ -1304,7 +1318,7 @@ export interface GptLearningEventV1 {
 }
 
 export interface PracticePreflightCheckpointV1 {
-  readonly stage: "PREFLIGHT_MATCHING" | "FINGERPRINTING" | "REFERENCE_ANALYSIS" | "SOURCE_INDEXING" | "SCENE_MATCHING" | "TARGETED_REFINEMENT" | "WORKING_MEDIA" | "BLOCKED" | "READY";
+  readonly stage: "PREFLIGHT_MATCHING" | "FINGERPRINTING" | "REFERENCE_ANALYSIS" | "SOURCE_INDEXING" | "SCENE_MATCHING" | "AWAITING_CHATGPT_SHOTS" | "TARGETED_REFINEMENT" | "WORKING_MEDIA" | "BLOCKED" | "READY";
   readonly updatedAt: string;
   readonly requireTransferNovelty: boolean;
   readonly totalShotIds?: readonly string[];
@@ -1324,7 +1338,7 @@ export interface GptOrchestrationAssignmentV1 {
   readonly status: GptAssignmentStatusV1;
   readonly finish: PracticeMediaInputV1 | null;
   readonly start: readonly PracticeMediaInputV1[];
-  /** Machine-prepared exact scene matches for Practice; GPT must visually confirm them before locking. */
+  /** Exact raw ranges chosen by ChatGPT through direct footage inspection. */
   readonly practiceSceneMatches?: readonly PracticeSceneMatchV1[] | null;
   readonly practicePolicy: PracticeVerificationPolicyV1 | null;
   readonly preflight?: PracticePreflightCheckpointV1;

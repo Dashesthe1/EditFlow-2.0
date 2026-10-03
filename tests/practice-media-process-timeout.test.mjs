@@ -37,7 +37,7 @@ test("Practice media timeout terminates the analyzer process tree", async () => 
 
   let childPid = null;
   try {
-    const matcher = new LocalPracticeMediaMatcherV1({
+    const matcher = new LocalPracticeMediaMatcherV1({ shotSelectionAuthority: "ISOLATED_LEGACY_TEST",
       artifactDir: path.join(directory, "artifacts"),
       scriptPath,
       python: { executable: process.execPath, prefixArgs: [runnerPath] },

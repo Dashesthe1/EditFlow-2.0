@@ -43,7 +43,7 @@ test("Practice shares immutable media analysis across sessions and invalidates c
     { mediaId: "audio:1", role: "START_SOURCE", mediaKind: "AUDIO", uri: audioPath },
   ];
   const cache = path.join(root, "shared-cache");
-  const matcher = (session) => new LocalPracticeMediaMatcherV1({
+  const matcher = (session) => new LocalPracticeMediaMatcherV1({ shotSelectionAuthority: "ISOLATED_LEGACY_TEST",
     artifactDir: path.join(root, session),
     analysisCacheDir: cache,
     scriptPath,

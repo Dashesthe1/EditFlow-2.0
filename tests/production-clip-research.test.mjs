@@ -181,7 +181,9 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   const assignment = await store.createAssignment({ sessionId: 'production:' + mode, mode, editTypeId: 'test', artifactDir: f.dir, knowledge: null,
     finish: mode === 'PRACTICE' ? { mediaId: 'finish:1', role: 'FINISH_REFERENCE', mediaKind: 'VIDEO', uri: 'reference.mp4' } : null,
     start: [{ mediaId: 'raw:1', role: 'START_SOURCE', mediaKind: 'VIDEO', uri: path.join(f.dir, 'raw.mp4') }],
-    practiceSceneMatches: mode === 'PRACTICE' ? [{ shotId: 'shot:1', sourceId: 'raw:1', sourceStartMs: 1000, sourceEndMs: 2000, confidence: 1, playbackRate: 1, direction: 'FORWARD' }] : [],
+    practiceSceneMatches: mode === 'PRACTICE' ? [{ shotId: 'shot:1', sourceId: 'raw:1', sourceStartMs: 1000, sourceEndMs: 2000, confidence: 1, playbackRate: 1, direction: 'FORWARD', selectionMode: 'CHATGPT_DIRECT',
+      chatgptSelection: { authority: 'CHATGPT_DIRECT', decisionId: 'test-selection', rationale: 'Fixture direct review', reviewedAt: new Date().toISOString(),
+        anchors: [0, 400, 900].map(time => ({ referenceTimeMs: time, sourceTimeMs: 1000 + time, referenceEvidenceId: 'a'.repeat(24), sourceEvidenceId: 'b'.repeat(24), observation: 'Fixture comparison' })) } }] : [],
     preflight: { stage: 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false, completedShotIds: ['shot:1'], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
   Object.assign(f.assignment, await store.claim(assignment.assignmentId, 'controller'));
   f.store.directory = path.join(f.dir, 'clip-research');

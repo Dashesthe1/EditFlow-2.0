@@ -20,7 +20,7 @@ import {
   attestPracticeSkillUseV1,
   compileGptTutorialResearchSourceV1,
   buildPracticeMasteryRecordV1,
-  hasRepeatedSceneGeometryV1,
+  hasVerifiedPracticeSourceIdentityV1,
   LocalPracticeMediaMatcherV1,
   defaultPracticeAnalysisCacheDirectoryV1,
   practicePerceptualSetOverlapsV1,
@@ -97,6 +97,13 @@ export interface PracticePanelServerConfigV1 {
   readonly productionSupervision?: boolean;
   readonly stabilization?: CurrentAeStabilizationRuntimeV1;
 }
+
+export const CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1 = {
+  authority: "CHATGPT_DIRECT",
+  endpoint: "/v1/product/gpt/assignments/{id}/footage-selection",
+  actions: ["BROWSE", "NOTE", "SELECT"],
+  instruction: "GET returns reference shot boundaries, supplied raw media and prior GPT decisions, never ranked candidates. BROWSE takes mediaId, timesMs (1–48 explicit timestamps), width (160–1920), claimedBy. Open the returned contactSheetPath and frame paths to inspect the actual pixels. SELECT takes claimedBy, selections and search. Each selection: shotId, sourceId, sourceStartMs, sourceEndMs, direction, confidence, rationale, anchors (at least three comparisons spanning the shot). Anchor: referenceTimeMs, sourceTimeMs, referenceEvidenceId, sourceEvidenceId, observation. search: internetStatus CONSULTED with sources [{url,query,finding}], or UNAVAILABLE with reason, plus strategies. Use internet scene/dialogue/script/chapter clues first, chronological overview sheets, time-range narrowing, surrounding context, dense boundary/gesture comparisons and exact frames. Internet clues are hypotheses; directly inspected provided raw pixels decide every shot. Selection and working-clip preparation never mutate AE. Research effects separately using Tutorial Drive, Adobe, then web. Resume the same assignment; no machine-ranking fallback.",
+} as const;
 
 export type PracticePanelRunStateV1 =
   | "WAITING_FOR_GPT"
@@ -384,7 +391,7 @@ export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
     const byShot = new Map(matches.map((match) => [match.shotId, match]));
     const shots: PracticeSceneCompatibilityShotV1[] = shotIds.map((shotId) => {
       const match = byShot.get(shotId);
-      const repeatedGeometry = match === undefined ? false : hasRepeatedSceneGeometryV1(match);
+      const repeatedGeometry = match === undefined ? false : hasVerifiedPracticeSourceIdentityV1(match);
       const exact = match !== undefined
         && match.confidence >= input.exactSceneConfidence!
         && repeatedGeometry
@@ -1042,6 +1049,7 @@ export class PracticePanelServerV1 {
   #startingPractice: Promise<PracticePanelRunSnapshotV1> | null = null;
   readonly #preflightJobs = new Map<string, { abort: AbortController; promise: Promise<void> }>();
   readonly #preflightErrors = new Map<string, string>();
+  readonly #footageSelectionTails = new Map<string, Promise<unknown>>();
 
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
@@ -1243,10 +1251,11 @@ export class PracticePanelServerV1 {
         if (job.kind === "BUILD_BASELINE") {
           if (assignment!.mode !== "PRACTICE") throw new HttpError(400, "Practice baseline uses a Finish reference; Pro Creation constructs its editorial plan with AE_BATCH/AE_TRANSACTION.");
           const reference = JSON.parse(await readFile(await ensureFile(requiredString(body, "referenceAnalysisPath"), "reference analysis"), "utf8"));
-          const scenePacket = JSON.parse(await readFile(await ensureFile(requiredString(body, "sceneMatchPath"), "scene match"), "utf8"));
           const audioMatch = JSON.parse(await readFile(await ensureFile(requiredString(body, "audioMatchPath"), "audio match"), "utf8"));
-          const matches = Array.isArray(scenePacket) ? scenePacket : scenePacket.matches;
-          if (!Array.isArray(matches)) throw new TypeError("Scene-match packet is missing matches.");
+          // Source choices come exclusively from the current GPT selection ledger.
+          // A cached machine-match path supplied by an old continuation has no authority.
+          const matches = assignment!.practiceSceneMatches ?? [];
+          if (!matches.length || matches.some((match) => match.selectionMode !== "CHATGPT_DIRECT")) throw new TypeError("Baseline requires retained direct ChatGPT shot selections.");
           const assembly = createPracticeM6CurrentAeAssemblyV1({ transport: this.config.broker, projectId: "practice-gpt-controller",
             repositoryRoot: this.config.repositoryRoot, artifactDir: assignment!.artifactDir,
             mediaRoots: [process.env.USERPROFILE ?? this.config.repositoryRoot],
@@ -1959,7 +1968,7 @@ export class PracticePanelServerV1 {
       const unresolvedShotIds = material.sceneCompatibility?.shots.filter((shot) => !shot.exact
         || !material.sceneMatches?.find((match) => match.shotId === shot.shotId)?.workingMedia).map((shot) => shot.shotId) ?? [];
       await progress("WORKING_MEDIA", material.sceneMatches ?? []);
-      checkpoint = { ...checkpoint, stage: reasons.length === 0 ? "READY" : "BLOCKED",
+      checkpoint = { ...checkpoint, stage: reasons.length === 0 ? "READY" : unresolvedShotIds.length > 0 ? "AWAITING_CHATGPT_SHOTS" : "BLOCKED",
         updatedAt: new Date().toISOString(), unresolvedShotIds, reasons: [...new Set(reasons)],
         evidenceRefs: [...checkpoint.evidenceRefs, ...(material.sceneCompatibility?.evidenceRefs ?? [])],
       };
@@ -1977,7 +1986,9 @@ export class PracticePanelServerV1 {
     if (run === undefined) return;
     const assignment = await this.#gptStore.getAssignment(run.assignmentId);
     if (assignment?.mode === "PRACTICE" && assignment.preflight !== undefined
-      && assignment.preflight.stage !== "READY") {
+      && (assignment.preflight.stage !== "READY" || !assignment.practiceSceneMatches?.length
+        || assignment.practiceSceneMatches.some((match) => match.selectionMode !== "CHATGPT_DIRECT"
+          || !hasVerifiedPracticeSourceIdentityV1(match)))) {
       throw new HttpError(409, "Practice reconstruction is locked until preflight is READY; resume the retained assignment.");
     }
   }
@@ -2025,6 +2036,7 @@ export class PracticePanelServerV1 {
     }
     const nextOperation = assignment === null ? "START_PRACTICE"
       : assignment.status === "CANCEL_REQUESTED" ? "ACKNOWLEDGE_CANCELLATION"
+      : preflight?.stage === "AWAITING_CHATGPT_SHOTS" ? "CHATGPT_INSPECT_AND_SELECT_RAW_SHOTS"
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
       : "RESUME_GPT_EDITING_FROM_CHECKPOINT";
     return {
@@ -2042,6 +2054,7 @@ export class PracticePanelServerV1 {
         || production?.inFlightOperation != null && Date.now() - Date.parse(production.workerHeartbeatAt ?? "") < 60_000
       ),
       productionJobs: assignment === null ? [] : this.#productionWorker.list(assignment.assignmentId),
+      footageSelection: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1,
       workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
       userControls: { contract: PRODUCTION_USER_CONTROL_CONTRACT_V1, active: this.#userControls.active(), latest: this.#userControls.latest() },
       controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
@@ -2890,6 +2903,65 @@ export class PracticePanelServerV1 {
         return;
       }
       const clipResearchMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/clip-research$/.exec(url.pathname);
+      const footageMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/footage-selection$/.exec(url.pathname);
+      if ((req.method === "GET" || req.method === "POST") && footageMatch !== null) {
+        const id = decodeURIComponent(footageMatch[1] ?? "");
+        const assignment = await this.#gptStore.getAssignment(id);
+        if (!assignment) throw new HttpError(404, "GPT assignment not found.");
+        const matcher = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+          analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(), materializeWorkingMedia: true,
+          scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py"),
+          ...(this.config.ffmpegPath ? { ffmpegPath: this.config.ffmpegPath } : {}) });
+        if (req.method === "GET") {
+          const reference = assignment.finish ? await matcher.analyzeFinish(assignment.finish) : null;
+          const sourceIndex = await matcher.indexStart(assignment.start);
+          jsonResponse(res, 200, { contract: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1, reference, sourceIndex,
+            searchState: await matcher.footageSearchState(sourceIndex),
+            referenceMedia: assignment.finish, rawMedia: assignment.start.filter((media) => media.mediaKind === "VIDEO"),
+            selections: (assignment.practiceSceneMatches ?? []).filter((match) => match.selectionMode === "CHATGPT_DIRECT"),
+            legacyCandidatesDiscarded: true });
+          return;
+        }
+        const body = await readJson(req) as Record<string, any>;
+        const lease = assignment.controllerLease;
+        if (assignment.status !== "RUNNING" || assignment.sessionId !== this.#activeRunId
+          || !lease || lease.owner !== body.claimedBy || Date.parse(lease.expiresAt) <= Date.now()) throw new HttpError(409, "Direct footage work requires the current live controller.");
+        const operation = (this.#footageSelectionTails.get(id) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+          if (body.action === "BROWSE") {
+            const media = [...assignment.start, ...(assignment.finish ? [assignment.finish] : [])].find((item) => item.mediaId === body.mediaId);
+            if (!media) throw new HttpError(400, "Only provided raw footage and the visual reference can be browsed.");
+            return { inspection: await matcher.inspectFootage(media, body.timesMs, body.width ?? 640) };
+          }
+          if (body.action === "NOTE") {
+            const media = assignment.start.find((item) => item.mediaId === body.mediaId);
+            if (!media) throw new HttpError(400, "Search notes must identify provided raw footage.");
+            await matcher.recordFootageSearchNote(media, body.note);
+            return { recorded: true };
+          }
+          if (body.action !== "SELECT" || !assignment.finish) throw new HttpError(400, "SELECT requires a Practice reference; Pro Creation browses raw footage and records its designed ranges in clip research.");
+          const preflight = this.#preflightJobs.get(id);
+          if (preflight) { preflight.abort.abort(); await preflight.promise; }
+          const reference = await matcher.analyzeFinish(assignment.finish);
+          const sourceIndex = await matcher.indexStart(assignment.start);
+          const selections = await matcher.selectFootage({ reference, sourceIndex, finish: assignment.finish, start: assignment.start,
+            selections: body.selections, search: body.search });
+          await this.#gptStore.updatePreflight(id, { ...assignment.preflight!, stage: "WORKING_MEDIA",
+            requireTransferNovelty: assignment.preflight?.requireTransferNovelty ?? false,
+            completedShotIds: [], unresolvedShotIds: reference.shots.map((shot) => shot.shotId),
+            updatedAt: new Date().toISOString(), reasons: [], evidenceRefs: [] }, selections);
+          // Decoding selected working ranges may outlive a connector request. Keep
+          // the selection receipt durable and let resumable preflight prepare them.
+          this.#schedulePreflight(id);
+          const updated = await this.#gptStore.getAssignment(id);
+          return { selections: updated?.practiceSceneMatches, preflight: updated?.preflight,
+            nextAction: "Poll the same assignment preflight; do not resubmit accepted selections.",
+            contract: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1 };
+        });
+        this.#footageSelectionTails.set(id, operation);
+        try { jsonResponse(res, 201, await operation); }
+        finally { if (this.#footageSelectionTails.get(id) === operation) this.#footageSelectionTails.delete(id); }
+        return;
+      }
       if ((req.method === "GET" || req.method === "POST") && clipResearchMatch !== null) {
         const id = decodeURIComponent(clipResearchMatch[1] ?? "");
         const assignment = await this.#gptStore.getAssignment(id);

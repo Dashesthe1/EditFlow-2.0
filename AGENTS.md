@@ -23,6 +23,19 @@ Practice and Pro Creation use `DURABLE_PRODUCTION_QUEUE_V1` exclusively.
 - Standalone acceptance labs are isolated validation tools. They must not be used
   as a fallback production path for an active edit assignment.
 
+# Raw footage selection authority
+
+ChatGPT alone browses the provided raw footage and selects exact scene/shot ranges.
+Use the assignment's `footage-selection` contract and BROWSE / NOTE / SELECT actions.
+The production raw-shot candidate generator, visual matcher and ranking are retired.
+Do not run their scripts, consume their cached choices, or present ranked raw shots.
+For footage discovery primarily research internet scene/dialogue/script/chapter clues,
+then inspect GPT-chosen chronological/time-range contact sheets and exact raw frames.
+Internet results narrow searches; actual provided raw pixels establish source identity.
+Retain search coverage notes, issued pixel receipts, comparisons, ranges and rationale.
+Effect/transition method research still uses Tutorial Drive, Adobe, then external sources.
+`ISOLATED_LEGACY_TEST` is historical matcher-test support only; never production fallback.
+
 # Production chat ownership
 
 The local Production Supervisor arms automatically for Practice and Pro Creation.

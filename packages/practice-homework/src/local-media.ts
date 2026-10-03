@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,10 @@ export const defaultPracticeAnalysisCacheDirectoryV1 = (): string => path.resolv
 );
 
 export interface LocalPracticeMediaMatcherConfigV1 {
+  /** Legacy ranking is allowed only in isolated matcher acceptance/retained-truth labs. */
+  readonly shotSelectionAuthority?: "CHATGPT_DIRECT" | "ISOLATED_LEGACY_TEST";
+  readonly chatgptSelectionsPath?: string;
+  readonly chatgptInspectionDir?: string;
   readonly artifactDir: string;
   readonly signal?: AbortSignal;
   readonly analysisCacheDir?: string;
@@ -83,6 +87,7 @@ interface SourceArtifactV1 {
   readonly sourceId: string;
   readonly sourcePath: string;
   readonly sourceSha256: string;
+  readonly video?: { readonly durationMs: number; readonly fps: number };
   readonly perceptualSignature?: string;
   readonly evidenceRefs: readonly string[];
 }
@@ -276,6 +281,7 @@ const appendBoundedProcessOutput = (
 };
 
 export class LocalPracticeMediaMatcherV1 {
+  static readonly artifactTasks = new Map<string, Promise<void>>();
   readonly config: Required<Omit<
   LocalPracticeMediaMatcherConfigV1,
   "python" | "ffmpegPath" | "correctionProfilePath" | "correctionCaseId" | "signal"
@@ -296,6 +302,9 @@ export class LocalPracticeMediaMatcherV1 {
 
   constructor(config: LocalPracticeMediaMatcherConfigV1) {
     this.config = {
+      shotSelectionAuthority: config.shotSelectionAuthority ?? "CHATGPT_DIRECT",
+      chatgptSelectionsPath: path.resolve(config.chatgptSelectionsPath ?? path.join(config.artifactDir, "chatgpt-selections.json")),
+      chatgptInspectionDir: path.resolve(config.chatgptInspectionDir ?? path.join(config.artifactDir, "footage-inspections")),
       artifactDir: path.resolve(config.artifactDir),
       ...(config.signal === undefined ? {} : { signal: config.signal }),
       analysisCacheDir: path.resolve(
@@ -327,9 +336,22 @@ export class LocalPracticeMediaMatcherV1 {
   }
 
   async #scriptSha256(): Promise<string> {
-    this.#scriptDigest ??= readFile(this.config.scriptPath)
-      .then((bytes) => createHash("sha256").update(bytes).digest("hex"));
+    this.#scriptDigest ??= Promise.all([readFile(this.config.scriptPath),
+      this.config.shotSelectionAuthority === "CHATGPT_DIRECT"
+        ? readFile(path.join(path.dirname(this.config.scriptPath), "chatgpt-footage-browser.py"))
+        : Promise.resolve(Buffer.alloc(0))])
+      .then((buffers) => { const hash = createHash("sha256"); for (const bytes of buffers) hash.update(bytes); return hash.digest("hex"); });
     return this.#scriptDigest;
+  }
+
+  async #ensureArtifact(file: string, produce: () => Promise<void>): Promise<void> {
+    let task = LocalPracticeMediaMatcherV1.artifactTasks.get(file);
+    if (!task) {
+      task = Promise.resolve().then(async () => { if (!await fileExists(file)) await produce(); });
+      LocalPracticeMediaMatcherV1.artifactTasks.set(file, task);
+    }
+    try { await task; }
+    finally { if (LocalPracticeMediaMatcherV1.artifactTasks.get(file) === task) LocalPracticeMediaMatcherV1.artifactTasks.delete(file); }
   }
 
   async #mediaCacheKey(
@@ -351,7 +373,9 @@ export class LocalPracticeMediaMatcherV1 {
   }
 
   async #run(args: readonly string[], onMatch?: (match: PracticeSceneMatchV1) => Promise<void>): Promise<void> {
-    const script = args[0] === "match" && path.basename(this.config.scriptPath) === "practice-media-match.py"
+    const script = ["metadata", "browse"].includes(args[0] ?? "")
+      ? path.join(path.dirname(this.config.scriptPath), "chatgpt-footage-browser.py")
+      : args[0] === "match" && path.basename(this.config.scriptPath) === "practice-media-match.py"
       ? path.join(path.dirname(this.config.scriptPath), "practice-resumable-match.py")
       : this.config.scriptPath;
     const invocation = [...this.config.python.prefixArgs, script, ...args];
@@ -745,7 +769,7 @@ export class LocalPracticeMediaMatcherV1 {
       safeStem(finish.mediaId) + "-" + key + ".json",
     );
 
-    if (!(await fileExists(artifactPath))) {
+    await this.#ensureArtifact(artifactPath, async () => {
       await this.#run([
         "reference",
         "--video", localPath,
@@ -754,7 +778,7 @@ export class LocalPracticeMediaMatcherV1 {
         "--cut-threshold", String(this.config.cutThreshold),
         "--minimum-shot-ms", String(this.config.minimumShotMs),
       ]);
-    }
+    });
 
     const artifact = await jsonFile<ReferenceArtifactV1>(artifactPath);
     if (artifact.schema !== "editflow.practice-reference-analysis.v1"
@@ -817,6 +841,7 @@ export class LocalPracticeMediaMatcherV1 {
       sourceIds.push(input.mediaId);
       if (input.mediaKind === "VIDEO") {
         const key = await this.#mediaCacheKey(input, [
+          this.config.shotSelectionAuthority,
           "source-index",
           String(this.config.sampleStepMs),
           String(this.config.analysisProxyFps),
@@ -826,8 +851,10 @@ export class LocalPracticeMediaMatcherV1 {
           directory,
           safeStem(input.mediaId) + "-" + key + ".json",
         );
-        if (!(await fileExists(artifactPath))) {
-          await this.#run([
+        await this.#ensureArtifact(artifactPath, async () => {
+          await this.#run(this.config.shotSelectionAuthority === "CHATGPT_DIRECT" ? [
+            "metadata", "--video", localPath, "--source-id", input.mediaId, "--output", artifactPath,
+          ] : [
             "index",
             "--video", localPath,
             "--source-id", input.mediaId,
@@ -839,7 +866,7 @@ export class LocalPracticeMediaMatcherV1 {
               ? []
               : ["--ffmpeg", this.config.ffmpegPath]),
           ]);
-        }
+        });
         const artifact = await jsonFile<SourceArtifactV1>(artifactPath);
         if (artifact.schema !== "editflow.practice-source-index.v1"
           || artifact.sourceId !== input.mediaId) {
@@ -850,7 +877,7 @@ export class LocalPracticeMediaMatcherV1 {
         if (artifact.perceptualSignature !== undefined) {
           videoPerceptualSignatures.push(artifact.perceptualSignature);
         }
-        identityParts.push("video:" + artifactPath);
+        identityParts.push("video:" + input.mediaId + ":" + key);
         evidenceRefs.push(
           ...artifact.evidenceRefs,
           "practice-source-artifact:" + artifactPath,
@@ -873,7 +900,12 @@ export class LocalPracticeMediaMatcherV1 {
       }
     }
 
-    const indexId = "practice-source-set:" + sha256Text(identityParts).slice(0, 24);
+    // Raw-shot decisions bind only the video corpus. Preflight indexes video,
+    // while editing/certification also indexes the raw song; that must not make
+    // the same retained shot choices disappear. Audio cache keys stay separate.
+    const indexIdentity = this.config.shotSelectionAuthority === "CHATGPT_DIRECT"
+      ? identityParts.filter((part) => part.startsWith("video:")) : identityParts;
+    const indexId = "practice-source-set:" + sha256Text(indexIdentity).slice(0, 24);
     this.#videoSourceArtifactsByIndexId.set(indexId, videoArtifactPaths);
     this.#audioSourcesByIndexId.set(indexId, audioSources);
     return {
@@ -901,6 +933,38 @@ export class LocalPracticeMediaMatcherV1 {
     }
     if (sourcePaths.length === 0) {
       throw new TypeError("Practice scene matching requires at least one indexed video source.");
+    }
+
+    if (this.config.shotSelectionAuthority === "CHATGPT_DIRECT") {
+      if (!(await fileExists(this.config.chatgptSelectionsPath))) return [];
+      const packet = await jsonFile<{ referenceId: string; sourceIndexId: string; matches: PracticeSceneMatchV1[] }>(this.config.chatgptSelectionsPath);
+      if (packet.referenceId !== input.reference.referenceId || packet.sourceIndexId !== input.sourceIndex.indexId) return [];
+      const matches = packet.matches.filter((match) => match.selectionMode === "CHATGPT_DIRECT"
+        && match.chatgptSelection?.authority === "CHATGPT_DIRECT");
+      const artifacts = await Promise.all(sourcePaths.map((value) => jsonFile<SourceArtifactV1>(value)));
+      const prepared: PracticeSceneMatchV1[] = [];
+      for (const match of matches) {
+        const reasons = validatePracticeSceneMatchesV1([match.shotId], [match], input.minimumConfidence);
+        if (reasons.length > 0) continue;
+        const source = artifacts.find((item) => item.sourceId === match.sourceId);
+        const referenceMediaPath = this.#referenceMediaPathById.get(input.reference.referenceId);
+        if (!source || !referenceMediaPath) throw new TypeError("Retained GPT selection is not bound to provided footage.");
+        for (const anchor of match.chatgptSelection!.anchors) {
+          await this.#verifyInspection(input.reference.referenceId, referenceMediaPath, anchor.referenceEvidenceId, anchor.referenceTimeMs);
+          await this.#verifyInspection(source.sourceId, source.sourcePath, anchor.sourceEvidenceId, anchor.sourceTimeMs);
+        }
+        if (this.config.materializeWorkingMedia && (!match.workingMedia
+          || !await fileExists(match.workingMedia.sourcePath)
+          || validatePracticeWorkingMediaMatchesV1([match]).length > 0)) {
+          prepared.push(...await this.#materializeWorkingMatches([match], artifacts));
+        } else prepared.push(match);
+        await input.onProgress?.(prepared, "WORKING_MEDIA");
+      }
+      // Keep low-confidence decisions available for correction; preflight cannot
+      // admit them, but it must not erase GPT's retained search work.
+      const byId = new Map(prepared.map((match) => [match.shotId, match]));
+      await this.#saveChatgptPacket({ ...packet, matches: matches.map((match) => byId.get(match.shotId) ?? match) });
+      return prepared;
     }
 
     const directory = path.join(this.config.analysisCacheDir, "matches");
@@ -1036,6 +1100,158 @@ export class LocalPracticeMediaMatcherV1 {
       await writeFile(refinementReceipt, JSON.stringify({ unresolved, completedAt: new Date().toISOString() }));
     }
     return matches;
+  }
+
+  async #saveChatgptPacket(packet: unknown): Promise<void> {
+    await mkdir(path.dirname(this.config.chatgptSelectionsPath), { recursive: true });
+    const temporary = this.config.chatgptSelectionsPath + ".tmp-" + String(process.pid);
+    await writeFile(temporary, JSON.stringify(packet, null, 2) + "\n", { encoding: "utf8", flush: true });
+    await rename(temporary, this.config.chatgptSelectionsPath);
+  }
+
+  async footageSearchState(sourceIndex: PracticeSourceIndexV1): Promise<Record<string, any>> {
+    const rawMetadata = await Promise.all((this.#videoSourceArtifactsByIndexId.get(sourceIndex.indexId) ?? [])
+      .map(async (file) => { const source = await jsonFile<SourceArtifactV1>(file);
+        return { mediaId: source.sourceId, sourcePath: source.sourcePath, video: source.video }; }));
+    const inspectionDir = this.config.chatgptInspectionDir;
+    const inspections = await Promise.all((await readdir(inspectionDir).catch(() => []))
+      .filter((file) => /^[a-f0-9]{24}\.json$/.test(file)).map(async (file) => {
+        const receipt = await jsonFile<Record<string, any>>(path.join(inspectionDir, file));
+        return { evidenceId: receipt.evidenceId, mediaId: receipt.mediaId,
+          timesMs: receipt.frames.map((frame: any) => frame.timeMs), contactSheetPath: receipt.contactSheetPath };
+      }));
+    const notes = (await readFile(path.join(this.config.artifactDir, "footage-search-notes.jsonl"), "utf8")
+      .catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return ""; throw error; }))
+      .split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    const selections = await fileExists(this.config.chatgptSelectionsPath)
+      ? await jsonFile<Record<string, any>>(this.config.chatgptSelectionsPath) : null;
+    return { rawMetadata, inspections, notes, searchHistory: selections?.searchHistory ?? [],
+      retainedDecisions: selections?.sourceIndexId === sourceIndex.indexId
+        ? (selections.matches ?? []).filter((match: PracticeSceneMatchV1) => match.selectionMode === "CHATGPT_DIRECT") : [] };
+  }
+
+  async #verifyInspection(mediaId: string, uri: string, evidenceId: unknown, timeMs: number): Promise<void> {
+    if (typeof evidenceId !== "string" || !/^[a-f0-9]{24}$/.test(evidenceId)) throw new TypeError("Use issued frame-inspection evidence IDs.");
+    const receipt = await jsonFile<Record<string, any>>(path.join(this.config.chatgptInspectionDir, evidenceId + ".json"));
+    const media = { mediaId, uri, role: "START_SOURCE", mediaKind: "VIDEO" } as PracticeMediaInputV1;
+    // Reference IDs can be content-derived; the receipt retains the imported media
+    // ID. File/version binding is the authority when revalidating retained choices.
+    if ((receipt.mediaId !== mediaId && receipt.videoPath !== mediaPath(uri))
+      || receipt.mediaVersion !== await this.#mediaCacheKey(media, ["inspection-media-version-v1"])) throw new TypeError("Inspection belongs to different or changed footage.");
+    const frame = receipt.frames.find((item: any) => item.timeMs === timeMs);
+    if (!frame || createHash("sha256").update(await readFile(frame.path)).digest("hex") !== frame.sha256) throw new TypeError("Comparison must reference real retained pixels at the exact requested timestamp.");
+  }
+
+  async recordFootageSearchNote(media: PracticeMediaInputV1, note: Record<string, any>): Promise<void> {
+    if (media.mediaKind !== "VIDEO" || !note || !Array.isArray(note.rangeMs) || note.rangeMs.length !== 2
+      || !note.rangeMs.every(Number.isFinite) || note.rangeMs[0] < 0 || note.rangeMs[1] <= note.rangeMs[0]
+      || !["REVIEWED_NO_MATCH", "NEEDS_DENSE_REVIEW", "MATCH_LOCATED"].includes(note.status)
+      || !note.observation?.trim() || !note.strategy?.trim()) throw new TypeError("Search notes require a bounded interval, status, strategy and observation.");
+    await mkdir(this.config.artifactDir, { recursive: true });
+    await appendFile(path.join(this.config.artifactDir, "footage-search-notes.jsonl"), JSON.stringify({ ...note,
+      mediaId: media.mediaId, mediaVersion: await this.#mediaCacheKey(media, ["inspection-media-version-v1"]),
+      recordedAt: new Date().toISOString() }) + "\n", { encoding: "utf8", flush: true });
+  }
+
+  async inspectFootage(media: PracticeMediaInputV1, timesMs: readonly number[], width = 640): Promise<Record<string, any>> {
+    if (media.mediaKind !== "VIDEO" || !Array.isArray(timesMs) || timesMs.length < 1 || timesMs.length > 48
+      || timesMs.some((value) => !Number.isFinite(value) || value < 0)
+      || !Number.isInteger(width) || width < 160 || width > 1920) throw new TypeError("Request 1–48 timestamps and width 160–1920.");
+    const key = await this.#mediaCacheKey(media, ["direct-pixel-inspection-v1", JSON.stringify(timesMs), String(width)]);
+    const output = path.join(this.config.chatgptInspectionDir, key + ".json");
+    await mkdir(path.dirname(output), { recursive: true });
+    await this.#ensureArtifact(output, async () => {
+      await this.#run(["browse", "--video", mediaPath(media.uri), "--output", output,
+        "--times-json", JSON.stringify(timesMs), "--width", String(width),
+        "--ffmpeg", await this.#resolveFfmpeg()]);
+      const packet = await jsonFile<Record<string, any>>(output);
+      if (!Array.isArray(packet.frames) || packet.frames.length !== timesMs.length
+        || packet.frames.some((frame: any, i: number) => frame.timeMs !== timesMs[i])) throw new TypeError("Browser must return the exact GPT-requested timestamps.");
+      await writeFile(output, JSON.stringify({ ...packet, evidenceId: key, mediaId: media.mediaId,
+        videoPath: mediaPath(media.uri),
+        mediaVersion: await this.#mediaCacheKey(media, ["inspection-media-version-v1"]) }) + "\n", "utf8");
+    });
+    const packet = await jsonFile<Record<string, any>>(output);
+    for (const frame of packet.frames) {
+      if (!await fileExists(frame.path) || createHash("sha256").update(await readFile(frame.path)).digest("hex") !== frame.sha256) {
+        throw new TypeError("Inspected pixels changed; request a new inspection.");
+      }
+    }
+    return packet;
+  }
+
+  async selectFootage(input: {
+    reference: PracticeReferenceAnalysisV1; sourceIndex: PracticeSourceIndexV1;
+    finish: PracticeMediaInputV1; start: readonly PracticeMediaInputV1[];
+    selections: readonly Record<string, any>[]; search: Record<string, any>;
+  }): Promise<readonly PracticeSceneMatchV1[]> {
+    if (this.config.shotSelectionAuthority !== "CHATGPT_DIRECT") throw new TypeError("Direct selection authority is required.");
+    if (!Array.isArray(input.selections) || !input.selections.length || !["CONSULTED", "UNAVAILABLE"].includes(input.search?.internetStatus)
+      || !Array.isArray(input.search.strategies) || !input.search.strategies.length
+      || (input.search.internetStatus === "CONSULTED" && (!Array.isArray(input.search.sources)
+        || !input.search.sources.length || input.search.sources.some((s: any) => !/^https?:\/\//.test(s.url) || !s.query?.trim() || !s.finding?.trim())))
+      || (input.search.internetStatus === "UNAVAILABLE" && !input.search.reason?.trim())) throw new TypeError("Retain internet research (or an actual access failure) and the search strategies used.");
+    let retained: PracticeSceneMatchV1[] = [];
+    let searchHistory: unknown[] = [];
+    if (await fileExists(this.config.chatgptSelectionsPath)) {
+      const prior = await jsonFile<{ referenceId: string; sourceIndexId: string; matches: PracticeSceneMatchV1[]; searchHistory?: unknown[] }>(this.config.chatgptSelectionsPath);
+      if (prior.referenceId === input.reference.referenceId && prior.sourceIndexId === input.sourceIndex.indexId) {
+        retained = prior.matches; searchHistory = prior.searchHistory ?? [];
+      }
+    }
+    const selectedIds = new Set<string>();
+    for (const selection of input.selections) {
+      const shot = input.reference.shots.find((item) => item.shotId === selection.shotId);
+      const source = input.start.find((item) => item.role === "START_SOURCE" && item.mediaKind === "VIDEO" && item.mediaId === selection.sourceId);
+      if (!shot || !source || selectedIds.has(shot.shotId)) throw new TypeError("Selection must identify a unique reference shot and provided raw video.");
+      selectedIds.add(shot.shotId);
+      if (![selection.sourceStartMs, selection.sourceEndMs, selection.confidence].every(Number.isFinite)
+        || selection.sourceStartMs < 0 || selection.sourceEndMs <= selection.sourceStartMs
+        || selection.confidence < 0 || selection.confidence > 1
+        || !["FORWARD", "REVERSE"].includes(selection.direction)
+        || !selection.rationale?.trim() || !Array.isArray(selection.anchors) || selection.anchors.length < 3) throw new TypeError("Exact selection needs bounds, direction, confidence, rationale and three pixel comparisons.");
+      const artifacts = this.#videoSourceArtifactsByIndexId.get(input.sourceIndex.indexId) ?? [];
+      const sourceArtifact = (await Promise.all(artifacts.map((value) => jsonFile<SourceArtifactV1>(value)))).find((item) => item.sourceId === source.mediaId);
+      if (!sourceArtifact?.video || selection.sourceEndMs > sourceArtifact.video.durationMs) throw new TypeError("Raw selection exceeds provided footage.");
+      for (const anchor of selection.anchors) {
+        if (![anchor.referenceTimeMs, anchor.sourceTimeMs].every(Number.isFinite)
+          || anchor.referenceTimeMs < shot.referenceStartMs || anchor.referenceTimeMs >= shot.referenceEndMs
+          || anchor.sourceTimeMs < selection.sourceStartMs || anchor.sourceTimeMs >= selection.sourceEndMs
+          || !anchor.observation?.trim()) throw new TypeError("Every comparison must be inside its selected shot and describe the observed match.");
+        for (const [media, evidenceId, timeMs] of [[input.finish, anchor.referenceEvidenceId, anchor.referenceTimeMs],
+          [source, anchor.sourceEvidenceId, anchor.sourceTimeMs]] as const) {
+          await this.#verifyInspection(media.mediaId, media.uri, evidenceId, timeMs);
+        }
+      }
+      const anchors = [...selection.anchors].sort((a, b) => a.referenceTimeMs - b.referenceTimeMs);
+      if (new Set(anchors.map((a) => a.referenceTimeMs)).size < 3
+        || anchors.at(-1).referenceTimeMs - anchors[0].referenceTimeMs < (shot.referenceEndMs - shot.referenceStartMs) * .5) throw new TypeError("Inspect distinct moments spanning at least half the reference shot.");
+      const temporalBehavior = selection.temporalBehavior ?? selection.direction;
+      if (!["FORWARD", "REVERSE", "FORWARD_THEN_REWIND", "COMPLEX"].includes(temporalBehavior)) throw new TypeError("Unknown temporal behavior.");
+      if (["FORWARD", "REVERSE"].includes(temporalBehavior) && temporalBehavior !== selection.direction) throw new TypeError("Temporal behavior must agree with the selected direction.");
+      if (["FORWARD", "REVERSE"].includes(temporalBehavior)) for (let i = 1; i < anchors.length; i++) {
+        if ((anchors[i].sourceTimeMs - anchors[i - 1].sourceTimeMs) * (selection.direction === "FORWARD" ? 1 : -1) <= 0) throw new TypeError("Comparisons must follow the selected direction; describe a rewind/complex trajectory explicitly when observed.");
+      }
+      const match: PracticeSceneMatchV1 = {
+        shotId: shot.shotId, sourceId: source.mediaId, sourcePath: mediaPath(source.uri),
+        sourceStartMs: selection.sourceStartMs, sourceEndMs: selection.sourceEndMs, direction: selection.direction,
+        playbackRate: (selection.sourceEndMs - selection.sourceStartMs) / (shot.referenceEndMs - shot.referenceStartMs),
+        trajectory: anchors.map((anchor) => ({ referenceTimeMs: anchor.referenceTimeMs, sourceTimeMs: anchor.sourceTimeMs, similarity: selection.confidence })),
+        temporalBehavior,
+        // Compatibility fields express GPT's declared visual confidence. They
+        // are not machine scores, ranking, or geometric measurements.
+        appearanceSimilarity: selection.confidence, temporalSimilarity: selection.confidence, motionSimilarity: selection.confidence,
+        confidence: selection.confidence, selectionMode: "CHATGPT_DIRECT",
+        chatgptSelection: { authority: "CHATGPT_DIRECT", decisionId: "chatgpt-selection:" + sha256Text([JSON.stringify(selection)]).slice(0, 24),
+          reviewedAt: new Date().toISOString(), rationale: selection.rationale, anchors },
+        evidenceRefs: ["chatgpt-direct-pixel-selection", ...anchors.flatMap((a) => ["footage-inspection:" + a.referenceEvidenceId, "footage-inspection:" + a.sourceEvidenceId])],
+      };
+      retained = [...retained.filter((item) => item.shotId !== shot.shotId), match];
+    }
+    await this.#saveChatgptPacket({ schema: "editflow.chatgpt-shot-selections.v1", referenceId: input.reference.referenceId,
+      sourceIndexId: input.sourceIndex.indexId, search: input.search,
+      searchHistory: [...searchHistory, { ...input.search, recordedAt: new Date().toISOString() }], matches: retained });
+    return retained;
   }
 
   async matchAudio(input: {

@@ -117,8 +117,16 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
           ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
         const researchMessage = applyCurrentResearchPriority(currentMessage);
         const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage, assignment.mode);
+        const directMatches = (assignment.practiceSceneMatches ?? []).filter((match) => match.selectionMode === "CHATGPT_DIRECT");
+        const discardedLegacy = assignment.mode === "PRACTICE" && ["PENDING", "CLAIMED", "RUNNING"].includes(assignment.status)
+          && directMatches.length !== (assignment.practiceSceneMatches ?? []).length;
         return {
           ...assignment,
+          ...(discardedLegacy ? { practiceSceneMatches: directMatches,
+            preflight: { ...assignment.preflight, stage: "AWAITING_CHATGPT_SHOTS" as const,
+              updatedAt: new Date().toISOString(), requireTransferNovelty: assignment.preflight?.requireTransferNovelty ?? false,
+              completedShotIds: [], unresolvedShotIds: assignment.preflight?.totalShotIds ?? [],
+              reasons: ["Legacy raw-shot candidates discarded; ChatGPT must inspect and select the raw shots directly."], evidenceRefs: [] } } : {}),
           practiceRole,
           practicePolicy,
           chatMessage: practicePolicy === null
@@ -321,7 +329,7 @@ const applyCurrentWorkflowContinuityPolicy = (
   message: string,
   mode: GptOrchestrationModeV1,
 ): string => {
-  let migrated = message;
+  let migrated = applyChatgptFootagePolicyV1(message);
   for (const [legacy, current] of LEGACY_WORKFLOW_POLICY_REPLACEMENTS) {
     migrated = migrated.replace(legacy, current);
   }
@@ -361,6 +369,24 @@ const applyCurrentWorkflowContinuityPolicy = (
     "- Retained Edit Type knowledge, Tutorial Drive learning, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, advanced synthesis, and later systems are integrated capabilities inside the primary production system, not alternate workflows.",
     "- Optimize for completion: reuse the verified source set and content-locked baseline, preserve correct regions, render locally before full-edit rerenders, and advance from retained evidence instead of rebuilding the edit.",
   ].join("\n");
+};
+
+export const CHATGPT_FOOTAGE_POLICY_V1 = [
+  "CHATGPT DIRECT RAW FOOTAGE SELECTION V1",
+  "ChatGPT alone inspects raw footage and chooses exact scenes/shots. The old raw-shot candidate generator, visual matching/ranking and automated selection are removed from production; never invoke them or treat their cached matches as choices.",
+  "Read GET /v1/product/gpt/assignments/{id}/footage-selection and its contract. POST BROWSE with the current claimedBy, mediaId and your explicit timesMs; open its timestamped contact sheets and individual frames. POST SELECT to retain your exact ranges, direction, temporal comparisons, confidence and rationale. Resume prior GPT choices and inspection receipts.",
+  "For footage discovery, primarily use internet research: identify the film/episode/event, search distinctive dialogue, scene descriptions, scripts/transcripts, chapter guides and sequence context. Then directly inspect the provided raw media. Web timestamps are clues, never proof or replacement footage. Record research URLs/queries/findings or an actual unavailable-access reason.",
+  "Choose efficient strategies yourself: broad chronological contact sheets, scene/context/dialogue clues, interval narrowing, adjacent-scene inspection, cached low-resolution views, dense gesture and boundary sampling, then exact-frame comparisons. You decide which timestamps to inspect; helpers only decode, timestamp, cache and extract what you request, never propose/rank shots. Preserve coverage notes across handoffs and change strategy when a search is unproductive.",
+  "Compare at least three distinct Finish/raw moments across every selected shot, including framing, subject identity, pose/action and temporal direction. Retain the comparisons with actual issued inspection evidence IDs; never invent geometric measurements or claim a machine score proves your choice. Materialize only your selected raw ranges with bounded handles before AE assembly.",
+  "AWAITING_CHATGPT_SHOTS requires direct footage work now, not polling an algorithm. Keep the same assignment. For effect/transition construction, the separate Tutorial Drive → Adobe → web research order still applies; submit AE actions only through production-jobs and keep AE open.",
+].join("\n");
+
+const applyChatgptFootagePolicyV1 = (message: string): string => {
+  const cleaned = message.replace(/Preflight-verified source matches \/ AE working clips:\n[\s\S]*?Use the working clip path for AE construction\.[^\n]*/g,
+    "ChatGPT-selected raw shots / AE working clips: read current exact selections from footage-selection; never reuse legacy ranked candidates.")
+    .split("\n").filter((line) => !line.includes("A machine scene score narrows candidates")
+    && !line.includes("strongest raw-source candidates")).join("\n");
+  return cleaned.includes("CHATGPT DIRECT RAW FOOTAGE SELECTION V1") ? cleaned : cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1;
 };
 
 const MASTERY_POLICY_MARKER =
@@ -537,7 +563,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   const practicePolicy = input.mode === "PRACTICE"
     ? normalizePracticeVerificationPolicyV1(input.practicePolicy)
     : null;
-  const preparedMatchLines = (input.practiceSceneMatches ?? []).map((match) => {
+  const preparedMatchLines = (input.practiceSceneMatches ?? []).filter((match) => match.selectionMode === "CHATGPT_DIRECT").map((match) => {
     const working = match.workingMedia;
     const originalRange = match.sourceStartMs.toFixed(3) + "-" + match.sourceEndMs.toFixed(3) + "ms";
     if (working === undefined) {
@@ -591,12 +617,12 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
       "- BUILD_EDIT_BLUEPRINT_FIRST: Record the shot order, exact cut intent, source-time behavior, framing, pacing, audio relationship, and an effect/transition blueprint describing entry, buildup, peak, cut interaction, persistence, recovery, and rewind behavior before construction.",
       "- EFFECT_TRANSITION_PRIORITY: Once source identity and the editorial spine are correct, spend the main deep-reasoning/correction budget on professional effect and transition fidelity: temporal states, trails, displacement, blur, distortion, acceleration, masks/isolation, color/exposure behavior, cut overlap, persistence, and reverse/rewind endings.",
       "- RAW_SOURCE_IS_SEARCH_ONLY: Full-length Start movies are a search corpus, never active AE editing footage. Index/search them outside AE, visually verify candidate ranges, materialize only the matched ranges with bounded handles, and use those working clips in AE.",
-      "- VISUAL_SOURCE_CONFIRMATION_REQUIRED: A machine scene score narrows candidates; GPT must inspect the candidate pixels and confirm the exact performance moment and trim before treating a source match as locked.",
+      "- VISUAL_SOURCE_CONFIRMATION_REQUIRED: ChatGPT directly browses raw footage and chooses exact performance moments and trims; automated raw-shot candidate ranking is disabled.",
       "- LOCK_EDITORIAL_SPINE: After the correct raw shots, order, broad timing, and audio arrangement are verified, preserve them. Do not rebuild correct shots merely because an effect needs correction.",
       "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for reference-effect detection, dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating.",
       "- COMPLETE_EDIT_THEN_PATCH: Build one coherent full edit from the locked footage, render/review it, diagnose discrepancies, then patch only deficient regions. Later attempts preserve already-correct regions.",
       "- ACCELERATED COVERAGE-FIRST SCHEDULE: after all source/range choices are locked, build a playable whole-edit reconstruction across every phase before final certification. Do not block later construction on a phase that still needs micro-optimization.",
-      "- BATCH SOURCE REVIEW: inspect direct-pixel contact sheets containing multiple Finish phases and strongest raw-source candidates when legible; retain an explicit source/range decision for every phase.",
+      "- BATCH SOURCE REVIEW: inspect timestamped contact sheets of raw intervals chosen by ChatGPT, then narrow and retain an explicit source/range decision for every phase.",
       "- BOUNDED SCRATCH SEARCH: one GPT hypothesis defines construction family, invariants, and safe parameter bounds; local non-canonical search may test many candidates without one GPT roundtrip per candidate, and only the winning commit becomes canonical.",
       "- PROGRESSIVE FIDELITY FUNNEL: prefer up to 32 coarse 1/8-resolution critical-frame candidates, retain up to 8 at 1/4 resolution, then full-resolution proof only for the strongest 2. Machine scoring is search/ranking evidence only and can never satisfy a Practice fidelity pass.",
       "- GPT REVIEW COMPRESSION: show GPT at most the strongest 3 useful alternatives plus reference/current-best instead of dominated intermediate candidates.",

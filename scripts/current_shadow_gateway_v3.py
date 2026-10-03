@@ -214,6 +214,7 @@ def build_server():
                 "validate_edit_plan", "apply_edit_plan", "fast_ae_run", "fast_ae_batch", "fast_ae_refresh",
                 "get_next_gpt_assignment", "get_gpt_assignment", "claim_gpt_assignment",
                 "get_clip_research_contract", "get_clip_research", "record_clip_research",
+                "get_footage_selection", "inspect_or_select_footage",
                 "enqueue_production_job", "get_production_jobs", "resolve_production_job",
                 "record_gpt_learning_event", "complete_gpt_assignment", "fail_gpt_assignment",
                 "acknowledge_gpt_assignment_cancelled", "get_editflow_run", "cancel_editflow_run",
@@ -324,6 +325,21 @@ def build_server():
         return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/production-jobs", {
             "action": "RESOLVE", "jobId": job_id, "claimedBy": claimed_by,
             "reviewEvidenceRef": review_evidence_ref, "result": json.loads(result_json)})
+
+    @mcp.tool()
+    def get_footage_selection(assignment_id: str) -> dict[str, Any]:
+        """Read supplied raw media, reference shot boundaries and direct ChatGPT shot-selection contract; no ranked candidates."""
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/footage-selection")
+
+    @mcp.tool()
+    def inspect_or_select_footage(assignment_id: str, request_json: str) -> dict[str, Any]:
+        """BROWSE explicit GPT-chosen timestamps or SELECT ranges backed by direct pixel comparisons. Supply current claimedBy; no AE changes."""
+        payload = json.loads(request_json)
+        if not isinstance(payload, dict):
+            raise ValueError("Footage request must be a JSON object with the current claimedBy.")
+        safe_id = urllib.parse.quote(assignment_id, safe="")
+        return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/footage-selection", payload)
 
     @mcp.tool()
     def fast_ae_refresh() -> dict[str, Any]:

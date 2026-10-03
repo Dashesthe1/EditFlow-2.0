@@ -42,7 +42,7 @@ test("Practice reference analysis preserves explicit excluded Finish tail eviden
   ].join("\n"), "utf8");
 
   try {
-    const matcher = new LocalPracticeMediaMatcherV1({
+    const matcher = new LocalPracticeMediaMatcherV1({ shotSelectionAuthority: "ISOLATED_LEGACY_TEST",
       artifactDir: path.join(directory, "artifacts"),
       scriptPath,
       python: { executable: process.execPath, prefixArgs: [runnerPath] },

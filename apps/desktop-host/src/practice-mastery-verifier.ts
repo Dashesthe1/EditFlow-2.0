@@ -9,7 +9,7 @@ import {
 import {
   LocalPracticeMediaMatcherV1,
   comparePracticeM6AlignedWindowsV1,
-  hasRepeatedSceneGeometryV1,
+  hasVerifiedPracticeSourceIdentityV1,
   finalizePracticeSimilarityReportV1,
   resolvePracticeLocalMediaPathV1,
   type GptOrchestrationAssignmentV1,
@@ -130,10 +130,10 @@ export const validatePracticeSceneMatchesV1 = (
     const match = values[0]!;
     if (match.confidence < minimumConfidence) {
       reasons.push("Source match confidence for " + shotId + " is below the exact-scene gate.");
-    } else if (!hasRepeatedSceneGeometryV1(match)) {
+    } else if (!hasVerifiedPracticeSourceIdentityV1(match)) {
       reasons.push(
         "Source match for " + shotId
-          + " lacks repeated geometric proof required by the exact-scene gate.",
+          + " lacks repeated geometric proof or retained direct ChatGPT comparisons required by the exact-scene gate.",
       );
     }
     if (match.candidateMargin !== undefined
@@ -273,6 +273,8 @@ export class PracticeMasteryVerifierV1 {
     await mkdir(proofDir, { recursive: true });
 
     const matcher = new LocalPracticeMediaMatcherV1({
+      chatgptSelectionsPath: path.join(input.assignment.artifactDir, "media", "chatgpt-selections.json"),
+      chatgptInspectionDir: path.join(input.assignment.artifactDir, "media", "footage-inspections"),
       artifactDir: path.join(proofDir, "media"),
       analysisCacheDir: path.join(
         this.repositoryRoot,

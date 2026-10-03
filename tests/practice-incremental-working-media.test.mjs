@@ -72,7 +72,7 @@ async function main() {
 main().catch((error) => { console.error(error); process.exitCode = 1; });
 `;
   await writeFile(scriptPath, stub);
-  const matcher = (signal) => new LocalPracticeMediaMatcherV1({ artifactDir: path.join(root, "artifacts"),
+  const matcher = (signal) => new LocalPracticeMediaMatcherV1({ shotSelectionAuthority: "ISOLATED_LEGACY_TEST", artifactDir: path.join(root, "artifacts"),
     analysisCacheDir: path.join(root, "cache"), scriptPath, ffmpegPath: ffmpeg,
     python: { executable: process.execPath, prefixArgs: [] }, materializeWorkingMedia: true,
     workingMediaHandleMs: 100, ...(signal ? { signal } : {}) });

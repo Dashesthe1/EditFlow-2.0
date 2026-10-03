@@ -115,6 +115,19 @@ export const hasRepeatedSceneGeometryV1 = (match: PracticeSceneMatchV1): boolean
   return true;
 };
 
+/** Direct GPT comparisons are source evidence, never fabricated geometric metrics. */
+export const hasVerifiedPracticeSourceIdentityV1 = (match: PracticeSceneMatchV1): boolean => {
+  if (match.selectionMode !== "CHATGPT_DIRECT") return hasRepeatedSceneGeometryV1(match);
+  const proof = match.chatgptSelection;
+  return proof?.authority === "CHATGPT_DIRECT" && !!proof.decisionId?.trim()
+    && !!proof.rationale?.trim() && Number.isFinite(Date.parse(proof.reviewedAt))
+    && Array.isArray(proof.anchors) && proof.anchors.length >= 3
+    && new Set(proof.anchors.map((anchor) => anchor.referenceTimeMs)).size >= 3
+    && proof.anchors.every((anchor) => Number.isFinite(anchor.referenceTimeMs)
+      && Number.isFinite(anchor.sourceTimeMs) && !!anchor.observation?.trim()
+      && /^[a-f0-9]{24}$/.test(anchor.referenceEvidenceId) && /^[a-f0-9]{24}$/.test(anchor.sourceEvidenceId));
+};
+
 export const validatePracticeSceneMatchesV1 = (
   shotIds: readonly string[],
   matches: readonly PracticeSceneMatchV1[],
@@ -130,10 +143,10 @@ export const validatePracticeSceneMatchesV1 = (
     }
     if (match.confidence < minimumConfidence) {
       reasons.push("Source match confidence for " + shotId + " is below the exact-scene gate.");
-    } else if (!hasRepeatedSceneGeometryV1(match)) {
+    } else if (!hasVerifiedPracticeSourceIdentityV1(match)) {
       reasons.push(
         "Source match for " + shotId
-          + " lacks repeated geometric proof required by the exact-scene gate.",
+          + " lacks repeated geometric proof or retained direct ChatGPT comparisons required by the exact-scene gate.",
       );
     }
     if (match.sourceEndMs <= match.sourceStartMs) {

@@ -264,6 +264,7 @@
             "REFERENCE_ANALYSIS",
             "SOURCE_INDEXING",
             "SCENE_MATCHING",
+            "AWAITING_CHATGPT_SHOTS",
             "TARGETED_REFINEMENT",
             "WORKING_MEDIA",
             "BLOCKED",

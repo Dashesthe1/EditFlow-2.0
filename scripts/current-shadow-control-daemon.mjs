@@ -148,6 +148,8 @@ const statusPayload = () => ({
   primarySystemOnly: true,
   directMutationRoutes: "REMOVED",
   clipResearchPolicy: "MANDATORY_PER_CLIP_TUTORIAL_ADOBE_WEB_V1",
+  footageSelectionAuthority: "CHATGPT_DIRECT",
+  rawShotCandidateRanking: "REMOVED_FROM_PRODUCTION",
   panel: broker.panelSession ?? panel,
   practiceService: {
     integrated: true,

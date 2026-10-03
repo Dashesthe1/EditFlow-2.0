@@ -174,6 +174,7 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     start,
     practiceSceneMatches: [{
       shotId: "shot:1",
+      selectionMode: "CHATGPT_DIRECT",
       sourceId: "video:1",
       sourcePath: "C:\\Media\\raw.mp4",
       sourceStartMs: 5000,
@@ -221,10 +222,9 @@ test("Practice can discover, prove, and retain a previously missing editing skil
     assignment.practiceSceneMatches?.[0]?.workingMedia?.sourcePath,
     "C:\\PracticeCache\\shot-1.mp4",
   );
-  assert.match(assignment.chatMessage, /Preflight-verified source matches \/ AE working clips/);
-  assert.match(assignment.chatMessage, /original video:1 \[5000\.000-6200\.000ms\]/);
-  assert.match(assignment.chatMessage, /working=C:\\PracticeCache\\shot-1\.mp4/);
-  assert.match(assignment.chatMessage, /Use the working clip path for AE construction/);
+  assert.match(assignment.chatMessage, /ChatGPT-selected raw shots \/ AE working clips/);
+  assert.match(assignment.chatMessage, /CHATGPT DIRECT RAW FOOTAGE SELECTION V1/);
+  assert.match(assignment.chatMessage, /never reuse legacy ranked candidates/);
   await store.claim(assignment.assignmentId, "chatgpt-test");
   const gapOpen = {
     gapId: "gap:temporal-rewind",

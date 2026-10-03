@@ -7,7 +7,7 @@ import {
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 
 test("Practice source indexing defaults to 250 ms coverage", () => {
-  const matcher = new LocalPracticeMediaMatcherV1({
+  const matcher = new LocalPracticeMediaMatcherV1({ shotSelectionAuthority: "ISOLATED_LEGACY_TEST",
     artifactDir: path.resolve(".tmp", "practice-dense-source-index"),
     scriptPath: path.resolve("scripts", "practice", "practice-media-match.py"),
   });
