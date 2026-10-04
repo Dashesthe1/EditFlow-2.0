@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseProductionWorkflowPlanV1, parseProductionMethodV1, validateMethodApplicationV1, validateWorkflowJobV1,
   PracticeProductionCoordinatorV1, PracticeProductionCoordinatorFileV1, practiceTelemetrySpanV1, parsePracticeWorkedExampleV1,
-  GptOrchestrationStoreV1 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
+  GptOrchestrationStoreV1, PRIMARY_PRODUCTION_WORKFLOW_V1 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 import { STUDIED_PRODUCTION_METHODS_V1 } from "../.tmp/runtime/packages/practice-homework/src/studied-methods.js";
@@ -70,11 +70,28 @@ test("workflow history resumes unchanged, keeps GPT-chosen pass order, scopes jo
   const next={...plan(),decisionId:"workflow:2",passOrder:["critical intro prototype","structure","finish"]};c.retainWorkflowPlan(next);
   await file.save(c);const restored=await file.load();assert.deepEqual(restored.snapshot().workflow,c.snapshot().workflow);
   assert.equal(restored.snapshot().wholeEditCovered,false);assert.deepEqual(restored.snapshot().workflow.reviews,[]);
-  const selected=c.snapshot().workflow.plans[0],payload={workflowContext:{planDecisionId:"workflow:1",planHash:selected.hash,eventIds:["phrase"]},researchContext:{plans:[{clipId:"shot:1"}]}};
-  validateWorkflowJobV1(c.snapshot().workflow,payload);validateWorkflowJobV1(c.snapshot().workflow,{});
+  const selected=c.snapshot().workflow.plans[1],payload={workflowContext:{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,planDecisionId:"workflow:2",planHash:selected.hash,eventIds:["phrase"]},researchContext:{plans:[{clipId:"shot:1"}]}};
+  validateWorkflowJobV1(c.snapshot().workflow,payload);
+  assert.throws(()=>validateWorkflowJobV1(c.snapshot().workflow,{}),/PRIMARY_WORKFLOW_REQUIRED/);
+  validateWorkflowJobV1(c.snapshot().workflow,{}, {acceptedReceipt:true,acceptedLegacyReceipt:true});
+  const previous={...payload,workflowContext:{...payload.workflowContext,planDecisionId:"workflow:1",planHash:c.snapshot().workflow.plans[0].hash}};
+  assert.throws(()=>validateWorkflowJobV1(c.snapshot().workflow,previous),/SUPERSEDED/);
+  validateWorkflowJobV1(c.snapshot().workflow,previous,{acceptedReceipt:true});
   assert.throws(()=>validateWorkflowJobV1(c.snapshot().workflow,{...payload,researchContext:{plans:[{clipId:"other"}]}}),/event scope/);
   assert.throws(()=>validateWorkflowJobV1(c.snapshot().workflow,{...payload,workflowContext:{...payload.workflowContext,planHash:"stale"}}),/MISMATCH/);
   assert.throws(()=>parseProductionWorkflowPlanV1({...plan(),authority:"MACHINE"}),/CHATGPT_DIRECT/);
+});
+
+test("only the primary workflow admits new jobs; preparation cannot authorize production or client legacy flags", () => {
+  const state={plans:[],activeDecisionId:null,reviews:[],milestones:[]};
+  const preparation={workflowContext:{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,phase:"PREPARATION"}};
+  validateWorkflowJobV1(state,preparation,{kind:"REFERENCE_ANALYSIS"});
+  for(const kind of ["AE_BATCH","AE_TRANSACTION","PROOF_SCRIPT","LOCAL_RENDER","SAVE_CHECKPOINT"]) {
+    assert.throws(()=>validateWorkflowJobV1(state,preparation,{kind}),/PREPARATION_ONLY/);
+    assert.throws(()=>validateWorkflowJobV1(state,{legacy:true,acceptedLegacyReceipt:true},{kind}),/PRIMARY_WORKFLOW_REQUIRED/);
+  }
+  assert.throws(()=>validateWorkflowJobV1(state,{workflowContext:{workflowId:"OLD_WORKFLOW",phase:"PREPARATION"}},
+    {kind:"REFERENCE_ANALYSIS",acceptedLegacyReceipt:true}),/PRIMARY_WORKFLOW_REQUIRED/);
 });
 
 test("telemetry separates active/wait/idle, unions overlaps, retains learning/export, leaves unknown gaps unattributed", async t => {
@@ -122,6 +139,8 @@ test("HTTP workflow uses existing controller/coordinator, rejects outside media,
   const headers={"X-EditFlow-Token":token,"Content-Type":"application/json"};
   const request=(route,body)=>fetch(`http://127.0.0.1:${service.port}${route}`,{headers,...(body?{method:"POST",body:JSON.stringify(body)}:{})});
   const contract=await (await request("/v1/product/gpt/production-workflow-contract")).json();assert.equal(contract.automaticDecisions,false);assert.equal(contract.studiedMethods.length,10);
+  assert.equal(contract.exclusive,true);assert.deepEqual(contract.modes,["PRACTICE","PRO_CREATION"]);
+  assert.deepEqual(contract.availableWorkflows,[PRIMARY_PRODUCTION_WORKFLOW_V1]);assert.equal(contract.workflowFallback,false);
   const route=`/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production`;
   assert.equal((await request(route,{action:"WORKFLOW_PLAN",claimedBy:"other",plan:plan()})).status,409);
   const bad=plan();bad.sources[0].mediaId="finished";assert.equal((await request(route,{action:"WORKFLOW_PLAN",claimedBy:"controller",plan:bad})).status,400);
@@ -129,4 +148,31 @@ test("HTTP workflow uses existing controller/coordinator, rejects outside media,
   await service.stop();service=new PracticePanelServerV1(config);await service.start();
   const resumed=await (await request(route)).json();assert.equal(resumed.production.workflow.activeDecisionId,"workflow:1");assert.equal(resumed.nextAction.kind,"CHATGPT_DECIDES");assert.equal(resumed.production.wholeEditCovered,false);
   assert.match((await store.getAssignment(assignment.assignmentId)).chatMessage,/CHATGPT_PRODUCTION_WORKFLOW_V1/);
+});
+
+for(const mode of ["PRACTICE","PRO_CREATION"]) test(`${mode} starts and resumes with one mandatory workflow and refuses alternate new jobs`, async t => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"exclusive-workflow-")),token="sole-workflow-token-0123456789abcdef";
+  const broker=new LoopbackCepBroker({port:0,token});await broker.start();
+  const store=new GptOrchestrationStoreV1(path.join(root,"gpt.json"));
+  const assignment=await store.createAssignment({sessionId:`exclusive:${mode}`,mode,editTypeId:"preset",artifactDir:root,knowledge:null,
+    finish:mode==="PRACTICE"?{mediaId:"finish",role:"FINISH_REFERENCE",mediaKind:"VIDEO",uri:"finish.mp4"}:null,
+    start:[{mediaId:"raw",role:"START_SOURCE",mediaKind:"VIDEO",uri:"raw.mp4"}]});
+  assert.equal(assignment.primaryWorkflow,PRIMARY_PRODUCTION_WORKFLOW_V1);await store.claim(assignment.assignmentId,"controller");
+  const service=new PracticePanelServerV1({port:0,token,broker,productionSupervision:false,repositoryRoot:process.cwd(),artifactDir:root,
+    learningMemoryFilePath:path.join(root,"memory.json"),editTypeRegistryFilePath:path.join(root,"types.json"),gptOrchestrationFilePath:store.filePath});
+  await service.start();t.after(async()=>{await service.stop();await broker.stop();await rm(root,{recursive:true,force:true});});
+  const headers={"X-EditFlow-Token":token,"Content-Type":"application/json"};
+  const call=(route,body)=>fetch(`http://127.0.0.1:${service.port}/v1/product/${route}`,{headers,...(body?{method:"POST",body:JSON.stringify(body)}:{})});
+  for(const route of ["status","practice/resume-or-start","gpt/assignments/next",`gpt/assignments/${encodeURIComponent(assignment.assignmentId)}`]) {
+    const response=await call(route);assert.equal(response.status,200,route);const body=await response.json();
+    assert.equal(body.primaryWorkflow,PRIMARY_PRODUCTION_WORKFLOW_V1,route);assert.deepEqual(body.availableWorkflows,[PRIMARY_PRODUCTION_WORKFLOW_V1]);
+    assert.equal(body.workflowSelectionAllowed,false);assert.equal(body.workflowFallback,false);
+  }
+  const jobs=`gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production-jobs`;
+  for(const workflowContext of [undefined,{workflowId:"OLD_WORKFLOW"},{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,phase:"PREPARATION"}]) {
+    const response=await call(jobs,{kind:"AE_BATCH",payload:{legacy:true,acceptedLegacyReceipt:true,workflowContext,
+      researchContext:{assignmentId:assignment.assignmentId,claimedBy:"controller",plans:[]}}});
+    assert.equal(response.status,409);assert.match((await response.json()).error,/PRIMARY_WORKFLOW_REQUIRED|PREPARATION_ONLY/);
+  }
+  assert.deepEqual((await (await call(jobs)).json()).jobs,[]);
 });

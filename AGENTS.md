@@ -1,6 +1,7 @@
 # Edit production authority
 
-Practice and Pro Creation use `DURABLE_PRODUCTION_QUEUE_V1` exclusively.
+Practice and Pro Creation use `CHATGPT_PRODUCTION_WORKFLOW_V1` as their sole
+primary workflow, executed exclusively through `DURABLE_PRODUCTION_QUEUE_V1`.
 
 - Run connection preflight, resume the retained active assignment, claim its controller,
   and read current research plans and actual AE state before production work.
@@ -92,7 +93,14 @@ Never automatically select/apply a saved technique or claim universal proficienc
 
 # Six-study production workflow
 
-`CHATGPT_PRODUCTION_WORKFLOW_V1` extends the existing coordinator and notebook.
+`CHATGPT_PRODUCTION_WORKFLOW_V1` is mandatory for both Practice and Pro Creation.
+The existing coordinator, queue, native adapters, source preparation and notebook
+are components of this workflow. No older workflow, selector or fallback remains.
+Every new production job must include workflowContext with workflowId equal to
+CHATGPT_PRODUCTION_WORKFLOW_V1 and the active retained planDecisionId, planHash and
+eventIds. Before source selection is complete, REFERENCE_ANALYSIS alone can use
+phase PREPARATION with this same workflowId. Preparation does not authorize AE edits.
+Pre-rollout accepted receipts can finish unchanged; they cannot admit new legacy work.
 Read the production workflow contract, current workflow decisions, prepared raw
 selections, research plans and receipts on resume. ChatGPT chooses pass order,
 bounded source shortlist, action/music anchors, every method/settings/curve,
@@ -113,5 +121,5 @@ production/review/export/recovery, milestones and full elapsed time. Unknown gap
 remain unattributed. The 60-minute familiar two-shot benchmark is an unmeasured
 engineering target and must never force a PASS or narrow creative possibilities.
 Bundled tutorial candidates remain UNVERIFIED until locally constructed and
-reviewed by ChatGPT. Keep AE open and the user's paused session paused during
+reviewed by ChatGPT. Keep AE open and preserve the supervisor's current state during
 system maintenance; do not resume/restart production merely to load new policy.

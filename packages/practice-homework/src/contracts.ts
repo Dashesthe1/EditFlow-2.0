@@ -1335,6 +1335,8 @@ export interface GptOrchestrationAssignmentV1 {
   readonly assignmentId: string;
   readonly sessionId: string;
   readonly mode: GptOrchestrationModeV1;
+  /** Normalized to the sole workflow on read; optional for historical records. */
+  readonly primaryWorkflow?: "CHATGPT_PRODUCTION_WORKFLOW_V1";
   readonly practiceRole: PracticeRunRoleV1 | null;
   readonly editTypeId: string;
   readonly status: GptAssignmentStatusV1;
