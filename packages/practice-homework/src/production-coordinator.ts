@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/prom
 import path from "node:path";
 
 import { affectedPracticePhaseIdsV1, type PracticeResidualV1 } from "./acceleration.js";
+import { emptyProductionWorkflowV1, retainProductionWorkflowPlanV1, retainProductionWorkflowReviewV1, type ProductionWorkflowStateV1 } from "./production-workflow.js";
 
 export type PracticeProductionStageV1 =
   | "PREFLIGHT"
@@ -86,6 +87,8 @@ export interface PracticeTelemetrySpanV1 {
   readonly elapsedMs: number;
   readonly outcome: "SUCCESS" | "FAILED" | "CANCELLED";
   readonly detail: string | null;
+  readonly activity?: "ACTIVE" | "MACHINE_WAIT" | "IDLE";
+  readonly purpose?: "PREPARATION" | "LEARNING" | "PRODUCTION" | "REVIEW" | "EXPORT" | "RECOVERY";
 }
 
 export interface PracticeProductionCoordinatorSnapshotV1 {
@@ -119,6 +122,7 @@ export interface PracticeProductionCoordinatorSnapshotV1 {
   readonly strategyKey?: string;
   readonly strategyChangedAt?: string;
   readonly budgetBaselineMs?: Readonly<Partial<Record<PracticeProductionStageV1, number>>>;
+  readonly workflow?: ProductionWorkflowStateV1;
 }
 
 export interface PracticeProductionActionV1 {
@@ -232,6 +236,23 @@ export class PracticeProductionCoordinatorV1 {
 
   snapshot(): PracticeProductionCoordinatorSnapshotV1 {
     return structuredClone(this.#snapshot);
+  }
+
+  retainWorkflowPlan(input: Record<string, any>): void {
+    this.#commit({ workflow: retainProductionWorkflowPlanV1(this.#snapshot.workflow ?? emptyProductionWorkflowV1(), input) });
+  }
+
+  retainWorkflowReview(input: Record<string, any>): void {
+    this.#commit({ workflow: retainProductionWorkflowReviewV1(this.#snapshot.workflow ?? emptyProductionWorkflowV1(), input) });
+  }
+
+  retainWorkflowMilestone(input: Record<string, any>): void {
+    if (input.authority !== "CHATGPT_DIRECT" || !["FIRST_ROUGH", "FIRST_ACCEPTED_METHOD", "FINAL_REVIEW", "DELIVERY"].includes(input.name)
+      || typeof input.evidenceRef !== "string" || !input.evidenceRef.trim() || !Number.isFinite(Date.parse(input.at))) throw new TypeError("Milestone requires ChatGPT choice, explicit time and evidence.");
+    const workflow = this.#snapshot.workflow ?? emptyProductionWorkflowV1();
+    const prior = workflow.milestones.find(m => m.name === input.name);
+    if (prior && JSON.stringify(prior) !== JSON.stringify(input)) throw new TypeError("First milestones are immutable.");
+    if (!prior) this.#commit({ workflow: { ...workflow, milestones: [...workflow.milestones, structuredClone(input)] } });
   }
 
   #commit(patch: Partial<PracticeProductionCoordinatorSnapshotV1>): void {
@@ -566,12 +587,16 @@ export class PracticeProductionCoordinatorFileV1 {
   async telemetrySummary(fromMs?: number, nowMs = Date.now()): Promise<Readonly<{
     totalElapsedMs: number;
     activeWallClockMs: number;
+    observedWallClockMs: number;
+    machineWaitWallClockMs: number;
+    idleWallClockMs: number;
     wallClockElapsedMs: number | null;
     unattributedMs: number | null;
     activeUtilization: number | null;
     spanCount: number;
     byCategory: Readonly<Record<string, number>>;
     byStage: Readonly<Record<string, number>>;
+    byPurpose: Readonly<Record<string, number>>;
     failedSpanCount: number;
   }>> {
     let textValue = "";
@@ -579,12 +604,13 @@ export class PracticeProductionCoordinatorFileV1 {
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const spans = textValue.split(/\r?\n/).filter(Boolean).flatMap((line) => {
+    const spans = [...new Map(textValue.split(/\r?\n/).filter(Boolean).flatMap((line) => {
       try { return [JSON.parse(line) as PracticeTelemetrySpanV1]; }
       catch { return []; }
-    });
+    }).map(span => [span.spanId, span])).values()];
     const byCategory: Record<string, number> = {};
     const byStage: Record<string, number> = {};
+    const byPurpose: Record<string, number> = {};
     let totalElapsedMs = 0;
     let failedSpanCount = 0;
     for (const span of spans) {
@@ -592,30 +618,38 @@ export class PracticeProductionCoordinatorFileV1 {
       totalElapsedMs += elapsed;
       byCategory[span.category] = (byCategory[span.category] ?? 0) + elapsed;
       byStage[span.stage] = (byStage[span.stage] ?? 0) + elapsed;
+      const purpose = span.purpose ?? "UNCLASSIFIED";
+      byPurpose[purpose] = (byPurpose[purpose] ?? 0) + elapsed;
       if (span.outcome === "FAILED") failedSpanCount += 1;
     }
     const wallClockElapsedMs = Number.isFinite(fromMs)
       ? Math.max(0, nowMs - Number(fromMs))
       : null;
-    const intervals = spans.map((span) => [Date.parse(span.startedAt), Date.parse(span.endedAt)] as const)
+    const union = (selected: readonly PracticeTelemetrySpanV1[]): number => {
+    const intervals = selected.map((span) => [Date.parse(span.startedAt), Date.parse(span.endedAt)] as const)
       .filter(([start, end]) => Number.isFinite(start) && Number.isFinite(end) && end >= start)
       .map(([start, end]) => [Math.max(start, fromMs ?? start), Math.min(end, nowMs)] as const)
       .filter(([start, end]) => end >= start).sort((a, b) => a[0] - b[0]);
-    let activeWallClockMs = 0, start = 0, end = 0;
+    let elapsed = 0, start = 0, end = 0;
     for (const interval of intervals) {
-      if (interval[0] > end) { activeWallClockMs += Math.max(0, end - start); [start, end] = interval; }
+      if (interval[0] > end) { elapsed += Math.max(0, end - start); [start, end] = interval; }
       else end = Math.max(end, interval[1]);
     }
-    activeWallClockMs += Math.max(0, end - start);
+    return elapsed + Math.max(0, end - start);
+    };
+    const activeWallClockMs = union(spans.filter(s => s.activity === "ACTIVE"));
+    const machineWaitWallClockMs = union(spans.filter(s => s.activity === "MACHINE_WAIT"));
+    const idleWallClockMs = union(spans.filter(s => s.activity === "IDLE"));
+    const observedWallClockMs = union(spans);
     const unattributedMs = wallClockElapsedMs === null
       ? null
-      : Math.max(0, wallClockElapsedMs - activeWallClockMs);
+      : Math.max(0, wallClockElapsedMs - observedWallClockMs);
     const activeUtilization = wallClockElapsedMs === null || wallClockElapsedMs <= 0
       ? null
       : Math.min(1, activeWallClockMs / wallClockElapsedMs);
     return {
-      totalElapsedMs, activeWallClockMs, wallClockElapsedMs, unattributedMs, activeUtilization,
-      spanCount: spans.length, byCategory, byStage, failedSpanCount,
+      totalElapsedMs, activeWallClockMs, observedWallClockMs, machineWaitWallClockMs, idleWallClockMs, wallClockElapsedMs, unattributedMs, activeUtilization,
+      spanCount: spans.length, byCategory, byStage, byPurpose, failedSpanCount,
     };
   }
 }
@@ -630,7 +664,13 @@ export const practiceTelemetrySpanV1 = (input: {
   readonly endedAtMs: number;
   readonly outcome?: PracticeTelemetrySpanV1["outcome"];
   readonly detail?: string | null;
-}): PracticeTelemetrySpanV1 => ({
+  readonly activity?: PracticeTelemetrySpanV1["activity"];
+  readonly purpose?: PracticeTelemetrySpanV1["purpose"];
+}): PracticeTelemetrySpanV1 => {
+  if (!Number.isFinite(input.startedAtMs) || !Number.isFinite(input.endedAtMs) || input.endedAtMs < input.startedAtMs) throw new TypeError("Telemetry interval must be finite and increasing.");
+  if (input.activity !== undefined && !["ACTIVE", "MACHINE_WAIT", "IDLE"].includes(input.activity)) throw new TypeError("Unknown telemetry activity.");
+  if (input.purpose !== undefined && !["PREPARATION", "LEARNING", "PRODUCTION", "REVIEW", "EXPORT", "RECOVERY"].includes(input.purpose)) throw new TypeError("Unknown telemetry purpose.");
+  return ({
   schema: "editflow.practice-telemetry-span.v1",
   spanId: input.spanId,
   sessionId: input.sessionId,
@@ -642,4 +682,7 @@ export const practiceTelemetrySpanV1 = (input: {
   elapsedMs: Math.max(0, input.endedAtMs - input.startedAtMs),
   outcome: input.outcome ?? "SUCCESS",
   detail: input.detail ?? null,
+  ...(input.activity === undefined ? {} : { activity: input.activity }),
+  ...(input.purpose === undefined ? {} : { purpose: input.purpose }),
 });
+};

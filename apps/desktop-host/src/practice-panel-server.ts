@@ -12,6 +12,8 @@ import { ProductionUserControlsV1, PRODUCTION_USER_CONTROL_CONTRACT_V1, type Pro
 import { EditTypeRegistryFileV1, GptOrchestrationStoreV1, ProCreationPreparationEngineV1, hasVerifiedPracticeSourceIdentityV1, ChatgptFootageBrowserV1, defaultPracticeAnalysisCacheDirectoryV1, type GptAppendEventInputV1, type GptCapabilityGapV1, type GptLearnedSkillV1, type GptLearningOutcomeV1, type GptLearningStageV1, type GptOrchestrationAssignmentV1, type GptOrchestrationModeV1, type GptResearchSourceV1, type GptSkillCausalModelV1, type GptSkillMachineUseSignatureV1, PracticeProductionCoordinatorFileV1, PracticeProductionCoordinatorV1, PracticeProductionWorkerV1, PRACTICE_PRODUCTION_JOB_KINDS_V1, type PracticeProductionJobV1, practiceTelemetrySpanV1, type PracticeLearningAllocationResultV1, type PracticeMasteryScopeV1, type PracticeMediaInputV1, type PracticePreflightCheckpointV1, type PracticeSceneMatchV1, type PracticeRunRoleV1, validatePracticeWorkingMediaMatchesV1, type PracticeSessionResultV1, type ProCreationPreparationResultV1, validatePracticeSceneMatchesV1 } from "../../../packages/practice-homework/src/index.js";
 
 import { ClipResearchStoreV1, CLIP_RESEARCH_CONTRACT_V1 } from "../../../packages/practice-homework/src/clip-research.js";
+import { PRODUCTION_WORKFLOW_CONTRACT_V1, emptyProductionWorkflowV1, parseProductionWorkflowPlanV1, validateWorkflowJobV1, validateMethodApplicationV1 } from "../../../packages/practice-homework/src/production-workflow.js";
+import { STUDIED_PRODUCTION_METHODS_V1 } from "../../../packages/practice-homework/src/studied-methods.js";
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { productionJobScopeV1 } from "../../../packages/adapters/ae-cep/src/production-job-scope.js";
 import { LoopbackCepBroker } from "./loopback-cep.js";
@@ -683,6 +685,7 @@ export class PracticePanelServerV1 {
     const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE", true);
     signal.throwIfAborted();
     const production = await this.#productionCoordinator(assignment);
+    validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body);
     const strategy = production.coordinator.strategyDirective();
     // Timing/strategy telemetry is advisory; GPT decides whether to change its edit plan.
     const output = await this.#withProductionOperation({ body: job.kind === "BUILD_BASELINE" ? { ...body, globalOperation: true } : body,
@@ -737,7 +740,8 @@ export class PracticePanelServerV1 {
           if (!Number.isFinite(body.startMs) || !Number.isFinite(body.endMs) || body.endMs <= body.startMs || body.startMs < 0
             || typeof body.compStableId !== "string") throw new TypeError("Local render needs a bounded time window and compStableId.");
           return { result: await driver.renderWindow({ sessionId: assignment!.sessionId, attempt: 0,
-            compStableId: body.compStableId, windowId: body.clipId ?? job.jobId, startMs: body.startMs, endMs: body.endMs }), reviewRequired: true };
+            compStableId: body.compStableId, windowId: body.clipId ?? job.jobId, startMs: body.startMs, endMs: body.endMs,
+            resolutionScale: body.resolutionScale ?? 1 }), reviewRequired: true };
         }
         if (!assignment!.finish) throw new TypeError("Scratch search requires a visual reference.");
         const search = await runPracticeScratchSearchV1({ body, sessionId: assignment!.sessionId,
@@ -837,14 +841,14 @@ export class PracticePanelServerV1 {
       await file.appendTelemetry(practiceTelemetrySpanV1({
         spanId: randomUUID(), sessionId: assignment.sessionId, category: input.category,
         stage: input.stage, phaseId: phaseIds.length === 1 ? phaseIds[0]! : null,
-        startedAtMs, endedAtMs: Date.now(), outcome: "SUCCESS", detail: input.operation,
+        startedAtMs, endedAtMs: Date.now(), outcome: "SUCCESS", detail: input.operation, activity: "MACHINE_WAIT",
       }));
       return result;
     } catch (error) {
       await file.appendTelemetry(practiceTelemetrySpanV1({
         spanId: randomUUID(), sessionId: assignment.sessionId, category: input.category,
         stage: input.stage, phaseId: phaseIds.length === 1 ? phaseIds[0]! : null,
-        startedAtMs, endedAtMs: Date.now(), outcome: "FAILED",
+        startedAtMs, endedAtMs: Date.now(), outcome: "FAILED", activity: "MACHINE_WAIT",
         detail: input.operation + ": " + (error instanceof Error ? error.message : String(error)),
       }));
       throw error;
@@ -943,7 +947,7 @@ export class PracticePanelServerV1 {
   }
 
   controlStatus() {
-    return { editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+    return { productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
       executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
       hostRevision: this.#fastRuntime?.session.runner.hostRevision ?? null,
       adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
@@ -1682,6 +1686,7 @@ export class PracticePanelServerV1 {
     if (assignment.mode === "PRACTICE") await this.assertPracticeReconstructionReady();
     const renderMedia = this.#renderJobMedia(assignment, requiredString(review, "renderJobId"));
     const renderJob = jobs.find(j => j.jobId === review.renderJobId)!;
+    if (((renderJob.payload as Record<string, any>).resolutionScale ?? 1) !== 1) throw new HttpError(400, "Final acceptance requires a full-resolution render; construction previews remain review evidence only.");
     if (assignment.mode === "PRACTICE" && assignment.finish) {
       const reference = await new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
         scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") }).readReference(assignment.finish);
@@ -2107,6 +2112,9 @@ export class PracticePanelServerV1 {
         jsonResponse(res, 200, CLIP_RESEARCH_CONTRACT_V1);
         return;
       }
+      if (req.method === "GET" && url.pathname === "/v1/product/gpt/production-workflow-contract") {
+        jsonResponse(res, 200, { ...PRODUCTION_WORKFLOW_CONTRACT_V1, studiedMethods: STUDIED_PRODUCTION_METHODS_V1 }); return;
+      }
       const notebookMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/practice-notebook$/.exec(url.pathname);
       if (["GET", "POST"].includes(req.method ?? "") && notebookMatch) {
         const id = decodeURIComponent(notebookMatch[1]!); const assignment = await this.#gptStore.getAssignment(id);
@@ -2259,6 +2267,16 @@ export class PracticePanelServerV1 {
             validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
               rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body.payload);
             const decision = await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).retain(id, body.kind, body.payload);
+            const production = await this.#productionCoordinator(assignment);
+            validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body.payload);
+            if (body.payload.methodApplications !== undefined) {
+              const notebook = await this.#presetNotebook(assignment);
+              validateMethodApplicationV1(notebook.examples, body.payload.methodApplications);
+              for (const application of body.payload.methodApplications) {
+                if (application.adaptedMethod.sourceBindings.some((source: any) => !assignment.start.some(m => m.mediaId === source.mediaId && m.mediaKind === "VIDEO"))) throw new HttpError(400, "Adapted methods may bind only assignment-provided raw footage.");
+              }
+            }
+            if (body.kind === "LOCAL_RENDER" && ![1, .25, .125].includes(body.payload.resolutionScale ?? 1)) throw new HttpError(400, "Choose render resolutionScale 1, 0.25 or 0.125 explicitly.");
             body.payload.editorialDecision = decision;
             if (body.kind === "SCRATCH_SEARCH") validatePracticeScratchSearchV1(body.payload);
             const job = await this.#productionWorker.enqueue({ assignmentId: id, kind: body.kind, payload: body.payload,
@@ -2287,7 +2305,26 @@ export class PracticePanelServerV1 {
             throw new HttpError(409, "Production state updates require the current live controller.");
           }
           const action = requiredString(body, "action");
-          if (action === "HEARTBEAT") {
+          if (action === "WORKFLOW_PLAN") {
+            const plan = parseProductionWorkflowPlanV1(body["plan"] as Record<string, any>);
+            for (const source of plan.sources) {
+              if (!assignment.start.some(m => m.mediaId === source.mediaId && m.mediaKind === "VIDEO")) throw new HttpError(400, "Workflow sources must be provided raw footage.");
+              if (assignment.mode === "PRACTICE" && !(assignment.practiceSceneMatches ?? []).some(m => m.shotId === source.clipId && m.sourceId === source.mediaId
+                && m.sourceStartMs === source.startMs && m.sourceEndMs === source.endMs && m.selectionMode === "CHATGPT_DIRECT")) throw new HttpError(400, "Retain exact direct ChatGPT source selections before workflow planning.");
+            }
+            if (!assignment.start.some(m => m.mediaId === plan.audio.mediaId)) throw new HttpError(400, "Workflow audio must be an assignment-provided raw input.");
+            coordinator.retainWorkflowPlan(plan);
+          } else if (action === "WORKFLOW_REVIEW") {
+            const review = body["review"] as Record<string, any>;
+            const media = this.#renderJobMedia(assignment, review?.renderJobId);
+            const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"), scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
+            if (!Array.isArray(review?.inspections) || !review.inspections.length) throw new HttpError(400, "Workflow review requires issued render inspections and playback observations.");
+            for (const inspection of review.inspections) await matcher.verifyFootageInspection(media, inspection.evidenceId, inspection.timeMs);
+            if (!this.#productionWorker.list(id).some(j => (j.payload as any).editorialDecision?.decisionId === review.constructionDecisionId)) throw new HttpError(400, "Review must reference a retained construction decision.");
+            coordinator.retainWorkflowReview(review);
+          } else if (action === "WORKFLOW_MILESTONE") {
+            coordinator.retainWorkflowMilestone(body["milestone"] as Record<string, any>);
+          } else if (action === "HEARTBEAT") {
             coordinator.heartbeat(optionalString(body, "operation") ?? null);
           } else if (action === "STAGE") {
             coordinator.setStage(
@@ -2349,6 +2386,8 @@ export class PracticePanelServerV1 {
               endedAtMs,
               outcome: (optionalString(body, "outcome") ?? "SUCCESS") as any,
               detail: optionalString(body, "detail") ?? null,
+              ...(body["activity"] === undefined ? {} : { activity: body["activity"] as any }),
+              ...(body["purpose"] === undefined ? {} : { purpose: body["purpose"] as any }),
             }));
           } else {
             throw new HttpError(400, "Unknown production coordinator action: " + action);
@@ -2357,6 +2396,7 @@ export class PracticePanelServerV1 {
         }
         jsonResponse(res, 200, {
           production: coordinator.snapshot(),
+          workflowContract: PRODUCTION_WORKFLOW_CONTRACT_V1,
           nextAction: { kind: "CHATGPT_DECIDES", instruction: "Read phase state and unranked residual observations, then choose and record your next operation." },
           residualObservations: coordinator.snapshot().residuals,
           budget: coordinator.budgetStatus(),

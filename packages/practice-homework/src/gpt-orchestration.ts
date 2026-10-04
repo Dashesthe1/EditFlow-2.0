@@ -5,6 +5,7 @@ import path from "node:path";
 import type { EditTypeKnowledgeSnapshotV1, GptAssignmentCompletionV1, GptAssignmentStatusV1, GptCapabilityGapV1, GptLearnedSkillV1, GptLearningEventV1, GptLearningOutcomeV1, GptLearningStageV1, GptOrchestrationAssignmentV1, GptOrchestrationModeV1, GptResearchSourceV1, PracticeMediaInputV1, PracticePreflightCheckpointV1, PracticeSceneMatchV1, PracticeRunRoleV1, PracticeVerificationPolicyV1 } from "./contracts.js";
 
 import { CLIP_RESEARCH_POLICY_V1 } from "./clip-research.js";
+import { PRODUCTION_WORKFLOW_POLICY_V1 } from "./production-workflow.js";
 import { hasVerifiedPracticeSourceIdentityV1 } from "./source-integrity.js";
 
 const isDirectChatgptRawSelectionV1 = (
@@ -288,6 +289,7 @@ const editProductionContinuityAppendixV1 = (mode: GptOrchestrationModeV1) => [
   EDIT_PRODUCTION_CONTINUITY_MARKER_V1,
   "RETIRED_EDIT_ENGINES_REMOVED_V1",
   "Current exclusive editorial authority:",
+  PRODUCTION_WORKFLOW_POLICY_V1,
   "- ChatGPT directly decides reference duration/cuts, footage, audio arrangement, timing/retiming, framing, effects, transitions, construction, corrections, candidate selection, next steps and final acceptance. Automatic creative analysis, formula pulses, baseline generation, scoring/ranking/pruning, machine certification and local-Qwen creative/UI decisions are retired from production.",
   "- Helpers execute your explicit operations or return requested raw observations. Native tracking/roto/optical flow are allowed only when you explicitly choose the target, method and settings and then review the output; no automatic backend or recipe fallback.",
   "- Resume the retained assignment, preserve correct retained work and reconcile actual AE state. Submit every AE action through production-jobs on the sole durable writer. Preserve receipts on timeout; never replay interrupted writes blindly or use retired routes.",

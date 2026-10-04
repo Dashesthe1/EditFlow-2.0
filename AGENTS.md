@@ -89,3 +89,29 @@ Save ordered actions/settings/reasons/checks, observed successes and failures,
 adaptation guidance, mistakes and issued render/job evidence after reviewed attempts,
 before handoff and completion. Preserve prior examples; supersede with a new entry.
 Never automatically select/apply a saved technique or claim universal proficiency.
+
+# Six-study production workflow
+
+`CHATGPT_PRODUCTION_WORKFLOW_V1` extends the existing coordinator and notebook.
+Read the production workflow contract, current workflow decisions, prepared raw
+selections, research plans and receipts on resume. ChatGPT chooses pass order,
+bounded source shortlist, action/music anchors, every method/settings/curve,
+scope-specific finishing, review dimensions and next action. No machine may
+select, rank, prune, adapt or apply an editorial method, or decide acceptance.
+Record explicit WORKFLOW_PLAN and WORKFLOW_REVIEW state in the current coordinator.
+Retain complete methods in existing workedExamples, including source/parent/effect
+identities, fps/time origins, full curves, stack order and dependency bindings.
+For reuse choose a current WORKED example explicitly; record all rebinding and
+the exact adapted method. Retain FAILED/UNVERIFIED context without promotion.
+Reuse retained tutorial evidence with a new per-target plan and applicability
+checks; Tutorial Drive -> Adobe -> web remains the research order.
+Use local audiovisual previews for local defects, focused full-resolution checks
+for temporal/edge/matte issues, and a full-resolution whole-edit final review.
+Low-resolution previews use isolated copies and cannot certify the final edit.
+Separate active work, machine waits and idle; record preparation/learning,
+production/review/export/recovery, milestones and full elapsed time. Unknown gaps
+remain unattributed. The 60-minute familiar two-shot benchmark is an unmeasured
+engineering target and must never force a PASS or narrow creative possibilities.
+Bundled tutorial candidates remain UNVERIFIED until locally constructed and
+reviewed by ChatGPT. Keep AE open and the user's paused session paused during
+system maintenance; do not resume/restart production merely to load new policy.
