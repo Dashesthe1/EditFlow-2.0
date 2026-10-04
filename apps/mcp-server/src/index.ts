@@ -77,10 +77,7 @@ export const getMcpServerStatus = (): McpServerStatus => ({
 });
 
 export {
-  EditFlowModeControllerV1,
   PRACTICE_UI_CONTRACT_V1,
-  PracticeHomeworkEngineV1,
-  PracticeLearningMemoryV1,
 } from "../../../packages/practice-homework/src/index.js";
 export type {
   EditFlowOperatingModeV1,

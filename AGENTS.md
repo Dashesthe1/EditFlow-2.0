@@ -14,16 +14,15 @@ Practice and Pro Creation use `DURABLE_PRODUCTION_QUEUE_V1` exclusively.
   final for that route. Do not restart an old service or launch a parallel controller.
 - The worker owns the single AE writer, scheduling, checkpoints and execution.
   GPT supplies creative judgment and strategy changes inside that system.
-- M6 analysis, synthesis, tracking/roto, capability adapters, warm batch routines and
-  proof libraries are integrated capabilities, not alternate production controllers.
-- ChatGPT directly reviews the actual final render and decides PASS/REVISE. Machine
-  certification, similarity thresholds and learned-skill promotion are advisory legacy
-  lab records, never production acceptance or creative-selection gates. Pro Creation
+- Native capability adapters, exact property writes, media preparation and rendering
+  execute ChatGPT plans. Retired creative engines and their launchers are deleted.
+- ChatGPT directly reviews the actual final render and decides PASS/REVISE. Retained
+  historical certification data is read-only context, never an executable gate. Pro Creation
   uses its designed target and all relevant retained preset examples.
 - Tutorial Drive, Adobe resources, then external sources is the research order.
   Use provided raw footage/audio; keep AE open and preserve correct retained work.
-- Standalone acceptance labs are isolated validation tools. They must not be used
-  as a fallback production path for an active edit assignment.
+- Native adapter tests verify explicit operation execution and safety only.
+  Deleted matcher/synthesis/certification labs must never be restored as fallbacks.
 
 # Raw footage selection authority
 
@@ -38,7 +37,7 @@ then inspect GPT-chosen chronological/time-range contact sheets and exact raw fr
 Internet results narrow searches; actual provided raw pixels establish source identity.
 Retain search coverage notes, issued pixel receipts, comparisons, ranges and rationale.
 Effect/transition method research still uses Tutorial Drive, Adobe, then external sources.
-`ISOLATED_LEGACY_TEST` is historical matcher-test support only; never production fallback.
+No isolated legacy selector or creative-engine fallback remains in this repository.
 
 # Production chat ownership
 

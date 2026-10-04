@@ -14,16 +14,8 @@
   var statusTimer = null;
   var pollTimer = null;
   var editTypesById = {};
-  var recertificationActive = false;
 
   var editTypeEl = document.getElementById("edit-type");
-  var practiceRoleFieldEl = document.getElementById("practice-role-field");
-  var practiceRoleEl = document.getElementById("practice-role");
-  var practiceRoleHintEl = document.getElementById("practice-role-hint");
-  var lifecycleMaturityEl = document.getElementById("practice-lifecycle-maturity");
-  var lifecycleStepsEl = document.getElementById("practice-lifecycle-steps");
-  var lifecycleNextEl = document.getElementById("practice-lifecycle-next");
-  var recertifyRobustEl = document.getElementById("practice-recertify-robust");
   var finishFieldEl = document.getElementById("finish-field");
   var finishSummaryEl = document.getElementById("finish-summary");
   var startSummaryEl = document.getElementById("start-summary");
@@ -94,212 +86,18 @@
     return editTypeEl.value;
   }
 
-  function selectedPracticeRole() {
-    if (!practiceRoleEl) return "AUTO";
-    return practiceRoleEl.value || "AUTO";
-  }
-
-  function selectedEditTypeMaturity() {
-    var option = editTypeEl.options[editTypeEl.selectedIndex];
-    return option ? option.getAttribute("data-maturity") || "UNPROVEN" : "UNPROVEN";
-  }
-
   function selectedEditTypeProfile() {
     return editTypesById[selectedEditType()] || null;
   }
 
-  function lifecycleState(profile) {
-    var knowledge = profile && profile.knowledge ? profile.knowledge : null;
-    var learning = knowledge && knowledge.gptLearning ? knowledge.gptLearning : null;
-    var maturity = knowledge && knowledge.maturityStage ? knowledge.maturityStage : "UNPROVEN";
-    var progressionGate = knowledge && knowledge.progressionGate ? knowledge.progressionGate : null;
-    var referenceCount = knowledge ? Number(knowledge.referenceVerifiedPracticeSessionCount || 0) : 0;
-    var transferCount = knowledge ? Number(knowledge.transferVerifiedPracticeSessionCount || 0) : 0;
-    var heldOutCases = learning && Array.isArray(learning.heldOutCases) ? learning.heldOutCases : [];
-    var heldOutBenchmarks = learning && Array.isArray(learning.heldOutBenchmarks)
-      ? learning.heldOutBenchmarks : [];
-    var truthReports = learning && Array.isArray(learning.retainedTruthSuiteReports)
-      ? learning.retainedTruthSuiteReports : [];
-    var latestBenchmark = heldOutBenchmarks.slice().sort(function (left, right) {
-      return String(right.evaluatedAt || "").localeCompare(String(left.evaluatedAt || ""));
-    })[0] || null;
-    var certifiedTruth = truthReports.filter(function (report) { return report.certified === true; })
-      .sort(function (left, right) {
-        return String(right.evaluatedAt || "").localeCompare(String(left.evaluatedAt || ""));
-      })[0] || null;
-    var latestTruth = certifiedTruth || truthReports.slice().sort(function (left, right) {
-      return String(right.evaluatedAt || "").localeCompare(String(left.evaluatedAt || ""));
-    })[0] || null;
-    var referenceDone = referenceCount > 0
-      || ["VISUAL_MATCH_VERIFIED", "TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
-    var transferDone = transferCount > 0
-      || ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(maturity) >= 0;
-    var heldOutDone = maturity === "ROBUST"
-      || (latestBenchmark && latestBenchmark.heldOutProofVerified === true);
-    var truthDone = maturity === "ROBUST"
-      || (progressionGate
-        ? progressionGate.retainedTruthCertificationComplete === true
-        : certifiedTruth !== null);
-    return {
-      maturity: maturity,
-      progressionGate: progressionGate,
-      blockingDependencies: progressionGate && Array.isArray(progressionGate.blockingDependencies)
-        ? progressionGate.blockingDependencies
-        : [],
-      referenceCount: referenceCount,
-      transferCount: transferCount,
-      heldOutCount: heldOutCases.length,
-      truthCaseCount: progressionGate
-        ? Number(progressionGate.caseCount || 0)
-        : latestTruth ? Number(latestTruth.caseCount || 0) : 0,
-      referenceDone: referenceDone,
-      transferDone: transferDone,
-      heldOutDone: heldOutDone,
-      truthDone: truthDone
-    };
-  }
-
-  function addLifecycleStep(label, state, detail) {
-    var item = document.createElement("div");
-    item.className = "lifecycle-step";
-    item.setAttribute("data-state", state);
-    var title = document.createElement("strong");
-    title.textContent = label + " · " + (state === "DONE" ? "Done" : state === "NEXT" ? "Next" : "Locked");
-    var meta = document.createElement("span");
-    meta.textContent = detail;
-    item.appendChild(title);
-    item.appendChild(meta);
-    lifecycleStepsEl.appendChild(item);
-  }
-
-  function renderPracticeLifecycle() {
-    if (!lifecycleMaturityEl || !lifecycleStepsEl || !lifecycleNextEl) return;
-    if (recertifyRobustEl) recertifyRobustEl.hidden = true;
-    var profile = selectedEditTypeProfile();
-    lifecycleStepsEl.innerHTML = "";
-    if (!profile) {
-      lifecycleMaturityEl.textContent = "UNPROVEN";
-      addLifecycleStep("1 Reference proof", "NEXT", "No machine-passing reference run yet");
-      addLifecycleStep("2 Transfer proof", "LOCKED", "Requires reference proof first");
-      addLifecycleStep("3 Held-out generalization", "LOCKED", "Requires transfer proof first");
-      addLifecycleStep("4 Retained truth authority", "LOCKED", "Requires independent full-length real-media truth");
-      lifecycleNextEl.textContent = "Choose an Edit Type to see the next required proof.";
-      return;
-    }
-
-    var state = lifecycleState(profile);
-    var robustAllowed = state.progressionGate
-      ? state.progressionGate.robustClaimAllowed === true
-      : state.maturity === "ROBUST";
-    lifecycleMaturityEl.textContent = state.maturity.replace(/_/g, " ");
-    addLifecycleStep(
-      "1 Reference proof",
-      state.referenceDone ? "DONE" : "NEXT",
-      state.referenceCount + " machine-verified session" + (state.referenceCount === 1 ? "" : "s")
-    );
-    addLifecycleStep(
-      "2 Transfer proof",
-      state.transferDone ? "DONE" : state.referenceDone ? "NEXT" : "LOCKED",
-      state.transferCount + " materially different transfer session" + (state.transferCount === 1 ? "" : "s")
-    );
-    addLifecycleStep(
-      "3 Held-out generalization",
-      state.heldOutDone ? "DONE" : state.transferDone ? "NEXT" : "LOCKED",
-      state.heldOutCount + " retained held-out case" + (state.heldOutCount === 1 ? "" : "s")
-    );
-    addLifecycleStep(
-      "4 Retained truth authority",
-      state.truthDone ? "DONE" : state.heldOutDone ? "NEXT" : "LOCKED",
-      state.truthCaseCount + " independently reviewed truth case" + (state.truthCaseCount === 1 ? "" : "s")
-    );
-
-    if (!state.referenceDone) {
-      lifecycleNextEl.textContent = "Next: reconstruct this Finish from its Start media until the machine reference-proof gate passes.";
-    } else if (!state.transferDone) {
-      lifecycleNextEl.textContent = "Next: run Practice on materially different Finish and Start media. Reused reference or Start bytes are rejected before transfer promotion.";
-    } else if (!state.heldOutDone) {
-      lifecycleNextEl.textContent = "Next: AUTO runs held-out generalization on genuinely unseen Finish/Start media. Transfer-verified knowledge stays frozen and failed machine-proven cases remain retained.";
-    } else if (!state.truthDone) {
-      lifecycleNextEl.textContent = "Next: complete the independent 20-30 case retained real-media truth suite. More held-out edits are not the current blocker.";
-    } else if (!robustAllowed) {
-      lifecycleNextEl.textContent = "Next: refresh the held-out benchmark against the certified truth authority and current transfer target set. No new edit is required for this refresh.";
-      if (recertifyRobustEl) recertifyRobustEl.hidden = mode !== "PRACTICE";
-    } else {
-      lifecycleNextEl.textContent = "Practice is ROBUST: held-out generalization and independent retained-truth authority are both bound to the current transfer target set.";
-    }
-  }
-
-  function transferVerifiedReady() {
-    return ["TRANSFER_VERIFIED", "OBJECT_AWARE_VERIFIED", "ROBUST"].indexOf(selectedEditTypeMaturity()) >= 0;
-  }
-
-  function effectivePracticeRole() {
-    var selected = selectedPracticeRole();
-    if (selected !== "AUTO") return selected;
-    return transferVerifiedReady() ? "HELD_OUT_CERTIFICATION" : "LEARNING";
-  }
-
-  function heldOutReady() {
-    if (selectedPracticeRole() !== "HELD_OUT_CERTIFICATION") return true;
-    return transferVerifiedReady();
-  }
-
-  function autoProgressionBlock() {
-    if (selectedPracticeRole() !== "AUTO") return null;
-    var profile = selectedEditTypeProfile();
-    if (!profile) return null;
-    var state = lifecycleState(profile);
-    if (!state.heldOutDone) return null;
-    if (!state.truthDone) return "TRUTH_REQUIRED";
-    if (state.progressionGate
-      ? state.progressionGate.robustClaimAllowed !== true
-      : state.maturity !== "ROBUST") return "BENCHMARK_REFRESH_REQUIRED";
-    return "ROBUST_COMPLETE";
-  }
-
-  function updatePracticeRoleUi() {
-    if (!practiceRoleEl || !practiceRoleHintEl) return;
-    var selected = selectedPracticeRole();
-    var effective = effectivePracticeRole();
-    var heldOut = effective === "HELD_OUT_CERTIFICATION";
-    var progressionBlock = autoProgressionBlock();
-    if (selected === "AUTO" && progressionBlock === "TRUTH_REQUIRED") {
-      practiceRoleHintEl.textContent = "Automatic progression paused: held-out generalization is already verified. Complete the independent retained-truth suite before running more edits.";
-    } else if (selected === "AUTO" && progressionBlock === "BENCHMARK_REFRESH_REQUIRED") {
-      practiceRoleHintEl.textContent = "Automatic progression paused: retained truth is certified. Refresh the held-out benchmark against the current transfer target set; no new edit is required.";
-    } else if (selected === "AUTO" && progressionBlock === "ROBUST_COMPLETE") {
-      practiceRoleHintEl.textContent = "Automatic progression complete: this Edit Type is ROBUST. Choose forced held-out certification only when intentionally extending benchmark coverage.";
-    } else {
-      practiceRoleHintEl.textContent = selected === "AUTO"
-        ? (heldOut
-          ? "Automatic progression: TRANSFER VERIFIED knowledge is frozen. The next Practice run is held-out generalization on genuinely unseen Finish/Start material."
-          : "Automatic progression: continue learning and machine-verifying new reconstructions until a materially different pair promotes this Edit Type to TRANSFER VERIFIED.")
-        : heldOut
-          ? "Forced certification freezes transfer-verified knowledge: no research, new skills, or retained lessons. Failed machine-proven cases remain in the benchmark."
-          : "Forced learning may research, correct, and retain proven lessons under the selected Edit Type.";
-    }
-    if (mode === "PRACTICE") {
-      actionEl.textContent = progressionBlock === "TRUTH_REQUIRED"
-        ? "Retained truth required"
-        : progressionBlock === "BENCHMARK_REFRESH_REQUIRED"
-          ? "Benchmark refresh required"
-          : progressionBlock === "ROBUST_COMPLETE"
-            ? "Practice ROBUST"
-            : heldOut ? "Run held-out certification" : "Proceed to do homework";
-    }
-  }
-
   function updateAction() {
     var hasVideo = startFiles.some(function (item) { return item.kind === "VIDEO"; });
-    var valid = serviceReady && !activeRunId && !recertificationActive
+    var valid = serviceReady && !activeRunId
       && selectedEditType() && hasVideo && panelConnected;
     if (mode === "PRACTICE") {
-      valid = valid && Boolean(finishPath) && heldOutReady() && autoProgressionBlock() === null;
+      valid = valid && Boolean(finishPath);
     }
     actionEl.disabled = !valid;
-    if (recertifyRobustEl) {
-      recertifyRobustEl.disabled = !serviceReady || Boolean(activeRunId) || recertificationActive;
-    }
     cancelEl.hidden = !activeRunId;
     cancelEl.disabled = !activeRunId;
   }
@@ -383,17 +181,11 @@
       editTypesById[profile.editTypeId] = profile;
       var option = document.createElement("option");
       option.value = profile.editTypeId;
-      var maturityId = profile.knowledge && profile.knowledge.maturityStage
-        ? profile.knowledge.maturityStage
-        : "UNPROVEN";
-      var maturity = maturityId.replace(/_/g, " ");
-      option.setAttribute("data-maturity", maturityId);
-      option.textContent = profile.title + " | " + profile.sessionIds.length + " sessions | " + maturity;
+      option.textContent = profile.title + " | " + profile.sessionIds.length + " sessions | " + ((profile.gptLearning && profile.gptLearning.workedExamples || []).length) + " saved examples";
       editTypeEl.appendChild(option);
     });
     if (selected) editTypeEl.value = selected;
-    renderPracticeLifecycle();
-    updatePracticeRoleUi();
+
     updateAction();
   }
 
@@ -490,18 +282,6 @@
     }
   }
 
-  function showMetrics(result) {
-    var best = result.bestAttempt;
-    var similarity = best ? Math.round(best.report.overallSimilarity * 1000) / 10 + "%" : "—";
-    var matches = String(result.matches ? result.matches.length : 0);
-    var attempts = String(result.attempts ? result.attempts.length : 0);
-    metricsEl.innerHTML =
-      '<div class="metric"><strong>' + similarity + '</strong><span>Best similarity</span></div>' +
-      '<div class="metric"><strong>' + matches + '</strong><span>Scene matches</span></div>' +
-      '<div class="metric"><strong>' + attempts + '</strong><span>Attempts</span></div>';
-    metricsEl.hidden = false;
-  }
-
   function finishRun(run) {
     activeRunId = null;
     lastRecoveredRunId = run.sessionId;
@@ -520,34 +300,9 @@
       refreshEditTypes();
       return;
     }
-    if (run.result) {
-      showMetrics(run.result);
-    } else {
-      metricsEl.hidden = true;
-    }
+    metricsEl.hidden = true;
     showReviewTools(run);
-    var label = run.mode === "PRACTICE" ? "Practice" : "Pro Creation";
-    if (run.mode === "PRACTICE") {
-      if (run.masteryScope) {
-        setRunState(
-          run.masteryScope,
-          run.finalSummary || ("Practice certified " + run.masteryScope.replace(/_/g, " ").toLowerCase() + ".")
-        );
-      } else {
-        var reasons = run.masteryReasons && run.masteryReasons.length
-          ? " " + run.masteryReasons.join(" ")
-          : "";
-        setRunState(
-          "HUMAN_REVIEW_REQUIRED",
-          run.finalSummary || ("Practice completed, but machine mastery proof did not pass." + reasons)
-        );
-      }
-    } else {
-      setRunState(
-        "COMPLETED",
-        run.finalSummary || (label + " completed by GPT.")
-      );
-    }
+    setRunState("COMPLETED", run.finalSummary || "ChatGPT completed and reviewed the edit.");
     refreshEditTypes();
   }
 
@@ -580,7 +335,7 @@
           var stage = run.stage ? " · " + run.stage.replace(/_/g, " ").toLowerCase() : "";
           setRunState(
             "RUNNING",
-            "GPT is orchestrating EditFlow Brain, visual analysis, and After Effects" + stage + " · " + seconds + "s"
+            "ChatGPT is directly reviewing footage and executing its edit in After Effects" + stage + " · " + seconds + "s"
           );
           pollTimer = setTimeout(pollRun, 1000);
           return;
@@ -602,63 +357,13 @@
       });
   }
 
-  function recertifyRobust() {
-    var editTypeId = selectedEditType();
-    if (!editTypeId || activeRunId || recertificationActive) return;
-    recertificationActive = true;
-    updateAction();
-    setRunState(
-      "RECERTIFYING",
-      "Re-evaluating retained truth and refreshing the held-out benchmark against current transfer targets…"
-    );
-    productRequest(
-      "/v1/product/edit-types/" + encodeURIComponent(editTypeId) + "/robust-recertification",
-      { method: "POST", body: "{}" }
-    ).then(function (value) {
-      var report = value.recertification || {};
-      return refreshEditTypes().then(function () {
-        if (report.robustClaimAllowed === true && report.maturityStage === "ROBUST") {
-          setRunState(
-            "ROBUST",
-            "ROBUST recertification passed. Retained truth and held-out generalization are bound to the current transfer target set."
-          );
-          return;
-        }
-        var gate = report.progressionGate || {};
-        var blockers = Array.isArray(gate.blockingDependencies) ? gate.blockingDependencies : [];
-        setRunState(
-          "BLOCKED",
-          "ROBUST recertification did not pass."
-            + (blockers.length ? " " + blockers.join(" ") : "")
-        );
-      });
-    }).catch(function (error) {
-      setRunState("BLOCKED", error.message);
-    }).then(function () {
-      recertificationActive = false;
-      updateAction();
-    });
-  }
-
   function startPractice() {
-    var progressionBlock = autoProgressionBlock();
-    if (progressionBlock !== null) {
-      var message = progressionBlock === "TRUTH_REQUIRED"
-        ? "Held-out generalization is already verified. Complete the retained-truth suite before running more AUTO edits."
-        : progressionBlock === "BENCHMARK_REFRESH_REQUIRED"
-          ? "Retained truth is certified. Refresh the held-out benchmark; no new AUTO edit is required."
-          : "This Edit Type is already ROBUST. Use forced held-out certification only to extend benchmark coverage.";
-      setRunState("BLOCKED", message);
-      updateAction();
-      return;
-    }
     var videos = startFiles.filter(function (item) { return item.kind === "VIDEO"; })
       .map(function (item) { return item.path; });
     var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
       .map(function (item) { return item.path; });
     metricsEl.hidden = true;
     hideReviewTools();
-    var effectiveRole = effectivePracticeRole();
     setRunState(
       "PREFLIGHT",
       "Creating a persistent Practice assignment. Analysis and connection checks will resume inside this session…"
@@ -668,7 +373,7 @@
         method: "POST",
         body: JSON.stringify({
           editTypeId: selectedEditType(),
-          practiceRole: selectedPracticeRole(),
+          practiceRole: "LEARNING",
           finishPath: finishPath,
           videoPaths: videos,
           audioPaths: audio
@@ -678,9 +383,7 @@
       updateAction();
       setRunState(
         "WAITING_FOR_GPT",
-        value.run.practiceRole === "HELD_OUT_CERTIFICATION"
-          ? "Held-out certification assignment created with frozen transfer-verified knowledge. Waiting for GPT to claim it."
-          : "Practice learning assignment created. Waiting for GPT to claim it."
+        "Practice learning assignment created. Waiting for GPT to claim it."
       );
       pollRun();
     }).catch(function (error) {
@@ -704,7 +407,7 @@
     runConnectionPreflight().then(function () {
       setRunState(
         "WAITING_FOR_GPT",
-        "Connection preflight passed. Loading the Edit Type's mastered Practice knowledge and creating a GPT Pro Creation assignment…"
+        "Connection preflight passed. Loading the Edit Type's retained Practice examples and creating a GPT Pro Creation assignment…"
       );
       return productRequest("/v1/product/pro-creation", {
         method: "POST",
@@ -733,36 +436,19 @@
         item.classList.toggle("is-active", item === tab);
       });
       finishFieldEl.hidden = mode !== "PRACTICE";
-      practiceRoleFieldEl.hidden = mode !== "PRACTICE";
-      actionEl.textContent = mode === "PRACTICE" ? actionEl.textContent : "Create pro edit";
-      renderPracticeLifecycle();
-      updatePracticeRoleUi();
+      actionEl.textContent = mode === "PRACTICE" ? "Proceed to do homework" : "Create pro edit";
+
       metricsEl.hidden = true;
       hideReviewTools();
       setRunState("IDLE", mode === "PRACTICE"
         ? "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
-        : "Choose raw source media. GPT will create from the selected Edit Type's mastered Practice knowledge.");
+        : "Choose raw source media. GPT will create from the selected Edit Type's retained Practice examples.");
       updateAction();
     });
   });
 
   editTypeEl.addEventListener("change", function () {
-    renderPracticeLifecycle();
-    updatePracticeRoleUi();
-    updateAction();
-  });
-  practiceRoleEl.addEventListener("change", function () {
-    updatePracticeRoleUi();
-    if (selectedPracticeRole() === "HELD_OUT_CERTIFICATION" && !heldOutReady()) {
-      setRunState("BLOCKED", "Held-out certification requires an Edit Type with TRANSFER VERIFIED Practice knowledge.");
-    } else if (!activeRunId && mode === "PRACTICE") {
-      setRunState(
-        "IDLE",
-        effectivePracticeRole() === "HELD_OUT_CERTIFICATION"
-          ? "Choose an unseen finished reference and raw source media. This run will use frozen transfer-verified knowledge only."
-          : "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
-      );
-    }
+
     updateAction();
   });
   document.getElementById("choose-finish").addEventListener("click", function () {
@@ -806,8 +492,7 @@
     }).then(function (value) {
       return refreshEditTypes().then(function () {
         editTypeEl.value = value.editType.editTypeId;
-        renderPracticeLifecycle();
-        updatePracticeRoleUi();
+
         updateAction();
       });
     }).catch(function (error) { setRunState("FAILED", error.message); });
@@ -818,19 +503,15 @@
     else startProCreation();
   });
 
-  if (recertifyRobustEl) {
-    recertifyRobustEl.addEventListener("click", recertifyRobust);
-  }
-
   openBestAttemptEl.addEventListener("click", function () {
     if (!completedRunId) return;
     openBestAttemptEl.disabled = true;
-    reviewStatusEl.textContent = "Opening best-attempt render…";
+    reviewStatusEl.textContent = "Opening reviewed render…";
     productRequest(
       "/v1/product/runs/" + encodeURIComponent(completedRunId) + "/open-best-attempt",
       { method: "POST", body: "{}" }
     ).then(function () {
-      reviewStatusEl.textContent = "Best-attempt render opened in the system player.";
+      reviewStatusEl.textContent = "Reviewed render opened in the system player.";
     }).catch(function (error) {
       reviewStatusEl.textContent = error.message;
     }).then(function () {
@@ -855,7 +536,7 @@
       "/v1/product/runs/" + encodeURIComponent(completedRunId) + "/human-review",
       { method: "POST", body: JSON.stringify(body) }
     ).then(function () {
-      reviewStatusEl.textContent = "Review saved. It does not change machine mastery.";
+      reviewStatusEl.textContent = "Review saved as feedback alongside ChatGPT’s final render review.";
     }).catch(function (error) {
       reviewStatusEl.textContent = error.message;
     });
@@ -890,8 +571,6 @@
     if (pollTimer) clearTimeout(pollTimer);
   });
 
-  renderPracticeLifecycle();
-  updatePracticeRoleUi();
   renderFiles();
   checkService();
   statusTimer = setInterval(checkService, 2000);

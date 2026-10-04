@@ -39,64 +39,6 @@ export interface DesktopAeSessionOptions {
 }
 
 export {
-  PracticeCurrentAeBaselineRunnerV1,
-  PracticeM6CurrentAeTrainingRuntimeV1,
-  PracticeM6PhaseProofFileV1,
-  compilePracticeAeBaselineExecutionPlanV1,
-  createPracticeCurrentAeBaselineRunnerV1,
-  createPracticeM6CurrentAeAssemblyV1,
-  createPracticeM6CurrentAeTrainingRuntimeV1,
-} from "./practice-training-runtime.js";
-export {
-  recordPracticeHeldOutCertificationV1,
-  refreshPracticeHeldOutBenchmarkV1,
-} from "./practice-held-out-certification.js";
-export {
-  evaluatePracticeRetainedTruthSuiteManifestV1,
-} from "./practice-retained-truth-suite.js";
-export {
-  applyPracticeRobustRecertificationV1,
-  recertifyPracticeRobustManifestV1,
-} from "./practice-robust-recertification.js";
-export type {
-  PracticeRobustRecertificationReportV1,
-} from "./practice-robust-recertification.js";
-export type {
-  PracticeRetainedTruthManifestCaseV1,
-  PracticeRetainedTruthManifestSourceV1,
-  PracticeRetainedTruthSuiteManifestV1,
-} from "./practice-retained-truth-suite.js";
-export type {
-  PracticeM6CurrentAeAssemblyV1,
-  PracticeM6CurrentAeAssemblyConfigV1,
-  PracticeM6CurrentAeTrainingRuntimeConfigV1,
-} from "./practice-training-runtime.js";
-export {
-  PRACTICE_M6_NATIVE_CAPABILITIES_V1,
-  PracticeM6CurrentAeRuntimeV1,
-} from "./practice-m6-current-ae-runtime.js";
-export type {
-  PracticeM6AeRenderDriverV1,
-  PracticeM6CurrentAeTransactionV1,
-} from "./practice-m6-current-ae-runtime.js";
-export {
-  PracticeM6AeRenderDriverCurrentV1,
-} from "./practice-m6-ae-render-driver.js";
-export type {
-  PracticeM6AeRenderDriverConfigV1,
-} from "./practice-m6-ae-render-driver.js";
-export {
-  buildPracticeCrossSourceSubjectProofV1,
-} from "./practice-cross-source-subject-proof.js";
-export {
-  loadM6ProfessionalBenchmarkEvidenceV1,
-  defaultM6ProfessionalBenchmarkEvidencePathV1,
-  M6_PROFESSIONAL_BENCHMARK_EVIDENCE_SCHEMA_V1,
-} from "./m6-professional-benchmark-evidence.js";
-export type {
-  M6ProfessionalBenchmarkEvidenceFileV1,
-} from "./m6-professional-benchmark-evidence.js";
-export {
   PracticePanelServerV1,
 } from "./practice-panel-server.js";
 export type {

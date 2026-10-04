@@ -1,3 +1,4 @@
+import { assertExplicitEditorialPayloadV1 } from "../../adapters/ae-cep/src/explicit-editorial-payload.js";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -54,9 +55,7 @@ export const validateChatgptEditorialJobV1 = (kind: string, payload: Record<stri
   if (kind === "PROOF_SCRIPT" && !/^[a-f0-9]{64}$/.test(payload.scriptSha256 ?? "")) {
     throw new TypeError("CHATGPT_SCRIPT_REVIEW_REQUIRED: review the script's editing values and bind its SHA-256.");
   }
-  if (payload.autoCorrect === true || payload.autoSelect === true || payload.automaticFallback === true) {
-    throw new TypeError("AUTOMATIC_EDITORIAL_DECISIONS_RETIRED");
-  }
+  assertExplicitEditorialPayloadV1(payload);
   return { authority: "CHATGPT_DIRECT", decisionId: text(d.decisionId, "decisionId"),
     rationale: text(d.rationale, "rationale"), evidenceRefs: strings(d.evidenceRefs, "evidenceRefs", true),
     steps: strings(d.steps, "steps", true), payloadHash: hash };

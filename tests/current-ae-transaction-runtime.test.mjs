@@ -2,53 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import {
-  CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1,
-  CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1,
-  CurrentAeTransactionRuntimeV1,
-  createCurrentAeTransactionRegistryV1,
-} from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
-import {
-  compilePracticeAeBaselineExecutionPlanV1,
-  createPracticeCurrentAeBaselineRunnerV1,
-} from "../.tmp/runtime/apps/desktop-host/src/practice-training-runtime.js";
-import {
-  AeCepCurrentTransactionalHostV1,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/current-transactional-host.js";
-import {
-  AE_ADAPTER_PROTOCOL_VERSION_V11,
-  AE_ADAPTER_ROUTE_ID_V11,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
-import {
-  AE_MASK_ROUTE_ID_V12,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_2.js";
-import {
-  AE_COMPOSITE_ROUTE_ID_V13,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_3.js";
-import {
-  AE_LAYER_CONTROLS_ROUTE_ID_V16,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_6.js";
-import {
-  AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
-import {
-  AE_TEMPORAL_EASE_ROUTE_ID_V18,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
-import {
-  AE_SPATIAL_GRAPH_ROUTE_ID_V19,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_9.js";
-import {
-  AE_MARKER_MOTION_ROUTE_ID_V20,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
-import {
-  AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_5.js";
-import {
-  AE_TIME_REMAP_ROUTE_ID_V27,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
-import {
-  M4_STABILIZATION_GUARDED_ROUTE_ID_V1,
-} from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-stabilization.js";
+import { CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1, CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1, CurrentAeTransactionRuntimeV1, createCurrentAeTransactionRegistryV1 } from "../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js";
+
+import { AeCepCurrentTransactionalHostV1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/current-transactional-host.js";
+import { AE_ADAPTER_PROTOCOL_VERSION_V11, AE_ADAPTER_ROUTE_ID_V11 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_1.js";
+import { AE_MASK_ROUTE_ID_V12 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_2.js";
+import { AE_COMPOSITE_ROUTE_ID_V13 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_3.js";
+
+import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_7.js";
+import { AE_TEMPORAL_EASE_ROUTE_ID_V18 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_8.js";
+import { AE_SPATIAL_GRAPH_ROUTE_ID_V19 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v1_9.js";
+import { AE_MARKER_MOTION_ROUTE_ID_V20 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_0.js";
+import { AE_MEDIA_SEQUENCE_ROUTE_ID_V25 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_5.js";
+import { AE_TIME_REMAP_ROUTE_ID_V27 } from "../.tmp/runtime/packages/adapters/ae-cep/src/protocol-v2_7.js";
+import { M4_STABILIZATION_GUARDED_ROUTE_ID_V1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-stabilization.js";
 
 const environmentProbe = {
   adapterProtocolVersion: AE_ADAPTER_PROTOCOL_VERSION_V11,
@@ -615,8 +582,8 @@ test("current Shadow daemon delegates transactions and stabilization to the sole
   assert.doesNotMatch(source, /url\.pathname === "\/run-transaction"|new CurrentAeTransactionRuntimeV1|currentTransactionRuntime\.execute/);
   assert.match(panel, /#transactionRuntime\.execute\(body\.plan \?\? body\)/);
   assert.match(panel, /#transactionRuntime\.executeCorrection\(body\.plan \?\? body\)/);
-  assert.match(source, /EditGptStabilizationVisualDriverV1/);
-  assert.match(source, /stabilization: \{ protocolV23Available: stabilizationProtocolAvailable, visualDriver: stabilizationVisualDriver \}/);
+  assert.doesNotMatch(source, /EditGptStabilizationVisualDriverV1/);
+  assert.match(source, /stabilization: \{ protocolV23Available: stabilizationProtocolAvailable, visualDriver: null \}/);
 });
 
 const practiceBaselinePlan = () => ({
@@ -689,176 +656,4 @@ const practiceBaselinePlan = () => ({
     },
   ],
   evidenceRefs: ["practice:test-runtime"],
-});
-
-test("Practice baseline compiles to the current mixed-protocol AE transaction surface", async () => {
-  const transport = new RuntimeTransport();
-  const observer = new AeCepCurrentTransactionalHostV1(
-    transport,
-    "practice-runtime-project",
-    "practice-runtime-observe",
-    () => "practice-runtime-observe-request",
-  );
-  const observed = await observer.readState();
-  const execution = compilePracticeAeBaselineExecutionPlanV1(
-    practiceBaselinePlan(),
-    observed,
-  );
-
-  assert.equal(execution.operations.length, 5);
-  assert.equal(
-    String(execution.operations[0].routeId),
-    AE_ADAPTER_ROUTE_ID_V11,
-  );
-  assert.equal(
-    String(execution.operations.at(-1).routeId),
-    AE_LAYER_CONTROLS_ROUTE_ID_V16,
-  );
-  assert.equal(execution.rollbackBoundaries.length, 1);
-  assert.equal(
-    execution.rollbackBoundaries[0].strategy,
-    "RESTORE_SNAPSHOT",
-  );
-  assert.deepEqual(
-    execution.operations.slice(1).map((operation) =>
-      operation.dependsOn.map(String)),
-    [["PRACTICE_OP_001"], ["PRACTICE_OP_002"], ["PRACTICE_OP_003"], ["PRACTICE_OP_004"]],
-  );
-});
-
-test("Practice framing curves route temporal ease and spatial tangents as reversible AE work", async () => {
-  const transport = new RuntimeTransport();
-  const observer = new AeCepCurrentTransactionalHostV1(
-    transport,
-    "practice-runtime-project",
-    "practice-runtime-observe-curves",
-    () => "practice-runtime-observe-curves-request",
-  );
-  const observed = await observer.readState();
-  const base = practiceBaselinePlan();
-  const curveOperation = {
-    operationId: "PRACTICE_OP_CURVE",
-    command: "property.temporal_interpolation.set",
-    capabilityId: "ae.property.temporal_interpolation.set",
-    payload: {
-      comp: { stableId: "PRACTICE_COMP_TEST" },
-      layer: { stableId: "PRACTICE_LAYER_TEST" },
-      propertyPath: ["ADBE Transform Group", "ADBE Scale"],
-      keyIndex: 2,
-      interpolation: {
-        inType: "BEZIER",
-        outType: "BEZIER",
-        temporalContinuous: false,
-        temporalAutoBezier: false,
-      },
-    },
-  };
-  const easeOperation = {
-    operationId: "PRACTICE_OP_EASE",
-    command: "property.temporal_ease.set",
-    capabilityId: "ae.property.temporal_ease.set",
-    payload: {
-      comp: { stableId: "PRACTICE_COMP_TEST" },
-      layer: { stableId: "PRACTICE_LAYER_TEST" },
-      propertyPath: ["ADBE Transform Group", "ADBE Scale"],
-      keyIndex: 2,
-      easeIntent: {
-        inEase: { speed: 10, influence: 100 / 3 },
-        outEase: { speed: 65, influence: 100 / 3 },
-      },
-    },
-  };
-  const spatialOperation = {
-    operationId: "PRACTICE_OP_SPATIAL",
-    command: "property.spatial_graph.set",
-    capabilityId: "ae.property.spatial_graph.set",
-    payload: {
-      comp: { stableId: "PRACTICE_COMP_TEST" },
-      layer: { stableId: "PRACTICE_LAYER_TEST" },
-      propertyPath: ["ADBE Transform Group", "ADBE Position"],
-      keyIndex: 2,
-      state: {
-        mode: "MANUAL",
-        inTangent: [-7, -7],
-        outTangent: [7, 7],
-        continuous: true,
-        roving: false,
-      },
-    },
-  };
-  const execution = compilePracticeAeBaselineExecutionPlanV1({
-    ...base,
-    operations: [
-      ...base.operations.slice(0, -1),
-      curveOperation,
-      easeOperation,
-      spatialOperation,
-      base.operations.at(-1),
-    ],
-  }, observed);
-  const curve = execution.operations.find((operation) =>
-    String(operation.operationId) === "PRACTICE_OP_CURVE");
-  const ease = execution.operations.find((operation) =>
-    String(operation.operationId) === "PRACTICE_OP_EASE");
-  const spatial = execution.operations.find((operation) =>
-    String(operation.operationId) === "PRACTICE_OP_SPATIAL");
-
-  assert.ok(curve);
-  assert.equal(String(curve.routeId), AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17);
-  assert.equal(curve.riskClass, "R1_REVERSIBLE");
-  assert.ok(ease);
-  assert.equal(String(ease.routeId), AE_TEMPORAL_EASE_ROUTE_ID_V18);
-  assert.equal(ease.riskClass, "R1_REVERSIBLE");
-  assert.ok(spatial);
-  assert.equal(String(spatial.routeId), AE_SPATIAL_GRAPH_ROUTE_ID_V19);
-  assert.equal(spatial.riskClass, "R1_REVERSIBLE");
-  assert.ok(execution.requiredCapabilities.map(String)
-    .includes("ae.property.temporal_interpolation.set"));
-  assert.ok(execution.requiredCapabilities.map(String)
-    .includes("ae.property.temporal_ease.set"));
-  assert.ok(execution.requiredCapabilities.map(String)
-    .includes("ae.property.spatial_graph.set"));
-});
-
-test("Practice baseline executes atomically through the current AE runtime", async () => {
-  const transport = new RuntimeTransport();
-  const runner = createPracticeCurrentAeBaselineRunnerV1({
-    transport,
-    projectId: "practice-runtime-project",
-    mediaRoots: ["C:\\Media"],
-  });
-  const result = await runner.executePlan(practiceBaselinePlan());
-
-  assert.equal(transport.mutationCount, 5);
-  assert.ok(
-    result.evidenceRefs.includes(
-      "practice-ae-transaction:practice-ae:practice-baseline:test-runtime:COMMITTED",
-    ),
-  );
-  assert.ok(
-    transport.requests.some((request) =>
-      request.command === "layer.switches.set"),
-  );
-});
-
-test("Practice baseline refuses oversized atomic construction before contacting AE", async () => {
-  const transport = new RuntimeTransport();
-  const runner = createPracticeCurrentAeBaselineRunnerV1({
-    transport,
-    projectId: "practice-runtime-project",
-    mediaRoots: ["C:\\Media"],
-  });
-  const base = practiceBaselinePlan();
-  const operations = Array.from({
-    length: CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 + 1,
-  }, (_, index) => ({
-    ...base.operations[0],
-    operationId: `PRACTICE_OVERSIZED_${String(index + 1).padStart(3, "0")}`,
-  }));
-
-  await assert.rejects(
-    runner.executePlan({ ...base, operations }),
-    /PRACTICE_BASELINE_TRANSACTION_LIMIT/,
-  );
-  assert.equal(transport.requests.length, 0);
 });

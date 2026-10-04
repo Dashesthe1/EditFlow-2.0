@@ -9,48 +9,21 @@ import { M3_SPATIAL_GRAPH_CAPABILITIES_V19 } from "../../../packages/adapters/ae
 import { M3_TEMPORAL_EASE_CAPABILITIES_V18 } from "../../../packages/adapters/ae-cep/src/m3-temporal-ease.js";
 import { M3_TEMPORAL_INTERPOLATION_CAPABILITIES_V17 } from "../../../packages/adapters/ae-cep/src/m3-temporal-interpolation.js";
 import { M4_POINT_TRACKING_CAPABILITIES_V21 } from "../../../packages/adapters/ae-cep/src/m4-point-tracking.js";
-import {
-  capabilityForFaceTrackingDriverV1,
-  M4_FACE_READBACK_CAPABILITIES_V22,
-  type FaceVisualTrackingDriverV1,
-} from "../../../packages/adapters/ae-cep/src/m4-face-tracking.js";
+import { capabilityForFaceTrackingDriverV1, M4_FACE_READBACK_CAPABILITIES_V22, type FaceVisualTrackingDriverV1 } from "../../../packages/adapters/ae-cep/src/m4-face-tracking.js";
 import { M4_FOUR_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-four-point-tracking.js";
-import { M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-automatic-corrective-recovery.js";
+
 import { M4_MASK_POINT_REPAIR_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-mask-point-repair.js";
 import { capabilityForAcceptedM4SubjectSegmentationRuntimeV1 } from "../../../packages/adapters/ae-cep/src/m4-segmentation.js";
 import { M4_SEGMENTATION_SEQUENCE_MATTE_MATERIALIZATION_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-segmentation-sequence-materialization.js";
 import { M4_SEMANTIC_ATTACH_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-semantic-attach.js";
-import {
-  isTrustedM4SegmentationRuntimeEvidenceV1,
-  type TrustedM4SegmentationRuntimeEvidenceV1,
-} from "./m4-segmentation-runtime-evidence.js";
-import {
-  capabilityForStabilizationDriverV1,
-  M4_STABILIZATION_READBACK_CAPABILITIES_V23,
-  type StabilizationVisualDriverV1,
-} from "../../../packages/adapters/ae-cep/src/m4-stabilization.js";
-import {
-  M4_TRACKER_REPAIR_PROTOCOL_24_CAPABILITIES,
-  M4_TRACKING_AUTO_ESCALATION_CAPABILITY_V1,
-  M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1,
-} from "../../../packages/adapters/ae-cep/src/m4-repair-resume.js";
-import {
-  capabilityForMaskTrackingDriverV1,
-  type MaskVisualTrackingDriverV1,
-} from "../../../packages/adapters/ae-cep/src/m4-mask-tracking.js";
+import { isTrustedM4SegmentationRuntimeEvidenceV1, type TrustedM4SegmentationRuntimeEvidenceV1 } from "./m4-segmentation-runtime-evidence.js";
+import { capabilityForStabilizationDriverV1, M4_STABILIZATION_READBACK_CAPABILITIES_V23, type StabilizationVisualDriverV1 } from "../../../packages/adapters/ae-cep/src/m4-stabilization.js";
+import { M4_TRACKER_REPAIR_PROTOCOL_24_CAPABILITIES, M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-repair-resume.js";
+import { capabilityForMaskTrackingDriverV1, type MaskVisualTrackingDriverV1 } from "../../../packages/adapters/ae-cep/src/m4-mask-tracking.js";
 import { M4_TWO_POINT_TRACKING_CAPABILITY_V1 } from "../../../packages/adapters/ae-cep/src/m4-two-point-tracking.js";
-import {
-  capabilitiesForAcceptedM5RotoBrushRuntimeV1,
-  M5_ROTO_BRUSH_ACCEPTED_RUNTIME_VERSION,
-} from "../../../packages/adapters/ae-cep/src/m5-roto-brush.js";
-import {
-  isTrustedM5RotoBrushRuntimeEvidenceV1,
-  type TrustedM5RotoBrushRuntimeEvidenceV1,
-} from "./m5-roto-brush-runtime-evidence.js";
-import {
-  capabilityForTrackerAnalysisDriverV1,
-  type TrackerVisualAnalysisDriverV1,
-} from "../../../packages/adapters/ae-cep/src/m4-tracker-analysis.js";
+import { capabilitiesForAcceptedM5RotoBrushRuntimeV1, M5_ROTO_BRUSH_ACCEPTED_RUNTIME_VERSION } from "../../../packages/adapters/ae-cep/src/m5-roto-brush.js";
+import { isTrustedM5RotoBrushRuntimeEvidenceV1, type TrustedM5RotoBrushRuntimeEvidenceV1 } from "./m5-roto-brush-runtime-evidence.js";
+import { capabilityForTrackerAnalysisDriverV1, type TrackerVisualAnalysisDriverV1 } from "../../../packages/adapters/ae-cep/src/m4-tracker-analysis.js";
 
 /**
  * Single composition point for every M3 capability family that has reached an
@@ -221,7 +194,7 @@ export const registerAcceptedM4TrackerRuntimeCapabilities = (
     });
     if (analysis?.routes.some((route) => route.available)) {
       registry.registerAdapter({
-        adapterId: "ae-cep.m4.tracker-repair-resume", adapterVersion: "0.5.0-dev.1", priority: 131, capabilities: [M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1, M4_TRACKING_AUTO_ESCALATION_CAPABILITY_V1, M4_AUTOMATIC_CORRECTIVE_RECOVERY_CAPABILITY_V1],
+        adapterId: "ae-cep.m4.tracker-repair-resume", adapterVersion: "0.5.0-dev.1", priority: 131, capabilities: [M4_TRACKING_REPAIR_RESUME_CAPABILITY_V1],
       });
     }
   }

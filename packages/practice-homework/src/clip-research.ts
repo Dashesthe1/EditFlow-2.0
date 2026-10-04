@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { hasVerifiedPracticeSourceIdentityV1 } from "./engine.js";
+import { hasVerifiedPracticeSourceIdentityV1 } from "./source-integrity.js";
 import type { PracticeSceneMatchV1 } from "./contracts.js";
 
 type Packet = Record<string, any>;
@@ -162,7 +162,7 @@ export class ClipResearchStoreV1 {
     finally { if (ClipResearchStoreV1.tails.get(file) === pending) ClipResearchStoreV1.tails.delete(file); }
   }
 
-  async record(assignment: Packet, input: Packet, compiledSources: readonly Packet[] = []): Promise<Packet> {
+  async record(assignment: Packet, input: Packet): Promise<Packet> {
     if (assignment.status !== "RUNNING") return fail("Assignment must be RUNNING, not cancelled or terminal.");
     const lease = assignment.controllerLease;
     if (!lease || lease.owner !== input.claimedBy || Date.parse(lease.expiresAt) <= Date.now()) {
@@ -268,18 +268,8 @@ export class ClipResearchStoreV1 {
             if (url.protocol !== "https:" || !(url.hostname === "adobe.com" || url.hostname.endsWith(".adobe.com"))) return fail("Adobe fallback must cite official Adobe documentation.");
           }
           if (tier === "TUTORIAL" && !uri.startsWith("https://drive.google.com/")) return fail("First tier must reference the user's Tutorial Drive.");
-          let compiledResearchSourceId: string | null = null;
-          let compilation: Packet | null = null;
           if (input.authority !== "CHATGPT_DIRECT") return fail("ChatGPT must directly review the source and choose its method steps (authority:CHATGPT_DIRECT).");
-          if (input.compiledResearchSourceId) {
-            compiledResearchSourceId = str(input.compiledResearchSourceId, "compiledResearchSourceId");
-            const source = compiledSources.find((source) => source.sourceId === compiledResearchSourceId && source.uri === uri);
-            compilation = source?.tutorialCompilation ?? null;
-            if (!compilation || compilation.schema !== "editflow.gpt-tutorial-causal-compilation.v1"
-              || compilation.compilerVersion !== 1 || !compilation.evidenceRefs?.length) {
-              return fail("A cited historical compiled source must exist; it is context only, never an automatically chosen construction.");
-            }
-          }
+          if (input.compiledResearchSourceId !== undefined || input.compilation !== undefined) return fail("Machine-compiled research removed; submit directly analyzed source steps.");
           const steps = input.outcome === "NO_MATCH" ? [] : (input.steps ?? []).map((step: Packet) => ({
             stepId: str(step.stepId, "stepId"), tool: str(step.tool, "AE tool"), action: str(step.action, "method action"),
             effectIds: list(step.effectIds, "covered effectIds"),
@@ -289,7 +279,7 @@ export class ClipResearchStoreV1 {
             if (steps.some((step: Packet) => step.effectIds.some((id: string) => !effectIds.includes(id)))) return fail("Method steps can cover only scanned effects.");
           }
           if (input.outcome === "SUFFICIENT" && !effectIds.every((id: string) => steps.some((step: Packet) => step.effectIds.includes(id)))) return fail("SUFFICIENT must cover every scanned effect.");
-          const source = { authority: "CHATGPT_DIRECT", tier, outcome: input.outcome, query, uri, locator, title, limitation, evidence, steps, compiledResearchSourceId, compilation };
+          const source = { authority: "CHATGPT_DIRECT", tier, outcome: input.outcome, query, uri, locator, title, limitation, evidence, steps };
           const sourceId = "clip-source:" + hash(source);
           if (!priorSources.some((source) => source.sourceId === sourceId)) {
             priorSources.push({ ...source, sourceId });

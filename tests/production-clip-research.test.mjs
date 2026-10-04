@@ -32,9 +32,8 @@ async function fixture(t, mode = 'PRACTICE') {
     const input = { action: 'SOURCE', authority:'CHATGPT_DIRECT', claimedBy: 'controller', clipId: 'shot:1', tier, outcome, query: 'zoom shutter reverse', uri,
       title: tier + ' source', locator: '00:12-00:30', limitation: 'Missing the three-copy trail construction.',
       evidencePath: await artifact(tier, { query: 'zoom shutter reverse', uri, locator: '00:12-00:30', observations: 'Inspected method section and extracted the actual tool sequence.', results: [] }),
-      compiledResearchSourceId: 'compiled:1', steps: effects.length ? [{ stepId: 'step:1', tool: 'Transform/Echo', action: 'Animate scale; time-offset copies and ease reverse exit.', effectIds: effects }] : [], ...extra };
-    const compiled = [{ sourceId: 'compiled:1', uri, tutorialCompilation: { schema: 'editflow.gpt-tutorial-causal-compilation.v1', compilerVersion: 1, evidenceRefs: ['deep-analysis:1'] } }];
-    return store.record(assignment, input, compiled);
+      steps: effects.length ? [{ stepId: 'step:1', tool: 'Transform/Echo', action: 'Animate scale; time-offset copies and ease reverse exit.', effectIds: effects }] : [], ...extra };
+    return store.record(assignment, input);
   };
   const plan = async () => {
     const saved = await store.snapshot(assignment);
@@ -53,7 +52,7 @@ test('edits cannot skip inspection or research, even with policy/ET knowledge', 
   await assert.rejects(f.store.admit(f.assignment, { researchContext: { assignmentId: 'assignment:1', claimedBy: 'controller', plans: [{ clipId: 'shot:1', planId: 'invented' }] } }), /READY/);
 });
 
-test('compiled tutorial methods unlock only their scanned clip and survive restart', async t => {
+test('directly reviewed tutorial methods unlock only their scanned clip and survive restart', async t => {
   const f = await fixture(t); await f.scan(); await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
   const saved = await f.plan(); const body = f.context(saved);
   const fresh = new ClipResearchStoreV1(path.join(f.dir, 'ledger'), [f.dir]);
@@ -80,7 +79,7 @@ test('fallback cannot skip tutorials or Adobe, or escalate when already sufficie
 
 test('tutorial title alone, missing methods, and fake Adobe host cannot pass', async t => {
   const f = await fixture(t); await f.scan();
-  await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail'], { compiledResearchSourceId: 'title-only' }), /historical compiled source/);
+  await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail'], { compiledResearchSourceId: 'title-only' }), /Machine-compiled research removed/);
   await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom']), /every scanned effect/);
   await f.source('TUTORIAL', 'NO_MATCH');
   const badUri = 'https://adobe.com.example.org/help';
@@ -165,7 +164,7 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   assert.deepEqual(resumed.clipResearch.clips, {});
 });
 
-test('compiled research source can be reused across clips with identical effect coverage', async t => {
+test('directly reviewed research source can be reused across clips with identical effect coverage', async t => {
   const f = await fixture(t);
   await f.scan('shot:1');
   await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);

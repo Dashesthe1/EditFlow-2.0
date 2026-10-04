@@ -1,5 +1,5 @@
-import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
-import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
+import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
+
 
 const numeric = (value: unknown): boolean => typeof value === "number" && Number.isFinite(value)
   || Array.isArray(value) && value.length > 0 && value.length <= 4 && value.every((item) => typeof item === "number" && Number.isFinite(item));
@@ -38,11 +38,8 @@ export const validatePracticeScratchSearchV1 = (body: Record<string, any>): void
 export const runPracticeScratchSearchV1 = async (input: {
   readonly body: Record<string, any>;
   readonly sessionId: string;
-  readonly referencePath: string;
-  readonly renderDriver: PracticeM6AeRenderDriverCurrentV1;
-  readonly media: PracticeM6LocalMediaAnalyzerV1;
+  readonly renderDriver: ChatgptAeRenderDriverV1;
   readonly signal: AbortSignal;
-  readonly ffprobePath?: string;
 }) => {
   const body = input.body;
   validatePracticeScratchSearchV1(body);

@@ -2,11 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-  affectedPracticePhaseIdsV1,
-  rankPracticeResidualsV1,
-  type PracticeResidualV1,
-} from "./acceleration.js";
+import { affectedPracticePhaseIdsV1, type PracticeResidualV1 } from "./acceleration.js";
 
 export type PracticeProductionStageV1 =
   | "PREFLIGHT"
@@ -457,69 +453,6 @@ export class PracticeProductionCoordinatorV1 {
 
   updateResiduals(residuals: readonly PracticeResidualV1[]): void {
     this.#commit({ residuals: structuredClone(residuals) });
-  }
-
-  recordSearchResult(phaseId: string, hypothesisKey: string, score: number): void {
-    this.#mapPhase(phaseId, (phase) => {
-      const same = phase.hypothesisKey === hypothesisKey;
-      const rounds = same ? (phase.searchRounds ?? 0) + 1 : 1;
-      const prior = same ? phase.lastSearchScore : null;
-      const gain = prior == null ? Infinity : (score - prior) / Math.max(Math.abs(prior), Number.EPSILON);
-      return { ...phase, hypothesisKey, searchRounds: rounds, lastSearchScore: score,
-        changeHypothesis: rounds >= 2 || gain < 0.01, lastProgressAt: nowIso() };
-    });
-  }
-
-  parallelReadOnlyWork(maxJobs = 4): readonly Readonly<{
-    kind: "RESEARCH_PREP" | "COMPARISON_PREP";
-    phaseId: string;
-    reason: string;
-  }>[] {
-    const jobs: Array<{ kind: "RESEARCH_PREP" | "COMPARISON_PREP"; phaseId: string; reason: string }> = [];
-    for (const phase of this.#snapshot.phases) {
-      if (jobs.length >= Math.max(1, maxJobs)) break;
-      if (phase.sourceCertificateKey !== null && phase.researchKey === null) {
-        jobs.push({
-          kind: "RESEARCH_PREP", phaseId: phase.phaseId,
-          reason: "Prepare tutorial/anatomy evidence without taking the single AE writer.",
-        });
-      }
-    }
-    for (const residual of rankPracticeResidualsV1(this.#snapshot.residuals)) {
-      if (jobs.length >= Math.max(1, maxJobs)) break;
-      if (jobs.some((job) => job.phaseId === residual.phaseId)) continue;
-      jobs.push({
-        kind: "COMPARISON_PREP", phaseId: residual.phaseId,
-        reason: "Prepare residual diagnosis while the current AE mutation/render proceeds.",
-      });
-    }
-    return jobs;
-  }
-
-  nextAction(residuals: readonly PracticeResidualV1[] = this.#snapshot.residuals): PracticeProductionActionV1 {
-    if (this.#snapshot.phases.length === 0) return { kind: "WAIT_FOR_PHASES", phaseIds: [], reason: "Reference/source phases have not been retained yet." };
-    if (this.#snapshot.certified) return { kind: "COMPLETE", phaseIds: [], reason: "Authoritative certification has completed." };
-    const unresolved = this.#snapshot.phases.filter((phase) => phase.state === "UNRESOLVED").map((phase) => phase.phaseId);
-    if (unresolved.length > 0) return { kind: "LOCK_SOURCES", phaseIds: unresolved, reason: "Source identity is a hard prerequisite." };
-    if (!this.#snapshot.wholeEditCovered) {
-      return { kind: "BUILD_WHOLE_EDIT_COVERAGE", phaseIds: this.#snapshot.phases.map((phase) => phase.phaseId), reason: "Coverage-first schedule requires a playable full edit before deep certification." };
-    }
-    const unresearched = this.#snapshot.phases.filter((phase) => phase.researchKey === null).map((phase) => phase.phaseId);
-    if (unresearched.length > 0) return { kind: "RESEARCH_PHASE", phaseIds: [unresearched[0]!], reason: "Only the next affected phase needs research before mutation." };
-    const unconstructed = this.#snapshot.phases.filter((phase) => stateRank[phase.state] < stateRank.CONSTRUCTED).map((phase) => phase.phaseId);
-    if (unconstructed.length > 0) return { kind: "CONSTRUCT_PHASE", phaseIds: [unconstructed[0]!], reason: "Construct the next uncovered phase without blocking on deep proof elsewhere." };
-    const ranked = rankPracticeResidualsV1(residuals).filter((item) =>
-      this.#snapshot.phases.some((phase) => phase.phaseId === item.phaseId && phase.state !== "PROVEN"));
-    const exhausted = this.#snapshot.phases.find((phase) => phase.changeHypothesis && phase.state !== "PROVEN");
-    if (exhausted) return { kind: "CHANGE_HYPOTHESIS", phaseIds: [exhausted.phaseId], reason: "Two search rounds or less than 1% gain exhausted this construction hypothesis." };
-    if (ranked.length > 0) return { kind: "CORRECT_RESIDUAL", phaseIds: [ranked[0]!.phaseId], reason: "Correct the highest viewer-impact residual first." };
-    const provisional = this.#snapshot.phases.filter((phase) => phase.state === "PROVISIONAL_PASS").map((phase) => phase.phaseId);
-    if (provisional.length > 0) return { kind: "RUN_WHOLE_EDIT_PROOF", phaseIds: provisional, reason: "Use one whole-edit render to supply second-pass confirmation for all provisional phases." };
-    if (this.#snapshot.phases.every((phase) => phase.state === "PROVEN") && this.#snapshot.wholeEditPasses < 2) {
-      return { kind: "RUN_WHOLE_EDIT_PROOF", phaseIds: this.#snapshot.phases.map((phase) => phase.phaseId), reason: "Exact final candidate still needs two whole-edit passes." };
-    }
-    if (this.#snapshot.wholeEditPasses >= 2) return { kind: "FINAL_CERTIFICATION", phaseIds: [], reason: "Phase and whole-edit proof gates are satisfied." };
-    return { kind: "RUN_LOCAL_PROOF", phaseIds: this.#snapshot.phases.filter((phase) => phase.state === "CONSTRUCTED").map((phase) => phase.phaseId), reason: "Constructed phases still need local visual proof." };
   }
 
   budgetStatus(stage = this.#snapshot.stage, now = Date.now()): { exceeded: boolean; elapsedMs: number; budgetMs: number } {

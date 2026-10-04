@@ -252,19 +252,13 @@ test("repair/resume state registers only with protocol 2.4 plus verified point a
   const automatic = session.registry.get("tracking.repair_resume.auto_escalate");
   const autoCorrect = session.registry.get("tracking.repair_resume.auto_correct.plan");
   assert.ok(repair);
-  assert.ok(automatic);
+  assert.equal(automatic, null);
   assert.equal(repair.status, "PARTIAL");
   assert.equal(repair.proofMaturity, "VISUAL");
   assert.ok(repair.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
   assert.equal(repair.visualProofProfile, "M4_TRACKER_REPAIR_RESUME_BIDIRECTIONAL_VISUAL");
   assert.ok(repair.limitations.some((value) => value.includes("Analyze Forward and Analyze Backward")));
-  assert.equal(automatic.proofMaturity, "STRUCTURAL");
-  assert.equal(automatic.riskClass, "R0_READ_ONLY");
-  assert.ok(automatic.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
-  assert.ok(autoCorrect);
-  assert.equal(autoCorrect.proofMaturity, "VISUAL");
-  assert.equal(autoCorrect.riskClass, "R0_READ_ONLY");
-  assert.ok(autoCorrect.routes.some((route) => route.kind === "SUBSYSTEM_ADAPTER" && route.available));
+  assert.equal(autoCorrect, null);
 });
 
 test("segmentation runtime registration fails closed on malformed or incomplete retained evidence files", async () => {

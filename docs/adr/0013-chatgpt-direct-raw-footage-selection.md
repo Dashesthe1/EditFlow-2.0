@@ -5,9 +5,7 @@
 
 The user rejected machine-generated and ranked raw-shot candidates. Production now
 uses `CHATGPT_DIRECT`: GPT chooses where to browse and selects exact ranges from the
-provided raw footage after inspecting timestamped pixels. The old matcher is fenced
-behind the explicit `ISOLATED_LEGACY_TEST` setting for historical acceptance labs;
-production never invokes it, returns its candidates, or consumes its cached choices.
+provided raw footage after inspecting timestamped pixels. The old matcher is physically deleted along with its historical acceptance launchers.
 
 The assignment's `footage-selection` contract exposes metadata, chronological frame
 access, coverage notes and retained choices. GPT primarily researches internet scene,

@@ -1,83 +1,28 @@
 import { CHATGPT_EDITORIAL_AUTHORITY_V1, CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, ChatgptEditorialDecisionFileV1, practiceNotebookViewV1, validateChatgptSourceImportsV1 } from "../../../packages/practice-homework/src/chatgpt-editorial-authority.js";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
+
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { ProductionSupervisionV1, redactWorkerCredentialsV1 } from "./production-supervision.js";
 import { ProductionUserControlsV1, PRODUCTION_USER_CONTROL_CONTRACT_V1, type ProductionUserControlReceiptV1 } from "./production-user-controls.js";
 
-import {
-  EditTypeRegistryFileV1,
-  GptOrchestrationStoreV1,
-  ProCreationPreparationEngineV1,
-  attestPracticeSkillUseV1,
-  compileGptTutorialResearchSourceV1,
-  buildPracticeMasteryRecordV1,
-  hasVerifiedPracticeSourceIdentityV1,
-  LocalPracticeMediaMatcherV1,
-  defaultPracticeAnalysisCacheDirectoryV1,
-  practicePerceptualSetOverlapsV1,
-  practicePerceptualSignatureMatchesV1,
-  type GptAppendEventInputV1,
-  type GptCapabilityGapV1,
-  type GptLearnedSkillV1,
-  type GptLearningEventV1,
-  type GptLearningOutcomeV1,
-  type GptLearningStageV1,
-  type GptOrchestrationAssignmentV1,
-  type GptOrchestrationModeV1,
-  type GptResearchSourceV1,
-  type GptSkillCausalModelV1,
-  type GptSkillMachineUseSignatureV1,
-  PracticeLearningMemoryFileV1,
-  PracticeProductionCoordinatorFileV1,
-  PracticeProductionCoordinatorV1,
-  PracticeProductionWorkerV1,
-  PRACTICE_PRODUCTION_JOB_KINDS_V1,
-  type PracticeProductionJobV1,
-  practiceTelemetrySpanV1,
-  type PracticeHeldOutBenchmarkCaseV1,
-  type PracticeLearningAllocationResultV1,
-  type PracticeMasteryRecordV1,
-  type PracticeMasteryScopeV1,
-  type PracticeMediaInputV1,
-  type PracticePreflightCheckpointV1,
-  type PracticeSceneMatchV1,
-  type PracticeRunRoleV1,
-  validatePracticeWorkingMediaMatchesV1,
-  type PracticeSessionResultV1,
-  type PracticeSkillUseAttestationV1,
-  type ProCreationPreparationResultV1,
-  validatePracticeSceneMatchesV1,
-} from "../../../packages/practice-homework/src/index.js";
-import type { TutorialDeepAnalysisPacketV1 } from "../../../packages/tutorial-learning/src/index.js";
+import { EditTypeRegistryFileV1, GptOrchestrationStoreV1, ProCreationPreparationEngineV1, hasVerifiedPracticeSourceIdentityV1, ChatgptFootageBrowserV1, defaultPracticeAnalysisCacheDirectoryV1, type GptAppendEventInputV1, type GptCapabilityGapV1, type GptLearnedSkillV1, type GptLearningOutcomeV1, type GptLearningStageV1, type GptOrchestrationAssignmentV1, type GptOrchestrationModeV1, type GptResearchSourceV1, type GptSkillCausalModelV1, type GptSkillMachineUseSignatureV1, PracticeProductionCoordinatorFileV1, PracticeProductionCoordinatorV1, PracticeProductionWorkerV1, PRACTICE_PRODUCTION_JOB_KINDS_V1, type PracticeProductionJobV1, practiceTelemetrySpanV1, type PracticeLearningAllocationResultV1, type PracticeMasteryScopeV1, type PracticeMediaInputV1, type PracticePreflightCheckpointV1, type PracticeSceneMatchV1, type PracticeRunRoleV1, validatePracticeWorkingMediaMatchesV1, type PracticeSessionResultV1, type ProCreationPreparationResultV1, validatePracticeSceneMatchesV1 } from "../../../packages/practice-homework/src/index.js";
+
 import { ClipResearchStoreV1, CLIP_RESEARCH_CONTRACT_V1 } from "../../../packages/practice-homework/src/clip-research.js";
-import {
-  AeCepAdapterClientV11,
-  AeFilesystemPolicyV11,
-} from "../../../packages/adapters/ae-cep/src/v1_1.js";
+import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { productionJobScopeV1 } from "../../../packages/adapters/ae-cep/src/production-job-scope.js";
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1, type CurrentAeStabilizationRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "./production-authority.js";
 import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
-import { createPracticeM6CurrentAeAssemblyV1 } from "./practice-training-runtime.js";
-import { PracticeM6AeRenderDriverCurrentV1 } from "./practice-m6-ae-render-driver.js";
-import { PracticeM6LocalMediaAnalyzerV1 } from "./practice-m6-media.js";
+
+import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
+
 import { runPracticeScratchSearchV1, validatePracticeScratchSearchV1 } from "./practice-scratch-search.js";
-import { recordPracticeHeldOutCertificationV1 } from "./practice-held-out-certification.js";
-import {
-  recertifyPracticeRobustManifestV1,
-  type PracticeRobustRecertificationReportV1,
-} from "./practice-robust-recertification.js";
+
 
 export interface PracticePanelServerConfigV1 {
   readonly port: number;
@@ -87,7 +32,6 @@ export interface PracticePanelServerConfigV1 {
   readonly learningMemoryFilePath: string;
   readonly editTypeRegistryFilePath: string;
   readonly gptOrchestrationFilePath?: string;
-  readonly retainedTruthManifestPath?: string;
   readonly broker: LoopbackCepBroker;
   readonly ffmpegPath?: string;
   readonly renderTimeoutMs?: number;
@@ -187,445 +131,6 @@ interface ProCreationBody {
   readonly videoPaths: readonly string[];
   readonly audioPaths?: readonly string[];
 }
-
-export const resolvePracticeRunRoleV1 = (
-  requestedRole: PracticeRunRoleV1 | null,
-  transferVerified: boolean,
-): PracticeRunRoleV1 => requestedRole
-  ?? (transferVerified ? "HELD_OUT_CERTIFICATION" : "LEARNING");
-
-export type PracticeAutoLifecycleStageV1 =
-  | "REFERENCE_LEARNING"
-  | "TRANSFER_LEARNING"
-  | "HELD_OUT_CERTIFICATION";
-
-export const resolvePracticeAutoLifecycleStageV1 = (
-  masteryRecords: readonly PracticeMasteryRecordV1[],
-): PracticeAutoLifecycleStageV1 => {
-  if (masteryRecords.some((record) => record.scope === "TRANSFER_VERIFIED")) {
-    return "HELD_OUT_CERTIFICATION";
-  }
-  return masteryRecords.length > 0 ? "TRANSFER_LEARNING" : "REFERENCE_LEARNING";
-};
-
-export interface PracticeSceneCompatibilityShotV1 {
-  readonly shotId: string;
-  readonly sourceId: string | null;
-  readonly sourceStartMs: number | null;
-  readonly sourceEndMs: number | null;
-  readonly direction: "FORWARD" | "REVERSE" | null;
-  readonly playbackRate: number | null;
-  readonly confidence: number | null;
-  readonly repeatedGeometry: boolean;
-  readonly exact: boolean;
-  readonly evidenceRefs: readonly string[];
-}
-
-export interface PracticeSceneCompatibilityV1 {
-  readonly schema: "editflow.practice-pre-ae-scene-compatibility.v1";
-  readonly referenceFingerprint: string;
-  readonly sourceFingerprint: string;
-  readonly proofFingerprint: string;
-  readonly minimumConfidence: number;
-  readonly referenceShotCount: number;
-  readonly retainedMatchCount: number;
-  readonly exactMatchCount: number;
-  readonly shots: readonly PracticeSceneCompatibilityShotV1[];
-  readonly passed: boolean;
-  readonly reasons: readonly string[];
-  readonly evidenceRefs: readonly string[];
-}
-
-export interface PracticeHeldOutMaterialFingerprintV1 {
-  readonly referenceFingerprint: string;
-  readonly sourceFingerprint: string;
-  readonly sourceMediaSha256: readonly string[];
-  readonly referencePerceptualSignature?: string;
-  readonly sourcePerceptualSignatures?: readonly string[];
-  readonly duplicateStartMedia: boolean;
-  readonly finishReusedAsStart?: boolean;
-  readonly duplicateStartPerceptualMedia?: boolean;
-  readonly sceneCompatibility?: PracticeSceneCompatibilityV1;
-  readonly sceneMatches?: readonly PracticeSceneMatchV1[];
-}
-
-const sha256FileStream = async (filePath: string): Promise<string> =>
-  await new Promise<string>((resolve, reject) => {
-    const hash = createHash("sha256");
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("error", reject);
-    stream.on("end", () => resolve(hash.digest("hex")));
-  });
-
-const sourceSetFingerprintFromSha256V1 = (
-  sourceMediaSha256: readonly string[],
-): string => {
-  const identities = [...new Set(sourceMediaSha256)]
-    .sort()
-    .map((value) => "source-video:sha256:" + value);
-  return createHash("sha256").update(identities.join("\n"), "utf8").digest("hex");
-};
-
-const practiceSceneCompatibilityFingerprintV1 = (input: {
-  readonly referenceFingerprint: string;
-  readonly sourceFingerprint: string;
-  readonly minimumConfidence: number;
-  readonly shots: readonly PracticeSceneCompatibilityShotV1[];
-  readonly reasons: readonly string[];
-}): string => createHash("sha256")
-  .update(JSON.stringify({
-    schema: "editflow.practice-pre-ae-scene-compatibility.v1",
-    referenceFingerprint: input.referenceFingerprint,
-    sourceFingerprint: input.sourceFingerprint,
-    minimumConfidence: input.minimumConfidence,
-    shots: input.shots.map(({ evidenceRefs: _evidenceRefs, ...shot }) => shot),
-    reasons: input.reasons,
-  }), "utf8")
-  .digest("hex");
-
-export const fingerprintPracticeHeldOutMaterialV1 = async (input: {
-  readonly finishPath: string;
-  readonly videoPaths: readonly string[];
-  readonly repositoryRoot?: string;
-  readonly artifactDir?: string;
-  readonly ffmpegPath?: string;
-  readonly exactSceneConfidence?: number;
-  readonly signal?: AbortSignal;
-  readonly onProgress?: (stage: PracticePreflightCheckpointV1["stage"], matches?: readonly PracticeSceneMatchV1[], shotIds?: readonly string[]) => Promise<void>;
-}): Promise<PracticeHeldOutMaterialFingerprintV1> => {
-  input.signal?.throwIfAborted();
-  await input.onProgress?.("FINGERPRINTING");
-  const referenceFingerprint = await sha256FileStream(input.finishPath);
-  const rawSourceHashes: string[] = [];
-  for (const videoPath of input.videoPaths) {
-    input.signal?.throwIfAborted();
-    rawSourceHashes.push(await sha256FileStream(videoPath));
-  }
-  const sourceMediaSha256 = [...new Set(rawSourceHashes)].sort();
-  if (sourceMediaSha256.length === 0) {
-    throw new TypeError("Held-out certification requires at least one Start video.");
-  }
-
-  const base: PracticeHeldOutMaterialFingerprintV1 = {
-    referenceFingerprint,
-    sourceFingerprint: sourceSetFingerprintFromSha256V1(sourceMediaSha256),
-    sourceMediaSha256,
-    duplicateStartMedia: sourceMediaSha256.length !== rawSourceHashes.length,
-    finishReusedAsStart: sourceMediaSha256.includes(referenceFingerprint),
-  };
-  if (input.exactSceneConfidence !== undefined && base.finishReusedAsStart === true) {
-    return base;
-  }
-  if (input.repositoryRoot === undefined && input.artifactDir === undefined) return base;
-  if (input.repositoryRoot === undefined || input.artifactDir === undefined) {
-    throw new TypeError(
-      "Practice perceptual preflight requires repositoryRoot and artifactDir together.",
-    );
-  }
-
-  const matcher = new LocalPracticeMediaMatcherV1({
-    artifactDir: path.join(input.artifactDir, "media"),
-    materializeWorkingMedia: true,
-    ...(input.signal === undefined ? {} : { signal: input.signal }),
-    analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(),
-    scriptPath: path.join(
-      input.repositoryRoot,
-      "scripts",
-      "practice",
-      "practice-media-match.py",
-    ),
-    ...(input.ffmpegPath === undefined ? {} : { ffmpegPath: input.ffmpegPath }),
-  });
-  const finish: PracticeMediaInputV1 = {
-    mediaId: mediaId("finish", input.finishPath, 0),
-    role: "FINISH_REFERENCE",
-    mediaKind: "VIDEO",
-    uri: input.finishPath,
-  };
-  const start = input.videoPaths.map((uri, index): PracticeMediaInputV1 => ({
-    mediaId: mediaId("video", uri, index),
-    role: "START_SOURCE",
-    mediaKind: "VIDEO",
-    uri,
-  }));
-  await input.onProgress?.("REFERENCE_ANALYSIS");
-  const reference = await matcher.analyzeFinish(finish);
-  input.signal?.throwIfAborted();
-  await input.onProgress?.("SOURCE_INDEXING", undefined, reference.shots.map((shot) => shot.shotId));
-  const sourceIndex = await matcher.indexStart(start);
-  input.signal?.throwIfAborted();
-  const referencePerceptualSignature = reference.perceptualSignature;
-  const sourcePerceptualSignatures = sourceIndex.videoPerceptualSignatures ?? [];
-  if (referencePerceptualSignature === undefined
-    || sourcePerceptualSignatures.length === 0) {
-    throw new TypeError(
-      "Practice perceptual preflight could not derive Finish/Start signatures.",
-    );
-  }
-  const duplicateStartPerceptualMedia =
-    sourcePerceptualSignatures.length !== input.videoPaths.length
-    || sourcePerceptualSignatures.some((value, index) =>
-      sourcePerceptualSignatures.slice(index + 1).some((other) =>
-        practicePerceptualSignatureMatchesV1(value, other)));
-
-  let sceneCompatibility: PracticeSceneCompatibilityV1 | undefined;
-  let sceneMatches: readonly PracticeSceneMatchV1[] | undefined;
-  if (input.exactSceneConfidence !== undefined) {
-    if (!Number.isFinite(input.exactSceneConfidence)
-      || input.exactSceneConfidence < 0
-      || input.exactSceneConfidence > 1) {
-      throw new TypeError("Practice exact-scene confidence must be between 0 and 1.");
-    }
-    const matches = await matcher.matchScenes({
-      reference,
-      sourceIndex,
-      minimumConfidence: input.exactSceneConfidence,
-      onProgress: async (matches, stage) => { await input.onProgress?.(stage, matches); },
-    });
-    sceneMatches = matches;
-    const shotIds = reference.shots.map((shot) => shot.shotId);
-    const reasons = validatePracticeSceneMatchesV1(
-      shotIds,
-      matches,
-      input.exactSceneConfidence,
-    );
-    const byShot = new Map(matches.map((match) => [match.shotId, match]));
-    const shots: PracticeSceneCompatibilityShotV1[] = shotIds.map((shotId) => {
-      const match = byShot.get(shotId);
-      const repeatedGeometry = match === undefined ? false : hasVerifiedPracticeSourceIdentityV1(match);
-      const exact = match !== undefined
-        && match.confidence >= input.exactSceneConfidence!
-        && repeatedGeometry
-        && match.sourceEndMs > match.sourceStartMs
-        && Number.isFinite(match.playbackRate)
-        && match.playbackRate > 0;
-      return {
-        shotId,
-        sourceId: match?.sourceId ?? null,
-        sourceStartMs: match?.sourceStartMs ?? null,
-        sourceEndMs: match?.sourceEndMs ?? null,
-        direction: match?.direction ?? null,
-        playbackRate: match?.playbackRate ?? null,
-        confidence: match?.confidence ?? null,
-        repeatedGeometry,
-        exact,
-        evidenceRefs: match?.evidenceRefs ?? [],
-      };
-    });
-    const exactMatchCount = shots.filter((shot) => shot.exact).length;
-    const proofFingerprint = practiceSceneCompatibilityFingerprintV1({
-      referenceFingerprint: base.referenceFingerprint,
-      sourceFingerprint: base.sourceFingerprint,
-      minimumConfidence: input.exactSceneConfidence,
-      shots,
-      reasons,
-    });
-    const proofDirectory = path.join(input.artifactDir, "preflight");
-    await mkdir(proofDirectory, { recursive: true });
-    const proofPath = path.join(
-      proofDirectory,
-      "scene-compatibility-" + proofFingerprint.slice(0, 24) + ".json",
-    );
-    sceneCompatibility = {
-      schema: "editflow.practice-pre-ae-scene-compatibility.v1",
-      referenceFingerprint: base.referenceFingerprint,
-      sourceFingerprint: base.sourceFingerprint,
-      proofFingerprint,
-      minimumConfidence: input.exactSceneConfidence,
-      referenceShotCount: shotIds.length,
-      retainedMatchCount: matches.length,
-      exactMatchCount,
-      shots,
-      passed: reasons.length === 0,
-      reasons,
-      evidenceRefs: ["practice-pre-ae-scene-compatibility:" + proofPath],
-    };
-    await writeFile(
-      proofPath,
-      JSON.stringify(sceneCompatibility, null, 2) + "\n",
-      "utf8",
-    );
-  }
-
-  return {
-    ...base,
-    referencePerceptualSignature,
-    sourcePerceptualSignatures,
-    duplicateStartPerceptualMedia,
-    ...(sceneCompatibility === undefined ? {} : { sceneCompatibility }),
-    ...(sceneMatches === undefined ? {} : { sceneMatches: structuredClone(sceneMatches) }),
-  };
-};
-
-export const validatePracticePreAeSceneCompatibilityV1 = (input: {
-  readonly material: PracticeHeldOutMaterialFingerprintV1;
-}): readonly string[] => {
-  if (input.material.finishReusedAsStart === true) {
-    return [
-      "Practice Start reuses the Finish reference media bytes; raw-source proof requires independent Start footage.",
-    ];
-  }
-  const compatibility = input.material.sceneCompatibility;
-  if (compatibility === undefined) {
-    return ["Practice pre-AE exact-scene compatibility proof is missing."];
-  }
-  const reasons = [...compatibility.reasons];
-  if (compatibility.schema !== "editflow.practice-pre-ae-scene-compatibility.v1") {
-    reasons.push("Practice pre-AE scene-compatibility proof schema is invalid.");
-  }
-  if (compatibility.referenceFingerprint !== input.material.referenceFingerprint) {
-    reasons.push("Practice pre-AE scene proof is not bound to the current Finish media.");
-  }
-  if (compatibility.sourceFingerprint !== input.material.sourceFingerprint) {
-    reasons.push("Practice pre-AE scene proof is not bound to the current Start media.");
-  }
-  const expectedFingerprint = practiceSceneCompatibilityFingerprintV1({
-    referenceFingerprint: compatibility.referenceFingerprint,
-    sourceFingerprint: compatibility.sourceFingerprint,
-    minimumConfidence: compatibility.minimumConfidence,
-    shots: compatibility.shots,
-    reasons: compatibility.reasons,
-  });
-  if (compatibility.proofFingerprint !== expectedFingerprint) {
-    reasons.push("Practice pre-AE scene-compatibility proof fingerprint is invalid.");
-  }
-  if (compatibility.evidenceRefs.length === 0) {
-    reasons.push("Practice pre-AE scene-compatibility proof has no retained evidence artifact.");
-  }
-  if (compatibility.referenceShotCount <= 0) {
-    reasons.push("Practice Finish contains no retained reference shots for exact-scene proof.");
-  }
-  if (compatibility.shots.length !== compatibility.referenceShotCount
-    || new Set(compatibility.shots.map((shot) => shot.shotId)).size !== compatibility.shots.length) {
-    reasons.push("Practice pre-AE scene proof must contain one unique row per Finish shot.");
-  }
-  const recomputedExactCount = compatibility.shots.filter((shot) => {
-    const exact = shot.sourceId !== null
-      && shot.confidence !== null
-      && shot.confidence >= compatibility.minimumConfidence
-      && shot.repeatedGeometry
-      && shot.sourceStartMs !== null
-      && shot.sourceEndMs !== null
-      && shot.sourceEndMs > shot.sourceStartMs
-      && shot.playbackRate !== null
-      && Number.isFinite(shot.playbackRate)
-      && shot.playbackRate > 0;
-    if (exact !== shot.exact) {
-      reasons.push(
-        "Practice pre-AE scene proof exactness is inconsistent for " + shot.shotId + ".",
-      );
-    }
-    return exact;
-  }).length;
-  if (recomputedExactCount !== compatibility.exactMatchCount) {
-    reasons.push("Practice pre-AE exact-scene count does not match retained shot evidence.");
-  }
-  if (compatibility.retainedMatchCount !== compatibility.referenceShotCount) {
-    reasons.push("Practice Start must retain exactly one scene match per Finish shot before AE work.");
-  }
-  if (compatibility.exactMatchCount !== compatibility.referenceShotCount) {
-    reasons.push("Practice Start does not exactly cover every retained Finish shot before AE work.");
-  }
-  if (!compatibility.passed && reasons.length === 0) {
-    reasons.push("Practice pre-AE exact-scene compatibility proof failed.");
-  }
-  return [...new Set(reasons)];
-};
-
-export const validatePracticeTransferLearningMaterialV1 = (input: {
-  readonly material: PracticeHeldOutMaterialFingerprintV1;
-  readonly masteryRecords: readonly PracticeMasteryRecordV1[];
-}): readonly string[] => {
-  const reasons: string[] = [];
-  const currentSources = new Set(input.material.sourceMediaSha256);
-  if (input.material.duplicateStartMedia) {
-    reasons.push("Transfer learning Start inputs contain duplicate media bytes.");
-  }
-  if (input.material.duplicateStartPerceptualMedia) {
-    reasons.push("Transfer learning Start inputs contain perceptually duplicate video content.");
-  }
-  const comparableRecords = input.masteryRecords.filter((record) =>
-    (record.sourceMediaSha256 ?? []).length > 0);
-  if (input.masteryRecords.length > 0 && comparableRecords.length === 0) {
-    reasons.push(
-      "Retained Practice mastery lacks Start SHA-256 identities required for material transfer.",
-    );
-  }
-  const sourceOverlap = (values: readonly string[] | undefined): boolean =>
-    (values ?? []).some((value) => currentSources.has(value));
-  for (const record of input.masteryRecords) {
-    if (record.referenceFingerprint === input.material.referenceFingerprint
-      || practicePerceptualSignatureMatchesV1(
-        record.referencePerceptualSignature,
-        input.material.referencePerceptualSignature,
-      )) {
-      reasons.push("Transfer learning must use a different Finish reference.");
-    }
-    if (record.sourceFingerprint === input.material.sourceFingerprint
-      || sourceOverlap(record.sourceMediaSha256)
-      || practicePerceptualSetOverlapsV1(
-        record.sourcePerceptualSignatures,
-        input.material.sourcePerceptualSignatures,
-      )) {
-      reasons.push("Transfer learning must use different Start video content.");
-    }
-  }
-  return [...new Set(reasons)];
-};
-
-export const validatePracticeHeldOutMaterialNoveltyV1 = (input: {
-  readonly material: PracticeHeldOutMaterialFingerprintV1;
-  readonly masteryRecords: readonly PracticeMasteryRecordV1[];
-  readonly heldOutCases: readonly PracticeHeldOutBenchmarkCaseV1[];
-}): readonly string[] => {
-  const reasons: string[] = [];
-  const currentSources = new Set(input.material.sourceMediaSha256);
-  if (input.material.duplicateStartMedia) {
-    reasons.push("Held-out Start inputs contain duplicate media bytes.");
-  }
-  if (input.material.duplicateStartPerceptualMedia) {
-    reasons.push("Held-out Start inputs contain perceptually duplicate video content.");
-  }
-  const sourceOverlap = (values: readonly string[] | undefined): boolean =>
-    (values ?? []).some((value) => currentSources.has(value));
-
-  for (const record of input.masteryRecords) {
-    if (record.referenceFingerprint === input.material.referenceFingerprint
-      || practicePerceptualSignatureMatchesV1(
-        record.referencePerceptualSignature,
-        input.material.referencePerceptualSignature,
-      )) {
-      reasons.push("Finish reference reuses retained Practice training media.");
-    }
-    if (record.sourceFingerprint === input.material.sourceFingerprint
-      || sourceOverlap(record.sourceMediaSha256)
-      || practicePerceptualSetOverlapsV1(
-        record.sourcePerceptualSignatures,
-        input.material.sourcePerceptualSignatures,
-      )) {
-      reasons.push("Start source reuses retained Practice training media.");
-    }
-  }
-  for (const heldOutCase of input.heldOutCases) {
-    if (heldOutCase.referenceFingerprint === input.material.referenceFingerprint
-      || practicePerceptualSignatureMatchesV1(
-        heldOutCase.referencePerceptualSignature,
-        input.material.referencePerceptualSignature,
-      )) {
-      reasons.push("Finish reference reuses prior held-out certification media.");
-    }
-    if (heldOutCase.sourceFingerprint === input.material.sourceFingerprint
-      || sourceOverlap(heldOutCase.sourceMediaSha256)
-      || practicePerceptualSetOverlapsV1(
-        heldOutCase.sourcePerceptualSignatures,
-        input.material.sourcePerceptualSignatures,
-      )) {
-      reasons.push("Start source reuses prior held-out certification media.");
-    }
-  }
-  return [...new Set(reasons)];
-};
 
 class HttpError extends Error {
   readonly status: number;
@@ -835,10 +340,7 @@ const optionalResearchSources = (
     }
     const record = source as Record<string, unknown>;
     const technique = optionalRecord(record, "tutorialTechnique");
-    const compilation = optionalRecord(record, "tutorialCompilation");
-    if (compilation !== undefined && compilation["compilerVersion"] !== 1) {
-      throw new HttpError(400, "tutorialCompilation.compilerVersion must be 1.");
-    }
+    if (record["tutorialCompilation"] !== undefined) throw new HttpError(410, "Machine tutorial compilation removed; retain directly analyzed source steps.");
     return {
       sourceId: requiredString(record, "sourceId"),
       kind: requiredEnum(record, "kind", [
@@ -858,26 +360,7 @@ const optionalResearchSources = (
           transfer: requiredString(technique, "transfer"),
         },
       }),
-      ...(compilation === undefined ? {} : {
-        tutorialCompilation: {
-          schema: requiredEnum(
-            compilation,
-            "schema",
-            ["editflow.gpt-tutorial-causal-compilation.v1"] as const,
-          ),
-          compilerVersion: 1 as const,
-          targetSkillId: requiredString(compilation, "targetSkillId"),
-          tutorialId: requiredString(compilation, "tutorialId"),
-          tutorialSkillId: requiredString(compilation, "tutorialSkillId"),
-          sourceRef: requiredString(compilation, "sourceRef"),
-          analysisFingerprint: requiredString(compilation, "analysisFingerprint"),
-          constructionPattern: requiredString(compilation, "constructionPattern"),
-          capabilityIds: stringArray(compilation, "capabilityIds", false),
-          adaptationNotes: requiredString(compilation, "adaptationNotes"),
-          causalModel: requiredCausalModel(compilation, "causalModel"),
-          evidenceRefs: stringArray(compilation, "evidenceRefs", true),
-        },
-      }),
+
     };
   });
 };
@@ -997,35 +480,6 @@ const assignmentRunState = (
         : status === "FAILED"
           ? "FAILED"
           : "RUNNING";
-
-const practiceLearningTraceReasons = (
-  events: readonly GptLearningEventV1[],
-  practiceRole: PracticeRunRoleV1 = "LEARNING",
-): readonly string[] => {
-  const reasons: string[] = [];
-  const requiredStages: readonly GptLearningStageV1[] = practiceRole === "HELD_OUT_CERTIFICATION"
-    ? ["RENDER", "COMPARISON", "RESULT"]
-    : ["RENDER", "COMPARISON", "RESULT", "LESSON"];
-  for (const stage of requiredStages) {
-    if (!events.some((event) => event.stage === stage)) {
-      reasons.push("Practice mastery requires a retained " + stage + " learning event.");
-    }
-  }
-  const latestGapById = new Map<string, GptCapabilityGapV1>();
-  for (const event of events) {
-    if (event.capabilityGap !== undefined) {
-      latestGapById.set(event.capabilityGap.gapId, event.capabilityGap);
-    }
-  }
-  for (const gap of latestGapById.values()) {
-    if (practiceRole === "HELD_OUT_CERTIFICATION") {
-      reasons.push("Held-out certification encountered a capability gap: " + gap.gapId + ".");
-    } else if (gap.status !== "RESOLVED") {
-      reasons.push("Unresolved Practice capability gap blocks mastery: " + gap.gapId + ".");
-    }
-  }
-  return [...new Set(reasons)];
-};
 
 export class PracticePanelServerV1 {
   readonly config: PracticePanelServerConfigV1;
@@ -1211,8 +665,8 @@ export class PracticePanelServerV1 {
       if (!assignment.finish || !Number.isFinite(body.startMs) || !Number.isFinite(body.endMs)
         || body.startMs < 0 || body.endMs <= body.startMs || body.endMs - body.startMs > 2000) throw new TypeError("Reference preparation requires a bounded two-second window.");
       const startedAtMs = Date.now();
-      const media = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
-        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py"),
+      const media = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py"),
         ...(this.config.ffmpegPath ? { ffmpegPath: this.config.ffmpegPath } : {}) });
       if (!Array.isArray(body.timesMs) || body.timesMs.some((t: number) => t < body.startMs || t >= body.endMs)) throw new TypeError("GPT must choose exact reference timestamps inside this window.");
       const result = await media.inspectFootage(assignment.finish, body.timesMs, body.width ?? 640);
@@ -1263,7 +717,7 @@ export class PracticePanelServerV1 {
           await production.file.save(production.coordinator);
           return { result: { authority: "CHATGPT_DIRECT", transaction: result, plan: body.plan } };
         }
-        const driver = new PracticeM6AeRenderDriverCurrentV1({ transport: this.config.broker,
+        const driver = new ChatgptAeRenderDriverV1({ transport: this.config.broker,
           projectId: "practice-gpt-controller", artifactDir: assignment!.artifactDir,
           ...(this.config.renderTimeoutMs === undefined ? {} : { renderTimeoutMs: this.config.renderTimeoutMs }) });
         if (job.kind === "SAVE_CHECKPOINT") {
@@ -1287,9 +741,7 @@ export class PracticePanelServerV1 {
         }
         if (!assignment!.finish) throw new TypeError("Scratch search requires a visual reference.");
         const search = await runPracticeScratchSearchV1({ body, sessionId: assignment!.sessionId,
-          referencePath: assignment!.finish.uri, renderDriver: driver,
-          media: new PracticeM6LocalMediaAnalyzerV1({ repositoryRoot: this.config.repositoryRoot, artifactDir: assignment!.artifactDir }),
-          signal, ...(this.config.ffmpegPath ? { ffprobePath: this.config.ffmpegPath.replace(/ffmpeg(\.exe)?$/i, "ffprobe$1") } : {}) });
+          signal, renderDriver: driver });
         return { result: search, reviewRequired: true };
       },
     });
@@ -1591,52 +1043,6 @@ export class PracticePanelServerV1 {
     return new EditTypeRegistryFileV1(this.config.editTypeRegistryFilePath);
   }
 
-  #retainedTruthManifestPath(): string {
-    return path.resolve(
-      this.config.retainedTruthManifestPath
-        ?? path.join(this.config.repositoryRoot, "proofs", "practice", "retained-truth-corpus.json"),
-    );
-  }
-
-  async #recertifyRobust(editTypeId: string): Promise<PracticeRobustRecertificationReportV1> {
-    if (this.#activeRunId !== null) {
-      throw new HttpError(409, "Cannot recertify ROBUST while an EditFlow run is active.");
-    }
-    const manifestPath = this.#retainedTruthManifestPath();
-    let manifestStats: Awaited<ReturnType<typeof stat>>;
-    try {
-      manifestStats = await stat(manifestPath);
-    } catch {
-      throw new HttpError(
-        409,
-        "Retained truth corpus manifest is unavailable: " + manifestPath,
-      );
-    }
-    if (!manifestStats.isFile()) {
-      throw new HttpError(409, "Retained truth corpus manifest is not a file: " + manifestPath);
-    }
-
-    const file = await this.#editTypes();
-    const registry = await file.load();
-    if (registry.get(editTypeId) === null) {
-      throw new HttpError(404, "Edit Type not found: " + editTypeId);
-    }
-    const report = await recertifyPracticeRobustManifestV1({
-      registry,
-      manifestPath,
-      repositoryRoot: this.config.repositoryRoot,
-    });
-    if (report.editTypeId !== editTypeId) {
-      throw new HttpError(
-        409,
-        "Retained truth corpus targets Edit Type " + report.editTypeId
-          + ", not " + editTypeId + ".",
-      );
-    }
-    await file.save(registry);
-    return report;
-  }
-
   #humanReviewPath(sessionId: string): string {
     const safeSession = sessionId.replace(/[^a-zA-Z0-9._-]+/g, "-");
     return path.join(this.config.artifactDir, "human-reviews", safeSession + ".json");
@@ -1774,9 +1180,6 @@ export class PracticePanelServerV1 {
     const registry = await editTypesFile.load();
     let editType = registry.get(request.editTypeId);
     if (editType === null) {
-      if (request.practiceRole === "HELD_OUT_CERTIFICATION") {
-        throw new HttpError(409, "Held-out certification requires an existing transfer-verified Edit Type.");
-      }
       if (request.editTypeTitle === undefined) {
         throw new HttpError(400, "Unknown Edit Type: " + request.editTypeId);
       }
@@ -1800,19 +1203,8 @@ export class PracticePanelServerV1 {
       this.config.artifactDir,
       sessionId.replace(/[:]/g, "-"),
     );
-    const retainedKnowledge = registry.knowledge(editType.editTypeId);
-    const transferableKnowledge = registry.transferableKnowledge(editType.editTypeId);
-    // AUTO no longer chooses an examination/transfer curriculum from machine scores.
-    const practiceRole = request.practiceRole ?? "LEARNING";
-    const knowledge = practiceRole === "HELD_OUT_CERTIFICATION"
-      ? transferableKnowledge
-      : retainedKnowledge;
-    if (practiceRole === "HELD_OUT_CERTIFICATION" && knowledge === null) {
-      throw new HttpError(
-        409,
-        "Held-out certification requires TRANSFER_VERIFIED Practice knowledge before benchmark cases can start.",
-      );
-    }
+    const practiceRole = "LEARNING" as const;
+    const knowledge = registry.knowledge(editType.editTypeId);
     const preflight: PracticePreflightCheckpointV1 = {
       stage: "PREFLIGHT_MATCHING", updatedAt: new Date().toISOString(),
       requireTransferNovelty: false,
@@ -1917,25 +1309,25 @@ export class PracticePanelServerV1 {
     };
     try {
       // Reference and raw-source analysis can proceed while AE is temporarily disconnected.
-      const referenceAuthority = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+      const referenceAuthority = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
         analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(),
-        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py") });
-      const directReference = await referenceAuthority.analyzeFinish(assignment.finish);
+        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
+      const directReference = await referenceAuthority.readReference(assignment.finish);
       if (!directReference.shots.length) {
         await this.#gptStore.updatePreflight(assignmentId, { ...checkpoint, stage: "AWAITING_CHATGPT_REFERENCE", updatedAt: new Date().toISOString(),
           totalShotIds: [], completedShotIds: [], unresolvedShotIds: [], reasons: ["ChatGPT must inspect Finish and DEFINE_REFERENCE; automated cut detection and tail exclusion are retired."], evidenceRefs: directReference.evidenceRefs });
         return;
       }
       const preflightStartedAt = Date.now();
-      const preparer = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+      const preparer = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
         materializeWorkingMedia: true, signal,
         analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(),
-        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py"),
+        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py"),
         ...(this.config.ffmpegPath ? { ffmpegPath: this.config.ffmpegPath } : {}) });
-      const reference = await preparer.analyzeFinish(assignment.finish);
+      const reference = await preparer.readReference(assignment.finish);
       await progress("SOURCE_INDEXING", undefined, reference.shots.map(s => s.shotId));
-      const sourceIndex = await preparer.indexStart(assignment.start);
-      const choices = await preparer.matchScenes({ reference, sourceIndex,
+      const sourceIndex = await preparer.indexProvidedMedia(assignment.start);
+      const choices = await preparer.prepareSelectedFootage({ reference, sourceIndex,
         minimumConfidence: assignment.practicePolicy?.exactSceneConfidence ?? .95,
         onProgress: async (matches, stage) => progress(stage, matches) });
       signal.throwIfAborted();
@@ -1975,11 +1367,11 @@ export class PracticePanelServerV1 {
     if (assignment.mode === "PRACTICE") {
       if (assignment.preflight?.stage !== "READY" || !shotIds.length || !matches.length) throw new HttpError(409, "Practice reconstruction is locked until ChatGPT defines reference and source choices.");
       if (!assignment.finish) throw new HttpError(409, "Practice needs its retained Finish reference.");
-      const matcher = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
-        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py") });
-      const reference = await matcher.analyzeFinish(assignment.finish);
-      const sourceIndex = await matcher.indexStart(assignment.start);
-      const choices = await matcher.matchScenes({ reference, sourceIndex, minimumConfidence: assignment.practicePolicy?.exactSceneConfidence ?? .95 });
+      const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
+      const reference = await matcher.readReference(assignment.finish);
+      const sourceIndex = await matcher.indexProvidedMedia(assignment.start);
+      const choices = await matcher.prepareSelectedFootage({ reference, sourceIndex, minimumConfidence: assignment.practicePolicy?.exactSceneConfidence ?? .95 });
       if (!reference.shots.length || JSON.stringify(reference.shots.map(s => s.shotId)) !== JSON.stringify(shotIds)
         || matches.some(m => !choices.some(c => c.shotId === m.shotId && c.chatgptSelection?.decisionId === m.chatgptSelection?.decisionId))) {
         throw new HttpError(409, "CHATGPT_REFERENCE_PLAN_REQUIRED: inspect and define Finish; reaffirm source choices after changed reference bounds. Retired cached cuts cannot authorize editing.");
@@ -2206,13 +1598,7 @@ export class PracticePanelServerV1 {
     if (stage === "RESEARCH" && (researchSources === undefined || researchSources.length === 0)) {
       throw new HttpError(400, "RESEARCH requires at least one research source.");
     }
-    if (stage === "RESEARCH"
-      && researchSources?.some((source) => source.tutorialCompilation !== undefined)) {
-      throw new HttpError(
-        400,
-        "Compiler-backed Tutorial Drive research must use the tutorial-compilations endpoint.",
-      );
-    }
+    if (researchSources?.some(source => source.tutorialCompilation !== undefined)) throw new HttpError(410, "Tutorial compilation is retired; retain your directly analyzed technique and sources.");
     if (stage === "CAPABILITY_IMPLEMENTATION" && capabilityGap === undefined) {
       throw new HttpError(
         400,
@@ -2251,7 +1637,7 @@ export class PracticePanelServerV1 {
     const events = await this.#gptStore.appendEvents(inputs);
     const assignment = await this.#gptStore.getAssignment(assignmentId);
     if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
-    if (assignment.practiceRole !== "HELD_OUT_CERTIFICATION") {
+    {
       const file = await this.#editTypes();
       await file.update(registry => { for (const event of events) registry.recordGptLearningEvent(event); });
     }
@@ -2297,8 +1683,8 @@ export class PracticePanelServerV1 {
     const renderMedia = this.#renderJobMedia(assignment, requiredString(review, "renderJobId"));
     const renderJob = jobs.find(j => j.jobId === review.renderJobId)!;
     if (assignment.mode === "PRACTICE" && assignment.finish) {
-      const reference = await new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
-        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py") }).analyzeFinish(assignment.finish);
+      const reference = await new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+        scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") }).readReference(assignment.finish);
       const payload = renderJob.payload as Record<string, any>;
       if (payload.startMs !== 0 || Math.abs(payload.endMs - reference.video!.durationMs) > 1) throw new HttpError(400, "Final review requires a whole-edit LOCAL_RENDER covering the ChatGPT-defined duration.");
     }
@@ -2307,8 +1693,8 @@ export class PracticePanelServerV1 {
     if (sha !== review.renderSha256) throw new HttpError(409, "Final render changed since ChatGPT review.");
     for (const field of ["shots", "timing", "audio", "framing", "effects", "transitions", "color"]) requiredString(review.checks ?? {}, field);
     if (!Array.isArray(review.comparisons) || !review.comparisons.length) throw new HttpError(400, "Retain actual render pixel comparisons for every chosen shot.");
-    const matcher = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
-      scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py") });
+    const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+      scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
     const requiredIds = assignment.mode === "PRACTICE" ? (assignment.practiceSceneMatches ?? []).map(m => m.shotId)
       : Object.keys((await this.#clipResearch.snapshot(assignment)).clips);
     if (requiredIds.some(id => !review.comparisons.some((c: any) => c.clipId === id))) throw new HttpError(400, "Review every retained shot/clip; do not omit failed regions.");
@@ -2319,7 +1705,7 @@ export class PracticePanelServerV1 {
       evidenceRefs.push("footage-inspection:" + comparison.renderEvidenceId);
       if (assignment.finish) {
         const shot = (assignment.practiceSceneMatches ?? []).find(m => m.shotId === comparison.clipId);
-        const reference = await matcher.analyzeFinish(assignment.finish);
+        const reference = await matcher.readReference(assignment.finish);
         const bounds = reference.shots.find(s => s.shotId === shot?.shotId);
         if (!bounds || comparison.referenceTimeMs < bounds.referenceStartMs || comparison.referenceTimeMs >= bounds.referenceEndMs
           || comparison.renderTimeMs < bounds.referenceStartMs || comparison.renderTimeMs >= bounds.referenceEndMs) throw new HttpError(400, "Review reference and rendered pixels inside the corresponding chosen shot.");
@@ -2738,7 +2124,7 @@ export class PracticePanelServerV1 {
             } else {
               const render = this.#renderJobMedia(assignment, evidence?.renderJobId);
               if (!Array.isArray(evidence?.inspections) || !evidence.inspections.length) throw new HttpError(400, "A reviewed lesson needs issued render inspections, or a retained failed job for an execution failure.");
-              const matcher = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"), scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py") });
+              const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"), scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
               for (const inspection of evidence.inspections) await matcher.verifyFootageInspection(render, inspection.evidenceId, inspection.timeMs);
               lesson.evidenceRefs = [...new Set([...(lesson.evidenceRefs ?? []), "production-job:" + evidence.renderJobId,
                 ...evidence.inspections.map((i: any) => "footage-inspection:" + i.evidenceId)])];
@@ -2755,13 +2141,13 @@ export class PracticePanelServerV1 {
         const id = decodeURIComponent(footageMatch[1] ?? "");
         const assignment = await this.#gptStore.getAssignment(id);
         if (!assignment) throw new HttpError(404, "GPT assignment not found.");
-        const matcher = new LocalPracticeMediaMatcherV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+        const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
           analysisCacheDir: defaultPracticeAnalysisCacheDirectoryV1(), materializeWorkingMedia: true,
-          scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "practice-media-match.py"),
+          scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py"),
           ...(this.config.ffmpegPath ? { ffmpegPath: this.config.ffmpegPath } : {}) });
         if (req.method === "GET") {
-          const reference = assignment.finish ? await matcher.analyzeFinish(assignment.finish) : null;
-          const sourceIndex = await matcher.indexStart(assignment.start);
+          const reference = assignment.finish ? await matcher.readReference(assignment.finish) : null;
+          const sourceIndex = await matcher.indexProvidedMedia(assignment.start);
           jsonResponse(res, 200, { contract: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1, reference, sourceIndex,
             searchState: await matcher.footageSearchState(sourceIndex),
             referenceMedia: assignment.finish, rawMedia: assignment.start.filter((media) => media.mediaKind === "VIDEO"),
@@ -2791,7 +2177,7 @@ export class PracticePanelServerV1 {
           if (body.action === "DEFINE_REFERENCE" && assignment.finish) {
             const preflight = this.#preflightJobs.get(id);
             if (preflight) { preflight.abort.abort(); await preflight.promise; }
-            const previousReference = await matcher.analyzeFinish(assignment.finish);
+            const previousReference = await matcher.readReference(assignment.finish);
             const reference = await matcher.defineReference(assignment.finish, body);
             const retained = previousReference.styleFingerprint === reference.styleFingerprint ? assignment.practiceSceneMatches ?? [] : [];
             await this.#gptStore.updatePreflight(id, { stage: "AWAITING_CHATGPT_SHOTS", requireTransferNovelty: assignment.preflight?.requireTransferNovelty ?? false,
@@ -2802,8 +2188,8 @@ export class PracticePanelServerV1 {
           if (body.action !== "SELECT" || !assignment.finish) throw new HttpError(400, "SELECT requires a Practice reference; Pro Creation browses raw footage and records its designed ranges in clip research.");
           const preflight = this.#preflightJobs.get(id);
           if (preflight) { preflight.abort.abort(); await preflight.promise; }
-          const reference = await matcher.analyzeFinish(assignment.finish);
-          const sourceIndex = await matcher.indexStart(assignment.start);
+          const reference = await matcher.readReference(assignment.finish);
+          const sourceIndex = await matcher.indexProvidedMedia(assignment.start);
           const selections = await matcher.selectFootage({ reference, sourceIndex, finish: assignment.finish, start: assignment.start,
             selections: body.selections, search: body.search });
           await this.#gptStore.updatePreflight(id, { ...assignment.preflight!, stage: "WORKING_MEDIA",
@@ -2829,10 +2215,8 @@ export class PracticePanelServerV1 {
         if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
         let ledger;
         if (req.method === "POST") {
-          const events = await this.#gptStore.eventsForSession(assignment.sessionId);
-          const compiledSources = events.filter((event) => event.stage === "RESEARCH").flatMap((event) => event.researchSources ?? []);
           const body = await readJson(req);
-          try { ledger = await this.#clipResearch.record(assignment, body, compiledSources); }
+          try { ledger = await this.#clipResearch.record(assignment, body); }
           catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
           if (body["action"] === "PLAN" && typeof body["clipId"] === "string") {
             const plan = ledger.clips?.[body["clipId"]]?.plan;
@@ -3007,7 +2391,7 @@ export class PracticePanelServerV1 {
           gptOrchestration: "ASSIGNMENT_QUEUE_READY",
           practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
           practiceStartup: "RESUMABLE_PREFLIGHT_V1",
-          practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
+          practiceWorkflowAuthority: "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1",
           primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
           productionModes: ["PRACTICE", "PRO_CREATION"],
           directMutationRoutes: "REMOVED",
@@ -3064,15 +2448,6 @@ export class PracticePanelServerV1 {
         });
         await file.save(registry);
         jsonResponse(res, 201, { editType: profile });
-        return;
-      }
-      const robustRecertificationMatch =
-        /^\/v1\/product\/edit-types\/([^/]+)\/robust-recertification$/.exec(url.pathname);
-      if (req.method === "POST" && robustRecertificationMatch !== null) {
-        const editTypeId = decodeURIComponent(robustRecertificationMatch[1] ?? "");
-        jsonResponse(res, 200, {
-          recertification: await this.#recertifyRobust(editTypeId),
-        });
         return;
       }
       if (req.method === "POST" && url.pathname === "/v1/product/practice") {

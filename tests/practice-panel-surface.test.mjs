@@ -50,7 +50,7 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     gptOrchestration: "ASSIGNMENT_QUEUE_READY",
     practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
     practiceStartup: "RESUMABLE_PREFLIGHT_V1",
-    practiceWorkflowAuthority: "GPT_VISUAL_REVIEW_WITH_UNCHANGED_M6_FINAL_GATES",
+    practiceWorkflowAuthority: "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1",
     primaryProductionSystem: "DURABLE_PRODUCTION_QUEUE_V1",
     productionModes: ["PRACTICE", "PRO_CREATION"],
     directMutationRoutes: "REMOVED",
@@ -78,8 +78,8 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     base + "/v1/product/edit-types/cinematic-action/robust-recertification",
     { method: "POST", headers, body: "{}" },
   );
-  assert.equal(recertification.status, 409);
-  assert.match((await recertification.json()).error, /Retained truth corpus manifest is unavailable/);
+  assert.equal(recertification.status, 404);
+  assert.match((await recertification.json()).error, /NOT_FOUND|Not found|not found/);
 
   const preparation = await fetch(base + "/v1/product/pro-creation/prepare", {
     method: "POST",
@@ -272,46 +272,15 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(html, />Finish</);
   assert.match(html, />Start</);
   assert.match(html, /Proceed to do homework/);
-  assert.match(html, /value="AUTO"/);
-  assert.match(html, /Automatic progression/);
-  assert.match(html, /HELD_OUT_CERTIFICATION/);
-  assert.match(html, /held-out certification/i);
-  assert.match(html, /id="practice-lifecycle-card"/);
-  assert.match(html, /id="practice-lifecycle-maturity"/);
-  assert.match(html, /id="practice-lifecycle-steps"/);
-  assert.match(html, /id="practice-lifecycle-next"/);
-  assert.match(html, /id="practice-recertify-robust"/);
-  assert.match(html, /Refresh ROBUST proof/);
+  assert.doesNotMatch(html, /HELD_OUT_CERTIFICATION|Automatic progression|practice-recertify/);
+  assert.match(html, /Practice notebook/);
   assert.match(html, /practice-panel\.js/);
 
   assert.match(client, /finishPath/);
   assert.match(client, /videoPaths/);
   assert.match(client, /audioPaths/);
-  assert.match(client, /practiceRole: selectedPracticeRole\(\)/);
-  assert.match(client, /effectivePracticeRole/);
-  assert.match(client, /transferVerifiedReady/);
-  assert.match(client, /referenceVerifiedPracticeSessionCount/);
-  assert.match(client, /transferVerifiedPracticeSessionCount/);
-  assert.match(client, /heldOutCases/);
-  assert.match(client, /heldOutProofVerified/);
-  assert.match(client, /retainedTruthSuiteReports/);
-  assert.match(client, /progressionGate/);
-  assert.match(client, /blockingDependencies/);
-  assert.match(client, /robust-recertification/);
-  assert.match(client, /autoProgressionBlock/);
-  assert.match(client, /Retained truth required/);
-  assert.match(client, /Benchmark refresh required/);
-  assert.match(client, /1 Reference proof/);
-  assert.match(client, /2 Transfer proof/);
-  assert.match(client, /3 Held-out generalization/);
-  assert.match(client, /4 Retained truth authority/);
-  assert.match(client, /Reused reference or Start bytes are rejected before transfer promotion/);
-  assert.match(client, /AUTO runs held-out generalization/);
-  assert.match(client, /More held-out edits are not the current blocker/);
-  assert.match(client, /No new edit is required for this refresh/);
-  assert.match(client, /Practice is ROBUST/);
-  assert.match(client, /frozen transfer-verified knowledge/i);
-  assert.match(client, /Failed machine-proven cases remain in the benchmark/);
+  assert.match(client, /practiceRole: "LEARNING"/);
+  assert.doesNotMatch(client, /robust-recertification|HELD_OUT_CERTIFICATION|autoProgressionBlock/);
   assert.match(html, /id="cancel-action"/);
   assert.match(html, /id="open-best-attempt"/);
   assert.match(html, /id="human-review-form"/);
@@ -325,9 +294,9 @@ test("CEP surface exposes Practice and Pro Creation without weakening media role
   assert.match(client, /\/cancel/);
   assert.match(client, /\/open-best-attempt/);
   assert.match(client, /\/human-review/);
-  assert.match(client, /It does not change machine mastery/);
+  assert.match(client, /Review saved as feedback/);
   assert.match(client, /WAITING_FOR_GPT/);
-  assert.match(client, /GPT is orchestrating EditFlow Brain/);
+  assert.match(client, /ChatGPT is directly reviewing footage/);
 });
 
 

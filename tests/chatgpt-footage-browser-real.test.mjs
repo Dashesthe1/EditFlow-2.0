@@ -15,7 +15,7 @@ test("direct browser decodes requested moments, produces timestamped sheets and 
   const python = process.platform === "win32" ? "py" : "python3";
   const prefix = process.platform === "win32" ? ["-3.12"] : [];
   const ffmpeg = process.env.EDITFLOW_FFMPEG_PATH || execFileSync(python, [...prefix, "-c",
-    "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"], { encoding: "utf8" }).trim();
+    "import shutil; print(shutil.which('ffmpeg') or __import__('imageio_ffmpeg').get_ffmpeg_exe())"], { encoding: "utf8" }).trim();
   const video = path.join(root, "raw.mp4"), output = path.join(root, "browse.json");
   execFileSync(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=10", "-t", "6", "-y", video]);
   const script = path.resolve("scripts/practice/chatgpt-footage-browser.py");
@@ -38,7 +38,7 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   const python = process.platform === "win32" ? "py" : "python3";
   const prefix = process.platform === "win32" ? ["-3.12"] : [];
   const ffmpeg = process.env.EDITFLOW_FFMPEG_PATH || execFileSync(python, [...prefix, "-c",
-    "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"], { encoding: "utf8" }).trim();
+    "import shutil; print(shutil.which('ffmpeg') or __import__('imageio_ffmpeg').get_ffmpeg_exe())"], { encoding: "utf8" }).trim();
   const video = path.join(root, "raw.mp4"), finishPath = path.join(root, "reference.mp4"), song = path.join(root, "song.mp3");
   execFileSync(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=30", "-t", "6", "-y", video]);
   execFileSync(ffmpeg, ["-v", "error", "-ss", "2", "-i", video, "-t", "1", "-y", finishPath]);

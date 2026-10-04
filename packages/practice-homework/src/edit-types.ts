@@ -1,90 +1,16 @@
-import { createHash } from "node:crypto";
+
 import { parsePracticeWorkedExampleV1 } from "./chatgpt-editorial-authority.js";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type {
-  EditTypeBehaviorEvidenceV1,
-  EditTypeGptLearningSummaryV1,
-  EditTypeKnowledgeScopeV1,
-  EditTypeKnowledgeSnapshotV1,
-  EditTypeProfileV1,
-  GptCapabilityGapV1,
-  GptLearnedSkillV1,
-  GptLearningEventV1,
-  GptOrchestrationModeV1,
-  PracticeEpisodeV1,
-  PracticeHeldOutBenchmarkCaseV1,
-  PracticeHeldOutBenchmarkReportV1,
-  PracticeMasteryRecordV1,
-  PracticeRetainedTruthSuiteReportV1,
-  PracticeSkillUseAttestationV1,
-} from "./contracts.js";
-import {
-  derivePracticeMaturityStageV1,
-  evaluatePracticeProgressionGateV1,
-  isPracticeHeldOutBenchmarkProofIntegrityV1,
-  isPracticeRetainedTruthSuiteCertificationIntegrityV1,
-} from "./mastery.js";
-import {
-  practicePerceptualSetOverlapsV1,
-  practicePerceptualSignatureMatchesV1,
-} from "./material-novelty.js";
+import type { EditTypeBehaviorEvidenceV1, EditTypeGptLearningSummaryV1, EditTypeKnowledgeScopeV1, EditTypeKnowledgeSnapshotV1, EditTypeProfileV1, GptCapabilityGapV1, GptLearningEventV1, GptOrchestrationModeV1, PracticeMasteryRecordV1 } from "./contracts.js";
+
 
 const normalizeChoice = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, " ");
 
 const uniqueStrings = (values: readonly string[]): readonly string[] =>
   [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-
-const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean => {
-  const model = skill.causalModel;
-  if (model === undefined) return false;
-  return [
-    model.triggerConditions,
-    model.invariants,
-    model.adaptationAxes,
-    model.failureSignals,
-    model.repairStrategies,
-    model.transferCriteria,
-  ].every((values) => uniqueStrings(values ?? []).length > 0);
-};
-
-const hasMateriallyDifferentSkillProof = (
-  skill: GptLearnedSkillV1,
-  priorMasteryRecords: readonly PracticeMasteryRecordV1[],
-  currentMasteryRecord: PracticeMasteryRecordV1,
-): boolean => {
-  const currentReference = currentMasteryRecord.referenceFingerprint.trim();
-  const currentSource = currentMasteryRecord.sourceFingerprint.trim();
-  if (currentReference.length === 0 || currentSource.length === 0) return false;
-  const priorSkillSessions = new Set(
-    uniqueStrings(skill.provenSessionIds ?? [])
-      .filter((sessionId) => sessionId !== currentMasteryRecord.sessionId),
-  );
-  const currentSourceMedia = new Set(
-    uniqueStrings(currentMasteryRecord.sourceMediaSha256 ?? []),
-  );
-  return priorMasteryRecords.some((record) => {
-    if (!priorSkillSessions.has(record.sessionId)) return false;
-    const priorReference = record.referenceFingerprint.trim();
-    const priorSource = record.sourceFingerprint.trim();
-    if (priorReference.length === 0 || priorSource.length === 0) return false;
-    if (priorReference === currentReference || priorSource === currentSource) return false;
-    if (practicePerceptualSignatureMatchesV1(
-      currentMasteryRecord.referencePerceptualSignature,
-      record.referencePerceptualSignature,
-    )) return false;
-    if (practicePerceptualSetOverlapsV1(
-      currentMasteryRecord.sourcePerceptualSignatures,
-      record.sourcePerceptualSignatures,
-    )) return false;
-    const priorSourceMedia = uniqueStrings(record.sourceMediaSha256 ?? []);
-    return currentSourceMedia.size > 0
-      && priorSourceMedia.length > 0
-      && priorSourceMedia.every((sha256) => !currentSourceMedia.has(sha256));
-  });
-};
 
 const emptyGptLearning = (): EditTypeGptLearningSummaryV1 => ({
   workedExamples: [],
@@ -146,8 +72,7 @@ const normalizedGptLearning = (
       verifiedLearnedSkillIds: uniqueStrings(report.verifiedLearnedSkillIds ?? []),
       missingLearnedSkillIds: uniqueStrings(report.missingLearnedSkillIds ?? []),
       learnedSkillCoverageVerified: report.learnedSkillCoverageVerified === true,
-      heldOutProofVerified: report.heldOutProofVerified === true
-        || isPracticeHeldOutBenchmarkProofIntegrityV1(report),
+      heldOutProofVerified: report.heldOutProofVerified === true,
       retainedTruthSuiteAuthorityVerified: report.retainedTruthSuiteAuthorityVerified === true,
       retainedTruthSuiteEvaluatedAt:
         typeof report.retainedTruthSuiteEvaluatedAt === "string"
@@ -217,27 +142,6 @@ const upsertCapabilityGap = (
   return values.map((value, offset) => offset === index ? normalized : value);
 };
 
-const upsertLearnedSkill = (
-  values: readonly GptLearnedSkillV1[],
-  skill: GptLearnedSkillV1,
-): readonly GptLearnedSkillV1[] => {
-  const normalized = structuredClone(skill);
-  const index = values.findIndex((value) => value.skillId === skill.skillId);
-  if (index < 0) return [...values, {
-    ...normalized,
-    provenSessionIds: uniqueStrings(normalized.provenSessionIds ?? []),
-  }];
-  return values.map((value, offset) => offset === index
-    ? {
-      ...normalized,
-      provenSessionIds: uniqueStrings([
-        ...(value.provenSessionIds ?? []),
-        ...(normalized.provenSessionIds ?? []),
-      ]),
-    }
-    : value);
-};
-
 const upsertMasteryRecord = (
   values: readonly PracticeMasteryRecordV1[],
   record: PracticeMasteryRecordV1,
@@ -246,55 +150,6 @@ const upsertMasteryRecord = (
   const index = values.findIndex((value) => value.sessionId === record.sessionId);
   if (index < 0) return [...values, normalized];
   return values.map((value, offset) => offset === index ? normalized : value);
-};
-
-const evidenceId = (material: unknown): string =>
-  "edit-type-evidence:" + createHash("sha256")
-    .update(JSON.stringify(material))
-    .digest("hex")
-    .slice(0, 24);
-
-const behaviorEvidenceForEpisode = (
-  episode: PracticeEpisodeV1,
-): readonly EditTypeBehaviorEvidenceV1[] => {
-  const output: EditTypeBehaviorEvidenceV1[] = [];
-  for (const attempt of episode.attempts) {
-    const isBest = episode.bestAttempt?.attempt === attempt.attempt;
-    const outcome = attempt.report.passed
-      ? "MASTERED_SUPPORT"
-      : (!episode.mastered && isBest ? "HUMAN_REVIEW" : "FAILED_ATTEMPT");
-    const traces = attempt.decisionTraces.length > 0
-      ? attempt.decisionTraces
-      : [{
-        decisionId: "attempt:" + String(attempt.attempt),
-        cueIds: [] as readonly string[],
-        constructionIds: [] as readonly string[],
-        rationaleCodes: [] as readonly string[],
-        semanticPatches: [] as const,
-      }];
-    for (const trace of traces) {
-      const material = {
-        sessionId: episode.sessionId,
-        attempt: attempt.attempt,
-        decisionId: trace.decisionId,
-        outcome,
-      };
-      output.push({
-        evidenceId: evidenceId(material),
-        sessionId: episode.sessionId,
-        attempt: attempt.attempt,
-        outcome,
-        cueIds: uniqueStrings(trace.cueIds),
-        constructionIds: uniqueStrings(trace.constructionIds),
-        rationaleCodes: uniqueStrings(trace.rationaleCodes),
-        semanticPatches: structuredClone(trace.semanticPatches ?? []),
-        overallSimilarity: attempt.report.overallSimilarity,
-        definingEffectCoverage: attempt.report.definingEffectCoverage,
-        elapsedMs: attempt.elapsedMs,
-      });
-    }
-  }
-  return output;
 };
 export interface CreateEditTypeInputV1 {
   readonly editTypeId: string;
@@ -459,6 +314,7 @@ export class EditTypeRegistryV1 {
   }
 
   recordGptLearningEvent(event: GptLearningEventV1): EditTypeProfileV1 {
+    if (event.stage === "SKILL_COMMIT" || event.learnedSkill) throw new TypeError("Machine skill promotion removed; use directly reviewed worked examples.");
     const profile = this.#profiles.get(event.editTypeId);
     if (profile === undefined) throw new TypeError("Unknown Edit Type: " + event.editTypeId);
     const learning = normalizedGptLearning(profile.gptLearning);
@@ -486,376 +342,11 @@ export class EditTypeRegistryV1 {
         capabilityGaps: event.capabilityGap === undefined
           ? learning.capabilityGaps
           : upsertCapabilityGap(learning.capabilityGaps, event.capabilityGap),
-        learnedSkills: event.learnedSkill === undefined
-          ? learning.learnedSkills
-          : upsertLearnedSkill(
-            learning.learnedSkills,
-            event.stage === "SKILL_COMMIT"
-              ? {
-                ...event.learnedSkill,
-                provenSessionIds: uniqueStrings([
-                  ...(event.learnedSkill.provenSessionIds ?? []),
-                  event.sessionId,
-                ]),
-              }
-              : event.learnedSkill,
-          ),
+        learnedSkills: learning.learnedSkills,
         lastUpdatedAt: event.createdAt,
       },
     };
     this.#profiles.set(event.editTypeId, updated);
-    return structuredClone(updated);
-  }
-
-  completeGptLearningSession(input: {
-    readonly editTypeId: string;
-    readonly sessionId: string;
-    readonly mode: GptOrchestrationModeV1;
-    readonly mastered: boolean;
-    readonly masteryRecord?: PracticeMasteryRecordV1;
-    readonly transferVerifiedSkillIds?: readonly string[];
-    readonly transferSkillUseAttestations?: readonly PracticeSkillUseAttestationV1[];
-  }): EditTypeProfileV1 {
-    const profile = this.#profiles.get(input.editTypeId);
-    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + input.editTypeId);
-    if (input.mastered && input.mode === "PRACTICE" && input.masteryRecord === undefined) {
-      throw new TypeError("GPT Practice mastery requires a machine-verified mastery record.");
-    }
-    if (input.masteryRecord !== undefined && input.masteryRecord.sessionId !== input.sessionId) {
-      throw new TypeError("Practice mastery record session does not match the completed session.");
-    }
-    const learning = normalizedGptLearning(profile.gptLearning);
-    const transferSkillUseAttestations = input.transferSkillUseAttestations ?? [];
-    const malformedTransferAttestations = transferSkillUseAttestations.filter((attestation) =>
-      attestation.verified
-      && (attestation.requiredInvariantCount <= 0
-        || attestation.matchedInvariantCount !== attestation.requiredInvariantCount
-        || attestation.matchedConstructionIds.length === 0
-        || attestation.evidenceRefs.length === 0
-        || attestation.reasons.length > 0));
-    if (malformedTransferAttestations.length > 0) {
-      throw new TypeError(
-        "Transfer verification requires complete machine skill-use attestations with causal invariant, construction, and evidence bindings: "
-          + malformedTransferAttestations.map((item) => item.skillId).join(", "),
-      );
-    }
-    const machineAttestedTransferSkillIds = uniqueStrings(
-      transferSkillUseAttestations
-        .filter((attestation) => attestation.verified)
-        .map((attestation) => attestation.skillId),
-    );
-    const claimedTransferSkillIds = uniqueStrings(input.transferVerifiedSkillIds ?? []);
-    const unattestedTransferClaims = claimedTransferSkillIds.filter((skillId) =>
-      !machineAttestedTransferSkillIds.includes(skillId));
-    if (unattestedTransferClaims.length > 0) {
-      throw new TypeError(
-        "Transfer verification skill claims require machine-attested reconstruction evidence: "
-          + unattestedTransferClaims.join(", "),
-      );
-    }
-    const transferVerifiedSkillIds = uniqueStrings([
-      ...claimedTransferSkillIds,
-      ...machineAttestedTransferSkillIds,
-    ]);
-    if (transferVerifiedSkillIds.length > 0
-      && (input.mode !== "PRACTICE"
-        || !input.mastered
-        || input.masteryRecord?.scope !== "TRANSFER_VERIFIED")) {
-      throw new TypeError(
-        "Learned skills can become TRANSFER_VERIFIED only after a machine-verified transfer Practice completion.",
-      );
-    }
-    const unknownTransferSkills = transferVerifiedSkillIds.filter((skillId) =>
-      !learning.learnedSkills.some((skill) => skill.skillId === skillId));
-    if (unknownTransferSkills.length > 0) {
-      throw new TypeError(
-        "Transfer verification referenced unknown learned skills: " + unknownTransferSkills.join(", "),
-      );
-    }
-    const transferSkills = learning.learnedSkills.filter((skill) =>
-      transferVerifiedSkillIds.includes(skill.skillId));
-    const missingCausalModels = transferSkills
-      .filter((skill) => !hasCausalTransferModel(skill))
-      .map((skill) => skill.skillId);
-    if (missingCausalModels.length > 0) {
-      throw new TypeError(
-        "Transfer verification requires a complete causal transfer model for learned skills: "
-          + missingCausalModels.join(", "),
-      );
-    }
-    const currentMasteryRecord = input.masteryRecord;
-    const missingMaterialTransferProof = currentMasteryRecord === undefined
-      ? transferSkills.map((skill) => skill.skillId)
-      : transferSkills
-        .filter((skill) => !hasMateriallyDifferentSkillProof(
-          skill,
-          learning.masteryRecords,
-          currentMasteryRecord,
-        ))
-        .map((skill) => skill.skillId);
-    if (missingMaterialTransferProof.length > 0) {
-      throw new TypeError(
-        "Transfer verification requires a prior machine-verified AE proof for the same learned skill on materially different Finish and Start footage: "
-          + missingMaterialTransferProof.join(", "),
-      );
-    }
-    const learnedSkills = learning.learnedSkills.map((skill) =>
-      transferVerifiedSkillIds.includes(skill.skillId)
-        ? {
-          ...skill,
-          maturity: "TRANSFER_VERIFIED" as const,
-          provenSessionIds: uniqueStrings([
-            ...(skill.provenSessionIds ?? []),
-            input.sessionId,
-          ]),
-        }
-        : skill);
-    const masteryRecords = input.mode !== "PRACTICE"
-      ? learning.masteryRecords
-      : input.mastered && input.masteryRecord !== undefined
-        ? upsertMasteryRecord(learning.masteryRecords, input.masteryRecord)
-        : learning.masteryRecords.filter((record) => record.sessionId !== input.sessionId);
-    const masteredPracticeSessionIds = uniqueStrings(
-      masteryRecords.map((record) => record.sessionId),
-    );
-    const masteredSessionIds = input.mode === "PRACTICE" && input.mastered
-      ? uniqueStrings([...profile.masteredSessionIds, input.sessionId])
-      : profile.masteredSessionIds;
-    const updated: EditTypeProfileV1 = {
-      ...profile,
-      revision: profile.revision + 1,
-      masteredSessionIds,
-      gptLearning: {
-        ...learning,
-        masteredPracticeSessionIds,
-        masteryRecords,
-        learnedSkills,
-        lastUpdatedAt: new Date().toISOString(),
-      },
-    };
-    this.#profiles.set(input.editTypeId, updated);
-    return structuredClone(updated);
-  }
-
-  recordHeldOutCase(
-    editTypeId: string,
-    item: PracticeHeldOutBenchmarkCaseV1,
-  ): EditTypeProfileV1 {
-    const profile = this.#profiles.get(editTypeId);
-    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + editTypeId);
-    if (item.evidenceRefs.length === 0) {
-      throw new TypeError("Held-out certification requires retained machine evidence, including failed cases.");
-    }
-    const learning = normalizedGptLearning(profile.gptLearning);
-    const itemSourceMediaSha256 = new Set(item.sourceMediaSha256 ?? []);
-    const overlapsSourceMedia = (values: readonly string[] | undefined): boolean =>
-      (values ?? []).some((value) => itemSourceMediaSha256.has(value));
-    const overlapsReferencePerceptually = (value: string | undefined): boolean =>
-      practicePerceptualSignatureMatchesV1(item.referencePerceptualSignature, value);
-    const overlapsSourcePerceptually = (values: readonly string[] | undefined): boolean =>
-      practicePerceptualSetOverlapsV1(item.sourcePerceptualSignatures, values);
-    if (learning.masteryRecords.some((record) =>
-      record.referenceFingerprint === item.referenceFingerprint
-      || record.sourceFingerprint === item.sourceFingerprint
-      || overlapsSourceMedia(record.sourceMediaSha256)
-      || overlapsReferencePerceptually(record.referencePerceptualSignature)
-      || overlapsSourcePerceptually(record.sourcePerceptualSignatures))) {
-      throw new TypeError("Held-out certification material overlaps retained Practice training material.");
-    }
-    const retained = learning.heldOutCases.filter((existing) => existing.sessionId !== item.sessionId);
-    if (retained.some((existing) =>
-      existing.referenceFingerprint === item.referenceFingerprint
-      || existing.sourceFingerprint === item.sourceFingerprint
-      || overlapsSourceMedia(existing.sourceMediaSha256)
-      || overlapsReferencePerceptually(existing.referencePerceptualSignature)
-      || overlapsSourcePerceptually(existing.sourcePerceptualSignatures))) {
-      throw new TypeError("Held-out certification requires novel reference and source fingerprints per case.");
-    }
-    if (retained.length >= 30) {
-      throw new TypeError("Held-out certification already contains the maximum 30 cases.");
-    }
-    const now = new Date().toISOString();
-    const updated: EditTypeProfileV1 = {
-      ...profile,
-      revision: profile.revision + 1,
-      gptLearning: {
-        ...learning,
-        heldOutCases: [...retained, structuredClone(item)],
-        lastUpdatedAt: now,
-      },
-    };
-    this.#profiles.set(editTypeId, updated);
-    return structuredClone(updated);
-  }
-
-  recordHeldOutBenchmark(report: PracticeHeldOutBenchmarkReportV1): EditTypeProfileV1 {
-    const profile = this.#profiles.get(report.editTypeId);
-    if (profile === undefined) throw new TypeError("Unknown Edit Type: " + report.editTypeId);
-    if (report.schema !== "editflow.practice-held-out-benchmark.v1") {
-      throw new TypeError("Unsupported Practice held-out benchmark schema.");
-    }
-    const learning = normalizedGptLearning(profile.gptLearning);
-    if (report.heldOutProofVerified
-      && !isPracticeHeldOutBenchmarkProofIntegrityV1(report)) {
-      throw new TypeError(
-        "Held-out Practice proof claims verification without satisfying its machine integrity gates.",
-      );
-    }
-    if (report.robust && !report.heldOutProofVerified) {
-      throw new TypeError("ROBUST Practice maturity requires verified held-out generalization proof.");
-    }
-    if (report.robust) {
-      if (!report.retainedTruthSuiteAuthorityVerified
-        || report.retainedTruthSuiteEvaluatedAt === null
-        || report.retainedTruthSuiteEvidenceRefs.length === 0) {
-        throw new TypeError(
-          "ROBUST Practice maturity requires a bound retained real-media truth-suite authority.",
-        );
-      }
-      const truthAuthority = learning.retainedTruthSuiteReports.find((item) =>
-        item.evaluatedAt === report.retainedTruthSuiteEvaluatedAt
-        && isPracticeRetainedTruthSuiteCertificationIntegrityV1(item));
-      const latestTruthAuthority = [...learning.retainedTruthSuiteReports]
-        .filter((item) => item.editTypeId === report.editTypeId)
-        .sort((left, right) => right.evaluatedAt.localeCompare(left.evaluatedAt))[0];
-      const authorityRefs = new Set(truthAuthority?.evidenceRefs ?? []);
-      if (truthAuthority === undefined
-        || latestTruthAuthority?.evaluatedAt !== truthAuthority.evaluatedAt
-        || report.retainedTruthSuiteEvidenceRefs.some((ref) => !authorityRefs.has(ref))) {
-        throw new TypeError(
-          "ROBUST Practice maturity truth-suite authority is missing, stale, or does not match retained evidence.",
-        );
-      }
-      const currentEffectFamilyIds = [...uniqueStrings(
-        learning.masteryRecords
-          .filter((record) => record.scope === "TRANSFER_VERIFIED")
-          .flatMap((record) => record.effectFamilyIds),
-      )].sort();
-      const currentLearnedSkillIds = [...uniqueStrings(
-        learning.learnedSkills
-          .filter((skill) => skill.maturity === "TRANSFER_VERIFIED")
-          .map((skill) => skill.skillId),
-      )].sort();
-      const reportEffectFamilyIds = [...uniqueStrings(report.requiredEffectFamilyIds)].sort();
-      const reportLearnedSkillIds = [...uniqueStrings(report.requiredLearnedSkillIds)].sort();
-      if (JSON.stringify(reportEffectFamilyIds) !== JSON.stringify(currentEffectFamilyIds)
-        || JSON.stringify(reportLearnedSkillIds) !== JSON.stringify(currentLearnedSkillIds)) {
-        throw new TypeError(
-          "ROBUST Practice maturity requires a benchmark locked to the current TRANSFER_VERIFIED target set.",
-        );
-      }
-    }
-    if (report.robust && !report.objectAwareVerified) {
-      throw new TypeError("ROBUST Practice maturity requires object-aware verification.");
-    }
-    if (report.robust && report.subjectRelativeDirectionVerified !== true) {
-      throw new TypeError(
-        "ROBUST Practice maturity requires held-out subject-relative direction verification.",
-      );
-    }
-    if (report.robust && report.subjectRelativeDirectionDiversityVerified !== true) {
-      throw new TypeError(
-        "ROBUST Practice maturity requires diverse held-out subject-relative direction verification.",
-      );
-    }
-    if (report.robust && report.subjectContinuityHardCaseVerified !== true) {
-      throw new TypeError(
-        "ROBUST Practice maturity requires repeated held-out hard subject-continuity verification.",
-      );
-    }
-    if (report.robust && report.subjectContinuityChallengeDiversityVerified !== true) {
-      throw new TypeError(
-        "ROBUST Practice maturity requires diverse held-out subject-continuity challenge verification.",
-      );
-    }
-    if (report.robust && report.effectFamilyCoverageVerified !== true) {
-      throw new TypeError(
-        "ROBUST Practice maturity requires held-out coverage for every TRANSFER_VERIFIED effect family.",
-      );
-    }
-    if (report.robust && report.professionalBenchmarkCoverageVerified !== true) {
-      throw new TypeError(
-        "ROBUST Practice maturity requires M6 professional-benchmark authority for every TRANSFER_VERIFIED effect family.",
-      );
-    }
-    const retained = learning.heldOutBenchmarks.filter((item) =>
-      item.evaluatedAt !== report.evaluatedAt);
-    const updated: EditTypeProfileV1 = {
-      ...profile,
-      revision: profile.revision + 1,
-      gptLearning: {
-        ...learning,
-        heldOutBenchmarks: [...retained, structuredClone(report)],
-        lastUpdatedAt: report.evaluatedAt,
-      },
-    };
-    this.#profiles.set(report.editTypeId, updated);
-    return structuredClone(updated);
-  }
-
-  recordRetainedTruthSuite(
-    report: PracticeRetainedTruthSuiteReportV1,
-  ): EditTypeProfileV1 {
-    const profile = this.#profiles.get(report.editTypeId);
-    if (profile === undefined) {
-      throw new TypeError("Unknown Edit Type: " + report.editTypeId);
-    }
-    if (report.schema !== "editflow.practice-retained-truth-suite-report.v1") {
-      throw new TypeError("Unsupported Practice retained truth-suite schema.");
-    }
-    if (report.evidenceRefs.length === 0) {
-      throw new TypeError(
-        "Retained truth-suite evidence is required, including failed scene-match evidence.",
-      );
-    }
-    if (report.certified
-      && !isPracticeRetainedTruthSuiteCertificationIntegrityV1(report)) {
-      throw new TypeError(
-        "Certified Practice truth-suite report does not satisfy fail-closed integrity gates.",
-      );
-    }
-    const learning = normalizedGptLearning(profile.gptLearning);
-    const retained = learning.retainedTruthSuiteReports.filter((item) =>
-      item.evaluatedAt !== report.evaluatedAt);
-    const updated: EditTypeProfileV1 = {
-      ...profile,
-      revision: profile.revision + 1,
-      gptLearning: {
-        ...learning,
-        retainedTruthSuiteReports: [...retained, structuredClone(report)],
-        lastUpdatedAt: report.evaluatedAt,
-      },
-    };
-    this.#profiles.set(report.editTypeId, updated);
-    return structuredClone(updated);
-  }
-
-  allocateEpisode(
-    episode: PracticeEpisodeV1,
-    editTypeId: string,
-  ): EditTypeProfileV1 {
-    const profile = this.#profiles.get(editTypeId);
-    if (profile === undefined) {
-      throw new TypeError("Unknown Edit Type: " + editTypeId);
-    }
-    const retainedEvidence = profile.behaviorEvidence
-      .filter((item) => item.sessionId !== episode.sessionId);
-    const behaviorEvidence = [
-      ...retainedEvidence,
-      ...behaviorEvidenceForEpisode(episode),
-    ];
-    const sessionIds = uniqueStrings([...profile.sessionIds, episode.sessionId]);
-    const masteredSessionIds = episode.mastered
-      ? uniqueStrings([...profile.masteredSessionIds, episode.sessionId])
-      : profile.masteredSessionIds.filter((id) => id !== episode.sessionId);
-    const updated: EditTypeProfileV1 = {
-      ...profile,
-      revision: profile.revision + 1,
-      sessionIds,
-      masteredSessionIds,
-      behaviorEvidence,
-    };
-    this.#profiles.set(editTypeId, updated);
     return structuredClone(updated);
   }
 
@@ -882,8 +373,6 @@ export class EditTypeRegistryV1 {
       editTypeId: profile.editTypeId,
       title: profile.title,
       revision: profile.revision,
-      maturityStage: derivePracticeMaturityStageV1(profile),
-      progressionGate: evaluatePracticeProgressionGateV1(profile),
       knowledgeScope,
       masteredSessionCount: knowledgeScope === "TRANSFER_VERIFIED_ONLY"
         ? gptLearning.masteryRecords.length
@@ -909,41 +398,6 @@ export class EditTypeRegistryV1 {
       profile.behaviorEvidence,
       normalizedGptLearning(profile.gptLearning),
       "ALL_RETAINED",
-    );
-  }
-
-  transferableKnowledge(editTypeId: string): EditTypeKnowledgeSnapshotV1 | null {
-    const profile = this.#profiles.get(editTypeId);
-    if (profile === undefined) return null;
-    const learning = normalizedGptLearning(profile.gptLearning);
-    const transferRecords = learning.masteryRecords
-      .filter((record) => record.scope === "TRANSFER_VERIFIED");
-    if (transferRecords.length === 0) return null;
-    const transferSessionIds = new Set(transferRecords.map((record) => record.sessionId));
-    const behaviorEvidence = profile.behaviorEvidence
-      .filter((item) => transferSessionIds.has(item.sessionId));
-    const transferLearning: EditTypeGptLearningSummaryV1 = {
-      practiceSessionIds: transferRecords.map((record) => record.sessionId),
-      proCreationSessionIds: learning.proCreationSessionIds,
-      masteredPracticeSessionIds: transferRecords.map((record) => record.sessionId),
-      masteryRecords: transferRecords,
-      heldOutCases: learning.heldOutCases,
-      heldOutBenchmarks: learning.heldOutBenchmarks,
-      retainedTruthSuiteReports: learning.retainedTruthSuiteReports,
-      eventCount: learning.eventCount,
-      successLessons: [],
-      failureAvoidanceLessons: [],
-      developmentPatterns: [],
-      capabilityGaps: learning.capabilityGaps.filter((gap) => gap.status !== "RESOLVED"),
-      learnedSkills: learning.learnedSkills
-        .filter((skill) => skill.maturity === "TRANSFER_VERIFIED"),
-      ...(learning.lastUpdatedAt === undefined ? {} : { lastUpdatedAt: learning.lastUpdatedAt }),
-    };
-    return this.#knowledgeSnapshot(
-      profile,
-      behaviorEvidence,
-      transferLearning,
-      "TRANSFER_VERIFIED_ONLY",
     );
   }
 }

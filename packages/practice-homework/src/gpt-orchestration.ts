@@ -2,27 +2,10 @@ import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type {
-  EditTypeKnowledgeSnapshotV1,
-  GptAssignmentCompletionV1,
-  GptAssignmentStatusV1,
-  GptCapabilityGapV1,
-  GptLearnedSkillV1,
-  GptLearningEventV1,
-  GptLearningOutcomeV1,
-  GptLearningStageV1,
-  GptOrchestrationAssignmentV1,
-  GptOrchestrationModeV1,
-  GptResearchSourceV1,
-  PracticeMediaInputV1,
-  PracticePreflightCheckpointV1,
-  PracticeSceneMatchV1,
-  PracticeRunRoleV1,
-  PracticeVerificationPolicyV1,
-} from "./contracts.js";
-import { applyCompiledTutorialCausalModelV1 } from "./tutorial-causal-compiler.js";
+import type { EditTypeKnowledgeSnapshotV1, GptAssignmentCompletionV1, GptAssignmentStatusV1, GptCapabilityGapV1, GptLearnedSkillV1, GptLearningEventV1, GptLearningOutcomeV1, GptLearningStageV1, GptOrchestrationAssignmentV1, GptOrchestrationModeV1, GptResearchSourceV1, PracticeMediaInputV1, PracticePreflightCheckpointV1, PracticeSceneMatchV1, PracticeRunRoleV1, PracticeVerificationPolicyV1 } from "./contracts.js";
+
 import { CLIP_RESEARCH_POLICY_V1 } from "./clip-research.js";
-import { hasVerifiedPracticeSourceIdentityV1 } from "./engine.js";
+import { hasVerifiedPracticeSourceIdentityV1 } from "./source-integrity.js";
 
 const isDirectChatgptRawSelectionV1 = (
   match: PracticeSceneMatchV1,
@@ -132,15 +115,10 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
         const practicePolicy = assignment.mode === "PRACTICE"
           ? normalizePracticeVerificationPolicyV1(assignment.practicePolicy)
           : null;
-        const practiceRole: PracticeRunRoleV1 | null = assignment.mode === "PRACTICE"
-          ? assignment.practiceRole === "HELD_OUT_CERTIFICATION"
-            ? "HELD_OUT_CERTIFICATION"
-            : "LEARNING"
-          : null;
+        const practiceRole: PracticeRunRoleV1 | null = assignment.mode === "PRACTICE" ? "LEARNING" : null;
         const currentMessage = assignment.chatMessage.includes("MANDATORY PER-CLIP RESEARCH GATE V1")
           ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
-        const researchMessage = applyCurrentResearchPriority(currentMessage);
-        const continuityMessage = applyCurrentWorkflowContinuityPolicy(researchMessage, assignment.mode);
+        const continuityMessage = currentMessage;
         const directMatches = (assignment.practiceSceneMatches ?? []).filter((match) => isDirectChatgptRawSelectionV1(match, assignment.start));
         const discardedLegacy = assignment.mode === "PRACTICE"
           && directMatches.length !== (assignment.practiceSceneMatches ?? []).length;
@@ -189,43 +167,6 @@ const sameCapabilityGapIdentity = (
       === JSON.stringify([...unique(right.missingCapabilityIds)].sort());
 };
 
-const hasCompleteCausalModel = (
-  model: GptLearnedSkillV1["causalModel"],
-): boolean => model !== undefined && [
-  model.triggerConditions,
-  model.invariants,
-  model.adaptationAxes,
-  model.failureSignals,
-  model.repairStrategies,
-  model.transferCriteria,
-].every((values) => unique(values ?? []).length > 0);
-
-const hasCausalTransferModel = (skill: GptLearnedSkillV1): boolean =>
-  hasCompleteCausalModel(skill.causalModel);
-
-const hasCompleteMachineUseSignature = (skill: GptLearnedSkillV1): boolean => {
-  const invariants = unique(skill.causalModel?.invariants ?? []);
-  const signature = skill.machineUseSignature;
-  if (invariants.length === 0
-    || signature?.schema !== "editflow.gpt-skill-machine-use-signature.v1"
-    || signature.invariantRules.length === 0) {
-    return false;
-  }
-  const invariantSet = new Set(invariants);
-  if (signature.invariantRules.some((rule) =>
-    !invariantSet.has(rule.invariant.trim())
-    || rule.evidence.length === 0
-    || rule.evidence.some((predicate) => predicate.value.trim().length === 0))) {
-    return false;
-  }
-  const coversEveryInvariant = invariants.every((invariant) =>
-    signature.invariantRules.some((rule) =>
-      rule.invariant.trim() === invariant && rule.evidence.length > 0));
-  const bindsConstructionEvidence = signature.invariantRules.some((rule) =>
-    rule.evidence.some((predicate) => predicate.source === "CONSTRUCTION_ID"));
-  return coversEveryInvariant && bindsConstructionEvidence;
-};
-
 export const EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 =
   "https://drive.google.com/drive/folders/1eP2O7OwoCL1uP3OaA4euewUAZFU-VsL7";
 export const EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 =
@@ -233,13 +174,8 @@ export const EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 =
 export const EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 =
   "https://drive.google.com/drive/folders/19RI8JpZQvmD7R5_4Ub1E_JBodcx7MtGZ";
 
-const LEGACY_RESEARCH_POLICY_LINES = [
-  "- When existing EditFlow knowledge is insufficient or the reference behavior is not understood, online research is required before accepting a fallback: inspect the live Capability Registry and installed Adobe features/plugins, then use Adobe documentation, professional tutorials, and broader web sources as needed.",
-  "- For a missing skill/capability, research the live Capability Registry, installed Adobe features/plugins, Adobe documentation, professional tutorials, and the web when useful.",
-] as const;
-
 const RESEARCH_PRIORITY_LINES = [
-  "- Tutorial Drive is the mandatory first research source before editing EVERY clip in Practice and Pro Creation. Scan raw/reference windows, consult and compile matching tutorials, map the learned tools/method steps to each effect, and commit the durable clip research plan before AE mutations.",
+  "- Tutorial Drive is the mandatory first research source before editing EVERY clip in Practice and Pro Creation. Scan raw/reference windows, consult and directly analyze matching tutorials, map the learned tools/method steps to each effect, and commit the durable clip research plan before AE mutations.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
   "- ChatGPT directly studies the tutorial and chooses its construction, exact settings, invariants, adaptation and troubleshooting. Record those decisions as explicit clip-research SOURCE steps with authority:CHATGPT_DIRECT and reviewed worked examples. Machine tutorial compilation is retired from production.",
@@ -248,153 +184,6 @@ const RESEARCH_PRIORITY_LINES = [
   "- Second priority is official Adobe documentation/resources and the installed Adobe feature/plugin surface.",
   "- Third priority is external professional tutorials and plugin/vendor documentation; broader web/internet research is last.",
 ] as const;
-
-const applyCurrentResearchPriority = (message: string): string => {
-  if (message.includes(RESEARCH_PRIORITY_LINES[4])) return message;
-  if (message.includes(RESEARCH_PRIORITY_LINES[3])) {
-    return message.replace(
-      RESEARCH_PRIORITY_LINES[3],
-      RESEARCH_PRIORITY_LINES[3] + "\n" + RESEARCH_PRIORITY_LINES[4],
-    );
-  }
-  if (message.includes(RESEARCH_PRIORITY_LINES[2])) {
-    return message.replace(
-      RESEARCH_PRIORITY_LINES[2],
-      RESEARCH_PRIORITY_LINES[2] + "\n" + RESEARCH_PRIORITY_LINES[3]
-        + "\n" + RESEARCH_PRIORITY_LINES[4],
-    );
-  }
-  for (const legacyLine of LEGACY_RESEARCH_POLICY_LINES) {
-    if (message.includes(legacyLine)) {
-      return message.replace(legacyLine, RESEARCH_PRIORITY_LINES.join("\n"));
-    }
-  }
-  return message;
-};
-
-const PRIMARY_EDIT_PRODUCTION_SYSTEM_MARKER =
-  "- PRIMARY EDIT PRODUCTION SYSTEM IS MANDATORY:";
-const WORKFLOW_CONTINUITY_POLICY_MARKER =
-  "- PRACTICE CONTINUITY IS MANDATORY:";
-const PRO_CREATION_CONTINUITY_POLICY_MARKER =
-  "- PRO CREATION CONTINUITY IS MANDATORY:";
-
-const LEGACY_WORKFLOW_POLICY_REPLACEMENTS = [
-  [
-    "- M6_IS_TARGETED_SPECIALIST: M6/VisualEffectsBrain may analyze, synthesize, test, and correct specific observed effects/transitions, but it must not become the governing whole-edit reconstruction loop.",
-    "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for dense reference analysis, construction/synthesis, comparison, correction, and fidelity gating.",
-  ],
-  [
-    "- ORIGINAL_M6_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: Follow the original M6 roadmap from scene understanding and reference-effect detection through dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating. GPT supervises continuity and escalation; later systems support this route rather than replacing it.",
-    "- PRIMARY_SYSTEM_GOVERNS_REFERENCE_DRIVEN_WORKFLOW: The primary production system owns scheduling, continuity, batching, checkpoints, and AE execution. Within Practice, invoke the M6 reference-fidelity engine for reference-effect detection, dense evidence, anatomy/DNA, construction/synthesis, real-AE local render, semantic comparison, bounded correction, and fidelity gating.",
-  ],
-  [
-    "- GPT is the orchestrator, creative reasoner, and learner.",
-    "- GPT is the session orchestrator, creative judgment owner, continuity owner, and escalation reasoner inside the primary production system.",
-  ],
-  [
-    "- GPT is the session orchestrator, continuity owner, and escalation reasoner.",
-    "- GPT is the session orchestrator, creative judgment owner, continuity owner, and escalation reasoner inside the primary production system.",
-  ],
-  [
-    "- EditFlow Brain is supporting editing knowledge and capability intelligence, not a replacement for GPT reasoning.",
-    "- M6 Visual Effects Intelligence is an integrated Practice reference-fidelity engine, not a separate whole-edit production controller.",
-  ],
-  [
-    "- The original M6 Visual Effects Intelligence loop is the governing reference-driven effects/transition workflow inside the full reconstruction process. GPT drives and supervises that loop; it does not replace it with a parallel free-form effect workflow.",
-    "- M6 Visual Effects Intelligence is the integrated reference-fidelity engine for difficult Practice effects/transitions, not a separate whole-edit controller.",
-  ],
-  [
-    "- Direct GPT visual judgment of the actual Finish, raw candidates, and rendered result is the creative authority; machine evidence is measurement/support.",
-    "- The professional reference and rendered pixels are the Practice visual authority; machine evidence measures and proves the observed behavior.",
-  ],
-  [
-    "- EditFlow visual analysis is GPT's measurement layer and search accelerator, not an autonomous creative editor.",
-    "- EditFlow visual analysis is the measurement/search layer inside the primary production system.",
-  ],
-  [
-    "- EditFlow visual analysis is the measurement/search layer used by the governing M6 workflow.",
-    "- EditFlow visual analysis is the measurement/search layer inside the primary production system.",
-  ],
-  [
-    "- M6 is the professional effect/transition reconstruction specialist. It receives GPT-observed target behavior and returns/proves constructions; it does not choose the entire edit architecture.",
-    "- M6/Visual Effects Intelligence is an integrated synthesis/correction capability inside the primary production system and never creates a second production workflow.",
-  ],
-] as const;
-
-const applyPrimaryEditProductionSystemPolicy = (
-  message: string,
-  mode: GptOrchestrationModeV1,
-): string => {
-  message = message.replace("- Legacy/current-shadow control endpoint names are compatibility aliases only. They may call the same guarded runtime but must never become a separate legacy production workflow or bypass the active assignment.",
-    "- Direct mutation endpoints and legacy aliases are removed. Submit every edit through production-jobs; inspect/reconcile its receipt instead of falling back to another execution route.");
-  if (message.includes(PRIMARY_EDIT_PRODUCTION_SYSTEM_MARKER)) return message;
-  return [
-    message,
-    "",
-    "Primary edit production system (current):",
-    PRIMARY_EDIT_PRODUCTION_SYSTEM_MARKER
-      + " Practice and Pro Creation use one authoritative production architecture.",
-    "- The authoritative route is durable GPT assignment -> production coordinator/job queue -> single AE writer -> persistent warm CEP batched runtime -> After Effects -> render/readback -> retained evidence.",
-    "- ChatGPT owns creative judgment, ambiguity resolution, and strategy escalation. Deterministic authorized work runs locally in durable batches/jobs; do not recreate the old serial one-chat/one-action production loop.",
-    "- Every production AE mutation during an active Practice or Pro Creation assignment must pass through the guarded production operation path, the mandatory per-clip research gate, and the single-writer lease.",
-    "- Direct mutation endpoints and legacy aliases are removed. Submit every edit through production-jobs; inspect/reconcile its receipt instead of falling back to another execution route.",
-    "- Keep one AE writer. Parallelize only non-mutating analysis, tutorial retrieval, source preparation, comparison, and planning work.",
-    "- Treat ChatGPT conversations as replaceable reasoning workers. Durable assignment state, production heartbeat, checkpoints, job receipts, research plans, and evidence own continuity across chats.",
-    "- Reconcile an interrupted or ambiguous AE write from actual readback/evidence before continuing; never blindly replay a crashed mutation.",
-    "- Tutorial Drive -> Adobe resources -> external professional/vendor sources -> broader web remains the mandatory research order before clip mutation.",
-    "- Production proof scripts, baseline assembly, correction, goals and batches are durable job kinds inside the same worker. Standalone acceptance labs are isolated tests and never production fallback controllers.",
-    mode === "PRACTICE"
-      ? "- ChatGPT directly studies the reference and decides editorial choices and final acceptance."
-      : "- Pro Creation has no Finish answer key: use retained Edit Type lessons and worked examples, the designed editorial target, direct review of actual renders, and the same durable production/execution architecture without inventing reference-only gates.",
-  ].join("\n");
-};
-
-const applyCurrentWorkflowContinuityPolicy = (
-  message: string,
-  mode: GptOrchestrationModeV1,
-): string => {
-  let migrated = applyChatgptFootagePolicyV1(message);
-  for (const [legacy, current] of LEGACY_WORKFLOW_POLICY_REPLACEMENTS) {
-    migrated = migrated.replace(legacy, current);
-  }
-  const legacyPracticeHeading = "\n\nOriginal M6 workflow + continuity policy (current):";
-  const legacyPracticeIndex = migrated.indexOf(legacyPracticeHeading);
-  if (legacyPracticeIndex >= 0) migrated = migrated.slice(0, legacyPracticeIndex);
-  if (mode === "PRO_CREATION") {
-    migrated = applyPrimaryEditProductionSystemPolicy(migrated, mode);
-    if (migrated.includes(PRO_CREATION_CONTINUITY_POLICY_MARKER)) return migrated;
-    return [
-      migrated,
-      "",
-      "Pro Creation continuity policy (current):",
-      PRO_CREATION_CONTINUITY_POLICY_MARKER
-        + " the Pro Creation assignment is the durable unit of work across ChatGPT conversations.",
-      "- Resume the existing PENDING/RUNNING Pro Creation assignment from retained events, jobs, checkpoints, research plans, and current AE state. A new chat never creates a replacement edit run.",
-      "- Read retained Edit Type knowledge and explicitly decide which techniques apply; adapt it to the supplied footage rather than replaying literal values.",
-      "- Build a coherent playable edit early, then render/review and target the largest editorial, pacing, transition, effect, motion, and finish residuals instead of serially perfecting one clip before the rest exists.",
-      "- Preserve correct regions and retained checkpoints. Re-run only work invalidated by a concrete source, construction, or proof dependency change.",
-      "- Infrastructure failure is a pause, not a restart: repair the connection/runtime and continue from retained production state.",
-    ].join("\n");
-  }
-  migrated = applyPrimaryEditProductionSystemPolicy(migrated, mode);
-  if (migrated.includes(WORKFLOW_CONTINUITY_POLICY_MARKER)) return migrated;
-  return [
-    migrated,
-    "",
-    "Practice reference-fidelity policy (current):",
-    WORKFLOW_CONTINUITY_POLICY_MARKER
-      + " the Practice session/assignment is the durable unit of work across ChatGPT conversations.",
-    "- Bootstrap once through GET /v1/product/practice/resume-or-start. If the direct MCP transport fails once and Desktop Commander is online, immediately call the authenticated local product API through Desktop Commander. Do not repeatedly retry the failed MCP route.",
-    "- POST /v1/product/practice/resume-or-start resumes persisted preflight. Inspect assignment.preflight, prepared practiceSceneMatches, reasons and nextOperation. Keep the same assignment; reconstruct in AE only after READY. Heartbeat by claiming with your unique controller ID at least every 60 seconds; release-controller when handing off.",
-    "- A new ChatGPT controller must resume the existing PENDING/RUNNING assignment by reading retained events, artifacts, current AE/EditFlow state, and the latest verified checkpoint. A new chat is never a reason to create a new Practice run.",
-    "- Never redo completed reference analysis, source matching, scene locking, baseline assembly, effect-window work, or full renders unless a concrete input change or retained proof explicitly invalidates that stage.",
-    "- Infrastructure failure is a pause, not a restart: repair Desktop Commander/EditFlow/CEP/AE, verify readiness, then continue the same assignment from its latest checkpoint.",
-    "- The primary production system governs the edit. Within Practice, ChatGPT directly observes and reasons about effects/transitions, supplies exact constructions, reviews real AE renders and decides each correction.",
-    "- Retained Edit Type knowledge, Tutorial Drive learning, exact-source working clips, tracking, roto, masks, subject isolation, retained truth, optical flow, advanced synthesis, and later systems are integrated capabilities inside the primary production system, not alternate workflows.",
-    "- Optimize for completion: reuse the verified source set and content-locked baseline, preserve correct regions, render locally before full-edit rerenders, and advance from retained evidence instead of rebuilding the edit.",
-  ].join("\n");
-};
 
 export const CHATGPT_FOOTAGE_POLICY_V1 = [
   "CHATGPT DIRECT RAW FOOTAGE SELECTION V1",
@@ -405,24 +194,6 @@ export const CHATGPT_FOOTAGE_POLICY_V1 = [
   "Compare at least three distinct Finish/raw moments across every selected shot, including framing, subject identity, pose/action and temporal direction. Retain the comparisons with actual issued inspection evidence IDs; never invent geometric measurements or claim a machine score proves your choice. Materialize only your selected raw ranges with bounded handles before AE assembly.",
   "AWAITING_CHATGPT_SHOTS requires direct footage work now, not polling an algorithm. Keep the same assignment. For effect/transition construction, the separate Tutorial Drive → Adobe → web research order still applies; submit AE actions only through production-jobs and keep AE open.",
 ].join("\n");
-
-const applyChatgptFootagePolicyV1 = (message: string): string => {
-  const cleaned = message.replace(/Preflight-verified source matches \/ AE working clips:\n[\s\S]*?Use the working clip path for AE construction\.[^\n]*/g,
-    "ChatGPT-selected raw shots / AE working clips: read current exact selections from footage-selection; never reuse legacy ranked candidates.")
-    .split("\n").filter((line) => !line.includes("A machine scene score narrows candidates")
-    && !line.includes("strongest raw-source candidates")).join("\n");
-  return cleaned.includes("CHATGPT DIRECT RAW FOOTAGE SELECTION V1") ? cleaned : cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1;
-};
-
-const MASTERY_POLICY_MARKER =
-  "- GPT completion is not Practice mastery.";
-
-const applyCurrentMasteryPolicy = (
-  message: string,
-  policy: PracticeVerificationPolicyV1,
-): string => {
-  return applyCurrentProductionQueuePolicy(message, "PRACTICE");
-};
 
 const isTutorialDriveResearchSource = (source: GptResearchSourceV1 | undefined): boolean =>
   source?.kind === "TUTORIAL_DRIVE"
@@ -442,44 +213,10 @@ const hasStructuredTutorialTechnique = (source: GptResearchSourceV1 | undefined)
   ].every((value) => typeof value === "string" && value.trim().length > 0);
 };
 
-const hasValidTutorialCompilation = (source: GptResearchSourceV1 | undefined): boolean => {
-  const compilation = source?.tutorialCompilation;
-  if (compilation === undefined) return true;
-  return isTutorialDriveResearchSource(source)
-    && hasStructuredTutorialTechnique(source)
-    && compilation.schema === "editflow.gpt-tutorial-causal-compilation.v1"
-    && compilation.compilerVersion === 1
-    && compilation.targetSkillId.trim().length > 0
-    && compilation.tutorialId.trim().length > 0
-    && compilation.tutorialSkillId.trim().length > 0
-    && compilation.sourceRef.trim().length > 0
-    && compilation.analysisFingerprint.trim().length > 0
-    && compilation.constructionPattern.trim().length > 0
-    && compilation.adaptationNotes.trim().length > 0
-    && hasCompleteCausalModel(compilation.causalModel)
-    && unique(compilation.evidenceRefs ?? []).length > 0;
-};
-
 const isTutorialDriveFolderSearch = (source: GptResearchSourceV1 | undefined): boolean =>
   isTutorialDriveResearchSource(source)
   && typeof source?.uri === "string"
   && /^https:\/\/drive\.google\.com\/drive\/folders\//.test(source.uri.trim());
-
-const hasResearchLearningPath = (sources: readonly GptResearchSourceV1[]): boolean =>
-  sources.some((source) =>
-    source.tutorialCompilation !== undefined && hasValidTutorialCompilation(source))
-  || (sources.some(isTutorialDriveFolderSearch)
-    && sources.some((source) => source.kind !== "TUTORIAL_DRIVE" && source.kind !== "INTERNAL_EVIDENCE"));
-
-const hasResearchLearningPathForSkill = (
-  sources: readonly GptResearchSourceV1[],
-  skillId: string,
-): boolean =>
-  sources.some((source) =>
-    source.tutorialCompilation?.targetSkillId === skillId
-    && hasValidTutorialCompilation(source))
-  || (sources.some(isTutorialDriveFolderSearch)
-    && sources.some((source) => source.kind !== "TUTORIAL_DRIVE" && source.kind !== "INTERNAL_EVIDENCE"));
 
 const researchPriority = (source: GptResearchSourceV1): number | null => {
   switch (source.kind) {
@@ -507,9 +244,6 @@ const researchSourcesFollowPriority = (
   }
   return true;
 };
-
-const mediaLine = (input: PracticeMediaInputV1): string =>
-  "- " + input.mediaKind + " " + input.mediaId + ": " + input.uri;
 
 export const buildGptOrchestrationChatMessageV1 = (input: {
   readonly sessionId: string;
@@ -546,12 +280,13 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Directly inspect all reference shots, cut boundaries, effect states, audio relationships and reverse/rewind behavior. Record your blueprint before construction.",
     "All cutting, retiming, effects, transitions and compositing must be constructed in AE from your explicit decisions. Research unfamiliar behavior rather than replacing it with a weaker approximation.",
   ].join("\n");
-  return applyCurrentProductionQueuePolicy(applyCurrentWorkflowContinuityPolicy(message, input.mode), input.mode);
+  return applyCurrentProductionQueuePolicy(message, input.mode);
 };
 
 const EDIT_PRODUCTION_CONTINUITY_MARKER_V1 = "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1";
 const editProductionContinuityAppendixV1 = (mode: GptOrchestrationModeV1) => [
   EDIT_PRODUCTION_CONTINUITY_MARKER_V1,
+  "RETIRED_EDIT_ENGINES_REMOVED_V1",
   "Current exclusive editorial authority:",
   "- ChatGPT directly decides reference duration/cuts, footage, audio arrangement, timing/retiming, framing, effects, transitions, construction, corrections, candidate selection, next steps and final acceptance. Automatic creative analysis, formula pulses, baseline generation, scoring/ranking/pruning, machine certification and local-Qwen creative/UI decisions are retired from production.",
   "- Helpers execute your explicit operations or return requested raw observations. Native tracking/roto/optical flow are allowed only when you explicitly choose the target, method and settings and then review the output; no automatic backend or recipe fallback.",
@@ -569,13 +304,12 @@ const editProductionContinuityAppendixV1 = (mode: GptOrchestrationModeV1) => [
 
 const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrationModeV1): string => {
   const markerAt = message.indexOf(EDIT_PRODUCTION_CONTINUITY_MARKER_V1);
-  const prior = (markerAt < 0 ? message : message.slice(0, markerAt))
-    .replace(/PRACTICE_ACCELERATION_CONTINUITY_V[1-3]\nCurrent Practice execution policy for this resumed assignment:\n(?:- .*?(?:\n|$))*/g, "")
-    .replace(/Pass each phase before emitting work for the next chronological phase\./g, "");
-  // Remove obsolete cached directions, not retained evidence or lessons.
-  const obsolete = /(?:compiler-derived|compiled through|compiler semantics|Certification requires|machine[- ]passing|independently re-analyzes|machine-attested|machine transfer gate|certification thresholds|raw-audio confidence|exact-scene confidence|95% similarity floor|QUALITY_GATES_UNCHANGED|PROGRESSIVE FIDELITY FUNNEL|GPT REVIEW COMPRESSION|GLOBAL RESIDUAL SCHEDULER|ANTI_STAGNATION|BOUNDED SCRATCH SEARCH|scratch candidate funnel|32 coarse|winning commit|strongest alternatives|strongest 3|M6 owns|EditFlow Brain\/M6 owns|invoke the M6 reference-fidelity|GPT completion is not Practice mastery|Pro Creation remains blocked|Use only TRANSFER_VERIFIED|Treat only TRANSFER_VERIFIED|frozen TRANSFER_VERIFIED|must re-prove and re-commit|fresh machine binding proof|Final proof authority is unchanged|Keep its distinct existing completion gates|HUMAN_REVIEW_REQUIRED|reference-scored scratch search|residual-priority correction|same.*proof gate|overall machine|95%|machine evidence measures and proves)/i;
-  const cleaned = prior.split("\n").filter(line => !(line.startsWith("- ") && obsolete.test(line)) && !/^(?:EDIT_PRODUCTION_QUEUE_POLICY_V|Practice certification policy \(current\):|Current authoritative edit production policy:)/.test(line)).join("\n").trimEnd();
-  return cleaned + "\n\n" + editProductionContinuityAppendixV1(mode);
+  const retiredAt = message.search(/\n(?:Primary edit production system|Original M6 workflow|Practice reference-fidelity policy|EDIT_PRODUCTION_QUEUE_POLICY_V[1-4]|PRACTICE_ACCELERATION_CONTINUITY_V)/);
+  const end = Math.min(...[markerAt, retiredAt, message.length].filter(v => v >= 0));
+  const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery/i;
+  const generatedLines = new Set([...CHATGPT_FOOTAGE_POLICY_V1.split("\n"), ...RESEARCH_PRIORITY_LINES]);
+  const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !generatedLines.has(line)).join("\n").trimEnd();
+  return cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1 + "\n\n" + RESEARCH_PRIORITY_LINES.join("\n") + "\n\n" + editProductionContinuityAppendixV1(mode);
 };
 
 export interface GptAppendEventInputV1 {
@@ -688,15 +422,8 @@ export class GptOrchestrationStoreV1 {
       throw new TypeError("GPT Practice assignment requires a Finish reference.");
     }
     if (input.mode === "PRACTICE") assertDirectChatgptRawSelectionsV1(input.practiceSceneMatches ?? [], input.start);
-    const practiceRole: PracticeRunRoleV1 | null = input.mode === "PRACTICE"
-      ? input.practiceRole === "HELD_OUT_CERTIFICATION"
-        ? "HELD_OUT_CERTIFICATION"
-        : "LEARNING"
-      : null;
-    if (practiceRole === "HELD_OUT_CERTIFICATION"
-      && input.knowledge?.knowledgeScope !== "TRANSFER_VERIFIED_ONLY") {
-      throw new TypeError("Held-out Practice certification requires a frozen TRANSFER_VERIFIED_ONLY knowledge snapshot.");
-    }
+    if (input.practiceRole === "HELD_OUT_CERTIFICATION") throw new TypeError("Machine certification roles are retired.");
+    const practiceRole: PracticeRunRoleV1 | null = input.mode === "PRACTICE" ? "LEARNING" : null;
     const assignmentId = "gpt-assignment:" + randomUUID();
     const artifactDir = path.resolve(input.artifactDir);
     const practicePolicy = input.mode === "PRACTICE"
@@ -790,7 +517,7 @@ export class GptOrchestrationStoreV1 {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return '{"assignments":[]}';
         throw error;
       })) as GptOrchestrationStorePayloadV1;
-      const needsRefresh = new Set(raw.assignments.filter(a => !a.chatMessage.includes(EDIT_PRODUCTION_CONTINUITY_MARKER_V1)).map(a => a.assignmentId));
+      const needsRefresh = new Set(raw.assignments.filter(a => a.chatMessage !== payload.assignments.find(current => current.assignmentId === a.assignmentId)?.chatMessage).map(a => a.assignmentId));
       let refreshed = 0;
       const assignments = payload.assignments.map((assignment) => {
         if (!["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)
@@ -941,41 +668,7 @@ export class GptOrchestrationStoreV1 {
       }
       const appliedSkillIds = unique(input.appliedSkillIds ?? []);
       const eventOutcome = input.outcome ?? "NEUTRAL";
-      if (assignment.practiceRole === "HELD_OUT_CERTIFICATION") {
-        const forbiddenStages: readonly GptLearningStageV1[] = [
-          "RESEARCH", "CAPABILITY_IMPLEMENTATION", "CAPABILITY_PROOF", "SKILL_COMMIT", "LESSON",
-        ];
-        if (forbiddenStages.includes(input.stage)) {
-          throw new TypeError("Held-out Practice certification is inference-only and forbids learning/mutation stages.");
-        }
-        if (input.developmentPattern !== undefined
-          || input.reusableLesson !== undefined
-          || input.avoidRepeat !== undefined
-          || input.learnedSkill !== undefined) {
-          throw new TypeError("Held-out Practice certification cannot retain lessons, patterns, or learned skills.");
-        }
-        if (appliedSkillIds.length > 0
-          && input.stage !== "AE_ACTION"
-          && input.stage !== "RESULT") {
-          throw new TypeError(
-            "Held-out appliedSkillIds are allowed only on AE_ACTION or RESULT audit events.",
-          );
-        }
-        if (appliedSkillIds.length > 0
-          && eventOutcome !== "SUCCESS"
-          && eventOutcome !== "IMPROVED") {
-          throw new TypeError(
-            "Held-out appliedSkillIds require SUCCESS or IMPROVED audit outcome.",
-          );
-        }
-        if (appliedSkillIds.length > 0 && unique(input.evidenceRefs ?? []).length === 0) {
-          throw new TypeError(
-            "Held-out appliedSkillIds require retained evidenceRefs tying the skill claim to the case.",
-          );
-        }
-      } else if (appliedSkillIds.length > 0) {
-        throw new TypeError("appliedSkillIds are reserved for held-out Practice certification audits.");
-      }
+      if (input.stage === "SKILL_COMMIT" || input.learnedSkill !== undefined) throw new TypeError("MACHINE_SKILL_PROMOTION_RETIRED: save directly reviewed worked examples in practice-notebook.");
       const sessionEvents = payload.events.filter((event) => event.sessionId === assignment.sessionId);
       let retainedLearnedSkill = input.learnedSkill === undefined
         ? undefined
@@ -998,11 +691,7 @@ export class GptOrchestrationStoreV1 {
           );
         }
         for (const source of input.researchSources) {
-          if (!hasValidTutorialCompilation(source)) {
-            throw new TypeError(
-              "Tutorial causal compilations must be compiler-backed Tutorial Drive records with structured technique, complete causal semantics, and retained analysis evidence.",
-            );
-          }
+          if (source.tutorialCompilation !== undefined) throw new TypeError("Tutorial compiler removed; record your directly analyzed technique.");
           if (isTutorialDriveResearchSource(source)
             && !isTutorialDriveFolderSearch(source)
             && !hasStructuredTutorialTechnique(source)) {
@@ -1010,13 +699,7 @@ export class GptOrchestrationStoreV1 {
               "A matched Tutorial Drive tutorial must retain WHAT, WHEN/WHY, HOW, ACCESS, PROOF, and TRANSFER technique fields before it can support Practice learning.",
             );
           }
-          if (isTutorialDriveResearchSource(source)
-            && !isTutorialDriveFolderSearch(source)
-            && source.tutorialCompilation === undefined) {
-            throw new TypeError(
-              "A matched Tutorial Drive tutorial file must be deep-analyzed and compiled by EditFlow before it can support Practice learning.",
-            );
-          }
+
         }
       }
       if (input.stage === "CAPABILITY_IMPLEMENTATION") {
@@ -1062,85 +745,11 @@ export class GptOrchestrationStoreV1 {
         if (!priorResearch.some(isTutorialDriveResearchSource)) {
           throw new TypeError("CAPABILITY_PROOF requires prior Tutorial Drive research provenance.");
         }
-        if (!hasResearchLearningPath(priorResearch)) {
-          throw new TypeError(
-            "CAPABILITY_PROOF requires either a compiler-backed Tutorial Drive technique record or a retained Tutorial Drive no-match folder search followed by an escalated authoritative source.",
-          );
-        }
         if (!priorImplementation) {
           throw new TypeError(
             "CAPABILITY_PROOF requires a prior CAPABILITY_IMPLEMENTATION event for the same capability gap.",
           );
         }
-      }
-      if (input.stage === "SKILL_COMMIT") {
-        const gap = input.capabilityGap;
-        const research = sessionEvents.filter((event) => event.stage === "RESEARCH")
-          .flatMap((event) => event.researchSources ?? []);
-        if (retainedLearnedSkill !== undefined) {
-          retainedLearnedSkill = applyCompiledTutorialCausalModelV1(
-            retainedLearnedSkill,
-            research,
-          );
-        }
-        const skill = retainedLearnedSkill;
-        if (gap === undefined || skill === undefined) {
-          throw new TypeError("SKILL_COMMIT requires learnedSkill and resolved capabilityGap.");
-        }
-        if (gap.status !== "RESOLVED" || gap.resolutionSkillId !== skill.skillId) {
-          throw new TypeError("SKILL_COMMIT must resolve the gap with the committed skill.");
-        }
-        if (skill.maturity !== "AE_PROVEN") {
-          throw new TypeError(
-            "SKILL_COMMIT requires AE_PROVEN maturity. TRANSFER_VERIFIED is assigned only after a machine-verified transfer Practice completion.",
-          );
-        }
-        if (skill.adaptationNotes === undefined || skill.adaptationNotes.trim().length === 0) {
-          throw new TypeError("SKILL_COMMIT requires explicit transfer/adaptation rules.");
-        }
-        if (!hasCausalTransferModel(skill)) {
-          throw new TypeError(
-            "SKILL_COMMIT requires a complete causal transfer model with triggers, invariants, adaptation axes, failure signals, repair strategies, and transfer criteria.",
-          );
-        }
-        if (!hasCompleteMachineUseSignature(skill)) {
-          throw new TypeError(
-            "SKILL_COMMIT requires a machineUseSignature covering every causal invariant and binding at least one rule to persisted CONSTRUCTION_ID evidence.",
-          );
-        }
-        const gapWasOpened = sessionEvents.some((event) =>
-          event.stage === "CAPABILITY_GAP"
-          && sameCapabilityGapIdentity(event.capabilityGap, gap));
-        const matchingProofEvents = sessionEvents.filter((event) =>
-          event.stage === "CAPABILITY_PROOF"
-          && event.outcome === "SUCCESS"
-          && event.evidenceRefs.length > 0
-          && sameCapabilityGapIdentity(event.capabilityGap, gap));
-        if (!gapWasOpened) {
-          throw new TypeError(
-            "SKILL_COMMIT requires a prior matching CAPABILITY_GAP event.",
-          );
-        }
-        if (!research.some(isTutorialDriveResearchSource)) {
-          throw new TypeError("SKILL_COMMIT requires prior Tutorial Drive research provenance.");
-        }
-        if (!hasResearchLearningPathForSkill(research, skill.skillId)) {
-          throw new TypeError(
-            "SKILL_COMMIT requires compiler-backed Tutorial Drive semantics targeting the committed skill, or a retained Tutorial Drive no-match search followed by an escalated authoritative source.",
-          );
-        }
-        if (matchingProofEvents.length === 0) {
-          throw new TypeError(
-            "SKILL_COMMIT requires a successful CAPABILITY_PROOF bound to the same capability gap.",
-          );
-        }
-        retainedLearnedSkill = {
-          ...skill,
-          evidenceRefs: unique([
-            ...skill.evidenceRefs,
-            ...matchingProofEvents.flatMap((event) => event.evidenceRefs),
-          ]),
-        };
       }
       const event: GptLearningEventV1 = {
         schema: "editflow.gpt-learning-event.v1",

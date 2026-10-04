@@ -32,16 +32,3 @@ test("M5 isolation restore discards only proof-owned unsaved scope and reopens t
   assert.match(source, /original_project_clean/);
   assert.doesNotMatch(source, /\.save\s*\(/);
 });
-
-test("M5 isolation runner preserves one warm AE process and restores in finally", async () => {
-  const source = await read("scripts/windows/run-m5-roto-brush-isolation-roundtrip.ps1");
-  assert.match(source, /requires exactly one already-running After Effects process/);
-  assert.match(source, /\.Responding/);
-  assert.match(source, /run-m5-roto-brush-proof-preflight\.ps1/);
-  assert.match(source, /finally\s*\{/);
-  assert.match(source, /Invoke-AeScript \$RestoreScript/);
-  assert.match(source, /SameAeProcess/);
-  assert.match(source, /baselineAePids/);
-  assert.match(source, /afterAePids/);
-  assert.doesNotMatch(source, /Stop-Process|taskkill|kill_process|CloseMainWindow/);
-});

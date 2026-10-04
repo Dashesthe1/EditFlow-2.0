@@ -30,29 +30,10 @@
         <select id="edit-type">
           <option value="">Choose an Edit Type</option>
         </select>
-        <p class="hint">GPT records Practice successes, failures, and development patterns under this Edit Type automatically.</p>
+        <p class="hint">ChatGPT retains reviewed successes, failures and reproducible steps under this Edit Type.</p>
       </div>
 
-      <div id="practice-role-field" class="field">
-        <label for="practice-role">Practice lifecycle</label>
-        <select id="practice-role">
-          <option value="AUTO">Automatic progression</option>
-          <option value="LEARNING">Force learning / homework</option>
-          <option value="HELD_OUT_CERTIFICATION">Force held-out certification</option>
-        </select>
-        <p id="practice-role-hint" class="hint">Automatic progression learns until transfer verification, then freezes that knowledge and certifies genuinely unseen Finish/Start pairs.</p>
-        <div id="practice-lifecycle-card" class="lifecycle-card" aria-live="polite">
-          <div class="lifecycle-heading">
-            <strong>Proof path</strong>
-            <span id="practice-lifecycle-maturity" class="lifecycle-maturity">UNPROVEN</span>
-          </div>
-          <div id="practice-lifecycle-steps" class="lifecycle-steps"></div>
-          <p id="practice-lifecycle-next" class="hint">Choose an Edit Type to see the next required proof.</p>
-          <button id="practice-recertify-robust" class="text-button lifecycle-action" type="button" hidden>
-            Refresh ROBUST proof
-          </button>
-        </div>
-      </div>
+      <p class="hint">ChatGPT chooses footage, effects and transitions directly, reviews the result, and saves ordered steps and mistakes to avoid in this preset’s Practice notebook.</p>
 
       <div id="finish-field" class="field">
         <label>Finish</label>
@@ -92,10 +73,10 @@
 
     <section id="review-tools" class="review-tools" hidden>
       <div class="activity-heading">
-        <h2>Review best attempt</h2>
+        <h2>Review finished render</h2>
         <button id="open-best-attempt" class="text-button" type="button">Play render</button>
       </div>
-      <p class="hint">Human review is diagnostic feedback only. It cannot override the machine mastery gate.</p>
+      <p class="hint">Human review is diagnostic feedback only. ChatGPT’s retained final render review decides acceptance.</p>
       <form id="human-review-form">
         <div class="review-grid">
           <label>Scene fidelity<select name="sceneFidelity" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>

@@ -1,8 +1,7 @@
 # ChatGPT raw footage selection
 
 Production authority is `CHATGPT_DIRECT`. The old visual/raw-shot matcher and candidate
-ranker are removed from the Practice production path. Historical matcher acceptance
-tests can explicitly use `ISOLATED_LEGACY_TEST`; it is never a production fallback.
+ranker, historical matcher tests and lab overrides have been physically removed.
 Practice chat sessions have exactly one available selection method: `CHATGPT_DIRECT`.
 Assignment creation and preflight writes reject legacy/machine choices, even when
 their source confidence or geometric scores are high. Retained assignment reads
@@ -12,7 +11,7 @@ Clip research and resumed plans must bind to the current direct GPT selection;
 matching a historical machine choice's time range does not restore its authority.
 Media helpers only read metadata, decode timestamps requested by GPT, label/cache
 pixels, retain GPT decisions, and extract GPT-selected working ranges. Uniform media
-identity hashes protect duplicate/held-out checks and never select shots.
+identity hashes bind inspections and decisions to unchanged input files; they never select shots.
 
 For footage discovery, primarily use internet research: film/episode identity,
 distinctive dialogue, scripts, transcripts, chapters, scene descriptions and sequence

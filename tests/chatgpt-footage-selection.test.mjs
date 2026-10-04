@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { LocalPracticeMediaMatcherV1, GptOrchestrationStoreV1, hasVerifiedPracticeSourceIdentityV1 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
+import { ChatgptFootageBrowserV1, GptOrchestrationStoreV1, hasVerifiedPracticeSourceIdentityV1 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 
@@ -32,9 +32,9 @@ async function fixture(t) {
   const raw = { mediaId: "raw", role: "START_SOURCE", mediaKind: "VIDEO", uri: path.join(root, "raw.mp4") };
   await writeFile(finish.uri, "reference fixture"); await writeFile(raw.uri, "raw fixture");
   const config = { artifactDir: path.join(root, "artifacts"), analysisCacheDir: path.join(root, "cache"),
-    scriptPath: referenceScript, python: { executable: process.execPath, prefixArgs: [] }, ffmpegPath: process.execPath };
-  const matcher = new LocalPracticeMediaMatcherV1(config);
-  const initial = await matcher.analyzeFinish(finish), sourceIndex = await matcher.indexStart([raw]);
+    scriptPath: path.join(root, "chatgpt-footage-browser.py"), python: { executable: process.execPath, prefixArgs: [] }, ffmpegPath: process.execPath };
+  const matcher = new ChatgptFootageBrowserV1(config);
+  const initial = await matcher.readReference(finish), sourceIndex = await matcher.indexProvidedMedia([raw]);
   assert.deepEqual(initial.shots, []);
   const refPixels = await matcher.inspectFootage(finish, [0, 400, 900]);
   const reference = await matcher.defineReference(finish, {authority:"CHATGPT_DIRECT",durationMs:1000,rationale:"Observed a single shot",shots:[{shotId:"shot:1",order:0,referenceStartMs:0,referenceEndMs:1000,observation:"Single continuous action",inspections:[{evidenceId:refPixels.evidenceId,timeMs:400}]}]});
@@ -51,25 +51,25 @@ async function fixture(t) {
 
 test("production defaults to GPT choices, never runs index/ranking, and resumes exact retained selections", async (t) => {
   const f = await fixture(t);
-  assert.deepEqual(await f.matcher.matchScenes({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 }), []);
+  assert.deepEqual(await f.matcher.prepareSelectedFootage({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 }), []);
   await f.matcher.selectFootage(f.input);
-  const matches = await f.matcher.matchScenes({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 });
+  const matches = await f.matcher.prepareSelectedFootage({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 });
   assert.equal(matches.length, 1); assert.equal(matches[0].selectionMode, "CHATGPT_DIRECT");
   assert.equal(matches[0].sourceStartMs, 2000); assert.equal(matches[0].geometricProof, undefined);
   assert.ok(hasVerifiedPracticeSourceIdentityV1(matches[0]));
-  const resumed = new LocalPracticeMediaMatcherV1({ ...f.config, analysisCacheDir: path.join(f.root, "other-cache") });
-  const ref = await resumed.analyzeFinish(f.finish), index = await resumed.indexStart([f.raw]);
+  const resumed = new ChatgptFootageBrowserV1({ ...f.config, analysisCacheDir: path.join(f.root, "other-cache") });
+  const ref = await resumed.readReference(f.finish), index = await resumed.indexProvidedMedia([f.raw]);
   assert.equal(index.indexId, f.sourceIndex.indexId);
-  assert.deepEqual(await resumed.matchScenes({ reference: ref, sourceIndex: index, minimumConfidence: .95 }), matches);
+  assert.deepEqual(await resumed.prepareSelectedFootage({ reference: ref, sourceIndex: index, minimumConfidence: .95 }), matches);
   assert.doesNotMatch(await readFile(f.counter, "utf8"), /^(reference|index|match|audio-match)$/m);
   const audio = { mediaId: "song", role: "START_SOURCE", mediaKind: "AUDIO", uri: path.join(f.root, "song.mp3") };
   await writeFile(audio.uri, "raw audio");
-  const withAudio = await resumed.indexStart([f.raw, audio]);
+  const withAudio = await resumed.indexProvidedMedia([f.raw, audio]);
   assert.equal(withAudio.indexId, index.indexId, "raw song does not invalidate visual decisions");
-  assert.equal((await resumed.matchScenes({ reference: ref, sourceIndex: withAudio, minimumConfidence: .95 })).length, 1);
+  assert.equal((await resumed.prepareSelectedFootage({ reference: ref, sourceIndex: withAudio, minimumConfidence: .95 })).length, 1);
   assert.equal((await resumed.footageSearchState(withAudio)).searchHistory.length, 1);
   await writeFile(f.rawPixels.frames[0].path, "changed retained pixels");
-  await assert.rejects(resumed.matchScenes({ reference: ref, sourceIndex: withAudio, minimumConfidence: .95 }), /real retained pixels/);
+  await assert.rejects(resumed.prepareSelectedFootage({ reference: ref, sourceIndex: withAudio, minimumConfidence: .95 }), /real retained pixels/);
 });
 
 test("GPT selection rejects forged evidence, missing web research, unknown raw IDs and changed pixels/media", async (t) => {
@@ -91,7 +91,7 @@ test("subthreshold decisions survive correction and browsing caches repeated req
   const f = await fixture(t);
   const input = structuredClone(f.input); input.selections[0].confidence = .7;
   await f.matcher.selectFootage(input);
-  assert.deepEqual(await f.matcher.matchScenes({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 }), []);
+  assert.deepEqual(await f.matcher.prepareSelectedFootage({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 }), []);
   const packet = JSON.parse(await readFile(path.join(f.config.artifactDir, "chatgpt-selections.json"), "utf8"));
   assert.equal(packet.matches.length, 1);
   assert.equal((await f.matcher.footageSearchState(f.sourceIndex)).retainedDecisions[0].confidence, .7);
@@ -99,11 +99,11 @@ test("subthreshold decisions survive correction and browsing caches repeated req
   await f.matcher.inspectFootage(f.raw, [2000, 2400, 2900]);
   assert.equal(await readFile(f.counter, "utf8"), before);
   await f.matcher.selectFootage(f.input);
-  assert.equal((await f.matcher.matchScenes({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 })).length, 1);
+  assert.equal((await f.matcher.prepareSelectedFootage({ reference: f.reference, sourceIndex: f.sourceIndex, minimumConfidence: .95 })).length, 1);
 });
 
 test("concurrent browser requests share one decode receipt across matcher instances", async (t) => {
-  const f = await fixture(t), peer = new LocalPracticeMediaMatcherV1(f.config);
+  const f = await fixture(t), peer = new ChatgptFootageBrowserV1(f.config);
   const before = (await readFile(f.counter, "utf8")).split("\n").filter(line => line === "browse").length;
   const [first, second] = await Promise.all([f.matcher.inspectFootage(f.raw, [4000, 4500]), peer.inspectFootage(f.raw, [4000, 4500])]);
   assert.deepEqual(first, second);
@@ -149,7 +149,7 @@ test("Practice writes reject every alternate selection method and direct labels 
     [{ ...direct, sourceId: f.finish.mediaId }]), /CHATGPT_DIRECT_REQUIRED/);
   await assert.rejects(store.updatePreflight(assignment.assignmentId, preflight, [direct, direct]), /CHATGPT_DIRECT_REQUIRED/);
   assert.deepEqual((await store.getAssignment(assignment.assignmentId)).practiceSceneMatches, [direct]);
-  assert.throws(() => new LocalPracticeMediaMatcherV1({ ...f.config, shotSelectionAuthority: "AUTOMATIC" }), /Unsupported/);
+  assert.throws(() => new ChatgptFootageBrowserV1({ ...f.config, shotSelectionAuthority: "AUTOMATIC" }), /Unsupported/);
 });
 
 test("terminal assignment reads expose no legacy choices while preserving history on disk", async (t) => {
@@ -181,14 +181,14 @@ test("Practice chat jobs cannot bypass direct selection through missing checkpoi
     editTypeRegistryFilePath: path.join(f.root, "types.json"), gptOrchestrationFilePath: store.filePath });
   await service.start();
   t.after(async () => { await service.stop(); await broker.stop(); });
-  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
   const headers = { "Content-Type": "application/json", "X-EditFlow-Token": token };
   const endpoint = `http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production-jobs`;
   const enqueue = async () => {
     const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ kind: "AE_BATCH", payload: {
       intents: [], researchContext: { assignmentId: assignment.assignmentId, claimedBy: "controller", plans: [] } } }) });
     assert.equal(response.status, 409);
-    assert.match((await response.json()).error, /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+    assert.match((await response.json()).error, /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
     assert.deepEqual((await (await fetch(endpoint, { headers })).json()).jobs, []);
   };
   await enqueue();
@@ -201,10 +201,10 @@ test("Practice chat jobs cannot bypass direct selection through missing checkpoi
       preflight: { ...checkpoint, totalShotIds: shots } };
     await writeFile(store.filePath, JSON.stringify(persisted));
   };
-  await writeState([]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+  await writeState([]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
   await writeState([direct], ["shot:1", "shot:2"]);
-  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
-  await writeState([direct, direct]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
-  await writeState([{ ...direct, confidence: .7 }]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Failed to open/gi);
+  await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
+  await writeState([direct, direct]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
+  await writeState([{ ...direct, confidence: .7 }]); await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
   await writeState([direct]); await assert.rejects(service.assertPracticeReconstructionReady());
 });

@@ -92,36 +92,6 @@ const runGate = (repo, cache, request, action, result = null) => {
   return JSON.parse(run.stdout.trim());
 };
 
-test("standalone gate records, reuses, invalidates, and bypasses on acceptance", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "editflow-proof-gate-"));
-  await mkdir(path.join(root, "scripts", "windows"), { recursive: true });
-  await mkdir(path.join(root, "packages", "demo"), { recursive: true });
-  const proof = path.join(root, "scripts", "windows", "run-demo.ps1");
-  const dep = path.join(root, "packages", "demo", "source.ts");
-  const request = path.join(root, "request.json");
-  const result = path.join(root, "result.json");
-  const cache = path.join(root, "cache");
-  await writeFile(proof, "Write-Output demo\n");
-  await writeFile(dep, "export const value = 1;\n");
-  await writeFile(result, JSON.stringify({ classification: "PASS", ok: true }));
-  const baseRequest = {
-    proofId: "M5_GATE_DEMO", proofScript: "scripts/windows/run-demo.ps1", lifecycle: "REUSE_AE",
-    artifactDir: "proofs/artifacts/demo", timeoutSeconds: 30, proofStrategy: "INCREMENTAL_FIRST",
-    incrementalDependencies: ["packages/demo"], incrementalNodeId: "M5_GATE_DEMO:delta",
-    checkpointKey: "seeded", allowEvidenceReuse: true,
-  };
-  await writeFile(request, JSON.stringify(baseRequest));
-  assert.equal(runGate(root, cache, request, "plan").action, "RUN_DELTA");
-  assert.equal(runGate(root, cache, request, "record", result).action, "RECORDED_PASS");
-  assert.equal(runGate(root, cache, request, "plan").action, "REUSE_PASS");
-
-  await writeFile(dep, "export const value = 2;\n");
-  assert.equal(runGate(root, cache, request, "plan").action, "RUN_DELTA");
-
-  await writeFile(request, JSON.stringify({ ...baseRequest, proofStrategy: "FULL_ACCEPTANCE" }));
-  assert.equal(runGate(root, cache, request, "plan").action, "RUN_FULL");
-});
-
 test("AE harness makes incremental-first the canonical milestone entry path", async () => {
   const schema = JSON.parse(await readFile(new URL("../spec/ae-development-proof-request.schema.json", import.meta.url), "utf8"));
   assert.equal(schema.properties.proofStrategy.default, "INCREMENTAL_FIRST");

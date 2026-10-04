@@ -1134,8 +1134,8 @@ export interface EditTypeKnowledgeSnapshotV1 {
   readonly editTypeId: string;
   readonly title: string;
   readonly revision: number;
-  readonly maturityStage: PracticeMaturityStageV1 | null;
-  readonly progressionGate: PracticeProgressionGateV1;
+  readonly maturityStage?: PracticeMaturityStageV1 | null;
+  readonly progressionGate?: PracticeProgressionGateV1;
   readonly knowledgeScope: EditTypeKnowledgeScopeV1;
   readonly masteredSessionCount: number;
   readonly referenceVerifiedPracticeSessionCount: number;

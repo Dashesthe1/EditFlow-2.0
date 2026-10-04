@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+
+
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
@@ -10,12 +10,10 @@ import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopbac
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 import { RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "../.tmp/runtime/apps/desktop-host/src/production-authority.js";
 import { resolvePracticeStatePathsV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-state-paths.js";
-import { EditGptStabilizationVisualDriverV1 } from "../.tmp/runtime/packages/adapters/ae-cep/src/m4-editgpt-stabilization-visual-driver.js";
 import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
 process.env.EDITFLOW_EDIT_DECISION_AUTHORITY = "CHATGPT_DIRECT";
-process.env.EDITFLOW_ISOLATED_LEGACY_TEST = "0";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -39,30 +37,6 @@ const activePanel = broker.panelSession ?? panel;
 const stabilizationProtocolAvailable =
   Array.isArray(activePanel?.supportedProtocolVersions)
   && activePanel.supportedProtocolVersions.includes("2.3.0");
-const stabilizationPython = process.env.EDITGPT_PYTHON
-  ?? path.join(process.env.USERPROFILE ?? repoRoot, "editgpt", ".venv", "Scripts", "python.exe");
-const stabilizationScript = path.join(
-  repoRoot,
-  "packages",
-  "adapters",
-  "ae-cep",
-  "runtime",
-  "editgpt_stabilization_visual_driver.py",
-);
-const stabilizationVisualDriver =
-  false // Local Qwen UI decisions are retired from production; GPT chooses exact native plans.
-  && stabilizationProtocolAvailable
-  && existsSync(stabilizationPython)
-  && existsSync(stabilizationScript)
-    ? new EditGptStabilizationVisualDriverV1({
-        executablePath: stabilizationPython,
-        scriptPath: stabilizationScript,
-        workingDirectory: repoRoot,
-        evidenceDirectory: path.join(repoRoot, ".tmp", "current-shadow", "stabilization-visual"),
-        timeoutMs: 120_000,
-        analysisWindowSeconds: 5,
-      })
-    : null;
 const localAppData = process.env.LOCALAPPDATA ?? path.join(process.env.USERPROFILE ?? repoRoot, "AppData", "Local");
 const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json");
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
@@ -87,7 +61,7 @@ const practicePanel = new PracticePanelServerV1({
   broker,
   ...(process.env.EDITFLOW_FFMPEG_PATH ? { ffmpegPath: process.env.EDITFLOW_FFMPEG_PATH } : {}),
   renderTimeoutMs: Number(process.env.EDITFLOW_PRACTICE_TIMEOUT_MS ?? 180_000),
-  stabilization: { protocolV23Available: stabilizationProtocolAvailable, visualDriver: stabilizationVisualDriver },
+  stabilization: { protocolV23Available: stabilizationProtocolAvailable, visualDriver: null },
 });
 await practicePanel.start();
 
@@ -159,7 +133,7 @@ const statusPayload = () => ({
   automaticEffectSelection: "REMOVED_FROM_PRODUCTION",
   automaticCandidateRanking: "REMOVED_FROM_PRODUCTION",
   finalReviewAuthority: "CHATGPT_DIRECT",
-  localQwenUiDecisions: "DISABLED_IN_PRODUCTION",
+  localQwenUiDecisions: "REMOVED",
   panel: broker.panelSession ?? panel,
   practiceService: {
     integrated: true,

@@ -11,9 +11,9 @@ test("production coordinator builds whole-edit coverage before deep phase proof"
   const coordinator = new PracticeProductionCoordinatorV1("practice:fast", ["shot:1", "shot:2"]);
   coordinator.lockSource("shot:1", "lock:1");
   coordinator.lockSource("shot:2", "lock:2");
-  assert.equal(coordinator.nextAction().kind, "BUILD_WHOLE_EDIT_COVERAGE");
+  assert.equal(coordinator.snapshot().wholeEditCovered, false);
   coordinator.markWholeEditCovered(10);
-  assert.equal(coordinator.nextAction().kind, "RESEARCH_PHASE");
+  assert.equal(coordinator.snapshot().wholeEditCovered, true);
 });
 
 test("whole-edit proof supplies second pass to all provisional phases", () => {
@@ -27,7 +27,7 @@ test("whole-edit proof supplies second pass to all provisional phases", () => {
     coordinator.markConstructed(id, 2);
     coordinator.markLocalProof(id, true, 0.96);
   }
-  assert.equal(coordinator.nextAction().kind, "RUN_WHOLE_EDIT_PROOF");
+  assert.ok(coordinator.snapshot().phases.every(p => p.state === "PROVISIONAL_PASS"));
   coordinator.confirmProvisionalFromWholeEdit(["shot:1", "shot:2"]);
   const snapshot = coordinator.snapshot();
   assert.ok(snapshot.phases.every((phase) => phase.state === "PROVEN"));
@@ -124,7 +124,7 @@ test("failed proof and reconstruction demote a previously proven phase", () => {
   c.markConstructed("a", 2); c.markLocalProof("a", true, .97); c.markLocalProof("a", true, .97);
   c.markLocalProof("a", false, .5);
   assert.equal(c.snapshot().phases[0].state, "CONSTRUCTED");
-  assert.equal(c.nextAction().kind, "RUN_LOCAL_PROOF");
+  assert.equal(typeof c.nextAction, "undefined");
   c.markLocalProof("a", true, .97); c.markLocalProof("a", true, .97);
   c.markConstructed("a", 3);
   assert.equal(c.snapshot().phases[0].state, "CONSTRUCTED");
@@ -149,7 +149,7 @@ test("a repeated render cannot count twice; a new candidate starts a new proof s
 
 test("empty or unproven work never reports completion", () => {
   const c = new PracticeProductionCoordinatorV1("empty", []);
-  assert.equal(c.nextAction().kind, "WAIT_FOR_PHASES");
+  assert.deepEqual(c.snapshot().phases, []);
   assert.throws(() => c.markWholeEditCovered(), /every retained phase/);
   assert.throws(() => c.markCertified(), /cannot bypass/);
 });

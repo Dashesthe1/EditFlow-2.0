@@ -64,20 +64,3 @@ test("ExtendScript preflight is read-only and evaluates file, item, dirty, and r
   assert.doesNotMatch(source, /EditFlow2_dispatch\s*\(/);
   assert.doesNotMatch(source, /evalFile\s*\(/);
 });
-
-test("Windows preflight reuses one responsive AE process and cannot restart, close, clean, or load protocol 2.6", async () => {
-  const source = await readFile(new URL("../scripts/windows/run-m5-roto-brush-proof-preflight.ps1", import.meta.url), "utf8");
-  assert.match(source, /Get-Process -Name "AfterFX"/);
-  assert.match(source, /\$Running\.Count -ne 1/);
-  assert.match(source, /Responding/);
-  assert.match(source, /productionRequest|production-job-client|EDITFLOW_WORKER_PROOF_URL/);
-  assert.match(source, /dispatchTransport = "WARM_CEP"/);
-  assert.doesNotMatch(source, /-ArgumentList @\("-r", \$PreflightScript\)/);
-  assert.match(source, /Start-Sleep -Milliseconds 100/);
-  assert.match(source, /Protocol 2\.6 host loading and interactive proof actions are blocked/);
-  assert.doesNotMatch(source, /Stop-Process/);
-  assert.doesNotMatch(source, /CloseMainWindow/);
-  assert.doesNotMatch(source, /app\.newProject/);
-  assert.doesNotMatch(source, /editflow_host_current_v26/);
-  assert.doesNotMatch(source, /editflow_host_m5_roto_brush/);
-});

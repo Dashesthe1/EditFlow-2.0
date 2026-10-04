@@ -24,15 +24,26 @@ The product must let ChatGPT:
 - prove the final result structurally and visually;
 - preserve reusable Learning, Training, and Experience Memory.
 
-## Core architecture
+## Production architecture
 
-1. **Scene Understanding Graph** — what exists in the footage, where it is, how it moves, and how it occludes other objects.
-2. **Edit Memory / Recipe Graph** — what a professional technique requires and how it is constructed.
-3. **AE Capability Graph** — what the installed After Effects environment can actually do right now.
-4. **Edit Compiler / Planner** — maps recipe + scene + capabilities into an exact execution plan.
-5. **Transactional Adobe Executor** — validates, executes, reads back, previews, verifies, and rolls back.
+Practice and Pro Creation use one durable production queue. ChatGPT directly inspects
+provided footage, chooses exact ranges, cuts, audio, effects, transitions, property values
+and corrections, and reviews the actual final AE render. Native adapters execute explicit
+operations with revision checks, readback, rollback and retained receipts.
 
-Cross-cutting systems provide dynamic plugin discovery, subsystem adapters, UI fallback, proof infrastructure, project-state safety, and production orchestration.
+The old footage matcher/ranker, Editor Brain, M6 synthesis/correction/fidelity engines,
+tutorial/recipe compilers, formula curve generators, automatic tracking repair and local
+Qwen visual drivers have been deleted with their launchers and certification controls.
+Historical evidence and preset learning data remain readable, with no executable fallback.
+The selected preset notebook retains worked and failed examples, ordered settings, reasons,
+checks and mistakes to avoid. See [current policy](docs/chatgpt-editorial-authority.md).
+
+`globalOperation:true` declares a deliberate broad change after whole-edit coverage.
+Without it, an AE mutation may affect at most max(3, ceil(clip phases × 25%)) declared
+phases. This protects completed work; ChatGPT still chooses when a global change is needed.
+
+`npm run build:test-runtime` clears emitted JavaScript before compiling, so retired code
+cannot remain available through a stale build.
 
 ## Human-parity completion rule
 
@@ -60,18 +71,7 @@ All M# development testing uses the Incremental Proof Engine through `scripts/wi
 
 ## Current phase
 
-**M6 — Professional Effects & Transitions Intelligence: implementation foundation active on the retained M5 stack.**
-
-The M6 visual-intelligence package now implements dense frame evidence, action-to-pixel
-causal learning, Effect Anatomy/Transition DNA, construction graphs, semantic fidelity
-comparison, anti-simplification, bounded correction, unknown-effect synthesis, the
-24-case professional benchmark contract, and normal Editor Brain routing. This is a
-structural implementation claim, not a rendered professional-fidelity claim. Real-AE
-reconstruction, A/B, correction, held-out, and transfer evidence must pass before M6 is
-promoted. See `docs/M6_PROFESSIONAL_EFFECTS_INTELLIGENCE_CONTRACT.md`.
-
-**M5 — Interactive AE Adapters: in progress.** Its retained work remains active wherever
-M6 construction exposes a capability gap.
+**ChatGPT direct editorial authority is the current production workflow.**
 
 M4 — Tracking & Isolation is accepted. Commit `a55c0ac` closes the M4 exit gate with bounded live-AE isolation, evidence-backed semantic attachment, visible drift repair/resume, transfer across materially different retained SAM 3.1 fixtures, warm-process reuse, and exact project-baseline restoration.
 

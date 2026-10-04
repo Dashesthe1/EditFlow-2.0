@@ -1,84 +1,22 @@
+import { assertExplicitEditorialPayloadV1 } from "./explicit-editorial-payload.js";
 import { randomUUID } from "node:crypto";
-import type {
-  ExecutionPlanOperation,
-  ObservedProjectState,
-} from "../../../core-contracts/src/index.js";
+import type { ExecutionPlanOperation, ObservedProjectState } from "../../../core-contracts/src/index.js";
 import type { AsyncTransactionalHost } from "../../../executor/src/async.js";
 import type { HostApplyResult } from "../../../executor/src/index.js";
-import {
-  AeCepAdapterClientV11,
-  AeFilesystemPolicyV11,
-  capabilityForCommandV11,
-} from "./v1_1.js";
-import {
-  AE_ADAPTER_ROUTE_ID_V11,
-  isAePublicCommandV11,
-  type AeAdapterTransportV11,
-} from "./protocol-v1_1.js";
-import {
-  AE_MASK_ROUTE_ID_V12,
-  capabilityForMaskCommandV12,
-  isAeMaskCommandV12,
-  type AeMaskTransportV12,
-} from "./protocol-v1_2.js";
-import {
-  AE_COMPOSITE_ROUTE_ID_V13,
-  capabilityForCompositeCommandV13,
-  isAeCompositeCommandV13,
-  type AeCompositeTransportV13,
-} from "./protocol-v1_3.js";
-import {
-  AE_LAYER_CONTROLS_ROUTE_ID_V16,
-  capabilityForLayerControlsCommandV16,
-  isAeLayerControlsCommandV16,
-  type AeLayerControlsTransportV16,
-} from "./protocol-v1_6.js";
+import { AeCepAdapterClientV11, AeFilesystemPolicyV11, capabilityForCommandV11 } from "./v1_1.js";
+import { AE_ADAPTER_ROUTE_ID_V11, isAePublicCommandV11, type AeAdapterTransportV11 } from "./protocol-v1_1.js";
+import { AE_MASK_ROUTE_ID_V12, capabilityForMaskCommandV12, isAeMaskCommandV12, type AeMaskTransportV12 } from "./protocol-v1_2.js";
+import { AE_COMPOSITE_ROUTE_ID_V13, capabilityForCompositeCommandV13, isAeCompositeCommandV13, type AeCompositeTransportV13 } from "./protocol-v1_3.js";
+import { AE_LAYER_CONTROLS_ROUTE_ID_V16, capabilityForLayerControlsCommandV16, isAeLayerControlsCommandV16, type AeLayerControlsTransportV16 } from "./protocol-v1_6.js";
 import { buildLayerControlsRequestV16 } from "./m3-layer-controls.js";
-import {
-  AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17,
-  capabilityForTemporalInterpolationCommandV17,
-  isAeTemporalInterpolationCommandV17,
-  type AeTemporalInterpolationTransportV17,
-} from "./protocol-v1_7.js";
-import {
-  AE_TEMPORAL_EASE_ROUTE_ID_V18,
-  capabilityForTemporalEaseCommandV18,
-  isAeTemporalEaseCommandV18,
-  type AeTemporalEaseTransportV18,
-} from "./protocol-v1_8.js";
-import {
-  AE_SPATIAL_GRAPH_ROUTE_ID_V19,
-  capabilityForSpatialGraphCommandV19,
-  isAeSpatialGraphCommandV19,
-  type AeSpatialGraphTransportV19,
-} from "./protocol-v1_9.js";
-import {
-  AE_MARKER_MOTION_ROUTE_ID_V20,
-  capabilityForMarkerMotionCommandV20,
-  isAeMarkerMotionCommandV20,
-  type AeMarkerMotionTransportV20,
-} from "./protocol-v2_0.js";
-import {
-  AE_MEDIA_SEQUENCE_PROTOCOL_VERSION_V25,
-  AE_MEDIA_SEQUENCE_ROUTE_ID_V25,
-  capabilityForMediaSequenceCommandV25,
-  isAeMediaSequenceCommandV25,
-  type AeMediaSequenceTransportV25,
-} from "./protocol-v2_5.js";
-import {
-  AE_TIME_REMAP_ROUTE_ID_V27,
-  capabilityForTimeRemapCommandV27,
-  isAeTimeRemapCommandV27,
-  type AeTimeRemapTransportV27,
-} from "./protocol-v2_7.js";
+import { AE_TEMPORAL_INTERPOLATION_ROUTE_ID_V17, capabilityForTemporalInterpolationCommandV17, isAeTemporalInterpolationCommandV17, type AeTemporalInterpolationTransportV17 } from "./protocol-v1_7.js";
+import { AE_TEMPORAL_EASE_ROUTE_ID_V18, capabilityForTemporalEaseCommandV18, isAeTemporalEaseCommandV18, type AeTemporalEaseTransportV18 } from "./protocol-v1_8.js";
+import { AE_SPATIAL_GRAPH_ROUTE_ID_V19, capabilityForSpatialGraphCommandV19, isAeSpatialGraphCommandV19, type AeSpatialGraphTransportV19 } from "./protocol-v1_9.js";
+import { AE_MARKER_MOTION_ROUTE_ID_V20, capabilityForMarkerMotionCommandV20, isAeMarkerMotionCommandV20, type AeMarkerMotionTransportV20 } from "./protocol-v2_0.js";
+import { AE_MEDIA_SEQUENCE_PROTOCOL_VERSION_V25, AE_MEDIA_SEQUENCE_ROUTE_ID_V25, capabilityForMediaSequenceCommandV25, isAeMediaSequenceCommandV25, type AeMediaSequenceTransportV25 } from "./protocol-v2_5.js";
+import { AE_TIME_REMAP_ROUTE_ID_V27, capabilityForTimeRemapCommandV27, isAeTimeRemapCommandV27, type AeTimeRemapTransportV27 } from "./protocol-v2_7.js";
 import type { AeStabilizationTransportV23 } from "./protocol-v2_3.js";
-import {
-  GuardedStabilizationControllerV1,
-  M4_STABILIZATION_GUARDED_ROUTE_ID_V1,
-  readStabilizationTruthCountsV1,
-  type StabilizationTruthCountsV1,
-  type StabilizationVisualDriverV1,
-} from "./m4-stabilization.js";
+import { GuardedStabilizationControllerV1, M4_STABILIZATION_GUARDED_ROUTE_ID_V1, readStabilizationTruthCountsV1, type StabilizationTruthCountsV1, type StabilizationVisualDriverV1 } from "./m4-stabilization.js";
 import { buildMaskRequestV12 } from "./m3-mask.js";
 import { buildCompositeRequestV13 } from "./m3-composite.js";
 import { buildTemporalInterpolationRequestV17 } from "./m3-temporal-interpolation.js";
@@ -87,14 +25,7 @@ import { buildSpatialGraphRequestV19 } from "./m3-spatial-graph.js";
 import { buildMarkerMotionRequestV20 } from "./m3-marker-motion.js";
 import { buildTimeRemapRequestV27 } from "./m5-time-remap.js";
 import type { AeRotoBrushTransportV26 } from "./protocol-v2_6.js";
-import {
-  isNativeAeLiveCurveIntentV1,
-  materializeCameraPushV1,
-  materializeTimeRemapPulseV1,
-  type NativeAeCameraPushBaselineV1,
-  type NativeAeMaterializedCurveV1,
-  type NativeAeTimeRemapBaselineV1,
-} from "./native-curve-materialization.js";
+
 
 export type CurrentAeCepTransactionalTransportV1 =
   AeAdapterTransportV11
@@ -318,19 +249,6 @@ const temporalEaseCardinalityInvalidatingCommands = new Set<string>([
 
 export const GUARDED_STABILIZATION_RECOVERY_UNDO_LIMIT_V1 = 8 as const;
 
-const liveCurveBaselineInvalidatingCommands = new Set<string>([
-  "comp.create",
-  "comp.update_settings",
-  "comp.remove",
-  "media.import",
-  "layer.add_media",
-  "layer.duplicate",
-  "layer.remove",
-  "layer.set_transform",
-  "layers.precompose",
-  "layer.time_remap.enable",
-]);
-
 const isObservedProjectState = (value: unknown): value is ObservedProjectState => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
@@ -351,8 +269,6 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
   #lastObserved: ObservedProjectState | null = null;
   #rollbackCounter = 0;
   #temporalEaseCardinalityByTarget = new Map<string, number>();
-  #materializedCurveByTarget = new Map<string, NativeAeMaterializedCurveV1>();
-  #cameraBaselineByLayer = new Map<string, NativeAeCameraPushBaselineV1>();
   #effectIndexByBindingId = new Map<string, number>();
   #stabilizationRecoveryCheckpoint: StabilizationRecoveryCheckpointV1 | null = null;
 
@@ -377,8 +293,6 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     this.#hostRevision = observed.hostRevision;
     this.#lastObserved = structuredClone(observed.observed);
     this.#temporalEaseCardinalityByTarget.clear();
-    this.#materializedCurveByTarget.clear();
-    this.#cameraBaselineByLayer.clear();
     this.#effectIndexByBindingId.clear();
     return structuredClone(observed.observed);
   }
@@ -409,13 +323,6 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       ) {
         this.#temporalEaseCardinalityByTarget.clear();
       }
-      if (
-        command !== null
-        && liveCurveBaselineInvalidatingCommands.has(command)
-      ) {
-        this.#materializedCurveByTarget.clear();
-        this.#cameraBaselineByLayer.clear();
-      }
       if (command === "effect.remove" || command === "layer.remove" || command === "comp.remove") {
         this.#effectIndexByBindingId.clear();
       }
@@ -423,185 +330,14 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
     return responseResult(response);
   }
 
-  async #materializeLiveCurvePayload(
-    operation: ExecutionPlanOperation,
-    parsed: ParsedOperation,
-    revision: number,
-  ): Promise<Readonly<Record<string, unknown>>> {
-    const value = parsed.payload["liveCurveIntent"];
-    if (value === undefined) return parsed.payload;
-    if (parsed.payload["keyframes"] !== undefined) {
-      throw new TypeError(
-        "Live curve payload cannot provide both keyframes and liveCurveIntent.",
-      );
-    }
-    if (!isNativeAeLiveCurveIntentV1(value)) {
-      throw new TypeError("liveCurveIntent is not a supported native AE V1 intent.");
-    }
-
-    const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
-    delete targetPayload["liveCurveIntent"];
-    const cacheKey = temporalEaseTargetCacheKey(targetPayload);
-    let materialized: NativeAeMaterializedCurveV1;
-
-    if (value.kind === "TIME_REMAP_PULSE") {
-      const comp = asRecord(targetPayload["comp"]);
-      const layer = asRecord(targetPayload["layer"]);
-      if (comp === null || layer === null) {
-        throw new TypeError("Time Remap live materialization requires comp and layer.");
-      }
-      const response = await this.transport.dispatch(
-        buildTimeRemapRequestV27({
-          requestId: this.requestIdFactory(),
-          transactionId: this.transactionId,
-          operationId: `${String(operation.operationId)}:time-remap-baseline`,
-          command: "layer.time_remap.readback",
-          expectedHostProjectRevision: null,
-          payload: { comp, layer },
-          readbackProfile: parsed.readbackProfile,
-        }),
-      );
-      this.#accept(response as unknown as CommonResponse);
-      if (response.readback === null) {
-        throw new Error(
-          "TIME_REMAP_READBACK_REQUIRED: live materialization received no readback.",
-        );
-      }
-      const baseline: NativeAeTimeRemapBaselineV1 = {
-        timeRemapEnabled: response.readback.timeRemapEnabled,
-        propertyAvailable: response.readback.propertyAvailable,
-        keys: response.readback.keys,
-      };
-      materialized = materializeTimeRemapPulseV1(value, baseline);
-    } else {
-      const comp = asRecord(targetPayload["comp"]);
-      const layer = asRecord(targetPayload["layer"]);
-      if (comp === null || layer === null) {
-        throw new TypeError("Camera push live materialization requires comp and layer.");
-      }
-      const baselineKey = JSON.stringify([comp, layer]);
-      let baseline = this.#cameraBaselineByLayer.get(baselineKey);
-      if (baseline === undefined) {
-        const layerResponse = await this.client.executePublicAtKnownHostRevision(
-          "readback.object",
-          {
-            transactionId: this.transactionId,
-            operationId: `${String(operation.operationId)}:layer-baseline`,
-            capabilityId: capabilityForCommandV11("readback.object"),
-            payload: { kind: "LAYER", comp, target: layer },
-            expectedHostProjectRevision: revision,
-            readbackProfile: parsed.readbackProfile,
-          },
-        );
-        this.#accept(layerResponse);
-        const compResponse = await this.client.executePublicAtKnownHostRevision(
-          "readback.object",
-          {
-            transactionId: this.transactionId,
-            operationId: `${String(operation.operationId)}:comp-baseline`,
-            capabilityId: capabilityForCommandV11("readback.object"),
-            payload: { kind: "COMPOSITION", target: comp },
-            expectedHostProjectRevision: revision,
-            readbackProfile: parsed.readbackProfile,
-          },
-        );
-        this.#accept(compResponse);
-
-        const layerReadback = asRecord(layerResponse.readback);
-        const layerState = asRecord(layerReadback?.["layer"]);
-        const transform = asRecord(layerState?.["transform"]);
-        const compReadback = asRecord(compResponse.readback);
-        const compState = asRecord(compReadback?.["composition"]);
-        const anchorPoint = transform?.["anchorPoint"];
-        const position = transform?.["position"];
-        const scale = transform?.["scale"];
-        const width = compState?.["width"];
-        const height = compState?.["height"];
-        if (
-          !Array.isArray(anchorPoint)
-          || !Array.isArray(position)
-          || !Array.isArray(scale)
-          || typeof width !== "number"
-          || typeof height !== "number"
-        ) {
-          throw new Error(
-            "CAMERA_PUSH_BASELINE_REQUIRED: live layer/comp readback is incomplete.",
-          );
-        }
-        baseline = {
-          anchorPoint: anchorPoint as readonly number[],
-          position: position as readonly number[],
-          scale: scale as readonly number[],
-          compWidth: width,
-          compHeight: height,
-        };
-        this.#cameraBaselineByLayer.set(baselineKey, baseline);
-      }
-      materialized = materializeCameraPushV1(value, baseline);
-    }
-
-    this.#materializedCurveByTarget.set(cacheKey, materialized);
-    return {
-      ...targetPayload,
-      keyframes: materialized.keyframes.map((keyframe) => ({
-        time: keyframe.time,
-        value: structuredClone(keyframe.value),
-      })),
-    };
-  }
-
   async #materializeTemporalEasePayload(
     operation: ExecutionPlanOperation,
     parsed: ParsedOperation,
   ): Promise<Readonly<Record<string, unknown>>> {
     const targetPayload = structuredClone(parsed.payload) as Record<string, unknown>;
-    const liveEase = asRecord(targetPayload["liveCurveEaseIntent"]);
-    let intent = parseTemporalEaseIntent(parsed.payload);
-
-    if (liveEase !== null) {
-      if (intent !== null || targetPayload["ease"] !== undefined) {
-        throw new TypeError(
-          "Live curve ease cannot be combined with exact ease or easeIntent.",
-        );
-      }
-      const keyIndex = targetPayload["keyIndex"];
-      if (
-        typeof keyIndex !== "number"
-        || !Number.isInteger(keyIndex)
-        || liveEase["keyIndex"] !== keyIndex
-      ) {
-        throw new TypeError(
-          "liveCurveEaseIntent keyIndex must match the temporal-ease target key.",
-        );
-      }
-      delete targetPayload["liveCurveEaseIntent"];
-      const curveKey = temporalEaseTargetCacheKey(targetPayload);
-      const curve = this.#materializedCurveByTarget.get(curveKey);
-      if (curve === undefined) {
-        throw new Error(
-          "LIVE_CURVE_EASE_NOT_MATERIALIZED: keyframe intent must execute before ease.",
-        );
-      }
-      const resolved = curve.easeIntentByKey.find(
-        (candidate) => candidate.keyIndex === keyIndex,
-      );
-      if (resolved === undefined) {
-        throw new Error(
-          `LIVE_CURVE_EASE_KEY_MISSING: no materialized ease exists for key ${keyIndex}.`,
-        );
-      }
-      intent = {
-        inEase: resolved.inEase,
-        outEase: resolved.outEase,
-      };
-    } else {
-      if (intent === null) return parsed.payload;
-      delete targetPayload["easeIntent"];
-    }
-
-    if (intent === null) {
-      throw new Error("TEMPORAL_EASE_INTENT_REQUIRED: no temporal-ease intent was materialized.");
-    }
+    const intent = parseTemporalEaseIntent(parsed.payload);
+    if (intent === null) return parsed.payload;
+    delete targetPayload["easeIntent"];
 
     const cacheKey = temporalEaseTargetCacheKey(targetPayload);
     let cardinality = this.#temporalEaseCardinalityByTarget.get(cacheKey);
@@ -694,6 +430,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
       );
     }
     const parsed = parseOperation(operation);
+    assertExplicitEditorialPayloadV1(parsed.payload);
     const revision = await this.#knownHostRevision();
 
     if (parsed.command === "stabilization.position.guarded_visual") {
@@ -814,9 +551,7 @@ export class AeCepCurrentTransactionalHostV1 implements AsyncTransactionalHost {
         capabilityForCommandV11(parsed.command),
         AE_ADAPTER_ROUTE_ID_V11,
       );
-      let payload = parsed.command === "property.set_keyframes"
-        ? await this.#materializeLiveCurvePayload(operation, parsed, revision)
-        : parsed.payload;
+      let payload = parsed.payload;
       let effectBindingId: string | null = null;
       if (parsed.command === "effect.add"
         || parsed.command === "effect.set_property"

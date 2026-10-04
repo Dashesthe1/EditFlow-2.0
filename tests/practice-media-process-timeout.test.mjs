@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  LocalPracticeMediaMatcherV1,
+  ChatgptFootageBrowserV1,
 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 
 const processAlive = (pid) => {
@@ -20,7 +20,7 @@ const processAlive = (pid) => {
 test("Practice media timeout terminates the analyzer process tree", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "editflow-practice-timeout-"));
   const runnerPath = path.join(directory, "runner.mjs");
-  const scriptPath = path.join(directory, "practice-media-match.py");
+  const scriptPath = path.join(directory, "chatgpt-footage-browser.py");
   const mediaPath = path.join(directory, "finish.mp4");
   const childPidPath = path.join(directory, "child.pid");
   await writeFile(scriptPath, "# fake analyzer\n", "utf8");
@@ -37,7 +37,7 @@ test("Practice media timeout terminates the analyzer process tree", async () => 
 
   let childPid = null;
   try {
-    const matcher = new LocalPracticeMediaMatcherV1({ shotSelectionAuthority: "ISOLATED_LEGACY_TEST",
+    const matcher = new ChatgptFootageBrowserV1({
       artifactDir: path.join(directory, "artifacts"),
       scriptPath,
       python: { executable: process.execPath, prefixArgs: [runnerPath] },
@@ -46,12 +46,12 @@ test("Practice media timeout terminates the analyzer process tree", async () => 
       analysisTimeoutMs: 2_000,
     });
     await assert.rejects(
-      matcher.analyzeFinish({
+      matcher.readReference({
         mediaId: "finish:timeout",
         mediaKind: "VIDEO",
         uri: mediaPath,
       }),
-      /process tree was terminated/,
+      /process tree terminated/,
     );
 
     childPid = Number(await readFile(childPidPath, "utf8"));
