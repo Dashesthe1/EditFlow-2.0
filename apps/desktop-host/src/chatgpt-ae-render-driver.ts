@@ -192,7 +192,10 @@ export class ChatgptAeRenderDriverV1
     readonly windowId: string;
     readonly startMs: number;
     readonly endMs: number;
+    readonly resolutionScale?: number;
   }): Promise<{ readonly renderPath: string; readonly evidenceRefs?: readonly string[] }> {
+    const scale = input.resolutionScale ?? 1;
+    if (![1, .25, .125].includes(scale)) throw new TypeError("Unsupported local preview resolution scale.");
     return await this.#render({
       sessionId: input.sessionId,
       attempt: input.attempt,
@@ -200,6 +203,7 @@ export class ChatgptAeRenderDriverV1
       suffix: input.windowId,
       startMs: input.startMs,
       durationMs: input.endMs - input.startMs,
+      ...(scale === 1 ? {} : { scratchCandidate: { candidateId: "preview-" + input.windowId, patches: [] }, resolutionFactor: Math.round(1 / scale) }),
     });
   }
 
