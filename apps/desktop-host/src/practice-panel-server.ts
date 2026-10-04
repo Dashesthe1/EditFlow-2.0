@@ -12,7 +12,7 @@ import { ProductionUserControlsV1, PRODUCTION_USER_CONTROL_CONTRACT_V1, type Pro
 import { EditTypeRegistryFileV1, GptOrchestrationStoreV1, ProCreationPreparationEngineV1, hasVerifiedPracticeSourceIdentityV1, ChatgptFootageBrowserV1, defaultPracticeAnalysisCacheDirectoryV1, type GptAppendEventInputV1, type GptCapabilityGapV1, type GptLearnedSkillV1, type GptLearningOutcomeV1, type GptLearningStageV1, type GptOrchestrationAssignmentV1, type GptOrchestrationModeV1, type GptResearchSourceV1, type GptSkillCausalModelV1, type GptSkillMachineUseSignatureV1, PracticeProductionCoordinatorFileV1, PracticeProductionCoordinatorV1, PracticeProductionWorkerV1, PRACTICE_PRODUCTION_JOB_KINDS_V1, type PracticeProductionJobV1, practiceTelemetrySpanV1, type PracticeLearningAllocationResultV1, type PracticeMasteryScopeV1, type PracticeMediaInputV1, type PracticePreflightCheckpointV1, type PracticeSceneMatchV1, type PracticeRunRoleV1, validatePracticeWorkingMediaMatchesV1, type PracticeSessionResultV1, type ProCreationPreparationResultV1, validatePracticeSceneMatchesV1 } from "../../../packages/practice-homework/src/index.js";
 
 import { ClipResearchStoreV1, CLIP_RESEARCH_CONTRACT_V1 } from "../../../packages/practice-homework/src/clip-research.js";
-import { PRODUCTION_WORKFLOW_CONTRACT_V1, emptyProductionWorkflowV1, parseProductionWorkflowPlanV1, validateWorkflowJobV1, validateMethodApplicationV1 } from "../../../packages/practice-homework/src/production-workflow.js";
+import { PRIMARY_PRODUCTION_WORKFLOW_V1, PRIMARY_WORKFLOW_ROUTING_V1, PRODUCTION_WORKFLOW_CONTRACT_V1, emptyProductionWorkflowV1, parseProductionWorkflowPlanV1, validateWorkflowJobV1, validateMethodApplicationV1 } from "../../../packages/practice-homework/src/production-workflow.js";
 import { STUDIED_PRODUCTION_METHODS_V1 } from "../../../packages/practice-homework/src/studied-methods.js";
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { productionJobScopeV1 } from "../../../packages/adapters/ae-cep/src/production-job-scope.js";
@@ -494,6 +494,7 @@ export class PracticePanelServerV1 {
   readonly #productionCoordinatorDir: string;
   readonly #coordinators = new Map<string, Promise<{ file: PracticeProductionCoordinatorFileV1; coordinator: PracticeProductionCoordinatorV1 }>>();
   readonly #productionWorker: PracticeProductionWorkerV1;
+  readonly #legacyWorkflowReceiptIds = new Set<string>();
   readonly #supervision: ProductionSupervisionV1 | null;
   readonly #userControls: ProductionUserControlsV1;
   #aeWriterOwner: string | null = null;
@@ -657,6 +658,9 @@ export class PracticePanelServerV1 {
     if (job.kind !== "REFERENCE_ANALYSIS") await this.assertPracticeReconstructionReady();
     const body = structuredClone(job.payload) as Record<string, any>;
     await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).verify(assignment.assignmentId, job.kind, body);
+    const production = await this.#productionCoordinator(assignment);
+    validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body,
+      { kind: job.kind, acceptedReceipt: true, acceptedLegacyReceipt: this.#legacyWorkflowReceiptIds.has(job.jobId) });
     validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
       rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body);
     if (job.kind === "PROOF_SCRIPT") {
@@ -672,7 +676,6 @@ export class PracticePanelServerV1 {
         ...(this.config.ffmpegPath ? { ffmpegPath: this.config.ffmpegPath } : {}) });
       if (!Array.isArray(body.timesMs) || body.timesMs.some((t: number) => t < body.startMs || t >= body.endMs)) throw new TypeError("GPT must choose exact reference timestamps inside this window.");
       const result = await media.inspectFootage(assignment.finish, body.timesMs, body.width ?? 640);
-      const production = await this.#productionCoordinator(assignment);
       await production.file.appendTelemetry(practiceTelemetrySpanV1({ spanId: job.jobId,
         sessionId: assignment.sessionId, category: "MEDIA_ANALYSIS", stage: "RESEARCH",
         startedAtMs, endedAtMs: Date.now() }));
@@ -684,8 +687,6 @@ export class PracticePanelServerV1 {
     // research/media evidence but does not reclaim a retired chat's lease.
     const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE", true);
     signal.throwIfAborted();
-    const production = await this.#productionCoordinator(assignment);
-    validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body);
     const strategy = production.coordinator.strategyDirective();
     // Timing/strategy telemetry is advisory; GPT decides whether to change its edit plan.
     const output = await this.#withProductionOperation({ body: job.kind === "BUILD_BASELINE" ? { ...body, globalOperation: true } : body,
@@ -871,6 +872,10 @@ export class PracticePanelServerV1 {
     this.#supervision?.acquireGateway();
     await this.#gptStore.refreshActiveProductionInstructions();
     await this.#recoverRuns();
+    await this.#productionWorker.load();
+    for (const job of this.#productionWorker.list()) {
+      if ((job.payload as Record<string, any>).workflowContext?.workflowId === undefined) this.#legacyWorkflowReceiptIds.add(job.jobId);
+    }
     if (this.#supervision) await this.#supervisionSnapshot();
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
@@ -947,7 +952,7 @@ export class PracticePanelServerV1 {
   }
 
   controlStatus() {
-    return { productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+    return { ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
       executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
       hostRevision: this.#fastRuntime?.session.runner.hostRevision ?? null,
       adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
@@ -1439,9 +1444,11 @@ export class PracticePanelServerV1 {
       : preflight?.stage === "AWAITING_CHATGPT_REFERENCE" ? "CHATGPT_INSPECT_AND_DEFINE_REFERENCE"
       : preflight?.stage === "AWAITING_CHATGPT_SHOTS" ? "CHATGPT_INSPECT_AND_SELECT_RAW_SHOTS"
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
+      : production?.workflow?.activeDecisionId == null ? "CHATGPT_COMMIT_WORKFLOW_PLAN"
       : "RESUME_GPT_EDITING_FROM_CHECKPOINT";
     return {
       schema: "editflow.practice-resume.v1", runtimeId: "RESUMABLE_PREFLIGHT_V1",
+      ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1,
       buildId: this.config.buildId ?? null, panel: this.config.broker.panelSession,
       aeConnection: this.config.broker.panelSession === null ? "DISCONNECTED" : "CEP_CONNECTED",
       repositoryRoot: this.config.repositoryRoot, statePath: this.#gptStore.filePath,
@@ -1677,6 +1684,8 @@ export class PracticePanelServerV1 {
     if (!assignment || assignment.status !== "RUNNING") throw new HttpError(409, "Resume the active assignment before final review.");
     const lease = assignment.controllerLease;
     if (!lease || lease.owner !== body.claimedBy || Date.parse(lease.expiresAt) <= Date.now()) throw new HttpError(409, "Final review requires the current ChatGPT controller.");
+    const production = await this.#productionCoordinator(assignment);
+    if (!production.coordinator.snapshot().workflow?.activeDecisionId) throw new HttpError(409, "PRIMARY_WORKFLOW_REQUIRED: commit the current ChatGPT WORKFLOW_PLAN before final review.");
     const review = body.finalReview;
     if (typeof body.success !== "boolean" || review?.authority !== "CHATGPT_DIRECT" || !["PASS", "REVISE"].includes(review.verdict)
       || body.success !== (review.verdict === "PASS") || !Array.isArray(review.remainingIssues)
@@ -2000,7 +2009,7 @@ export class PracticePanelServerV1 {
     }
     const production = active ? (await this.#productionCoordinator(active)).coordinator.snapshot() : null;
     const jobs = active ? this.#productionWorker.list(active.assignmentId) : [];
-    return { authority: this.#supervision!.publicState(), assignment: active ? { assignmentId: active.assignmentId,
+    return { ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, authority: this.#supervision!.publicState(), assignment: active ? { assignmentId: active.assignmentId,
       sessionId: active.sessionId, mode: active.mode, status: active.status, preflight: active.preflight ?? null,
       cancelRequestedAt: active.cancelRequestedAt, artifactDir: active.artifactDir } : null,
       production, jobs: jobs.map((job) => ({ jobId: job.jobId, kind: job.kind, status: job.status,
@@ -2259,7 +2268,10 @@ export class PracticePanelServerV1 {
             if (assignment.status !== "RUNNING" || this.#activeRunId !== assignment.sessionId) throw new HttpError(409, "Only the retained active RUNNING assignment accepts production jobs.");
             if (body.kind === "REFERENCE_ANALYSIS" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Pro Creation has no Finish answer key; use raw-media analysis and designed render review.");
             if (body.kind === "BUILD_BASELINE" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Practice baseline requires a Finish reference; use AE_BATCH or AE_TRANSACTION for Pro Creation.");
-            if (body.kind === "SCRATCH_SEARCH" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Reference-scored scratch search is a Practice capability; Pro Creation uses rendered candidate review.");
+            if (body.kind === "SCRATCH_SEARCH" && assignment.mode !== "PRACTICE") throw new HttpError(400, "Reference candidate rendering is a Practice capability; Pro Creation uses designed render review.");
+            const production = await this.#productionCoordinator(assignment);
+            try { validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body.payload, { kind: body.kind }); }
+            catch (error) { throw new HttpError(409, (error as Error).message); }
             if (body.kind !== "REFERENCE_ANALYSIS") {
               await this.assertPracticeReconstructionReady();
               await this.assertClipResearchReady(body.payload, body.kind === "BUILD_BASELINE");
@@ -2267,8 +2279,6 @@ export class PracticePanelServerV1 {
             validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
               rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body.payload);
             const decision = await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).retain(id, body.kind, body.payload);
-            const production = await this.#productionCoordinator(assignment);
-            validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body.payload);
             if (body.payload.methodApplications !== undefined) {
               const notebook = await this.#presetNotebook(assignment);
               validateMethodApplicationV1(notebook.examples, body.payload.methodApplications);
@@ -2282,7 +2292,7 @@ export class PracticePanelServerV1 {
             const job = await this.#productionWorker.enqueue({ assignmentId: id, kind: body.kind, payload: body.payload,
               dependencyIds: stringArray(body, "dependencyIds", false) });
             void this.#productionWorker.runOnce().catch(() => undefined);
-            jsonResponse(res, 202, { job, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 });
+            jsonResponse(res, 202, { job, ...PRIMARY_WORKFLOW_ROUTING_V1, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 });
             return;
           }
         }
@@ -2396,6 +2406,7 @@ export class PracticePanelServerV1 {
         }
         jsonResponse(res, 200, {
           production: coordinator.snapshot(),
+          ...PRIMARY_WORKFLOW_ROUTING_V1,
           workflowContract: PRODUCTION_WORKFLOW_CONTRACT_V1,
           nextAction: { kind: "CHATGPT_DECIDES", instruction: "Read phase state and unranked residual observations, then choose and record your next operation." },
           residualObservations: coordinator.snapshot().residuals,
@@ -2429,7 +2440,9 @@ export class PracticePanelServerV1 {
           service: "READY",
           panelConnected: this.config.broker.panelSession !== null,
           gptOrchestration: "ASSIGNMENT_QUEUE_READY",
-          practiceWorkflow: "ACCELERATED_REFERENCE_FIRST_V1",
+          ...PRIMARY_WORKFLOW_ROUTING_V1,
+          practiceWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
+          proCreationWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
           practiceStartup: "RESUMABLE_PREFLIGHT_V1",
           practiceWorkflowAuthority: "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1",
           primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
@@ -2550,7 +2563,7 @@ export class PracticePanelServerV1 {
           : await this.#gptStore.listAssignments({ statuses: ["PENDING"] });
         const assignment = resumable[0] ?? pending[0] ?? null;
         jsonResponse(res, 200, {
-          assignment, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
+          assignment, ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
           practiceNotebook: assignment ? await this.#presetNotebook(assignment) : null,
           resumeRequired: assignment !== null
             && (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED"),
@@ -2565,6 +2578,7 @@ export class PracticePanelServerV1 {
         if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
         jsonResponse(res, 200, {
           assignment,
+          ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1,
           editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: await this.#presetNotebook(assignment),
           events: await this.#gptStore.eventsForSession(assignment.sessionId),
           clipResearch: this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment), url.searchParams.get("includeAuditHistory") === "true"),

@@ -6,6 +6,10 @@ retains explicit decisions in the existing production coordinator and complete
 methods in the existing selected preset notebook. It introduces no editorial
 engine, competing controller or automatic recipe application.
 
+`CHATGPT_PRODUCTION_WORKFLOW_V1` is the only primary workflow for Practice and
+Pro Creation. The queue, source preparation, research, native adapters and notebook
+are its components. Older workflows, selectors and fallback launchers are removed.
+
 ## Production use
 
 1. Read `GET /v1/product/gpt/production-workflow-contract`, the current assignment's
@@ -22,8 +26,15 @@ engine, competing controller or automatic recipe application.
    remain mandatory. `SOURCE reuseSourceId` reuses consulted evidence with new
    target adaptation; the existing Tutorial Drive -> Adobe -> web order remains.
 5. Submit coherent exact operations through `production-jobs` with immutable
-   `editorialDecision`. Optional `workflowContext` binds the plan hash and event
-   scope. Existing accepted queue jobs remain resumable without that new field.
+   `editorialDecision` and required `workflowContext`:
+   `{workflowId:"CHATGPT_PRODUCTION_WORKFLOW_V1",planDecisionId,planHash,eventIds}`.
+   New jobs must bind the active retained ChatGPT plan and chosen event scope.
+   Before raw selections are ready, `REFERENCE_ANALYSIS` alone can use
+   `{workflowId:"CHATGPT_PRODUCTION_WORKFLOW_V1",phase:"PREPARATION"}`.
+   Raw browsing, research and preflight are preparation within this same workflow.
+   Existing accepted queue receipts remain resumable unchanged across rollout and
+   plan revisions. Only the server's loaded receipt IDs grant compatibility; client
+   flags cannot request it. New jobs and final completion cannot bypass the plan.
 6. Choose local preview bounds/handles and `resolutionScale` (1, .25, .125).
    Reduced previews render an isolated unpatched duplicate. Full-resolution
    checks handle flow, occlusion, matte, crop and boundary uncertainty. Final
@@ -81,3 +92,8 @@ state survive rollout. Load policy by restarting only the idle local control ser
 after verifying no held writer/in-flight jobs. Keep AE and the CEP panel open.
 Do not change supervisor generations, recover credentials, resume Practice or run
 native editing scripts as part of maintenance.
+
+The orphaned `run-practice-held-out-isolation-proof.ps1` machine-certification
+launcher and unused `practice-live-proof-assertions.ts` module are deleted. Native
+capability proof harnesses remain because they test exact GPT-directed execution;
+they do not choose edits or provide another production workflow.

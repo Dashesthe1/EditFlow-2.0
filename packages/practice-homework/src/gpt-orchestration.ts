@@ -5,7 +5,7 @@ import path from "node:path";
 import type { EditTypeKnowledgeSnapshotV1, GptAssignmentCompletionV1, GptAssignmentStatusV1, GptCapabilityGapV1, GptLearnedSkillV1, GptLearningEventV1, GptLearningOutcomeV1, GptLearningStageV1, GptOrchestrationAssignmentV1, GptOrchestrationModeV1, GptResearchSourceV1, PracticeMediaInputV1, PracticePreflightCheckpointV1, PracticeSceneMatchV1, PracticeRunRoleV1, PracticeVerificationPolicyV1 } from "./contracts.js";
 
 import { CLIP_RESEARCH_POLICY_V1 } from "./clip-research.js";
-import { PRODUCTION_WORKFLOW_POLICY_V1 } from "./production-workflow.js";
+import { PRIMARY_PRODUCTION_WORKFLOW_V1, PRODUCTION_WORKFLOW_POLICY_V1 } from "./production-workflow.js";
 import { hasVerifiedPracticeSourceIdentityV1 } from "./source-integrity.js";
 
 const isDirectChatgptRawSelectionV1 = (
@@ -128,6 +128,7 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
           && (discardedLegacy || assignment.preflight === undefined);
         return {
           ...assignment,
+          primaryWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
           ...(discardedLegacy ? { practiceSceneMatches: directMatches } : {}),
           ...(needsDirectPreflight ? { preflight: { ...assignment.preflight, stage: "AWAITING_CHATGPT_SHOTS" as const,
               updatedAt: new Date().toISOString(), requireTransferNovelty: assignment.preflight?.requireTransferNovelty ?? false,
@@ -308,7 +309,7 @@ const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrati
   const markerAt = message.indexOf(EDIT_PRODUCTION_CONTINUITY_MARKER_V1);
   const retiredAt = message.search(/\n(?:Primary edit production system|Original M6 workflow|Practice reference-fidelity policy|EDIT_PRODUCTION_QUEUE_POLICY_V[1-4]|PRACTICE_ACCELERATION_CONTINUITY_V)/);
   const end = Math.min(...[markerAt, retiredAt, message.length].filter(v => v >= 0));
-  const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery/i;
+  const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery|ACCELERATED_REFERENCE_FIRST_V1|Optional workflowContext/i;
   const generatedLines = new Set([...CHATGPT_FOOTAGE_POLICY_V1.split("\n"), ...RESEARCH_PRIORITY_LINES]);
   const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !generatedLines.has(line)).join("\n").trimEnd();
   return cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1 + "\n\n" + RESEARCH_PRIORITY_LINES.join("\n") + "\n\n" + editProductionContinuityAppendixV1(mode);
@@ -436,6 +437,7 @@ export class GptOrchestrationStoreV1 {
       assignmentId,
       sessionId,
       mode: input.mode,
+      primaryWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
       practiceRole,
       editTypeId,
       status: "PENDING",
@@ -519,7 +521,8 @@ export class GptOrchestrationStoreV1 {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return '{"assignments":[]}';
         throw error;
       })) as GptOrchestrationStorePayloadV1;
-      const needsRefresh = new Set(raw.assignments.filter(a => a.chatMessage !== payload.assignments.find(current => current.assignmentId === a.assignmentId)?.chatMessage).map(a => a.assignmentId));
+      const needsRefresh = new Set(raw.assignments.filter(a => a.primaryWorkflow !== PRIMARY_PRODUCTION_WORKFLOW_V1
+        || a.chatMessage !== payload.assignments.find(current => current.assignmentId === a.assignmentId)?.chatMessage).map(a => a.assignmentId));
       let refreshed = 0;
       const assignments = payload.assignments.map((assignment) => {
         if (!["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(assignment.status)

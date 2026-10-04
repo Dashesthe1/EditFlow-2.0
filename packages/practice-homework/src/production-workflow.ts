@@ -3,6 +3,13 @@ import { createHash } from "node:crypto";
 
 /** This module retains GPT decisions and checks their mechanics. It never proposes an edit. */
 type Packet = Record<string, any>;
+export const PRIMARY_PRODUCTION_WORKFLOW_V1 = "CHATGPT_PRODUCTION_WORKFLOW_V1";
+export const PRIMARY_WORKFLOW_ROUTING_V1 = {
+  primaryWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
+  availableWorkflows: [PRIMARY_PRODUCTION_WORKFLOW_V1],
+  workflowSelectionAllowed: false,
+  workflowFallback: false,
+} as const;
 const required = (v: unknown, name: string): string => {
   if (typeof v !== "string" || !v.trim()) throw new TypeError(name + " is required.");
   return v.trim();
@@ -201,10 +208,23 @@ export const retainProductionWorkflowReviewV1 = (state: ProductionWorkflowStateV
   if (prior && workflowHashV1(prior) !== workflowHashV1(review)) throw new TypeError("Review decisions are immutable.");
   return prior ? state : { ...state, reviews: [...state.reviews, review] };
 };
-export const validateWorkflowJobV1 = (state: ProductionWorkflowStateV1, payload: Packet): void => {
-  if (!payload.workflowContext) return; // Existing durable receipts remain resumable.
-  const c = payload.workflowContext, selected = state.plans.find(p => p.plan.decisionId === c.planDecisionId);
+export const validateWorkflowJobV1 = (state: ProductionWorkflowStateV1, payload: Packet,
+  options: { kind?: string; acceptedReceipt?: boolean; acceptedLegacyReceipt?: boolean } = {}): void => {
+  // Compatibility is granted by the server's pre-rollout durable receipt IDs,
+  // never by a client flag. It cannot admit another new legacy job.
+  const c = payload.workflowContext;
+  if (!c && options.acceptedLegacyReceipt) return;
+  if (!c || c.workflowId !== PRIMARY_PRODUCTION_WORKFLOW_V1 && !(options.acceptedLegacyReceipt && c.workflowId === undefined)) {
+    throw new TypeError("PRIMARY_WORKFLOW_REQUIRED: use CHATGPT_PRODUCTION_WORKFLOW_V1 and its WORKFLOW_PLAN; reference preparation uses phase PREPARATION.");
+  }
+  if (c.phase === "PREPARATION") {
+    if (options.kind !== "REFERENCE_ANALYSIS") throw new TypeError("WORKFLOW_PREPARATION_ONLY: preparation context cannot authorize AE production.");
+    if (c.planDecisionId !== undefined || c.planHash !== undefined || c.eventIds !== undefined) throw new TypeError("Choose preparation or a retained production plan explicitly.");
+    return;
+  }
+  const selected = state.plans.find(p => p.plan.decisionId === c.planDecisionId);
   if (!selected || selected.hash !== c.planHash) throw new TypeError("WORKFLOW_PLAN_MISMATCH");
+  if (!options.acceptedReceipt && state.activeDecisionId !== c.planDecisionId) throw new TypeError("WORKFLOW_PLAN_SUPERSEDED: new jobs require the current ChatGPT plan.");
   const eventIds = texts(c.eventIds, "workflow eventIds", true);
   if (eventIds.some(id => !selected.plan.events.some(e => e.id === id))) throw new TypeError("Unknown workflow event.");
   const clipIds = new Set(selected.plan.events.filter(e => eventIds.includes(e.id)).flatMap(e => e.clipIds));
@@ -236,9 +256,10 @@ export const validateMethodApplicationV1 = (examples: readonly Packet[], applica
 };
 
 export const PRODUCTION_WORKFLOW_POLICY_V1 = [
-  "CHATGPT_PRODUCTION_WORKFLOW_V1 — Six-study workflow, exclusive ChatGPT decisions.",
+  "CHATGPT_PRODUCTION_WORKFLOW_V1 is the sole primary workflow for PRACTICE and PRO_CREATION. No workflow selector, older route or automatic fallback exists; ChatGPT alone makes every editorial decision.",
   "Read production.workflow, the current notebook, raw selections, research plans and receipts once on resume. Reconcile AE identity before advancing the retained next action; redo preflight only for changed dependencies or a real failure.",
   "Commit WORKFLOW_PLAN to the existing production endpoint: explicitly choose scope, learning/repeat mode, output timebase, bounded raw ranges/handles/fps/action anchors, supplied audio/offset, musical anchors, event topology, pass order, finishing and nextAction. No source/effect/preset chooser exists.",
+  "Every new production job requires workflowContext:{workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,planDecisionId,planHash,eventIds:[...]}, bound to the active retained plan. Before raw selections are ready, REFERENCE_ANALYSIS alone may use workflowContext:{workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,phase:PREPARATION}. Source browsing, research and preflight are preparation within this same workflow. Previously accepted receipts remain resumable; they cannot authorize new legacy work.",
   "Establish playable whole-edit coverage early. Choose coherent section/pass work and prototype an unfamiliar critical event when needed; record unresolved issues rather than polishing one shot indefinitely. Pass order remains your editorial decision.",
   "Use complete notebook methods with source bindings, containers/parents/coordinate spaces, effect instances/order/versions, source traversal, all keys/easing and dependencies. Select a WORKED method explicitly, record methodApplications with every identity rebound and an exact adaptedMethod. Never copy tracker data onto another subject or retime a wrapper twice by accident.",
   "Coordinate retime, parent Position/Scale/Rotation, brightness, text/audio and paired incoming/outgoing events through your chosen anchor map. Choose all values/offsets/curves yourself; no pulse formula or automatic timing adaptation. Different source/master/wrapper fps are distinct.",
@@ -250,12 +271,13 @@ export const PRODUCTION_WORKFLOW_POLICY_V1 = [
 ].join("\n");
 export const PRODUCTION_WORKFLOW_CONTRACT_V1 = {
   schema: "editflow.production-workflow-contract.v1", authority: "CHATGPT_DIRECT", automaticDecisions: false,
+  ...PRIMARY_WORKFLOW_ROUTING_V1, exclusive: true, modes: ["PRACTICE", "PRO_CREATION"],
   storage: "Existing production coordinator snapshot and selected preset gptLearning.workedExamples",
   endpoint: "/v1/product/gpt/assignments/{id}/production", actions: ["WORKFLOW_PLAN", "WORKFLOW_REVIEW", "WORKFLOW_MILESTONE", "TELEMETRY"],
   policy: PRODUCTION_WORKFLOW_POLICY_V1,
   plan: ["authority,decisionId,rationale,evidenceRefs", "mode,scope,output:{width,height,fps,durationMs},passOrder", "sources:[{clipId,mediaId,fingerprint,fps,startMs,endMs,availableStartMs,availableEndMs,actionAnchors:[{id,sourceMs,observation}]}]", "audio:{mediaId,songOffsetMs,policy}", "anchors:[{id,role,outputMs,rationale}]", "events:[{id,clipIds,anchorIds,treatment,acceptedDimensions,unresolvedIssues}]", "finishing:[explicit choices],nextAction"],
   review: ["authority,decisionId,rationale,evidenceRefs", "planDecisionId,eventId,constructionDecisionId,renderJobId,inspections:[{evidenceId,timeMs}]", "dimensions,verdict:PASS|REVISE,remainingIssues,observation,nextAction"],
-  jobContext: "Optional workflowContext:{planDecisionId,planHash,eventIds}; old durable jobs keep their existing receipts",
+  jobContext: "Required workflowContext:{workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,planDecisionId,planHash,eventIds}; new jobs use the active ChatGPT plan. REFERENCE_ANALYSIS preparation alone uses {workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,phase:PREPARATION}. Pre-rollout accepted receipts remain resumable only.",
   methodApplication: "methodApplications:[{authority,decisionId,rationale,evidenceRefs,lessonId,bindings:[{fromId,toId}],adaptationChecks,adaptedMethod}] — explicit, current WORKED example only; no automatic application",
   benchmark: { scope: "Familiar 14–15s two-shot velocity edit with prepared permitted raw inputs", targetMinutes: 60, measured: false,
     checkpoints: ["0–8 preparation", "8–18 playable structure", "18–35 first method and explicit reuse", "35–48 motion and paired cut", "48–60 finishing and full review"],
