@@ -31,7 +31,7 @@ function Get-LocalStatus([string]$Uri) {
 }
 $ProductStatus = Get-LocalStatus "$Base/v1/product/status"
 $ControlStatus = Get-LocalStatus "$Base/status"
-$ExpectedWorkflow = "ACCELERATED_REFERENCE_FIRST_V1"
+$ExpectedWorkflow = "CHATGPT_PRODUCTION_WORKFLOW_V1"
 if ($ProductStatus.practiceWorkflow -eq $ExpectedWorkflow -and
     $ProductStatus.practiceStartup -eq "RESUMABLE_PREFLIGHT_V1" -and
     $ProductStatus.primaryProductionSystem -eq "DURABLE_PRODUCTION_QUEUE_V1" -and
