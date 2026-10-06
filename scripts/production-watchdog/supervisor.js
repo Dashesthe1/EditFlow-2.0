@@ -4,7 +4,10 @@ const path = require('path');
 const http = require('http');
 const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
-const { POLICY, evaluateLiveness, operationFailure } = require('./liveness.js');
+const { POLICY, evaluateLiveness, operationFailure, decisionLeaseStatus, noProgressLimit } = require('./liveness.js');
+const { prompt } = require('./worker-prompt.js');
+const { createTransportMonitor, probeMcp } = require('./transport-health.js');
+const OWNERSHIP_CONFLICT_ERROR = 'The replacement tab contains a continuation for another worker generation. No chat was stopped. Request Replace editing chat to deliver a fresh current-worker continuation while retaining the assignment.';
 const ROOT = process.env.EDITFLOW_SUPERVISOR_ROOT || __dirname;
 fs.mkdirSync(ROOT, { recursive: true });
 const LOCAL = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
@@ -16,7 +19,29 @@ catch (e) { if (e.code !== 'ENOENT') throw e; }
 // Migration targets only the old explicitly owned production tab, never a maintenance chat.
 if (!fs.existsSync(statePath)) { try { const old = JSON.parse(fs.readFileSync(path.join(ROOT, 'state.json'), 'utf8')); state.activeTabId = old.lastTabId; } catch (_) {} }
 const bootAt = Date.now();
+let chatExecution = null;
 let snapshot = null, tickBusy = false, lastGatewayAt = 0, gatewayError = null;
+const testTransportUrl = path.resolve(ROOT) !== path.resolve(__dirname) ? process.env.EDITFLOW_SUPERVISOR_TEST_TRANSPORT_URL : null;
+if (testTransportUrl && new URL(testTransportUrl).hostname !== '127.0.0.1') throw Error('TEST_TRANSPORT_MUST_BE_LOOPBACK');
+const transport = createTransportMonitor({ localRoot: LOCAL, ...(testTransportUrl ? {
+  localUrl: testTransportUrl, intervalMs: 100,
+  publicProbe: probeMcp,
+  resolve: async () => ({ configured: true, public: testTransportUrl }),
+} : {}) });
+let transportRepairAt = 0;
+function checkTransport() { void transport.check().catch(() => log('transport_probe_failed', { reason: 'PROBE_FAILED' })); }
+function recoverTransport() {
+  if (testTransportUrl || transport.state().failures < 2 || Date.now() - transportRepairAt < 30000) return;
+  transportRepairAt = Date.now();
+  log('transport_recovery_required', { status: transport.state().status });
+  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+    path.join(ROOT, 'repair-transport.ps1'), '-Reason', 'mcp_transport_unavailable',
+    ...(snapshot?.assignment ? ['-AssignmentId', snapshot.assignment.assignmentId] : [])],
+    { detached: true, stdio: 'ignore', windowsHide: true });
+  child.on('error', () => log('transport_recovery_failed', { reason: 'RECOVERY_PROCESS_FAILED' }));
+  child.on('exit', () => { void transport.check(true).then(() => tick()).catch(() => {}); });
+  child.unref();
+}
 function persist() { fs.mkdirSync(ROOT, { recursive: true }); fs.writeFileSync(statePath + '.tmp', JSON.stringify(state, null, 2), { flush: true }); fs.renameSync(statePath + '.tmp', statePath); }
 function log(type, detail = {}) { fs.appendFileSync(logPath, JSON.stringify({ at: new Date().toISOString(), type, ...detail }) + '\n'); }
 function connection() {
@@ -34,12 +59,28 @@ async function gateway(body, route) {
   const result = await response.json(); if (!response.ok) throw Error(result.error || 'GATEWAY_' + response.status);
   return result;
 }
-function prompt(task, credential) {
-  const mode = task.mode === 'PRACTICE' ? 'Practice' : 'Pro Creation';
-  return `Continue the ${mode} session with the given raw files to make the finished product. Resume existing assignment ${task.assignmentId} and session ${task.sessionId} from its latest durable checkpoint; do not create or restart the assignment. Run the full connection preflight, reconcile in-flight AE work and retained production-job receipts, then continue the retained ChatGPT-directed editing workflow. Keep After Effects open. Use only provided raw footage and raw audio. ${mode === 'Practice' ? 'Finished is visual reference only.' : 'Use the designed target and actual render review.'} Your exclusive worker credential is ${credential}. Use this exact value as claimedBy for claims, production updates, researchContext.claimedBy, and all assignment writes. If a connector cannot supply it, use the authenticated production HTTP API with X-EditFlow-Worker-Credential. Submit every AE action through production-jobs. ChatGPT alone must browse the provided raw footage and choose exact shots; the raw-shot candidate-ranking algorithm is removed. Read the footage-selection contract, use internet scene/dialogue/script clues first, request your own timestamped contact sheets and frames, and retain direct Finish/raw comparisons and exact ranges. Resume existing GPT selections; never run the legacy raw matcher. For effect/transition methods consult Tutorial Drive first, Adobe resources second, other sources last. A STALE_WORKER response means stop immediately; never reclaim, read supervisor keys, change supervision, or bypass the gateway. Do not launch parallel chats or controllers. ChatGPT alone decides cuts/duration, audio, timing, framing, effects/transitions, construction, corrections, candidate choice and final PASS/REVISE. Every queued job needs its exact editorialDecision; never use formula pulses, automatic baseline/effect synthesis, candidate scoring/pruning, machine certification or local-Qwen decision drivers. Read the current editorialAuthority and practice-notebook contracts. Retrieve the selected preset notebook on every resume; save worked and failed examples with ordered exact steps/settings/checks and actual render evidence before handoff or completion. Read the current assignment, clip research plans, production status and actual AE state, and continue only unfinished work.`;
+function livenessDiagnostics(now = Date.now()) {
+  const a = snapshot?.authority || {}, p = snapshot?.production || {};
+  const lease = snapshot ? decisionLeaseStatus(snapshot, now) : { active: false, operation: null, ageMs: null };
+  return {
+    stage: p.stage || null,
+    currentPhaseId: p.currentPhaseId || null,
+    authorityState: a.state || null,
+    generation: a.generation ?? null,
+    activityAgeMs: a.lastActivityAt ? Math.max(0, now - a.lastActivityAt) : null,
+    semanticProgressAgeMs: state.liveness.progressAt ? Math.max(0, now - state.liveness.progressAt) : null,
+    semanticNoProgressLimitMs: snapshot ? noProgressLimit(snapshot) : null,
+    decisionLeaseActive: lease.active,
+    decisionOperation: lease.operation,
+    decisionLeaseAgeMs: lease.ageMs,
+    chatState: chatExecution?.state || 'UNKNOWN',
+    repeatedActionWarning: !!state.liveness.repeatedActionWarning,
+    stageBudgetWarning: !!state.liveness.stageBudgetWarning,
+  };
 }
 async function beginHandoff(reason) {
   if (state.handoff) return;
+  log('handoff_begin', { reason, ...livenessDiagnostics() });
   const a = snapshot.authority, task = snapshot.assignment;
   const handoff = { id: randomUUID(), assignmentId: task.assignmentId, sessionId: task.sessionId,
     mode: task.mode, sourceTabId: state.activeTabId, targetTabId: null, status: 'REVOKE', reason, createdAt: Date.now() };
@@ -55,6 +96,7 @@ async function progressHandoff() {
     h.status = Number.isInteger(h.sourceTabId) ? 'CLOSE' : 'DRAIN'; persist(); log('worker_revoked', { assignmentId: h.assignmentId, reason: h.reason });
   }
   if (h.status === 'DRAIN') {
+    if (!transport.state().ready) { checkTransport(); recoverTransport(); state.phase = 'CONNECTOR_RECOVERY'; state.reason = 'mcp_transport_unavailable'; persist(); return; }
     if (snapshot.writerOwner || snapshot.jobs.some(j => j.status === 'RUNNING') || snapshot.preflightRunning && h.userControlId) return;
     if (h.userControlId) {
       const prepared = await gateway({ action: 'CONTROL_PREPARE', requestId: h.userControlId });
@@ -98,6 +140,8 @@ async function tick() {
   if (tickBusy) return; tickBusy = true;
   try {
     snapshot = await gateway(); lastGatewayAt = Date.now(); gatewayError = null;
+    snapshot = { ...snapshot, activeTabId: state.activeTabId, chatExecution };
+    checkTransport();
     if ((snapshot.assignment || snapshot.userControl) && Date.now() - (Math.max(bootAt, state.lastActuatorAt || 0, state.lastExtensionLoadedAt || 0)) > 60000) repair('actuator_offline');
     if (snapshot.userControl && snapshot.userControl.step !== 'VERIFYING') {
       const failure = operationFailure(snapshot, Date.now());
@@ -107,6 +151,28 @@ async function tick() {
         state.phase = 'INFRA_RECOVERY'; state.reason = failure; repair(failure); persist(); return;
       }
       await processUserControl(snapshot.userControl); persist(); return;
+    }
+    const ownedObservation = chatExecution && chatExecution.tabId === state.activeTabId
+      && chatExecution.generation === snapshot.authority.generation
+      && chatExecution.assignmentId === snapshot.assignment?.assignmentId
+      && Date.now() - chatExecution.checkedAt <= POLICY.chatStatusFreshMs;
+    const failedControl = snapshot.latestUserControl;
+    const retainedOwnershipFailure = failedControl?.action === 'REPLACE_CHAT' && failedControl.status === 'FAILED'
+      && failedControl.step === 'VERIFYING' && failedControl.error === OWNERSHIP_CONFLICT_ERROR
+      && failedControl.requestId === snapshot.authority.launchId
+      && failedControl.generation === snapshot.authority.generation && failedControl.tabId === state.activeTabId
+      && failedControl.assignmentId === snapshot.assignment?.assignmentId && failedControl.sessionId === snapshot.assignment?.sessionId;
+    const currentlyOwned = ownedObservation && (chatExecution.state === 'PROCESSING'
+      && chatExecution.observation?.reason === 'OWNED_PROCESSING' || chatExecution.state === 'FINISHED'
+      && chatExecution.observation?.reason === 'OWNED_FINISHED');
+    if (ownedObservation && chatExecution.observation?.reason === 'NEWER_FOREIGN_CONTINUATION'
+      || retainedOwnershipFailure && !currentlyOwned) {
+      // Keep the verified conflict visible after the terminal receipt clears the pending control.
+      // Never stop a chat from an ownership mismatch.
+      if (snapshot.userControl?.step === 'VERIFYING' && snapshot.userControl.generation === snapshot.authority.generation
+        && snapshot.userControl.tabId === state.activeTabId) await gateway({ action: 'CONTROL_FAILED',
+        requestId: snapshot.userControl.requestId, error: OWNERSHIP_CONFLICT_ERROR });
+      state.phase = 'BLOCKED'; state.reason = 'owned_chat_worker_mismatch'; persist(); return;
     }
     const verdict = evaluateLiveness(state.liveness, snapshot, Date.now());
     state.liveness = verdict.next; state.phase = verdict.phase; state.reason = verdict.reason;
@@ -135,8 +201,13 @@ async function tick() {
       await beginHandoff(verdict.reason);
     } else if (state.handoff) await progressHandoff();
     else if (verdict.action === 'HANDOFF') {
+      if (!transport.state().ready) { state.phase = 'CONNECTOR_RECOVERY'; state.reason = 'mcp_transport_unavailable'; recoverTransport(); persist(); return; }
       if (snapshot.userControl?.step === 'VERIFYING') await gateway({ action: 'CONTROL_FAILED', requestId: snapshot.userControl.requestId, error: 'Prompt delivered, but the authorized worker did not claim the assignment before operational silence was confirmed.' });
       await beginHandoff(verdict.reason);
+    }
+    if (snapshot.assignment && !transport.state().ready && snapshot.authority.state !== 'PAUSED'
+      && !['CANCEL', 'REPAIR', 'RECOVER_FAILED'].includes(verdict.action)) {
+      state.phase = 'CONNECTOR_RECOVERY'; state.reason = 'mcp_transport_unavailable'; recoverTransport();
     }
     persist();
   } catch (e) { gatewayError = e.message; state.phase = 'INFRA_RECOVERY'; state.reason = 'gateway_unavailable'; persist(); repair('gateway_unavailable'); }
@@ -144,10 +215,22 @@ async function tick() {
 }
 function actuatorCommand() {
   const h = state.handoff;
+  const deliveryMatches = receipt => receipt && receipt.launchId === snapshot?.authority.launchId
+    && receipt.tabId === state.activeTabId && receipt.generation === snapshot?.authority.generation
+    && receipt.assignmentId === snapshot?.assignment?.assignmentId && receipt.sessionId === snapshot?.assignment?.sessionId;
+  const control = snapshot?.userControl;
+  const deliveryConfirmed = !!(deliveryMatches(state.workerTabReceipt) || control?.deliveredAt
+    && control.step === 'VERIFYING' && deliveryMatches({ ...control, launchId: control.requestId }));
   if (!snapshot || Date.now() - lastGatewayAt > 15000) return { command: 'NONE', reason: 'gateway_unavailable' };
   if (!h || snapshot.authority.state === 'PAUSED' && !['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'NONE',
-    recoverLaunchId: !state.activeTabId && !h ? snapshot.authority.launchId : null };
+    recoverLaunchId: !state.activeTabId && !h ? snapshot.authority.launchId : null,
+    observe: !h && Number.isInteger(state.activeTabId) && snapshot.authority.state === 'ARMED' ? {
+      tabId: state.activeTabId, assignmentId: snapshot.assignment?.assignmentId,
+      sessionId: snapshot.assignment?.sessionId, generation: snapshot.authority.generation,
+      deliveryConfirmed,
+    } : null };
   if (['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'STOP_CLOSE', id: h.id, tabId: h.sourceTabId };
+  if (['CREATE', 'SEND'].includes(h.status) && !transport.state().ready) return { command: 'NONE', reason: 'mcp_transport_unavailable' };
   if (h.status === 'CREATE') return { command: 'CREATE', id: h.id };
   if (h.status === 'SEND') return { command: 'SEND', id: h.id, tabId: h.targetTabId, prompt: h.prompt };
   return { command: 'NONE' };
@@ -162,9 +245,10 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.1.0', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.3.0', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
-      authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError,
+      decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
+      authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,
       lastExtensionLoadedAt: state.lastExtensionLoadedAt, extensionVersion: state.extensionVersion,
       userControl: snapshot?.userControl || null, latestUserControl: snapshot?.latestUserControl || null,
       activeTabId: state.activeTabId, handoff: state.handoff ? { id: state.handoff.id, status: state.handoff.status } : null });
@@ -179,6 +263,20 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/actuator/ack') {
       const b = await body(req); const h = state.handoff;
+      if (b.type === 'WORKER_STATUS') {
+        if (h || b.tabId !== state.activeTabId || b.generation !== snapshot?.authority.generation
+          || b.assignmentId !== snapshot?.assignment?.assignmentId) return send(409, { error: 'STALE_WORKER_OBSERVATION' });
+        if (!['PROCESSING','FINISHED','MISSING','UNKNOWN'].includes(b.state)) return send(400, { error: 'INVALID_WORKER_OBSERVATION' });
+        const observation = {};
+        const reasons = ['INVALID_TARGET','OWNER_PROMPT_NOT_FOUND','NEWER_FOREIGN_CONTINUATION','NO_CURRENT_ASSISTANT',
+          'NO_FINAL_CONTROLS','OWNED_PROCESSING','OWNED_FINISHED','PAGE_NOT_READY','TARGET_MISSING','OBSERVER_UNAVAILABLE'];
+        if (reasons.includes(b.observation?.reason)) observation.reason = b.observation.reason;
+        for (const name of ['hasAssignment','hasSession','hasGeneration']) if (typeof b.observation?.[name] === 'boolean') observation[name] = b.observation[name];
+        if (Number.isInteger(b.observation?.userNodes) && b.observation.userNodes >= 0 && b.observation.userNodes <= 10000) observation.userNodes = b.observation.userNodes;
+        chatExecution = { tabId: b.tabId, generation: b.generation, assignmentId: b.assignmentId,
+          state: b.state, checkedAt: Date.now(), observation };
+        void tick(); return send(200, { ok: true });
+      }
       if (b.type === 'READY') { state.lastExtensionLoadedAt = Date.now(); state.extensionVersion = b.version; persist(); return send(200, { ok: true }); }
       if (b.type === 'OWNER_TARGET' && !state.handoff && !state.activeTabId &&
         b.launchId === snapshot?.authority.launchId && Number.isInteger(b.tabId)) {
@@ -191,6 +289,8 @@ const server = http.createServer(async (req, res) => {
       else if (b.type === 'CREATED' && h.status === 'CREATE' && Number.isInteger(b.tabId)) { h.status = 'SEND'; h.targetTabId = b.tabId; state.activeTabId = b.tabId; }
       else if (b.type === 'SENT' && h.status === 'SEND' && b.tabId === h.targetTabId) {
         if (h.userControlId) await gateway({ action: 'CONTROL_DELIVERED', requestId: h.userControlId, tabId: b.tabId });
+        state.workerTabReceipt = { launchId: h.id, tabId: b.tabId, assignmentId: h.assignmentId,
+          sessionId: h.sessionId, generation: h.generation, deliveredAt: Date.now() };
         state.activeTabId = b.tabId; state.handoff = null; state.liveness = {}; log('continuation_sent', { assignmentId: h.assignmentId, generation: h.generation, tabId: b.tabId });
       } else if (b.type === 'FAILED') { log('actuator_failed_retry_same_step', { id: h.id, error: b.error }); }
       else return send(409, { error: 'ACTUATOR_STEP_MISMATCH' });

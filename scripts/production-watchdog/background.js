@@ -10,12 +10,29 @@ async function attach(tabId) {
   try { await chrome.tabs.sendMessage(tabId, { type: 'EDITFLOW_ACTUATOR_PING' }); }
   catch (_) { await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] }); }
 }
+async function observe(target) {
+  const tab = await chrome.tabs.get(target.tabId).catch(() => null);
+  let state = 'UNKNOWN';
+  let observation = { reason: 'PAGE_NOT_READY' };
+  if (!tab) { state = 'MISSING'; observation = { reason: 'TARGET_MISSING' }; }
+  else if (tab.status === 'complete' && /^https:\/\/chatgpt\.com\//.test(tab.url || '')) {
+    try {
+      await attach(tab.id);
+      const reply = await chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_STATUS', ...target });
+      if (['PROCESSING','FINISHED','UNKNOWN'].includes(reply?.state)) state = reply.state;
+      if (reply?.observation && typeof reply.observation === 'object') observation = reply.observation;
+    } catch { observation = { reason: 'OBSERVER_UNAVAILABLE' }; }
+  }
+  await request('/actuator/ack', { type: 'WORKER_STATUS', ...target, state, observation });
+}
 async function execute() {
   if (busy) return; busy = true;
   let cmd;
   try {
     cmd = await request('/actuator');
-    if (cmd.command === 'NONE' && cmd.recoverLaunchId) {
+    if (cmd.command === 'NONE' && cmd.observe) {
+      await observe(cmd.observe);
+    } else if (cmd.command === 'NONE' && cmd.recoverLaunchId) {
       const saved = await chrome.storage.local.get('launchTabs');
       const tabId = saved.launchTabs?.[cmd.recoverLaunchId];
       if (Number.isInteger(tabId) && await chrome.tabs.get(tabId).catch(() => null)) {

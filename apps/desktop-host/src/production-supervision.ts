@@ -5,6 +5,9 @@ import path from "node:path";
 export class WorkerAuthorityError extends Error {
   readonly status = 409;
 }
+export class WorkerAssignmentError extends Error {
+  readonly status = 400;
+}
 export interface ProductionWorkerAuthority {
   assignmentId: string | null;
   sessionId: string | null;
@@ -111,8 +114,14 @@ export class ProductionSupervisionV1 {
   }
   async authorized<T>(assignmentId: string, credential: unknown, signatureInput: unknown, operation: () => Promise<T>): Promise<T> {
     return await this.exclusive(async () => {
-      if (this.#state.assignmentId !== assignmentId || this.#state.state !== "ARMED" || !credential || credential !== this.#state.credential) {
+      // Authenticate the active generation first; invalid/revoked credentials remain fenced.
+      if (this.#state.state !== "ARMED" || !credential || credential !== this.#state.credential) {
         throw new WorkerAuthorityError("STALE_WORKER: use only the worker credential supplied in your supervisor continuation prompt.");
+      }
+      // A typo by the authenticated current worker is a rejected request, not revocation.
+      // Never redirect or dispatch it, renew its controller lease, or record progress.
+      if (this.#state.assignmentId !== assignmentId) {
+        throw new WorkerAssignmentError("ASSIGNMENT_ID_MISMATCH: no write occurred; use the exact assignment ID from your continuation prompt, reconcile retained reads, and correct the request only while this worker remains current.");
       }
       const signature = createHash("sha256").update(JSON.stringify(signatureInput, (key, value) => ["claimedBy", "transactionId", "operationId", "jobId"].includes(key) ? undefined : value).replace(/ef-worker:\d+:[a-f0-9]{64}/g, "worker")).digest("hex");
       let outcome = "SUCCESS";

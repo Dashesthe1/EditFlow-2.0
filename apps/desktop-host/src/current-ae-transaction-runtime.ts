@@ -63,8 +63,8 @@ import {
 
 export const CURRENT_AE_TRANSACTION_RUNTIME_PHASE =
   "M5_CURRENT_AE_TRANSACTION_RUNTIME_V1" as const;
-export const CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 = 80 as const;
-export const CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1 = 96 as const;
+export const CURRENT_AE_TRANSACTION_MAX_OPERATIONS_V1 = 128 as const;
+export const CURRENT_AE_CORRECTION_MAX_OPERATIONS_V1 = 160 as const;
 
 export interface CurrentAeStabilizationRuntimeV1 {
   readonly protocolV23Available: boolean;

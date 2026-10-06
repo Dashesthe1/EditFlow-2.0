@@ -1,4 +1,4 @@
-# EditFlow Production Supervisor 3.1
+# EditFlow Production Supervisor 3.3
 
 Practice and Pro Creation share one local supervisor and one gateway worker authority.
 The supervisor starts at Windows sign-in and arms automatically when the gateway
@@ -11,13 +11,55 @@ serializes admission against revocation so an old request cannot cross a handoff
 Use the issued credential as claimedBy/researchContext.claimedBy, or send the
 X-EditFlow-Worker-Credential header. A stale worker must stop, never reclaim.
 
-Health decisions use authorized operations, durable queue statuses and heartbeats,
-checkpoint/phase/score movement and repeated operation signatures. Browser pixels,
-DOM activity, errors, thinking indicators and ChatGPT network payloads are not
-health evidence. Silence has a 60-second grace and 120-second confirmation; first
-worker startup has 180 seconds. Healthy accepted jobs are protected up to explicit
-operation deadlines. Infrastructure failures trigger local gateway/actuator repair.
-Ambiguous operations are retained for reconciliation; they are never replayed.
+After an initial accepted claim, every assignment POST from the current armed
+worker renews its existing controller lease before dispatch, under the same lock
+that serializes revocation. This includes research/decision HEARTBEATs and works
+after the two-minute timestamp expires while that generation remains authorized.
+Missing claims, other owners, revoked generations and paused authority never
+renew. Claiming a new generation remains explicit. Backend HTTP status/reason and
+payload validation errors pass through MCP as expected tool failures with worker
+credentials redacted; they must not be mistaken for host permission denials.
+
+Missing backend writes trigger inspection after one minute; silence alone never
+revokes a chat. The actuator observes only the exact owned tab/current generation:
+Stop/streaming controls prove PROCESSING; final-response controls after its own
+continuation prove FINISHED. Absence of a Stop button alone is UNKNOWN. No prose,
+conversation text, worker credential, network stream or editorial assessment is
+sent to the supervisor. Unknown/stale/unrelated observations cannot authorize a
+replacement. FINISHED or a missing owned tab must remain freshly confirmed for
+one minute plus 120 seconds before handoff. Active chats can keep researching,
+thinking, inspecting and editing without stage-budget, heartbeat-expiry or repeated-
+request termination. Budgets and repeated requests are diagnostic warnings only.
+Healthy queue heartbeats protect long operations beyond estimated wall-clock
+budgets. Lost queue heartbeats require the full three-minute confirmation window
+before reconciliation. Infrastructure failures trigger gateway/actuator repair;
+uncertain writes and accepted receipts are retained and never blindly replayed.
+
+Every continuation now verifies the tools actually callable in its chat through
+get_mcp_surface(assignment_id, available_tools_json). A READY result proves required
+tool coverage and read-only production/queue access; it does not prove write approval.
+Workflow updates and research heartbeats use get_production_state /
+record_production_update on MCP, retaining the current worker credential and the
+same production coordinator. Missing tools or host-denied requests report
+BLOCKED_CONNECTOR with the actual failing action/reason, preserve checkpoints/jobs,
+and stop dependent writes; a denied request must not be repackaged through HTTP or
+native scripts. Refresh the existing ChatGPT connection after MCP schema updates
+and verify readiness in a fresh chat. No editing decisions move into the supervisor.
+
+Transport health is separate from local gateway health. The supervisor performs
+read-only initialize/tools-list probes on loopback MCP and the already-configured
+protected public route every 15 seconds. It waits for both before ISSUE/CREATE/SEND,
+repairs persistent failures with repair-transport.ps1, and retains assignments,
+ownership, checkpoints and receipts during an outage. The repair script restarts
+only the verified MCP process or restores the saved existing Funnel mapping; it
+never stops AE/Chrome, changes credentials/authentication, claims a worker or
+submits an editing operation. Stateless MCP transport avoids expired HTTP session
+IDs across reconnects; production state remains in the durable backend.
+Worker prompts retry only failed reads after 2/5/15 seconds, then use this bounded
+transport repair and require real client READY again. Uncertain writes are
+reconciled by receipt, never replayed. Missing domain materials are completed
+through authorized research/proof/workflow tools under ChatGPT's judgment.
+Host denial and revoked workers remain hard boundaries.
 
 Handoff order: persist intent, revoke gateway authority, request Stop and close the
 owned tab, drain accepted work, issue the next generation, create one fresh chat,
@@ -29,9 +71,10 @@ it no longer depends on an already-revoked worker acknowledgment.
 Completion/cancellation disarms production;
 the supervisor/guardian processes stay running.
 
-The browser extension is only an actuator. Its permissions no longer include
-webRequest and it contains no ChatGPT stream parser. It reads only its own submitted
-prompt to verify send acceptance and browser controls to execute Stop/Send.
+The browser extension performs mechanical observation and Stop/Send actions. Its
+permissions exclude webRequest and it contains no ChatGPT stream parser. It reads
+its own submitted prompt to verify acceptance/current generation and browser
+controls to report turn processing/completion. It makes no editing decision.
 The public /health endpoint reports state without credentials. The gateway private
 supervision route requires a separate local supervisor key; the actuator route is
 restricted to the installed extension origin.

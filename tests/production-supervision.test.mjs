@@ -38,6 +38,27 @@ test('durable generation fencing rejects a late old worker, serializes revoke an
   await restarted.resume('assignment'); assert.equal(restarted.publicState().state, 'HANDOFF');
 });
 
+test('current-worker assignment typo is correctable but missing, retired and paused credentials remain fenced', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'worker-assignment-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const authority = new ProductionSupervisionV1(root);
+  await authority.bind({ assignmentId: 'retained-assignment', sessionId: 'retained-session', mode: 'PRACTICE' });
+  const credential = await authority.issue('retained-assignment', 'launch');
+  const before = authority.publicState();
+  let writes = 0;
+  const write = async () => { writes++; return 200; };
+  await assert.rejects(authority.authorized('retained-assignment-typo', credential, {}, write),
+    error => error.status === 400 && error.message.startsWith('ASSIGNMENT_ID_MISMATCH:') && !error.message.includes(credential));
+  assert.equal(writes, 0);
+  assert.deepEqual(authority.publicState(), before);
+  await authority.authorized('retained-assignment', credential, {}, write);
+  assert.equal(writes, 1);
+  assert.equal(authority.publicState().generation, before.generation);
+  await assert.rejects(authority.authorized('retained-assignment-typo', null, {}, write), /STALE_WORKER/);
+  await authority.revoke('retained-assignment', before.generation, 'pause', true);
+  await assert.rejects(authority.authorized('retained-assignment-typo', credential, {}, write), /STALE_WORKER/);
+  assert.equal(writes, 1);
+});
+
 test('live HTTP gateway automatically binds both modes and rejects revoked/missing/wrong-assignment writes before dispatch', async t => {
   for (const mode of ['PRACTICE', 'PRO_CREATION']) {
     const root = await mkdtemp(path.join(os.tmpdir(), 'supervisor-http-'));
@@ -66,6 +87,14 @@ test('live HTTP gateway automatically binds both modes and rejects revoked/missi
       assert.equal((await call(base + '/claim', { claimedBy: 'old-legacy-controller' })).status, 409);
       const claim = await call(base + '/claim', { claimedBy: issue.credential }); assert.equal(claim.status, 200);
       assert.ok(!(await claim.text()).includes(issue.credential));
+      const typoBase = '/v1/product/gpt/assignments/' + encodeURIComponent(assignment.assignmentId + '-typo');
+      const rejected = await call(typoBase + '/claim', { claimedBy: issue.credential });
+      assert.equal(rejected.status, 400);
+      const mismatch = await rejected.json();
+      assert.match(mismatch.error, /ASSIGNMENT_ID_MISMATCH/);
+      assert.ok(!JSON.stringify(mismatch).includes(issue.credential));
+      assert.equal((await store.listAssignments()).length, 1);
+      assert.equal((await call(base + '/claim', { claimedBy: issue.credential })).status, 200);
       assert.equal((await call(base + '/production-jobs', { kind: 'AE_BATCH', payload: { researchContext: { assignmentId: assignment.assignmentId } } })).status, 409);
       await call(supervision, { action: 'REVOKE', assignmentId: assignment.assignmentId, generation: issue.authority.generation, reason: 'test-stall' }, admin);
       assert.equal((await call(base + '/claim', { claimedBy: issue.credential })).status, 409);

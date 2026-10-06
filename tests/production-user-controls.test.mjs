@@ -51,10 +51,22 @@ async function fixture(t, { existing = true, cancelled = false, paused = false }
   await writeFile(path.join(configDir, 'runtime-config.js'), 'window.CONFIG=Object.freeze(' + JSON.stringify({ token }) + ');');
   async function manifest() { await writeFile(path.join(root, 'EditFlow2/current-runtime.json'), JSON.stringify({ productBaseUrl: base, stateDir })); }
   await manifest();
+  const transportServer = createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const message = JSON.parse(raw);
+    if (message.method === 'notifications/initialized') { res.writeHead(202); res.end(); return; }
+    const tools = ['get_mcp_surface','get_production_state','record_production_update','claim_gpt_assignment','get_production_jobs','enqueue_production_job','resolve_production_job'].map(name => ({ name }));
+    const result = message.method === 'initialize' ? { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'isolated-test', version: '1' } } : { tools };
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }));
+  });
+  await new Promise(resolve => transportServer.listen(0, '127.0.0.1', resolve));
+  const transportUrl = 'http://127.0.0.1:' + transportServer.address().port + '/mcp';
+  t.after(() => new Promise(resolve => transportServer.close(resolve)));
   const sideRoot = path.join(root, 'supervisor'); await mkdir(sideRoot);
   await writeFile(path.join(sideRoot, 'production-state.json'), JSON.stringify({ activeTabId: old ? 80 : null }));
   let child;
-  const startSupervisor = () => { child = spawn(process.execPath, ['scripts/production-watchdog/supervisor.js'], { env: { ...process.env, APPDATA: root, LOCALAPPDATA: root, EDITFLOW_SUPERVISOR_ROOT: sideRoot, EDITFLOW_SUPERVISOR_PORT: String(port) }, stdio: 'pipe' }); };
+  const startSupervisor = () => { child = spawn(process.execPath, ['scripts/production-watchdog/supervisor.js'], { env: { ...process.env, APPDATA: root, LOCALAPPDATA: root, EDITFLOW_SUPERVISOR_ROOT: sideRoot, EDITFLOW_SUPERVISOR_PORT: String(port), EDITFLOW_SUPERVISOR_TEST_TRANSPORT_URL: transportUrl }, stdio: 'pipe' }); };
   const stopSupervisor = async () => { if (child?.exitCode === null) { const p = new Promise(r => child.once('exit', r)); child.kill(); await p; } };
   const actuator = async (route, body) => { const r = await fetch('http://127.0.0.1:' + port + route, { headers: { origin: 'chrome-extension://ljjjjjoghmheifakiiahgoonhhmoebog', 'content-type': 'application/json' }, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) }); return { status: r.status, ...await r.json() }; };
   t.after(async () => { await stopSupervisor(); await service.stop(); await rm(root, { recursive: true, force: true }); });

@@ -2,6 +2,7 @@ import { assertExplicitEditorialPayloadV1 } from "../../adapters/ae-cep/src/expl
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parseProductionMethodV1, type ProductionMethodV1 } from "./production-workflow.js";
 
 /** Measurements and native tracking are tools; they cannot nominate an edit. */
 export const CHATGPT_EDITORIAL_AUTHORITY_V1 = {
@@ -129,6 +130,7 @@ export interface PracticeWorkedExampleV1 {
   readonly evidenceRefs: readonly string[];
   readonly supersedesLessonIds: readonly string[];
   readonly recordedAt: string;
+  readonly method?: ProductionMethodV1;
 }
 
 export const parsePracticeWorkedExampleV1 = (editTypeId: string, sessionId: string, input: Record<string, any>): PracticeWorkedExampleV1 => {
@@ -143,7 +145,8 @@ export const parsePracticeWorkedExampleV1 = (editTypeId: string, sessionId: stri
     outcome: input.outcome, observation: text(input.observation, "observation"), explanation: text(input.explanation, "explanation"),
     whenToUse: strings(input.whenToUse, "whenToUse", true), adaptation: strings(input.adaptation, "adaptation"),
     mistakesToAvoid: strings(input.mistakesToAvoid, "mistakesToAvoid"), evidenceRefs: strings(input.evidenceRefs, "evidenceRefs", input.outcome !== "UNVERIFIED"),
-    supersedesLessonIds: strings(input.supersedesLessonIds ?? [], "supersedesLessonIds"), recordedAt: new Date().toISOString() };
+    supersedesLessonIds: strings(input.supersedesLessonIds ?? [], "supersedesLessonIds"), recordedAt: new Date().toISOString(),
+    ...(input.method === undefined ? {} : { method: parseProductionMethodV1(input.method) }) };
 };
 
 export const practiceNotebookViewV1 = (editTypeId: string, examples: readonly PracticeWorkedExampleV1[], query = "") => {
@@ -161,6 +164,6 @@ export const CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1 = {
   storage: "Existing Edit Type gptLearning.workedExamples; legacy lessons and learnedSkills are preserved.",
   endpoint: "GET/POST /v1/product/gpt/assignments/{id}/practice-notebook",
   query: "GET ?q=... returns matching complete worked examples in retained order; no automatic recipe selection.",
-  fields: ["lessonId", "authority:CHATGPT_DIRECT", "title", "problem", "steps:[{action,settings,reason,check}]", "outcome:WORKED|FAILED|UNVERIFIED", "observation", "explanation", "whenToUse", "adaptation", "mistakesToAvoid", "evidenceRefs", "supersedesLessonIds"],
+  fields: ["lessonId", "authority:CHATGPT_DIRECT", "title", "problem", "steps:[{action,settings,reason,check}]", "outcome:WORKED|FAILED|UNVERIFIED", "observation", "explanation", "whenToUse", "adaptation", "mistakesToAvoid", "evidenceRefs", "supersedesLessonIds", "method?:{schema:editflow.production-method.v1,family,sourceBindings,containers,anchors,channels,effects,dependencies,adaptationChecks,failureSymptoms}"],
   rules: ["Save after every reviewed successful/failed construction, correction or discovery, before handoff and before completing Practice.", "Preserve exact settings, troubleshooting and render/checkpoint evidence so a future GPT chat can reproduce the solution.", "Failed/unverified examples remain visible and never become automatically applied skills.", "Only the chosen editTypeId is written. Read current preset examples on every new session and resume."],
 } as const;

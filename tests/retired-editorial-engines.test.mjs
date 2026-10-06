@@ -33,8 +33,10 @@ test("retired decision engines and generated entry points are physically absent"
     "scripts/practice/practice-media-match.py", "scripts/practice/practice-resumable-match.py",
     "scripts/practice/practice-candidate-ranker.py", "apps/desktop-host/src/practice-training-runtime.ts",
     "packages/adapters/ae-cep/runtime/editgpt_stabilization_visual_driver.py",
+    "scripts/windows/run-practice-held-out-isolation-proof.ps1", "apps/desktop-host/src/practice-live-proof-assertions.ts",
     ".tmp/runtime/packages/editor-brain/src/index.js", ".tmp/runtime/packages/visual-effects-intelligence/src/brain.js",
     ".tmp/runtime/apps/desktop-host/src/practice-training-runtime.js",
+    ".tmp/runtime/apps/desktop-host/src/practice-live-proof-assertions.js",
   ]) await assert.rejects(access(file), { code: "ENOENT" }, file);
 });
 
@@ -47,7 +49,8 @@ test("old cached briefs are replaced idempotently while preset context and assig
     start: [{ uri: "raw.mp4", mediaId: "raw", role: "START_SOURCE", mediaKind: "VIDEO" }], knowledge: null });
   await store.claim(a.assignmentId, "owner");
   const disk = JSON.parse(await readFile(store.filePath, "utf8"));
-  disk.assignments[0].chatMessage = "Session: retained\nExisting preset successes: [\"Keep the reviewed source range\"]\n- invoke the M6 reference-fidelity engine\n- Run machine-verified certification\n";
+  delete disk.assignments[0].primaryWorkflow;
+  disk.assignments[0].chatMessage = "Session: retained\nExisting preset successes: [\"Keep the reviewed source range\"]\n- invoke the M6 reference-fidelity engine\n- Run machine-verified certification\n- ACCELERATED_REFERENCE_FIRST_V1\n- Optional workflowContext\n";
   await writeFile(store.filePath, JSON.stringify(disk));
   assert.equal(await store.refreshActiveProductionInstructions(), 1);
   const first = await store.getAssignment(a.assignmentId);
@@ -56,7 +59,8 @@ test("old cached briefs are replaced idempotently while preset context and assig
   assert.equal(first.chatMessage, second.chatMessage);
   assert.equal(second.assignmentId, a.assignmentId); assert.equal(second.sessionId, "retained");
   assert.equal(second.controllerLease.owner, "owner"); assert.equal(second.status, "RUNNING");
+  assert.equal(second.primaryWorkflow,"CHATGPT_PRODUCTION_WORKFLOW_V1");
   assert.match(second.chatMessage, /Keep the reviewed source range/);
   assert.match(second.chatMessage, /RETIRED_EDIT_ENGINES_REMOVED_V1/);
-  assert.doesNotMatch(second.chatMessage, /invoke the M6|Run machine-verified/);
+  assert.doesNotMatch(second.chatMessage, /invoke the M6|Run machine-verified|ACCELERATED_REFERENCE_FIRST_V1|Optional workflowContext/);
 });

@@ -8,12 +8,15 @@ test('gateway preserves submitted receipts on polling failure and never retries 
 import runpy, sys, types
 sdk = types.ModuleType('mcp.server.mcpserver')
 class MCPServer:
-    def __init__(self, name): self.tools = {}
-    def tool(self):
+    def __init__(self, name, **kwargs): self.tools = {}
+    def tool(self, **kwargs):
         def register(fn): self.tools[fn.__name__] = fn; return fn
         return register
 sdk.MCPServer = MCPServer
 sys.modules['mcp.server.mcpserver'] = sdk
+exceptions = types.ModuleType('mcp.server.mcpserver.exceptions')
+exceptions.ToolError = type('ToolError', (Exception,), {})
+sys.modules['mcp.server.mcpserver.exceptions'] = exceptions
 module = runpy.run_path('scripts/current_shadow_gateway_v3.py')
 execute = module['_execute_queued']
 calls = []

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile, copyFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, copyFile, appendFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -68,6 +68,19 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   assert.equal((await post({ action: "BROWSE", claimedBy: "old-chat", mediaId: "video:1:raw", timesMs: [2000] })).status, 409);
   assert.deepEqual(state.reference.shots, []);
   const times = [50,450,900];
+  // Reference preparation belongs to the same workflow before any raw-shot plan.
+  const jobEndpoint=endpoint.replace('/footage-selection','/production-jobs');
+  const preparation=await fetch(jobEndpoint,{headers,method:'POST',body:JSON.stringify({kind:'REFERENCE_ANALYSIS',payload:{
+    workflowContext:{workflowId:'CHATGPT_PRODUCTION_WORKFLOW_V1',phase:'PREPARATION'},
+    researchContext:{assignmentId:assignment.assignmentId,claimedBy:'controller',plans:[]},startMs:0,endMs:1000,timesMs:times,
+    editorialDecision:{authority:'CHATGPT_DIRECT',decisionId:'reference-preparation',rationale:'Inspect the chosen reference moments',evidenceRefs:['provided:reference'],steps:['Decode exact chosen timestamps']}}})});
+  assert.equal(preparation.status,202);let preparationJob=(await preparation.json()).job;
+  for(let i=0;i<300 && ['PENDING','RUNNING'].includes(preparationJob.status);i++) {
+    await new Promise(resolve=>setTimeout(resolve,30));
+    preparationJob=(await (await fetch(jobEndpoint+'?jobId='+encodeURIComponent(preparationJob.jobId),{headers})).json()).job;
+  }
+  assert.equal(preparationJob.status,'SUCCEEDED',preparationJob.error);
+  assert.deepEqual(preparationJob.result.frames.map(frame=>frame.timeMs),times);
   const rawTimes = times.map(time => time + 2000);
   const ref = await (await post({ action: "BROWSE", mediaId: "finish:1:reference", timesMs: times })).json();
   const raw = await (await post({ action: "BROWSE", mediaId: "video:1:raw", timesMs: rawTimes })).json();
@@ -101,7 +114,7 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   const renderPath=path.join(root,"actual-render.mp4"); await copyFile(finishPath,renderPath);
   const job={assignmentId:assignment.assignmentId,jobId:"production-job:render",kind:"LOCAL_RENDER",requestKey:"fixture",
     payload:{startMs:0,endMs:1000},dependencyIds:[],status:"SUCCEEDED",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),result:{renderPath}};
-  await writeFile(path.join(root,"production-coordinator","jobs.jsonl"),[job,{...job,jobId:"production-job:partial",requestKey:"partial",payload:{startMs:0,endMs:500}}].map(j=>JSON.stringify(j)).join("\n")+"\n");
+  await appendFile(path.join(root,"production-coordinator","jobs.jsonl"),[job,{...job,jobId:"production-job:partial",requestKey:"partial",payload:{startMs:0,endMs:500}}].map(j=>JSON.stringify(j)).join("\n")+"\n");
   await store.updatePreflight(assignment.assignmentId,{...updated.preflight,stage:"READY"},updated.practiceSceneMatches);
   const types=new EditTypeRegistryFileV1(config.editTypeRegistryFilePath);
   await types.update(registry=>registry.create({editTypeId:"test",title:"Test",choiceWords:["test"]}));
@@ -109,6 +122,13 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   const base=`http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}`;
   const request=async(path,body)=>fetch(base+path,{headers,method:"POST",body:JSON.stringify({claimedBy:"controller",...body})});
   await service.assertPracticeReconstructionReady();
+  assert.equal((await request('/complete',{success:true,finalSummary:'No workflow plan'})).status,409);
+  const workflowPlan={authority:'CHATGPT_DIRECT',decisionId:'direct-http-workflow',rationale:'Retain the reviewed one-second source trim',evidenceRefs:[raw.inspection.evidenceId],
+    mode:'METHOD_LEARNING',scope:'Directly reviewed one-second shot',output:{width:160,height:90,fps:30,durationMs:1000},passOrder:['structure','review'],
+    sources:[{clipId:'shot:1',mediaId:'video:1:raw',fingerprint:createHash('sha256').update(await readFile(video)).digest('hex'),fps:30,startMs:2000,endMs:3000,availableStartMs:0,availableEndMs:6000,actionAnchors:[]}],
+    audio:{mediaId:'audio:1:song',songOffsetMs:0,policy:'Provided raw song'},anchors:[{id:'start',role:'action',outputMs:0,rationale:'Chosen start'}],
+    events:[{id:'shot',clipIds:['shot:1'],anchorIds:['start'],treatment:'Preserve selected timing',acceptedDimensions:[],unresolvedIssues:['Review full render']}],finishing:[],nextAction:'Inspect retained full render'};
+  const workflowReply=await request('/production',{action:'WORKFLOW_PLAN',plan:workflowPlan});assert.equal(workflowReply.status,200);
   const renderReply=await request("/footage-selection",{action:"BROWSE_RENDER",renderJobId:job.jobId,timesMs:times});
   assert.equal(renderReply.status,201); const pixels=(await renderReply.json()).inspection;
   const checks=Object.fromEntries(["shots","timing","audio","framing","effects","transitions","color"].map(k=>[k,"Reviewed the actual output: "+k]));

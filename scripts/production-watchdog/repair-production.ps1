@@ -5,7 +5,7 @@ $repo = $manifest.repositoryRoot
 $script = Join-Path $repo 'scripts\current-shadow-control-daemon.mjs'
 $log = Join-Path $PSScriptRoot 'production-recovery.log'
 Add-Content $log ((Get-Date).ToString('o') + ' recovery ' + $Reason)
-$existing = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*scripts/current-shadow-control-daemon.mjs*' })
+$existing = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine.Contains($script) })
 $healthy = $false
 try { $healthy = (Invoke-RestMethod ($manifest.productBaseUrl + '/healthz') -TimeoutSec 3).ok } catch {}
 if ($healthy -and $Reason -eq 'gateway_unavailable') { return }

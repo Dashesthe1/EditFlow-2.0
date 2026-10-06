@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { ClipResearchStoreV1 } from '../.tmp/runtime/packages/practice-homework/src/clip-research.js';
 import { LoopbackCepBroker } from '../.tmp/runtime/apps/desktop-host/src/loopback-cep.js';
 import { PracticePanelServerV1 } from '../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js';
-import { GptOrchestrationStoreV1 } from '../.tmp/runtime/packages/practice-homework/src/index.js';
+import { GptOrchestrationStoreV1, PRIMARY_PRODUCTION_WORKFLOW_V1, PracticeProductionWorkerV1, ChatgptEditorialDecisionFileV1 } from '../.tmp/runtime/packages/practice-homework/src/index.js';
 
 async function fixture(t, mode = 'PRACTICE') {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'clip-research-'));
@@ -244,6 +244,14 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   const headers = { 'X-EditFlow-Token': token, 'Content-Type': 'application/json' };
   const request = (route, body) => fetch(`http://127.0.0.1:${service.port}${route}`, { headers, ...(body ? { method:'POST', body:JSON.stringify(body) } : {}) });
   const endpoint = '/v1/product/gpt/assignments/' + encodeURIComponent(assignment.assignmentId) + '/production-jobs';
+  const workflowPlan = {authority:'CHATGPT_DIRECT',decisionId:'fixture-workflow',rationale:'Explicit fixture construction and playback',evidenceRefs:['fixture:pixels'],
+    mode:'METHOD_LEARNING',scope:'Single selected shot',output:{width:640,height:480,fps:30,durationMs:1000},passOrder:['structure','review'],
+    sources:[{clipId:'shot:1',mediaId:'raw:1',fingerprint:'fixture:raw',fps:30,startMs:1000,endMs:2000,availableStartMs:1000,availableEndMs:2000,actionAnchors:[]}],
+    audio:{mediaId:'raw:1',songOffsetMs:0,policy:'Provided raw video audio'},anchors:[{id:'start',role:'action',outputMs:0,rationale:'Chosen start'}],
+    events:[{id:'shot',clipIds:['shot:1'],anchorIds:['start'],treatment:'Explicit keys and native proof',acceptedDimensions:[],unresolvedIssues:['Render review']}],finishing:[],nextAction:'Execute explicit fixture operations'};
+  const retained = await request(endpoint.replace('/production-jobs','/production'),{action:'WORKFLOW_PLAN',claimedBy:'controller',plan:workflowPlan});
+  assert.equal(retained.status,200);const workflow=(await retained.json()).production.workflow.plans[0];
+  const workflowContext={workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,planDecisionId:workflowPlan.decisionId,planHash:workflow.hash,eventIds:['shot']};
   for (const route of ['/run', '/run-batch', '/run-transaction', '/run-correction-transaction', '/proof-script', '/mutation-lease/acquire', '/v1/product/control/execute']) {
     const response = await request(route, {}); assert.equal(response.status, 410, route);
     assert.equal((await response.json()).error, 'EDIT_EXECUTION_PATH_REMOVED');
@@ -260,7 +268,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
     rollbackBoundaries:[{id:'boundary',strategy:'RESTORE_SNAPSHOT'}], operations:[{operationId:'keys',capabilityId:'ae.keyframe.set',routeId:'ae-cep.v1_1',dependsOn:[],
       idempotency:'CHECK_THEN_APPLY',riskClass:'R1_REVERSIBLE',input:{command:'property.set_keyframes',payload:{},readbackProfile:'test'},rollbackBoundaryId:'boundary'}] };
   const editorialDecision={authority:'CHATGPT_DIRECT',decisionId:'explicit-keys',rationale:'Reviewed fixture pixels and chose exact keys',evidenceRefs:['fixture-render'],steps:['Set explicit keys']};
-  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{...f.context(saved),plan,editorialDecision}});
+  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{...f.context(saved),workflowContext,plan,editorialDecision}});
   assert.equal(accepted.status, 202); const receipt = (await accepted.json()).job;
   const wait = async id => { for(let i=0;i<200;i++) { const job = (await (await request(endpoint+'?jobId='+encodeURIComponent(id))).json()).job;
     if(!['RUNNING','PENDING'].includes(job.status)) return job; await new Promise(r=>setTimeout(r,10)); } throw new Error('queued job timeout'); };
@@ -270,18 +278,31 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   const expired = await fetch(borrowedScope.EDITFLOW_WORKER_PROOF_URL,{method:'POST',headers:{'Content-Type':'application/json',
     'X-EditFlow-Token':token,'X-EditFlow-Worker-Key':borrowedScope.EDITFLOW_WORKER_PROOF_KEY},body:JSON.stringify({scriptPath})});
   assert.equal(expired.status,409);
-  const proof = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'explicit-proof'}}});
+  const proof = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),workflowContext,scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'explicit-proof'}}});
   const review = await wait((await proof.json()).job.jobId); assert.equal(review.status,'REVIEW_REQUIRED');
   await service.stop(); service = makeService(); await service.start();
   const resumed = (await (await request(endpoint+'?jobId='+encodeURIComponent(review.jobId))).json()).job;
   assert.equal(resumed.status,'REVIEW_REQUIRED');
   const noEvidence = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller'}); assert.equal(noEvidence.status,400);
   const resolved = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller',reviewEvidenceRef:'actual-ae-readback.json'}); assert.equal(resolved.status,200);
+  // Simulate a trusted pre-rollout receipt on disk. It may resume, but a new
+  // client request with the same old payload must be refused after the upgrade.
+  await service.stop();
+  const legacyPayload={...f.context(saved),scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'pre-rollout-proof'}};
+  legacyPayload.editorialDecision=await new ChatgptEditorialDecisionFileV1(path.join(f.dir,'editorial-decisions')).retain(assignment.assignmentId,'PROOF_SCRIPT',legacyPayload);
+  const legacyWorker=new PracticeProductionWorkerV1(path.join(f.dir,'production-coordinator','jobs.jsonl'),async()=>{throw Error('fixture journal must not execute');});
+  const legacyJob=await legacyWorker.enqueue({assignmentId:assignment.assignmentId,kind:'PROOF_SCRIPT',payload:legacyPayload,dependencyIds:[]});
+  service=makeService();await service.start();
+  const legacyReview=await wait(legacyJob.jobId);assert.equal(legacyReview.status,'REVIEW_REQUIRED',legacyReview.error);
+  assert.deepEqual(legacyReview.payload,legacyPayload);
+  const rejectLegacy=await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...legacyPayload,acceptedLegacyReceipt:true}});
+  assert.equal(rejectLegacy.status,409);assert.match((await rejectLegacy.json()).error,/PRIMARY_WORKFLOW_REQUIRED/);
+  assert.equal((await request(endpoint,{action:'RESOLVE',jobId:legacyJob.jobId,claimedBy:'controller',reviewEvidenceRef:'legacy-readback.json'})).status,200);
   if(mode === 'PRO_CREATION') {
     await writeFile(f.assignment.start[0].uri,'changed raw media requires a fresh scan');
     const changed = await (await request(endpoint.replace('/production-jobs','/production'))).json();
     assert.equal(changed.production.phases[0].sourceValidationRequired,true);
-    const stale = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'explicit-proof'}}}); assert.equal(stale.status,409);
+    const stale = await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...f.context(saved),workflowContext,scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'explicit-proof'}}}); assert.equal(stale.status,409);
     await f.scan(); await f.source('TUTORIAL','SUFFICIENT',['zoom','trail']); const renewed = await f.plan();
     assert.notEqual(renewed.clips['shot:1'].scanHash,saved.clips['shot:1'].scanHash);
     const fresh = await (await request(endpoint.replace('/production-jobs','/production'))).json();

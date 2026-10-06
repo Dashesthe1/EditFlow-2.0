@@ -188,7 +188,7 @@ test("Practice chat jobs cannot bypass direct selection through missing checkpoi
     const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ kind: "AE_BATCH", payload: {
       intents: [], researchContext: { assignmentId: assignment.assignmentId, claimedBy: "controller", plans: [] } } }) });
     assert.equal(response.status, 409);
-    assert.match((await response.json()).error, /reconstruction is locked|REFERENCE_PLAN_REQUIRED|Command failed|Footage browsing failed|Failed to open/gi);
+    assert.match((await response.json()).error, /PRIMARY_WORKFLOW_REQUIRED/);
     assert.deepEqual((await (await fetch(endpoint, { headers })).json()).jobs, []);
   };
   await enqueue();
