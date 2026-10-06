@@ -61,20 +61,20 @@ test('background reinjects a stale observer before operating on an existing tab'
   const context = vm.createContext({
     chrome: { tabs: { sendMessage: async () => ({ ok: true, version: '3.3.3' }) },
       scripting: { executeScript: async () => { injected++; } },
-      runtime: { id: 'test', getManifest: () => ({ version: '3.4.0' }), onStartup: { addListener() {} }, onInstalled: { addListener() {} } },
+      runtime: { id: 'test', getManifest: () => ({ version: '3.4.1' }), onStartup: { addListener() {} }, onInstalled: { addListener() {} } },
       alarms: { onAlarm: { addListener() {} }, clearAll: async () => {}, create: async () => {} } },
     fetch: async () => ({ ok: true, json: async () => ({ command: 'NONE' }) }), setInterval() {},
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8') + '\nglobalThis.attachForTest = attach;', context);
   await context.attachForTest(99); assert.equal(injected, 1);
-  context.chrome.tabs.sendMessage = async () => ({ ok: true, version: '3.4.0' });
+  context.chrome.tabs.sendMessage = async () => ({ ok: true, version: '3.4.1' });
   await context.attachForTest(99); assert.equal(injected, 1);
 });
 
-async function observedState({ stop = false, final = false, generation = 4, afterUser = true, followUp = null, collapsed = false, accessibleFinal = false, credentialCollapsed = false, deliveryConfirmed = false } = {}) {
+async function observedState({ stop = false, final = false, generation = 4, afterUser = true, followUp = null, collapsed = false, accessibleFinal = false, credentialCollapsed = false, promptCollapsed = false, deliveryConfirmed = false } = {}) {
   let listener;
   const button = { isConnected: true, disabled: false, getClientRects: () => [1] };
-  const bubble = { textContent: 'assignment retained session retained-session' + (credentialCollapsed ? '' : ' ef-worker:' + generation + ':private'),
+  const bubble = { textContent: promptCollapsed ? 'Continue the Practice edit.' : 'assignment retained session retained-session' + (credentialCollapsed ? '' : ' ef-worker:' + generation + ':private'),
     compareDocumentPosition: () => afterUser ? 4 : 2 };
   const users = [bubble];
   if (collapsed) users.push({ textContent: 'Continue Practice', compareDocumentPosition: bubble.compareDocumentPosition });
@@ -142,4 +142,13 @@ test('a collapsed credential requires the exact tab delivery acknowledgment and 
   assert.equal((await observedState({ credentialCollapsed: true, deliveryConfirmed: true, final: true })).state, 'FINISHED');
   assert.equal((await observedState({ generation: 3, deliveryConfirmed: true, final: true })).state, 'UNKNOWN');
   assert.equal((await observedState({ credentialCollapsed: true, deliveryConfirmed: true, followUp: 'ef-worker:5:other', final: true })).state, 'UNKNOWN');
+});
+test('verified tab delivery survives a completely collapsed continuation without accepting foreign turns', async () => {
+  assert.equal((await observedState({ promptCollapsed: true, final: true })).state, 'UNKNOWN');
+  assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, stop: true })).state, 'PROCESSING');
+  assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, final: true })).state, 'FINISHED');
+  assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, final: true, afterUser: false })).state, 'UNKNOWN');
+  for (const followUp of ['ef-worker:5:other', 'gpt-assignment:other', 'Continue and session other-session;']) {
+    assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, followUp, stop: true, final: true })).state, 'UNKNOWN');
+  }
 });

@@ -75,6 +75,9 @@ observer version into existing tabs. A conflicting conversation or unrelated
 composer draft stops SEND retries and permits only read-only delivery verification;
 it never replaces a chat or worker merely to clear the conflict. A matching receipt
 automatically finishes the retained handoff without typing or issuing a generation.
+Once verified, the exact tab/generation receipt keeps ownership bound even when
+ChatGPT hides every prompt identity field. Visible competing continuations still
+invalidate the observation, and current processing/final controls remain required.
 A manual pause persists, freezes new/pending work and retains the checkpoint.
 Resume reuses the same assignment. Cancellation is completed by the supervisor
 after fencing, closing the owned chat and draining work, including when paused;

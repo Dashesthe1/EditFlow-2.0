@@ -1,7 +1,7 @@
 (() => {
   const listenerKey = '__EDITFLOW_ACTUATOR_LISTENER__';
   const versionKey = '__EDITFLOW_ACTUATOR_VERSION__';
-  const observerVersion = '3.4.0';
+  const observerVersion = '3.4.1';
   const previousListener = globalThis[listenerKey];
   // Extension reloads can leave page globals behind after the old listener is removed.
   if (previousListener && chrome.runtime.onMessage.hasListener?.(previousListener)) {
@@ -83,16 +83,18 @@
     const owns = node => texts(node).some(text => text.includes(target.assignmentId) && text.includes(target.sessionId)
       && text.includes('ef-worker:' + target.generation + ':'));
     let anchorIndex = users.findLastIndex(owns);
-    // A confirmed send receipt binds this exact tab/generation even when the UI
-    // collapses the credential suffix. It never substitutes for processing/final controls.
-    if (anchorIndex < 0 && target.deliveryConfirmed === true) anchorIndex = users.findLastIndex(node => texts(node)
-      .some(text => text.includes(target.assignmentId) && text.includes(target.sessionId)));
+    // The full verified send receipt already binds this exact tab/generation.
+    // ChatGPT can collapse the entire continuation, hiding every identity field.
+    // Retain that binding while still checking all visible users for a competing
+    // continuation and requiring processing/final controls for the latest turn.
+    if (anchorIndex < 0 && target.deliveryConfirmed === true && users.length) anchorIndex = 0;
     if (anchorIndex < 0) return result('UNKNOWN', 'OWNER_PROMPT_NOT_FOUND');
     // Nested/collapsed bubbles and normal follow-ups do not discard the retained owner.
     // A later continuation for a different worker or assignment does invalidate it.
     for (const node of users.slice(anchorIndex)) {
       const competing = texts(node).some(text => [...text.matchAll(/ef-worker:(\d+):/g)].some(match => Number(match[1]) !== target.generation)
-        || [...text.matchAll(/gpt-assignment:[\w-]+/g)].some(match => match[0] !== target.assignmentId));
+        || [...text.matchAll(/gpt-assignment:[\w-]+/g)].some(match => match[0] !== target.assignmentId)
+        || [...text.matchAll(/\band session ([\w:-]+)(?=;|\s|$)/g)].some(match => match[1] !== target.sessionId));
       if (competing) return result('UNKNOWN', 'NEWER_FOREIGN_CONTINUATION');
     }
     const lastUser = users.at(-1);
