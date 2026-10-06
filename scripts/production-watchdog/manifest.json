@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Production Watchdog",
-  "version": "3.3.3",
+  "version": "3.4.0",
   "description": "EditFlow browser actuator. Production health and worker ownership are decided by the local gateway supervisor.",
   "permissions": ["storage", "tabs", "alarms", "scripting"],
   "host_permissions": ["https://chatgpt.com/*", "http://127.0.0.1:32147/*"],

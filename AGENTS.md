@@ -63,6 +63,13 @@ they cannot revoke a processing chat. A finished/missing owned chat needs confir
 UI evidence through the existing confirmation window before handoff. Unknown/stale
 observations cannot authorize replacement. Healthy queue heartbeats protect long jobs.
 
+Continuation delivery uses the exact assignment/session/full issued credential,
+including wrapped or collapsed DIRECT_EDITING_V1 user messages. On an uncertain
+send acknowledgment, verify the retained target before typing again. Conflicting
+conversation/draft evidence permits only read-only delivery verification; never
+loop submissions, adopt a foreign continuation or issue another generation to
+clear a delivery mismatch. Observer upgrades reinject the current browser code.
+
 Only the supervisor issues worker generations. Use the credential supplied in this
 chat; never recover another identity. An actual STALE_WORKER means a newer chat owns
 the assignment: stop dependent writes. Accepted jobs survive the handoff.

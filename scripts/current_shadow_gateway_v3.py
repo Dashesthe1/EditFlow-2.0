@@ -337,7 +337,7 @@ def build_server():
 
     @tool(read_only=True, destructive=False)
     def get_mcp_surface(assignment_id: str = "", available_tools_json: str = "") -> dict[str, Any]:
-        """Verify actual client tools before Practice/Pro Creation work. Report callable tools in available_tools_json and the retained assignment_id. READY verifies coverage and production/queue reads only, not write authorization."""
+        """Optional connection diagnostics after a real tool/transport failure. DIRECT_EDITING_V1 resumes with claim_gpt_assignment directly; no tool inventory or READY preflight is required for normal editing."""
         return {
             "service": "EditFlow Current Shadow Gateway",
             "primarySystemOnly": True,
@@ -529,7 +529,7 @@ def build_server():
 
     @tool()
     def record_clip_research(assignment_id: str, research_json: str) -> dict[str, Any]:
-        """Record SCAN, SOURCE or PLAN with the live controller owner before changing a clip."""
+        """Optionally retain SCAN, SOURCE or PLAN evidence using the issued worker. These notes are supporting memory, not prerequisites for DIRECT_EDITING_V1 AE batches."""
         payload = json.loads(research_json)
         if not isinstance(payload, dict):
             raise ValueError("research_json must be an object matching get_clip_research_contract")

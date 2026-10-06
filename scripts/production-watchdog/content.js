@@ -1,7 +1,7 @@
 (() => {
   const listenerKey = '__EDITFLOW_ACTUATOR_LISTENER__';
   const versionKey = '__EDITFLOW_ACTUATOR_VERSION__';
-  const observerVersion = '3.3.3';
+  const observerVersion = '3.4.0';
   const previousListener = globalThis[listenerKey];
   // Extension reloads can leave page globals behind after the old listener is removed.
   if (previousListener && chrome.runtime.onMessage.hasListener?.(previousListener)) {
@@ -22,16 +22,33 @@
       const normalize = s => String(s || '').replace(/[\u200b-\u200f\ufeff]/g, '').replace(/\s+/g, ' ').trim();
       const expected = normalize(cmd.prompt);
       const identity = [cmd.prompt.match(/gpt-assignment:[\w-]+/)?.[0],
-        cmd.prompt.match(/session ([\w:-]+) from/)?.[1], cmd.prompt.match(/ef-worker:\d+:[a-f0-9]{64}/)?.[0]];
-      const ownReceipt = () => messages().some(e => [e.innerText, e.textContent].some(value => {
+        cmd.prompt.match(/\band session ([\w:-]+)(?=;|\s|$)/)?.[1], cmd.prompt.match(/ef-worker:\d+:[a-f0-9]{64}/)?.[0]];
+      const matches = e => [e.innerText, e.textContent].some(value => {
         const text = normalize(value);
         return text === expected || (identity.every(Boolean) && identity.every(id => text.includes(id))
-          && text.includes('session with the given raw files to make the finished product.'));
-      }));
+          && text.includes(cmd.prompt.includes('DIRECT_EDITING_V1:') ? 'DIRECT_EDITING_V1:'
+            : 'session with the given raw files to make the finished product.'));
+      });
+      const ownReceipt = () => {
+        const users = messages();
+        const anchor = users.findLastIndex(matches);
+        if (anchor < 0) return false;
+        // A retry can acknowledge its submitted prompt, including collapsed/wrapped
+        // UI text, but never adopt a conversation with a later competing worker.
+        return !users.slice(anchor).some(e => [e.innerText, e.textContent].some(value => {
+          const text = normalize(value);
+          return identity.every(Boolean) && ([...text.matchAll(/ef-worker:\d+:[a-f0-9]{64}/g)].some(m => m[0] !== identity[2])
+            || [...text.matchAll(/gpt-assignment:[\w-]+/g)].some(m => m[0] !== identity[0])
+            || [...text.matchAll(/\band session ([\w:-]+)(?=;|\s|$)/g)].some(m => m[1] !== identity[1]));
+        }));
+      };
       if (ownReceipt()) return { sent: true };
+      if (cmd.verifyOnly) return { sent: false, error: 'DELIVERY_NOT_FOUND' };
       if (/\/c\//.test(location.pathname) || messages().length) throw Error('CONTINUATION_TARGET_NOT_EMPTY');
       const box = document.querySelector('#prompt-textarea, [contenteditable="true"][role="textbox"], textarea');
       if (!visible(box)) throw Error('COMPOSER_UNAVAILABLE');
+      const draft = normalize(box instanceof HTMLTextAreaElement ? box.value : box.textContent);
+      if (draft && draft !== expected) throw Error('CONTINUATION_COMPOSER_NOT_EMPTY');
       box.focus();
       if (box instanceof HTMLTextAreaElement) {
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, cmd.prompt);
@@ -92,7 +109,7 @@
   }
   const listener = (cmd, _sender, respond) => {
     if (cmd.type === 'EDITFLOW_ACTUATOR_STATUS') { respond(executionStatus(cmd)); return; }
-    if (cmd.type === 'EDITFLOW_ACTUATOR_PING') { respond({ ok: true }); return; }
+    if (cmd.type === 'EDITFLOW_ACTUATOR_PING') { respond({ ok: true, version: observerVersion }); return; }
     if (cmd.type === 'EDITFLOW_ACTUATOR_STOP') {
       if (cmd.expectedUrl !== location.href) { respond({ clicked: false }); return; }
       const button = findButton('button[data-testid="stop-button"]', /stop (generating|streaming|response|responding)|^stop$/);

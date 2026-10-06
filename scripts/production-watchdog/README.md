@@ -1,4 +1,4 @@
-# EditFlow Production Supervisor 3.3
+# EditFlow Production Supervisor 3.4
 
 Practice and Pro Creation share one local supervisor and one gateway worker authority.
 The supervisor starts at Windows sign-in and arms automatically when the gateway
@@ -35,16 +35,20 @@ budgets. Lost queue heartbeats require the full three-minute confirmation window
 before reconciliation. Infrastructure failures trigger gateway/actuator repair;
 uncertain writes and accepted receipts are retained and never blindly replayed.
 
-Every continuation now verifies the tools actually callable in its chat through
-get_mcp_surface(assignment_id, available_tools_json). A READY result proves required
-tool coverage and read-only production/queue access; it does not prove write approval.
-Workflow updates and research heartbeats use get_production_state /
-record_production_update on MCP, retaining the current worker credential and the
-same production coordinator. Missing tools or host-denied requests report
-BLOCKED_CONNECTOR with the actual failing action/reason, preserve checkpoints/jobs,
-and stop dependent writes; a denied request must not be repackaged through HTTP or
-native scripts. Refresh the existing ChatGPT connection after MCP schema updates
-and verify readiness in a fresh chat. No editing decisions move into the supervisor.
+Every continuation uses DIRECT_EDITING_V1 through EditFlow - Current Shadow:
+claim_gpt_assignment once -> inspect retained work -> ChatGPT decides -> enqueue
+exact AE_BATCH/AE_TRANSACTION -> inspect receipts/output -> correct. The claim
+returns the assignment, production state/jobs, AE state, notebook, selections and
+checkpoint. There is no worker tool inventory, separate preflight, ownership reread,
+mandatory research heartbeat, research/workflow approval or per-shot PASS gate.
+Current-worker writes validate ownership and renew claims inside admission.
+ChatGPT works across whole-edit passes and chooses all editorial values. Research
+is only for unfamiliar/changed methods; retained WORKED methods can be adapted
+directly. Previews are non-blocking. Final completion requires direct audiovisual
+review of the full-resolution final render and the completion receipt.
+Browsing, research and progress reports do not end an unfinished editing turn.
+Actual missing tools/host denials preserve pending jobs and checkpoints; denied
+requests must not be repackaged through HTTP or native scripts.
 
 Transport health is separate from local gateway health. The supervisor performs
 read-only initialize/tools-list probes on loopback MCP and the already-configured
@@ -56,7 +60,7 @@ never stops AE/Chrome, changes credentials/authentication, claims a worker or
 submits an editing operation. Stateless MCP transport avoids expired HTTP session
 IDs across reconnects; production state remains in the durable backend.
 Worker prompts retry only failed reads after 2/5/15 seconds, then use this bounded
-transport repair and require real client READY again. Uncertain writes are
+transport repair and resume the same assignment without a new preflight. Uncertain writes are
 reconciled by receipt, never replayed. Missing domain materials are completed
 through authorized research/proof/workflow tools under ChatGPT's judgment.
 Host denial and revoked workers remain hard boundaries.
@@ -64,6 +68,13 @@ Host denial and revoked workers remain hard boundaries.
 Handoff order: persist intent, revoke gateway authority, request Stop and close the
 owned tab, drain accepted work, issue the next generation, create one fresh chat,
 send the assignment-specific durable continuation. Retries resume the same step.
+Send acceptance recognizes wrapped/collapsed DIRECT_EDITING_V1 continuations by
+the exact assignment, session and full issued credential. A later competing
+continuation cannot inherit that receipt. Extension reloads reinject the current
+observer version into existing tabs. A conflicting conversation or unrelated
+composer draft stops SEND retries and permits only read-only delivery verification;
+it never replaces a chat or worker merely to clear the conflict. A matching receipt
+automatically finishes the retained handoff without typing or issuing a generation.
 A manual pause persists, freezes new/pending work and retains the checkpoint.
 Resume reuses the same assignment. Cancellation is completed by the supervisor
 after fencing, closing the owned chat and draining work, including when paused;

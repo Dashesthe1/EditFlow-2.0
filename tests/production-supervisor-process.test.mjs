@@ -52,6 +52,13 @@ test('supervisor process arms from gateway signals and restart retains the same 
   assert.equal(command.tabId, 99); assert.match(command.prompt, /same-assignment/); assert.match(command.prompt, /Pro Creation/);
   assert.equal(issues, 1);
   const health = await fetchJson('/health'); assert.equal(health.transport.ready, true); assert.ok(!JSON.stringify(health).includes('a'.repeat(64)));
+  assert.equal(health.workflow, 'DIRECT_EDITING_V1');
+  await fetchJson('/actuator/ack', { id: command.id, type: 'FAILED', error: 'CONTINUATION_TARGET_NOT_EMPTY' });
+  command = await fetchJson('/actuator');
+  assert.equal(command.command, 'VERIFY_DELIVERY'); assert.equal(command.tabId, 99); assert.equal(issues, 1);
+  await stop(); start();
+  command = await until(async () => { const c = await fetchJson('/actuator'); return c.command === 'VERIFY_DELIVERY' && c; });
+  assert.equal(issues, 1); assert.equal(command.tabId, 99);
   await fetchJson('/actuator/ack', { id: command.id, type: 'SENT', tabId: 99 });
   await stop();
   authority.issuedAt = Date.now() - 20 * 60000; authority.lastActivityAt = Date.now() - 10 * 60000;

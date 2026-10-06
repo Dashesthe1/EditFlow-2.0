@@ -90,6 +90,9 @@ async function beginHandoff(reason) {
 async function progressHandoff() {
   const h = state.handoff; if (!h || !snapshot) return;
   if (!h.userControlId && h.assignmentId !== snapshot.assignment?.assignmentId) { state.handoff = null; persist(); return; }
+  if (h.status === 'DELIVERY_BLOCKED') {
+    state.phase = 'BLOCKED'; state.reason = h.lastError; return;
+  }
   if (h.status === 'REVOKE') {
     if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: h.assignmentId,
       generation: snapshot.authority.generation, reason: h.reason });
@@ -233,6 +236,7 @@ function actuatorCommand() {
   if (['CREATE', 'SEND'].includes(h.status) && !transport.state().ready) return { command: 'NONE', reason: 'mcp_transport_unavailable' };
   if (h.status === 'CREATE') return { command: 'CREATE', id: h.id };
   if (h.status === 'SEND') return { command: 'SEND', id: h.id, tabId: h.targetTabId, prompt: h.prompt };
+  if (h.status === 'DELIVERY_BLOCKED') return { command: 'VERIFY_DELIVERY', id: h.id, tabId: h.targetTabId, prompt: h.prompt };
   return { command: 'NONE' };
 }
 async function body(req) { let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 200000) throw Error('BODY_TOO_LARGE'); } return raw ? JSON.parse(raw) : {}; }
@@ -245,7 +249,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.3.0', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.4.0', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,
@@ -283,16 +287,24 @@ const server = http.createServer(async (req, res) => {
         state.activeTabId = b.tabId; persist(); return send(200, { ok: true });
       }
       if (!h || b.id !== h.id) return send(409, { error: 'STALE_ACTUATOR_ACK' });
-      if (b.type === 'MISSING' && h.status === 'SEND') { h.status = 'CREATE'; h.targetTabId = null; }
+      if (b.type === 'MISSING' && ['SEND', 'DELIVERY_BLOCKED'].includes(h.status)) { h.status = 'CREATE'; h.targetTabId = null; }
       else if (b.type === 'CLOSED' && h.status === 'CLOSE_ONLY') { state.activeTabId = null; state.handoff = null; }
       else if (b.type === 'CLOSED' && h.status === 'CLOSE') { h.status = 'DRAIN'; state.activeTabId = null; }
       else if (b.type === 'CREATED' && h.status === 'CREATE' && Number.isInteger(b.tabId)) { h.status = 'SEND'; h.targetTabId = b.tabId; state.activeTabId = b.tabId; }
-      else if (b.type === 'SENT' && h.status === 'SEND' && b.tabId === h.targetTabId) {
+      else if (b.type === 'SENT' && ['SEND', 'DELIVERY_BLOCKED'].includes(h.status) && b.tabId === h.targetTabId) {
         if (h.userControlId) await gateway({ action: 'CONTROL_DELIVERED', requestId: h.userControlId, tabId: b.tabId });
         state.workerTabReceipt = { launchId: h.id, tabId: b.tabId, assignmentId: h.assignmentId,
           sessionId: h.sessionId, generation: h.generation, deliveredAt: Date.now() };
         state.activeTabId = b.tabId; state.handoff = null; state.liveness = {}; log('continuation_sent', { assignmentId: h.assignmentId, generation: h.generation, tabId: b.tabId });
-      } else if (b.type === 'FAILED') { log('actuator_failed_retry_same_step', { id: h.id, error: b.error }); }
+      } else if (b.type === 'FAILED') {
+        if (h.status === 'SEND' && ['CONTINUATION_TARGET_NOT_EMPTY', 'CONTINUATION_COMPOSER_NOT_EMPTY'].includes(b.error)) {
+          // Preserve a conflicting chat/draft. Never loop SEND, mint a generation,
+          // or close an unverified surface because prompt acceptance is unknown.
+          h.status = 'DELIVERY_BLOCKED'; h.lastError = b.error;
+          state.phase = 'BLOCKED'; state.reason = b.error;
+          log('continuation_delivery_conflict', { id: h.id, tabId: h.targetTabId, error: b.error });
+        } else log('actuator_failed_retry_same_step', { id: h.id, error: b.error });
+      }
       else return send(409, { error: 'ACTUATOR_STEP_MISMATCH' });
       persist(); return send(200, { ok: true });
     }

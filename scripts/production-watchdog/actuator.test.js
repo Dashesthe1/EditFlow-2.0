@@ -4,18 +4,20 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-async function verifyOwnPrompt(ownText, requestedPrompt, textContent = ownText) {
+async function verifyOwnPrompt(ownText, requestedPrompt, textContent = ownText, options = {}) {
   let listener;
   const bubble = { innerText: ownText, textContent, isConnected: true, getClientRects: () => [1], closest: () => null };
   const context = vm.createContext({
-    document: { querySelectorAll: selector => selector.includes('[data-user-message-bubble]') ? [bubble] : [],
+    document: { querySelectorAll: selector => selector.includes('[data-user-message-bubble]')
+      ? [bubble, ...(options.laterText ? [{ textContent: options.laterText }] : [])] : [],
       querySelector: () => { throw Error('Must not type into an existing conversation'); } },
     location: { pathname: '/c/supervisor-owned-chat' },
     chrome: { runtime: { onMessage: { addListener: fn => { listener = fn; } } } },
     setTimeout, HTMLTextAreaElement: class {},
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8'), context);
-  return await new Promise(resolve => listener({ type: 'EDITFLOW_ACTUATOR_SEND', prompt: requestedPrompt }, {}, resolve));
+  return await new Promise(resolve => listener({ type: 'EDITFLOW_ACTUATOR_SEND', prompt: requestedPrompt,
+    verifyOnly: options.verifyOnly }, {}, resolve));
 }
 test('actuator recognizes its own already-submitted prompt in the current ChatGPT user bubble layout', async () => {
   const reply = await verifyOwnPrompt('Continue Practice\nResume same assignment', 'Continue Practice Resume same assignment');
@@ -31,6 +33,42 @@ test('actuator verifies a collapsed own prompt using the full user message text'
   assert.equal(reply.sent, true);
   const wrong = await verifyOwnPrompt('Continue the Practice session', prompt, prompt.replace('ef-worker:2:', 'ef-worker:1:'));
   assert.equal(wrong.sent, false);
+});
+test('direct continuations survive ChatGPT wrappers, collapsed text and lost SEND acknowledgments', async () => {
+  const { prompt } = require('./worker-prompt.js');
+  for (const mode of ['PRACTICE', 'PRO_CREATION']) {
+    const expected = prompt({ mode, assignmentId: 'gpt-assignment:abc', sessionId: 'practice:def' }, 'ef-worker:116:' + 'a'.repeat(64));
+    const actual = 'You said: ' + expected + ' Copy';
+    const reply = await verifyOwnPrompt('Continue the ' + mode, expected, actual, { verifyOnly: true });
+    assert.equal(reply.sent, true);
+    assert.equal((await verifyOwnPrompt('Continue', expected, actual.replace('practice:def', 'practice:other'))).sent, false);
+    assert.equal((await verifyOwnPrompt('Continue', expected, actual.replace('a'.repeat(64), 'b'.repeat(64)))).sent, false);
+    assert.equal((await verifyOwnPrompt('Continue', expected, actual, { laterText: 'Continue working' })).sent, true);
+    assert.equal((await verifyOwnPrompt('Continue', expected, actual, {
+      laterText: 'Continue gpt-assignment:abc and session practice:def; ef-worker:117:' + 'b'.repeat(64),
+    })).sent, false);
+    assert.equal((await verifyOwnPrompt('Continue', expected, actual, {
+      laterText: 'Continue gpt-assignment:other and session practice:def; ef-worker:116:' + 'a'.repeat(64),
+    })).sent, false);
+  }
+});
+test('delivery verification never types into a conflicting conversation', async () => {
+  const reply = await verifyOwnPrompt('Unrelated conversation', 'Continue Practice', undefined, { verifyOnly: true });
+  assert.equal(reply.sent, false); assert.equal(reply.error, 'DELIVERY_NOT_FOUND');
+});
+test('background reinjects a stale observer before operating on an existing tab', async () => {
+  let injected = 0;
+  const context = vm.createContext({
+    chrome: { tabs: { sendMessage: async () => ({ ok: true, version: '3.3.3' }) },
+      scripting: { executeScript: async () => { injected++; } },
+      runtime: { id: 'test', getManifest: () => ({ version: '3.4.0' }), onStartup: { addListener() {} }, onInstalled: { addListener() {} } },
+      alarms: { onAlarm: { addListener() {} }, clearAll: async () => {}, create: async () => {} } },
+    fetch: async () => ({ ok: true, json: async () => ({ command: 'NONE' }) }), setInterval() {},
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8') + '\nglobalThis.attachForTest = attach;', context);
+  await context.attachForTest(99); assert.equal(injected, 1);
+  context.chrome.tabs.sendMessage = async () => ({ ok: true, version: '3.4.0' });
+  await context.attachForTest(99); assert.equal(injected, 1);
 });
 
 async function observedState({ stop = false, final = false, generation = 4, afterUser = true, followUp = null, collapsed = false, accessibleFinal = false, credentialCollapsed = false, deliveryConfirmed = false } = {}) {

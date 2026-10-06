@@ -17,6 +17,10 @@ test('continuations use one-call resume and direct batches in both modes', () =>
     assert.match(text, /Completed previews do not require a separate resolve receipt/);
     assert.match(text, /Keep After Effects open/);
     assert.match(text, /ChatGPT alone decides/);
+    assert.match(text, /Use the connected EditFlow - Current Shadow tools/);
+    assert.match(text, /Keep working after research, web browsing, previews and progress reports/);
+    assert.match(text, /No periodic research heartbeat is required/);
+    assert.match(text, /successful assignment-completion receipt/);
     assert.equal(text.includes('Finished is visual reference only.'), mode === 'PRACTICE');
   }
 });

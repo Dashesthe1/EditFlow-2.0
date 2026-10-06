@@ -7,7 +7,10 @@ async function request(route, value) {
   const result = await response.json(); if (!response.ok) throw Error(result.error || 'SUPERVISOR_UNAVAILABLE'); return result;
 }
 async function attach(tabId) {
-  try { await chrome.tabs.sendMessage(tabId, { type: 'EDITFLOW_ACTUATOR_PING' }); }
+  try {
+    const reply = await chrome.tabs.sendMessage(tabId, { type: 'EDITFLOW_ACTUATOR_PING' });
+    if (reply?.version !== chrome.runtime.getManifest().version) throw Error('OBSERVER_VERSION_MISMATCH');
+  }
   catch (_) { await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] }); }
 }
 async function observe(target) {
@@ -58,12 +61,14 @@ async function execute() {
       await chrome.tabs.update(tab.id, { autoDiscardable: false });
       try { await request('/actuator/ack', { id: cmd.id, type: 'CREATED', tabId: tab.id }); }
       catch (e) { if (e.message === 'STALE_ACTUATOR_ACK') await chrome.tabs.remove(tab.id).catch(() => {}); throw e; }
-    } else if (cmd.command === 'SEND') {
+    } else if (['SEND', 'VERIFY_DELIVERY'].includes(cmd.command)) {
       const tab = await chrome.tabs.get(cmd.tabId).catch(() => null);
       if (!tab) { await request('/actuator/ack', { id: cmd.id, type: 'MISSING' }); return; }
       if (tab.status !== 'complete') return;
       await attach(tab.id);
-      const reply = await chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_SEND', id: cmd.id, prompt: cmd.prompt });
+      const reply = await chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_SEND', id: cmd.id, prompt: cmd.prompt,
+        verifyOnly: cmd.command === 'VERIFY_DELIVERY' });
+      if (!reply?.sent && cmd.command === 'VERIFY_DELIVERY') return;
       if (!reply?.sent) throw Error(reply?.error || 'SEND_NOT_CONFIRMED');
       await request('/actuator/ack', { id: cmd.id, type: 'SENT', tabId: tab.id });
       await chrome.storage.local.set({ activeWorkerTabId: tab.id });

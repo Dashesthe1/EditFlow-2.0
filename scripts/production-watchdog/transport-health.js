@@ -6,7 +6,8 @@ const net = require('net');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execute = promisify(execFile);
-const CORE_TOOLS = ['get_mcp_surface', 'get_production_state', 'record_production_update', 'claim_gpt_assignment', 'get_production_jobs', 'enqueue_production_job', 'resolve_production_job'];
+// Probe direct execution and failure reconciliation, never optional planning gates.
+const CORE_TOOLS = ['claim_gpt_assignment', 'get_production_jobs', 'enqueue_production_job', 'resolve_production_job'];
 
 async function configuredEndpoints(localRoot, run = execute) {
   const local = 'http://127.0.0.1:8770/mcp';

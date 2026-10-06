@@ -31,6 +31,12 @@ test('transport probe performs only initialize/metadata reads and retires its ow
   assert.deepEqual(f.methods, ['initialize', 'notifications/initialized', 'tools/list', 'DELETE']);
   assert.ok(!f.methods.includes('tools/call'));
 });
+test('direct transport readiness does not depend on optional workflow/preflight tools', async () => {
+  assert.ok(!CORE_TOOLS.includes('get_mcp_surface'));
+  assert.ok(!CORE_TOOLS.includes('record_production_update'));
+  assert.ok(!CORE_TOOLS.includes('record_clip_research'));
+  assert.equal((await probeMcp('http://127.0.0.1/mcp', { fetch: fakeEndpoint().fetch })).ready, true);
+});
 
 test('transport outages, HTTP rejection and incomplete surfaces cannot report READY or expose endpoint/secrets', async () => {
   for (const options of [{ fail: true }, { http: 503 }, { incomplete: true }]) {
