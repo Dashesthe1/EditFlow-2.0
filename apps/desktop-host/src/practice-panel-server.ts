@@ -605,10 +605,23 @@ export class PracticePanelServerV1 {
         coordinator.lockSource(clipId, key, ledger.updatedAt ?? assignment.createdAt, clip.scanHash);
         if (clip.plan?.status === "READY" && !clip.stale) coordinator.markResearchReady(clipId, clip.plan.planId);
       }
+      // Direct Pro work has no research ledger prerequisite. Track its supplied
+      // raw identities mechanically; an actual change still needs fresh review.
+      const directKey = "pro-direct-source-lock:" + createHash("sha256").update(JSON.stringify(
+        await Promise.all(assignment.start.filter(item => item.mediaKind === "VIDEO").map(async item =>
+          ({ mediaId: item.mediaId, identity: await this.#sourceIdentity(item.uri) }))),
+      )).digest("hex");
+      for (const phase of coordinator.snapshot().phases.filter(phase => !ledger.clips[phase.phaseId])) {
+        if (phase.sourceCertificateKey === directKey) continue;
+        if (phase.sourceCertificateKey || phase.sourceValidationRequired) {
+          if (!phase.sourceValidationRequired) coordinator.requireSourceValidation(phase.phaseId);
+        } else coordinator.lockSource(phase.phaseId, directKey, assignment.createdAt, "DIRECT_RAW_INPUTS");
+      }
       if (before !== JSON.stringify(coordinator.snapshot())) await file.save(coordinator);
       return;
     }
-    coordinator.ensurePhases((assignment.practiceSceneMatches ?? []).map((match) => match.shotId));
+    coordinator.ensurePhases([...(assignment.preflight?.totalShotIds ?? []),
+      ...(assignment.practiceSceneMatches ?? []).map((match) => match.shotId)]);
     for (const match of assignment.practiceSceneMatches ?? []) {
       const sourceStartMs = Number.isFinite(match.sourceStartMs) ? match.sourceStartMs : 0;
       const sourceEndMs = Number.isFinite(match.sourceEndMs) ? match.sourceEndMs : sourceStartMs + 1;
@@ -628,13 +641,15 @@ export class PracticePanelServerV1 {
         coordinator.migrateSourceCertificate(match.shotId, key, assignment.preflight?.updatedAt);
         continue;
       }
-      const freshlyValidated = assignment.preflight?.stage === "READY"
-        && Date.parse(assignment.preflight.updatedAt) > Date.parse(existing.sourceValidatedAt ?? assignment.createdAt);
+      const selectedAt = match.chatgptSelection?.reviewedAt ?? assignment.createdAt;
+      const selectionValidatedAt = assignment.preflight?.stage === "READY"
+        && Date.parse(assignment.preflight.updatedAt) > Date.parse(selectedAt) ? assignment.preflight.updatedAt : selectedAt;
+      const freshlyValidated = Date.parse(selectionValidatedAt) > Date.parse(existing.sourceValidatedAt ?? assignment.createdAt);
       if ((existing.sourceCertificateKey || existing.sourceValidationRequired) && !freshlyValidated) {
         if (!existing.sourceValidationRequired) coordinator.requireSourceValidation(match.shotId);
         continue;
       }
-      if (assignment.preflight?.stage === "READY") coordinator.lockSource(match.shotId, key, assignment.preflight.updatedAt);
+      coordinator.lockSource(match.shotId, key, selectionValidatedAt, match.chatgptSelection?.decisionId);
     }
     if (before !== JSON.stringify(coordinator.snapshot())) await file.save(coordinator);
   }
@@ -655,7 +670,6 @@ export class PracticePanelServerV1 {
   async #executeProductionJob(job: PracticeProductionJobV1, signal: AbortSignal): Promise<{ result: unknown; reviewRequired?: boolean }> {
     let assignment = await this.#gptStore.getAssignment(job.assignmentId);
     if (!assignment || assignment.status !== "RUNNING" || assignment.sessionId !== this.#activeRunId) throw new HttpError(409, "Assignment no longer accepts production work.");
-    if (job.kind !== "REFERENCE_ANALYSIS") await this.assertPracticeReconstructionReady();
     const body = structuredClone(job.payload) as Record<string, any>;
     await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).verify(assignment.assignmentId, job.kind, body);
     const production = await this.#productionCoordinator(assignment);
@@ -683,16 +697,16 @@ export class PracticePanelServerV1 {
     }
     const owner = body.researchContext?.claimedBy;
     if (typeof owner !== "string") throw new TypeError("Queued production requires an authorized researchContext.");
-    // The queue owns accepted decisions across GPT handoffs. It revalidates all
-    // research/media evidence but does not reclaim a retired chat's lease.
+    // Accepted exact decisions survive handoffs; research records are advisory.
     const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE", true);
+    body.researchContext.clipIds = admission?.clipIds ?? [];
     signal.throwIfAborted();
     const strategy = production.coordinator.strategyDirective();
     // Timing/strategy telemetry is advisory; GPT decides whether to change its edit plan.
     const output = await this.#withProductionOperation({ body: job.kind === "BUILD_BASELINE" ? { ...body, globalOperation: true } : body,
       category: job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "RENDER" : "AE_MUTATION",
       stage: job.kind === "BUILD_BASELINE" ? "WHOLE_EDIT_COVERAGE" : job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "LOCAL_PROOF" : "AE_CONSTRUCTION",
-      operation: job.jobId, markConstructed: ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH"].includes(job.kind),
+      operation: job.jobId, markConstructed: ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE"].includes(job.kind),
       run: async () => {
         if (job.kind === "AE_TRANSACTION" || job.kind === "AE_CORRECTION") {
           const result = job.kind === "AE_TRANSACTION" ? await this.#transactionRuntime.execute(body.plan ?? body)
@@ -742,7 +756,7 @@ export class PracticePanelServerV1 {
             || typeof body.compStableId !== "string") throw new TypeError("Local render needs a bounded time window and compStableId.");
           return { result: await driver.renderWindow({ sessionId: assignment!.sessionId, attempt: 0,
             compStableId: body.compStableId, windowId: body.clipId ?? job.jobId, startMs: body.startMs, endMs: body.endMs,
-            resolutionScale: body.resolutionScale ?? 1 }), reviewRequired: true };
+            resolutionScale: body.resolutionScale ?? 1 }) };
         }
         if (!assignment!.finish) throw new TypeError("Scratch search requires a visual reference.");
         const search = await runPracticeScratchSearchV1({ body, sessionId: assignment!.sessionId,
@@ -791,25 +805,16 @@ export class PracticePanelServerV1 {
     }
     try {
     const { file, coordinator } = await this.#productionCoordinator(assignment);
-    const phaseIds: string[] = Array.isArray(input.body?.researchContext?.plans)
-      ? input.body.researchContext.plans
-        .map((plan: any) => typeof plan?.clipId === "string" ? plan.clipId : null)
-        .filter((value: string | null): value is string => value !== null)
-      : [];
+    const phaseIds: string[] = [...new Set<string>([
+      ...(input.body?.researchContext?.clipIds ?? []),
+      ...(input.body?.researchContext?.plans ?? []).map((plan: any) => plan.clipId),
+    ])];
+    coordinator.ensurePhases(phaseIds);
+    await this.#synchronizeProductionSources(assignment, { file, coordinator });
     const productionSnapshot = coordinator.snapshot();
-    if (productionSnapshot.phases.some((phase) => phase.sourceValidationRequired)) {
+    if (productionSnapshot.phases.some((phase) => phase.sourceValidationRequired
+      && (!phaseIds.length || phaseIds.includes(phase.phaseId)))) {
       throw new HttpError(409, "SOURCE_CHANGED_REQUIRES_VALIDATION: rerun source validation before AE writes.");
-    }
-    const broadMutationLimit = Math.max(3, Math.ceil(productionSnapshot.phases.length * 0.25));
-    if (input.category === "AE_MUTATION"
-      && productionSnapshot.wholeEditCovered
-      && phaseIds.length > broadMutationLimit
-      && input.body["globalOperation"] !== true) {
-      throw new HttpError(
-        409,
-        "BROAD_MUTATION_REQUIRES_GLOBAL_DECLARATION: whole-edit coverage is already established; "
-          + "target only the affected clip/boundary plans, or set globalOperation=true for a genuinely global edit.",
-      );
     }
     if (input.category === "AE_MUTATION") coordinator.invalidate(phaseIds.filter((id) =>
       ["CONSTRUCTED", "PROVISIONAL_PASS", "PROVEN"].includes(productionSnapshot.phases.find((phase) => phase.phaseId === id)?.state ?? "")), "PROOF");
@@ -833,10 +838,32 @@ export class PracticePanelServerV1 {
       const success = (result as any)?.state === "COMMITTED" || (result as any)?.result?.state === "COMMITTED"
         || (result as any)?.status === "COMPLETED" || (result as any)?.outcome === "APPLIED";
       if (input.markConstructed && success) {
-        const readback = await this.#transactionRuntime.observe();
-        const revision = Number(String(readback.projectRevision).replace(/^ae-revision:/, ""));
-        for (const phaseId of phaseIds) {
-          coordinator.markConstructed(phaseId, Number.isFinite(revision) ? revision : null);
+        // Once committed, readback/checkpoint errors are warnings, never replayable failures.
+        try {
+          const readback = await this.#transactionRuntime.observe();
+          const revision = Number(String(readback.projectRevision).replace(/^ae-revision:/, ""));
+          for (const phaseId of phaseIds) {
+            coordinator.markConstructed(phaseId, Number.isFinite(revision) ? revision : null);
+          }
+          const phases = coordinator.snapshot().phases;
+          if (phases.length && phases.every(phase => phase.sourceCertificateKey
+            && ["CONSTRUCTED", "PROVISIONAL_PASS", "PROVEN"].includes(phase.state))) {
+            coordinator.markWholeEditCovered(Number.isFinite(revision) ? revision : null);
+          }
+          // Save under the held writer after the batch, without another GPT call.
+          const driver = new ChatgptAeRenderDriverV1({ transport: this.config.broker,
+            projectId: "practice-gpt-controller", artifactDir: assignment.artifactDir });
+          const observed = await driver.client.observe(driver.projectId);
+          const projectPath = path.join(assignment.artifactDir, "production-checkpoint.aep");
+          const saved = await driver.client.executePublic("project.save", {
+            transactionId: input.operation + ":checkpoint", operationId: input.operation + ":checkpoint",
+            payload: { path: projectPath }, expectedState: observed.observed,
+          });
+          if (saved.outcome !== "APPLIED") throw new Error("AE checkpoint save failed: " + saved.outcome);
+          coordinator.markAeCheckpoint({ projectPath, projectRevision: saved.hostProjectRevision });
+          ((result as any).result ?? result).checkpoint = { saved: true, projectPath };
+        } catch (error) {
+          ((result as any).result ?? result).checkpoint = { saved: false, warning: error instanceof Error ? error.message : String(error) };
         }
       }
       await file.appendTelemetry(practiceTelemetrySpanV1({
@@ -1406,12 +1433,6 @@ export class PracticePanelServerV1 {
     if (assignment === null) throw new HttpError(409, "Active assignment is unavailable.");
     try {
       const admitted = await this.#clipResearch.admit(assignment, body, queuedExecution);
-      if (allClips && assignment.mode === "PRACTICE") {
-        const declared = new Set(admitted.plans.map((plan: Record<string, any>) => plan.clipId));
-        if ((assignment.practiceSceneMatches ?? []).some((match) => !declared.has(match.shotId))) {
-          throw new TypeError("CLIP_RESEARCH_REQUIRED: Baseline assembly needs plans for all affected clips.");
-        }
-      }
       await this.#clipResearch.audit(assignment, admitted, "ADMITTED");
       return { ...admitted, assignment };
     } catch (error) { throw new HttpError(409, error instanceof Error ? error.message : String(error)); }
@@ -1441,10 +1462,10 @@ export class PracticePanelServerV1 {
     }
     const nextOperation = assignment === null ? "START_PRACTICE"
       : assignment.status === "CANCEL_REQUESTED" ? "ACKNOWLEDGE_CANCELLATION"
+      : (assignment.practiceSceneMatches?.length ?? 0) > 0 ? "RESUME_GPT_EDITING_FROM_CHECKPOINT"
       : preflight?.stage === "AWAITING_CHATGPT_REFERENCE" ? "CHATGPT_INSPECT_AND_DEFINE_REFERENCE"
       : preflight?.stage === "AWAITING_CHATGPT_SHOTS" ? "CHATGPT_INSPECT_AND_SELECT_RAW_SHOTS"
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
-      : production?.workflow?.activeDecisionId == null ? "CHATGPT_COMMIT_WORKFLOW_PLAN"
       : "RESUME_GPT_EDITING_FROM_CHECKPOINT";
     return {
       schema: "editflow.practice-resume.v1", runtimeId: "RESUMABLE_PREFLIGHT_V1",
@@ -1685,7 +1706,6 @@ export class PracticePanelServerV1 {
     const lease = assignment.controllerLease;
     if (!lease || lease.owner !== body.claimedBy || Date.parse(lease.expiresAt) <= Date.now()) throw new HttpError(409, "Final review requires the current ChatGPT controller.");
     const production = await this.#productionCoordinator(assignment);
-    if (!production.coordinator.snapshot().workflow?.activeDecisionId) throw new HttpError(409, "PRIMARY_WORKFLOW_REQUIRED: commit the current ChatGPT WORKFLOW_PLAN before final review.");
     const review = body.finalReview;
     if (typeof body.success !== "boolean" || review?.authority !== "CHATGPT_DIRECT" || !["PASS", "REVISE"].includes(review.verdict)
       || body.success !== (review.verdict === "PASS") || !Array.isArray(review.remainingIssues)
@@ -1710,7 +1730,7 @@ export class PracticePanelServerV1 {
     const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
       scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
     const requiredIds = assignment.mode === "PRACTICE" ? (assignment.practiceSceneMatches ?? []).map(m => m.shotId)
-      : Object.keys((await this.#clipResearch.snapshot(assignment)).clips);
+      : production.coordinator.snapshot().phases.map(phase => phase.phaseId);
     if (requiredIds.some(id => !review.comparisons.some((c: any) => c.clipId === id))) throw new HttpError(400, "Review every retained shot/clip; do not omit failed regions.");
     const evidenceRefs: string[] = [];
     for (const comparison of review.comparisons) {
@@ -2075,12 +2095,17 @@ export class PracticePanelServerV1 {
         const assignmentId = decodeURIComponent(match[1]!);
         await this.#supervision.authorized(assignmentId, credential, { path: url.pathname, body }, async () => {
           // Generation authorization, renewal and dispatch share the revoke lock.
-          // Refresh only an already-owned claim; a new generation still must claim.
+          // Generation authorization is the ownership check. Establish a missing
+          // claim for this issued worker inside admission; never steal another lease.
           if (!url.pathname.endsWith("/claim") && typeof credential === "string") {
             const current = await this.#gptStore.getAssignment(assignmentId);
             if (current && ["RUNNING", "CANCEL_REQUESTED"].includes(current.status)
               && current.claimedBy === credential && current.controllerLease?.owner === credential) {
               await this.#gptStore.renewController(assignmentId, credential);
+            } else if (current && ["PENDING", "RUNNING"].includes(current.status)
+              && !current.controllerLease) {
+              await this.#gptStore.claim(assignmentId, credential);
+              await this.#syncRun(current.sessionId);
             }
           }
           await this.#handleAuthorized(req, res); return res.statusCode;
@@ -2283,12 +2308,19 @@ export class PracticePanelServerV1 {
             try { validateWorkflowJobV1(production.coordinator.snapshot().workflow ?? emptyProductionWorkflowV1(), body.payload, { kind: body.kind }); }
             catch (error) { throw new HttpError(409, (error as Error).message); }
             if (body.kind !== "REFERENCE_ANALYSIS") {
-              await this.assertPracticeReconstructionReady();
-              await this.assertClipResearchReady(body.payload, body.kind === "BUILD_BASELINE");
+              const admitted = await this.assertClipResearchReady(body.payload, body.kind === "BUILD_BASELINE");
+              production.coordinator.ensurePhases(admitted?.clipIds ?? []);
+              await this.#synchronizeProductionSources(assignment, production);
+              if (production.coordinator.snapshot().phases.some(phase => phase.sourceValidationRequired
+                && (!admitted?.clipIds.length || admitted.clipIds.includes(phase.phaseId)))) {
+                throw new HttpError(409, "SOURCE_CHANGED_REQUIRES_VALIDATION: inspect the changed raw identity before mutation.");
+              }
             }
             validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
               rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body.payload);
-            const decision = await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).retain(id, body.kind, body.payload);
+            let decision;
+            try { decision = await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).retain(id, body.kind, body.payload); }
+            catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)); }
             if (body.payload.methodApplications !== undefined) {
               const notebook = await this.#presetNotebook(assignment);
               validateMethodApplicationV1(notebook.examples, body.payload.methodApplications);
@@ -2345,7 +2377,7 @@ export class PracticePanelServerV1 {
           } else if (action === "WORKFLOW_MILESTONE") {
             coordinator.retainWorkflowMilestone(body["milestone"] as Record<string, any>);
           } else if (action === "HEARTBEAT") {
-            coordinator.heartbeat(optionalString(body, "operation") ?? null);
+            coordinator.heartbeat(body["operation"] === null ? null : optionalString(body, "operation") ?? null);
           } else if (action === "STAGE") {
             coordinator.setStage(
               requiredString(body, "stage") as any,
@@ -2605,8 +2637,18 @@ export class PracticePanelServerV1 {
       const claimMatch = /^\/v1\/product\/gpt\/assignments\/([^/]+)\/claim$/.exec(url.pathname);
       if (req.method === "POST" && claimMatch !== null) {
         const id = decodeURIComponent(claimMatch[1] ?? "");
+        const assignment = await this.#claimAssignment(id, await readJson(req));
+        const resume = await this.#resumeHandshake();
+        let aeState: unknown = null, aeStateError: string | null = null;
+        if (!this.config.broker.panelSession) aeStateError = "CEP_PANEL_NOT_CONNECTED";
+        else {
+          try { aeState = await this.#transactionRuntime.observe(); }
+          catch (error) { aeStateError = error instanceof Error ? error.message : String(error); }
+        }
         jsonResponse(res, 200, {
-          assignment: await this.#claimAssignment(id, await readJson(req)),
+          assignment, resume, aeState, aeStateError,
+          startup: "ONE_CALL_RESUME_V1",
+          nextAction: "Inspect retained work, then enqueue exact AE operations. Research and workflow records are optional supporting memory.",
         });
         return;
       }

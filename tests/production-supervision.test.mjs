@@ -85,8 +85,17 @@ test('live HTTP gateway automatically binds both modes and rejects revoked/missi
       const issue = await (await call(supervision, { action: 'ISSUE', assignmentId: assignment.assignmentId, launchId: 'first' }, admin)).json();
       const base = '/v1/product/gpt/assignments/' + encodeURIComponent(assignment.assignmentId);
       assert.equal((await call(base + '/claim', { claimedBy: 'old-legacy-controller' })).status, 409);
+      const admitted = await call(base + '/production', { action: 'HEARTBEAT', claimedBy: issue.credential, operation: null });
+      assert.equal(admitted.status, 200);
+      assert.equal((await store.getAssignment(assignment.assignmentId)).controllerLease.owner, issue.credential);
       const claim = await call(base + '/claim', { claimedBy: issue.credential }); assert.equal(claim.status, 200);
-      assert.ok(!(await claim.text()).includes(issue.credential));
+      const bundle = await claim.json();
+      assert.equal(bundle.startup, 'ONE_CALL_RESUME_V1');
+      assert.equal(bundle.resume.assignment.assignmentId, assignment.assignmentId);
+      assert.ok(Array.isArray(bundle.resume.productionJobs));
+      assert.ok(bundle.resume.practiceNotebook);
+      assert.equal(bundle.aeStateError, 'CEP_PANEL_NOT_CONNECTED');
+      assert.ok(!JSON.stringify(bundle).includes(issue.credential));
       const typoBase = '/v1/product/gpt/assignments/' + encodeURIComponent(assignment.assignmentId + '-typo');
       const rejected = await call(typoBase + '/claim', { claimedBy: issue.credential });
       assert.equal(rejected.status, 400);

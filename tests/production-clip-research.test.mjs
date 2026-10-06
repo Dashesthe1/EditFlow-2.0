@@ -44,12 +44,14 @@ async function fixture(t, mode = 'PRACTICE') {
   return { store, assignment, artifact, scan, source, plan, context, dir };
 }
 
-test('edits cannot skip inspection or research, even with policy/ET knowledge', async t => {
+test('direct edits need identity but no per-target research plan', async t => {
   const f = await fixture(t);
   await assert.rejects(f.store.admit(f.assignment, { tutorialPolicy: true }), /researchContext/);
   await assert.rejects(f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']), /SCAN/);
   await f.scan();
-  await assert.rejects(f.store.admit(f.assignment, { researchContext: { assignmentId: 'assignment:1', claimedBy: 'controller', plans: [{ clipId: 'shot:1', planId: 'invented' }] } }), /READY/);
+  const admitted = await f.store.admit(f.assignment, { researchContext: { assignmentId: 'assignment:1', claimedBy: 'controller', clipIds: ['shot:1'] } });
+  assert.equal(admitted.researchRequired, false);
+  assert.equal(admitted.plans[0].planId, null);
 });
 
 test('directly reviewed tutorial methods unlock only their scanned clip and survive restart', async t => {
@@ -61,8 +63,8 @@ test('directly reviewed tutorial methods unlock only their scanned clip and surv
   await fresh.audit(f.assignment, admission, 'HTTP_COMPLETED', ['render:1']);
   assert.equal((await fresh.snapshot(f.assignment)).audit.at(-1).evidenceRefs[0], 'render:1');
   const unrelated = structuredClone(body); unrelated.researchContext.plans[0].clipId = 'shot:2';
-  await assert.rejects(fresh.admit(f.assignment, unrelated), /READY/);
-  await assert.rejects(fresh.admit(f.assignment, { ...body, goal: { shotId: 'shot:2' } }), /Every declared mutation/);
+  assert.equal((await fresh.admit(f.assignment, unrelated)).plans[0].planId, null);
+  assert.deepEqual((await fresh.admit(f.assignment, { ...body, goal: { shotId: 'shot:2' } })).clipIds.sort(), ['shot:1', 'shot:2']);
 });
 
 test('fallback cannot skip tutorials or Adobe, or escalate when already sufficient', async t => {
@@ -87,16 +89,16 @@ test('tutorial title alone, missing methods, and fake Adobe host cannot pass', a
   await assert.rejects(f.source('ADOBE', 'SUFFICIENT', ['zoom', 'trail'], { uri: badUri, evidencePath }), /official Adobe/);
 });
 
-test('scan/evidence/media changes invalidate plans; identical scan remains resumable', async t => {
+test('stale learning references cannot block construction; raw integrity belongs to the execution coordinator', async t => {
   const f = await fixture(t); await f.scan(); await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
   const saved = await f.plan(); const body = f.context(saved);
   await f.scan(); await f.store.admit(f.assignment, body);
   const changed = structuredClone(f.assignment); changed.start[0].uri = 'changed.mp4';
-  await assert.rejects(f.store.admit(changed, body), /Media\/scene matches changed/);
+  assert.equal((await f.store.admit(changed, body)).plans[0].planId, null);
   await writeFile(saved.clips['shot:1'].sources[0].evidence.path, JSON.stringify({ query: 'changed' }));
-  await assert.rejects(f.store.admit(f.assignment, body), /evidence changed/);
+  await f.store.admit(f.assignment, body);
   await f.scan('shot:1', { observations: 'New reference diagnosis: stronger trails.' });
-  await assert.rejects(f.store.admit(f.assignment, body), /READY/);
+  assert.equal((await f.store.admit(f.assignment, body)).plans[0].planId, null);
 });
 
 test('raw-only input, controller ownership and cancellation are enforced', async t => {
@@ -116,7 +118,7 @@ test('Pro Creation requires the same clip research and supports a designed targe
   assert.equal(saved.clips['shot:1'].scan.referenceMediaId, null);
 });
 
-test('Practice research cannot admit a machine choice or reuse plans after direct selection changes', async t => {
+test('direct Practice admission rejects machine source choices while stale learning plans remain optional', async t => {
   const f = await fixture(t);
   await f.scan(); await f.source('TUTORIAL', 'SUFFICIENT', ['zoom', 'trail']);
   const saved = await f.plan(), body = f.context(saved);
@@ -129,7 +131,7 @@ test('Practice research cannot admit a machine choice or reuse plans after direc
   await assert.rejects(f.store.record(relabeled, { action: 'SCAN', claimedBy: 'controller', clipId: 'shot:1' }), /direct ChatGPT/);
   const reselected = structuredClone(f.assignment);
   reselected.practiceSceneMatches[0].chatgptSelection.decisionId = 'reviewed:replacement';
-  await assert.rejects(f.store.admit(reselected, body), /READY/);
+  assert.equal((await f.store.admit(reselected, body)).plans[0].planId, null);
   await f.store.admit(f.assignment, body);
 });
 
@@ -158,7 +160,8 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   await service.stop(); service = new PracticePanelServerV1({ ...config, productionSupervision: false }); await service.start();
   const resumed = await get('/v1/product/practice/resume-or-start');
   assert.equal(resumed.assignment.assignmentId, assignment.assignmentId);
-  assert.match(resumed.assignment.chatMessage, /MANDATORY PER-CLIP RESEARCH GATE V1/);
+  assert.match(resumed.assignment.chatMessage, /ON-DEMAND METHOD LEARNING/);
+  assert.doesNotMatch(resumed.assignment.chatMessage, /MANDATORY PER-CLIP RESEARCH GATE|editing EVERY clip/);
   assert.equal(resumed.preflight.stage, 'READY');
   assert.equal((await store.listAssignments()).length, 1);
   assert.deepEqual(resumed.clipResearch.clips, {});
@@ -206,7 +209,9 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
     practiceSceneMatches: mode === 'PRACTICE' ? [{ shotId: 'shot:1', sourceId: 'raw:1', sourceStartMs: 1000, sourceEndMs: 2000, confidence: 1, playbackRate: 1, direction: 'FORWARD', selectionMode: 'CHATGPT_DIRECT',
       chatgptSelection: { authority: 'CHATGPT_DIRECT', decisionId: 'test-selection', rationale: 'Fixture direct review', reviewedAt: new Date().toISOString(),
         anchors: [0, 400, 900].map(time => ({ referenceTimeMs: time, sourceTimeMs: 1000 + time, referenceEvidenceId: 'a'.repeat(24), sourceEvidenceId: 'b'.repeat(24), observation: 'Fixture comparison' })) } }] : [],
-    preflight: { stage: 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false, totalShotIds: ['shot:1'], completedShotIds: ['shot:1'], unresolvedShotIds: [], reasons: [], evidenceRefs: [] } });
+    preflight: { stage: mode === 'PRACTICE' ? 'AWAITING_CHATGPT_SHOTS' : 'READY', updatedAt: new Date().toISOString(), requireTransferNovelty: false,
+      totalShotIds: mode === 'PRACTICE' ? ['shot:1','shot:2'] : ['shot:1'], completedShotIds: ['shot:1'],
+      unresolvedShotIds: mode === 'PRACTICE' ? ['shot:2'] : [], reasons: [], evidenceRefs: [] } });
   Object.assign(f.assignment, await store.claim(assignment.assignmentId, 'controller'));
   f.store.directory = path.join(f.dir, 'clip-research');
   await writeFile(f.assignment.start[0].uri, 'raw media');
@@ -217,9 +222,11 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   const { productionJobScopeV1 } = await import('../.tmp/runtime/packages/adapters/ae-cep/src/production-job-scope.js');
   let borrowedScope = null;
   let revision = 1;
+  let checkpointFailure = false;
   const dispatched = [];
   const broker = { panelSession: { protocolVersion: '2.7.0' }, async dispatch(request) {
     dispatched.push(request);
+    if (request.command === 'project.save' && checkpointFailure) throw Error('simulated checkpoint failure');
     if (request.command === 'property.set_keyframes') {
       borrowedScope = productionJobScopeV1.getStore();
       assert.ok(borrowedScope);
@@ -237,21 +244,26 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
       projectSnapshot: request.command === 'project.inspect' ? { hostRevision: revision, filePath: null, activeItemHostId: null, itemCount: 0, items: [] } : null };
   }};
   const makeService=()=>{ const s=new PracticePanelServerV1({productionSupervision:false,...config,broker});
-    // Unit fixture isolates queue behavior; actual reference/pixel admission is tested by chatgpt-footage-browser-real.
-    if(mode==='PRACTICE') s.assertPracticeReconstructionReady=async()=>{}; return s; };
+    // Selected-target work must not require whole-assignment preflight.
+    if(mode==='PRACTICE') s.assertPracticeReconstructionReady=async()=>{throw Error('Whole-assignment preflight was called before a targeted edit');}; return s; };
   let service=makeService(); await service.start();
   t.after(async () => service.stop());
   const headers = { 'X-EditFlow-Token': token, 'Content-Type': 'application/json' };
   const request = (route, body) => fetch(`http://127.0.0.1:${service.port}${route}`, { headers, ...(body ? { method:'POST', body:JSON.stringify(body) } : {}) });
   const endpoint = '/v1/product/gpt/assignments/' + encodeURIComponent(assignment.assignmentId) + '/production-jobs';
+  const claimed = await request(endpoint.replace('/production-jobs','/claim'), {claimedBy:'controller'});
+  assert.equal(claimed.status,200);
+  const bundle = await claimed.json();
+  assert.equal(bundle.startup,'ONE_CALL_RESUME_V1');
+  assert.equal(bundle.resume.nextOperation,'RESUME_GPT_EDITING_FROM_CHECKPOINT');
+  assert.equal(bundle.resume.assignment.assignmentId,assignment.assignmentId);
+  assert.ok(dispatched.every(request => ['host.probe','project.inspect'].includes(request.command)));
+  dispatched.length=0;
   const workflowPlan = {authority:'CHATGPT_DIRECT',decisionId:'fixture-workflow',rationale:'Explicit fixture construction and playback',evidenceRefs:['fixture:pixels'],
     mode:'METHOD_LEARNING',scope:'Single selected shot',output:{width:640,height:480,fps:30,durationMs:1000},passOrder:['structure','review'],
     sources:[{clipId:'shot:1',mediaId:'raw:1',fingerprint:'fixture:raw',fps:30,startMs:1000,endMs:2000,availableStartMs:1000,availableEndMs:2000,actionAnchors:[]}],
     audio:{mediaId:'raw:1',songOffsetMs:0,policy:'Provided raw video audio'},anchors:[{id:'start',role:'action',outputMs:0,rationale:'Chosen start'}],
     events:[{id:'shot',clipIds:['shot:1'],anchorIds:['start'],treatment:'Explicit keys and native proof',acceptedDimensions:[],unresolvedIssues:['Render review']}],finishing:[],nextAction:'Execute explicit fixture operations'};
-  const retained = await request(endpoint.replace('/production-jobs','/production'),{action:'WORKFLOW_PLAN',claimedBy:'controller',plan:workflowPlan});
-  assert.equal(retained.status,200);const workflow=(await retained.json()).production.workflow.plans[0];
-  const workflowContext={workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,planDecisionId:workflowPlan.decisionId,planHash:workflow.hash,eventIds:['shot']};
   for (const route of ['/run', '/run-batch', '/run-transaction', '/run-correction-transaction', '/proof-script', '/mutation-lease/acquire', '/v1/product/control/execute']) {
     const response = await request(route, {}); assert.equal(response.status, 410, route);
     assert.equal((await response.json()).error, 'EDIT_EXECUTION_PATH_REMOVED');
@@ -260,7 +272,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   const unscoped = await request('/v1/product/production/worker-proof', {scriptPath:'scripts/windows/test.jsx'});
   assert.equal(unscoped.status,409); assert.equal(dispatched.length,0);
   const invalid = await request(endpoint, {kind:'AE_TRANSACTION',payload:{researchContext:{assignmentId:assignment.assignmentId,claimedBy:'controller',plans:[]}}});
-  assert.equal(invalid.status, 409); assert.equal(dispatched.length, 0);
+  assert.equal(invalid.status, 400); assert.equal(dispatched.length, 0);
   const { CurrentAeTransactionRuntimeV1 } = await import('../.tmp/runtime/apps/desktop-host/src/current-ae-transaction-runtime.js');
   const observed = await new CurrentAeTransactionRuntimeV1(broker, 'practice-gpt-controller').observe();
   const plan = { planId:'authority-edit',planRevision:1,projectRevision:observed.projectRevision,projectFingerprint:observed.projectFingerprint,
@@ -268,13 +280,36 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
     rollbackBoundaries:[{id:'boundary',strategy:'RESTORE_SNAPSHOT'}], operations:[{operationId:'keys',capabilityId:'ae.keyframe.set',routeId:'ae-cep.v1_1',dependsOn:[],
       idempotency:'CHECK_THEN_APPLY',riskClass:'R1_REVERSIBLE',input:{command:'property.set_keyframes',payload:{},readbackProfile:'test'},rollbackBoundaryId:'boundary'}] };
   const editorialDecision={authority:'CHATGPT_DIRECT',decisionId:'explicit-keys',rationale:'Reviewed fixture pixels and chose exact keys',evidenceRefs:['fixture-render'],steps:['Set explicit keys']};
-  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{...f.context(saved),workflowContext,plan,editorialDecision}});
+  const directTarget = mode === 'PRACTICE' ? 'shot:1' : 'clip:without-research';
+  if(mode === 'PRO_CREATION') assert.equal(saved.clips[directTarget],undefined);
+  const accepted = await request(endpoint, {kind:'AE_TRANSACTION',payload:{researchContext:{assignmentId:assignment.assignmentId,claimedBy:'controller',clipIds:[directTarget]},plan,editorialDecision}});
   assert.equal(accepted.status, 202); const receipt = (await accepted.json()).job;
   const wait = async id => { for(let i=0;i<200;i++) { const job = (await (await request(endpoint+'?jobId='+encodeURIComponent(id))).json()).job;
     if(!['RUNNING','PENDING'].includes(job.status)) return job; await new Promise(r=>setTimeout(r,10)); } throw new Error('queued job timeout'); };
   const complete = await wait(receipt.jobId); assert.equal(complete.status, 'SUCCEEDED', complete.error);
+  assert.equal(complete.payload.workflowContext, undefined);
+  assert.equal(complete.result.checkpoint.saved, true, complete.result.checkpoint.warning);
+  assert.ok(dispatched.some(request => request.command === 'project.save'));
   const state = await (await request(endpoint.replace('/production-jobs','/production'))).json();
-  assert.equal(state.production.phases[0].state, 'CONSTRUCTED');
+  assert.equal(state.production.phases.find(phase=>phase.phaseId===directTarget).state, 'CONSTRUCTED');
+  if(mode === 'PRACTICE') assert.equal(state.production.wholeEditCovered,false);
+  assert.equal(state.production.workflow?.activeDecisionId ?? null, null);
+  const after = await new CurrentAeTransactionRuntimeV1(broker, 'practice-gpt-controller').observe();
+  checkpointFailure = true;
+  const saveFailed = await request(endpoint, {kind:'AE_TRANSACTION',payload:{
+    researchContext:{assignmentId:assignment.assignmentId,claimedBy:'controller',clipIds:[directTarget]},
+    plan:{...plan,planId:'second-edit',projectRevision:after.projectRevision,projectFingerprint:after.projectFingerprint,environmentFingerprint:after.environmentFingerprint},
+    editorialDecision:{...editorialDecision,decisionId:'edit-with-checkpoint-warning'}}});
+  assert.equal(saveFailed.status, 202);
+  const committed = await wait((await saveFailed.json()).job.jobId);
+  assert.equal(committed.status, 'SUCCEEDED', committed.error);
+  assert.equal(committed.result.checkpoint.saved, false);
+  assert.match(committed.result.checkpoint.warning, /simulated checkpoint failure/);
+  assert.equal(dispatched.filter(request => request.command === 'property.set_keyframes').length, 2);
+  checkpointFailure = false;
+  const retained = await request(endpoint.replace('/production-jobs','/production'),{action:'WORKFLOW_PLAN',claimedBy:'controller',plan:workflowPlan});
+  assert.equal(retained.status,200);const workflow=(await retained.json()).production.workflow.plans[0];
+  const workflowContext={workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,planDecisionId:workflowPlan.decisionId,planHash:workflow.hash,eventIds:['shot']};
   const expired = await fetch(borrowedScope.EDITFLOW_WORKER_PROOF_URL,{method:'POST',headers:{'Content-Type':'application/json',
     'X-EditFlow-Token':token,'X-EditFlow-Worker-Key':borrowedScope.EDITFLOW_WORKER_PROOF_KEY},body:JSON.stringify({scriptPath})});
   assert.equal(expired.status,409);
@@ -285,8 +320,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   assert.equal(resumed.status,'REVIEW_REQUIRED');
   const noEvidence = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller'}); assert.equal(noEvidence.status,400);
   const resolved = await request(endpoint,{action:'RESOLVE',jobId:review.jobId,claimedBy:'controller',reviewEvidenceRef:'actual-ae-readback.json'}); assert.equal(resolved.status,200);
-  // Simulate a trusted pre-rollout receipt on disk. It may resume, but a new
-  // client request with the same old payload must be refused after the upgrade.
+  // Pre-rollout receipts stay resumable; new direct jobs use their exact decision.
   await service.stop();
   const legacyPayload={...f.context(saved),scriptPath,scriptSha256:createHash('sha256').update(await readFile(scriptPath)).digest('hex'),editorialDecision:{...editorialDecision,decisionId:'pre-rollout-proof'}};
   legacyPayload.editorialDecision=await new ChatgptEditorialDecisionFileV1(path.join(f.dir,'editorial-decisions')).retain(assignment.assignmentId,'PROOF_SCRIPT',legacyPayload);
@@ -295,7 +329,7 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   service=makeService();await service.start();
   const legacyReview=await wait(legacyJob.jobId);assert.equal(legacyReview.status,'REVIEW_REQUIRED',legacyReview.error);
   assert.deepEqual(legacyReview.payload,legacyPayload);
-  const rejectLegacy=await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...legacyPayload,acceptedLegacyReceipt:true}});
+  const rejectLegacy=await request(endpoint,{kind:'PROOF_SCRIPT',payload:{...legacyPayload,workflowContext:{workflowId:'OLD_WORKFLOW'}}});
   assert.equal(rejectLegacy.status,409);assert.match((await rejectLegacy.json()).error,/PRIMARY_WORKFLOW_REQUIRED/);
   assert.equal((await request(endpoint,{action:'RESOLVE',jobId:legacyJob.jobId,claimedBy:'controller',reviewEvidenceRef:'legacy-readback.json'})).status,200);
   if(mode === 'PRO_CREATION') {

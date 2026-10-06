@@ -167,7 +167,7 @@ test("terminal assignment reads expose no legacy choices while preserving histor
   assert.deepEqual(JSON.parse(await readFile(store.filePath, "utf8")).assignments[0].practiceSceneMatches, [legacy]);
 });
 
-test("Practice chat jobs cannot bypass direct selection through missing checkpoints or incomplete shot coverage", async (t) => {
+test("Practice direct jobs require selected targets; final reconstruction still checks complete shot coverage", async (t) => {
   const f = await fixture(t);
   const token = "exclusive-footage-selection-test-0123456789abcdef";
   const broker = new LoopbackCepBroker({ port: 0, token }); await broker.start();
@@ -186,9 +186,11 @@ test("Practice chat jobs cannot bypass direct selection through missing checkpoi
   const endpoint = `http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production-jobs`;
   const enqueue = async () => {
     const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ kind: "AE_BATCH", payload: {
-      intents: [], researchContext: { assignmentId: assignment.assignmentId, claimedBy: "controller", plans: [] } } }) });
+      intents: [], researchContext: { assignmentId: assignment.assignmentId, claimedBy: "controller", clipIds: ["shot:1"] },
+      editorialDecision: { authority: "CHATGPT_DIRECT", decisionId: "direct-target-check", rationale: "Choose the exact target",
+        evidenceRefs: ["fixture:pixels"], steps: ["Edit shot:1"] } } }) });
     assert.equal(response.status, 409);
-    assert.match((await response.json()).error, /PRIMARY_WORKFLOW_REQUIRED/);
+    assert.match((await response.json()).error, /direct ChatGPT Practice selection/);
     assert.deepEqual((await (await fetch(endpoint, { headers })).json()).jobs, []);
   };
   await enqueue();

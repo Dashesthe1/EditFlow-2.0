@@ -117,8 +117,7 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
           ? normalizePracticeVerificationPolicyV1(assignment.practicePolicy)
           : null;
         const practiceRole: PracticeRunRoleV1 | null = assignment.mode === "PRACTICE" ? "LEARNING" : null;
-        const currentMessage = assignment.chatMessage.includes("MANDATORY PER-CLIP RESEARCH GATE V1")
-          ? assignment.chatMessage : assignment.chatMessage + "\n\n" + CLIP_RESEARCH_POLICY_V1;
+        const currentMessage = assignment.chatMessage;
         const continuityMessage = currentMessage;
         const directMatches = (assignment.practiceSceneMatches ?? []).filter((match) => isDirectChatgptRawSelectionV1(match, assignment.start));
         const discardedLegacy = assignment.mode === "PRACTICE"
@@ -133,7 +132,7 @@ const readStore = async (filePath: string): Promise<GptOrchestrationStorePayload
           ...(needsDirectPreflight ? { preflight: { ...assignment.preflight, stage: "AWAITING_CHATGPT_SHOTS" as const,
               updatedAt: new Date().toISOString(), requireTransferNovelty: assignment.preflight?.requireTransferNovelty ?? false,
               completedShotIds: [], unresolvedShotIds: assignment.preflight?.totalShotIds ?? [],
-              reasons: ["Practice requires direct ChatGPT footage selections and verified preflight before editing."], evidenceRefs: [] } } : {}),
+              reasons: ["Select the raw targets you intend to edit. Other unfinished selections do not block already selected targets."], evidenceRefs: [] } } : {}),
           practiceRole,
           practicePolicy,
           chatMessage: applyCurrentProductionQueuePolicy(continuityMessage, assignment.mode),
@@ -177,7 +176,7 @@ export const EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 =
   "https://drive.google.com/drive/folders/19RI8JpZQvmD7R5_4Ub1E_JBodcx7MtGZ";
 
 const RESEARCH_PRIORITY_LINES = [
-  "- Tutorial Drive is the mandatory first research source before editing EVERY clip in Practice and Pro Creation. Scan raw/reference windows, consult and directly analyze matching tutorials, map the learned tools/method steps to each effect, and commit the durable clip research plan before AE mutations.",
+  "- Research only unfamiliar or changed techniques. Known constructions and explicitly chosen notebook recipes can be applied directly without a new per-clip research plan. For new research use Tutorial Drive, then Adobe resources, then web.",
   "- Search the Tutorial Drive for the closest matching behavior or technique before consulting any external source. Primary folders: Adobe Effect Tutorials (" + EDITFLOW_EFFECT_TUTORIALS_FOLDER_V1 + ") and Adobe Effect Music + Beat Tutorials (" + EDITFLOW_MUSIC_BEAT_TUTORIALS_FOLDER_V1 + "). Root: " + EDITFLOW_TUTORIAL_DRIVE_ROOT_V1 + ".",
   "- Use the matching tutorial video or videos to retain a structured technique record: WHAT the visible behavior is, WHEN/WHY it is used, HOW it is constructed in After Effects, ACCESS requirements, the PROOF needed to verify it, and TRANSFER rules for adapting it to new footage. Do not copy literal tutorial values as the lesson.",
   "- ChatGPT directly studies the tutorial and chooses its construction, exact settings, invariants, adaptation and troubleshooting. Record those decisions as explicit clip-research SOURCE steps with authority:CHATGPT_DIRECT and reviewed worked examples. Machine tutorial compilation is retired from production.",
@@ -266,7 +265,7 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Practice role: " + (input.practiceRole ?? "LEARNING"),
     input.mode === "PRACTICE" ? "Study the actual Finish and reconstruct it from the provided raw media in After Effects." : "Design an original edit from the provided raw media using the chosen preset and direct render review.",
     "Finish path: " + (input.finish?.uri ?? "(none)"),
-    "Learning sequence: OBSERVATION -> INTERPRETATION -> HYPOTHESIS -> PLAN -> AE -> RENDER -> DIRECT COMPARISON -> CORRECTION -> WORKED EXAMPLE.",
+    "Editing sequence: RESUME ONCE -> THINK -> AE BATCH -> INSPECT -> CORRECT. Build the whole edit, then polish; learn at meaningful review boundaries.",
     "Finish: " + JSON.stringify(input.finish), "Provided raw media: " + JSON.stringify(input.start),
     "Retained GPT source choices: " + JSON.stringify(input.practiceSceneMatches ?? []),
     "Evidence directory: " + input.artifactDir,
@@ -309,7 +308,7 @@ const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrati
   const markerAt = message.indexOf(EDIT_PRODUCTION_CONTINUITY_MARKER_V1);
   const retiredAt = message.search(/\n(?:Primary edit production system|Original M6 workflow|Practice reference-fidelity policy|EDIT_PRODUCTION_QUEUE_POLICY_V[1-4]|PRACTICE_ACCELERATION_CONTINUITY_V)/);
   const end = Math.min(...[markerAt, retiredAt, message.length].filter(v => v >= 0));
-  const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery|ACCELERATED_REFERENCE_FIRST_V1|Optional workflowContext/i;
+  const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery|ACCELERATED_REFERENCE_FIRST_V1|Optional workflowContext|MANDATORY PER-CLIP|before changing any clip|For EVERY clip|editing EVERY clip|READY plans|Commit clip-research PLAN|AE edits require researchContext|Record the actual search\/review artifact|Learning sequence:|commit the durable clip research plan/i;
   const generatedLines = new Set([...CHATGPT_FOOTAGE_POLICY_V1.split("\n"), ...RESEARCH_PRIORITY_LINES]);
   const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !generatedLines.has(line)).join("\n").trimEnd();
   return cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1 + "\n\n" + RESEARCH_PRIORITY_LINES.join("\n") + "\n\n" + editProductionContinuityAppendixV1(mode);

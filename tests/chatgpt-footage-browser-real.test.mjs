@@ -122,7 +122,7 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   const base=`http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}`;
   const request=async(path,body)=>fetch(base+path,{headers,method:"POST",body:JSON.stringify({claimedBy:"controller",...body})});
   await service.assertPracticeReconstructionReady();
-  assert.equal((await request('/complete',{success:true,finalSummary:'No workflow plan'})).status,409);
+  assert.equal((await request('/complete',{success:true,finalSummary:'No direct final review'})).status,400);
   const workflowPlan={authority:'CHATGPT_DIRECT',decisionId:'direct-http-workflow',rationale:'Retain the reviewed one-second source trim',evidenceRefs:[raw.inspection.evidenceId],
     mode:'METHOD_LEARNING',scope:'Directly reviewed one-second shot',output:{width:160,height:90,fps:30,durationMs:1000},passOrder:['structure','review'],
     sources:[{clipId:'shot:1',mediaId:'video:1:raw',fingerprint:createHash('sha256').update(await readFile(video)).digest('hex'),fps:30,startMs:2000,endMs:3000,availableStartMs:0,availableEndMs:6000,actionAnchors:[]}],

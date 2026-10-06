@@ -72,7 +72,8 @@ test("workflow history resumes unchanged, keeps GPT-chosen pass order, scopes jo
   assert.equal(restored.snapshot().wholeEditCovered,false);assert.deepEqual(restored.snapshot().workflow.reviews,[]);
   const selected=c.snapshot().workflow.plans[1],payload={workflowContext:{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,planDecisionId:"workflow:2",planHash:selected.hash,eventIds:["phrase"]},researchContext:{plans:[{clipId:"shot:1"}]}};
   validateWorkflowJobV1(c.snapshot().workflow,payload);
-  assert.throws(()=>validateWorkflowJobV1(c.snapshot().workflow,{}),/PRIMARY_WORKFLOW_REQUIRED/);
+  validateWorkflowJobV1(c.snapshot().workflow,{});
+  validateWorkflowJobV1(c.snapshot().workflow,{workflowContext:{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,phase:"DIRECT"}});
   validateWorkflowJobV1(c.snapshot().workflow,{}, {acceptedReceipt:true,acceptedLegacyReceipt:true});
   const previous={...payload,workflowContext:{...payload.workflowContext,planDecisionId:"workflow:1",planHash:c.snapshot().workflow.plans[0].hash}};
   assert.throws(()=>validateWorkflowJobV1(c.snapshot().workflow,previous),/SUPERSEDED/);
@@ -169,7 +170,7 @@ for(const mode of ["PRACTICE","PRO_CREATION"]) test(`${mode} starts and resumes 
     assert.equal(body.workflowSelectionAllowed,false);assert.equal(body.workflowFallback,false);
   }
   const jobs=`gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production-jobs`;
-  for(const workflowContext of [undefined,{workflowId:"OLD_WORKFLOW"},{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,phase:"PREPARATION"}]) {
+  for(const workflowContext of [{workflowId:"OLD_WORKFLOW"},{workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,phase:"PREPARATION"}]) {
     const response=await call(jobs,{kind:"AE_BATCH",payload:{legacy:true,acceptedLegacyReceipt:true,workflowContext,
       researchContext:{assignmentId:assignment.assignmentId,claimedBy:"controller",plans:[]}}});
     assert.equal(response.status,409);assert.match((await response.json()).error,/PRIMARY_WORKFLOW_REQUIRED|PREPARATION_ONLY/);

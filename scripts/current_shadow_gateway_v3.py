@@ -39,12 +39,8 @@ def _safe_error_text(value: str) -> str:
 
 CONNECTOR_CONTRACT_VERSION = "CURRENT_SHADOW_MCP_CLIENT_READY_V1"
 REQUIRED_PRODUCTION_TOOLS = (
-    "get_mcp_surface", "get_production_status", "get_gpt_assignment",
-    "claim_gpt_assignment", "get_production_state", "record_production_update",
-    "enqueue_production_job", "get_production_jobs", "resolve_production_job",
-    "get_clip_research_contract", "get_clip_research", "record_clip_research",
-    "get_footage_selection", "inspect_or_select_footage",
-    "get_practice_notebook", "record_practice_example", "complete_gpt_assignment",
+    "claim_gpt_assignment", "enqueue_production_job", "get_production_jobs",
+    "inspect_or_select_footage", "record_practice_example", "complete_gpt_assignment",
 )
 PRODUCTION_UPDATE_ACTIONS = frozenset({
     "WORKFLOW_PLAN", "WORKFLOW_REVIEW", "WORKFLOW_MILESTONE", "HEARTBEAT",
@@ -222,7 +218,7 @@ def build_server():
 
     mcp = MCPServer(
         "EditFlow Current Shadow Gateway",
-        instructions="Before Practice/Pro Creation work, call get_mcp_surface with the retained assignment_id and available_tools_json containing tools actually callable in this chat. Require connectorPreflight READY, then read get_production_state/get_production_jobs. Use record_production_update for workflow, checkpoints and GPT research/decision HEARTBEATs; enqueue_production_job for all AE work. A host-denied request is BLOCKED_CONNECTOR: report its exact action/reason, preserve state and stop dependent writes. Never retry the denied path through scripts, conceal credentials, disable authentication, or change supervision. ChatGPT alone makes every editorial decision.",
+        instructions="DIRECT_EDITING_V1: use claim_gpt_assignment once to receive the retained assignment, AE state, queue, checkpoint and notebook. Then think, enqueue exact AE batches, inspect and correct. No separate tool-inventory preflight, per-clip research plan, workflow-plan approval or local PASS gate is required. Research only unfamiliar methods. The server verifies the issued worker and journals/checkpoints batches inside execution. Keep AE open, use provided raw inputs and review the whole final render directly. Recover uncertain writes by their retained receipts; never replay blindly. Respect actual host denials and stale-worker ownership. ChatGPT alone makes every editorial decision.",
     )
     registered: dict[str, Any] = {}
 
@@ -556,7 +552,7 @@ def build_server():
         assignment_id: str,
         claimed_by: str = "",
     ) -> dict[str, Any]:
-        """Refresh the retained assignment claim using only the worker credential issued in this chat after connector preflight. No implicit controller identity is created."""
+        """Resume once using this chat's issued worker: return retained assignment, AE state, queue, checkpoint, selections and notebook. No separate preflight or research-plan approval is needed."""
         _require_worker(claimed_by)
         safe_id = urllib.parse.quote(assignment_id, safe="")
         return _practice_http(

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, truncate } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, truncate } from "node:fs/promises";
 import path from "node:path";
 
 export const PRACTICE_PRODUCTION_JOB_KINDS_V1 = ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE", "PROOF_SCRIPT", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"] as const;
@@ -66,6 +66,14 @@ export class PracticeProductionWorkerV1 {
     for (const job of this.#jobs.values()) {
       if (job.status === "RUNNING") await this.#put({ ...job, status: "RECONCILE_REQUIRED",
         error: "Worker restarted during an AE operation; reconcile readback/artifacts before continuing." });
+      if (job.status === "REVIEW_REQUIRED" && job.kind === "LOCAL_RENDER"
+        && typeof (job.result as any)?.renderPath === "string") {
+        // A completed preview is output to inspect, not a permission gate.
+        // This never supplies a visual PASS or promotes a learned method.
+        const artifact = await stat((job.result as any).renderPath).catch(() => null);
+        if (artifact?.isFile() && artifact.size > 0) await this.#put({ ...job, status: "SUCCEEDED",
+          review: { kind: "PREVIEW_EXECUTION_COMPLETED", visualAcceptance: false } });
+      }
     }
   }
 

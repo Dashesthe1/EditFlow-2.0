@@ -102,3 +102,20 @@ test("failed operations hold later writes until evidence-based reconciliation", 
   await f.worker.runOnce();
   assert.equal(calls, 2);
 });
+
+test("retained completed preview releases the queue without inventing a visual PASS or replaying", async t => {
+  let executions = 0;
+  const f = await fixture(t, async () => { executions++; return { result: null }; });
+  const preview = path.join(f.root ?? path.dirname(f.file), "preview.mp4");
+  await writeFile(preview, "retained rendered bytes");
+  const first = await f.worker.enqueue(job("LOCAL_RENDER"));
+  await writeFile(f.file, JSON.stringify({ ...first, status: "REVIEW_REQUIRED", result: { renderPath: preview } }) + "\n");
+  const resumed = new PracticeProductionWorkerV1(f.file, async () => { executions++; return { result: null }; }, async () => true);
+  await resumed.load();
+  assert.equal(resumed.list()[0].status, "SUCCEEDED");
+  assert.equal(resumed.list()[0].review.visualAcceptance, false);
+  assert.equal(executions, 0);
+  await resumed.enqueue(job("AE_TRANSACTION", [first.jobId]));
+  await resumed.runOnce();
+  assert.equal(executions, 1);
+});

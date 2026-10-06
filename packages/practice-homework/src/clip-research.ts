@@ -6,23 +6,23 @@ import type { PracticeSceneMatchV1 } from "./contracts.js";
 
 type Packet = Record<string, any>;
 export const CLIP_RESEARCH_POLICY_V1 = [
-  "MANDATORY PER-CLIP RESEARCH GATE V1 (Practice and Pro Creation):",
-  "After discovering/resuming the assignment and before changing any clip, inspect that raw clip and the corresponding visual reference window. Record its timing, motion, layering, intensity, exit/reverse behavior and each desired effect through clip-research SCAN.",
-  "For EVERY clip, directly review a relevant retained technique or search Adobe Effect Tutorials / Adobe Effect Music + Beat Tutorials first. ChatGPT extracts and chooses the method steps itself; machine tutorial compilation is retired. Reuse preserves provenance and needs a new explicit footage adaptation. A title alone is not consultation evidence.",
-  "Record the actual search/review artifact, source URL/file ID, title, timestamp/section, extracted AE tools and method steps, effect coverage, and any specific limitation. Escalation is Tutorial Drive -> official Adobe documentation -> online sources, only after recorded insufficient coverage/no-match in the previous tier. Access failures are BLOCKED; they are not a no-match result.",
-  "Commit clip-research PLAN mapping EACH effect to consulted source steps, an adaptation for the raw footage, and render/reference comparison checks. Tools/methods from the source guide construction; reference visual behavior remains the correctness authority. Finished footage/audio must never enter the attempt.",
-  "Authenticated API: GET/POST /v1/product/gpt/assignments/{assignmentId}/clip-research. POST action=SCAN|SOURCE|PLAN with clipId and claimedBy (the current live assignment controller). GET returns durable scans, sources, plans and execution audits. Inspect GET /v1/product/gpt/clip-research-contract for payload fields.",
-  "AE edits require researchContext={assignmentId,claimedBy,plans:[{clipId,planId}]} in the request body. All affected clips need current READY plans. MCP fast_ae_run accepts goal_json={goal,researchContext}; fast_ae_batch accepts intents_json={intents,researchContext}; apply_edit_plan accepts decision_json={researchContext}. Plans survive chats/restarts; changing a scan or assignment media invalidates old plans. Read-only state inspection and cancellation remain available. Do not restart the assignment or redo correct clips to satisfy the gate.",
+  "ON-DEMAND METHOD LEARNING: research is supporting memory, never an AE admission gate.",
+  "Recognize effect families from the reference once. Explicitly choose and adapt a retained worked method or a known construction immediately; no new SCAN, SOURCE or READY PLAN is required for each target.",
+  "Research only the unfamiliar or changed component. For new research use Tutorial Drive, then Adobe documentation, then web. Retain genuine observations and provenance; access failures are never no-match evidence.",
+  "SCAN/SOURCE/PLAN remain optional durable learning records. They do not authorize, block or sequence editing.",
+  "Submit exact ChatGPT AE operations with researchContext={assignmentId,claimedBy,clipIds:[affected clips]} and editorialDecision. Existing plans fields remain readable but are optional. The server checks the current worker and selected raw identities inside admission and journals execution.",
 ].join("\n");
 
 export const CLIP_RESEARCH_CONTRACT_V1 = {
   schema: "editflow.clip-research-contract.v1",
   policy: CLIP_RESEARCH_POLICY_V1,
+  mandatoryBeforeEditing: false,
+  researchTrigger: "CHATGPT_IDENTIFIES_AN_UNFAMILIAR_OR_CHANGED_METHOD",
   common: ["action", "clipId", "claimedBy"],
   SCAN: ["sourceMediaId (provided raw video)", "sourceRangeMs [start,end]", "referenceRangeMs [start,end] (Practice)", "observations", "effects [{effectId,behavior}]", "evidencePath (JSON {clipId,observations,sourceMediaId,sourceRangeMs,referenceRangeMs})"],
   SOURCE: ["authority CHATGPT_DIRECT", "tier TUTORIAL|ADOBE|WEB", "outcome SUFFICIENT|PARTIAL|NO_MATCH", "query", "title", "uri", "locator (video timestamps/document section)", "limitation (required if insufficient)", "evidencePath (JSON {query,uri,locator,observations|results})", "steps [{stepId,tool,action,effectIds}] chosen directly by ChatGPT", "reuseSourceId (optional retained sourceId from another clip when it covers every scanned effect)"],
   PLAN: ["bindings [{effectId,sourceId,stepIds,adaptation}]", "comparisonChecks [specific render/reference checks]"],
-  mutationContext: { assignmentId: "current assignment", claimedBy: "current controller lease owner", plans: [{ clipId: "affected clip", planId: "returned READY plan" }] },
+  mutationContext: { assignmentId: "current assignment", claimedBy: "current controller lease owner", clipIds: ["affected clip; inferred from declared clip/shot targets when omitted"], plans: "optional retained learning references" },
   persistence: "Separate atomic per-assignment ledger; scans/source evidence content hashes; methods and request hashes retained in audit.",
 };
 
@@ -310,52 +310,46 @@ export class ClipResearchStoreV1 {
   async admit(assignment: Packet, body: Packet, queuedExecution = false): Promise<Packet> {
     if (assignment.status !== "RUNNING") return fail("Cancelled, unclaimed or terminal assignment cannot edit.");
     const context = body.researchContext;
-    if (!context || context.assignmentId !== assignment.assignmentId || !Array.isArray(context.plans) || !context.plans.length) {
-      return fail("AE editing needs researchContext with current assignmentId and READY plans for every affected clip. Inspect assignment.clipResearch and GET clip-research-contract.");
+    if (!context || context.assignmentId !== assignment.assignmentId || typeof context.claimedBy !== "string") {
+      return fail("AE editing needs researchContext identifying the current assignment and issued worker.");
     }
     const lease = assignment.controllerLease;
     if (!queuedExecution && (!lease || lease.owner !== context.claimedBy || Date.parse(lease.expiresAt) <= Date.now())) {
       return fail("Heartbeat/claim the assignment and pass researchContext.claimedBy for its current live controller.");
     }
-    const saved = await this.snapshot(assignment);
-    if (!saved.current) return fail("Media/scene matches changed; rescan the affected clips.");
-    const ids = list(context.plans.map((ref: Packet) => ref.clipId), "affected clipIds");
-    ids.forEach((id) => requireDirectPracticeShot(assignment, id));
     const declaredTargets = new Set<string>();
     const collectTargets = (value: unknown): void => {
       if (!value || typeof value !== "object") return;
       if (Array.isArray(value)) { value.forEach(collectTargets); return; }
       for (const [key, item] of Object.entries(value)) {
-        if (key === "researchContext") continue;
+        if (["researchContext", "workflowContext", "methodApplications", "workflowPlan"].includes(key)) continue;
         if ((key === "clipId" || key === "shotId") && typeof item === "string") declaredTargets.add(item);
         else collectTargets(item);
       }
     };
     collectTargets(body);
-    if ([...declaredTargets].some((target) => !ids.includes(target))) return fail("Every declared mutation clip/shot target needs its own plan.");
-    const plans = context.plans.map((ref: Packet) => {
-      const plan = saved.clips[ref.clipId]?.plan;
-      if (!plan || plan.status !== "READY" || plan.planId !== ref.planId) return fail("Clip " + ref.clipId + " has no matching current READY research plan.");
-      return plan;
-    });
-    // Verify every retained inspected/reviewed artifact remains unchanged before editing.
-    for (const id of ids) {
-      const clip = saved.clips[id];
-      const source = assignment.start.find((item: Packet) => item.mediaId === clip.scan.sourceMediaId);
-      if (clip.scan.sourceFileIdentity && hash(clip.scan.sourceFileIdentity) !== hash(await sourceFileIdentity(source.uri))) {
-        return fail("Raw source file changed; rescan and review its affected plan before editing.");
-      }
-      for (const evidence of [clip.scan.evidence, ...clip.sources.map((source: Packet) => source.evidence)]) {
-        const current = await this.evidence(evidence.path);
-        if (current.sha256 !== evidence.sha256) return fail("Consultation evidence changed; rescan/review before editing.");
-      }
+    if (context.clipIds !== undefined && !Array.isArray(context.clipIds)
+      || context.plans !== undefined && !Array.isArray(context.plans)) {
+      return fail("clipIds and optional plans must be arrays.");
     }
-    return { assignmentId: assignment.assignmentId, plans, requestHash: hash(body) };
+    for (const id of context.clipIds ?? []) declaredTargets.add(str(id, "clipId"));
+    for (const ref of context.plans ?? []) declaredTargets.add(str(ref.clipId, "clipId"));
+    const ids = [...declaredTargets];
+    ids.forEach((id) => requireDirectPracticeShot(assignment, id));
+    // Media integrity is enforced by the coordinator and source-import validator.
+    // Tutorial artifacts and old research plans cannot block unrelated construction.
+    const saved = context.plans?.length ? await this.snapshot(assignment) : { current: true, clips: {} };
+    const plans = ids.map(clipId => {
+      const ref = context.plans?.find((p: Packet) => p.clipId === clipId);
+      const plan = saved.current ? saved.clips[clipId]?.plan : null;
+      return plan?.planId === ref?.planId && plan?.status === "READY" ? plan : { clipId, planId: null };
+    });
+    return { assignmentId: assignment.assignmentId, clipIds: ids, plans, researchRequired: false, requestHash: hash(body) };
   }
 
   async audit(assignment: Packet, admission: Packet, outcome: string, evidenceRefs: readonly string[] = []): Promise<void> {
     await this.mutate(assignment, async (saved) => ({ ...saved, audit: [...saved.audit, {
-      kind: "METHOD_EXECUTION", at: new Date().toISOString(), outcome, requestHash: admission.requestHash,
+      kind: "AE_EXECUTION", at: new Date().toISOString(), outcome, requestHash: admission.requestHash,
       plans: admission.plans.map((plan: Packet) => ({ clipId: plan.clipId, planId: plan.planId })), evidenceRefs,
     }] }));
   }

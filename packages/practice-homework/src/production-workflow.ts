@@ -213,9 +213,18 @@ export const validateWorkflowJobV1 = (state: ProductionWorkflowStateV1, payload:
   // Compatibility is granted by the server's pre-rollout durable receipt IDs,
   // never by a client flag. It cannot admit another new legacy job.
   const c = payload.workflowContext;
-  if (!c && options.acceptedLegacyReceipt) return;
+  // The sole workflow is implicit. Its separate plan is optional supporting memory.
+  // Routing metadata never needs a separate GPT approval round trip.
+  if (!c) {
+    if (!options.acceptedLegacyReceipt && (payload.legacy || payload.acceptedLegacyReceipt)) throw new TypeError("PRIMARY_WORKFLOW_REQUIRED: client legacy flags cannot select another workflow.");
+    return;
+  }
   if (!c || c.workflowId !== PRIMARY_PRODUCTION_WORKFLOW_V1 && !(options.acceptedLegacyReceipt && c.workflowId === undefined)) {
-    throw new TypeError("PRIMARY_WORKFLOW_REQUIRED: use CHATGPT_PRODUCTION_WORKFLOW_V1 and its WORKFLOW_PLAN; reference preparation uses phase PREPARATION.");
+    throw new TypeError("PRIMARY_WORKFLOW_REQUIRED: use CHATGPT_PRODUCTION_WORKFLOW_V1.");
+  }
+  if (c.phase === "DIRECT") {
+    if (c.planDecisionId !== undefined || c.planHash !== undefined || c.eventIds !== undefined) throw new TypeError("DIRECT uses the exact job decision; omit separate plan bindings.");
+    return;
   }
   if (c.phase === "PREPARATION") {
     if (options.kind !== "REFERENCE_ANALYSIS") throw new TypeError("WORKFLOW_PREPARATION_ONLY: preparation context cannot authorize AE production.");
@@ -257,15 +266,15 @@ export const validateMethodApplicationV1 = (examples: readonly Packet[], applica
 
 export const PRODUCTION_WORKFLOW_POLICY_V1 = [
   "CHATGPT_PRODUCTION_WORKFLOW_V1 is the sole primary workflow for PRACTICE and PRO_CREATION. No workflow selector, older route or automatic fallback exists; ChatGPT alone makes every editorial decision.",
-  "Read production.workflow, the current notebook, raw selections, research plans and receipts once on resume. Reconcile AE identity before advancing the retained next action; redo preflight only for changed dependencies or a real failure.",
-  "Commit WORKFLOW_PLAN to the existing production endpoint: explicitly choose scope, learning/repeat mode, output timebase, bounded raw ranges/handles/fps/action anchors, supplied audio/offset, musical anchors, event topology, pass order, finishing and nextAction. No source/effect/preset chooser exists.",
-  "Every new production job requires workflowContext:{workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,planDecisionId,planHash,eventIds:[...]}, bound to the active retained plan. Before raw selections are ready, REFERENCE_ANALYSIS alone may use workflowContext:{workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,phase:PREPARATION}. Source browsing, research and preflight are preparation within this same workflow. Previously accepted receipts remain resumable; they cannot authorize new legacy work.",
-  "Establish playable whole-edit coverage early. Choose coherent section/pass work and prototype an unfamiliar critical event when needed; record unresolved issues rather than polishing one shot indefinitely. Pass order remains your editorial decision.",
+  "ONE_CALL_RESUME_V1: claim_gpt_assignment returns the retained assignment, AE state, jobs, checkpoint, raw selections and current notebook in one response. Read once; no separate tool-inventory preflight, repeated assignment reads or separate controller/reconciliation checklist is required.",
+  "DIRECT_EDITING_V1: Think -> enqueue exact AE batch -> inspect -> correct. The exact editorialDecision on the job is sufficient; WORKFLOW_PLAN, workflowContext and per-target READY research plans are optional memory, never routine admission prerequisites.",
+  "Build playable whole-edit coverage first. Then work across the edit in passes: timing/framing/retiming, effect families, whole-edit review, targeted corrections and finishing. Do not require a local PASS before constructing the next shot. An unfamiliar critical event may be prototyped without trapping the rest of the edit.",
   "Use complete notebook methods with source bindings, containers/parents/coordinate spaces, effect instances/order/versions, source traversal, all keys/easing and dependencies. Select a WORKED method explicitly, record methodApplications with every identity rebound and an exact adaptedMethod. Never copy tracker data onto another subject or retime a wrapper twice by accident.",
   "Coordinate retime, parent Position/Scale/Rotation, brightness, text/audio and paired incoming/outgoing events through your chosen anchor map. Choose all values/offsets/curves yourself; no pulse formula or automatic timing adaptation. Different source/master/wrapper fps are distinct.",
-  "Reuse inspected tutorial evidence through clip-research SOURCE reuseSourceId and bind a new PLAN per target. Across sessions consult the timestamped notebook provenance; research the missing or changed component. Tutorial Drive -> Adobe -> web remains required. Access errors are BLOCKED, never NO_MATCH.",
+  "Recognize effect families once, retrieve worked recipes from the preset notebook, choose their exact adapted settings and apply them in a coherent batch. No repeated tutorial search, copied SOURCE record or new PLAN is required per clip. Research only unfamiliar or changed components, using Tutorial Drive -> Adobe -> web.",
   "Batch coherent exact operations through production-jobs. LOCAL_RENDER accepts explicit resolutionScale 1|0.25|0.125; reduced previews use an isolated unpatched duplicate, never change canonical picture. Choose local intervals with handles for local questions, focused full-resolution checks for flow/edges/mattes, and whole-edit audiovisual review at pass boundaries and final acceptance.",
-  "Record WORKFLOW_REVIEW with dimensions, retained renderJobId, constructionDecisionId, PASS/REVISE, observed issues and your next action. Save reviewed methods into existing workedExamples. Writes/metadata alone are never visual proof. After repeated similar defects diagnose bindings, time/space, topology, stack, selectors or plugin behavior before another numerical trial.",
+  "Review whole-edit audiovisual previews at pass boundaries, then correct visible misses. LOCAL_RENDER completes without blocking subsequent jobs on a separate resolve receipt; inspection remains GPT's responsibility. Local renders are for actual defects. WORKFLOW_REVIEW is optional supporting memory; final full-resolution direct review remains required.",
+  "The queue journals exact decisions/receipts, renews the current claim and saves an AE checkpoint after committed mutation batches. Save reviewed successes/failures and reusable complete methods at meaningful review/pass boundaries, handoff or completion; do not require a persistence call after each micro-operation. Unknown or partial AE writes still require actual readback before replay.",
   "Finishing and enhancement are scope choices. Keep picture cache/enhancement dimensions, fps, frame count, origins, audio and text/grade stack explicit. Tutorial external assets are not permission to import them; output uses assignment-provided raw inputs.",
   "Record TELEMETRY spans with activity ACTIVE|MACHINE_WAIT|IDLE and purpose PREPARATION|LEARNING|PRODUCTION|REVIEW|EXPORT|RECOVERY. Unknown gaps stay unattributed. Mark first rough and first accepted method with WORKFLOW_MILESTONE; one hour is a matched repeat-job target, never an acceptance shortcut.",
 ].join("\n");
@@ -275,9 +284,13 @@ export const PRODUCTION_WORKFLOW_CONTRACT_V1 = {
   storage: "Existing production coordinator snapshot and selected preset gptLearning.workedExamples",
   endpoint: "/v1/product/gpt/assignments/{id}/production", actions: ["WORKFLOW_PLAN", "WORKFLOW_REVIEW", "WORKFLOW_MILESTONE", "TELEMETRY"],
   policy: PRODUCTION_WORKFLOW_POLICY_V1,
+  executionPath: "ONE_CALL_RESUME -> CHATGPT_DECISION -> AE_BATCH -> OBSERVE -> CORRECT",
+  startup: "claim_gpt_assignment returns assignment,resume,aeState,aeStateError",
+  mandatoryResearchPlans: false, mandatoryWorkflowPlan: false, mandatoryLocalPass: false,
+  automaticCheckpointAfterBatch: true, previewsBlockQueue: false,
   plan: ["authority,decisionId,rationale,evidenceRefs", "mode,scope,output:{width,height,fps,durationMs},passOrder", "sources:[{clipId,mediaId,fingerprint,fps,startMs,endMs,availableStartMs,availableEndMs,actionAnchors:[{id,sourceMs,observation}]}]", "audio:{mediaId,songOffsetMs,policy}", "anchors:[{id,role,outputMs,rationale}]", "events:[{id,clipIds,anchorIds,treatment,acceptedDimensions,unresolvedIssues}]", "finishing:[explicit choices],nextAction"],
   review: ["authority,decisionId,rationale,evidenceRefs", "planDecisionId,eventId,constructionDecisionId,renderJobId,inspections:[{evidenceId,timeMs}]", "dimensions,verdict:PASS|REVISE,remainingIssues,observation,nextAction"],
-  jobContext: "Required workflowContext:{workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,planDecisionId,planHash,eventIds}; new jobs use the active ChatGPT plan. REFERENCE_ANALYSIS preparation alone uses {workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,phase:PREPARATION}. Pre-rollout accepted receipts remain resumable only.",
+  jobContext: "workflowContext is optional. Omit it for direct editing, or use {workflowId:CHATGPT_PRODUCTION_WORKFLOW_V1,phase:DIRECT}. Explicit retained plan bindings remain validated when supplied. All jobs retain exact ChatGPT editorialDecision and issued assignment/worker identity.",
   methodApplication: "methodApplications:[{authority,decisionId,rationale,evidenceRefs,lessonId,bindings:[{fromId,toId}],adaptationChecks,adaptedMethod}] — explicit, current WORKED example only; no automatic application",
   benchmark: { scope: "Familiar 14–15s two-shot velocity edit with prepared permitted raw inputs", targetMinutes: 60, measured: false,
     checkpoints: ["0–8 preparation", "8–18 playable structure", "18–35 first method and explicit reuse", "35–48 motion and paired cut", "48–60 finishing and full review"],

@@ -12,39 +12,33 @@ are its components. Older workflows, selectors and fallback launchers are remove
 
 ## Production use
 
-1. Read `GET /v1/product/gpt/production-workflow-contract`, the current assignment's
-   `production`, `practice-notebook`, source selections, research plans and receipts.
-   Reconcile the retained AE state and advance the known next action.
-2. POST `WORKFLOW_PLAN` to `assignments/{id}/production` with `claimedBy` and `plan`.
-   Choose scope, learning/repeat mode, output geometry/timebase, prepared raw ranges,
-   handles/fps/action frames, supplied audio/offset, anchors, events, pass order,
-   finishing and next action. New choices need new immutable decision IDs.
-3. Establish early playable coverage and work in coherent sections/passes chosen
-   by ChatGPT. Prototype unfamiliar critical behavior when useful. Keep unresolved
-   issues explicit; a pass review accepts only the dimensions actually reviewed.
-4. Consult retained tutorial evidence or new research. Per-clip SCAN and PLAN
-   remain mandatory. `SOURCE reuseSourceId` reuses consulted evidence with new
-   target adaptation; the existing Tutorial Drive -> Adobe -> web order remains.
-5. Submit coherent exact operations through `production-jobs` with immutable
-   `editorialDecision` and required `workflowContext`:
-   `{workflowId:"CHATGPT_PRODUCTION_WORKFLOW_V1",planDecisionId,planHash,eventIds}`.
-   New jobs must bind the active retained ChatGPT plan and chosen event scope.
-   Before raw selections are ready, `REFERENCE_ANALYSIS` alone can use
-   `{workflowId:"CHATGPT_PRODUCTION_WORKFLOW_V1",phase:"PREPARATION"}`.
-   Raw browsing, research and preflight are preparation within this same workflow.
-   Existing accepted queue receipts remain resumable unchanged across rollout and
-   plan revisions. Only the server's loaded receipt IDs grant compatibility; client
-   flags cannot request it. New jobs and final completion cannot bypass the plan.
-6. Choose local preview bounds/handles and `resolutionScale` (1, .25, .125).
-   Reduced previews render an isolated unpatched duplicate. Full-resolution
-   checks handle flow, occlusion, matte, crop and boundary uncertainty. Final
-   acceptance still requires the canonical full-resolution whole edit.
-7. POST `WORKFLOW_REVIEW` with a direct ChatGPT verdict, dimensions, remaining
-   issues, exact construction decision, retained render and issued inspections.
-   Retain complete WORKED/FAILED/UNVERIFIED examples after observed attempts.
-8. Record TELEMETRY with activity and purpose, and WORKFLOW_MILESTONE with evidence.
-   Unknown gaps stay unattributed. Separate first-time learning/preparation from
-   repeat production while preserving total cost and end-to-end elapsed time.
+1. Call claim_gpt_assignment once with the issued worker. Its response bundles the
+   assignment, retained queue/jobs, checkpoint, selected raw ranges, notebook and AE
+   state. Continue retained work; there is no tool-inventory preflight checklist.
+2. Recognize effect families once and assemble playable coverage across the whole
+   edit. Pass across timing/framing/retiming, then effects, whole-edit review,
+   targeted corrections and finishing. No local PASS is needed to build another shot.
+3. Submit exact ChatGPT AE operations in coherent batches (up to 64 AE_BATCH
+   actions), with assignment/worker identity and editorialDecision. The queue
+   checks ownership, retains the decision/receipt and checkpoints committed batches.
+   WORKFLOW_PLAN, workflowContext and READY research plans are optional memory.
+   Explicit old plan bindings remain validated when a caller supplies them.
+4. Choose known constructions or adapt WORKED notebook methods directly. Research
+   only unfamiliar or changed components, using Tutorial Drive -> Adobe -> web.
+   SCAN/SOURCE/PLAN can retain detailed first-time learning without blocking editing.
+5. Review audiovisual previews at pass boundaries. LOCAL_RENDER supports scales
+   1, .25 and .125; reduced previews use isolated copies. A completed preview does
+   not block the queue on another resolve receipt. Use focused full-resolution
+   checks for actual temporal, edge or matte defects. Final acceptance requires
+   direct review of the full-resolution whole edit.
+6. Save observed successes/failures and complete reusable methods at meaningful
+   review/pass boundaries, handoff and completion. Optional WORKFLOW_REVIEW and
+   telemetry records support diagnosis; they are not AE permission gates.
+
+Opaque/partial/failed writes still need readback-based reconciliation before replay.
+Actual source changes, user cancellation and conflicting worker identities remain
+execution constraints. A committed batch stays SUCCEEDED even if its automatic AEP
+save fails; its checkpoint warning requires attention without replaying the edits.
 
 ## Complete method and explicit transfer
 
