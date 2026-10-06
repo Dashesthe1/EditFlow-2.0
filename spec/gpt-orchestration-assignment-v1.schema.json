@@ -44,6 +44,9 @@
         "PRO_CREATION"
       ]
     },
+    "primaryWorkflow": {
+      "const": "CHATGPT_PRODUCTION_WORKFLOW_V1"
+    },
     "editTypeId": {
       "type": "string",
       "minLength": 1

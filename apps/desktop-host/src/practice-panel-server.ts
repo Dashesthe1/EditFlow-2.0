@@ -1468,7 +1468,7 @@ export class PracticePanelServerV1 {
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
       : "RESUME_GPT_EDITING_FROM_CHECKPOINT";
     return {
-      schema: "editflow.practice-resume.v1", runtimeId: "RESUMABLE_PREFLIGHT_V1",
+      schema: "editflow.practice-resume.v1", runtimeId: "DIRECT_EDITING_V1",
       ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1,
       buildId: this.config.buildId ?? null, panel: this.config.broker.panelSession,
       aeConnection: this.config.broker.panelSession === null ? "DISCONNECTED" : "CEP_CONNECTED",
@@ -2485,7 +2485,7 @@ export class PracticePanelServerV1 {
           ...PRIMARY_WORKFLOW_ROUTING_V1,
           practiceWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
           proCreationWorkflow: PRIMARY_PRODUCTION_WORKFLOW_V1,
-          practiceStartup: "RESUMABLE_PREFLIGHT_V1",
+          practiceStartup: "DIRECT_EDITING_V1",
           practiceWorkflowAuthority: "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1",
           primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
           productionModes: ["PRACTICE", "PRO_CREATION"],

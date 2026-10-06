@@ -91,3 +91,11 @@ The orphaned `run-practice-held-out-isolation-proof.ps1` machine-certification
 launcher and unused `practice-live-proof-assertions.ts` module are deleted. Native
 capability proof harnesses remain because they test exact GPT-directed execution;
 they do not choose edits or provide another production workflow.
+
+The old standalone default-runner and routine-subsecond proof launchers are removed.
+`practice:panel` delegates to the canonical shared Shadow launcher, which is used
+for both modes. Runtime/startup identity is `DIRECT_EDITING_V1`. The explicit batch
+executor remains a mechanical component of the queue, not a competing workflow.
+`scripts/direct-editing-live-proof.mjs` is an isolated acceptance lab for the actual
+production HTTP API, durable worker and real CEP/AE host. It requires an empty test
+project and separate state; it never reads a production worker credential.

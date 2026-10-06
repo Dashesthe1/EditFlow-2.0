@@ -34,6 +34,7 @@ test("retired decision engines and generated entry points are physically absent"
     "scripts/practice/practice-candidate-ranker.py", "apps/desktop-host/src/practice-training-runtime.ts",
     "packages/adapters/ae-cep/runtime/editgpt_stabilization_visual_driver.py",
     "scripts/windows/run-practice-held-out-isolation-proof.ps1", "apps/desktop-host/src/practice-live-proof-assertions.ts",
+    "scripts/default-continuous-runner-live-proof.mjs", "scripts/routine-fast-loop-subsecond-proof.mjs",
     ".tmp/runtime/packages/editor-brain/src/index.js", ".tmp/runtime/packages/visual-effects-intelligence/src/brain.js",
     ".tmp/runtime/apps/desktop-host/src/practice-training-runtime.js",
     ".tmp/runtime/apps/desktop-host/src/practice-live-proof-assertions.js",

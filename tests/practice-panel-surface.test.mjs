@@ -54,7 +54,7 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     workflowFallback: false,
     practiceWorkflow: "CHATGPT_PRODUCTION_WORKFLOW_V1",
     proCreationWorkflow: "CHATGPT_PRODUCTION_WORKFLOW_V1",
-    practiceStartup: "RESUMABLE_PREFLIGHT_V1",
+    practiceStartup: "DIRECT_EDITING_V1",
     practiceWorkflowAuthority: "CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1",
     primaryProductionSystem: "DURABLE_PRODUCTION_QUEUE_V1",
     productionModes: ["PRACTICE", "PRO_CREATION"],

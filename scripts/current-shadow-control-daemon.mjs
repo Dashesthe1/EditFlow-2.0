@@ -42,7 +42,7 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
-const runtimeId = "RESUMABLE_PREFLIGHT_V1";
+const runtimeId = "DIRECT_EDITING_V1";
 const buildId = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 const canonicalRuntimePath = path.join(localAppData, "EditFlow2", "current-runtime.json");
 const practiceArtifactDir = path.resolve(

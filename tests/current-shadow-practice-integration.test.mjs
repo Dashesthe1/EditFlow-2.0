@@ -17,12 +17,8 @@ test("Current Shadow control plane integrates Practice on the same CEP broker", 
   assert.match(source, /await practicePanel\.stop\(\)/);
 });
 
-test("Practice launcher requires the sole ChatGPT workflow and switches only an idle EditFlow daemon", async () => {
+test("Practice launcher delegates to the canonical shared launcher without a build switch", async () => {
   const source = await read("scripts/windows/run-practice-panel.ps1");
-  assert.match(source, /CHATGPT_PRODUCTION_WORKFLOW_V1/);
-  assert.match(source, /\/v1\/product\/status/);
-  assert.match(source, /ControlStatus\.repoRoot -eq \$RepoRoot/);
-  assert.match(source, /mutationLease\.held/);
-  assert.match(source, /current-shadow-control-daemon\[\.\]mjs/);
-  assert.match(source, /& node \$DaemonPath/);
+  assert.match(source, /Start_Current_EditFlow_Shadow\.ps1/);
+  assert.doesNotMatch(source, /Stop-Process|DaemonPath|SkipBuild|accelerated Practice/);
 });
