@@ -37,6 +37,10 @@ test('supervisor process arms from gateway signals and restart retains the same 
   });
   await new Promise(r => gateway.listen(0, '127.0.0.1', r));
   await writeFile(path.join(root, 'EditFlow2/current-runtime.json'), JSON.stringify({ productBaseUrl: 'http://127.0.0.1:' + gateway.address().port, stateDir }));
+  await mkdir(path.join(root, 'supervisor'));
+  await writeFile(path.join(root, 'supervisor/continuation-notes.json'), JSON.stringify({
+    assignmentId: 'same-assignment', sessionId: 'same-session', text: 'Retain the completed shot and finish the bounded text correction.',
+  }));
   const reserve = createServer(); await new Promise(r => reserve.listen(0, '127.0.0.1', r)); const port = reserve.address().port; await new Promise(r => reserve.close(r));
   let child;
   const start = () => { child = spawn(process.execPath, ['scripts/production-watchdog/supervisor.js'], { env: { ...process.env, APPDATA: root, LOCALAPPDATA: root, EDITFLOW_SUPERVISOR_ROOT: path.join(root, 'supervisor'), EDITFLOW_SUPERVISOR_PORT: String(port), EDITFLOW_SUPERVISOR_TEST_TRANSPORT_URL: 'http://127.0.0.1:' + gateway.address().port + '/mcp' }, stdio: 'pipe' }); };
@@ -50,6 +54,8 @@ test('supervisor process arms from gateway signals and restart retains the same 
   await stop(); start();
   command = await until(async () => { const c = await fetchJson('/actuator'); return c.command === 'SEND' && c; });
   assert.equal(command.tabId, 99); assert.match(command.prompt, /same-assignment/); assert.match(command.prompt, /Pro Creation/);
+  assert.match(command.prompt, /Retain the completed shot and finish the bounded text correction/);
+  assert.match(command.prompt, /Preserve any corrections committed since this note/);
   assert.equal(issues, 1);
   const health = await fetchJson('/health'); assert.equal(health.transport.ready, true); assert.ok(!JSON.stringify(health).includes('a'.repeat(64)));
   assert.equal(health.workflow, 'DIRECT_EDITING_V1');

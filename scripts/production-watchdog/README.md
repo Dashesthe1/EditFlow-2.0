@@ -55,15 +55,28 @@ read-only initialize/tools-list probes on loopback MCP and the already-configure
 protected public route every 15 seconds. It waits for both before ISSUE/CREATE/SEND,
 repairs persistent failures with repair-transport.ps1, and retains assignments,
 ownership, checkpoints and receipts during an outage. The repair script restarts
-only the verified MCP process or restores the saved existing Funnel mapping; it
+only the verified MCP process or restores the saved existing Funnel mapping. For
+network failures with healthy loopback MCP it tries socket/relay reconnects, then
+refreshes only the verified saved public path and network map. The path is restored
+in finally and the complete Serve configuration is checked for changes. It
 never stops AE/Chrome, changes credentials/authentication, claims a worker or
 submits an editing operation. Stateless MCP transport avoids expired HTTP session
 IDs across reconnects; production state remains in the durable backend.
+Only one repair process runs at a time, with a four-minute deadline and a cooldown.
+Every repair completion logs sanitized process status and fresh MCP readback;
+a successful process exit or local.ready alone cannot establish public readiness.
 Worker prompts retry only failed reads after 2/5/15 seconds, then use this bounded
 transport repair and resume the same assignment without a new preflight. Uncertain writes are
 reconciled by receipt, never replayed. Missing domain materials are completed
 through authorized research/proof/workflow tools under ChatGPT's judgment.
 Host denial and revoked workers remain hard boundaries.
+
+Maintenance may retain user handoff observations in the installed supervisor's
+continuation-notes.json: assignmentId, sessionId and text (at most 16,000 characters).
+Only matching assignment/session notes are included in future worker prompts.
+They are historical context: current receipts and direct review establish what
+remains unfinished, and later committed corrections must be preserved. Saving a
+note does not interrupt an active chat, issue a worker or perform an editing write.
 
 Handoff order: persist intent, revoke gateway authority, request Stop and close the
 owned tab, drain accepted work, issue the next generation, create one fresh chat,

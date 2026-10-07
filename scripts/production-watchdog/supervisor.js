@@ -6,6 +6,8 @@ const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
 const { POLICY, evaluateLiveness, operationFailure, decisionLeaseStatus, noProgressLimit } = require('./liveness.js');
 const { prompt } = require('./worker-prompt.js');
+const { readContinuationNotes } = require('./continuation-notes.js');
+const { createRecoveryRunner } = require('./transport-recovery.js');
 const { createTransportMonitor, probeMcp } = require('./transport-health.js');
 const OWNERSHIP_CONFLICT_ERROR = 'The replacement tab contains a continuation for another worker generation. No chat was stopped. Request Replace editing chat to deliver a fresh current-worker continuation while retaining the assignment.';
 const ROOT = process.env.EDITFLOW_SUPERVISOR_ROOT || __dirname;
@@ -28,19 +30,11 @@ const transport = createTransportMonitor({ localRoot: LOCAL, ...(testTransportUr
   publicProbe: probeMcp,
   resolve: async () => ({ configured: true, public: testTransportUrl }),
 } : {}) });
-let transportRepairAt = 0;
+const transportRecovery = createRecoveryRunner({ spawn, script: path.join(ROOT, 'repair-transport.ps1'),
+  probe: () => transport.check(true).then(() => transport.state()), log, completed: () => { void tick(); } });
 function checkTransport() { void transport.check().catch(() => log('transport_probe_failed', { reason: 'PROBE_FAILED' })); }
 function recoverTransport() {
-  if (testTransportUrl || transport.state().failures < 2 || Date.now() - transportRepairAt < 30000) return;
-  transportRepairAt = Date.now();
-  log('transport_recovery_required', { status: transport.state().status });
-  const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-    path.join(ROOT, 'repair-transport.ps1'), '-Reason', 'mcp_transport_unavailable',
-    ...(snapshot?.assignment ? ['-AssignmentId', snapshot.assignment.assignmentId] : [])],
-    { detached: true, stdio: 'ignore', windowsHide: true });
-  child.on('error', () => log('transport_recovery_failed', { reason: 'RECOVERY_PROCESS_FAILED' }));
-  child.on('exit', () => { void transport.check(true).then(() => tick()).catch(() => {}); });
-  child.unref();
+  if (!testTransportUrl) transportRecovery.run(transport.state(), snapshot?.assignment?.assignmentId);
 }
 function persist() { fs.mkdirSync(ROOT, { recursive: true }); fs.writeFileSync(statePath + '.tmp', JSON.stringify(state, null, 2), { flush: true }); fs.renameSync(statePath + '.tmp', statePath); }
 function log(type, detail = {}) { fs.appendFileSync(logPath, JSON.stringify({ at: new Date().toISOString(), type, ...detail }) + '\n'); }
@@ -109,7 +103,7 @@ async function progressHandoff() {
       snapshot = await gateway(); lastGatewayAt = Date.now();
     }
     const issued = await gateway({ action: 'ISSUE', assignmentId: h.assignmentId, launchId: h.id });
-    h.prompt = prompt(snapshot.assignment, issued.credential); h.generation = issued.authority.generation;
+    h.prompt = prompt(snapshot.assignment, issued.credential, readContinuationNotes(ROOT, snapshot.assignment)); h.generation = issued.authority.generation;
     h.status = 'CREATE'; persist();
   }
 }
@@ -249,7 +243,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.4.1', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.4.2', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,

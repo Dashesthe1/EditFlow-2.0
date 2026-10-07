@@ -1,15 +1,10 @@
 param([string]$Reason = 'mcp_transport_unavailable', [string]$AssignmentId = '')
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'public-route-recovery.ps1')
+$script:TailscalePath = (Get-Command tailscale.exe).Source
 $created = $false
 $mutex = New-Object System.Threading.Mutex($true, 'Local\EditFlowMcpTransportRecovery', [ref]$created)
 if (-not $created) { @{ready=$false;status='RECOVERY_IN_PROGRESS'} | ConvertTo-Json -Compress; exit 0 }
-function Test-RecoverablePublicTransportFailure($probe) {
-  if (-not $probe.local.ready -or -not $probe.routeConfigured) { return $false }
-  $networkErrors = @('CONNECTION_FAILED','CONNECTION_RESET','CONNECTION_TIMEOUT')
-  if ($probe.public.error -in $networkErrors) { return $true }
-  $relayErrors = @($probe.public.relayErrors)
-  return $probe.public.error -eq 'PUBLIC_RELAY_PARTIAL' -and $relayErrors.Count -gt 0 -and @($relayErrors | Where-Object { $_ -notin $networkErrors }).Count -eq 0
-}
 try {
   $root = Join-Path $env:LOCALAPPDATA 'EditFlow2'
   if ($AssignmentId) {
@@ -75,6 +70,30 @@ try {
     $null = & tailscale.exe debug break-derp-conns 2>&1
     if ($LASTEXITCODE -eq 0) { $after = & $node $probeScript | ConvertFrom-Json }
   }
-  Add-Content (Join-Path $root 'mcp-recovery.log') ((Get-Date).ToString('o') + ' reason=' + $Reason + ' ready=' + $after.ready)
+  if (Test-RecoverablePublicTransportFailure $after) {
+    # Socket resets can leave a configured Funnel registration stale. Refresh only
+    # its exact saved path; restore it in finally and verify the full configuration.
+    if ($AssignmentId) {
+      $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 3
+      if ($health.authority.assignmentId -ne $AssignmentId) { throw 'RECOVERY_ASSIGNMENT_CHANGED' }
+    }
+    $publicPath = (Get-Content (Join-Path $root 'public-path.txt') -Raw).Trim()
+    Invoke-ExistingPublicRouteRefresh $hostName $publicPath
+    $null = & $script:TailscalePath debug force-netmap-update 2>&1
+    # Re-registration can settle after the first read. All retries are protocol
+    # reads, with no claim, editing write, daemon restart or controller change.
+    foreach ($delay in @(2,5,10)) {
+      Start-Sleep -Seconds $delay
+      $after = & $node $probeScript | ConvertFrom-Json
+      if ($after.ready -or -not (Test-RecoverablePublicTransportFailure $after)) { break }
+    }
+  }
+  Add-Content (Join-Path $root 'mcp-recovery.log') ((Get-Date).ToString('o') + ' reason=' + $Reason + ' ready=' + $after.ready + ' publicError=' + $after.public.error)
   $after | ConvertTo-Json -Depth 6 -Compress
+} catch {
+  $code = [string]$_.Exception.Message
+  if ($code -notmatch '^[A-Z_]+$') { $code = 'RECOVERY_PROCESS_FAILED' }
+  Add-Content (Join-Path $env:LOCALAPPDATA 'EditFlow2\mcp-recovery.log') ((Get-Date).ToString('o') + ' ready=false error=' + $code)
+  @{ready=$false;status='UNAVAILABLE';error=$code} | ConvertTo-Json -Compress
+  exit 1
 } finally { $mutex.ReleaseMutex(); $mutex.Dispose() }

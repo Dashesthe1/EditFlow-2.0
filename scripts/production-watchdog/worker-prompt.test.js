@@ -2,6 +2,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { prompt } = require('./worker-prompt.js');
+const { readContinuationNotes } = require('./continuation-notes.js');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 test('continuations use one-call resume and direct batches in both modes', () => {
   for (const mode of ['PRACTICE', 'PRO_CREATION']) {
@@ -38,4 +42,21 @@ test('transport recovery preserves receipts and does not replay uncertain writes
   assert.match(text, /-AssignmentId "retained"/);
   assert.match(text, /Do not retry a timed-out write/);
   assert.match(text, /Missing optional research\/workflow records are not a blocker/);
+  assert.match(text, /local.ready=true does not establish public availability/);
+  assert.match(text, /public.ready=true and a successful Current Shadow read before dependent writes/);
+  assert.match(text, /Do not treat a transport outage as an editing approval\/workflow gate or completion/);
+});
+test('handoff notes are scoped to the exact assignment/session and do not supersede later receipts', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'editflow-notes-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const task = { mode: 'PRACTICE', assignmentId: 'retained', sessionId: 'session' };
+  const file = path.join(root, 'continuation-notes.json');
+  fs.writeFileSync(file, JSON.stringify({ assignmentId: 'retained', sessionId: 'session', text: 'Correct text visibility; retain shot-10 receipt.' }));
+  const text = prompt(task, 'ef-worker:118:isolated', readContinuationNotes(root, task));
+  assert.match(text, /Correct text visibility; retain shot-10 receipt/);
+  assert.match(text, /Preserve any corrections committed since this note/);
+  assert.equal(readContinuationNotes(root, { ...task, assignmentId: 'foreign' }), null);
+  assert.equal(readContinuationNotes(root, { ...task, sessionId: 'foreign' }), null);
+  fs.writeFileSync(file, 'invalid JSON'); assert.equal(readContinuationNotes(root, task), null);
+  fs.writeFileSync(file, JSON.stringify({ ...task, text: 'x'.repeat(16001) })); assert.equal(readContinuationNotes(root, task), null);
 });
