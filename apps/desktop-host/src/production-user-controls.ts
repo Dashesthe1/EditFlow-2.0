@@ -5,8 +5,8 @@ import path from "node:path";
 export const PRODUCTION_USER_CONTROL_CONTRACT_V1 = {
   endpoint: "/v1/product/production/user-controls",
   chatTool: "resume_or_start_practice",
-  actions: ["START_PRACTICE", "RESTART_PRACTICE", "REPLACE_CHAT", "CANCEL", "RETRY", "STATUS"],
-  instruction: "Only submit lifecycle actions in response to an explicit user request. No worker credential or supervisor key is required. Use one stable requestId and poll STATUS with that requestId. Report COMPLETED only from its durable receipt; a submitted prompt alone is PENDING. RESTART_PRACTICE creates a fresh assignment from the previous inputs; REPLACE_CHAT retains the assignment and checkpoints.",
+  actions: ["START_PRACTICE", "RESTART_PRACTICE", "REPLACE_CHAT", "CANCEL", "RETRY", "DISMISS", "STATUS"],
+  instruction: "Only submit lifecycle actions in response to an explicit user request. No worker credential or supervisor key is required. Use one stable requestId and poll STATUS with that requestId. Report COMPLETED only from its durable receipt; a submitted prompt alone is PENDING. RESTART_PRACTICE reuses the previous inputs and requires a current preset; use START_PRACTICE for new inputs. REPLACE_CHAT retains the assignment and checkpoints. DISMISS clears a blocked request only before a replacement was created or launched; it never deletes assignments. A valid START_PRACTICE can supersede such a blocked request. RETRY validates retained inputs again.",
 } as const;
 
 export interface ProductionUserControlReceiptV1 {

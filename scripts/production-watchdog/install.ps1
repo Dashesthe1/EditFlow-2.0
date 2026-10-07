@@ -29,7 +29,7 @@ New-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Ed
 Start-Process powershell.exe -ArgumentList ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $guardian + '"') -WindowStyle Hidden
 $ready = $false
 for ($i=0; $i -lt 20; $i++) {
-  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '3.6.0' } catch {}
+  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '3.6.1' } catch {}
   if ($ready) { break }; Start-Sleep -Milliseconds 500
 }
 if (-not $ready) { throw 'Supervisor did not start; backup: ' + $backup }
