@@ -38,7 +38,7 @@ are its components. Older workflows, selectors and fallback launchers are remove
    Use frameTimesMs for 1–12 exact still frames when motion/audio are irrelevant.
    Unchanged preview requests reuse retained output after checking the current AE
    revision, environment, comp, interval, resolution and output integrity. Use
-   forceRender:true to bypass reuse. Reuse does not imply visual acceptance.
+   forceRender:true with a concrete forceRenderReason to bypass reuse. Reuse does not imply visual acceptance.
 6. Save observed successes/failures and complete reusable methods at meaningful
    review/pass boundaries, handoff and completion. Optional WORKFLOW_REVIEW and
    telemetry records support diagnosis; they are not AE permission gates.
@@ -134,3 +134,57 @@ This tests execution and continuity on bounded one-second fixtures; it does not
 establish a finished edit's visual quality or a production speedup percentage.
 On the retained 99-job production queue, the default summary was 100,861 bytes
 versus 561,145 bytes for full history (82% smaller), with complete receipts retained.
+
+
+## Convergence and continuity, 2026-10-07
+
+Routine assignment reads omit the historical chat brief, bulky preflight evidence,
+full shot certificates and preset notebook contents. They retain exact selected
+raw ranges, prepared paths and current selection rationale. Resume and supervision
+use current coordinator state. Default job lists keep unresolved receipts, the
+last eight jobs and the latest successful full-resolution render starting at zero;
+the render's returned interval must still cover the intended whole edit. Full
+assignment/coordinator/job history remains accessible with includeHistory=true
+(or include_history in gateway reads). No notebook examples or learning are erased.
+
+`VISUAL_REVIEW` accepts `{claimedBy, action:"VISUAL_REVIEW", review:{authority:
+"CHATGPT_DIRECT", reviewId, renderJobId, observations:[{clipId, dimensions,
+verdict, observation, hypothesis?, settings?, comparisons:[{renderTimeMs,
+renderEvidenceId, referenceTimeMs, referenceEvidenceId}]}]}}`. The review may instead
+be attached as `payload.visualReview` to the next queued decision. Dimensions are
+source, timing, framing, effects, transitions, color, text and audio. Verdicts are
+PASS, REVISE and REJECTED. The server derives the source revision and render identity
+from the retained receipt and verifies issued inspection evidence. For bounded
+video renders, renderTimeMs is local file time; BROWSE_RENDER returns the composition
+time origin. Reference time equals file time plus that origin. Temporal PASS spans
+beginning, middle and end of the defined shot. This verifies the meaning/provenance
+of a human-directed judgment; it never scores or chooses the edit.
+
+Accepted settings and rejected alternatives survive handoff. Declared mutations
+mark affected decisions NEEDS_REVIEW; unknown writes conservatively affect the
+specified shots. Source replacement also invalidates review memory. Successful
+opaque writes may clear unknown revision markers only when their terminal receipt
+precedes the reviewed render. Unresolved receipts and changed sources are never
+cleared by a visual review. Older reviews cannot overrule newer reviewed revisions.
+The same cached output does not count as two correction attempts. Two failed
+render identities produce advisory diagnostics asking ChatGPT to reassess the
+cause or compare deliberately different alternatives. There is no per-shot gate,
+forced strategy receipt, automatic value selection or automatic acceptance.
+
+Settle source traversal before crop/effects/grade. Preserve accepted dimensions,
+batch related remaining defects into a finishing pass, inspect changed ranges and
+finish with direct full-resolution whole-edit audiovisual review. Review caching
+never implies acceptance. Whole-edit coverage is idempotent: a local correction
+does not rewrite every shot's construction revision or restart completed stages.
+
+Supervisor 3.6 records observed activity buckets: render/AE waits, handoff, recovery,
+verified chat processing, explicit pause and unobserved gaps. Processing does not
+claim to distinguish editorial thinking from startup/review; missing observations
+and restarts remain unclassified. Metrics are diagnostic and never drive fencing
+or editorial decisions. Install verifies required file hashes and includes the
+production repair script. Maintenance reloads only idle services, preserving AE,
+assignment, generation, receipts and pause state.
+
+Final acceptance also verifies the chosen cached render against the current AE
+revision, project/environment fingerprints and output metadata. A stale output
+requires rendering the changed edit; cache currency never supplies visual PASS.

@@ -175,3 +175,14 @@ PENDING. Missing connections report BLOCKED with the reason and permit explicit
 RETRY. Old assignments and artifacts are retained; nothing closes AE or deletes
 source media. The extension popup also offers Restart Practice from scratch,
 Replace editing chat, receipt status and Retry blocked action.
+
+
+### Version 3.6 continuity
+
+The continuation prompt uses retained visual decisions and suitable cached renders.
+It asks for coherent finishing batches and synchronized temporal comparisons.
+Supervisor health exposes continuityMetrics with observed activity buckets and
+unobserved gaps; these are diagnostics, not a reason to revoke a worker.
+Installation copies and verifies continuity-metrics.js and repair-production.ps1
+alongside the controller scripts. Runtime deployment must preserve state.json and
+production-state.json and must not create a worker merely to load policy.

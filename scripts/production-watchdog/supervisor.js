@@ -6,6 +6,7 @@ const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
 const { POLICY, evaluateLiveness, operationFailure, decisionLeaseStatus, noProgressLimit } = require('./liveness.js');
 const { prompt } = require('./worker-prompt.js');
+const { recordContinuitySample } = require('./continuity-metrics.js');
 const { createRecoveryRunner } = require('./transport-recovery.js');
 const { createTransportMonitor, probeMcp } = require('./transport-health.js');
 const OWNERSHIP_CONFLICT_ERROR = 'The replacement tab contains a continuation for another worker generation. No chat was stopped. Request Replace editing chat to deliver a fresh current-worker continuation while retaining the assignment.';
@@ -38,7 +39,7 @@ function checkTransport() { void transport.check().catch(() => log('transport_pr
 function recoverTransport() {
   if (!testTransportUrl) transportRecovery.run(transport.state(), snapshot?.assignment?.assignmentId);
 }
-function persist() { fs.mkdirSync(ROOT, { recursive: true }); fs.writeFileSync(statePath + '.tmp', JSON.stringify(state, null, 2), { flush: true }); fs.renameSync(statePath + '.tmp', statePath); }
+function persist() { if (snapshot) state.continuityMetrics = recordContinuitySample(state.continuityMetrics, { ...snapshot, activeTabId: state.activeTabId, chatExecution }, state, Date.now()); fs.mkdirSync(ROOT, { recursive: true }); fs.writeFileSync(statePath + '.tmp', JSON.stringify(state, null, 2), { flush: true }); fs.renameSync(statePath + '.tmp', statePath); }
 function log(type, detail = {}) { fs.appendFileSync(logPath, JSON.stringify({ at: new Date().toISOString(), type, ...detail }) + '\n'); }
 function connection() {
   const manifest = JSON.parse(fs.readFileSync(path.join(LOCAL, 'EditFlow2', 'current-runtime.json'), 'utf8'));
@@ -266,13 +267,13 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.5.1', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.6.0', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,
       lastExtensionLoadedAt: state.lastExtensionLoadedAt, extensionVersion: state.extensionVersion,
       userControl: snapshot?.userControl || null, latestUserControl: snapshot?.latestUserControl || null,
-      activeTabId: state.activeTabId, handoff: state.handoff ? { id: state.handoff.id, status: state.handoff.status } : null });
+      continuityMetrics: state.continuityMetrics || null, activeTabId: state.activeTabId, handoff: state.handoff ? { id: state.handoff.id, status: state.handoff.status } : null });
     if (req.url.split('?')[0] === '/user-controls') {
       if (!actuatorAllowed) return send(403, { error: 'ACTUATOR_ORIGIN_REQUIRED' });
       if (req.method === 'GET') return send(200, await gateway(null, '/production/user-controls' + (req.url.includes('?') ? '?' + req.url.split('?')[1] : '')));

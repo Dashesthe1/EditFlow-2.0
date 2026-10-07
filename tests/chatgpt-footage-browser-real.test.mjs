@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { GptOrchestrationStoreV1, EditTypeRegistryFileV1 } from "../.tmp/runtime/packages/practice-homework/src/index.js";
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
+import { ChatgptAeRenderDriverV1 } from "../.tmp/runtime/apps/desktop-host/src/chatgpt-ae-render-driver.js";
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 
 test("direct browser decodes requested moments, produces timestamped sheets and rejects out-of-bounds requests", async (t) => {
@@ -110,17 +111,21 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   }
   assert.equal(updated.assignmentId, assignment.assignmentId); assert.equal(updated.sessionId, assignment.sessionId);
   await service.stop();
-  // Simulate a host-issued render receipt. Rendering itself is tested by the AE driver suite.
+  // Simulate a host-issued render receipt. Cache currency/rendering have separate driver coverage.
+  const originalCurrency=ChatgptAeRenderDriverV1.prototype.isPreviewCurrent;
+  let currentRender=true;
+  ChatgptAeRenderDriverV1.prototype.isPreviewCurrent=async()=>currentRender;
+  t.after(()=>{ChatgptAeRenderDriverV1.prototype.isPreviewCurrent=originalCurrency;});
   const renderPath=path.join(root,"actual-render.mp4"); await copyFile(finishPath,renderPath);
   const job={assignmentId:assignment.assignmentId,jobId:"production-job:render",kind:"LOCAL_RENDER",requestKey:"fixture",
-    payload:{startMs:0,endMs:1000},dependencyIds:[],status:"SUCCEEDED",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),result:{renderPath}};
+    payload:{startMs:0,endMs:1000},dependencyIds:[],status:"SUCCEEDED",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),result:{renderPath,sourceRevision:1}};
   await appendFile(path.join(root,"production-coordinator","jobs.jsonl"),[job,{...job,jobId:"production-job:partial",requestKey:"partial",payload:{startMs:0,endMs:500}}].map(j=>JSON.stringify(j)).join("\n")+"\n");
   await store.updatePreflight(assignment.assignmentId,{...updated.preflight,stage:"READY"},updated.practiceSceneMatches);
   const types=new EditTypeRegistryFileV1(config.editTypeRegistryFilePath);
   await types.update(registry=>registry.create({editTypeId:"test",title:"Test",choiceWords:["test"]}));
   service=new PracticePanelServerV1(config); await service.start();
   const base=`http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}`;
-  const request=async(path,body)=>fetch(base+path,{headers,method:"POST",body:JSON.stringify({claimedBy:"controller",...body})});
+  const request=async(path,body)=>fetch(`http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}`+path,{headers,method:"POST",body:JSON.stringify({claimedBy:"controller",...body})});
   await service.assertPracticeReconstructionReady();
   assert.equal((await request('/complete',{success:true,finalSummary:'No direct final review'})).status,400);
   const workflowPlan={authority:'CHATGPT_DIRECT',decisionId:'direct-http-workflow',rationale:'Retain the reviewed one-second source trim',evidenceRefs:[raw.inspection.evidenceId],
@@ -131,6 +136,16 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   const workflowReply=await request('/production',{action:'WORKFLOW_PLAN',plan:workflowPlan});assert.equal(workflowReply.status,200);
   const renderReply=await request("/footage-selection",{action:"BROWSE_RENDER",renderJobId:job.jobId,timesMs:times});
   assert.equal(renderReply.status,201); const pixels=(await renderReply.json()).inspection;
+  const visualReview={authority:"CHATGPT_DIRECT",reviewId:"review:temporal",renderJobId:job.jobId,
+    observations:[{clipId:"shot:1",dimensions:["source","timing","framing"],verdict:"PASS",observation:"Reviewed matched continuous traversal across the whole shot",settings:{playbackRate:1},
+      comparisons:times.map(time=>({renderTimeMs:time,renderEvidenceId:pixels.evidenceId,referenceTimeMs:time,referenceEvidenceId:ref.inspection.evidenceId}))}]};
+  assert.equal((await request('/production',{action:'VISUAL_REVIEW',review:visualReview})).status,200);
+  const badReview={...visualReview,reviewId:"review:forged",observations:[{...visualReview.observations[0],comparisons:[{...visualReview.observations[0].comparisons[0],renderEvidenceId:"invented"}]}]};
+  assert.equal((await request('/production',{action:'VISUAL_REVIEW',review:badReview})).status,400);
+  await service.stop();service=new PracticePanelServerV1(config);await service.start();
+  const retainedVisual=await (await fetch(`http://127.0.0.1:${service.port}/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production`,{headers})).json();
+  assert.equal(retainedVisual.production.visualContinuity.accepted.length,1);
+  assert.deepEqual(retainedVisual.production.visualContinuity.accepted[0].dimensions,["source","timing","framing"]);
   const checks=Object.fromEntries(["shots","timing","audio","framing","effects","transitions","color"].map(k=>[k,"Reviewed the actual output: "+k]));
   const finalReview={authority:"CHATGPT_DIRECT",verdict:"PASS",renderJobId:job.jobId,
     renderSha256:createHash("sha256").update(await readFile(renderPath)).digest("hex"),remainingIssues:[],checks,
@@ -141,6 +156,7 @@ test("HTTP direct selection survives video/audio preflight and prepares only the
   assert.equal((await complete({...finalReview,renderSha256:"0".repeat(64)})).status,409);
   assert.equal((await complete({...finalReview,renderJobId:"production-job:partial"})).status,400);
   assert.equal((await complete({...finalReview,comparisons:[{...finalReview.comparisons[0],renderEvidenceId:"invented"}]})).status,400);
+  currentRender=false;const stale=await complete(finalReview);assert.equal(stale.status,409);assert.match((await stale.json()).error,/FINAL_RENDER_STALE/);currentRender=true;
   assert.equal((await complete(finalReview)).status,400,"Completion must first retain a reviewed example");
   const lesson={authority:"CHATGPT_DIRECT",lessonId:"worked:timing",title:"Matched source timing",problem:"Match continuous raw motion",
     steps:[{action:"Apply selected source range",settings:{sourceStartMs:2000,sourceEndMs:3000,playbackRate:1},reason:"Direct pixel comparisons match",check:"Review the rendered motion"}],

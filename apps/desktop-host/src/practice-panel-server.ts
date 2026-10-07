@@ -21,7 +21,8 @@ import { CurrentAeTransactionRuntimeV1, type CurrentAeStabilizationRuntimeV1 } f
 import { PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "./production-authority.js";
 import { computeProjectFingerprint } from "../../../packages/fingerprints/src/index.js";
 import { toAeStructuralFingerprintInput } from "../../../packages/ae-object-model/src/index.js";
-import { productionJobsViewV1, productionSnapshotViewV1, projectStateSummaryV1 } from "./direct-editing-views.js";
+import { assignmentViewV1, productionJobsViewV1, productionSnapshotViewV1, projectStateSummaryV1 } from "./direct-editing-views.js";
+import { parseVisualReviewV1, validateVisualComparisonTimesV1, visualMutationDimensionsV1 } from "../../../packages/practice-homework/src/visual-continuity.js";
 import { LocalFastRuntimeV1, validateRoutineBatchV1 } from "./local-fast-runtime.js";
 
 import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
@@ -760,12 +761,12 @@ export class PracticePanelServerV1 {
         }
         if (job.kind === "LOCAL_RENDER") {
           if (body.frameTimesMs !== undefined) return { result: await driver.renderFrames({ sessionId: assignment!.sessionId,
-            compStableId: body.compStableId, timesMs: body.frameTimesMs, resolutionScale: body.resolutionScale, forceRender: body.forceRender }) };
+            compStableId: body.compStableId, timesMs: body.frameTimesMs, resolutionScale: body.resolutionScale, forceRender: body.forceRender, forceRenderReason: body.forceRenderReason }) };
           if (!Number.isFinite(body.startMs) || !Number.isFinite(body.endMs) || body.endMs <= body.startMs || body.startMs < 0
             || typeof body.compStableId !== "string") throw new TypeError("Local render needs a bounded time window and compStableId.");
           return { result: await driver.renderWindow({ sessionId: assignment!.sessionId, attempt: 0,
             compStableId: body.compStableId, windowId: body.clipId ?? job.jobId, startMs: body.startMs, endMs: body.endMs,
-            resolutionScale: body.resolutionScale ?? 1, forceRender: body.forceRender }) };
+            resolutionScale: body.resolutionScale ?? 1, forceRender: body.forceRender, forceRenderReason: body.forceRenderReason }) };
         }
         if (!assignment!.finish) throw new TypeError("Scratch search requires a visual reference.");
         const search = await runPracticeScratchSearchV1({ body, sessionId: assignment!.sessionId,
@@ -846,6 +847,10 @@ export class PracticePanelServerV1 {
       }, input.run);
       const success = (result as any)?.state === "COMMITTED" || (result as any)?.result?.state === "COMMITTED"
         || (result as any)?.status === "COMPLETED" || (result as any)?.outcome === "APPLIED";
+      if (input.category === "AE_MUTATION" && (!Array.isArray((result as any)?.readbacks)
+        || (result as any).readbacks.some((r: any) => r.outcome !== "NO_OP"))) {
+        coordinator.invalidateVisualDecisions(phaseIds, visualMutationDimensionsV1(input.body), null, input.operation);
+      }
       if (input.markConstructed && success) {
         // Once committed, readback/checkpoint errors are warnings, never replayable failures.
         try {
@@ -854,6 +859,10 @@ export class PracticePanelServerV1 {
             projectId: "practice-gpt-controller", artifactDir: assignment.artifactDir });
           const observed = await driver.client.observe(driver.projectId);
           const revision = observed.hostRevision;
+          const readbacks = (result as any)?.readbacks;
+          if (!Array.isArray(readbacks) || readbacks.some((r: any) => r.outcome !== "NO_OP")) {
+            coordinator.invalidateVisualDecisions(phaseIds, visualMutationDimensionsV1(input.body), revision, input.operation);
+          }
           for (const phaseId of phaseIds) coordinator.markConstructed(phaseId, revision);
           const phases = coordinator.snapshot().phases;
           if (phases.length && phases.every(phase => phase.sourceCertificateKey
@@ -889,6 +898,9 @@ export class PracticePanelServerV1 {
       }));
       return result;
     } catch (error) {
+      if (input.category === "AE_MUTATION" && !(error instanceof Error && error.constructor.name === "ProductionNoWriteErrorV1")) {
+        coordinator.invalidateVisualDecisions(phaseIds, visualMutationDimensionsV1(input.body), null, input.operation);
+      }
       await file.appendTelemetry(practiceTelemetrySpanV1({
         spanId: randomUUID(), sessionId: assignment.sessionId, category: input.category,
         stage: input.stage, phaseId: phaseIds.length === 1 ? phaseIds[0]! : null,
@@ -1460,9 +1472,10 @@ export class PracticePanelServerV1 {
 
   async #presetNotebookIndex(assignment: GptOrchestrationAssignmentV1) {
     const notebook = await this.#presetNotebook(assignment);
-    return { ...notebook, examples: notebook.examples.map((example: any) => ({ lessonId: example.lessonId,
-      title: example.title, problem: example.problem, outcome: example.outcome, whenToUse: example.whenToUse,
-      evidenceRefs: example.evidenceRefs, methodAvailable: !!example.method })), detail: "INDEX",
+    return { authority: "CHATGPT_DIRECT", editTypeId: assignment.editTypeId, totalExamples: notebook.totalExamples,
+      workedCount: notebook.workedCount, failedCount: notebook.failedCount,
+      examples: notebook.examples.filter((example: any) => !example.superseded).map((example: any) => ({ lessonId: example.lessonId,
+      title: example.title, outcome: example.outcome, recordedAt: example.recordedAt, methodAvailable: !!example.method })), detail: "INDEX",
       detailLookup: "Retrieve a GPT-chosen complete method through practice-notebook before adapting it." };
   }
 
@@ -1483,6 +1496,7 @@ export class PracticePanelServerV1 {
       : preflight?.stage === "AWAITING_CHATGPT_SHOTS" ? "CHATGPT_INSPECT_AND_SELECT_RAW_SHOTS"
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
       : "RESUME_GPT_EDITING_FROM_CHECKPOINT";
+    const jobs = productionJobsViewV1(assignment ? this.#productionWorker.list(assignment.assignmentId) : [], full);
     return {
       schema: "editflow.practice-resume.v1", runtimeId: "DIRECT_EDITING_V1",
       ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1,
@@ -1490,7 +1504,7 @@ export class PracticePanelServerV1 {
       aeConnection: this.config.broker.panelSession === null ? "DISCONNECTED" : "CEP_CONNECTED",
       repositoryRoot: this.config.repositoryRoot, statePath: this.#gptStore.filePath,
       panelConnected: this.config.broker.panelSession !== null,
-      assignment, preflight, checkpoint: events.at(-1) ?? null, nextOperation,
+      assignment: assignmentViewV1(assignment, full), preflight: assignmentViewV1(assignment, full)?.preflight ?? null, checkpoint: events.at(-1) ?? null, nextOperation,
       clipResearch: full && assignment !== null ? this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment)) : { advisory: true, detailLookup: "clip-research" },
       production: productionSnapshotViewV1(production, full),
       workerRunning: assignment !== null && (
@@ -1498,7 +1512,7 @@ export class PracticePanelServerV1 {
         || this.#productionWorker.list(assignment.assignmentId).some((job) => job.status === "RUNNING")
         || production?.inFlightOperation != null && Date.now() - Date.parse(production.workerHeartbeatAt ?? "") < 60_000
       ),
-      productionJobs: assignment === null ? [] : productionJobsViewV1(this.#productionWorker.list(assignment.assignmentId), full).jobs,
+      productionJobs: jobs.jobs, totalJobs: jobs.totalJobs, unresolvedJobIds: jobs.unresolvedJobIds, latestWholeRenderJobId: jobs.latestWholeRenderJobId,
       historyAvailable: true,
       editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
       practiceNotebook: assignment ? (full ? await this.#presetNotebook(assignment) : await this.#presetNotebookIndex(assignment)) : null,
@@ -1717,6 +1731,42 @@ export class PracticePanelServerV1 {
     return { mediaId: "render:" + jobId, role: "START_SOURCE", mediaKind: "VIDEO", uri: renderPath };
   }
 
+  async #retainVisualReview(assignment: GptOrchestrationAssignmentV1, input: Record<string, any>): Promise<void> {
+    const media = this.#renderJobMedia(assignment, input?.renderJobId);
+    const job = this.#productionWorker.list(assignment.assignmentId).find(j => j.jobId === input.renderJobId)!;
+    const revision = (job.result as any)?.sourceRevision;
+    const review = parseVisualReviewV1(input, typeof revision === "number" ? revision : NaN,
+      JSON.stringify([revision, job.payload.compStableId, job.payload.startMs, job.payload.endMs, job.payload.resolutionScale ?? 1]));
+    const { file, coordinator } = await this.#productionCoordinator(assignment);
+    const knownIds = coordinator.snapshot().phases.map(p => p.phaseId);
+    const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
+      scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") });
+    const reference = assignment.finish ? await matcher.readReference(assignment.finish) : null;
+    for (const observation of review.observations) {
+      if (!knownIds.includes(observation.clipId)) throw new HttpError(400, "VISUAL_REVIEW_UNKNOWN_CLIP");
+      const bounds = reference?.shots.find(s => s.shotId === observation.clipId);
+      if (assignment.finish && !bounds) throw new HttpError(400, "VISUAL_REVIEW_UNKNOWN_REFERENCE_SHOT");
+      validateVisualComparisonTimesV1(observation, Number(job.payload.startMs), Number(job.payload.endMs), bounds);
+      for (const comparison of observation.comparisons) {
+        await matcher.verifyFootageInspection(media, comparison.renderEvidenceId, comparison.renderTimeMs);
+        if (assignment.finish) {
+          await matcher.verifyFootageInspection(assignment.finish, comparison.referenceEvidenceId!, comparison.referenceTimeMs!);
+        }
+      }
+    }
+    // Resolve only opaque writes whose retained terminal receipt precedes this render.
+    // Source changes and unresolved jobs remain stale; a judgment never clears a held queue.
+    for (const [key, change] of Object.entries(coordinator.snapshot().visualContinuity?.mutations ?? {})) {
+      const mutation = this.#productionWorker.list(assignment.assignmentId).find(j => j.jobId === change.jobId);
+      if (change.revision === null && mutation?.status === "SUCCEEDED" && Date.parse(mutation.updatedAt) <= Date.parse(job.createdAt)) {
+        const split = key.lastIndexOf(":");
+        coordinator.invalidateVisualDecisions([key.slice(0, split)], [key.slice(split + 1) as any], review.sourceRevision, change.jobId);
+      }
+    }
+    coordinator.retainVisualReview(review);
+    await file.save(coordinator);
+  }
+
   async #completeAssignment(assignmentId: string, body: Record<string, any>): Promise<PracticePanelRunSnapshotV1> {
     const assignment = await this.#gptStore.getAssignment(assignmentId);
     if (!assignment || assignment.status !== "RUNNING") throw new HttpError(409, "Resume the active assignment before final review.");
@@ -1742,6 +1792,8 @@ export class PracticePanelServerV1 {
     const renderRef = await ensureFile(renderMedia.uri, "Actual final render");
     const sha = createHash("sha256").update(await readFile(renderRef)).digest("hex");
     if (sha !== review.renderSha256) throw new HttpError(409, "Final render changed since ChatGPT review.");
+    const renderDriver = new ChatgptAeRenderDriverV1({ transport: this.config.broker, projectId: "practice-gpt-controller", artifactDir: assignment.artifactDir });
+    if (!await renderDriver.isPreviewCurrent(renderRef)) throw new HttpError(409, "FINAL_RENDER_STALE: render the current edit before final acceptance.");
     for (const field of ["shots", "timing", "audio", "framing", "effects", "transitions", "color"]) requiredString(review.checks ?? {}, field);
     if (!Array.isArray(review.comparisons) || !review.comparisons.length) throw new HttpError(400, "Retain actual render pixel comparisons for every chosen shot.");
     const matcher = new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment.artifactDir, "media"),
@@ -2049,7 +2101,7 @@ export class PracticePanelServerV1 {
     return { ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, authority: this.#supervision!.publicState(), assignment: active ? { assignmentId: active.assignmentId,
       sessionId: active.sessionId, mode: active.mode, status: active.status, preflight: active.preflight ?? null,
       cancelRequestedAt: active.cancelRequestedAt, artifactDir: active.artifactDir } : null,
-      production, jobs: jobs.map((job) => ({ jobId: job.jobId, kind: job.kind, status: job.status,
+      production: productionSnapshotViewV1(production), jobs: jobs.map((job) => ({ jobId: job.jobId, kind: job.kind, status: job.status,
         updatedAt: job.updatedAt, createdAt: job.createdAt, startedAt: job.startedAt,
         heartbeatAt: job.heartbeatAt, error: job.error, operationSignature: job.requestKey })),
       writerOwner: this.#aeWriterOwner, hostRevision: this.controlStatus().hostRevision,
@@ -2241,7 +2293,9 @@ export class PracticePanelServerV1 {
             return { recorded: true };
           }
           if (body.action === "BROWSE_RENDER") {
-            return { inspection: await matcher.inspectFootage(this.#renderJobMedia(assignment, requiredString(body, "renderJobId")), body.timesMs, body.width ?? 640) };
+            const renderJobId = requiredString(body, "renderJobId"), job = this.#productionWorker.list(assignment.assignmentId).find(j => j.jobId === renderJobId);
+            return { compositionTimeOriginMs: job?.payload.startMs ?? 0, timeConvention: "timesMs are local rendered-file times; add compositionTimeOriginMs for reference comparison.",
+              inspection: await matcher.inspectFootage(this.#renderJobMedia(assignment, renderJobId), body.timesMs, body.width ?? 640) };
           }
           if (body.action === "DEFINE_REFERENCE" && assignment.finish) {
             const preflight = this.#preflightJobs.get(id);
@@ -2347,6 +2401,8 @@ export class PracticePanelServerV1 {
             }
             if (body.kind === "AE_BATCH") { try { validateRoutineBatchV1(body.payload.intents); } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)); } }
             if (body.kind === "LOCAL_RENDER" && ![1, .25, .125].includes(body.payload.resolutionScale ?? 1)) throw new HttpError(400, "Choose render resolutionScale 1, 0.25 or 0.125 explicitly.");
+            // Carry the previous pass judgment with the next edit; never a new admission gate.
+            if (body.payload.visualReview !== undefined) await this.#retainVisualReview(assignment, body.payload.visualReview);
             body.payload.editorialDecision = decision;
             if (body.kind === "SCRATCH_SEARCH") validatePracticeScratchSearchV1(body.payload);
             const job = await this.#productionWorker.enqueue({ assignmentId: id, kind: body.kind, payload: body.payload,
@@ -2379,7 +2435,9 @@ export class PracticePanelServerV1 {
             throw new HttpError(409, "CONTROLLER_LEASE_INVALID: Production state updates require this worker's current claim and unexpired controller lease.");
           }
           const action = requiredString(body, "action");
-          if (action === "WORKFLOW_PLAN") {
+          if (action === "VISUAL_REVIEW") {
+            await this.#retainVisualReview(assignment, body["review"] as Record<string, any>);
+          } else if (action === "WORKFLOW_PLAN") {
             const plan = parseProductionWorkflowPlanV1(body["plan"] as Record<string, any>);
             for (const source of plan.sources) {
               if (!assignment.start.some(m => m.mediaId === source.mediaId && m.mediaKind === "VIDEO")) throw new HttpError(400, "Workflow sources must be provided raw footage.");
@@ -2468,7 +2526,7 @@ export class PracticePanelServerV1 {
           await file.save(coordinator);
         }
         jsonResponse(res, 200, {
-          production: productionSnapshotViewV1(coordinator.snapshot(), req.method === "POST" || url.searchParams.get("includeHistory") === "true"),
+          production: productionSnapshotViewV1(coordinator.snapshot(), url.searchParams.get("includeHistory") === "true"),
           ...PRIMARY_WORKFLOW_ROUTING_V1,
           workflowContract: req.method === "POST" || url.searchParams.get("includeHistory") === "true" ? PRODUCTION_WORKFLOW_CONTRACT_V1 : { executionPath: PRODUCTION_WORKFLOW_CONTRACT_V1.executionPath, authority: "CHATGPT_DIRECT", historyAvailable: true },
           nextAction: { kind: "CHATGPT_DECIDES", instruction: this.#supervision?.publicState().state === "PAUSED" ? "Explicit user pause; no editing or recovery action is required." : "Choose the next edit or meaningful visual review from retained work." },
@@ -2627,11 +2685,11 @@ export class PracticePanelServerV1 {
           : await this.#gptStore.listAssignments({ statuses: ["PENDING"] });
         const assignment = resumable[0] ?? pending[0] ?? null;
         jsonResponse(res, 200, {
-          assignment, ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
-          practiceNotebook: assignment ? await this.#presetNotebook(assignment) : null,
+          assignment: assignmentViewV1(assignment, url.searchParams.get("includeHistory") === "true"), ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
+          practiceNotebook: assignment ? await this.#presetNotebookIndex(assignment) : null,
           resumeRequired: assignment !== null
             && (assignment.status === "RUNNING" || assignment.status === "CANCEL_REQUESTED"),
-          clipResearch: assignment === null ? null : this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment)),
+          clipResearch: { advisory: true, detailLookup: "clip-research" },
         });
         return;
       }
@@ -2641,11 +2699,11 @@ export class PracticePanelServerV1 {
         const assignment = await this.#gptStore.getAssignment(id);
         if (assignment === null) throw new HttpError(404, "GPT assignment not found.");
         jsonResponse(res, 200, {
-          assignment,
+          assignment: assignmentViewV1(assignment, url.searchParams.get("includeHistory") === "true"),
           ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1,
-          editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: await this.#presetNotebook(assignment),
-          events: await this.#gptStore.eventsForSession(assignment.sessionId),
-          clipResearch: this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment), url.searchParams.get("includeAuditHistory") === "true"),
+          editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: url.searchParams.get("includeHistory") === "true" ? await this.#presetNotebook(assignment) : await this.#presetNotebookIndex(assignment),
+          events: url.searchParams.get("includeHistory") === "true" ? await this.#gptStore.eventsForSession(assignment.sessionId) : [],
+          clipResearch: url.searchParams.get("includeHistory") === "true" ? this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment), url.searchParams.get("includeAuditHistory") === "true") : { advisory: true, detailLookup: "clip-research" },
         });
         return;
       }
@@ -2668,7 +2726,7 @@ export class PracticePanelServerV1 {
           catch (error) { aeStateError = error instanceof Error ? error.message : String(error); }
         }
         jsonResponse(res, 200, {
-          assignment, resume: { ...resume, assignment: { assignmentId: assignment.assignmentId, sessionId: assignment.sessionId, status: assignment.status } }, aeState, aeStateError,
+          assignment: assignmentViewV1(assignment), resume: { ...resume, assignment: { assignmentId: assignment.assignmentId, sessionId: assignment.sessionId, status: assignment.status } }, aeState, aeStateError,
           startup: "ONE_CALL_RESUME_V1",
           nextAction: "Inspect retained work, then enqueue exact AE operations. Research and workflow records are optional supporting memory.",
         });

@@ -199,7 +199,8 @@ export class ChatgptAeRenderDriverV1
     readonly endMs: number;
     readonly resolutionScale?: number;
     readonly forceRender?: boolean;
-  }): Promise<{ readonly renderPath: string; readonly evidenceRefs?: readonly string[]; readonly reused?: boolean; readonly sourceRevision?: number; readonly cacheWarning?: string }> {
+    readonly forceRenderReason?: string;
+  }): Promise<{ readonly renderPath: string; readonly evidenceRefs?: readonly string[]; readonly reused?: boolean; readonly sourceRevision?: number; readonly cacheWarning?: string; readonly compositionTimeOriginMs?: number }> {
     const scale = input.resolutionScale ?? 1;
     if (![1, .25, .125].includes(scale)) throw new TypeError("Unsupported local preview resolution scale.");
     const observed = await this.client.observe(this.projectId);
@@ -209,10 +210,12 @@ export class ChatgptAeRenderDriverV1
       || index.fingerprint !== observed.observed.projectFingerprint) index = { schema: 1, epoch: observed.hostRevision, entries: {} };
     const key = createHash("sha256").update(JSON.stringify([input.sessionId, input.compStableId, input.startMs, input.endMs, scale, index.epoch])).digest("hex");
     const retained = index.entries[key];
-    if (!input.forceRender && retained) {
+    // An unqualified force flag must not bypass a healthy cache.
+    const force = input.forceRender === true && typeof input.forceRenderReason === "string" && input.forceRenderReason.trim().length > 0;
+    if (!force && retained) {
       const metadata = await stat(retained.renderPath).catch(() => null);
       if (metadata?.isFile() && metadata.size === retained.size && metadata.mtimeMs === retained.mtimeMs && metadata.size > 0) {
-        return { renderPath: retained.renderPath, evidenceRefs: retained.evidenceRefs, reused: true, sourceRevision: index.epoch };
+        return { renderPath: retained.renderPath, evidenceRefs: retained.evidenceRefs, reused: true, sourceRevision: index.epoch, compositionTimeOriginMs: input.startMs };
       }
     }
     const result = await this.#render({
@@ -232,12 +235,23 @@ export class ChatgptAeRenderDriverV1
     index.entries[key] = { ...result, size: metadata.size, mtimeMs: metadata.mtimeMs };
     const temporary = indexPath + "." + randomUUID() + ".tmp";
     await writeFile(temporary, JSON.stringify(index)); await rename(temporary, indexPath);
-    return { ...result, reused: false, sourceRevision: index.epoch };
-    } catch (error) { return { ...result, reused: false, cacheWarning: error instanceof Error ? error.message : String(error) }; }
+    return { ...result, reused: false, sourceRevision: index.epoch, compositionTimeOriginMs: input.startMs };
+    } catch (error) { return { ...result, reused: false, sourceRevision: index.epoch, compositionTimeOriginMs: input.startMs, cacheWarning: error instanceof Error ? error.message : String(error) }; }
+  }
+
+  /** Mechanical currency/integrity check; never visual acceptance. */
+  async isPreviewCurrent(renderPath: string): Promise<boolean> {
+    const observed = await this.client.observe(this.projectId);
+    const index = await readFile(path.join(this.artifactDir, "preview-cache-v1.json"), "utf8").then(JSON.parse).catch(() => null);
+    if (!index || index.validAtRevision !== observed.hostRevision || index.fingerprint !== observed.observed.projectFingerprint
+      || index.environment !== observed.observed.environmentFingerprint) return false;
+    const retained = Object.values(index.entries ?? {}).find((e: any) => e.renderPath === renderPath) as any;
+    const metadata = retained ? await stat(renderPath).catch(() => null) : null;
+    return !!metadata?.isFile() && metadata.size > 0 && metadata.size === retained.size && metadata.mtimeMs === retained.mtimeMs;
   }
 
   async renderFrames(input: { readonly sessionId: string; readonly compStableId: string; readonly timesMs: readonly number[];
-    readonly resolutionScale?: number; readonly forceRender?: boolean }) {
+    readonly resolutionScale?: number; readonly forceRender?: boolean; readonly forceRenderReason?: string }) {
     if (!Array.isArray(input.timesMs) || !input.timesMs.length || input.timesMs.length > 12
       || input.timesMs.some(t => !Number.isFinite(t) || t < 0)) throw new TypeError("Choose 1–12 exact frame timestamps.");
     const observed = await this.client.observe(this.projectId);
@@ -247,7 +261,8 @@ export class ChatgptAeRenderDriverV1
     for (const timeMs of input.timesMs) {
       const rendered = await this.renderWindow({ sessionId: input.sessionId, attempt: 0, compStableId: input.compStableId,
         windowId: "frame-" + timeMs, startMs: timeMs, endMs: Math.min(comp.duration * 1000, timeMs + 1000 / comp.frameRate),
-        ...(input.resolutionScale === undefined ? {} : { resolutionScale: input.resolutionScale }), ...(input.forceRender === undefined ? {} : { forceRender: input.forceRender }) });
+        ...(input.resolutionScale === undefined ? {} : { resolutionScale: input.resolutionScale }), ...(input.forceRender === undefined ? {} : { forceRender: input.forceRender }),
+        ...(input.forceRenderReason === undefined ? {} : { forceRenderReason: input.forceRenderReason }) });
       const framePath = rendered.renderPath + ".png";
       if (!rendered.reused || !await fileExistsNonEmpty(framePath)) await new Promise<void>((resolve, reject) => {
         const child = spawn(this.ffmpegPath, ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", rendered.renderPath, "-frames:v", "1", "-y", framePath], { windowsHide: true });

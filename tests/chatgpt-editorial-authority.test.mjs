@@ -68,8 +68,9 @@ test("worked examples extend existing per-preset learning, survive concurrent wr
   const store=new GptOrchestrationStoreV1(path.join(dir,"assignments.json"));
   const assignment=await store.createAssignment({sessionId:"next",mode:"PRACTICE",editTypeId:"chosen",artifactDir:dir,
     finish:{mediaId:"finish",role:"FINISH_REFERENCE",mediaKind:"VIDEO",uri:"finish.mp4"},start:[{mediaId:"raw",role:"START_SOURCE",mediaKind:"VIDEO",uri:"raw.mp4"}],knowledge:latest});
-  assert.match(assignment.chatMessage,/CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/); assert.match(assignment.chatMessage,/Reverse ending/);
-  assert.match(assignment.chatMessage,/mistakesToAvoid/); assert.doesNotMatch(assignment.chatMessage,/machine-passing|strongest 3|32 coarse/);
+  assert.match(assignment.chatMessage,/CHATGPT_DIRECT_EDITORIAL_AUTHORITY_V1/); assert.match(assignment.chatMessage,/compact index/);
+  assert.doesNotMatch(assignment.chatMessage,/Reverse ending|"mistakesToAvoid":/);
+  assert.match(JSON.stringify(practiceNotebookViewV1("chosen",latest.gptLearning.workedExamples).examples),/Reverse ending|mistakesToAvoid/); assert.doesNotMatch(assignment.chatMessage,/machine-passing|strongest 3|32 coarse/);
 });
 
 test("reviewing a render job preserves the worker-issued artifact instead of accepting a replacement", async t => {

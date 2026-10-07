@@ -54,8 +54,9 @@ test('supervisor process arms from gateway signals and restart retains the same 
   await stop(); start();
   command = await until(async () => { const c = await fetchJson('/actuator'); return c.command === 'SEND' && c; });
   assert.equal(command.tabId, 99); assert.match(command.prompt, /same-assignment/); assert.match(command.prompt, /Pro Creation/);
-  assert.match(command.prompt, /Retain the completed shot and finish the bounded text correction/);
-  assert.match(command.prompt, /Preserve any corrections committed since this note/);
+  assert.doesNotMatch(command.prompt, /Retain the completed shot and finish the bounded text correction/);
+  assert.match(command.prompt, /VISUAL_CONTINUITY_V1/);
+  assert.match(command.prompt, /Do not revert later work to an older checkpoint/);
   assert.equal(issues, 1);
   const health = await fetchJson('/health'); assert.equal(health.transport.ready, true); assert.ok(!JSON.stringify(health).includes('a'.repeat(64)));
   assert.equal(health.workflow, 'DIRECT_EDITING_V1');
@@ -87,10 +88,10 @@ test('supervisor process arms from gateway signals and restart retains the same 
   });
   assert.equal(badObservation.status, 409);
   await fetchJson('/actuator/ack', { type: 'WORKER_STATUS', ...observationCommand.observe, state: 'PROCESSING',
-    observation: { reason: 'OWNED_PROCESSING', userNodes: 1, hasGeneration: true, credential: 'private-worker-secret', rawText: 'private-conversation-text' } });
+    observation: { reason: 'OWNED_PROCESSING', userNodes: 1, hasGeneration: true, observerHealthy: true, ownerVerified: true, processing: true, credential: 'private-worker-secret', rawText: 'private-conversation-text' } });
   await until(async () => (await fetchJson('/health')).phase === 'PROCESSING');
   const observedHealth = await fetchJson('/health');
-  assert.deepEqual(observedHealth.chatExecution.observation, { reason: 'OWNED_PROCESSING', hasGeneration: true, userNodes: 1 });
+  assert.deepEqual(observedHealth.chatExecution.observation, { reason: 'OWNED_PROCESSING', hasGeneration: true, observerHealthy: true, ownerVerified: true, processing: true, userNodes: 1, revalidated: false });
   assert.doesNotMatch(JSON.stringify(observedHealth), /private-worker-secret|private-conversation-text/);
   await delay(2200);
   assert.equal((await fetchJson('/health')).authority.generation, authority.generation);
@@ -98,12 +99,15 @@ test('supervisor process arms from gateway signals and restart retains the same 
   userControl = { requestId: authority.launchId, action: 'REPLACE_CHAT', assignmentId: 'same-assignment', sessionId: 'same-session',
     step: 'VERIFYING', status: 'PENDING', generation: authority.generation, tabId: 99 };
   await delay(2200);
-  await fetchJson('/actuator/ack', { type: 'WORKER_STATUS', ...observationCommand.observe, state: 'UNKNOWN', observation: { reason: 'NEWER_FOREIGN_CONTINUATION' } });
+  const freshForeign=(await fetchJson('/actuator')).observe;
+  const foreign=await fetchJson('/actuator/ack', { type: 'WORKER_STATUS', ...freshForeign, state: 'UNKNOWN', observation: { reason: 'NEWER_FOREIGN_CONTINUATION' } });
+  assert.equal(foreign.ok,true);
   await until(async () => (await fetchJson('/health')).phase === 'BLOCKED');
   assert.equal(latestUserControl.status, 'FAILED'); assert.match(latestUserControl.error, /another worker generation/);
   assert.equal(issues, 1); assert.equal(authority.state, 'ARMED');
   assert.equal((await fetchJson('/actuator')).command, 'NONE');
-  await fetchJson('/actuator/ack', { type: 'WORKER_STATUS', ...observationCommand.observe, state: 'UNKNOWN',
+  const freshMissing=(await fetchJson('/actuator')).observe;
+  await fetchJson('/actuator/ack', { type: 'WORKER_STATUS', ...freshMissing, state: 'UNKNOWN',
     observation: { reason: 'OWNER_PROMPT_NOT_FOUND', hasAssignment: true, hasSession: true, hasGeneration: false } });
   await delay(2200);
   assert.equal((await fetchJson('/health')).phase, 'BLOCKED');

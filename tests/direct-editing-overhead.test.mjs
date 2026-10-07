@@ -26,7 +26,7 @@ test('compact receipts remove duplicate snapshots while complete decisions remai
   assert.deepEqual(view.jobs[0].result.readback, {value:25});
   assert.deepEqual(productionJobsViewV1([job], true).jobs[0],job);
   const snapshot = {stageElapsedMs:{LOCAL_PROOF:5000000},workflow:{activeDecisionId:'current',plans:[{plan:{decisionId:'old'}},{plan:{decisionId:'current'}}],reviews:[{id:'old'},{id:'current'}],milestones:[]}};
-  assert.equal(productionSnapshotViewV1(snapshot).workflow.plans.length,1);
+  assert.equal(productionSnapshotViewV1(snapshot).workflow.plans.length,0);
   assert.equal(productionSnapshotViewV1(snapshot).stageElapsedMs,undefined);
   assert.equal(productionSnapshotViewV1(snapshot,true).workflow.plans.length,2);
 });
@@ -70,11 +70,14 @@ test('preview reuse survives driver restart, rejects changed output and invalida
   const first=await make().renderWindow(input);
   const cached=await make().renderWindow(input);
   assert.equal(cached.reused,true);assert.equal(cached.renderPath,first.renderPath);assert.equal(renders,1);
+  assert.equal(await make().isPreviewCurrent(first.renderPath),true);
   await make().renderWindow({...input,windowId:'other',startMs:1000,endMs:2000});
   assert.equal((await make().renderWindow(input)).reused,true);
   await writeFile(first.renderPath,'changed output bytes');
+  assert.equal(await make().isPreviewCurrent(first.renderPath),false);
   assert.equal((await make().renderWindow(input)).reused,false);
-  revision++;assert.equal((await make().renderWindow(input)).reused,false);
-  assert.equal((await make().renderWindow({...input,forceRender:true})).reused,false);
+  assert.equal((await make().renderWindow({...input,forceRender:true})).reused,true);
+  revision++;assert.equal(await make().isPreviewCurrent(first.renderPath),false);assert.equal((await make().renderWindow(input)).reused,false);
+  assert.equal((await make().renderWindow({...input,forceRender:true,forceRenderReason:'Independent artifact validation'})).reused,false);
   assert.equal(renders,5);
 });

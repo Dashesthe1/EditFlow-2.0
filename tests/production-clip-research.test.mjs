@@ -160,8 +160,10 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   await service.stop(); service = new PracticePanelServerV1({ ...config, productionSupervision: false }); await service.start();
   const resumed = await get('/v1/product/practice/resume-or-start');
   assert.equal(resumed.assignment.assignmentId, assignment.assignmentId);
-  assert.match(resumed.assignment.chatMessage, /ON-DEMAND METHOD LEARNING/);
-  assert.doesNotMatch(resumed.assignment.chatMessage, /MANDATORY PER-CLIP RESEARCH GATE|editing EVERY clip/);
+  assert.equal(resumed.assignment.chatMessage, undefined);
+  const full=await get(`/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}?includeHistory=true`);
+  assert.match(full.assignment.chatMessage, /ON-DEMAND METHOD LEARNING/);
+  assert.doesNotMatch(full.assignment.chatMessage, /MANDATORY PER-CLIP RESEARCH GATE|editing EVERY clip/);
   assert.equal(resumed.preflight.stage, 'READY');
   assert.equal((await store.listAssignments()).length, 1);
   assert.equal(resumed.clipResearch.advisory, true);
@@ -308,7 +310,8 @@ for (const mode of ['PRACTICE', 'PRO_CREATION']) test(`${mode} executes only aut
   assert.equal(dispatched.filter(request => request.command === 'property.set_keyframes').length, 2);
   checkpointFailure = false;
   const retained = await request(endpoint.replace('/production-jobs','/production'),{action:'WORKFLOW_PLAN',claimedBy:'controller',plan:workflowPlan});
-  assert.equal(retained.status,200);const workflow=(await retained.json()).production.workflow.plans[0];
+  assert.equal(retained.status,200);const summary=await retained.json();assert.equal(summary.production.workflow.retainedPlanCount,1);
+  const workflow=(await (await request(endpoint.replace('/production-jobs','/production')+'?includeHistory=true')).json()).production.workflow.plans[0];
   const workflowContext={workflowId:PRIMARY_PRODUCTION_WORKFLOW_V1,planDecisionId:workflowPlan.decisionId,planHash:workflow.hash,eventIds:['shot']};
   const expired = await fetch(borrowedScope.EDITFLOW_WORKER_PROOF_URL,{method:'POST',headers:{'Content-Type':'application/json',
     'X-EditFlow-Token':token,'X-EditFlow-Worker-Key':borrowedScope.EDITFLOW_WORKER_PROOF_KEY},body:JSON.stringify({scriptPath})});

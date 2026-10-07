@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { affectedPracticePhaseIdsV1, type PracticeResidualV1 } from "./acceleration.js";
 import { emptyProductionWorkflowV1, retainProductionWorkflowPlanV1, retainProductionWorkflowReviewV1, type ProductionWorkflowStateV1 } from "./production-workflow.js";
+import { emptyVisualContinuityV1, retainVisualReviewV1, invalidateVisualDecisionsV1, type VisualContinuityV1, type VisualReviewV1, type VisualDimensionV1 } from "./visual-continuity.js";
 
 export type PracticeProductionStageV1 =
   | "PREFLIGHT"
@@ -107,6 +108,7 @@ export interface PracticeProductionCoordinatorSnapshotV1 {
   readonly wholeProofCandidateKey?: string | null;
   readonly certified?: boolean;
   readonly workflow?: ProductionWorkflowStateV1;
+  readonly visualContinuity?: VisualContinuityV1;
 }
 
 export interface PracticeProductionActionV1 {
@@ -230,6 +232,16 @@ export class PracticeProductionCoordinatorV1 {
     this.#commit({ workflow: retainProductionWorkflowReviewV1(this.#snapshot.workflow ?? emptyProductionWorkflowV1(), input) });
   }
 
+  retainVisualReview(review: VisualReviewV1): void {
+    this.#commit({ visualContinuity: retainVisualReviewV1(this.#snapshot.visualContinuity ?? emptyVisualContinuityV1(), review) });
+  }
+
+  invalidateVisualDecisions(clipIds: readonly string[], dimensions: readonly VisualDimensionV1[], revision: number | null, jobId: string): void {
+    if (!dimensions.length) return;
+    this.#commit({ visualContinuity: invalidateVisualDecisionsV1(this.#snapshot.visualContinuity ?? emptyVisualContinuityV1(),
+      clipIds.length ? clipIds : this.#snapshot.phases.map(p => p.phaseId), dimensions, revision, jobId) });
+  }
+
   retainWorkflowMilestone(input: Record<string, any>): void {
     if (input.authority !== "CHATGPT_DIRECT" || !["FIRST_ROUGH", "FIRST_ACCEPTED_METHOD", "FINAL_REVIEW", "DELIVERY"].includes(input.name)
       || typeof input.evidenceRef !== "string" || !input.evidenceRef.trim() || !Number.isFinite(Date.parse(input.at))) throw new TypeError("Milestone requires ChatGPT choice, explicit time and evidence.");
@@ -336,6 +348,8 @@ export class PracticeProductionCoordinatorV1 {
     if (this.#snapshot.phases.length === 0 || this.#snapshot.phases.some((phase) => !phase.sourceCertificateKey)) {
       throw new TypeError("Whole-edit coverage requires every retained phase to be source locked.");
     }
+    // A local correction does not reconstruct every shot or restart the coverage pass.
+    if (this.#snapshot.wholeEditCovered) return;
     const phases = this.#snapshot.phases.map((phase) =>
       stateRank[phase.state] >= stateRank.SOURCE_LOCKED
         ? advance(phase, "COVERED", { constructionRevision: constructionRevision ?? phase.constructionRevision })
@@ -440,6 +454,7 @@ export class PracticeProductionCoordinatorV1 {
   }
 
   invalidate(phaseIds: readonly string[], target: "PROOF" | "CONSTRUCTION" | "RESEARCH" | "SOURCE"): void {
+    if (target === "SOURCE") this.invalidateVisualDecisions(phaseIds, ["source", "timing", "framing", "effects", "transitions", "color", "text", "audio"], null, "source-changed");
     const affected = new Set<string>();
     for (const phaseId of phaseIds) {
       for (const connected of affectedPracticePhaseIdsV1(phaseId, this.#snapshot.residuals)) affected.add(connected);

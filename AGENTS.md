@@ -28,7 +28,7 @@ Resume once -> ChatGPT decides -> AE batch -> inspect -> correct.
   the committed receipt if saving fails and reports the checkpoint warning.
 - LOCAL_RENDER accepts frameTimesMs for exact still questions, or startMs/endMs
   for motion/audio. Group related corrections for review. Preview caching tracks
-  AE revision, environment, interval and resolution; forceRender:true bypasses it.
+  AE revision, environment, interval and resolution; forceRender:true with an explicit forceRenderReason bypasses it.
   Reused previews never establish visual acceptance. Retrieve a chosen complete
   method from practice-notebook; resume supplies its compact index.
 - Completed LOCAL_RENDER previews do not hold the queue for a separate review
@@ -37,6 +37,20 @@ Resume once -> ChatGPT decides -> AE batch -> inspect -> correct.
   readback and retained receipts before resolving or replaying anything.
 - Keep AE open. Preserve correct retained work. Use only provided raw footage/audio;
   Finished is visual reference only.
+
+# Visual continuity
+
+VISUAL_REVIEW records explicit ChatGPT PASS, REVISE and REJECTED judgments with
+settings, hypothesis, affected dimensions and issued render/reference inspections.
+Retain these at meaningful review boundaries or attach payload.visualReview to the
+next queued edit. They are durable advisory memory, not per-shot approval gates.
+Preserve accepted dimensions and reject old alternatives unless new pixels justify
+a change. Source/timing PASS compares beginning, middle and end at synchronized
+composition times. BROWSE_RENDER uses file time: add its compositionTimeOriginMs
+when comparing to the reference. After two failed distinct render reviews, reassess
+the cause or bracket deliberately different alternatives instead of repeating tiny
+changes. Settle source traversal before crop, effects or grading. Collect material
+remaining defects into a coherent finishing batch and review the whole result.
 
 # Whole-edit passes and learning
 

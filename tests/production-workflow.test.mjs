@@ -145,7 +145,8 @@ test("HTTP workflow uses existing controller/coordinator, rejects outside media,
   const route=`/v1/product/gpt/assignments/${encodeURIComponent(assignment.assignmentId)}/production`;
   assert.equal((await request(route,{action:"WORKFLOW_PLAN",claimedBy:"other",plan:plan()})).status,409);
   const bad=plan();bad.sources[0].mediaId="finished";assert.equal((await request(route,{action:"WORKFLOW_PLAN",claimedBy:"controller",plan:bad})).status,400);
-  const response=await request(route,{action:"WORKFLOW_PLAN",claimedBy:"controller",plan:plan()});assert.equal(response.status,200);assert.equal((await response.json()).production.workflow.plans.length,1);
+  const response=await request(route,{action:"WORKFLOW_PLAN",claimedBy:"controller",plan:plan()});assert.equal(response.status,200);const current=await response.json();assert.equal(current.production.workflow.plans.length,0);assert.equal(current.production.workflow.retainedPlanCount,1);
+  const full=await (await request(route+"?includeHistory=true")).json();assert.equal(full.production.workflow.plans.length,1);
   await service.stop();service=new PracticePanelServerV1(config);await service.start();
   const resumed=await (await request(route)).json();assert.equal(resumed.production.workflow.activeDecisionId,"workflow:1");assert.equal(resumed.nextAction.kind,"CHATGPT_DECIDES");assert.equal(resumed.production.wholeEditCovered,false);
   assert.match((await store.getAssignment(assignment.assignmentId)).chatMessage,/CHATGPT_PRODUCTION_WORKFLOW_V1/);

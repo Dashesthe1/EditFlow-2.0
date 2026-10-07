@@ -43,7 +43,7 @@ REQUIRED_PRODUCTION_TOOLS = (
     "inspect_or_select_footage", "record_practice_example", "complete_gpt_assignment",
 )
 PRODUCTION_UPDATE_ACTIONS = frozenset({
-    "WORKFLOW_PLAN", "WORKFLOW_REVIEW", "WORKFLOW_MILESTONE", "HEARTBEAT",
+    "VISUAL_REVIEW", "WORKFLOW_PLAN", "WORKFLOW_REVIEW", "WORKFLOW_MILESTONE", "HEARTBEAT",
     "STAGE", "RESEARCH_READY", "WHOLE_EDIT_COVERED",
     "CONSTRUCTED", "AE_CHECKPOINT", "LOCAL_PROOF", "WHOLE_EDIT_PROOF",
     "INVALIDATE", "RESIDUALS", "TELEMETRY",
@@ -440,7 +440,7 @@ def build_server():
         if not isinstance(intents, list) or not intents:
             raise ValueError("intents_json must decode to a non-empty routine-intent list")
         tx = transaction_id or f"shadow-batch-{int(time.time() * 1000)}"
-        return _execute_queued("AE_BATCH", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None, "editorialDecision": packet.get("editorialDecision") if isinstance(packet, dict) else None, "workflowContext": packet.get("workflowContext") if isinstance(packet, dict) else None})
+        return _execute_queued("AE_BATCH", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None, "editorialDecision": packet.get("editorialDecision") if isinstance(packet, dict) else None, "workflowContext": packet.get("workflowContext") if isinstance(packet, dict) else None, **({"visualReview": packet["visualReview"]} if isinstance(packet, dict) and "visualReview" in packet else {})})
 
     @tool(read_only=True, destructive=False)
     def get_production_state(assignment_id: str, include_history: bool = False) -> dict[str, Any]:
@@ -450,7 +450,7 @@ def build_server():
 
     @tool()
     def record_production_update(assignment_id: str, update_json: str) -> dict[str, Any]:
-        """Record explicit ChatGPT workflow plans/reviews/checkpoints/telemetry or GPT research/decision HEARTBEATs. Supply the current issued worker credential as claimedBy inside update_json. This cannot execute AE edits, claim/revoke workers, pause/resume production, or create assignments."""
+        """Record explicit ChatGPT VISUAL_REVIEW judgments/workflow plans/reviews/checkpoints/telemetry or GPT research/decision HEARTBEATs. Supply the current issued worker credential as claimedBy inside update_json. This cannot execute AE edits, claim/revoke workers, pause/resume production, or create assignments."""
         payload = _object_payload(update_json, "update_json")
         _require_worker(payload.get("claimedBy"))
         if payload.get("action") not in PRODUCTION_UPDATE_ACTIONS:
@@ -460,7 +460,7 @@ def build_server():
 
     @tool()
     def enqueue_production_job(assignment_id: str, job_json: str) -> dict[str, Any]:
-        """Submit exact work once. Routine edits wait for their durable completion and return readbacks/checkpoint; long jobs retain their ID. Prefer AE_BATCH for supported edits. LOCAL_RENDER accepts frameTimesMs or a bounded video interval, caches unchanged previews, and accepts forceRender."""
+        """Submit exact work once. Routine edits wait for their durable completion and return readbacks/checkpoint; long jobs retain their ID. Prefer AE_BATCH for supported edits. LOCAL_RENDER accepts frameTimesMs or a bounded video interval, caches unchanged previews; forceRender requires forceRenderReason. payload.visualReview may retain inspected judgments with the next edit."""
         payload = _object_payload(job_json, "job_json")
         context = payload.get("payload", {}).get("researchContext") if isinstance(payload.get("payload"), dict) else None
         if not isinstance(context, dict) or context.get("assignmentId") != assignment_id:
@@ -547,10 +547,10 @@ def build_server():
         return _practice_http("GET", "/v1/product/gpt/assignments/next")
 
     @tool(read_only=True, destructive=False)
-    def get_gpt_assignment(assignment_id: str) -> dict[str, Any]:
-        """Read one GPT assignment, its complete editing brief, learning trace, and cancellation state."""
+    def get_gpt_assignment(assignment_id: str, include_history: bool = False) -> dict[str, Any]:
+        """Read current assignment, visual continuity and cancellation state; request include_history only for an audit."""
         safe_id = urllib.parse.quote(assignment_id, safe="")
-        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}")
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}?includeHistory=" + str(include_history).lower())
 
     @tool()
     def claim_gpt_assignment(

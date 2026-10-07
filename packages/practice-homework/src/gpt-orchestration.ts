@@ -258,7 +258,6 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
   readonly artifactDir: string;
   readonly knowledge: EditTypeKnowledgeSnapshotV1 | null;
 }): string => {
-  const learning = input.knowledge?.gptLearning;
   const message = [
     "EDITFLOW 2.0 GPT ORCHESTRATION ASSIGNMENT",
     "Session: " + input.sessionId, "Mode: " + input.mode, "Edit Type: " + input.editTypeId,
@@ -267,18 +266,13 @@ export const buildGptOrchestrationChatMessageV1 = (input: {
     "Finish path: " + (input.finish?.uri ?? "(none)"),
     "Editing sequence: RESUME ONCE -> THINK -> AE BATCH -> INSPECT -> CORRECT. Build the whole edit, then polish; learn at meaningful review boundaries.",
     "Finish: " + JSON.stringify(input.finish), "Provided raw media: " + JSON.stringify(input.start),
-    "Retained GPT source choices: " + JSON.stringify(input.practiceSceneMatches ?? []),
+    "Retained GPT source choices and visual decisions: included in the current resume response; retrieve details only for a current question.",
     "Evidence directory: " + input.artifactDir,
-    "Existing preset successes: " + JSON.stringify(learning?.successLessons ?? []),
-    "Existing preset failures: " + JSON.stringify(learning?.failureAvoidanceLessons ?? []),
-    "Existing preset techniques: " + JSON.stringify(learning?.learnedSkills ?? []),
-    "Recent worked examples: " + JSON.stringify((learning?.workedExamples ?? []).slice(-12)),
-    "Capability gaps: " + JSON.stringify(learning?.capabilityGaps ?? []),
-    "These retained observations are context for your judgment, not automatically applied recipes. Retrieve the fresh complete preset notebook on every start and resume.",
+    "Preset learning: resume includes a compact index. Retrieve a chosen complete method or relevant failure on demand; never replay the entire notebook at startup.",
     ...RESEARCH_PRIORITY_LINES, CLIP_RESEARCH_POLICY_V1,
     "Keep one AE writer, keep AE open, preserve correct retained work, and build whole-edit coverage before polishing deficient regions.",
     "Full raw movies are search-only. Materialize your selected ranges with bounded handles for AE; Finish remains a reference and must never become production footage.",
-    "Directly inspect all reference shots, cut boundaries, effect states, audio relationships and reverse/rewind behavior. Record your blueprint before construction.",
+    "Directly inspect reference shots, cut boundaries, effect states, audio relationships and source traversal. Retain concise visual conclusions at meaningful pass boundaries.",
     "All cutting, retiming, effects, transitions and compositing must be constructed in AE from your explicit decisions. Research unfamiliar behavior rather than replacing it with a weaker approximation.",
   ].join("\n");
   return applyCurrentProductionQueuePolicy(message, input.mode);
@@ -310,7 +304,8 @@ const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrati
   const end = Math.min(...[markerAt, retiredAt, message.length].filter(v => v >= 0));
   const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery|ACCELERATED_REFERENCE_FIRST_V1|Optional workflowContext|MANDATORY PER-CLIP|before changing any clip|For EVERY clip|editing EVERY clip|READY plans|Commit clip-research PLAN|AE edits require researchContext|Record the actual search\/review artifact|Learning sequence:|commit the durable clip research plan/i;
   const generatedLines = new Set([...CHATGPT_FOOTAGE_POLICY_V1.split("\n"), ...RESEARCH_PRIORITY_LINES]);
-  const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !generatedLines.has(line)).join("\n").trimEnd();
+  const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !generatedLines.has(line)
+    && !line.includes("Record your blueprint before construction")).join("\n").trimEnd();
   return cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1 + "\n\n" + RESEARCH_PRIORITY_LINES.join("\n") + "\n\n" + editProductionContinuityAppendixV1(mode);
 };
 
