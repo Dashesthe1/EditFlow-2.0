@@ -1,4 +1,4 @@
-# EditFlow Production Supervisor 3.4
+# EditFlow Production Supervisor 3.5
 
 Practice and Pro Creation share one local supervisor and one gateway worker authority.
 The supervisor starts at Windows sign-in and arms automatically when the gateway
@@ -20,20 +20,49 @@ renew. Claiming a new generation remains explicit. Backend HTTP status/reason an
 payload validation errors pass through MCP as expected tool failures with worker
 credentials redacted; they must not be mistaken for host permission denials.
 
-Missing backend writes trigger inspection after one minute; silence alone never
-revokes a chat. The actuator observes only the exact owned tab/current generation:
-Stop/streaming controls prove PROCESSING; final-response controls after its own
-continuation prove FINISHED. Absence of a Stop button alone is UNKNOWN. No prose,
-conversation text, worker credential, network stream or editorial assessment is
-sent to the supervisor. Unknown/stale/unrelated observations cannot authorize a
-replacement. FINISHED or a missing owned tab must remain freshly confirmed for
-one minute plus 120 seconds before handoff. Active chats can keep researching,
-thinking, inspecting and editing without stage-budget, heartbeat-expiry or repeated-
-request termination. Budgets and repeated requests are diagnostic warnings only.
-Healthy queue heartbeats protect long operations beyond estimated wall-clock
-budgets. Lost queue heartbeats require the full three-minute confirmation window
-before reconciliation. Infrastructure failures trigger gateway/actuator repair;
-uncertain writes and accepted receipts are retained and never blindly replayed.
+Liveness uses four renewable signals: owned browser processing, authenticated
+EditFlow activity (10 seconds), GPT decision/research heartbeat (180 seconds),
+and healthy accepted queue operations (180-second heartbeat grace). A valid
+signal protects the worker. Quiet stages and repeated requests remain diagnostics.
+No token estimate, stage budget or absence of tool calls authorizes cancellation.
+
+The actuator checks only the exact assignment/session/generation and owned tab.
+Each poll has a one-use observation ID; replayed ACKs, cached supervisor ticks,
+wrong sessions and stale observations cannot count toward confirmation. Stop,
+streaming or current-turn busy controls establish PROCESSING. Expiry requires a
+semantic error surface plus expiry/length-limit wording and either an unusable
+composer or recovery action. Ordinary messages and historical errors are excluded.
+Unusable errors require an unusable composer and a recovery action. Collapsed
+identity requires a verified send receipt bound to the same conversation URL.
+
+| Owned browser evidence, with no valid work lease | Decision |
+| --- | --- |
+| EXPIRED or MISSING | At least two fresh observations spanning 3 seconds |
+| UNUSABLE | At least two fresh observations spanning 15 seconds |
+| FINISHED | At least two fresh observations spanning 60 seconds |
+| UNKNOWN, usable recognized shell and positively idle | Reinject observer, then at least three observations spanning 60 seconds |
+| Unavailable observer, unrecognized shell, missing ownership or stale data | Repair/reobserve; no revocation from missing evidence |
+
+These are confirmation times, not guaranteed end-to-end replacement times. Fresh
+activity or an accepted job can defer handoff. The supervisor rechecks gateway
+state immediately before revocation. Handoff remains durable revoke -> stop/close
+-> drain -> issue -> create -> send, with the same assignment and accepted receipts.
+Observer recovery is separate from queue/gateway interruption; failed page probes
+have a two-second timeout so they cannot wedge the actuator. Read-only observation
+continues while paused; a pause never authorizes automatic handoff. Service restarts
+clear confirmation samples and acquire new evidence.
+
+A working DOM observer can confirm an idle unknown chat. An unreadable/frozen
+observer cannot prove that hidden reasoning stopped, and an unchanged Stop control
+cannot distinguish healthy thinking from a stuck backend. Those cases remain
+observer recovery/processing until positive evidence becomes available. This is a
+browser-supervision limitation, not an exact ChatGPT token or backend health API.
+
+Healthy queue heartbeats protect long operations beyond wall-clock budgets. Lost
+queue heartbeats require three minutes before reconciliation. Infrastructure failures
+trigger repair; uncertain writes and accepted receipts are never blindly replayed.
+No conversation prose or credentials leave the observer; only booleans, reason codes,
+identity fields and the owned conversation URL are retained.
 
 Every continuation uses DIRECT_EDITING_V1 through EditFlow - Current Shadow:
 claim_gpt_assignment once -> inspect retained work -> ChatGPT decides -> enqueue
@@ -113,7 +142,12 @@ through Desktop Commander or native AE scripts.
 
 Install from this directory with install.ps1 after compiling the TypeScript gateway.
 Tests: npm run build:test-runtime; node --test tests/production-supervision.test.mjs;
-node --test scripts/production-watchdog/watchdog.test.js.
+node --test scripts/production-watchdog/*.test.js.
+The watchdog suite uses simulated time for 10-minute thinking/web work and a
+30-minute render. The HTTP integration suite starts the real supervisor against an
+isolated gateway and exercises restart during close/create, one-use observations,
+observer recovery and work arriving at handoff. A real ChatGPT expiration acceptance
+test still requires an actual expired owned chat; fixtures do not establish it.
 
 Explicit user choices are available from any connected chat through the existing
 `resume_or_start_practice(start_json)` tool, or authenticated

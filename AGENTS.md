@@ -70,12 +70,16 @@ Retired candidate matchers, editorial engines and fallback routes remain removed
 
 # Continuity and ownership
 
-The supervisor protects the exact owned chat while it is processing. Backend silence,
-repeated requests and expired research heartbeats are diagnostics;
-they cannot revoke a processing chat. Old forced stage-budget strategy changes
-are removed. User pauses/finished assignments do not produce stall alarms. A finished/missing owned chat needs confirmed
-UI evidence through the existing confirmation window before handoff. Unknown/stale
-observations cannot authorize replacement. Healthy queue heartbeats protect long jobs.
+The supervisor protects an exact owned processing chat, fresh authenticated activity,
+fresh GPT decision leases and healthy queue operations. Stage budgets/repeated
+requests are diagnostics. Explicit expiry/missing tabs require two fresh observations
+over at least three seconds; unusable errors wait 15 seconds; a finished owned
+response waits one minute. Idle UNKNOWN resolution requires the exact session/tab/
+generation, recognized usable shell, no processing, observer reinjection and repeated
+fresh observations over one minute. Missing/unreadable observer evidence triggers
+repair without revocation. Confirmation IDs cannot be replayed. Recheck queue work
+and authority before automatic handoff. Preserve explicit pause and assignment IDs;
+maintenance never resumes production. Healthy queue heartbeats protect long jobs.
 
 Continuation delivery uses the exact assignment/session/full issued credential,
 including wrapped or collapsed DIRECT_EDITING_V1 user messages. On an uncertain

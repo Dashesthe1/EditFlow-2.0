@@ -14,12 +14,18 @@ const STAGE_POLICY = Object.freeze({
 
 const POLICY = Object.freeze({
   quietMs: 60000,
-  confirmMs: 120000,
+  confirmMs: 0,
+  terminalConfirmMs: 3000,
+  unusableConfirmMs: 15000,
+  unknownResolveMs: 60000,
+  activityLeaseMs: 10000,
+  minimumObservations: 2,
+  unknownObservations: 3,
   startupMs: 8 * 60000,
   heartbeatMs: 20000,
   operationHeartbeatGraceMs: 180000,
   chatStatusFreshMs: 45000,
-  handoffEvidence: 'OWNED_CHAT_FINISHED_OR_MISSING',
+  handoffEvidence: 'OWNED_TERMINAL_OR_REVALIDATED_IDLE_WITHOUT_LIVE_LEASE',
   activeChatTimeoutHandoff: false,
   decisionHeartbeatMs: 180000,
   noProgressMs: 30 * 60000,
@@ -62,7 +68,7 @@ function decisionLeaseStatus(snapshot, now, policy = POLICY) {
   const operation = typeof p.inFlightOperation === "string" ? p.inFlightOperation.trim() : "";
   const heartbeatAt = validTime(p.workerHeartbeatAt);
   const recognized = /^GPT_(DECISION|RESEARCH|FOOTAGE|REFERENCE|REVIEW|PLANNING|ANALYSIS|WEB|DRIVE)(:|$)/i.test(operation);
-  const fresh = recognized && heartbeatAt > 0 && now - heartbeatAt <= policy.decisionHeartbeatMs;
+  const fresh = recognized && heartbeatAt > 0 && heartbeatAt <= now && now - heartbeatAt <= policy.decisionHeartbeatMs;
   return {
     active: fresh,
     recognized,
@@ -141,6 +147,7 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   if (jobs.length || snapshot.writerOwner) {
     next.suspectAt = 0;
     next.suspectReason = null;
+    next.observerRepairRequested = false; next.observerRevalidatedAt = 0; next.observations = 0;
     return failure ? result("INFRA_RECOVERY", failure, "REPAIR")
       : result("PROCESSING", "accepted_operation_running");
   }
@@ -155,39 +162,73 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   const progressAt = next.progressAt || Math.max(validTime(p.lastProgressAt), a.issuedAt || 0, now);
   next.stageBudgetWarning = now - progressAt >= noProgressLimit(snapshot, policy);
   const chat = snapshot.chatExecution || {};
-  const owned = chat.tabId === snapshot.activeTabId && chat.generation === a.generation
-    && chat.assignmentId === task.assignmentId;
-  const fresh = owned && chat.checkedAt > 0 && now - chat.checkedAt <= (policy.chatStatusFreshMs || 45000);
-  if (fresh && chat.state === "PROCESSING") {
-    next.suspectAt = 0;
-    next.suspectReason = null;
-    return result("PROCESSING", "owned_chat_processing");
-  }
-
-  // Silence is a request to inspect the owned chat, not proof that it stopped.
-  // Unknown, stale or unrelated browser observations must never revoke authority.
-  const inactive = fresh && ["FINISHED", "MISSING"].includes(chat.state);
-  if (inactive) {
-    const reason = "owned_chat_" + chat.state.toLowerCase();
-    if (next.suspectReason !== reason || next.suspectGeneration !== a.generation || next.suspectTabId !== chat.tabId) {
-      next.suspectAt = now;
-      next.suspectReason = reason;
-      next.suspectGeneration = a.generation;
-      next.suspectTabId = chat.tabId;
-    }
-    if (now - next.suspectAt < policy.quietMs + policy.confirmMs) {
-      return result("VERIFYING", reason);
-    }
-    return result("STALLED", "confirmed_" + reason, "HANDOFF");
-  }
-  next.suspectAt = 0;
-  next.suspectReason = null;
+  const owned = Number.isInteger(snapshot.activeTabId) && chat.tabId === snapshot.activeTabId
+    && chat.generation === a.generation && chat.assignmentId === task.assignmentId
+    && chat.sessionId === task.sessionId;
+  const fresh = owned && Number.isFinite(chat.checkedAt) && chat.checkedAt > 0
+    && chat.checkedAt <= now && now - chat.checkedAt <= policy.chatStatusFreshMs;
+  const reset = () => {
+    next.suspectAt = 0; next.suspectReason = null; next.observations = 0;
+    next.lastObservationAt = 0; next.lastObservationId = null;
+    next.observerRepairRequested = false; next.observerRevalidatedAt = 0;
+  };
   const lease = decisionLeaseStatus(snapshot, now, policy);
-  if (lease.active) return result("DECIDING", "authenticated_gpt_decision_lease");
   const activityAt = Math.max(a.issuedAt || 0, a.lastActivityAt || 0);
-  const grace = a.lastActivityAt ? stagePolicy(snapshot, policy).quietMs : policy.startupMs;
-  return now - activityAt < grace ? result("HEALTHY", "worker_activity_or_startup_grace")
-    : result("VERIFYING", "owned_chat_state_required");
+  const activityLease = activityAt > 0 && activityAt <= now && now - activityAt < policy.activityLeaseMs;
+  const startup = !a.lastActivityAt && now - (a.issuedAt || 0) < policy.startupMs;
+  next.leases = { chat: fresh && (chat.state === "PROCESSING" || chat.observation?.processing === true) && chat.observation?.ownerVerified === true && chat.observation?.observerHealthy === true,
+    editflow: activityLease, decision: lease.active, startup };
+  if (next.leases.chat || lease.active || activityLease) {
+    reset();
+    return next.leases.chat ? result("PROCESSING", "owned_chat_processing")
+      : lease.active ? result("DECIDING", "authenticated_gpt_decision_lease")
+      : result("HEALTHY", "authenticated_editflow_activity_lease");
+  }
+  const o = chat.observation || {};
+  const healthy = fresh && o.observerHealthy === true && o.ownerVerified === true;
+  const terminal = healthy && o.processing === false && (
+    chat.state === "MISSING" && o.reason === "TARGET_MISSING"
+    || chat.state === "FINISHED" && o.reason === "OWNED_FINISHED"
+    || chat.state === "EXPIRED" && o.reason === "OWNED_EXPIRED" && o.terminalSurface === true
+      && (o.composerUsable === false || o.recoveryAction === true)
+    || chat.state === "UNUSABLE" && o.reason === "OWNED_UNUSABLE" && o.terminalSurface === true
+      && o.composerUsable === false && o.recoveryAction === true);
+  // UNKNOWN is actionable only after a functioning observer positively recognizes
+  // the owned conversation shell and reports no active generation. Transport/DOM
+  // failures cannot provide this evidence and instead repair the observer.
+  const idleUnknown = healthy && chat.state === "UNKNOWN" && o.shellReady === true
+    && o.processing === false && ["NO_CURRENT_ASSISTANT", "NO_FINAL_CONTROLS"].includes(o.reason);
+  if (!terminal && !idleUnknown) {
+    reset(); next.observerRepairRequested = true;
+    return startup ? result("HEALTHY", "worker_startup_grace")
+      : result("OBSERVER_RECOVERY", "owned_chat_observer_requires_revalidation", "REOBSERVE");
+  }
+  if (startup && !["EXPIRED", "UNUSABLE", "MISSING"].includes(chat.state)) {
+    reset(); return result("HEALTHY", "worker_startup_grace");
+  }
+  const reason = "owned_chat_" + (idleUnknown ? "unresponsive" : chat.state.toLowerCase());
+  const gap = next.lastObservationAt && chat.checkedAt - next.lastObservationAt > policy.chatStatusFreshMs;
+  if (next.suspectReason !== reason || next.suspectGeneration !== a.generation
+    || next.suspectTabId !== chat.tabId || gap) {
+    reset(); next.suspectAt = now; next.suspectReason = reason;
+    next.suspectGeneration = a.generation; next.suspectTabId = chat.tabId;
+  }
+  // The same cached snapshot, replayed ACK, or repeated supervisor tick is never
+  // a second independent observation. A boot must acquire new evidence as well.
+  if (chat.observationId && chat.observationId !== next.lastObservationId && chat.checkedAt > next.lastObservationAt) {
+    next.observations = (next.observations || 0) + 1;
+    next.lastObservationAt = chat.checkedAt; next.lastObservationId = chat.observationId;
+    if (idleUnknown && o.revalidated === true) next.observerRevalidatedAt = chat.checkedAt;
+  }
+  next.observerRepairRequested = idleUnknown && !next.observerRevalidatedAt;
+  const duration = idleUnknown ? policy.unknownResolveMs : chat.state === "FINISHED"
+    ? policy.quietMs + policy.confirmMs : chat.state === "UNUSABLE" ? policy.unusableConfirmMs : policy.terminalConfirmMs;
+  const count = idleUnknown ? policy.unknownObservations : policy.minimumObservations;
+  if (now - next.suspectAt < duration || next.observations < count
+    || idleUnknown && !next.observerRevalidatedAt) {
+    return result("VERIFYING", reason, next.observerRepairRequested ? "REOBSERVE" : "NONE");
+  }
+  return result("STALLED", "confirmed_" + reason, "HANDOFF");
 
 }
 

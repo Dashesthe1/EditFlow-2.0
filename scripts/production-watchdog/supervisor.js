@@ -21,7 +21,10 @@ catch (e) { if (e.code !== 'ENOENT') throw e; }
 // Migration targets only the old explicitly owned production tab, never a maintenance chat.
 if (!fs.existsSync(statePath)) { try { const old = JSON.parse(fs.readFileSync(path.join(ROOT, 'state.json'), 'utf8')); state.activeTabId = old.lastTabId; } catch (_) {} }
 const bootAt = Date.now();
-let chatExecution = null;
+let chatExecution = null, observationTarget = null;
+// Confirmation samples never survive a service restart without fresh observations.
+state.liveness = { ...state.liveness, suspectAt: 0, suspectReason: null, observations: 0,
+  lastObservationAt: 0, lastObservationId: null, observerRepairRequested: false, observerRevalidatedAt: 0 };
 let snapshot = null, tickBusy = false, lastGatewayAt = 0, gatewayError = null;
 const testTransportUrl = path.resolve(ROOT) !== path.resolve(__dirname) ? process.env.EDITFLOW_SUPERVISOR_TEST_TRANSPORT_URL : null;
 if (testTransportUrl && new URL(testTransportUrl).hostname !== '127.0.0.1') throw Error('TEST_TRANSPORT_MUST_BE_LOOPBACK');
@@ -68,12 +71,25 @@ function livenessDiagnostics(now = Date.now()) {
     decisionOperation: lease.operation,
     decisionLeaseAgeMs: lease.ageMs,
     chatState: chatExecution?.state || 'UNKNOWN',
+    leases: state.liveness.leases || null,
+    confirmationObservations: state.liveness.observations || 0,
+    observerRepairRequested: !!state.liveness.observerRepairRequested,
     repeatedActionWarning: !!state.liveness.repeatedActionWarning,
     stageBudgetWarning: !!state.liveness.stageBudgetWarning,
   };
 }
 async function beginHandoff(reason) {
   if (state.handoff) return;
+  if (reason.startsWith('confirmed_owned_chat_')) {
+    // Recheck work/ownership immediately before revocation, including a lease
+    // renewal or accepted AE job that arrived during the previous tick.
+    snapshot = { ...await gateway(), activeTabId: state.activeTabId, chatExecution };
+    const checked = evaluateLiveness(state.liveness, snapshot, Date.now());
+    state.liveness = checked.next;
+    if (checked.action !== 'HANDOFF' || checked.reason !== reason) {
+      state.phase = checked.phase; state.reason = checked.reason; persist(); return;
+    }
+  }
   log('handoff_begin', { reason, ...livenessDiagnostics() });
   const a = snapshot.authority, task = snapshot.assignment;
   const handoff = { id: randomUUID(), assignmentId: task.assignmentId, sessionId: task.sessionId,
@@ -152,6 +168,7 @@ async function tick() {
     const ownedObservation = chatExecution && chatExecution.tabId === state.activeTabId
       && chatExecution.generation === snapshot.authority.generation
       && chatExecution.assignmentId === snapshot.assignment?.assignmentId
+      && chatExecution.sessionId === snapshot.assignment?.sessionId
       && Date.now() - chatExecution.checkedAt <= POLICY.chatStatusFreshMs;
     const failedControl = snapshot.latestUserControl;
     const retainedOwnershipFailure = failedControl?.action === 'REPLACE_CHAT' && failedControl.status === 'FAILED'
@@ -188,6 +205,10 @@ async function tick() {
         await gateway({ action: 'FINALIZE_CANCEL', assignmentId: snapshot.assignment.assignmentId });
         log('cancellation_completed', { assignmentId: snapshot.assignment.assignmentId });
       }
+    } else if (verdict.action === 'REOBSERVE') {
+      // Content reinjection is requested via the actuator; observer failure never
+      // enters the backend INTERRUPT/REVOKE infrastructure repair path.
+      if (chatExecution?.observation?.reason === 'OBSERVER_UNAVAILABLE') repair('actuator_offline');
     } else if (verdict.action === 'REPAIR') {
       if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: snapshot.assignment.assignmentId,
         generation: snapshot.authority.generation, reason: verdict.reason });
@@ -211,6 +232,7 @@ async function tick() {
   finally { tickBusy = false; }
 }
 function actuatorCommand() {
+  observationTarget = null;
   const h = state.handoff;
   const deliveryMatches = receipt => receipt && receipt.launchId === snapshot?.authority.launchId
     && receipt.tabId === state.activeTabId && receipt.generation === snapshot?.authority.generation
@@ -219,13 +241,15 @@ function actuatorCommand() {
   const deliveryConfirmed = !!(deliveryMatches(state.workerTabReceipt) || control?.deliveredAt
     && control.step === 'VERIFYING' && deliveryMatches({ ...control, launchId: control.requestId }));
   if (!snapshot || Date.now() - lastGatewayAt > 15000) return { command: 'NONE', reason: 'gateway_unavailable' };
-  if (!h || snapshot.authority.state === 'PAUSED' && !['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'NONE',
-    recoverLaunchId: !state.activeTabId && !h ? snapshot.authority.launchId : null,
-    observe: !h && Number.isInteger(state.activeTabId) && snapshot.authority.state === 'ARMED' ? {
-      tabId: state.activeTabId, assignmentId: snapshot.assignment?.assignmentId,
-      sessionId: snapshot.assignment?.sessionId, generation: snapshot.authority.generation,
-      deliveryConfirmed,
-    } : null };
+  if (!h || snapshot.authority.state === 'PAUSED' && !['CLOSE', 'CLOSE_ONLY'].includes(h.status)) {
+    if (!h && Number.isInteger(state.activeTabId) && ['ARMED', 'PAUSED'].includes(snapshot.authority.state)) {
+      observationTarget = { tabId: state.activeTabId, assignmentId: snapshot.assignment?.assignmentId,
+        sessionId: snapshot.assignment?.sessionId, generation: snapshot.authority.generation,
+        observationId: randomUUID(), deliveryConfirmed, expectedUrl: state.workerTabReceipt?.conversationUrl || null, repairObserver: !!state.liveness.observerRepairRequested };
+    }
+    return { command: 'NONE', recoverLaunchId: !state.activeTabId && !h ? snapshot.authority.launchId : null,
+      observe: observationTarget };
+  }
   if (['CLOSE', 'CLOSE_ONLY'].includes(h.status)) return { command: 'STOP_CLOSE', id: h.id, tabId: h.sourceTabId };
   if (['CREATE', 'SEND'].includes(h.status) && !transport.state().ready) return { command: 'NONE', reason: 'mcp_transport_unavailable' };
   if (h.status === 'CREATE') return { command: 'CREATE', id: h.id };
@@ -243,7 +267,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.4.2', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.5.0', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,
@@ -263,16 +287,25 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req); const h = state.handoff;
       if (b.type === 'WORKER_STATUS') {
         if (h || b.tabId !== state.activeTabId || b.generation !== snapshot?.authority.generation
-          || b.assignmentId !== snapshot?.assignment?.assignmentId) return send(409, { error: 'STALE_WORKER_OBSERVATION' });
-        if (!['PROCESSING','FINISHED','MISSING','UNKNOWN'].includes(b.state)) return send(400, { error: 'INVALID_WORKER_OBSERVATION' });
+          || b.assignmentId !== snapshot?.assignment?.assignmentId || b.sessionId !== snapshot?.assignment?.sessionId
+          || !observationTarget || b.observationId !== observationTarget.observationId) return send(409, { error: 'STALE_WORKER_OBSERVATION' });
+        if (!['PROCESSING','FINISHED','EXPIRED','UNUSABLE','MISSING','UNKNOWN'].includes(b.state)) return send(400, { error: 'INVALID_WORKER_OBSERVATION' });
         const observation = {};
         const reasons = ['INVALID_TARGET','OWNER_PROMPT_NOT_FOUND','NEWER_FOREIGN_CONTINUATION','NO_CURRENT_ASSISTANT',
-          'NO_FINAL_CONTROLS','OWNED_PROCESSING','OWNED_FINISHED','PAGE_NOT_READY','TARGET_MISSING','OBSERVER_UNAVAILABLE'];
+          'NO_FINAL_CONTROLS','OWNED_PROCESSING','OWNED_FINISHED','OWNED_EXPIRED','OWNED_UNUSABLE','PAGE_NOT_READY','TARGET_MISSING','OBSERVER_UNAVAILABLE'];
         if (reasons.includes(b.observation?.reason)) observation.reason = b.observation.reason;
-        for (const name of ['hasAssignment','hasSession','hasGeneration']) if (typeof b.observation?.[name] === 'boolean') observation[name] = b.observation[name];
+        for (const name of ['hasAssignment','hasSession','hasGeneration','observerHealthy','ownerVerified','shellReady','processing','terminalSurface','composerUsable','recoveryAction']) if (typeof b.observation?.[name] === 'boolean') observation[name] = b.observation[name];
         if (Number.isInteger(b.observation?.userNodes) && b.observation.userNodes >= 0 && b.observation.userNodes <= 10000) observation.userNodes = b.observation.userNodes;
-        chatExecution = { tabId: b.tabId, generation: b.generation, assignmentId: b.assignmentId,
+        observation.revalidated = observationTarget.repairObserver === true && b.observation?.revalidated === true;
+        if (b.state === 'MISSING') observation.ownerVerified = observationTarget.deliveryConfirmed === true;
+        chatExecution = { tabId: b.tabId, generation: b.generation, assignmentId: b.assignmentId, sessionId: b.sessionId,
+          observationId: b.observationId,
           state: b.state, checkedAt: Date.now(), observation };
+        if (observation.ownerVerified && state.workerTabReceipt && typeof b.observedUrl === 'string'
+          && /^https:\/\/chatgpt\.com\/c\/[a-zA-Z0-9-]+$/.test(b.observedUrl)) {
+          state.workerTabReceipt.conversationUrl = b.observedUrl; persist();
+        }
+        observationTarget = null;
         void tick(); return send(200, { ok: true });
       }
       if (b.type === 'READY') { state.lastExtensionLoadedAt = Date.now(); state.extensionVersion = b.version; persist(); return send(200, { ok: true }); }
@@ -288,7 +321,8 @@ const server = http.createServer(async (req, res) => {
       else if (b.type === 'SENT' && ['SEND', 'DELIVERY_BLOCKED'].includes(h.status) && b.tabId === h.targetTabId) {
         if (h.userControlId) await gateway({ action: 'CONTROL_DELIVERED', requestId: h.userControlId, tabId: b.tabId });
         state.workerTabReceipt = { launchId: h.id, tabId: b.tabId, assignmentId: h.assignmentId,
-          sessionId: h.sessionId, generation: h.generation, deliveredAt: Date.now() };
+          sessionId: h.sessionId, generation: h.generation, deliveredAt: Date.now(),
+          conversationUrl: typeof b.observedUrl === 'string' && /^https:\/\/chatgpt\.com\/c\/[a-zA-Z0-9-]+$/.test(b.observedUrl) ? b.observedUrl : null };
         state.activeTabId = b.tabId; state.handoff = null; state.liveness = {}; log('continuation_sent', { assignmentId: h.assignmentId, generation: h.generation, tabId: b.tabId });
       } else if (b.type === 'FAILED') {
         if (h.status === 'SEND' && ['CONTINUATION_TARGET_NOT_EMPTY', 'CONTINUATION_COMPOSER_NOT_EMPTY'].includes(b.error)) {

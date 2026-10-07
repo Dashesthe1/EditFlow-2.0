@@ -6,27 +6,34 @@ async function request(route, value) {
     headers: { 'content-type': 'application/json', 'x-editflow-actuator-id': chrome.runtime.id }, ...(value ? { body: JSON.stringify(value) } : {}) });
   const result = await response.json(); if (!response.ok) throw Error(result.error || 'SUPERVISOR_UNAVAILABLE'); return result;
 }
-async function attach(tabId) {
+async function bounded(operation, ms = 2000) {
+  let timer;
+  try { return await Promise.race([operation, new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Error('OBSERVER_TIMEOUT')), ms);
+  })]); } finally { clearTimeout(timer); }
+}
+async function attach(tabId, force = false) {
   try {
-    const reply = await chrome.tabs.sendMessage(tabId, { type: 'EDITFLOW_ACTUATOR_PING' });
+    if (force) throw Error('OBSERVER_REVALIDATE');
+    const reply = await bounded(chrome.tabs.sendMessage(tabId, { type: 'EDITFLOW_ACTUATOR_PING' }));
     if (reply?.version !== chrome.runtime.getManifest().version) throw Error('OBSERVER_VERSION_MISMATCH');
   }
-  catch (_) { await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] }); }
+  catch (_) { await bounded(chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] })); }
 }
 async function observe(target) {
   const tab = await chrome.tabs.get(target.tabId).catch(() => null);
   let state = 'UNKNOWN';
   let observation = { reason: 'PAGE_NOT_READY' };
-  if (!tab) { state = 'MISSING'; observation = { reason: 'TARGET_MISSING' }; }
+  if (!tab) { state = 'MISSING'; observation = { reason: 'TARGET_MISSING', observerHealthy: true, ownerVerified: target.deliveryConfirmed === true, processing: false }; }
   else if (tab.status === 'complete' && /^https:\/\/chatgpt\.com\//.test(tab.url || '')) {
     try {
-      await attach(tab.id);
-      const reply = await chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_STATUS', ...target });
-      if (['PROCESSING','FINISHED','UNKNOWN'].includes(reply?.state)) state = reply.state;
-      if (reply?.observation && typeof reply.observation === 'object') observation = reply.observation;
+      await attach(tab.id, target.repairObserver === true);
+      const reply = await bounded(chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_STATUS', ...target }));
+      if (['PROCESSING','FINISHED','EXPIRED','UNUSABLE','UNKNOWN'].includes(reply?.state)) state = reply.state;
+      if (reply?.observation && typeof reply.observation === 'object') observation = { ...reply.observation, revalidated: target.repairObserver === true };
     } catch { observation = { reason: 'OBSERVER_UNAVAILABLE' }; }
   }
-  await request('/actuator/ack', { type: 'WORKER_STATUS', ...target, state, observation });
+  await request('/actuator/ack', { type: 'WORKER_STATUS', ...target, state, observation, observedUrl: tab?.url });
 }
 async function execute() {
   if (busy) return; busy = true;
@@ -46,7 +53,7 @@ async function execute() {
       if (tab) {
         // Authority was revoked before this instruction. Stop failure cannot
         // block safe replacement, and no other conversation is inspected.
-        try { await attach(tab.id); await chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_STOP', expectedUrl: tab.url }); } catch (_) {}
+        try { await attach(tab.id); await bounded(chrome.tabs.sendMessage(tab.id, { type: 'EDITFLOW_ACTUATOR_STOP', expectedUrl: tab.url })); } catch (_) {}
         await chrome.tabs.remove(tab.id);
       }
       await request('/actuator/ack', { id: cmd.id, type: 'CLOSED' });
@@ -70,7 +77,7 @@ async function execute() {
         verifyOnly: cmd.command === 'VERIFY_DELIVERY' });
       if (!reply?.sent && cmd.command === 'VERIFY_DELIVERY') return;
       if (!reply?.sent) throw Error(reply?.error || 'SEND_NOT_CONFIRMED');
-      await request('/actuator/ack', { id: cmd.id, type: 'SENT', tabId: tab.id });
+      await request('/actuator/ack', { id: cmd.id, type: 'SENT', tabId: tab.id, observedUrl: reply.conversationUrl });
       await chrome.storage.local.set({ activeWorkerTabId: tab.id });
     }
   } catch (e) {

@@ -1,1 +1,1 @@
-{"name":"editflow-production-supervisor","version":"3.4.2","private":true,"type":"commonjs","scripts":{"test":"node --test *.test.js"}}
+{"name":"editflow-production-supervisor","version":"3.5.0","private":true,"type":"commonjs","scripts":{"test":"node --test *.test.js"}}

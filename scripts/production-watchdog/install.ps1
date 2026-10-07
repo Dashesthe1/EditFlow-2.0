@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $source = $PSScriptRoot
 $root = Join-Path $env:LOCALAPPDATA 'EditFlow2\chat-supervisor'
 $extension = Join-Path $env:USERPROFILE 'Downloads\chatgpt_phrase_monitor_chrome'
-$backup = Join-Path $root ('backup-supervisor-3-4-' + [DateTimeOffset]::UtcNow.ToString('yyyyMMdd-HHmmss'))
+$backup = Join-Path $root ('backup-supervisor-3-5-' + [DateTimeOffset]::UtcNow.ToString('yyyyMMdd-HHmmss'))
 New-Item $backup -ItemType Directory -Force | Out-Null
 New-Item (Join-Path $backup 'extension') -ItemType Directory -Force | Out-Null
 foreach ($file in @('supervisor.js','worker-prompt.js','continuation-notes.js','continuation-notes.json','transport-recovery.js','public-route-recovery.ps1','liveness.js','transport-health.js','repair-transport.ps1','guardian.ps1','recover-extension.ps1','state.json','production-state.json')) {
@@ -23,7 +23,7 @@ New-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Ed
 Start-Process powershell.exe -ArgumentList ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $guardian + '"') -WindowStyle Hidden
 $ready = $false
 for ($i=0; $i -lt 20; $i++) {
-  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '3.4.2' } catch {}
+  try { $health = Invoke-RestMethod 'http://127.0.0.1:32147/health' -TimeoutSec 1; $ready = $health.version -eq '3.5.0' } catch {}
   if ($ready) { break }; Start-Sleep -Milliseconds 500
 }
 if (-not $ready) { throw 'Supervisor did not start; backup: ' + $backup }

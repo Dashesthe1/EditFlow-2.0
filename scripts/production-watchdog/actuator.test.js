@@ -61,38 +61,43 @@ test('background reinjects a stale observer before operating on an existing tab'
   const context = vm.createContext({
     chrome: { tabs: { sendMessage: async () => ({ ok: true, version: '3.3.3' }) },
       scripting: { executeScript: async () => { injected++; } },
-      runtime: { id: 'test', getManifest: () => ({ version: '3.4.1' }), onStartup: { addListener() {} }, onInstalled: { addListener() {} } },
+      runtime: { id: 'test', getManifest: () => ({ version: '3.5.0' }), onStartup: { addListener() {} }, onInstalled: { addListener() {} } },
       alarms: { onAlarm: { addListener() {} }, clearAll: async () => {}, create: async () => {} } },
-    fetch: async () => ({ ok: true, json: async () => ({ command: 'NONE' }) }), setInterval() {},
+    fetch: async () => ({ ok: true, json: async () => ({ command: 'NONE' }) }), setInterval() {}, setTimeout, clearTimeout,
   });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8') + '\nglobalThis.attachForTest = attach;', context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'background.js'), 'utf8') + '\nglobalThis.attachForTest = attach; globalThis.boundedForTest = bounded;', context);
   await context.attachForTest(99); assert.equal(injected, 1);
-  context.chrome.tabs.sendMessage = async () => ({ ok: true, version: '3.4.1' });
+  context.chrome.tabs.sendMessage = async () => ({ ok: true, version: '3.5.0' });
   await context.attachForTest(99); assert.equal(injected, 1);
+  await assert.rejects(context.boundedForTest(new Promise(() => {}), 10), /OBSERVER_TIMEOUT/);
+  assert.equal(await context.boundedForTest(Promise.resolve('recovered'), 10), 'recovered');
 });
 
-async function observedState({ stop = false, final = false, generation = 4, afterUser = true, followUp = null, collapsed = false, accessibleFinal = false, credentialCollapsed = false, promptCollapsed = false, deliveryConfirmed = false } = {}) {
+async function observedState({ stop = false, final = false, generation = 4, afterUser = true, followUp = null, collapsed = false, accessibleFinal = false, credentialCollapsed = false, promptCollapsed = false, deliveryConfirmed = false, expectedUrl = 'https://chatgpt.com/c/owned', pageUrl = 'https://chatgpt.com/c/owned', noMessages = false, errorText = null, recovery = false, composer = true, historicalError = false, userError = false, busy = false, ready = true } = {}) {
   let listener;
-  const button = { isConnected: true, disabled: false, getClientRects: () => [1] };
+  const button = { isConnected: true, disabled: false, getClientRects: () => [1], getAttribute: () => '', textContent: 'Try again' };
   const bubble = { textContent: promptCollapsed ? 'Continue the Practice edit.' : 'assignment retained session retained-session' + (credentialCollapsed ? '' : ' ef-worker:' + generation + ':private'),
     compareDocumentPosition: () => afterUser ? 4 : 2 };
-  const users = [bubble];
+  const users = noMessages ? [] : [bubble];
   if (collapsed) users.push({ textContent: 'Continue Practice', compareDocumentPosition: bubble.compareDocumentPosition });
   if (followUp !== null) users.push({ textContent: followUp, compareDocumentPosition: bubble.compareDocumentPosition });
-  const turn = { querySelectorAll: selector => final || accessibleFinal && selector.includes('aria-label="Good response"') ? [button] : [] };
+  const turn = { querySelectorAll: selector => selector.includes('aria-busy') ? (busy ? [button] : []) : final || accessibleFinal && selector.includes('aria-label="Good response"') ? [button] : [] };
+  const errorNode = { ...button, textContent: errorText, querySelectorAll: () => recovery ? [button] : [],
+    closest: selector => selector.includes('user') ? (userError ? bubble : null) : historicalError ? {} : turn };
   const assistant = { closest: () => turn };
   const context = vm.createContext({
-    document: { querySelectorAll: selector => {
+    document: { readyState: ready ? 'complete' : 'loading', querySelector: () => composer ? button : null, querySelectorAll: selector => {
+      if (selector.includes('[role="alert"]')) return errorText ? [errorNode] : [];
       if (selector.includes('[data-user-message-bubble]')) return users;
       if (selector.includes('stop-button')) return stop ? [button] : [];
       if (selector.includes('[data-message-author-role="assistant"]')) return [assistant];
       return [];
     } },
-    chrome: { runtime: { onMessage: { addListener: fn => { listener = fn; } } } }, setTimeout,
+    location: { href: pageUrl }, chrome: { runtime: { onMessage: { addListener: fn => { listener = fn; } } } }, setTimeout,
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'content.js'), 'utf8'), context);
   return await new Promise(resolve => listener({ type: 'EDITFLOW_ACTUATOR_STATUS', assignmentId: 'retained',
-    sessionId: 'retained-session', generation: 4, deliveryConfirmed }, {}, resolve));
+    sessionId: 'retained-session', generation: 4, deliveryConfirmed, expectedUrl }, {}, resolve));
 }
 test('an owned processing turn reports only its state even if historical final controls exist', async () => {
   const result = await observedState({ stop: true, final: true });
@@ -151,4 +156,39 @@ test('verified tab delivery survives a completely collapsed continuation without
   for (const followUp of ['ef-worker:5:other', 'gpt-assignment:other', 'Continue and session other-session;']) {
     assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, followUp, stop: true, final: true })).state, 'UNKNOWN');
   }
+});
+
+test('expiry requires a current semantic error surface and disabled composer or recovery action', async () => {
+  assert.equal((await observedState({ errorText: 'This conversation has expired', recovery: true })).state, 'EXPIRED');
+  assert.equal((await observedState({ errorText: 'This conversation has expired', composer: false })).state, 'EXPIRED');
+  assert.equal((await observedState({ errorText: 'This conversation has expired' })).state, 'UNKNOWN');
+  assert.equal((await observedState({ errorText: 'This conversation has expired', recovery: true, stop: true })).state, 'PROCESSING');
+  assert.equal((await observedState({ errorText: 'This conversation has expired', recovery: true, busy: true })).state, 'PROCESSING');
+  for (const options of [{ historicalError: true }, { userError: true }, { generation: 3 }]) {
+    assert.equal((await observedState({ errorText: 'This conversation has expired', recovery: true, ...options })).state, 'UNKNOWN');
+  }
+});
+test('unknown UI carries positive idle evidence only when the owned shell is usable and loaded', async () => {
+  const idle = await observedState();
+  assert.equal(idle.observation.ownerVerified, true);
+  assert.equal(idle.observation.processing, false);
+  assert.equal(idle.observation.shellReady, true);
+  assert.equal((await observedState({ ready: false })).observation.shellReady, false);
+  assert.equal((await observedState({ composer: false })).observation.shellReady, false);
+  assert.equal((await observedState({ errorText: 'Something went wrong', recovery: true, composer: false })).state, 'UNUSABLE');
+  assert.equal((await observedState({ errorText: 'Something went wrong', recovery: true })).state, 'UNKNOWN');
+});
+
+test('delivery receipt cannot adopt a navigated foreign conversation with collapsed identity', async () => {
+  assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, final: true,
+    pageUrl: 'https://chatgpt.com/c/foreign' })).state, 'UNKNOWN');
+  assert.equal((await observedState({ promptCollapsed: true, deliveryConfirmed: true, final: true,
+    expectedUrl: null })).state, 'UNKNOWN');
+});
+
+test('an expiry overlay that removes message nodes needs the exact retained conversation URL', async () => {
+  const options = { noMessages: true, deliveryConfirmed: true, errorText: 'Your session has expired', composer: false };
+  assert.equal((await observedState(options)).state, 'EXPIRED');
+  assert.equal((await observedState({ ...options, pageUrl: 'https://chatgpt.com/c/foreign' })).state, 'UNKNOWN');
+  assert.equal((await observedState({ errorText: "You've reached the maximum length for this conversation", recovery: true })).state, 'EXPIRED');
 });
