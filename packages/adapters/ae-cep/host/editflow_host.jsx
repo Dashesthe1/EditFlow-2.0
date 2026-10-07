@@ -298,10 +298,17 @@
     if (payload.replaceKeys === true) while (property.numKeys > 0) property.removeKey(property.numKeys);
   }
   function textDocumentSnapshot(doc) {
-    return { text: doc.text, font: doc.font, fontSize: doc.fontSize, fillColor: doc.fillColor,
-      applyFill: doc.applyFill, applyStroke: doc.applyStroke, strokeColor: doc.strokeColor,
-      strokeWidth: doc.strokeWidth, tracking: doc.tracking, leading: doc.leading, autoLeading: doc.autoLeading,
-      justification: doc.justification === ParagraphJustification.CENTER_JUSTIFY ? "CENTER" : doc.justification === ParagraphJustification.RIGHT_JUSTIFY ? "RIGHT" : "LEFT" };
+    var snapshot = {}, unavailable = [], fields = ["text","font","fontSize","fillColor","applyFill","applyStroke","strokeColor","strokeWidth","tracking","leading","autoLeading"], i;
+    // AE throws for color getters when the corresponding fill/stroke is disabled.
+    // Optional readback must not turn an applied text edit into an unknown failure.
+    for (i = 0; i < fields.length; i++) {
+      try { snapshot[fields[i]] = doc[fields[i]]; }
+      catch (error) { snapshot[fields[i]] = null; unavailable.push(fields[i]); }
+    }
+    try { snapshot.justification = doc.justification === ParagraphJustification.CENTER_JUSTIFY ? "CENTER" : doc.justification === ParagraphJustification.RIGHT_JUSTIFY ? "RIGHT" : "LEFT"; }
+    catch (error) { snapshot.justification = null; unavailable.push("justification"); }
+    if (unavailable.length) snapshot.unavailableFields = unavailable;
+    return snapshot;
   }
   function setTextDocument(layer, input, payload) {
     var property = resolveProperty(layer, ["ADBE Text Properties", "ADBE Text Document"]);
@@ -516,10 +523,11 @@
   }
   function editPreflight(payload) {
     if (payload.expectedRevision !== app.project.revision) throw new Error("HOST_REVISION_MISMATCH: refresh the retained state.");
-    var operations = payload.operations, created = {}, deferred = [], i, op, p, layer, property, effects, effect;
+    var operations = payload.operations, deferred = [], i, op, p, layer, property, effects, effect;
     for (i = 0; i < operations.length; i += 1) {
       op = operations[i]; p = op.payload;
-      if (p.layer && p.layer.stableId && created[p.layer.stableId] || p.comp && p.comp.stableId && created[p.comp.stableId]) { deferred.push(i); }
+      try {
+      if (op.targetFromBatch === true) { deferred.push(i); }
       else if (op.command === "text.set_document" || op.command === "effect.set_property" || op.command.indexOf("property.") === 0) {
         layer = findLayer(findComp(p.comp), p.layer);
         if (op.command === "text.set_document") property = resolveProperty(layer,["ADBE Text Properties","ADBE Text Document"]);
@@ -533,8 +541,7 @@
         if (op.command === "property.set_expression" && !property.canSetExpression) throw new Error("Target cannot accept expressions.");
         if ((op.command === "text.set_document" || op.command === "effect.set_property" || op.command === "property.set_value") && property.numKeys > 0 && p.replaceKeys !== true) throw new Error("ANIMATED_PROPERTY: choose explicit keyframes or replaceKeys:true.");
       }
-      if (op.command === "comp.create" || op.command === "layer.add_text" || op.command === "layer.add_solid" || op.command === "layer.add_media" || op.command === "layer.duplicate") created[p.stableId] = true;
-      if (op.command === "effect.add" && p.layer && p.layer.stableId) created[p.layer.stableId] = true;
+      } catch (error) { throw new Error("PREFLIGHT_ACTION_" + i + " (" + op.command + "): " + String(error.message || error)); }
     }
     return {validatedOperations:operations.length,deferredTargets:deferred};
   }

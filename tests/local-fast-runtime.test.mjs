@@ -131,3 +131,41 @@ test("local fast runtime rejects oversized batches before any AE dispatch", asyn
   assert.equal(fake.requests.length, 0);
   assert.equal(fake.observes, 1);
 });
+
+test("preflight marks later references to newly created layers without skipping unrelated existing properties", async () => {
+  const fake = createFakeAdapter();
+  let operations;
+  fake.adapter.executePublicAtKnownHostRevision = async (command, request) => {
+    assert.equal(command, 'readback.object');
+    operations = request.payload.operations;
+    return {outcome:'NO_OP'};
+  };
+  const runtime = await LocalFastRuntimeV1.create(fake.adapter, {projectId:'local-fast-test'});
+  const comp={stableId:'COMP'}, existing={stableId:'EXISTING'}, fresh={stableId:'TEXT'};
+  const result = await runtime.runRoutineBatch([
+    {kind:'ADD_TEXT_LAYER',comp,stableId:fresh.stableId,text:'New'},
+    {kind:'SET_PROPERTY_VALUE',comp,layer:fresh,propertyPath:['ADBE Transform Group','ADBE Opacity'],value:50},
+    {kind:'ADD_EFFECT',comp,layer:existing,matchName:'ADBE Gaussian Blur 2'},
+    {kind:'SET_EFFECT_PROPERTY',comp,layer:existing,effectIndex:1,propertyPath:[1],value:2},
+    {kind:'SET_PROPERTY_VALUE',comp,layer:existing,propertyPath:['ADBE Transform Group','ADBE Opacity'],value:80},
+  ], 'TX_NEW_LAYER');
+  assert.deepEqual(operations.map(op=>op.targetFromBatch),[false,true,false,true,false]);
+  assert.equal(result.completedActions,5);
+  assert.equal(fake.observes,2);
+});
+
+test("interrupted native batches retain the host failure and completed action readbacks", async () => {
+  const fake = createFakeAdapter();
+  const dispatch = fake.adapter.transport.dispatch;
+  fake.adapter.transport.dispatch = async request => {
+    const response = await dispatch(request);
+    return fake.requests.length === 2 ? {...response,outcome:'FAILED',error:{code:'HOST',message:'Exact host error'}} : {...response,readback:{value:25}};
+  };
+  const runtime = await LocalFastRuntimeV1.create(fake.adapter, {projectId:'local-fast-test'});
+  const result = await runtime.runRoutineBatch(transformIntents(3),'TX_PARTIAL');
+  assert.equal(result.completedActions,1);
+  assert.equal(result.escalationDetail,'Exact host error');
+  assert.equal(result.readbacks[0].readback.value,25);
+  assert.equal(result.readbacks[1].error.message,'Exact host error');
+  assert.equal(fake.requests.length,2);
+});

@@ -23,6 +23,10 @@ are its components. Older workflows, selectors and fallback launchers are remove
    checks ownership, retains the decision/receipt and checkpoints committed batches.
    WORKFLOW_PLAN, workflowContext and READY research plans are optional memory.
    Explicit old plan bindings remain validated when a caller supplies them.
+   Routine submissions return completion, exact action readbacks, current revision
+   and checkpoint in the same call. Resume and job lists return compact summaries;
+   complete immutable decisions remain available by job ID or includeHistory=true.
+   Resume supplies a notebook index; retrieve the chosen complete method before use.
 4. Choose known constructions or adapt WORKED notebook methods directly. Research
    only unfamiliar or changed components, using Tutorial Drive -> Adobe -> web.
    SCAN/SOURCE/PLAN can retain detailed first-time learning without blocking editing.
@@ -31,14 +35,33 @@ are its components. Older workflows, selectors and fallback launchers are remove
    not block the queue on another resolve receipt. Use focused full-resolution
    checks for actual temporal, edge or matte defects. Final acceptance requires
    direct review of the full-resolution whole edit.
+   Use frameTimesMs for 1–12 exact still frames when motion/audio are irrelevant.
+   Unchanged preview requests reuse retained output after checking the current AE
+   revision, environment, comp, interval, resolution and output integrity. Use
+   forceRender:true to bypass reuse. Reuse does not imply visual acceptance.
 6. Save observed successes/failures and complete reusable methods at meaningful
    review/pass boundaries, handoff and completion. Optional WORKFLOW_REVIEW and
    telemetry records support diagnosis; they are not AE permission gates.
 
 Opaque/partial/failed writes still need readback-based reconciliation before replay.
+Partial native batches retain completed action readbacks and the exact host error.
+Their queue remains held for actual reconciliation. A known read-only preflight
+rejection is REJECTED, makes no AE writes and permits a corrected next request.
 Actual source changes, user cancellation and conflicting worker identities remain
 execution constraints. A committed batch stays SUCCEEDED even if its automatic AEP
 save fails; its checkpoint warning requires attention without replaying the edits.
+
+AE_BATCH includes text/solid creation, text document updates, property values,
+keyframes, expressions, effect property updates, layer/effect removal and exact
+READ_PROPERTY requests. Its internal preflight reads existing property targets
+before editing, while tracking dependencies on objects created by the same batch.
+Unsupported operations can still use reviewed opaque scripts with reconciliation.
+The same post-batch observation serves phase readback, checkpoint and returned
+current state. There is no separate GPT-managed proof/checkpoint sequence.
+
+Wall-clock stage-budget checks and forced STRATEGY_CHANGE acknowledgements are
+deleted. Explicit user pauses and finished assignments no longer produce stall
+alarms. Active diagnostics are advisory and cannot revoke a processing chat.
 
 ## Complete method and explicit transfer
 
@@ -97,5 +120,17 @@ The old standalone default-runner and routine-subsecond proof launchers are remo
 for both modes. Runtime/startup identity is `DIRECT_EDITING_V1`. The explicit batch
 executor remains a mechanical component of the queue, not a competing workflow.
 `scripts/direct-editing-live-proof.mjs` is an isolated acceptance lab for the actual
-production HTTP API, durable worker and real CEP/AE host. It requires an empty test
-project and separate state; it never reads a production worker credential.
+production HTTP API, durable worker and real CEP/AE host. It uses separate state
+and an empty isolated project; --preserve-project saves/restores a nonempty project.
+It never reads a production worker credential. --discard-previous-lab only closes
+a project whose every item has the lab marker; it refuses foreign project items.
+
+The 2026-10-07 Shadow acceptance run passed all 36 checks (18 per mode) using
+actual raw footage/audio, native text/solid/property/keyframe/expression edits,
+read-only rejection before writes, automatic checkpoints, full-resolution renders,
+preview reuse, exact PNG frames and service restart with retained receipts. AE was
+returned to its originally empty project and production remained paused unchanged.
+This tests execution and continuity on bounded one-second fixtures; it does not
+establish a finished edit's visual quality or a production speedup percentage.
+On the retained 99-job production queue, the default summary was 100,861 bytes
+versus 561,145 bytes for full history (82% smaller), with complete receipts retained.

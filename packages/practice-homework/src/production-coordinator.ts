@@ -106,9 +106,6 @@ export interface PracticeProductionCoordinatorSnapshotV1 {
   readonly lastWholeProofRef?: string | null;
   readonly wholeProofCandidateKey?: string | null;
   readonly certified?: boolean;
-  readonly strategyKey?: string;
-  readonly strategyChangedAt?: string;
-  readonly budgetBaselineMs?: Readonly<Partial<Record<PracticeProductionStageV1, number>>>;
   readonly workflow?: ProductionWorkflowStateV1;
 }
 

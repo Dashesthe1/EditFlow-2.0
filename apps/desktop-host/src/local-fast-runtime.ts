@@ -44,6 +44,7 @@ export interface LocalFastBatchResultV1 {
   readonly totalMs: number;
   readonly withinBudget: boolean;
   readonly escalationReason: string | null;
+  readonly escalationDetail: string | null;
   readonly hostRevision: number;
   readonly readbacks: readonly Readonly<Record<string, unknown>>[];
 }
@@ -126,6 +127,16 @@ export class LocalFastRuntimeV1 {
       throw new TypeError("LOCAL_FAST_BATCH_TRANSACTION_REQUIRED");
     }
     const compiled = validateRoutineBatchV1(intents);
+    const createdTargets = new Set<string>();
+    const layersWithNewEffects = new Set<string>();
+    const preflightOperations = compiled.map(action => {
+      const payload = action.payload as any;
+      const targetFromBatch = !!(createdTargets.has(payload.layer?.stableId) || createdTargets.has(payload.comp?.stableId)
+        || (action.command === "effect.set_property" && layersWithNewEffects.has(payload.layer?.stableId)));
+      if (["comp.create", "layer.add_text", "layer.add_solid", "layer.add_media", "layer.duplicate"].includes(action.command)) createdTargets.add(payload.stableId);
+      if (action.command === "effect.add" && payload.layer?.stableId) layersWithNewEffects.add(payload.layer.stableId);
+      return { command: action.command, payload, targetFromBatch };
+    });
     const started = this.clock();
     if (compiled.some(action => ["effect.set_property", "property.set_value", "property.set_keyframes", "property.set_expression", "text.set_document", "layer.add_text"].includes(action.command))) {
       // One read-only host preflight, under the production writer, before any edit.
@@ -133,7 +144,7 @@ export class LocalFastRuntimeV1 {
       const client = this.session.runner.client;
       const response = await client.executePublicAtKnownHostRevision("readback.object", {
         transactionId, operationId: transactionId + ":preflight", expectedHostProjectRevision: null,
-        payload: { kind: "EDIT_PREFLIGHT", expectedRevision: this.session.runner.hostRevision, operations: compiled.map(action => ({command:action.command,payload:action.payload})) },
+        payload: { kind: "EDIT_PREFLIGHT", expectedRevision: this.session.runner.hostRevision, operations: preflightOperations },
       });
       if (response.outcome === "FAILED" || response.outcome === "REJECTED") throw new ProductionNoWriteErrorV1("BATCH_NOT_APPLIED: " + (response.error?.message ?? response.outcome));
     }
@@ -144,7 +155,7 @@ export class LocalFastRuntimeV1 {
     const maxActionMs = actionTimings.length > 0 ? Math.max(...actionTimings) : 0;
     const meanActionMs = actionTimings.length > 0 ? actionTimings.reduce((sum, value) => sum + value, 0) / actionTimings.length : 0;
     return {
-      readbacks: result.actions.map(action => ({ command: action.decision?.command, outcome: action.response?.outcome, readback: action.response?.readback, hostRevision: action.hostRevision })),
+      readbacks: result.actions.map(action => ({ command: action.decision?.command, outcome: action.response?.outcome, readback: action.response?.readback, error: action.response?.error, hostRevision: action.hostRevision })),
       runtime: LOCAL_FAST_RUNTIME_VERSION,
       transactionId,
       requestedActions: intents.length,
@@ -159,6 +170,7 @@ export class LocalFastRuntimeV1 {
       totalMs,
       withinBudget: result.withinBudget && totalMs <= this.totalBudgetMs,
       escalationReason: result.escalationReason,
+      escalationDetail: result.escalationDetail,
       hostRevision: result.hostRevision,
     };
   }

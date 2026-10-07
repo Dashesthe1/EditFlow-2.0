@@ -34,7 +34,7 @@ try {
   await broker.start();
   await broker.waitForPanel(15000);
   const initial = await observed.observe();
-  if (initial.project.itemCount > 0) {
+  if (initial.project.itemCount > 0 && !process.argv.includes("--discard-previous-lab")) {
     assert.ok(process.argv.includes('--preserve-project'), 'Nonempty project requires explicit preservation');
     const projectPath = initial.project.filePath || path.join(root, 'retained-production-project.aep');
     const saver = new AeCepAdapterClientV11(broker, () => 'lab-preserve-' + (++readCounter), new AeFilesystemPolicyV11([path.dirname(projectPath)]));
@@ -117,6 +117,14 @@ try {
       await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:restore.jobId,claimedBy:owner,reviewEvidenceRef:restoredPath});
       report.checks.originalProjectRestored=true;
     };
+    if (initial.project.itemCount > 0 && process.argv.includes('--discard-previous-lab') && !labOpened) {
+      const cleanupPath='scripts/windows/direct-editing-lab-cleanup.jsx';
+      const cleanup=await queue(packet('PROOF_SCRIPT','discard-previous-isolated-lab',{scriptPath:cleanupPath,scriptSha256:createHash('sha256').update(await readFile(path.join(repo,cleanupPath))).digest('hex')}));
+      const cleaned=await wait(cleanup.jobId);assert.equal(cleaned.status,'REVIEW_REQUIRED',JSON.stringify(cleaned));
+      const empty=await observed.observe();assert.equal(empty.project.itemCount,0);labOpened=true;
+      const emptyPath=path.join(root,'previous-lab-empty.json');await writeFile(emptyPath,JSON.stringify(empty,null,2));
+      await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:cleanup.jobId,claimedBy:owner,reviewEvidenceRef:emptyPath});
+    }
     if (originalProject && !labOpened) {
       const job = await queue(packet('PROOF_SCRIPT','save-and-enter-isolated-lab',{scriptPath:originalProject.beginScript,
         scriptSha256:createHash('sha256').update(await readFile(path.join(repo,originalProject.beginScript))).digest('hex')}));

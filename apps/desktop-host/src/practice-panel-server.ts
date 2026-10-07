@@ -720,8 +720,9 @@ export class PracticePanelServerV1 {
           const runtime = await this.#ensureFastRuntime();
           const result = job.kind === "AE_GOAL" ? await runtime.runGoal(body.goal, body.transactionId ?? job.jobId)
             : await runtime.runRoutineBatch(body.intents, body.transactionId ?? job.jobId);
-          if (job.kind === "AE_BATCH" && result.completedActions !== body.intents.length) throw new Error("Queued AE batch stopped before every authorized action completed; reconcile actual state.");
-          return { result: { ...result, state: result.escalationReason ? "REVIEW_REQUIRED" : "COMMITTED" }, reviewRequired: !!result.escalationReason };
+          const incomplete = job.kind === "AE_BATCH" && result.completedActions !== body.intents.length;
+          // Keep partial receipts: an interrupted batch needs actual readback, never blind replay.
+          return { result: { ...result, state: incomplete || result.escalationReason ? "REVIEW_REQUIRED" : "COMMITTED" }, reviewRequired: incomplete || !!result.escalationReason };
         }
         if (job.kind === "PROOF_SCRIPT") {
           const response = await this.#dispatchWorkerProofScript(requiredString(body, "scriptPath"), job.jobId);
