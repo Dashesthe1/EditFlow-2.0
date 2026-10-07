@@ -101,7 +101,7 @@ test('real supervisor HTTP handoff closes before creating, survives restart, and
   assert.equal(f.actions.filter(x => x === 'REVOKE').length, 1);
   assert.equal((await f.health()).activeTabId, 100);
 });
-test('observer repair cannot enter revoke or interrupt path and ACKs require exact session', async t => {
+test('UNKNOWN repair before timeout does not revoke, and ACKs require exact session', async t => {
   const f = await fixture(t);
   await f.observe('UNKNOWN', { reason: 'NO_FINAL_CONTROLS', processing: false });
   const repair = await until(async () => { const c = await f.command(); return c.observe?.repairObserver && c; });
@@ -112,6 +112,37 @@ test('observer repair cannot enter revoke or interrupt path and ACKs require exa
     ownerVerified: true, observerHealthy: true, processing: true, revalidated: true, reason: 'OWNED_PROCESSING' } });
   await until(async () => (await f.health()).reason === 'owned_chat_processing');
   assert.deepEqual(f.actions, []);
+});
+test('UNKNOWN observer failure stops at 30 seconds, drains accepted work, then creates one new chat', async t => {
+  const f = await fixture(t);
+  await f.observe('UNKNOWN', { reason: 'OBSERVER_UNAVAILABLE', observerHealthy: false,
+    ownerVerified: false, shellReady: false, processing: false });
+  await until(async () => (await f.health()).reason === 'owned_chat_unknown');
+  const initial = await f.health();
+  assert.equal(initial.policy.unknownResolveMs, 30000);
+  const started = initial.livenessDiagnostics.unknownSince;
+  assert.ok(initial.livenessDiagnostics.unknownReplacementInMs <= 30000);
+  f.jobs.push({ status: 'RUNNING', heartbeatAt: new Date().toISOString() });
+  f.production.strategyKey = 'progress-does-not-reset-unknown';
+  f.production.workerHeartbeatAt = new Date().toISOString();
+  f.production.inFlightOperation = 'GPT_WEB:research';
+  await delay(29000);
+  assert.equal((await f.command()).command, 'NONE'); assert.deepEqual(f.actions, []);
+  const close = await until(async () => { const c = await f.command(); return c.command === 'STOP_CLOSE' && c; }, 7000);
+  assert.ok(Date.now() - started >= 30000);
+  assert.equal(close.tabId, 99); assert.deepEqual(f.actions, ['REVOKE']);
+  await f.ack({ id: close.id, type: 'CLOSED' });
+  assert.equal((await f.command()).command, 'NONE');
+  assert.equal(f.actions.includes('ISSUE'), false);
+  f.jobs[0].status = 'SUCCEEDED';
+  const create = await until(async () => { const c = await f.command(); return c.command === 'CREATE' && c; });
+  await f.ack({ id: create.id, type: 'CREATED', tabId: 100 });
+  const send = await f.command(); assert.equal(send.command, 'SEND');
+  assert.match(send.prompt, /gpt-assignment:acceptance/); assert.match(send.prompt, /practice:acceptance/);
+  await f.ack({ id: send.id, type: 'SENT', tabId: 100 });
+  await until(async () => !(await f.health()).handoff);
+  assert.deepEqual(f.actions, ['REVOKE', 'ISSUE']);
+  assert.equal((await f.health()).activeTabId, 100);
 });
 test('a new accepted render at final handoff recheck prevents revocation', async t => {
   const f = await fixture(t);

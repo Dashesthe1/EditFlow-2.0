@@ -40,25 +40,59 @@ test('unusable error requires 15 seconds; normal finished response requires one 
     assert.equal(v.action, 'HANDOFF'); assert.equal(v.elapsed, duration);
   }
 });
-test('unknown resolves after observer reinjection and repeated positive idle evidence', () => {
+test('UNKNOWN waits the full 30 seconds, then replaces without shell or revalidation gates', () => {
   const s = snapshot({ chatExecution: observation('UNKNOWN') });
-  let revalidated = false;
-  const v = simulate(s, 90000, (s, at, elapsed) => {
-    if (elapsed === 3000) revalidated = true;
-    s.chatExecution.observation.revalidated = revalidated;
-  });
-  assert.equal(v.action, 'HANDOFF'); assert.equal(v.elapsed, 60000);
-  assert.equal(v.reason, 'confirmed_owned_chat_unresponsive');
+  let v = evaluateLiveness({}, s, now);
+  assert.equal(v.action, 'REOBSERVE'); assert.equal(POLICY.unknownResolveMs, 30000);
+  v = evaluateLiveness(v.next, s, now + 29999); assert.notEqual(v.action, 'HANDOFF');
+  v = evaluateLiveness(v.next, s, now + 30000);
+  assert.equal(v.action, 'HANDOFF'); assert.equal(v.reason, 'confirmed_owned_chat_unknown');
 });
-test('unknown without revalidation requests repair, never replacement', () => {
-  const v = simulate(snapshot({ chatExecution: observation('UNKNOWN') }), 600000);
-  assert.equal(v.action, 'REOBSERVE'); assert.equal(v.next.observerRepairRequested, true);
-});
-test('unavailable or unfamiliar observer never supplies a negative proof of life', () => {
+test('UNKNOWN timer includes observer failures, unusable shells and missing prompt identity', () => {
   for (const o of [{ observerHealthy: false }, { ownerVerified: false }, { shellReady: false },
-    { reason: 'OBSERVER_UNAVAILABLE' }, { reason: 'OWNER_PROMPT_NOT_FOUND' }, { processing: undefined }]) {
-    const chat = observation('UNKNOWN'); chat.observation = { ...chat.observation, revalidated: true, ...o };
-    assert.equal(simulate(snapshot({ chatExecution: chat }), 600000).action, 'REOBSERVE');
+    { reason: 'OBSERVER_UNAVAILABLE' }, { reason: 'OWNER_PROMPT_NOT_FOUND' }, { processing: undefined },
+    { reason: 'NO_CURRENT_ASSISTANT', shellReady: false, composerUsable: false }, { processing: true }]) {
+    const chat = observation('UNKNOWN'); chat.observation = { ...chat.observation, ...o };
+    const v = simulate(snapshot({ chatExecution: chat }), 30000);
+    assert.equal(v.action, 'HANDOFF'); assert.equal(v.elapsed, 30000);
+  }
+});
+test('UNKNOWN countdown is independent of startup, activity, decision leases and semantic progress', () => {
+  const s = snapshot({ chatExecution: observation('UNKNOWN'), authority: { issuedAt: now, lastActivityAt: 0 } });
+  const v = simulate(s, 30000, (s, at, elapsed) => {
+    s.authority.lastActivityAt = at;
+    s.production.inFlightOperation = 'GPT_WEB:research';
+    s.production.workerHeartbeatAt = new Date(at).toISOString();
+    s.production.strategyKey = String(elapsed);
+  });
+  assert.equal(v.action, 'HANDOFF'); assert.equal(v.elapsed, 30000);
+});
+test('UNKNOWN stops the worker at 30 seconds even with an accepted job retained for draining', () => {
+  const s = snapshot({ chatExecution: observation('UNKNOWN'), writerOwner: 'retained',
+    jobs: [{ status: 'RUNNING', kind: 'AE_BATCH' }] });
+  const v = simulate(s, 30000, (s, at) => { s.jobs[0].heartbeatAt = new Date(at).toISOString(); });
+  assert.equal(v.action, 'HANDOFF'); assert.equal(v.elapsed, 30000);
+});
+test('recovery clears UNKNOWN countdown, and a later UNKNOWN starts a new full wait', () => {
+  const s = snapshot({ chatExecution: observation('UNKNOWN') });
+  let v = evaluateLiveness({}, s, now);
+  s.chatExecution = observation('PROCESSING', now + 29000);
+  v = evaluateLiveness(v.next, s, now + 29000);
+  assert.equal(v.next.unknownSince, 0); assert.equal(v.phase, 'PROCESSING');
+  s.chatExecution = observation('UNKNOWN', now + 30000);
+  v = evaluateLiveness(v.next, s, now + 30000);
+  assert.equal(v.next.unknownSince, now + 30000);
+  v = evaluateLiveness(v.next, s, now + 59999); assert.notEqual(v.action, 'HANDOFF');
+  v = evaluateLiveness(v.next, s, now + 60000); assert.equal(v.action, 'HANDOFF');
+});
+test('UNKNOWN countdown cannot transfer across session, tab, assignment or generation', () => {
+  for (const patch of [{tabId: 100}, {generation: 3}, {assignmentId: 'other'}, {sessionId: 'other'},
+    {checkedAt: now + 30001}, {checkedAt: now - POLICY.chatStatusFreshMs - 1}]) {
+    const s = snapshot({ chatExecution: observation('UNKNOWN') });
+    let v = evaluateLiveness({}, s, now);
+    s.chatExecution = observation('UNKNOWN', now + 30000, patch);
+    v = evaluateLiveness(v.next, s, now + 30000);
+    assert.notEqual(v.action, 'HANDOFF'); assert.equal(v.next.unknownSince, 0);
   }
 });
 test('ten-minute reasoning and browsing retain workers despite stale heartbeat and budgets', () => {
@@ -70,8 +104,8 @@ test('ten-minute reasoning and browsing retain workers despite stale heartbeat a
     assert.equal(v.next.progressSeq, 1);
   }
 });
-test('fresh decision and authenticated activity leases protect even a terminal/unknown observation', () => {
-  for (const state of ['UNKNOWN', 'EXPIRED', 'FINISHED', 'MISSING']) {
+test('fresh decision and authenticated activity leases protect terminal observations', () => {
+  for (const state of ['EXPIRED', 'FINISHED', 'MISSING']) {
     const s = snapshot({ chatExecution: observation(state) });
     let v = simulate(s, 600000, (s, at) => {
       s.production.workerHeartbeatAt = new Date(at).toISOString(); s.production.inFlightOperation = 'GPT_WEB:research';
@@ -120,7 +154,7 @@ test('processing resumes and clears all terminal suspicion', () => {
 });
 test('pause, cancel and completion precede every liveness lease in both modes', () => {
   for (const mode of ['PRACTICE', 'PRO_CREATION']) {
-    const s = snapshot({ assignment: { mode }, chatExecution: observation('EXPIRED') });
+    const s = snapshot({ assignment: { mode }, chatExecution: observation('UNKNOWN') });
     s.authority.state = 'PAUSED'; assert.equal(simulate(s, 600000).phase, 'PAUSED');
     s.assignment.status = 'CANCEL_REQUESTED'; assert.equal(evaluateLiveness({}, s, now).action, 'CANCEL');
     s.assignment.status = 'COMPLETED'; assert.equal(evaluateLiveness({}, s, now).phase, 'IDLE');

@@ -1,4 +1,4 @@
-# EditFlow Production Supervisor 3.6.1
+# EditFlow Production Supervisor 3.6.2
 
 Practice and Pro Creation share one local supervisor and one gateway worker authority.
 The supervisor starts at Windows sign-in and arms automatically when the gateway
@@ -23,7 +23,7 @@ credentials redacted; they must not be mistaken for host permission denials.
 Liveness uses four renewable signals: owned browser processing, authenticated
 EditFlow activity (10 seconds), GPT decision/research heartbeat (180 seconds),
 and healthy accepted queue operations (180-second heartbeat grace). A valid
-signal protects the worker. Quiet stages and repeated requests remain diagnostics.
+signal protects the worker unless its owned chat reports UNKNOWN. Quiet stages and repeated requests remain diagnostics.
 No token estimate, stage budget or absence of tool calls authorizes cancellation.
 
 The actuator checks only the exact assignment/session/generation and owned tab.
@@ -35,16 +35,23 @@ composer or recovery action. Ordinary messages and historical errors are exclude
 Unusable errors require an unusable composer and a recovery action. Collapsed
 identity requires a verified send receipt bound to the same conversation URL.
 
-| Owned browser evidence, with no valid work lease | Decision |
+| Owned browser evidence | Decision |
 | --- | --- |
-| EXPIRED or MISSING | At least two fresh observations spanning 3 seconds |
-| UNUSABLE | At least two fresh observations spanning 15 seconds |
-| FINISHED | At least two fresh observations spanning 60 seconds |
-| UNKNOWN, usable recognized shell and positively idle | Reinject observer, then at least three observations spanning 60 seconds |
-| Unavailable observer, unrecognized shell, missing ownership or stale data | Repair/reobserve; no revocation from missing evidence |
+| EXPIRED or MISSING, no valid work lease | At least two fresh observations spanning 3 seconds |
+| UNUSABLE, no valid work lease | At least two fresh observations spanning 15 seconds |
+| FINISHED, no valid work lease | At least two fresh observations spanning 60 seconds |
+| UNKNOWN for the exact assignment/session/generation/tab | Start a 30-second countdown, then revoke and stop/close; drain accepted work before creating one new chat |
+| Foreign target or stale data | Repair/reobserve; never replace a different worker |
+
+UNKNOWN includes unrecognized or unusable shells, missing prompt nodes and observer
+errors. Observer reinjection runs during the countdown and cannot reset it. Startup,
+activity leases, decision heartbeats and semantic progress cannot extend the wait.
+A reported state change clears the countdown; a later UNKNOWN starts a new wait.
+The health diagnostics expose unknownSince and unknownReplacementInMs. Pause,
+cancel and completion take precedence, and service restart requires fresh evidence.
 
 These are confirmation times, not guaranteed end-to-end replacement times. Fresh
-activity or an accepted job can defer handoff. The supervisor rechecks gateway
+activity or an accepted job can defer terminal-state handoff. The supervisor rechecks gateway
 state immediately before revocation. Handoff remains durable revoke -> stop/close
 -> drain -> issue -> create -> send, with the same assignment and accepted receipts.
 Observer recovery is separate from queue/gateway interruption; failed page probes
@@ -52,11 +59,12 @@ have a two-second timeout so they cannot wedge the actuator. Read-only observati
 continues while paused; a pause never authorizes automatic handoff. Service restarts
 clear confirmation samples and acquire new evidence.
 
-A working DOM observer can confirm an idle unknown chat. An unreadable/frozen
-observer cannot prove that hidden reasoning stopped, and an unchanged Stop control
-cannot distinguish healthy thinking from a stuck backend. Those cases remain
-observer recovery/processing until positive evidence becomes available. This is a
-browser-supervision limitation, not an exact ChatGPT token or backend health API.
+The UNKNOWN timeout is the user's replacement policy, not proof that hidden
+reasoning has stopped. A fresh PROCESSING report keeps its normal protection.
+The old generation is revoked before stop/close, and accepted queue jobs retain
+their receipts and finish before a replacement worker is issued. Transport recovery
+may delay creation/sending; it does not extend the UNKNOWN stop countdown when the
+gateway and actuator remain available.
 
 Healthy queue heartbeats protect long operations beyond wall-clock budgets. Lost
 queue heartbeats require three minutes before reconciliation. Infrastructure failures

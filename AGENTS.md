@@ -88,12 +88,15 @@ The supervisor protects an exact owned processing chat, fresh authenticated acti
 fresh GPT decision leases and healthy queue operations. Stage budgets/repeated
 requests are diagnostics. Explicit expiry/missing tabs require two fresh observations
 over at least three seconds; unusable errors wait 15 seconds; a finished owned
-response waits one minute. Idle UNKNOWN resolution requires the exact session/tab/
-generation, recognized usable shell, no processing, observer reinjection and repeated
-fresh observations over one minute. Missing/unreadable observer evidence triggers
-repair without revocation. Confirmation IDs cannot be replayed. Recheck queue work
-and authority before automatic handoff. Preserve explicit pause and assignment IDs;
-maintenance never resumes production. Healthy queue heartbeats protect long jobs.
+response waits one minute. Any fresh UNKNOWN report for the exact assignment/session/
+generation/tab starts a 30-second countdown, including unusable shells and observer
+failures. Reinjection, startup, fresh activity, decision leases and semantic progress
+cannot reset that countdown. A reported state change clears it. At timeout revoke
+and stop/close the old chat, then drain accepted work before issuing and creating
+one replacement. Foreign/stale observations cannot replace another worker.
+Confirmation IDs cannot be replayed. Recheck authority before automatic handoff.
+Preserve explicit pause, cancellation, completion and assignment IDs; maintenance
+never resumes production. Healthy queue heartbeats protect known non-UNKNOWN chats.
 
 Supervisor continuations contain goals and execution rules, not an old shot-task
 backlog. Current AE state and receipts establish what changed; direct review

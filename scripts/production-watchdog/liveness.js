@@ -17,15 +17,14 @@ const POLICY = Object.freeze({
   confirmMs: 0,
   terminalConfirmMs: 3000,
   unusableConfirmMs: 15000,
-  unknownResolveMs: 60000,
+  unknownResolveMs: 30000,
   activityLeaseMs: 10000,
   minimumObservations: 2,
-  unknownObservations: 3,
   startupMs: 8 * 60000,
   heartbeatMs: 20000,
   operationHeartbeatGraceMs: 180000,
   chatStatusFreshMs: 45000,
-  handoffEvidence: 'OWNED_TERMINAL_OR_REVALIDATED_IDLE_WITHOUT_LIVE_LEASE',
+  handoffEvidence: 'OWNED_UNKNOWN_TIMEOUT_OR_CONFIRMED_TERMINAL',
   activeChatTimeoutHandoff: false,
   decisionHeartbeatMs: 180000,
   noProgressMs: 30 * 60000,
@@ -120,14 +119,15 @@ function operationFailure(snapshot, now, policy = POLICY) {
 function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   const next = { ...previous };
   const result = (phase, reason, action = "NONE") => ({ next, phase, reason, action });
+  const clearUnknown = () => { next.unknownSince = 0; next.unknownTarget = null; };
   if (!snapshot) return result("INFRA_RECOVERY", "gateway_unavailable", "REPAIR");
 
   const a = snapshot.authority || {};
   const task = snapshot.assignment;
   const p = snapshot.production || {};
-  if (!task || ["COMPLETED", "CANCELLED"].includes(task.status)) return result("IDLE", "assignment_terminal");
-  if (task.cancelRequestedAt || task.status === "CANCEL_REQUESTED") return result("CANCELLING", "user_cancel", "CANCEL");
-  if (a.state === "PAUSED") return result("PAUSED", "user_pause");
+  if (!task || ["COMPLETED", "CANCELLED"].includes(task.status)) { clearUnknown(); return result("IDLE", "assignment_terminal"); }
+  if (task.cancelRequestedAt || task.status === "CANCEL_REQUESTED") { clearUnknown(); return result("CANCELLING", "user_cancel", "CANCEL"); }
+  if (a.state === "PAUSED") { clearUnknown(); return result("PAUSED", "user_pause"); }
   if (task.status === "FAILED") return result("RECOVERING", "assignment_failed_checkpoint_retained", "RECOVER_FAILED");
 
   const key = semanticKey(snapshot);
@@ -140,6 +140,31 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
     next.loopBaselineAt = now;
     next.progressSeq = (next.progressSeq || 0) + 1;
   }
+
+  const chat = snapshot.chatExecution || {};
+  const owned = Number.isInteger(snapshot.activeTabId) && chat.tabId === snapshot.activeTabId
+    && chat.generation === a.generation && chat.assignmentId === task.assignmentId
+    && chat.sessionId === task.sessionId;
+  const fresh = owned && Number.isFinite(chat.checkedAt) && chat.checkedAt > 0
+    && chat.checkedAt <= now && now - chat.checkedAt <= policy.chatStatusFreshMs;
+  // User policy: any UNKNOWN report for the exact delivered worker starts a
+  // 30-second countdown, including unreadable shells and observer failures.
+  // Startup, progress, decision leases and accepted work do not reset it.
+  // Handoff revokes/closes first, then drains accepted jobs before replacement.
+  if (a.state === "ARMED" && fresh && chat.state === "UNKNOWN") {
+    next.suspectAt = 0; next.suspectReason = null; next.observations = 0;
+    next.lastObservationAt = 0; next.lastObservationId = null;
+    const target = JSON.stringify([task.assignmentId, task.sessionId, a.generation, chat.tabId]);
+    if (next.unknownTarget !== target || !Number.isFinite(next.unknownSince) || next.unknownSince <= 0) {
+      next.unknownTarget = target; next.unknownSince = now;
+    }
+    next.observerRepairRequested = true;
+    if (now - next.unknownSince >= policy.unknownResolveMs) {
+      return result("STALLED", "confirmed_owned_chat_unknown", "HANDOFF");
+    }
+    return result("VERIFYING", "owned_chat_unknown", "REOBSERVE");
+  }
+  clearUnknown();
 
   const jobs = (snapshot.jobs || []).filter(x => x.status === "RUNNING");
   const failure = operationFailure(snapshot, now, policy);
@@ -161,12 +186,6 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   next.repeatedActionWarning = [...groups.values()].some(count => count >= policy.loopCount);
   const progressAt = next.progressAt || Math.max(validTime(p.lastProgressAt), a.issuedAt || 0, now);
   next.stageBudgetWarning = now - progressAt >= noProgressLimit(snapshot, policy);
-  const chat = snapshot.chatExecution || {};
-  const owned = Number.isInteger(snapshot.activeTabId) && chat.tabId === snapshot.activeTabId
-    && chat.generation === a.generation && chat.assignmentId === task.assignmentId
-    && chat.sessionId === task.sessionId;
-  const fresh = owned && Number.isFinite(chat.checkedAt) && chat.checkedAt > 0
-    && chat.checkedAt <= now && now - chat.checkedAt <= policy.chatStatusFreshMs;
   const reset = () => {
     next.suspectAt = 0; next.suspectReason = null; next.observations = 0;
     next.lastObservationAt = 0; next.lastObservationId = null;
@@ -193,12 +212,7 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
       && (o.composerUsable === false || o.recoveryAction === true)
     || chat.state === "UNUSABLE" && o.reason === "OWNED_UNUSABLE" && o.terminalSurface === true
       && o.composerUsable === false && o.recoveryAction === true);
-  // UNKNOWN is actionable only after a functioning observer positively recognizes
-  // the owned conversation shell and reports no active generation. Transport/DOM
-  // failures cannot provide this evidence and instead repair the observer.
-  const idleUnknown = healthy && chat.state === "UNKNOWN" && o.shellReady === true
-    && o.processing === false && ["NO_CURRENT_ASSISTANT", "NO_FINAL_CONTROLS"].includes(o.reason);
-  if (!terminal && !idleUnknown) {
+  if (!terminal) {
     reset(); next.observerRepairRequested = true;
     return startup ? result("HEALTHY", "worker_startup_grace")
       : result("OBSERVER_RECOVERY", "owned_chat_observer_requires_revalidation", "REOBSERVE");
@@ -206,7 +220,7 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   if (startup && !["EXPIRED", "UNUSABLE", "MISSING"].includes(chat.state)) {
     reset(); return result("HEALTHY", "worker_startup_grace");
   }
-  const reason = "owned_chat_" + (idleUnknown ? "unresponsive" : chat.state.toLowerCase());
+  const reason = "owned_chat_" + chat.state.toLowerCase();
   const gap = next.lastObservationAt && chat.checkedAt - next.lastObservationAt > policy.chatStatusFreshMs;
   if (next.suspectReason !== reason || next.suspectGeneration !== a.generation
     || next.suspectTabId !== chat.tabId || gap) {
@@ -218,15 +232,12 @@ function evaluateLiveness(previous, snapshot, now, policy = POLICY) {
   if (chat.observationId && chat.observationId !== next.lastObservationId && chat.checkedAt > next.lastObservationAt) {
     next.observations = (next.observations || 0) + 1;
     next.lastObservationAt = chat.checkedAt; next.lastObservationId = chat.observationId;
-    if (idleUnknown && o.revalidated === true) next.observerRevalidatedAt = chat.checkedAt;
   }
-  next.observerRepairRequested = idleUnknown && !next.observerRevalidatedAt;
-  const duration = idleUnknown ? policy.unknownResolveMs : chat.state === "FINISHED"
+  next.observerRepairRequested = false;
+  const duration = chat.state === "FINISHED"
     ? policy.quietMs + policy.confirmMs : chat.state === "UNUSABLE" ? policy.unusableConfirmMs : policy.terminalConfirmMs;
-  const count = idleUnknown ? policy.unknownObservations : policy.minimumObservations;
-  if (now - next.suspectAt < duration || next.observations < count
-    || idleUnknown && !next.observerRevalidatedAt) {
-    return result("VERIFYING", reason, next.observerRepairRequested ? "REOBSERVE" : "NONE");
+  if (now - next.suspectAt < duration || next.observations < policy.minimumObservations) {
+    return result("VERIFYING", reason);
   }
   return result("STALLED", "confirmed_" + reason, "HANDOFF");
 

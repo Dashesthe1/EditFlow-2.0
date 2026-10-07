@@ -24,7 +24,8 @@ const bootAt = Date.now();
 let chatExecution = null, observationTarget = null;
 // Confirmation samples never survive a service restart without fresh observations.
 state.liveness = { ...state.liveness, suspectAt: 0, suspectReason: null, observations: 0,
-  lastObservationAt: 0, lastObservationId: null, observerRepairRequested: false, observerRevalidatedAt: 0 };
+  lastObservationAt: 0, lastObservationId: null, observerRepairRequested: false, observerRevalidatedAt: 0,
+  unknownSince: 0, unknownTarget: null };
 let snapshot = null, tickBusy = false, lastGatewayAt = 0, gatewayError = null;
 const testTransportUrl = path.resolve(ROOT) !== path.resolve(__dirname) ? process.env.EDITFLOW_SUPERVISOR_TEST_TRANSPORT_URL : null;
 if (testTransportUrl && new URL(testTransportUrl).hostname !== '127.0.0.1') throw Error('TEST_TRANSPORT_MUST_BE_LOOPBACK');
@@ -71,6 +72,9 @@ function livenessDiagnostics(now = Date.now()) {
     decisionOperation: lease.operation,
     decisionLeaseAgeMs: lease.ageMs,
     chatState: chatExecution?.state || 'UNKNOWN',
+    unknownSince: state.liveness.unknownSince || null,
+    unknownReplacementInMs: state.liveness.unknownSince
+      ? Math.max(0, POLICY.unknownResolveMs - (now - state.liveness.unknownSince)) : null,
     leases: state.liveness.leases || null,
     confirmationObservations: state.liveness.observations || 0,
     observerRepairRequested: !!state.liveness.observerRepairRequested,
@@ -206,8 +210,7 @@ async function tick() {
         log('cancellation_completed', { assignmentId: snapshot.assignment.assignmentId });
       }
     } else if (verdict.action === 'REOBSERVE') {
-      // Content reinjection is requested via the actuator; observer failure never
-      // enters the backend INTERRUPT/REVOKE infrastructure repair path.
+      // Reinject while the UNKNOWN countdown runs; repair does not reset it.
       if (chatExecution?.observation?.reason === 'OBSERVER_UNAVAILABLE') repair('actuator_offline');
     } else if (verdict.action === 'REPAIR') {
       if (snapshot.authority.state === 'ARMED') await gateway({ action: 'REVOKE', assignmentId: snapshot.assignment.assignmentId,
@@ -219,7 +222,7 @@ async function tick() {
       await beginHandoff(verdict.reason);
     } else if (state.handoff) await progressHandoff();
     else if (verdict.action === 'HANDOFF') {
-      if (!transport.state().ready) { state.phase = 'CONNECTOR_RECOVERY'; state.reason = 'mcp_transport_unavailable'; recoverTransport(); persist(); return; }
+      if (!transport.state().ready && verdict.reason !== 'confirmed_owned_chat_unknown') { state.phase = 'CONNECTOR_RECOVERY'; state.reason = 'mcp_transport_unavailable'; recoverTransport(); persist(); return; }
       if (snapshot.userControl?.step === 'VERIFYING') await gateway({ action: 'CONTROL_FAILED', requestId: snapshot.userControl.requestId, error: 'Prompt delivered, but the authorized worker did not claim the assignment before operational silence was confirmed.' });
       await beginHandoff(verdict.reason);
     }
@@ -267,7 +270,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.6.1', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.6.2', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,
