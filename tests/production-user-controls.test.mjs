@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import os from 'node:os';
-import { GptOrchestrationStoreV1, EditTypeRegistryFileV1 } from '../.tmp/runtime/packages/practice-homework/src/index.js';
+import { GptOrchestrationStoreV1, EditTypeRegistryFileV1, EditTypeRegistryV1 } from '../.tmp/runtime/packages/practice-homework/src/index.js';
 import { PracticePanelServerV1 } from '../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js';
 const delay = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn) { const deadline = Date.now() + 14000; let error; while (Date.now() < deadline) { try { const result = await fn(); if (result) return result; } catch (e) { error = e; } await delay(80); } throw Error('condition timeout: ' + (error?.message || 'predicate remained false')); }
@@ -71,6 +71,8 @@ async function fixture(t, { existing = true, cancelled = false, paused = false }
   const actuator = async (route, body) => { const r = await fetch('http://127.0.0.1:' + port + route, { headers: { origin: 'chrome-extension://ljjjjjoghmheifakiiahgoonhhmoebog', 'content-type': 'application/json' }, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}) }); return { status: r.status, ...await r.json() }; };
   t.after(async () => { await stopSupervisor(); await service.stop(); await rm(root, { recursive: true, force: true }); });
   return { input, old, store, broker, call, admin, actuator, startSupervisor, stopSupervisor,
+    async setPresets(profiles = []) { const r = new EditTypeRegistryV1(); profiles.forEach(p => r.create(p)); await registryFile.save(r); },
+    async seedSupervisorState(value) { await writeFile(path.join(sideRoot, 'production-state.json'), JSON.stringify(value)); },
     async restartGateway() { await service.stop(); service = new PracticePanelServerV1(config); await service.start(); base = 'http://127.0.0.1:' + service.port; await manifest(); } };
 }
 
@@ -151,4 +153,83 @@ test('missing connections produce a durable BLOCKED receipt; explicit retry resu
   const retried = await f.call('/v1/product/practice/resume-or-start', { action: 'RETRY', requestId: 'blocked-start', userRequested: true });
   assert.equal(retried.receipt.plannedSessionId, accepted.receipt.plannedSessionId);
   await deliver(f, 'blocked-start', { close: false }); assert.equal((await f.store.listAssignments()).length, 1);
+});
+
+test('deleted presets reject start and restart before retaining a request or stopping existing production', async t => {
+  const f = await fixture(t, { paused: true });
+  const before = (await f.admin()).authority;
+  await f.setPresets();
+  const restart = await f.call('/v1/product/production/user-controls', { action: 'RESTART_PRACTICE', requestId: 'deleted-preset-restart', userRequested: true, expectedAssignmentId: f.old.assignmentId });
+  assert.equal(restart.status, 400); assert.match(restart.error, /EDIT_TYPE_NOT_FOUND.*Choose a current preset/);
+  assert.equal((await f.admin()).userControl, null); assert.deepEqual((await f.admin()).authority, before);
+  assert.equal((await f.store.getAssignment(f.old.assignmentId)).status, 'RUNNING');
+  const clean = await fixture(t, { existing: false }); await clean.setPresets();
+  const start = await clean.call('/v1/product/production/user-controls', { action: 'START_PRACTICE', requestId: 'deleted-preset-start', input: clean.input, userRequested: true });
+  assert.equal(start.status, 400); assert.equal((await clean.store.listAssignments()).length, 0);
+  assert.equal((await clean.admin()).userControl, null);
+  assert.deepEqual((await clean.call('/v1/product/edit-types')).editTypes, []);
+});
+
+test('preset deletion after submission is caught before worker revocation and can be dismissed without changing the old assignment', async t => {
+  const f = await fixture(t, { paused: true });
+  const request = { action: 'RESTART_PRACTICE', requestId: 'preset-removed-while-queued', userRequested: true, expectedAssignmentId: f.old.assignmentId };
+  assert.equal((await f.call('/v1/product/production/user-controls', request)).status, 200);
+  const before = (await f.admin()).authority;
+  await f.setPresets();
+  const begun = await f.admin({ action: 'CONTROL_BEGIN', requestId: request.requestId });
+  assert.equal(begun.receipt.status, 'BLOCKED'); assert.equal(begun.receipt.step, 'QUEUED');
+  assert.deepEqual((await f.admin()).authority, before); assert.equal((await f.store.getAssignment(f.old.assignmentId)).status, 'RUNNING');
+  const dismissed = await f.call('/v1/product/production/user-controls', { action: 'DISMISS', requestId: request.requestId, userRequested: true });
+  assert.equal(dismissed.receipt.status, 'FAILED'); assert.equal((await f.admin()).userControl, null);
+  assert.deepEqual((await f.admin()).authority, before);
+});
+
+async function blockedDeletedPreset(f, requestId) {
+  const accepted = await f.call('/v1/product/production/user-controls', { action: 'START_PRACTICE', requestId, input: f.input, userRequested: true });
+  assert.equal(accepted.status, 200);
+  await f.admin({ action: 'CONTROL_BEGIN', requestId }); await f.setPresets();
+  const prepared = await f.admin({ action: 'CONTROL_PREPARE', requestId });
+  assert.equal(prepared.receipt.status, 'BLOCKED'); assert.equal(prepared.receipt.step, 'PREPARING');
+  return prepared.receipt;
+}
+
+test('blocked deleted-preset restart can be safely cleared across process restarts, leaving IDLE and admitting new chosen inputs', { timeout: 30000 }, async t => {
+  const f = await fixture(t, { existing: false });
+  const blocked = await blockedDeletedPreset(f, 'stale-deleted-preset');
+  const retry = await f.call('/v1/product/production/user-controls', { action: 'RETRY', requestId: blocked.requestId, userRequested: true });
+  assert.equal(retry.status, 400); assert.equal((await f.admin()).userControl.status, 'BLOCKED');
+  await f.seedSupervisorState({ handoff: { id: blocked.requestId, userControlId: blocked.requestId, status: 'DRAIN' } });
+  await f.restartGateway(); f.startSupervisor();
+  await until(async () => (await f.actuator('/health')).phase === 'BLOCKED');
+  assert.equal((await f.call('/v1/product/production/user-controls', { action: 'DISMISS', requestId: blocked.requestId })).status, 400);
+  const body = { action: 'DISMISS', requestId: blocked.requestId, userRequested: true };
+  const cleared = await f.call('/v1/product/production/user-controls', body);
+  assert.equal(cleared.receipt.status, 'FAILED'); assert.equal(cleared.receipt.step, 'DONE'); assert.match(cleared.receipt.error, /EDIT_TYPE_NOT_FOUND/);
+  assert.equal((await f.call('/v1/product/production/user-controls', body)).receipt.updatedAt, cleared.receipt.updatedAt);
+  await until(async () => { const h = await f.actuator('/health'); return h.phase === 'IDLE' && !h.handoff; });
+  assert.equal((await f.admin()).authority.generation, 0); assert.equal((await f.store.listAssignments()).length, 0);
+  await f.stopSupervisor(); await f.restartGateway(); f.startSupervisor();
+  assert.equal((await f.call('/v1/product/production/user-controls?requestId=' + blocked.requestId)).receipt.status, 'FAILED');
+  await f.setPresets([{ editTypeId: 'fresh-edit', title: 'Fresh Edit' }]);
+  const chosen = { ...f.input, editTypeId: 'fresh-edit' };
+  const started = await f.call('/v1/product/production/user-controls', { action: 'START_PRACTICE', requestId: 'new-media-start', input: chosen, userRequested: true });
+  assert.equal(started.status, 200); await deliver(f, 'new-media-start', { close: false });
+  const assignments = await f.store.listAssignments(); assert.equal(assignments.length, 1); assert.equal(assignments[0].editTypeId, 'fresh-edit');
+  assert.equal((await f.call('/v1/product/edit-types')).editTypes.some(p => p.editTypeId === f.input.editTypeId), false);
+});
+
+test('valid new start supersedes an uncreated blocked request; invalid inputs and concurrent starts cannot lose or duplicate intent', { timeout: 25000 }, async t => {
+  const f = await fixture(t, { existing: false });
+  const blocked = await blockedDeletedPreset(f, 'blocked-before-new-start');
+  await f.setPresets([{ editTypeId: 'fresh-edit', title: 'Fresh Edit' }]);
+  const start = { action: 'START_PRACTICE', requestId: 'replacement-intent', input: { ...f.input, editTypeId: 'fresh-edit' }, userRequested: true };
+  const invalid = await f.call('/v1/product/production/user-controls', { ...start, input: { ...start.input, finishPath: path.join(os.tmpdir(), 'missing-ref-does-not-exist.mp4') } });
+  assert.equal(invalid.status, 400); assert.equal((await f.admin()).userControl.requestId, blocked.requestId);
+  const results = await Promise.all([f.call('/v1/product/production/user-controls', start), f.call('/v1/product/production/user-controls', { ...start, requestId: 'concurrent-intent' })]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
+  const accepted = results.find(r => r.status === 200).receipt;
+  assert.equal((await f.call('/v1/product/production/user-controls?requestId=' + blocked.requestId)).receipt.status, 'FAILED');
+  assert.equal((await f.call('/v1/product/production/user-controls', { action: 'DISMISS', requestId: accepted.requestId, userRequested: true })).status, 409);
+  f.startSupervisor(); await deliver(f, accepted.requestId, { close: false });
+  assert.equal((await f.store.listAssignments()).length, 1);
 });

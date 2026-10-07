@@ -1230,6 +1230,18 @@ export class PracticePanelServerV1 {
     try { return await pending; } finally { this.#startingPractice = null; }
   }
 
+  async #validatePracticeInput(body: Record<string, unknown>): Promise<void> {
+    const request = await this.#parsePractice(body);
+    const registry = await (await this.#editTypes()).load();
+    if (registry.get(request.editTypeId)) return;
+    if (request.editTypeTitle === undefined) {
+      throw new HttpError(400, "EDIT_TYPE_NOT_FOUND: " + request.editTypeId
+        + ". Choose a current preset and start a new Practice assignment in the Practice panel.");
+    }
+    // Validate an explicitly requested new preset without saving or restoring deleted data.
+    registry.create({ editTypeId: request.editTypeId, title: request.editTypeTitle, choiceWords: [request.editTypeTitle] });
+  }
+
   async #createPractice(body: Record<string, unknown>, plannedSessionId?: string): Promise<PracticePanelRunSnapshotV1> {
     if (this.#activeRunId !== null) {
       const active = this.#runs.get(this.#activeRunId);
@@ -1245,7 +1257,8 @@ export class PracticePanelServerV1 {
     let editType = registry.get(request.editTypeId);
     if (editType === null) {
       if (request.editTypeTitle === undefined) {
-        throw new HttpError(400, "Unknown Edit Type: " + request.editTypeId);
+        throw new HttpError(400, "EDIT_TYPE_NOT_FOUND: " + request.editTypeId
+          + ". Choose a current preset and start a new Practice assignment in the Practice panel.");
       }
       editType = registry.create({
         editTypeId: request.editTypeId,
@@ -1955,6 +1968,24 @@ export class PracticePanelServerV1 {
     });
   }
 
+  async #dismissBlockedUserControl(receipt: ProductionUserControlReceiptV1): Promise<ProductionUserControlReceiptV1> {
+    if (receipt.status !== "BLOCKED" || !["QUEUED", "PREPARING"].includes(receipt.step)
+      || receipt.assignmentId || receipt.generation !== null || receipt.tabId !== null) {
+      throw new HttpError(409, "USER_CONTROL_DISMISS_REQUIRES_UNCREATED_TARGET");
+    }
+    if (receipt.step !== "QUEUED") {
+      const old = receipt.expectedAssignmentId ? await this.#gptStore.getAssignment(receipt.expectedAssignmentId) : null;
+      if (this.#supervision!.publicState().state === "ARMED" || this.#aeWriterOwner
+        || old && (!["CANCELLED", "COMPLETED", "FAILED"].includes(old.status)
+          || this.#productionWorker.list(old.assignmentId).some(j => j.status === "RUNNING") || this.#preflightJobs.has(old.assignmentId))) {
+        throw new HttpError(409, "USER_CONTROL_DISMISS_DRAIN_PENDING");
+      }
+    }
+    return this.#userControls.update(receipt.requestId, { status: "FAILED", step: "DONE",
+      error: "Dismissed by user before a replacement assignment was created. " + (receipt.error ?? ""),
+      completedAt: new Date().toISOString() });
+  }
+
   async #requestUserControl(body: Record<string, any>): Promise<Record<string, any>> {
     if (!this.#supervision) throw new HttpError(409, "PRODUCTION_SUPERVISION_REQUIRED");
     if (body.action === "STATUS") {
@@ -1966,9 +1997,16 @@ export class PracticePanelServerV1 {
     const requestId = requiredString(body, "requestId");
     if (!/^[a-zA-Z0-9_-]{1,100}$/.test(requestId)) throw new HttpError(400, "INVALID_USER_CONTROL_REQUEST_ID");
     return await this.#userControls.exclusive(async () => {
+      if (body.action === "DISMISS") {
+        const prior = this.#userControls.get(requestId);
+        if (!prior) throw new HttpError(404, "USER_CONTROL_NOT_FOUND");
+        if (prior.status === "FAILED" && prior.step === "DONE" && prior.error?.startsWith("Dismissed by user")) return { receipt: prior };
+        return { receipt: await this.#dismissBlockedUserControl(prior) };
+      }
       if (body.action === "RETRY") {
         const prior = this.#userControls.get(requestId);
         if (!prior || prior.status !== "BLOCKED") throw new HttpError(409, "USER_CONTROL_NOT_BLOCKED");
+        if (prior.input) await this.#validatePracticeInput(prior.input);
         return { receipt: this.#userControls.update(requestId, { status: "PENDING", error: null }) };
       }
       const action = requiredString(body, "action") as ProductionUserControlReceiptV1["action"];
@@ -1983,7 +2021,8 @@ export class PracticePanelServerV1 {
         if (prior.fingerprint !== fingerprint) throw new HttpError(409, "REQUEST_ID_REUSED_WITH_DIFFERENT_INTENT");
         return { receipt: prior };
       }
-      if (this.#userControls.active()) throw new HttpError(409, "USER_CONTROL_ALREADY_PENDING");
+      const activeControl = this.#userControls.active();
+      if (activeControl && !(action === "START_PRACTICE" && activeControl.status === "BLOCKED")) throw new HttpError(409, "USER_CONTROL_ALREADY_PENDING");
       const assignments = await this.#gptStore.listAssignments();
       const source = assignments.find(a => a.assignmentId === expectedAssignmentId);
       const unfinished = assignments.find(a => ["PENDING", "RUNNING", "CANCEL_REQUESTED"].includes(a.status));
@@ -1999,8 +2038,9 @@ export class PracticePanelServerV1 {
           finishPath: source.finish.uri, videoPaths: source.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri),
           audioPaths: source.start.filter(m => m.mediaKind === "AUDIO").map(m => m.uri), ...source.practicePolicy };
       }
-      // Validate chosen media before stopping the existing assignment.
-      if (input) await this.#parsePractice(input);
+      // Validate the preset and media before stopping or superseding anything.
+      if (input) await this.#validatePracticeInput(input);
+      if (activeControl) await this.#dismissBlockedUserControl(activeControl);
       const now = new Date().toISOString();
       const receipt = this.#userControls.submit({ requestId, action, fingerprint, status: "PENDING", step: "QUEUED",
         expectedAssignmentId, previousAssignmentId: expectedAssignmentId, assignmentId: action === "REPLACE_CHAT" ? expectedAssignmentId : null,
@@ -2031,6 +2071,11 @@ export class PracticePanelServerV1 {
       if (!receipt) throw new HttpError(404, "USER_CONTROL_NOT_FOUND");
       if (receipt.status !== "PENDING") return { receipt };
       if (body.action === "CONTROL_BEGIN" && receipt.step === "QUEUED") {
+        // Inputs may have been deleted after submission. Preserve the old worker in that case.
+        try { if (receipt.input) await this.#validatePracticeInput(receipt.input); }
+        catch (error) {
+          return { receipt: this.#userControls.update(id, { status: "BLOCKED", error: error instanceof Error ? error.message : String(error) }) };
+        }
         const authority = this.#supervision!.publicState();
         if (authority.state !== "IDLE" && authority.assignmentId !== receipt.expectedAssignmentId) throw new HttpError(409, "USER_CONTROL_ASSIGNMENT_CHANGED");
         if (authority.assignmentId && authority.state !== "IDLE") {

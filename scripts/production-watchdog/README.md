@@ -1,4 +1,4 @@
-# EditFlow Production Supervisor 3.5
+# EditFlow Production Supervisor 3.6.1
 
 Practice and Pro Creation share one local supervisor and one gateway worker authority.
 The supervisor starts at Windows sign-in and arms automatically when the gateway
@@ -164,6 +164,7 @@ Send `userRequested:true` and a stable `requestId` (reuse it after a timeout).
 | REPLACE_CHAT | expectedAssignmentId | Fresh authorized chat, retained assignment/checkpoints |
 | CANCEL | expectedAssignmentId | Safe stop, no replacement |
 | RETRY | requestId | Retry a blocked intent without creating another request |
+| DISMISS | requestId | Clear a blocked intent with no created replacement |
 | STATUS | requestId; no userRequested flag needed | Read its durable receipt |
 
 Example restart JSON: `{"action":"RESTART_PRACTICE","userRequested":true,"requestId":"restart-microwave-20261002","expectedAssignmentId":"gpt-assignment:..."}`.
@@ -186,3 +187,18 @@ unobserved gaps; these are diagnostics, not a reason to revoke a worker.
 Installation copies and verifies continuity-metrics.js and repair-production.ps1
 alongside the controller scripts. Runtime deployment must preserve state.json and
 production-state.json and must not create a worker merely to load policy.
+
+### Deleted preset and fresh-start recovery
+
+Start, restart and retry validate the current preset and media. CONTROL_BEGIN
+validates again before revoking the old worker, so a preset deleted after submission
+cannot retire working production. Deleted presets and their learning are never
+restored implicitly. Choose current inputs with START_PRACTICE instead.
+
+A BLOCKED request with no created/issued replacement can be explicitly DISMISSed.
+Its durable FAILED/DONE receipt retains the original error; repeated dismissal is
+idempotent. Preparation dismissal requires drained work and terminal old production.
+A valid new START_PRACTICE supersedes such a blocked request under the lifecycle
+lock; invalid inputs leave it untouched. Issued or delivered replacements cannot
+be dismissed through this route. The popup exposes this recovery and disables
+restart when no assignment is active, even if authority retains an old ID.
