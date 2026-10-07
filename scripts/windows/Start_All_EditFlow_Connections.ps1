@@ -124,7 +124,7 @@ Write-Host ""
 Write-Host "READY: ChatGPT -> EditFlow MCP -> CEP -> After Effects"
 Write-Host ("Execution mode: " + [string]$health.executionMode)
 Write-Host ("AE host revision: " + [string]$health.hostRevision)
-Write-Host "Phrase Monitor is browser-side continuity; it auto-arms on Practice Start/Continue/Resume messages."
+Write-Host "Production supervisor uses the current ChatGPT-directed workflow and retained assignment state."
 Write-Host "After Effects was not stopped or restarted."
 Write-Host ""
 exit 0
