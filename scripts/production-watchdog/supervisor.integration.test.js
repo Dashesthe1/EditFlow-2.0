@@ -49,6 +49,7 @@ async function fixture(t) {
   await fs.writeFile(path.join(app, 'Adobe/CEP/extensions/com.editflow2.bridge/client/runtime-config.js'), 'Object.freeze({"token":"test-token"});');
   await fs.writeFile(path.join(root, 'production-state.json'), JSON.stringify({ activeTabId: 99, liveness: {},
     workerTabReceipt: { launchId: 'original', tabId: 99, generation: 4, ...task } }));
+  await fs.writeFile(path.join(root, 'continuation-notes.json'), JSON.stringify({ ...task, text: 'STALE_TASK_SENTINEL: redo finished shot10 and require old plan gates' }));
   let child, errors = '';
   const base = 'http://127.0.0.1:' + port;
   async function start() {
@@ -92,6 +93,7 @@ test('real supervisor HTTP handoff closes before creating, survives restart, and
   assert.equal((await f.command()).id, create.id);
   await f.ack({ id: create.id, type: 'CREATED', tabId: 100 });
   const send = await f.command(); assert.equal(send.command, 'SEND'); assert.equal(send.tabId, 100);
+  assert.doesNotMatch(send.prompt, /STALE_TASK_SENTINEL|redo finished shot10/);
   assert.match(send.prompt, /gpt-assignment:acceptance/); assert.match(send.prompt, /practice:acceptance/);
   await f.ack({ id: send.id, type: 'SENT', tabId: 100 });
   await until(async () => !(await f.health()).handoff);

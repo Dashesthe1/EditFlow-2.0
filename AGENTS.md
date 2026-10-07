@@ -81,6 +81,12 @@ repair without revocation. Confirmation IDs cannot be replayed. Recheck queue wo
 and authority before automatic handoff. Preserve explicit pause and assignment IDs;
 maintenance never resumes production. Healthy queue heartbeats protect long jobs.
 
+Supervisor continuations contain goals and execution rules, not an old shot-task
+backlog. Current AE state and receipts establish what changed; direct review
+establishes what still needs work. Skip completed stages and preserve later corrections.
+Legacy phase labels do not restart discovery, construction or review. Static historical
+notes are no longer injected into worker prompts.
+
 Continuation delivery uses the exact assignment/session/full issued credential,
 including wrapped or collapsed DIRECT_EDITING_V1 user messages. On an uncertain
 send acknowledgment, verify the retained target before typing again. Conflicting

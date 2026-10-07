@@ -6,7 +6,6 @@ const { randomUUID } = require('crypto');
 const { spawn } = require('child_process');
 const { POLICY, evaluateLiveness, operationFailure, decisionLeaseStatus, noProgressLimit } = require('./liveness.js');
 const { prompt } = require('./worker-prompt.js');
-const { readContinuationNotes } = require('./continuation-notes.js');
 const { createRecoveryRunner } = require('./transport-recovery.js');
 const { createTransportMonitor, probeMcp } = require('./transport-health.js');
 const OWNERSHIP_CONFLICT_ERROR = 'The replacement tab contains a continuation for another worker generation. No chat was stopped. Request Replace editing chat to deliver a fresh current-worker continuation while retaining the assignment.';
@@ -119,7 +118,7 @@ async function progressHandoff() {
       snapshot = await gateway(); lastGatewayAt = Date.now();
     }
     const issued = await gateway({ action: 'ISSUE', assignmentId: h.assignmentId, launchId: h.id });
-    h.prompt = prompt(snapshot.assignment, issued.credential, readContinuationNotes(ROOT, snapshot.assignment)); h.generation = issued.authority.generation;
+    h.prompt = prompt(snapshot.assignment, issued.credential); h.generation = issued.authority.generation;
     h.status = 'CREATE'; persist();
   }
 }
@@ -267,7 +266,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, value) => { res.writeHead(status); res.end(JSON.stringify(value)); };
   try {
     if (req.method === 'OPTIONS' && origin === extensionOrigin) return send(200, {});
-    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.5.0', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
+    if (req.url === '/health') return send(200, { ok: true, service: 'EditFlow Production Supervisor', version: '3.5.1', workflow: 'DIRECT_EDITING_V1', pid: process.pid,
       phase: state.phase, reason: state.reason, policy: POLICY, progressSeq: state.liveness.progressSeq || 0,
       decisionLease: snapshot ? decisionLeaseStatus(snapshot, Date.now()) : null, livenessDiagnostics: livenessDiagnostics(),
       authority: snapshot?.authority || null, assignment: snapshot?.assignment || null, gatewayError, transport: transport.state(), chatExecution,

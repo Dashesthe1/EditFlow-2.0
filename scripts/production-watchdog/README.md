@@ -96,16 +96,19 @@ Every repair completion logs sanitized process status and fresh MCP readback;
 a successful process exit or local.ready alone cannot establish public readiness.
 Worker prompts retry only failed reads after 2/5/15 seconds, then use this bounded
 transport repair and resume the same assignment without a new preflight. Uncertain writes are
-reconciled by receipt, never replayed. Missing domain materials are completed
-through authorized research/proof/workflow tools under ChatGPT's judgment.
+reconciled by receipt, never replayed. Missing editing knowledge is researched under ChatGPT's judgment.
 Host denial and revoked workers remain hard boundaries.
 
-Maintenance may retain user handoff observations in the installed supervisor's
-continuation-notes.json: assignmentId, sessionId and text (at most 16,000 characters).
-Only matching assignment/session notes are included in future worker prompts.
-They are historical context: current receipts and direct review establish what
-remains unfinished, and later committed corrections must be preserved. Saving a
-note does not interrupt an active chat, issue a worker or perform an editing write.
+Supervisor prompts give the current goal, identity and execution contract; they
+contain no static shot-specific task backlog. The retired continuation-notes reader
+is removed. Installation backs up old notes and removes the active injection files.
+The one-call resume supplies current AE state, receipts, selections and notebook;
+ChatGPT uses that evidence plus direct review to decide the next useful work. Later
+corrections are preserved. Legacy phase labels cannot force discovery/construction
+or review to repeat. A successful write is not proof of visual acceptance, and a
+suitable current reviewed render can be reused without another routine render.
+An already delivered chat prompt is immutable; changes apply to future handoffs
+without replacing or restarting a worker for maintenance.
 
 Handoff order: persist intent, revoke gateway authority, request Stop and close the
 owned tab, drain accepted work, issue the next generation, create one fresh chat,

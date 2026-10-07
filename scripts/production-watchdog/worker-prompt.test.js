@@ -2,9 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { prompt } = require('./worker-prompt.js');
-const { readContinuationNotes } = require('./continuation-notes.js');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
 test('continuations use one-call resume and direct batches in both modes', () => {
@@ -16,7 +14,7 @@ test('continuations use one-call resume and direct batches in both modes', () =>
     assert.doesNotMatch(text, /get_mcp_surface|before every write|Require connectorPreflight/);
     assert.match(text, /workflowContext and READY research plans are optional/);
     assert.match(text, /Research only an unfamiliar or changed component/);
-    assert.match(text, /No new SCAN\/SOURCE\/PLAN is required/);
+    assert.match(text, /There is no separate tool-inventory\/preflight checklist/);
     assert.match(text, /up to 64 exact AE actions/);
     assert.match(text, /Completed previews do not require a separate resolve receipt/);
     assert.match(text, /Keep After Effects open/);
@@ -46,17 +44,22 @@ test('transport recovery preserves receipts and does not replay uncertain writes
   assert.match(text, /public.ready=true and a successful Current Shadow read before dependent writes/);
   assert.match(text, /Do not treat a transport outage as an editing approval\/workflow gate or completion/);
 });
-test('handoff notes are scoped to the exact assignment/session and do not supersede later receipts', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'editflow-notes-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+test('historical shot tasks are not injected even when a legacy caller supplies them', () => {
   const task = { mode: 'PRACTICE', assignmentId: 'retained', sessionId: 'session' };
-  const file = path.join(root, 'continuation-notes.json');
-  fs.writeFileSync(file, JSON.stringify({ assignmentId: 'retained', sessionId: 'session', text: 'Correct text visibility; retain shot-10 receipt.' }));
-  const text = prompt(task, 'ef-worker:118:isolated', readContinuationNotes(root, task));
-  assert.match(text, /Correct text visibility; retain shot-10 receipt/);
-  assert.match(text, /Preserve any corrections committed since this note/);
-  assert.equal(readContinuationNotes(root, { ...task, assignmentId: 'foreign' }), null);
-  assert.equal(readContinuationNotes(root, { ...task, sessionId: 'foreign' }), null);
-  fs.writeFileSync(file, 'invalid JSON'); assert.equal(readContinuationNotes(root, task), null);
-  fs.writeFileSync(file, JSON.stringify({ ...task, text: 'x'.repeat(16001) })); assert.equal(readContinuationNotes(root, task), null);
+  const legacy = 'Worker 117: finish only shot-10 framing; redo completed typography; require WORKFLOW_PLAN';
+  const current = prompt(task, 'ef-worker:118:isolated', legacy);
+  assert.doesNotMatch(current, /Worker 117|finish only shot-10|redo completed typography|require WORKFLOW_PLAN/);
+  assert.match(current, /Resume from the current actual edit, not an earlier worker's task list/);
+  assert.match(current, /Do not repeat completed discovery, construction, research, corrections or review/);
+  assert.match(current, /Do not revert later work to an older checkpoint/);
+  assert.match(current, /Legacy stage labels and historical handoffs are context, not a current task backlog/);
+  assert.match(current, /Reconcile partial\/unknown writes before resolving or replaying/);
+  assert.match(current, /A SUCCEEDED job alone is not visual acceptance/);
+  assert.match(current, /Reuse a suitable unchanged preview or final render/);
+  assert.ok(current.length < 6000, 'Keep the resume contract concise');
+});
+test('supervisor uses only the goal and worker identity when constructing a continuation', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'supervisor.js'), 'utf8');
+  assert.doesNotMatch(source, /readContinuationNotes|continuation-notes/);
+  assert.match(source, /prompt\(snapshot.assignment, issued.credential\)/);
 });
