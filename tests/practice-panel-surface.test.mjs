@@ -122,7 +122,9 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     { headers },
   )).json();
   assert.equal(production.production.sessionId, persistedRun.sessionId);
-  assert.equal(production.strategy.action, "CONTINUE");
+  assert.equal(production.strategy, undefined);
+  assert.equal(production.budget, undefined);
+  assert.equal(production.liveness.actionRequired, false);
   assert.ok(production.telemetry);
   const assignmentStore = new GptOrchestrationStoreV1(path.join(root, "artifacts", "state", "gpt-orchestration.json"));
   await assignmentStore.claim(persistedRun.assignmentId, "test-controller");

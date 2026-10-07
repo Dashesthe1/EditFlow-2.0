@@ -91,6 +91,10 @@ export const capabilityForCommandV11 = (command: AeAdapterCommandV11): string =>
     case "comp.remove": return "ae.comp.remove";
     case "media.import": return "ae.media.import";
     case "layer.add_media": return "ae.layer.create";
+    case "layer.add_text": return "ae.text.create";
+    case "layer.add_solid": return "ae.solid.create";
+    case "text.set_document": return "ae.text.document.set";
+    case "property.set_value": return "ae.property.value.set";
     case "layer.duplicate": return "ae.layer.duplicate";
     case "layer.remove": return "ae.layer.remove";
     case "layer.reorder": return "ae.layer.order.set";
@@ -117,6 +121,8 @@ const riskForCommandV11 = (command: AeAdapterPublicCommandV11): CapabilityRecord
   if (
     command === "layer.set_transform"
     || command === "layer.set_timing"
+    || command === "text.set_document"
+    || command === "property.set_value"
     || command === "effect.set_property"
     || command === "property.set_keyframes"
     || command === "property.set_expression"

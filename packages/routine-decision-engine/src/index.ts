@@ -14,6 +14,16 @@ import {
 export type AeRoutineRef = Readonly<{ stableId: string } | { hostId: number }>;
 
 export type RoutineIntent =
+  | Readonly<{ kind: "ADD_TEXT_LAYER"; stableId: string; comp: AeRoutineRef; text: string; document?: Readonly<Record<string, unknown>>; name?: string }>
+  | Readonly<{ kind: "ADD_SOLID_LAYER"; stableId: string; sourceStableId: string; comp: AeRoutineRef; name: string; color: readonly number[]; width: number; height: number; pixelAspect: number; duration: number }>
+  | Readonly<{ kind: "SET_TEXT_DOCUMENT"; comp: AeRoutineRef; layer: AeRoutineRef; document: Readonly<Record<string, unknown>>; replaceKeys?: boolean }>
+  | Readonly<{ kind: "SET_PROPERTY_VALUE"; comp: AeRoutineRef; layer: AeRoutineRef; propertyPath: readonly (string | number)[]; value: unknown; replaceKeys?: boolean }>
+  | Readonly<{ kind: "SET_PROPERTY_KEYFRAMES"; comp: AeRoutineRef; layer: AeRoutineRef; propertyPath: readonly (string | number)[]; keyframes: readonly { time: number; value: unknown }[]; replaceKeys?: boolean }>
+  | Readonly<{ kind: "SET_PROPERTY_EXPRESSION"; comp: AeRoutineRef; layer: AeRoutineRef; propertyPath: readonly (string | number)[]; expression: string; enabled?: boolean }>
+  | Readonly<{ kind: "SET_EFFECT_PROPERTY"; comp: AeRoutineRef; layer: AeRoutineRef; effectIndex: number; propertyPath: readonly (string | number)[]; value: unknown; replaceKeys?: boolean }>
+  | Readonly<{ kind: "READ_PROPERTY"; comp: AeRoutineRef; layer: AeRoutineRef; propertyPath: readonly (string | number)[] }>
+  | Readonly<{ kind: "REMOVE_LAYER"; comp: AeRoutineRef; layer: AeRoutineRef }>
+  | Readonly<{ kind: "REMOVE_EFFECT"; comp: AeRoutineRef; layer: AeRoutineRef; effectIndex: number }>
   | Readonly<{ kind: "CREATE_COMP"; stableId: string; name: string; width: number; height: number; pixelAspect: number; duration: number; frameRate: number; displayStartTime?: number }>
   | Readonly<{ kind: "UPDATE_COMP_SETTINGS"; comp: AeRoutineRef; settings: Readonly<Record<string, unknown>> }>
   | Readonly<{ kind: "ADD_MEDIA_LAYER"; stableId: string; comp: AeRoutineRef; item: AeRoutineRef; duration?: number }>
@@ -216,6 +226,52 @@ const compileAddEffect = (input: Record<string, unknown>): RoutineDecision => {
   return local("effect.add", payload);
 };
 
+const validPath = (value: unknown): boolean => Array.isArray(value) && value.length > 0 && value.every(part => isNonEmptyString(part) || isPositiveInteger(part));
+const jsonValue = (value: unknown): boolean => {
+  if (isFiniteNumber(value) || typeof value === "string" || typeof value === "boolean" || value === null) return true;
+  return Array.isArray(value) && value.length > 0 && value.every(jsonValue);
+};
+const validTextDocument = (value: unknown): boolean => {
+  const doc = asRecord(value);
+  if (!doc || !Object.keys(doc).length) return false;
+  return Object.entries(doc).every(([key, v]) => {
+    if (["text", "font"].includes(key)) return typeof v === "string";
+    if (["fontSize", "leading"].includes(key)) return isPositiveNumber(v);
+    if (["tracking", "strokeWidth"].includes(key)) return isFiniteNumber(v) && (key !== "strokeWidth" || v >= 0);
+    if (["applyFill", "applyStroke", "autoLeading"].includes(key)) return typeof v === "boolean";
+    if (["fillColor", "strokeColor"].includes(key)) return Array.isArray(v) && v.length === 3 && v.every(n => isFiniteNumber(n) && n >= 0 && n <= 1);
+    return key === "justification" && ["LEFT", "CENTER", "RIGHT"].includes(String(v));
+  });
+};
+const compileExtended = (input: Record<string, unknown>): RoutineDecision => {
+  if (!isRef(input["comp"])) return escalate("INVALID_ROUTINE_INPUT", "An exact comp reference is required.");
+  const kind = input["kind"];
+  if (kind === "ADD_TEXT_LAYER") {
+    if (!isNonEmptyString(input["stableId"]) || typeof input["text"] !== "string" || (input["document"] !== undefined && !validTextDocument(input["document"]))) return escalate("INVALID_ROUTINE_INPUT", "Text creation requires stableId, text and supported exact document fields.");
+    return local("layer.add_text", { comp: input["comp"], stableId: input["stableId"], text: input["text"], ...(input["name"] === undefined ? {} : { name: input["name"] }), ...(input["document"] === undefined ? {} : { document: input["document"] }) });
+  }
+  if (kind === "ADD_SOLID_LAYER") {
+    if (!isNonEmptyString(input["stableId"]) || !isNonEmptyString(input["sourceStableId"]) || !isNonEmptyString(input["name"]) || !isPositiveInteger(input["width"]) || !isPositiveInteger(input["height"]) || !isPositiveNumber(input["duration"]) || !isPositiveNumber(input["pixelAspect"]) || !Array.isArray(input["color"]) || input["color"].length !== 3 || !input["color"].every(n => isFiniteNumber(n) && n >= 0 && n <= 1)) return escalate("INVALID_ROUTINE_INPUT", "Solid creation requires exact identity, dimensions, color, duration and pixel aspect.");
+    const { kind: ignored, ...payload } = input; return local("layer.add_solid", payload);
+  }
+  if (!isRef(input["layer"])) return escalate("INVALID_ROUTINE_INPUT", "An exact layer reference is required.");
+  if (input["replaceKeys"] !== undefined && typeof input["replaceKeys"] !== "boolean") return escalate("INVALID_ROUTINE_INPUT", "replaceKeys must be explicit boolean.");
+  const { kind: ignored, ...payload } = input;
+  if (kind === "REMOVE_LAYER") return local("layer.remove", payload);
+  if (kind === "SET_TEXT_DOCUMENT") return validTextDocument(input["document"]) ? local("text.set_document", payload) : escalate("INVALID_ROUTINE_INPUT", "Only supported exact text document fields are accepted.");
+  if (kind === "REMOVE_EFFECT") return isPositiveInteger(input["effectIndex"]) ? local("effect.remove", payload) : escalate("INVALID_ROUTINE_INPUT", "An exact effect index is required.");
+  if (!validPath(input["propertyPath"])) return escalate("INVALID_ROUTINE_INPUT", "An exact nonempty propertyPath is required.");
+  if (kind === "READ_PROPERTY") return local("readback.object", { ...payload, kind: "PROPERTY" });
+  if (kind === "SET_PROPERTY_VALUE" || kind === "SET_EFFECT_PROPERTY") {
+    if (!jsonValue(input["value"]) || kind === "SET_EFFECT_PROPERTY" && !isPositiveInteger(input["effectIndex"])) return escalate("INVALID_ROUTINE_INPUT", "An exact serializable value and effect index when applicable are required.");
+    return local(kind === "SET_PROPERTY_VALUE" ? "property.set_value" : "effect.set_property", payload);
+  }
+  if (kind === "SET_PROPERTY_EXPRESSION") return typeof input["expression"] === "string" && (input["enabled"] === undefined || typeof input["enabled"] === "boolean") ? local("property.set_expression", payload) : escalate("INVALID_ROUTINE_INPUT", "Expression must be an explicit string.");
+  const keys = input["keyframes"];
+  if (!Array.isArray(keys) || !keys.length || keys.some((key, i) => !asRecord(key) || !isFiniteNumber(key.time) || key.time < 0 || !jsonValue(key.value) || i > 0 && key.time <= keys[i - 1].time)) return escalate("INVALID_ROUTINE_INPUT", "Keyframes require exact serializable values and increasing finite nonnegative times.");
+  return local("property.set_keyframes", payload);
+};
+
 export const compileRoutineIntent = (value: unknown): RoutineDecision => {
   const input = asRecord(value);
   if (input === null || !isNonEmptyString(input["kind"])) return escalate("NOT_ROUTINE", "Intent is not a recognized structured routine editing decision.");
@@ -228,6 +284,10 @@ export const compileRoutineIntent = (value: unknown): RoutineDecision => {
     case "SET_LAYER_TRANSFORM": return compileTransform(input);
     case "SET_LAYER_TIMING": return compileTiming(input);
     case "ADD_EFFECT": return compileAddEffect(input);
+    case "ADD_TEXT_LAYER": case "ADD_SOLID_LAYER": case "SET_TEXT_DOCUMENT":
+    case "SET_PROPERTY_VALUE": case "SET_PROPERTY_KEYFRAMES": case "SET_PROPERTY_EXPRESSION":
+    case "SET_EFFECT_PROPERTY": case "READ_PROPERTY": case "REMOVE_LAYER": case "REMOVE_EFFECT":
+      return compileExtended(input);
     default: return escalate("NOT_ROUTINE", `Intent kind '${input["kind"]}' is not allow-listed for local execution.`);
   }
 };

@@ -58,6 +58,10 @@ export class ContinuousFastLoop {
   get state(): AeCepAdapterStateV11 { return this.#state; }
   get hostRevision(): number { return this.#engine.hostRevision; }
 
+  acceptObservation(state: AeCepAdapterStateV11): void {
+    this.#state = state; this.#engine.refresh(state); this.#refreshBeforeNextGoal = false;
+  }
+
   async refresh(): Promise<AeCepAdapterStateV11> {
     this.#state = await this.client.observe(this.#state.observed.projectId);
     this.#engine.refresh(this.#state);

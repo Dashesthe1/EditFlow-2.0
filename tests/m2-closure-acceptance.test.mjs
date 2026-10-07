@@ -34,7 +34,10 @@ test("M2 accepted real-AE baseline remains enabled while development advances in
 test("every public AE protocol 1.1 capability retains explicit M2 evidence maturity", () => {
   const promoted = applyM2AcceptedProofEvidence(AE_CEP_PUBLIC_CAPABILITIES_V11);
   assert.equal(promoted.length, AE_CEP_PUBLIC_CAPABILITIES_V11.length);
-  assert.ok(promoted.every((capability) => capability.proofMaturity !== "DECLARED"));
+  // New direct commands must not inherit historical M2 evidence they never ran.
+  const directAdditions = new Set(["ae.text.create", "ae.solid.create", "ae.text.document.set", "ae.property.value.set"]);
+  assert.ok(promoted.filter(c => !directAdditions.has(c.id)).every(c => c.proofMaturity !== "DECLARED"));
+  assert.ok(promoted.filter(c => directAdditions.has(c.id)).every(c => c.proofMaturity === "DECLARED"));
 
   for (const capability of promoted) {
     if (capability.proofMaturity === "TRANSFER" || capability.proofMaturity === "ROBUST") {

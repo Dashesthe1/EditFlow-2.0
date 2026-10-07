@@ -56,7 +56,7 @@ test("routine compiler maps fixed intents to typed AE commands and never accepts
   assert.equal(transform.command, "layer.set_transform");
   assert.deepEqual(transform.payload.values, { position: [100, 200], opacity: 80 });
 
-  const destructive = compileRoutineIntent({ kind: "REMOVE_LAYER", comp: { stableId: "COMP" }, layer: { stableId: "LAYER" } });
+  const destructive = compileRoutineIntent({ kind: "DELETE_PROJECT", comp: { stableId: "COMP" }, layer: { stableId: "LAYER" } });
   assert.equal(destructive.route, "ESCALATE");
   assert.equal(destructive.reason, "NOT_ROUTINE");
 });

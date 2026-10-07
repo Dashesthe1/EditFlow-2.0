@@ -305,6 +305,8 @@ export class ChatgptFootageBrowserV1 {
     });
   }
 
+  async resolveFfmpegExecutable(): Promise<string> { return await this.#resolveFfmpeg(); }
+
   async #resolveFfmpeg(): Promise<string> {
     if (this.config.ffmpegPath !== null) return this.config.ffmpegPath;
     const environmentPath = process.env.EDITFLOW_FFMPEG_PATH?.trim();

@@ -76,16 +76,6 @@ test("dependency-aware invalidation expands only through declared connected phas
   assert.equal(states.c, "PROVEN");
 });
 
-test("stage budget is measured from stage entry and requests strategy escalation", () => {
-  const coordinator = new PracticeProductionCoordinatorV1("practice:budget", ["a"]);
-  const snapshot = coordinator.snapshot();
-  const directive = coordinator.strategyDirective(Date.parse(snapshot.stageStartedAt) + 301_000);
-  assert.equal(directive.action, "ESCALATE_STRATEGY");
-  coordinator.heartbeat("still-working");
-  const afterHeartbeat = coordinator.strategyDirective(Date.parse(snapshot.stageStartedAt) + 301_000);
-  assert.equal(afterHeartbeat.action, "ESCALATE_STRATEGY");
-});
-
 test("AE checkpoint identity persists independently of chat lifecycle", () => {
   const coordinator = new PracticeProductionCoordinatorV1("practice:ae", ["a"]);
   coordinator.markAeCheckpoint({

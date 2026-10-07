@@ -2,7 +2,8 @@ import { performance } from "node:perf_hooks";
 
 import type { AeCepAdapterClientV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import type { ReflexGoal } from "../../../packages/reflex-planner/src/index.js";
-import type { RoutineIntent } from "../../../packages/routine-decision-engine/src/index.js";
+import { ProductionNoWriteErrorV1 } from "../../../packages/practice-homework/src/production-worker.js";
+import { compileRoutineIntent, type RoutineIntent } from "../../../packages/routine-decision-engine/src/index.js";
 import { createDesktopAeSessionV11, type DesktopAeSessionV11 } from "./v1_1.js";
 
 export const LOCAL_FAST_RUNTIME_VERSION = "1.0.0" as const;
@@ -44,7 +45,17 @@ export interface LocalFastBatchResultV1 {
   readonly withinBudget: boolean;
   readonly escalationReason: string | null;
   readonly hostRevision: number;
+  readonly readbacks: readonly Readonly<Record<string, unknown>>[];
 }
+
+export const validateRoutineBatchV1 = (intents: readonly RoutineIntent[]) => {
+  if (!Array.isArray(intents) || !intents.length || intents.length > DEFAULT_LOCAL_FAST_BATCH_ACTIONS) throw new TypeError("Choose 1–64 exact batch actions.");
+  return intents.map((intent, index) => {
+    const compiled = compileRoutineIntent(intent);
+    if (compiled.route !== "LOCAL") throw new TypeError(`BATCH_ACTION_${index}: ${compiled.detail}`);
+    return compiled;
+  });
+};
 
 const positiveInteger = (value: number, name: string): number => {
   if (!Number.isInteger(value) || value <= 0) throw new TypeError(`${name} must be a positive integer.`);
@@ -114,7 +125,18 @@ export class LocalFastRuntimeV1 {
     if (typeof transactionId !== "string" || transactionId.trim().length === 0) {
       throw new TypeError("LOCAL_FAST_BATCH_TRANSACTION_REQUIRED");
     }
+    const compiled = validateRoutineBatchV1(intents);
     const started = this.clock();
+    if (compiled.some(action => ["effect.set_property", "property.set_value", "property.set_keyframes", "property.set_expression", "text.set_document", "layer.add_text"].includes(action.command))) {
+      // One read-only host preflight, under the production writer, before any edit.
+      await this.refresh();
+      const client = this.session.runner.client;
+      const response = await client.executePublicAtKnownHostRevision("readback.object", {
+        transactionId, operationId: transactionId + ":preflight", expectedHostProjectRevision: null,
+        payload: { kind: "EDIT_PREFLIGHT", expectedRevision: this.session.runner.hostRevision, operations: compiled.map(action => ({command:action.command,payload:action.payload})) },
+      });
+      if (response.outcome === "FAILED" || response.outcome === "REJECTED") throw new ProductionNoWriteErrorV1("BATCH_NOT_APPLIED: " + (response.error?.message ?? response.outcome));
+    }
     const result = await this.session.runner.run({ kind: "SHORT_HORIZON", intents }, transactionId);
     const totalMs = this.clock() - started;
     const actionTimings = result.actions.map((action) => action.timings.totalMs);
@@ -122,6 +144,7 @@ export class LocalFastRuntimeV1 {
     const maxActionMs = actionTimings.length > 0 ? Math.max(...actionTimings) : 0;
     const meanActionMs = actionTimings.length > 0 ? actionTimings.reduce((sum, value) => sum + value, 0) / actionTimings.length : 0;
     return {
+      readbacks: result.actions.map(action => ({ command: action.decision?.command, outcome: action.response?.outcome, readback: action.response?.readback, hostRevision: action.hostRevision })),
       runtime: LOCAL_FAST_RUNTIME_VERSION,
       transactionId,
       requestedActions: intents.length,

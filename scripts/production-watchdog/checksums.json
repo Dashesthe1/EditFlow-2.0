@@ -22,6 +22,6 @@
   "transport-recovery.js": "fd37a3239e0019622d48223d9b966fc5b1c674a9888bf3cd37fa4e0dfc51ce00",
   "transport-recovery.test.js": "08c6c49351180fae118952d2d61717dd349f3ce66b5606bab60475c9d7c91c5d",
   "watchdog.test.js": "978ae9ef1a8697c7975e13e01297841a5c44c90806f8468e311ec11eb2d6aa54",
-  "worker-prompt.js": "0382a3c1c7246dc1dbb62598c5cb3505ea9f0c0b4fd6412f37fdc15c478c0680",
+  "worker-prompt.js": "553e780ba030bc4f9d70663221ee8b84ab9e765573bfbc0e929af6542cb4ef41",
   "worker-prompt.test.js": "de41c88a751142ffef9e82fe78198c231b7ccf885e2f58a8c7a9cfa2885301c3"
 }

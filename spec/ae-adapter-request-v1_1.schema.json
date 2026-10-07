@@ -17,7 +17,7 @@
     "command": {
       "enum": [
         "host.probe", "project.inspect", "project.save", "comp.create", "comp.update_settings", "comp.remove",
-        "media.import", "layer.add_media", "layer.duplicate", "layer.remove", "layer.reorder", "layer.set_transform",
+        "media.import", "layer.add_text", "layer.add_solid", "text.set_document", "property.set_value", "layer.add_media", "layer.duplicate", "layer.remove", "layer.reorder", "layer.set_transform",
         "layer.set_timing", "effect.add", "effect.remove", "effect.set_property", "property.set_keyframes",
         "property.set_expression", "layers.precompose", "render.capture", "readback.object", "transaction.undo_last"
       ]

@@ -3,6 +3,8 @@ import { appendFile, mkdir, readFile, stat, truncate } from "node:fs/promises";
 import path from "node:path";
 
 export const PRACTICE_PRODUCTION_JOB_KINDS_V1 = ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE", "PROOF_SCRIPT", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"] as const;
+export class ProductionNoWriteErrorV1 extends Error {}
+
 export type PracticeProductionJobKindV1 = typeof PRACTICE_PRODUCTION_JOB_KINDS_V1[number];
 export interface PracticeProductionJobV1 {
   readonly jobId: string;
@@ -11,7 +13,7 @@ export interface PracticeProductionJobV1 {
   readonly kind: PracticeProductionJobKindV1;
   readonly payload: Readonly<Record<string, any>>;
   readonly dependencyIds: readonly string[];
-  readonly status: "PENDING" | "RUNNING" | "SUCCEEDED" | "REVIEW_REQUIRED" | "FAILED" | "CANCELLED" | "RECONCILE_REQUIRED";
+  readonly status: "PENDING" | "RUNNING" | "SUCCEEDED" | "REJECTED" | "REVIEW_REQUIRED" | "FAILED" | "CANCELLED" | "RECONCILE_REQUIRED";
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly heartbeatAt?: string;
@@ -26,6 +28,7 @@ export interface PracticeProductionJobV1 {
 export class PracticeProductionWorkerV1 {
   readonly #jobs = new Map<string, PracticeProductionJobV1>();
   readonly #path: string;
+  readonly #waiters = new Map<string, Set<() => void>>();
   #loaded = false;
   #loading: Promise<void> | null = null;
   #tail: Promise<void> = Promise.resolve();
@@ -85,6 +88,7 @@ export class PracticeProductionWorkerV1 {
       await mkdir(path.dirname(this.#path), { recursive: true });
       await appendFile(this.#path, JSON.stringify(next) + "\n", { encoding: "utf8", flush: true });
       this.#jobs.set(next.jobId, next);
+      for (const notify of this.#waiters.get(next.jobId) ?? []) notify();
     });
     this.#tail = pending;
     await pending;
@@ -93,6 +97,17 @@ export class PracticeProductionWorkerV1 {
   list(assignmentId?: string): readonly PracticeProductionJobV1[] {
     return [...this.#jobs.values()].filter((job) => assignmentId === undefined || job.assignmentId === assignmentId)
       .map((job) => structuredClone(job));
+  }
+
+  async waitForUpdate(jobId: string, updatedAt: string, waitMs: number): Promise<void> {
+    const current = this.#jobs.get(jobId);
+    if (!current || current.updatedAt !== updatedAt || !["PENDING", "RUNNING"].includes(current.status)) return;
+    await new Promise<void>(resolve => {
+      const waiters = this.#waiters.get(jobId) ?? new Set<() => void>();
+      const finish = () => { clearTimeout(timer); waiters.delete(finish); if (!waiters.size) this.#waiters.delete(jobId); resolve(); };
+      const timer = setTimeout(finish, Math.max(0, Math.min(2000, waitMs))); timer.unref?.();
+      waiters.add(finish); this.#waiters.set(jobId, waiters);
+    });
   }
 
   async enqueue(input: Omit<PracticeProductionJobV1, "jobId" | "status" | "createdAt" | "updatedAt" | "result" | "error" | "requestKey">): Promise<PracticeProductionJobV1> {
@@ -182,7 +197,7 @@ export class PracticeProductionWorkerV1 {
       const code = (error as { status?: number }).status;
       if (this.#jobs.get(job.jobId)?.status === "RECONCILE_REQUIRED") return;
       await this.#put({ ...job,
-        status: abort.signal.aborted ? "CANCELLED" : code === 423 ? "PENDING" : "FAILED",
+        status: abort.signal.aborted ? "CANCELLED" : code === 423 ? "PENDING" : error instanceof ProductionNoWriteErrorV1 ? "REJECTED" : "FAILED",
         error: error instanceof Error ? error.message : String(error) });
     } finally { clearInterval(heartbeat); clearInterval(cancellationPoll); this.#aborts.delete(job.jobId); }
   }

@@ -19,7 +19,10 @@ import { productionJobScopeV1 } from "../../../packages/adapters/ae-cep/src/prod
 import { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1, type CurrentAeStabilizationRuntimeV1 } from "./current-ae-transaction-runtime.js";
 import { PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "./production-authority.js";
-import { LocalFastRuntimeV1 } from "./local-fast-runtime.js";
+import { computeProjectFingerprint } from "../../../packages/fingerprints/src/index.js";
+import { toAeStructuralFingerprintInput } from "../../../packages/ae-object-model/src/index.js";
+import { productionJobsViewV1, productionSnapshotViewV1, projectStateSummaryV1 } from "./direct-editing-views.js";
+import { LocalFastRuntimeV1, validateRoutineBatchV1 } from "./local-fast-runtime.js";
 
 import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
 
@@ -701,7 +704,6 @@ export class PracticePanelServerV1 {
     const admission = await this.assertClipResearchReady(body, job.kind === "BUILD_BASELINE", true);
     body.researchContext.clipIds = admission?.clipIds ?? [];
     signal.throwIfAborted();
-    const strategy = production.coordinator.strategyDirective();
     // Timing/strategy telemetry is advisory; GPT decides whether to change its edit plan.
     const output = await this.#withProductionOperation({ body: job.kind === "BUILD_BASELINE" ? { ...body, globalOperation: true } : body,
       category: job.kind === "SCRATCH_SEARCH" || job.kind === "LOCAL_RENDER" ? "RENDER" : "AE_MUTATION",
@@ -735,8 +737,12 @@ export class PracticePanelServerV1 {
           await production.file.save(production.coordinator);
           return { result: { authority: "CHATGPT_DIRECT", transaction: result, plan: body.plan } };
         }
+        const ffmpegPath = job.kind === "LOCAL_RENDER" && body.frameTimesMs !== undefined && !this.config.ffmpegPath
+          ? await new ChatgptFootageBrowserV1({ artifactDir: path.join(assignment!.artifactDir, "media"),
+            scriptPath: path.join(this.config.repositoryRoot, "scripts", "practice", "chatgpt-footage-browser.py") }).resolveFfmpegExecutable()
+          : this.config.ffmpegPath;
         const driver = new ChatgptAeRenderDriverV1({ transport: this.config.broker,
-          projectId: "practice-gpt-controller", artifactDir: assignment!.artifactDir,
+          projectId: "practice-gpt-controller", artifactDir: assignment!.artifactDir, ...(ffmpegPath ? { ffmpegPath } : {}),
           ...(this.config.renderTimeoutMs === undefined ? {} : { renderTimeoutMs: this.config.renderTimeoutMs }) });
         if (job.kind === "SAVE_CHECKPOINT") {
           const client = driver.client;
@@ -752,11 +758,13 @@ export class PracticePanelServerV1 {
           return { result };
         }
         if (job.kind === "LOCAL_RENDER") {
+          if (body.frameTimesMs !== undefined) return { result: await driver.renderFrames({ sessionId: assignment!.sessionId,
+            compStableId: body.compStableId, timesMs: body.frameTimesMs, resolutionScale: body.resolutionScale, forceRender: body.forceRender }) };
           if (!Number.isFinite(body.startMs) || !Number.isFinite(body.endMs) || body.endMs <= body.startMs || body.startMs < 0
             || typeof body.compStableId !== "string") throw new TypeError("Local render needs a bounded time window and compStableId.");
           return { result: await driver.renderWindow({ sessionId: assignment!.sessionId, attempt: 0,
             compStableId: body.compStableId, windowId: body.clipId ?? job.jobId, startMs: body.startMs, endMs: body.endMs,
-            resolutionScale: body.resolutionScale ?? 1 }) };
+            resolutionScale: body.resolutionScale ?? 1, forceRender: body.forceRender }) };
         }
         if (!assignment!.finish) throw new TypeError("Scratch search requires a visual reference.");
         const search = await runPracticeScratchSearchV1({ body, sessionId: assignment!.sessionId,
@@ -840,26 +848,33 @@ export class PracticePanelServerV1 {
       if (input.markConstructed && success) {
         // Once committed, readback/checkpoint errors are warnings, never replayable failures.
         try {
-          const readback = await this.#transactionRuntime.observe();
-          const revision = Number(String(readback.projectRevision).replace(/^ae-revision:/, ""));
-          for (const phaseId of phaseIds) {
-            coordinator.markConstructed(phaseId, Number.isFinite(revision) ? revision : null);
-          }
-          const phases = coordinator.snapshot().phases;
-          if (phases.length && phases.every(phase => phase.sourceCertificateKey
-            && ["CONSTRUCTED", "PROVISIONAL_PASS", "PROVEN"].includes(phase.state))) {
-            coordinator.markWholeEditCovered(Number.isFinite(revision) ? revision : null);
-          }
-          // Save under the held writer after the batch, without another GPT call.
+          // One fresh observation serves phase readback, the response and checkpoint.
           const driver = new ChatgptAeRenderDriverV1({ transport: this.config.broker,
             projectId: "practice-gpt-controller", artifactDir: assignment.artifactDir });
           const observed = await driver.client.observe(driver.projectId);
+          const revision = observed.hostRevision;
+          for (const phaseId of phaseIds) coordinator.markConstructed(phaseId, revision);
+          const phases = coordinator.snapshot().phases;
+          if (phases.length && phases.every(phase => phase.sourceCertificateKey
+            && ["CONSTRUCTED", "PROVISIONAL_PASS", "PROVEN"].includes(phase.state))) coordinator.markWholeEditCovered(revision);
+          const target = ((result as any).result ?? result);
+          target.currentState = projectStateSummaryV1(observed);
           const projectPath = path.join(assignment.artifactDir, "production-checkpoint.aep");
-          const saved = await driver.client.executePublic("project.save", {
+          const saved = await driver.client.executePublicAtKnownHostRevision("project.save", {
             transactionId: input.operation + ":checkpoint", operationId: input.operation + ":checkpoint",
-            payload: { path: projectPath }, expectedState: observed.observed,
+            payload: { path: projectPath }, expectedHostProjectRevision: observed.hostRevision,
           });
-          if (saved.outcome !== "APPLIED") throw new Error("AE checkpoint save failed: " + saved.outcome);
+          if (saved.outcome !== "APPLIED" && saved.outcome !== "NO_OP") throw new Error("AE checkpoint save failed: " + saved.outcome);
+          const savedRevision = saved.hostProjectRevision ?? observed.hostRevision;
+          target.currentState.projectRevision = "ae-revision:" + savedRevision;
+          const savedProject = { ...observed.project, hostRevision: savedRevision, filePath: typeof saved.readback?.["filePath"] === "string" ? saved.readback["filePath"] as string : projectPath };
+          const savedFingerprint = computeProjectFingerprint(toAeStructuralFingerprintInput(savedProject));
+          target.currentState.filePath = savedProject.filePath;
+          target.currentState.projectFingerprint = savedFingerprint;
+          this.#fastRuntime?.session.runner.acceptObservation({ ...observed, hostRevision: savedRevision,
+            observed: { ...observed.observed, projectRevision: ("ae-revision:" + savedRevision) as any, projectFingerprint: savedFingerprint },
+            project: savedProject });
+          target.nextAction = "Choose the next edit or inspect the returned changes; no separate checkpoint or proof receipt is required.";
           coordinator.markAeCheckpoint({ projectPath, projectRevision: saved.hostProjectRevision });
           ((result as any).result ?? result).checkpoint = { saved: true, projectPath };
         } catch (error) {
@@ -869,14 +884,14 @@ export class PracticePanelServerV1 {
       await file.appendTelemetry(practiceTelemetrySpanV1({
         spanId: randomUUID(), sessionId: assignment.sessionId, category: input.category,
         stage: input.stage, phaseId: phaseIds.length === 1 ? phaseIds[0]! : null,
-        startedAtMs, endedAtMs: Date.now(), outcome: "SUCCESS", detail: input.operation, activity: "MACHINE_WAIT",
+        startedAtMs, endedAtMs: Date.now(), outcome: "SUCCESS", detail: input.operation, activity: "MACHINE_WAIT", purpose: input.category === "AE_MUTATION" ? "PRODUCTION" : input.category === "RENDER" ? "REVIEW" : "PREPARATION",
       }));
       return result;
     } catch (error) {
       await file.appendTelemetry(practiceTelemetrySpanV1({
         spanId: randomUUID(), sessionId: assignment.sessionId, category: input.category,
         stage: input.stage, phaseId: phaseIds.length === 1 ? phaseIds[0]! : null,
-        startedAtMs, endedAtMs: Date.now(), outcome: "FAILED", activity: "MACHINE_WAIT",
+        startedAtMs, endedAtMs: Date.now(), outcome: "FAILED", activity: "MACHINE_WAIT", purpose: input.category === "AE_MUTATION" ? "PRODUCTION" : input.category === "RENDER" ? "REVIEW" : "PREPARATION",
         detail: input.operation + ": " + (error instanceof Error ? error.message : String(error)),
       }));
       throw error;
@@ -1442,22 +1457,22 @@ export class PracticePanelServerV1 {
     if (admission !== null) await this.#clipResearch.audit(admission.assignment, admission, outcome);
   }
 
-  async #resumeHandshake(): Promise<Record<string, unknown>> {
+  async #presetNotebookIndex(assignment: GptOrchestrationAssignmentV1) {
+    const notebook = await this.#presetNotebook(assignment);
+    return { ...notebook, examples: notebook.examples.map((example: any) => ({ lessonId: example.lessonId,
+      title: example.title, problem: example.problem, outcome: example.outcome, whenToUse: example.whenToUse,
+      evidenceRefs: example.evidenceRefs, methodAvailable: !!example.method })), detail: "INDEX",
+      detailLookup: "Retrieve a GPT-chosen complete method through practice-notebook before adapting it." };
+  }
+
+  async #resumeHandshake(full = false): Promise<Record<string, unknown>> {
     const active = this.#activeRunId === null ? null : this.#runs.get(this.#activeRunId);
     const assignment = active === null || active === undefined ? null : await this.#gptStore.getAssignment(active.assignmentId);
     const events = assignment === null ? [] : await this.#gptStore.eventsForSession(assignment.sessionId);
     const preflight = assignment?.preflight ?? null;
-    const clipResearch = assignment === null ? null : await this.#clipResearch.snapshot(assignment);
     let production = null;
     if (assignment !== null) {
       const { file, coordinator } = await this.#productionCoordinator(assignment);
-      for (const [clipId, clip] of Object.entries((clipResearch?.clips ?? {}) as Record<string, any>)) {
-        if (clip?.plan?.status !== "READY") continue;
-        const phase = coordinator.snapshot().phases.find((item) => item.phaseId === clipId);
-        if (phase?.researchKey === clip.plan.planId) continue;
-        coordinator.markResearchReady(clipId, clip.plan.planId);
-      }
-      await file.save(coordinator);
       production = coordinator.snapshot();
     }
     const nextOperation = assignment === null ? "START_PRACTICE"
@@ -1475,16 +1490,17 @@ export class PracticePanelServerV1 {
       repositoryRoot: this.config.repositoryRoot, statePath: this.#gptStore.filePath,
       panelConnected: this.config.broker.panelSession !== null,
       assignment, preflight, checkpoint: events.at(-1) ?? null, nextOperation,
-      clipResearch: assignment === null ? null : this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment)),
-      production,
+      clipResearch: full && assignment !== null ? this.#clipResearch.publicView(await this.#clipResearch.snapshot(assignment)) : { advisory: true, detailLookup: "clip-research" },
+      production: productionSnapshotViewV1(production, full),
       workerRunning: assignment !== null && (
         this.#preflightJobs.has(assignment.assignmentId)
         || this.#productionWorker.list(assignment.assignmentId).some((job) => job.status === "RUNNING")
         || production?.inFlightOperation != null && Date.now() - Date.parse(production.workerHeartbeatAt ?? "") < 60_000
       ),
-      productionJobs: assignment === null ? [] : this.#productionWorker.list(assignment.assignmentId),
+      productionJobs: assignment === null ? [] : productionJobsViewV1(this.#productionWorker.list(assignment.assignmentId), full).jobs,
+      historyAvailable: true,
       editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
-      practiceNotebook: assignment ? await this.#presetNotebook(assignment) : null,
+      practiceNotebook: assignment ? (full ? await this.#presetNotebook(assignment) : await this.#presetNotebookIndex(assignment)) : null,
       footageSelection: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1,
       workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
       userControls: { contract: PRODUCTION_USER_CONTROL_CONTRACT_V1, active: this.#userControls.active(), latest: this.#userControls.latest() },
@@ -2328,6 +2344,7 @@ export class PracticePanelServerV1 {
                 if (application.adaptedMethod.sourceBindings.some((source: any) => !assignment.start.some(m => m.mediaId === source.mediaId && m.mediaKind === "VIDEO"))) throw new HttpError(400, "Adapted methods may bind only assignment-provided raw footage.");
               }
             }
+            if (body.kind === "AE_BATCH") { try { validateRoutineBatchV1(body.payload.intents); } catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)); } }
             if (body.kind === "LOCAL_RENDER" && ![1, .25, .125].includes(body.payload.resolutionScale ?? 1)) throw new HttpError(400, "Choose render resolutionScale 1, 0.25 or 0.125 explicitly.");
             body.payload.editorialDecision = decision;
             if (body.kind === "SCRATCH_SEARCH") validatePracticeScratchSearchV1(body.payload);
@@ -2339,10 +2356,14 @@ export class PracticePanelServerV1 {
           }
         }
         const requestedJobId = url.searchParams.get("jobId");
+        if (requestedJobId && Number(url.searchParams.get("waitMs")) > 0) {
+          const current = this.#productionWorker.list(id).find(job => job.jobId === requestedJobId);
+          if (current) await this.#productionWorker.waitForUpdate(requestedJobId, url.searchParams.get("after") ?? current.updatedAt, Number(url.searchParams.get("waitMs")));
+        }
         const jobs = this.#productionWorker.list(id);
         const job = requestedJobId ? jobs.find((item) => item.jobId === requestedJobId) : undefined;
         if (requestedJobId && !job) throw new HttpError(404, "Production job not found for this assignment.");
-        jsonResponse(res, 200, requestedJobId ? { job, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 } : { jobs, writerOwner: this.#aeWriterOwner, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 });
+        jsonResponse(res, 200, requestedJobId ? { job, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 } : { ...productionJobsViewV1(jobs, url.searchParams.get("includeHistory") === "true"), writerOwner: this.#aeWriterOwner, primarySystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1 });
         return;
       }
       if ((req.method === "GET" || req.method === "POST") && productionMatch !== null) {
@@ -2383,8 +2404,7 @@ export class PracticePanelServerV1 {
               requiredString(body, "stage") as any,
               optionalString(body, "phaseId") ?? null,
             );
-          } else if (action === "STRATEGY_CHANGE") {
-            coordinator.acknowledgeStrategyChange(requiredString(body, "strategyKey"));
+
           } else if (action === "RESEARCH_READY") {
             coordinator.markResearchReady(requiredString(body, "phaseId"), requiredString(body, "researchKey"));
           } else if (action === "WHOLE_EDIT_COVERED") {
@@ -2447,14 +2467,15 @@ export class PracticePanelServerV1 {
           await file.save(coordinator);
         }
         jsonResponse(res, 200, {
-          production: coordinator.snapshot(),
+          production: productionSnapshotViewV1(coordinator.snapshot(), req.method === "POST" || url.searchParams.get("includeHistory") === "true"),
           ...PRIMARY_WORKFLOW_ROUTING_V1,
-          workflowContract: PRODUCTION_WORKFLOW_CONTRACT_V1,
-          nextAction: { kind: "CHATGPT_DECIDES", instruction: "Read phase state and unranked residual observations, then choose and record your next operation." },
+          workflowContract: req.method === "POST" || url.searchParams.get("includeHistory") === "true" ? PRODUCTION_WORKFLOW_CONTRACT_V1 : { executionPath: PRODUCTION_WORKFLOW_CONTRACT_V1.executionPath, authority: "CHATGPT_DIRECT", historyAvailable: true },
+          nextAction: { kind: "CHATGPT_DECIDES", instruction: this.#supervision?.publicState().state === "PAUSED" ? "Explicit user pause; no editing or recovery action is required." : "Choose the next edit or meaningful visual review from retained work." },
           residualObservations: coordinator.snapshot().residuals,
-          budget: coordinator.budgetStatus(),
-          strategy: coordinator.strategyDirective(),
-          liveness: coordinator.liveness({}),
+          liveness: this.#supervision?.publicState().state === "PAUSED" || ["COMPLETED", "CANCELLED"].includes(assignment.status)
+            ? { stalled: false, reason: this.#supervision?.publicState().state === "PAUSED" ? "explicit_user_pause" : "assignment_finished", actionRequired: false }
+            : { ...coordinator.liveness({}), actionRequired: false, diagnosticOnly: true },
+          historyAvailable: true,
           telemetry: await file.telemetrySummary(Date.parse(coordinator.snapshot().createdAt)),
         });
         return;
@@ -2646,7 +2667,7 @@ export class PracticePanelServerV1 {
           catch (error) { aeStateError = error instanceof Error ? error.message : String(error); }
         }
         jsonResponse(res, 200, {
-          assignment, resume, aeState, aeStateError,
+          assignment, resume: { ...resume, assignment: { assignmentId: assignment.assignmentId, sessionId: assignment.sessionId, status: assignment.status } }, aeState, aeStateError,
           startup: "ONE_CALL_RESUME_V1",
           nextAction: "Inspect retained work, then enqueue exact AE operations. Research and workflow records are optional supporting memory.",
         });

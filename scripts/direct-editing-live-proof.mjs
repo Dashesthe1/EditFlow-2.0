@@ -1,5 +1,5 @@
 // Isolated acceptance lab for the normal production queue, with a real CEP host.
-// Stop the idle canonical daemon first. This lab refuses a nonempty AE project.
+// Stop the idle canonical daemon first. A nonempty project requires --preserve-project and is saved/restored around the lab.
 // It never loads production credentials or changes production state files.
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
@@ -27,11 +27,30 @@ const observed = { async observe() { const state = await client.observe('practic
 const report = { schema: 'editflow.direct-editing-live-proof.v1', startedAt: new Date().toISOString(),
   realAfterEffects: true, modes: [], ok: false, checks: {}, error: null };
 let service;
+let originalProject = null;
+let labOpened = false;
+let recoverLab = null;
 try {
   await broker.start();
   await broker.waitForPanel(15000);
   const initial = await observed.observe();
-  assert.equal(initial.project.itemCount, 0, 'Open an empty test project; production project will not be touched');
+  if (initial.project.itemCount > 0) {
+    assert.ok(process.argv.includes('--preserve-project'), 'Nonempty project requires explicit preservation');
+    const projectPath = initial.project.filePath || path.join(root, 'retained-production-project.aep');
+    const saver = new AeCepAdapterClientV11(broker, () => 'lab-preserve-' + (++readCounter), new AeFilesystemPolicyV11([path.dirname(projectPath)]));
+    const saved = await saver.executePublicAtKnownHostRevision('project.save', { transactionId:'lab-preserve',operationId:'save-before-lab',payload:{path:projectPath},expectedHostProjectRevision:initial.hostRevision });
+    assert.ok(['APPLIED','NO_OP'].includes(saved.outcome),JSON.stringify(saved));
+    const retained = await observed.observe();
+    originalProject = { projectPath, fingerprint:retained.observed.projectFingerprint,itemCount:retained.project.itemCount };
+    report.originalProject = originalProject;
+    await writeFile(path.join(root,'original-project-readback.json'),JSON.stringify(retained,null,2));
+    const beginPath = path.join(root,'begin-lab.jsx');
+    await writeFile(beginPath, '(function(){if(!app.project.file || app.project.file.fsName !== new File('+JSON.stringify(projectPath)+').fsName ) throw new Error("Retained project path mismatch");app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);app.newProject();}());');
+    originalProject.beginScript = path.relative(repo,beginPath).replace(/\\/g,'/');
+    const restorePath = path.join(root,'restore-project.jsx');
+    await writeFile(restorePath,'(function(){if(app.project.numItems !== 0) throw new Error("Lab must be cleaned before restoration"); app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES); app.open(new File('+JSON.stringify(projectPath)+'));}());');
+    originalProject.restoreScript = path.relative(repo,restorePath).replace(/\\/g,'/');
+  }
   report.host = initial.environment;
   for (const mode of ['PRACTICE', 'PRO_CREATION']) {
     const modeRoot = path.join(root, mode.toLowerCase());
@@ -74,6 +93,38 @@ try {
     const queue = async body => (await http(endpoint + '/production-jobs', body)).job;
     const run = async body => { const job = await queue(body); const done = await wait(job.jobId);
       assert.equal(done.status, 'SUCCEEDED', JSON.stringify(done)); return done; };
+    recoverLab = async () => {
+      if (!originalProject || !labOpened || report.checks.originalProjectRestored) return;
+      const actual = await observed.observe();
+      if (actual.observed.projectFingerprint === originalProject.fingerprint) { report.checks.originalProjectRestored = true; return; }
+      const evidencePath=path.join(root,'failed-lab-readback.json');await writeFile(evidencePath,JSON.stringify(actual,null,2));
+      const retained=await http(endpoint+'/production-jobs?includeHistory=true');
+      for(const job of retained.jobs) if(['REVIEW_REQUIRED','RECONCILE_REQUIRED','FAILED'].includes(job.status)) {
+        await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:job.jobId,claimedBy:owner,reviewEvidenceRef:evidencePath,result:{discardedIsolatedLab:true}});
+      }
+      if(actual.project.itemCount) {
+        const cleanupPath='scripts/windows/direct-editing-lab-cleanup.jsx';
+        const cleanup=await queue(packet('PROOF_SCRIPT','discard-failed-lab',{scriptPath:cleanupPath,scriptSha256:createHash('sha256').update(await readFile(path.join(repo,cleanupPath))).digest('hex')}));
+        const cleaned=await wait(cleanup.jobId);assert.equal(cleaned.status,'REVIEW_REQUIRED',JSON.stringify(cleaned));
+        const empty=await observed.observe();assert.equal(empty.project.itemCount,0);
+        const emptyPath=path.join(root,'failed-lab-empty-readback.json');await writeFile(emptyPath,JSON.stringify(empty,null,2));
+        await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:cleanup.jobId,claimedBy:owner,reviewEvidenceRef:emptyPath});
+      }
+      const restore=await queue(packet('PROOF_SCRIPT','restore-after-failed-lab',{scriptPath:originalProject.restoreScript,scriptSha256:createHash('sha256').update(await readFile(path.join(repo,originalProject.restoreScript))).digest('hex')}));
+      const restored=await wait(restore.jobId);assert.equal(restored.status,'REVIEW_REQUIRED',JSON.stringify(restored));
+      const current=await observed.observe();assert.equal(current.observed.projectFingerprint,originalProject.fingerprint);
+      const restoredPath=path.join(root,'recovery-restored-project.json');await writeFile(restoredPath,JSON.stringify(current,null,2));
+      await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:restore.jobId,claimedBy:owner,reviewEvidenceRef:restoredPath});
+      report.checks.originalProjectRestored=true;
+    };
+    if (originalProject && !labOpened) {
+      const job = await queue(packet('PROOF_SCRIPT','save-and-enter-isolated-lab',{scriptPath:originalProject.beginScript,
+        scriptSha256:createHash('sha256').update(await readFile(path.join(repo,originalProject.beginScript))).digest('hex')}));
+      const entered = await wait(job.jobId);assert.equal(entered.status,'REVIEW_REQUIRED',JSON.stringify(entered));
+      const empty=await observed.observe();assert.equal(empty.project.itemCount,0);labOpened=true;
+      const evidencePath=path.join(root,'lab-empty-readback.json');await writeFile(evidencePath,JSON.stringify(empty,null,2));
+      await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:job.jobId,claimedBy:owner,reviewEvidenceRef:evidencePath});
+    }
     const prefix = 'ef-live-lab-' + mode.toLowerCase();
     const comp = { stableId: prefix + '-comp' };
     const layer = { stableId: prefix + '-layer' };
@@ -117,6 +168,30 @@ try {
     assert.equal(duplicate.jobId, firstReceipt.jobId, 'identical submission reuses durable receipt');
     const batch = await wait(firstReceipt.jobId); assert.equal(batch.status, 'SUCCEEDED', JSON.stringify(batch));
     assert.equal(batch.result.completedActions, 3); assert.equal(batch.result.checkpoint.saved, true);
+    const native = await run(packet('AE_BATCH','native-text-solid-properties', {transactionId:prefix+'-native',intents:[
+      {kind:'ADD_SOLID_LAYER',comp,stableId:prefix+'-matte',sourceStableId:prefix+'-matte-source',name:'Lab matte',color:[0,0,0],width:320,height:320,pixelAspect:1,duration:1},
+      {kind:'SET_PROPERTY_VALUE',comp,layer:{stableId:prefix+'-matte'},propertyPath:['ADBE Transform Group','ADBE Opacity'],value:6},
+      {kind:'ADD_TEXT_LAYER',comp,stableId:prefix+'-text',text:'EditFlow',document:{fontSize:24,fillColor:[1,0.8,0.2],applyFill:true,justification:'CENTER'}},
+      {kind:'SET_TEXT_DOCUMENT',comp,layer:{stableId:prefix+'-text'},document:{text:'Direct AE',tracking:20}},
+      {kind:'SET_LAYER_TRANSFORM',comp,layer:{stableId:prefix+'-text'},values:{position:[160,70]}},
+      {kind:'SET_PROPERTY_KEYFRAMES',comp,layer:{stableId:prefix+'-text'},propertyPath:['ADBE Transform Group','ADBE Opacity'],keyframes:[{time:0,value:50},{time:0.5,value:100},{time:0.9,value:60}]},
+      {kind:'SET_PROPERTY_EXPRESSION',comp,layer:{stableId:prefix+'-text'},propertyPath:['ADBE Transform Group','ADBE Rotate Z'],expression:'0'},
+      {kind:'SET_EFFECT_PROPERTY',comp,layer,effectIndex:1,propertyPath:[1],value:2},
+      {kind:'READ_PROPERTY',comp,layer:{stableId:prefix+'-text'},propertyPath:['ADBE Transform Group','ADBE Opacity']},
+    ]}));
+    assert.equal(native.result.completedActions,9);assert.equal(native.result.checkpoint.saved,true);
+    assert.equal(native.result.readbacks.at(-1).readback.property.numKeys,3);
+    assert.deepEqual(native.result.readbacks.at(-1).readback.property.keyframes.map(k=>k.value),[50,100,60]);
+    assert.equal(native.result.readbacks[3].readback.document.text,'Direct AE');
+    assert.ok(native.result.currentState.projectRevision);
+    const beforeReject=await observed.observe();
+    const rejectedJob=await queue(packet('AE_BATCH','reject-before-writing',{transactionId:prefix+'-rejected',intents:[
+      {kind:'SET_LAYER_TRANSFORM',comp,layer,values:{opacity:55}},
+      {kind:'SET_PROPERTY_VALUE',comp,layer,propertyPath:['Definitely missing property'],value:1},
+    ]}));
+    const rejected=await wait(rejectedJob.jobId);assert.equal(rejected.status,'REJECTED',JSON.stringify(rejected));
+    const afterReject=await observed.observe();assert.equal(afterReject.observed.projectFingerprint,beforeReject.observed.projectFingerprint);
+    assert.equal(afterReject.hostRevision,beforeReject.hostRevision);
     const preview = await queue(packet('LOCAL_RENDER', 'full-resolution-preview', { compStableId: comp.stableId, startMs: 0, endMs: 1000 }));
     const next = await queue(packet('AE_BATCH', 'continue-after-preview', { transactionId: prefix + '-after-preview', intents: [
       { kind: 'UPDATE_COMP_SETTINGS', comp, settings: { width: 320 } },
@@ -124,9 +199,19 @@ try {
     const rendered = await wait(preview.jobId); assert.equal(rendered.status, 'SUCCEEDED', JSON.stringify(rendered));
     assert.ok((await stat(rendered.result.renderPath)).size > 0);
     const continued = await wait(next.jobId); assert.equal(continued.status, 'SUCCEEDED', JSON.stringify(continued));
+    const cachedPacket=packet('LOCAL_RENDER','cached-preview',{compStableId:comp.stableId,startMs:0,endMs:1000});
+    const freshPreview=await run(cachedPacket);
+    const reusedPreview=await run(packet('LOCAL_RENDER','reuse-same-preview',{compStableId:comp.stableId,startMs:0,endMs:1000}));
+    assert.equal(reusedPreview.result.reused,true);assert.equal(reusedPreview.result.renderPath,freshPreview.result.renderPath);
+    const frames=await run(packet('LOCAL_RENDER','exact-frame-question',{compStableId:comp.stableId,frameTimesMs:[500],resolutionScale:1}));
+    assert.ok((await stat(frames.result.frames[0].framePath)).size>0);
+    const compact=await http(endpoint+'/production-jobs');assert.equal(compact.detail,'SUMMARY');assert.ok(compact.jobs.every(job=>!job.payload));
+    const full=await http(endpoint+'/production-jobs?includeHistory=true');assert.ok(full.jobs.some(job=>job.payload));
     const modeReport = { mode, elapsedMs: Date.now() - started, assignmentId: assignment.assignmentId,
       checks: { oneCallResume: true, directTransactionNoResearchOrWorkflowPlan: true, realFootageAudioKeysAndEffect: true,
         automaticCheckpoint: true, crossCompositionBatch: true, duplicateReceiptReused: true,
+        nativeTextSolidPropertyAndKeyframes:true, exactPropertyReadback:true, preflightRejectsBeforeAnyWrite:true, rejectedReadOnlyRequestDoesNotBlockNextEdit:true,
+        responseContainsCurrentState:true, unchangedPreviewReused:true, exactStillFrameReturned:true, compactDefaultAndFullAudit:true,
         realFullResolutionRender: true, nextEditAfterPreviewWithoutResolve: true },
       renderPath: rendered.result.renderPath, jobs: [edit, batch, rendered, continued].map(job => ({ jobId: job.jobId, kind: job.kind, status: job.status })) };
     await service.stop(); service = new PracticePanelServerV1(settings); await service.start();
@@ -143,12 +228,24 @@ try {
     await writeFile(cleanupEvidence, JSON.stringify(final, null, 2));
     await http(endpoint + '/production-jobs', { action: 'RESOLVE', jobId: cleanup.jobId, claimedBy: owner, reviewEvidenceRef: cleanupEvidence });
     modeReport.checks.emptyProjectRestored = true;
+    if (mode === 'PRO_CREATION' && originalProject) {
+      const restore=await queue(packet('PROOF_SCRIPT','restore-retained-production-project',{scriptPath:originalProject.restoreScript,
+        scriptSha256:createHash('sha256').update(await readFile(path.join(repo,originalProject.restoreScript))).digest('hex')}));
+      const restored=await wait(restore.jobId);assert.equal(restored.status,'REVIEW_REQUIRED',JSON.stringify(restored));
+      const actual=await observed.observe();assert.equal(actual.project.itemCount,originalProject.itemCount);
+      assert.equal(actual.observed.projectFingerprint,originalProject.fingerprint);
+      const evidencePath=path.join(root,'restored-project-readback.json');await writeFile(evidencePath,JSON.stringify(actual,null,2));
+      await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:restore.jobId,claimedBy:owner,reviewEvidenceRef:evidencePath});
+      report.checks.originalProjectRestored=true;
+    }
     report.modes.push(modeReport);
     console.log(JSON.stringify(modeReport));
     await service.stop(); service = null;
   }
   report.ok = report.modes.length === 2 && report.modes.every(mode => Object.values(mode.checks).every(Boolean));
-} catch (error) { report.error = error.stack ?? String(error); }
+} catch (error) { report.error = error.stack ?? String(error);
+  try { await recoverLab?.(); } catch (restoreError) { report.restoreError=restoreError.stack ?? String(restoreError); }
+}
 finally {
   await service?.stop().catch(() => {});
   await broker.stop().catch(() => {});

@@ -25,22 +25,9 @@ export type PracticePhaseProductionStateV1 =
   | "PROVISIONAL_PASS"
   | "PROVEN";
 
-export interface PracticeProductionBudgetV1 {
-  readonly stage: PracticeProductionStageV1;
-  readonly warmBudgetMs: number;
-  readonly coldBudgetMs: number;
-}
-
-export const DEFAULT_PRACTICE_PRODUCTION_BUDGETS_V1: readonly PracticeProductionBudgetV1[] = [
-  { stage: "PREFLIGHT", warmBudgetMs: 120_000, coldBudgetMs: 300_000 },
-  { stage: "SOURCE_LOCK", warmBudgetMs: 300_000, coldBudgetMs: 1_800_000 },
-  { stage: "WHOLE_EDIT_COVERAGE", warmBudgetMs: 900_000, coldBudgetMs: 1_800_000 },
-  { stage: "RESEARCH", warmBudgetMs: 600_000, coldBudgetMs: 1_200_000 },
-  { stage: "AE_CONSTRUCTION", warmBudgetMs: 1_800_000, coldBudgetMs: 3_600_000 },
-  { stage: "LOCAL_PROOF", warmBudgetMs: 1_200_000, coldBudgetMs: 2_400_000 },
-  { stage: "WHOLE_EDIT_PROOF", warmBudgetMs: 900_000, coldBudgetMs: 1_800_000 },
-  { stage: "FINAL_CERTIFICATION", warmBudgetMs: 900_000, coldBudgetMs: 1_800_000 },
-  { stage: "INFRA_RECOVERY", warmBudgetMs: 180_000, coldBudgetMs: 600_000 },
+const PRODUCTION_STAGES_V1: readonly PracticeProductionStageV1[] = [
+  "PREFLIGHT", "SOURCE_LOCK", "WHOLE_EDIT_COVERAGE", "RESEARCH", "AE_CONSTRUCTION",
+  "LOCAL_PROOF", "WHOLE_EDIT_PROOF", "FINAL_CERTIFICATION", "INFRA_RECOVERY",
 ];
 
 export interface PracticeProductionPhaseV1 {
@@ -302,7 +289,7 @@ export class PracticeProductionCoordinatorV1 {
   }
 
   setStage(stage: PracticeProductionStageV1, phaseId: string | null = null): void {
-    if (!DEFAULT_PRACTICE_PRODUCTION_BUDGETS_V1.some((budget) => budget.stage === stage)) {
+    if (!PRODUCTION_STAGES_V1.includes(stage)) {
       throw new TypeError("Unknown Practice production stage: " + stage);
     }
     if (this.#snapshot.stage === stage && this.#snapshot.currentPhaseId === phaseId) return;
@@ -476,49 +463,6 @@ export class PracticeProductionCoordinatorV1 {
     this.#commit({ residuals: structuredClone(residuals) });
   }
 
-  budgetStatus(stage = this.#snapshot.stage, now = Date.now()): { exceeded: boolean; elapsedMs: number; budgetMs: number } {
-    const budget = DEFAULT_PRACTICE_PRODUCTION_BUDGETS_V1.find((item) => item.stage === stage)!;
-    const elapsedMs = Math.max(0, (this.#snapshot.stageElapsedMs?.[stage] ?? 0)
-      + (stage === this.#snapshot.stage ? Math.max(0, now - Date.parse(this.#snapshot.stageStartedAt)) : 0)
-      - (this.#snapshot.budgetBaselineMs?.[stage] ?? 0));
-    const budgetMs = this.#snapshot.coldStart ? budget.coldBudgetMs : budget.warmBudgetMs;
-    return { exceeded: elapsedMs > budgetMs, elapsedMs, budgetMs };
-  }
-
-  strategyDirective(now = Date.now()): Readonly<{
-    action: "CONTINUE" | "ESCALATE_STRATEGY";
-    stage: PracticeProductionStageV1;
-    reason: string;
-    elapsedMs: number;
-    budgetMs: number;
-  }> {
-    const budget = this.budgetStatus(this.#snapshot.stage, now);
-    const sessionOverrun = now - Date.parse(this.#snapshot.strategyChangedAt ?? this.#snapshot.createdAt) > (this.#snapshot.coldStart ? 6 : 4) * 3_600_000;
-    return budget.exceeded || sessionOverrun
-      ? {
-          action: "ESCALATE_STRATEGY",
-          stage: this.#snapshot.stage,
-          reason: sessionOverrun ? "Production wall-clock SLO exceeded; diagnose the dominant time bucket and change strategy." : "Stage wall-clock budget exceeded; change search/construction strategy instead of silently waiting.",
-          elapsedMs: budget.elapsedMs,
-          budgetMs: budget.budgetMs,
-        }
-      : {
-          action: "CONTINUE",
-          stage: this.#snapshot.stage,
-          reason: "Current stage remains within its wall-clock budget.",
-          elapsedMs: budget.elapsedMs,
-          budgetMs: budget.budgetMs,
-        };
-  }
-
-  acknowledgeStrategyChange(strategyKey: string): void {
-    if (!strategyKey.trim() || strategyKey === this.#snapshot.strategyKey) throw new TypeError("Budget acknowledgement requires a new concrete strategy.");
-    const now = Date.now();
-    const baseline = { ...this.#snapshot.stageElapsedMs };
-    baseline[this.#snapshot.stage] = (baseline[this.#snapshot.stage] ?? 0) + Math.max(0, now - Date.parse(this.#snapshot.stageStartedAt));
-    this.#commit({ strategyKey, strategyChangedAt: new Date(now).toISOString(), budgetBaselineMs: baseline });
-  }
-
   liveness(input: { now?: number; staleAfterMs?: number; aeProgressAt?: number; checkpointAt?: number }): {
     stalled: boolean;
     reason: string;
@@ -644,7 +588,7 @@ export class PracticeProductionCoordinatorFileV1 {
     const unattributedMs = wallClockElapsedMs === null
       ? null
       : Math.max(0, wallClockElapsedMs - observedWallClockMs);
-    const activeUtilization = wallClockElapsedMs === null || wallClockElapsedMs <= 0
+    const activeUtilization = wallClockElapsedMs === null || wallClockElapsedMs <= 0 || unattributedMs !== 0
       ? null
       : Math.min(1, activeWallClockMs / wallClockElapsedMs);
     return {

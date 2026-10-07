@@ -16,8 +16,21 @@ Resume once -> ChatGPT decides -> AE batch -> inspect -> correct.
   are optional supporting memory. They are not prerequisites for AE construction.
 - Batch coherent operations across shots or the whole edit. AE_BATCH accepts up to
   64 actions. There is no broad-edit declaration or per-shot PASS gate.
+- Routine edit submission returns completion, readbacks, currentState and checkpoint
+  in one call. Poll a retained job ID only for pending/uncertain work. Resume/job
+  lists are compact; full history is for actual audits, never routine startup.
+- Prefer AE_BATCH for supported text, solid, effect/property/keyframe/expression,
+  comp and layer edits. READ_PROPERTY returns exact property state. Host preflight
+  is internal and read-only. A known preflight rejection performs no AE writes and
+  does not hold the queue; correct the exact request. Generic opaque scripts are
+  reserved for genuinely unsupported operations and retain reconciliation.
 - The queue saves an AEP checkpoint after each committed mutation batch. It keeps
   the committed receipt if saving fails and reports the checkpoint warning.
+- LOCAL_RENDER accepts frameTimesMs for exact still questions, or startMs/endMs
+  for motion/audio. Group related corrections for review. Preview caching tracks
+  AE revision, environment, interval and resolution; forceRender:true bypasses it.
+  Reused previews never establish visual acceptance. Retrieve a chosen complete
+  method from practice-notebook; resume supplies its compact index.
 - Completed LOCAL_RENDER previews do not hold the queue for a separate review
   receipt. Inspect them when they answer a real editing question or at pass ends.
 - Opaque/partial/unknown writes remain reconciliation cases: inspect actual
@@ -58,8 +71,9 @@ Retired candidate matchers, editorial engines and fallback routes remain removed
 # Continuity and ownership
 
 The supervisor protects the exact owned chat while it is processing. Backend silence,
-stage budgets, repeated requests and expired research heartbeats are diagnostics;
-they cannot revoke a processing chat. A finished/missing owned chat needs confirmed
+repeated requests and expired research heartbeats are diagnostics;
+they cannot revoke a processing chat. Old forced stage-budget strategy changes
+are removed. User pauses/finished assignments do not produce stall alarms. A finished/missing owned chat needs confirmed
 UI evidence through the existing confirmation window before handoff. Unknown/stale
 observations cannot authorize replacement. Healthy queue heartbeats protect long jobs.
 

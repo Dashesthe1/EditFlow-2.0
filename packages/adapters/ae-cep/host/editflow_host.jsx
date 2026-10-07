@@ -293,6 +293,57 @@
     return result("APPLIED", { layer: layerSnapshot(layer) }, [{ stableId: payload.stableId, hostId: hostId(layer), kind: layerKind(layer) }]);
   };
 
+  function clearRequestedKeys(property, payload) {
+    if (property.numKeys > 0 && payload.replaceKeys !== true) throw new Error("ANIMATED_PROPERTY: choose explicit keyframes or replaceKeys:true.");
+    if (payload.replaceKeys === true) while (property.numKeys > 0) property.removeKey(property.numKeys);
+  }
+  function textDocumentSnapshot(doc) {
+    return { text: doc.text, font: doc.font, fontSize: doc.fontSize, fillColor: doc.fillColor,
+      applyFill: doc.applyFill, applyStroke: doc.applyStroke, strokeColor: doc.strokeColor,
+      strokeWidth: doc.strokeWidth, tracking: doc.tracking, leading: doc.leading, autoLeading: doc.autoLeading,
+      justification: doc.justification === ParagraphJustification.CENTER_JUSTIFY ? "CENTER" : doc.justification === ParagraphJustification.RIGHT_JUSTIFY ? "RIGHT" : "LEFT" };
+  }
+  function setTextDocument(layer, input, payload) {
+    var property = resolveProperty(layer, ["ADBE Text Properties", "ADBE Text Document"]);
+    var doc = property.value, key;
+    // Validate before changing the existing document or clearing any keys.
+    var allowed = { text:1, font:1, fontSize:1, fillColor:1, strokeColor:1, applyFill:1, applyStroke:1, strokeWidth:1, tracking:1, leading:1, autoLeading:1, justification:1 };
+    for (key in input) if (input.hasOwnProperty(key) && !allowed[key]) throw new Error("Unsupported text document field: " + key);
+    for (key in input) if (input.hasOwnProperty(key)) {
+      if (key === "justification") {
+        if (input[key] !== "LEFT" && input[key] !== "CENTER" && input[key] !== "RIGHT") throw new Error("Unsupported justification.");
+        doc.justification = input[key] === "CENTER" ? ParagraphJustification.CENTER_JUSTIFY : input[key] === "RIGHT" ? ParagraphJustification.RIGHT_JUSTIFY : ParagraphJustification.LEFT_JUSTIFY;
+      } else doc[key] = input[key];
+    }
+    clearRequestedKeys(property, payload);
+    property.setValue(doc);
+    return textDocumentSnapshot(property.value);
+  }
+  handlers["layer.add_text"] = function (payload) {
+    if (!payload.stableId || typeof payload.text !== "string") throw new Error("Text creation requires stableId and text.");
+    var comp = findComp(payload.comp), layer = comp.layers.addText(payload.text);
+    setStableId(layer, payload.stableId);
+    if (payload.name !== undefined) layer.name = payload.name;
+    var document = setTextDocument(layer, payload.document || { text:payload.text }, payload);
+    return result("APPLIED", { layer:layerSnapshot(layer), document:document }, [{stableId:payload.stableId,hostId:hostId(layer),kind:"LAYER_TEXT"}]);
+  };
+  handlers["layer.add_solid"] = function (payload) {
+    if (!payload.stableId || !payload.sourceStableId) throw new Error("Solid creation requires layer and source stable IDs.");
+    var comp = findComp(payload.comp);
+    var layer = comp.layers.addSolid(payload.color, payload.name, payload.width, payload.height, payload.pixelAspect, payload.duration);
+    setStableId(layer, payload.stableId); setStableId(layer.source, payload.sourceStableId);
+    return result("APPLIED", { layer:layerSnapshot(layer) }, [{stableId:payload.stableId,hostId:hostId(layer),kind:"LAYER_AV"}]);
+  };
+  handlers["text.set_document"] = function (payload) {
+    var layer = findLayer(findComp(payload.comp), payload.layer);
+    return result("APPLIED", {document:setTextDocument(layer, payload.document, payload)}, []);
+  };
+  handlers["property.set_value"] = function (payload) {
+    var property = resolveLayerProperty(payload);
+    clearRequestedKeys(property, payload); property.setValue(payload.value);
+    return result("APPLIED", {value:safePropertyValue(property),numKeys:property.numKeys}, []);
+  };
+
   handlers["layer.duplicate"] = function (payload) {
     if (!payload.stableId) throw new Error("layer.duplicate requires new stableId.");
     var comp = findComp(payload.comp);
@@ -336,6 +387,10 @@
       opacity: "ADBE Opacity"
     };
     var key;
+    for (key in map) if (map.hasOwnProperty(key) && values[key] !== undefined) {
+      var checked = group.property(map[key]);
+      if (!checked || checked.numKeys > 0) throw new Error("Transform property unavailable or animated: " + key + "; use explicit keyframes.");
+    }
     for (key in map) if (map.hasOwnProperty(key) && values[key] !== undefined) {
       var property = group.property(map[key]);
       if (!property) throw new Error("Transform property unavailable: " + key);
@@ -393,6 +448,7 @@
     var effect = effects.property(payload.effectIndex);
     if (!effect) throw new Error("Effect index could not be resolved.");
     var property = resolveProperty(effect, payload.propertyPath);
+    clearRequestedKeys(property, payload);
     property.setValue(payload.value);
     return result("APPLIED", { value: safePropertyValue(property) }, []);
   };
@@ -412,6 +468,8 @@
       times.push(keyframes[i].time);
       values.push(keyframes[i].value);
     }
+    if (!property.canVaryOverTime) throw new Error("Target cannot accept keyframes.");
+    if (payload.replaceKeys === true) while (property.numKeys > 0) property.removeKey(property.numKeys);
     property.setValuesAtTimes(times, values);
     return result("APPLIED", { numKeys: property.numKeys }, []);
   };
@@ -449,7 +507,41 @@
     return result("APPLIED", { outputPath: path }, []);
   };
 
+  function propertyReadback(payload) {
+    var property = resolveLayerProperty(payload), keys = [], i;
+    for (i = 1; i <= property.numKeys; i += 1) keys.push({time:property.keyTime(i),value:property.keyValue(i)});
+    return { name:property.name, matchName:property.matchName, value:safePropertyValue(property),
+      numKeys:property.numKeys, keyframes:keys, canVaryOverTime:property.canVaryOverTime,
+      canSetExpression:property.canSetExpression, expression:property.canSetExpression ? property.expression : null };
+  }
+  function editPreflight(payload) {
+    if (payload.expectedRevision !== app.project.revision) throw new Error("HOST_REVISION_MISMATCH: refresh the retained state.");
+    var operations = payload.operations, created = {}, deferred = [], i, op, p, layer, property, effects, effect;
+    for (i = 0; i < operations.length; i += 1) {
+      op = operations[i]; p = op.payload;
+      if (p.layer && p.layer.stableId && created[p.layer.stableId] || p.comp && p.comp.stableId && created[p.comp.stableId]) { deferred.push(i); }
+      else if (op.command === "text.set_document" || op.command === "effect.set_property" || op.command.indexOf("property.") === 0) {
+        layer = findLayer(findComp(p.comp), p.layer);
+        if (op.command === "text.set_document") property = resolveProperty(layer,["ADBE Text Properties","ADBE Text Document"]);
+        else if (op.command === "effect.set_property") {
+          effects = layer.property("ADBE Effect Parade"); effect = effects.property(p.effectIndex);
+          if (!effect) throw new Error("Effect index could not be resolved.");
+          property = resolveProperty(effect,p.propertyPath);
+        } else property = resolveProperty(layer,p.propertyPath);
+        if (property.matchName === "ADBE Time Remapping" && !layer.timeRemapEnabled) throw new Error("TIME_REMAP_DISABLED: enable it using the typed time-remap operation.");
+        if (op.command === "property.set_keyframes" && !property.canVaryOverTime) throw new Error("Target cannot accept keyframes.");
+        if (op.command === "property.set_expression" && !property.canSetExpression) throw new Error("Target cannot accept expressions.");
+        if ((op.command === "text.set_document" || op.command === "effect.set_property" || op.command === "property.set_value") && property.numKeys > 0 && p.replaceKeys !== true) throw new Error("ANIMATED_PROPERTY: choose explicit keyframes or replaceKeys:true.");
+      }
+      if (op.command === "comp.create" || op.command === "layer.add_text" || op.command === "layer.add_solid" || op.command === "layer.add_media" || op.command === "layer.duplicate") created[p.stableId] = true;
+      if (op.command === "effect.add" && p.layer && p.layer.stableId) created[p.layer.stableId] = true;
+    }
+    return {validatedOperations:operations.length,deferredTargets:deferred};
+  }
+
   handlers["readback.object"] = function (payload) {
+    if (payload.kind === "PROPERTY") return result("NO_OP", {property:propertyReadback(payload)}, []);
+    if (payload.kind === "EDIT_PREFLIGHT") return result("NO_OP", editPreflight(payload), []);
     if (payload.kind === "PROJECT") return result("NO_OP", { project: projectSnapshot() }, []);
     if (payload.kind === "COMPOSITION") return result("NO_OP", { composition: compSnapshot(findComp(payload.target)) }, []);
     if (payload.kind === "LAYER") {

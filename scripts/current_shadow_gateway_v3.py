@@ -44,7 +44,7 @@ REQUIRED_PRODUCTION_TOOLS = (
 )
 PRODUCTION_UPDATE_ACTIONS = frozenset({
     "WORKFLOW_PLAN", "WORKFLOW_REVIEW", "WORKFLOW_MILESTONE", "HEARTBEAT",
-    "STAGE", "STRATEGY_CHANGE", "RESEARCH_READY", "WHOLE_EDIT_COVERED",
+    "STAGE", "RESEARCH_READY", "WHOLE_EDIT_COVERED",
     "CONSTRUCTED", "AE_CHECKPOINT", "LOCAL_PROOF", "WHOLE_EDIT_PROOF",
     "INVALIDATE", "RESIDUALS", "TELEMETRY",
 })
@@ -180,19 +180,22 @@ def _execute_queued(kind: str, payload: dict[str, Any], wait_seconds: float = 30
     safe_id = urllib.parse.quote(context["assignmentId"], safe="")
     endpoint = f"/v1/product/gpt/assignments/{safe_id}/production-jobs"
     accepted = _practice_http("POST", endpoint, {"kind": kind, "payload": payload, "dependencyIds": []})
-    job = accepted["job"]
+    return _wait_queued(endpoint, accepted["job"], wait_seconds)
+
+
+def _wait_queued(endpoint: str, job: dict[str, Any], wait_seconds: float = 30) -> dict[str, Any]:
     deadline = time.monotonic() + wait_seconds
     while job["status"] in ("PENDING", "RUNNING") and time.monotonic() < deadline:
-        time.sleep(.1)
         safe_job = urllib.parse.quote(job["jobId"], safe="")
         try:
-            job = _practice_http("GET", endpoint + "?jobId=" + safe_job)["job"]
+            job = _practice_http("GET", endpoint + "?jobId=" + safe_job + "&waitMs=2000&after=" + urllib.parse.quote(job.get("updatedAt", ""), safe=""))["job"]
         except Exception as exc:
             return {"productionJobId": job["jobId"], "productionStatus": job["status"],
                     "executionPath": "DURABLE_PRODUCTION_QUEUE_V1", "pollError": str(exc),
                     "nextAction": "Resume this job receipt; do not resubmit or switch execution paths."}
     result = job.get("result", {})
     return {**(result if isinstance(result, dict) else {"result": result}),
+            "job": {key: job[key] for key in ("jobId", "kind", "status", "updatedAt", "result", "error") if key in job},
             "productionJobId": job["jobId"], "productionStatus": job["status"],
             "executionPath": "DURABLE_PRODUCTION_QUEUE_V1",
             **({"error": job["error"]} if job.get("error") else {})}
@@ -440,10 +443,10 @@ def build_server():
         return _execute_queued("AE_BATCH", {"intents": intents, "transactionId": tx, "researchContext": packet.get("researchContext") if isinstance(packet, dict) else None, "editorialDecision": packet.get("editorialDecision") if isinstance(packet, dict) else None, "workflowContext": packet.get("workflowContext") if isinstance(packet, dict) else None})
 
     @tool(read_only=True, destructive=False)
-    def get_production_state(assignment_id: str) -> dict[str, Any]:
+    def get_production_state(assignment_id: str, include_history: bool = False) -> dict[str, Any]:
         """Resume the retained workflow plan/reviews, checkpoints, stage and telemetry without changing AE or supervision."""
         safe_id = urllib.parse.quote(assignment_id, safe="")
-        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/production")
+        return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/production?includeHistory=" + str(include_history).lower())
 
     @tool()
     def record_production_update(assignment_id: str, update_json: str) -> dict[str, Any]:
@@ -457,20 +460,22 @@ def build_server():
 
     @tool()
     def enqueue_production_job(assignment_id: str, job_json: str) -> dict[str, Any]:
-        """Submit deterministic authorized work to the sole Practice/Pro Creation production worker."""
+        """Submit exact work once. Routine edits wait for their durable completion and return readbacks/checkpoint; long jobs retain their ID. Prefer AE_BATCH for supported edits. LOCAL_RENDER accepts frameTimesMs or a bounded video interval, caches unchanged previews, and accepts forceRender."""
         payload = _object_payload(job_json, "job_json")
         context = payload.get("payload", {}).get("researchContext") if isinstance(payload.get("payload"), dict) else None
         if not isinstance(context, dict) or context.get("assignmentId") != assignment_id:
             raise ValueError("Job researchContext must identify this retained assignment")
         _require_worker(context.get("claimedBy"))
         safe_id = urllib.parse.quote(assignment_id, safe="")
-        return _practice_http("POST", f"/v1/product/gpt/assignments/{safe_id}/production-jobs", payload)
+        endpoint = f"/v1/product/gpt/assignments/{safe_id}/production-jobs"
+        accepted = _practice_http("POST", endpoint, payload)
+        return _wait_queued(endpoint, accepted["job"]) if payload.get("kind") in ("AE_BATCH", "AE_TRANSACTION", "AE_CORRECTION") else accepted
 
     @tool(read_only=True, destructive=False)
-    def get_production_jobs(assignment_id: str, job_id: str = "") -> dict[str, Any]:
-        """Inspect durable jobs; use a retained job_id to resume instead of resubmitting work."""
+    def get_production_jobs(assignment_id: str, job_id: str = "", include_history: bool = False) -> dict[str, Any]:
+        """Read compact durable receipts by default. Use job_id for a complete decision/receipt, or include_history only for an actual audit. Never resubmit uncertain work."""
         safe_id = urllib.parse.quote(assignment_id, safe="")
-        query = "?jobId=" + urllib.parse.quote(job_id, safe="") if job_id else ""
+        query = "?jobId=" + urllib.parse.quote(job_id, safe="") if job_id else "?includeHistory=" + str(include_history).lower()
         return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/production-jobs" + query)
 
     @tool()

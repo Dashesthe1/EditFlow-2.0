@@ -117,8 +117,8 @@ test("studied methods cover all six recordings and remain UNVERIFIED without aut
 test("local draft preview uses an unpatched isolated copy; full review uses canonical picture", async t => {
   const dir=await mkdtemp(path.join(os.tmpdir(),"workflow-preview-"));t.after(()=>rm(dir,{recursive:true,force:true}));
   const driver=new ChatgptAeRenderDriverV1({transport:{dispatch(){throw Error("unexpected transport")}},projectId:"p",artifactDir:dir}),calls=[];
-  driver.client.observe=async()=>({observed:{}});
-  driver.client.executePublic=async(command,request)=>{
+  driver.client.observe=async()=>({hostRevision:1,observed:{projectFingerprint:"stable",environmentFingerprint:"env"}});
+  driver.client.executePublicAtKnownHostRevision=async(command,request)=>{
     calls.push(request.payload);const completionPath=path.join(dir,"completion.json");
     await writeFile(request.payload.outputPath,"render bytes");await writeFile(completionPath,JSON.stringify({schemaVersion:1,jobId:"job",status:"DONE",ok:true,outputPath:request.payload.outputPath,error:null,queueItemRemoved:true}));
     return {outcome:"APPLIED",readback:{jobId:"job",completionPath}};

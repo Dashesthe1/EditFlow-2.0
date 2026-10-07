@@ -164,7 +164,7 @@ test('integrated HTTP edits reject before dispatch; restart preserves the same a
   assert.doesNotMatch(resumed.assignment.chatMessage, /MANDATORY PER-CLIP RESEARCH GATE|editing EVERY clip/);
   assert.equal(resumed.preflight.stage, 'READY');
   assert.equal((await store.listAssignments()).length, 1);
-  assert.deepEqual(resumed.clipResearch.clips, {});
+  assert.equal(resumed.clipResearch.advisory, true);
 });
 
 test('directly reviewed research source can be reused across clips with identical effect coverage', async t => {
