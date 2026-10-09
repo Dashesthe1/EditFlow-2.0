@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.6.0"
+VERSION = "source-match-v1.6.1"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -1329,7 +1329,19 @@ class Engine:
             anchors=[anchors[n] for n in np.unique(np.round(np.linspace(0,len(anchors)-1,min(9,len(anchors)))).astype(int))] if anchors else []
             if len(anchors)<3:continue
             times=[a['sourceTime'] for a in anchors];pts={a['sourcePts'] for a in anchors}
-            frames={f['pts']:f for f in self.source_frames(shot['sourcePath'],max(0,min(times)-1e-6),max(times)+.001) if f['pts'] in pts}
+            # Neighboring original frames are controls for direct GPT review,
+            # not alternative timestamps to fill an invisible endpoint.
+            review_anchors=[anchors[n] for n in np.unique(np.round(np.linspace(0,len(anchors)-1,3)).astype(int))]
+            frame_seconds=1/self.report['sources'][shot['sourceIndex']]['fps']
+            nearby={};frames={}
+            for f in self.source_frames(shot['sourcePath'],max(0,min(times)-2.5*frame_seconds),max(times)+2.5*frame_seconds):
+                if f['pts'] in pts:frames[f['pts']]=f
+                for a in review_anchors:
+                    for side,direction in [('earlier',-1),('later',1)]:
+                        distance=abs(f['t']-(a['sourceTime']+direction*2*frame_seconds))
+                        key=(a['sourcePts'],side)
+                        if distance<frame_seconds*.6 and (key not in nearby or distance<nearby[key][0]):
+                            nearby[key]=(distance,f)
             measured=[];paired=[]
             for a in anchors:
                 self.check()
@@ -1350,6 +1362,14 @@ class Engine:
                 correspondence_picture(q,s,g,picture)
                 item=dict(referenceTime=query['t'],referencePts=query['pts'],referenceTimeBase=query['timeBase'],sourceTime=source['t'],sourcePts=source['pts'],sourceTimeBase=source['timeBase'],geometry=g,gradientEvidence=edge,
                           referenceEvidencePath=a.get('referenceEvidencePath'),sourceEvidencePath=a.get('sourceEvidencePath'),correspondenceEvidencePath=str(picture))
+                controls=[]
+                for side in ['earlier','later']:
+                    other=nearby.get((source['pts'],side))
+                    if other is None:continue
+                    other=other[1];file=self.out/f"{shot['shotId']}-review-control-pts-{other['pts']}.jpg"
+                    cv2.imwrite(str(file),cv2.cvtColor(other['image'],cv2.COLOR_RGB2BGR))
+                    controls.append(dict(role='NEARBY_ORIGINAL_FRAME_CONTROL',side=side,sourceTime=other['t'],sourcePts=other['pts'],sourceTimeBase=other['timeBase'],sourceEvidencePath=str(file)))
+                item['nearbySourceFrames']=controls
                 measured.append(item);paired.append((item,images))
             changes=[]
             for (a,(qa,sa,ma)),(b,(qb,sb,mb)) in zip(paired,paired[1:]):
@@ -1406,6 +1426,63 @@ class Engine:
             cv2.imwrite(str(p),np.vstack(rows[start:start+8]));paths.append(str(p))
         self.report["contactSheetPaths"]=paths
 
+    def visual_reasoning_packet(self):
+        """Issue original decoded evidence, without fabricating a GPT verdict.
+
+        A montage is a navigation aid. Full individual images and measured maps
+        remain available for fine landmarks and frame-level alternatives.
+        """
+        packets={}
+        for i,shot in enumerate(self.report['shots']):
+            origin=self.report.get('originVerifications',{}).get(shot['shotId'],{})
+            frames=origin.get('frames') or shot.get('anchors',[])
+            frames=sorted(frames,key=lambda a:a['referenceTime'])
+            selected=[frames[n] for n in np.unique(np.round(np.linspace(0,len(frames)-1,min(3,len(frames)))).astype(int))] if frames else []
+            evidence=[];rows=[]
+            for n,a in enumerate(selected):
+                evidence_id=f"{shot['shotId']}:pair:{n+1}"
+                evidence.append({**a,'evidenceId':evidence_id,'role':'OBSERVED_FRAME_PAIR',
+                    'nearbySourceFrames':[{**c,'evidenceId':evidence_id+':'+c['side']} for c in a.get('nearbySourceFrames',[])]})
+                row=np.full((540,1240,3),24,np.uint8)
+                for col,key in enumerate(['referenceEvidencePath','sourceEvidencePath']):
+                    file=a.get(key);im=cv2.imread(file) if file else None
+                    if im is None:continue
+                    w=440 if col==0 else 760;x0=0 if col==0 else 460
+                    scale=min(w/im.shape[1],485/im.shape[0]);im=cv2.resize(im,(round(im.shape[1]*scale),round(im.shape[0]*scale)))
+                    x=x0+(w-im.shape[1])//2;y=48+(485-im.shape[0])//2
+                    row[y:y+im.shape[0],x:x+im.shape[1]]=im
+                    stamp=a['referenceTime'] if col==0 else a['sourceTime']
+                    label=f"{evidence_id} {'EDIT' if col==0 else 'ORIGINAL MOVIE'} {stamp:.6f}s"
+                    cv2.putText(row,label,(x0+6,25),0,.46,(240,240,240),1,cv2.LINE_AA)
+                rows.append(row)
+            sheet=None
+            if rows:
+                sheet=str(self.out/(shot['shotId']+'-visual-reasoning.jpg'))
+                cv2.imwrite(sheet,np.vstack(rows))
+            # Known competing measured hypotheses are exposed rather than hidden
+            # behind the winning retrieval score. Missing images stay explicit.
+            alternatives=[];seen=set()
+            for h in self.accepted_hypotheses.get(i,[]):
+                aa=h.get('anchors',[])
+                if not aa:continue
+                a=aa[len(aa)//2];identity=(h['source'],a['sourcePts'])
+                if identity in seen:continue
+                seen.add(identity)
+                if h['source']==shot.get('sourceIndex') and any(x['sourcePts']==a['sourcePts'] for x in frames):continue
+                alternatives.append(dict(sourceIndex=h['source'],sourcePath=self.report['sources'][h['source']]['path'],referenceTime=a['referenceTime'],sourceTime=a['sourceTime'],sourcePts=a['sourcePts'],sourceTimeBase=a['sourceTimeBase'],
+                    referenceEvidencePath=a.get('referenceEvidencePath'),sourceEvidencePath=a.get('sourceEvidencePath'),geometry=a['geometry'],imageReviewAvailable=bool(a.get('sourceEvidencePath'))))
+                if len(alternatives)>=4:break
+            packet=dict(schema='editflow.source-match-visual-reasoning.v1',shotId=shot['shotId'],authority='CHATGPT_DIRECT',reviewStatus='AWAITING_DIRECT_IMAGE_REVIEW',
+                scope='SHOT_ORIGIN_AND_OBSERVABLE_BOUNDARIES',exactTrimStatus=shot.get('boundaryStatus','UNRESOLVED'),machineStatus=shot['status'],originMeasurementStatus=origin.get('status','NOT_CHECKED'),
+                referencePath=self.report['reference']['path'],sourcePath=shot.get('sourcePath'),contactSheetPath=sheet,framePairs=evidence,
+                boundaries=[{**b,'evidenceId':shot['shotId']+':boundary:'+b['endpoint']} for b in shot.get('boundaryEvidence',[])],competingHypotheses=alternatives,competingLocationMeasurementComplete=self.report['alternativeReviewComplete'],
+                imagePolicy='Read actual edit and original movie images; use aligned views only as labeled measured transforms. Do not inpaint, generate missing detail, or treat a montage as full-resolution endpoint proof.',
+                reviewRequest='Compare the actual images before reading scores. Describe matching pose, landmark arrangement, background geometry and motion at multiple moments. Explain crop, borders, captions, grading, overlays or composites using visible evidence and the measured map. Inspect nearby original-frame controls and competing locations; name contradictions and what evidence would resolve them. Distinguish same movie section from the exact source frame. Return a concise evidence-grounded justification, never a similarity-only guess or an invented hidden frame.',
+                requiredReviewFields=['originDecision: SAME_SHOT | DIFFERENT_SHOT | INSUFFICIENT_EVIDENCE','inspectedEvidenceIds','correspondences: evidenceId, region, observation','alterations: type, affectedRegion, evidenceId, explanation','motionObservations','alternativeChecks','contradictions','boundaryDecisions: first/last, OBSERVED | NOT_OBSERVABLE | AMBIGUOUS, evidenceId, original sourcePts only if observed','nextEvidenceRequests'],
+                reviewPath=str(self.out/(shot['shotId']+'-visual-reasoning.json')))
+            atomic_json(packet['reviewPath'],packet);packets[shot['shotId']]=dict(reviewPath=packet['reviewPath'],contactSheetPath=sheet,reviewStatus=packet['reviewStatus'],framePairCount=len(evidence),scope=packet['scope'])
+        self.report['visualReasoningPackets']=packets
+
     def run(self):
         try:
             self.reference()
@@ -1436,6 +1513,7 @@ class Engine:
             raise
         finally:
             self.contact_sheets()
+            self.visual_reasoning_packet()
             self.save()
         self.progress("FINISHED",status=self.report["status"],verified=sum(s["status"]=="VERIFIED" for s in self.report["shots"]),total=len(self.report["shots"]))
         return self.report

@@ -79,6 +79,21 @@ def test_boundary_bursts_confirm_origin_without_filling_black_trim(tmp_path):
     assert origin['scope']=='MOVIE_SECTION_ORIGIN_ONLY' and origin['exactTrimStatus']=='UNRESOLVED'
     assert origin['measuredSourceSection']['start']==13/12
     assert (tmp_path/'out'/'shot-001-origin-evidence.json').exists()
+    packet=json.loads(Path(report['visualReasoningPackets']['shot-001']['reviewPath']).read_text())
+    assert packet['reviewStatus']=='AWAITING_DIRECT_IMAGE_REVIEW'
+    assert packet['exactTrimStatus']=='UNRESOLVED' and 'originDecision' not in packet
+    assert len(packet['framePairs'])==3 and Path(packet['contactSheetPath']).exists()
+    assert packet['boundaries'][0]['referencePts']==0
+    assert packet['boundaries'][0]['information']['kind']=='INSUFFICIENT_DISTRIBUTED_DETAIL'
+    # Every control is an actual decoded original frame, not a synthesized guess.
+    originals={f['pts']:f['image'] for f in m.decode(source,size=640)}
+    controls=[c for a in packet['framePairs'] for c in a['nearbySourceFrames']]
+    assert len(controls)>=4
+    for c in controls:
+        image=cv2.cvtColor(cv2.imread(c['sourceEvidencePath']),cv2.COLOR_BGR2RGB)
+        assert c['sourcePts'] in originals and c['evidenceId']
+        assert np.abs(image.astype(float)-originals[c['sourcePts']].astype(float)).mean()<8
+    assert 'sourceStart' not in report['shots'][0]
 
 
 def test_distributed_pixels_verify_caption_and_composite_without_whole_image_agreement():

@@ -4,8 +4,8 @@ import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 
 export const SOURCE_MATCH_CONTRACT_V1 = {
-  schema: "editflow.source-match-contract.v1", version: "1.3.0",
-  engineVersion: "1.6.0",
+  schema: "editflow.source-match-contract.v1", version: "1.4.0",
+  engineVersion: "1.6.1",
   endpoint: "/v1/product/source-match", actions: ["SUBMIT", "REFINE", "IMPORT_TIMELINE", "STATUS", "CANCEL"],
   authority: "CHATGPT_DIRECT", automaticSelection: false, aeWrites: false,
   instructions: "Submit {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]} once. Times are seconds. Poll jobId. Inspect report anchors and evidence; machine VERIFIED is geometric/temporal evidence, never editorial acceptance. LOCATED confirms interior source frames while full-shot endpoints remain unresolved. Use existing GPT BROWSE/SELECT for assignment acceptance. Shot detection is advisory; explicit shot ranges override it. Budget expiry returns PARTIAL/unresolved results, never invented exact timestamps. Service may run while production is paused without claiming or resuming an assignment.",
@@ -13,6 +13,12 @@ export const SOURCE_MATCH_CONTRACT_V1 = {
   refinement: "REFINE {requestId,jobId,shotIds?:[...],windows?:[{shotId,sourceIndex,start,end}],budgetSeconds:480}. Retains other shots and their evidence in a new job; validates unchanged inputs and boundaries. Known locations are rechecked at higher resolution with crop/resize/rotation maps and distributed pixel-region verification for text/overlays/composites. Retain transform, supported regions and aligned evidence; visible altered footage is not classified as hidden solely because size, borders or text differ. Unlocated shots reuse cached global descriptors. Only absent/insufficient picture detail or ambiguous identity leaves exact endpoints unresolved; never extrapolate them.",
   originalTimeline: "IMPORT_TIMELINE {requestId,jobId,timelinePath,budgetSeconds:480}. Read a canonical editflow.original-timeline-frame-map.v1 export from the actual original edit project. Requires hashed original project provenance, matching media fingerprints, integer PTS for every reference frame and agreement with at least three retained pixel anchors per shot. Metadata boundaries stay explicitly distinguished from pixel endpoint matches. Never fabricate an original export or substitute an inferred frame map.",
   originVerification: "Original author projects are not required to verify movie-section origin. Adaptive boundary bursts, SIFT and stricter ORB fallback measure visible frame maps. originVerifications independently rechecks those maps with spatial gradients and signed changing pixels across frames; static text/backgrounds cannot pass motion-energy checks. CONFIRMED requires three fresh frame maps, three gradient witnesses, a passing temporal-change witness and completed competing-location review. Movie-section origin is separate from exact trim status: hidden endpoints are never filled from predictions. Inspect per-shot origin-evidence.json and originSummary alongside exact-range summary.",
+  visualReasoning: {
+    authority:"CHATGPT_DIRECT", execution:"CURRENT_CHATGPT_IMAGE_REVIEW", separateApiRequired:false,
+    instructions:"Read visualReasoningPackets for every shot, including LOCATED rows. Open the individual edit/raw images and measured alignments, not only paths or scores. Compare pose, distinctive landmarks, relative background structure and motion at several moments; explain visible crop, text, borders, grading and composites. Inspect nearby source-frame controls and competing hypotheses, request missing images through existing GPT BROWSE or targeted REFINE, and state contradictions. Return concise observations linked to evidence IDs. SAME_SHOT can establish movie-section identity while first/last remain NOT_OBSERVABLE or AMBIGUOUS. Never invent hidden endpoints. Packets await actual ChatGPT inspection; generating one is not an LLM call, review receipt, editorial PASS or assembly permission. Use existing GPT BROWSE/SELECT for durable assignment decisions.",
+    decisions:["SAME_SHOT","DIFFERENT_SHOT","INSUFFICIENT_EVIDENCE"],
+    boundaryDecisions:["OBSERVED","NOT_OBSERVABLE","AMBIGUOUS"],
+  },
 } as const;
 
 export interface SourceMatchServiceConfigV1 {
@@ -72,8 +78,10 @@ export class SourceMatchServiceV1 {
     const report=await optionalJson(path.join(dir,"report.json"));
     const remaining=report?.shots?.filter((s:any)=>s.status!=="VERIFIED").map((s:any)=>({shotId:s.shotId,status:s.status,reason:s.reason,boundaryDiagnostics:s.boundaryDiagnostics,boundaryEvidence:s.boundaryEvidence,
       originVerification:report?.originVerifications?.[s.shotId] ? Object.fromEntries(["status","scope","methods","independentFrameCount","gradientPassCount","temporalChangePassCount","competingLocationReviewComplete","referenceCoverage","measuredSourceSection","exactTrimStatus","evidencePath"].map(k=>[k,report.originVerifications[s.shotId][k]])) : undefined,
-      requiredEvidence:s.status==="LOCATED"?"Inspect independent origin checks and denser visible boundary moments; exact trims require measured endpoint correspondence":"Verify at least three visible frames using feature maps, gradients and temporal changes"}));
+      visualReasoningPacket:report?.visualReasoningPackets?.[s.shotId],
+      requiredEvidence:s.status==="LOCATED"?"Read the ChatGPT visual reasoning packet, independent origin checks and denser boundary moments; exact trims require observed endpoint correspondence":"Inspect actual edit/raw images and competing locations; corroborate at least three visible moments with feature maps, gradients and temporal changes"}));
     return { job, progress: await optionalJson(path.join(dir,"progress.json")), report, csvPath: path.join(dir,"timestamps.csv"),
+      visualReasoning:{protocol:SOURCE_MATCH_CONTRACT_V1.visualReasoning,packets:report?.visualReasoningPackets??{},directReviewReceipt:"USE_EXISTING_GPT_BROWSE_SELECT"},
       nextAction:job.status==="RUNNING"?"POLL_RETAINED_JOB":report?.status==="COMPLETE"?"GPT_REVIEW_THEN_PREPARE_ASSEMBLY":"REFINE_OR_INSPECT_UNRESOLVED_SHOTS",remaining };
   }
   /** Compact, durable handoff included in assignment resume; never starts work. */
@@ -85,7 +93,7 @@ export class SourceMatchServiceV1 {
     if(!latest)return null;
     const result=await this.status(latest.jobId);
     if(!result.job)throw new Error("SOURCE_MATCH_JOB_NOT_FOUND");
-    return {job:result.job,summary:result.report?.summary,originSummary:result.report?.originSummary,remaining:result.remaining,csvPath:result.csvPath,nextAction:result.nextAction};
+    return {job:result.job,summary:result.report?.summary,originSummary:result.report?.originSummary,visualReasoning:result.visualReasoning,remaining:result.remaining,csvPath:result.csvPath,nextAction:result.nextAction};
   }
   refine(body:Record<string,unknown>):Promise<unknown> {
     const result=this.#tail.catch(()=>undefined).then(async()=>{

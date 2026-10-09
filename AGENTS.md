@@ -109,6 +109,12 @@ origin. Static captions/backgrounds cannot pass the temporal energy checks.
 CONFIRMED origin is not an exact hidden trim; keep that distinction explicit.
 No original author project is required for this measurement path. Never demote
 an adequately evidenced movie-section match merely because an endpoint is hidden.
+Read visualReasoningPackets with actual edit/raw images, measured alignments,
+nearby original-frame controls and competing hypotheses. ChatGPT directly compares
+poses, landmarks, background structure and motion, explains alterations and records
+evidence-linked observations and contradictions. A generated packet is awaiting
+review, not an LLM verdict. Distinguish SAME_SHOT origin from OBSERVED,
+NOT_OBSERVABLE or AMBIGUOUS endpoints; existing GPT BROWSE/SELECT retains decisions.
 Low-information black/text-only boundaries and ambiguous static frames remain
 unresolved. Search predictions are proposals, never certified endpoint evidence.
 Do not extrapolate or certify invisible source endpoints.

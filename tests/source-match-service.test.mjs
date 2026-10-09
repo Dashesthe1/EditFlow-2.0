@@ -85,12 +85,17 @@ test("corroborated movie origin remains separate from unresolved exact trims",as
   const {service,request}=await fixture(t);const initial=await service.submit(request);
   const prior=await finished(service,initial.job.jobId);
   const origin={status:'CONFIRMED',scope:'MOVIE_SECTION_ORIGIN_ONLY',independentFrameCount:6,gradientPassCount:5,temporalChangePassCount:2,evidencePath:'proof.json',frames:[{large:'full evidence'}]};
-  await writeFile(path.join(prior.job.outputDir,'report.json'),JSON.stringify({status:'PARTIAL',shots:[{shotId:'shot-001',status:'LOCATED'}],originVerifications:{'shot-001':origin}}));
+  const packet={reviewPath:'review.json',reviewStatus:'AWAITING_DIRECT_IMAGE_REVIEW',framePairCount:3};
+  await writeFile(path.join(prior.job.outputDir,'report.json'),JSON.stringify({status:'PARTIAL',shots:[{shotId:'shot-001',status:'LOCATED'}],originVerifications:{'shot-001':origin},visualReasoningPackets:{'shot-001':packet}}));
   const result=await service.status(initial.job.jobId);
   assert.equal(result.nextAction,'REFINE_OR_INSPECT_UNRESOLVED_SHOTS');
   assert.equal(result.remaining[0].status,'LOCATED');
   assert.equal(result.remaining[0].originVerification.status,'CONFIRMED');
   assert.equal(result.remaining[0].originVerification.frames,undefined);
+  assert.deepEqual(result.remaining[0].visualReasoningPacket,packet);
+  assert.equal(result.visualReasoning.protocol.authority,'CHATGPT_DIRECT');
+  assert.equal(result.visualReasoning.protocol.separateApiRequired,false);
+  assert.deepEqual(result.visualReasoning.packets['shot-001'],packet);
   assert.doesNotMatch(result.remaining[0].requiredEvidence,/original.project/i);
 });
 

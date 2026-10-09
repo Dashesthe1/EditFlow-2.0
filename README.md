@@ -55,6 +55,15 @@ and signed changing pixels across a sequence. Original author projects are not
 required for movie-section origin verification. Fresh origin evidence is retained
 in `originVerifications`, `originSummary` and per-shot `origin-evidence.json`.
 
+v1.6.1 issues `visualReasoningPackets` for direct ChatGPT image review. Each shot
+has actual edit/raw pairs at several moments, measured alignments, decoded nearby
+original-frame controls, available competing hypotheses and both actual reference
+boundaries. ChatGPT explains matching poses, landmarks, background and motion,
+accounts for alterations and states contradictions using evidence IDs. Packets
+remain awaiting review until the images are actually inspected; their creation
+does not run an OpenAI API call or manufacture a model verdict. The current
+ChatGPT session reviews them and existing GPT BROWSE/SELECT retains decisions.
+
 Movie-section origin and exact source trims are separate claims. CONFIRMED origin
 requires multiple fresh mapped frames, independent edge/change witnesses and a
 completed competing-location review; it never inserts a source timestamp beneath
