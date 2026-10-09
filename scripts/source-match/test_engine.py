@@ -108,6 +108,28 @@ def test_dark_and_flashed_detail_can_be_measured_without_accepting_flat_or_unrel
     assert not m.valid_geometry(m.geometry(np.full_like(frame,255),frame))
 
 
+def test_near_black_quantized_detail_is_tested_instead_of_discarded_for_brightness():
+    frame=fixture()[22]
+    query=np.clip(frame.astype(float)*.025,0,255).astype(np.uint8)
+    g=m.geometry(query,frame)
+    assert m.valid_geometry(g),g
+    assert m.boundary_information(query)['kind']=='DISTRIBUTED_VISIBLE_DETAIL'
+    unrelated=np.random.default_rng(876).integers(0,255,frame.shape,dtype=np.uint8)
+    assert not m.valid_geometry(m.geometry(query,unrelated))
+    assert not m.valid_geometry(m.geometry(np.full_like(query,2),frame))
+
+
+def test_encoded_near_black_endpoint_measures_original_frame_after_retrieval_normalization(tmp_path):
+    frames=fixture();source=tmp_path/'source.mp4';ref=tmp_path/'dark.mp4'
+    encode(source,frames)
+    encode(ref,[np.clip(frames[12].astype(float)*.06,0,255).astype(np.uint8)]+frames[13:36])
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=4)
+    report=m.Engine(request,tmp_path/'out',tmp_path/'cache',m.Encoder('diagnostic')).run()
+    shot=report['shots'][0]
+    assert shot['status']=='VERIFIED',report
+    assert shot['sourceStart']==1 and shot['sourceEndExclusive']==3,shot
+
+
 def test_temporal_reversal_and_inconsistent_time():
     good={"inliers":30,"coverage":.5,"fraction":.9,"score":20}
     anchors=[dict(referenceTime=x,sourceTime=10-2*x,geometry=good) for x in [0,.5,1]]

@@ -25,6 +25,8 @@ def main():
         "faded":([np.zeros_like(frames[12])]+frames[13:35]+[np.zeros_like(frames[35])],"LOCATED"),
         "dark-endpoint":([np.clip(frames[12].astype(float)*.18+4,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
         "flash-endpoint":([np.clip(frames[12].astype(float)*.18+205,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
+        "near-black-endpoint":([np.clip(frames[12].astype(float)*.06,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
+        "crushed-endpoint":([np.clip(frames[12].astype(float)*.025,0,255).astype(np.uint8)]+frames[13:36],"LOCATED"),
         "hidden-interior":(frames[12:24]+[np.zeros_like(frames[24])]+frames[25:36],"VERIFIED"),
         "unrelated":([np.full_like(f,130) for f in frames[:24]],"UNRESOLVED"),
     }

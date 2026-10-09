@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.5.0"
+VERSION = "source-match-v1.5.1"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -278,12 +278,24 @@ def feature_points(im):
     low,high=np.percentile(gray,[5,95])
     # Recover retained detail through a dark grade or white wash. Never invent
     # texture in a flat/clipped image; all geometry and ambiguity gates remain.
-    if 6<high-low<64:
+    if 0<high-low<64:
         gray=np.clip((gray.astype(float)-low)*255/(high-low),0,255).astype(np.uint8)
     a=cv2.createCLAHE(clipLimit=2).apply(gray)
     sift = cv2.SIFT_create(nfeatures=1600)
     keypoints,descriptors=sift.detectAndCompute(a,None)
     return a,keypoints,descriptors
+
+
+def retrieval_image(im):
+    # Very faint retained pixels can be structurally useful while a copy model
+    # sees almost constant black. Stretch observed levels only for proposals;
+    # geometry still verifies the untouched reference against the original.
+    gray=cv2.cvtColor(im,cv2.COLOR_RGB2GRAY)
+    low,high=np.percentile(gray,[5,95])
+    if 0<high-low<=6:
+        gray=np.clip((gray.astype(float)-low)*255/(high-low),0,255).astype(np.uint8)
+        return cv2.cvtColor(gray,cv2.COLOR_GRAY2RGB)
+    return im
 
 
 def boundary_information(im):
@@ -673,7 +685,7 @@ class Engine:
         batches=[]
         for start in range(0,len(self.queries),32):
             self.check()
-            batches.append(self.encode([q["frame"]["image"] for q in self.queries[start:start+32]]))
+            batches.append(self.encode([retrieval_image(q["frame"]["image"]) for q in self.queries[start:start+32]]))
         self.qvectors=np.concatenate(batches)
         self.aspect=float(np.median([trim_bars(q["frame"]["image"]).shape[1]/trim_bars(q["frame"]["image"]).shape[0] for q in self.queries]))
         self.progress("REFERENCE_READY",shots=len(self.report["shots"]),queries=len(self.queries))
@@ -1022,6 +1034,31 @@ class Engine:
                     # Every accepted sequence requires this middle anchor; reject cheap first.
                     if n==middle and not options and self.refine_ids is None:
                         break
+                measured=sorted([a for a in anchors if valid_geometry(a['geometry'])],key=lambda a:a['referenceTime'])
+                traversal=temporal_alignment(measured,1/meta['fps'])
+                if traversal and traversal['kind']=='AFFINE':
+                    # A faint first endpoint may have been attempted before
+                    # three useful interior moments existed. Revisit it now;
+                    # no fitted timestamp becomes an accepted correspondence.
+                    x=np.array([a['referenceTime'] for a in measured]);y=np.array([a['sourceTime'] for a in measured])
+                    slope,offset=np.polyfit(x-x[0],y,1)
+                    for n,q in (qs[0],qs[-1]):
+                        if anchor_options.get(n) or not x[0]-1<=q['frame']['t']<=x[-1]+1:continue
+                        predicted=float((q['frame']['t']-x[0])*slope+offset)
+                        if not 0<=predicted<meta['duration']:continue
+                        load_dense([predicted]);options=[]
+                        for f in frames:
+                            if abs(f['t']-predicted)>.18:continue
+                            self.check()
+                            if f['pts'] not in sfeatures:sfeatures[f['pts']]=feature_points(f['image'])
+                            began=time.monotonic()
+                            checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
+                            self.metrics['geometrySeconds']+=time.monotonic()-began;self.metrics['geometryComparisons']+=len(checks)
+                            g=max([v for v in checks if valid_geometry(v)] or checks,key=lambda v:v['score'])
+                            if valid_geometry(g):options.append(dict(referenceTime=q['frame']['t'],sourceTime=f['t'],sourcePts=f['pts'],sourceTimeBase=f['timeBase'],sourceAbsoluteTime=f['absolute'],sourceFrameDuration=f['duration'],sourceFrameDurationVerified=f.get('durationVerified',False),geometry=g,queryIndex=n))
+                        if options:
+                            options.sort(key=lambda a:a['geometry']['score'],reverse=True);anchor_options[n]=options
+                            anchors=[a for a in anchors if a['queryIndex']!=n]+[options[0]]
                 anchors.sort(key=lambda a:a["referenceTime"])
                 alignment=temporal_alignment(anchors,1/meta["fps"])
                 if len(anchor_options)==len(qs):

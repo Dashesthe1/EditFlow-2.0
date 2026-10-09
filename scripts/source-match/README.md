@@ -51,7 +51,7 @@ the appropriate next operation. Prepared media remains READY; ASSEMBLED requires
 successful queue receipts for every batch. Requesting a previously submitted
 ASSEMBLY_PLAN returns its retained job receipt, preventing accidental replay.
 
-## Transformed picture verification (v1.5)
+## Transformed picture verification (v1.5.1)
 
 Size, borders and added text do not imply a different source shot. SIFT/RANSAC
 fits an explicit crop/resize/rotation map. Ordinary copies retain whole aligned
@@ -71,6 +71,10 @@ interior sample can be omitted when at least three visible moments, including
 the actual first and last reference frames, establish a valid temporal path.
 Fully hidden first/last frames still cannot certify original trims. Boundary
 information describes spatial detail instead of using brightness as a proxy.
+Contrast normalization now also tests retained signals spanning only one to six
+gray levels. A proposal-only contrast stretch helps retrieval of these faint
+queries; verification still uses untouched reference pixels and original source
+frames. Constant images remain constant and cannot establish identity.
 Original integer PTS, competing-copy review and direct GPT review remain required
 before Source Assembly. Source recognition and exact full-shot trims are separate.
 
