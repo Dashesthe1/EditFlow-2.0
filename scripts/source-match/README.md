@@ -16,6 +16,10 @@ report into a new durable job, binds its hash, revalidates media and exact cuts,
 and preserves other shots and their original evidence. It rechecks known source
 locations at 1280px and reuses global descriptor caches only for unlocated targets.
 The old report is never overwritten. A changed refinement needs a new requestId.
+Explicit short windows also screen sparse pixels geometrically before dense
+frame recovery, so poor embedding retrieval need not hide a visually matching
+frame inside the chosen window. This costs additional bounded verification work;
+the same measured-PTS, geometry, temporal and ambiguity checks still apply.
 
 Candidate discovery uses several reference moments, so a weak/text-heavy middle
 does not hide a location proposed by another visible anchor. Verification avoids
@@ -24,6 +28,9 @@ existing geometry/ambiguity gates still apply. `boundaryDiagnostics` distinguish
 low-information reference endpoints from unconfirmed/ambiguous correspondences.
 A black or occluded boundary cannot reveal an exact underlying movie frame.
 Refinement preserves that uncertainty rather than extrapolating timestamps.
+Requested difficult-shot refinement can inspect other moments after a weak or
+occluded middle. At least three measured moments must still form a valid path;
+missing endpoints never become an asserted full-shot range.
 
 Practice resume includes `sourceMatch.retained`, `sourceAssembly.retained` and
 the appropriate next operation. Prepared media remains READY; ASSEMBLED requires

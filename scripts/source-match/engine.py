@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.2.1"
+VERSION = "source-match-v1.3.0"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -762,6 +762,25 @@ class Engine:
                         if len(near_times)==3:
                             break
                     neighborhoods[n]=near_times
+                requested_windows=self.request.get("refinement",{}).get("windows",[])
+                if explicit and any(w==explicit for w in requested_windows):
+                    # A user/GPT-chosen short window can bypass poor embedding
+                    # retrieval through strong grading/crops. Screen its actual
+                    # sparse pixels geometrically, then refine only observed peaks.
+                    self.progress("GEOMETRIC_WINDOW_SEARCH",shotId=shot["shotId"],frames=len(samples))
+                    sparse_features={f["pts"]:feature_points(f["image"]) for f in samples}
+                    for n,q in qs:
+                        scored=[]
+                        for f in samples:
+                            self.check();began=time.monotonic()
+                            g=geometry(q["frame"]["image"],f["image"],qfeatures[n],sparse_features[f["pts"]])
+                            self.metrics["geometrySeconds"]+=time.monotonic()-began;self.metrics["geometryComparisons"]+=1
+                            if valid_geometry(g):scored.append((g["score"],f["t"]))
+                        peaks=[]
+                        for _,value in sorted(scored,reverse=True):
+                            if all(abs(value-t)>.1 for t in peaks):peaks.append(value)
+                            if len(peaks)==3:break
+                        neighborhoods[n]=peaks+[t for t in neighborhoods[n] if all(abs(t-p)>.1 for p in peaks)]
                 frames=[]
                 loaded=[]
                 def load_dense(near_times):

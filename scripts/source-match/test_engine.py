@@ -189,6 +189,22 @@ def test_explicit_refinement_can_locate_other_moments_when_middle_is_occluded(tm
     assert shot["candidateChecks"][-1]["proposalOrigin"]=="RETAINED_LOCATION_OR_GPT_WINDOW"
 
 
+def test_explicit_window_geometry_recovers_known_frames_when_descriptor_retrieval_misses(tmp_path,monkeypatch):
+    frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames);encode(ref,[np.clip(f[:,40:280].astype(float)*.8+25,0,255).astype(np.uint8) for f in frames[12:36]])
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=1)
+    parent=m.Engine(request,tmp_path/"parent",tmp_path/"cache",m.Encoder("diagnostic"))
+    parent.reference();parent.report["sources"]=[dict(path=str(source),fingerprint=m.fingerprint(source),**m.probe(source))]
+    parent.report["status"]="PARTIAL";retained=json.dumps(parent.report).encode();out=tmp_path/"refine";out.mkdir();(out/"resume-report.json").write_bytes(retained)
+    request["refinement"]=dict(parentJobId="parent",shotIds=["shot-001"],windows=[dict(shotId="shot-001",sourceIndex=0,start=0,end=6)],reportSha256=hashlib.sha256(retained).hexdigest())
+    encoder=m.Encoder("diagnostic")
+    monkeypatch.setattr(encoder,"similarity",lambda query,source:np.zeros(len(source),np.float32))
+    report=m.Engine(request,out,tmp_path/"cache",encoder).run();shot=report["shots"][0]
+    assert shot["status"]=="VERIFIED",report
+    assert shot["sourceStart"]==1 and shot["sourceEndExclusive"]==3
+    assert any(s["stage"]=="GEOMETRIC_WINDOW_SEARCH" for s in report["stages"])
+
+
 def test_input_change_invalidates_cache(tmp_path):
     p=tmp_path/"media";p.write_bytes(b"a"*200000)
     first=m.fingerprint(p)
