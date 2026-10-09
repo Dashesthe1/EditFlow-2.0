@@ -5,7 +5,7 @@ import path from "node:path";
 
 export const SOURCE_MATCH_CONTRACT_V1 = {
   schema: "editflow.source-match-contract.v1", version: "1.0.0",
-  engineVersion: "1.1.0",
+  engineVersion: "1.1.1",
   endpoint: "/v1/product/source-match", actions: ["SUBMIT", "STATUS", "CANCEL"],
   authority: "CHATGPT_DIRECT", automaticSelection: false, aeWrites: false,
   instructions: "Submit {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]} once. Times are seconds. Poll jobId. Inspect report anchors and evidence; machine VERIFIED is geometric/temporal evidence, never editorial acceptance. LOCATED confirms interior source frames while full-shot endpoints remain unresolved. Use existing GPT BROWSE/SELECT for assignment acceptance. Shot detection is advisory; explicit shot ranges override it. Budget expiry returns PARTIAL/unresolved results, never invented exact timestamps. Service may run while production is paused without claiming or resuming an assignment.",

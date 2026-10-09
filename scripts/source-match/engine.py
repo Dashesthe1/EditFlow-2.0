@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.1.0"
+VERSION = "source-match-v1.1.1"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -369,6 +369,24 @@ def merge_windows(windows, gap=0):
     return result
 
 
+def uncovered_windows(windows, covered):
+    """Subtract already decoded half-open intervals without widening new work."""
+    result=[]
+    for low,high in windows:
+        pieces=[(low,high)]
+        for a,b in covered:
+            next_pieces=[]
+            for x,y in pieces:
+                if b<=x or a>=y:
+                    next_pieces.append((x,y))
+                else:
+                    if x<a:next_pieces.append((x,a))
+                    if b<y:next_pieces.append((b,y))
+            pieces=next_pieces
+        result.extend(pieces)
+    return result
+
+
 def endpoint_identity(options, chosen, frame_seconds):
     """Repeated/static frames must not masquerade as an exact endpoint.
 
@@ -584,7 +602,7 @@ class Engine:
             # attempt per shot limits disruption of the producer and avoids
             # spending the whole budget on the earliest difficult shot.
             if chunk % 16 == 0:
-                self.verify(rounds=1)
+                self.verify(rounds=1,progressive=True)
         try:
             while True:
                 self.check()
@@ -606,14 +624,19 @@ class Engine:
             stopped.set()
             thread.join(timeout=12)
 
-    def verify(self,rounds=None):
+    def verify(self,rounds=None,progressive=False):
         # Round robin: each unlocated shot gets a candidate before alternatives.
         # Located shots have evidence already; denser passes prioritize misses.
         for round_index in range(rounds or int(self.request.get("candidateLimit",4))):
-            self._verify_round(round_index)
+            self._verify_round(round_index,progressive)
 
-    def _verify_round(self,round_index):
+    def _verify_round(self,round_index,progressive=False):
         for i,shot in enumerate(self.report["shots"]):
+            # Weak early retrieval is often a different scene because the true
+            # location has not been scanned yet. Defer it to the complete pass;
+            # this affects scheduling only, never geometric acceptance.
+            if progressive and shot["status"] in ["VERIFIED","LOCATED"]:
+                continue
             qs=[(n,q) for n,q in enumerate(self.queries) if q["shot"]==i]
             if len(qs)<3:
                 continue
@@ -622,6 +645,8 @@ class Engine:
             checked=self.checked_windows.setdefault(i,[])
             locations=[]
             for candidate in self.candidates.get(middle,[]):
+                if progressive and candidate[0]<.5:
+                    continue
                 _,source,t=candidate
                 if any(source==s and abs(t-v)<=width*.5 for s,v in checked):
                     continue
@@ -667,24 +692,32 @@ class Engine:
                         if len(near_times)==3:
                             break
                     neighborhoods[n]=near_times
-                windows=merge_windows([(max(0,t-.18),min(meta["duration"],t+.18+1/meta["fps"]))
-                                       for near in neighborhoods.values() for t in near],gap=.25)
                 frames=[]
-                for low,high in windows:
-                    dense=list(self.source_frames(file,low,high))
-                    self.metrics["denseVerificationSeconds"]+=high-low
-                    self.metrics["denseVerificationFrames"]+=len(dense)
-                    for k in range(len(dense)-1):
-                        dense[k]["duration"]=dense[k+1]["t"]-dense[k]["t"]
-                        dense[k]["durationVerified"]=True
-                    frames.extend(dense)
-                frames=sorted({f["pts"]:f for f in frames}.values(),key=lambda f:f["t"])
+                loaded=[]
+                def load_dense(near_times):
+                    nonlocal frames,loaded
+                    windows=merge_windows([(max(0,t-.18),min(meta["duration"],t+.18+1/meta["fps"]))
+                                           for t in near_times],gap=.25)
+                    for low,high in uncovered_windows(windows,loaded):
+                        dense=list(self.source_frames(file,low,high))
+                        self.metrics["denseVerificationSeconds"]+=high-low
+                        self.metrics["denseVerificationFrames"]+=len(dense)
+                        for k in range(len(dense)-1):
+                            dense[k]["duration"]=dense[k+1]["t"]-dense[k]["t"]
+                            dense[k]["durationVerified"]=True
+                        frames.extend(dense)
+                    loaded=merge_windows(loaded+windows)
+                    frames=sorted({f["pts"]:f for f in frames}.values(),key=lambda f:f["t"])
+                # Reject a wrong middle before opening any endpoint decoders.
+                load_dense(neighborhoods[middle])
                 anchors=[]
                 anchor_options={}
                 sfeatures={}
                 ordered_qs=sorted(qs,key=lambda nq:0 if nq[0]==middle else 1)
                 for n,q in ordered_qs:
                     self.check()
+                    if n!=middle and len(anchor_options)==1:
+                        load_dense([t for key,near in neighborhoods.items() if key!=middle for t in near])
                     best=[]
                     for near in neighborhoods[n]:
                         for f in frames:

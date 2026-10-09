@@ -187,6 +187,44 @@ def test_dense_verification_is_bounded_to_anchor_neighborhoods(tmp_path):
     assert report["metrics"]["denseVerificationSeconds"]<m.probe(source)["duration"]
 
 
+def test_wrong_middle_does_not_decode_endpoint_windows(tmp_path,monkeypatch):
+    frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames);encode(ref,frames[12:36])
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,
+                 shots=[dict(start=0,end=2)],candidateLimit=1)
+    engine=m.Engine(request,tmp_path/"out",tmp_path/"cache",m.Encoder("diagnostic"))
+    engine.reference();engine.report["sources"]=[dict(path=str(source),**m.probe(source))]
+    engine.candidates={2:[(.9,0,2)]}
+    calls=[];original=engine.source_frames
+    def observed(file,start,end,interval=None):
+        if interval is None:calls.append((start,end))
+        return original(file,start,end,interval)
+    monkeypatch.setattr(engine,"source_frames",observed)
+    monkeypatch.setattr(m,"geometry",lambda *a,**k:dict(inliers=0,coverage=0.,fraction=0.,score=0.))
+    engine.verify(rounds=1)
+    assert len(calls)<=3 and sum(b-a for a,b in calls)<2
+    assert engine.report["shots"][0]["candidateChecks"][0]["passed"] is False
+
+
+def test_progressive_search_defers_weak_candidates_until_complete_pass(tmp_path,monkeypatch):
+    engine=m.Engine({},tmp_path/"out",tmp_path/"cache",m.Encoder("diagnostic"))
+    engine.report["sources"]=[dict(path="fixture",duration=100,fps=24)]
+    engine.report["shots"]=[dict(shotId="s",referenceStart=0,referenceEnd=1,status="UNRESOLVED")]
+    engine.queries=[dict(shot=0,frame=dict(image=fixture()[0],t=i/2)) for i in range(3)]
+    engine.candidates={1:[(.4,0,10)]}
+    calls=[]
+    monkeypatch.setattr(engine,"source_frames",lambda *a,**k:calls.append(a) or iter([]))
+    monkeypatch.setattr(m,"feature_points",lambda image:None)
+    engine.verify(rounds=1,progressive=True)
+    assert calls==[]
+    engine.verify(rounds=1)
+    assert len(calls)==1  # The weak candidate is deferred, never discarded.
+
+
+def test_overlapping_dense_windows_are_not_decoded_twice():
+    assert m.uncovered_windows([(1,5),(8,10)],[(2,3),(4,9)])==[(1,2),(3,4),(9,10)]
+
+
 def test_repeated_endpoint_frames_do_not_assert_an_exact_start(tmp_path):
     frames=fixture()
     for i in range(13,17):frames[i]=frames[12].copy()

@@ -54,6 +54,10 @@ of production ownership, so a paused Practice assignment remains paused.
   During fresh scans, periodically verify a bounded round of candidates before
   the complete movie pass finishes. Every shot receives an attempt before extra
   alternatives are checked for an earlier shot.
+- Defer weak candidates during an incomplete scan until the complete pass. This
+  scheduling threshold does not discard candidates or change acceptance. Decode
+  and verify the middle anchor before opening endpoint decoders; reuse overlapping
+  dense windows after the middle passes.
 - Use GPU decoding and downscaling for candidate windows. Original integer PTS
   and time base survive the FFmpeg pipeline. Cross-check original PTS with PyAV.
 - Retrieve a sparse 8fps candidate window, then decode consecutive frames only
@@ -104,6 +108,8 @@ resumption of partial indexes, round-robin verification under an expiring budget
 repeated endpoint ambiguity, variable-frame-rate exclusive ends and FFmpeg PTS
 transport. On a CPU host the latter replaces CUDA decode/scale only; it does not
 constitute a test of GPU filter execution or SSCD accuracy/performance.
+The v1.1.1 checks also cover deferred weak candidates, rejection before endpoint
+decoding, and reuse of overlapping dense intervals.
 
 Reports retain bounded stage events and `metrics` for descriptor inference time,
 geometric matching time, encoded images, sparse/dense verification frames,
