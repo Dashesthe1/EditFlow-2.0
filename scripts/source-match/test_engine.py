@@ -45,6 +45,16 @@ def test_geometry_crop_grade_and_unrelated():
     assert not m.valid_geometry(m.geometry(query,np.random.default_rng(88).integers(0,255,frame.shape,dtype=np.uint8)))
 
 
+def test_dark_and_flashed_detail_can_be_measured_without_accepting_flat_or_unrelated_images():
+    frame=fixture()[22]
+    for gain,offset in [(.18,4),(.18,205)]:
+        query=np.clip(frame[:,60:260].astype(float)*gain+offset,0,255).astype(np.uint8)
+        assert m.valid_geometry(m.geometry(query,frame))
+        assert not m.valid_geometry(m.geometry(query,np.random.default_rng(13).integers(0,255,frame.shape,dtype=np.uint8)))
+    assert not m.valid_geometry(m.geometry(np.zeros_like(frame),frame))
+    assert not m.valid_geometry(m.geometry(np.full_like(frame,255),frame))
+
+
 def test_temporal_reversal_and_inconsistent_time():
     good={"inliers":30,"coverage":.5,"fraction":.9,"score":20}
     anchors=[dict(referenceTime=x,sourceTime=10-2*x,geometry=good) for x in [0,.5,1]]
@@ -310,6 +320,19 @@ def test_weak_endpoints_cannot_displace_stronger_interior_location():
     # Same-quality competing copies remain comparable even with different counts.
     competing=dict(complete=True,anchors=[dict(geometry=dict(score=49)) for _ in range(5)])
     assert m.hypothesis_quality(competing)>=m.hypothesis_quality(strong)*.85
+
+
+def test_valid_faint_endpoint_completes_its_own_location_but_never_a_different_copy():
+    anchors=[dict(queryIndex=i,sourcePts=100+i,geometry=dict(score=50)) for i in range(1,4)]
+    interior=dict(source=0,complete=False,anchors=anchors,alignment=dict(direction='FORWARD'))
+    full=dict(source=0,complete=True,anchors=[dict(queryIndex=0,sourcePts=100,geometry=dict(score=1))]+anchors+
+              [dict(queryIndex=4,sourcePts=104,geometry=dict(score=1))],alignment=dict(direction='FORWARD'))
+    assert m.strongest_hypothesis([interior,full]) is interior
+    assert m.completion_of_location(interior,[interior,full]) is full
+    changed=copy.deepcopy(full);changed['anchors'][2]['sourcePts']+=1
+    assert m.completion_of_location(interior,[interior,changed]) is interior
+    changed=copy.deepcopy(full);changed['source']=1
+    assert m.completion_of_location(interior,[interior,changed]) is interior
 
 
 def test_competing_copy_in_same_source_is_checked_after_location_search(tmp_path):

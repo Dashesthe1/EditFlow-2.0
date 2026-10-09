@@ -151,6 +151,13 @@ class ConnectorReadinessTests(unittest.TestCase):
         gateway.mcp.tools['cancel_source_assembly']('assembly-one')
         self.assertEqual(self.calls,[('POST','/v1/product/source-match',{'action':'CANCEL_ASSEMBLY','assemblyId':'assembly-one'})])
 
+    def test_original_timeline_and_extraction_resume_do_not_touch_assignment_lifecycle(self):
+        body={'requestId':'timeline-one','jobId':'retained','timelinePath':'original-export.json'}
+        gateway.mcp.tools['import_source_timeline'](json.dumps(body))
+        gateway.mcp.tools['resume_source_assembly']('assembly-one')
+        self.assertEqual(self.calls,[('POST','/v1/product/source-match',{**body,'action':'IMPORT_TIMELINE'}),
+                                    ('POST','/v1/product/source-match',{'action':'RESUME_ASSEMBLY','assemblyId':'assembly-one'})])
+
     def test_source_assembly_preserves_preparation_and_queue_separation(self):
         gateway.mcp.tools['prepare_source_assembly'](json.dumps({'requestId':'assembly-one','jobId':'match-one'}))
         gateway.mcp.tools['get_source_assembly']('assembly-one')

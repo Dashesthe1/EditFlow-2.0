@@ -175,7 +175,8 @@ try {
       // Diagnostic fixture only: production official-timestamp admission is
       // independently tested. Never promote these test ranges into a real edit.
       const fixture = JSON.parse((await readFile(arg('--assembly-fixture'),'utf8')).replace(/^\uFEFF/,''));
-      fixture.manifest.output.stableId = prefix + '-ordered-raw';
+      const official=process.argv.includes('--official-assembly-fixture');
+      if(!official)fixture.manifest.output.stableId = prefix + '-ordered-raw';
       const {commands,batchCount,totalDuration} = sourceAssemblyCommandsV1(fixture.manifest,fixture.media,0);
       assert.equal(batchCount,1);
       const before = await observed.observe();
@@ -188,7 +189,12 @@ try {
           capabilityId:capabilityForCommandV11(command),routeId:'ae-cep.v1_1',dependsOn:i?[prefix+'-assembly-op-'+(i-1)]:[],
           idempotency:'CHECK_THEN_APPLY',riskClass:'R1_REVERSIBLE',input:{command,payload},rollbackBoundaryId:boundary}))};
       const assemblyStarted=Date.now();
-      const assembled=await run(packet('AE_TRANSACTION','ordered-source-assembly',{plan:exactPlan}));
+      const officialPlan=official?await http('/v1/product/source-match',{action:'ASSEMBLY_PLAN',assemblyId:fixture.assemblyId,
+        assignmentId:assignment.assignmentId,batchIndex:0}):null;
+      if(officialPlan)assert.deepEqual(officialPlan.payload.plan.operations.map(o=>[o.input.command,o.input.payload]),commands);
+      const assembled=await run(officialPlan?{kind:officialPlan.kind,payload:{...officialPlan.payload,
+        researchContext:{assignmentId:assignment.assignmentId,claimedBy:owner,clipIds:[mode==='PRACTICE'?input.selection.shotId:'lab-clip']}}}:
+        packet('AE_TRANSACTION','ordered-source-assembly',{plan:exactPlan}));
       const state=await observed.observe();
       const raw=state.project.items.find(x=>x.stableId===fixture.manifest.output.stableId);
       await writeFile(path.join(modeRoot,'source-assembly-readback.json'),JSON.stringify(raw,null,2));
@@ -211,7 +217,9 @@ try {
       assert.equal(assembled.result.checkpoint.saved,true);
       sourceAssemblyCheck={shotCount:chronological.length,operations:commands.length,elapsedMs:Date.now()-assemblyStarted,
         originalOrderAndTrims:true,checkpointSaved:true,maxReadbackTimingErrorSeconds,
-        scope:'Native CFR assembly diagnostic with unchanged frame spans; not full-edit timestamp acceptance'};
+        officialServiceHandoff:official,
+        scope:official?'Native queue handoff from actual saved matching/project-evidence/extraction services; known-frame fixture':
+          'Native CFR assembly diagnostic with unchanged frame spans; not full-edit timestamp acceptance'};
     }
     const batchPacket = packet('AE_BATCH', 'cross-comp-batch', { transactionId: prefix + '-batch', intents: [
       { kind: 'CREATE_COMP', stableId: prefix + '-second', name: 'EditFlow isolated second target', width: 320, height: 320, pixelAspect: 1, duration: 1, frameRate: 24 },

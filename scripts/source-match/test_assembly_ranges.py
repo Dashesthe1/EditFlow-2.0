@@ -7,7 +7,7 @@ import unittest
 import av
 import imageio_ffmpeg
 
-from assemble_ranges import fingerprint, frames, materialize
+from assemble_ranges import fingerprint, frames, materialize, extraction_lock
 from test_engine import encode, fixture
 
 
@@ -48,6 +48,25 @@ class RangeExtractionTests(unittest.TestCase):
             shot['sourceStart'] += .02
             with self.assertRaisesRegex(ValueError,'CUT_START'):
                 materialize(shot,info,root,imageio_ffmpeg.get_ffmpeg_exe(),'CPU')
+
+    def test_verified_cut_checkpoint_reuses_output_and_rejects_a_changed_clip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'source.mp4';encode(source,fixture()[:36])
+            times,_,_,_=frames(source)
+            shot=dict(shotId='resume',sourcePath=str(source),sourceStart=times[8]['time'],sourceEndExclusive=times[24]['time'])
+            info=dict(path=str(source),fingerprint=fingerprint(source),duration=3)
+            first=materialize(shot,info,root,imageio_ffmpeg.get_ffmpeg_exe(),'CPU')
+            reused=materialize(shot,info,root,'an encoder must not be launched for this retry','CPU')
+            self.assertTrue(reused['reusedVerifiedClip']);self.assertEqual(first['sourceFrames'],reused['sourceFrames'])
+            Path(first['workingPath']).write_bytes(b'corrupt clip')
+            with self.assertRaisesRegex(ValueError,'CHECKPOINT_MEDIA_CHANGED'):
+                materialize(shot,info,root,imageio_ffmpeg.get_ffmpeg_exe(),'CPU')
+
+    def test_an_orphaned_worker_excludes_a_second_extractor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with extraction_lock(directory):
+                with self.assertRaisesRegex(RuntimeError,'WORKER_STILL_ACTIVE'):
+                    with extraction_lock(directory):pass
 
 
 if __name__ == '__main__':

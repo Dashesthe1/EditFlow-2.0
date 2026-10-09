@@ -22,6 +22,8 @@ def main():
         "reverse":(frames[12:36][::-1],"VERIFIED"),
         "retime":([frames[j] for j in [12,12,13,13,14,15,16,17,18,19,20,21,23,25,27,29,30,31,32,33,34,34,35,35]],"VERIFIED"),
         "faded":([np.zeros_like(frames[12])]+frames[13:35]+[np.zeros_like(frames[35])],"LOCATED"),
+        "dark-endpoint":([np.clip(frames[12].astype(float)*.18+4,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
+        "flash-endpoint":([np.clip(frames[12].astype(float)*.18+205,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
         "unrelated":([np.full_like(f,130) for f in frames[:24]],"UNRESOLVED"),
     }
     results=[]

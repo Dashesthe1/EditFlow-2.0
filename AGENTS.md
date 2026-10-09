@@ -98,6 +98,14 @@ windows may narrow selected targets; global descriptor caches serve unlocated
 shots. Low-information black/text-only boundaries and ambiguous static frames
 remain unresolved. Do not extrapolate or certify invisible source endpoints.
 
+IMPORT_TIMELINE can validate a canonical editflow.original-timeline-frame-map.v1
+export from the actual original edit project. Require hashed project provenance,
+matching input identities, original integer PTS for every reference frame, valid
+source traversal and fresh agreement with every retained pixel anchor (at least
+three). Keep ORIGINAL_TIMELINE_FRAME_MAP evidence distinct from measured picture
+endpoints. Never generate guessed metadata and call it an original project export.
+The canonical JSON importer does not parse arbitrary .aep, FCPXML or EDL files.
+
 After every full-shot source endpoint has been found and directly reviewed, use
 the Source Assembly handoff from the sourceAssembly production-status contract.
 PREPARE_ASSEMBLY first saves all official timestamps and the complete GPT review,
@@ -119,6 +127,11 @@ official timestamp receipts and leaves accepted AE jobs alone. A retained READY
 extraction receipt is not an instruction to replay committed assembly batches:
 resume reports ASSEMBLED only from successful queue receipts. ASSEMBLY_PLAN returns
 an existing batch receipt when already submitted; inspect/reconcile that receipt.
+
+RESUME_ASSEMBLY explicitly resumes an interrupted/failed extraction under its
+original assemblyId and immutable official manifest. Verified per-cut receipts
+reuse only unchanged media, recipes and clips. Preserve explicit cancellation;
+do not resume a CANCELLED extraction without an explicit GPT/user decision.
 
 ChatGPT browses provided raw footage and chooses exact ranges using issued pixel
 inspections. Reuse retained selections and search coverage. Internet scene/dialogue/

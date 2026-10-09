@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.3.0"
+VERSION = "source-match-v1.4.0"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -44,6 +44,13 @@ def timecode(seconds):
     ms=round(seconds*1000)
     hours,ms=divmod(ms,3600000);minutes,ms=divmod(ms,60000);seconds,ms=divmod(ms,1000)
     return f"{hours:02}:{minutes:02}:{seconds:02}.{ms:03}"
+
+
+def timestamps_csv(directory, report):
+    fields=['shotId','referenceStart','referenceEnd','status','sourcePath','sourceStart','sourceEndExclusive',
+            'sourceStartPts','sourceEndPtsExclusive','sourceTimeBase','boundaryStatus','sourceStartTimecode','sourceEndTimecode','reason']
+    with (Path(directory)/'timestamps.csv').open('w',newline='',encoding='utf-8') as f:
+        writer=csv.DictWriter(f,fields,extrasaction='ignore');writer.writeheader();writer.writerows(report['shots'])
 
 
 def fingerprint(file):
@@ -260,7 +267,13 @@ def variants(im, aspect):
 
 
 def feature_points(im):
-    a=cv2.createCLAHE(clipLimit=2).apply(cv2.cvtColor(trim_bars(im),cv2.COLOR_RGB2GRAY))
+    gray=cv2.cvtColor(trim_bars(im),cv2.COLOR_RGB2GRAY)
+    low,high=np.percentile(gray,[5,95])
+    # Recover retained detail through a dark grade or white wash. Never invent
+    # texture in a flat/clipped image; all geometry and ambiguity gates remain.
+    if 6<high-low<64:
+        gray=np.clip((gray.astype(float)-low)*255/(high-low),0,255).astype(np.uint8)
+    a=cv2.createCLAHE(clipLimit=2).apply(gray)
     sift = cv2.SIFT_create(nfeatures=1600)
     keypoints,descriptors=sift.detectAndCompute(a,None)
     return a,keypoints,descriptors
@@ -412,6 +425,28 @@ def strongest_hypothesis(hypotheses):
     return max(hypotheses,key=lambda h:(hypothesis_quality(h),h["complete"]))
 
 
+def completion_of_location(best, hypotheses):
+    """A faint but fully verified endpoint may complete its established location.
+
+    Mean scores across different anchor counts must not let a retained bright
+    interior defeat its own complete measured path. Require agreement at every
+    retained frame; a weak copy elsewhere still cannot replace that location.
+    """
+    if best.get('complete'):
+        return best
+    compatible=[]
+    for candidate in hypotheses:
+        if not candidate.get('complete') or candidate.get('source')!=best.get('source'):
+            continue
+        if candidate.get('alignment',{}).get('direction')!=best.get('alignment',{}).get('direction'):
+            continue
+        shared={a.get('queryIndex'):a for a in candidate['anchors']}
+        if best['anchors'] and all(a.get('queryIndex') is not None and a.get('sourcePts') is not None
+             and shared.get(a['queryIndex'],{}).get('sourcePts')==a['sourcePts'] for a in best['anchors']):
+            compatible.append(candidate)
+    return strongest_hypothesis(compatible) if compatible else best
+
+
 class Engine:
     def __init__(self, request, out, cache, encoder):
         self.request, self.out, self.cache, self.encoder = request, Path(out), Path(cache), encoder
@@ -507,10 +542,21 @@ class Engine:
             for t in chosen:
                 selected.append((i,t))
         target={round(t,6):(i,t) for i,t in selected}
-        for f in decode(file,size=640,check=self.check):
+        self.boundary_evidence={}
+        for f in decode(file,size=self.verification_size,check=self.check):
             if round(f["t"],6) in target:
                 i,t=target[round(f["t"],6)]
                 self.queries.append(dict(shot=i,frame=f))
+        for i,shot in enumerate(self.report['shots']):
+            qs=[q['frame'] for q in self.queries if q['shot']==i]
+            if qs:
+                evidence=[]
+                for label,f in [('first',qs[0]),('last',qs[-1])]:
+                    file=self.out/f"{shot['shotId']}-boundary-{label}-reference.jpg"
+                    cv2.imwrite(str(file),cv2.cvtColor(f['image'],cv2.COLOR_RGB2BGR))
+                    evidence.append(dict(endpoint=label,referenceTime=f['t'],referencePts=f['pts'],referenceTimeBase=f['timeBase'],referenceEvidencePath=str(file)))
+                self.boundary_evidence[shot['shotId']]=evidence
+                shot['boundaryEvidence']=evidence
         if not self.queries:
             raise ValueError("No usable reference queries")
         chroma=[np.abs(q["frame"]["image"][:,:,0].astype(float)-q["frame"]["image"][:,:,1]).mean()+np.abs(q["frame"]["image"][:,:,1].astype(float)-q["frame"]["image"][:,:,2]).mean() for q in self.queries]
@@ -547,6 +593,7 @@ class Engine:
         for i,s in enumerate(self.report["shots"]):
             if s["shotId"] not in self.refine_ids:
                 continue
+            s['boundaryEvidence']=self.boundary_evidence.get(s['shotId'],[])
             windows=self.refine_windows.get(s["shotId"],[])
             if not windows and s.get("sourcePath"):
                 points=[a["sourceTime"] for a in s.get("anchors",[])]
@@ -907,7 +954,9 @@ class Engine:
                     shot["reason"]="No geometrically and temporally consistent candidate"
                 self.save()
                 continue
-            best=strongest_hypothesis(hypotheses)
+            strongest=strongest_hypothesis(hypotheses)
+            best=completion_of_location(strongest,hypotheses)
+            location_quality=max(hypothesis_quality(best),hypothesis_quality(strongest))
             def different_location(other):
                 if other["source"]!=best["source"]:
                     return True
@@ -918,8 +967,8 @@ class Engine:
                 previous=dict(source=shot["sourceIndex"],anchors=shot["anchors"],score=sum(a["geometry"]["score"] for a in shot["anchors"]))
                 if different_location(previous):
                     different.append(previous)
-            if any(hypothesis_quality(h)>=hypothesis_quality(best)*.85 for h in different):
-                for key in ["sourcePath","sourceIndex","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","sourceLocationWindow","alignment","boundaryStatus"]:
+            if any(hypothesis_quality(h)>=location_quality*.85 for h in different):
+                for key in ["sourcePath","sourceIndex","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","sourceStartPts","sourceEndPtsExclusive","sourceTimeBase","sourceLocationWindow","alignment","boundaryStatus"]:
                     shot.pop(key,None)
                 shot["status"]="UNRESOLVED";shot["anchors"]=[]
                 shot["reason"]="Ambiguous repeated source footage"
@@ -945,8 +994,9 @@ class Engine:
                 shot.update(sourceStart=low["sourceTime"],sourceEndExclusive=high["sourceTime"]+high["sourceFrameDuration"],boundaryStatus="MEASURED_ENDPOINT_CORRESPONDENCES")
                 shot["sourceStartTimecode"]=timecode(shot["sourceStart"])
                 shot["sourceEndTimecode"]=timecode(shot["sourceEndExclusive"])
+                shot.update(sourceStartPts=low['sourcePts'],sourceEndPtsExclusive=high['sourcePts']+round(high['sourceFrameDuration']/float(Fraction(high['sourceTimeBase']))),sourceTimeBase=low['sourceTimeBase'])
             else:
-                for key in ["sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode"]:
+                for key in ["sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","sourceStartPts","sourceEndPtsExclusive","sourceTimeBase"]:
                     shot.pop(key,None)
                 shot.update(boundaryStatus="UNRESOLVED",sourceLocationWindow=dict(start=low["sourceTime"],end=high["sourceTime"]+high["sourceFrameDuration"],description="Span of confirmed interior frames, not full-shot source in/out"))
             for k,a in enumerate(anchors):
@@ -972,10 +1022,7 @@ class Engine:
         self.report["metrics"]=self.metrics
         self.report["summary"]={state:sum(s["status"]==state for s in self.report["shots"]) for state in ["VERIFIED","LOCATED","UNRESOLVED"]}
         atomic_json(self.out/"report.json",self.report)
-        fields=["shotId","referenceStart","referenceEnd","status","sourcePath","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","reason"]
-        with (self.out/"timestamps.csv").open("w",newline="",encoding="utf-8") as f:
-            writer=csv.DictWriter(f,fields,extrasaction="ignore")
-            writer.writeheader();writer.writerows(self.report["shots"])
+        timestamps_csv(self.out,self.report)
 
     def contact_sheets(self):
         rows=[]

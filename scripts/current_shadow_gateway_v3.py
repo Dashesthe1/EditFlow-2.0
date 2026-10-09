@@ -514,6 +514,13 @@ def build_server():
         return _practice_http("GET", "/v1/product/source-match" + query)
 
     @tool()
+    def import_source_timeline(request_json: str) -> dict[str, Any]:
+        """Validate an actual original-project frame-map export for hidden boundaries. Supply {requestId,jobId,timelinePath,budgetSeconds:480}; see sourceMatch.originalTimeline contract. Never fabricate metadata or infer hidden frame maps. No AE writes or assignment lifecycle changes."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "IMPORT_TIMELINE"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool()
     def cancel_source_match(job_id: str) -> dict[str, Any]:
         """Cancel only the named source-matching analysis job; preserves caches, partial evidence, AE and production pause state."""
         return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL", "jobId":job_id})
@@ -534,6 +541,11 @@ def build_server():
     def cancel_source_assembly(assembly_id: str) -> dict[str, Any]:
         """Cancel bounded media preparation and its decoder processes; retain official timestamps and receipts. Never cancels an accepted AE queue job, changes the assignment or resumes production."""
         return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL_ASSEMBLY","assemblyId":assembly_id})
+
+    @tool()
+    def resume_source_assembly(assembly_id: str) -> dict[str, Any]:
+        """Resume interrupted, failed or explicitly cancelled extraction with its immutable official receipt and verified per-cut checkpoints. READY/PREPARING retries retain the same assembly. No accepted AE job replay or production resume."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"RESUME_ASSEMBLY","assemblyId":assembly_id})
 
     @tool()
     def plan_source_assembly(assembly_id: str, assignment_id: str, batch_index: int = 0) -> dict[str, Any]:

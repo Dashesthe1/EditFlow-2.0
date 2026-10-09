@@ -51,6 +51,36 @@ ASSEMBLY_PLAN returns its retained job receipt, preventing accidental replay.
 
 ## Post-verification AE assembly
 
+Engine v1.4.0 retains actual first/last reference pixels in `boundaryEvidence`,
+uses full refinement resolution for reference queries, and normalizes visible
+dark/flashed detail before geometric checks. Flat black/white images remain
+insufficient. A complete path may finish an interior location only when every
+retained anchor has exactly the same source PTS; stronger competing copies still
+prevent certification.
+
+`import_source_timeline` / POST `IMPORT_TIMELINE` accepts
+`{requestId,jobId,timelinePath,budgetSeconds}` for a canonical JSON export from the
+actual original edit project. This is an explicit evidence importer, not a native
+`.aep`, FCPXML or EDL parser. The export uses schema
+`editflow.original-timeline-frame-map.v1`, the retained `referenceFingerprint` and
+ordered `sourceFingerprints`, and `provenance:{kind:"ORIGINAL_EDIT_PROJECT_EXPORT",
+projectPath,projectSha256,exporter}`. Each shot provides `shotId,sourceIndex,
+referenceStart,referenceEnd,referenceTimeBase,sourceInPts,sourceOutPtsExclusive,
+sourceTimeBase,direction` and `frames:[{referencePts,sourcePts}]` for every actual
+reference frame. PTS fields are integers; direction is FORWARD or REVERSE. Exact
+input identities, project/export hashes, decoded frame existence, exclusive end,
+traversal and every retained pixel anchor are checked. At least three anchors
+must recheck geometrically. Metadata-derived endpoints retain the explicit
+`ORIGINAL_TIMELINE_FRAME_MAP` status and provenance. Never infer such an export
+from rendered black/occluded pixels or label a guessed trim as original metadata.
+
+Use `service_fixture.py --output <dir> --shots 20` to create a known original
+project, including hidden endpoint overlays. After reviewing its pictures,
+`node scripts/source-match/service_check.mjs <dir>/fixture.json <runtime-config>`
+checks actual service matching, the original export, immutable parent evidence,
+official timestamps, extraction, exact known ranges and the AE plan in reference
+order. Its small fixture is not a real-movie accuracy or throughput evaluation.
+
 The separate Source Assembly handoff runs only after the complete report has
 verified every full-shot endpoint and GPT has directly reviewed every shot.
 It saves `official-timestamps.json` before extracting any media. Incomplete
@@ -96,6 +126,14 @@ The complete extraction/import/checkpoint target is **300 seconds**, not a
 guaranteed worst-case bound. Run `test_assembly_ranges.py` for known-frame CFR,
 VFR and nonzero-origin checks. `assembly_check.py` measures extraction alone
 using repeated endpoint-verified ranges; it does not certify a complete edit.
+
+`resume_source_assembly` / POST `RESUME_ASSEMBLY` takes `{assemblyId}`. Failed or
+interrupted extraction resumes under the same official manifest after validating
+all identities and provenance. Completed cuts carry atomic receipts binding the
+encoder recipe and current clip fingerprint; intact cuts are reused, while changed
+clips are rejected. An OS worker lock excludes overlapping extraction processes.
+Cancelled preparation resumes only by an explicit decision. No resume changes
+Practice lifecycle or replays accepted AE batches.
 
 Read-only, requested source-copy retrieval for Practice footage discovery. It does
 not import Finished into AE, select creative footage, resume production, modify

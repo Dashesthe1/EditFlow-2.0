@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {mkdtemp,mkdir,readFile,writeFile,rm,stat} from 'node:fs/promises';
 import os from 'node:os';
@@ -118,6 +119,41 @@ test('assembly cancellation retains official timestamps without preparing an AE 
   assert.equal(cancelled.assembly.status,'CANCELLED');
   assert.equal(JSON.parse(await readFile(a.assembly.manifestPath,'utf8')).review.decisionId,f.request.review.decisionId);
   await assert.rejects(f.service.plan(a.assembly.assemblyId,0,{},f.allowed),/NOT_READY/);
+});
+
+test('cancelled extraction resumes the same official receipt and concurrent retries start one worker',async t=>{
+  const f=await fixture(t),a=await f.service.prepare(f.request);
+  const original=await readFile(a.assembly.manifestPath);
+  await f.service.cancel(a.assembly.assemblyId);
+  assert.equal((await ready(f.service,a.assembly.assemblyId)).assembly.status,'CANCELLED');
+  const [first,second]=await Promise.all([f.service.resume(a.assembly.assemblyId),f.service.resume(a.assembly.assemblyId)]);
+  assert.equal(first.assembly.assemblyId,a.assembly.assemblyId);assert.equal(second.assembly.assemblyId,a.assembly.assemblyId);
+  const result=await ready(f.service,a.assembly.assemblyId);assert.equal(result.assembly.status,'READY');assert.equal(result.assembly.resumeCount,1);
+  assert.deepEqual(await readFile(a.assembly.manifestPath),original);
+  assert.equal((await f.service.resume(a.assembly.assemblyId)).assembly.resumeCount,1);
+});
+
+test('resuming interrupted preparation rejects changed original identities',async t=>{
+  const f=await fixture(t),a=await f.service.prepare(f.request);await ready(f.service,a.assembly.assemblyId);
+  const statePath=path.join(path.dirname(a.assembly.manifestPath),'state.json'),state=JSON.parse(await readFile(statePath,'utf8'));
+  state.status='PREPARING';await writeFile(statePath,JSON.stringify(state));
+  assert.equal((await f.service.status(a.assembly.assemblyId)).assembly.status,'INTERRUPTED');
+  await writeFile(f.r.sources[0].path,'changed input');
+  await assert.rejects(f.service.resume(a.assembly.assemblyId),/SOURCE_CHANGED/);
+});
+
+test('original timeline endpoints require explicit proof and unchanged project/export before AE planning',async t=>{
+  const f=await fixture(t),project=path.join(f.root,'original.project'),timeline=path.join(f.root,'frame-map.json');
+  await writeFile(project,'original project');await writeFile(timeline,'original export');
+  const hash=b=>createHash('sha256').update(b).digest('hex'),s=f.r.shots[0];
+  s.boundaryStatus='ORIGINAL_TIMELINE_FRAME_MAP';
+  assert.throws(()=>officialSourceTimestampsV1(f.r,f.request),/FRAME_PROOF/);
+  s.originalTimelineFrameMap=[{referencePts:0,sourcePts:1},{referencePts:1,sourcePts:2},{referencePts:2,sourcePts:3}];
+  s.originalTimelineEvidence={kind:'ORIGINAL_EDIT_PROJECT_EXPORT',projectPath:project,projectSha256:hash(await readFile(project)),
+    timelinePath:timeline,timelineSha256:hash(await readFile(timeline)),referenceFrameCount:3,recheckedPixelAnchors:3};
+  const a=await f.service.prepare(f.request);assert.equal((await ready(f.service,a.assembly.assemblyId)).assembly.status,'READY');
+  await writeFile(project,'changed project');
+  await assert.rejects(f.service.plan(a.assembly.assemblyId,0,{},f.allowed),/TIMELINE_EVIDENCE_CHANGED/);
 });
 
 test('concurrent status polling cannot overwrite a newly completed preparation as interrupted',async t=>{

@@ -118,3 +118,25 @@ test("refinement rejects unknown shots, windows and changed idempotent requests"
   await service.refine(body);
   await assert.rejects(service.refine({...body,budgetSeconds:11}),/CONFLICT/);
 });
+
+test("timeline import snapshots its parent, binds export bytes and retains assignment without replay",async t=>{
+  const f=await fixture(t);
+  await writeFile(path.join(f.root,'scripts','source-match','timeline_evidence.py'),`
+import json,sys
+from pathlib import Path
+out=Path(sys.argv[sys.argv.index('--output')+1]);r=json.loads((out/'resume-report.json').read_text())
+r['status']='COMPLETE';(out/'report.json').write_text(json.dumps(r))
+`);
+  const assignmentId='gpt-assignment:00000000-0000-0000-0000-000000000001';
+  const a=await f.service.submit({...f.request,assignmentId});const prior=await finished(f.service,a.job.jobId);
+  const parent={status:'PARTIAL',reference:{path:f.request.referencePath},shots:[{shotId:'shot-001',status:'LOCATED',referenceStart:0,referenceEnd:1}],sources:[]};
+  await writeFile(path.join(prior.job.outputDir,'report.json'),JSON.stringify(parent));
+  const timelinePath=path.join(f.root,'timeline.json');await writeFile(timelinePath,'{}');
+  const request={requestId:'timeline-import',jobId:a.job.jobId,timelinePath,budgetSeconds:10};
+  const imported=await f.service.importTimeline(request);await finished(f.service,imported.job.jobId);
+  assert.equal(imported.job.parentJobId,a.job.jobId);assert.equal(imported.job.assignmentId,assignmentId);
+  assert.deepEqual(JSON.parse(await readFile(path.join(imported.job.outputDir,'resume-report.json'),'utf8')),parent);
+  assert.equal((await f.service.importTimeline(request)).job.jobId,imported.job.jobId);
+  await writeFile(timelinePath,'changed export');await assert.rejects(f.service.importTimeline(request),/CONFLICT/);
+  assert.deepEqual(JSON.parse(await readFile(path.join(prior.job.outputDir,'report.json'),'utf8')),parent);
+});

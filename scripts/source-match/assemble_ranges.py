@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import contextlib
 import time
 
 import av
@@ -65,6 +66,20 @@ def materialize(shot, source, directory, ffmpeg, encoder):
     started = time.monotonic()
     if fingerprint(source["path"]) != source["fingerprint"]:
         raise ValueError("SOURCE_CHANGED_SINCE_MATCH")
+    extension = ".mp4" if encoder == "NVENC" else ".mov"
+    target = Path(directory) / (shot['shotId'] + extension)
+    checkpoint = target.with_suffix(target.suffix + '.receipt.json')
+    recipe = hashlib.sha256(json.dumps(dict(shot=shot,source=source,encoder=encoder),sort_keys=True).encode()).hexdigest()
+    if checkpoint.exists():
+        retained = json.loads(checkpoint.read_text())
+        result = retained['result']
+        if retained.get('recipeSha256') != recipe or result.get('workingPath') != str(target):
+            raise ValueError('CUT_CHECKPOINT_RECIPE_CHANGED')
+        if not target.is_file() or fingerprint(target) != result.get('workingFingerprint'):
+            raise ValueError('CUT_CHECKPOINT_MEDIA_CHANGED')
+        if result.get('frameCount',0) != len(result.get('sourceFrames',[])) or not result.get('frameCount'):
+            raise ValueError('CUT_CHECKPOINT_FRAME_RECEIPT_INVALID')
+        return dict(result,reusedVerifiedClip=True,extractionSeconds=time.monotonic()-started)
     start, end = shot["sourceStart"], shot["sourceEndExclusive"]
     if not 0 <= start < end <= source["duration"] + .000002:
         raise ValueError("INVALID_SAVED_SOURCE_RANGE")
@@ -75,8 +90,6 @@ def materialize(shot, source, directory, ffmpeg, encoder):
         raise ValueError("CUT_END_IS_NOT_THE_SAVED_EXCLUSIVE_BOUNDARY")
     # AE's HEVC importer crashed on the real 10-bit fixture. Use editing codecs:
     # CPU ProRes preserves 10-bit precision; NVENC H.264 is explicitly 8-bit.
-    extension = ".mp4" if encoder == "NVENC" else ".mov"
-    target = Path(directory) / (shot["shotId"] + extension)
     temp = target.with_suffix(".partial" + extension)
     with av.open(source["path"]) as c:
         stream = c.streams.video[0]
@@ -112,15 +125,36 @@ def materialize(shot, source, directory, ffmpeg, encoder):
             raise ValueError("CUT_ENDPOINT_PIXELS_MISMATCH")
         if fingerprint(source["path"]) != source["fingerprint"]:
             raise ValueError("SOURCE_CHANGED_DURING_EXTRACTION")
-        return dict(**shot, workingPath=str(target), clipOrigin=cut[0]["time"],
+        result = dict(**shot, workingPath=str(target), clipOrigin=cut[0]["time"],
                     sourceFrames=original, frameCount=len(cut), frameTimingErrorSeconds=timing_error,
                     endpointPixelMeanError=pixel_error, workingFingerprint=fingerprint(target),
                     extractionSeconds=time.monotonic()-started, encoder=encoder,
-                    workingCodec="H264_8BIT_QP10" if encoder == "NVENC" else "PRORES_422_HQ_10BIT")
+                    workingCodec="H264_8BIT_QP10" if encoder == "NVENC" else "PRORES_422_HQ_10BIT",reusedVerifiedClip=False)
+        atomic_json(checkpoint,dict(recipeSha256=recipe,result=result))
+        return result
     except Exception:
         temp.unlink(missing_ok=True)
         target.unlink(missing_ok=True)
         raise
+
+
+@contextlib.contextmanager
+def extraction_lock(directory):
+    """An orphaned worker and a resumed worker must never share output paths."""
+    file=(Path(directory)/'extraction.lock').open('a+b')
+    try:
+        if os.name=='nt':
+            import msvcrt
+            file.seek(0);file.write(b'0');file.flush();file.seek(0)
+            try:msvcrt.locking(file.fileno(),msvcrt.LK_NBLCK,1)
+            except OSError:raise RuntimeError('EXTRACTION_WORKER_STILL_ACTIVE')
+        else:
+            import fcntl
+            try:fcntl.flock(file.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:raise RuntimeError('EXTRACTION_WORKER_STILL_ACTIVE')
+        yield
+    finally:
+        file.close()
 
 
 def main():
@@ -136,12 +170,15 @@ def main():
     directory = file.parent
     started = time.monotonic()
     sources = {s["path"]: s for s in manifest["sources"]}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        # map returns results in Finished order, regardless of decoder completion.
-        shots = list(pool.map(lambda shot: materialize(shot, sources[shot["sourcePath"]], directory,
-                          args.ffmpeg, manifest["encoder"]), manifest["shots"]))
-    atomic_json(directory / "materialized.json", dict(schema="editflow.source-assembly-media.v1", shots=shots,
-                extractionSeconds=time.monotonic()-started, encoder=manifest["encoder"]))
+    with extraction_lock(directory):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            # Each completed cut saves its own verified receipt before another
+            # cut can fail. map still preserves Finished order on final receipt.
+            shots = list(pool.map(lambda shot: materialize(shot, sources[shot["sourcePath"]], directory,
+                              args.ffmpeg, manifest["encoder"]), manifest["shots"]))
+        atomic_json(directory / "materialized.json", dict(schema="editflow.source-assembly-media.v1", shots=shots,
+                    extractionSeconds=time.monotonic()-started, encoder=manifest["encoder"],
+                    reusedVerifiedClips=sum(s.get('reusedVerifiedClip',False) for s in shots)))
 
 
 if __name__ == "__main__":

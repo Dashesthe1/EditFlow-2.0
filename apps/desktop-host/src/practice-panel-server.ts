@@ -1541,6 +1541,8 @@ export class PracticePanelServerV1 {
       : sourceAssembly?.status==="ASSEMBLED" ? "RESUME_GPT_EDITING_FROM_CHECKPOINT"
       : sourceAssembly?.status==="READY" ? "CHATGPT_ENQUEUE_RETAINED_SOURCE_ASSEMBLY"
       : sourceAssembly?.status==="PREPARING" ? "POLL_RETAINED_SOURCE_ASSEMBLY"
+      : sourceAssembly?.status==="CANCELLED" ? "CHATGPT_DECIDES_WHETHER_TO_RESUME_CANCELLED_EXTRACTION"
+      : sourceAssembly && ["FAILED","INTERRUPTED"].includes(sourceAssembly.status) ? "CHATGPT_RESUME_RETAINED_SOURCE_ASSEMBLY"
       : sourceMatch?.job.status==="RUNNING" ? "POLL_RETAINED_SOURCE_MATCH"
       : sourceMatch?.job.status==="COMPLETE" ? "CHATGPT_REVIEW_SOURCE_MATCH"
       : sourceMatch ? "CHATGPT_REFINE_OR_INSPECT_UNRESOLVED_SHOTS"
@@ -2299,6 +2301,7 @@ export class PracticePanelServerV1 {
         if (req.method === "POST") {
           const body = await readJson(req);
           if (body.action === "PREPARE_ASSEMBLY") { jsonResponse(res, 202, await this.#sourceAssembly.prepare(body)); return; }
+          if(body.action==="RESUME_ASSEMBLY") {jsonResponse(res,202,await this.#sourceAssembly.resume(requiredString(body,"assemblyId")));return;}
           if(body.action==="CANCEL_ASSEMBLY") {jsonResponse(res,200,await this.#sourceAssembly.cancel(requiredString(body,"assemblyId")));return;}
           if (body.action === "ASSEMBLY_PLAN") {
             const assignment = await this.#gptStore.getAssignment(requiredString(body, "assignmentId"));
@@ -2315,7 +2318,8 @@ export class PracticePanelServerV1 {
           }
           if (body.action === "CANCEL") { jsonResponse(res, 200, await this.#sourceMatch.cancel(requiredString(body, "jobId"))); return; }
           if (body.action === "REFINE") {jsonResponse(res,202,await this.#sourceMatch.refine(body));return;}
-          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT, REFINE, CANCEL, PREPARE_ASSEMBLY or ASSEMBLY_PLAN");
+          if(body.action==="IMPORT_TIMELINE") {jsonResponse(res,202,await this.#sourceMatch.importTimeline(body));return;}
+          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT, REFINE, IMPORT_TIMELINE, CANCEL, PREPARE_ASSEMBLY, RESUME_ASSEMBLY or ASSEMBLY_PLAN");
           if(body.assignmentId!==undefined) {
             const assignment=await this.#gptStore.getAssignment(requiredString(body,"assignmentId"));
             if(!assignment)throw new HttpError(404,"GPT assignment not found.");
