@@ -1,5 +1,8 @@
 """Executable end-to-end fixtures with known original frames, plus rejection tests."""
 import importlib.util
+import copy
+import hashlib
+import json
 from fractions import Fraction
 from pathlib import Path
 import av
@@ -125,6 +128,49 @@ def test_faded_endpoints_locate_interior_without_asserting_boundaries(tmp_path):
     assert result["status"]=="PARTIAL" and result["summary"]["LOCATED"]==1
     assert "sourceStart" not in shot and "sourceEndExclusive" not in shot
     assert len(shot["anchors"])>=3 and shot["sourceLocationWindow"]["start"]>=1
+
+
+def test_refinement_reuses_locations_preserves_other_shots_and_black_uncertainty(tmp_path):
+    frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames)
+    images=frames[12:36]+[np.zeros_like(frames[36])]+frames[37:60]
+    encode(ref,images)
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,
+                 shots=[dict(start=0,end=2),dict(start=2,end=4)],candidateLimit=4)
+    parent=m.Engine(request,tmp_path/"parent",tmp_path/"cache",m.Encoder("diagnostic")).run()
+    assert parent["shots"][0]["status"]=="VERIFIED"
+    assert parent["shots"][1]["status"]=="LOCATED"
+    retained=json.dumps(parent).encode();out=tmp_path/"refined";out.mkdir()
+    (out/"resume-report.json").write_bytes(retained)
+    request["refinement"]=dict(parentJobId="prior",reportSha256=hashlib.sha256(retained).hexdigest(),shotIds=["shot-002"],windows=[])
+    engine=m.Engine(request,out,tmp_path/"cache",m.Encoder("diagnostic"))
+    def forbidden_scan(*a,**k):raise AssertionError("Known location refinement must not rescan the movie")
+    engine.scan=forbidden_scan
+    result=engine.run()
+    assert result["shots"][0]==parent["shots"][0]
+    assert result["shots"][1]["status"]=="LOCATED"
+    assert "sourceStart" not in result["shots"][1]
+    assert result["lineage"]["refinedShotIds"]==["shot-002"]
+    assert result["metrics"]["cacheDescriptors"]==0
+
+
+def test_refinement_rejects_stale_or_tampered_parent(tmp_path):
+    import pytest
+    frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames);encode(ref,frames[12:36])
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)])
+    original=m.Engine(request,tmp_path/"parent",tmp_path/"cache",m.Encoder("diagnostic"))
+    original.reference();original.report["sources"]=[dict(path=str(source),fingerprint=m.fingerprint(source),**m.probe(source))]
+    old=copy.deepcopy(original.report)
+    for stale in [False,True]:
+        out=tmp_path/("stale" if stale else "tampered");out.mkdir()
+        report=copy.deepcopy(old)
+        if stale:report["sources"][0]["fingerprint"]="old-version"
+        retained=json.dumps(report).encode();(out/"resume-report.json").write_bytes(retained)
+        request["refinement"]=dict(parentJobId="parent",shotIds=["shot-001"],windows=[],reportSha256=hashlib.sha256(retained).hexdigest() if stale else "changed")
+        engine=m.Engine(request,out,tmp_path/"cache",m.Encoder("diagnostic"))
+        engine.reference();engine.report["sources"]=original.report["sources"]
+        with pytest.raises(ValueError,match="INPUT_CHANGED" if stale else "REPORT_CHANGED"):engine.restore()
 
 
 def test_input_change_invalidates_cache(tmp_path):

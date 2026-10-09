@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -37,6 +37,22 @@ test("concurrent offline starts persist one assignment and restart resumes the s
   assert.equal(handshake.assignment.assignmentId, first.assignmentId);
   assert.equal(handshake.nextOperation, "RESUME_PREFLIGHT");
   assert.notEqual(handshake.preflight.stage, "READY");
+  assert.ok(handshake.sourceMatch.contract.actions.includes("REFINE"));
+  assert.equal(handshake.sourceMatch.retained,null);
+  assert.ok(handshake.sourceAssembly.contract.actions.includes("CANCEL_ASSEMBLY"));
+  if(!process.env.LOCALAPPDATA) {
+    const jobId="source-match-00000000-0000-0000-0000-000000000001",dir=path.join(root,"EditFlow2","source-match-jobs",jobId);
+    await mkdir(dir,{recursive:true});
+    await writeFile(path.join(dir,"job.json"),JSON.stringify({jobId,assignmentId:first.assignmentId,status:"PARTIAL",createdAt:new Date().toISOString(),outputDir:dir}));
+    await writeFile(path.join(dir,"report.json"),JSON.stringify({status:"PARTIAL",summary:{VERIFIED:1,LOCATED:1,UNRESOLVED:0},shots:[{shotId:"shot-002",status:"LOCATED",reason:"black boundary"}]}));
+    const retained=await (await fetch(`http://127.0.0.1:${service.port}/v1/product/practice/resume-or-start`,{headers})).json();
+    assert.equal(retained.assignment.assignmentId,first.assignmentId);
+    assert.equal(retained.sourceMatch.retained.job.jobId,jobId);
+    assert.equal(retained.nextOperation,"CHATGPT_REFINE_OR_INSPECT_UNRESOLVED_SHOTS");
+    assert.equal(retained.sourceMatch.retained.remaining[0].shotId,"shot-002");
+    const mismatch=await fetch(`http://127.0.0.1:${service.port}/v1/product/source-match`,{method:"POST",headers,body:JSON.stringify({action:"SUBMIT",assignmentId:first.assignmentId,referencePath:media,sourcePaths:[path.join(root,"foreign.mp4")],requestId:"foreign"})});
+    assert.equal(mismatch.status,400);assert.match((await mismatch.json()).error,/ASSIGNMENT_RAW_SOURCES_REQUIRED/);
+  }
   await assert.rejects(service.assertPracticeReconstructionReady(), /reconstruction is locked/);
   const again = await start();
   assert.equal(again.assignmentId, first.assignmentId);

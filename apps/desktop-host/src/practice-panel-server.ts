@@ -25,7 +25,7 @@ import { assignmentViewV1, productionJobsViewV1, productionSnapshotViewV1, proje
 import { parseVisualReviewV1, validateVisualComparisonTimesV1, visualMutationDimensionsV1 } from "../../../packages/practice-homework/src/visual-continuity.js";
 import { LocalFastRuntimeV1, validateRoutineBatchV1 } from "./local-fast-runtime.js";
 import { SourceMatchServiceV1, SOURCE_MATCH_CONTRACT_V1 } from "./source-match-service.js";
-import { SourceMatchAssemblyV1, SOURCE_ASSEMBLY_CONTRACT_V1 } from "./source-match-assembly.js";
+import { SourceMatchAssemblyV1, SOURCE_ASSEMBLY_CONTRACT_V1, sourceAssemblyProgressV1 } from "./source-match-assembly.js";
 
 import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
 
@@ -1527,6 +1527,9 @@ export class PracticePanelServerV1 {
     const assignment = active === null || active === undefined ? null : await this.#gptStore.getAssignment(active.assignmentId);
     const events = assignment === null ? [] : await this.#gptStore.eventsForSession(assignment.sessionId);
     const preflight = assignment?.preflight ?? null;
+    const sourceMatch=assignment?await this.#sourceMatch.forAssignment(assignment.assignmentId):null;
+    const sourceAssembly=sourceAssemblyProgressV1(sourceMatch?await this.#sourceAssembly.forMatch(sourceMatch.job.jobId):null,
+      assignment?this.#productionWorker.list(assignment.assignmentId):[]);
     let production = null;
     if (assignment !== null) {
       const { file, coordinator } = await this.#productionCoordinator(assignment);
@@ -1535,6 +1538,12 @@ export class PracticePanelServerV1 {
     const nextOperation = assignment === null ? "START_PRACTICE"
       : assignment.status === "CANCEL_REQUESTED" ? "ACKNOWLEDGE_CANCELLATION"
       : (assignment.practiceSceneMatches?.length ?? 0) > 0 ? "RESUME_GPT_EDITING_FROM_CHECKPOINT"
+      : sourceAssembly?.status==="ASSEMBLED" ? "RESUME_GPT_EDITING_FROM_CHECKPOINT"
+      : sourceAssembly?.status==="READY" ? "CHATGPT_ENQUEUE_RETAINED_SOURCE_ASSEMBLY"
+      : sourceAssembly?.status==="PREPARING" ? "POLL_RETAINED_SOURCE_ASSEMBLY"
+      : sourceMatch?.job.status==="RUNNING" ? "POLL_RETAINED_SOURCE_MATCH"
+      : sourceMatch?.job.status==="COMPLETE" ? "CHATGPT_REVIEW_SOURCE_MATCH"
+      : sourceMatch ? "CHATGPT_REFINE_OR_INSPECT_UNRESOLVED_SHOTS"
       : preflight?.stage === "AWAITING_CHATGPT_REFERENCE" ? "CHATGPT_INSPECT_AND_DEFINE_REFERENCE"
       : preflight?.stage === "AWAITING_CHATGPT_SHOTS" ? "CHATGPT_INSPECT_AND_SELECT_RAW_SHOTS"
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
@@ -1560,6 +1569,8 @@ export class PracticePanelServerV1 {
       editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
       practiceNotebook: assignment ? (full ? await this.#presetNotebook(assignment) : await this.#presetNotebookIndex(assignment)) : null,
       footageSelection: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1,
+      sourceMatch: {contract:SOURCE_MATCH_CONTRACT_V1,retained:sourceMatch},
+      sourceAssembly: {contract:SOURCE_ASSEMBLY_CONTRACT_V1,retained:sourceAssembly},
       workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
       userControls: { contract: PRODUCTION_USER_CONTROL_CONTRACT_V1, active: this.#userControls.active(), latest: this.#userControls.latest() },
       controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
@@ -2288,9 +2299,14 @@ export class PracticePanelServerV1 {
         if (req.method === "POST") {
           const body = await readJson(req);
           if (body.action === "PREPARE_ASSEMBLY") { jsonResponse(res, 202, await this.#sourceAssembly.prepare(body)); return; }
+          if(body.action==="CANCEL_ASSEMBLY") {jsonResponse(res,200,await this.#sourceAssembly.cancel(requiredString(body,"assemblyId")));return;}
           if (body.action === "ASSEMBLY_PLAN") {
             const assignment = await this.#gptStore.getAssignment(requiredString(body, "assignmentId"));
             if (!assignment) throw new HttpError(404, "GPT assignment not found.");
+            const retained=this.#productionWorker.list(assignment.assignmentId).find(job=>job.payload.sourceAssembly?.assemblyId===body.assemblyId
+              && job.payload.sourceAssembly?.batchIndex===(body.batchIndex??0));
+            if(retained) {jsonResponse(res,200,{assemblyId:body.assemblyId,batchIndex:body.batchIndex??0,alreadySubmitted:true,
+              job:{jobId:retained.jobId,status:retained.status},nextAction:retained.status==="SUCCEEDED"?"INSPECT_COMMITTED_CHECKPOINT":"INSPECT_RETAINED_QUEUE_RECEIPT"});return;}
             this.#priorAssemblyBatch(assignment.assignmentId, {sourceAssembly:{assemblyId:body.assemblyId,batchIndex:body.batchIndex ?? 0}});
             const result = await this.#sourceAssembly.plan(requiredString(body,"assemblyId"), Number(body.batchIndex ?? 0),
               await this.#transactionRuntime.observe(), {rawPaths:assignment.start.filter(m=>m.mediaKind==="VIDEO").map(m=>m.uri),
@@ -2298,7 +2314,14 @@ export class PracticePanelServerV1 {
             jsonResponse(res, 200, result); return;
           }
           if (body.action === "CANCEL") { jsonResponse(res, 200, await this.#sourceMatch.cancel(requiredString(body, "jobId"))); return; }
-          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT, CANCEL, PREPARE_ASSEMBLY or ASSEMBLY_PLAN");
+          if (body.action === "REFINE") {jsonResponse(res,202,await this.#sourceMatch.refine(body));return;}
+          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT, REFINE, CANCEL, PREPARE_ASSEMBLY or ASSEMBLY_PLAN");
+          if(body.assignmentId!==undefined) {
+            const assignment=await this.#gptStore.getAssignment(requiredString(body,"assignmentId"));
+            if(!assignment)throw new HttpError(404,"GPT assignment not found.");
+            if(!assignment.finish || path.resolve(String(body.referencePath))!==path.resolve(assignment.finish.uri)
+              || !Array.isArray(body.sourcePaths) || body.sourcePaths.some((p:any)=>typeof p!=="string" || !assignment.start.some(m=>m.mediaKind==="VIDEO"&&path.resolve(m.uri)===path.resolve(p))))throw new HttpError(400,"ASSIGNMENT_RAW_SOURCES_REQUIRED");
+          }
           jsonResponse(res, 202, await this.#sourceMatch.submit(body)); return;
         }
         throw new HttpError(405, "Use GET or POST");

@@ -1,5 +1,35 @@
 # EditFlow Source Match Service
 
+This is the standard requested source-discovery measurement path in Practice.
+Include `assignmentId` in SUBMIT to retain the matching job in the existing
+one-call resume response. The worker receives matching/refinement/assembly
+instructions together with retained selections and the normal AE queue.
+Starting Practice delegates these steps to ChatGPT; it does not let the server
+manufacture visual PASS, select editing settings or resume a paused assignment.
+
+## Targeted continuation
+
+Use `refine_source_match` / POST `REFINE` with `{requestId,jobId,shotIds?,windows?,budgetSeconds}`.
+Each window is `{shotId,sourceIndex,start,end}` in seconds, at most 120 seconds.
+Omit shotIds to target every non-VERIFIED row. The service snapshots the parent
+report into a new durable job, binds its hash, revalidates media and exact cuts,
+and preserves other shots and their original evidence. It rechecks known source
+locations at 1280px and reuses global descriptor caches only for unlocated targets.
+The old report is never overwritten. A changed refinement needs a new requestId.
+
+Candidate discovery uses several reference moments, so a weak/text-heavy middle
+does not hide a location proposed by another visible anchor. Verification avoids
+rechecking an already covered candidate interval. Joint temporal paths and the
+existing geometry/ambiguity gates still apply. `boundaryDiagnostics` distinguishes
+low-information reference endpoints from unconfirmed/ambiguous correspondences.
+A black or occluded boundary cannot reveal an exact underlying movie frame.
+Refinement preserves that uncertainty rather than extrapolating timestamps.
+
+Practice resume includes `sourceMatch.retained`, `sourceAssembly.retained` and
+the appropriate next operation. Prepared media remains READY; ASSEMBLED requires
+successful queue receipts for every batch. Requesting a previously submitted
+ASSEMBLY_PLAN returns its retained job receipt, preventing accidental replay.
+
 ## Post-verification AE assembly
 
 The separate Source Assembly handoff runs only after the complete report has
@@ -38,6 +68,10 @@ of at most 21 shots/64 operations, with the preceding batch committed first.
 The normal queue checkpoints each batch and retains actual readbacks. A changed
 manifest, report, raw file, bounded clip or operation sequence rejects execution.
 Partial/unknown AE writes retain the existing reconciliation rules.
+
+`cancel_source_assembly` / POST `CANCEL_ASSEMBLY` stops only bounded media
+preparation, including decoder descendants. It keeps the official timestamp
+manifest and a CANCELLED receipt, and does not cancel accepted AE queue work.
 
 The complete extraction/import/checkpoint target is **300 seconds**, not a
 guaranteed worst-case bound. Run `test_assembly_ranges.py` for known-frame CFR,

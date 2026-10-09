@@ -141,6 +141,16 @@ class ConnectorReadinessTests(unittest.TestCase):
         self.assertEqual(self.calls[2][2],{'action':'CANCEL','jobId':'source-match-job'})
         self.assertTrue(gateway.mcp.annotations['get_source_match']['readOnlyHint'])
 
+    def test_source_refinement_preserves_explicit_targets_without_lifecycle_calls(self):
+        body={'requestId':'refine-one','jobId':'prior-job','shotIds':['shot-002'],
+              'windows':[{'shotId':'shot-002','sourceIndex':0,'start':10,'end':12}]}
+        gateway.mcp.tools['refine_source_match'](json.dumps(body))
+        self.assertEqual(self.calls,[('POST','/v1/product/source-match',{**body,'action':'REFINE'})])
+
+    def test_source_assembly_cancel_does_not_cancel_production(self):
+        gateway.mcp.tools['cancel_source_assembly']('assembly-one')
+        self.assertEqual(self.calls,[('POST','/v1/product/source-match',{'action':'CANCEL_ASSEMBLY','assemblyId':'assembly-one'})])
+
     def test_source_assembly_preserves_preparation_and_queue_separation(self):
         gateway.mcp.tools['prepare_source_assembly'](json.dumps({'requestId':'assembly-one','jobId':'match-one'}))
         gateway.mcp.tools['get_source_assembly']('assembly-one')

@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.1.3"
+VERSION = "source-match-v1.2.0"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -427,8 +427,12 @@ class Engine:
         self.cache.mkdir(parents=True,exist_ok=True)
         self.candidates = {}
         self.checked_windows = {}
+        self.checked_intervals = {}
         self.accepted_hypotheses = {}
         self.query_features = {}
+        self.refine_ids = None
+        self.refine_windows = {}
+        self.verification_size = 1280 if request.get("refinement") else 640
         self.metrics = dict(encodedImages=0,inferenceSeconds=0.,geometryComparisons=0,geometrySeconds=0.,
                             sparseVerificationFrames=0,denseVerificationFrames=0,
                             denseVerificationSeconds=0.,cacheDescriptors=0)
@@ -444,10 +448,10 @@ class Engine:
 
     def source_frames(self,file,start,end,interval=None):
         if self.encoder.device=="cuda":
-            yield from gpu_samples(file,interval,self.check,start,end,size=640)
+            yield from gpu_samples(file,interval,self.check,start,end,size=self.verification_size)
         else:
             previous=-1e9
-            for f in decode(file,start,end,size=640,check=self.check):
+            for f in decode(file,start,end,size=self.verification_size,check=self.check):
                 if interval is None or f["t"]-previous>=interval-1e-6:
                     previous=f["t"]
                     yield f
@@ -519,6 +523,43 @@ class Engine:
         self.qvectors=np.concatenate(batches)
         self.aspect=float(np.median([trim_bars(q["frame"]["image"]).shape[1]/trim_bars(q["frame"]["image"]).shape[0] for q in self.queries]))
         self.progress("REFERENCE_READY",shots=len(self.report["shots"]),queries=len(self.queries))
+
+    def restore(self):
+        """Continue a retained report in a new job; never relabel old evidence."""
+        refinement=self.request.get("refinement")
+        if not refinement:
+            return
+        retained=(self.out/"resume-report.json").read_bytes()
+        old=json.loads(retained)
+        digest=hashlib.sha256(retained).hexdigest()
+        if digest!=refinement["reportSha256"]:
+            raise ValueError("RETAINED_REPORT_CHANGED")
+        if old.get("reference",{}).get("fingerprint")!=self.report["reference"]["fingerprint"] or [s.get("fingerprint") for s in old.get("sources",[])]!=[s["fingerprint"] for s in self.report["sources"]]:
+            raise ValueError("REFINEMENT_INPUT_CHANGED")
+        spans=lambda r:[(s["shotId"],s["referenceStart"],s["referenceEnd"]) for s in r["shots"]]
+        if spans(old)!=spans(self.report):
+            raise ValueError("REFINEMENT_BOUNDARIES_CHANGED")
+        self.refine_ids=set(refinement["shotIds"])
+        self.report["shots"]=old["shots"]
+        self.report["lineage"]=dict(parentJobId=refinement["parentJobId"],reportSha256=digest,refinedShotIds=refinement["shotIds"],retainedEvidence=True)
+        for w in refinement["windows"]:
+            self.refine_windows.setdefault(w["shotId"],[]).append(w)
+        for i,s in enumerate(self.report["shots"]):
+            if s["shotId"] not in self.refine_ids:
+                continue
+            windows=self.refine_windows.get(s["shotId"],[])
+            if not windows and s.get("sourcePath"):
+                points=[a["sourceTime"] for a in s.get("anchors",[])]
+                if points:
+                    margin=max(1,(s["referenceEnd"]-s["referenceStart"])*2)
+                    windows=[dict(shotId=s["shotId"],sourceIndex=s["sourceIndex"],start=max(0,min(points)-margin),end=min(self.report["sources"][s["sourceIndex"]]["duration"],max(points)+margin))]
+                    self.refine_windows[s["shotId"]]=windows
+            for n,q in enumerate(self.queries):
+                if q["shot"]==i:
+                    self.candidates[n]=[(1.,w["sourceIndex"],(w["start"]+w["end"])/2) for w in windows]
+            if s.get("alignment") and len(s.get("anchors",[]))>=3:
+                self.accepted_hypotheses[i]=[dict(source=s["sourceIndex"],score=sum(a["geometry"]["score"] for a in s["anchors"]),anchors=s["anchors"],alignment=s["alignment"],frames=[],complete=s["status"]=="VERIFIED")]
+        self.progress("RETAINED_REPORT_READY",shots=len(self.refine_ids),verificationSize=self.verification_size)
 
     def search(self,vectors,times,source):
         scores=self.encoder.similarity(self.qvectors,vectors)
@@ -645,6 +686,8 @@ class Engine:
 
     def _verify_round(self,round_index,progressive=False,prioritize_locations=False):
         for i,shot in enumerate(self.report["shots"]):
+            if self.refine_ids is not None and shot["shotId"] not in self.refine_ids:
+                continue
             # Weak early retrieval is often a different scene because the true
             # location has not been scanned yet. Defer it to the complete pass;
             # this affects scheduling only, never geometric acceptance.
@@ -657,10 +700,23 @@ class Engine:
             width=min(30,max(4,(shot["referenceEnd"]-shot["referenceStart"])*3))
             checked=self.checked_windows.setdefault(i,[])
             locations=[]
-            for candidate in self.candidates.get(middle,[]):
+            # A black/text-heavy middle must not hide locations proposed by a
+            # different visible moment. Round-robin query ranks retain diversity.
+            proposals=[]
+            query_order=[middle]+[n for n,q in qs if n!=middle]
+            for rank in range(12):
+                for n in query_order:
+                    values=self.candidates.get(n,[])
+                    if rank<len(values):proposals.append(values[rank])
+            for candidate in proposals:
                 if progressive and candidate[0]<.5:
                     continue
                 _,source,t=candidate
+                meta=self.report["sources"][source]
+                explicit=next((w for w in self.refine_windows.get(shot["shotId"],[]) if w["sourceIndex"]==source and abs((w["start"]+w["end"])/2-t)<1e-6),None)
+                low,high=(explicit["start"],explicit["end"]) if explicit else (max(0,t-width),min(meta["duration"],t+width))
+                if any(source==s and low>=a-1e-6 and high<=b+1e-6 for s,a,b in self.checked_intervals.get(i,[])):
+                    continue
                 if any(source==s and abs(t-v)<=width*.5 for s,v in checked):
                     continue
                 if any(source==s and abs(t-v)<=width*.5 for _,s,v in locations):
@@ -680,7 +736,8 @@ class Engine:
                 self.check()
                 meta=self.report["sources"][source]
                 file=meta["path"]
-                start,end=max(0,t-width),min(meta["duration"],t+width)
+                explicit=next((w for w in self.refine_windows.get(shot["shotId"],[]) if w["sourceIndex"]==source and abs((w["start"]+w["end"])/2-t)<1e-6),None)
+                start,end=(explicit["start"],explicit["end"]) if explicit else (max(0,t-width),min(meta["duration"],t+width))
                 self.progress("VERIFY_DECODE",shotId=shot["shotId"],candidateTime=t)
                 samples=list(self.source_frames(file,start,end,interval=1/8))
                 self.metrics["sparseVerificationFrames"]+=len(samples)
@@ -766,11 +823,12 @@ class Engine:
                         break
                 anchors.sort(key=lambda a:a["referenceTime"])
                 alignment=temporal_alignment(anchors,1/meta["fps"])
-                if alignment is None and len(anchor_options)==len(qs):
+                if len(anchor_options)==len(qs):
                     path=consistent_path([anchor_options[n] for n,q in qs],1/meta["fps"])
-                    if path:
+                    if path and (alignment is None or sum(a["geometry"]["score"] for a in path[0])>sum(a["geometry"]["score"] for a in anchors)):
                         anchors,alignment=path
                 complete=alignment is not None and len(anchors)==len(qs)
+                diagnostics=[]
                 if complete:
                     high_endpoint=max(anchors,key=lambda a:a["sourceTime"])
                     uncertain={a["queryIndex"] for a in (anchors[0],anchors[-1])
@@ -778,6 +836,7 @@ class Engine:
                     if not high_endpoint["sourceFrameDurationVerified"]:
                         uncertain.add(high_endpoint["queryIndex"])
                     if uncertain:
+                        diagnostics=[dict(referenceTime=self.queries[n]["frame"]["t"],reason="AMBIGUOUS_FRAME_IDENTITY_OR_UNVERIFIED_DURATION") for n in sorted(uncertain)]
                         complete=False
                         # Keep only confirmed frame correspondences in LOCATED.
                         # The candidate checks retain ambiguous endpoint options.
@@ -801,12 +860,18 @@ class Engine:
                                 interior.append(path)
                         if interior:
                             anchors,alignment=max(interior,key=lambda p:sum(a["geometry"]["score"] for a in p[0]))
+                for n,q in (qs[0],qs[-1]):
+                    if not any(a["queryIndex"]==n for a in anchors) or not valid_geometry(next((a["geometry"] for a in anchors if a["queryIndex"]==n),{})):
+                        im=q["frame"]["image"]
+                        low_information=float(np.mean(np.max(im,axis=2)>24))<.02
+                        diagnostics.append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if low_information else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE"))
                 shot.setdefault("candidateChecks",[]).append(dict(sourceIndex=source,candidateTime=t,retrievalScore=score,
                     passed=alignment is not None,anchors=[{k:a[k] for k in ["referenceTime","sourceTime","geometry"]} for a in anchors]))
                 shot["candidateChecks"]=shot["candidateChecks"][-12:]
                 checked.append((source,t))
+                self.checked_intervals.setdefault(i,[]).append((source,start,end))
                 if alignment:
-                    hypotheses.append(dict(source=source,score=sum(a["geometry"]["score"] for a in anchors),anchors=anchors,alignment=alignment,frames=frames,complete=complete))
+                    hypotheses.append(dict(source=source,score=sum(a["geometry"]["score"] for a in anchors),anchors=anchors,alignment=alignment,frames=frames,complete=complete,diagnostics=diagnostics))
             # Preserve competing valid locations through later rounds and passes.
             # A later single proposal must not erase an already proven ambiguity.
             self.accepted_hypotheses[i]=[{**h,"frames":[]} for h in hypotheses]
@@ -842,6 +907,12 @@ class Engine:
                         sourcePath=self.report["sources"][best["source"]]["path"],sourceIndex=best["source"],
                         alignment=best["alignment"],anchors=anchors,requiresVisualReview=True,
                         exactBoundaryGuaranteed=False)
+            shot["boundaryDiagnostics"]=best.get("diagnostics",[])
+            if not best["complete"] and not shot["boundaryDiagnostics"]:
+                for n,q in (qs[0],qs[-1]):
+                    if not any(a["queryIndex"]==n for a in anchors):
+                        low_information=float(np.mean(np.max(q["frame"]["image"],axis=2)>24))<.02
+                        shot["boundaryDiagnostics"].append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if low_information else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE"))
             if best["complete"]:
                 shot.pop("sourceLocationWindow",None)
                 shot.update(sourceStart=low["sourceTime"],sourceEndExclusive=high["sourceTime"]+high["sourceFrameDuration"],boundaryStatus="MEASURED_ENDPOINT_CORRESPONDENCES")
@@ -910,7 +981,9 @@ class Engine:
         try:
             self.reference()
             self.report["sources"]=[dict(path=p,fingerprint=fingerprint(p),**probe(p)) for p in self.request["sourcePaths"]]
-            for mode in ["keys", "0.5", "0.125"]:
+            self.restore()
+            needs_global=self.refine_ids is None or any(s["shotId"] in self.refine_ids and s["shotId"] not in self.refine_windows for s in self.report["shots"])
+            for mode in (["keys", "0.5", "0.125"] if needs_global else []):
                 self.progress("PASS_STARTED",mode=mode)
                 for source in range(len(self.report["sources"])):
                     self.scan(source,mode)

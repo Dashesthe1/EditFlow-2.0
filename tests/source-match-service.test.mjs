@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -78,4 +79,42 @@ test("interrupted receipts survive service restart without replay",async t=>{
   const restarted=new SourceMatchServiceV1(config);
   assert.equal((await restarted.status(id)).job.status,"INTERRUPTED");
   assert.equal((await service.status()).activeJobId,null);
+});
+
+test("refinement retains its parent, targets, evidence and assignment across restart",async t=>{
+  const {service,config,request}=await fixture(t);
+  const assignmentId="gpt-assignment:00000000-0000-0000-0000-000000000001";
+  const initial=await service.submit({...request,assignmentId});
+  const prior=await finished(service,initial.job.jobId);
+  const report={status:"PARTIAL",reference:{path:request.referencePath},sources:[{path:request.sourcePaths[0],duration:20}],
+    shots:[{shotId:"shot-001",status:"VERIFIED",referenceStart:0,referenceEnd:1,anchors:[{sourceEvidencePath:"retained.jpg"}]},
+      {shotId:"shot-002",status:"LOCATED",referenceStart:1,referenceEnd:2}]};
+  await writeFile(path.join(prior.job.outputDir,"report.json"),JSON.stringify(report));
+  await writeFile(path.join(prior.job.outputDir,"job.json"),JSON.stringify({...prior.job,status:"PARTIAL"}));
+  const body={requestId:"refine-one",jobId:prior.job.jobId,windows:[{shotId:"shot-002",sourceIndex:0,start:10,end:12}],budgetSeconds:10};
+  const refined=await service.refine(body);
+  assert.equal(refined.job.parentJobId,prior.job.jobId);
+  assert.equal(refined.job.assignmentId,assignmentId);
+  assert.equal((await service.refine(body)).job.jobId,refined.job.jobId);
+  const retained=await readFile(path.join(refined.job.outputDir,"resume-report.json"));
+  assert.deepEqual(JSON.parse(retained),report);
+  const stored=JSON.parse(await readFile(path.join(refined.job.outputDir,"request.json"),"utf8"));
+  assert.deepEqual(stored.refinement.shotIds,["shot-002"]);
+  assert.equal(stored.refinement.reportSha256,createHash("sha256").update(retained).digest("hex"));
+  await finished(service,refined.job.jobId);
+  assert.deepEqual(JSON.parse(await readFile(path.join(prior.job.outputDir,"report.json"),"utf8")),report);
+  const resumed=await new SourceMatchServiceV1(config).forAssignment(assignmentId);
+  assert.equal(resumed.job.jobId,refined.job.jobId);
+});
+
+test("refinement rejects unknown shots, windows and changed idempotent requests",async t=>{
+  const {service,request}=await fixture(t);
+  const initial=await service.submit(request);const prior=await finished(service,initial.job.jobId);
+  await writeFile(path.join(prior.job.outputDir,"report.json"),JSON.stringify({status:"PARTIAL",reference:{path:request.referencePath},sources:[{duration:20}],shots:[{shotId:"shot-001",status:"LOCATED",referenceStart:0,referenceEnd:1}]}));
+  const body={requestId:"refine-one",jobId:prior.job.jobId,budgetSeconds:10};
+  await assert.rejects(service.refine({...body,shotIds:["missing"]}),/SHOT_IDS/);
+  await assert.rejects(service.refine({...body,windows:[{shotId:"shot-001",sourceIndex:0,start:19,end:21}]}),/WINDOWS/);
+  await assert.rejects(service.refine({...body,windows:[{shotId:"shot-001",sourceIndex:0,start:10,end:10}]}),/WINDOWS/);
+  await service.refine(body);
+  await assert.rejects(service.refine({...body,budgetSeconds:11}),/CONFLICT/);
 });

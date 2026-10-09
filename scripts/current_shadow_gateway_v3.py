@@ -495,9 +495,16 @@ def build_server():
 
     @tool()
     def start_source_match(request_json: str) -> dict[str, Any]:
-        """Search a finished edit in local raw source files as one cached GPU job. Supply {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]}. Seconds, end exclusive. Read-only media analysis; no assignment claim/resume/AE writes. Machine VERIFIED is evidence, not GPT acceptance."""
+        """Standard Practice source discovery. Search a finished edit in local raw files as one cached GPU job. Supply {requestId,assignmentId?,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]}. assignmentId retains the job in Practice resume. Seconds/end exclusive. No claim/resume/AE writes; VERIFIED is evidence, not GPT acceptance."""
         payload = _object_payload(request_json, "request_json")
         payload["action"] = "SUBMIT"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool()
+    def refine_source_match(request_json: str) -> dict[str, Any]:
+        """Continue a partial report in a new durable job without repeating resolved shots. Supply {requestId,jobId,shotIds?,windows?:[{shotId,sourceIndex,start,end}],budgetSeconds:480}. Known locations are rechecked at higher resolution; unlocated shots reuse global caches. Unchanged media/boundaries required. No AE writes or lifecycle changes; black endpoints can remain unresolved."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "REFINE"
         return _practice_http("POST", "/v1/product/source-match", payload)
 
     @tool(read_only=True, destructive=False)
@@ -522,6 +529,11 @@ def build_server():
     def get_source_assembly(assembly_id: str) -> dict[str, Any]:
         """Read saved timestamp/extraction receipt. READY means every bounded raw clip passed frame-count, original timing and endpoint-pixel checks; it is not final edit acceptance."""
         return _practice_http("GET", "/v1/product/source-match?assemblyId=" + urllib.parse.quote(assembly_id, safe=""))
+
+    @tool()
+    def cancel_source_assembly(assembly_id: str) -> dict[str, Any]:
+        """Cancel bounded media preparation and its decoder processes; retain official timestamps and receipts. Never cancels an accepted AE queue job, changes the assignment or resumes production."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL_ASSEMBLY","assemblyId":assembly_id})
 
     @tool()
     def plan_source_assembly(assembly_id: str, assignment_id: str, batch_index: int = 0) -> dict[str, Any]:

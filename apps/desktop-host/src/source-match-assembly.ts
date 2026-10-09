@@ -1,13 +1,13 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { capabilityForCommandV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { SourceMatchServiceV1, type SourceMatchServiceConfigV1 } from "./source-match-service.js";
 
 export const SOURCE_ASSEMBLY_CONTRACT_V1 = {
   schema: "editflow.source-assembly-contract.v1", version: "1.0.0",
-  actions: ["PREPARE_ASSEMBLY", "ASSEMBLY_STATUS", "ASSEMBLY_PLAN"],
+  actions: ["PREPARE_ASSEMBLY", "ASSEMBLY_STATUS", "ASSEMBLY_PLAN", "CANCEL_ASSEMBLY"],
   targetSeconds: 300, targetMeasured: false, order: "FINISHED_REFERENCE_ORDER",
   gate: "Complete saved source endpoints and direct GPT review of every shot; no partial assembly.",
   execution: "Saved official timestamps -> bounded clips -> existing durable AE_TRANSACTION queue -> AEP checkpoint",
@@ -105,8 +105,18 @@ export function sourceAssemblyCommandsV1(manifest: any, media: any, batchIndex: 
   return {commands,batchCount:count,totalDuration:total};
 }
 
+/** Resume from queue receipts, not from a still-READY extraction receipt. */
+export function sourceAssemblyProgressV1(assembly:any,jobs:readonly any[]) {
+  if(!assembly)return null;
+  const batches=jobs.filter(j=>j.payload?.sourceAssembly?.assemblyId===assembly.assemblyId)
+    .map(j=>({batchIndex:j.payload.sourceAssembly.batchIndex,jobId:j.jobId,status:j.status}));
+  const nextBatchIndex=Array.from({length:assembly.batchCount},(_,i)=>i).find(i=>!batches.some(b=>b.batchIndex===i&&b.status==="SUCCEEDED"));
+  return {...assembly,batches,nextBatchIndex:nextBatchIndex??null,
+    status:assembly.status==="READY"&&nextBatchIndex===undefined?"ASSEMBLED":assembly.status};
+}
+
 export class SourceMatchAssemblyV1 {
-  #active: {assemblyId:string;child:ChildProcess;completion:Promise<void>} | null=null;
+  #active: {assemblyId:string;child:ChildProcess;completion:Promise<void>;cancelled?:boolean} | null=null;
   #tail: Promise<any>=Promise.resolve();
   constructor(readonly config:SourceMatchServiceConfigV1,readonly matcher:SourceMatchServiceV1) {}
   #dir(assemblyId:string) { return path.join(this.config.artifactDir,"assemblies",id(assemblyId,"source-assembly")); }
@@ -150,7 +160,7 @@ export class SourceMatchAssemblyV1 {
     child.once("error",e=>{error=e;});
     const timer=setTimeout(()=>{error=new Error("SOURCE_ASSEMBLY_PREPARATION_TIMEOUT");terminate(child);},20*60*1000);
     child.once("close",code=>{void(async()=>{
-      clearTimeout(timer);state.status=code===0&&!error?"READY":"FAILED";state.updatedAt=new Date().toISOString();
+      clearTimeout(timer);state.status=this.#active?.cancelled?"CANCELLED":code===0&&!error?"READY":"FAILED";state.updatedAt=new Date().toISOString();
       if(state.status==="READY") {
         const media=await json(path.join(dir,"materialized.json"));
         sourceAssemblyCommandsV1(manifest,media,0);
@@ -158,7 +168,7 @@ export class SourceMatchAssemblyV1 {
         state.clipIdentities=[];
         for (const cut of media.shots) {const info=await stat(cut.workingPath);state.clipIdentities.push({path:cut.workingPath,size:info.size,mtimeMs:info.mtimeMs});}
       }
-      else state.error=error?.message ?? stderr;
+      else state.error=state.status==="CANCELLED"?"User cancelled media preparation; retained official timestamps, no AE writes.":error?.message ?? stderr;
       await save(path.join(dir,"state.json"),state);
     })().catch(async e=>{state.status="FAILED";state.error=String(e);await save(path.join(dir,"state.json"),state);})
       .finally(()=>{this.#active=null;finish();});});
@@ -171,6 +181,24 @@ export class SourceMatchAssemblyV1 {
       await save(path.join(dir,"state.json"),assembly);
     }
     return {assembly,contract:SOURCE_ASSEMBLY_CONTRACT_V1};
+  }
+  async forMatch(jobId:string) {
+    let entries:string[];
+    try {entries=await readdir(path.join(this.config.artifactDir,"assemblies"));}catch(e:any){if(e.code==="ENOENT")return null;throw e;}
+    const matches=[];
+    for(const entry of entries.filter(n=>/^source-assembly-[a-f0-9-]{36}$/.test(n))) {
+      try {
+        const dir=this.#dir(entry),manifest=await json(path.join(dir,"official-timestamps.json"));
+        if(manifest.jobId===jobId)matches.push((await this.status(entry)).assembly);
+      }catch(e:any){if(e.code!=="ENOENT")throw e;}
+    }
+    return matches.sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0]??null;
+  }
+  async cancel(assemblyId:string) {
+    const retained=await this.status(assemblyId),active=this.#active;
+    const cancellationRequested=active?.assemblyId===assemblyId;
+    if(cancellationRequested) {active.cancelled=true;await save(path.join(this.#dir(assemblyId),"cancellation.json"),{requestedAt:new Date().toISOString()});terminate(active.child);}
+    return {...retained,cancellationRequested};
   }
   async #ready(assemblyId:string) {
     const {assembly}=await this.status(assemblyId);

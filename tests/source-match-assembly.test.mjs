@@ -4,7 +4,7 @@ import {mkdtemp,mkdir,readFile,writeFile,rm,stat} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {officialSourceTimestampsV1,sourceAssemblyCommandsV1,SourceMatchAssemblyV1} from '../.tmp/runtime/apps/desktop-host/src/source-match-assembly.js';
+import {officialSourceTimestampsV1,sourceAssemblyCommandsV1,sourceAssemblyProgressV1,SourceMatchAssemblyV1} from '../.tmp/runtime/apps/desktop-host/src/source-match-assembly.js';
 
 function report(count=3) {
   return {schema:'editflow.source-match-report.v1',status:'COMPLETE',alternativeReviewComplete:true,
@@ -62,6 +62,16 @@ test('bounded transaction batches preserve sequence offsets and reject incomplet
   cuts.shots.pop();assert.throws(()=>sourceAssemblyCommandsV1(manifest,cuts,0),/INCOMPLETE/);
 });
 
+test('resume distinguishes prepared media from committed AE batches and never skips uncertain writes',()=>{
+  const assembly={assemblyId:'a',status:'READY',batchCount:2};
+  const job=(batchIndex,status)=>({jobId:'job-'+batchIndex,status,payload:{sourceAssembly:{assemblyId:'a',batchIndex}}});
+  assert.equal(sourceAssemblyProgressV1(assembly,[]).nextBatchIndex,0);
+  assert.equal(sourceAssemblyProgressV1(assembly,[job(0,'SUCCEEDED'),job(1,'RECONCILE_REQUIRED')]).nextBatchIndex,1);
+  const complete=sourceAssemblyProgressV1(assembly,[job(0,'SUCCEEDED'),job(1,'SUCCEEDED')]);
+  assert.equal(complete.status,'ASSEMBLED');assert.equal(complete.nextBatchIndex,null);
+  assert.equal(sourceAssemblyProgressV1({...assembly,status:'FAILED'},[job(0,'SUCCEEDED'),job(1,'SUCCEEDED')]).status,'FAILED');
+});
+
 async function fixture(t) {
   const root=await mkdtemp(path.join(os.tmpdir(),'source-assembly-test-'));
   await mkdir(path.join(root,'scripts','source-match'),{recursive:true});
@@ -98,6 +108,16 @@ test('partial report cannot create an official receipt or begin extraction',asyn
   const f=await fixture(t);f.r.status='PARTIAL';
   await assert.rejects(f.service.prepare(f.request),/ALL_SHOT_ENDPOINTS/);
   await assert.rejects(stat(path.join(f.root,'jobs')),e=>e.code==='ENOENT');
+});
+
+test('assembly cancellation retains official timestamps without preparing an AE plan',async t=>{
+  const f=await fixture(t),a=await f.service.prepare(f.request);
+  assert.equal((await f.service.forMatch(f.request.jobId)).assemblyId,a.assembly.assemblyId);
+  assert.equal((await f.service.cancel(a.assembly.assemblyId)).cancellationRequested,true);
+  const cancelled=await ready(f.service,a.assembly.assemblyId);
+  assert.equal(cancelled.assembly.status,'CANCELLED');
+  assert.equal(JSON.parse(await readFile(a.assembly.manifestPath,'utf8')).review.decisionId,f.request.review.decisionId);
+  await assert.rejects(f.service.plan(a.assembly.assemblyId,0,{},f.allowed),/NOT_READY/);
 });
 
 test('official timestamps precede extraction; idempotent prepare and unchanged queue plans',async t=>{

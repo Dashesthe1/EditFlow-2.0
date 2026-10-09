@@ -88,6 +88,16 @@ Default budget is 480 seconds; PARTIAL is truthful incomplete coverage, not a
 guarantee that every source frame/shot was found. Cache source descriptors across
 assignments. Do not revive older candidate selection or editorial engines.
 
+Source Match is the standard discovery measurement path for unfinished Practice
+shots. Include assignmentId on SUBMIT; the existing resume response retains the
+job, unresolved rows, prepared assembly and committed batch receipts. Resume the
+job instead of launching another movie search. REFINE creates a new durable job
+from a retained report, preserves all other shots and evidence, validates the
+same inputs/cuts and rechecks known locations at higher resolution. Explicit
+windows may narrow selected targets; global descriptor caches serve unlocated
+shots. Low-information black/text-only boundaries and ambiguous static frames
+remain unresolved. Do not extrapolate or certify invisible source endpoints.
+
 After every full-shot source endpoint has been found and directly reviewed, use
 the Source Assembly handoff from the sourceAssembly production-status contract.
 PREPARE_ASSEMBLY first saves all official timestamps and the complete GPT review,
@@ -103,6 +113,12 @@ GPT choices in the editing pass. Use a new composition to preserve current work.
 Complete each batch before generating the next. Never resume a paused assignment
 as a side effect of maintenance or media preparation. The 300-second full handoff
 target is a benchmark goal, not a demonstrated worst-case guarantee.
+
+CANCEL_ASSEMBLY stops only media preparation and its decoder descendants, keeps
+official timestamp receipts and leaves accepted AE jobs alone. A retained READY
+extraction receipt is not an instruction to replay committed assembly batches:
+resume reports ASSEMBLED only from successful queue receipts. ASSEMBLY_PLAN returns
+an existing batch receipt when already submitted; inspect/reconcile that receipt.
 
 ChatGPT browses provided raw footage and chooses exact ranges using issued pixel
 inspections. Reuse retained selections and search coverage. Internet scene/dialogue/
