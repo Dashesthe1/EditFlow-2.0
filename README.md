@@ -63,6 +63,9 @@ accounts for alterations and states contradictions using evidence IDs. Packets
 remain awaiting review until the images are actually inspected; their creation
 does not run an OpenAI API call or manufacture a model verdict. The current
 ChatGPT session reviews them and existing GPT BROWSE/SELECT retains decisions.
+See the [visual review procedure](docs/source-match-visual-reasoning.md).
+v1.6.2 also retries both pictures at the same 640px scale when detailed matches
+fail under a strong grade; the geometry and pixel thresholds remain unchanged.
 
 Movie-section origin and exact source trims are separate claims. CONFIRMED origin
 requires multiple fresh mapped frames, independent edge/change witnesses and a

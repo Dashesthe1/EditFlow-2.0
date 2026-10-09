@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.6.1"
+VERSION = "source-match-v1.6.2"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -1056,10 +1056,17 @@ class Engine:
                 anchors=[]
                 anchor_options={}
                 sfeatures={}
+                coarse_sources={}
                 orb_sources={}
                 def compare(n,f):
                     if f['pts'] not in sfeatures:sfeatures[f['pts']]=feature_points(f['image'])
                     checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
+                    if not any(valid_geometry(g) for g in checks) and max(f['image'].shape[:2])>640:
+                        if f['pts'] not in coarse_sources:
+                            small=resized(f['image'],640);coarse_sources[f['pts']]=(small,feature_points(small))
+                        small,features=coarse_sources[f['pts']]
+                        im,qf=qvariants[n][-1]
+                        checks.append(geometry(im,small,qf,features))
                     if not any(valid_geometry(g) for g in checks):
                         if f['pts'] not in orb_sources:orb_sources[f['pts']]=feature_points(f['image'],'ORB')
                         for im,_ in qvariants[n]:
@@ -1352,6 +1359,8 @@ class Engine:
                 if query is None or source is None:continue
                 q=query['image'];s=source['image'];sf=feature_points(s)
                 checks=[geometry(im,s,source_features=sf) for im in (q,resized(q,640))]
+                if not any(valid_geometry(g) for g in checks) and max(s.shape[:2])>640:
+                    checks.append(geometry(resized(q,640),resized(s,640)))
                 if not any(valid_geometry(g) for g in checks):checks.append(geometry(q,s,feature_points(q,'ORB'),feature_points(s,'ORB')))
                 good=[g for g in checks if valid_geometry(g)]
                 if not good:continue

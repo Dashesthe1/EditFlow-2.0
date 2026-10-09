@@ -103,8 +103,11 @@ An obscured interior sample need not block independently measured first/last fra
 when at least three visible moments establish traversal and endpoint uniqueness.
 Adaptive boundary bursts inspect additional actual reference frames near obscured
 endpoints. SIFT and a stricter ORB fallback both require measured geometry and
-aligned pixel agreement. Inspect originVerifications/originSummary for independent
-fresh-frame, spatial-gradient and signed temporal-pixel checks of movie-section
+aligned pixel agreement.
+When detailed comparisons fail, test both query and source at the retained 640px
+scale; reducing only the query can still miss a heavily graded valid copy.
+Inspect originVerifications/originSummary for independent fresh-frame,
+spatial-gradient and signed temporal-pixel checks of movie-section
 origin. Static captions/backgrounds cannot pass the temporal energy checks.
 CONFIRMED origin is not an exact hidden trim; keep that distinction explicit.
 No original author project is required for this measurement path. Never demote

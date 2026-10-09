@@ -680,3 +680,73 @@ such as the actual original edit project's source-frame map or a corresponding
 export without the obscuring fade/composite. The recognizability of an interior
 shot does not determine which original frame was used beneath a fully hidden or
 non-uniquely transformed endpoint.
+
+## v1.6 independent origin evidence and v1.6.1 ChatGPT review packets
+
+The new measurement path does not require an original author project. Adaptive
+boundary bursts add actual reference samples near obscured endpoints. SIFT and
+a stricter ORB fallback measure decoded image correspondences. Fresh mapped
+frames are then checked using spatial-gradient directions and signed temporal
+pixel changes on a fixed grid. Origin CONFIRMED requires at least three fresh
+valid maps, three passing gradient frames, a passing change witness and completed
+bounded competing-location review. Static text/backgrounds cannot satisfy the
+temporal energy check. Original PTS and all passing/failed witnesses are retained.
+
+Denser queries exposed a duplicate-copy regression: per-query tie breaking could
+choose the first copy in every search window and hide a second occurrence. The
+implementation now explicitly tests a consistent alternate path through valid
+matches at another source location. The duplicated-video rejection fixture passes
+again; no endpoint or source-origin threshold was lowered to repair it.
+
+v1.6.1 creates direct ChatGPT visual-reasoning packets from actual edit/movie
+frames at several moments, measured alignments, nearby decoded source-frame
+controls, actual reference boundary images and retained competing hypotheses.
+ChatGPT compares poses, distinctive landmarks, background relationships and
+changing poses, explains alterations and states contradictions using evidence IDs.
+The packets remain AWAITING_DIRECT_IMAGE_REVIEW; their creation is not an OpenAI
+API call, model verdict, editorial PASS or permission to extract missing trims.
+The [review procedure](../../docs/source-match-visual-reasoning.md) describes the
+current-session workflow and its distinction from exact endpoint measurement.
+
+Local validation passed all 39 matcher tests, including a constant-black first
+frame with CONFIRMED origin and no asserted full-shot start. The new packet test
+compares control JPEGs against independently decoded originals at their exact
+PTS. All 32 Node service/assembly/GPT-selection tests, TypeScript checking and
+the runtime build passed. The unchanged timeline/extraction tests also passed
+(eight tests plus three subcases), and all 47 schema fixtures passed for v1.6.0.
+
+All 39 v1.6.0 matcher tests passed on Windows. All twelve true SSCD/CUDA fixtures
+passed on the RTX A4500: nine altered positive cases had zero-frame error on their
+known 1–3 s ranges, faded/crushed boundaries remained LOCATED with CONFIRMED
+origin, and the unrelated reference remained UNRESOLVED/UNCONFIRMED. These are
+small 12fps encoded fixtures, not a real-movie false-positive evaluation. The
+Windows and GPU suites ran concurrently, so their timings are not isolated
+throughput measurements. Evidence is in `source-match-benchmarks/v160-gpu-final`;
+engine SHA-256 `e1bfceb429035fd40926d37dc8214ccf70d0dbad5420e0fce9c6d4204638dbf6`.
+
+The v1.6.1 decoded-control packet test also passed on Windows. The deployed
+implementation is commit `72d1cf291b660cb910c7ac50ca743c219daf49b6`, engine SHA-256
+`960d70c894ca2b8a9566fefb91bd4839e94a08d92afcb99eb8df32ab9b6d9bb7`.
+
+The live v1.6.1 refinement `source-match-a8759bdd-6ffb-47cb-92c7-eff76b285899`
+finished in 576.047 s with bounded competing-location review complete. It retained
+all 21 locations, 12 measured ranges and 9 LOCATED endpoint rows. All twelve
+previously verified shot objects remained exactly unchanged. Twenty origins passed
+all fresh geometric/gradient/change checks. Shot-021 alone had insufficient fresh
+geometry at the detailed comparison scales. All 21 visual packets were retained.
+
+Direct ChatGPT inspection of shot-021 showed the same robot walking beside the
+same tree and sun flare, with a tighter crop and brighter pink/desaturated grade.
+A separate actual-frame audit verified all four original PTS using both CPU and
+GPU decoding. At paired 640px query/source scale, those frames had 27, 36, 39 and
+45 inliers, coverage 30.72%, 37.29%, 33.80% and 49.67%, and correlations
+0.9054, 0.9200, 0.9148 and 0.9168. Detailed/differently scaled comparisons had
+failed the unchanged gates. This is an observed scale-sensitivity defect, not
+evidence that the source footage differed. Diagnostics are retained in
+`source-match-benchmarks/v161-shot21-audit`.
+
+v1.6.2 adds a paired 640px query/source fallback to both source matching and fresh
+origin checks, only when existing SIFT comparisons fail. Previously passing scores
+are not boosted. The source-scale features are cached, and all geometry, pixel,
+motion, uniqueness and exact-range gates remain unchanged. All 39 local matcher
+tests passed again, including unrelated/duplicated-video rejection.
