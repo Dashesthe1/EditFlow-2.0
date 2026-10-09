@@ -1,6 +1,6 @@
 # Source Match Service evaluation — 9 October 2026
 
-The service is live at v1.3.0 and integrated into Practice discovery/resume. The latest retained continuation has **21/21 source locations, nine verified full ranges, twelve interior-only rows and no unlocated shots**. Its final targeted geometric search took 41.781 analysis seconds; this is not the elapsed time of the preceding whole search. **Complete exact recovery and the five/eight-minute two-hour goal are not met.** The exact-range assembly gate remains closed for this real report. Historical measurements follow, then the current continuation results.
+The service is live at v1.3.0 and integrated into Practice discovery/resume. The latest retained continuation has **21/21 source locations, eleven verified full ranges, ten interior-only rows and no unlocated shots**. The church-location search took 41.781 analysis seconds and the final five-shot boundary pass took 121.329 seconds; neither is the elapsed time of the preceding whole search. **Complete exact recovery and the five/eight-minute two-hour goal are not met.** The exact-range assembly gate remains closed for this real report. Historical measurements follow, then the current continuation results.
 
 ## Input and device
 
@@ -339,6 +339,7 @@ not be presented as one cold full-movie run or a five-minute complete solution.
 | v1.2.0 missing-shot multi-query refinement, 8e05f442 | 117.703 | 9 | 11 | 1 |
 | v1.2.1 all twelve unfinished ranges, ea1a448a | 142.453 | 9 | 11 | 1 |
 | v1.3.0 explicit geometric church window, 1f300d1b | 41.781 | 9 | 12 | 0 |
+| v1.3.0 explicit five-shot boundary windows, 4c3065c7 | 121.329 | 11 | 10 | 0 |
 
 The exact retained IDs are:
 
@@ -346,6 +347,7 @@ The exact retained IDs are:
 - `source-match-8e05f442-2718-43f8-9d9d-b295c6dafd67`
 - `source-match-ea1a448a-e85b-413a-947c-60d5cd95833f`
 - `source-match-1f300d1b-6e41-4b3a-bf4d-a4a148d1bea9`
+- `source-match-4c3065c7-feab-43b1-b402-709ce0dbc01d`
 
 v1.2.0's single-shot refinement left every non-target shot object and the media
 metadata semantically unchanged. v1.2.1 revisited retained locations at 1280px,
@@ -362,11 +364,34 @@ full-shot in/out or an editing PASS. The reference shot begins at 28.586061 s;
 that endpoint remains unconfirmed. `alternativeReviewComplete:true` does not
 upgrade the report beyond PARTIAL.
 
-The final geometric run encoded 555 images, spent 3.126 seconds in SSCD inference
+The church-window run encoded 555 images, spent 3.126 seconds in SSCD inference
 and 7.047 seconds in 1,389 geometric comparisons, and decoded 62 dense frames over
 2.555 source-window seconds. Pipeline metrics overlap and are not additive elapsed
 components. Short-window proposal scores are explicitly null with retained/window
 provenance; their seed priority is never represented as SSCD similarity.
+
+The final pass explicitly screened five short windows, extending each retained
+interior span by two seconds on either side. Shot-016 recovered measured source
+905.613041667–906.030125 s, and shot-020 recovered 1443.275166667–1443.692250 s.
+All five reference/source pairs for both shots were directly inspected for pose,
+background and source consistency, including the actual endpoint frames. The
+portrait crop and strong reference grade explain the different overall appearance.
+Sixteen non-target shot objects remained exactly unchanged. The pass encoded 603
+images, used 3.500 inference seconds and 39.842 seconds for 2,271 geometric checks,
+and decoded 312 dense frames over 12.802 source-window seconds. No descriptor
+rows were read and no full-movie scan was repeated. It completed the bounded
+alternative review and returned PARTIAL, with exit code 0.
+
+Ten ranges remain interior-only: seven low-information endpoints and three other
+unconfirmed correspondences (shots 003, 007 and 013). Direct inspection of those
+three actual reference endpoint frames showed a dark but visible Wanda/Ultron
+image (003), text over black with no source picture (007), and a flashed Ultron
+image (013). The latter two visible-picture cases still lack confirmed exact
+source-frame correspondence; the black/text-only case cannot reveal its hidden
+trim. A live PREPARE_ASSEMBLY
+request for the partial report returned HTTP 400 ALL_SHOT_ENDPOINTS_REQUIRED,
+with zero official receipts before and after the request. No guessed ranges were
+cut or imported into the actual Practice assignment.
 
 Engine v1.3.0 SHA-256 is
 `30bcbba6848a367572e523f44b12c947c18e73868fe523943251c251aaa6833d`.
@@ -398,11 +423,11 @@ internet search, and older stored assignments receive the current worker policy.
 Local validation passed 27 encoded matcher tests, 49 Node service/selection/resume
 and production integration tests, two extraction tests, 24 gateway tests, all 47
 schema fixtures, TypeScript checking and the runtime build. The live Windows
-service/assembly/resume suite and true GPU fixtures also passed. Generation 134
+49-test Windows integration suite and true GPU fixtures also passed. Generation 134
 remains explicitly PAUSED; maintenance retains AE and unrelated unfinished UI edits.
 
-The real exact-boundary task remains incomplete: nine full ranges are measured,
-twelve are interior-only. No real 21-shot extraction/AE assembly is claimed.
+The real exact-boundary task remains incomplete: eleven full ranges are measured,
+ten are interior-only. No real 21-shot extraction/AE assembly is claimed.
 Where the underlying source frame is hidden by black pixels or overlays, original
 timeline/project trim metadata may be needed to prove exact endpoints. Other
 unconfirmed endpoints still need stronger direct evidence. The system preserves

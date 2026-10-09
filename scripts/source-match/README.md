@@ -38,7 +38,7 @@ occluded middle. At least three measured moments must still form a valid path;
 missing endpoints never become an asserted full-shot range.
 
 The latest v1.3.0 Ultron continuation has located all 21 visually partitioned shots,
-with nine verified full ranges and twelve interior-only locations. Its report is
+with eleven verified full ranges and ten interior-only locations. Its report is
 PARTIAL and cannot start the exact-range assembly. Black/text-only, flashed and
 otherwise unconfirmed endpoints remain open; a rendered black frame does not
 identify the underlying original trim. See [BENCHMARK.md](BENCHMARK.md) for the
