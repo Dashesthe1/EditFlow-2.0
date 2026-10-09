@@ -1,6 +1,6 @@
 # Source Match Service evaluation — 9 October 2026
 
-The service is live at v1.4.0 and integrated into Practice discovery/resume. Original-project frame-map import, boundary evidence, reference-scale checks and resumable verified-cut extraction are implemented. A real twenty-shot known-frame service handoff reached the native AE Practice checkpoint **56.253 seconds after official timestamps were saved**, including an intentional extraction cancellation/resume and the isolated-lab setup. This is a 320×240 fixture, not a two-hour 4K benchmark. The real Ultron report still has unconfirmed endpoints, so its exact-range assembly gate remains closed. Historical measurements follow, then the current continuation results.
+The service is live at v1.5.1 and integrated into Practice discovery/resume. Transformed-picture verification now retains crop/resize/rotation maps, distributed visible-region evidence, faint-pixel normalization and measured-sequence endpoint recovery. Original-project frame-map import and resumable verified-cut extraction remain available. The real Ultron report still has unconfirmed endpoints. Historical measurements follow, then the current transformation validation results.
 
 ## Input and device
 
@@ -539,3 +539,91 @@ hidden trims from these rendered pixels. No real 21-shot official extraction or
 AE assembly was created, and the partial-report rejection was rechecked live.
 The final engine SHA-256 is
 `85352f5b4c00c2154c72e9b154ade8db7131d2d1fb7d615ed8cc70e0e394237e`.
+
+## v1.5 transformed-picture verification
+
+The supplied Finished screenshot was matched against actual original movie frames
+inside the retained 1027–1038 s scene window. Its observed source frame is
+**1032.406375 s (00:17:12.406)**, integer PTS **24777753**, time base **1/24000**.
+The comparison retained 126 geometric inliers, 55.57% query coverage and a 91.30%
+inlier fraction. Direct inspection of the aligned source/reference picture
+confirmed the same head tilt, eyes, neck/shoulder structure and background,
+with the crop, caption and grading visible as differences. This is single-frame
+source evidence, not certification of every shot trim or a blind movie-search
+benchmark. The local scene test took 10.7 seconds. Evidence is retained under
+`%LOCALAPPDATA%/EditFlow2/source-match-benchmarks/v150-user-example`.
+
+Whole-image correlation could reject a valid copied shot when a caption or
+composite changed a large region. The new partial-copy check instead requires
+an explicit finite non-folding map, at least 20 inliers, 20% keypoint coverage,
+50% inlier fraction and ten textured pixel witnesses on a fixed 6-by-6 grid.
+At least 40% of the active query must correlate at 0.72 or above across three
+rows and columns. Shared text or a small pasted insert cannot establish identity.
+Partial-copy scores are penalized by actual supported area, and do not boost
+already-passing full-image scores. This preserves stronger whole-frame evidence.
+The report retains the transform, supported regions and aligned picture.
+
+An occluded interior sample can be omitted only when at least three visible
+moments include the actual first and last frames and establish traversal. Existing
+measured anchors may propose narrow searches for missed moments/endpoints;
+only independently checked decoded source frames become evidence. Endpoint
+uniqueness, actual PTS/durations and competing-copy review remain mandatory.
+
+Full-resolution inspection also exposed a normalization defect: signals spanning
+six or fewer gray levels were discarded. v1.5.1 tests those retained levels and
+uses a query-only contrast stretch for retrieval. It never inserts texture into
+a constant picture. Some compressed faint frames contain codec structure without
+a sufficient movie correspondence; feature visibility alone is not a match.
+
+Validation passed 44 local Python tests (plus three extraction subcases), 30 Node
+service/assembly/GPT-selection tests, TypeScript and the build. The original 47
+schema fixtures also passed. All 36 matcher tests passed on Windows. Twelve true
+SSCD/CUDA cases passed on the RTX A4500: crop/grade, reverse, nonlinear retiming,
+dark, flashed, retained near-black, obscured interior, overlay/composite and
+border/caption cases returned exactly the known source endpoints (zero-frame
+error); fully faded and compression-crushed endpoints remained LOCATED and an
+unrelated reference remained UNRESOLVED. These small 12fps cases are not an
+independent real-movie false-positive evaluation. GPU evidence is under
+`source-match-benchmarks/v151-gpu-final`.
+
+A separately instantiated real service and extractor also passed the transformed
+320-by-240 fixture handoff: COMPLETE report, official timestamps saved first,
+exact original range 1–3 s, verified original clip and four-operation AE plan.
+It did not write AE. Job `source-match-b36ca117-ff3f-44f0-bd7c-0e38768341cd`,
+assembly `source-assembly-e2429863-3136-456b-a6fc-6ff4029bf3b0`; evidence is under
+`source-match-benchmarks/v150-transformation-handoff`.
+
+The first live real-shot pass, `source-match-f98445d6-97ae-4d0a-91fc-f0c33ddab71e`,
+completed in 224.766 s with its competing-match review complete. It retained all
+21 locations, 12 VERIFIED ranges and 9 LOCATED rows. All twelve non-target shot
+objects stayed unchanged. The visible composite did not yield adequate source
+correspondence: the strongest sparse candidate had only nine inliers and a 45%
+inlier fraction, so no exact endpoint was promoted. Faint-pixel normalization
+exposed additional query structure for later checks, not proof of matching.
+
+The release engine SHA-256 is
+`60c48c8d695f51ac7d1afd10c2766010da6e2e53a553a74def835fc489dd12dd`.
+
+The final v1.5.1 live refinement,
+`source-match-90fa3b1a-fb2f-417f-881d-5a3d75dfbc4c`, finished in 210.687 s
+(210.703 s in the progress receipt). Competing-match review completed; the result
+was **12 VERIFIED, 9 LOCATED, 0 UNRESOLVED**. All twelve previously verified
+shot objects were byte-for-byte equivalent after JSON serialization. No new exact
+trim was certified. The remaining shots are 001, 003, 004, 007, 010, 012, 015,
+018 and 021. Each retains four measured visible anchors establishing location.
+
+The diagnostics now distinguish actual zero/detail-poor boundaries (001 and 007)
+from faint or composite pictures with distributed query features. The latter
+still need adequate independently matched original pixels; the presence of
+features, a predicted source timestamp or a similar-looking candidate does not
+certify an endpoint. These results do not support a claim that every outstanding
+trim was fixed, nor the older blanket description of all faint starts as black.
+
+The live PREPARE_ASSEMBLY check returned HTTP 400 with
+`ALL_SHOT_ENDPOINTS_REQUIRED: matching is incomplete`, before official extraction
+or AE writes. After Effects remained open and responsive (PID 2348), Practice
+remained PAUSED at generation 134/activity sequence 2576, and no mutation lease
+was held. The four pre-existing UI edits retained their exact diff hash,
+`D925A86FF3E7636E08B453983A81B055A5FD8F4BA28704648B1FD9201DE9178B`.
+Audit and gate receipts are retained as `v151-final-audit.json` and
+`v151-assembly-gate.json` under `%LOCALAPPDATA%/EditFlow2`.
