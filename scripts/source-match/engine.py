@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.1.2"
+VERSION = "source-match-v1.1.3"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -398,6 +398,18 @@ def endpoint_identity(options, chosen, frame_seconds):
     if not peers:
         return False
     return max(a["sourceTime"] for a in peers)-min(a["sourceTime"] for a in peers)<=frame_seconds*2+1e-6
+
+
+def hypothesis_quality(hypothesis):
+    anchors=hypothesis["anchors"]
+    return sum(a["geometry"]["score"] for a in anchors)/max(1,len(anchors))
+
+
+def strongest_hypothesis(hypotheses):
+    # A weak complete-looking copy must not displace stronger interior evidence.
+    # Normalize for anchor count before comparing locations; completeness only
+    # breaks equal-quality ties, never adds visual evidence.
+    return max(hypotheses,key=lambda h:(hypothesis_quality(h),h["complete"]))
 
 
 class Engine:
@@ -798,24 +810,23 @@ class Engine:
             # Preserve competing valid locations through later rounds and passes.
             # A later single proposal must not erase an already proven ambiguity.
             self.accepted_hypotheses[i]=[{**h,"frames":[]} for h in hypotheses]
-            hypotheses.sort(key=lambda h:(h["complete"],h["score"]),reverse=True)
             if not hypotheses:
                 if shot["status"]!="LOCATED":
                     shot["reason"]="No geometrically and temporally consistent candidate"
                 self.save()
                 continue
-            best=hypotheses[0]
+            best=strongest_hypothesis(hypotheses)
             def different_location(other):
                 if other["source"]!=best["source"]:
                     return True
                 shared=[abs(a["sourceTime"]-b["sourceTime"]) for a in best["anchors"] for b in other["anchors"] if abs(a["referenceTime"]-b["referenceTime"])<1e-5]
                 return not shared or float(np.median(shared))>1
-            different=[h for h in hypotheses[1:] if different_location(h)]
+            different=[h for h in hypotheses if h is not best and different_location(h)]
             if shot["status"]=="LOCATED":
                 previous=dict(source=shot["sourceIndex"],anchors=shot["anchors"],score=sum(a["geometry"]["score"] for a in shot["anchors"]))
                 if different_location(previous):
                     different.append(previous)
-            if any(h["score"]>=best["score"]*.85 for h in different):
+            if any(hypothesis_quality(h)>=hypothesis_quality(best)*.85 for h in different):
                 for key in ["sourcePath","sourceIndex","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","sourceLocationWindow","alignment","boundaryStatus"]:
                     shot.pop(key,None)
                 shot["status"]="UNRESOLVED";shot["anchors"]=[]

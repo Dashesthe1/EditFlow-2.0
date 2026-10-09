@@ -62,6 +62,9 @@ of production ownership, so a paused Practice assignment remains paused.
   bounded competing-location review. `alternativeReviewComplete:false` identifies
   reports stopped by budget/cancellation before that final review finished. A
   COMPLETE report requires the review and all measured endpoints.
+- Compare candidate locations by mean geometric evidence per anchor. Stronger
+  interior evidence takes priority over weak complete-looking endpoint matches;
+  equally strong competing locations remain unresolved.
 - Use GPU decoding and downscaling for candidate windows. Original integer PTS
   and time base survive the FFmpeg pipeline. Cross-check original PTS with PyAV.
 - Retrieve a sparse 8fps candidate window, then decode consecutive frames only
@@ -114,6 +117,16 @@ transport. On a CPU host the latter replaces CUDA decode/scale only; it does not
 constitute a test of GPU filter execution or SSCD accuracy/performance.
 The v1.1.1 checks also cover deferred weak candidates, rejection before endpoint
 decoding, and reuse of overlapping dense intervals.
+The v1.1.2 checks verify that location priority retains deferred alternatives and
+rejects competing copies in the same source file.
+The v1.1.3 check prevents weak complete hypotheses displacing stronger interior
+locations and compares competing evidence independently of anchor count.
+
+On the installed CUDA runtime, run `python scripts/source-match/gpu_check.py
+--model <installed-sscd-model> --output <evidence-directory>` to check cropped/graded,
+reversed and retimed known-frame copies, faded boundaries and unrelated footage.
+The output retains the actual GPU name, engine hash and endpoint errors for these
+small encoded fixtures. It is not a real-movie accuracy or speed evaluation.
 
 Reports retain bounded stage events and `metrics` for descriptor inference time,
 geometric matching time, encoded images, sparse/dense verification frames,

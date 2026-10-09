@@ -225,6 +225,15 @@ def test_overlapping_dense_windows_are_not_decoded_twice():
     assert m.uncovered_windows([(1,5),(8,10)],[(2,3),(4,9)])==[(1,2),(3,4),(9,10)]
 
 
+def test_weak_endpoints_cannot_displace_stronger_interior_location():
+    strong=dict(complete=False,anchors=[dict(geometry=dict(score=50)) for _ in range(3)])
+    weak=dict(complete=True,anchors=[dict(geometry=dict(score=15)) for _ in range(5)])
+    assert m.strongest_hypothesis([weak,strong]) is strong
+    # Same-quality competing copies remain comparable even with different counts.
+    competing=dict(complete=True,anchors=[dict(geometry=dict(score=49)) for _ in range(5)])
+    assert m.hypothesis_quality(competing)>=m.hypothesis_quality(strong)*.85
+
+
 def test_competing_copy_in_same_source_is_checked_after_location_search(tmp_path):
     frames=fixture();source=tmp_path/"repeated.mp4";ref=tmp_path/"ref.mp4"
     encode(source,frames+frames)
