@@ -76,6 +76,18 @@ metadata or a successful write does not establish visual success.
 
 # Raw footage
 
+The user-authorized Source Match Service is a requested read-only measurement
+exception to the retired automated footage chooser. Use start_source_match once
+with local reference/source paths; get_source_match returns a complete batch of
+candidate frame correspondences, original PTS and unresolved shots. It never
+claims/resumes an assignment, imports media, alters AE or accepts a shot.
+Inspect its frame evidence and use existing GPT BROWSE/SELECT to record creative
+selection. Machine VERIFIED means geometric/temporal checks, never GPT PASS.
+Detected cuts are advisory and may be replaced with explicit reference ranges.
+Default budget is 480 seconds; PARTIAL is truthful incomplete coverage, not a
+guarantee that every source frame/shot was found. Cache source descriptors across
+assignments. Do not revive older candidate selection or editorial engines.
+
 ChatGPT browses provided raw footage and chooses exact ranges using issued pixel
 inspections. Reuse retained selections and search coverage. Internet scene/dialogue/
 chapter clues can narrow discovery; actual raw pixels establish identity.

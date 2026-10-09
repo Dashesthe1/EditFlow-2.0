@@ -24,6 +24,7 @@ import { toAeStructuralFingerprintInput } from "../../../packages/ae-object-mode
 import { assignmentViewV1, productionJobsViewV1, productionSnapshotViewV1, projectStateSummaryV1 } from "./direct-editing-views.js";
 import { parseVisualReviewV1, validateVisualComparisonTimesV1, visualMutationDimensionsV1 } from "../../../packages/practice-homework/src/visual-continuity.js";
 import { LocalFastRuntimeV1, validateRoutineBatchV1 } from "./local-fast-runtime.js";
+import { SourceMatchServiceV1, SOURCE_MATCH_CONTRACT_V1 } from "./source-match-service.js";
 
 import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
 
@@ -512,6 +513,7 @@ export class PracticePanelServerV1 {
   readonly #preflightJobs = new Map<string, { abort: AbortController; promise: Promise<void> }>();
   readonly #preflightErrors = new Map<string, string>();
   readonly #footageSelectionTails = new Map<string, Promise<unknown>>();
+  readonly #sourceMatch: SourceMatchServiceV1;
 
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
@@ -521,6 +523,10 @@ export class PracticePanelServerV1 {
       throw new TypeError("Practice panel token must contain at least 32 characters.");
     }
     this.config = config;
+    const matchRoot = path.join(process.env.LOCALAPPDATA ?? path.dirname(config.artifactDir), "EditFlow2");
+    this.#sourceMatch = new SourceMatchServiceV1({ repositoryRoot: config.repositoryRoot,
+      artifactDir: path.join(matchRoot, "source-match-jobs"), cacheDir: path.join(matchRoot, "source-match-cache"),
+      configPath: path.join(matchRoot, "source-match-config.json") });
     this.#gptStore = new GptOrchestrationStoreV1(
       config.gptOrchestrationFilePath
         ?? path.join(config.artifactDir, "state", "gpt-orchestration.json"),
@@ -956,6 +962,7 @@ export class PracticePanelServerV1 {
   }
 
   async stop(): Promise<void> {
+    await this.#sourceMatch.stop();
     await this.#productionWorker.stop();
     for (const job of this.#preflightJobs.values()) job.abort.abort();
     await Promise.allSettled([...this.#preflightJobs.values()].map((job) => job.promise));
@@ -1008,7 +1015,7 @@ export class PracticePanelServerV1 {
 
   controlStatus() {
     return { ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
-      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, sourceMatch: SOURCE_MATCH_CONTRACT_V1,
       hostRevision: this.#fastRuntime?.session.runner.hostRevision ?? null,
       adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
       localRuntime: this.#fastRuntime?.status() ?? null,
@@ -2249,6 +2256,16 @@ export class PracticePanelServerV1 {
       if (RETIRED_EDIT_EXECUTION_PATHS_V1.has(url.pathname)) {
         jsonResponse(res, 410, retiredEditExecutionResponseV1());
         return;
+      }
+      if (url.pathname === "/v1/product/source-match") {
+        if (req.method === "GET") { jsonResponse(res, 200, await this.#sourceMatch.status(url.searchParams.get("jobId") ?? undefined)); return; }
+        if (req.method === "POST") {
+          const body = await readJson(req);
+          if (body.action === "CANCEL") { jsonResponse(res, 200, await this.#sourceMatch.cancel(requiredString(body, "jobId"))); return; }
+          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT or CANCEL");
+          jsonResponse(res, 202, await this.#sourceMatch.submit(body)); return;
+        }
+        throw new HttpError(405, "Use GET or POST");
       }
       if (req.method === "POST" && url.pathname === "/v1/product/production/worker-proof") {
         const scope = this.#childProofScope;

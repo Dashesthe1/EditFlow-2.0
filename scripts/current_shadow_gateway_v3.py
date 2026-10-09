@@ -221,7 +221,7 @@ def build_server():
 
     mcp = MCPServer(
         "EditFlow Current Shadow Gateway",
-        instructions="DIRECT_EDITING_V1: use claim_gpt_assignment once to receive the retained assignment, AE state, queue, checkpoint and notebook. Then think, enqueue exact AE batches, inspect and correct. No separate tool-inventory preflight, per-clip research plan, workflow-plan approval or local PASS gate is required. Research only unfamiliar methods. The server verifies the issued worker and journals/checkpoints batches inside execution. Keep AE open, use provided raw inputs and review the whole final render directly. Recover uncertain writes by their retained receipts; never replay blindly. Respect actual host denials and stale-worker ownership. ChatGPT alone makes every editorial decision.",
+        instructions="DIRECT_EDITING_V1: use claim_gpt_assignment once to receive the retained assignment, AE state, queue, checkpoint and notebook. Then think, enqueue exact AE batches, inspect and correct. For unfinished source identity discovery, use start_source_match with provided reference/raw paths, then get_source_match for batched original PTS and frame evidence. Preserve accepted retained selections; machine matching never substitutes for GPT visual review/SELECT. No separate tool-inventory preflight, per-clip research plan, workflow-plan approval or local PASS gate is required. Research only unfamiliar methods. The server verifies the issued worker and journals/checkpoints batches inside execution. Keep AE open, use provided raw inputs and review the whole final render directly. Recover uncertain writes by their retained receipts; never replay blindly. Respect actual host denials and stale-worker ownership. ChatGPT alone makes every editorial decision.",
     )
     registered: dict[str, Any] = {}
 
@@ -492,6 +492,24 @@ def build_server():
         """Read supplied raw media, reference shot boundaries and direct ChatGPT shot-selection contract; no ranked candidates."""
         safe_id = urllib.parse.quote(assignment_id, safe="")
         return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/footage-selection")
+
+    @tool()
+    def start_source_match(request_json: str) -> dict[str, Any]:
+        """Search a finished edit in local raw source files as one cached GPU job. Supply {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]}. Seconds, end exclusive. Read-only media analysis; no assignment claim/resume/AE writes. Machine VERIFIED is evidence, not GPT acceptance."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "SUBMIT"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool(read_only=True, destructive=False)
+    def get_source_match(job_id: str = "") -> dict[str, Any]:
+        """Read source-match installation/contract, or durable job progress, report, exact decoded PTS, frame evidence and CSV. PARTIAL/unresolved shots have no asserted source timestamps. Review pixels before GPT SELECT."""
+        query = "?jobId=" + urllib.parse.quote(job_id, safe="") if job_id else ""
+        return _practice_http("GET", "/v1/product/source-match" + query)
+
+    @tool()
+    def cancel_source_match(job_id: str) -> dict[str, Any]:
+        """Cancel only the named source-matching analysis job; preserves caches, partial evidence, AE and production pause state."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL", "jobId":job_id})
 
     @tool()
     def inspect_or_select_footage(assignment_id: str, request_json: str) -> dict[str, Any]:

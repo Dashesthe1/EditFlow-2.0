@@ -111,6 +111,8 @@ class ConnectorReadinessTests(unittest.TestCase):
             if route == '/status':
                 return {'productionSupervisor': {'assignmentId': 'assignment:1', 'generation': 90, 'state': 'PAUSED'}}
             if route.endswith('/production-jobs'):
+                if method == 'POST':
+                    return {'job': {'jobId': 'job:1', 'status': 'SUCCEEDED', 'result': {'ok': True}}}
                 return {'jobs': [], 'writerOwner': None}
             if route.endswith('/production'):
                 return {'production': {'stage': 'LOCAL_PROOF'}}
@@ -126,6 +128,18 @@ class ConnectorReadinessTests(unittest.TestCase):
         self.assertTrue(set(gateway.REQUIRED_PRODUCTION_TOOLS).issubset(surface['tools']))
         self.assertEqual(surface['connectorPreflight']['status'], 'CLIENT_UNVERIFIED')
         self.assertEqual(surface['connectorPreflight']['writeAuthorization'], 'NOT_TESTED')
+
+    def test_source_match_is_independent_of_assignment_lifecycle(self):
+        request={'requestId':'match-one','referencePath':'reference.mp4','sourcePaths':['source.mp4'],'budgetSeconds':480}
+        gateway.mcp.tools['start_source_match'](json.dumps(request))
+        gateway.mcp.tools['get_source_match']('source-match-job')
+        gateway.mcp.tools['cancel_source_match']('source-match-job')
+        self.assertEqual(len(self.calls),3)
+        self.assertEqual(self.calls[0][1],'/v1/product/source-match')
+        self.assertEqual(self.calls[0][2],{**request,'action':'SUBMIT'})
+        self.assertTrue(self.calls[1][1].endswith('?jobId=source-match-job'))
+        self.assertEqual(self.calls[2][2],{'action':'CANCEL','jobId':'source-match-job'})
+        self.assertTrue(gateway.mcp.annotations['get_source_match']['readOnlyHint'])
 
     def test_missing_client_queue_tools_block_even_when_server_has_them(self):
         names = [name for name in self.client_names if name != 'enqueue_production_job']

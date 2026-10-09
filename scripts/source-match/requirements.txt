@@ -1,0 +1,5 @@
+numpy>=1.26,<3
+opencv-python-headless>=4.10,<5.1
+av>=14,<20
+imageio-ffmpeg>=0.6,<0.7
+# Install torch separately for the actual GPU/driver; see install.ps1.
