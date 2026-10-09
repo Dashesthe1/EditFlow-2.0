@@ -785,6 +785,16 @@ class Engine:
                 if n not in self.query_features:
                     self.query_features[n]=feature_points(q["frame"]["image"])
             qfeatures=self.query_features
+            # A higher-resolution reference can change SIFT extrema under a
+            # strong grade. Retain the original 640px comparison as well as the
+            # detailed view; every scale still passes the same geometry gates.
+            qvariants={}
+            for n,q in qs:
+                im=q['frame']['image'];qvariants[n]=[(im,qfeatures[n])]
+                if max(im.shape[:2])>640:
+                    small=resized(im,640)
+                    if (n,640) not in qfeatures:qfeatures[(n,640)]=feature_points(small)
+                    qvariants[n].append((small,qfeatures[(n,640)]))
             hypotheses=list(self.accepted_hypotheses.get(i,[]))
             for score,source,t in locations:
                 self.check()
@@ -869,9 +879,10 @@ class Engine:
                                 if f["pts"] not in sfeatures:
                                     sfeatures[f["pts"]]=feature_points(f["image"])
                                 geometry_started=time.monotonic()
-                                g=geometry(q["frame"]["image"],f["image"],qfeatures[n],sfeatures[f["pts"]])
+                                checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
+                                g=max([v for v in checks if valid_geometry(v)] or checks,key=lambda v:v['score'])
                                 self.metrics["geometrySeconds"]+=time.monotonic()-geometry_started
-                                self.metrics["geometryComparisons"]+=1
+                                self.metrics["geometryComparisons"]+=len(checks)
                                 best.append((g["score"],f,g))
                     if not best:
                         break

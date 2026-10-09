@@ -1,7 +1,7 @@
 // Exercise the actual service processes and saved official handoff end to end.
 // Review the retained pixels before running; this fixture is never an assignment.
 import assert from 'node:assert/strict';
-import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {SourceMatchServiceV1} from '../../.tmp/runtime/apps/desktop-host/src/source-match-service.js';
 import {SourceMatchAssemblyV1} from '../../.tmp/runtime/apps/desktop-host/src/source-match-assembly.js';
@@ -31,8 +31,25 @@ try{
     output:{stableId:'ef-live-lab-source-assembly',name:'Known original source assembly',width:320,height:240,pixelAspect:1,frameRate:12},
     review:{authority:'CHATGPT_DIRECT',decisionId:'known-original-frame-fixture-review',rationale:fixture.scope,
       shots:complete.report.shots.map(s=>({shotId:s.shotId,verdict:'PASS',observation:'Known original-frame fixture, reviewed pictures and exact measured/project frame map agree.',evidenceRefs:s.anchors.map(a=>a.sourceEvidencePath??a.sourcePath).filter(Boolean).concat([fixtureFile])}))}});
+  let resumeChecked=false;
+  if(process.argv.includes('--exercise-resume')) {
+    const saved=await readFile(prepared.assembly.manifestPath);
+    const dir=path.dirname(prepared.assembly.manifestPath);
+    for(let n=0;n<2000;n++) {
+      const names=await readdir(dir);
+      if(names.some(name=>name.endsWith('.receipt.json')))break;
+      assert.equal((await assembler.status(prepared.assembly.assemblyId)).assembly.status,'PREPARING');
+      await new Promise(r=>setTimeout(r,20));
+    }
+    assert.equal((await assembler.cancel(prepared.assembly.assemblyId)).cancellationRequested,true);
+    const cancelled=await wait(()=>assembler.status(prepared.assembly.assemblyId),r=>r.assembly.status!=='PREPARING');
+    assert.equal(cancelled.assembly.status,'CANCELLED');
+    await assembler.resume(prepared.assembly.assemblyId);resumeChecked=true;
+    assert.deepEqual(await readFile(prepared.assembly.manifestPath),saved);
+  }
   const ready=await wait(()=>assembler.status(prepared.assembly.assemblyId),r=>r.assembly.status!=='PREPARING');
   assert.equal(ready.assembly.status,'READY',JSON.stringify(ready.assembly));
+  if(resumeChecked)assert.ok(ready.assembly.reusedVerifiedClips>=1);
   const manifest=JSON.parse(await readFile(ready.assembly.manifestPath,'utf8'));
   assert.equal(manifest.shots.length,fixture.shots.length);
   const baseline={projectRevision:'fixture:1',projectFingerprint:'fixture',environmentFingerprint:'fixture'};
@@ -49,7 +66,8 @@ try{
   const result={ok:true,engine:complete.report.engine,scope:fixture.scope,shotCount:fixture.shots.length,
     parentJobId:parent.job.jobId,completeJobId:complete.job.jobId,assemblyId:ready.assembly.assemblyId,
     officialToReadySeconds:(performance.now()-handoffStarted)/1000,totalSeconds:(performance.now()-started)/1000,
-    operations:plan.payload.plan.operations.length,checks:{originalHiddenTrimEvidence:true,parentImmutable:true,
+    operations:plan.payload.plan.operations.length,resumeChecked,reusedVerifiedClips:ready.assembly.reusedVerifiedClips,
+    checks:{originalHiddenTrimEvidence:true,parentImmutable:true,
       actualWorkerExtraction:true,finishedOrder:true,exactKnownRanges:true,officialPlanIntegrity:true},nativeAeExecuted:false};
   await writeFile(path.join(root,'results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await assembler.stop();await service.stop();}

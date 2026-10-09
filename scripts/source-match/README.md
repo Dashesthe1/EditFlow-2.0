@@ -54,7 +54,10 @@ ASSEMBLY_PLAN returns its retained job receipt, preventing accidental replay.
 Engine v1.4.0 retains actual first/last reference pixels in `boundaryEvidence`,
 uses full refinement resolution for reference queries, and normalizes visible
 dark/flashed detail before geometric checks. Flat black/white images remain
-insufficient. A complete path may finish an interior location only when every
+insufficient. High-resolution verification also retains the 640px reference
+comparison, because strong grading can change which feature points survive at
+different scales. Each scale passes the same geometric acceptance checks.
+A complete path may finish an interior location only when every
 retained anchor has exactly the same source PTS; stronger competing copies still
 prevent certification.
 
