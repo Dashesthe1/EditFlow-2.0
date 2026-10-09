@@ -141,6 +141,16 @@ class ConnectorReadinessTests(unittest.TestCase):
         self.assertEqual(self.calls[2][2],{'action':'CANCEL','jobId':'source-match-job'})
         self.assertTrue(gateway.mcp.annotations['get_source_match']['readOnlyHint'])
 
+    def test_source_assembly_preserves_preparation_and_queue_separation(self):
+        gateway.mcp.tools['prepare_source_assembly'](json.dumps({'requestId':'assembly-one','jobId':'match-one'}))
+        gateway.mcp.tools['get_source_assembly']('assembly-one')
+        gateway.mcp.tools['plan_source_assembly']('assembly-one','assignment:1',1)
+        self.assertEqual(self.calls[0][2]['action'],'PREPARE_ASSEMBLY')
+        self.assertTrue(self.calls[1][1].endswith('?assemblyId=assembly-one'))
+        self.assertEqual(self.calls[2][2],{'action':'ASSEMBLY_PLAN','assemblyId':'assembly-one','assignmentId':'assignment:1','batchIndex':1})
+        self.assertTrue(gateway.mcp.annotations['get_source_assembly']['readOnlyHint'])
+        self.assertFalse(any('/claim' in c[1] or '/production-jobs' in c[1] for c in self.calls))
+
     def test_missing_client_queue_tools_block_even_when_server_has_them(self):
         names = [name for name in self.client_names if name != 'enqueue_production_job']
         result = gateway.mcp.tools['get_mcp_surface']('assignment:1', json.dumps(names))['connectorPreflight']

@@ -512,6 +512,24 @@ def build_server():
         return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL", "jobId":job_id})
 
     @tool()
+    def prepare_source_assembly(request_json: str) -> dict[str, Any]:
+        """After ALL exact endpoints are found, save official timestamps and cut bounded raw clips as one job. Requires complete matching plus GPT PASS review for every shot, explicit encoder and output composition. No AE writes or production resume. See sourceAssembly contract in production status; poll assemblyId."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "PREPARE_ASSEMBLY"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool(read_only=True, destructive=False)
+    def get_source_assembly(assembly_id: str) -> dict[str, Any]:
+        """Read saved timestamp/extraction receipt. READY means every bounded raw clip passed frame-count, original timing and endpoint-pixel checks; it is not final edit acceptance."""
+        return _practice_http("GET", "/v1/product/source-match?assemblyId=" + urllib.parse.quote(assembly_id, safe=""))
+
+    @tool()
+    def plan_source_assembly(assembly_id: str, assignment_id: str, batch_index: int = 0) -> dict[str, Any]:
+        """Generate and save exact AE_TRANSACTION payload from the official manifest, at current AE revision. Enqueue unchanged with your issued researchContext. Imports only bounded raw clips, places source ranges contiguously in Finished order, and uses queue checkpoints. Previous batch must succeed first. Does not resume or write AE."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"ASSEMBLY_PLAN",
+            "assemblyId":assembly_id,"assignmentId":assignment_id,"batchIndex":batch_index})
+
+    @tool()
     def inspect_or_select_footage(assignment_id: str, request_json: str) -> dict[str, Any]:
         """BROWSE explicit GPT-chosen timestamps or SELECT ranges backed by direct pixel comparisons. Supply current claimedBy; no AE changes."""
         payload = json.loads(request_json)

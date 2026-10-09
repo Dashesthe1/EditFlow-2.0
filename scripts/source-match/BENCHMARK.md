@@ -280,3 +280,46 @@ The practical limits remain one unlocated shot, ten unconfirmed full-shot
 boundaries, unmeasured independent real-file endpoint/false-positive error, and
 unmeasured performance on a genuine two-hour 4K movie. The service preserves these
 limits in the returned evidence rather than inventing timestamps.
+
+## Post-timestamp source assembly
+
+The added handoff saves a complete official timestamp receipt and direct GPT review
+before extracting any bounded source clips. It generates exact AE_TRANSACTION
+batches in Finished reference order, using the existing durable queue and AEP
+checkpoints. It does not resume paused assignments. Raw ranges play contiguously
+at original speed; reference retiming and effects remain subsequent explicit edits.
+
+On the same RTX A4500 PC, twenty 4K ranges totalling 28.111417 source seconds and
+674 original frames were extracted from the supplied movie. They repeat the nine
+endpoint-verified rows from the latest partial report: this measures materialization,
+not twenty independent matching successes or permission to assemble the real edit.
+
+| Working format | Extraction seconds | Maximum frame-timing error | Maximum endpoint mean pixel error (0–255) |
+| --- | ---: | ---: | ---: |
+| Initial NVENC HEVC, rejected after AE importer crash | 66.922 | 2.20e-13 s | 0.08236 |
+| CPU ProRes 422 HQ, 10-bit | 138.657 | 2.20e-13 s | 0.07872 |
+
+HEVC working output was removed after the actual AE 25.6.6 importer crashed on the
+test clip. CPU now produces 10-bit ProRes 422 HQ; NVENC produces explicitly 8-bit
+H.264 QP 10. Originals are unchanged. These are high-quality transcodes rather
+than bit-identical copies. Choose CPU for 10-bit original precision.
+
+Known-frame extraction tests pass for CFR, VFR and nonzero source origins, and
+reject changed inputs and non-frame boundaries. Eight assembly service tests cover
+all-shot/GPT gates, complete reference coverage, idempotency, reversed source
+chronology, multi-batch ordering, and altered reports, plans, sources or clips.
+The real AE PRACTICE queue assembled those twenty ProRes clips in **7.543 seconds**
+with 61 exact operations, the correct chronological layer IDs, unchanged whole-frame
+spans, and a saved AEP checkpoint. Maximum native timing readback difference was
+20.812 microseconds (less than 0.001 source frame), within AE's rational-clock
+precision. Native readbacks and receipts are retained under
+`proofs/artifacts/source-assembly-prores-final` on Shadow.
+
+Extraction and assembly were measured separately; their sum is 146.200 seconds,
+within the 300-second target for this fixture. This is not an end-to-end official
+report handoff, a universal timing guarantee, or acceptance of the real twenty-shot
+edit. The real report remains partial, so its all-shot assembly gate stays closed.
+The isolated test restored the original empty project and did not resume generation
+134. The host crash required a restart; normal startup was restored by supplying
+standard Windows folder environment variables missing from the remote subprocess.
+Original AE preferences were restored after diagnostic cache/pref rebuild attempts.

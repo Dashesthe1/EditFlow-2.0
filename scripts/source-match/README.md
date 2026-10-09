@@ -1,5 +1,49 @@
 # EditFlow Source Match Service
 
+## Post-verification AE assembly
+
+The separate Source Assembly handoff runs only after the complete report has
+verified every full-shot endpoint and GPT has directly reviewed every shot.
+It saves `official-timestamps.json` before extracting any media. Incomplete
+reports, unfinished alternative review, omitted shots and changed sources cannot
+produce an assembly plan.
+
+Use `prepare_source_assembly` / POST `PREPARE_ASSEMBLY` with a stable requestId,
+the completed matching jobId, explicit encoder `NVENC` or `CPU`, a complete GPT
+review and output composition settings. The full request shape is published in
+the `sourceAssembly` contract returned by production status. Poll
+`get_source_assembly` / GET `?assemblyId=...` until READY. Preparation may run while
+Practice is paused and never resumes it or writes AE.
+
+Preparation extracts only the original source ranges, with two bounded workers,
+preserving resolution and observed frame timing. CPU uses 10-bit ProRes 422 HQ
+and is recommended for 10-bit originals. NVENC uses CUDA decoding and 8-bit H.264
+QP 10; choosing it explicitly accepts reduced precision for 10-bit originals.
+HEVC working clips are avoided after the real AE importer crashed. These are high-quality
+transcodes, not bit-identical copies. The raw movie is unchanged; movie audio and
+Finished pixels are excluded from the clips. Each clip is checked against decoded
+original frames for frame count, PTS spacing and first/last pixel consistency.
+The manifest retains the original PTS for every extracted source frame.
+
+`plan_source_assembly` / POST `ASSEMBLY_PLAN` builds exact AE_TRANSACTION payloads
+against the current AE revision. Enqueue unchanged through the existing durable
+production queue with this chat's issued researchContext. The plan creates a new
+composition, imports bounded clips, places them contiguously in Finished shot
+order and trims each layer. Never sort by movie timestamps. Raw ranges initially
+play at original speed; reverse playback, reference retiming and effects remain
+explicit editing steps. Current compositions and raw song layers are preserved.
+
+Twenty shots fit in one 61-operation transaction; longer sequences use batches
+of at most 21 shots/64 operations, with the preceding batch committed first.
+The normal queue checkpoints each batch and retains actual readbacks. A changed
+manifest, report, raw file, bounded clip or operation sequence rejects execution.
+Partial/unknown AE writes retain the existing reconciliation rules.
+
+The complete extraction/import/checkpoint target is **300 seconds**, not a
+guaranteed worst-case bound. Run `test_assembly_ranges.py` for known-frame CFR,
+VFR and nonzero-origin checks. `assembly_check.py` measures extraction alone
+using repeated endpoint-verified ranges; it does not certify a complete edit.
+
 Read-only, requested source-copy retrieval for Practice footage discovery. It does
 not import Finished into AE, select creative footage, resume production, modify
 presets, or replace the GPT-directed editing workflow.

@@ -88,6 +88,22 @@ Default budget is 480 seconds; PARTIAL is truthful incomplete coverage, not a
 guarantee that every source frame/shot was found. Cache source descriptors across
 assignments. Do not revive older candidate selection or editorial engines.
 
+After every full-shot source endpoint has been found and directly reviewed, use
+the Source Assembly handoff from the sourceAssembly production-status contract.
+PREPARE_ASSEMBLY first saves all official timestamps and the complete GPT review,
+then cuts bounded original-footage clips and verifies their original PTS/frame
+count and endpoint pixels. LOCATED, UNRESOLVED, unfinished competing-match review,
+gapped reference coverage or missing GPT reviews cannot start assembly.
+Poll the retained assemblyId; READY means all cuts are prepared. ASSEMBLY_PLAN
+returns exact AE_TRANSACTION payloads, at most 64 operations per batch. Enqueue
+unchanged with the currently issued researchContext and inspect the checkpoint.
+Use Finished shot order, never sorted movie timestamps. Each raw range initially
+plays at original speed; retiming, reverse playback and effects remain explicit
+GPT choices in the editing pass. Use a new composition to preserve current work.
+Complete each batch before generating the next. Never resume a paused assignment
+as a side effect of maintenance or media preparation. The 300-second full handoff
+target is a benchmark goal, not a demonstrated worst-case guarantee.
+
 ChatGPT browses provided raw footage and chooses exact ranges using issued pixel
 inspections. Reuse retained selections and search coverage. Internet scene/dialogue/
 chapter clues can narrow discovery; actual raw pixels establish identity.

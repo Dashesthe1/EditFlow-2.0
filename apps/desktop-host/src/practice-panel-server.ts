@@ -25,6 +25,7 @@ import { assignmentViewV1, productionJobsViewV1, productionSnapshotViewV1, proje
 import { parseVisualReviewV1, validateVisualComparisonTimesV1, visualMutationDimensionsV1 } from "../../../packages/practice-homework/src/visual-continuity.js";
 import { LocalFastRuntimeV1, validateRoutineBatchV1 } from "./local-fast-runtime.js";
 import { SourceMatchServiceV1, SOURCE_MATCH_CONTRACT_V1 } from "./source-match-service.js";
+import { SourceMatchAssemblyV1, SOURCE_ASSEMBLY_CONTRACT_V1 } from "./source-match-assembly.js";
 
 import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
 
@@ -514,6 +515,7 @@ export class PracticePanelServerV1 {
   readonly #preflightErrors = new Map<string, string>();
   readonly #footageSelectionTails = new Map<string, Promise<unknown>>();
   readonly #sourceMatch: SourceMatchServiceV1;
+  readonly #sourceAssembly: SourceMatchAssemblyV1;
 
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
@@ -527,6 +529,7 @@ export class PracticePanelServerV1 {
     this.#sourceMatch = new SourceMatchServiceV1({ repositoryRoot: config.repositoryRoot,
       artifactDir: path.join(matchRoot, "source-match-jobs"), cacheDir: path.join(matchRoot, "source-match-cache"),
       configPath: path.join(matchRoot, "source-match-config.json") });
+    this.#sourceAssembly = new SourceMatchAssemblyV1(this.#sourceMatch.config, this.#sourceMatch);
     this.#gptStore = new GptOrchestrationStoreV1(
       config.gptOrchestrationFilePath
         ?? path.join(config.artifactDir, "state", "gpt-orchestration.json"),
@@ -670,6 +673,24 @@ export class PracticePanelServerV1 {
     catch { return { path: path.resolve(value), missing: true }; }
   }
 
+  #priorAssemblyBatch(assignmentId: string, body: Record<string, any>) {
+    const binding = body.sourceAssembly;
+    if (!binding || binding.batchIndex === 0) return;
+    if (!this.#productionWorker.list(assignmentId).some(job => job.status === "SUCCEEDED"
+      && job.payload.sourceAssembly?.assemblyId === binding.assemblyId
+      && job.payload.sourceAssembly?.batchIndex === binding.batchIndex - 1)) {
+      throw new HttpError(409, "PREVIOUS_ASSEMBLY_BATCH_NOT_COMMITTED");
+    }
+  }
+
+  async #verifySourceAssembly(assignment: GptOrchestrationAssignmentV1, kind: string, body: Record<string, any>) {
+    if (!body.sourceAssembly) return;
+    if (kind !== "AE_TRANSACTION") throw new HttpError(400, "Source assembly uses the durable AE_TRANSACTION queue.");
+    this.#priorAssemblyBatch(assignment.assignmentId, body);
+    await this.#sourceAssembly.verifyPayload(body, {rawPaths:assignment.start.filter(m=>m.mediaKind==="VIDEO").map(m=>m.uri),
+      ...(assignment.finish ? {referencePath:assignment.finish.uri} : {})});
+  }
+
   #reserveAeWriter(owner: string): () => void {
     if (owner.startsWith("production-job:") && this.config.aeWriterAvailable?.() === false) throw new HttpError(423, "AE_MUTATION_LEASE_HELD");
     if (this.#aeWriterOwner !== null) throw new HttpError(423, "AE_WRITER_BUSY: " + this.#aeWriterOwner);
@@ -687,6 +708,7 @@ export class PracticePanelServerV1 {
       { kind: job.kind, acceptedReceipt: true, acceptedLegacyReceipt: this.#legacyWorkflowReceiptIds.has(job.jobId) });
     validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
       rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body);
+    await this.#verifySourceAssembly(assignment, job.kind, body);
     if (job.kind === "PROOF_SCRIPT") {
       const bytes = await readFile(path.resolve(this.config.repositoryRoot, body.scriptPath));
       if (createHash("sha256").update(bytes).digest("hex") !== body.scriptSha256) throw new TypeError("CHATGPT_REVIEWED_SCRIPT_CHANGED");
@@ -962,6 +984,7 @@ export class PracticePanelServerV1 {
   }
 
   async stop(): Promise<void> {
+    await this.#sourceAssembly.stop();
     await this.#sourceMatch.stop();
     await this.#productionWorker.stop();
     for (const job of this.#preflightJobs.values()) job.abort.abort();
@@ -1015,7 +1038,7 @@ export class PracticePanelServerV1 {
 
   controlStatus() {
     return { ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
-      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, sourceMatch: SOURCE_MATCH_CONTRACT_V1,
+      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, sourceMatch: SOURCE_MATCH_CONTRACT_V1, sourceAssembly: SOURCE_ASSEMBLY_CONTRACT_V1,
       hostRevision: this.#fastRuntime?.session.runner.hostRevision ?? null,
       adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
       localRuntime: this.#fastRuntime?.status() ?? null,
@@ -2258,11 +2281,24 @@ export class PracticePanelServerV1 {
         return;
       }
       if (url.pathname === "/v1/product/source-match") {
-        if (req.method === "GET") { jsonResponse(res, 200, await this.#sourceMatch.status(url.searchParams.get("jobId") ?? undefined)); return; }
+        if (req.method === "GET") {
+          const assemblyId = url.searchParams.get("assemblyId");
+          jsonResponse(res, 200, assemblyId ? await this.#sourceAssembly.status(assemblyId) : await this.#sourceMatch.status(url.searchParams.get("jobId") ?? undefined)); return;
+        }
         if (req.method === "POST") {
           const body = await readJson(req);
+          if (body.action === "PREPARE_ASSEMBLY") { jsonResponse(res, 202, await this.#sourceAssembly.prepare(body)); return; }
+          if (body.action === "ASSEMBLY_PLAN") {
+            const assignment = await this.#gptStore.getAssignment(requiredString(body, "assignmentId"));
+            if (!assignment) throw new HttpError(404, "GPT assignment not found.");
+            this.#priorAssemblyBatch(assignment.assignmentId, {sourceAssembly:{assemblyId:body.assemblyId,batchIndex:body.batchIndex ?? 0}});
+            const result = await this.#sourceAssembly.plan(requiredString(body,"assemblyId"), Number(body.batchIndex ?? 0),
+              await this.#transactionRuntime.observe(), {rawPaths:assignment.start.filter(m=>m.mediaKind==="VIDEO").map(m=>m.uri),
+                ...(assignment.finish ? {referencePath:assignment.finish.uri} : {})});
+            jsonResponse(res, 200, result); return;
+          }
           if (body.action === "CANCEL") { jsonResponse(res, 200, await this.#sourceMatch.cancel(requiredString(body, "jobId"))); return; }
-          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT or CANCEL");
+          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT, CANCEL, PREPARE_ASSEMBLY or ASSEMBLY_PLAN");
           jsonResponse(res, 202, await this.#sourceMatch.submit(body)); return;
         }
         throw new HttpError(405, "Use GET or POST");
@@ -2451,6 +2487,7 @@ export class PracticePanelServerV1 {
             }
             validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
               rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body.payload);
+            await this.#verifySourceAssembly(assignment, body.kind, body.payload);
             let decision;
             try { decision = await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).retain(id, body.kind, body.payload); }
             catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)); }
