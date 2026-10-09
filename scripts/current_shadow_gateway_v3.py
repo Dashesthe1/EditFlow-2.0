@@ -502,7 +502,7 @@ def build_server():
 
     @tool(read_only=True, destructive=False)
     def get_source_match(job_id: str = "") -> dict[str, Any]:
-        """Read source-match installation/contract, or durable job progress, report, exact decoded PTS, frame evidence and CSV. PARTIAL/unresolved shots have no asserted source timestamps. Review pixels before GPT SELECT."""
+        """Read source-match installation/contract, or durable job progress, report, exact decoded PTS, frame evidence and CSV. LOCATED confirms interior frames only; LOCATED/UNRESOLVED have no asserted full-shot source in/out. Review pixels before GPT SELECT."""
         query = "?jobId=" + urllib.parse.quote(job_id, safe="") if job_id else ""
         return _practice_http("GET", "/v1/product/source-match" + query)
 

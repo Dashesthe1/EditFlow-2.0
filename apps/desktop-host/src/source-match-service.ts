@@ -7,14 +7,14 @@ export const SOURCE_MATCH_CONTRACT_V1 = {
   schema: "editflow.source-match-contract.v1", version: "1.0.0",
   endpoint: "/v1/product/source-match", actions: ["SUBMIT", "STATUS", "CANCEL"],
   authority: "CHATGPT_DIRECT", automaticSelection: false, aeWrites: false,
-  instructions: "Submit {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]} once. Times are seconds. Poll jobId. Inspect report anchors and evidence; machine VERIFIED is geometric/temporal evidence, never editorial acceptance. Use existing GPT BROWSE/SELECT for assignment acceptance. Shot detection is advisory; explicit shot ranges override it. Budget expiry returns PARTIAL/unresolved results, never invented exact timestamps. Service may run while production is paused without claiming or resuming an assignment.",
+  instructions: "Submit {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]} once. Times are seconds. Poll jobId. Inspect report anchors and evidence; machine VERIFIED is geometric/temporal evidence, never editorial acceptance. LOCATED confirms interior source frames while full-shot endpoints remain unresolved. Use existing GPT BROWSE/SELECT for assignment acceptance. Shot detection is advisory; explicit shot ranges override it. Budget expiry returns PARTIAL/unresolved results, never invented exact timestamps. Service may run while production is paused without claiming or resuming an assignment.",
   firstRunTargetSeconds: 480, targetMeasured: false, exactBoundaryGuaranteed: false,
 } as const;
 
 export interface SourceMatchServiceConfigV1 {
   repositoryRoot: string; artifactDir: string; cacheDir: string; configPath: string;
   /** Test/development injection; public requests cannot choose an executable/backend. */
-  runtime?: { python: string; model: string; backend?: "sscd" | "diagnostic" };
+  runtime?: { python: string; model: string; backend?: "sscd" | "diagnostic"; device?: "cpu" | "cuda" };
 }
 type Job = { jobId: string; requestId: string; requestHash: string; status: string; createdAt: string;
   updatedAt: string; outputDir: string; error?: string; exitCode?: number | null };
@@ -36,7 +36,7 @@ export class SourceMatchServiceV1 {
     const runtime = this.config.runtime ?? await optionalJson(this.config.configPath);
     if (!runtime || typeof runtime.python !== "string" || typeof runtime.model !== "string") throw new Error("SOURCE_MATCH_NOT_INSTALLED: run scripts/source-match/install.ps1");
     for (const file of [runtime.python, runtime.model]) if (!(await stat(file)).isFile()) throw new Error("SOURCE_MATCH_RUNTIME_MISSING");
-    return runtime as { python: string; model: string; backend?: string };
+    return runtime as { python: string; model: string; backend?: string; device?: "cpu" | "cuda" };
   }
   async status(jobId?: string) {
     if (!jobId) {
@@ -90,7 +90,7 @@ export class SourceMatchServiceV1 {
     await save(path.join(dir,"request.json"),request);
     await save(path.join(dir,"job.json"),job);
     await save(receipt,{jobId:id,requestHash:hash});
-    const child = spawn(runtime.python,["-I",path.join(this.config.repositoryRoot,"scripts","source-match","engine.py"),"--request",path.join(dir,"request.json"),"--output",dir,"--cache",this.config.cacheDir,"--model",runtime.model,"--backend",runtime.backend ?? "sscd"], { windowsHide:true, stdio:["ignore","pipe","pipe"] });
+    const child = spawn(runtime.python,["-I",path.join(this.config.repositoryRoot,"scripts","source-match","engine.py"),"--request",path.join(dir,"request.json"),"--output",dir,"--cache",this.config.cacheDir,"--model",runtime.model,"--backend",runtime.backend ?? "sscd","--device",runtime.device ?? (runtime.backend === "diagnostic" ? "cpu" : "cuda")], { windowsHide:true, stdio:["ignore","pipe","pipe"] });
     let finish!: () => void;
     const completion = new Promise<void>(resolve=>{finish=resolve;});
     this.#active={child,job,completion};

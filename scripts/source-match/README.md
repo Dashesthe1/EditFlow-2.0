@@ -47,14 +47,16 @@ of production ownership, so a paused Practice assignment remains paused.
 - Decode source keyframes while GPU SSCD batches search the incoming descriptors.
   Cache them atomically with source size/mtime, bounded content fingerprint,
   model identity, preprocessing and sampling mode. Full/centre crop descriptors
-  support landscape sources used in portrait edits. Monochrome references use
-  the same descriptor colour treatment on source frames.
+  support landscape sources used in portrait edits. RGB and grayscale SSCD
+  views allow retrieval through strong colour grades; both enter the cache key.
 - Use GPU decoding and downscaling for candidate windows. Original integer PTS
   and time base survive the FFmpeg pipeline. Cross-check original PTS with PyAV.
 - Compare SIFT/RANSAC geometry and registered luminance at multiple anchors;
-  check a jointly consistent forward/reverse temporal path. Cache feature points
+  check a jointly consistent forward/reverse temporal path, including bounded
+  piecewise retiming with explicit per-segment rates. Cache feature points
   within candidate verification. Reject candidates cheaply at the middle anchor
-  before doing the more expensive endpoint work.
+  before doing the more expensive endpoint work. Verify distinct source windows
+  once per run, rather than re-decoding neighbouring proposals on every pass.
 - If keyframes miss a shot, search denser source passes. A budget/cancel check
   terminates decoding and preserves truthful partial results.
 
@@ -65,11 +67,14 @@ evidence and records BROWSE/SELECT through the existing selection interface.
 
 **VERIFIED is a machine geometric/temporal check, not editorial PASS or a
 universal ±1-frame guarantee.** Returned endpoints are real matched frame times,
-not frame-number/rounded-fps estimates. Static poses, fades, optical flow,
-nonlinear retiming, heavy blur/overlays, duplicate footage, missed cuts or very
-brief source shots can remain unresolved. Similar-looking frames alone are not
-enough. Unresolved rows have no asserted source in/out values. Candidate checks
-are available for GPT review and further inspection.
+not frame-number/rounded-fps estimates. **LOCATED** means at least three interior
+frames establish a consistent source location, while one or both endpoints
+remain unconfirmed. Its `sourceLocationWindow` spans only those confirmed frames;
+it has no asserted full-shot source in/out. Static poses, fades, optical flow,
+heavy blur/overlays, duplicate footage, missed cuts or very brief source shots can
+remain unresolved. Similar-looking frames alone are not enough. Candidate checks
+are available for GPT review and further inspection. A report with LOCATED or
+UNRESOLVED rows remains PARTIAL, even if all source locations are found.
 
 The default 480-second budget bounds analysis effort, **not successful recovery
 of every possible shot**. Install/download time and process/model startup are

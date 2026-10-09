@@ -24,6 +24,7 @@ import cv2
 import numpy as np
 
 VERSION = "source-match-v1.0.0"
+ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 class BudgetExpired(Exception):
@@ -157,6 +158,7 @@ def gpu_samples(file, interval, check, start=0, end=None, size=512):
                 if not part:
                     break
                 data.extend(part)
+            check()
             if not data:
                 break
             if len(data) != frame_bytes:
@@ -210,12 +212,24 @@ class Encoder:
             torch = self.torch
             with torch.inference_mode():
                 t = torch.from_numpy(data.copy()).permute(0,3,1,2).to(self.device).float() / 255
-                values = self.model((t-self.mean)/self.std).float().cpu().numpy()
+                rgb_values = self.model((t-self.mean)/self.std).float().cpu().numpy()
+                if self.monochrome:
+                    gray_values=rgb_values
+                else:
+                    gray=np.stack([cv2.cvtColor(cv2.cvtColor(im,cv2.COLOR_RGB2GRAY),cv2.COLOR_GRAY2RGB) for im in data])
+                    t=torch.from_numpy(gray.copy()).permute(0,3,1,2).to(self.device).float()/255
+                    gray_values=self.model((t-self.mean)/self.std).float().cpu().numpy()
+                values=np.concatenate([rgb_values,gray_values],axis=1)
         else:
             # Explicit lightweight test/diagnostic backend; never silently substitutes SSCD.
             values = np.stack([cv2.resize(cv2.equalizeHist(cv2.cvtColor(x,cv2.COLOR_RGB2GRAY)), (32,32)).ravel() for x in data]).astype(np.float32)
             values -= values.mean(axis=1, keepdims=True)
         return values / np.maximum(1e-8, np.linalg.norm(values, axis=1, keepdims=True))
+
+    def similarity(self,query,source):
+        if self.backend=="sscd":
+            return np.maximum(2*(query[...,:512]@source[...,:512].T),2*(query[...,512:]@source[...,512:].T))
+        return query@source.T
 
 
 def variants(im, aspect):
@@ -279,11 +293,18 @@ def temporal_alignment(anchors, frame_seconds):
     slope,offset = np.polyfit(x-x[0],y-y[0],1)
     residual = float(np.max(np.abs((x-x[0])*slope+offset-(y-y[0]))))
     delta = np.diff(y)
-    if abs(slope)<.05 or abs(slope)>16 or residual>max(frame_seconds*1.5,.025):
+    if abs(slope)<.05 or abs(slope)>16:
         return None
     if (slope>0 and np.any(delta<0)) or (slope<0 and np.any(delta>0)):
         return None
-    return dict(direction="FORWARD" if slope>0 else "REVERSE", playbackRate=abs(float(slope)), residualSeconds=residual)
+    rates=np.abs(delta/np.diff(x))
+    if np.any(rates>16) or np.any(rates<.05):
+        return None
+    kind="AFFINE" if residual<=max(frame_seconds*1.5,.025) else "PIECEWISE"
+    if kind=="PIECEWISE" and (max(rates)/min(rates)>8 or residual>np.ptp(y)*.25):
+        return None
+    return dict(direction="FORWARD" if slope>0 else "REVERSE", playbackRate=abs(float(slope)), residualSeconds=residual,
+                kind=kind,segments=[dict(referenceStart=float(x[i]),referenceEnd=float(x[i+1]),sourceStart=float(y[i]),sourceEnd=float(y[i+1]),playbackRate=float(rates[i])) for i in range(len(rates))])
 
 
 def consistent_path(options, frame_seconds):
@@ -320,7 +341,7 @@ class Engine:
         self.request, self.out, self.cache, self.encoder = request, Path(out), Path(cache), encoder
         self.started = time.monotonic()
         self.budget = float(request.get("budgetSeconds",480))
-        self.report = dict(schema="editflow.source-match-report.v1", engine=VERSION,
+        self.report = dict(schema="editflow.source-match-report.v1", engine=VERSION,engineSha256=ENGINE_SHA256,
                            editorialAuthority="CHATGPT_DIRECT", automaticSelection=False,
                            timestampConvention="seconds from video stream start; raw integer PTS retained; end exclusive",
                            backend=encoder.backend, device=encoder.device, shots=[], sources=[], warnings=[], stages=[],
@@ -328,6 +349,7 @@ class Engine:
         self.out.mkdir(parents=True,exist_ok=True)
         self.cache.mkdir(parents=True,exist_ok=True)
         self.candidates = {}
+        self.checked_windows = {}
 
     def check(self):
         if time.monotonic()-self.started > self.budget or (self.out/"cancel").exists():
@@ -387,12 +409,16 @@ class Engine:
         chroma=[np.abs(q["frame"]["image"][:,:,0].astype(float)-q["frame"]["image"][:,:,1]).mean()+np.abs(q["frame"]["image"][:,:,1].astype(float)-q["frame"]["image"][:,:,2]).mean() for q in self.queries]
         self.encoder.monochrome=float(np.median(chroma))<6
         self.report["descriptorColorPolicy"]="MONOCHROME_REFERENCE" if self.encoder.monochrome else "RGB"
-        self.qvectors=self.encoder.encode([q["frame"]["image"] for q in self.queries])
+        batches=[]
+        for start in range(0,len(self.queries),32):
+            self.check()
+            batches.append(self.encoder.encode([q["frame"]["image"] for q in self.queries[start:start+32]]))
+        self.qvectors=np.concatenate(batches)
         self.aspect=float(np.median([trim_bars(q["frame"]["image"]).shape[1]/trim_bars(q["frame"]["image"]).shape[0] for q in self.queries]))
         self.progress("REFERENCE_READY",shots=len(self.report["shots"]),queries=len(self.queries))
 
     def search(self,vectors,times,source):
-        scores=self.qvectors@vectors.T
+        scores=self.encoder.similarity(self.qvectors,vectors)
         for q,row in enumerate(scores):
             inds=np.argsort(row)[-8:][::-1]
             values=self.candidates.setdefault(q,[])+[(float(row[j]),source,float(times[j])) for j in inds]
@@ -407,7 +433,7 @@ class Engine:
     def scan(self,source,mode):
         file=self.request["sourcePaths"][source]
         identity=fingerprint(file)
-        key=hashlib.sha256(f"{VERSION}|{identity}|{self.encoder.model_id}|{self.encoder.monochrome}|{self.aspect:.3f}|{mode}".encode()).hexdigest()
+        key=hashlib.sha256(f"{VERSION}|rgb-gray-v1|{identity}|{self.encoder.model_id}|{self.encoder.monochrome}|{self.aspect:.3f}|{mode}".encode()).hexdigest()
         root=self.cache/key
         root.mkdir(exist_ok=True)
         marker=root/"complete.json"
@@ -510,7 +536,18 @@ class Engine:
             if len(qs)<3:
                 continue
             middle=qs[len(qs)//2][0]
-            locations=self.candidates.get(middle,[])[:int(self.request.get("candidateLimit",4))]
+            width=min(30,max(4,(shot["referenceEnd"]-shot["referenceStart"])*3))
+            checked=self.checked_windows.setdefault(i,[])
+            locations=[]
+            for candidate in self.candidates.get(middle,[]):
+                _,source,t=candidate
+                if any(source==s and abs(t-v)<=width*.5 for s,v in checked):
+                    continue
+                if any(source==s and abs(t-v)<=width*.5 for _,s,v in locations):
+                    continue
+                locations.append(candidate)
+                if len(locations)>=int(self.request.get("candidateLimit",4)):
+                    break
             self.progress("VERIFYING_SHOT",shotId=shot["shotId"],candidates=len(locations))
             qfeatures={n:feature_points(q["frame"]["image"]) for n,q in qs}
             hypotheses=[]
@@ -518,7 +555,6 @@ class Engine:
                 self.check()
                 meta=self.report["sources"][source]
                 file=meta["path"]
-                width=min(30,max(4,(shot["referenceEnd"]-shot["referenceStart"])*3))
                 start,end=max(0,t-width),min(meta["duration"],t+width)
                 self.progress("VERIFY_DECODE",shotId=shot["shotId"],candidateTime=t)
                 frames=list(gpu_samples(file,None,self.check,start,end,size=640) if self.encoder.device=="cuda" else decode(file,start,end,size=640,check=self.check))
@@ -541,7 +577,7 @@ class Engine:
                 ordered_qs=sorted(qs,key=lambda nq:0 if nq[0]==middle else 1)
                 for n,q in ordered_qs:
                     self.check()
-                    scores=self.qvectors[n]@cvectors.T
+                    scores=self.encoder.similarity(self.qvectors[n],cvectors)
                     best=[]
                     near_times=[]
                     for j in np.argsort(scores)[::-1]:
@@ -584,19 +620,51 @@ class Engine:
                     path=consistent_path([anchor_options[n] for n,q in qs],1/meta["fps"])
                     if path:
                         anchors,alignment=path
+                complete=alignment is not None
+                if alignment is None:
+                    visible=[a for a in anchors if valid_geometry(a["geometry"])]
+                    alignment=temporal_alignment(visible,1/meta["fps"])
+                    if alignment:
+                        anchors=visible
+                    else:
+                        # A rounded boundary may include a frame from the adjacent cut.
+                        # Fit only contiguous interior/prefix/suffix anchors, never invent
+                        # a full-shot endpoint from that subset.
+                        interior=[]
+                        for chosen in [qs[:-1],qs[1:],qs[1:-1]]:
+                            choices=[anchor_options.get(n,[]) for n,q in chosen]
+                            path=consistent_path(choices,1/meta["fps"])
+                            if path:
+                                interior.append(path)
+                        if interior:
+                            anchors,alignment=max(interior,key=lambda p:sum(a["geometry"]["score"] for a in p[0]))
                 shot.setdefault("candidateChecks",[]).append(dict(sourceIndex=source,candidateTime=t,retrievalScore=score,
                     passed=alignment is not None,anchors=[{k:a[k] for k in ["referenceTime","sourceTime","geometry"]} for a in anchors]))
                 shot["candidateChecks"]=shot["candidateChecks"][-12:]
+                checked.append((source,t))
                 if alignment:
-                    hypotheses.append(dict(source=source,score=sum(a["geometry"]["score"] for a in anchors),anchors=anchors,alignment=alignment,frames=frames))
-            hypotheses.sort(key=lambda h:h["score"],reverse=True)
+                    hypotheses.append(dict(source=source,score=sum(a["geometry"]["score"] for a in anchors),anchors=anchors,alignment=alignment,frames=frames,complete=complete))
+            hypotheses.sort(key=lambda h:(h["complete"],h["score"]),reverse=True)
             if not hypotheses:
-                shot["reason"]="No geometrically and temporally consistent candidate"
+                if shot["status"]!="LOCATED":
+                    shot["reason"]="No geometrically and temporally consistent candidate"
                 self.save()
                 continue
             best=hypotheses[0]
-            different=[h for h in hypotheses[1:] if h["source"]!=best["source"] or abs(h["anchors"][0]["sourceTime"]-best["anchors"][0]["sourceTime"])>1]
-            if different and different[0]["score"]>=best["score"]*.85:
+            def different_location(other):
+                if other["source"]!=best["source"]:
+                    return True
+                shared=[abs(a["sourceTime"]-b["sourceTime"]) for a in best["anchors"] for b in other["anchors"] if abs(a["referenceTime"]-b["referenceTime"])<1e-5]
+                return not shared or float(np.median(shared))>1
+            different=[h for h in hypotheses[1:] if different_location(h)]
+            if shot["status"]=="LOCATED":
+                previous=dict(source=shot["sourceIndex"],anchors=shot["anchors"],score=sum(a["geometry"]["score"] for a in shot["anchors"]))
+                if different_location(previous):
+                    different.append(previous)
+            if any(h["score"]>=best["score"]*.85 for h in different):
+                for key in ["sourcePath","sourceIndex","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","sourceLocationWindow","alignment","boundaryStatus"]:
+                    shot.pop(key,None)
+                shot["status"]="UNRESOLVED";shot["anchors"]=[]
                 shot["reason"]="Ambiguous repeated source footage"
                 self.save()
                 continue
@@ -605,13 +673,16 @@ class Engine:
             endpoints=[anchors[0],anchors[-1]]
             low=min(endpoints,key=lambda a:a["sourceTime"])
             high=max(endpoints,key=lambda a:a["sourceTime"])
-            shot.update(status="VERIFIED",reason="Geometry and temporal checks passed; GPT visual acceptance still required",
+            shot.update(status="VERIFIED" if best["complete"] else "LOCATED",reason="Geometry and temporal checks passed; GPT visual acceptance still required" if best["complete"] else "Source location confirmed by multiple frames; one or both endpoints could not be confirmed",
                         sourcePath=self.report["sources"][best["source"]]["path"],sourceIndex=best["source"],
-                        sourceStart=low["sourceTime"],sourceEndExclusive=high["sourceTime"]+high["sourceFrameDuration"],
                         alignment=best["alignment"],anchors=anchors,requiresVisualReview=True,
                         exactBoundaryGuaranteed=False)
-            shot["sourceStartTimecode"]=timecode(shot["sourceStart"])
-            shot["sourceEndTimecode"]=timecode(shot["sourceEndExclusive"])
+            if best["complete"]:
+                shot.update(sourceStart=low["sourceTime"],sourceEndExclusive=high["sourceTime"]+high["sourceFrameDuration"],boundaryStatus="MEASURED_ENDPOINT_CORRESPONDENCES")
+                shot["sourceStartTimecode"]=timecode(shot["sourceStart"])
+                shot["sourceEndTimecode"]=timecode(shot["sourceEndExclusive"])
+            else:
+                shot.update(boundaryStatus="UNRESOLVED",sourceLocationWindow=dict(start=low["sourceTime"],end=high["sourceTime"]+high["sourceFrameDuration"],description="Span of confirmed interior frames, not full-shot source in/out"))
             for k,a in enumerate(anchors):
                 q=self.queries[a["queryIndex"]]["frame"]
                 source=[f for f in best["frames"] if f["pts"]==a["sourcePts"]]
@@ -623,11 +694,12 @@ class Engine:
                     cv2.imwrite(str(refpath),cv2.cvtColor(q["image"],cv2.COLOR_RGB2BGR))
                     cv2.imwrite(str(srcpath),cv2.cvtColor(source[0]["image"],cv2.COLOR_RGB2BGR))
                     a.update(referenceEvidencePath=str(refpath),sourceEvidencePath=str(srcpath))
-            self.progress("VERIFIED_CANDIDATE",shotId=shot["shotId"],sourceStart=shot["sourceStart"],sourceEndExclusive=shot["sourceEndExclusive"])
+            self.progress("MATCH_EVIDENCE",shotId=shot["shotId"],status=shot["status"],sourceStart=shot.get("sourceStart"),sourceEndExclusive=shot.get("sourceEndExclusive"))
             self.save()
 
     def save(self):
         self.report["elapsedSeconds"]=round(time.monotonic()-self.started,3)
+        self.report["summary"]={state:sum(s["status"]==state for s in self.report["shots"]) for state in ["VERIFIED","LOCATED","UNRESOLVED"]}
         atomic_json(self.out/"report.json",self.report)
         fields=["shotId","referenceStart","referenceEnd","status","sourcePath","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","reason"]
         with (self.out/"timestamps.csv").open("w",newline="",encoding="utf-8") as f:
@@ -670,7 +742,7 @@ class Engine:
                 for source in range(len(self.report["sources"])):
                     self.scan(source,mode)
                 self.verify()
-                if all(s["status"]=="VERIFIED" for s in self.report["shots"]):
+                if all(s["status"] in ["VERIFIED","LOCATED"] for s in self.report["shots"]):
                     break
             self.report["status"]="COMPLETE" if all(s["status"]=="VERIFIED" for s in self.report["shots"]) else "PARTIAL"
         except BudgetExpired:

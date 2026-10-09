@@ -51,6 +51,13 @@ def test_temporal_reversal_and_inconsistent_time():
     assert m.temporal_alignment(anchors,1/24) is None
 
 
+def test_nonlinear_monotone_retiming_has_explicit_segments():
+    good={"inliers":30,"coverage":.5,"fraction":.9,"score":20}
+    anchors=[dict(referenceTime=x,sourceTime=y,geometry=good) for x,y in [(0,10),(.5,10.25),(1,11),(1.5,11.5)]]
+    result=m.temporal_alignment(anchors,1/24)
+    assert result["kind"]=="PIECEWISE" and len(result["segments"])==3
+
+
 def test_real_encoded_pts_crop_reverse_cache(tmp_path):
     frames=fixture();source=tmp_path/"source.mp4";reference=tmp_path/"ref.mp4"
     encode(source,frames)
@@ -82,6 +89,21 @@ def test_unrelated_never_has_source_timestamps(tmp_path):
     result=m.Engine(request,tmp_path/"out",tmp_path/"cache",m.Encoder("diagnostic")).run()
     assert result["status"]=="PARTIAL"
     assert "sourceStart" not in result["shots"][0]
+
+
+def test_faded_endpoints_locate_interior_without_asserting_boundaries(tmp_path):
+    frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames)
+    selected=[f.copy() for f in frames[12:36]]
+    selected[0][:]=0;selected[-1][:]=0
+    encode(ref,selected)
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=4)
+    result=m.Engine(request,tmp_path/"out",tmp_path/"cache",m.Encoder("diagnostic")).run()
+    shot=result["shots"][0]
+    assert shot["status"]=="LOCATED",result
+    assert result["status"]=="PARTIAL" and result["summary"]["LOCATED"]==1
+    assert "sourceStart" not in shot and "sourceEndExclusive" not in shot
+    assert len(shot["anchors"])>=3 and shot["sourceLocationWindow"]["start"]>=1
 
 
 def test_input_change_invalidates_cache(tmp_path):

@@ -16,7 +16,9 @@ out=Path(sys.argv[sys.argv.index('--output')+1])
 for i in range(30):
  if (out/'cancel').exists():break
  time.sleep(.01)
-(out/'report.json').write_text(json.dumps({'status':'CANCELLED' if (out/'cancel').exists() else 'COMPLETE','shots':[]}))
+temp=out/'report.tmp'
+temp.write_text(json.dumps({'status':'CANCELLED' if (out/'cancel').exists() else 'COMPLETE','shots':[], 'backend':sys.argv[sys.argv.index('--backend')+1], 'device':sys.argv[sys.argv.index('--device')+1]}))
+temp.replace(out/'report.json')
 `);
   const ref=path.join(root,"ref.mp4"),source=path.join(root,"source.mp4"),model=path.join(root,"model.pt");
   for(const p of [ref,source,model]) await writeFile(p,"fixture");
@@ -51,7 +53,8 @@ test("cancellation preserves the job and never alters production state",async t=
   const {service,request}=await fixture(t);
   const a=await service.submit(request);
   assert.equal((await service.cancel(a.job.jobId)).cancellationRequested,true);
-  assert.equal((await finished(service,a.job.jobId)).job.status,"CANCELLED");
+  const result=await finished(service,a.job.jobId);
+  assert.equal(result.job.status,"CANCELLED",JSON.stringify(result.job));
 });
 
 test("reject invalid IDs, incomplete requests and executable/backend overrides",async t=>{
@@ -61,6 +64,10 @@ test("reject invalid IDs, incomplete requests and executable/backend overrides",
   await assert.rejects(service.submit({...request,budgetSeconds:NaN}),/budgetSeconds/);
   await assert.rejects(service.submit({...request,sourcePaths:[]}),/sourcePaths/);
   await assert.rejects(service.submit({...request,shots:[{start:1,end:0}]}),/shots/);
+  const submitted=await service.submit({...request,python:"untrusted-executable",backend:"untrusted-backend",device:"untrusted-device"});
+  const result=await finished(service,submitted.job.jobId);
+  assert.equal(result.job.status,"COMPLETE");
+  assert.equal(result.report.backend,"diagnostic");assert.equal(result.report.device,"cpu");
 });
 
 test("interrupted receipts survive service restart without replay",async t=>{
