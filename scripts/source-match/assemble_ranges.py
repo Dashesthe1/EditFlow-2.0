@@ -31,7 +31,14 @@ def atomic_json(file, value):
         json.dump(value, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
-    temp.replace(file)
+    for attempt in range(7):
+        try:
+            temp.replace(file)
+            break
+        except PermissionError:
+            if os.name != 'nt' or attempt == 6:
+                raise
+            time.sleep(.02 * 2 ** attempt)
 
 
 def pixels(frame):

@@ -1,10 +1,10 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { capabilityForCommandV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
-import { SourceMatchServiceV1, type SourceMatchServiceConfigV1 } from "./source-match-service.js";
+import { SourceMatchServiceV1, sourceMatchAtomicJsonV1, type SourceMatchServiceConfigV1 } from "./source-match-service.js";
 
 export const SOURCE_ASSEMBLY_CONTRACT_V1 = {
   schema: "editflow.source-assembly-contract.v1", version: "1.1.0",
@@ -32,11 +32,7 @@ const timelineProof = async (shots:readonly any[]) => {
   }
 };
 const json = async (file: string) => JSON.parse(await readFile(file, "utf8"));
-const save = async (file: string, value: unknown) => {
-  await mkdir(path.dirname(file), {recursive:true});
-  const temp=file+"."+randomUUID()+".tmp";
-  await writeFile(temp,JSON.stringify(value,null,2),{flush:true}); await rename(temp,file);
-};
+const save=sourceMatchAtomicJsonV1;
 const id = (value: any, prefix: string) => {
   if (typeof value!=="string" || !new RegExp("^"+prefix+"-[a-f0-9-]{36}$").test(value)) throw new Error("Invalid "+prefix+" ID");
   return value;

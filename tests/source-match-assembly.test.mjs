@@ -151,7 +151,7 @@ test('original timeline endpoints require explicit proof and unchanged project/e
   s.originalTimelineFrameMap=[{referencePts:0,sourcePts:1},{referencePts:1,sourcePts:2},{referencePts:2,sourcePts:3}];
   s.originalTimelineEvidence={kind:'ORIGINAL_EDIT_PROJECT_EXPORT',projectPath:project,projectSha256:hash(await readFile(project)),
     timelinePath:timeline,timelineSha256:hash(await readFile(timeline)),referenceFrameCount:3,recheckedPixelAnchors:3};
-  const a=await f.service.prepare(f.request);assert.equal((await ready(f.service,a.assembly.assemblyId)).assembly.status,'READY');
+  const a=await f.service.prepare(f.request),result=await ready(f.service,a.assembly.assemblyId);assert.equal(result.assembly.status,'READY',JSON.stringify(result.assembly));
   await writeFile(project,'changed project');
   await assert.rejects(f.service.plan(a.assembly.assemblyId,0,{},f.allowed),/TIMELINE_EVIDENCE_CHANGED/);
 });

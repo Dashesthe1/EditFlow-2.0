@@ -37,7 +37,14 @@ def atomic_json(file, value):
     file.parent.mkdir(parents=True, exist_ok=True)
     temp = file.with_suffix(file.suffix + ".tmp")
     temp.write_text(json.dumps(value, indent=2, allow_nan=False), encoding="utf-8")
-    os.replace(temp, file)
+    for attempt in range(7):
+        try:
+            os.replace(temp, file)
+            break
+        except PermissionError:
+            if os.name != 'nt' or attempt == 6:
+                raise
+            time.sleep(.02 * 2 ** attempt)
 
 
 def timecode(seconds):

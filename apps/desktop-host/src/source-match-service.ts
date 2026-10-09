@@ -21,11 +21,18 @@ export interface SourceMatchServiceConfigV1 {
 }
 type Job = { jobId: string; requestId: string; requestHash: string; status: string; createdAt: string;
   updatedAt: string; outputDir: string; assignmentId?: string; parentJobId?: string; error?: string; exitCode?: number | null };
-const save = async (file: string, value: unknown) => {
+export const sourceMatchAtomicJsonV1 = async (file: string, value: unknown) => {
   await mkdir(path.dirname(file), { recursive: true });
   const temp = file + "." + randomUUID() + ".tmp";
-  await writeFile(temp, JSON.stringify(value, null, 2), {flush:true}); await rename(temp, file);
+  await writeFile(temp, JSON.stringify(value, null, 2), {flush:true});
+  for(let attempt=0;;attempt++) {
+    try {await rename(temp,file);break;} catch(e:any) {
+      if(process.platform!=="win32" || !["EPERM","EACCES","EBUSY"].includes(e.code) || attempt>=6)throw e;
+      await new Promise(r=>setTimeout(r,20*2**attempt));
+    }
+  }
 };
+const save=sourceMatchAtomicJsonV1;
 const optionalJson = async (file: string): Promise<any> => {
   try { return JSON.parse(await readFile(file, "utf8")); } catch (e: any) { if (e.code === "ENOENT") return null; throw e; }
 };
