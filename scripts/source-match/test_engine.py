@@ -335,6 +335,24 @@ def test_valid_faint_endpoint_completes_its_own_location_but_never_a_different_c
     assert m.completion_of_location(interior,[interior,changed]) is interior
 
 
+def test_retained_path_requires_fresh_exact_interior_and_unrestricted_endpoint_identity():
+    good=dict(inliers=40,coverage=.6,fraction=.9,correlation=.9,score=20)
+    anchors=[dict(queryIndex=i,referenceTime=i*.5,sourceTime=10+i*.5,sourcePts=120+i*6,
+                  sourceFrameDurationVerified=True,geometry=good.copy()) for i in range(5)]
+    prior=dict(anchors=anchors[1:4])
+    options={i:[a.copy()] for i,a in enumerate(anchors)}
+    stronger=dict(anchors[2],sourceTime=11+1/12,sourcePts=133,geometry={**good,'score':30})
+    options[2].append(stronger)
+    path=m.retained_location_path(prior,options,list(range(5)),1/12)
+    assert path and path[0][2]['sourcePts']==132
+    missing=copy.deepcopy(options);missing[2]=[stronger]
+    assert m.retained_location_path(prior,missing,list(range(5)),1/12) is None
+    ambiguous=copy.deepcopy(options);ambiguous[0].append(dict(anchors[0],sourceTime=12,sourcePts=144))
+    assert m.retained_location_path(prior,ambiguous,list(range(5)),1/12) is None
+    unmeasured=copy.deepcopy(options);unmeasured[4][0]['sourceFrameDurationVerified']=False
+    assert m.retained_location_path(prior,unmeasured,list(range(5)),1/12) is None
+
+
 def test_competing_copy_in_same_source_is_checked_after_location_search(tmp_path):
     frames=fixture();source=tmp_path/"repeated.mp4";ref=tmp_path/"ref.mp4"
     encode(source,frames+frames)

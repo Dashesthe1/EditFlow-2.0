@@ -59,7 +59,9 @@ comparison, because strong grading can change which feature points survive at
 different scales. Each scale passes the same geometric acceptance checks.
 A complete path may finish an interior location only when every
 retained anchor has exactly the same source PTS; stronger competing copies still
-prevent certification.
+prevent certification. Refinement also tests a path constrained to those exact
+retained interior frames. Every fixed frame must pass a fresh pixel check, and
+endpoint ambiguity is still evaluated against all unrestricted endpoint options.
 
 `import_source_timeline` / POST `IMPORT_TIMELINE` accepts
 `{requestId,jobId,timelinePath,budgetSeconds}` for a canonical JSON export from the

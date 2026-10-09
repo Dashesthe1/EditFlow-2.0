@@ -454,6 +454,25 @@ def completion_of_location(best, hypotheses):
     return strongest_hypothesis(compatible) if compatible else best
 
 
+def retained_location_path(prior, anchor_options, query_indices, frame_seconds):
+    """Recheck a complete path constrained to every established interior frame.
+
+    Options are fresh, geometrically valid correspondences. A prior frame cannot
+    be carried into completion if it fails the new check. Endpoint ambiguity is
+    tested against the unrestricted options, never against a forced single frame.
+    """
+    fixed={a['queryIndex']:a['sourcePts'] for a in prior['anchors']}
+    choices=[[a for a in anchor_options.get(n,[]) if n not in fixed or a['sourcePts']==fixed[n]] for n in query_indices]
+    path=consistent_path(choices,frame_seconds)
+    if not path:return None
+    anchors,alignment=path
+    if not max(anchors,key=lambda a:a['sourceTime'])['sourceFrameDurationVerified']:
+        return None
+    if any(not endpoint_identity(anchor_options.get(a['queryIndex'],[]),a,frame_seconds) for a in (anchors[0],anchors[-1])):
+        return None
+    return anchors,alignment
+
+
 class Engine:
     def __init__(self, request, out, cache, encoder):
         self.request, self.out, self.cache, self.encoder = request, Path(out), Path(cache), encoder
@@ -960,6 +979,17 @@ class Engine:
                     proposalOrigin="RETAINED_LOCATION_OR_GPT_WINDOW" if explicit else "SSCD_QUERY",
                     passed=alignment is not None,anchors=[{k:a[k] for k in ["referenceTime","sourceTime","geometry"]} for a in anchors]))
                 shot["candidateChecks"]=shot["candidateChecks"][-12:]
+                for prior in list(hypotheses):
+                    if prior.get('complete') or prior['source']!=source:continue
+                    constrained=retained_location_path(prior,anchor_options,[n for n,q in qs],1/meta['fps'])
+                    if not constrained:continue
+                    fixed_anchors,fixed_alignment=constrained
+                    hypotheses.append(dict(source=source,score=sum(a['geometry']['score'] for a in fixed_anchors),
+                        anchors=fixed_anchors,alignment=fixed_alignment,frames=frames,complete=True,diagnostics=[]))
+                    shot['candidateChecks'].append(dict(sourceIndex=source,candidateTime=t,retrievalScore=None,
+                        proposalOrigin='RETAINED_FRAME_CONSTRAINT_WITH_FRESH_PIXEL_RECHECK',passed=True,
+                        anchors=[{k:a[k] for k in ['referenceTime','sourceTime','sourcePts','geometry']} for a in fixed_anchors]))
+                    shot['candidateChecks']=shot['candidateChecks'][-12:]
                 checked.append((source,t))
                 self.checked_intervals.setdefault(i,[]).append((source,start,end))
                 if alignment:
