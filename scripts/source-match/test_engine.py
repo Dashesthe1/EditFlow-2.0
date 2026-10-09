@@ -109,6 +109,35 @@ def test_distributed_pixels_verify_caption_and_composite_without_whole_image_agr
     assert not m.valid_geometry(m.geometry(query,np.random.default_rng(901).integers(0,255,frame.shape,dtype=np.uint8)))
 
 
+def test_fresh_high_resolution_origin_rejects_unrelated_picture_with_shared_text(tmp_path):
+    # A retained proposed location and common caption are not fresh origin proof.
+    images=[cv2.resize(f,(960,720)) for f in fixture()[:12]]
+    other=[]
+    for i,f in enumerate(images):
+        im=np.full_like(f,95)
+        cv2.circle(im,(120+i*38,160+i*25),60,(10,200,90),-1)
+        cv2.putText(im,'SHARED TEXT',(230,630),0,1.5,(255,255,255),4)
+        cv2.putText(f,'SHARED TEXT',(230,630),0,1.5,(255,255,255),4)
+        other.append(im)
+    source=tmp_path/'source.mp4';reference=tmp_path/'reference.mp4'
+    encode(source,images);encode(reference,other)
+    decoded=list(m.decode(source,size=1280))
+    request=dict(referencePath=str(reference),sourcePaths=[str(source)],budgetSeconds=90)
+    e=m.Engine(request,tmp_path/'out',tmp_path/'cache',m.Encoder('diagnostic'))
+    e.verification_size=1280
+    e.queries=[]
+    e.report['reference']=dict(path=str(reference),**m.probe(reference))
+    e.report['sources']=[dict(path=str(source),**m.probe(source))]
+    e.report['alternativeReviewComplete']=True
+    e.report['shots']=[dict(shotId='shot-001',referenceStart=0,referenceEnd=1,status='LOCATED',sourcePath=str(source),sourceIndex=0,boundaryStatus='UNRESOLVED',
+        anchors=[dict(referenceTime=decoded[n]['t'],sourceTime=decoded[n]['t'],sourcePts=decoded[n]['pts']) for n in [1,3,5,7,9]])]
+    e.origin_checks()
+    origin=e.report['originVerifications']['shot-001']
+    assert origin['status']=='INSUFFICIENT_INDEPENDENT_EVIDENCE',origin
+    assert origin['independentFrameCount']<3 and origin['temporalChangePassCount']==0
+    assert 'sourceStart' not in e.report['shots'][0]
+
+
 def test_small_shared_insert_or_same_caption_does_not_certify_unrelated_picture():
     frame=fixture()[22]
     unrelated=np.random.default_rng(39).integers(0,255,frame.shape,dtype=np.uint8)

@@ -750,3 +750,54 @@ origin checks, only when existing SIFT comparisons fail. Previously passing scor
 are not boosted. The source-scale features are cached, and all geometry, pixel,
 motion, uniqueness and exact-range gates remain unchanged. All 39 local matcher
 tests passed again, including unrelated/duplicated-video rejection.
+
+The final targeted v1.6.2 refinement,
+`source-match-3e55005c-12bb-413b-9e39-9364bbbe7cff`, finished in 136.328 s
+with all **21 movie-section origins CONFIRMED**, 12 measured full ranges,
+9 LOCATED endpoint rows and zero unlocated rows. Shot-021 now has nine fresh
+mapped moments, eight passing gradient frames and two passing change witnesses.
+Its nearby original control crosses an actual cut to a different close-up;
+direct inspection confirms that close-up lacks the edit's robot/body/flare
+composition. Frame-level similarity inside the correct movie shot remains
+distinct from an exact hidden boundary claim.
+
+All twenty non-target shot objects and origin proofs remained exactly unchanged
+(checked using Node JSON serialization); all twelve original VERIFIED rows also
+remain unchanged. The partial report still rejects PREPARE_ASSEMBLY with HTTP 400,
+`ALL_SHOT_ENDPOINTS_REQUIRED`, before extraction or AE writes. AfterFX PID 2348
+remains responsive; Practice stays PAUSED at generation 134/activity sequence
+2576, with no held mutation. The existing four UI edits retain their exact diff
+hash `D925A86FF3E7636E08B453983A81B055A5FD8F4BA28704648B1FD9201DE9178B`.
+
+All nine LOCATED shots received direct ChatGPT inspection of their three visible
+edit/original montage pairs and their middle fresh measured alignment. The
+observations explain specific poses, armor/face landmarks, scene structures,
+crop, captions and grading; the Wanda composite and forest controls received
+additional inspection. All nine observations identify the same movie section.
+These read-only observations are retained in `v162-chatgpt-origin-reviews.json`,
+bound to final report SHA-256
+`d68214bafd20207ed24544c90cfe3c14a39644ce57d77844ea38f01c5eb5ff57`.
+They are not durable assignment SELECT receipts or full-shot endpoint acceptance.
+
+The final v1.6.2 engine SHA-256 is
+`3d248b9c6467530cc5800d16a154275c28d09153e4bbd5ac49e73ab533da541e`.
+All 39 matcher regressions passed on Windows again and all twelve SSCD/CUDA
+fixtures passed again, with the same expected statuses and zero-frame error on
+the nine positive exact-range cases. All 66 nearby controls from the eleven
+located GPU cases were compared at native size against independently decoded
+originals at their recorded PTS; maximum JPEG/scale mean RGB error was 5.026 on
+the 0–255 scale, below the fixed eight-level tolerance. A checker initially
+compared 640px CUDA images with 320px native images; it was corrected to compare
+at native dimensions rather than changing the tolerance. Evidence is in
+`source-match-benchmarks/v162-gpu-final`, including `packet-provenance.json`.
+Hardware tests and the targeted live refinement overlapped; their timings do
+not establish isolated throughput. The earlier whole-shot refinement took
+576.047 s; the 300-second full-handoff target remains unproved.
+
+A new encoded 960px negative case also rejects a retained proposed location
+when the two videos share caption text but have unrelated underlying pictures.
+Fresh geometry and changing-pixel evidence are required; a retained location or
+shared text cannot create CONFIRMED origin. Together with the existing 39
+regressions, all 40 local matcher cases pass. All 32 Node tests, TypeScript
+checking and the runtime build pass. Remaining exact endpoints are still 001,
+003, 004, 007, 010, 012, 015, 018 and 021; no new exact trim was certified.
