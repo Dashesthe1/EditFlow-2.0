@@ -120,6 +120,17 @@ test('assembly cancellation retains official timestamps without preparing an AE 
   await assert.rejects(f.service.plan(a.assembly.assemblyId,0,{},f.allowed),/NOT_READY/);
 });
 
+test('concurrent status polling cannot overwrite a newly completed preparation as interrupted',async t=>{
+  const f=await fixture(t),a=await f.service.prepare(f.request),observed=[];
+  for(let i=0;i<50;i++) {
+    const reads=await Promise.all(Array.from({length:8},()=>f.service.status(a.assembly.assemblyId)));
+    observed.push(...reads.map(r=>r.assembly.status));
+    await new Promise(r=>setTimeout(r,5));
+  }
+  assert.ok(!observed.includes('INTERRUPTED'));
+  assert.equal((await f.service.status(a.assembly.assemblyId)).assembly.status,'READY');
+});
+
 test('official timestamps precede extraction; idempotent prepare and unchanged queue plans',async t=>{
   const f=await fixture(t),a=await f.service.prepare(f.request);
   const saved=JSON.parse(await readFile(a.assembly.manifestPath,'utf8'));

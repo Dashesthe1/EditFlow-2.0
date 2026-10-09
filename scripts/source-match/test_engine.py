@@ -173,6 +173,22 @@ def test_refinement_rejects_stale_or_tampered_parent(tmp_path):
         with pytest.raises(ValueError,match="INPUT_CHANGED" if stale else "REPORT_CHANGED"):engine.restore()
 
 
+def test_explicit_refinement_can_locate_other_moments_when_middle_is_occluded(tmp_path):
+    frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames);images=[f.copy() for f in frames[12:36]];images[12][:]=0;encode(ref,images)
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=2)
+    parent=m.Engine(request,tmp_path/"parent",tmp_path/"cache",m.Encoder("diagnostic")).run()
+    assert parent["shots"][0]["status"]=="UNRESOLVED"
+    retained=json.dumps(parent).encode();out=tmp_path/"refined";out.mkdir();(out/"resume-report.json").write_bytes(retained)
+    request["refinement"]=dict(parentJobId="parent",shotIds=["shot-001"],reportSha256=hashlib.sha256(retained).hexdigest(),
+      windows=[dict(shotId="shot-001",sourceIndex=0,start=.5,end=3.5)])
+    result=m.Engine(request,out,tmp_path/"cache",m.Encoder("diagnostic")).run();shot=result["shots"][0]
+    assert shot["status"]=="LOCATED",result
+    assert len(shot["anchors"])>=3 and "sourceStart" not in shot
+    assert shot["candidateChecks"][-1]["retrievalScore"] is None
+    assert shot["candidateChecks"][-1]["proposalOrigin"]=="RETAINED_LOCATION_OR_GPT_WINDOW"
+
+
 def test_input_change_invalidates_cache(tmp_path):
     p=tmp_path/"media";p.write_bytes(b"a"*200000)
     first=m.fingerprint(p)

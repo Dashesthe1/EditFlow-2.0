@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.2.0"
+VERSION = "source-match-v1.2.1"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -819,7 +819,7 @@ class Engine:
                                         sourceFrameDuration=f["duration"],sourceFrameDurationVerified=f.get("durationVerified",False),geometry=g,queryIndex=n))
                     anchor_options[n]=options
                     # Every accepted sequence requires this middle anchor; reject cheap first.
-                    if n==middle and not options:
+                    if n==middle and not options and self.refine_ids is None:
                         break
                 anchors.sort(key=lambda a:a["referenceTime"])
                 alignment=temporal_alignment(anchors,1/meta["fps"])
@@ -860,12 +860,20 @@ class Engine:
                                 interior.append(path)
                         if interior:
                             anchors,alignment=max(interior,key=lambda p:sum(a["geometry"]["score"] for a in p[0]))
+                        elif self.refine_ids is not None:
+                            # Requested difficult-shot refinement may inspect
+                            # other anchors after a weak/occluded middle. At least
+                            # three measured moments must still form a valid path.
+                            visible_choices=[anchor_options[n] for n,q in qs if anchor_options.get(n)]
+                            path=consistent_path(visible_choices,1/meta["fps"])
+                            if path:anchors,alignment=path
                 for n,q in (qs[0],qs[-1]):
                     if not any(a["queryIndex"]==n for a in anchors) or not valid_geometry(next((a["geometry"] for a in anchors if a["queryIndex"]==n),{})):
                         im=q["frame"]["image"]
                         low_information=float(np.mean(np.max(im,axis=2)>24))<.02
                         diagnostics.append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if low_information else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE"))
-                shot.setdefault("candidateChecks",[]).append(dict(sourceIndex=source,candidateTime=t,retrievalScore=score,
+                shot.setdefault("candidateChecks",[]).append(dict(sourceIndex=source,candidateTime=t,retrievalScore=None if explicit else score,
+                    proposalOrigin="RETAINED_LOCATION_OR_GPT_WINDOW" if explicit else "SSCD_QUERY",
                     passed=alignment is not None,anchors=[{k:a[k] for k in ["referenceTime","sourceTime","geometry"]} for a in anchors]))
                 shot["candidateChecks"]=shot["candidateChecks"][-12:]
                 checked.append((source,t))

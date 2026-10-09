@@ -175,8 +175,9 @@ export class SourceMatchAssemblyV1 {
     return {assembly:state,contract:SOURCE_ASSEMBLY_CONTRACT_V1};
   }
   async status(assemblyId:string) {
+    const activeAtRead=this.#active?.assemblyId===assemblyId;
     const dir=this.#dir(assemblyId),assembly=await json(path.join(dir,"state.json"));
-    if(assembly.status==="PREPARING" && this.#active?.assemblyId!==assemblyId) {
+    if(assembly.status==="PREPARING" && !activeAtRead && this.#active?.assemblyId!==assemblyId) {
       assembly.status="INTERRUPTED";assembly.error="Preparation interrupted; no AE imports were issued. Use a new requestId.";
       await save(path.join(dir,"state.json"),assembly);
     }
