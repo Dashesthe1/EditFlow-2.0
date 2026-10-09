@@ -627,3 +627,56 @@ was held. The four pre-existing UI edits retained their exact diff hash,
 `D925A86FF3E7636E08B453983A81B055A5FD8F4BA28704648B1FD9201DE9178B`.
 Audit and gate receipts are retained as `v151-final-audit.json` and
 `v151-assembly-gate.json` under `%LOCALAPPDATA%/EditFlow2`.
+
+## Additional unresolved-endpoint audit after publication approval
+
+The approved implementation and validation commits through `1e392192` were
+published to `source-match-service-20261009`. Each of the nine remaining endpoint
+failures was then investigated independently of report acceptance:
+
+- Decoded actual reference/source pixels at 960 px, estimated a map from the
+  nearest confirmed visible frame, and compared every original frame in a
+  proposed ±0.6 s endpoint neighborhood. Fixed brightness masks excluded caption
+  pixels in faint references; raw and lightly blurred pixel correlations were
+  retained for every candidate. These tests produced no adequate endpoint proof.
+  A map from another moment and its predicted timestamp were never accepted as
+  endpoint evidence. The largest faint-frame whole-picture correlation was about
+  0.179 (shot-015), with neighboring frames also agreeing weakly.
+- Inspected native encoded luma before RGB conversion and searched actual
+  original luma frames at both 640 and 960 px in ±0.7 s neighborhoods. This checks
+  whether RGB clipping hid retained picture structure. None of the nine targets
+  passed the existing geometry gates. Shot-001's rendered RGB first frame is
+  constant black; its tiny below-black luma deviations did not recover a source
+  correspondence. Faint luma structure and codec blocks are not source evidence.
+- Directly isolated the Wanda portion of shot-003's composite using four fixed
+  regions at 1280 px and four regions at native reference resolution. Across
+  decoded source frames 1018.5–1019.55 s, the strongest 1280 px region had ten
+  inliers, 66.67% inlier fraction, 19.01% region coverage and correlation 0.480.
+  Native-resolution region checks also failed independent verification.
+- Tested intensity-based affine registration on the inspected face region,
+  initialized by its measured geometric map, while holding separate body and
+  background rectangles out of fitting. The face fit reached ECC 0.944 at
+  1019.435083333 s, PTS 24466442, but several nearby source frames also fit strongly
+  (for example, ECC 0.919 at 1019.101416667 s). Held-out correlations at the best
+  face fit were approximately 0.211, −0.267, 0.402 and 0.533. This confirms
+  recognizable scene content through the alteration, not a uniquely verified
+  exact composite endpoint. A fitted facial match alone was not promoted.
+
+Evidence is retained on Shadow in `source-match-benchmarks/v152-endpoint-audit`,
+`v152-luma-audit`, `v152-composite-roi`, `v152-composite-roi-native` and
+`v152-composite-area`. The `v152` names label diagnostic experiments; no v1.5.2
+release was deployed. These are bounded diagnostic searches, not exhaustive
+global uniqueness or false-positive evaluations. No report was relabeled, no
+threshold was weakened and no source timestamp was invented. The retained real
+report remains **12 VERIFIED / 9 LOCATED / 0 UNRESOLVED**.
+
+The supplied-file check found Finished MP4 copies and generated shot-index/
+storyboard files, but no original edit project or original frame-map export.
+The supplied Typical Pro Edits directory also contained no `.aep`, `.aepx`,
+`.prproj`, `.fcpxml`, `.edl`, `.drp`, `.xml`, `.json` or `.zip` author project.
+This is a scoped search result, not a claim about every file on the user's PC.
+To certify the remaining hidden/ambiguous source endpoints requires new evidence,
+such as the actual original edit project's source-frame map or a corresponding
+export without the obscuring fade/composite. The recognizability of an interior
+shot does not determine which original frame was used beneath a fully hidden or
+non-uniquely transformed endpoint.
