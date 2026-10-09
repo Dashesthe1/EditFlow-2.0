@@ -225,6 +225,33 @@ def test_overlapping_dense_windows_are_not_decoded_twice():
     assert m.uncovered_windows([(1,5),(8,10)],[(2,3),(4,9)])==[(1,2),(3,4),(9,10)]
 
 
+def test_competing_copy_in_same_source_is_checked_after_location_search(tmp_path):
+    frames=fixture();source=tmp_path/"repeated.mp4";ref=tmp_path/"ref.mp4"
+    encode(source,frames+frames)
+    encode(ref,frames[12:36])
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,
+                 shots=[dict(start=0,end=2)],candidateLimit=4)
+    report=m.Engine(request,tmp_path/"out",tmp_path/"cache",m.Encoder("diagnostic")).run()
+    assert report["alternativeReviewComplete"] is True
+    assert report["shots"][0]["status"]=="UNRESOLVED",report
+    assert report["status"]=="PARTIAL" and "sourceStart" not in report["shots"][0]
+
+
+def test_location_priority_defers_known_alternatives_without_discarding_them(tmp_path,monkeypatch):
+    engine=m.Engine({},tmp_path/"out",tmp_path/"cache",m.Encoder("diagnostic"))
+    engine.report["sources"]=[dict(path="fixture",duration=100,fps=24)]
+    engine.report["shots"]=[dict(shotId="s",referenceStart=0,referenceEnd=1,status="VERIFIED")]
+    engine.queries=[dict(shot=0,frame=dict(image=fixture()[0],t=i/2)) for i in range(3)]
+    engine.candidates={1:[(.9,0,10)]}
+    calls=[]
+    monkeypatch.setattr(engine,"source_frames",lambda *a,**k:calls.append(a) or iter([]))
+    monkeypatch.setattr(m,"feature_points",lambda image:None)
+    engine.verify(rounds=1,prioritize_locations=True)
+    assert calls==[]
+    engine.verify(rounds=1)
+    assert len(calls)==1
+
+
 def test_repeated_endpoint_frames_do_not_assert_an_exact_start(tmp_path):
     frames=fixture()
     for i in range(13,17):frames[i]=frames[12].copy()

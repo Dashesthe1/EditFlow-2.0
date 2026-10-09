@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.1.1"
+VERSION = "source-match-v1.1.2"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -409,6 +409,7 @@ class Engine:
                            editorialAuthority="CHATGPT_DIRECT", automaticSelection=False,
                            timestampConvention="seconds from video stream start; raw integer PTS retained; end exclusive",
                            backend=encoder.backend, device=encoder.device, shots=[], sources=[], warnings=[], stages=[],
+                           alternativeReviewComplete=False,
                            boundaryAccuracy="Measured frame correspondences; no universal one-frame accuracy guarantee")
         self.out.mkdir(parents=True,exist_ok=True)
         self.cache.mkdir(parents=True,exist_ok=True)
@@ -624,18 +625,18 @@ class Engine:
             stopped.set()
             thread.join(timeout=12)
 
-    def verify(self,rounds=None,progressive=False):
+    def verify(self,rounds=None,progressive=False,prioritize_locations=False):
         # Round robin: each unlocated shot gets a candidate before alternatives.
         # Located shots have evidence already; denser passes prioritize misses.
         for round_index in range(rounds or int(self.request.get("candidateLimit",4))):
-            self._verify_round(round_index,progressive)
+            self._verify_round(round_index,progressive,prioritize_locations)
 
-    def _verify_round(self,round_index,progressive=False):
+    def _verify_round(self,round_index,progressive=False,prioritize_locations=False):
         for i,shot in enumerate(self.report["shots"]):
             # Weak early retrieval is often a different scene because the true
             # location has not been scanned yet. Defer it to the complete pass;
             # this affects scheduling only, never geometric acceptance.
-            if progressive and shot["status"] in ["VERIFIED","LOCATED"]:
+            if (progressive or prioritize_locations) and shot["status"] in ["VERIFIED","LOCATED"]:
                 continue
             qs=[(n,q) for n,q in enumerate(self.queries) if q["shot"]==i]
             if len(qs)<3:
@@ -902,9 +903,15 @@ class Engine:
                 self.progress("PASS_STARTED",mode=mode)
                 for source in range(len(self.report["sources"])):
                     self.scan(source,mode)
-                self.verify()
+                self.verify(prioritize_locations=True)
                 if all(s["status"] in ["VERIFIED","LOCATED"] for s in self.report["shots"]):
                     break
+            # Give missing shots the denser source passes before spending extra
+            # verification time on known locations. Completion still requires
+            # the requested bounded competing-location review.
+            self.progress("ALTERNATIVE_REVIEW")
+            self.verify()
+            self.report["alternativeReviewComplete"]=True
             self.report["status"]="COMPLETE" if all(s["status"]=="VERIFIED" for s in self.report["shots"]) else "PARTIAL"
         except BudgetExpired:
             self.report["status"]="CANCELLED" if (self.out/"cancel").exists() else "PARTIAL"

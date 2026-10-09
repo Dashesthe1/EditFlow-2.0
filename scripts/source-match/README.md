@@ -58,6 +58,10 @@ of production ownership, so a paused Practice assignment remains paused.
   scheduling threshold does not discard candidates or change acceptance. Decode
   and verify the middle anchor before opening endpoint decoders; reuse overlapping
   dense windows after the middle passes.
+- Prioritize missing locations through denser source passes, then perform the
+  bounded competing-location review. `alternativeReviewComplete:false` identifies
+  reports stopped by budget/cancellation before that final review finished. A
+  COMPLETE report requires the review and all measured endpoints.
 - Use GPU decoding and downscaling for candidate windows. Original integer PTS
   and time base survive the FFmpeg pipeline. Cross-check original PTS with PyAV.
 - Retrieve a sparse 8fps candidate window, then decode consecutive frames only
