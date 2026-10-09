@@ -45,6 +45,59 @@ def test_geometry_crop_grade_and_unrelated():
     assert not m.valid_geometry(m.geometry(query,np.random.default_rng(88).integers(0,255,frame.shape,dtype=np.uint8)))
 
 
+def test_distributed_pixels_verify_caption_and_composite_without_whole_image_agreement():
+    frame=fixture()[22]
+    query=frame.copy()
+    query[:100]=np.random.default_rng(200).integers(0,255,query[:100].shape,dtype=np.uint8)
+    cv2.putText(query,'EDIT CAPTION',(15,190),0,.7,(255,255,255),2)
+    g=m.geometry(query,frame)
+    assert m.valid_geometry(g),g
+    assert g['verificationMethod']=='DISTRIBUTED_VISIBLE_REGIONS',g
+    assert g['globalCorrelation']<.55 and g['regionalEvidence']['supportedFraction']>=.4
+    assert len(g['transform']['queryToSource'])==3
+    assert not m.valid_geometry(m.geometry(query,np.random.default_rng(901).integers(0,255,frame.shape,dtype=np.uint8)))
+
+
+def test_small_shared_insert_or_same_caption_does_not_certify_unrelated_picture():
+    frame=fixture()[22]
+    unrelated=np.random.default_rng(39).integers(0,255,frame.shape,dtype=np.uint8)
+    query=unrelated.copy();query[80:140,80:200]=frame[80:140,80:200]
+    assert not m.valid_geometry(m.geometry(query,frame))
+    source=frame.copy()
+    for im in [query,source]:cv2.putText(im,'COMMON TEXT',(10,170),0,1,(255,255,255),3)
+    assert not m.valid_geometry(m.geometry(query,source))
+
+
+def test_borders_resize_rotation_and_dark_picture_are_visible_not_hidden():
+    frame=fixture()[22]
+    crop=np.clip(frame[:,40:280].astype(float)*.4+5,0,255).astype(np.uint8)
+    query=np.pad(cv2.resize(crop,(300,300)),((120,120),(80,80),(0,0)))
+    cv2.putText(query,'ADDED CAPTION',(90,330),0,.65,(255,255,255),2)
+    assert m.valid_geometry(m.geometry(query,frame))
+    rotated=cv2.warpAffine(frame,cv2.getRotationMatrix2D((160,120),8,.9),(320,240))
+    assert m.valid_geometry(m.geometry(rotated,frame))
+    assert m.boundary_information(query)['kind']=='DISTRIBUTED_VISIBLE_DETAIL'
+    text=np.zeros_like(frame);cv2.putText(text,'TEXT ONLY',(30,125),0,.7,(255,255,255),2)
+    assert m.boundary_information(text)['kind']=='INSUFFICIENT_DISTRIBUTED_DETAIL'
+    assert not m.valid_geometry(m.geometry(text,frame))
+
+
+def test_encoded_overlaid_endpoints_return_known_original_pts(tmp_path):
+    frames=fixture();source=tmp_path/'source.mp4';ref=tmp_path/'overlay.mp4'
+    encode(source,frames)
+    selected=[f.copy() for f in frames[12:36]]
+    for i,im in enumerate(selected):
+        im[:95]=np.random.default_rng(500+i).integers(0,255,im[:95].shape,dtype=np.uint8)
+        cv2.putText(im,'NEW TEXT',(20,200),0,.7,(255,255,255),2)
+    encode(ref,selected)
+    request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=4)
+    report=m.Engine(request,tmp_path/'out',tmp_path/'cache',m.Encoder('diagnostic')).run()
+    shot=report['shots'][0]
+    assert shot['status']=='VERIFIED',report
+    assert shot['sourceStart']==1 and shot['sourceEndExclusive']==3,shot
+    assert any(a['geometry']['verificationMethod']=='DISTRIBUTED_VISIBLE_REGIONS' for a in shot['anchors'])
+
+
 def test_dark_and_flashed_detail_can_be_measured_without_accepting_flat_or_unrelated_images():
     frame=fixture()[22]
     for gain,offset in [(.18,4),(.18,205)]:
@@ -183,18 +236,19 @@ def test_refinement_rejects_stale_or_tampered_parent(tmp_path):
         with pytest.raises(ValueError,match="INPUT_CHANGED" if stale else "REPORT_CHANGED"):engine.restore()
 
 
-def test_explicit_refinement_can_locate_other_moments_when_middle_is_occluded(tmp_path):
+def test_occluded_interior_does_not_block_measured_endpoints_or_refinement(tmp_path):
     frames=fixture();source=tmp_path/"source.mp4";ref=tmp_path/"ref.mp4"
     encode(source,frames);images=[f.copy() for f in frames[12:36]];images[12][:]=0;encode(ref,images)
     request=dict(referencePath=str(ref),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=2)
     parent=m.Engine(request,tmp_path/"parent",tmp_path/"cache",m.Encoder("diagnostic")).run()
-    assert parent["shots"][0]["status"]=="UNRESOLVED"
+    assert parent["shots"][0]["status"]=="VERIFIED"
+    assert parent['shots'][0]['sourceStart']==1 and parent['shots'][0]['sourceEndExclusive']==3
     retained=json.dumps(parent).encode();out=tmp_path/"refined";out.mkdir();(out/"resume-report.json").write_bytes(retained)
     request["refinement"]=dict(parentJobId="parent",shotIds=["shot-001"],reportSha256=hashlib.sha256(retained).hexdigest(),
       windows=[dict(shotId="shot-001",sourceIndex=0,start=.5,end=3.5)])
     result=m.Engine(request,out,tmp_path/"cache",m.Encoder("diagnostic")).run();shot=result["shots"][0]
-    assert shot["status"]=="LOCATED",result
-    assert len(shot["anchors"])>=3 and "sourceStart" not in shot
+    assert shot["status"]=="VERIFIED",result
+    assert len(shot["anchors"])>=3 and shot['sourceStart']==1 and shot['sourceEndExclusive']==3
     assert shot["candidateChecks"][-1]["retrievalScore"] is None
     assert shot["candidateChecks"][-1]["proposalOrigin"]=="RETAINED_LOCATION_OR_GPT_WINDOW"
 

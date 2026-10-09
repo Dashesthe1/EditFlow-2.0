@@ -37,11 +37,12 @@ Requested difficult-shot refinement can inspect other moments after a weak or
 occluded middle. At least three measured moments must still form a valid path;
 missing endpoints never become an asserted full-shot range.
 
-The latest v1.4.0 Ultron continuation has located all 21 visually partitioned shots,
+The retained v1.4.0 Ultron continuation has located all 21 visually partitioned shots,
 with twelve verified full ranges and nine interior-only locations. The flashed
 church endpoint is now measured. Its report remains PARTIAL and cannot start the
-exact-range assembly. Eight black/text-only boundaries and a composite endpoint
-still need original-project evidence; their rendered pixels do not establish
+exact-range assembly. Eight black/text-only boundaries still need additional trim evidence. The
+composite endpoint is a visible-detail verification target for v1.5, rather than
+a blanket original-project requirement. Truly hidden pixels do not establish
 the hidden original trim. See [BENCHMARK.md](BENCHMARK.md) for the
 retained jobs, measured timings and limits of the validation.
 
@@ -49,6 +50,29 @@ Practice resume includes `sourceMatch.retained`, `sourceAssembly.retained` and
 the appropriate next operation. Prepared media remains READY; ASSEMBLED requires
 successful queue receipts for every batch. Requesting a previously submitted
 ASSEMBLY_PLAN returns its retained job receipt, preventing accidental replay.
+
+## Transformed picture verification (v1.5)
+
+Size, borders and added text do not imply a different source shot. SIFT/RANSAC
+fits an explicit crop/resize/rotation map. Ordinary copies retain whole aligned
+image checks. When a caption or composite disrupts that check, partial-copy
+verification requires stronger keypoint evidence (20 inliers, 20% spatial coverage,
+50% inlier fraction) and at least ten textured regions on a fixed 6×6 lattice.
+At least 40% of the entire active reference image must correlate at 0.72 or above,
+across at least three rows and columns. A tiny common insert or shared text cannot
+satisfy these checks. The report records the measured matrix, global correlation,
+regional support and `correspondenceEvidencePath` for direct inspection. Both
+scales use their recorded image dimensions in the aligned evidence picture.
+
+Three existing pixel correspondences may propose a narrow search for a missing
+sample. Predicted times never enter the report as anchors: the decoded frame
+must independently pass correspondence and endpoint ambiguity checks. An obscured
+interior sample can be omitted when at least three visible moments, including
+the actual first and last reference frames, establish a valid temporal path.
+Fully hidden first/last frames still cannot certify original trims. Boundary
+information describes spatial detail instead of using brightness as a proxy.
+Original integer PTS, competing-copy review and direct GPT review remain required
+before Source Assembly. Source recognition and exact full-shot trims are separate.
 
 ## Post-verification AE assembly
 

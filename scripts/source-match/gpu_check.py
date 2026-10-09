@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import cv2
 
 import engine as m
 from test_engine import encode, fixture
@@ -24,8 +25,19 @@ def main():
         "faded":([np.zeros_like(frames[12])]+frames[13:35]+[np.zeros_like(frames[35])],"LOCATED"),
         "dark-endpoint":([np.clip(frames[12].astype(float)*.18+4,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
         "flash-endpoint":([np.clip(frames[12].astype(float)*.18+205,0,255).astype(np.uint8)]+frames[13:36],"VERIFIED"),
+        "hidden-interior":(frames[12:24]+[np.zeros_like(frames[24])]+frames[25:36],"VERIFIED"),
         "unrelated":([np.full_like(f,130) for f in frames[:24]],"UNRESOLVED"),
     }
+    overlays=[]
+    for i,f in enumerate(frames[12:36]):
+        im=f.copy();im[:95]=np.random.default_rng(500+i).integers(0,255,im[:95].shape,dtype=np.uint8)
+        cv2.putText(im,'NEW TEXT',(20,200),0,.7,(255,255,255),2);overlays.append(im)
+    cases['overlay-composite']=(overlays,'VERIFIED')
+    bordered=[]
+    for f in frames[12:36]:
+        im=np.pad(f[:,40:280],((80,80),(30,30),(0,0)))
+        cv2.putText(im,'EDIT TEXT',(40,275),0,.7,(255,255,255),2);bordered.append(im)
+    cases['border-caption']=(bordered,'VERIFIED')
     results=[]
     for name,(images,expected) in cases.items():
         ref=out/(name+".mp4");encode(ref,images)

@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.4.0"
+VERSION = "source-match-v1.5.0"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -286,6 +286,18 @@ def feature_points(im):
     return a,keypoints,descriptors
 
 
+def boundary_information(im):
+    """Describe retained spatial detail; brightness alone is not visibility."""
+    gray,points,descriptors=feature_points(im)
+    coordinates=np.float32([p.pt for p in points])
+    coverage=float(cv2.contourArea(cv2.convexHull(coordinates))/(gray.shape[0]*gray.shape[1])) if len(points)>=3 else 0.
+    cells={(min(5,int(p.pt[0]*6/gray.shape[1])),min(5,int(p.pt[1]*6/gray.shape[0]))) for p in points}
+    distributed=len(points)>=12 and coverage>=.12 and len(cells)>=6 and len({y for x,y in cells})>=2
+    return dict(kind="DISTRIBUTED_VISIBLE_DETAIL" if distributed else "INSUFFICIENT_DISTRIBUTED_DETAIL",
+                featureCount=len(points),featureCoverage=coverage,occupiedCells=len(cells),
+                note="Text or overlays may remain; actual source correspondence, not brightness, establishes identity.")
+
+
 def geometry(query_im, source_im, query_features=None, source_features=None):
     a,ka,da = query_features if query_features is not None else feature_points(query_im)
     b,kb,db = source_features if source_features is not None else feature_points(source_im)
@@ -305,18 +317,88 @@ def geometry(query_im, source_im, query_features=None, source_features=None):
     area = cv2.contourArea(cv2.convexHull(pa[keep])) if inliers>=3 else 0.
     coverage = float(area / (a.shape[0]*a.shape[1]))
     fraction = inliers / len(good)
-    warped = cv2.warpPerspective(b, np.linalg.inv(matrix), (a.shape[1],a.shape[0]))
+    # A crop/resize/rotation must describe a finite, non-folding image map.
+    # RANSAC alone can produce a degenerate map from repeated text/texture.
+    corners=np.float32([[0,0],[a.shape[1],0],[a.shape[1],a.shape[0]],[0,a.shape[0]]])
+    projected=cv2.perspectiveTransform(corners[None],matrix)[0]
+    denominators=np.c_[corners,np.ones(4)]@matrix[2]
+    if (not np.isfinite(projected).all() or np.any(np.abs(denominators)<1e-8)
+            or np.any(denominators*denominators[0]<=0) or not cv2.isContourConvex(projected)
+            or abs(cv2.contourArea(projected))<16):
+        return dict(inliers=0,coverage=0.,fraction=0.,score=0.,reason="DEGENERATE_TRANSFORM")
+    inverse=np.linalg.inv(matrix)
+    warped = cv2.warpPerspective(b, inverse, (a.shape[1],a.shape[0]))
     mask = cv2.warpPerspective(np.ones(b.shape,np.uint8), np.linalg.inv(matrix), (a.shape[1],a.shape[0])) > 0
     va,vb = a[mask].astype(float),warped[mask].astype(float)
     correlation = float(np.corrcoef(va,vb)[0,1]) if len(va)>32 and va.std()>1 and vb.std()>1 else 0.
     if not math.isfinite(correlation):
         correlation=0.
+    global_correlation=correlation
+    regional=None
+    # Captions, masks and composites contaminate whole-image correlation.
+    # Test a fixed lattice, rather than hiding arbitrary disagreeing pixels.
+    # Each witness is an independently textured, aligned pixel region. Require
+    # broad spatial support and stronger keypoint evidence for partial copies.
+    if correlation<.55 and inliers>=20 and coverage>=.2 and fraction>=.5:
+        regions=[];support=np.zeros(a.shape,np.uint8)
+        for row in range(6):
+            for col in range(6):
+                x0,x1=round(col*a.shape[1]/6),round((col+1)*a.shape[1]/6)
+                y0,y1=round(row*a.shape[0]/6),round((row+1)*a.shape[0]/6)
+                valid=mask[y0:y1,x0:x1]
+                if valid.mean()<.95:continue
+                left=a[y0:y1,x0:x1][valid].astype(float)
+                right=warped[y0:y1,x0:x1][valid].astype(float)
+                if len(left)<64 or left.std()<4 or right.std()<4:continue
+                value=float(np.corrcoef(left,right)[0,1])
+                if math.isfinite(value) and value>=.72:
+                    regions.append(dict(rect=[x0,y0,x1,y1],correlation=value))
+                    support[y0:y1,x0:x1]=valid
+        supported=float(support.mean())
+        rows={r['rect'][1] for r in regions};cols={r['rect'][0] for r in regions}
+        regional=dict(supportedFraction=supported,regions=regions,
+                      passed=supported>=.4 and len(regions)>=10 and len(rows)>=3 and len(cols)>=3)
+        if regional['passed']:
+            correlation=max(correlation,float(np.median([r['correlation'] for r in regions])))
+    partial=global_correlation<.55 and bool(regional and regional['passed'])
     return dict(inliers=inliers, coverage=coverage, fraction=fraction,
-                correlation=correlation, score=float(min(inliers,80) * min(1.,coverage/.25) * fraction * max(0,correlation)**6))
+                correlation=correlation, globalCorrelation=global_correlation,
+                verificationMethod="DISTRIBUTED_VISIBLE_REGIONS" if partial else "ALIGNED_IMAGE",
+                regionalEvidence=regional,
+                transform=dict(queryToSource=matrix.tolist(),querySize=[a.shape[1],a.shape[0]],
+                               sourceSize=[b.shape[1],b.shape[0]],coordinateSpace="TRIMMED_IMAGE_PIXELS"),
+                score=float(min(inliers,80) * min(1.,coverage/.25) * fraction * max(0,correlation)**6
+                            * (regional['supportedFraction'] if partial else 1)))
 
 
 def valid_geometry(g):
-    return g["inliers"] >= 12 and g["coverage"] >= .12 and g["fraction"] >= .5 and g.get("correlation",1) >= .55
+    valid=g["inliers"] >= 12 and g["coverage"] >= .12 and g["fraction"] >= .5 and g.get("correlation",1) >= .55
+    if g.get('verificationMethod')=='DISTRIBUTED_VISIBLE_REGIONS':
+        return valid and g['inliers']>=20 and g['coverage']>=.2 and bool(g.get('regionalEvidence',{}).get('passed'))
+    return valid
+
+
+def correspondence_picture(query, source, g, file):
+    """Reviewable aligned pixels and distributed witnesses, never a cleaned image."""
+    transform=g.get('transform')
+    if not transform:return
+    a=trim_bars(query);b=trim_bars(source)
+    a=cv2.resize(a,tuple(transform['querySize']))
+    b=cv2.resize(b,tuple(transform['sourceSize']))
+    matrix=np.array(transform['queryToSource'])
+    aligned=cv2.warpPerspective(b,np.linalg.inv(matrix),(a.shape[1],a.shape[0]))
+    witnesses=a.copy()
+    for region in (g.get('regionalEvidence') or {}).get('regions',[]):
+        x0,y0,x1,y1=region['rect']
+        cv2.rectangle(witnesses,(x0,y0),(x1-1,y1-1),(30,255,30),max(1,a.shape[1]//300))
+    columns=[]
+    for title,im in [('Reference + pixel witnesses',witnesses),('Original source aligned by measured map',aligned)]:
+        scale=min(480/im.shape[1],560/im.shape[0]);im=cv2.resize(im,(round(im.shape[1]*scale),round(im.shape[0]*scale)))
+        column=np.zeros((600,500,3),np.uint8)
+        column[32:32+im.shape[0],:im.shape[1]]=im
+        cv2.putText(column,title,(4,20),0,.45,(255,255,255),1)
+        columns.append(column)
+    cv2.imwrite(str(file),cv2.cvtColor(np.concatenate(columns,axis=1),cv2.COLOR_RGB2BGR))
 
 
 def temporal_alignment(anchors, frame_seconds):
@@ -572,7 +654,7 @@ class Engine:
         for f in decode(file,size=self.verification_size,check=self.check):
             if round(f["t"],6) in target:
                 i,t=target[round(f["t"],6)]
-                self.queries.append(dict(shot=i,frame=f))
+                self.queries.append(dict(shot=i,frame=f,information=boundary_information(f['image'])))
         for i,shot in enumerate(self.report['shots']):
             qs=[q['frame'] for q in self.queries if q['shot']==i]
             if qs:
@@ -580,7 +662,7 @@ class Engine:
                 for label,f in [('first',qs[0]),('last',qs[-1])]:
                     file=self.out/f"{shot['shotId']}-boundary-{label}-reference.jpg"
                     cv2.imwrite(str(file),cv2.cvtColor(f['image'],cv2.COLOR_RGB2BGR))
-                    evidence.append(dict(endpoint=label,referenceTime=f['t'],referencePts=f['pts'],referenceTimeBase=f['timeBase'],referenceEvidencePath=str(file)))
+                    evidence.append(dict(endpoint=label,referenceTime=f['t'],referencePts=f['pts'],referenceTimeBase=f['timeBase'],referenceEvidencePath=str(file),information=boundary_information(f['image'])))
                 self.boundary_evidence[shot['shotId']]=evidence
                 shot['boundaryEvidence']=evidence
         if not self.queries:
@@ -770,6 +852,9 @@ class Engine:
             if len(qs)<3:
                 continue
             middle=qs[len(qs)//2][0]
+            if self.queries[middle].get('information',{}).get('kind')=='INSUFFICIENT_DISTRIBUTED_DETAIL':
+                visible=[n for n,q in qs if q.get('information',{}).get('kind')=='DISTRIBUTED_VISIBLE_DETAIL']
+                if visible:middle=min(visible,key=lambda n:abs(n-middle))
             width=min(30,max(4,(shot["referenceEnd"]-shot["referenceStart"])*3))
             checked=self.checked_windows.setdefault(i,[])
             locations=[]
@@ -890,6 +975,19 @@ class Engine:
                     self.check()
                     if n!=middle and len(anchor_options)==1:
                         load_dense([t for key,near in neighborhoods.items() if key!=middle for t in near])
+                    measured=sorted([a for a in anchors if valid_geometry(a['geometry'])],key=lambda a:a['referenceTime'])
+                    traversal=temporal_alignment(measured,1/meta['fps'])
+                    if traversal and traversal['kind']=='AFFINE':
+                        # Existing pixel anchors can propose a narrow missing
+                        # search window. The predicted time is never evidence:
+                        # only an independently verified decoded frame enters
+                        # anchor_options, with all ambiguity checks retained.
+                        x=np.array([a['referenceTime'] for a in measured]);y=np.array([a['sourceTime'] for a in measured])
+                        if x[0]-1<=q['frame']['t']<=x[-1]+1:
+                            slope,offset=np.polyfit(x-x[0],y,1)
+                            predicted=float((q['frame']['t']-x[0])*slope+offset)
+                            if 0<=predicted<meta['duration'] and all(abs(predicted-t)>.1 for t in neighborhoods[n]):
+                                neighborhoods[n].append(predicted);load_dense([predicted])
                     best=[]
                     for near in neighborhoods[n]:
                         for f in frames:
@@ -970,11 +1068,20 @@ class Engine:
                             visible_choices=[anchor_options[n] for n,q in qs if anchor_options.get(n)]
                             path=consistent_path(visible_choices,1/meta["fps"])
                             if path:anchors,alignment=path
+                # An obscured interior sample does not erase directly measured
+                # endpoints. At least three visible moments, both actual first/
+                # last frames, monotone traversal and uniqueness remain required.
+                if alignment and not complete and not diagnostics:
+                    present={a['queryIndex'] for a in anchors}
+                    if qs[0][0] in present and qs[-1][0] in present:
+                        high_endpoint=max(anchors,key=lambda a:a['sourceTime'])
+                        complete=(high_endpoint['sourceFrameDurationVerified']
+                                  and all(endpoint_identity(anchor_options.get(a['queryIndex'],[]),a,1/meta['fps']) for a in (anchors[0],anchors[-1])))
                 for n,q in (qs[0],qs[-1]):
                     if not any(a["queryIndex"]==n for a in anchors) or not valid_geometry(next((a["geometry"] for a in anchors if a["queryIndex"]==n),{})):
                         im=q["frame"]["image"]
-                        low_information=float(np.mean(np.max(im,axis=2)>24))<.02
-                        diagnostics.append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if low_information else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE"))
+                        information=boundary_information(im)
+                        diagnostics.append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if information['kind']=='INSUFFICIENT_DISTRIBUTED_DETAIL' else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE",information=information))
                 shot.setdefault("candidateChecks",[]).append(dict(sourceIndex=source,candidateTime=t,retrievalScore=None if explicit else score,
                     proposalOrigin="RETAINED_LOCATION_OR_GPT_WINDOW" if explicit else "SSCD_QUERY",
                     passed=alignment is not None,anchors=[{k:a[k] for k in ["referenceTime","sourceTime","geometry"]} for a in anchors]))
@@ -1035,8 +1142,8 @@ class Engine:
             if not best["complete"] and not shot["boundaryDiagnostics"]:
                 for n,q in (qs[0],qs[-1]):
                     if not any(a["queryIndex"]==n for a in anchors):
-                        low_information=float(np.mean(np.max(q["frame"]["image"],axis=2)>24))<.02
-                        shot["boundaryDiagnostics"].append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if low_information else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE"))
+                        information=boundary_information(q['frame']['image'])
+                        shot["boundaryDiagnostics"].append(dict(referenceTime=q["frame"]["t"],reason="LOW_INFORMATION_REFERENCE_BOUNDARY" if information['kind']=='INSUFFICIENT_DISTRIBUTED_DETAIL' else "NO_CONFIRMED_ENDPOINT_CORRESPONDENCE",information=information))
             if best["complete"]:
                 shot.pop("sourceLocationWindow",None)
                 shot.update(sourceStart=low["sourceTime"],sourceEndExclusive=high["sourceTime"]+high["sourceFrameDuration"],boundaryStatus="MEASURED_ENDPOINT_CORRESPONDENCES")
@@ -1062,6 +1169,10 @@ class Engine:
                     cv2.imwrite(str(refpath),cv2.cvtColor(q["image"],cv2.COLOR_RGB2BGR))
                     cv2.imwrite(str(srcpath),cv2.cvtColor(source[0]["image"],cv2.COLOR_RGB2BGR))
                     a.update(referenceEvidencePath=str(refpath),sourceEvidencePath=str(srcpath))
+                    if a['geometry'].get('transform'):
+                        proof=self.out/f"{shot['shotId']}-query-{a['queryIndex']}-source-{best['source']}-pts-{a['sourcePts']}-correspondence.jpg"
+                        correspondence_picture(q['image'],source[0]['image'],a['geometry'],proof)
+                        a['correspondenceEvidencePath']=str(proof)
             self.progress("MATCH_EVIDENCE",shotId=shot["shotId"],status=shot["status"],sourceStart=shot.get("sourceStart"),sourceEndExclusive=shot.get("sourceEndExclusive"))
             self.save()
 

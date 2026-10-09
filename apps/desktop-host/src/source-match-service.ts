@@ -5,12 +5,12 @@ import path from "node:path";
 
 export const SOURCE_MATCH_CONTRACT_V1 = {
   schema: "editflow.source-match-contract.v1", version: "1.2.0",
-  engineVersion: "1.4.0",
+  engineVersion: "1.5.0",
   endpoint: "/v1/product/source-match", actions: ["SUBMIT", "REFINE", "IMPORT_TIMELINE", "STATUS", "CANCEL"],
   authority: "CHATGPT_DIRECT", automaticSelection: false, aeWrites: false,
   instructions: "Submit {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]} once. Times are seconds. Poll jobId. Inspect report anchors and evidence; machine VERIFIED is geometric/temporal evidence, never editorial acceptance. LOCATED confirms interior source frames while full-shot endpoints remain unresolved. Use existing GPT BROWSE/SELECT for assignment acceptance. Shot detection is advisory; explicit shot ranges override it. Budget expiry returns PARTIAL/unresolved results, never invented exact timestamps. Service may run while production is paused without claiming or resuming an assignment.",
   firstRunTargetSeconds: 480, targetMeasured: false, exactBoundaryGuaranteed: false,
-  refinement: "REFINE {requestId,jobId,shotIds?:[...],windows?:[{shotId,sourceIndex,start,end}],budgetSeconds:480}. Retains other shots and their evidence in a new job; validates unchanged inputs and boundaries. Known locations are rechecked at higher resolution. Unlocated shots reuse cached global descriptors. Exact black/occluded endpoint identity can remain unresolved; never extrapolate it.",
+  refinement: "REFINE {requestId,jobId,shotIds?:[...],windows?:[{shotId,sourceIndex,start,end}],budgetSeconds:480}. Retains other shots and their evidence in a new job; validates unchanged inputs and boundaries. Known locations are rechecked at higher resolution with crop/resize/rotation maps and distributed pixel-region verification for text/overlays/composites. Retain transform, supported regions and aligned evidence; visible altered footage is not classified as hidden solely because size, borders or text differ. Unlocated shots reuse cached global descriptors. Only absent/insufficient picture detail or ambiguous identity leaves exact endpoints unresolved; never extrapolate them.",
   originalTimeline: "IMPORT_TIMELINE {requestId,jobId,timelinePath,budgetSeconds:480}. Read a canonical editflow.original-timeline-frame-map.v1 export from the actual original edit project. Requires hashed original project provenance, matching media fingerprints, integer PTS for every reference frame and agreement with at least three retained pixel anchors per shot. Metadata boundaries stay explicitly distinguished from pixel endpoint matches. Never fabricate an original export or substitute an inferred frame map.",
 } as const;
 

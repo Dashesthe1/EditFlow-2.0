@@ -95,8 +95,15 @@ job instead of launching another movie search. REFINE creates a new durable job
 from a retained report, preserves all other shots and evidence, validates the
 same inputs/cuts and rechecks known locations at higher resolution. Explicit
 windows may narrow selected targets; global descriptor caches serve unlocated
-shots. Low-information black/text-only boundaries and ambiguous static frames
-remain unresolved. Do not extrapolate or certify invisible source endpoints.
+shots. Crop, resize, rotation, borders, captions, grading and partial composites
+are explained by measured image transforms and distributed visible pixel regions.
+Inspect saved correspondenceEvidencePath and geometry transform/regionalEvidence;
+size or added text alone is never a reason to declare source detail hidden.
+An obscured interior sample need not block independently measured first/last frames
+when at least three visible moments establish traversal and endpoint uniqueness.
+Low-information black/text-only boundaries and ambiguous static frames remain
+unresolved. Search predictions are proposals, never certified endpoint evidence.
+Do not extrapolate or certify invisible source endpoints.
 
 IMPORT_TIMELINE can validate a canonical editflow.original-timeline-frame-map.v1
 export from the actual original edit project. Require hashed project provenance,
