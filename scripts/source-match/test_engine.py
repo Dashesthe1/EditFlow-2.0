@@ -45,6 +45,42 @@ def test_geometry_crop_grade_and_unrelated():
     assert not m.valid_geometry(m.geometry(query,np.random.default_rng(88).integers(0,255,frame.shape,dtype=np.uint8)))
 
 
+def test_orb_is_an_independent_stricter_route_with_pixel_verification():
+    frame=fixture()[22];query=np.clip(frame[:,60:260].astype(float)*.8+25,0,255).astype(np.uint8)
+    g=m.geometry(query,frame,m.feature_points(query,'ORB'),m.feature_points(frame,'ORB'))
+    assert g['descriptorMethod']=='ORB' and m.valid_geometry(g),g
+    unrelated=np.random.default_rng(44).integers(0,255,frame.shape,dtype=np.uint8)
+    assert not m.valid_geometry(m.geometry(query,unrelated,m.feature_points(query,'ORB'),m.feature_points(unrelated,'ORB')))
+    assert not m.valid_geometry(dict(inliers=23,coverage=.5,fraction=.9,correlation=.9,descriptorMethod='ORB'))
+
+
+def test_independent_gradients_and_changes_reject_static_text_and_wrong_motion():
+    frame=fixture()[22];g=m.geometry(frame,frame);left,right,mask=m.aligned_gray(frame,frame,g)
+    assert m.pixel_change_witnesses(left,right,mask,gradients=True)['passed']
+    assert not m.pixel_change_witnesses(np.zeros_like(left),np.zeros_like(right),mask)['passed']
+    rng=np.random.default_rng(8);change=rng.normal(0,20,left.shape).astype(np.float32)
+    assert m.pixel_change_witnesses(change,change,mask)['passed']
+    assert not m.pixel_change_witnesses(change,rng.normal(0,20,left.shape).astype(np.float32),mask)['passed']
+    only_caption=np.zeros_like(left);only_caption[140:170,80:240]=30
+    assert not m.pixel_change_witnesses(only_caption,only_caption,mask)['passed']
+
+
+def test_boundary_bursts_confirm_origin_without_filling_black_trim(tmp_path):
+    frames=fixture();source=tmp_path/'source.mp4';reference=tmp_path/'reference.mp4'
+    encode(source,frames);edit=[f.copy() for f in frames[12:36]];edit[0][:]=0;encode(reference,edit)
+    request=dict(referencePath=str(reference),sourcePaths=[str(source)],shots=[dict(start=0,end=2)],budgetSeconds=120,candidateLimit=4)
+    report=m.Engine(request,tmp_path/'out',tmp_path/'cache',m.Encoder('diagnostic')).run();shot=report['shots'][0]
+    assert shot['status']=='LOCATED' and 'sourceStart' not in shot,shot
+    assert min(a['referenceTime'] for a in shot['anchors'])==1/12,shot
+    assert min(a['sourceTime'] for a in shot['anchors'])==13/12,shot
+    origin=report['originVerifications']['shot-001']
+    assert origin['status']=='CONFIRMED',origin
+    assert origin['gradientPassCount']>=3 and origin['temporalChangePassCount']>=1
+    assert origin['scope']=='MOVIE_SECTION_ORIGIN_ONLY' and origin['exactTrimStatus']=='UNRESOLVED'
+    assert origin['measuredSourceSection']['start']==13/12
+    assert (tmp_path/'out'/'shot-001-origin-evidence.json').exists()
+
+
 def test_distributed_pixels_verify_caption_and_composite_without_whole_image_agreement():
     frame=fixture()[22]
     query=frame.copy()

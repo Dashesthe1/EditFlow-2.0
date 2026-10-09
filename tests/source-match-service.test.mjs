@@ -81,6 +81,19 @@ test("interrupted receipts survive service restart without replay",async t=>{
   assert.equal((await service.status()).activeJobId,null);
 });
 
+test("corroborated movie origin remains separate from unresolved exact trims",async t=>{
+  const {service,request}=await fixture(t);const initial=await service.submit(request);
+  const prior=await finished(service,initial.job.jobId);
+  const origin={status:'CONFIRMED',scope:'MOVIE_SECTION_ORIGIN_ONLY',independentFrameCount:6,gradientPassCount:5,temporalChangePassCount:2,evidencePath:'proof.json',frames:[{large:'full evidence'}]};
+  await writeFile(path.join(prior.job.outputDir,'report.json'),JSON.stringify({status:'PARTIAL',shots:[{shotId:'shot-001',status:'LOCATED'}],originVerifications:{'shot-001':origin}}));
+  const result=await service.status(initial.job.jobId);
+  assert.equal(result.nextAction,'REFINE_OR_INSPECT_UNRESOLVED_SHOTS');
+  assert.equal(result.remaining[0].status,'LOCATED');
+  assert.equal(result.remaining[0].originVerification.status,'CONFIRMED');
+  assert.equal(result.remaining[0].originVerification.frames,undefined);
+  assert.doesNotMatch(result.remaining[0].requiredEvidence,/original.project/i);
+});
+
 test("refinement retains its parent, targets, evidence and assignment across restart",async t=>{
   const {service,config,request}=await fixture(t);
   const assignmentId="gpt-assignment:00000000-0000-0000-0000-000000000001";

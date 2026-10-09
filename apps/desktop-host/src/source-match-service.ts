@@ -4,14 +4,15 @@ import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 
 export const SOURCE_MATCH_CONTRACT_V1 = {
-  schema: "editflow.source-match-contract.v1", version: "1.2.0",
-  engineVersion: "1.5.1",
+  schema: "editflow.source-match-contract.v1", version: "1.3.0",
+  engineVersion: "1.6.0",
   endpoint: "/v1/product/source-match", actions: ["SUBMIT", "REFINE", "IMPORT_TIMELINE", "STATUS", "CANCEL"],
   authority: "CHATGPT_DIRECT", automaticSelection: false, aeWrites: false,
   instructions: "Submit {requestId,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]} once. Times are seconds. Poll jobId. Inspect report anchors and evidence; machine VERIFIED is geometric/temporal evidence, never editorial acceptance. LOCATED confirms interior source frames while full-shot endpoints remain unresolved. Use existing GPT BROWSE/SELECT for assignment acceptance. Shot detection is advisory; explicit shot ranges override it. Budget expiry returns PARTIAL/unresolved results, never invented exact timestamps. Service may run while production is paused without claiming or resuming an assignment.",
   firstRunTargetSeconds: 480, targetMeasured: false, exactBoundaryGuaranteed: false,
   refinement: "REFINE {requestId,jobId,shotIds?:[...],windows?:[{shotId,sourceIndex,start,end}],budgetSeconds:480}. Retains other shots and their evidence in a new job; validates unchanged inputs and boundaries. Known locations are rechecked at higher resolution with crop/resize/rotation maps and distributed pixel-region verification for text/overlays/composites. Retain transform, supported regions and aligned evidence; visible altered footage is not classified as hidden solely because size, borders or text differ. Unlocated shots reuse cached global descriptors. Only absent/insufficient picture detail or ambiguous identity leaves exact endpoints unresolved; never extrapolate them.",
   originalTimeline: "IMPORT_TIMELINE {requestId,jobId,timelinePath,budgetSeconds:480}. Read a canonical editflow.original-timeline-frame-map.v1 export from the actual original edit project. Requires hashed original project provenance, matching media fingerprints, integer PTS for every reference frame and agreement with at least three retained pixel anchors per shot. Metadata boundaries stay explicitly distinguished from pixel endpoint matches. Never fabricate an original export or substitute an inferred frame map.",
+  originVerification: "Original author projects are not required to verify movie-section origin. Adaptive boundary bursts, SIFT and stricter ORB fallback measure visible frame maps. originVerifications independently rechecks those maps with spatial gradients and signed changing pixels across frames; static text/backgrounds cannot pass motion-energy checks. CONFIRMED requires three fresh frame maps, three gradient witnesses, a passing temporal-change witness and completed competing-location review. Movie-section origin is separate from exact trim status: hidden endpoints are never filled from predictions. Inspect per-shot origin-evidence.json and originSummary alongside exact-range summary.",
 } as const;
 
 export interface SourceMatchServiceConfigV1 {
@@ -70,7 +71,8 @@ export class SourceMatchServiceV1 {
     }
     const report=await optionalJson(path.join(dir,"report.json"));
     const remaining=report?.shots?.filter((s:any)=>s.status!=="VERIFIED").map((s:any)=>({shotId:s.shotId,status:s.status,reason:s.reason,boundaryDiagnostics:s.boundaryDiagnostics,boundaryEvidence:s.boundaryEvidence,
-      requiredEvidence:s.status==="LOCATED"?"Visible endpoint correspondences, or an actual original-project frame map consistent with retained pixels":"At least three measured source/reference anchors first"}));
+      originVerification:report?.originVerifications?.[s.shotId] ? Object.fromEntries(["status","scope","methods","independentFrameCount","gradientPassCount","temporalChangePassCount","competingLocationReviewComplete","referenceCoverage","measuredSourceSection","exactTrimStatus","evidencePath"].map(k=>[k,report.originVerifications[s.shotId][k]])) : undefined,
+      requiredEvidence:s.status==="LOCATED"?"Inspect independent origin checks and denser visible boundary moments; exact trims require measured endpoint correspondence":"Verify at least three visible frames using feature maps, gradients and temporal changes"}));
     return { job, progress: await optionalJson(path.join(dir,"progress.json")), report, csvPath: path.join(dir,"timestamps.csv"),
       nextAction:job.status==="RUNNING"?"POLL_RETAINED_JOB":report?.status==="COMPLETE"?"GPT_REVIEW_THEN_PREPARE_ASSEMBLY":"REFINE_OR_INSPECT_UNRESOLVED_SHOTS",remaining };
   }
@@ -83,7 +85,7 @@ export class SourceMatchServiceV1 {
     if(!latest)return null;
     const result=await this.status(latest.jobId);
     if(!result.job)throw new Error("SOURCE_MATCH_JOB_NOT_FOUND");
-    return {job:result.job,summary:result.report?.summary,remaining:result.remaining,csvPath:result.csvPath,nextAction:result.nextAction};
+    return {job:result.job,summary:result.report?.summary,originSummary:result.report?.originSummary,remaining:result.remaining,csvPath:result.csvPath,nextAction:result.nextAction};
   }
   refine(body:Record<string,unknown>):Promise<unknown> {
     const result=this.#tail.catch(()=>undefined).then(async()=>{

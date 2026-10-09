@@ -47,13 +47,13 @@ def main():
                      shots=[dict(start=0,end=2)],candidateLimit=4)
         report=m.Engine(request,out/name,out/"cache",encoder).run();shot=report["shots"][0]
         result=dict(case=name,status=shot["status"],expected=expected,elapsed=report["elapsedSeconds"],
-                    start=shot.get("sourceStart"),end=shot.get("sourceEndExclusive"))
+                    start=shot.get("sourceStart"),end=shot.get("sourceEndExclusive"),originStatus=report.get('originVerifications',{}).get(shot['shotId'],{}).get('status'))
         if expected=="VERIFIED":
             result["knownEndpointErrorFrames"]=max(abs(shot.get("sourceStart",-100)-1),abs(shot.get("sourceEndExclusive",-100)-3))*12
         results.append(result);print(json.dumps(result),flush=True)
     m.atomic_json(out/"results.json",dict(engine=m.VERSION,engineSha256=m.ENGINE_SHA256,
                   device=encoder.torch.cuda.get_device_name(),scope="Small 12fps encoded fixtures; not real-file accuracy or throughput",results=results))
-    if any(r["status"]!=r["expected"] or r.get("knownEndpointErrorFrames",0)>1 for r in results):
+    if any(r["status"]!=r["expected"] or r.get("knownEndpointErrorFrames",0)>1 for r in results) or next(r for r in results if r['case']=='faded')['originStatus']!='CONFIRMED':
         raise RuntimeError("GPU quality checks failed; inspect results.json and frame evidence")
     print("GPU QUALITY PASS",flush=True)
 

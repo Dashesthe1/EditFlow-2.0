@@ -101,6 +101,14 @@ Inspect saved correspondenceEvidencePath and geometry transform/regionalEvidence
 size or added text alone is never a reason to declare source detail hidden.
 An obscured interior sample need not block independently measured first/last frames
 when at least three visible moments establish traversal and endpoint uniqueness.
+Adaptive boundary bursts inspect additional actual reference frames near obscured
+endpoints. SIFT and a stricter ORB fallback both require measured geometry and
+aligned pixel agreement. Inspect originVerifications/originSummary for independent
+fresh-frame, spatial-gradient and signed temporal-pixel checks of movie-section
+origin. Static captions/backgrounds cannot pass the temporal energy checks.
+CONFIRMED origin is not an exact hidden trim; keep that distinction explicit.
+No original author project is required for this measurement path. Never demote
+an adequately evidenced movie-section match merely because an endpoint is hidden.
 Low-information black/text-only boundaries and ambiguous static frames remain
 unresolved. Search predictions are proposals, never certified endpoint evidence.
 Do not extrapolate or certify invisible source endpoints.

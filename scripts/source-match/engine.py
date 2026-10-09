@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.5.1"
+VERSION = "source-match-v1.6.0"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -273,7 +273,7 @@ def variants(im, aspect):
         yield im[:, (w-target)//2:(w+target)//2]
 
 
-def feature_points(im):
+def feature_points(im, method="SIFT"):
     gray=cv2.cvtColor(trim_bars(im),cv2.COLOR_RGB2GRAY)
     low,high=np.percentile(gray,[5,95])
     # Recover retained detail through a dark grade or white wash. Never invent
@@ -281,8 +281,8 @@ def feature_points(im):
     if 0<high-low<64:
         gray=np.clip((gray.astype(float)-low)*255/(high-low),0,255).astype(np.uint8)
     a=cv2.createCLAHE(clipLimit=2).apply(gray)
-    sift = cv2.SIFT_create(nfeatures=1600)
-    keypoints,descriptors=sift.detectAndCompute(a,None)
+    detector = cv2.ORB_create(nfeatures=2400,fastThreshold=7,edgeThreshold=15) if method=="ORB" else cv2.SIFT_create(nfeatures=1600)
+    keypoints,descriptors=detector.detectAndCompute(a,None)
     return a,keypoints,descriptors
 
 
@@ -315,7 +315,8 @@ def geometry(query_im, source_im, query_features=None, source_features=None):
     b,kb,db = source_features if source_features is not None else feature_points(source_im)
     if da is None or db is None or len(da)<8 or len(db)<8:
         return dict(inliers=0, coverage=0., fraction=0., score=0.)
-    pairs = cv2.BFMatcher().knnMatch(da,db,k=2)
+    binary=da.dtype==np.uint8 and db.dtype==np.uint8
+    pairs = cv2.BFMatcher(cv2.NORM_HAMMING if binary else cv2.NORM_L2).knnMatch(da,db,k=2)
     good = [p[0] for p in pairs if len(p)==2 and p[0].distance < .72*p[1].distance]
     if len(good)<8:
         return dict(inliers=0, coverage=0., fraction=0., score=0.)
@@ -373,7 +374,7 @@ def geometry(query_im, source_im, query_features=None, source_features=None):
         if regional['passed']:
             correlation=max(correlation,float(np.median([r['correlation'] for r in regions])))
     partial=global_correlation<.55 and bool(regional and regional['passed'])
-    return dict(inliers=inliers, coverage=coverage, fraction=fraction,
+    return dict(inliers=inliers, coverage=coverage, fraction=fraction,descriptorMethod="ORB" if binary else "SIFT",
                 correlation=correlation, globalCorrelation=global_correlation,
                 verificationMethod="DISTRIBUTED_VISIBLE_REGIONS" if partial else "ALIGNED_IMAGE",
                 regionalEvidence=regional,
@@ -385,9 +386,61 @@ def geometry(query_im, source_im, query_features=None, source_features=None):
 
 def valid_geometry(g):
     valid=g["inliers"] >= 12 and g["coverage"] >= .12 and g["fraction"] >= .5 and g.get("correlation",1) >= .55
+    if g.get('descriptorMethod')=='ORB':
+        valid=valid and g['inliers']>=24 and g['coverage']>=.2 and g['fraction']>=.6 and g.get('correlation',0)>=.65
     if g.get('verificationMethod')=='DISTRIBUTED_VISIBLE_REGIONS':
         return valid and g['inliers']>=20 and g['coverage']>=.2 and bool(g.get('regionalEvidence',{}).get('passed'))
     return valid
+
+
+def aligned_gray(query, source, g, size=320):
+    """Original decoded intensities in a measured map; no generated content."""
+    transform=g.get('transform')
+    if not transform:return None
+    a=cv2.resize(trim_bars(query),tuple(transform['querySize']))
+    b=cv2.resize(trim_bars(source),tuple(transform['sourceSize']))
+    inverse=np.linalg.inv(np.array(transform['queryToSource']))
+    aligned=cv2.warpPerspective(b,inverse,(a.shape[1],a.shape[0]))
+    mask=cv2.warpPerspective(np.ones(b.shape[:2],np.uint8),inverse,(a.shape[1],a.shape[0]))
+    def gray(im):
+        value=cv2.cvtColor(im,cv2.COLOR_RGB2GRAY).astype(np.float32)
+        low,high=np.percentile(value[mask>0],[5,95]) if np.any(mask) else (0,0)
+        return np.clip((value-low)/max(1,high-low)*255,0,255).astype(np.float32)
+    return (cv2.resize(gray(a),(size,size)),cv2.resize(gray(aligned),(size,size)),
+            cv2.resize(mask,(size,size),interpolation=cv2.INTER_NEAREST)>0)
+
+
+def pixel_change_witnesses(left, right, mask, gradients=False):
+    """Fixed-grid, independent pixel checks, never a timestamp prediction.
+
+    Gradients test spatial edge orientation without descriptor matching. Signed
+    frame differences test actual changing pixels; static captions/backgrounds
+    cannot pass the change-energy requirement. Keep every tile, including failures.
+    """
+    if gradients:
+        def edge(im):
+            im=cv2.GaussianBlur(im.astype(np.float32),(5,5),1)
+            return np.stack([cv2.Sobel(im,cv2.CV_32F,1,0),cv2.Sobel(im,cv2.CV_32F,0,1)],axis=-1)
+        left,right=edge(left),edge(right)
+    tiles=[];supported=0
+    for row in range(6):
+        for col in range(6):
+            x0,x1=round(col*mask.shape[1]/6),round((col+1)*mask.shape[1]/6)
+            y0,y1=round(row*mask.shape[0]/6),round((row+1)*mask.shape[0]/6)
+            keep=mask[y0:y1,x0:x1];a=left[y0:y1,x0:x1][keep].ravel();b=right[y0:y1,x0:x1][keep].ravel()
+            value=0.;energy=False
+            if keep.mean()>=.95 and len(a)>=64:
+                a=a-a.mean();b=b-b.mean()
+                energy=min(float(np.sqrt(np.mean(a*a))),float(np.sqrt(np.mean(b*b))))>=3
+                if energy:value=float(a@b/max(1e-9,np.linalg.norm(a)*np.linalg.norm(b)))
+            passed=energy and math.isfinite(value) and value>=.7
+            tiles.append(dict(row=row,col=col,correlation=value,changedOrTextured=energy,passed=passed))
+            if passed:supported+=int(keep.sum())
+    witnesses=[t for t in tiles if t['passed']]
+    return dict(method="SPATIAL_GRADIENTS" if gradients else "SIGNED_TEMPORAL_PIXELS",
+                passed=len(witnesses)>=(8 if gradients else 4) and len({t['row'] for t in witnesses})>=(2 if gradients else 3)
+                    and len({t['col'] for t in witnesses})>=(2 if gradients else 3) and supported/mask.size>=.1,
+                supportedFraction=supported/mask.size,tiles=tiles)
 
 
 def correspondence_picture(query, source, g, file):
@@ -585,6 +638,7 @@ class Engine:
         self.checked_intervals = {}
         self.accepted_hypotheses = {}
         self.query_features = {}
+        self.orb_queries = {}
         self.refine_ids = None
         self.refine_windows = {}
         self.verification_size = 1280 if request.get("refinement") else 640
@@ -647,6 +701,7 @@ class Engine:
         self.report["reference"]={**meta,"path":file,"fingerprint":fingerprint(file),"boundaries":"EXPLICIT" if self.request.get("shots") else "DETECTED_ADVISORY"}
         self.queries=[]
         selected=[]
+        extra=[]
         for i,span in enumerate(spans):
             start,end=float(span["start"]),float(span["end"])
             if not 0<=start<end<=meta["duration"]+1e-3:
@@ -661,14 +716,28 @@ class Engine:
             self.report["shots"].append(shot)
             for t in chosen:
                 selected.append((i,t))
-        target={round(t,6):(i,t) for i,t in selected}
+            target_ids=self.request.get('refinement',{}).get('shotIds')
+            if target_ids is None or shot['shotId'] in target_ids:
+                reach=min(12,max(1,len(indices)//3))
+                burst=set(np.round(np.linspace(1,reach,4)).astype(int))
+                burst|={len(indices)-1-n for n in burst}
+                for n in sorted(burst):
+                    if 0<n<len(indices)-1 and times[indices[n]] not in chosen:
+                        extra.append((i,times[indices[n]]))
+        # Core indexes stay compatible with retained reports; per-shot traversal
+        # sorts by time. Bursts never change the actual first/last reference PTS.
+        ordered=selected+extra
+        target={round(t,6) for i,t in ordered}
+        decoded={}
         self.boundary_evidence={}
         for f in decode(file,size=self.verification_size,check=self.check):
             if round(f["t"],6) in target:
-                i,t=target[round(f["t"],6)]
-                self.queries.append(dict(shot=i,frame=f,information=boundary_information(f['image'])))
+                decoded[round(f['t'],6)]=f
+        self.queries=[dict(shot=i,frame=decoded[round(t,6)],information=boundary_information(decoded[round(t,6)]['image']),
+                           samplingRole='CORE' if n<len(selected) else 'BOUNDARY_BURST')
+                      for n,(i,t) in enumerate(ordered)]
         for i,shot in enumerate(self.report['shots']):
-            qs=[q['frame'] for q in self.queries if q['shot']==i]
+            qs=sorted([q['frame'] for q in self.queries if q['shot']==i],key=lambda f:f['t'])
             if qs:
                 evidence=[]
                 for label,f in [('first',qs[0]),('last',qs[-1])]:
@@ -707,6 +776,7 @@ class Engine:
             raise ValueError("REFINEMENT_BOUNDARIES_CHANGED")
         self.refine_ids=set(refinement["shotIds"])
         self.report["shots"]=old["shots"]
+        self.report['originVerifications']=old.get('originVerifications',{})
         self.report["lineage"]=dict(parentJobId=refinement["parentJobId"],reportSha256=digest,refinedShotIds=refinement["shotIds"],retainedEvidence=True)
         for w in refinement["windows"]:
             self.refine_windows.setdefault(w["shotId"],[]).append(w)
@@ -714,6 +784,10 @@ class Engine:
             if s["shotId"] not in self.refine_ids:
                 continue
             s['boundaryEvidence']=self.boundary_evidence.get(s['shotId'],[])
+            for a in s.get('anchors',[]):
+                n=next((n for n,q in enumerate(self.queries) if q['shot']==i and abs(q['frame']['t']-a['referenceTime'])<1e-6),None)
+                if n is None:raise ValueError('RETAINED_QUERY_MISSING')
+                a['queryIndex']=n
             windows=self.refine_windows.get(s["shotId"],[])
             if not windows and s.get("sourcePath"):
                 points=[a["sourceTime"] for a in s.get("anchors",[])]
@@ -860,7 +934,7 @@ class Engine:
             # this affects scheduling only, never geometric acceptance.
             if (progressive or prioritize_locations) and shot["status"] in ["VERIFIED","LOCATED"]:
                 continue
-            qs=[(n,q) for n,q in enumerate(self.queries) if q["shot"]==i]
+            qs=sorted([(n,q) for n,q in enumerate(self.queries) if q["shot"]==i],key=lambda nq:nq[1]['frame']['t'])
             if len(qs)<3:
                 continue
             middle=qs[len(qs)//2][0]
@@ -982,6 +1056,18 @@ class Engine:
                 anchors=[]
                 anchor_options={}
                 sfeatures={}
+                orb_sources={}
+                def compare(n,f):
+                    if f['pts'] not in sfeatures:sfeatures[f['pts']]=feature_points(f['image'])
+                    checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
+                    if not any(valid_geometry(g) for g in checks):
+                        if f['pts'] not in orb_sources:orb_sources[f['pts']]=feature_points(f['image'],'ORB')
+                        for im,_ in qvariants[n]:
+                            key=(n,im.shape[:2])
+                            if key not in self.orb_queries:self.orb_queries[key]=feature_points(im,'ORB')
+                            checks.append(geometry(im,f['image'],self.orb_queries[key],orb_sources[f['pts']]))
+                    self.metrics['geometryComparisons']+=len(checks)
+                    return max([g for g in checks if valid_geometry(g)] or checks,key=lambda g:g['score'])
                 ordered_qs=sorted(qs,key=lambda nq:0 if nq[0]==middle else 1)
                 for n,q in ordered_qs:
                     self.check()
@@ -1008,10 +1094,8 @@ class Engine:
                                 if f["pts"] not in sfeatures:
                                     sfeatures[f["pts"]]=feature_points(f["image"])
                                 geometry_started=time.monotonic()
-                                checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
-                                g=max([v for v in checks if valid_geometry(v)] or checks,key=lambda v:v['score'])
+                                g=compare(n,f)
                                 self.metrics["geometrySeconds"]+=time.monotonic()-geometry_started
-                                self.metrics["geometryComparisons"]+=len(checks)
                                 best.append((g["score"],f,g))
                     if not best:
                         break
@@ -1052,9 +1136,8 @@ class Engine:
                             self.check()
                             if f['pts'] not in sfeatures:sfeatures[f['pts']]=feature_points(f['image'])
                             began=time.monotonic()
-                            checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
-                            self.metrics['geometrySeconds']+=time.monotonic()-began;self.metrics['geometryComparisons']+=len(checks)
-                            g=max([v for v in checks if valid_geometry(v)] or checks,key=lambda v:v['score'])
+                            g=compare(n,f)
+                            self.metrics['geometrySeconds']+=time.monotonic()-began
                             if valid_geometry(g):options.append(dict(referenceTime=q['frame']['t'],sourceTime=f['t'],sourcePts=f['pts'],sourceTimeBase=f['timeBase'],sourceAbsoluteTime=f['absolute'],sourceFrameDuration=f['duration'],sourceFrameDurationVerified=f.get('durationVerified',False),geometry=g,queryIndex=n))
                         if options:
                             options.sort(key=lambda a:a['geometry']['score'],reverse=True);anchor_options[n]=options
@@ -1138,6 +1221,21 @@ class Engine:
                 self.checked_intervals.setdefault(i,[]).append((source,start,end))
                 if alignment:
                     hypotheses.append(dict(source=source,score=sum(a["geometry"]["score"] for a in anchors),anchors=anchors,alignment=alignment,frames=frames,complete=complete,diagnostics=diagnostics))
+                    # Denser sampling must not let tie-breaking hide a repeated
+                    # copy inside the same decoded window. Re-test a measured
+                    # alternative path that disagrees by >1 s at shared moments.
+                    chosen={a['queryIndex']:a for a in anchors}
+                    alternatives=[]
+                    for n,q in qs:
+                        if n not in chosen:continue
+                        values=[a for a in anchor_options.get(n,[]) if abs(a['sourceTime']-chosen[n]['sourceTime'])>1]
+                        if values:alternatives.append(values)
+                    competing=consistent_path(alternatives,1/meta['fps']) if len(alternatives)>=3 else None
+                    if competing:
+                        other,other_alignment=competing
+                        hypotheses.append(dict(source=source,score=sum(a['geometry']['score'] for a in other),anchors=other,alignment=other_alignment,frames=frames,complete=False,diagnostics=[]))
+                        shot['candidateChecks'].append(dict(sourceIndex=source,candidateTime=t,proposalOrigin='INDEPENDENT_REPEATED_COPY_PATH',passed=True,
+                            anchors=[{k:a[k] for k in ['referenceTime','sourceTime','sourcePts','geometry']} for a in other]))
             # Preserve competing valid locations through later rounds and passes.
             # A later single proposal must not erase an already proven ambiguity.
             self.accepted_hypotheses[i]=[{**h,"frames":[]} for h in hypotheses]
@@ -1213,10 +1311,71 @@ class Engine:
             self.progress("MATCH_EVIDENCE",shotId=shot["shotId"],status=shot["status"],sourceStart=shot.get("sourceStart"),sourceEndExclusive=shot.get("sourceEndExclusive"))
             self.save()
 
+    def origin_checks(self):
+        """Corroborate movie-section origin independently of hidden trim pixels.
+
+        Fresh descriptors, spatial gradients and changing pixels are separate
+        evidence channels. No result here fills an unobserved source endpoint.
+        Store separately so preserved shot/trim objects are never relabeled.
+        """
+        results=self.report.setdefault('originVerifications',{})
+        for i,shot in enumerate(self.report['shots']):
+            self.check()
+            if self.refine_ids is not None and shot['shotId'] not in self.refine_ids and shot['shotId'] in results:continue
+            if shot['status']=='UNRESOLVED':
+                results[shot['shotId']]=dict(status='UNCONFIRMED',reason=shot.get('reason'));continue
+            self.progress('INDEPENDENT_ORIGIN_CHECK',shotId=shot['shotId'])
+            anchors=sorted(shot.get('anchors',[]),key=lambda a:a['referenceTime'])
+            anchors=[anchors[n] for n in np.unique(np.round(np.linspace(0,len(anchors)-1,min(9,len(anchors)))).astype(int))] if anchors else []
+            if len(anchors)<3:continue
+            times=[a['sourceTime'] for a in anchors];pts={a['sourcePts'] for a in anchors}
+            frames={f['pts']:f for f in self.source_frames(shot['sourcePath'],max(0,min(times)-1e-6),max(times)+.001) if f['pts'] in pts}
+            measured=[];paired=[]
+            for a in anchors:
+                self.check()
+                query=next((q['frame'] for q in self.queries if q['shot']==i and abs(q['frame']['t']-a['referenceTime'])<1e-6),None)
+                if query is None:
+                    query=next(decode(self.report['reference']['path'],max(0,a['referenceTime']-1e-6),a['referenceTime']+.001,size=self.verification_size,check=self.check),None)
+                source=frames.get(a['sourcePts'])
+                if query is None or source is None:continue
+                q=query['image'];s=source['image'];sf=feature_points(s)
+                checks=[geometry(im,s,source_features=sf) for im in (q,resized(q,640))]
+                if not any(valid_geometry(g) for g in checks):checks.append(geometry(q,s,feature_points(q,'ORB'),feature_points(s,'ORB')))
+                good=[g for g in checks if valid_geometry(g)]
+                if not good:continue
+                g=max(good,key=lambda g:g['score']);images=aligned_gray(q,s,g)
+                if images is None:continue
+                edge=pixel_change_witnesses(*images,gradients=True)
+                picture=self.out/f"{shot['shotId']}-origin-{source['pts']}.jpg"
+                correspondence_picture(q,s,g,picture)
+                item=dict(referenceTime=query['t'],referencePts=query['pts'],referenceTimeBase=query['timeBase'],sourceTime=source['t'],sourcePts=source['pts'],sourceTimeBase=source['timeBase'],geometry=g,gradientEvidence=edge,
+                          referenceEvidencePath=a.get('referenceEvidencePath'),sourceEvidencePath=a.get('sourceEvidencePath'),correspondenceEvidencePath=str(picture))
+                measured.append(item);paired.append((item,images))
+            changes=[]
+            for (a,(qa,sa,ma)),(b,(qb,sb,mb)) in zip(paired,paired[1:]):
+                if a['sourcePts']==b['sourcePts']:continue
+                evidence=pixel_change_witnesses(qb-qa,sb-sa,ma&mb)
+                changes.append(dict(referenceStart=a['referenceTime'],referenceEnd=b['referenceTime'],sourceStartPts=a['sourcePts'],sourceEndPts=b['sourcePts'],evidence=evidence))
+            geometric=len(measured)>=3 and temporal_alignment(measured,1/self.report['sources'][shot['sourceIndex']]['fps']) is not None
+            gradients=sum(a['gradientEvidence']['passed'] for a in measured)
+            motion=sum(a['evidence']['passed'] for a in changes)
+            complete=self.report['alternativeReviewComplete']
+            status='CONFIRMED' if geometric and gradients>=3 and motion>=1 and complete else 'MEASURED_LOCATION' if geometric and complete else 'INSUFFICIENT_INDEPENDENT_EVIDENCE'
+            results[shot['shotId']]=dict(status=status,scope='MOVIE_SECTION_ORIGIN_ONLY',methods=['FRESH_GEOMETRIC_SEQUENCE','SPATIAL_GRADIENTS','SIGNED_TEMPORAL_PIXELS'],evidencePath=str(self.out/(shot['shotId']+'-origin-evidence.json')),
+                independentFrameCount=len(measured),gradientPassCount=gradients,temporalChangePassCount=motion,competingLocationReviewComplete=complete,
+                referenceCoverage=dict(start=min(a['referenceTime'] for a in measured),end=max(a['referenceTime'] for a in measured)) if measured else None,
+                measuredSourceSection=dict(start=min(a['sourceTime'] for a in measured),end=max(a['sourceTime'] for a in measured),description='Observed corresponding section, not hidden trim extrapolation') if measured else None,
+                exactTrimStatus=shot['boundaryStatus'],frames=measured,temporalChanges=changes)
+            atomic_json(self.out/(shot['shotId']+'-origin-evidence.json'),results[shot['shotId']])
+            self.save()
+
     def save(self):
         self.report["elapsedSeconds"]=round(time.monotonic()-self.started,3)
         self.report["metrics"]=self.metrics
         self.report["summary"]={state:sum(s["status"]==state for s in self.report["shots"]) for state in ["VERIFIED","LOCATED","UNRESOLVED"]}
+        origins=self.report.get('originVerifications',{})
+        self.report['originSummary']={state:sum(origins.get(s['shotId'],{}).get('status','NOT_CHECKED')==state for s in self.report['shots'])
+            for state in ['CONFIRMED','MEASURED_LOCATION','INSUFFICIENT_INDEPENDENT_EVIDENCE','UNCONFIRMED','NOT_CHECKED']}
         atomic_json(self.out/"report.json",self.report)
         timestamps_csv(self.out,self.report)
 
@@ -1266,6 +1425,7 @@ class Engine:
             self.progress("ALTERNATIVE_REVIEW")
             self.verify()
             self.report["alternativeReviewComplete"]=True
+            self.origin_checks()
             self.report["status"]="COMPLETE" if all(s["status"]=="VERIFIED" for s in self.report["shots"]) else "PARTIAL"
         except BudgetExpired:
             self.report["status"]="CANCELLED" if (self.out/"cancel").exists() else "PARTIAL"

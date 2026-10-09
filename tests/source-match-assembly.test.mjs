@@ -41,6 +41,13 @@ test('machine verification cannot replace direct GPT review',()=>{
   assert.throws(()=>officialSourceTimestampsV1(r,request),/GPT_REVIEW/);
 });
 
+test('independent movie-origin proof cannot fill hidden exact trim endpoints',()=>{
+  const r=report();r.status='PARTIAL';r.shots[0].status='LOCATED';
+  r.originSummary={CONFIRMED:r.shots.length};
+  r.originVerifications={'shot-001':{status:'CONFIRMED',scope:'MOVIE_SECTION_ORIGIN_ONLY'}};
+  assert.throws(()=>officialSourceTimestampsV1(r,body(r)),/ALL_SHOT_ENDPOINTS_REQUIRED/);
+});
+
 test('Finished order survives reverse source chronology, exact ranges and repeated footage',()=>{
   const r=report();r.shots[2].sourceStart=50;r.shots[2].sourceEndExclusive=51;
   const manifest=officialSourceTimestampsV1(r,body(r)),cuts=media(manifest);
