@@ -23,7 +23,8 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.0.0"
+VERSION = "source-match-v1.1.0"
+INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
@@ -107,6 +108,7 @@ def decode(file, start=0, end=None, keyframes=False, size=640, check=lambda: Non
                 break
             yield dict(t=t, pts=f.pts, timeBase=str(s.time_base), absolute=absolute,
                        duration=float(f.duration * s.time_base) if f.duration else 1 / float(s.average_rate or 24),
+                       durationVerified=bool(f.duration),
                        image=resized(f.to_ndarray(format="rgb24"), size))
 
 
@@ -117,7 +119,9 @@ def gpu_samples(file, interval, check, start=0, end=None, size=512):
     meta=probe(file)
     width=size; height=max(2,round(meta["height"]*size/meta["width"]/2)*2)
     selection=f"select='isnan(prev_selected_t)+gte(t-prev_selected_t,{interval})'," if interval else ""
-    vf = f"scale_cuda={width}:{height}:format=nv12,hwdownload,format=nv12,format=rgb24,"+selection+"showinfo"
+    # Timestamp-only select accepts hardware frames; discard unneeded frames
+    # before downscale/readback/RGB conversion rather than paying for every frame.
+    vf = selection+f"scale_cuda={width}:{height}:format=nv12,hwdownload,format=nv12,format=rgb24,showinfo"
     cmd = [ff, "-nostdin", "-hide_banner", "-loglevel", "info", "-copyts",
            "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
            *(["-ss",str(start)] if start else []), *(["-t",str(end-start)] if end else []), "-i", str(file),
@@ -126,11 +130,16 @@ def gpu_samples(file, interval, check, start=0, end=None, size=512):
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     timestamps, errors = queue.Queue(), []
     def logs():
+        filter_time_base=None
         for line in iter(proc.stderr.readline, b""):
             text = line.decode("utf-8", errors="replace")
+            config=re.search(r"config in time_base:\s*(\d+/\d+)",text)
+            if config:
+                filter_time_base=Fraction(config[1])
             match = re.search(r"\bn:\s*\d+.*?pts:\s*(-?\d+).*?pts_time:\s*([-0-9.e+]+)", text)
             if match:
-                timestamps.put((int(match[1]),float(match[2])))
+                duration=re.search(r"\bduration:\s*(\d+)",text)
+                timestamps.put((int(match[1]),filter_time_base,int(duration[1]) if duration else None))
             errors.append(text)
             if len(errors) > 40:
                 errors.pop(0)
@@ -164,12 +173,19 @@ def gpu_samples(file, interval, check, start=0, end=None, size=512):
             if len(data) != frame_bytes:
                 raise RuntimeError("Truncated GPU frame")
             try:
-                raw_pts, pts = timestamps.get(timeout=10)
+                filter_pts, filter_time_base, duration = timestamps.get(timeout=10)
             except queue.Empty:
                 raise RuntimeError("GPU frame missing PTS")
+            if filter_time_base is None:
+                raise RuntimeError("GPU filter did not report its time base")
+            source_pts=filter_pts*filter_time_base/Fraction(meta["timeBase"])
+            if source_pts.denominator!=1:
+                raise RuntimeError("GPU filter PTS does not map to an integer original source PTS")
+            raw_pts=int(source_pts)
             absolute=float(raw_pts*Fraction(meta["timeBase"]))
             yield dict(t=absolute-origin, pts=raw_pts, timeBase=meta["timeBase"], absolute=absolute,
-                       duration=1/meta["fps"], image=np.frombuffer(data, np.uint8).reshape(height,width,3))
+                       duration=float(duration*filter_time_base) if duration else 1/meta["fps"],
+                       durationVerified=bool(duration),image=np.frombuffer(data, np.uint8).reshape(height,width,3))
         code = proc.wait(timeout=10)
         check()
         if code:
@@ -298,42 +314,72 @@ def temporal_alignment(anchors, frame_seconds):
     if (slope>0 and np.any(delta<0)) or (slope<0 and np.any(delta>0)):
         return None
     rates=np.abs(delta/np.diff(x))
-    if np.any(rates>16) or np.any(rates<.05):
+    if np.any(rates>16) or np.ptp(y)<frame_seconds*2:
         return None
+    # Quantized slow motion can repeat the same original frame. A wholly static
+    # sequence does not establish traversal; repeated anchors may be surrounded
+    # by measured motion. Do not fabricate interpolation within the plateau.
+    moving=rates[rates>=.05]
     kind="AFFINE" if residual<=max(frame_seconds*1.5,.025) else "PIECEWISE"
-    if kind=="PIECEWISE" and (max(rates)/min(rates)>8 or residual>np.ptp(y)*.25):
+    if kind=="PIECEWISE" and (len(moving)<2 or max(moving)/min(moving)>16):
         return None
     return dict(direction="FORWARD" if slope>0 else "REVERSE", playbackRate=abs(float(slope)), residualSeconds=residual,
                 kind=kind,segments=[dict(referenceStart=float(x[i]),referenceEnd=float(x[i+1]),sourceStart=float(y[i]),sourceEnd=float(y[i+1]),playbackRate=float(rates[i])) for i in range(len(rates))])
 
 
 def consistent_path(options, frame_seconds):
-    """Fit the sequence jointly; individual frame maxima can jitter on slow motion."""
+    """Bounded beam search for measured monotone paths, including speed ramps.
+
+    An affine prediction must not prune the true intermediate frames of a ramp.
+    The score favors observed image evidence, with rate/monotonicity constraints.
+    All retained times are actual matched PTS, never interpolated endpoints.
+    """
     if len(options)<3 or any(not choices for choices in options):
         return None
     best=None
-    for first in options[0][:10]:
-        for last in options[-1][:10]:
-            span=last["referenceTime"]-first["referenceTime"]
-            if span<=0:
-                continue
-            rate=(last["sourceTime"]-first["sourceTime"])/span
-            if not .05<=abs(rate)<=16:
-                continue
-            path=[first]
-            for choices in options[1:-1]:
-                expected=first["sourceTime"]+(choices[0]["referenceTime"]-first["referenceTime"])*rate
-                near=[a for a in choices if abs(a["sourceTime"]-expected)<=frame_seconds*1.5 and a["geometry"]["score"]>=choices[0]["geometry"]["score"]*.55]
-                if not near:
-                    break
-                path.append(max(near,key=lambda a:a["geometry"]["score"]))
-            path.append(last)
+    for direction in (1,-1):
+        paths=[(a["geometry"]["score"],[a]) for a in options[0][:12] if valid_geometry(a["geometry"])]
+        for choices in options[1:]:
+            extensions=[]
+            for score,path in paths:
+                previous=path[-1]
+                for a in choices[:12]:
+                    dt=a["referenceTime"]-previous["referenceTime"]
+                    dy=direction*(a["sourceTime"]-previous["sourceTime"])
+                    if dt>0 and 0<=dy<=16*dt and valid_geometry(a["geometry"]):
+                        extensions.append((score+a["geometry"]["score"],path+[a]))
+            paths=sorted(extensions,key=lambda p:p[0],reverse=True)[:128]
+            if not paths:
+                break
+        for score,path in paths:
             alignment=temporal_alignment(path,frame_seconds) if len(path)==len(options) else None
             if alignment:
-                score=sum(a["geometry"]["score"] for a in path)
                 if best is None or score>best[0]:
                     best=(score,path,alignment)
     return None if best is None else (best[1],best[2])
+
+
+def merge_windows(windows, gap=0):
+    result=[]
+    for start,end in sorted(windows):
+        if result and start<=result[-1][1]+gap:
+            result[-1]=(result[-1][0],max(end,result[-1][1]))
+        else:
+            result.append((start,end))
+    return result
+
+
+def endpoint_identity(options, chosen, frame_seconds):
+    """Repeated/static frames must not masquerade as an exact endpoint.
+
+    This is a local uncertainty check, not an exhaustive uniqueness guarantee.
+    Comparable geometric evidence spanning more than two frame intervals leaves
+    the endpoint unresolved even when the interior path identifies its location.
+    """
+    peers=[a for a in options if a["geometry"]["score"]>=chosen["geometry"]["score"]*.98]
+    if not peers:
+        return False
+    return max(a["sourceTime"] for a in peers)-min(a["sourceTime"] for a in peers)<=frame_seconds*2+1e-6
 
 
 class Engine:
@@ -350,6 +396,30 @@ class Engine:
         self.cache.mkdir(parents=True,exist_ok=True)
         self.candidates = {}
         self.checked_windows = {}
+        self.accepted_hypotheses = {}
+        self.query_features = {}
+        self.metrics = dict(encodedImages=0,inferenceSeconds=0.,geometryComparisons=0,geometrySeconds=0.,
+                            sparseVerificationFrames=0,denseVerificationFrames=0,
+                            denseVerificationSeconds=0.,cacheDescriptors=0)
+
+    def encode(self, images):
+        self.check()
+        self.metrics["encodedImages"]+=len(images)
+        start=time.monotonic()
+        try:
+            return self.encoder.encode(images)
+        finally:
+            self.metrics["inferenceSeconds"]+=time.monotonic()-start
+
+    def source_frames(self,file,start,end,interval=None):
+        if self.encoder.device=="cuda":
+            yield from gpu_samples(file,interval,self.check,start,end,size=640)
+        else:
+            previous=-1e9
+            for f in decode(file,start,end,size=640,check=self.check):
+                if interval is None or f["t"]-previous>=interval-1e-6:
+                    previous=f["t"]
+                    yield f
 
     def check(self):
         if time.monotonic()-self.started > self.budget or (self.out/"cancel").exists():
@@ -357,6 +427,8 @@ class Engine:
 
     def progress(self, stage, **values):
         event=dict(stage=stage, elapsedSeconds=round(time.monotonic()-self.started,3), **values)
+        self.report["stages"].append(event)
+        self.report["stages"]=self.report["stages"][-500:]
         print(json.dumps(event),flush=True)
         atomic_json(self.out/"progress.json",event)
 
@@ -412,7 +484,7 @@ class Engine:
         batches=[]
         for start in range(0,len(self.queries),32):
             self.check()
-            batches.append(self.encoder.encode([q["frame"]["image"] for q in self.queries[start:start+32]]))
+            batches.append(self.encode([q["frame"]["image"] for q in self.queries[start:start+32]]))
         self.qvectors=np.concatenate(batches)
         self.aspect=float(np.median([trim_bars(q["frame"]["image"]).shape[1]/trim_bars(q["frame"]["image"]).shape[0] for q in self.queries]))
         self.progress("REFERENCE_READY",shots=len(self.report["shots"]),queries=len(self.queries))
@@ -420,7 +492,9 @@ class Engine:
     def search(self,vectors,times,source):
         scores=self.encoder.similarity(self.qvectors,vectors)
         for q,row in enumerate(scores):
-            inds=np.argsort(row)[-8:][::-1]
+            limit=min(8,len(row))
+            inds=np.argpartition(row,len(row)-limit)[-limit:]
+            inds=inds[np.argsort(row[inds])[::-1]]
             values=self.candidates.setdefault(q,[])+[(float(row[j]),source,float(times[j])) for j in inds]
             result=[]
             for value in sorted(values,reverse=True):
@@ -433,31 +507,34 @@ class Engine:
     def scan(self,source,mode):
         file=self.request["sourcePaths"][source]
         identity=fingerprint(file)
-        key=hashlib.sha256(f"{VERSION}|rgb-gray-v1|{identity}|{self.encoder.model_id}|{self.encoder.monochrome}|{self.aspect:.3f}|{mode}".encode()).hexdigest()
+        key=hashlib.sha256(f"{INDEX_VERSION}|rgb-gray-v1|{identity}|{self.encoder.model_id}|{self.encoder.monochrome}|{self.aspect:.3f}|{mode}".encode()).hexdigest()
         root=self.cache/key
         root.mkdir(exist_ok=True)
         marker=root/"complete.json"
+        chunks=sorted(p for p in root.glob("*.npz") if p.stem.isdigit())
+        count=[]
+        for p in chunks:
+            self.check()
+            with np.load(p,allow_pickle=False) as n:
+                self.search(n["vectors"],n["times"],source)
+                count.extend(n["times"].tolist())
+        self.metrics["cacheDescriptors"]+=len(count)
         if marker.exists():
-            count=0
-            for p in sorted(root.glob("*.npz")):
-                self.check()
-                with np.load(p,allow_pickle=False) as n:
-                    self.search(n["vectors"],n["times"],source)
-                    count+=len(n["times"])
-            self.progress("CACHE_SEARCH",source=source,mode=mode,descriptors=count)
+            self.progress("CACHE_SEARCH",source=source,mode=mode,descriptors=len(count))
             return
-        # Partial chunks are reusable, but missing completion marker requires a full rescan.
-        # Replace chunks in-place; marker is written only after successful complete coverage.
-        count,batch,bt=[],[],[]
+        # Committed partial chunks are searchable immediately. Continue after their
+        # last actual timestamp, instead of spending the next job's budget rescanning.
+        resume=max(count)+1e-5 if count else 0
+        batch,bt=[],[]
         if mode=="keys":
-            frames=decode(file,keyframes=True,size=512,check=self.check)
+            frames=decode(file,start=resume,keyframes=True,size=512,check=self.check)
         elif self.encoder.device=="cuda":
-            frames=gpu_samples(file,float(mode),self.check)
+            frames=gpu_samples(file,float(mode),self.check,start=resume)
         else:
             interval=float(mode)
             def sampled():
                 last=-1e9
-                for f in decode(file,size=512,check=self.check):
+                for f in decode(file,start=resume,size=512,check=self.check):
                     if f["t"]-last>=interval-1e-6:
                         last=f["t"]
                         yield f
@@ -488,13 +565,13 @@ class Engine:
                 frames.close()
         thread=threading.Thread(target=producer,daemon=True)
         thread.start()
-        chunk=0
+        chunk=max((int(p.stem) for p in chunks),default=-1)+1
         def flush():
             nonlocal chunk
             if not batch:
                 return
             self.check()
-            vectors=self.encoder.encode(batch)
+            vectors=self.encode(batch)
             self.search(vectors,np.array(bt),source)
             temp=root/f"{chunk:06}.tmp.npz"
             np.savez_compressed(temp,vectors=vectors,times=np.array(bt))
@@ -503,6 +580,11 @@ class Engine:
             self.progress("SEARCHING",source=source,mode=mode,descriptors=len(count),throughSourceSeconds=bt[-1])
             chunk+=1
             batch.clear();bt.clear()
+            # First locations can be tested before a complete source pass. One
+            # attempt per shot limits disruption of the producer and avoids
+            # spending the whole budget on the earliest difficult shot.
+            if chunk % 16 == 0:
+                self.verify(rounds=1)
         try:
             while True:
                 self.check()
@@ -519,19 +601,19 @@ class Engine:
                 if len(batch)>=32:
                     flush()
             flush()
-            # Remove stale chunks left by an interrupted older scan before completion.
-            for p in root.glob("*.npz"):
-                if p.stem.isdigit() and int(p.stem)>=chunk:
-                    p.unlink()
             atomic_json(marker,dict(identity=identity,descriptors=len(count),chunks=chunk))
         finally:
             stopped.set()
             thread.join(timeout=12)
 
-    def verify(self):
+    def verify(self,rounds=None):
+        # Round robin: each unlocated shot gets a candidate before alternatives.
+        # Located shots have evidence already; denser passes prioritize misses.
+        for round_index in range(rounds or int(self.request.get("candidateLimit",4))):
+            self._verify_round(round_index)
+
+    def _verify_round(self,round_index):
         for i,shot in enumerate(self.report["shots"]):
-            if shot["status"]=="VERIFIED":
-                continue
             qs=[(n,q) for n,q in enumerate(self.queries) if q["shot"]==i]
             if len(qs)<3:
                 continue
@@ -546,52 +628,74 @@ class Engine:
                 if any(source==s and abs(t-v)<=width*.5 for _,s,v in locations):
                     continue
                 locations.append(candidate)
-                if len(locations)>=int(self.request.get("candidateLimit",4)):
+                if len(locations)>=1:
                     break
+            if not locations:
+                continue
             self.progress("VERIFYING_SHOT",shotId=shot["shotId"],candidates=len(locations))
-            qfeatures={n:feature_points(q["frame"]["image"]) for n,q in qs}
-            hypotheses=[]
+            for n,q in qs:
+                if n not in self.query_features:
+                    self.query_features[n]=feature_points(q["frame"]["image"])
+            qfeatures=self.query_features
+            hypotheses=list(self.accepted_hypotheses.get(i,[]))
             for score,source,t in locations:
                 self.check()
                 meta=self.report["sources"][source]
                 file=meta["path"]
                 start,end=max(0,t-width),min(meta["duration"],t+width)
                 self.progress("VERIFY_DECODE",shotId=shot["shotId"],candidateTime=t)
-                frames=list(gpu_samples(file,None,self.check,start,end,size=640) if self.encoder.device=="cuda" else decode(file,start,end,size=640,check=self.check))
-                for k in range(len(frames)-1):
-                    frames[k]["duration"]=frames[k+1]["t"]-frames[k]["t"]
-                if not frames:
+                samples=list(self.source_frames(file,start,end,interval=1/8))
+                self.metrics["sparseVerificationFrames"]+=len(samples)
+                if not samples:
                     continue
-                # First find each anchor among a dense 8fps view by SSCD.
-                samples=frames[::max(1,round(meta["fps"]/8))]
+                # Locate anchors at 8fps, then decode consecutive frames only
+                # around the best measured locations, not the full wide window.
                 coarse,images=[],[]
                 for f in samples:
                     for im in variants(f["image"],self.aspect):
                         coarse.append(f);images.append(im)
                 # Bounded inference batches avoid allocating an entire long shot on GPU.
                 self.progress("VERIFY_DESCRIPTORS",shotId=shot["shotId"],frames=len(images))
-                cvectors=np.concatenate([self.encoder.encode(images[j:j+32]) for j in range(0,len(images),32)])
-                anchors=[]
-                anchor_options={}
-                sfeatures={}
-                ordered_qs=sorted(qs,key=lambda nq:0 if nq[0]==middle else 1)
-                for n,q in ordered_qs:
-                    self.check()
+                cvectors=np.concatenate([self.encode(images[j:j+32]) for j in range(0,len(images),32)])
+                neighborhoods={}
+                for n,q in qs:
                     scores=self.encoder.similarity(self.qvectors[n],cvectors)
-                    best=[]
                     near_times=[]
                     for j in np.argsort(scores)[::-1]:
                         if all(abs(coarse[j]["t"]-v)>.1 for v in near_times):
                             near_times.append(coarse[j]["t"])
                         if len(near_times)==3:
                             break
-                    for near in near_times:
+                    neighborhoods[n]=near_times
+                windows=merge_windows([(max(0,t-.18),min(meta["duration"],t+.18+1/meta["fps"]))
+                                       for near in neighborhoods.values() for t in near],gap=.25)
+                frames=[]
+                for low,high in windows:
+                    dense=list(self.source_frames(file,low,high))
+                    self.metrics["denseVerificationSeconds"]+=high-low
+                    self.metrics["denseVerificationFrames"]+=len(dense)
+                    for k in range(len(dense)-1):
+                        dense[k]["duration"]=dense[k+1]["t"]-dense[k]["t"]
+                        dense[k]["durationVerified"]=True
+                    frames.extend(dense)
+                frames=sorted({f["pts"]:f for f in frames}.values(),key=lambda f:f["t"])
+                anchors=[]
+                anchor_options={}
+                sfeatures={}
+                ordered_qs=sorted(qs,key=lambda nq:0 if nq[0]==middle else 1)
+                for n,q in ordered_qs:
+                    self.check()
+                    best=[]
+                    for near in neighborhoods[n]:
                         for f in frames:
                             if abs(f["t"]-near)<=.18:
                                 self.check()
                                 if f["pts"] not in sfeatures:
                                     sfeatures[f["pts"]]=feature_points(f["image"])
+                                geometry_started=time.monotonic()
                                 g=geometry(q["frame"]["image"],f["image"],qfeatures[n],sfeatures[f["pts"]])
+                                self.metrics["geometrySeconds"]+=time.monotonic()-geometry_started
+                                self.metrics["geometryComparisons"]+=1
                                 best.append((g["score"],f,g))
                     if not best:
                         break
@@ -603,13 +707,13 @@ class Engine:
                         used.add(f["pts"])
                         a=dict(referenceTime=q["frame"]["t"],sourceTime=f["t"],
                                         sourcePts=f["pts"],sourceTimeBase=f["timeBase"],sourceAbsoluteTime=f["absolute"],
-                                        sourceFrameDuration=f["duration"],geometry=g,queryIndex=n)
+                                        sourceFrameDuration=f["duration"],sourceFrameDurationVerified=f.get("durationVerified",False),geometry=g,queryIndex=n)
                         if valid_geometry(g):
                             options.append(a)
                     _,f,g=best[0]
                     anchors.append(dict(referenceTime=q["frame"]["t"],sourceTime=f["t"],
                                         sourcePts=f["pts"],sourceTimeBase=f["timeBase"],sourceAbsoluteTime=f["absolute"],
-                                        sourceFrameDuration=f["duration"],geometry=g,queryIndex=n))
+                                        sourceFrameDuration=f["duration"],sourceFrameDurationVerified=f.get("durationVerified",False),geometry=g,queryIndex=n))
                     anchor_options[n]=options
                     # Every accepted sequence requires this middle anchor; reject cheap first.
                     if n==middle and not options:
@@ -620,7 +724,20 @@ class Engine:
                     path=consistent_path([anchor_options[n] for n,q in qs],1/meta["fps"])
                     if path:
                         anchors,alignment=path
-                complete=alignment is not None
+                complete=alignment is not None and len(anchors)==len(qs)
+                if complete:
+                    high_endpoint=max(anchors,key=lambda a:a["sourceTime"])
+                    uncertain={a["queryIndex"] for a in (anchors[0],anchors[-1])
+                               if not endpoint_identity(anchor_options.get(a["queryIndex"],[]),a,1/meta["fps"])}
+                    if not high_endpoint["sourceFrameDurationVerified"]:
+                        uncertain.add(high_endpoint["queryIndex"])
+                    if uncertain:
+                        complete=False
+                        # Keep only confirmed frame correspondences in LOCATED.
+                        # The candidate checks retain ambiguous endpoint options.
+                        anchors=[a for a in anchors if a["queryIndex"] not in uncertain]
+                        for n in uncertain:anchor_options[n]=[]
+                        alignment=temporal_alignment(anchors,1/meta["fps"])
                 if alignment is None:
                     visible=[a for a in anchors if valid_geometry(a["geometry"])]
                     alignment=temporal_alignment(visible,1/meta["fps"])
@@ -644,6 +761,9 @@ class Engine:
                 checked.append((source,t))
                 if alignment:
                     hypotheses.append(dict(source=source,score=sum(a["geometry"]["score"] for a in anchors),anchors=anchors,alignment=alignment,frames=frames,complete=complete))
+            # Preserve competing valid locations through later rounds and passes.
+            # A later single proposal must not erase an already proven ambiguity.
+            self.accepted_hypotheses[i]=[{**h,"frames":[]} for h in hypotheses]
             hypotheses.sort(key=lambda h:(h["complete"],h["score"]),reverse=True)
             if not hypotheses:
                 if shot["status"]!="LOCATED":
@@ -678,19 +798,26 @@ class Engine:
                         alignment=best["alignment"],anchors=anchors,requiresVisualReview=True,
                         exactBoundaryGuaranteed=False)
             if best["complete"]:
+                shot.pop("sourceLocationWindow",None)
                 shot.update(sourceStart=low["sourceTime"],sourceEndExclusive=high["sourceTime"]+high["sourceFrameDuration"],boundaryStatus="MEASURED_ENDPOINT_CORRESPONDENCES")
                 shot["sourceStartTimecode"]=timecode(shot["sourceStart"])
                 shot["sourceEndTimecode"]=timecode(shot["sourceEndExclusive"])
             else:
+                for key in ["sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode"]:
+                    shot.pop(key,None)
                 shot.update(boundaryStatus="UNRESOLVED",sourceLocationWindow=dict(start=low["sourceTime"],end=high["sourceTime"]+high["sourceFrameDuration"],description="Span of confirmed interior frames, not full-shot source in/out"))
             for k,a in enumerate(anchors):
+                if a.get("referenceEvidencePath") and a.get("sourceEvidencePath"):
+                    continue
                 q=self.queries[a["queryIndex"]]["frame"]
                 source=[f for f in best["frames"] if f["pts"]==a["sourcePts"]]
                 if not source:
-                    source=list(decode(shot["sourcePath"],max(0,a["sourceTime"]-.000001),a["sourceTime"]+.001,size=640,check=self.check))
+                    source=list(self.source_frames(shot["sourcePath"],max(0,a["sourceTime"]-.000001),a["sourceTime"]+.001))
                 if source:
-                    refpath=self.out/f"{shot['shotId']}-anchor-{k}-reference.jpg"
-                    srcpath=self.out/f"{shot['shotId']}-anchor-{k}-source.jpg"
+                    # Evidence for a competing hypothesis must not overwrite an
+                    # earlier hypothesis's pixels while its PTS stays retained.
+                    refpath=self.out/f"{shot['shotId']}-query-{a['queryIndex']}-reference.jpg"
+                    srcpath=self.out/f"{shot['shotId']}-query-{a['queryIndex']}-source-{best['source']}-pts-{a['sourcePts']}.jpg"
                     cv2.imwrite(str(refpath),cv2.cvtColor(q["image"],cv2.COLOR_RGB2BGR))
                     cv2.imwrite(str(srcpath),cv2.cvtColor(source[0]["image"],cv2.COLOR_RGB2BGR))
                     a.update(referenceEvidencePath=str(refpath),sourceEvidencePath=str(srcpath))
@@ -699,6 +826,7 @@ class Engine:
 
     def save(self):
         self.report["elapsedSeconds"]=round(time.monotonic()-self.started,3)
+        self.report["metrics"]=self.metrics
         self.report["summary"]={state:sum(s["status"]==state for s in self.report["shots"]) for state in ["VERIFIED","LOCATED","UNRESOLVED"]}
         atomic_json(self.out/"report.json",self.report)
         fields=["shotId","referenceStart","referenceEnd","status","sourcePath","sourceStart","sourceEndExclusive","sourceStartTimecode","sourceEndTimecode","reason"]

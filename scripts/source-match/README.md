@@ -49,14 +49,27 @@ of production ownership, so a paused Practice assignment remains paused.
   model identity, preprocessing and sampling mode. Full/centre crop descriptors
   support landscape sources used in portrait edits. RGB and grayscale SSCD
   views allow retrieval through strong colour grades; both enter the cache key.
+- Search committed partial descriptor chunks on the next job and resume decoding
+  after their last original timestamp. Compatible v1.0 caches are preserved.
+  During fresh scans, periodically verify a bounded round of candidates before
+  the complete movie pass finishes. Every shot receives an attempt before extra
+  alternatives are checked for an earlier shot.
 - Use GPU decoding and downscaling for candidate windows. Original integer PTS
   and time base survive the FFmpeg pipeline. Cross-check original PTS with PyAV.
+- Retrieve a sparse 8fps candidate window, then decode consecutive frames only
+  near proposed anchor positions. Timestamp sampling occurs before GPU readback.
+  Parse the filter's actual time base and require an exact conversion to original
+  integer PTS. Exclusive ends use observed source-frame durations.
 - Compare SIFT/RANSAC geometry and registered luminance at multiple anchors;
   check a jointly consistent forward/reverse temporal path, including bounded
   piecewise retiming with explicit per-segment rates. Cache feature points
   within candidate verification. Reject candidates cheaply at the middle anchor
   before doing the more expensive endpoint work. Verify distinct source windows
   once per run, rather than re-decoding neighbouring proposals on every pass.
+- Fit forward/reverse monotone paths without forcing speed ramps onto an affine
+  prediction. Quantized slow-motion plateaus are allowed within moving sequences;
+  wholly static sequences and ambiguous repeated endpoint frames cannot establish
+  exact traversal/boundaries. Competing valid locations survive subsequent rounds.
 - If keyframes miss a shot, search denser source passes. A budget/cancel check
   terminates decoding and preserves truthful partial results.
 
@@ -86,6 +99,16 @@ movie until a measured, ground-truth evaluation on that input is complete.
 `python -m pytest scripts/source-match/test_engine.py -q` runs encoded-video
 fixtures with known source frames, cropped/graded copies, reverse playback,
 cache reuse/invalidation, unrelated-footage rejection and budget persistence.
+The v1.1 fixtures also exercise joint nonlinear paths, slow-motion plateaus,
+resumption of partial indexes, round-robin verification under an expiring budget,
+repeated endpoint ambiguity, variable-frame-rate exclusive ends and FFmpeg PTS
+transport. On a CPU host the latter replaces CUDA decode/scale only; it does not
+constitute a test of GPU filter execution or SSCD accuracy/performance.
+
+Reports retain bounded stage events and `metrics` for descriptor inference time,
+geometric matching time, encoded images, sparse/dense verification frames,
+dense-window duration and reused cache descriptors. Overlapping pipeline work and
+small diagnostic fixtures must not be presented as a two-hour GPU speed benchmark.
 
 `node --test tests/source-match-service.test.mjs` tests idempotent submission,
 bounded work, durable results, cancellation, invalid requests and interrupted

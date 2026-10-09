@@ -67,3 +67,26 @@ Source time spans below are **not interchangeable**: VERIFIED rows have measured
 - ChatGPT remains the editorial authority. The matcher neither selects/imports footage nor writes to AE.
 
 Remaining acceptance work: resolve the four unlocated segments, measure endpoint error against independently observed reference/source frame correspondences, and evaluate a real two-hour 4K input. Fades, duplicated/frozen frames and ambiguous copies may require explicitly unresolved boundaries instead of exact claims.
+
+## v1.1 follow-up — implemented, hardware deployment pending
+
+The interrupted work was recovered from commit `4b507ac`. The follow-up changes
+add progressive bounded verification, round-robin candidate attempts, resumption
+of committed partial descriptor indexes, sparse candidate decoding followed by
+narrow consecutive-frame windows, and joint monotone alignment for speed ramps.
+Timestamp sampling precedes GPU readback; filter time bases are explicitly mapped
+to original integer PTS. Repeated endpoint ambiguity stays LOCATED, and exclusive
+ends require observed durations. Existing compatible descriptor caches survive.
+
+Local validation passed 17 Python matcher tests, 14 Node service/selection/integration
+tests, 22 Python gateway tests (plus six subtests), all 47 schema fixtures,
+TypeScript checking and the runtime build. Matcher tests use the explicit
+diagnostic backend on CPU; the FFmpeg PTS transport test replaces CUDA decode/scale
+only. These checks do not validate actual CUDA filter execution or SSCD inference.
+
+Desktop Commander confirmed the Shadow device offline during this follow-up.
+The live EditFlow read still reported the previous build, generation 134 PAUSED,
+and no held mutation lease. No deployment or new Ultron benchmark is claimed.
+The measured real-file table above remains authoritative until v1.1 is deployed
+and tested against the actual inputs. The five/eight-minute two-hour target remains
+unproved, and real endpoint ground truth is still required.
