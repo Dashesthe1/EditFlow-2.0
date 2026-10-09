@@ -6,6 +6,11 @@ one-call resume response. The worker receives matching/refinement/assembly
 instructions together with retained selections and the normal AE queue.
 Starting Practice delegates these steps to ChatGPT; it does not let the server
 manufacture visual PASS, select editing settings or resume a paused assignment.
+Older retained assignments receive the current discovery and assembly instructions
+when resumed. SELECT accepts `search.internetStatus:"NOT_REQUIRED"` with a reason
+and `strategies:["SOURCE_MATCH_SERVICE","DIRECT_PIXEL_INSPECTION"]` when the supplied
+source is found locally. Issued reference/raw comparison evidence is still required;
+this avoids a redundant web search without replacing direct pixel review.
 
 ## Targeted continuation
 
@@ -31,6 +36,13 @@ Refinement preserves that uncertainty rather than extrapolating timestamps.
 Requested difficult-shot refinement can inspect other moments after a weak or
 occluded middle. At least three measured moments must still form a valid path;
 missing endpoints never become an asserted full-shot range.
+
+The latest v1.3.0 Ultron continuation has located all 21 visually partitioned shots,
+with nine verified full ranges and twelve interior-only locations. Its report is
+PARTIAL and cannot start the exact-range assembly. Black/text-only, flashed and
+otherwise unconfirmed endpoints remain open; a rendered black frame does not
+identify the underlying original trim. See [BENCHMARK.md](BENCHMARK.md) for the
+retained jobs, measured timings and limits of the validation.
 
 Practice resume includes `sourceMatch.retained`, `sourceAssembly.retained` and
 the appropriate next operation. Prepared media remains READY; ASSEMBLED requires

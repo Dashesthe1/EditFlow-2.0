@@ -1,6 +1,6 @@
 # Source Match Service evaluation — 9 October 2026
 
-The service is live at v1.1.3. The latest cached Ultron run finished in 419.125 analysis seconds (422.822 seconds including startup): 19/20 source locations, 9 measured endpoint rows, 10 interior-only rows and 1 unlocated shot. **The goal of complete, exact recovery within five/eight minutes is not met.** These are measured partial results, not a claim of full accuracy.
+The service is live at v1.3.0 and integrated into Practice discovery/resume. The latest retained continuation has **21/21 source locations, nine verified full ranges, twelve interior-only rows and no unlocated shots**. Its final targeted geometric search took 41.781 analysis seconds; this is not the elapsed time of the preceding whole search. **Complete exact recovery and the five/eight-minute two-hour goal are not met.** The exact-range assembly gate remains closed for this real report. Historical measurements follow, then the current continuation results.
 
 ## Input and device
 
@@ -227,7 +227,7 @@ The code correction is the only requested analysis change. This is one observati
 per version; operating-system/cache/warmth variability is not controlled.
 
 
-## Latest completed v1.1.3 report
+## Historical completed v1.1.3 report
 
 The corrected warm run finished in 419.125 analysis seconds
 (422.822 receipt seconds including startup), with **19/20 source
@@ -323,3 +323,87 @@ The isolated test restored the original empty project and did not resume generat
 134. The host crash required a restart; normal startup was restored by supplying
 standard Windows folder environment variables missing from the remote subprocess.
 Original AE preferences were restored after diagnostic cache/pref rebuild attempts.
+
+## Current v1.3.0 continuation and Practice integration
+
+Direct inspection split the previous merged segment at reference 28.586061 s,
+producing 21 ordered partitions. The corrected reference cut list is retained in
+the jobs below, with original frame times rather than the display-rounded value.
+The corrected full cached search ran before this continuation; the following jobs
+reuse its measurements, caches and/or known locations. Their elapsed times must
+not be presented as one cold full-movie run or a five-minute complete solution.
+
+| Job and scope | Analysis seconds | Full verified ranges | Interior-only locations | Unlocated shots |
+| --- | ---: | ---: | ---: | ---: |
+| Corrected 21-shot cached search, c0346b0a | 415.672 | 9 | 11 | 1 |
+| v1.2.0 missing-shot multi-query refinement, 8e05f442 | 117.703 | 9 | 11 | 1 |
+| v1.2.1 all twelve unfinished ranges, ea1a448a | 142.453 | 9 | 11 | 1 |
+| v1.3.0 explicit geometric church window, 1f300d1b | 41.781 | 9 | 12 | 0 |
+
+The exact retained IDs are:
+
+- `source-match-c0346b0a-5148-4698-91c5-c8b144958d65`
+- `source-match-8e05f442-2718-43f8-9d9d-b295c6dafd67`
+- `source-match-ea1a448a-e85b-413a-947c-60d5cd95833f`
+- `source-match-1f300d1b-6e41-4b3a-bf4d-a4a148d1bea9`
+
+v1.2.0's single-shot refinement left every non-target shot object and the media
+metadata semantically unchanged. v1.2.1 revisited retained locations at 1280px,
+without scanning the movie or reusing descriptor rows; no full-range count improved.
+Diagnostics identified seven low-information reference endpoints and four other
+unconfirmed endpoint correspondences, plus the then-unlocated church shot.
+
+v1.3.0 geometrically screened the explicit source 260–290 s window when SSCD
+retrieval missed the heavily graded portrait crop. Four measured interior anchors
+located shot-013 at source **274.274–274.607667 s**. The displayed beginning and
+ending interior reference/source pairs were directly inspected for Ultron's pose,
+chapel background and source identity. These are interior evidence, not official
+full-shot in/out or an editing PASS. The reference shot begins at 28.586061 s;
+that endpoint remains unconfirmed. `alternativeReviewComplete:true` does not
+upgrade the report beyond PARTIAL.
+
+The final geometric run encoded 555 images, spent 3.126 seconds in SSCD inference
+and 7.047 seconds in 1,389 geometric comparisons, and decoded 62 dense frames over
+2.555 source-window seconds. Pipeline metrics overlap and are not additive elapsed
+components. Short-window proposal scores are explicitly null with retained/window
+provenance; their seed priority is never represented as SSCD similarity.
+
+Engine v1.3.0 SHA-256 is
+`30bcbba6848a367572e523f44b12c947c18e73868fe523943251c251aaa6833d`.
+Five true SSCD/CUDA known-frame fixtures passed on the RTX A4500:
+
+| Case | Result | Analysis seconds | Known endpoint error |
+| --- | --- | ---: | --- |
+| Crop and grade | VERIFIED | 5.781 | 0 frames at both endpoints |
+| Reverse | VERIFIED | 4.610 | 0 frames at both endpoints |
+| Nonlinear retime | VERIFIED | 4.531 | 0 frames at both endpoints |
+| Faded endpoints | LOCATED | 4.062 | No full endpoints asserted |
+| Unrelated footage | UNRESOLVED | 2.578 | No source timestamps asserted |
+
+Results are retained in
+`%LOCALAPPDATA%\EditFlow2\source-match-benchmarks\v130-gpu-quality\results.json`.
+These small 12fps fixtures establish their known-frame behavior, not independent
+real-movie endpoint error, false-positive rate or worst-case two-hour speed.
+
+The integrated resume now retains matching lineage, remaining boundary diagnostics,
+prepared assemblies and actual AE queue receipts. It refines unfinished shots
+instead of repeating discovery, advances directly to Source Assembly after complete
+endpoints and GPT review, and reports ASSEMBLED only after all batches succeed.
+Duplicate plans reuse existing receipts. Cancellation stops preparation descendants
+while preserving official timestamps and accepted AE work. A Windows status race
+that could overwrite READY with INTERRUPTED was reproduced and fixed; 400 concurrent
+polls are covered. Direct local pixel discovery no longer requires a redundant
+internet search, and older stored assignments receive the current worker policy.
+
+Local validation passed 27 encoded matcher tests, 49 Node service/selection/resume
+and production integration tests, two extraction tests, 24 gateway tests, all 47
+schema fixtures, TypeScript checking and the runtime build. The live Windows
+service/assembly/resume suite and true GPU fixtures also passed. Generation 134
+remains explicitly PAUSED; maintenance retains AE and unrelated unfinished UI edits.
+
+The real exact-boundary task remains incomplete: nine full ranges are measured,
+twelve are interior-only. No real 21-shot extraction/AE assembly is claimed.
+Where the underlying source frame is hidden by black pixels or overlays, original
+timeline/project trim metadata may be needed to prove exact endpoints. Other
+unconfirmed endpoints still need stronger direct evidence. The system preserves
+those limits rather than inventing an official timestamp.

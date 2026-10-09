@@ -84,6 +84,32 @@ test("controller leases block concurrent takeover, release and expiry preserve a
   assert.equal((await store.getAssignment(assignment.assignmentId)).preflight.stage, "BLOCKED");
 });
 
+test("resuming an older assignment replaces retired footage guidance without losing editorial notes", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "practice-policy-resume-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "gpt.json");
+  const store = new GptOrchestrationStoreV1(file);
+  const assignment = await store.createAssignment({ sessionId: "practice:policy", mode: "PRACTICE",
+    editTypeId: "test", finish: { mediaId: "ref", role: "FINISH_REFERENCE", mediaKind: "VIDEO", uri: "ref.mp4" },
+    start: [{ mediaId: "raw", role: "START_SOURCE", mediaKind: "VIDEO", uri: "raw.mp4" }],
+    artifactDir: root, knowledge: null });
+  const persisted = JSON.parse(await readFile(file, "utf8"));
+  persisted.assignments[0].chatMessage = [
+    "Retained editorial note: keep the opening wide framing.",
+    "For footage discovery, primarily use internet research: find scene and dialogue clues first.",
+    "AWAITING_CHATGPT_SHOTS requires direct footage work now, not polling an algorithm.",
+    "EDIT_PRODUCTION_QUEUE_POLICY_V3",
+    "obsolete generated appendix"
+  ].join("\n");
+  await writeFile(file, JSON.stringify(persisted));
+  const resumed = await new GptOrchestrationStoreV1(file).getAssignment(assignment.assignmentId);
+  assert.equal(resumed.assignmentId, assignment.assignmentId);
+  assert.match(resumed.chatMessage, /keep the opening wide framing/);
+  assert.match(resumed.chatMessage, /use the user-authorized EditFlow Source Match Service first/);
+  assert.match(resumed.chatMessage, /PREPARE_ASSEMBLY saves official timestamps/);
+  assert.doesNotMatch(resumed.chatMessage, /primarily use internet research|not polling an algorithm|obsolete generated appendix/);
+});
+
 test("concurrent store instances serialize controller claims and readers always see complete checkpoints", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "practice-atomic-store-"));
   t.after(() => rm(root, { recursive: true, force: true }));

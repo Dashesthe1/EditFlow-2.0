@@ -305,7 +305,8 @@ const applyCurrentProductionQueuePolicy = (message: string, mode: GptOrchestrati
   const end = Math.min(...[markerAt, retiredAt, message.length].filter(v => v >= 0));
   const obsolete = /M6|VisualEffectsBrain|compiler[- ]backed|compiled through|machine[- ]passing|machine[- ]verified|machine[- ]attested|TRANSFER_VERIFIED_ONLY|HELD_OUT_CERTIFICATION|certification thresholds|candidate funnel|retained truth|advanced synthesis|GPT completion is not Practice mastery|ACCELERATED_REFERENCE_FIRST_V1|Optional workflowContext|MANDATORY PER-CLIP|before changing any clip|For EVERY clip|editing EVERY clip|READY plans|Commit clip-research PLAN|AE edits require researchContext|Record the actual search\/review artifact|Learning sequence:|commit the durable clip research plan/i;
   const generatedLines = new Set([...CHATGPT_FOOTAGE_POLICY_V1.split("\n"), ...RESEARCH_PRIORITY_LINES]);
-  const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !generatedLines.has(line)
+  const retiredFootagePolicy = /^(For footage discovery, primarily use internet research:|AWAITING_CHATGPT_SHOTS requires direct footage work now, not polling an algorithm\.)/;
+  const cleaned = message.slice(0, end).split("\n").filter(line => !obsolete.test(line) && !retiredFootagePolicy.test(line) && !generatedLines.has(line)
     && !line.includes("Record your blueprint before construction")).join("\n").trimEnd();
   return cleaned + "\n\n" + CHATGPT_FOOTAGE_POLICY_V1 + "\n\n" + RESEARCH_PRIORITY_LINES.join("\n") + "\n\n" + editProductionContinuityAppendixV1(mode);
 };

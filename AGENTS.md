@@ -123,6 +123,10 @@ an existing batch receipt when already submitted; inspect/reconcile that receipt
 ChatGPT browses provided raw footage and chooses exact ranges using issued pixel
 inspections. Reuse retained selections and search coverage. Internet scene/dialogue/
 chapter clues can narrow discovery; actual raw pixels establish identity.
+SELECT may record internetStatus NOT_REQUIRED with a reason and the
+DIRECT_PIXEL_INSPECTION strategy when local source evidence establishes identity;
+issued comparison anchors remain mandatory. Do not fabricate an access failure or
+perform an unrelated web search merely to satisfy discovery provenance.
 Import selected working ranges with bounded handles instead of full raw movies.
 Retired candidate matchers, editorial engines and fallback routes remain removed.
 
