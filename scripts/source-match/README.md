@@ -37,11 +37,12 @@ Requested difficult-shot refinement can inspect other moments after a weak or
 occluded middle. At least three measured moments must still form a valid path;
 missing endpoints never become an asserted full-shot range.
 
-The latest v1.3.0 Ultron continuation has located all 21 visually partitioned shots,
-with eleven verified full ranges and ten interior-only locations. Its report is
-PARTIAL and cannot start the exact-range assembly. Black/text-only, flashed and
-otherwise unconfirmed endpoints remain open; a rendered black frame does not
-identify the underlying original trim. See [BENCHMARK.md](BENCHMARK.md) for the
+The latest v1.4.0 Ultron continuation has located all 21 visually partitioned shots,
+with twelve verified full ranges and nine interior-only locations. The flashed
+church endpoint is now measured. Its report remains PARTIAL and cannot start the
+exact-range assembly. Eight black/text-only boundaries and a composite endpoint
+still need original-project evidence; their rendered pixels do not establish
+the hidden original trim. See [BENCHMARK.md](BENCHMARK.md) for the
 retained jobs, measured timings and limits of the validation.
 
 Practice resume includes `sourceMatch.retained`, `sourceAssembly.retained` and

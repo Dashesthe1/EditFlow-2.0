@@ -1,6 +1,6 @@
 # Source Match Service evaluation — 9 October 2026
 
-The service is live at v1.3.0 and integrated into Practice discovery/resume. The latest retained continuation has **21/21 source locations, eleven verified full ranges, ten interior-only rows and no unlocated shots**. The church-location search took 41.781 analysis seconds and the final five-shot boundary pass took 121.329 seconds; neither is the elapsed time of the preceding whole search. **Complete exact recovery and the five/eight-minute two-hour goal are not met.** The exact-range assembly gate remains closed for this real report. Historical measurements follow, then the current continuation results.
+The service is live at v1.4.0 and integrated into Practice discovery/resume. Original-project frame-map import, boundary evidence, reference-scale checks and resumable verified-cut extraction are implemented. A real twenty-shot known-frame service handoff reached the native AE Practice checkpoint **56.253 seconds after official timestamps were saved**, including an intentional extraction cancellation/resume and the isolated-lab setup. This is a 320×240 fixture, not a two-hour 4K benchmark. The real Ultron report still has unconfirmed endpoints, so its exact-range assembly gate remains closed. Historical measurements follow, then the current continuation results.
 
 ## Input and device
 
@@ -432,3 +432,110 @@ Where the underlying source frame is hidden by black pixels or overlays, origina
 timeline/project trim metadata may be needed to prove exact endpoints. Other
 unconfirmed endpoints still need stronger direct evidence. The system preserves
 those limits rather than inventing an official timestamp.
+
+## v1.4.0 service completion and native handoff
+
+The completed capability paths include an original-project evidence importer and
+durable extraction recovery. The importer accepts the documented canonical JSON
+frame map, not arbitrary native .aep/FCPXML/EDL files. It binds the actual original
+project and export hashes, exact reference/source identities and every decoded
+reference frame's integer source PTS. Every retained pixel anchor must agree and
+at least three must pass a fresh geometry check. Hidden endpoints receive an
+explicit ORIGINAL_TIMELINE_FRAME_MAP status rather than a false pixel-match claim.
+Missing original project evidence is not replaced by inferred metadata.
+
+Each extracted cut now retains an atomic recipe/media/frame receipt. Explicit
+RESUME_ASSEMBLY preserves the original assemblyId and official timestamps,
+validates all retained identities, and reuses intact completed cuts. An OS lock
+rejects concurrent extraction workers. Changed project/export bytes, source files,
+clips, recipes, reports and AE operation sequences fail integrity checks. An
+intermittent Windows EPERM on atomic receipt replacement was reproduced under
+concurrent polling and fixed with bounded retries; no target receipt is unlinked.
+
+The service fixture is a genuine original test project: twenty 2-second shots
+alternating raw frames 24–47 and 12–35, with black overlays on the final shot's
+first and last reference frames. The original definition existed before rendering
+and matching. The actual SSCD/CUDA service returned 19 VERIFIED and 1 LOCATED in
+163.703 analysis seconds. Importing its original frame map then produced COMPLETE
+with twenty exactly correct known ranges. The parent report stayed unchanged.
+Preparation was deliberately cancelled after two completed cut receipts, then
+resumed under the same manifest; both cuts were reused. Official timestamps to
+all prepared media took 4.847 seconds; matching through prepared media took
+173.889 receipt seconds. Native AE was tested through the actual saved assembly
+service plan and existing durable queue, rather than a re-created timestamp table.
+
+| Native mode | Ordered shots | Exact operations | Assembly/readback seconds | Official save to committed checkpoint | Timing error |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Practice | 20 | 61 | 9.488 | 56.253 s | 0 s |
+| Pro Creation | 20 | 61 | 8.383 | 85.825 s | 0 s |
+
+The checkpoint interval uses the actual official `savedAt` and durable SUCCEEDED
+queue timestamp, including the test-harness gap and all intervening work. It is
+not a sum of two independent stopwatch runs. Both modes checked ordered layer
+identities, contiguous source spans, native whole-frame timing and saved AEP
+checkpoints. The exact original empty AE project was restored; AE PID 2348 stayed
+open and responsive. Generation 134 remained PAUSED with activitySeq 2576, and
+the four pre-existing UI edits were preserved. These fixture timings establish
+the handoff for this input, not a universal five-minute bound.
+
+Retained live evidence:
+
+- Parent: `source-match-a55e4253-02fa-4043-889e-e9d9e3400435`
+- Complete original-project import: `source-match-499137e2-ed37-4228-b6cc-014f5ab855b3`
+- Actual saved assembly: `source-assembly-108a9ad0-211c-4a73-b68d-bb0455d8dca5`
+- Native receipts/readbacks: `proofs/artifacts/source-match-v140-handoff/native`
+- Full checkpoint timing: `proofs/artifacts/source-match-v140-handoff/official-native-timing.json`
+
+Local validation passed 38 Python tests (including three CFR/VFR/origin subcases),
+25 gateway tests, 51 Node integration tests, 47 schema fixtures, TypeScript and
+the runtime build. The corrected Windows suite passed all 51 Node tests and all
+four extraction tests. A separate local twenty-shot full service handoff also
+passed, reusing two cuts after cancellation. The final retained-frame/reference-scale
+changes passed all 30 matcher tests; the complete 38-test Python suite was rerun
+successfully afterward.
+
+Seven true SSCD/CUDA quality cases passed on the RTX A4500: crop/grade, reverse,
+nonlinear retime, dark endpoint and flashed endpoint all returned VERIFIED with
+zero known-frame endpoint error; fully faded endpoints remained LOCATED and
+unrelated footage remained UNRESOLVED. These small 12fps fixtures are not an
+independent real-movie false-positive or endpoint-error evaluation. Results are
+retained under `%LOCALAPPDATA%/EditFlow2/source-match-benchmarks/v140-gpu-quality`.
+
+The first v1.4.0 real two-target refinement, job
+`source-match-70e5ed0a-c1de-4ead-a69c-b32b2f2f9395`, completed its alternative
+review in 89.516 seconds with 11 VERIFIED, 10 LOCATED and 0 UNRESOLVED. Increased
+reference resolution changed the strongest geometric path on the flashed shot;
+it did not justify replacing the retained stronger interior frames. High-resolution
+verification now also checks the 640px reference scale under identical gates.
+Direct inspection of shot-003's last reference frame shows a Wanda/Ultron composite;
+shot-013's first frame is flashed Ultron. Neither picture is treated as an original
+timeline export. No original author project or frame-map file was present in the
+supplied Typical Pro Edits directory. The real exact-boundary gate stays closed
+until every endpoint has adequate evidence and direct GPT review.
+
+The two-target multiscale pass, job
+`source-match-db3a195f-eff8-4731-8a33-4e8e724666a2`, completed in 98.437 seconds
+and retained 11 VERIFIED and 10 LOCATED. An additional correction now checks a
+fresh full path constrained to the established interior frame PTS, rather than
+requiring the unconstrained maximum-score path to rediscover identical interior
+frames. Every fixed frame must remain a valid fresh correspondence; endpoint
+ambiguity is checked against the original unrestricted options, and duration
+proof and competing-copy checks remain mandatory.
+
+This recovered shot-013's full source range **274.190583333–274.607666667 s**, with
+original PTS 6580574–6590584 exclusive at time base 1/24000. Job
+`source-match-3e1a5f5d-77a5-4397-8863-0a48848f56c8` completed in 48.407 seconds,
+returned PARTIAL with **12 VERIFIED, 9 LOCATED, 0 UNRESOLVED**, and completed its
+alternative review. All twenty non-target shot objects remained exactly unchanged.
+The first, middle and last reference/raw pairs were directly inspected: flashed
+Ultron in the church, consistent head/torso poses and the raised-hand endpoint.
+This is measured source evidence, not a final creative editing PASS.
+
+Eight remaining shots have black/text-only hidden boundaries; shot-003 ends in
+a Wanda/Ultron composite. Their exact primary-source trims still require adequate
+original-project evidence. The system can now import and verify such evidence,
+but the author project/export was not supplied. It cannot reconstruct uniquely
+hidden trims from these rendered pixels. No real 21-shot official extraction or
+AE assembly was created, and the partial-report rejection was rechecked live.
+The final engine SHA-256 is
+`85352f5b4c00c2154c72e9b154ade8db7131d2d1fb7d615ed8cc70e0e394237e`.
