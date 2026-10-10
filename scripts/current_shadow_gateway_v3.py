@@ -107,7 +107,7 @@ def build_server():
 
     mcp = MCPServer(
         "EditFlow Current Shadow Gateway",
-        instructions="UI_ONLY_V1: Practice and Pro Creation save empty sessions. No editing workflow, Source Match, learning, job queue or Supervisor exists. Preserve file selection and Edit Type UI. Wait for the user to define a new process.",
+        instructions="SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1: Supervisor delivers the first Practice chat instructions before Source Match runs. Source Match alone analyzes footage and saves exact source ranges. Only after every shot is verified does the backend assemble raw ranges in AE in Finished order and stop. ChatGPT coordinates status only; never inspect footage/images, infer timestamps, approve shots or start editing. Pro Creation remains empty.",
     )
     registered: dict[str, Any] = {}
 
@@ -142,16 +142,16 @@ def build_server():
 
     @tool(read_only=True, destructive=False)
     def get_editflow2_state() -> dict[str, Any]:
-        """Read live AE state and the empty UI session together."""
+        """Read live AE state and the current session together."""
         state = _http("GET", "/state")
         state["practiceResume"] = _practice_http("GET", "/v1/product/practice/resume-or-start")
         return state
 
     @tool()
     def resume_or_start_practice(start_json: str = "") -> dict[str, Any]:
-        """Read the empty session, or save/cancel one on explicit user instruction.
+        """Read the session, or start/cancel one on explicit user instruction.
         START_PRACTICE and START_PRO_CREATION use input, userRequested:true and
-        requestId. CANCEL uses expectedAssignmentId. No editing work starts.
+        requestId. CANCEL uses expectedAssignmentId. Practice starts only Source Match and raw assembly after the Supervisor first-chat handoff; Pro Creation stays empty.
         """
         if not start_json:
             return _practice_http("GET", "/v1/product/practice/resume-or-start")
@@ -186,9 +186,9 @@ def build_server():
 
     @tool(read_only=True, destructive=False)
     def get_mcp_surface(assignment_id: str = "", available_tools_json: str = "") -> dict[str, Any]:
-        """Describe the UI-only connector. No production tools are available."""
-        return {"service": "EditFlow Current Shadow Gateway", "executionMode": "UI_ONLY_V1",
-                "availableWorkflows": [], "workflowConfigured": False, "tools": registered}
+        """Describe the scoped Source Match and raw assembly connector."""
+        return {"service": "EditFlow Current Shadow Gateway", "executionMode": "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1",
+                "availableWorkflows": ["SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1"], "workflowConfigured": True, "tools": registered}
 
     @tool(read_only=True, destructive=False)
     def get_editflow_run(session_id: str) -> dict[str, Any]:
@@ -201,6 +201,17 @@ def build_server():
         """Request a safe stop for a Practice or Pro Creation session."""
         safe_id = urllib.parse.quote(session_id, safe="")
         return _practice_http("POST", f"/v1/product/runs/{safe_id}/cancel", {})
+
+    @tool(destructive=False)
+    def run_practice_source_match(session_id: str) -> dict[str, Any]:
+        """Coordinate the sole Practice process, idempotently. Supervisor instructions
+        must already be delivered. Source Match alone analyzes Finished/raw files
+        and saves exact timestamps. The backend assembles all raw ranges in AE only
+        when every shot and endpoint is verified, then stops. Returns numeric/status
+        results only; ChatGPT must not analyze footage or make matching decisions.
+        Unresolved results block AE import. Pro Creation cannot use this tool.
+        """
+        return _practice_http("POST", "/v1/product/practice/source-match", {"sessionId": session_id})
 
     return mcp
 

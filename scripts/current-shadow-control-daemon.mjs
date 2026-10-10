@@ -2,6 +2,9 @@ import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
+import { createRequire } from "node:module";
+const { startSupervisor } = createRequire(import.meta.url)("./production-watchdog/supervisor.js");
+let supervisor = null;
 import { fileURLToPath } from "node:url";
 
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
@@ -10,7 +13,6 @@ import { RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from 
 import { resolvePracticeStatePathsV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-state-paths.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
-process.env.EDITFLOW_EDIT_DECISION_AUTHORITY = "CHATGPT_DIRECT";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -39,7 +41,7 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
-const runtimeId = "UI_ONLY_V1";
+const runtimeId = "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1";
 const buildId = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 const canonicalRuntimePath = path.join(localAppData, "EditFlow2", "current-runtime.json");
 const practiceArtifactDir = path.resolve(
@@ -132,7 +134,7 @@ const statusPayload = () => ({
     artifactDir: practiceArtifactDir,
     stateDir: practiceStatePaths.stateDir,
   },
-  controlPlane: { mode: "UI_ONLY_V1", adobeWritesEnabled: false, editorBrain: null },
+  controlPlane: { mode: runtimeId, adobeWritesEnabled: "VERIFIED_RAW_ASSEMBLY_ONLY", editorBrain: null },
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
 
@@ -215,6 +217,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(32146, "127.0.0.1", async () => {
+  supervisor = await startSupervisor({backend:"http://127.0.0.1:32146",token:config.token});
   await mkdir(path.dirname(canonicalRuntimePath), { recursive: true });
   const manifest = { schema: "editflow.current-runtime.v1", runtimeId, buildId, repositoryRoot: repoRoot,
     stateDir: practiceStatePaths.stateDir, artifactDir: practiceArtifactDir,
@@ -226,6 +229,7 @@ server.listen(32146, "127.0.0.1", async () => {
 });
 
 const shutdown = async () => {
+  await supervisor?.stop();
   await new Promise((resolve) => server.close(() => resolve()));
   await practicePanel.stop().catch(() => {});
   await broker.stop().catch(() => {});

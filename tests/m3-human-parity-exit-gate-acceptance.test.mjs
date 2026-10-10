@@ -56,7 +56,7 @@ test("all accepted M3 protocol families remain present when M4 begins", () => {
 test("MCP status closes M3 and opens M4 without weakening accepted M3 history", () => {
   const status = getMcpServerStatus();
   assert.equal(status.version, "0.5.0-dev");
-  assert.equal(status.phase, "EMPTY_WORKFLOW_UI_V1");
+  assert.equal(status.phase, "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1");
   assert.equal(status.acceptedM3HostProtocols, "1.2.0_THROUGH_2.0.0_REGISTERED");
   assert.equal(status.m3LatestHostProtocol, "2.0.0_TRANSFER_ACCEPTED");
   assert.equal(status.m3ExitGate, "OBJECT_MASK_GEOMETRY_MATTE_CURVES_TRANSFER_ACCEPTED");

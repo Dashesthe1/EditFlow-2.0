@@ -24,21 +24,22 @@ The product must let ChatGPT:
 - prove the final result structurally and visually;
 - preserve reusable Learning, Training, and Experience Memory.
 
-## Practice and Pro Creation: fresh slate
+## Practice: Source Match and raw assembly only
 
-Both modes now preserve only the existing UI and empty session functions:
-file selection/drop zones, Edit Type setup and selection, start, status and cancel.
-Starting a session saves the chosen input paths and Edit Type. No editing process
-is configured or executed.
+Proceed to do homework preserves the selected Finished edit, raw files and Edit Type.
+The Supervisor delivers the first ChatGPT session a scoped instruction before any
+matching starts. EditFlow Source Match Service alone analyzes footage and saves exact
+source timestamps for every shot. ChatGPT coordinates tool calls and reports status;
+it does not inspect footage, select ranges or approve shot matches.
 
-Prior homework/editing steps, Source Match, footage scanning, research, learning,
-production jobs, checkpoints and automatic chat/Supervisor workflows have been
-removed. Old operational data and preset learning have been cleared. Edit Type
-names and provided input media remain. No restoration switch or fallback exists.
-See [empty session contract](docs/empty-workflow-ui.md) and [operator policy](AGENTS.md).
+Every full shot range must be verified and durably saved before any AE import. Missing
+or ambiguous endpoints block assembly. The service extracts raw ranges at original
+speed and assembles them in Finished order in AE, saves an AEP checkpoint, then stops.
+There are no effects, retiming, rendering, research, learning, mastery or follow-on
+editing processes. Pro Creation retains an empty UI session. Input media is preserved.
 
-`npm run build:test-runtime` clears emitted JavaScript before compiling, so removed
-workflow implementations cannot survive in the runtime output.
+See [Practice process](docs/practice-source-workflow.md) and [operator policy](AGENTS.md).
+`npm run build:test-runtime` clears emitted JavaScript before compiling.
 
 ## Human-parity completion rule
 
@@ -66,7 +67,7 @@ All M# development testing uses the Incremental Proof Engine through `scripts/wi
 
 ## Current phase
 
-**Practice and Pro Creation have no configured editing workflow.**
+**Practice uses Source Match then raw assembly only. Pro Creation remains empty.**
 
 M4 — Tracking & Isolation is accepted. Commit `a55c0ac` closes the M4 exit gate with bounded live-AE isolation, evidence-backed semantic attachment, visible drift repair/resume, transfer across materially different retained SAM 3.1 fixtures, warm-process reuse, and exact project-baseline restoration.
 

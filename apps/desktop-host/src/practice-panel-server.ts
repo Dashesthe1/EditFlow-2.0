@@ -3,11 +3,13 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { PracticeSourceWorkflowV1, PRACTICE_SOURCE_WORKFLOW_V1 } from "./practice-source-workflow.js";
 import type { LoopbackCepBroker } from "./loopback-cep.js";
 import { CurrentAeTransactionRuntimeV1, type CurrentAeStabilizationRuntimeV1 } from "./current-ae-transaction-runtime.js";
 
-/** UI compatibility options. No option can enable an editing workflow. */
+/** Input UI and the sole scoped Practice process. Pro Creation remains empty. */
 export interface PracticePanelServerConfigV1 {
+  readonly sourceWorkflow?: PracticeSourceWorkflowV1;
   readonly port: number;
   readonly token: string;
   readonly repositoryRoot: string;
@@ -26,7 +28,7 @@ export interface PracticePanelServerConfigV1 {
   readonly stabilization?: CurrentAeStabilizationRuntimeV1;
 }
 
-export type PracticePanelRunStateV1 = "SESSION_READY" | "CANCELLED";
+export type PracticePanelRunStateV1 = "SESSION_READY" | "RUNNING" | "BLOCKED" | "COMPLETED" | "FAILED" | "CANCELLED";
 export interface PracticePanelRunSnapshotV1 {
   readonly sessionId: string;
   readonly assignmentId: string;
@@ -34,14 +36,14 @@ export interface PracticePanelRunSnapshotV1 {
   readonly practiceRole: null;
   readonly editTypeId: string;
   readonly state: PracticePanelRunStateV1;
-  readonly stage: null;
+  readonly stage: string | null;
   readonly startedAt: string;
   readonly completedAt: string | null;
   readonly finishPath: string | null;
   readonly videoPaths: readonly string[];
   readonly audioPaths: readonly string[];
-  readonly workflow: null;
-  readonly steps: readonly [];
+  readonly workflow: string | null;
+  readonly steps: readonly string[];
   readonly result: null;
   readonly allocation: null;
   readonly masteryScope: null;
@@ -50,7 +52,7 @@ export interface PracticePanelRunSnapshotV1 {
   readonly finalRenderRef: null;
   readonly humanReview: null;
   readonly finalSummary: string;
-  readonly error: null;
+  readonly error: string | null;
 }
 interface EditType {
   schema: "editflow.edit-type-profile.v1";
@@ -116,7 +118,7 @@ const atomicJson = async (file: string, value: unknown): Promise<void> => {
   await rename(temporary, file);
 };
 
-/** File selection, Edit Type CRUD and empty sessions only. No production worker is constructed. */
+/** Preserved input UI plus Source Match and raw assembly only. */
 export class PracticePanelServerV1 {
   readonly config: PracticePanelServerConfigV1;
   #server: Server | null = null;
@@ -125,16 +127,22 @@ export class PracticePanelServerV1 {
   #tail: Promise<unknown> = Promise.resolve();
   #hostRevision: unknown = null;
   readonly #stateFile: string;
+  readonly #sourceWorkflow: PracticeSourceWorkflowV1;
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535 || config.token.length < 32) {
       throw new TypeError("Valid loopback port and EditFlow token are required.");
     }
     this.config = config;
+    this.#sourceWorkflow = config.sourceWorkflow ?? new PracticeSourceWorkflowV1(config);
     this.#stateFile = path.join(path.dirname(config.gptOrchestrationFilePath ?? config.editTypeRegistryFilePath), "ui-sessions.json");
   }
   get port(): number { return this.#port; }
   get isStarted(): boolean { return this.#server !== null; }
-  get activeRunId(): string | null { return this.#state.activeRunId; }
+  get activeRunId(): string | null {
+    const id=this.#state.activeRunId;
+    if(id && ["COMPLETED","FAILED","CANCELLED"].includes(this.#run(id).state))this.#state.activeRunId=null;
+    return this.#state.activeRunId;
+  }
   async start(): Promise<number> {
     if (this.#server) return this.#port;
     try {
@@ -142,6 +150,8 @@ export class PracticePanelServerV1 {
       if (stored.schema !== this.#state.schema || !Array.isArray(stored.runs)) throw new Error("Invalid UI session state.");
       this.#state = stored;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    await this.#sourceWorkflow.start();
+    void this.activeRunId;
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -153,6 +163,7 @@ export class PracticePanelServerV1 {
   }
   async stop(): Promise<void> {
     await this.#tail;
+    await this.#sourceWorkflow.stop();
     const server = this.#server;
     this.#server = null;
     if (server) await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
@@ -166,16 +177,17 @@ export class PracticePanelServerV1 {
   }
   controlStatus() {
     return {
-      primaryWorkflow: null, availableWorkflows: [], workflowSelectionAllowed: false, workflowFallback: false,
-      productionWorkflow: null, editorialAuthority: null, practiceNotebook: null,
-      primaryProductionSystem: null, executionMode: "UI_ONLY_V1",
-      sourceMatch: null, sourceMatchPolicy: null, sourceAssembly: null,
-      practiceWorkflow: null, proCreationWorkflow: null, practiceSubsystemsEnabled: [], proCreationSubsystemsEnabled: [],
-      practiceStartBehavior: "SAVE_EMPTY_SESSION", proCreationStartBehavior: "SAVE_EMPTY_SESSION",
-      supervisorAutomation: "REMOVED", productionSupervisor: null,
+      primaryWorkflow: PRACTICE_SOURCE_WORKFLOW_V1, availableWorkflows: [PRACTICE_SOURCE_WORKFLOW_V1], workflowSelectionAllowed: false, workflowFallback: false,
+      productionWorkflow: null, editorialAuthority: "EDITFLOW_SOURCE_MATCH_SERVICE", practiceNotebook: null,
+      primaryProductionSystem: null, executionMode: PRACTICE_SOURCE_WORKFLOW_V1,
+      sourceMatch: {authority:"EDITFLOW_SOURCE_MATCH_SERVICE",chatgptFootageAnalysis:false}, sourceMatchPolicy:{allExactRangesRequired:true}, sourceAssembly:{order:"FINISHED_REFERENCE_ORDER"},
+      practiceWorkflow: PRACTICE_SOURCE_WORKFLOW_V1, proCreationWorkflow: null,
+      practiceSubsystemsEnabled: ["SUPERVISOR_HANDOFF","SOURCE_MATCH","RAW_ASSEMBLY"], proCreationSubsystemsEnabled: [],
+      practiceStartBehavior: "SUPERVISOR_FIRST_CHAT", proCreationStartBehavior: "SAVE_EMPTY_SESSION",
+      supervisorAutomation: "FIRST_CHAT_ONLY", productionSupervisor:{scope:"PRACTICE_SOURCE_MATCH_ONLY"},
       userControls: { active: null, latest: Object.values(this.#state.controls).at(-1) ?? null },
       mutationLease: { held: false, owner: null, expiresAt: null }, hostRevision: this.#hostRevision,
-      productionJobKinds: [], workflowConfigured: false,
+      productionJobKinds: [], workflowConfigured: true,
     };
   }
   async #exclusive<T>(work: () => Promise<T>): Promise<T> {
@@ -217,11 +229,14 @@ export class PracticePanelServerV1 {
     return { editTypeId, videoPaths, audioPaths, finishPath };
   }
   async #createSession(body: Record<string, unknown>, mode: PracticePanelRunSnapshotV1["mode"]): Promise<PracticePanelRunSnapshotV1> {
-    if (this.#state.activeRunId) throw new HttpError(409, "EditFlow session already active: " + this.#state.activeRunId);
+    if (this.activeRunId) throw new HttpError(409, "EditFlow session already active: " + this.activeRunId);
     const input = await this.#input(body, mode);
+    if(mode==="PRACTICE" && (input.videoPaths.length>8 || new Set(input.videoPaths).size!==input.videoPaths.length || input.videoPaths.includes(input.finishPath!))) {
+      throw new HttpError(400,"Select one through eight distinct raw movies, separate from the Finished edit.");
+    }
     const sessionId = (mode === "PRACTICE" ? "practice:" : "pro:") + randomUUID();
     const run: PracticePanelRunSnapshotV1 = {
-      sessionId, assignmentId: "ui-session:" + randomUUID(), mode, practiceRole: null, ...input,
+      sessionId, assignmentId: (mode==="PRACTICE"?"gpt-assignment:":"ui-session:") + randomUUID(), mode, practiceRole: null, ...input,
       state: "SESSION_READY", stage: null, startedAt: new Date().toISOString(), completedAt: null,
       workflow: null, steps: [], result: null, allocation: null, masteryScope: null, masteryProofRef: null,
       masteryReasons: [], finalRenderRef: null, humanReview: null, finalSummary: emptyMessage, error: null,
@@ -229,25 +244,27 @@ export class PracticePanelServerV1 {
     const next: UiState = { ...this.#state, activeRunId: sessionId, runs: [...this.#state.runs, run] };
     await atomicJson(this.#stateFile, next);
     this.#state = next;
-    return run;
+    if(mode==="PRACTICE")await this.#sourceWorkflow.create({...run,finishPath:run.finishPath!});
+    return this.#run(run.sessionId);
   }
   #run(id: string): PracticePanelRunSnapshotV1 {
     const run = this.#state.runs.find(r => r.sessionId === id || r.assignmentId === id);
     if (!run) throw new HttpError(404, "Session not found.");
-    return run;
+    return {...run,...(this.#sourceWorkflow.snapshot(run.sessionId)??{})};
   }
   async #cancel(id: string): Promise<PracticePanelRunSnapshotV1> {
     const old = this.#run(id);
-    const run: PracticePanelRunSnapshotV1 = { ...old, state: "CANCELLED", completedAt: new Date().toISOString(), finalSummary: "Empty session cancelled." };
+    if(old.mode==="PRACTICE")await this.#sourceWorkflow.cancel(old.sessionId);
+    const run: PracticePanelRunSnapshotV1 = { ...old, state: "CANCELLED", completedAt: new Date().toISOString(), finalSummary: "Session cancelled." };
     const next = { ...this.#state, activeRunId: this.#state.activeRunId === old.sessionId ? null : this.#state.activeRunId,
       runs: this.#state.runs.map(r => r.sessionId === old.sessionId ? run : r) };
     await atomicJson(this.#stateFile, next); this.#state = next;
     return run;
   }
   #resume() {
-    const run = this.#state.activeRunId ? this.#run(this.#state.activeRunId) : null;
-    return { ...this.controlStatus(), run, assignment: null, session: run, nextOperation: "NONE", nextAction: "No editing workflow is configured.",
-      workflowConfigured: false, production: null, queue: { jobs: [], receipts: [] }, checkpoint: null,
+    const run = this.activeRunId ? this.#run(this.activeRunId) : null;
+    return { ...this.controlStatus(), run, assignment: null, session: run, nextOperation: run?.mode==="PRACTICE"?run.stage:"NONE", nextAction: run?.finalSummary??"Choose input files to start a session.",
+      workflowConfigured: run?.mode==="PRACTICE", production: null, queue: { jobs: [], receipts: [] }, checkpoint: null,
       rawSelections: [] };
   }
   async #lifecycle(body: Record<string, unknown>) {
@@ -279,7 +296,7 @@ export class PracticePanelServerV1 {
       const url = new URL(req.url ?? "/", "http://127.0.0.1"), route = url.pathname;
       if (req.method === "GET" && route === "/v1/product/status") {
         json(res, 200, { service: "READY", panelConnected: this.config.broker.panelSession !== null, ...this.controlStatus(),
-          gptOrchestration: "REMOVED", activeRunId: this.#state.activeRunId,
+          gptOrchestration: "SOURCE_MATCH_COORDINATION_ONLY", activeRunId: this.activeRunId,
           activeRunState: this.#state.activeRunId ? this.#run(this.#state.activeRunId).state : null,
           latestRunId: this.#state.runs.at(-1)?.sessionId ?? null }); return;
       }
@@ -309,9 +326,20 @@ export class PracticePanelServerV1 {
         }
         return;
       }
+      if(route==="/v1/product/practice/supervisor") {
+        if(req.method==="GET") {json(res,200,{task:this.#sourceWorkflow.supervisorTask()});return;}
+        if(req.method==="POST") {json(res,200,{run:await this.#sourceWorkflow.supervisorAck(await objectBody(req))});return;}
+      }
       const runRoute = /^\/v1\/product\/(?:runs|practice)\/([^/]+)(\/cancel)?$/.exec(route);
       if (runRoute && req.method === "GET" && !runRoute[2]) { json(res, 200, { run: this.#run(decodeURIComponent(runRoute[1]!)) }); return; }
       if (runRoute && req.method === "POST" && runRoute[2]) { json(res, 200, { run: await this.#exclusive(() => this.#cancel(decodeURIComponent(runRoute[1]!))) }); return; }
+      if(route==="/v1/product/practice/source-match"&&req.method==="POST") {
+        const body=await objectBody(req);
+        const run=this.#run(required(body,"sessionId"));
+        if(run.mode!=="PRACTICE")throw new HttpError(409,"PRACTICE_SOURCE_SESSION_REQUIRED");
+        await this.#sourceWorkflow.request(run.sessionId);
+        json(res,200,{run:this.#run(run.sessionId)});return;
+      }
       if (req.method === "GET" && route === "/v1/product/gpt/assignments/next") { json(res, 200, { assignment: null, resumeRequired: false, ...this.controlStatus() }); return; }
       if (req.method === "GET" && route === "/v1/product/gpt/assignments") { json(res, 200, { assignments: [] }); return; }
       if (route.startsWith("/v1/product/")) throw new HttpError(410, "WORKFLOW_NOT_CONFIGURED");

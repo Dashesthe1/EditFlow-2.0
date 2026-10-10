@@ -15,8 +15,8 @@ import {
 test("M2 accepted real-AE baseline remains enabled while development advances into M4", () => {
   const status = getMcpServerStatus();
   assert.equal(status.version, "0.5.0-dev");
-  assert.equal(status.phase, "EMPTY_WORKFLOW_UI_V1");
-  assert.equal(status.adobeWritesEnabled, false);
+  assert.equal(status.phase, "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1");
+  assert.equal(status.adobeWritesEnabled, "VERIFIED_RAW_ASSEMBLY_ONLY");
   assert.equal(status.cepRuntimeBridge, "REAL_AE_PROVEN");
   assert.equal(status.cepBrokerBinding, "127.0.0.1_AUTHENTICATED");
   assert.equal(status.realAeAcceptance, "P1_P5_ACCEPTED");
@@ -87,7 +87,7 @@ test("root metadata and README preserve AE capability history while documenting 
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   const readme = await readFile("README.md", "utf8");
   assert.equal(pkg.version, "0.6.0-dev");
-  assert.match(readme, /Practice and Pro Creation have no configured editing workflow/);
+  assert.match(readme, /Practice uses Source Match then raw assembly only/);
   assert.match(readme, /M4 — Tracking & Isolation is accepted/);
   assert.match(readme, /M3 — Human-Parity Core remains accepted/);
   assert.match(readme, /M2 — Adobe Host Baseline remains accepted/);

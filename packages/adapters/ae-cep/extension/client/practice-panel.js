@@ -186,7 +186,7 @@
   }
 
   function configurationLocked() {
-    return activeRunState === "RUNNING" || activeRunState === "CANCEL_REQUESTED";
+    return activeRunState === "RUNNING" || activeRunState === "BLOCKED" || activeRunState === "CANCEL_REQUESTED";
   }
 
   function updateAction() {
@@ -402,7 +402,7 @@
         setRunState(activeRunState,
           activeRunState === "RUNNING"
             ? "Recovered active EditFlow run after service/panel restart."
-            : "Recovered empty session. No editing workflow is configured.");
+            : "Recovered session. Checking its current progress…");
         updateAction();
         pollRun();
       } else {
@@ -440,7 +440,7 @@
           if (!value.activeRunId && !value.latestRunId) {
             setRunState("IDLE", panelConnected
               ? "Ready. Configure an Edit Type and media, then start when ready."
-              : "Choose files and an Edit Type to start an empty session.");
+              : "Choose a Finished edit, raw files and an Edit Type. Practice will match and assemble raw shots.");
           }
           recoverPanelSession(value);
         } else if (!wasPanelConnected && panelConnected && !activeRunId) {
@@ -522,7 +522,7 @@
     }
     metricsEl.hidden = true;
     showReviewTools(run);
-    setRunState("COMPLETED", run.finalSummary || "ChatGPT completed and reviewed the edit.");
+    setRunState("COMPLETED", run.finalSummary || "Raw source assembly is complete.");
     refreshEditTypes();
   }
 
@@ -533,8 +533,8 @@
         var run = value.run;
         activeRunState = run.state;
         updateAction();
-        if (run.state === "SESSION_READY") {
-          setRunState("SESSION_READY", "Session started. No editing workflow is configured.");
+        if (["SESSION_READY", "RUNNING", "BLOCKED"].indexOf(run.state) >= 0) {
+          setRunState(run.state, run.finalSummary || "Checking Source Match progress…");
           pollTimer = setTimeout(pollRun, 2000);
           return;
         }
@@ -545,7 +545,7 @@
       });
   }
 
-  function startEmptySession(sessionMode) {
+  function startSession(sessionMode) {
     var body = {
       editTypeId: selectedEditType(),
       videoPaths: startFiles.filter(function (item) { return item.kind === "VIDEO"; }).map(function (item) { return item.path; }),
@@ -562,7 +562,7 @@
       activeRunId = value.run.sessionId;
       activeRunState = value.run.state;
       updateAction();
-      setRunState("SESSION_READY", "Session started. No editing workflow is configured.");
+      setRunState(value.run.state, value.run.finalSummary);
       pollRun();
     }).catch(function (error) {
       setRunState("FAILED", error.message);
@@ -570,8 +570,8 @@
     });
   }
 
-  function startPractice() { startEmptySession("PRACTICE"); }
-  function startProCreation() { startEmptySession("PRO_CREATION"); }
+  function startPractice() { startSession("PRACTICE"); }
+  function startProCreation() { startSession("PRO_CREATION"); }
 
   document.querySelectorAll(".mode-tab").forEach(function (tab) {
     tab.addEventListener("click", function () {
@@ -586,7 +586,7 @@
       metricsEl.hidden = true;
       hideReviewTools();
       setRunState("IDLE", mode === "PRACTICE"
-        ? "Choose a finished reference, raw files and an Edit Type, then start an empty Practice session."
+        ? "Choose a Finished edit, raw files and an Edit Type. The Supervisor starts Source Match, then AE raw assembly."
         : "Choose raw files and an Edit Type, then start an empty Pro Creation session.");
       updateAction();
     });
@@ -734,7 +734,7 @@
     activeRunState = "CANCEL_REQUESTED";
     cancelEl.disabled = true;
     updateAction();
-    setRunState("CANCEL_REQUESTED", "Cancelling the empty session…");
+    setRunState("CANCEL_REQUESTED", "Cancelling the session…");
     productRequest(
       "/v1/product/runs/" + encodeURIComponent(runId) + "/cancel",
       { method: "POST", body: "{}" }
@@ -745,7 +745,7 @@
       }
       setRunState(
         "CANCEL_REQUESTED",
-        "Cancelling the empty session…"
+        "Cancelling the session…"
       );
       pollRun();
     }).catch(function (error) {

@@ -1,10 +1,10 @@
 export const EDITFLOW_VERSION = "0.5.0-dev" as const;
-export const EDITFLOW_PHASE = "EMPTY_WORKFLOW_UI_V1" as const;
+export const EDITFLOW_PHASE = "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1" as const;
 export const EDITFLOW_DEFAULT_EXECUTION_RUNNER = null;
 export const getMcpServerStatus = () => ({
-  version: EDITFLOW_VERSION, phase: EDITFLOW_PHASE, adobeWritesEnabled: false,
-  runtimeMode: "UI_ONLY_V1", defaultExecutionRunner: null, editorBrain: null,
-  primaryProductionSystem: null, availableWorkflows: [], workflowConfigured: false,
+  version: EDITFLOW_VERSION, phase: EDITFLOW_PHASE, adobeWritesEnabled: "VERIFIED_RAW_ASSEMBLY_ONLY",
+  runtimeMode: "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1", defaultExecutionRunner: null, editorBrain: null,
+  primaryProductionSystem: null, availableWorkflows: ["SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1"], workflowConfigured: true,
   runtimeCapabilityComposition: "M2_BASE_PLUS_ACCEPTED_M3",
   acceptedM3HostProtocols: "1.2.0_THROUGH_2.0.0_REGISTERED",
   humanParityCore: "MASK_COMPOSITE_PARENTING_NULL_LAYER_CONTROLS_TEMPORAL_SPATIAL_GRAPH_EDITOR_MARKER_MOTION_EXIT_GATE_ACCEPTED",
