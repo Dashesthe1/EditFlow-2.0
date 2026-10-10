@@ -1,0 +1,335 @@
+{
+  "schema": "editflow.source-match-maintenance-validation.v1",
+  "engine": "source-match-v1.8.0",
+  "engineSha256": "76a81b08645078f0cfb3e158791e7f0d626b61f2e0b912d0f18dd143b5852be2",
+  "assignmentId": "gpt-assignment:4b7cc0e0-235d-4682-b8cc-76362ffd7336",
+  "sessionId": "practice:9d5614d2-d49c-4943-a233-53c1d7bcca37",
+  "parentMeasurementJobId": "source-match-590c50d6-805e-4e29-997b-768b8b25813b",
+  "parentReportSha256": "dfc6355db05d31a2d4c51a21380e250784c32b6bfe6cf64655e173cf11eca17f",
+  "reportPath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\report.json",
+  "tests": {
+    "passed": 51,
+    "failed": 0,
+    "suite": [
+      "test_engine.py",
+      "test_native_boundaries.py"
+    ]
+  },
+  "elapsedSeconds": 371.64,
+  "wholeShotSummary": {
+    "VERIFIED": 12,
+    "LOCATED": 9,
+    "UNRESOLVED": 0
+  },
+  "boundaryRecoverySummary": {
+    "EXACT_ENDPOINTS_MEASURED": 0,
+    "VISIBLE_CONTENT_MEASURED": 9,
+    "UNRESOLVED": 0
+  },
+  "preservedVerifiedShotIds": [
+    "shot-002",
+    "shot-005",
+    "shot-006",
+    "shot-008",
+    "shot-009",
+    "shot-011",
+    "shot-013",
+    "shot-014",
+    "shot-016",
+    "shot-017",
+    "shot-019",
+    "shot-020"
+  ],
+  "afterEffectsMutated": false,
+  "assignmentRestarted": false,
+  "editorialAcceptance": "AWAITING_DIRECT_IMAGE_REVIEW",
+  "exactHiddenTrimsCertified": false,
+  "sourceAssemblyPermissionGranted": false,
+  "nextAction": "Review saved native endpoint/source images and transition events; do not certify hidden full-shot endpoints or replay the 12 committed selections.",
+  "shots": [
+    {
+      "shotId": "shot-001",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 20,
+      "measuredFrameCount": 18,
+      "visibleSourceRange": {
+        "referenceStart": 0.0667913438418381,
+        "referenceEndExclusive": 0.667913438418381,
+        "sourceStart": 1012.4280833333333,
+        "sourceEndExclusive": 1013.012,
+        "sourceStartPts": 24298274,
+        "sourceEndPtsExclusive": 24312288,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACKOUT_APPEARANCE",
+          "referenceStart": 0.0,
+          "referenceEndExclusive": 0.0667913438418381,
+          "referencePts": [
+            0,
+            1000
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-001-native-boundary.json"
+    },
+    {
+      "shotId": "shot-003",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 36,
+      "measuredFrameCount": 35,
+      "visibleSourceRange": {
+        "referenceStart": 4.541711194229228,
+        "referenceEndExclusive": 7.113144536468074,
+        "sourceStart": 1016.890875,
+        "sourceEndExclusive": 1019.4350833333333,
+        "sourceStartPts": 24405381,
+        "sourceEndPtsExclusive": 24466442,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-003-native-boundary.json"
+    },
+    {
+      "shotId": "shot-004",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 36,
+      "measuredFrameCount": 35,
+      "visibleSourceRange": {
+        "referenceStart": 7.179935880309912,
+        "referenceEndExclusive": 10.886755276516164,
+        "sourceStart": 1019.5185,
+        "sourceEndExclusive": 1023.2305416666667,
+        "sourceStartPts": 24468444,
+        "sourceEndPtsExclusive": 24557533,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACK_WITH_LOCAL_OVERLAY_CANDIDATE",
+          "referenceStart": 7.146540208388993,
+          "referenceEndExclusive": 7.179935880309912,
+          "referencePts": [
+            213996
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-004-native-boundary.json"
+    },
+    {
+      "shotId": "shot-007",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 36,
+      "measuredFrameCount": 34,
+      "visibleSourceRange": {
+        "referenceStart": 16.597281592305638,
+        "referenceEndExclusive": 24.879207854662035,
+        "sourceStart": 1028.9445833333334,
+        "sourceEndExclusive": 1037.2445416666667,
+        "sourceStartPts": 24694670,
+        "sourceEndPtsExclusive": 24893869,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACK_WITH_LOCAL_OVERLAY_CANDIDATE",
+          "referenceStart": 16.5304902484638,
+          "referenceEndExclusive": 16.563885920384717,
+          "referencePts": [
+            494989
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [
+        {
+          "referencePts": 495989,
+          "referenceTime": 16.563885920384717,
+          "retainedSourcePts": 24693669,
+          "reason": "RETAINED_FRAME_FAILED_FRESH_RECHECK"
+        }
+      ],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-007-native-boundary.json"
+    },
+    {
+      "shotId": "shot-010",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 22,
+      "measuredFrameCount": 21,
+      "visibleSourceRange": {
+        "referenceStart": 26.381979695431472,
+        "referenceEndExclusive": 27.08328880577077,
+        "sourceStart": 1155.8213333333333,
+        "sourceEndExclusive": 1156.155,
+        "sourceStartPts": 27739712,
+        "sourceEndPtsExclusive": 27747720,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACKOUT_APPEARANCE",
+          "referenceStart": 26.348584023510554,
+          "referenceEndExclusive": 26.381979695431472,
+          "referencePts": [
+            788982
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-010-native-boundary.json"
+    },
+    {
+      "shotId": "shot-012",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 23,
+      "measuredFrameCount": 22,
+      "visibleSourceRange": {
+        "referenceStart": 27.851355864279988,
+        "referenceEndExclusive": 28.586060646540208,
+        "sourceStart": 267.7257916666667,
+        "sourceEndExclusive": 268.05945833333334,
+        "sourceStartPts": 6425419,
+        "sourceEndPtsExclusive": 6433427,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACK_WITH_LOCAL_OVERLAY_CANDIDATE",
+          "referenceStart": 27.81796019235907,
+          "referenceEndExclusive": 27.851355864279988,
+          "referencePts": [
+            832981
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-012-native-boundary.json"
+    },
+    {
+      "shotId": "shot-015",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 23,
+      "measuredFrameCount": 22,
+      "visibleSourceRange": {
+        "referenceStart": 30.088832487309645,
+        "referenceEndExclusive": 30.82350387389794,
+        "sourceStart": 902.6100416666667,
+        "sourceEndExclusive": 903.027125,
+        "sourceStartPts": 21662641,
+        "sourceEndPtsExclusive": 21672651,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACK_WITH_LOCAL_OVERLAY_CANDIDATE",
+          "referenceStart": 30.055436815388724,
+          "referenceEndExclusive": 30.088832487309645,
+          "referencePts": [
+            899980
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-015-native-boundary.json"
+    },
+    {
+      "shotId": "shot-018",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 23,
+      "measuredFrameCount": 22,
+      "visibleSourceRange": {
+        "referenceStart": 32.32627571466738,
+        "referenceEndExclusive": 33.0609804969276,
+        "sourceStart": 1269.6850833333333,
+        "sourceEndExclusive": 1270.0604583333334,
+        "sourceStartPts": 30472442,
+        "sourceEndPtsExclusive": 30481451,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACKOUT_APPEARANCE",
+          "referenceStart": 32.29288004274646,
+          "referenceEndExclusive": 32.32627571466738,
+          "referencePts": [
+            966978
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-018-native-boundary.json"
+    },
+    {
+      "shotId": "shot-021",
+      "status": "VISIBLE_CONTENT_MEASURED",
+      "exactOriginalTrimMeasured": false,
+      "actualReferenceFrameCount": 22,
+      "measuredFrameCount": 20,
+      "visibleSourceRange": {
+        "referenceStart": 34.83088431739247,
+        "referenceEndExclusive": 35.098049692759815,
+        "sourceStart": 1464.71325,
+        "sourceEndExclusive": 1464.7966666666666,
+        "sourceStartPts": 35153118,
+        "sourceEndPtsExclusive": 35155120,
+        "sourceTimeBase": "1/24000",
+        "hiddenSourceEndpointsInferred": false
+      },
+      "transitionEvents": [
+        {
+          "kind": "BLACKOUT_APPEARANCE",
+          "referenceStart": 34.53035666577612,
+          "referenceEndExclusive": 34.56375233769703,
+          "referencePts": [
+            1033977
+          ],
+          "effectCauseProven": false,
+          "hiddenSourcePts": null,
+          "reviewStatus": "AWAITING_CHATGPT_REVIEW"
+        }
+      ],
+      "contradictions": [],
+      "evidencePath": "C:\\Users\\Shadow\\AppData\\Local\\EditFlow2\\source-match-benchmarks\\ultron-native-boundaries-v180\\shot-021-native-boundary.json"
+    }
+  ]
+}
