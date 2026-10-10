@@ -1,5 +1,5 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -127,6 +127,8 @@ export class PracticePanelServerV1 {
   #tail: Promise<unknown> = Promise.resolve();
   #hostRevision: unknown = null;
   readonly #stateFile: string;
+  readonly #deletionFile: string;
+  readonly #deletionConfirmations = new Map<string,{editTypeId:string;signature:string;expiresAt:number}>();
   readonly #sourceWorkflow: PracticeSourceWorkflowV1;
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535 || config.token.length < 32) {
@@ -135,6 +137,7 @@ export class PracticePanelServerV1 {
     this.config = config;
     this.#sourceWorkflow = config.sourceWorkflow ?? new PracticeSourceWorkflowV1(config);
     this.#stateFile = path.join(path.dirname(config.gptOrchestrationFilePath ?? config.editTypeRegistryFilePath), "ui-sessions.json");
+    this.#deletionFile = path.join(path.dirname(config.editTypeRegistryFilePath), "edit-type-deletion.json");
   }
   get port(): number { return this.#port; }
   get isStarted(): boolean { return this.#server !== null; }
@@ -152,6 +155,8 @@ export class PracticePanelServerV1 {
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     await this.#sourceWorkflow.start();
     void this.activeRunId;
+    const pendingDeletion = await this.#optionalJson(this.#deletionFile);
+    if (pendingDeletion) await this.#finishProfileDeletion(required(pendingDeletion, "editTypeId"));
     const server = createServer((req, res) => { void this.#handle(req, res); });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -195,26 +200,110 @@ export class PracticePanelServerV1 {
     this.#tail = task.catch(() => undefined);
     return task;
   }
-  async #profiles(): Promise<EditType[]> {
-    try {
-      const registry = JSON.parse(await readFile(this.config.editTypeRegistryFilePath, "utf8"));
-      if (registry.schema !== "editflow.edit-type-registry.v1" || !Array.isArray(registry.profiles)) throw new Error("Invalid Edit Type registry.");
-      // Only names/descriptions remain part of the empty workflow UI.
-      return registry.profiles.map((p: EditType) => this.#profile(p.editTypeId, p.title, p.description));
-    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+  async #optionalJson(file:string): Promise<any> {
+    try {return JSON.parse(await readFile(file,"utf8"));}
+    catch(error) {if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw error;}
   }
+  async #registry(): Promise<{schema:string;profiles:EditType[];[key:string]:unknown}> {
+    const registry = await this.#optionalJson(this.config.editTypeRegistryFilePath)
+      ?? {schema:"editflow.edit-type-registry.v1",profiles:[]};
+    if(registry.schema!=="editflow.edit-type-registry.v1"||!Array.isArray(registry.profiles))throw new Error("Invalid Edit Type registry.");
+    return registry;
+  }
+  async #profiles(): Promise<EditType[]> {
+    const registry = await this.#registry();
+    return registry.profiles.map(p=>this.#profile(p.editTypeId,p.title,p.description));
+  }
+
   #profile(editTypeId: string, title: string, description?: string): EditType {
     return { schema: "editflow.edit-type-profile.v1", editTypeId, title, choiceWords: [title],
       ...(description ? { description } : {}), revision: 1, sessionIds: [], masteredSessionIds: [],
       behaviorEvidence: [], gptLearning: { workedExamples: [] } };
   }
   async #createProfile(body: Record<string, unknown>): Promise<EditType> {
+    await this.#assertNoPendingDeletion();
     const id = required(body, "editTypeId"), title = required(body, "title");
-    const profiles = await this.#profiles();
+    const registry = await this.#registry(), profiles = registry.profiles;
     if (profiles.some(p => p.editTypeId === id)) throw new HttpError(409, "Edit Type already exists.");
     const profile = this.#profile(id, title, typeof body.description === "string" ? body.description : undefined);
-    await atomicJson(this.config.editTypeRegistryFilePath, { schema: "editflow.edit-type-registry.v1", profiles: [...profiles, profile] });
+    await atomicJson(this.config.editTypeRegistryFilePath, { ...registry, profiles: [...profiles, profile] });
     return profile;
+  }
+  #assertDeletionAvailable() {
+    if(this.activeRunId)throw new HttpError(409,"Cancel the active session before deleting an Edit Type.");
+  }
+  async #assertNoPendingDeletion() {
+    if(await this.#optionalJson(this.#deletionFile))throw new HttpError(409,"A preset deletion is incomplete. Restart the runtime to finish it before making another change.");
+  }
+  async #deletionSignature(editTypeId:string) {
+    return createHash("sha256").update(JSON.stringify({registry:await this.#registry(),state:this.#state,
+      memory:await this.#optionalJson(this.config.learningMemoryFilePath),
+      sessions:this.#sourceWorkflow.editTypeSessions(editTypeId)})).digest("hex");
+  }
+  async #previewProfileDeletion(body:Record<string,unknown>) {
+    this.#assertDeletionAvailable();
+    await this.#assertNoPendingDeletion();
+    const editTypeId=required(body,"editTypeId"),registry=await this.#registry();
+    const profile=registry.profiles.find(p=>p.editTypeId===editTypeId);
+    if(!profile)throw new HttpError(404,"Edit Type not found.");
+    const flowSessions=this.#sourceWorkflow.editTypeSessions(editTypeId);
+    if(flowSessions.some(r=>!["COMPLETED","CANCELLED","FAILED"].includes(r.state)))throw new HttpError(409,"Cancel this Edit Type's active Practice session before deleting it.");
+    for(const [key,value] of this.#deletionConfirmations)if(value.expiresAt<Date.now())this.#deletionConfirmations.delete(key);
+    const confirmationToken=randomUUID();
+    this.#deletionConfirmations.set(confirmationToken,{editTypeId,signature:await this.#deletionSignature(editTypeId),expiresAt:Date.now()+120_000});
+    const sessionCount=new Set([...this.#state.runs.filter(r=>r.editTypeId===editTypeId).map(r=>r.sessionId),...flowSessions.map(r=>r.sessionId)]).size;
+    return {editTypeId,title:profile.title,confirmationToken,sessionCount,
+      consequences:"This permanently removes the Edit Type, all its stored memories, learned rules and examples, attachments, and saved session history. Its Source Match results, generated shot files and AE checkpoint copies are also deleted. AE layers using those generated files may show missing footage. Original Finished/raw media files, the open AE project and other Edit Types stay in place. This cannot be undone."};
+  }
+  async #deleteProfile(body:Record<string,unknown>) {
+    this.#assertDeletionAvailable();
+    const editTypeId=required(body,"editTypeId"),token=required(body,"confirmationToken"),confirmation=this.#deletionConfirmations.get(token);
+    if(body.confirmed!==true||!confirmation||confirmation.editTypeId!==editTypeId||confirmation.expiresAt<Date.now())throw new HttpError(409,"Confirm this Edit Type again before deleting it.");
+    if(confirmation.signature!==await this.#deletionSignature(editTypeId))throw new HttpError(409,"The preset or session data changed. Review and confirm deletion again.");
+    this.#deletionConfirmations.delete(token);
+    await this.#sourceWorkflow.deleteEditType(editTypeId,true);
+    // Contains only the deletion target, never a restorable copy of its learning.
+    await atomicJson(this.#deletionFile,{editTypeId});
+    await this.#finishProfileDeletion(editTypeId);
+    this.#deletionConfirmations.clear();
+    return {deletedEditTypeId:editTypeId,editTypes:await this.#profiles()};
+  }
+  async #finishProfileDeletion(editTypeId:string) {
+    this.#assertDeletionAvailable();
+    await this.#sourceWorkflow.deleteEditType(editTypeId,true);
+    const ownedRuns=this.#state.runs.filter(r=>r.editTypeId===editTypeId);
+    const flowSessions=this.#sourceWorkflow.editTypeSessions(editTypeId);
+    const sessions=new Set([...ownedRuns.map(r=>r.sessionId),...flowSessions.map(r=>r.sessionId)]);
+    const assignments=new Set([...ownedRuns.map(r=>r.assignmentId),...flowSessions.map(r=>r.assignmentId)]);
+    const registry=await this.#registry();
+    const survivingIds=new Set(registry.profiles.filter(p=>p.editTypeId!==editTypeId).map(p=>p.editTypeId));
+    // Remove explicit preset/session ownership from the optional legacy memory file.
+    // Never use attachment/evidence paths from that file as filesystem targets.
+    const memory=await this.#optionalJson(this.config.learningMemoryFilePath);
+    const prune=(value:any):any=>{
+      if(Array.isArray(value))return value.map(prune).filter(v=>v!==undefined);
+      if(value&&typeof value==="object") {
+        if(survivingIds.has(value.editTypeId))return value;
+        if(value.editTypeId===editTypeId||sessions.has(value.sessionId)||assignments.has(value.assignmentId))return undefined;
+        return Object.fromEntries(Object.entries(value).filter(([key])=>key!==editTypeId&&!sessions.has(key)&&!assignments.has(key))
+          .map(([key,v])=>[key,survivingIds.has(key)?v:prune(v)]).filter(([,v])=>v!==undefined));
+      }
+      if(typeof value==="string"&&(value===editTypeId||sessions.has(value)||assignments.has(value)))return undefined;
+      return value;
+    };
+    if(memory!==null) {
+      const remaining=prune(memory);
+      if(remaining===undefined)await rm(this.config.learningMemoryFilePath,{force:true});
+      else await atomicJson(this.config.learningMemoryFilePath,remaining);
+    }
+    await this.#sourceWorkflow.deleteEditType(editTypeId);
+    const controls=Object.fromEntries(Object.entries(this.#state.controls).filter(([,c])=>
+      c.editTypeId!==editTypeId&&!sessions.has(String(c.sessionId))&&!assignments.has(String(c.assignmentId))));
+    const next={...this.#state,runs:this.#state.runs.filter(r=>r.editTypeId!==editTypeId),controls};
+    await atomicJson(this.#stateFile,next);this.#state=next;
+    await atomicJson(this.config.editTypeRegistryFilePath,{...prune({...registry,profiles:[]}),
+      profiles:registry.profiles.filter(p=>p.editTypeId!==editTypeId)});
+    await rm(this.#deletionFile,{force:true});
   }
   async #input(body: Record<string, unknown>, mode: PracticePanelRunSnapshotV1["mode"]) {
     const editTypeId = required(body, "editTypeId");
@@ -222,13 +311,12 @@ export class PracticePanelServerV1 {
     const audioPaths = await files(body, "audioPaths");
     const finishPath = mode === "PRACTICE" ? (await files({ finish: [required(body, "finishPath")] }, "finish", true))[0]! : null;
     if (!(await this.#profiles()).some(p => p.editTypeId === editTypeId)) {
-      if (mode === "PRACTICE" && typeof body.editTypeTitle === "string") {
-        await this.#createProfile({ editTypeId, title: body.editTypeTitle });
-      } else throw new HttpError(400, "EDIT_TYPE_NOT_FOUND: " + editTypeId);
+      throw new HttpError(400, "EDIT_TYPE_NOT_FOUND: " + editTypeId);
     }
     return { editTypeId, videoPaths, audioPaths, finishPath };
   }
   async #createSession(body: Record<string, unknown>, mode: PracticePanelRunSnapshotV1["mode"]): Promise<PracticePanelRunSnapshotV1> {
+    await this.#assertNoPendingDeletion();
     if (this.activeRunId) throw new HttpError(409, "EditFlow session already active: " + this.activeRunId);
     const input = await this.#input(body, mode);
     if(mode==="PRACTICE" && (input.videoPaths.length>8 || new Set(input.videoPaths).size!==input.videoPaths.length || input.videoPaths.includes(input.finishPath!))) {
@@ -307,6 +395,10 @@ export class PracticePanelServerV1 {
       if (route === "/v1/product/edit-types") {
         if (req.method === "GET") { json(res, 200, { editTypes: await this.#profiles() }); return; }
         if (req.method === "POST") { const body = await objectBody(req); json(res, 201, { editType: await this.#exclusive(() => this.#createProfile(body)) }); return; }
+      }
+      if(req.method==="POST"&&["/v1/product/edit-types/delete-preview","/v1/product/edit-types/delete"].includes(route)) {
+        const body=await objectBody(req);
+        json(res,200,await this.#exclusive<unknown>(()=>route.endsWith("/delete-preview")?this.#previewProfileDeletion(body):this.#deleteProfile(body)));return;
       }
       if (req.method === "POST" && ["/v1/product/practice", "/v1/product/pro-creation"].includes(route)) {
         const body = await objectBody(req);

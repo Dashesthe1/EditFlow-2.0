@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:*; connect-src http://127.0.0.1:*; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
   <title>EditFlow 2.0</title>
   <link rel="stylesheet" href="../client/bridge.css" />
+  <link rel="stylesheet" href="../client/edit-type-delete.css" />
 </head>
 <body>
   <main>
@@ -22,15 +23,18 @@
     </nav>
 
     <section class="workspace-card">
-      <div class="field">
+      <div id="edit-type-controls" class="field">
         <div class="field-heading">
           <label for="edit-type">Edit Type</label>
-          <button id="new-edit-type" class="text-button" type="button">+ New</button>
+          <div class="edit-type-actions">
+            <button id="delete-edit-type" class="text-button delete-edit-type" type="button" disabled title="Delete selected Edit Type (Delete key)">Delete</button>
+            <button id="new-edit-type" class="text-button" type="button">+ New</button>
+          </div>
         </div>
         <select id="edit-type">
           <option value="">Choose an Edit Type</option>
         </select>
-        <p class="hint">Edit Types stay available for setup even while the runtime or AE bridge is disconnected. Configuration locks only while an edit session is active.</p>
+        <p class="hint">Edit Types stay available for setup even while the runtime or AE bridge is disconnected. Select a preset, then use Delete or the Delete key. Deletion requires a connection and two confirmations.</p>
       </div>
 
       <p class="hint">Practice finds exact source ranges, then assembles all raw shots in AE. Pro Creation has no workflow.</p>
@@ -102,6 +106,18 @@
       </dl>
     </details>
   </main>
+
+  <div id="edit-type-delete-modal" class="delete-modal" hidden>
+    <section class="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-type-delete-title" aria-describedby="edit-type-delete-message">
+      <p id="edit-type-delete-step" class="eyebrow">CONFIRMATION 1 OF 2</p>
+      <h2 id="edit-type-delete-title">Delete Edit Type?</h2>
+      <p id="edit-type-delete-message"></p>
+      <div class="delete-dialog-actions">
+        <button id="edit-type-delete-no" class="secondary-action" type="button">No</button>
+        <button id="edit-type-delete-yes" class="cancel-action" type="button">Yes</button>
+      </div>
+    </section>
+  </div>
 
   <script src="../client/runtime-config.js"></script>
   <script src="../client/bridge.js"></script>

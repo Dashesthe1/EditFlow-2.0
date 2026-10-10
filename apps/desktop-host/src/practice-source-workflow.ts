@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { capabilityForCommandV11, AeFilesystemPolicyV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import { CurrentAeTransactionRuntimeV1 } from "./current-ae-transaction-runtime.js";
@@ -135,6 +135,55 @@ export class PracticeSourceWorkflowV1 {
     if(r.jobId)await this.services.matcher.cancel(r.jobId);
     if(r.assemblyId)await this.services.assembler.cancel(r.assemblyId);
     await this.#save(r);
+  }
+  editTypeSessions(editTypeId:string) {
+    return [...this.#records.values()].filter(r=>r.editTypeId===editTypeId)
+      .map(r=>({sessionId:r.sessionId,assignmentId:r.assignmentId,state:r.state}));
+  }
+  /** Delete only app-owned artifacts. Never follow input/report paths to user media. */
+  async deleteEditType(editTypeId:string,validateOnly=false) {
+    return this.#exclusive(async()=>{
+      const records=[...this.#records.values()].filter(r=>r.editTypeId===editTypeId);
+      if(records.some(r=>!terminal(r)))throw new Error("Cancel this Edit Type's active Practice session before deleting it.");
+      const targets:string[]=[];
+      const sourceRoot=path.join(this.config.artifactDir,"source-match");
+      const optional=async(file:string)=>{
+        try{return JSON.parse(await readFile(file,"utf8"));}
+        catch(e:any){if(e.code==="ENOENT")return null;throw e;}
+      };
+      // Resolve and validate every owned ID before removing any data.
+      for(const r of records) {
+        if(!/^practice:[a-f0-9-]{36}$/.test(r.sessionId))throw new Error("Invalid saved Practice session ID.");
+        const suffix=r.sessionId.split(":")[1]!;
+        const matchReceipt=path.join(sourceRoot,"requests","practice-"+suffix+".json");
+        const assemblyReceipt=path.join(sourceRoot,"assemblies","requests","practice-assembly-"+suffix+".json");
+        const match=await optional(matchReceipt),assembly=await optional(assemblyReceipt);
+        if(r.jobId&&match?.jobId&&r.jobId!==match.jobId)throw new Error("Saved Source Match ownership conflict.");
+        if(r.assemblyId&&assembly?.assemblyId&&r.assemblyId!==assembly.assemblyId)throw new Error("Saved assembly ownership conflict.");
+        const jobId=r.jobId??match?.jobId,assemblyId=r.assemblyId??assembly?.assemblyId;
+        if(jobId) {
+          if(!/^source-match-[a-f0-9-]{36}$/.test(jobId))throw new Error("Invalid saved Source Match ID.");
+          const dir=path.join(sourceRoot,jobId),job=await optional(path.join(dir,"job.json"));
+          if(job&&job.assignmentId!==r.assignmentId)throw new Error("Saved Source Match ownership conflict.");
+          targets.push(dir);
+        }
+        if(assemblyId) {
+          if(!/^source-assembly-[a-f0-9-]{36}$/.test(assemblyId))throw new Error("Invalid saved assembly ID.");
+          const dir=path.join(sourceRoot,"assemblies",assemblyId),manifest=await optional(path.join(dir,"official-timestamps.json"));
+          if(manifest&&manifest.jobId!==jobId)throw new Error("Saved assembly ownership conflict.");
+          targets.push(dir);
+        }
+        targets.push(matchReceipt,assemblyReceipt);
+      }
+      if(validateOnly)return;
+      for(const file of targets)await rm(file,{recursive:true,force:true});
+      // Keep the ownership records until their artifacts have all been removed so a
+      // persisted deletion can safely finish after a crash or filesystem error.
+      for(const r of records) {
+        await rm(path.dirname(this.#file(r.sessionId)),{recursive:true,force:true});
+        this.#records.delete(r.sessionId);
+      }
+    });
   }
   async advance() {
     if(this.#advancing)return this.#tail;

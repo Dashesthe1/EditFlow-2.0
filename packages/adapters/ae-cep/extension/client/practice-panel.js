@@ -23,9 +23,19 @@
   var pendingEditTypes = [];
   var pendingEditTypeSync = false;
   var preferredEditTypeId = "";
+  var deletion = null;
+  var editTypesEpoch = 0;
+  var sessionStarting = false;
 
   var editTypeEl = document.getElementById("edit-type");
   var newEditTypeEl = document.getElementById("new-edit-type");
+  var deleteEditTypeEl = document.getElementById("delete-edit-type");
+  var deleteModalEl = document.getElementById("edit-type-delete-modal");
+  var deleteTitleEl = document.getElementById("edit-type-delete-title");
+  var deleteMessageEl = document.getElementById("edit-type-delete-message");
+  var deleteStepEl = document.getElementById("edit-type-delete-step");
+  var deleteNoEl = document.getElementById("edit-type-delete-no");
+  var deleteYesEl = document.getElementById("edit-type-delete-yes");
   var finishFieldEl = document.getElementById("finish-field");
   var finishSummaryEl = document.getElementById("finish-summary");
   var startSummaryEl = document.getElementById("start-summary");
@@ -186,17 +196,19 @@
   }
 
   function configurationLocked() {
-    return activeRunState === "RUNNING" || activeRunState === "BLOCKED" || activeRunState === "CANCEL_REQUESTED";
+    return sessionStarting || activeRunState === "RUNNING" || activeRunState === "BLOCKED" || activeRunState === "CANCEL_REQUESTED";
   }
 
   function updateAction() {
-    var configLocked = configurationLocked();
+    var configLocked = configurationLocked() || Boolean(deletion);
     var startBlocked = Boolean(activeRunId);
     editTypeEl.disabled = configLocked;
     newEditTypeEl.disabled = configLocked;
+    deleteEditTypeEl.disabled = configLocked || Boolean(activeRunId) || !serviceReady
+      || pendingEditTypeSync || !selectedEditTypeProfile() || selectedEditTypeProfile().pendingLocal === true;
     document.querySelectorAll(".mode-tab").forEach(function (tab) { tab.disabled = configLocked; });
     var hasVideo = startFiles.some(function (item) { return item.kind === "VIDEO"; });
-    var valid = serviceReady && !startBlocked
+    var valid = serviceReady && !startBlocked && !configLocked
       && selectedEditType() && hasVideo;
     if (mode === "PRACTICE") {
       valid = valid && Boolean(finishPath);
@@ -324,6 +336,7 @@
   }
 
   function refreshEditTypesFromLocalRegistry() {
+    if (deletion) return false;
     var localEditTypes = readEditTypesFromLocalRegistry();
     if (localEditTypes === null) return false;
     setCachedEditTypes(localEditTypes);
@@ -338,8 +351,10 @@
       renderCurrentEditTypes();
       return Promise.resolve();
     }
+    var epoch = editTypesEpoch;
     return productRequest("/v1/product/edit-types", { method: "GET" })
       .then(function (value) {
+        if (epoch !== editTypesEpoch || deletion) return;
         var editTypes = value.editTypes || [];
         setCachedEditTypes(editTypes);
         reconcilePendingEditTypes(editTypes);
@@ -348,10 +363,11 @@
   }
 
   function syncPendingEditTypes() {
-    if (!serviceReady || configurationLocked() || pendingEditTypeSync || pendingEditTypes.length === 0) {
+    if (!serviceReady || configurationLocked() || deletion || pendingEditTypeSync || pendingEditTypes.length === 0) {
       return Promise.resolve();
     }
     pendingEditTypeSync = true;
+    updateAction();
     var queue = pendingEditTypes.slice();
     var chain = Promise.resolve();
     queue.forEach(function (profile) {
@@ -384,9 +400,11 @@
     });
     return chain.then(function () {
       pendingEditTypeSync = false;
+      updateAction();
       return refreshEditTypes();
     }).catch(function (error) {
       pendingEditTypeSync = false;
+      updateAction();
       renderCurrentEditTypes();
       throw error;
     });
@@ -546,6 +564,9 @@
   }
 
   function startSession(sessionMode) {
+    if (deletion || sessionStarting) return;
+    sessionStarting = true;
+    updateAction();
     var body = {
       editTypeId: selectedEditType(),
       videoPaths: startFiles.filter(function (item) { return item.kind === "VIDEO"; }).map(function (item) { return item.path; }),
@@ -559,12 +580,14 @@
     productRequest(sessionMode === "PRACTICE" ? "/v1/product/practice" : "/v1/product/pro-creation", {
       method: "POST", body: JSON.stringify(body)
     }).then(function (value) {
+      sessionStarting = false;
       activeRunId = value.run.sessionId;
       activeRunState = value.run.state;
       updateAction();
       setRunState(value.run.state, value.run.finalSummary);
       pollRun();
     }).catch(function (error) {
+      sessionStarting = false;
       setRunState("FAILED", error.message);
       updateAction();
     });
@@ -572,6 +595,111 @@
 
   function startPractice() { startSession("PRACTICE"); }
   function startProCreation() { startSession("PRO_CREATION"); }
+
+  function closeDeleteDialog() {
+    var focus = deletion && deletion.previousFocus;
+    deletion = null;
+    deleteModalEl.hidden = true;
+    deleteNoEl.disabled = false;
+    deleteYesEl.disabled = false;
+    updateAction();
+    if (focus && !focus.disabled && typeof focus.focus === "function") focus.focus();
+    else editTypeEl.focus();
+  }
+
+  function beginDeleteEditType() {
+    var profile = selectedEditTypeProfile();
+    if (deletion || deleteEditTypeEl.disabled || !profile) return;
+    deletion = { editTypeId: profile.editTypeId, title: profile.title, step: 1,
+      previousFocus: document.activeElement, preview: null };
+    deleteStepEl.textContent = "CONFIRMATION 1 OF 2";
+    deleteTitleEl.textContent = 'Delete “' + profile.title + '”?';
+    deleteMessageEl.textContent = "Are you sure you want to delete this Edit Type?";
+    deleteYesEl.textContent = "Yes";
+    deleteModalEl.hidden = false;
+    updateAction();
+    deleteNoEl.focus();
+  }
+
+  deleteEditTypeEl.addEventListener("click", beginDeleteEditType);
+  document.getElementById("edit-type-controls").addEventListener("keydown", function (event) {
+    if ((event.key !== "Delete" && event.keyCode !== 46) || event.repeat
+      || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    if (event.target !== editTypeEl && event.target !== deleteEditTypeEl) return;
+    event.preventDefault();
+    event.stopPropagation();
+    beginDeleteEditType();
+  });
+  deleteNoEl.addEventListener("click", function () {
+    if (deletion && deletion.step !== "DELETING") closeDeleteDialog();
+  });
+  deleteModalEl.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" || event.keyCode === 27) {
+      event.preventDefault(); event.stopPropagation();
+      if (deletion && deletion.step !== "DELETING") closeDeleteDialog();
+    } else if (event.key === "Tab" || event.keyCode === 9) {
+      event.preventDefault();
+      if (!deleteNoEl.disabled && !deleteYesEl.disabled) {
+        (document.activeElement === deleteNoEl ? deleteYesEl : deleteNoEl).focus();
+      } else if (!deleteNoEl.disabled) deleteNoEl.focus();
+    }
+  });
+  deleteYesEl.addEventListener("click", function () {
+    var target = deletion;
+    if (!target || deleteYesEl.disabled) return;
+    if (target.step === 1) {
+      target.step = "LOADING";
+      deleteYesEl.disabled = true;
+      deleteMessageEl.textContent = "Checking what belongs to this Edit Type…";
+      productRequest("/v1/product/edit-types/delete-preview", {
+        method: "POST", body: JSON.stringify({ editTypeId: target.editTypeId })
+      }).then(function (value) {
+        if (deletion !== target) return;
+        target.preview = value;
+        target.step = 2;
+        deleteStepEl.textContent = "FINAL CONFIRMATION · 2 OF 2";
+        deleteTitleEl.textContent = 'REALLY delete “' + target.title + '”?';
+        deleteMessageEl.textContent = value.consequences + "\n\nSaved sessions attached to this preset: " + value.sessionCount + ".\n\nAre you REALLY sure?";
+        deleteYesEl.disabled = false;
+        deleteNoEl.focus();
+      }).catch(function (error) {
+        if (deletion !== target) return;
+        closeDeleteDialog();
+        setRunState("FAILED", "Could not prepare deletion: " + error.message);
+      });
+      return;
+    }
+    if (target.step !== 2 || !target.preview) return;
+    target.step = "DELETING";
+    deleteNoEl.disabled = true;
+    deleteYesEl.disabled = true;
+    deleteYesEl.textContent = "Deleting…";
+    // Invalidate earlier list reads so they cannot restore a deleted cached preset.
+    editTypesEpoch += 1;
+    productRequest("/v1/product/edit-types/delete", {
+      method: "POST", body: JSON.stringify({ editTypeId: target.editTypeId,
+        confirmationToken: target.preview.confirmationToken, confirmed: true })
+    }).then(function (value) {
+      editTypesEpoch += 1;
+      setCachedEditTypes(value.editTypes || []);
+      setPendingEditTypes(pendingEditTypes.filter(function (p) { return p.editTypeId !== target.editTypeId; }));
+      preferredEditTypeId = "";
+      writeStoredString(selectedEditTypeKey, "");
+      editTypeEl.value = "";
+      editTypesSignature = null;
+      completedRunId = null;
+      lastRecoveredRunId = null;
+      closeDeleteDialog();
+      renderCurrentEditTypes();
+      metricsEl.hidden = true;
+      hideReviewTools();
+      setRunState("IDLE", 'Deleted “' + target.title + '” and all its attached preset data.');
+    }).catch(function (error) {
+      closeDeleteDialog();
+      setRunState("FAILED", "Deletion did not finish: " + error.message);
+      refreshEditTypes();
+    });
+  });
 
   document.querySelectorAll(".mode-tab").forEach(function (tab) {
     tab.addEventListener("click", function () {
