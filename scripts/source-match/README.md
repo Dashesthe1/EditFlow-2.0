@@ -14,6 +14,41 @@ this avoids a redundant web search without replacing direct pixel review.
 
 ## Targeted continuation
 
+### Native-frame transition and boundary recovery (v1.8.0)
+
+REFINE on already located shots now reuses confirmed origins and compares every
+actual decoded Finished frame in 0.55-second boundary windows, neighboring cut
+handles, and all retained interior anchors. It decodes original raw frames only
+in bounded neighborhoods around those known locations. Native integer PTS and
+observed durations are retained; no fixed-fps interpolation creates evidence.
+Fresh SIFT, stricter ORB, and local-contrast geometry checks test each frame.
+Retained anchors must survive the new check before a monotone source-frame path
+can be accepted. Twelve previously VERIFIED Ultron selections stay untouched.
+
+`boundaryRecoveries` and each `shot-XXX-native-boundary.json` retain the measured
+frame map, independent first/last observations, search windows, contradictions,
+transition appearances, and actual reference/source/correspondence images.
+`EXACT_ENDPOINTS_MEASURED` can promote a shot to VERIFIED only when both actual
+original reference endpoints pass fresh pixel, temporal, duration and identity
+checks. `VISIBLE_CONTENT_MEASURED` records a separate `visibleSourceRange` and
+keeps the full shot LOCATED. Its hidden original trim is never inferred.
+
+Flat clipped black/white runs have exact reference PTS and durations in
+`transitionEvents`. Small bright overlays on dark backgrounds are labeled
+`BLACK_WITH_LOCAL_OVERLAY_CANDIDATE` and still undergo source matching. Dark
+textured picture remains a matching target. Appearance
+alone cannot establish whether a blackout came from an effect or the raw movie;
+`effectCauseProven:false` and `hiddenSourcePts:null` preserve that distinction.
+Unmatched picture is not automatically classified as a flash or crossfade.
+Native comparisons expose these frames for direct GPT inspection.
+The visible-content range is measurement evidence for an explicit editing
+decision, not automatic permission to bypass the exact full-range assembly
+contract. GPT review and the current issued worker are still required for AE.
+
+Run `python -m pytest scripts/source-match/test_native_boundaries.py` for
+known-frame black bursts, fresh endpoints, reverse/repeated traversal, VFR,
+contradictory retained evidence and preservation tests.
+
 Use `refine_source_match` / POST `REFINE` with `{requestId,jobId,shotIds?,windows?,budgetSeconds}`.
 Each window is `{shotId,sourceIndex,start,end}` in seconds, at most 120 seconds.
 Omit shotIds to target every non-VERIFIED row. The service snapshots the parent

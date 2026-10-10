@@ -23,7 +23,7 @@ import av
 import cv2
 import numpy as np
 
-VERSION = "source-match-v1.6.2"
+VERSION = "source-match-v1.8.0"
 INDEX_VERSION = "source-match-v1.0.0"  # Reuse compatible deployed descriptor caches.
 ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -86,8 +86,11 @@ def probe(file):
 def trim_bars(im):
     # Only remove contiguous nearly-black borders, never interior overlays/content.
     gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
-    rows = (gray > 12).mean(axis=1) > .02
-    cols = (gray > 12).mean(axis=0) > .02
+    # A fixed black threshold discarded the picture rectangle in faint fades.
+    # Scale the border threshold to observed levels, retaining quantized detail.
+    threshold = min(12., float(np.percentile(gray,98))*.03)
+    rows = (gray > threshold).mean(axis=1) > .02
+    cols = (gray > threshold).mean(axis=0) > .02
     ys, xs = np.flatnonzero(rows), np.flatnonzero(cols)
     if len(ys) and len(xs) and ys[-1] - ys[0] > im.shape[0] * .25 and xs[-1] - xs[0] > im.shape[1] * .25:
         return im[ys[0]:ys[-1]+1, xs[0]:xs[-1]+1]
@@ -281,9 +284,63 @@ def feature_points(im, method="SIFT"):
     if 0<high-low<64:
         gray=np.clip((gray.astype(float)-low)*255/(high-low),0,255).astype(np.uint8)
     a=cv2.createCLAHE(clipLimit=2).apply(gray)
+    if method=="SIFT_LOCAL_CONTRAST":
+        value=gray.astype(np.float32)
+        mean=cv2.GaussianBlur(value,(0,0),max(3,min(value.shape)/32))
+        difference=value-mean
+        scale=np.sqrt(cv2.GaussianBlur(difference*difference,(0,0),max(3,min(value.shape)/32)))
+        a=np.clip(128+40*difference/np.maximum(scale,2),0,255).astype(np.uint8)
     detector = cv2.ORB_create(nfeatures=2400,fastThreshold=7,edgeThreshold=15) if method=="ORB" else cv2.SIFT_create(nfeatures=1600)
     keypoints,descriptors=detector.detectAndCompute(a,None)
     return a,keypoints,descriptors
+
+
+def illumination_witnesses(left,right,mask):
+    """Local intensity order plus signed edges, independent of keypoints.
+
+    Census comparisons survive monotone exposure/gamma changes. Flat/clipped
+    pixels have no vote. A fixed lattice requires broad picture support, so a
+    caption or small shared insert cannot certify the remaining image.
+    """
+    def observed(im):
+        value=cv2.GaussianBlur(im.astype(np.float32),(3,3),.6)
+        low,high=np.percentile(value[mask],[1,99]) if mask.any() else (0,0)
+        return ((value-float(low))*255/max(1,float(high-low))).astype(np.float32)
+    a,b=observed(left),observed(right)
+    shifts=[(dy,dx) for dy,dx in [(-4,0),(4,0),(0,-4),(0,4),(-3,-3),(-3,3),(3,-3),(3,3)]]
+    order=[];usable=[]
+    for dy,dx in shifts:
+        da=np.roll(a,(dy,dx),(0,1))-a;db=np.roll(b,(dy,dx),(0,1))-b
+        usable.append((np.abs(da)>=3)&(np.abs(db)>=3))
+        order.append((da*db)>0)
+    usable=np.stack(usable);order=np.stack(order)
+    keep=mask.copy();keep[:4]=False;keep[-4:]=False;keep[:,:4]=False;keep[:,-4:]=False
+    # All census neighbors must belong to the measured overlap.
+    keep=cv2.erode(keep.astype(np.uint8),np.ones((9,9),np.uint8))>0
+    def edges(value):
+        value=cv2.GaussianBlur(value,(5,5),1)
+        return np.stack([cv2.Sobel(value,cv2.CV_32F,1,0),cv2.Sobel(value,cv2.CV_32F,0,1)],axis=-1)
+    ga,gb=edges(a),edges(b);ea=np.linalg.norm(ga,axis=-1);eb=np.linalg.norm(gb,axis=-1)
+    cosine=(ga*gb).sum(axis=-1)/np.maximum(ea*eb,1e-6)
+    tiles=[];supported=np.zeros(mask.shape,bool)
+    for row in range(6):
+        for col in range(6):
+            x0,x1=round(col*mask.shape[1]/6),round((col+1)*mask.shape[1]/6)
+            y0,y1=round(row*mask.shape[0]/6),round((row+1)*mask.shape[0]/6)
+            region=np.s_[y0:y1,x0:x1];valid=keep[region]
+            votes=usable[:,y0:y1,x0:x1]&valid[None]
+            count=int(votes.sum());textured=(votes.sum(axis=0)>=3)&valid
+            texture=float(textured.mean());agreement=float(order[:,y0:y1,x0:x1][votes].mean()) if count else 0.
+            edge=valid&(ea[region]>=8)&(eb[region]>=8)
+            orientation=float((cosine[region][edge]>=.7).mean()) if edge.any() else 0.
+            passed=valid.mean()>=.8 and count>=256 and texture>=.15 and agreement>=.85 and edge.mean()>=.1 and orientation>=.75
+            tiles.append(dict(row=row,col=col,rect=[x0,y0,x1,y1],censusAgreement=agreement,edgeAgreement=orientation,texturedFraction=texture,passed=bool(passed)))
+            if passed:supported[region]=valid
+    good=[t for t in tiles if t['passed']]
+    fraction=float(supported.mean())
+    return dict(method='LOCAL_CENSUS_AND_SIGNED_EDGES',tiles=tiles,supportedFraction=fraction,
+                passed=fraction>=.4 and len(good)>=10 and len({t['row'] for t in good})>=3 and len({t['col'] for t in good})>=3,
+                agreement=float(np.median([t['censusAgreement'] for t in good])) if good else 0.)
 
 
 def retrieval_image(im):
@@ -310,7 +367,45 @@ def boundary_information(im):
                 note="Text or overlays may remain; actual source correspondence, not brightness, establishes identity.")
 
 
-def geometry(query_im, source_im, query_features=None, source_features=None):
+def transition_appearance(im):
+    """Observe clipped/flat pixels without equating dark grading with black.
+
+    Appearance does not prove whether black was an overlay or original footage.
+    Text-only and composites remain candidates until their sequence is reviewed.
+    """
+    gray=cv2.cvtColor(im,cv2.COLOR_RGB2GRAY)
+    low,high=np.percentile(gray,[1,99])
+    black=float((gray<=4).mean());white=float((gray>=251).mean())
+    flat=float(gray.std())<1.5 and high-low<=4
+    kind=('BLACKOUT_APPEARANCE' if black>=.99 and flat else
+          'WHITE_FLASH_APPEARANCE' if white>=.99 and flat else 'PICTURE_OR_UNCLASSIFIED')
+    foreground=gray>max(16,float(high)*.15)
+    ys,xs=np.where(foreground)
+    foreground_fraction=float(foreground.mean())
+    rows={min(5,int(y*6/gray.shape[0])) for y in ys}
+    if (kind=='PICTURE_OR_UNCLASSIFIED' and float((gray<=8).mean())>=.85
+            and .001<=foreground_fraction<=.12 and len(rows)<=2):
+        kind='BLACK_WITH_LOCAL_OVERLAY_CANDIDATE'
+    return dict(kind=kind,blackFraction=black,whiteFraction=white,
+                intensityRange=[float(low),float(high)],standardDeviation=float(gray.std()),
+                foregroundFraction=foreground_fraction,effectCauseProven=False)
+
+
+def observed_range(anchors, reference_end=None):
+    """Measured picture range only. Never fill an opaque frame by extrapolation."""
+    first,last=anchors[0],anchors[-1]
+    low=min(anchors,key=lambda a:a['sourceTime']);high=max(anchors,key=lambda a:a['sourceTime'])
+    if not high.get('sourceFrameDurationVerified'):
+        return None
+    tb=float(Fraction(high['sourceTimeBase']))
+    return dict(referenceStart=first['referenceTime'],
+                referenceEndExclusive=min(reference_end,last['referenceTime']+last['referenceFrameDuration']) if reference_end is not None else last['referenceTime']+last['referenceFrameDuration'],
+                sourceStart=low['sourceTime'],sourceEndExclusive=high['sourceTime']+high['sourceFrameDuration'],
+                sourceStartPts=low['sourcePts'],sourceEndPtsExclusive=high['sourcePts']+round(high['sourceFrameDuration']/tb),
+                sourceTimeBase=low['sourceTimeBase'],hiddenSourceEndpointsInferred=False)
+
+
+def geometry(query_im, source_im, query_features=None, source_features=None, illumination=False):
     a,ka,da = query_features if query_features is not None else feature_points(query_im)
     b,kb,db = source_features if source_features is not None else feature_points(source_im)
     if da is None or db is None or len(da)<8 or len(db)<8:
@@ -374,23 +469,41 @@ def geometry(query_im, source_im, query_features=None, source_features=None):
         if regional['passed']:
             correlation=max(correlation,float(np.median([r['correlation'] for r in regions])))
     partial=global_correlation<.55 and bool(regional and regional['passed'])
+    structural=None
+    if (illumination or (correlation<.55 and not partial)) and inliers>=20 and coverage>=.2 and fraction>=.6:
+        original_query=cv2.cvtColor(trim_bars(query_im),cv2.COLOR_RGB2GRAY)
+        original_source=cv2.cvtColor(trim_bars(source_im),cv2.COLOR_RGB2GRAY)
+        original_query=cv2.resize(original_query,(a.shape[1],a.shape[0]))
+        original_source=cv2.resize(original_source,(b.shape[1],b.shape[0]))
+        aligned=cv2.warpPerspective(original_source,inverse,(a.shape[1],a.shape[0]))
+        structural=illumination_witnesses(original_query,aligned,mask)
+    invariant=bool(structural and structural['passed'])
+    if invariant:correlation=max(correlation,structural['agreement'])
     return dict(inliers=inliers, coverage=coverage, fraction=fraction,descriptorMethod="ORB" if binary else "SIFT",
                 correlation=correlation, globalCorrelation=global_correlation,
-                verificationMethod="DISTRIBUTED_VISIBLE_REGIONS" if partial else "ALIGNED_IMAGE",
+                verificationMethod="ILLUMINATION_INVARIANT" if invariant else "DISTRIBUTED_VISIBLE_REGIONS" if partial else "ALIGNED_IMAGE",
+                photometricRoute="LOCAL_CONTRAST" if illumination else "CLAHE",illuminationEvidence=structural,
                 regionalEvidence=regional,
                 transform=dict(queryToSource=matrix.tolist(),querySize=[a.shape[1],a.shape[0]],
                                sourceSize=[b.shape[1],b.shape[0]],coordinateSpace="TRIMMED_IMAGE_PIXELS"),
                 score=float(min(inliers,80) * min(1.,coverage/.25) * fraction * max(0,correlation)**6
-                            * (regional['supportedFraction'] if partial else 1)))
+                            * (structural['supportedFraction'] if invariant else regional['supportedFraction'] if partial else 1)))
 
 
 def valid_geometry(g):
     valid=g["inliers"] >= 12 and g["coverage"] >= .12 and g["fraction"] >= .5 and g.get("correlation",1) >= .55
     if g.get('descriptorMethod')=='ORB':
         valid=valid and g['inliers']>=24 and g['coverage']>=.2 and g['fraction']>=.6 and g.get('correlation',0)>=.65
+    if g.get('photometricRoute')=='LOCAL_CONTRAST' or g.get('verificationMethod')=='ILLUMINATION_INVARIANT':
+        return valid and g['inliers']>=20 and g['coverage']>=.2 and g['fraction']>=.6 and bool((g.get('illuminationEvidence') or {}).get('passed'))
     if g.get('verificationMethod')=='DISTRIBUTED_VISIBLE_REGIONS':
         return valid and g['inliers']>=20 and g['coverage']>=.2 and bool(g.get('regionalEvidence',{}).get('passed'))
     return valid
+
+
+def lighting_geometry(query,source,query_features=None,source_features=None):
+    return geometry(query,source,query_features or feature_points(query,'SIFT_LOCAL_CONTRAST'),
+                    source_features or feature_points(source,'SIFT_LOCAL_CONTRAST'),illumination=True)
 
 
 def aligned_gray(query, source, g, size=320):
@@ -567,6 +680,22 @@ def endpoint_identity(options, chosen, frame_seconds):
     return max(a["sourceTime"] for a in peers)-min(a["sourceTime"] for a in peers)<=frame_seconds*2+1e-6
 
 
+def native_endpoint_identity(options, chosen, raw, frame_seconds):
+    """Compression score differences cannot disambiguate a copied static frame."""
+    if not endpoint_identity(options,chosen,frame_seconds):return False
+    original=cv2.resize(raw[chosen['sourcePts']]['image'],(256,256))
+    peers=[]
+    # Inspect decoded raw neighbors as well as the proposed query options. A
+    # narrowed prediction must not hide the tail of an identical-frame run.
+    for frame in raw.values():
+        if abs(frame['t']-chosen['sourceTime'])>.5:continue
+        other=cv2.resize(frame['image'],(256,256))
+        delta=cv2.absdiff(original,other)
+        if float(delta.mean())<=.5 and float(np.percentile(delta,99))<=2:
+            peers.append(frame['t'])
+    return not peers or max(peers)-min(peers)<=frame_seconds*2+1e-6
+
+
 def hypothesis_quality(hypothesis):
     anchors=hypothesis["anchors"]
     return sum(a["geometry"]["score"] for a in anchors)/max(1,len(anchors))
@@ -639,6 +768,7 @@ class Engine:
         self.accepted_hypotheses = {}
         self.query_features = {}
         self.orb_queries = {}
+        self.lighting_queries = {}
         self.refine_ids = None
         self.refine_windows = {}
         self.verification_size = 1280 if request.get("refinement") else 640
@@ -777,6 +907,8 @@ class Engine:
         self.refine_ids=set(refinement["shotIds"])
         self.report["shots"]=old["shots"]
         self.report['originVerifications']=old.get('originVerifications',{})
+        self.report['alternativeReviewComplete']=old.get('alternativeReviewComplete',False)
+        self.report['boundaryRecoveries']=old.get('boundaryRecoveries',{})
         self.report["lineage"]=dict(parentJobId=refinement["parentJobId"],reportSha256=digest,refinedShotIds=refinement["shotIds"],retainedEvidence=True)
         for w in refinement["windows"]:
             self.refine_windows.setdefault(w["shotId"],[]).append(w)
@@ -786,7 +918,11 @@ class Engine:
             s['boundaryEvidence']=self.boundary_evidence.get(s['shotId'],[])
             for a in s.get('anchors',[]):
                 n=next((n for n,q in enumerate(self.queries) if q['shot']==i and abs(q['frame']['t']-a['referenceTime'])<1e-6),None)
-                if n is None:raise ValueError('RETAINED_QUERY_MISSING')
+                if n is None:
+                    fresh=list(decode(self.report['reference']['path'],max(0,a['referenceTime']-1e-6),a['referenceTime']+.001,size=self.verification_size,check=self.check))
+                    if not fresh:raise ValueError('RETAINED_QUERY_MISSING')
+                    n=len(self.queries);self.queries.append(dict(shot=i,frame=fresh[0],information=boundary_information(fresh[0]['image']),samplingRole='RETAINED_NATIVE_BOUNDARY'))
+                    self.qvectors=np.concatenate([self.qvectors,self.encode([retrieval_image(fresh[0]['image'])])])
                 a['queryIndex']=n
             windows=self.refine_windows.get(s["shotId"],[])
             if not windows and s.get("sourcePath"):
@@ -801,6 +937,34 @@ class Engine:
             if s.get("alignment") and len(s.get("anchors",[]))>=3:
                 self.accepted_hypotheses[i]=[dict(source=s["sourceIndex"],score=sum(a["geometry"]["score"] for a in s["anchors"]),anchors=s["anchors"],alignment=s["alignment"],frames=[],complete=s["status"]=="VERIFIED")]
         self.progress("RETAINED_REPORT_READY",shots=len(self.refine_ids),verificationSize=self.verification_size)
+
+    def restore_native_locations(self):
+        """Validate a known-location continuation without redundant descriptors."""
+        refinement=self.request.get('refinement')
+        if not refinement or refinement.get('windows'):
+            return False
+        retained=(self.out/'resume-report.json').read_bytes();old=json.loads(retained)
+        if hashlib.sha256(retained).hexdigest()!=refinement['reportSha256']:
+            raise ValueError('RETAINED_REPORT_CHANGED')
+        ids=set(refinement['shotIds'])
+        targets=[s for s in old['shots'] if s['shotId'] in ids]
+        if len(targets)!=len(ids) or not all(s.get('sourcePath') and s.get('alignment') and len(s.get('anchors',[]))>=3 for s in targets):
+            return False
+        if any(old.get('originVerifications',{}).get(s['shotId'],{}).get('status') in ['UNCONFIRMED','NOT_CHECKED'] for s in old['shots']):
+            return False
+        reference=self.request['referencePath'];sources=self.request['sourcePaths']
+        if (old.get('reference',{}).get('fingerprint')!=fingerprint(reference)
+                or [s.get('fingerprint') for s in old.get('sources',[])]!=[fingerprint(p) for p in sources]):
+            raise ValueError('REFINEMENT_INPUT_CHANGED')
+        if self.request.get('shots')!=[dict(start=s['referenceStart'],end=s['referenceEnd']) for s in old['shots']]:
+            raise ValueError('REFINEMENT_BOUNDARIES_CHANGED')
+        self.report.update(reference=old['reference'],sources=old['sources'],shots=old['shots'],
+            originVerifications=old.get('originVerifications',{}),alternativeReviewComplete=old.get('alternativeReviewComplete',False),
+            boundaryRecoveries=old.get('boundaryRecoveries',{}),
+            lineage=dict(parentJobId=refinement['parentJobId'],reportSha256=refinement['reportSha256'],refinedShotIds=refinement['shotIds'],retainedEvidence=True))
+        self.refine_ids=ids;self.queries=[]
+        self.progress('RETAINED_NATIVE_LOCATIONS_READY',shots=len(ids),descriptorSearchSkipped=True)
+        return True
 
     def search(self,vectors,times,source):
         scores=self.encoder.similarity(self.qvectors,vectors)
@@ -1058,6 +1222,7 @@ class Engine:
                 sfeatures={}
                 coarse_sources={}
                 orb_sources={}
+                lighting_sources={}
                 def compare(n,f):
                     if f['pts'] not in sfeatures:sfeatures[f['pts']]=feature_points(f['image'])
                     checks=[geometry(im,f['image'],features,sfeatures[f['pts']]) for im,features in qvariants[n]]
@@ -1073,6 +1238,14 @@ class Engine:
                             key=(n,im.shape[:2])
                             if key not in self.orb_queries:self.orb_queries[key]=feature_points(im,'ORB')
                             checks.append(geometry(im,f['image'],self.orb_queries[key],orb_sources[f['pts']]))
+                    if not any(valid_geometry(g) for g in checks):
+                        # Exposure/gamma/local lighting fallback; retain the
+                        # same PTS, geometry, uniqueness and temporal checks.
+                        small=resized(f['image'],640)
+                        if f['pts'] not in lighting_sources:lighting_sources[f['pts']]=feature_points(small,'SIFT_LOCAL_CONTRAST')
+                        im=resized(self.queries[n]['frame']['image'],640)
+                        if n not in self.lighting_queries:self.lighting_queries[n]=feature_points(im,'SIFT_LOCAL_CONTRAST')
+                        checks.append(lighting_geometry(im,small,self.lighting_queries[n],lighting_sources[f['pts']]))
                     self.metrics['geometryComparisons']+=len(checks)
                     return max([g for g in checks if valid_geometry(g)] or checks,key=lambda g:g['score'])
                 ordered_qs=sorted(qs,key=lambda nq:0 if nq[0]==middle else 1)
@@ -1318,6 +1491,160 @@ class Engine:
             self.progress("MATCH_EVIDENCE",shotId=shot["shotId"],status=shot["status"],sourceStart=shot.get("sourceStart"),sourceEndExclusive=shot.get("sourceEndExclusive"))
             self.save()
 
+    def native_boundaries(self):
+        """Recheck known locations at actual native PTS, separating transition time.
+
+        Bounded predictions schedule comparisons only. All saved frame maps and
+        endpoints must survive fresh geometry and monotone sequence checks.
+        Existing VERIFIED shots are untouched. Opaque endpoints stay unresolved.
+        """
+        results=self.report.setdefault('boundaryRecoveries',{})
+        for i,shot in enumerate(self.report['shots']):
+            if (shot['status']=='VERIFIED' or not shot.get('sourcePath') or len(shot.get('anchors',[]))<3
+                    or (self.refine_ids is not None and shot['shotId'] not in self.refine_ids)):
+                continue
+            self.check();self.progress('NATIVE_BOUNDARY_RECOVERY',shotId=shot['shotId'])
+            retained=sorted(shot['anchors'],key=lambda a:a['referenceTime'])
+            source_meta=self.report['sources'][shot['sourceIndex']]
+            frame_seconds=1/source_meta['fps']
+            start,end=shot['referenceStart'],shot['referenceEnd']
+            # Decode every frame in boundary windows plus neighboring cut handles.
+            # Interior anchors are retained, so long shots need no whole-movie scan.
+            windows=merge_windows([(max(0,start-.12),min(end,start+.55)),
+                                   (max(start,end-.55),min(self.report['reference']['duration'],end+.12))]
+                                  +[(max(start,a['referenceTime']-1e-6),min(end,a['referenceTime']+.001)) for a in retained])
+            reference={}
+            for a,b in windows:
+                for f in decode(self.report['reference']['path'],a,b,size=640,check=self.check):
+                    reference[f['pts']]=f
+            refs=sorted(reference.values(),key=lambda f:f['t'])
+            inside=[f for f in refs if start-1e-6<=f['t']<end-1e-6]
+            if not inside:
+                continue
+            for left,right in zip(refs,refs[1:]):
+                # Disjoint anchor-only windows are not consecutive frame evidence.
+                if right['t']-left['t']<=1.5/self.report['reference']['fps']:
+                    left['duration']=right['t']-left['t'];left['durationVerified']=True
+            x=np.array([a['referenceTime'] for a in retained]);y=np.array([a['sourceTime'] for a in retained])
+            def proposal(t):
+                if t<x[0]:return y[0]+(t-x[0])*shot['alignment']['playbackRate']*(1 if shot['alignment']['direction']=='FORWARD' else -1)
+                if t>x[-1]:return y[-1]+(t-x[-1])*shot['alignment']['playbackRate']*(1 if shot['alignment']['direction']=='FORWARD' else -1)
+                return float(np.interp(t,x,y))
+            neighborhoods={f['pts']:float(proposal(f['t'])) for f in inside}
+            raw_windows=merge_windows([(max(0,t-.3),min(source_meta['duration'],t+.3+frame_seconds)) for t in neighborhoods.values()],gap=.1)
+            # CPU/PyAV keeps every original integer PTS, including VFR sources.
+            raw={}
+            for a,b in raw_windows:
+                dense=list(decode(shot['sourcePath'],a,b,size=640,check=self.check))
+                for left,right in zip(dense,dense[1:]):
+                    left['duration']=right['t']-left['t'];left['durationVerified']=True
+                raw.update({f['pts']:f for f in dense})
+                self.metrics['denseVerificationFrames']+=len(dense)
+                self.metrics['denseVerificationSeconds']+=b-a
+            frames=sorted(raw.values(),key=lambda f:f['t'])
+            source_features={};source_orb={};source_local={}
+            options={};records=[];contradictions=[]
+            fixed={round(a['referenceTime'],6):a['sourcePts'] for a in retained}
+            for f in inside:
+                self.check()
+                appearance=transition_appearance(f['image'])
+                n=next((n for n,q in enumerate(self.queries) if q['shot']==i and abs(q['frame']['t']-f['t'])<1e-6),None)
+                if n is None:
+                    n=len(self.queries);self.queries.append(dict(shot=i,frame=f,samplingRole='NATIVE_BOUNDARY'))
+                qfeat=feature_points(f['image']);qorb=None;qlocal=None
+                choices=[];predicted=neighborhoods[f['pts']]
+                candidates=[s for s in frames if abs(s['t']-predicted)<=.3+1e-6]
+                if appearance['kind'] not in ['BLACKOUT_APPEARANCE','WHITE_FLASH_APPEARANCE']:
+                    for s in candidates:
+                        self.check();began=time.monotonic()
+                        if s['pts'] not in source_features:source_features[s['pts']]=feature_points(s['image'])
+                        checks=[geometry(f['image'],s['image'],qfeat,source_features[s['pts']])]
+                        if not valid_geometry(checks[0]):
+                            if qorb is None:qorb=feature_points(f['image'],'ORB')
+                            if s['pts'] not in source_orb:source_orb[s['pts']]=feature_points(s['image'],'ORB')
+                            checks.append(geometry(f['image'],s['image'],qorb,source_orb[s['pts']]))
+                        if not any(valid_geometry(g) for g in checks):
+                            if qlocal is None:qlocal=feature_points(f['image'],'SIFT_LOCAL_CONTRAST')
+                            if s['pts'] not in source_local:source_local[s['pts']]=feature_points(s['image'],'SIFT_LOCAL_CONTRAST')
+                            checks.append(lighting_geometry(f['image'],s['image'],qlocal,source_local[s['pts']]))
+                        self.metrics['geometryComparisons']+=len(checks)
+                        self.metrics['geometrySeconds']+=time.monotonic()-began
+                        valid=[g for g in checks if valid_geometry(g)]
+                        if valid:
+                            g=max(valid,key=lambda g:g['score'])
+                            choices.append(dict(referenceTime=f['t'],referencePts=f['pts'],referenceTimeBase=f['timeBase'],
+                                referenceFrameDuration=f['duration'],sourceTime=s['t'],sourcePts=s['pts'],sourceTimeBase=s['timeBase'],
+                                sourceAbsoluteTime=s['absolute'],sourceFrameDuration=s['duration'],sourceFrameDurationVerified=s.get('durationVerified',False),
+                                geometry=g,queryIndex=n))
+                choices.sort(key=lambda a:a['geometry']['score'],reverse=True)
+                options[f['pts']]=choices
+                prior=fixed.get(round(f['t'],6))
+                if prior is not None and not any(a['sourcePts']==prior for a in choices):
+                    contradictions.append(dict(referencePts=f['pts'],referenceTime=f['t'],retainedSourcePts=prior,reason='RETAINED_FRAME_FAILED_FRESH_RECHECK'))
+                records.append(dict(referencePts=f['pts'],referenceTime=f['t'],referenceTimeBase=f['timeBase'],
+                    duration=f['duration'],appearance=appearance,queryIndex=n,candidateCount=len(choices),
+                    searchWindow=dict(start=max(0,predicted-.3),end=min(source_meta['duration'],predicted+.3)),
+                    status='AWAITING_SEQUENCE_CHECK' if choices else 'NO_OBSERVED_SOURCE_CORRESPONDENCE'))
+            visible=[f for f in inside if options[f['pts']]]
+            failed={c['referencePts'] for c in contradictions}
+            constrained=[]
+            for f in visible:
+                if f['pts'] in failed:continue
+                prior=fixed.get(round(f['t'],6));choices=options[f['pts']]
+                constrained.append([a for a in choices if prior is None or a['sourcePts']==prior])
+            path=consistent_path(constrained,frame_seconds)
+            anchors,alignment=path if path else ([],None)
+            chosen={a['referencePts']:a for a in anchors}
+            for r in records:
+                a=chosen.get(r['referencePts'])
+                if a:
+                    r.update(status='MEASURED_SOURCE_FRAME',sourcePts=a['sourcePts'],sourceTime=a['sourceTime'],sourceTimeBase=a['sourceTimeBase'],
+                             endpointIdentityMeasured=native_endpoint_identity(options[r['referencePts']],a,raw,frame_seconds))
+            # Save actual source/edit pixels and adjacent raw-frame controls.
+            for a in anchors:
+                f=reference[a['referencePts']];s=raw[a['sourcePts']]
+                stem=f"{shot['shotId']}-native-ref-{f['pts']}-source-{s['pts']}"
+                rp=self.out/(stem+'-reference.jpg');sp=self.out/(stem+'-source.jpg');cp=self.out/(stem+'-correspondence.jpg')
+                cv2.imwrite(str(rp),cv2.cvtColor(f['image'],cv2.COLOR_RGB2BGR));cv2.imwrite(str(sp),cv2.cvtColor(s['image'],cv2.COLOR_RGB2BGR))
+                correspondence_picture(f['image'],s['image'],a['geometry'],cp)
+                a.update(referenceEvidencePath=str(rp),sourceEvidencePath=str(sp),correspondenceEvidencePath=str(cp))
+            boundary_anchors=[a for a in anchors if native_endpoint_identity(options[a['referencePts']],a,raw,frame_seconds)]
+            first=next((a for a in anchors if a['referencePts']==inside[0]['pts']),None)
+            last=next((a for a in anchors if a['referencePts']==inside[-1]['pts']),None)
+            exact=bool(not contradictions and alignment and first and last and native_endpoint_identity(options[first['referencePts']],first,raw,frame_seconds)
+                       and native_endpoint_identity(options[last['referencePts']],last,raw,frame_seconds))
+            picture=observed_range(boundary_anchors,end) if len(boundary_anchors)>=3 and alignment else None
+            complete_range=observed_range(anchors,end) if exact else None
+            exact=bool(exact and complete_range)
+            events=[]
+            for r in records:
+                if r['status']=='MEASURED_SOURCE_FRAME' or r['appearance']['kind']=='PICTURE_OR_UNCLASSIFIED':continue
+                if events and events[-1]['kind']==r['appearance']['kind'] and abs(events[-1]['referenceEndExclusive']-r['referenceTime'])<1e-5:
+                    events[-1]['referenceEndExclusive']=min(end,r['referenceTime']+r['duration']);events[-1]['referencePts'].append(r['referencePts'])
+                else:
+                    events.append(dict(kind=r['appearance']['kind'],referenceStart=r['referenceTime'],referenceEndExclusive=min(end,r['referenceTime']+r['duration']),
+                        referencePts=[r['referencePts']],effectCauseProven=False,hiddenSourcePts=None,reviewStatus='AWAITING_CHATGPT_REVIEW'))
+            result=dict(schema='editflow.native-boundary-recovery.v1',shotId=shot['shotId'],
+                status='EXACT_ENDPOINTS_MEASURED' if exact else 'VISIBLE_CONTENT_MEASURED' if picture else 'UNRESOLVED',
+                sampling='EVERY_DECODED_FRAME_IN_BOUNDARY_WINDOWS',referenceWindows=[dict(start=a,end=b) for a,b in windows],
+                actualReferenceFrameCount=len(inside),sourceFrameCount=len(frames),frames=records,measuredFrameMap=anchors,
+                alignment=alignment,visibleSourceRange=picture,transitionEvents=events,contradictions=contradictions,
+                exactOriginalTrimMeasured=exact,hiddenEndpointsInferred=False,requiresVisualReview=True,
+                firstBoundary=dict(referencePts=inside[0]['pts'],status='OBSERVED' if first and native_endpoint_identity(options[first['referencePts']],first,raw,frame_seconds) else 'NOT_OBSERVED'),
+                lastBoundary=dict(referencePts=inside[-1]['pts'],status='OBSERVED' if last and native_endpoint_identity(options[last['referencePts']],last,raw,frame_seconds) else 'NOT_OBSERVED'))
+            results[shot['shotId']]=result
+            shot['boundaryRecovery']=dict(status=result['status'],evidencePath=str(self.out/(shot['shotId']+'-native-boundary.json')),
+                                          visibleSourceRange=picture,transitionEvents=events,exactOriginalTrimMeasured=exact)
+            atomic_json(self.out/(shot['shotId']+'-native-boundary.json'),result)
+            if exact:
+                shot.update(status='VERIFIED',boundaryStatus='MEASURED_ENDPOINT_CORRESPONDENCES',anchors=anchors,alignment=alignment,
+                    reason='Native-frame fresh geometry and sequence checks measured both actual endpoints; GPT visual review required',
+                    **{k:complete_range[k] for k in ['sourceStart','sourceEndExclusive','sourceStartPts','sourceEndPtsExclusive','sourceTimeBase']})
+                shot.update(sourceStartTimecode=timecode(shot['sourceStart']),sourceEndTimecode=timecode(shot['sourceEndExclusive']),boundaryDiagnostics=[])
+                shot.pop('sourceLocationWindow',None)
+            self.progress('NATIVE_BOUNDARY_RESULT',shotId=shot['shotId'],status=result['status'],frames=len(inside),transitionEvents=len(events),contradictions=len(contradictions))
+            self.save()
+
     def origin_checks(self):
         """Corroborate movie-section origin independently of hidden trim pixels.
 
@@ -1328,7 +1655,8 @@ class Engine:
         results=self.report.setdefault('originVerifications',{})
         for i,shot in enumerate(self.report['shots']):
             self.check()
-            if self.refine_ids is not None and shot['shotId'] not in self.refine_ids and shot['shotId'] in results:continue
+            if (self.refine_ids is not None and shot['shotId'] not in self.refine_ids
+                    and results.get(shot['shotId'],{}).get('status') in ['CONFIRMED','MEASURED_LOCATION']):continue
             if shot['status']=='UNRESOLVED':
                 results[shot['shotId']]=dict(status='UNCONFIRMED',reason=shot.get('reason'));continue
             self.progress('INDEPENDENT_ORIGIN_CHECK',shotId=shot['shotId'])
@@ -1362,6 +1690,7 @@ class Engine:
                 if not any(valid_geometry(g) for g in checks) and max(s.shape[:2])>640:
                     checks.append(geometry(resized(q,640),resized(s,640)))
                 if not any(valid_geometry(g) for g in checks):checks.append(geometry(q,s,feature_points(q,'ORB'),feature_points(s,'ORB')))
+                if not any(valid_geometry(g) for g in checks):checks.append(lighting_geometry(resized(q,640),resized(s,640)))
                 good=[g for g in checks if valid_geometry(g)]
                 if not good:continue
                 g=max(good,key=lambda g:g['score']);images=aligned_gray(q,s,g)
@@ -1405,6 +1734,8 @@ class Engine:
         origins=self.report.get('originVerifications',{})
         self.report['originSummary']={state:sum(origins.get(s['shotId'],{}).get('status','NOT_CHECKED')==state for s in self.report['shots'])
             for state in ['CONFIRMED','MEASURED_LOCATION','INSUFFICIENT_INDEPENDENT_EVIDENCE','UNCONFIRMED','NOT_CHECKED']}
+        self.report['boundaryRecoverySummary']={state:sum(r.get('status')==state for r in self.report.get('boundaryRecoveries',{}).values())
+            for state in ['EXACT_ENDPOINTS_MEASURED','VISIBLE_CONTENT_MEASURED','UNRESOLVED']}
         atomic_json(self.out/"report.json",self.report)
         timestamps_csv(self.out,self.report)
 
@@ -1471,6 +1802,9 @@ class Engine:
             # Known competing measured hypotheses are exposed rather than hidden
             # behind the winning retrieval score. Missing images stay explicit.
             alternatives=[];seen=set()
+            prior_packet=self.report.get('visualReasoningPackets',{}).get(shot['shotId'],{}).get('reviewPath')
+            if prior_packet and Path(prior_packet).is_file():
+                alternatives=json.loads(Path(prior_packet).read_text(encoding='utf-8')).get('competingHypotheses',[])
             for h in self.accepted_hypotheses.get(i,[]):
                 aa=h.get('anchors',[])
                 if not aa:continue
@@ -1484,6 +1818,7 @@ class Engine:
             packet=dict(schema='editflow.source-match-visual-reasoning.v1',shotId=shot['shotId'],authority='CHATGPT_DIRECT',reviewStatus='AWAITING_DIRECT_IMAGE_REVIEW',
                 scope='SHOT_ORIGIN_AND_OBSERVABLE_BOUNDARIES',exactTrimStatus=shot.get('boundaryStatus','UNRESOLVED'),machineStatus=shot['status'],originMeasurementStatus=origin.get('status','NOT_CHECKED'),
                 referencePath=self.report['reference']['path'],sourcePath=shot.get('sourcePath'),contactSheetPath=sheet,framePairs=evidence,
+                nativeBoundaryRecovery=shot.get('boundaryRecovery'),
                 boundaries=[{**b,'evidenceId':shot['shotId']+':boundary:'+b['endpoint']} for b in shot.get('boundaryEvidence',[])],competingHypotheses=alternatives,competingLocationMeasurementComplete=self.report['alternativeReviewComplete'],
                 imagePolicy='Read actual edit and original movie images; use aligned views only as labeled measured transforms. Do not inpaint, generate missing detail, or treat a montage as full-resolution endpoint proof.',
                 reviewRequest='Compare the actual images before reading scores. Describe matching pose, landmark arrangement, background geometry and motion at multiple moments. Explain crop, borders, captions, grading, overlays or composites using visible evidence and the measured map. Inspect nearby original-frame controls and competing locations; name contradictions and what evidence would resolve them. Distinguish same movie section from the exact source frame. Return a concise evidence-grounded justification, never a similarity-only guess or an invented hidden frame.',
@@ -1494,6 +1829,10 @@ class Engine:
 
     def run(self):
         try:
+            if self.restore_native_locations():
+                self.native_boundaries()
+                self.report['status']='COMPLETE' if all(s['status']=='VERIFIED' for s in self.report['shots']) else 'PARTIAL'
+                return self.report
             self.reference()
             self.report["sources"]=[dict(path=p,fingerprint=fingerprint(p),**probe(p)) for p in self.request["sourcePaths"]]
             self.restore()
@@ -1512,6 +1851,7 @@ class Engine:
             self.verify()
             self.report["alternativeReviewComplete"]=True
             self.origin_checks()
+            self.native_boundaries()
             self.report["status"]="COMPLETE" if all(s["status"]=="VERIFIED" for s in self.report["shots"]) else "PARTIAL"
         except BudgetExpired:
             self.report["status"]="CANCELLED" if (self.out/"cancel").exists() else "PARTIAL"

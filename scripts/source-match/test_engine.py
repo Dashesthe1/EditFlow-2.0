@@ -210,6 +210,61 @@ def test_encoded_near_black_endpoint_measures_original_frame_after_retrieval_nor
     assert shot['sourceStart']==1 and shot['sourceEndExclusive']==3,shot
 
 
+def uneven_grade(frame):
+    y,x=np.mgrid[:frame.shape[0],:frame.shape[1]]
+    value=frame.astype(np.float32)/255
+    gain=np.exp(4.4*(x/(frame.shape[1]-1)-1))[...,None]
+    wash=100*(y/(frame.shape[0]-1))[...,None]**2
+    return np.clip(255*value**2*gain+wash,0,255).astype(np.uint8)
+
+
+def test_local_exposure_and_gamma_use_observed_structure_and_reject_wrong_picture():
+    frame=fixture()[22];query=uneven_grade(frame)
+    g=m.lighting_geometry(query,frame)
+    assert m.valid_geometry(g),g
+    assert g['verificationMethod']=='ILLUMINATION_INVARIANT'
+    # This image has a dark side, nonlinear grade and a bright local wash.
+    # Identity is known from the original pixels, regardless of mean intensity.
+    assert g['illuminationEvidence']['supportedFraction']>=.4
+    unrelated=np.random.default_rng(992).integers(0,255,frame.shape,dtype=np.uint8)
+    assert not m.valid_geometry(m.lighting_geometry(query,unrelated))
+    assert not m.valid_geometry(m.lighting_geometry(255-query,frame))
+    assert not m.valid_geometry(m.lighting_geometry(np.full_like(frame,1),frame))
+    assert not m.valid_geometry(m.lighting_geometry(np.full_like(frame,254),frame))
+
+
+def test_structural_route_rejects_caption_small_insert_and_clipped_plateau():
+    frame=fixture()[22];rng=np.random.default_rng(627)
+    query=rng.integers(0,255,frame.shape,dtype=np.uint8)
+    query[80:140,80:200]=frame[80:140,80:200]
+    source=frame.copy()
+    for im in [query,source]:cv2.putText(im,'SAME CAPTION',(10,170),0,1,(255,255,255),3)
+    assert not m.valid_geometry(m.lighting_geometry(query,source))
+    plateau=np.zeros(frame.shape[:2],np.uint8);plateau[:,100:]=1
+    evidence=m.illumination_witnesses(plateau,cv2.cvtColor(frame,cv2.COLOR_RGB2GRAY),np.ones(plateau.shape,bool))
+    assert not evidence['passed']
+
+
+def test_faint_letterboxed_picture_keeps_its_geometry():
+    frame=fixture()[22];faint=np.clip(frame.astype(float)*.025,0,255).astype(np.uint8)
+    query=np.pad(faint,((100,100),(20,20),(0,0)))
+    assert m.trim_bars(query).shape==frame.shape
+    assert m.valid_geometry(m.geometry(query,frame))
+
+
+def test_encoded_uneven_grade_endpoint_returns_measured_original_pts(tmp_path):
+    frames=fixture();source=tmp_path/'source.mp4';reference=tmp_path/'local-grade.mp4'
+    encode(source,frames);encode(reference,[uneven_grade(frames[12])]+frames[13:36])
+    request=dict(referencePath=str(reference),sourcePaths=[str(source)],budgetSeconds=120,shots=[dict(start=0,end=2)],candidateLimit=4)
+    report=m.Engine(request,tmp_path/'out',tmp_path/'cache',m.Encoder('diagnostic')).run()
+    shot=report['shots'][0]
+    assert shot['status']=='VERIFIED',report
+    assert shot['sourceStart']==1 and shot['sourceEndExclusive']==3,shot
+    first=min(shot['anchors'],key=lambda a:a['referenceTime'])
+    assert first['geometry']['verificationMethod']=='ILLUMINATION_INVARIANT'
+    assert first['sourcePts']==next(f['pts'] for f in m.decode(source) if f['t']==1)
+
+
 def test_temporal_reversal_and_inconsistent_time():
     good={"inliers":30,"coverage":.5,"fraction":.9,"score":20}
     anchors=[dict(referenceTime=x,sourceTime=10-2*x,geometry=good) for x in [0,.5,1]]
@@ -305,6 +360,9 @@ def test_refinement_reuses_locations_preserves_other_shots_and_black_uncertainty
     parent=m.Engine(request,tmp_path/"parent",tmp_path/"cache",m.Encoder("diagnostic")).run()
     assert parent["shots"][0]["status"]=="VERIFIED"
     assert parent["shots"][1]["status"]=="LOCATED"
+    # A later matching pass can leave an old origin failure in a retained row.
+    # Refresh that independent evidence without changing its measured trims.
+    parent['originVerifications']['shot-001']=dict(status='UNCONFIRMED',reason='Earlier pass had no location')
     retained=json.dumps(parent).encode();out=tmp_path/"refined";out.mkdir()
     (out/"resume-report.json").write_bytes(retained)
     request["refinement"]=dict(parentJobId="prior",reportSha256=hashlib.sha256(retained).hexdigest(),shotIds=["shot-002"],windows=[])
@@ -313,6 +371,7 @@ def test_refinement_reuses_locations_preserves_other_shots_and_black_uncertainty
     engine.scan=forbidden_scan
     result=engine.run()
     assert result["shots"][0]==parent["shots"][0]
+    assert result['originVerifications']['shot-001']['status']=='CONFIRMED'
     assert result["shots"][1]["status"]=="LOCATED"
     assert "sourceStart" not in result["shots"][1]
     assert result["lineage"]["refinedShotIds"]==["shot-002"]
