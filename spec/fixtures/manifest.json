@@ -1,49 +1,167 @@
 [
-  {"schema":"spec/capability.schema.json","fixture":"spec/fixtures/capability.valid.json","valid":true},
-  {"schema":"spec/capability.schema.json","fixture":"spec/fixtures/capability.invalid.json","valid":false},
-  {"schema":"spec/scene-graph.schema.json","fixture":"spec/fixtures/scene-graph.valid.json","valid":true},
-  {"schema":"spec/scene-graph.schema.json","fixture":"spec/fixtures/scene-graph.invalid.json","valid":false},
-  {"schema":"spec/recipe.schema.json","fixture":"spec/fixtures/recipe.valid.json","valid":true},
-  {"schema":"spec/recipe.schema.json","fixture":"spec/fixtures/recipe.invalid.json","valid":false},
-  {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.valid.json","valid":true},
-  {"schema":"spec/execution-plan.schema.json","fixture":"spec/fixtures/execution-plan.invalid.json","valid":false},
-  {"schema":"spec/ae-adapter-request.schema.json","fixture":"spec/fixtures/ae-adapter-request.valid.json","valid":true},
-  {"schema":"spec/ae-adapter-request.schema.json","fixture":"spec/fixtures/ae-adapter-request.invalid.json","valid":false},
-  {"schema":"spec/ae-adapter-request-v1_1.schema.json","fixture":"spec/fixtures/ae-adapter-request-v1_1.valid.json","valid":true},
-  {"schema":"spec/ae-adapter-request-v1_1.schema.json","fixture":"spec/fixtures/ae-adapter-request-v1_1.invalid.json","valid":false},
-  {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.valid.json","valid":true},
-  {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.animated.valid.json","valid":true},
-  {"schema":"spec/ae-mask-request-v1_2.schema.json","fixture":"spec/fixtures/ae-mask-request-v1_2.invalid.json","valid":false},
-  {"schema":"spec/ae-composite-request-v1_3.schema.json","fixture":"spec/fixtures/ae-composite-request-v1_3.valid.json","valid":true},
-  {"schema":"spec/ae-composite-request-v1_3.schema.json","fixture":"spec/fixtures/ae-composite-request-v1_3.invalid.json","valid":false},
-  {"schema":"spec/ae-parenting-request-v1_4.schema.json","fixture":"spec/fixtures/ae-parenting-request-v1_4.valid.json","valid":true},
-  {"schema":"spec/ae-parenting-request-v1_4.schema.json","fixture":"spec/fixtures/ae-parenting-request-v1_4.invalid.json","valid":false},
-  {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.valid.json","valid":true},
-  {"schema":"spec/ae-null-rig-request-v1_5.schema.json","fixture":"spec/fixtures/ae-null-rig-request-v1_5.invalid.json","valid":false},
-  {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.valid.json","valid":true},
-  {"schema":"spec/ae-layer-controls-request-v1_6.schema.json","fixture":"spec/fixtures/ae-layer-controls-request-v1_6.invalid.json","valid":false},
-  {"schema":"spec/ae-temporal-interpolation-request-v1_7.schema.json","fixture":"spec/fixtures/ae-temporal-interpolation-request-v1_7.valid.json","valid":true},
-  {"schema":"spec/ae-temporal-interpolation-request-v1_7.schema.json","fixture":"spec/fixtures/ae-temporal-interpolation-request-v1_7.readback.valid.json","valid":true},
-  {"schema":"spec/ae-temporal-interpolation-request-v1_7.schema.json","fixture":"spec/fixtures/ae-temporal-interpolation-request-v1_7.invalid.json","valid":false},
-  {"schema":"spec/ae-temporal-ease-request-v1_8.schema.json","fixture":"spec/fixtures/ae-temporal-ease-request-v1_8.valid.json","valid":true},
-  {"schema":"spec/ae-temporal-ease-request-v1_8.schema.json","fixture":"spec/fixtures/ae-temporal-ease-request-v1_8.readback.valid.json","valid":true},
-  {"schema":"spec/ae-temporal-ease-request-v1_8.schema.json","fixture":"spec/fixtures/ae-temporal-ease-request-v1_8.invalid.json","valid":false},
-  {"schema":"spec/ae-development-proof-request.schema.json","fixture":"spec/fixtures/ae-development-proof-request.valid.json","valid":true},
-  {"schema":"spec/ae-development-proof-request.schema.json","fixture":"spec/fixtures/ae-development-proof-request.invalid.json","valid":false},
-  {"schema":"spec/ae-development-proof-result.schema.json","fixture":"spec/fixtures/ae-development-proof-result.valid.json","valid":true},
-  {"schema":"spec/ae-development-proof-result.schema.json","fixture":"spec/fixtures/ae-development-proof-result.invalid.json","valid":false},
-  {"schema":"spec/tutorial-analysis-packet-v0.schema.json","fixture":"spec/fixtures/tutorial-analysis-packet-v0.valid.json","valid":true},
-  {"schema":"spec/tutorial-analysis-packet-v0.schema.json","fixture":"spec/fixtures/tutorial-analysis-packet-v0.invalid.json","valid":false},
-  {"schema":"spec/practice-session-v1.schema.json","fixture":"spec/fixtures/practice-session-v1.valid.json","valid":true},
-  {"schema":"spec/practice-session-v1.schema.json","fixture":"spec/fixtures/practice-session-v1.invalid.json","valid":false},
-  {"schema":"spec/gpt-orchestration-assignment-v1.schema.json","fixture":"spec/fixtures/gpt-orchestration-assignment-v1.valid.json","valid":true},
-  {"schema":"spec/gpt-orchestration-assignment-v1.schema.json","fixture":"spec/fixtures/gpt-orchestration-assignment-v1.invalid.json","valid":false},
-  {"schema":"spec/gpt-learning-event-v1.schema.json","fixture":"spec/fixtures/gpt-learning-event-v1.valid.json","valid":true},
-  {"schema":"spec/gpt-learning-event-v1.schema.json","fixture":"spec/fixtures/gpt-learning-event-v1.invalid.json","valid":false},
-  {"schema":"spec/practice-mastery-proof-v1.schema.json","fixture":"spec/fixtures/practice-mastery-proof-v1.valid.json","valid":true},
-  {"schema":"spec/practice-mastery-proof-v1.schema.json","fixture":"spec/fixtures/practice-mastery-proof-v1.invalid.json","valid":false},
-  {"schema":"spec/practice-truth-population-plan-v1.schema.json","fixture":"spec/fixtures/practice-truth-population-plan-v1.valid.json","valid":true},
-  {"schema":"spec/practice-truth-population-plan-v1.schema.json","fixture":"spec/fixtures/practice-truth-population-plan-v1.invalid.json","valid":false},
-  {"schema":"spec/practice-truth-population-status-v1.schema.json","fixture":"spec/fixtures/practice-truth-population-status-v1.valid.json","valid":true},
-  {"schema":"spec/practice-truth-population-status-v1.schema.json","fixture":"spec/fixtures/practice-truth-population-status-v1.invalid.json","valid":false}
+  {
+    "schema": "spec/capability.schema.json",
+    "fixture": "spec/fixtures/capability.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/capability.schema.json",
+    "fixture": "spec/fixtures/capability.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/scene-graph.schema.json",
+    "fixture": "spec/fixtures/scene-graph.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/scene-graph.schema.json",
+    "fixture": "spec/fixtures/scene-graph.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/recipe.schema.json",
+    "fixture": "spec/fixtures/recipe.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/recipe.schema.json",
+    "fixture": "spec/fixtures/recipe.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/execution-plan.schema.json",
+    "fixture": "spec/fixtures/execution-plan.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/execution-plan.schema.json",
+    "fixture": "spec/fixtures/execution-plan.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-adapter-request.schema.json",
+    "fixture": "spec/fixtures/ae-adapter-request.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-adapter-request.schema.json",
+    "fixture": "spec/fixtures/ae-adapter-request.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-adapter-request-v1_1.schema.json",
+    "fixture": "spec/fixtures/ae-adapter-request-v1_1.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-adapter-request-v1_1.schema.json",
+    "fixture": "spec/fixtures/ae-adapter-request-v1_1.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-mask-request-v1_2.schema.json",
+    "fixture": "spec/fixtures/ae-mask-request-v1_2.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-mask-request-v1_2.schema.json",
+    "fixture": "spec/fixtures/ae-mask-request-v1_2.animated.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-mask-request-v1_2.schema.json",
+    "fixture": "spec/fixtures/ae-mask-request-v1_2.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-composite-request-v1_3.schema.json",
+    "fixture": "spec/fixtures/ae-composite-request-v1_3.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-composite-request-v1_3.schema.json",
+    "fixture": "spec/fixtures/ae-composite-request-v1_3.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-parenting-request-v1_4.schema.json",
+    "fixture": "spec/fixtures/ae-parenting-request-v1_4.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-parenting-request-v1_4.schema.json",
+    "fixture": "spec/fixtures/ae-parenting-request-v1_4.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-null-rig-request-v1_5.schema.json",
+    "fixture": "spec/fixtures/ae-null-rig-request-v1_5.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-null-rig-request-v1_5.schema.json",
+    "fixture": "spec/fixtures/ae-null-rig-request-v1_5.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-layer-controls-request-v1_6.schema.json",
+    "fixture": "spec/fixtures/ae-layer-controls-request-v1_6.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-layer-controls-request-v1_6.schema.json",
+    "fixture": "spec/fixtures/ae-layer-controls-request-v1_6.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-temporal-interpolation-request-v1_7.schema.json",
+    "fixture": "spec/fixtures/ae-temporal-interpolation-request-v1_7.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-temporal-interpolation-request-v1_7.schema.json",
+    "fixture": "spec/fixtures/ae-temporal-interpolation-request-v1_7.readback.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-temporal-interpolation-request-v1_7.schema.json",
+    "fixture": "spec/fixtures/ae-temporal-interpolation-request-v1_7.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-temporal-ease-request-v1_8.schema.json",
+    "fixture": "spec/fixtures/ae-temporal-ease-request-v1_8.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-temporal-ease-request-v1_8.schema.json",
+    "fixture": "spec/fixtures/ae-temporal-ease-request-v1_8.readback.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-temporal-ease-request-v1_8.schema.json",
+    "fixture": "spec/fixtures/ae-temporal-ease-request-v1_8.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-development-proof-request.schema.json",
+    "fixture": "spec/fixtures/ae-development-proof-request.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-development-proof-request.schema.json",
+    "fixture": "spec/fixtures/ae-development-proof-request.invalid.json",
+    "valid": false
+  },
+  {
+    "schema": "spec/ae-development-proof-result.schema.json",
+    "fixture": "spec/fixtures/ae-development-proof-result.valid.json",
+    "valid": true
+  },
+  {
+    "schema": "spec/ae-development-proof-result.schema.json",
+    "fixture": "spec/fixtures/ae-development-proof-result.invalid.json",
+    "valid": false
+  }
 ]

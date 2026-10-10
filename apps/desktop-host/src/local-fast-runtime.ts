@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 
 import type { AeCepAdapterClientV11 } from "../../../packages/adapters/ae-cep/src/v1_1.js";
 import type { ReflexGoal } from "../../../packages/reflex-planner/src/index.js";
-import { ProductionNoWriteErrorV1 } from "../../../packages/practice-homework/src/production-worker.js";
+export class ProductionNoWriteErrorV1 extends Error {}
 import { compileRoutineIntent, type RoutineIntent } from "../../../packages/routine-decision-engine/src/index.js";
 import { createDesktopAeSessionV11, type DesktopAeSessionV11 } from "./v1_1.js";
 

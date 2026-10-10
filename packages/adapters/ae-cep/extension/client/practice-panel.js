@@ -9,13 +9,23 @@
   var finishPath = null;
   var startFiles = [];
   var activeRunId = null;
+  var activeRunState = null;
   var completedRunId = null;
   var lastRecoveredRunId = null;
   var statusTimer = null;
   var pollTimer = null;
   var editTypesById = {};
+  var editTypesSignature = null;
+  var editTypesCacheKey = "editflow2.practice.empty-edit-types-cache.v1";
+  var pendingEditTypesKey = "editflow2.practice.empty-pending-edit-types.v1";
+  var selectedEditTypeKey = "editflow2.practice.selected-edit-type.v1";
+  var cachedEditTypes = [];
+  var pendingEditTypes = [];
+  var pendingEditTypeSync = false;
+  var preferredEditTypeId = "";
 
   var editTypeEl = document.getElementById("edit-type");
+  var newEditTypeEl = document.getElementById("new-edit-type");
   var finishFieldEl = document.getElementById("finish-field");
   var finishSummaryEl = document.getElementById("finish-summary");
   var startSummaryEl = document.getElementById("start-summary");
@@ -43,26 +53,14 @@
     return fetch(productUrl(path), init).then(function (response) {
       return response.text().then(function (text) {
         var value = text ? JSON.parse(text) : {};
-        if (!response.ok) throw new Error(value.error || "Practice service HTTP " + response.status);
+        if (!response.ok) {
+          var error = new Error(value.error || "Practice service HTTP " + response.status);
+          error.status = response.status;
+          throw error;
+        }
         return value;
       });
     });
-  }
-
-  function runConnectionPreflight() {
-    return productRequest("/v1/product/preflight", { method: "GET" })
-      .then(function (value) {
-        var preflight = value.preflight || {};
-        if (preflight.status === "READY") return preflight;
-        var checks = Array.isArray(preflight.checks) ? preflight.checks : [];
-        var failed = checks.filter(function (check) { return check.ready !== true; })
-          .map(function (check) { return check.id + ": " + check.detail; });
-        throw new Error(
-          "CONNECTION_PREFLIGHT_BLOCKED: "
-            + (failed.length ? failed.join(" ") : "Full GPT-to-AE connection chain is not ready.")
-            + " GPT must use Desktop Commander to repair the failed connection legs, then rerun preflight."
-        );
-      });
   }
 
   function basename(filePath) {
@@ -82,6 +80,103 @@
     messageEl.textContent = message;
   }
 
+  function readStoredJsonArray(key) {
+    try {
+      var raw = window.localStorage.getItem(key);
+      if (!raw) return [];
+      var value = JSON.parse(raw);
+      return Array.isArray(value) ? value : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeStoredJsonArray(key, value) {
+    try { window.localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+  }
+
+  function readStoredString(key) {
+    try { return window.localStorage.getItem(key) || ""; } catch (_) { return ""; }
+  }
+
+  function writeStoredString(key, value) {
+    try {
+      if (value) window.localStorage.setItem(key, value);
+      else window.localStorage.removeItem(key);
+    } catch (_) {}
+  }
+
+  function mergeEditTypes(confirmed, pending) {
+    var merged = [];
+    var seen = {};
+    (confirmed || []).forEach(function (profile) {
+      if (!profile || !profile.editTypeId || seen[profile.editTypeId]) return;
+      seen[profile.editTypeId] = true;
+      merged.push(profile);
+    });
+    (pending || []).forEach(function (profile) {
+      if (!profile || !profile.editTypeId || seen[profile.editTypeId]) return;
+      seen[profile.editTypeId] = true;
+      merged.push(profile);
+    });
+    return merged;
+  }
+
+  function setCachedEditTypes(editTypes) {
+    cachedEditTypes = Array.isArray(editTypes) ? editTypes : [];
+    writeStoredJsonArray(editTypesCacheKey, cachedEditTypes);
+  }
+
+  function setPendingEditTypes(editTypes) {
+    pendingEditTypes = Array.isArray(editTypes) ? editTypes : [];
+    writeStoredJsonArray(pendingEditTypesKey, pendingEditTypes);
+  }
+
+  function reconcilePendingEditTypes(confirmed) {
+    var confirmedIds = {};
+    (confirmed || []).forEach(function (profile) {
+      if (profile && profile.editTypeId) confirmedIds[profile.editTypeId] = true;
+    });
+    var next = pendingEditTypes.filter(function (profile) {
+      return !confirmedIds[profile.editTypeId];
+    });
+    if (next.length !== pendingEditTypes.length) setPendingEditTypes(next);
+  }
+
+  function normalizeCepPath(raw) {
+    var value = decodeURI(String(raw || ""));
+    if (value.indexOf("file:///") === 0 && /^[A-Za-z]:\//.test(value.substring(8))) value = value.substring(8);
+    else if (value.indexOf("file://") === 0) value = value.substring(7);
+    return value.replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+
+  function editTypeRegistryPath() {
+    var cep = window.__adobe_cep__;
+    if (!cep || typeof cep.getSystemPath !== "function") return null;
+    var userData;
+    try { userData = normalizeCepPath(cep.getSystemPath("userData")); }
+    catch (_) { return null; }
+    var lower = userData.toLowerCase();
+    var marker = lower.indexOf("/appdata/roaming");
+    if (marker < 0) return null;
+    return userData.substring(0, marker) + "/AppData/Local/EditFlow2/practice-state/edit-types.json";
+  }
+
+  function readEditTypesFromLocalRegistry() {
+    var cepFs = window.cep && window.cep.fs;
+    var filePath = editTypeRegistryPath();
+    if (!cepFs || typeof cepFs.readFile !== "function" || !filePath) return null;
+    try {
+      var result = cepFs.readFile(filePath);
+      if (!result || result.err !== 0 || typeof result.data !== "string") return null;
+      var parsed = JSON.parse(result.data);
+      if (!parsed || parsed.schema !== "editflow.edit-type-registry.v1" || !Array.isArray(parsed.profiles)) return null;
+      return parsed.profiles;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function selectedEditType() {
     return editTypeEl.value;
   }
@@ -90,10 +185,19 @@
     return editTypesById[selectedEditType()] || null;
   }
 
+  function configurationLocked() {
+    return activeRunState === "RUNNING" || activeRunState === "CANCEL_REQUESTED";
+  }
+
   function updateAction() {
+    var configLocked = configurationLocked();
+    var startBlocked = Boolean(activeRunId);
+    editTypeEl.disabled = configLocked;
+    newEditTypeEl.disabled = configLocked;
+    document.querySelectorAll(".mode-tab").forEach(function (tab) { tab.disabled = configLocked; });
     var hasVideo = startFiles.some(function (item) { return item.kind === "VIDEO"; });
-    var valid = serviceReady && !activeRunId
-      && selectedEditType() && hasVideo && panelConnected;
+    var valid = serviceReady && !startBlocked
+      && selectedEditType() && hasVideo;
     if (mode === "PRACTICE") {
       valid = valid && Boolean(finishPath);
     }
@@ -174,39 +278,144 @@
   }
 
   function renderEditTypes(editTypes) {
-    var selected = editTypeEl.value;
+    var selected = editTypeEl.value || preferredEditTypeId;
     editTypesById = {};
     editTypeEl.innerHTML = '<option value="">Choose an Edit Type</option>';
     editTypes.forEach(function (profile) {
       editTypesById[profile.editTypeId] = profile;
       var option = document.createElement("option");
       option.value = profile.editTypeId;
-      option.textContent = profile.title + " | " + profile.sessionIds.length + " sessions | " + ((profile.gptLearning && profile.gptLearning.workedExamples || []).length) + " saved examples";
+      var sessions = Array.isArray(profile.sessionIds) ? profile.sessionIds.length : 0;
+      var examples = ((profile.gptLearning && profile.gptLearning.workedExamples) || []).length;
+      option.textContent = profile.title + " | " + sessions + " sessions | " + examples + " saved examples"
+        + (profile.pendingLocal === true ? " | pending sync" : "");
       editTypeEl.appendChild(option);
     });
-    if (selected) editTypeEl.value = selected;
+    if (selected && editTypesById[selected]) {
+      editTypeEl.value = selected;
+      preferredEditTypeId = selected;
+      writeStoredString(selectedEditTypeKey, selected);
+    } else {
+      editTypeEl.value = "";
+    }
 
     updateAction();
   }
 
+  function editTypesUiSignature(editTypes) {
+    return JSON.stringify(editTypes.map(function (profile) {
+      return [
+        profile.editTypeId,
+        profile.title,
+        profile.revision || 0,
+        (profile.sessionIds || []).length,
+        ((profile.gptLearning && profile.gptLearning.workedExamples) || []).length,
+        profile.pendingLocal === true
+      ];
+    }));
+  }
+
+  function renderCurrentEditTypes() {
+    var editTypes = mergeEditTypes(cachedEditTypes, pendingEditTypes);
+    var signature = editTypesUiSignature(editTypes);
+    if (signature === editTypesSignature) return;
+    editTypesSignature = signature;
+    renderEditTypes(editTypes);
+  }
+
+  function refreshEditTypesFromLocalRegistry() {
+    var localEditTypes = readEditTypesFromLocalRegistry();
+    if (localEditTypes === null) return false;
+    setCachedEditTypes(localEditTypes);
+    reconcilePendingEditTypes(localEditTypes);
+    renderCurrentEditTypes();
+    return true;
+  }
+
   function refreshEditTypes() {
+    refreshEditTypesFromLocalRegistry();
+    if (!serviceReady) {
+      renderCurrentEditTypes();
+      return Promise.resolve();
+    }
     return productRequest("/v1/product/edit-types", { method: "GET" })
-      .then(function (value) { renderEditTypes(value.editTypes || []); });
+      .then(function (value) {
+        var editTypes = value.editTypes || [];
+        setCachedEditTypes(editTypes);
+        reconcilePendingEditTypes(editTypes);
+        renderCurrentEditTypes();
+      });
+  }
+
+  function syncPendingEditTypes() {
+    if (!serviceReady || configurationLocked() || pendingEditTypeSync || pendingEditTypes.length === 0) {
+      return Promise.resolve();
+    }
+    pendingEditTypeSync = true;
+    var queue = pendingEditTypes.slice();
+    var chain = Promise.resolve();
+    queue.forEach(function (profile) {
+      chain = chain.then(function () {
+        if (!pendingEditTypes.some(function (item) { return item.editTypeId === profile.editTypeId; })) return;
+        return productRequest("/v1/product/edit-types", {
+          method: "POST",
+          body: JSON.stringify({ editTypeId: profile.editTypeId, title: profile.title })
+        }).then(function () {
+          setPendingEditTypes(pendingEditTypes.filter(function (item) {
+            return item.editTypeId !== profile.editTypeId;
+          }));
+        }).catch(function (error) {
+          if (error && error.status === 409) return;
+          if (error && error.status === 400) {
+            return productRequest("/v1/product/edit-types", { method: "GET" }).then(function (value) {
+              var confirmed = value.editTypes || [];
+              if (confirmed.some(function (item) { return item.editTypeId === profile.editTypeId; })) {
+                setPendingEditTypes(pendingEditTypes.filter(function (item) {
+                  return item.editTypeId !== profile.editTypeId;
+                }));
+                return;
+              }
+              throw error;
+            });
+          }
+          throw error;
+        });
+      });
+    });
+    return chain.then(function () {
+      pendingEditTypeSync = false;
+      return refreshEditTypes();
+    }).catch(function (error) {
+      pendingEditTypeSync = false;
+      renderCurrentEditTypes();
+      throw error;
+    });
   }
 
   function recoverPanelSession(status) {
     if (status.activeRunId) {
+      activeRunState = status.activeRunState || activeRunState || "WAITING_FOR_GPT";
       if (activeRunId !== status.activeRunId) {
         activeRunId = status.activeRunId;
         completedRunId = null;
         lastRecoveredRunId = status.activeRunId;
-        setRunState("RUNNING", "Recovered active EditFlow run after service/panel restart.");
+        setRunState(activeRunState,
+          activeRunState === "RUNNING"
+            ? "Recovered active EditFlow run after service/panel restart."
+            : "Recovered empty session. No editing workflow is configured.");
         updateAction();
         pollRun();
+      } else {
+        updateAction();
       }
       return;
     }
-    if (!status.latestRunId || lastRecoveredRunId === status.latestRunId || activeRunId) return;
+    if (activeRunId) {
+      activeRunId = null;
+      activeRunState = null;
+      updateAction();
+    }
+    if (!status.latestRunId || lastRecoveredRunId === status.latestRunId) return;
     lastRecoveredRunId = status.latestRunId;
     productRequest(
       "/v1/product/runs/" + encodeURIComponent(status.latestRunId),
@@ -219,32 +428,42 @@
   }
 
   function checkService() {
+    refreshEditTypesFromLocalRegistry();
     productRequest("/v1/product/status", { method: "GET" })
       .then(function (value) {
         var wasReady = serviceReady;
         var wasPanelConnected = panelConnected;
         serviceReady = value.service === "READY";
         panelConnected = value.panelConnected === true;
+        if (!value.activeRunId) activeRunState = null;
         if (!wasReady && serviceReady) {
           if (!value.activeRunId && !value.latestRunId) {
             setRunState("IDLE", panelConnected
-              ? "Ready. Choose a mode, Edit Type, and media."
-              : "Service is ready; waiting for the AE panel bridge.");
+              ? "Ready. Configure an Edit Type and media, then start when ready."
+              : "Choose files and an Edit Type to start an empty session.");
           }
-          refreshEditTypes().catch(function (error) {
-            setRunState("FAILED", error.message);
-          });
           recoverPanelSession(value);
         } else if (!wasPanelConnected && panelConnected && !activeRunId) {
-          setRunState("IDLE", "Ready. Choose a mode, Edit Type, and media.");
+          setRunState("IDLE", "Ready. Configure an Edit Type and media, then start when ready.");
+        }
+        if (serviceReady) {
+          refreshEditTypes().then(function () {
+            return syncPendingEditTypes();
+          }).catch(function (error) {
+            if (!activeRunId) {
+              setRunState("IDLE", "Edit Type setup remains available. Background sync will retry: " + error.message);
+            }
+          });
         }
         updateAction();
       })
       .catch(function () {
         serviceReady = false;
         panelConnected = false;
+        refreshEditTypesFromLocalRegistry();
+        renderCurrentEditTypes();
         if (!activeRunId) {
-          setRunState("OFFLINE", "Practice service is offline. Run scripts/windows/run-practice-panel.ps1.");
+          setRunState("OFFLINE", "Runtime is offline. You can still view, choose, or create an Edit Type; starting a session will become available after reconnection.");
         }
         updateAction();
       });
@@ -284,6 +503,7 @@
 
   function finishRun(run) {
     activeRunId = null;
+    activeRunState = null;
     lastRecoveredRunId = run.sessionId;
     updateAction();
     if (run.state === "FAILED") {
@@ -311,80 +531,38 @@
     productRequest("/v1/product/runs/" + encodeURIComponent(activeRunId), { method: "GET" })
       .then(function (value) {
         var run = value.run;
-        var seconds = Math.max(0, Math.round((Date.now() - Date.parse(run.startedAt)) / 1000));
-        if (run.preflight && run.preflight.stage !== "READY"
-            && (run.state === "WAITING_FOR_GPT" || run.state === "RUNNING")) {
-          var prepared = (run.preflight.completedShotIds || []).length;
-          var unresolved = (run.preflight.unresolvedShotIds || []).length;
-          setRunState(run.preflight.stage,
-            "Practice retained · " + prepared + " clips prepared · " + unresolved + " shots unresolved · "
-            + run.preflight.stage.replace(/_/g, " ").toLowerCase()
-            + (run.preflight.reasons && run.preflight.reasons.length ? " · " + run.preflight.reasons.join(" ") : ""));
-          pollTimer = setTimeout(pollRun, 1000);
-          return;
-        }
-        if (run.state === "WAITING_FOR_GPT") {
-          setRunState(
-            "WAITING_FOR_GPT",
-            "Assignment queued for GPT. Waiting for GPT to claim the EditFlow session · " + seconds + "s"
-          );
-          pollTimer = setTimeout(pollRun, 1000);
-          return;
-        }
-        if (run.state === "RUNNING") {
-          var stage = run.stage ? " · " + run.stage.replace(/_/g, " ").toLowerCase() : "";
-          setRunState(
-            "RUNNING",
-            "ChatGPT is directly reviewing footage and executing its edit in After Effects" + stage + " · " + seconds + "s"
-          );
-          pollTimer = setTimeout(pollRun, 1000);
-          return;
-        }
-        if (run.state === "CANCEL_REQUESTED") {
-          cancelEl.disabled = true;
-          setRunState(
-            "CANCEL_REQUESTED",
-            "Cancel requested. GPT must stop at the next safe editing checkpoint."
-          );
-          pollTimer = setTimeout(pollRun, 500);
+        activeRunState = run.state;
+        updateAction();
+        if (run.state === "SESSION_READY") {
+          setRunState("SESSION_READY", "Session started. No editing workflow is configured.");
+          pollTimer = setTimeout(pollRun, 2000);
           return;
         }
         finishRun(run);
-      })
-      .catch(function (error) {
-        setRunState("PAUSED", "Connection interrupted; retained Practice will resume · " + error.message);
+      }).catch(function (error) {
+        setRunState("OFFLINE", "Session saved. Reconnecting to the UI service · " + error.message);
         pollTimer = setTimeout(pollRun, 2000);
       });
   }
 
-  function startPractice() {
-    var videos = startFiles.filter(function (item) { return item.kind === "VIDEO"; })
-      .map(function (item) { return item.path; });
-    var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
-      .map(function (item) { return item.path; });
+  function startEmptySession(sessionMode) {
+    var body = {
+      editTypeId: selectedEditType(),
+      videoPaths: startFiles.filter(function (item) { return item.kind === "VIDEO"; }).map(function (item) { return item.path; }),
+      audioPaths: startFiles.filter(function (item) { return item.kind === "AUDIO"; }).map(function (item) { return item.path; })
+    };
+    if (sessionMode === "PRACTICE") body.finishPath = finishPath;
     metricsEl.hidden = true;
     hideReviewTools();
-    setRunState(
-      "PREFLIGHT",
-      "Creating a persistent Practice assignment. Analysis and connection checks will resume inside this session…"
-    );
     actionEl.disabled = true;
-    productRequest("/v1/product/practice", {
-        method: "POST",
-        body: JSON.stringify({
-          editTypeId: selectedEditType(),
-          practiceRole: "LEARNING",
-          finishPath: finishPath,
-          videoPaths: videos,
-          audioPaths: audio
-        })
-      }).then(function (value) {
+    setRunState("STARTING", "Saving your session…");
+    productRequest(sessionMode === "PRACTICE" ? "/v1/product/practice" : "/v1/product/pro-creation", {
+      method: "POST", body: JSON.stringify(body)
+    }).then(function (value) {
       activeRunId = value.run.sessionId;
+      activeRunState = value.run.state;
       updateAction();
-      setRunState(
-        "WAITING_FOR_GPT",
-        "Practice learning assignment created. Waiting for GPT to claim it."
-      );
+      setRunState("SESSION_READY", "Session started. No editing workflow is configured.");
       pollRun();
     }).catch(function (error) {
       setRunState("FAILED", error.message);
@@ -392,45 +570,12 @@
     });
   }
 
-  function startProCreation() {
-    var videos = startFiles.filter(function (item) { return item.kind === "VIDEO"; })
-      .map(function (item) { return item.path; });
-    var audio = startFiles.filter(function (item) { return item.kind === "AUDIO"; })
-      .map(function (item) { return item.path; });
-    metricsEl.hidden = true;
-    hideReviewTools();
-    actionEl.disabled = true;
-    setRunState(
-      "PREFLIGHT",
-      "Connection preflight: verifying EditFlow bridge, CEP panel, and live After Effects readback before Pro Creation can start…"
-    );
-    runConnectionPreflight().then(function () {
-      setRunState(
-        "WAITING_FOR_GPT",
-        "Connection preflight passed. Loading the Edit Type's retained Practice examples and creating a GPT Pro Creation assignment…"
-      );
-      return productRequest("/v1/product/pro-creation", {
-        method: "POST",
-        body: JSON.stringify({
-          editTypeId: selectedEditType(),
-          videoPaths: videos,
-          audioPaths: audio
-        })
-      });
-    }).then(function (value) {
-      activeRunId = value.run.sessionId;
-      updateAction();
-      setRunState("WAITING_FOR_GPT", "Pro Creation assignment created. Waiting for GPT to claim it.");
-      pollRun();
-    }).catch(function (error) {
-      setRunState("BLOCKED", error.message);
-      updateAction();
-    });
-  }
+  function startPractice() { startEmptySession("PRACTICE"); }
+  function startProCreation() { startEmptySession("PRO_CREATION"); }
 
   document.querySelectorAll(".mode-tab").forEach(function (tab) {
     tab.addEventListener("click", function () {
-      if (activeRunId) return;
+      if (configurationLocked()) return;
       mode = tab.getAttribute("data-mode");
       document.querySelectorAll(".mode-tab").forEach(function (item) {
         item.classList.toggle("is-active", item === tab);
@@ -441,14 +586,16 @@
       metricsEl.hidden = true;
       hideReviewTools();
       setRunState("IDLE", mode === "PRACTICE"
-        ? "Choose a finished reference and raw source media. GPT will learn by reconstructing it in After Effects."
-        : "Choose raw source media. GPT will create from the selected Edit Type's retained Practice examples.");
+        ? "Choose a finished reference, raw files and an Edit Type, then start an empty Practice session."
+        : "Choose raw files and an Edit Type, then start an empty Pro Creation session.");
       updateAction();
     });
   });
 
   editTypeEl.addEventListener("change", function () {
-
+    if (activeRunId) return;
+    preferredEditTypeId = editTypeEl.value;
+    writeStoredString(selectedEditTypeKey, preferredEditTypeId);
     updateAction();
   });
   document.getElementById("choose-finish").addEventListener("click", function () {
@@ -476,26 +623,65 @@
   });
   bindDropZone(document.getElementById("choose-start"), addStartPaths);
 
-  document.getElementById("new-edit-type").addEventListener("click", function () {
+  newEditTypeEl.addEventListener("click", function () {
+    if (configurationLocked()) {
+      setRunState("BLOCKED", "Edit Type configuration is locked while an edit session is actively running.");
+      return;
+    }
     var title = window.prompt("Name this Edit Type");
     if (!title || !title.trim()) return;
-    var id = title.trim().toLowerCase()
+    title = title.trim();
+    var id = title.toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
     if (!id) {
       setRunState("FAILED", "Edit Type name must contain letters or numbers.");
       return;
     }
-    productRequest("/v1/product/edit-types", {
-      method: "POST",
-      body: JSON.stringify({ editTypeId: id, title: title.trim() })
-    }).then(function (value) {
-      return refreshEditTypes().then(function () {
-        editTypeEl.value = value.editType.editTypeId;
-
-        updateAction();
-      });
-    }).catch(function (error) { setRunState("FAILED", error.message); });
+    var existing = mergeEditTypes(cachedEditTypes, pendingEditTypes).find(function (profile) {
+      return profile.editTypeId === id || String(profile.title || "").toLowerCase() === title.toLowerCase();
+    });
+    if (existing) {
+      preferredEditTypeId = existing.editTypeId;
+      writeStoredString(selectedEditTypeKey, preferredEditTypeId);
+      renderCurrentEditTypes();
+      editTypeEl.value = existing.editTypeId;
+      setRunState("IDLE", "That Edit Type already exists and is now selected.");
+      updateAction();
+      return;
+    }
+    var profile = {
+      schema: "editflow.edit-type-profile.v1",
+      editTypeId: id,
+      title: title,
+      choiceWords: [title],
+      revision: 0,
+      sessionIds: [],
+      masteredSessionIds: [],
+      behaviorEvidence: [],
+      gptLearning: { workedExamples: [] },
+      pendingLocal: true
+    };
+    setPendingEditTypes(pendingEditTypes.concat([profile]));
+    preferredEditTypeId = id;
+    writeStoredString(selectedEditTypeKey, id);
+    renderCurrentEditTypes();
+    editTypeEl.value = id;
+    setRunState("IDLE", serviceReady
+      ? "Edit Type created. Synchronizing it with the EditFlow runtime…"
+      : "Edit Type saved locally. It remains selectable offline and will synchronize when the runtime reconnects.");
+    updateAction();
+    syncPendingEditTypes().then(function () {
+      if (!pendingEditTypes.some(function (item) { return item.editTypeId === id; })) {
+        setRunState("IDLE", panelConnected
+          ? "Edit Type saved and selected. Add media when ready."
+          : "Edit Type saved and selected. Add media when ready.");
+      }
+      updateAction();
+    }).catch(function (error) {
+      setRunState("IDLE", "Edit Type remains saved locally and selected. Synchronization will retry automatically: " + error.message);
+      updateAction();
+    });
   });
 
   actionEl.addEventListener("click", function () {
@@ -545,8 +731,10 @@
   cancelEl.addEventListener("click", function () {
     if (!activeRunId) return;
     var runId = activeRunId;
+    activeRunState = "CANCEL_REQUESTED";
     cancelEl.disabled = true;
-    setRunState("CANCEL_REQUESTED", "Requesting a safe stop…");
+    updateAction();
+    setRunState("CANCEL_REQUESTED", "Cancelling the empty session…");
     productRequest(
       "/v1/product/runs/" + encodeURIComponent(runId) + "/cancel",
       { method: "POST", body: "{}" }
@@ -557,7 +745,7 @@
       }
       setRunState(
         "CANCEL_REQUESTED",
-        "Cancel requested. GPT will stop at the next safe editing checkpoint."
+        "Cancelling the empty session…"
       );
       pollRun();
     }).catch(function (error) {
@@ -571,6 +759,11 @@
     if (pollTimer) clearTimeout(pollTimer);
   });
 
+  cachedEditTypes = readStoredJsonArray(editTypesCacheKey);
+  pendingEditTypes = readStoredJsonArray(pendingEditTypesKey);
+  preferredEditTypeId = readStoredString(selectedEditTypeKey);
+  refreshEditTypesFromLocalRegistry();
+  renderCurrentEditTypes();
   renderFiles();
   checkService();
   statusTimer = setInterval(checkService, 2000);

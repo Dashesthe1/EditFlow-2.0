@@ -124,7 +124,7 @@ Write-Host ""
 Write-Host "READY: ChatGPT -> EditFlow MCP -> CEP -> After Effects"
 Write-Host ("Execution mode: " + [string]$health.executionMode)
 Write-Host ("AE host revision: " + [string]$health.hostRevision)
-Write-Host "Production supervisor uses the current ChatGPT-directed workflow and retained assignment state."
+Write-Host "Practice and Pro Creation have empty workflows. Session UI is available."
 Write-Host "After Effects was not stopped or restarted."
 Write-Host ""
 exit 0

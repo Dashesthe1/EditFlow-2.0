@@ -15,8 +15,8 @@ import {
 test("M2 accepted real-AE baseline remains enabled while development advances into M4", () => {
   const status = getMcpServerStatus();
   assert.equal(status.version, "0.5.0-dev");
-  assert.equal(status.phase, "M4_TRACKING_ISOLATION_IN_PROGRESS");
-  assert.equal(status.adobeWritesEnabled, true);
+  assert.equal(status.phase, "EMPTY_WORKFLOW_UI_V1");
+  assert.equal(status.adobeWritesEnabled, false);
   assert.equal(status.cepRuntimeBridge, "REAL_AE_PROVEN");
   assert.equal(status.cepBrokerBinding, "127.0.0.1_AUTHENTICATED");
   assert.equal(status.realAeAcceptance, "P1_P5_ACCEPTED");
@@ -83,11 +83,11 @@ test("M2 manifest remains accepted and records both real-AE evidence families", 
   assert.equal(manifest.evidence.dedicated_p4_p5.verdict, "PASS");
 });
 
-test("root metadata and README preserve accepted M2/M3/M4 history while advertising ChatGPT production", async () => {
+test("root metadata and README preserve AE capability history while documenting the empty workflow", async () => {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   const readme = await readFile("README.md", "utf8");
   assert.equal(pkg.version, "0.6.0-dev");
-  assert.match(readme, /ChatGPT direct editorial authority/);
+  assert.match(readme, /Practice and Pro Creation have no configured editing workflow/);
   assert.match(readme, /M4 — Tracking & Isolation is accepted/);
   assert.match(readme, /M3 — Human-Parity Core remains accepted/);
   assert.match(readme, /M2 — Adobe Host Baseline remains accepted/);

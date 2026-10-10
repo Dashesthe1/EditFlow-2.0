@@ -11,7 +11,7 @@
     <header class="app-header">
       <div>
         <p class="eyebrow">EDITFLOW 2.0</p>
-        <h1>Create with learned editing intelligence</h1>
+        <h1>Practice &amp; Pro Creation</h1>
       </div>
       <div id="status" data-state="starting">Connecting…</div>
     </header>
@@ -30,10 +30,10 @@
         <select id="edit-type">
           <option value="">Choose an Edit Type</option>
         </select>
-        <p class="hint">ChatGPT retains reviewed successes, failures and reproducible steps under this Edit Type.</p>
+        <p class="hint">Edit Types stay available for setup even while the runtime or AE bridge is disconnected. Configuration locks only while an edit session is active.</p>
       </div>
 
-      <p class="hint">ChatGPT chooses footage, effects and transitions directly, reviews the result, and saves ordered steps and mistakes to avoid in this preset’s Practice notebook.</p>
+      <p class="hint">Choose files and an Edit Type to start a session. No editing workflow is configured.</p>
 
       <div id="finish-field" class="field">
         <label>Finish</label>
@@ -67,7 +67,7 @@
         <h2>Session</h2>
         <span id="run-state" class="state-pill">Idle</span>
       </div>
-      <p id="activity-message">Start the local Practice service, then choose your media.</p>
+      <p id="activity-message">Choose or create an Edit Type at any time; connection is required only to start an edit session.</p>
       <div id="result-metrics" class="metrics" hidden></div>
     </section>
 
@@ -76,7 +76,7 @@
         <h2>Review finished render</h2>
         <button id="open-best-attempt" class="text-button" type="button">Play render</button>
       </div>
-      <p class="hint">Human review is diagnostic feedback only. ChatGPT’s retained final render review decides acceptance.</p>
+      <p class="hint">No render is available until a new editing workflow is defined.</p>
       <form id="human-review-form">
         <div class="review-grid">
           <label>Scene fidelity<select name="sceneFidelity" required><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>

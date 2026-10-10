@@ -1,5 +1,3 @@
-
-
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
@@ -10,7 +8,6 @@ import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopbac
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 import { RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "../.tmp/runtime/apps/desktop-host/src/production-authority.js";
 import { resolvePracticeStatePathsV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-state-paths.js";
-import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
 process.env.EDITFLOW_EDIT_DECISION_AUTHORITY = "CHATGPT_DIRECT";
@@ -42,7 +39,7 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
-const runtimeId = "DIRECT_EDITING_V1";
+const runtimeId = "UI_ONLY_V1";
 const buildId = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 const canonicalRuntimePath = path.join(localAppData, "EditFlow2", "current-runtime.json");
 const practiceArtifactDir = path.resolve(
@@ -65,7 +62,7 @@ const practicePanel = new PracticePanelServerV1({
 });
 await practicePanel.start();
 
-await practicePanel.observeCurrentAe();
+
 
 const readJson = async (req) => {
   const chunks = [];
@@ -125,16 +122,9 @@ const statusPayload = () => ({
   ...practicePanel.controlStatus(),
   primarySystemOnly: true,
   directMutationRoutes: "REMOVED",
-  clipResearchPolicy: "ON_DEMAND_METHOD_LEARNING_V1",
-  editingPath: "DIRECT_EDITING_V1",
-  footageSelectionAuthority: "CHATGPT_DIRECT",
-  availableFootageSelectionMethods: ["CHATGPT_DIRECT"],
-  rawShotCandidateRanking: "REMOVED_FROM_PRODUCTION",
-  editDecisionAuthority: "CHATGPT_DIRECT",
-  automaticEffectSelection: "REMOVED_FROM_PRODUCTION",
-  automaticCandidateRanking: "REMOVED_FROM_PRODUCTION",
-  finalReviewAuthority: "CHATGPT_DIRECT",
-  localQwenUiDecisions: "REMOVED",
+  editingPath: null,
+  availableFootageSelectionMethods: [],
+  editDecisionAuthority: null,
   panel: broker.panelSession ?? panel,
   practiceService: {
     integrated: true,
@@ -142,7 +132,7 @@ const statusPayload = () => ({
     artifactDir: practiceArtifactDir,
     stateDir: practiceStatePaths.stateDir,
   },
-  controlPlane: getMcpServerStatus(),
+  controlPlane: { mode: "UI_ONLY_V1", adobeWritesEnabled: false, editorBrain: null },
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
 
@@ -242,4 +232,4 @@ const shutdown = async () => {
   process.exit(0);
 };
 process.on("SIGINT", () => { void shutdown(); });
-process.on("SIGTERM", () => { void shutdown(); });
+process.on("SIGTERM", () => { void shutdown(); })
