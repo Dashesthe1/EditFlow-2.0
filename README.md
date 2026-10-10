@@ -24,26 +24,22 @@ The product must let ChatGPT:
 - prove the final result structurally and visually;
 - preserve reusable Learning, Training, and Experience Memory.
 
-## Production architecture
+## Practice: Source Match and raw assembly only
 
-Practice and Pro Creation use one durable production queue. ChatGPT directly inspects
-provided footage, chooses exact ranges, cuts, audio, effects, transitions, property values
-and corrections, and reviews the actual final AE render. Native adapters execute explicit
-operations with revision checks, readback, rollback and retained receipts.
+Proceed to do homework preserves the selected Finished edit, raw files and Edit Type.
+The Supervisor delivers the first ChatGPT session a scoped instruction before any
+matching starts. EditFlow Source Match Service alone analyzes footage and saves exact
+source timestamps for every shot. ChatGPT coordinates tool calls and reports status;
+it does not inspect footage, select ranges or approve shot matches.
 
-The old footage matcher/ranker, Editor Brain, M6 synthesis/correction/fidelity engines,
-tutorial/recipe compilers, formula curve generators, automatic tracking repair and local
-Qwen visual drivers have been deleted with their launchers and certification controls.
-Historical evidence and preset learning data remain readable, with no executable fallback.
-The selected preset notebook retains worked and failed examples, ordered settings, reasons,
-checks and mistakes to avoid. See [current policy](docs/chatgpt-editorial-authority.md).
+Every full shot range must be verified and durably saved before any AE import. Missing
+or ambiguous endpoints block assembly. The service extracts raw ranges at original
+speed and assembles them in Finished order in AE, saves an AEP checkpoint, then stops.
+There are no effects, retiming, rendering, research, learning, mastery or follow-on
+editing processes. Pro Creation retains an empty UI session. Input media is preserved.
 
-`globalOperation:true` declares a deliberate broad change after whole-edit coverage.
-Without it, an AE mutation may affect at most max(3, ceil(clip phases × 25%)) declared
-phases. This protects completed work; ChatGPT still chooses when a global change is needed.
-
-`npm run build:test-runtime` clears emitted JavaScript before compiling, so retired code
-cannot remain available through a stale build.
+See [Practice process](docs/practice-source-workflow.md) and [operator policy](AGENTS.md).
+`npm run build:test-runtime` clears emitted JavaScript before compiling.
 
 ## Human-parity completion rule
 
@@ -71,7 +67,7 @@ All M# development testing uses the Incremental Proof Engine through `scripts/wi
 
 ## Current phase
 
-**ChatGPT direct editorial authority is the current production workflow.**
+**Practice uses Source Match then raw assembly only. Pro Creation remains empty.**
 
 M4 — Tracking & Isolation is accepted. Commit `a55c0ac` closes the M4 exit gate with bounded live-AE isolation, evidence-backed semantic attachment, visible drift repair/resume, transfer across materially different retained SAM 3.1 fixtures, warm-process reuse, and exact project-baseline restoration.
 

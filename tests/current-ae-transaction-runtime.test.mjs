@@ -575,16 +575,6 @@ test("current AE correction runtime forbids oversized external-UI plans before c
 });
 
 
-test("current Shadow daemon delegates transactions and stabilization to the sole production worker", async () => {
-  const source = await readFile("scripts/current-shadow-control-daemon.mjs", "utf8");
-  const panel = await readFile("apps/desktop-host/src/practice-panel-server.ts", "utf8");
-  assert.match(source, /RETIRED_EDIT_EXECUTION_PATHS_V1/);
-  assert.doesNotMatch(source, /url\.pathname === "\/run-transaction"|new CurrentAeTransactionRuntimeV1|currentTransactionRuntime\.execute/);
-  assert.match(panel, /#transactionRuntime\.execute\(body\.plan \?\? body\)/);
-  assert.match(panel, /#transactionRuntime\.executeCorrection\(body\.plan \?\? body\)/);
-  assert.doesNotMatch(source, /EditGptStabilizationVisualDriverV1/);
-  assert.match(source, /stabilization: \{ protocolV23Available: stabilizationProtocolAvailable, visualDriver: null \}/);
-});
 
 const practiceBaselinePlan = () => ({
   schema: "editflow.practice-ae-baseline-plan.v1",

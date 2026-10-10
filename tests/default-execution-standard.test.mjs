@@ -1,16 +1,12 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { EDITFLOW_DEFAULT_EXECUTION_RUNNER, getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
-
-test("runtime status declares the durable production queue as the canonical execution path", () => {
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { EDITFLOW_DEFAULT_EXECUTION_RUNNER, getMcpServerStatus } from '../.tmp/runtime/apps/mcp-server/src/index.js';
+test('Only scoped Source Match and raw assembly exists, with no default editing runner', () => {
   const status = getMcpServerStatus();
-  assert.equal(EDITFLOW_DEFAULT_EXECUTION_RUNNER, "DURABLE_PRODUCTION_QUEUE_V1");
-  assert.equal(status.defaultExecutionRunner, EDITFLOW_DEFAULT_EXECUTION_RUNNER);
-  assert.equal(status.editorBrain, "CHATGPT_DIRECT");
-  assert.equal(status.editorBrainDecisionBudgetMs, 0);
-  assert.equal(status.editorBrainKnowledgeMode, "GPT_RETAINED_PRESET_EXAMPLES");
-  assert.equal(status.editorBrainFailureMode, "REQUIRE_CHATGPT_DECISION");
-  assert.equal(status.ordinaryIntentBudgetMs, 2000);
-  assert.equal(status.routineMicroActionBudgetMs, 1000);
-  assert.equal(status.slowReasoningPolicy, "CHATGPT_FOR_ALL_EDITORIAL_DECISIONS");
+  assert.equal(EDITFLOW_DEFAULT_EXECUTION_RUNNER, null);
+  assert.equal(status.defaultExecutionRunner, null);
+  assert.equal(status.primaryProductionSystem, null);
+  assert.equal(status.adobeWritesEnabled, 'VERIFIED_RAW_ASSEMBLY_ONLY');
+  assert.equal(status.editorBrain, null);
+  assert.deepEqual(status.availableWorkflows, ['SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1']);
 });

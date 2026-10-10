@@ -21,13 +21,6 @@ export interface PracticeUiContractV1 {
       readonly id: "proceed-to-homework";
       readonly label: "Proceed to do homework";
     };
-    readonly completionDialog: {
-      readonly id: "allocate-practice-learning";
-      readonly label: "Allocate learned Practice session";
-      readonly selector: "EDIT_TYPE";
-      readonly default: "CURRENT_EDIT_TYPE";
-      readonly actionLabel: "Allocate learning";
-    };
   };
   readonly proCreation: {
     readonly finish: null;
@@ -65,13 +58,6 @@ export const PRACTICE_UI_CONTRACT_V1: PracticeUiContractV1 = {
     action: {
       id: "proceed-to-homework",
       label: "Proceed to do homework",
-    },
-    completionDialog: {
-      id: "allocate-practice-learning",
-      label: "Allocate learned Practice session",
-      selector: "EDIT_TYPE",
-      default: "CURRENT_EDIT_TYPE",
-      actionLabel: "Allocate learning",
     },
   },
   proCreation: {

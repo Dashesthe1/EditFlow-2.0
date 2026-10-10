@@ -1,19 +1,18 @@
-
-
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import path from "node:path";
+import { createRequire } from "node:module";
+const { startSupervisor } = createRequire(import.meta.url)("./production-watchdog/supervisor.js");
+let supervisor = null;
 import { fileURLToPath } from "node:url";
 
 import { LoopbackCepBroker } from "../.tmp/runtime/apps/desktop-host/src/loopback-cep.js";
 import { PracticePanelServerV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js";
 import { RETIRED_EDIT_EXECUTION_PATHS_V1, retiredEditExecutionResponseV1 } from "../.tmp/runtime/apps/desktop-host/src/production-authority.js";
 import { resolvePracticeStatePathsV1 } from "../.tmp/runtime/apps/desktop-host/src/practice-state-paths.js";
-import { getMcpServerStatus } from "../.tmp/runtime/apps/mcp-server/src/index.js";
 import { ErrorMemoryStore } from "../.tmp/runtime/packages/error-triage/src/index.js";
 
-process.env.EDITFLOW_EDIT_DECISION_AUTHORITY = "CHATGPT_DIRECT";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -42,7 +41,7 @@ const errorMemoryPath = path.join(localAppData, "EditFlow2", "error-memory.json"
 const errorMemory = new ErrorMemoryStore(errorMemoryPath);
 
 const practiceStatePaths = resolvePracticeStatePathsV1();
-const runtimeId = "DIRECT_EDITING_V1";
+const runtimeId = "SOURCE_MATCH_THEN_RAW_ASSEMBLY_V1";
 const buildId = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 const canonicalRuntimePath = path.join(localAppData, "EditFlow2", "current-runtime.json");
 const practiceArtifactDir = path.resolve(
@@ -65,7 +64,7 @@ const practicePanel = new PracticePanelServerV1({
 });
 await practicePanel.start();
 
-await practicePanel.observeCurrentAe();
+
 
 const readJson = async (req) => {
   const chunks = [];
@@ -125,16 +124,9 @@ const statusPayload = () => ({
   ...practicePanel.controlStatus(),
   primarySystemOnly: true,
   directMutationRoutes: "REMOVED",
-  clipResearchPolicy: "ON_DEMAND_METHOD_LEARNING_V1",
-  editingPath: "DIRECT_EDITING_V1",
-  footageSelectionAuthority: "CHATGPT_DIRECT",
-  availableFootageSelectionMethods: ["CHATGPT_DIRECT"],
-  rawShotCandidateRanking: "REMOVED_FROM_PRODUCTION",
-  editDecisionAuthority: "CHATGPT_DIRECT",
-  automaticEffectSelection: "REMOVED_FROM_PRODUCTION",
-  automaticCandidateRanking: "REMOVED_FROM_PRODUCTION",
-  finalReviewAuthority: "CHATGPT_DIRECT",
-  localQwenUiDecisions: "REMOVED",
+  editingPath: null,
+  availableFootageSelectionMethods: [],
+  editDecisionAuthority: null,
   panel: broker.panelSession ?? panel,
   practiceService: {
     integrated: true,
@@ -142,7 +134,7 @@ const statusPayload = () => ({
     artifactDir: practiceArtifactDir,
     stateDir: practiceStatePaths.stateDir,
   },
-  controlPlane: getMcpServerStatus(),
+  controlPlane: { mode: runtimeId, adobeWritesEnabled: "VERIFIED_RAW_ASSEMBLY_ONLY", editorBrain: null },
   errorTriage: { enabled: true, mode: "LOCAL_MEMORY_THEN_BOUNDED_LOOKUP", onlineLookupBudgetMs: 10_000 },
 });
 
@@ -225,6 +217,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(32146, "127.0.0.1", async () => {
+  supervisor = await startSupervisor({backend:"http://127.0.0.1:32146",token:config.token});
   await mkdir(path.dirname(canonicalRuntimePath), { recursive: true });
   const manifest = { schema: "editflow.current-runtime.v1", runtimeId, buildId, repositoryRoot: repoRoot,
     stateDir: practiceStatePaths.stateDir, artifactDir: practiceArtifactDir,
@@ -236,10 +229,11 @@ server.listen(32146, "127.0.0.1", async () => {
 });
 
 const shutdown = async () => {
+  await supervisor?.stop();
   await new Promise((resolve) => server.close(() => resolve()));
   await practicePanel.stop().catch(() => {});
   await broker.stop().catch(() => {});
   process.exit(0);
 };
 process.on("SIGINT", () => { void shutdown(); });
-process.on("SIGTERM", () => { void shutdown(); });
+process.on("SIGTERM", () => { void shutdown(); })

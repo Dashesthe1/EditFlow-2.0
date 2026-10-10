@@ -10,6 +10,7 @@ import { LoopbackCepBroker } from '../.tmp/runtime/apps/desktop-host/src/loopbac
 import { PracticePanelServerV1 } from '../.tmp/runtime/apps/desktop-host/src/practice-panel-server.js';
 import { GptOrchestrationStoreV1 } from '../.tmp/runtime/packages/practice-homework/src/index.js';
 import { AeCepAdapterClientV11, AeFilesystemPolicyV11, capabilityForCommandV11 } from '../.tmp/runtime/packages/adapters/ae-cep/src/v1_1.js';
+import { sourceAssemblyCommandsV1 } from '../.tmp/runtime/apps/desktop-host/src/source-match-assembly.js';
 
 const arg = name => process.argv[process.argv.indexOf(name) + 1];
 for (const name of ['--config', '--inputs', '--result']) assert.ok(process.argv.includes(name), name);
@@ -94,9 +95,9 @@ try {
     const run = async body => { const job = await queue(body); const done = await wait(job.jobId);
       assert.equal(done.status, 'SUCCEEDED', JSON.stringify(done)); return done; };
     recoverLab = async () => {
-      if (!originalProject || !labOpened || report.checks.originalProjectRestored) return;
+      if (!labOpened || report.checks.originalProjectRestored || report.checks.emptyProjectRestored) return;
       const actual = await observed.observe();
-      if (actual.observed.projectFingerprint === originalProject.fingerprint) { report.checks.originalProjectRestored = true; return; }
+      if (originalProject && actual.observed.projectFingerprint === originalProject.fingerprint) { report.checks.originalProjectRestored = true; return; }
       const evidencePath=path.join(root,'failed-lab-readback.json');await writeFile(evidencePath,JSON.stringify(actual,null,2));
       const retained=await http(endpoint+'/production-jobs?includeHistory=true');
       for(const job of retained.jobs) if(['REVIEW_REQUIRED','RECONCILE_REQUIRED','FAILED'].includes(job.status)) {
@@ -110,6 +111,7 @@ try {
         const emptyPath=path.join(root,'failed-lab-empty-readback.json');await writeFile(emptyPath,JSON.stringify(empty,null,2));
         await http(endpoint+'/production-jobs',{action:'RESOLVE',jobId:cleanup.jobId,claimedBy:owner,reviewEvidenceRef:emptyPath});
       }
+      if (!originalProject) { report.checks.emptyProjectRestored = true; return; }
       const restore=await queue(packet('PROOF_SCRIPT','restore-after-failed-lab',{scriptPath:originalProject.restoreScript,scriptSha256:createHash('sha256').update(await readFile(path.join(repo,originalProject.restoreScript))).digest('hex')}));
       const restored=await wait(restore.jobId);assert.equal(restored.status,'REVIEW_REQUIRED',JSON.stringify(restored));
       const current=await observed.observe();assert.equal(current.observed.projectFingerprint,originalProject.fingerprint);
@@ -160,6 +162,7 @@ try {
         capabilityId: capabilityForCommandV11(command), routeId: 'ae-cep.v1_1', dependsOn: index ? ['lab-op-' + (index - 1)] : [],
         idempotency: 'CHECK_THEN_APPLY', riskClass: 'R1_REVERSIBLE', input: { command, payload }, rollbackBoundaryId: 'lab-boundary' })) };
     const started = Date.now();
+    labOpened = true;
     const edit = await run(packet('AE_TRANSACTION', 'create-footage-audio-keys-effect', { plan }));
     assert.equal(edit.result.checkpoint.saved, true, JSON.stringify(edit.result));
     assert.ok((await stat(edit.result.checkpoint.projectPath)).size > 0);
@@ -167,6 +170,57 @@ try {
     await writeFile(path.join(modeRoot, 'constructed-readback.json'), JSON.stringify(actual, null, 2));
     const item = actual.project.items.find(item => item.stableId === comp.stableId);
     assert.equal(item.composition.layers.length, 2);
+    let sourceAssemblyCheck = null;
+    if (process.argv.includes('--assembly-fixture')) {
+      // Diagnostic fixture only: production official-timestamp admission is
+      // independently tested. Never promote these test ranges into a real edit.
+      const fixture = JSON.parse((await readFile(arg('--assembly-fixture'),'utf8')).replace(/^\uFEFF/,''));
+      const official=process.argv.includes('--official-assembly-fixture');
+      if(!official)fixture.manifest.output.stableId = prefix + '-ordered-raw';
+      const {commands,batchCount,totalDuration} = sourceAssemblyCommandsV1(fixture.manifest,fixture.media,0);
+      assert.equal(batchCount,1);
+      const before = await observed.observe();
+      const boundary = 'assembly-live-boundary';
+      const exactPlan = {planId:prefix+'-assembly',planRevision:1,projectRevision:before.projectRevision,
+        projectFingerprint:before.projectFingerprint,environmentFingerprint:before.environmentFingerprint,
+        requiredCapabilities:[...new Set(commands.map(([command])=>capabilityForCommandV11(command)))],bindings:[],checkpoints:[],
+        invariants:{structural:[],visual:[]},rollbackBoundaries:[{id:boundary,strategy:'RESTORE_SNAPSHOT'}],
+        operations:commands.map(([command,payload],i)=>({operationId:prefix+'-assembly-op-'+i,
+          capabilityId:capabilityForCommandV11(command),routeId:'ae-cep.v1_1',dependsOn:i?[prefix+'-assembly-op-'+(i-1)]:[],
+          idempotency:'CHECK_THEN_APPLY',riskClass:'R1_REVERSIBLE',input:{command,payload},rollbackBoundaryId:boundary}))};
+      const assemblyStarted=Date.now();
+      const officialPlan=official?await http('/v1/product/source-match',{action:'ASSEMBLY_PLAN',assemblyId:fixture.assemblyId,
+        assignmentId:assignment.assignmentId,batchIndex:0}):null;
+      if(officialPlan)assert.deepEqual(officialPlan.payload.plan.operations.map(o=>[o.input.command,o.input.payload]),commands);
+      const assembled=await run(officialPlan?{kind:officialPlan.kind,payload:{...officialPlan.payload,
+        researchContext:{assignmentId:assignment.assignmentId,claimedBy:owner,clipIds:[mode==='PRACTICE'?input.selection.shotId:'lab-clip']}}}:
+        packet('AE_TRANSACTION','ordered-source-assembly',{plan:exactPlan}));
+      const state=await observed.observe();
+      const raw=state.project.items.find(x=>x.stableId===fixture.manifest.output.stableId);
+      await writeFile(path.join(modeRoot,'source-assembly-readback.json'),JSON.stringify(raw,null,2));
+      assert.equal(raw.composition.layers.length,fixture.manifest.shots.length);
+      const chronological=[...raw.composition.layers].sort((a,b)=>a.inPoint-b.inPoint);
+      let cursor=0,maxReadbackTimingErrorSeconds=0;
+      for(let i=0;i<chronological.length;i++) {
+        const layer=chronological[i],shot=fixture.manifest.shots[i];
+        assert.equal(layer.stableId,fixture.manifest.output.stableId+'-shot-'+i);
+        maxReadbackTimingErrorSeconds=Math.max(maxReadbackTimingErrorSeconds,Math.abs(layer.inPoint-cursor));
+        cursor+=shot.sourceEndExclusive-shot.sourceStart;
+        maxReadbackTimingErrorSeconds=Math.max(maxReadbackTimingErrorSeconds,Math.abs(layer.outPoint-cursor));
+        // AE's rational clock quantizes sub-frame seconds. Require the same
+        // whole-frame span, plus <=100 microseconds error (0.0024 frames here).
+        assert.equal(Math.round((layer.outPoint-layer.inPoint)*fixture.manifest.output.frameRate),
+          Math.round((shot.sourceEndExclusive-shot.sourceStart)*fixture.manifest.output.frameRate));
+      }
+      assert.ok(maxReadbackTimingErrorSeconds<.0001);
+      assert.ok(Math.abs(raw.composition.duration-totalDuration)<1/fixture.manifest.output.frameRate);
+      assert.equal(assembled.result.checkpoint.saved,true);
+      sourceAssemblyCheck={shotCount:chronological.length,operations:commands.length,elapsedMs:Date.now()-assemblyStarted,
+        originalOrderAndTrims:true,checkpointSaved:true,maxReadbackTimingErrorSeconds,
+        officialServiceHandoff:official,
+        scope:official?'Native queue handoff from actual saved matching/project-evidence/extraction services; known-frame fixture':
+          'Native CFR assembly diagnostic with unchanged frame spans; not full-edit timestamp acceptance'};
+    }
     const batchPacket = packet('AE_BATCH', 'cross-comp-batch', { transactionId: prefix + '-batch', intents: [
       { kind: 'CREATE_COMP', stableId: prefix + '-second', name: 'EditFlow isolated second target', width: 320, height: 320, pixelAspect: 1, duration: 1, frameRate: 24 },
       { kind: 'UPDATE_COMP_SETTINGS', comp, settings: { width: 321 } },
@@ -216,6 +270,7 @@ try {
     const compact=await http(endpoint+'/production-jobs');assert.equal(compact.detail,'SUMMARY');assert.ok(compact.jobs.every(job=>!job.payload));
     const full=await http(endpoint+'/production-jobs?includeHistory=true');assert.ok(full.jobs.some(job=>job.payload));
     const modeReport = { mode, elapsedMs: Date.now() - started, assignmentId: assignment.assignmentId,
+      ...(sourceAssemblyCheck ? {sourceAssemblyCheck} : {}),
       checks: { oneCallResume: true, directTransactionNoResearchOrWorkflowPlan: true, realFootageAudioKeysAndEffect: true,
         automaticCheckpoint: true, crossCompositionBatch: true, duplicateReceiptReused: true,
         nativeTextSolidPropertyAndKeyframes:true, exactPropertyReadback:true, preflightRejectsBeforeAnyWrite:true, rejectedReadOnlyRequestDoesNotBlockNextEdit:true,
