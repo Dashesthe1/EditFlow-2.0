@@ -221,7 +221,7 @@ def build_server():
 
     mcp = MCPServer(
         "EditFlow Current Shadow Gateway",
-        instructions="DIRECT_EDITING_V1: use claim_gpt_assignment once to receive the retained assignment, AE state, queue, checkpoint and notebook. Then think, enqueue exact AE batches, inspect and correct. No separate tool-inventory preflight, per-clip research plan, workflow-plan approval or local PASS gate is required. Research only unfamiliar methods. The server verifies the issued worker and journals/checkpoints batches inside execution. Keep AE open, use provided raw inputs and review the whole final render directly. Recover uncertain writes by their retained receipts; never replay blindly. Respect actual host denials and stale-worker ownership. ChatGPT alone makes every editorial decision.",
+        instructions="DIRECT_EDITING_V1: use claim_gpt_assignment once to receive the retained assignment, AE state, queue, checkpoint and notebook. Then think, enqueue exact AE batches, inspect and correct. For unfinished source identity discovery, use start_source_match with provided reference/raw paths, then get_source_match for batched original PTS and frame evidence. Preserve accepted retained selections; machine matching never substitutes for GPT visual review/SELECT. No separate tool-inventory preflight, per-clip research plan, workflow-plan approval or local PASS gate is required. Research only unfamiliar methods. The server verifies the issued worker and journals/checkpoints batches inside execution. Keep AE open, use provided raw inputs and review the whole final render directly. Recover uncertain writes by their retained receipts; never replay blindly. Respect actual host denials and stale-worker ownership. ChatGPT alone makes every editorial decision.",
     )
     registered: dict[str, Any] = {}
 
@@ -492,6 +492,66 @@ def build_server():
         """Read supplied raw media, reference shot boundaries and direct ChatGPT shot-selection contract; no ranked candidates."""
         safe_id = urllib.parse.quote(assignment_id, safe="")
         return _practice_http("GET", f"/v1/product/gpt/assignments/{safe_id}/footage-selection")
+
+    @tool()
+    def start_source_match(request_json: str) -> dict[str, Any]:
+        """Standard Practice source discovery. Search a finished edit in local raw files as one cached GPU job. Supply {requestId,assignmentId?,referencePath,sourcePaths,budgetSeconds:480,shots?:[{start,end}]}. assignmentId retains the job in Practice resume. Seconds/end exclusive. No claim/resume/AE writes; VERIFIED is evidence, not GPT acceptance."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "SUBMIT"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool()
+    def refine_source_match(request_json: str) -> dict[str, Any]:
+        """Continue a partial report in a new durable job without repeating resolved shots. Supply {requestId,jobId,shotIds?,windows?:[{shotId,sourceIndex,start,end}],budgetSeconds:480}. Known locations are rechecked at higher resolution; unlocated shots reuse global caches. Unchanged media/boundaries required. No AE writes or lifecycle changes; black endpoints can remain unresolved."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "REFINE"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool(read_only=True, destructive=False)
+    def get_source_match(job_id: str = "") -> dict[str, Any]:
+        """Read source-match installation/contract, or durable job progress, report, exact decoded PTS, frame evidence and CSV. LOCATED confirms interior frames only; LOCATED/UNRESOLVED have no asserted full-shot source in/out. Review pixels before GPT SELECT."""
+        query = "?jobId=" + urllib.parse.quote(job_id, safe="") if job_id else ""
+        return _practice_http("GET", "/v1/product/source-match" + query)
+
+    @tool()
+    def import_source_timeline(request_json: str) -> dict[str, Any]:
+        """Validate an actual original-project frame-map export for hidden boundaries. Supply {requestId,jobId,timelinePath,budgetSeconds:480}; see sourceMatch.originalTimeline contract. Never fabricate metadata or infer hidden frame maps. No AE writes or assignment lifecycle changes."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "IMPORT_TIMELINE"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool()
+    def cancel_source_match(job_id: str) -> dict[str, Any]:
+        """Cancel only the named source-matching analysis job; preserves caches, partial evidence, AE and production pause state."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL", "jobId":job_id})
+
+    @tool()
+    def prepare_source_assembly(request_json: str) -> dict[str, Any]:
+        """After ALL exact endpoints are found, save official timestamps and cut bounded raw clips as one job. Requires complete matching plus GPT PASS review for every shot, explicit encoder and output composition. No AE writes or production resume. See sourceAssembly contract in production status; poll assemblyId."""
+        payload = _object_payload(request_json, "request_json")
+        payload["action"] = "PREPARE_ASSEMBLY"
+        return _practice_http("POST", "/v1/product/source-match", payload)
+
+    @tool(read_only=True, destructive=False)
+    def get_source_assembly(assembly_id: str) -> dict[str, Any]:
+        """Read saved timestamp/extraction receipt. READY means every bounded raw clip passed frame-count, original timing and endpoint-pixel checks; it is not final edit acceptance."""
+        return _practice_http("GET", "/v1/product/source-match?assemblyId=" + urllib.parse.quote(assembly_id, safe=""))
+
+    @tool()
+    def cancel_source_assembly(assembly_id: str) -> dict[str, Any]:
+        """Cancel bounded media preparation and its decoder processes; retain official timestamps and receipts. Never cancels an accepted AE queue job, changes the assignment or resumes production."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"CANCEL_ASSEMBLY","assemblyId":assembly_id})
+
+    @tool()
+    def resume_source_assembly(assembly_id: str) -> dict[str, Any]:
+        """Resume interrupted, failed or explicitly cancelled extraction with its immutable official receipt and verified per-cut checkpoints. READY/PREPARING retries retain the same assembly. No accepted AE job replay or production resume."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"RESUME_ASSEMBLY","assemblyId":assembly_id})
+
+    @tool()
+    def plan_source_assembly(assembly_id: str, assignment_id: str, batch_index: int = 0) -> dict[str, Any]:
+        """Generate and save exact AE_TRANSACTION payload from the official manifest, at current AE revision. Enqueue unchanged with your issued researchContext. Imports only bounded raw clips, places source ranges contiguously in Finished order, and uses queue checkpoints. Previous batch must succeed first. Does not resume or write AE."""
+        return _practice_http("POST", "/v1/product/source-match", {"action":"ASSEMBLY_PLAN",
+            "assemblyId":assembly_id,"assignmentId":assignment_id,"batchIndex":batch_index})
 
     @tool()
     def inspect_or_select_footage(assignment_id: str, request_json: str) -> dict[str, Any]:

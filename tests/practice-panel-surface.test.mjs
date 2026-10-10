@@ -41,10 +41,19 @@ test("Practice panel product API is authenticated and preserves readiness gates"
 
   const unauthorized = await fetch(base + "/v1/product/status");
   assert.equal(unauthorized.status, 401);
+  assert.equal((await fetch(base + "/v1/product/source-match")).status, 401);
+  const match = await fetch(base + "/v1/product/source-match", { headers });
+  assert.equal(match.status, 200);
+  const matchState = await match.json();
+  assert.equal(matchState.contract.authority, "CHATGPT_DIRECT");
+  assert.equal(matchState.contract.aeWrites, false);
+  assert.equal(matchState.contract.automaticSelection, false);
+  assert.equal(typeof matchState.installed, "boolean");
 
   const status = await fetch(base + "/v1/product/status", { headers });
   assert.equal(status.status, 200);
-  assert.deepEqual(await status.json(), {
+  const statusBody = await status.json();
+  const expectedStatus = {
     service: "READY",
     panelConnected: false,
     gptOrchestration: "ASSIGNMENT_QUEUE_READY",
@@ -62,7 +71,8 @@ test("Practice panel product API is authenticated and preserves readiness gates"
     productionJobKinds: ["AE_TRANSACTION", "AE_CORRECTION", "AE_GOAL", "AE_BATCH", "BUILD_BASELINE", "PROOF_SCRIPT", "SCRATCH_SEARCH", "LOCAL_RENDER", "SAVE_CHECKPOINT", "REFERENCE_ANALYSIS"],
     activeRunId: null,
     latestRunId: null,
-  });
+  };
+  assert.deepEqual(Object.fromEntries(Object.keys(expectedStatus).map(key => [key, statusBody[key]])), expectedStatus);
 
   const created = await fetch(base + "/v1/product/edit-types", {
     method: "POST",

@@ -24,6 +24,8 @@ import { toAeStructuralFingerprintInput } from "../../../packages/ae-object-mode
 import { assignmentViewV1, productionJobsViewV1, productionSnapshotViewV1, projectStateSummaryV1 } from "./direct-editing-views.js";
 import { parseVisualReviewV1, validateVisualComparisonTimesV1, visualMutationDimensionsV1 } from "../../../packages/practice-homework/src/visual-continuity.js";
 import { LocalFastRuntimeV1, validateRoutineBatchV1 } from "./local-fast-runtime.js";
+import { SourceMatchServiceV1, SOURCE_MATCH_CONTRACT_V1 } from "./source-match-service.js";
+import { SourceMatchAssemblyV1, SOURCE_ASSEMBLY_CONTRACT_V1, sourceAssemblyProgressV1 } from "./source-match-assembly.js";
 
 import { ChatgptAeRenderDriverV1 } from "./chatgpt-ae-render-driver.js";
 
@@ -54,7 +56,7 @@ export const CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1 = {
   onlySelectionMethod: true,
   endpoint: "/v1/product/gpt/assignments/{id}/footage-selection",
   actions: ["BROWSE", "NOTE", "DEFINE_REFERENCE", "SELECT", "BROWSE_RENDER"],
-  instruction: "GET returns ChatGPT-defined reference shots (initially empty), supplied raw media and prior GPT decisions, never ranked candidates. BROWSE takes mediaId, timesMs (1–48 explicit timestamps), width (160–1920), claimedBy. Open the returned contactSheetPath and frame paths to inspect the actual pixels. DEFINE_REFERENCE takes claimedBy, authority:CHATGPT_DIRECT, durationMs, rationale and continuous ordered shots [{shotId,order,referenceStartMs,referenceEndMs,observation,inspections:[{evidenceId,timeMs}]}]. BROWSE_RENDER takes retained renderJobId, timesMs and claimedBy. SELECT takes claimedBy, selections and search. Each selection: shotId, sourceId, sourceStartMs, sourceEndMs, direction, playbackRate, confidence, rationale, anchors (at least three comparisons spanning the shot). Anchor: referenceTimeMs, sourceTimeMs, referenceEvidenceId, sourceEvidenceId, observation. search: internetStatus CONSULTED with sources [{url,query,finding}], or UNAVAILABLE with reason, plus strategies. Use internet scene/dialogue/script/chapter clues first, chronological overview sheets, time-range narrowing, surrounding context, dense boundary/gesture comparisons and exact frames. Internet clues are hypotheses; directly inspected provided raw pixels decide every shot. Selection and working-clip preparation never mutate AE. Research effects separately using Tutorial Drive, Adobe, then web. Resume the same assignment; no machine-ranking fallback.",
+  instruction: "GET returns ChatGPT-defined reference shots (initially empty), supplied raw media and prior GPT decisions, never ranked candidates. BROWSE takes mediaId, timesMs (1–48 explicit timestamps), width (160–1920), claimedBy. Open the returned contactSheetPath and frame paths to inspect the actual pixels. DEFINE_REFERENCE takes claimedBy, authority:CHATGPT_DIRECT, durationMs, rationale and continuous ordered shots [{shotId,order,referenceStartMs,referenceEndMs,observation,inspections:[{evidenceId,timeMs}]}]. BROWSE_RENDER takes retained renderJobId, timesMs and claimedBy. SELECT takes claimedBy, selections and search. Each selection: shotId, sourceId, sourceStartMs, sourceEndMs, direction, playbackRate, confidence, rationale, anchors (at least three comparisons spanning the shot). Anchor: referenceTimeMs, sourceTimeMs, referenceEvidenceId, sourceEvidenceId, observation. search: internetStatus CONSULTED with sources [{url,query,finding}], UNAVAILABLE with an actual access-failure reason, or NOT_REQUIRED with a direct-pixel-discovery reason and strategies including DIRECT_PIXEL_INSPECTION. Use Source Match for unfinished Practice discovery, then directly inspect its source/reference pixels; refine unresolved shots or use scene/dialogue/script/chapter clues, overview sheets, time-range narrowing and exact-frame comparisons as needed. Internet clues are hypotheses; directly inspected provided raw pixels decide every shot. Selection and working-clip preparation never mutate AE. Research effects separately using Tutorial Drive, Adobe, then web. Resume the same assignment; no machine-ranking fallback.",
 } as const;
 
 export type PracticePanelRunStateV1 =
@@ -512,6 +514,8 @@ export class PracticePanelServerV1 {
   readonly #preflightJobs = new Map<string, { abort: AbortController; promise: Promise<void> }>();
   readonly #preflightErrors = new Map<string, string>();
   readonly #footageSelectionTails = new Map<string, Promise<unknown>>();
+  readonly #sourceMatch: SourceMatchServiceV1;
+  readonly #sourceAssembly: SourceMatchAssemblyV1;
 
   constructor(config: PracticePanelServerConfigV1) {
     if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
@@ -521,6 +525,11 @@ export class PracticePanelServerV1 {
       throw new TypeError("Practice panel token must contain at least 32 characters.");
     }
     this.config = config;
+    const matchRoot = path.join(process.env.LOCALAPPDATA ?? path.dirname(config.artifactDir), "EditFlow2");
+    this.#sourceMatch = new SourceMatchServiceV1({ repositoryRoot: config.repositoryRoot,
+      artifactDir: path.join(matchRoot, "source-match-jobs"), cacheDir: path.join(matchRoot, "source-match-cache"),
+      configPath: path.join(matchRoot, "source-match-config.json") });
+    this.#sourceAssembly = new SourceMatchAssemblyV1(this.#sourceMatch.config, this.#sourceMatch);
     this.#gptStore = new GptOrchestrationStoreV1(
       config.gptOrchestrationFilePath
         ?? path.join(config.artifactDir, "state", "gpt-orchestration.json"),
@@ -664,6 +673,24 @@ export class PracticePanelServerV1 {
     catch { return { path: path.resolve(value), missing: true }; }
   }
 
+  #priorAssemblyBatch(assignmentId: string, body: Record<string, any>) {
+    const binding = body.sourceAssembly;
+    if (!binding || binding.batchIndex === 0) return;
+    if (!this.#productionWorker.list(assignmentId).some(job => job.status === "SUCCEEDED"
+      && job.payload.sourceAssembly?.assemblyId === binding.assemblyId
+      && job.payload.sourceAssembly?.batchIndex === binding.batchIndex - 1)) {
+      throw new HttpError(409, "PREVIOUS_ASSEMBLY_BATCH_NOT_COMMITTED");
+    }
+  }
+
+  async #verifySourceAssembly(assignment: GptOrchestrationAssignmentV1, kind: string, body: Record<string, any>) {
+    if (!body.sourceAssembly) return;
+    if (kind !== "AE_TRANSACTION") throw new HttpError(400, "Source assembly uses the durable AE_TRANSACTION queue.");
+    this.#priorAssemblyBatch(assignment.assignmentId, body);
+    await this.#sourceAssembly.verifyPayload(body, {rawPaths:assignment.start.filter(m=>m.mediaKind==="VIDEO").map(m=>m.uri),
+      ...(assignment.finish ? {referencePath:assignment.finish.uri} : {})});
+  }
+
   #reserveAeWriter(owner: string): () => void {
     if (owner.startsWith("production-job:") && this.config.aeWriterAvailable?.() === false) throw new HttpError(423, "AE_MUTATION_LEASE_HELD");
     if (this.#aeWriterOwner !== null) throw new HttpError(423, "AE_WRITER_BUSY: " + this.#aeWriterOwner);
@@ -681,6 +708,7 @@ export class PracticePanelServerV1 {
       { kind: job.kind, acceptedReceipt: true, acceptedLegacyReceipt: this.#legacyWorkflowReceiptIds.has(job.jobId) });
     validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
       rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body);
+    await this.#verifySourceAssembly(assignment, job.kind, body);
     if (job.kind === "PROOF_SCRIPT") {
       const bytes = await readFile(path.resolve(this.config.repositoryRoot, body.scriptPath));
       if (createHash("sha256").update(bytes).digest("hex") !== body.scriptSha256) throw new TypeError("CHATGPT_REVIEWED_SCRIPT_CHANGED");
@@ -956,6 +984,8 @@ export class PracticePanelServerV1 {
   }
 
   async stop(): Promise<void> {
+    await this.#sourceAssembly.stop();
+    await this.#sourceMatch.stop();
     await this.#productionWorker.stop();
     for (const job of this.#preflightJobs.values()) job.abort.abort();
     await Promise.allSettled([...this.#preflightJobs.values()].map((job) => job.promise));
@@ -1008,7 +1038,7 @@ export class PracticePanelServerV1 {
 
   controlStatus() {
     return { ...PRIMARY_WORKFLOW_ROUTING_V1, productionWorkflow: PRODUCTION_WORKFLOW_CONTRACT_V1, editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1, practiceNotebook: CHATGPT_PRACTICE_NOTEBOOK_CONTRACT_V1, primaryProductionSystem: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
-      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1,
+      executionMode: PRIMARY_EDIT_PRODUCTION_SYSTEM_V1, sourceMatch: SOURCE_MATCH_CONTRACT_V1, sourceAssembly: SOURCE_ASSEMBLY_CONTRACT_V1,
       hostRevision: this.#fastRuntime?.session.runner.hostRevision ?? null,
       adapterBuild: this.#fastRuntime?.session.adapterBuild ?? null,
       localRuntime: this.#fastRuntime?.status() ?? null,
@@ -1497,6 +1527,9 @@ export class PracticePanelServerV1 {
     const assignment = active === null || active === undefined ? null : await this.#gptStore.getAssignment(active.assignmentId);
     const events = assignment === null ? [] : await this.#gptStore.eventsForSession(assignment.sessionId);
     const preflight = assignment?.preflight ?? null;
+    const sourceMatch=assignment?await this.#sourceMatch.forAssignment(assignment.assignmentId):null;
+    const sourceAssembly=sourceAssemblyProgressV1(sourceMatch?await this.#sourceAssembly.forMatch(sourceMatch.job.jobId):null,
+      assignment?this.#productionWorker.list(assignment.assignmentId):[]);
     let production = null;
     if (assignment !== null) {
       const { file, coordinator } = await this.#productionCoordinator(assignment);
@@ -1505,6 +1538,14 @@ export class PracticePanelServerV1 {
     const nextOperation = assignment === null ? "START_PRACTICE"
       : assignment.status === "CANCEL_REQUESTED" ? "ACKNOWLEDGE_CANCELLATION"
       : (assignment.practiceSceneMatches?.length ?? 0) > 0 ? "RESUME_GPT_EDITING_FROM_CHECKPOINT"
+      : sourceAssembly?.status==="ASSEMBLED" ? "RESUME_GPT_EDITING_FROM_CHECKPOINT"
+      : sourceAssembly?.status==="READY" ? "CHATGPT_ENQUEUE_RETAINED_SOURCE_ASSEMBLY"
+      : sourceAssembly?.status==="PREPARING" ? "POLL_RETAINED_SOURCE_ASSEMBLY"
+      : sourceAssembly?.status==="CANCELLED" ? "CHATGPT_DECIDES_WHETHER_TO_RESUME_CANCELLED_EXTRACTION"
+      : sourceAssembly && ["FAILED","INTERRUPTED"].includes(sourceAssembly.status) ? "CHATGPT_RESUME_RETAINED_SOURCE_ASSEMBLY"
+      : sourceMatch?.job.status==="RUNNING" ? "POLL_RETAINED_SOURCE_MATCH"
+      : sourceMatch?.job.status==="COMPLETE" ? "CHATGPT_REVIEW_SOURCE_MATCH"
+      : sourceMatch ? "CHATGPT_REFINE_OR_INSPECT_UNRESOLVED_SHOTS"
       : preflight?.stage === "AWAITING_CHATGPT_REFERENCE" ? "CHATGPT_INSPECT_AND_DEFINE_REFERENCE"
       : preflight?.stage === "AWAITING_CHATGPT_SHOTS" ? "CHATGPT_INSPECT_AND_SELECT_RAW_SHOTS"
       : preflight !== null && preflight.stage !== "READY" ? "RESUME_PREFLIGHT"
@@ -1530,6 +1571,8 @@ export class PracticePanelServerV1 {
       editorialAuthority: CHATGPT_EDITORIAL_AUTHORITY_V1,
       practiceNotebook: assignment ? (full ? await this.#presetNotebook(assignment) : await this.#presetNotebookIndex(assignment)) : null,
       footageSelection: CHATGPT_FOOTAGE_SELECTION_CONTRACT_V1,
+      sourceMatch: {contract:SOURCE_MATCH_CONTRACT_V1,retained:sourceMatch},
+      sourceAssembly: {contract:SOURCE_ASSEMBLY_CONTRACT_V1,retained:sourceAssembly},
       workerError: assignment === null ? null : this.#preflightErrors.get(assignment.assignmentId) ?? null,
       userControls: { contract: PRODUCTION_USER_CONTROL_CONTRACT_V1, active: this.#userControls.active(), latest: this.#userControls.latest() },
       controllerRoute: "DESKTOP_COMMANDER_LOCAL_PRODUCT_API",
@@ -2250,6 +2293,43 @@ export class PracticePanelServerV1 {
         jsonResponse(res, 410, retiredEditExecutionResponseV1());
         return;
       }
+      if (url.pathname === "/v1/product/source-match") {
+        if (req.method === "GET") {
+          const assemblyId = url.searchParams.get("assemblyId");
+          jsonResponse(res, 200, assemblyId ? await this.#sourceAssembly.status(assemblyId) : await this.#sourceMatch.status(url.searchParams.get("jobId") ?? undefined)); return;
+        }
+        if (req.method === "POST") {
+          const body = await readJson(req);
+          if (body.action === "PREPARE_ASSEMBLY") { jsonResponse(res, 202, await this.#sourceAssembly.prepare(body)); return; }
+          if(body.action==="RESUME_ASSEMBLY") {jsonResponse(res,202,await this.#sourceAssembly.resume(requiredString(body,"assemblyId")));return;}
+          if(body.action==="CANCEL_ASSEMBLY") {jsonResponse(res,200,await this.#sourceAssembly.cancel(requiredString(body,"assemblyId")));return;}
+          if (body.action === "ASSEMBLY_PLAN") {
+            const assignment = await this.#gptStore.getAssignment(requiredString(body, "assignmentId"));
+            if (!assignment) throw new HttpError(404, "GPT assignment not found.");
+            const retained=this.#productionWorker.list(assignment.assignmentId).find(job=>job.payload.sourceAssembly?.assemblyId===body.assemblyId
+              && job.payload.sourceAssembly?.batchIndex===(body.batchIndex??0));
+            if(retained) {jsonResponse(res,200,{assemblyId:body.assemblyId,batchIndex:body.batchIndex??0,alreadySubmitted:true,
+              job:{jobId:retained.jobId,status:retained.status},nextAction:retained.status==="SUCCEEDED"?"INSPECT_COMMITTED_CHECKPOINT":"INSPECT_RETAINED_QUEUE_RECEIPT"});return;}
+            this.#priorAssemblyBatch(assignment.assignmentId, {sourceAssembly:{assemblyId:body.assemblyId,batchIndex:body.batchIndex ?? 0}});
+            const result = await this.#sourceAssembly.plan(requiredString(body,"assemblyId"), Number(body.batchIndex ?? 0),
+              await this.#transactionRuntime.observe(), {rawPaths:assignment.start.filter(m=>m.mediaKind==="VIDEO").map(m=>m.uri),
+                ...(assignment.finish ? {referencePath:assignment.finish.uri} : {})});
+            jsonResponse(res, 200, result); return;
+          }
+          if (body.action === "CANCEL") { jsonResponse(res, 200, await this.#sourceMatch.cancel(requiredString(body, "jobId"))); return; }
+          if (body.action === "REFINE") {jsonResponse(res,202,await this.#sourceMatch.refine(body));return;}
+          if(body.action==="IMPORT_TIMELINE") {jsonResponse(res,202,await this.#sourceMatch.importTimeline(body));return;}
+          if (body.action !== "SUBMIT") throw new HttpError(400, "Use SUBMIT, REFINE, IMPORT_TIMELINE, CANCEL, PREPARE_ASSEMBLY, RESUME_ASSEMBLY or ASSEMBLY_PLAN");
+          if(body.assignmentId!==undefined) {
+            const assignment=await this.#gptStore.getAssignment(requiredString(body,"assignmentId"));
+            if(!assignment)throw new HttpError(404,"GPT assignment not found.");
+            if(!assignment.finish || path.resolve(String(body.referencePath))!==path.resolve(assignment.finish.uri)
+              || !Array.isArray(body.sourcePaths) || body.sourcePaths.some((p:any)=>typeof p!=="string" || !assignment.start.some(m=>m.mediaKind==="VIDEO"&&path.resolve(m.uri)===path.resolve(p))))throw new HttpError(400,"ASSIGNMENT_RAW_SOURCES_REQUIRED");
+          }
+          jsonResponse(res, 202, await this.#sourceMatch.submit(body)); return;
+        }
+        throw new HttpError(405, "Use GET or POST");
+      }
       if (req.method === "POST" && url.pathname === "/v1/product/production/worker-proof") {
         const scope = this.#childProofScope;
         const key = req.headers["x-editflow-worker-key"];
@@ -2434,6 +2514,7 @@ export class PracticePanelServerV1 {
             }
             validateChatgptSourceImportsV1({ mode: assignment.mode, ...(assignment.finish ? {finishPath: assignment.finish.uri} : {}),
               rawVideoPaths: assignment.start.filter(m => m.mediaKind === "VIDEO").map(m => m.uri) }, body.payload);
+            await this.#verifySourceAssembly(assignment, body.kind, body.payload);
             let decision;
             try { decision = await new ChatgptEditorialDecisionFileV1(path.join(assignment.artifactDir, "editorial-decisions")).retain(id, body.kind, body.payload); }
             catch (error) { throw new HttpError(400, error instanceof Error ? error.message : String(error)); }

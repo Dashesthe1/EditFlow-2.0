@@ -111,6 +111,8 @@ class ConnectorReadinessTests(unittest.TestCase):
             if route == '/status':
                 return {'productionSupervisor': {'assignmentId': 'assignment:1', 'generation': 90, 'state': 'PAUSED'}}
             if route.endswith('/production-jobs'):
+                if method == 'POST':
+                    return {'job': {'jobId': 'job:1', 'status': 'SUCCEEDED', 'result': {'ok': True}}}
                 return {'jobs': [], 'writerOwner': None}
             if route.endswith('/production'):
                 return {'production': {'stage': 'LOCAL_PROOF'}}
@@ -126,6 +128,45 @@ class ConnectorReadinessTests(unittest.TestCase):
         self.assertTrue(set(gateway.REQUIRED_PRODUCTION_TOOLS).issubset(surface['tools']))
         self.assertEqual(surface['connectorPreflight']['status'], 'CLIENT_UNVERIFIED')
         self.assertEqual(surface['connectorPreflight']['writeAuthorization'], 'NOT_TESTED')
+
+    def test_source_match_is_independent_of_assignment_lifecycle(self):
+        request={'requestId':'match-one','referencePath':'reference.mp4','sourcePaths':['source.mp4'],'budgetSeconds':480}
+        gateway.mcp.tools['start_source_match'](json.dumps(request))
+        gateway.mcp.tools['get_source_match']('source-match-job')
+        gateway.mcp.tools['cancel_source_match']('source-match-job')
+        self.assertEqual(len(self.calls),3)
+        self.assertEqual(self.calls[0][1],'/v1/product/source-match')
+        self.assertEqual(self.calls[0][2],{**request,'action':'SUBMIT'})
+        self.assertTrue(self.calls[1][1].endswith('?jobId=source-match-job'))
+        self.assertEqual(self.calls[2][2],{'action':'CANCEL','jobId':'source-match-job'})
+        self.assertTrue(gateway.mcp.annotations['get_source_match']['readOnlyHint'])
+
+    def test_source_refinement_preserves_explicit_targets_without_lifecycle_calls(self):
+        body={'requestId':'refine-one','jobId':'prior-job','shotIds':['shot-002'],
+              'windows':[{'shotId':'shot-002','sourceIndex':0,'start':10,'end':12}]}
+        gateway.mcp.tools['refine_source_match'](json.dumps(body))
+        self.assertEqual(self.calls,[('POST','/v1/product/source-match',{**body,'action':'REFINE'})])
+
+    def test_source_assembly_cancel_does_not_cancel_production(self):
+        gateway.mcp.tools['cancel_source_assembly']('assembly-one')
+        self.assertEqual(self.calls,[('POST','/v1/product/source-match',{'action':'CANCEL_ASSEMBLY','assemblyId':'assembly-one'})])
+
+    def test_original_timeline_and_extraction_resume_do_not_touch_assignment_lifecycle(self):
+        body={'requestId':'timeline-one','jobId':'retained','timelinePath':'original-export.json'}
+        gateway.mcp.tools['import_source_timeline'](json.dumps(body))
+        gateway.mcp.tools['resume_source_assembly']('assembly-one')
+        self.assertEqual(self.calls,[('POST','/v1/product/source-match',{**body,'action':'IMPORT_TIMELINE'}),
+                                    ('POST','/v1/product/source-match',{'action':'RESUME_ASSEMBLY','assemblyId':'assembly-one'})])
+
+    def test_source_assembly_preserves_preparation_and_queue_separation(self):
+        gateway.mcp.tools['prepare_source_assembly'](json.dumps({'requestId':'assembly-one','jobId':'match-one'}))
+        gateway.mcp.tools['get_source_assembly']('assembly-one')
+        gateway.mcp.tools['plan_source_assembly']('assembly-one','assignment:1',1)
+        self.assertEqual(self.calls[0][2]['action'],'PREPARE_ASSEMBLY')
+        self.assertTrue(self.calls[1][1].endswith('?assemblyId=assembly-one'))
+        self.assertEqual(self.calls[2][2],{'action':'ASSEMBLY_PLAN','assemblyId':'assembly-one','assignmentId':'assignment:1','batchIndex':1})
+        self.assertTrue(gateway.mcp.annotations['get_source_assembly']['readOnlyHint'])
+        self.assertFalse(any('/claim' in c[1] or '/production-jobs' in c[1] for c in self.calls))
 
     def test_missing_client_queue_tools_block_even_when_server_has_them(self):
         names = [name for name in self.client_names if name != 'enqueue_production_job']

@@ -76,9 +76,94 @@ metadata or a successful write does not establish visual success.
 
 # Raw footage
 
+The user-authorized Source Match Service is a requested read-only measurement
+exception to the retired automated footage chooser. Use start_source_match once
+with local reference/source paths; get_source_match returns a complete batch of
+candidate frame correspondences, original PTS and unresolved shots. It never
+claims/resumes an assignment, imports media, alters AE or accepts a shot.
+Inspect its frame evidence and use existing GPT BROWSE/SELECT to record creative
+selection. Machine VERIFIED means geometric/temporal checks, never GPT PASS.
+Detected cuts are advisory and may be replaced with explicit reference ranges.
+Default budget is 480 seconds; PARTIAL is truthful incomplete coverage, not a
+guarantee that every source frame/shot was found. Cache source descriptors across
+assignments. Do not revive older candidate selection or editorial engines.
+
+Source Match is the standard discovery measurement path for unfinished Practice
+shots. Include assignmentId on SUBMIT; the existing resume response retains the
+job, unresolved rows, prepared assembly and committed batch receipts. Resume the
+job instead of launching another movie search. REFINE creates a new durable job
+from a retained report, preserves all other shots and evidence, validates the
+same inputs/cuts and rechecks known locations at higher resolution. Explicit
+windows may narrow selected targets; global descriptor caches serve unlocated
+shots. Crop, resize, rotation, borders, captions, grading and partial composites
+are explained by measured image transforms and distributed visible pixel regions.
+Inspect saved correspondenceEvidencePath and geometry transform/regionalEvidence;
+size or added text alone is never a reason to declare source detail hidden.
+An obscured interior sample need not block independently measured first/last frames
+when at least three visible moments establish traversal and endpoint uniqueness.
+Adaptive boundary bursts inspect additional actual reference frames near obscured
+endpoints. SIFT and a stricter ORB fallback both require measured geometry and
+aligned pixel agreement.
+When detailed comparisons fail, test both query and source at the retained 640px
+scale; reducing only the query can still miss a heavily graded valid copy.
+Inspect originVerifications/originSummary for independent fresh-frame,
+spatial-gradient and signed temporal-pixel checks of movie-section
+origin. Static captions/backgrounds cannot pass the temporal energy checks.
+CONFIRMED origin is not an exact hidden trim; keep that distinction explicit.
+No original author project is required for this measurement path. Never demote
+an adequately evidenced movie-section match merely because an endpoint is hidden.
+Read visualReasoningPackets with actual edit/raw images, measured alignments,
+nearby original-frame controls and competing hypotheses. ChatGPT directly compares
+poses, landmarks, background structure and motion, explains alterations and records
+evidence-linked observations and contradictions. A generated packet is awaiting
+review, not an LLM verdict. Distinguish SAME_SHOT origin from OBSERVED,
+NOT_OBSERVABLE or AMBIGUOUS endpoints; existing GPT BROWSE/SELECT retains decisions.
+Low-information black/text-only boundaries and ambiguous static frames remain
+unresolved. Search predictions are proposals, never certified endpoint evidence.
+Do not extrapolate or certify invisible source endpoints.
+
+IMPORT_TIMELINE can validate a canonical editflow.original-timeline-frame-map.v1
+export from the actual original edit project. Require hashed project provenance,
+matching input identities, original integer PTS for every reference frame, valid
+source traversal and fresh agreement with every retained pixel anchor (at least
+three). Keep ORIGINAL_TIMELINE_FRAME_MAP evidence distinct from measured picture
+endpoints. Never generate guessed metadata and call it an original project export.
+The canonical JSON importer does not parse arbitrary .aep, FCPXML or EDL files.
+
+After every full-shot source endpoint has been found and directly reviewed, use
+the Source Assembly handoff from the sourceAssembly production-status contract.
+PREPARE_ASSEMBLY first saves all official timestamps and the complete GPT review,
+then cuts bounded original-footage clips and verifies their original PTS/frame
+count and endpoint pixels. LOCATED, UNRESOLVED, unfinished competing-match review,
+gapped reference coverage or missing GPT reviews cannot start assembly.
+Poll the retained assemblyId; READY means all cuts are prepared. ASSEMBLY_PLAN
+returns exact AE_TRANSACTION payloads, at most 64 operations per batch. Enqueue
+unchanged with the currently issued researchContext and inspect the checkpoint.
+Use Finished shot order, never sorted movie timestamps. Each raw range initially
+plays at original speed; retiming, reverse playback and effects remain explicit
+GPT choices in the editing pass. Use a new composition to preserve current work.
+Complete each batch before generating the next. Never resume a paused assignment
+as a side effect of maintenance or media preparation. The 300-second full handoff
+target is a benchmark goal, not a demonstrated worst-case guarantee.
+
+CANCEL_ASSEMBLY stops only media preparation and its decoder descendants, keeps
+official timestamp receipts and leaves accepted AE jobs alone. A retained READY
+extraction receipt is not an instruction to replay committed assembly batches:
+resume reports ASSEMBLED only from successful queue receipts. ASSEMBLY_PLAN returns
+an existing batch receipt when already submitted; inspect/reconcile that receipt.
+
+RESUME_ASSEMBLY explicitly resumes an interrupted/failed extraction under its
+original assemblyId and immutable official manifest. Verified per-cut receipts
+reuse only unchanged media, recipes and clips. Preserve explicit cancellation;
+do not resume a CANCELLED extraction without an explicit GPT/user decision.
+
 ChatGPT browses provided raw footage and chooses exact ranges using issued pixel
 inspections. Reuse retained selections and search coverage. Internet scene/dialogue/
 chapter clues can narrow discovery; actual raw pixels establish identity.
+SELECT may record internetStatus NOT_REQUIRED with a reason and the
+DIRECT_PIXEL_INSPECTION strategy when local source evidence establishes identity;
+issued comparison anchors remain mandatory. Do not fabricate an access failure or
+perform an unrelated web search merely to satisfy discovery provenance.
 Import selected working ranges with bounded handles instead of full raw movies.
 Retired candidate matchers, editorial engines and fallback routes remain removed.
 

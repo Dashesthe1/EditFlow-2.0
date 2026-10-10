@@ -45,6 +45,35 @@ phases. This protects completed work; ChatGPT still chooses when a global change
 `npm run build:test-runtime` clears emitted JavaScript before compiling, so retired code
 cannot remain available through a stale build.
 
+## Source Match measurements
+
+The user-authorized Source Match Service is the current read-only movie-copy
+measurement path. It does not choose an edit, import footage or write AE.
+v1.6 checks altered shots using measured SIFT/ORB frame maps, distributed pixel
+regions, denser reference samples near boundaries, independent spatial gradients
+and signed changing pixels across a sequence. Original author projects are not
+required for movie-section origin verification. Fresh origin evidence is retained
+in `originVerifications`, `originSummary` and per-shot `origin-evidence.json`.
+
+v1.6.1 issues `visualReasoningPackets` for direct ChatGPT image review. Each shot
+has actual edit/raw pairs at several moments, measured alignments, decoded nearby
+original-frame controls, available competing hypotheses and both actual reference
+boundaries. ChatGPT explains matching poses, landmarks, background and motion,
+accounts for alterations and states contradictions using evidence IDs. Packets
+remain awaiting review until the images are actually inspected; their creation
+does not run an OpenAI API call or manufacture a model verdict. The current
+ChatGPT session reviews them and existing GPT BROWSE/SELECT retains decisions.
+See the [visual review procedure](docs/source-match-visual-reasoning.md).
+v1.6.2 also retries both pictures at the same 640px scale when detailed matches
+fail under a strong grade; the geometry and pixel thresholds remain unchanged.
+
+Movie-section origin and exact source trims are separate claims. CONFIRMED origin
+requires multiple fresh mapped frames, independent edge/change witnesses and a
+completed competing-location review; it never inserts a source timestamp beneath
+an unobserved black/occluded endpoint. Existing full-range gates and direct GPT
+review still control cutting and AE assembly. See
+[validation](scripts/source-match/BENCHMARK.md) and [operator policy](AGENTS.md).
+
 ## Human-parity completion rule
 
 A capability is not complete because an API call succeeds. It is complete only when EditFlow can:

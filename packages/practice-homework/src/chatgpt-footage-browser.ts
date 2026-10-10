@@ -871,11 +871,12 @@ export class ChatgptFootageBrowserV1 {
     finish: PracticeMediaInputV1; start: readonly PracticeMediaInputV1[];
     selections: readonly Record<string, any>[]; search: Record<string, any>;
   }): Promise<readonly PracticeSceneMatchV1[]> {
-    if (!Array.isArray(input.selections) || !input.selections.length || !["CONSULTED", "UNAVAILABLE"].includes(input.search?.internetStatus)
+    if (!Array.isArray(input.selections) || !input.selections.length || !["CONSULTED", "UNAVAILABLE", "NOT_REQUIRED"].includes(input.search?.internetStatus)
       || !Array.isArray(input.search.strategies) || !input.search.strategies.length
       || (input.search.internetStatus === "CONSULTED" && (!Array.isArray(input.search.sources)
         || !input.search.sources.length || input.search.sources.some((s: any) => !/^https?:\/\//.test(s.url) || !s.query?.trim() || !s.finding?.trim())))
-      || (input.search.internetStatus === "UNAVAILABLE" && !input.search.reason?.trim())) throw new TypeError("Retain internet research (or an actual access failure) and the search strategies used.");
+      || (["UNAVAILABLE", "NOT_REQUIRED"].includes(input.search.internetStatus) && !input.search.reason?.trim())
+      || (input.search.internetStatus === "NOT_REQUIRED" && !input.search.strategies.includes("DIRECT_PIXEL_INSPECTION"))) throw new TypeError("Retain internet research, an actual access failure, or justified direct pixel discovery and the search strategies used.");
     let retained: PracticeSceneMatchV1[] = [];
     let searchHistory: unknown[] = [];
     if (await fileExists(this.config.chatgptSelectionsPath)) {

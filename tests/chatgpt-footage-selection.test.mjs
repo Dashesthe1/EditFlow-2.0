@@ -72,7 +72,7 @@ test("production defaults to GPT choices, never runs index/ranking, and resumes 
   await assert.rejects(resumed.prepareSelectedFootage({ reference: ref, sourceIndex: withAudio, minimumConfidence: .95 }), /real retained pixels/);
 });
 
-test("GPT selection rejects forged evidence, missing web research, unknown raw IDs and changed pixels/media", async (t) => {
+test("GPT selection rejects forged evidence, missing discovery provenance, unknown raw IDs and changed pixels/media", async (t) => {
   const f = await fixture(t);
   const mutate = (change) => { const input = structuredClone(f.input); change(input); return input; };
   await assert.rejects(f.matcher.selectFootage(mutate((i) => { i.selections[0].sourceId = "finish"; })), /provided raw/);
@@ -85,6 +85,19 @@ test("GPT selection rejects forged evidence, missing web research, unknown raw I
   await assert.rejects(f.matcher.selectFootage(f.input), /real retained pixels/);
   await writeFile(f.raw.uri, "changed raw footage");
   await assert.rejects(f.matcher.selectFootage(f.input), /changed footage/);
+});
+
+test("direct source pixel discovery does not require a redundant internet search and still rejects forged comparisons",async t=>{
+  const f=await fixture(t),input=structuredClone(f.input);
+  input.search={internetStatus:"NOT_REQUIRED",reason:"Provided source identity was found and directly inspected through Source Match.",strategies:["SOURCE_MATCH_SERVICE","DIRECT_PIXEL_INSPECTION"]};
+  const selected=await f.matcher.selectFootage(input);
+  assert.equal(selected.length,1);assert.ok(hasVerifiedPracticeSourceIdentityV1(selected[0]));
+  const invalid=structuredClone(input);invalid.selections[0].anchors[0].sourceEvidenceId="unissued";
+  await assert.rejects(f.matcher.selectFootage(invalid),/issued/);
+  invalid.selections=input.selections;invalid.search.reason="";
+  await assert.rejects(f.matcher.selectFootage(invalid),/justified direct pixel/);
+  invalid.search.reason=input.search.reason;invalid.search.strategies=["SOURCE_MATCH_SERVICE"];
+  await assert.rejects(f.matcher.selectFootage(invalid),/justified direct pixel/);
 });
 
 test("subthreshold decisions survive correction and browsing caches repeated requests", async (t) => {
